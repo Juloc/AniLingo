@@ -2,6 +2,7 @@ using AniLingo.Web.Data;
 using AniLingo.Web.Features.Ai;
 using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Library;
+using AniLingo.Web.Features.Playback;
 using AniLingo.Web.Features.Subtitles;
 using AniLingo.Web.Features.Vocabulary;
 using AniLingo.Web.Infrastructure;
@@ -28,6 +29,8 @@ builder.Services.AddSingleton<JapaneseDictionary>();
 builder.Services.AddSingleton<IReviewScheduler, FsrsReviewScheduler>();
 builder.Services.AddScoped<LearningService>();
 builder.Services.AddScoped<EpisodePreparationService>();
+builder.Services.AddSingleton<PlaybackCueProjector>();
+builder.Services.AddScoped<PlaybackService>();
 
 builder.Services.AddSingleton<CodexCliProvider>();
 builder.Services.AddSingleton<IAiProvider>(services => services.GetRequiredService<CodexCliProvider>());
