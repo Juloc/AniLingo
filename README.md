@@ -9,6 +9,8 @@ The first vertical slice includes:
 - NAS library roots and background scanning
 - deterministic anime / season / episode discovery from paths and filenames
 - external Japanese SRT and ASS subtitle import
+- real Japanese morphological analysis with base forms and readings
+- local JMdict meanings with German-first / common-English fallback
 - episode vocabulary frequency and preparation progress
 - known / learning term state
 - simple spaced review flow behind a replaceable scheduler interface
@@ -97,8 +99,18 @@ Core areas live under `Features/Library`, `Features/Subtitles`, `Features/Vocabu
 
 ## v0.1 limitations
 
-Vocabulary extraction is deliberately lightweight in the first slice. It identifies Japanese text candidates but is not yet a full morphological tokenizer/dictionary pipeline, so readings, meanings and lemma normalization are incomplete.
+Japanese vocabulary is analyzed locally with a MeCab-compatible tokenizer and a bundled NAIST-JDIC dictionary. Meanings come from a pinned local JMdict snapshot, preferring German entries and falling back to common English entries. No dictionary network request or AI call is required at runtime.
 
 The review scheduler is intentionally behind `IReviewScheduler`; FSRS is planned for the learning-quality phase.
 
 The pre-release database currently uses a fresh-schema bootstrap and is considered disposable. The persisted-state support boundary is recorded in `.agent/upgrade-policy.yaml`; a migration-backed baseline will replace the prototype bootstrap before a stable release.
+
+## Dictionary data
+
+Japanese lexical data is derived from the JMdict project maintained by the Electronic Dictionary Research and Development Group (EDRDG), via the jmdict-simplified JSON distribution. AniLingo pins the dictionary snapshot used for each image build and verifies the downloaded archives by SHA-256.
+
+- JMdict project: https://www.edrdg.org/jmdict/j_jmdict.html
+- jmdict-simplified: https://github.com/scriptin/jmdict-simplified
+- JMdict data license/conditions: https://www.edrdg.org/edrdg/licence.html
+
+The bundled morphological dictionary is the NAIST-JDIC data distributed by Debian as `open-jtalk-mecab-naist-jdic`.
