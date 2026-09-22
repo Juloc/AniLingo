@@ -7,33 +7,37 @@ using Microsoft.EntityFrameworkCore;
 
 namespace AniLingo.Web.Features.Playback;
 
-public enum PlaybackAvailability
+public enum PlaybackOptionAvailability
 {
-    Direct,
-    Prepared,
+    Ready,
     CanPrepare,
     Preparing,
     Failed,
     Unsupported
 }
 
+public sealed record PlaybackOption(
+    PlaybackOptionAvailability Availability,
+    string StatusMessage)
+{
+    public bool IsReady => Availability == PlaybackOptionAvailability.Ready;
+    public bool CanPrepare =>
+        Availability is PlaybackOptionAvailability.CanPrepare or PlaybackOptionAvailability.Failed;
+    public bool IsPreparing => Availability == PlaybackOptionAvailability.Preparing;
+}
+
 public sealed record PlaybackMedia(
     Guid EpisodeId,
     Guid MediaFileId,
     string SourcePath,
-    string? StreamPath,
     string FileName,
     string ContentType,
-    PlaybackAvailability Availability,
-    string StatusMessage)
+    string? VideoCodec,
+    PlaybackOption Device,
+    PlaybackOption Server)
 {
-    public bool IsPlayable =>
-        Availability is PlaybackAvailability.Direct or PlaybackAvailability.Prepared;
-
-    public bool CanQueuePreparation =>
-        Availability is PlaybackAvailability.CanPrepare or PlaybackAvailability.Failed;
-
-    public bool IsPreparing => Availability == PlaybackAvailability.Preparing;
+    public bool HasReadyOption => Device.IsReady || Server.IsReady;
+    public bool IsPreparing => Device.IsPreparing || Server.IsPreparing;
 }
 
 public sealed record PlaybackTermInfo(
@@ -81,7 +85,7 @@ public static class PlaybackMediaTypes
             _ => "application/octet-stream"
         };
 
-    public static bool IsLikelyBrowserSupported(string path) =>
+    public static bool IsLikelyBrowserSupportedContainer(string path) =>
         Path.GetExtension(path).ToLowerInvariant() is
             ".mp4" or ".m4v" or ".webm" or ".ogg" or ".ogv";
 }
@@ -167,198 +171,176 @@ public sealed class PlaybackService(
     PlaybackCueProjector projector,
     PlaybackMediaProbe mediaProbe,
     PlaybackPreparationTracker preparationTracker,
-    BackgroundJobQueue backgroundJobs)
+    PlaybackJobQueue playbackJobs)
 {
     public async Task<PlaybackMedia?> GetMediaAsync(
         Guid episodeId,
         CancellationToken cancellationToken)
     {
-        var row = await db.MediaFiles
-            .AsNoTracking()
-            .Where(x => x.EpisodeId == episodeId)
-            .OrderBy(x => x.Path)
-            .Select(x => new
-            {
-                x.Id,
-                x.Path,
-                x.SizeBytes,
-                x.LastWriteTimeUtc
-            })
-            .FirstOrDefaultAsync(cancellationToken);
-
+        var row = await GetMediaRowAsync(episodeId, cancellationToken);
         if (row is null)
         {
             return null;
         }
 
-        if (PlaybackMediaTypes.IsLikelyBrowserSupported(row.Path))
-        {
-            return new PlaybackMedia(
-                episodeId,
-                row.Id,
-                row.Path,
-                row.Path,
-                Path.GetFileName(row.Path),
-                PlaybackMediaTypes.GetContentType(row.Path),
-                PlaybackAvailability.Direct,
-                "Direct play");
-        }
-
-        var preparedPath = PlaybackCache.BuildPath(
-            row.Id,
-            row.SizeBytes,
-            row.LastWriteTimeUtc);
-
-        if (File.Exists(preparedPath))
-        {
-            preparationTracker.MarkReady(row.Id);
-            return new PlaybackMedia(
-                episodeId,
-                row.Id,
-                row.Path,
-                preparedPath,
-                Path.GetFileName(row.Path),
-                "video/mp4",
-                PlaybackAvailability.Prepared,
-                "Browser MP4 prepared");
-        }
-
-        var state = preparationTracker.Get(row.Id);
-        if (state.Status is PlaybackPreparationStatus.Queued or PlaybackPreparationStatus.Processing)
-        {
-            return new PlaybackMedia(
-                episodeId,
-                row.Id,
-                row.Path,
-                null,
-                Path.GetFileName(row.Path),
-                PlaybackMediaTypes.GetContentType(row.Path),
-                PlaybackAvailability.Preparing,
-                state.Status == PlaybackPreparationStatus.Queued
-                    ? "Queued for browser playback preparation"
-                    : "Preparing browser playback");
-        }
-
         var probe = await mediaProbe.ProbeAsync(row.Path, cancellationToken);
         if (probe is null)
         {
-            return new PlaybackMedia(
-                episodeId,
-                row.Id,
-                row.Path,
-                null,
-                Path.GetFileName(row.Path),
-                PlaybackMediaTypes.GetContentType(row.Path),
-                PlaybackAvailability.Unsupported,
+            var failed = new PlaybackOption(
+                PlaybackOptionAvailability.Unsupported,
                 "Could not inspect this media file.");
-        }
-
-        var plan = PlaybackRemuxPlan.Build(probe);
-        if (!plan.CanPrepare)
-        {
             return new PlaybackMedia(
                 episodeId,
                 row.Id,
                 row.Path,
-                null,
                 Path.GetFileName(row.Path),
                 PlaybackMediaTypes.GetContentType(row.Path),
-                PlaybackAvailability.Unsupported,
-                plan.Message);
+                null,
+                failed,
+                failed);
         }
 
-        if (state.Status == PlaybackPreparationStatus.Failed)
+        if (IsUniversalDirect(row.Path, probe))
         {
+            var direct = new PlaybackOption(
+                PlaybackOptionAvailability.Ready,
+                "Direct play");
             return new PlaybackMedia(
                 episodeId,
                 row.Id,
                 row.Path,
-                null,
                 Path.GetFileName(row.Path),
                 PlaybackMediaTypes.GetContentType(row.Path),
-                PlaybackAvailability.Failed,
-                state.Message ?? "Browser playback preparation failed.");
+                probe.VideoCodec,
+                direct,
+                direct);
+        }
+
+        var device = BuildOption(row, probe, PlaybackRequestedMode.Device);
+        var server = BuildOption(row, probe, PlaybackRequestedMode.Server);
+
+        if (IsHevc(probe.VideoCodec) &&
+            PlaybackMediaTypes.IsLikelyBrowserSupportedContainer(row.Path))
+        {
+            device = new PlaybackOption(
+                PlaybackOptionAvailability.Ready,
+                "HEVC direct play on a capable device");
         }
 
         return new PlaybackMedia(
             episodeId,
             row.Id,
             row.Path,
-            null,
             Path.GetFileName(row.Path),
             PlaybackMediaTypes.GetContentType(row.Path),
-            PlaybackAvailability.CanPrepare,
-            plan.Message);
+            probe.VideoCodec,
+            device,
+            server);
     }
 
     public async Task<PlaybackStream?> GetStreamAsync(
         Guid episodeId,
+        PlaybackRequestedMode mode,
         CancellationToken cancellationToken)
     {
-        var row = await db.MediaFiles
-            .AsNoTracking()
-            .Where(x => x.EpisodeId == episodeId)
-            .OrderBy(x => x.Path)
-            .Select(x => new
-            {
-                x.Id,
-                x.Path,
-                x.SizeBytes,
-                x.LastWriteTimeUtc
-            })
-            .FirstOrDefaultAsync(cancellationToken);
-
+        var row = await GetMediaRowAsync(episodeId, cancellationToken);
         if (row is null)
         {
             return null;
         }
 
-        if (PlaybackMediaTypes.IsLikelyBrowserSupported(row.Path) && File.Exists(row.Path))
-        {
-            return new PlaybackStream(
-                row.Path,
-                PlaybackMediaTypes.GetContentType(row.Path),
-                new DateTimeOffset(File.GetLastWriteTimeUtc(row.Path)));
-        }
-
-        var preparedPath = PlaybackCache.BuildPath(
-            row.Id,
-            row.SizeBytes,
-            row.LastWriteTimeUtc);
-
-        if (!File.Exists(preparedPath))
+        var probe = await mediaProbe.ProbeAsync(row.Path, cancellationToken);
+        if (probe is null)
         {
             return null;
         }
 
-        return new PlaybackStream(
-            preparedPath,
-            "video/mp4",
-            new DateTimeOffset(File.GetLastWriteTimeUtc(preparedPath)));
+        if (IsUniversalDirect(row.Path, probe) ||
+            (mode == PlaybackRequestedMode.Device &&
+             IsHevc(probe.VideoCodec) &&
+             PlaybackMediaTypes.IsLikelyBrowserSupportedContainer(row.Path)))
+        {
+            return File.Exists(row.Path)
+                ? SourceStream(row.Path)
+                : null;
+        }
+
+        var plan = PlaybackPreparationPlan.Build(probe, mode);
+        if (!plan.CanPrepare || plan.Kind is null)
+        {
+            return null;
+        }
+
+        var path = PlaybackCache.BuildPath(
+            row.Id,
+            row.SizeBytes,
+            row.LastWriteTimeUtc,
+            plan.Kind.Value);
+
+        return File.Exists(path)
+            ? new PlaybackStream(
+                path,
+                "video/mp4",
+                new DateTimeOffset(File.GetLastWriteTimeUtc(path)))
+            : null;
     }
 
     public async Task<bool> QueuePreparationAsync(
         Guid episodeId,
+        PlaybackRequestedMode mode,
         CancellationToken cancellationToken)
     {
-        var media = await GetMediaAsync(episodeId, cancellationToken);
-        if (media is null || !media.CanQueuePreparation)
+        var row = await GetMediaRowAsync(episodeId, cancellationToken);
+        if (row is null)
         {
             return false;
         }
 
-        if (!preparationTracker.TryQueue(media.MediaFileId))
+        var probe = await mediaProbe.ProbeAsync(row.Path, cancellationToken);
+        if (probe is null)
+        {
+            return false;
+        }
+
+        if (IsUniversalDirect(row.Path, probe) ||
+            (mode == PlaybackRequestedMode.Device &&
+             IsHevc(probe.VideoCodec) &&
+             PlaybackMediaTypes.IsLikelyBrowserSupportedContainer(row.Path)))
+        {
+            return false;
+        }
+
+        var plan = PlaybackPreparationPlan.Build(probe, mode);
+        if (!plan.CanPrepare || plan.Kind is null)
+        {
+            return false;
+        }
+
+        var kind = plan.Kind.Value;
+        var outputPath = PlaybackCache.BuildPath(
+            row.Id,
+            row.SizeBytes,
+            row.LastWriteTimeUtc,
+            kind);
+
+        if (File.Exists(outputPath))
+        {
+            preparationTracker.MarkReady(row.Id, kind);
+            return false;
+        }
+
+        if (!preparationTracker.TryQueue(row.Id, kind))
         {
             return false;
         }
 
         try
         {
-            await backgroundJobs.QueueAsync(
+            await playbackJobs.QueueAsync(
                 async (services, jobCancellationToken) =>
                 {
-                    var remux = services.GetRequiredService<PlaybackRemuxService>();
-                    await remux.PrepareAsync(episodeId, jobCancellationToken);
+                    var preparation = services.GetRequiredService<PlaybackPreparationService>();
+                    await preparation.PrepareAsync(episodeId, mode, jobCancellationToken);
                 },
                 cancellationToken);
 
@@ -367,8 +349,9 @@ public sealed class PlaybackService(
         catch
         {
             preparationTracker.MarkFailed(
-                media.MediaFileId,
-                "Could not queue browser playback preparation.");
+                row.Id,
+                kind,
+                "Could not queue playback preparation.");
             throw;
         }
     }
@@ -422,4 +405,109 @@ public sealed class PlaybackService(
 
         return new EpisodePlaybackSnapshot(media, projected);
     }
+
+    private PlaybackOption BuildOption(
+        MediaRow row,
+        PlaybackProbeResult probe,
+        PlaybackRequestedMode mode)
+    {
+        var plan = PlaybackPreparationPlan.Build(probe, mode);
+        if (!plan.CanPrepare || plan.Kind is null)
+        {
+            return new PlaybackOption(
+                PlaybackOptionAvailability.Unsupported,
+                plan.Message);
+        }
+
+        var kind = plan.Kind.Value;
+        var outputPath = PlaybackCache.BuildPath(
+            row.Id,
+            row.SizeBytes,
+            row.LastWriteTimeUtc,
+            kind);
+
+        if (File.Exists(outputPath))
+        {
+            preparationTracker.MarkReady(row.Id, kind);
+            return new PlaybackOption(
+                PlaybackOptionAvailability.Ready,
+                kind switch
+                {
+                    PlaybackPreparationKind.CompatibleRemux => "Browser-compatible MP4 ready",
+                    PlaybackPreparationKind.DeviceHevcRemux => "HEVC MP4 ready for device decoding",
+                    PlaybackPreparationKind.ServerH264Transcode => "Server H.264 fallback ready",
+                    _ => "Prepared stream ready"
+                });
+        }
+
+        var state = preparationTracker.Get(row.Id, kind);
+        return state.Status switch
+        {
+            PlaybackPreparationStatus.Queued => new PlaybackOption(
+                PlaybackOptionAvailability.Preparing,
+                "Queued for playback preparation"),
+            PlaybackPreparationStatus.Processing => new PlaybackOption(
+                PlaybackOptionAvailability.Preparing,
+                kind == PlaybackPreparationKind.ServerH264Transcode
+                    ? "Transcoding H.264 on the server"
+                    : "Preparing MP4 without video re-encoding"),
+            PlaybackPreparationStatus.Failed => new PlaybackOption(
+                PlaybackOptionAvailability.Failed,
+                state.Message ?? "Playback preparation failed."),
+            _ => new PlaybackOption(
+                PlaybackOptionAvailability.CanPrepare,
+                plan.Message)
+        };
+    }
+
+    private async Task<MediaRow?> GetMediaRowAsync(
+        Guid episodeId,
+        CancellationToken cancellationToken) =>
+        await db.MediaFiles
+            .AsNoTracking()
+            .Where(x => x.EpisodeId == episodeId)
+            .OrderBy(x => x.Path)
+            .Select(x => new MediaRow(
+                x.Id,
+                x.Path,
+                x.SizeBytes,
+                x.LastWriteTimeUtc))
+            .FirstOrDefaultAsync(cancellationToken);
+
+    private static bool IsUniversalDirect(string path, PlaybackProbeResult probe)
+    {
+        if (!PlaybackMediaTypes.IsLikelyBrowserSupportedContainer(path))
+        {
+            return false;
+        }
+
+        if (IsHevc(probe.VideoCodec))
+        {
+            return false;
+        }
+
+        if (string.Equals(probe.VideoCodec, "h264", StringComparison.OrdinalIgnoreCase) &&
+            probe.PixelFormat is not ("yuv420p" or "yuvj420p"))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool IsHevc(string? codec) =>
+        string.Equals(codec, "hevc", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(codec, "h265", StringComparison.OrdinalIgnoreCase);
+
+    private static PlaybackStream SourceStream(string path) =>
+        new(
+            path,
+            PlaybackMediaTypes.GetContentType(path),
+            new DateTimeOffset(File.GetLastWriteTimeUtc(path)));
+
+    private sealed record MediaRow(
+        Guid Id,
+        string Path,
+        long SizeBytes,
+        DateTime LastWriteTimeUtc);
 }
