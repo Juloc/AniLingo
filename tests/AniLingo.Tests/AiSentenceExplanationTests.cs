@@ -16,7 +16,7 @@ public sealed class AiSentenceExplanationTests
 
         Assert.AreEqual("まだ 食べてないんだ。", prepared.Sentence);
         CollectionAssert.Contains(prepared.LocalHints.ToArray(), "てない→ていない");
-        CollectionAssert.Contains(prepared.LocalHints.ToArray(), "んだ→のだ");
+        Assert.IsFalse(prepared.LocalHints.Contains("んだ→のだ"));
     }
 
     [TestMethod]
@@ -51,6 +51,7 @@ public sealed class AiSentenceExplanationTests
         CollectionAssert.Contains(
             prepared.LocalHints.ToArray(),
             "たり…たりする = Beispiele von Handlungen aufzählen");
+        Assert.IsFalse(prepared.LocalHints.Contains("んだ→のだ"));
     }
 
     [TestMethod]
