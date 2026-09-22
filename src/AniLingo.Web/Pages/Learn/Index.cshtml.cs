@@ -34,7 +34,6 @@ public sealed class IndexModel(
         {
             LocalHints = aiExplanationService.PrepareLocal(Context.Sentence).LocalHints;
             AiExplanation = await aiExplanationService.GetCachedAsync(
-                current.TermId,
                 Context.Sentence,
                 cancellationToken);
         }
@@ -54,7 +53,6 @@ public sealed class IndexModel(
         try
         {
             await aiExplanationService.ExplainAsync(
-                termId,
                 context.Sentence,
                 cancellationToken);
             TempData["Status"] = "AI explanation ready.";
