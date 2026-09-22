@@ -1,9 +1,11 @@
 using AniLingo.Web.Data;
+using AniLingo.Web.Features.Ai;
 using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Library;
 using AniLingo.Web.Features.Subtitles;
 using AniLingo.Web.Features.Vocabulary;
 using AniLingo.Web.Infrastructure;
+using AniLingo.Web.Infrastructure.Ai;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
@@ -23,6 +25,9 @@ builder.Services.AddScoped<VocabularyService>();
 builder.Services.AddSingleton<JapaneseTermExtractor>();
 builder.Services.AddSingleton<IReviewScheduler, BasicReviewScheduler>();
 builder.Services.AddScoped<LearningService>();
+
+builder.Services.AddSingleton<CodexCliProvider>();
+builder.Services.AddSingleton<IAiProvider>(services => services.GetRequiredService<CodexCliProvider>());
 
 builder.Services.AddSingleton<BackgroundJobQueue>();
 builder.Services.AddHostedService<BackgroundJobWorker>();
