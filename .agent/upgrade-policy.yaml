@@ -1,0 +1,10 @@
+schemaVersion: 1
+
+currentEpoch: 1
+minimumSupportedEpoch: 1
+
+introducedIn: null
+minimumSupportedVersion: null
+bridgeVersion: null
+
+reason: "Initial AniLingo persisted-state baseline; pre-release databases are disposable until the first migration-backed release."

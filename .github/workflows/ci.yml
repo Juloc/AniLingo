@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+      - run: dotnet restore AniLingo.sln
+      - run: dotnet build AniLingo.sln --no-restore --configuration Release
+      - run: dotnet test AniLingo.sln --no-build --configuration Release
+      - run: docker build -f src/AniLingo.Web/Dockerfile .

@@ -1,0 +1,20 @@
+@model MediaCardModel
+<a class="media-card" href="@Model.Href">
+    <div class="media-poster">
+        <span>@(Model.Title.Length > 0 ? Model.Title[..1].ToUpperInvariant() : "A")</span>
+        @if (!string.IsNullOrWhiteSpace(Model.Badge))
+        {
+            <span class="media-badge">@Model.Badge</span>
+        }
+    </div>
+    <div class="media-copy">
+        <strong>@Model.Title</strong>
+        <span>@Model.Subtitle</span>
+        @if (Model.ProgressPercent is int progress)
+        {
+            <div class="progress-track" aria-label="@progress% prepared">
+                <span style="width:@progress%"></span>
+            </div>
+        }
+    </div>
+</a>

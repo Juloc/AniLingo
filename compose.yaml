@@ -1,0 +1,35 @@
+services:
+  db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: anilingo
+      POSTGRES_USER: anilingo
+      POSTGRES_PASSWORD: ${ANILINGO_DB_PASSWORD:-anilingo}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U anilingo -d anilingo"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - anilingo-db:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      dockerfile: src/AniLingo.Web/Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__Default: Host=db;Port=5432;Database=anilingo;Username=anilingo;Password=${ANILINGO_DB_PASSWORD:-anilingo}
+      Media__BootstrapRoot: /media/anime
+    ports:
+      - "${ANILINGO_PORT:-8097}:8080"
+    volumes:
+      - "${ANIME_PATH:-./media}:/media/anime:ro"
+    restart: unless-stopped
+
+volumes:
+  anilingo-db:
