@@ -31,15 +31,15 @@ public sealed class AddDailyNewWordQueue : Migration
             defaultValue: 10);
 
         migrationBuilder.CreateIndex(
-            name: "IX_UserTerms_ProfileId_State_LearningStartedAt_QueuePosition",
+            name: "IX_UserTerms_LearningStartedAt_QueuePosition",
             table: "UserTerms",
-            columns: new[] { "ProfileId", "State", "LearningStartedAt", "QueuePosition" });
+            columns: new[] { "LearningStartedAt", "QueuePosition" });
     }
 
     protected override void Down(MigrationBuilder migrationBuilder)
     {
         migrationBuilder.DropIndex(
-            name: "IX_UserTerms_ProfileId_State_LearningStartedAt_QueuePosition",
+            name: "IX_UserTerms_LearningStartedAt_QueuePosition",
             table: "UserTerms");
 
         migrationBuilder.DropColumn(
