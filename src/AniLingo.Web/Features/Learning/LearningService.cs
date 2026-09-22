@@ -7,6 +7,7 @@ public sealed class LearningService(
     AppDbContext db,
     IReviewScheduler scheduler)
 {
+    private LearningPreferencesSnapshot? preferencesCache;
     public async Task SetStateAsync(Guid termId, UserTermState state, CancellationToken cancellationToken)
     {
         var item = await db.UserTerms.SingleOrDefaultAsync(
@@ -76,11 +77,12 @@ public sealed class LearningService(
         await db.SaveChangesAsync(cancellationToken);
     }
 
-    public Task<List<DueReviewItem>> GetDueAsync(int limit, CancellationToken cancellationToken)
+    public async Task<List<DueReviewItem>> GetDueAsync(CancellationToken cancellationToken)
     {
+        var preferences = await GetPreferencesAsync(cancellationToken);
         var now = DateTime.UtcNow;
 
-        return (
+        return await (
             from userTerm in db.UserTerms.AsNoTracking()
             join term in db.Terms.AsNoTracking() on userTerm.TermId equals term.Id
             where userTerm.ProfileId == LearningProfile.DefaultId
@@ -89,8 +91,70 @@ public sealed class LearningService(
                 && userTerm.NextReviewAt <= now
             orderby userTerm.NextReviewAt
             select new DueReviewItem(term.Id, term.Canonical, term.Reading, term.Meaning, userTerm.IntervalDays))
-            .Take(limit)
+            .Take(preferences.ReviewBatchSize)
             .ToListAsync(cancellationToken);
+    }
+
+    public async Task<LearningPreferencesSnapshot> GetPreferencesAsync(
+        CancellationToken cancellationToken)
+    {
+        if (preferencesCache is not null)
+        {
+            return preferencesCache;
+        }
+
+        var row = await db.LearningPreferences
+            .AsNoTracking()
+            .Where(x => x.ProfileId == LearningProfile.DefaultId)
+            .Select(x => new LearningPreferencesSnapshot(
+                x.DesiredRetention,
+                x.ReviewBatchSize))
+            .SingleOrDefaultAsync(cancellationToken);
+
+        preferencesCache = row ?? LearningPreferencesSnapshot.Default;
+        return preferencesCache;
+    }
+
+    public async Task SavePreferencesAsync(
+        double desiredRetention,
+        int reviewBatchSize,
+        CancellationToken cancellationToken)
+    {
+        if (desiredRetention is < 0.80 or > 0.97)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(desiredRetention),
+                "Desired retention must be between 0.80 and 0.97.");
+        }
+
+        if (reviewBatchSize is < 5 or > 200)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(reviewBatchSize),
+                "Review batch size must be between 5 and 200.");
+        }
+
+        var row = await db.LearningPreferences
+            .SingleOrDefaultAsync(
+                x => x.ProfileId == LearningProfile.DefaultId,
+                cancellationToken);
+
+        if (row is null)
+        {
+            row = new LearningPreferences
+            {
+                ProfileId = LearningProfile.DefaultId
+            };
+            db.LearningPreferences.Add(row);
+        }
+
+        row.DesiredRetention = desiredRetention;
+        row.ReviewBatchSize = reviewBatchSize;
+        await db.SaveChangesAsync(cancellationToken);
+
+        preferencesCache = new LearningPreferencesSnapshot(
+            desiredRetention,
+            reviewBatchSize);
     }
 
     public async Task<ReviewAnimeContext?> GetReviewContextAsync(
@@ -165,7 +229,12 @@ public sealed class LearningService(
     {
         var now = DateTimeOffset.UtcNow;
         var history = await GetHistoryAsync(termId, cancellationToken);
-        var schedules = scheduler.Preview(termId, now, history);
+        var preferences = await GetPreferencesAsync(cancellationToken);
+        var schedules = scheduler.Preview(
+            termId,
+            now,
+            history,
+            preferences.DesiredRetention);
 
         return Enum.GetValues<ReviewRating>()
             .Select(rating => new ReviewOption(
@@ -184,8 +253,14 @@ public sealed class LearningService(
             cancellationToken);
 
         var history = await GetHistoryAsync(termId, cancellationToken);
+        var preferences = await GetPreferencesAsync(cancellationToken);
         var now = DateTimeOffset.UtcNow;
-        var schedule = scheduler.Schedule(termId, now, history, rating);
+        var schedule = scheduler.Schedule(
+            termId,
+            now,
+            history,
+            rating,
+            preferences.DesiredRetention);
 
         userTerm.IntervalDays = schedule.IntervalDays;
         userTerm.NextReviewAt = schedule.NextReviewAt.UtcDateTime;

@@ -1,0 +1,48 @@
+@page
+@model AniLingo.Web.Pages.Settings.LearningModel
+@{
+    ViewData["Title"] = "Learning settings";
+}
+
+<header class="page-header">
+    <div>
+        <a class="back-link" asp-page="/Settings/Index">← Settings</a>
+        <span class="eyebrow">Learning</span>
+        <h1>Learning settings</h1>
+        <p>Small controls that directly affect FSRS reviews.</p>
+    </div>
+</header>
+
+<section class="panel">
+    <form method="post" class="form-stack">
+        <div asp-validation-summary="ModelOnly" class="validation"></div>
+
+        <label>
+            <span>Desired retention (%)</span>
+            <input asp-for="DesiredRetentionPercent"
+                   type="number"
+                   min="80"
+                   max="97"
+                   step="1" />
+            <small class="muted">
+                Higher values schedule reviews sooner. 90% is a balanced default.
+            </small>
+            <span asp-validation-for="DesiredRetentionPercent" class="validation"></span>
+        </label>
+
+        <label>
+            <span>Reviews per learning round</span>
+            <input asp-for="ReviewBatchSize"
+                   type="number"
+                   min="5"
+                   max="200"
+                   step="5" />
+            <small class="muted">
+                Limits how many due cards AniLingo loads into one review round.
+            </small>
+            <span asp-validation-for="ReviewBatchSize" class="validation"></span>
+        </label>
+
+        <button class="button button-primary" type="submit">Save learning settings</button>
+    </form>
+</section>

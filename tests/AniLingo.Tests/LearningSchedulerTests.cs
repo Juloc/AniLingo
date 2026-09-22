@@ -65,4 +65,32 @@ public sealed class LearningSchedulerTests
         Assert.AreEqual(preview[ReviewRating.Good], actual);
         Assert.IsTrue(actual.NextReviewAt > now);
     }
+    [TestMethod]
+    public void HigherDesiredRetentionSchedulesSooner()
+    {
+        var now = new DateTimeOffset(2026, 9, 22, 12, 0, 0, TimeSpan.Zero);
+        ReviewHistoryItem[] history =
+        [
+            new(ReviewRating.Easy, now.AddDays(-60)),
+            new(ReviewRating.Good, now.AddDays(-30)),
+            new(ReviewRating.Good, now.AddDays(-10))
+        ];
+
+        var scheduler = new FsrsReviewScheduler();
+        var lowerRetention = scheduler.Schedule(
+            CardId,
+            now,
+            history,
+            ReviewRating.Good,
+            0.80);
+        var higherRetention = scheduler.Schedule(
+            CardId,
+            now,
+            history,
+            ReviewRating.Good,
+            0.95);
+
+        Assert.IsTrue(higherRetention.NextReviewAt < lowerRetention.NextReviewAt);
+    }
+
 }

@@ -93,7 +93,7 @@ public sealed class SqliteTimestampTests
             Assert.AreEqual(1, dueCount);
 
             var due = await new LearningService(db, new FsrsReviewScheduler())
-                .GetDueAsync(50, CancellationToken.None);
+                .GetDueAsync(CancellationToken.None);
 
             Assert.AreEqual(1, due.Count);
             Assert.AreEqual(dueTerm.Id, due[0].TermId);

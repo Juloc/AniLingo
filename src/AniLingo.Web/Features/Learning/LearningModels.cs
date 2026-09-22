@@ -23,6 +23,24 @@ public static class LearningProfile
     public const string DefaultId = "default";
 }
 
+public sealed class LearningPreferences
+{
+    public const double DefaultDesiredRetention = 0.90;
+    public const int DefaultReviewBatchSize = 50;
+
+    public string ProfileId { get; set; } = LearningProfile.DefaultId;
+    public double DesiredRetention { get; set; } = DefaultDesiredRetention;
+    public int ReviewBatchSize { get; set; } = DefaultReviewBatchSize;
+}
+
+public sealed record LearningPreferencesSnapshot(
+    double DesiredRetention,
+    int ReviewBatchSize)
+{
+    public static LearningPreferencesSnapshot Default { get; } =
+        new(LearningPreferences.DefaultDesiredRetention, LearningPreferences.DefaultReviewBatchSize);
+}
+
 public sealed class UserTerm
 {
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -56,41 +74,38 @@ public interface IReviewScheduler
         Guid cardId,
         DateTimeOffset now,
         IReadOnlyList<ReviewHistoryItem> history,
-        ReviewRating rating);
+        ReviewRating rating,
+        double desiredRetention = LearningPreferences.DefaultDesiredRetention);
 
     IReadOnlyDictionary<ReviewRating, ReviewSchedule> Preview(
         Guid cardId,
         DateTimeOffset now,
-        IReadOnlyList<ReviewHistoryItem> history);
+        IReadOnlyList<ReviewHistoryItem> history,
+        double desiredRetention = LearningPreferences.DefaultDesiredRetention);
 }
 
 public sealed class FsrsReviewScheduler : IReviewScheduler
 {
-    private readonly Scheduler scheduler = new(new FsrsConfig
-    {
-        DesiredRetention = 0.90,
-        MaximumInterval = 36500,
-        EnableFuzzing = false,
-        LearningSteps = [TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(10)],
-        RelearningSteps = [TimeSpan.FromMinutes(10)]
-    });
-
     public ReviewSchedule Schedule(
         Guid cardId,
         DateTimeOffset now,
         IReadOnlyList<ReviewHistoryItem> history,
-        ReviewRating rating)
+        ReviewRating rating,
+        double desiredRetention = LearningPreferences.DefaultDesiredRetention)
     {
-        var card = Replay(cardId, history, now);
+        var scheduler = CreateScheduler(desiredRetention);
+        var card = Replay(scheduler, cardId, history, now);
         return ToSchedule(now, scheduler.ReviewCard(card, ToFsrsRating(rating), now).Card.Due);
     }
 
     public IReadOnlyDictionary<ReviewRating, ReviewSchedule> Preview(
         Guid cardId,
         DateTimeOffset now,
-        IReadOnlyList<ReviewHistoryItem> history)
+        IReadOnlyList<ReviewHistoryItem> history,
+        double desiredRetention = LearningPreferences.DefaultDesiredRetention)
     {
-        var card = Replay(cardId, history, now);
+        var scheduler = CreateScheduler(desiredRetention);
+        var card = Replay(scheduler, cardId, history, now);
 
         return Enum.GetValues<ReviewRating>()
             .ToDictionary(
@@ -100,7 +115,18 @@ public sealed class FsrsReviewScheduler : IReviewScheduler
                     scheduler.ReviewCard(card, ToFsrsRating(rating), now).Card.Due));
     }
 
-    private Card Replay(
+    private static Scheduler CreateScheduler(double desiredRetention) =>
+        new(new FsrsConfig
+        {
+            DesiredRetention = desiredRetention,
+            MaximumInterval = 36500,
+            EnableFuzzing = false,
+            LearningSteps = [TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(10)],
+            RelearningSteps = [TimeSpan.FromMinutes(10)]
+        });
+
+    private static Card Replay(
+        Scheduler scheduler,
         Guid cardId,
         IReadOnlyList<ReviewHistoryItem> history,
         DateTimeOffset now)

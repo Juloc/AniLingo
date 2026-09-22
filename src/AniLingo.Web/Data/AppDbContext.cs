@@ -20,6 +20,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<EpisodeTerm> EpisodeTerms => Set<EpisodeTerm>();
     public DbSet<UserTerm> UserTerms => Set<UserTerm>();
     public DbSet<Review> Reviews => Set<Review>();
+    public DbSet<LearningPreferences> LearningPreferences => Set<LearningPreferences>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -127,6 +128,12 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(x => x.ProfileId).HasMaxLength(80);
             entity.HasOne<Term>().WithMany().HasForeignKey(x => x.TermId).OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(x => new { x.ProfileId, x.ReviewedAt });
+        });
+
+        modelBuilder.Entity<LearningPreferences>(entity =>
+        {
+            entity.HasKey(x => x.ProfileId);
+            entity.Property(x => x.ProfileId).HasMaxLength(80);
         });
     }
 }
