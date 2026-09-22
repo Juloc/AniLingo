@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using AniLingo.Web.Infrastructure;
 using System.Text.Json;
 
@@ -9,7 +10,8 @@ public sealed record EmbeddedSubtitleStream(
     string? Language,
     string? Title,
     bool IsDefault,
-    bool IsForced);
+    bool IsForced,
+    bool IsText);
 
 public sealed record EmbeddedSubtitleContent(
     string SourceKey,
@@ -34,11 +36,27 @@ public sealed class EmbeddedSubtitleExtractor(
         "text"
     };
 
-    public async Task<EmbeddedSubtitleContent?> ExtractPreferredJapaneseAsync(
+    private readonly ConcurrentDictionary<string, ProbeCacheEntry> probeCache =
+        new(StringComparer.Ordinal);
+
+    public async Task<IReadOnlyList<EmbeddedSubtitleStream>> ProbeStreamsAsync(
         string mediaPath,
         CancellationToken cancellationToken)
     {
         var fullPath = Path.GetFullPath(mediaPath);
+        var info = new FileInfo(fullPath);
+        if (!info.Exists)
+        {
+            return [];
+        }
+
+        if (probeCache.TryGetValue(fullPath, out var cached) &&
+            cached.SizeBytes == info.Length &&
+            cached.LastWriteTimeUtc == info.LastWriteTimeUtc)
+        {
+            return cached.Streams;
+        }
+
         var probe = await processRunner.RunAsync(
             "ffprobe",
             [
@@ -61,15 +79,62 @@ public sealed class EmbeddedSubtitleExtractor(
                     probe.ErrorSummary);
             }
 
-            return null;
+            return [];
         }
 
-        var stream = SelectPreferredJapaneseTextStream(probe.Output);
-        if (stream is null)
+        try
         {
-            return null;
+            var streams = ParseStreams(probe.Output);
+            probeCache[fullPath] = new ProbeCacheEntry(
+                info.Length,
+                info.LastWriteTimeUtc,
+                streams);
+            return streams;
         }
+        catch (JsonException exception)
+        {
+            logger.LogWarning(
+                exception,
+                "ffprobe returned invalid subtitle JSON for {MediaPath}.",
+                fullPath);
+            return [];
+        }
+    }
 
+    public async Task<EmbeddedSubtitleContent?> ExtractPreferredJapaneseAsync(
+        string mediaPath,
+        CancellationToken cancellationToken)
+    {
+        var streams = await ProbeStreamsAsync(mediaPath, cancellationToken);
+        var stream = SelectPreferredJapaneseTextStream(streams);
+
+        return stream is null
+            ? null
+            : await ExtractTextStreamAsync(
+                Path.GetFullPath(mediaPath),
+                stream,
+                cancellationToken);
+    }
+
+    public async Task<EmbeddedSubtitleContent?> ExtractTextStreamAsync(
+        string mediaPath,
+        int streamIndex,
+        CancellationToken cancellationToken)
+    {
+        var fullPath = Path.GetFullPath(mediaPath);
+        var streams = await ProbeStreamsAsync(fullPath, cancellationToken);
+        var stream = streams.SingleOrDefault(x => x.Index == streamIndex && x.IsText);
+
+        return stream is null
+            ? null
+            : await ExtractTextStreamAsync(fullPath, stream, cancellationToken);
+    }
+
+    private async Task<EmbeddedSubtitleContent?> ExtractTextStreamAsync(
+        string fullPath,
+        EmbeddedSubtitleStream stream,
+        CancellationToken cancellationToken)
+    {
         var extraction = await processRunner.RunAsync(
             "ffmpeg",
             [
@@ -89,7 +154,7 @@ public sealed class EmbeddedSubtitleExtractor(
             if (extraction is not null)
             {
                 logger.LogWarning(
-                    "ffmpeg could not extract Japanese subtitle stream {StreamIndex} from {MediaPath}: {Error}",
+                    "ffmpeg could not extract subtitle stream {StreamIndex} from {MediaPath}: {Error}",
                     stream.Index,
                     fullPath,
                     extraction.ErrorSummary);
@@ -109,17 +174,17 @@ public sealed class EmbeddedSubtitleExtractor(
             extraction.Output);
     }
 
-    public static EmbeddedSubtitleStream? SelectPreferredJapaneseTextStream(string probeJson)
+    public static IReadOnlyList<EmbeddedSubtitleStream> ParseStreams(string probeJson)
     {
         using var document = JsonDocument.Parse(probeJson);
 
         if (!document.RootElement.TryGetProperty("streams", out var streams) ||
             streams.ValueKind != JsonValueKind.Array)
         {
-            return null;
+            return [];
         }
 
-        var candidates = new List<EmbeddedSubtitleStream>();
+        var result = new List<EmbeddedSubtitleStream>();
 
         foreach (var item in streams.EnumerateArray())
         {
@@ -130,7 +195,7 @@ public sealed class EmbeddedSubtitleExtractor(
             }
 
             var codec = ReadString(item, "codec_name");
-            if (string.IsNullOrWhiteSpace(codec) || !TextCodecs.Contains(codec))
+            if (string.IsNullOrWhiteSpace(codec))
             {
                 continue;
             }
@@ -144,11 +209,6 @@ public sealed class EmbeddedSubtitleExtractor(
                 title = ReadString(tags, "title");
             }
 
-            if (!IsJapanese(language, title))
-            {
-                continue;
-            }
-
             var isDefault = false;
             var isForced = false;
 
@@ -159,22 +219,31 @@ public sealed class EmbeddedSubtitleExtractor(
                 isForced = ReadFlag(disposition, "forced");
             }
 
-            candidates.Add(new EmbeddedSubtitleStream(
+            result.Add(new EmbeddedSubtitleStream(
                 index,
                 codec,
                 language,
                 title,
                 isDefault,
-                isForced));
+                isForced,
+                TextCodecs.Contains(codec)));
         }
 
-        return candidates
+        return result;
+    }
+
+    public static EmbeddedSubtitleStream? SelectPreferredJapaneseTextStream(string probeJson) =>
+        SelectPreferredJapaneseTextStream(ParseStreams(probeJson));
+
+    private static EmbeddedSubtitleStream? SelectPreferredJapaneseTextStream(
+        IEnumerable<EmbeddedSubtitleStream> streams) =>
+        streams
+            .Where(x => x.IsText && IsJapanese(x.Language, x.Title))
             .OrderBy(x => x.IsForced)
             .ThenBy(x => LooksLikeSignsOrSongs(x.Title))
             .ThenByDescending(x => x.IsDefault)
             .ThenBy(x => x.Index)
             .FirstOrDefault();
-    }
 
     public static string BuildSourceKey(string mediaPath, int streamIndex) =>
         $"{BuildSourcePrefix(mediaPath)}{streamIndex}";
@@ -221,4 +290,9 @@ public sealed class EmbeddedSubtitleExtractor(
         value.ValueKind == JsonValueKind.Number &&
         value.TryGetInt32(out var flag) &&
         flag != 0;
+
+    private sealed record ProbeCacheEntry(
+        long SizeBytes,
+        DateTime LastWriteTimeUtc,
+        IReadOnlyList<EmbeddedSubtitleStream> Streams);
 }
