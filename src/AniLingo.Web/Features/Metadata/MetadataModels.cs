@@ -19,7 +19,7 @@ public sealed class AnimeMetadata
     public int? SeasonYear { get; set; }
     public int? EpisodeCount { get; set; }
     public int? EpisodeDurationMinutes { get; set; }
-    public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
 
 public sealed record AnimeMetadataCandidate(

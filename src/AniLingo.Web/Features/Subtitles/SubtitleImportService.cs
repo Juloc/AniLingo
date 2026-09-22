@@ -24,7 +24,7 @@ public sealed class SubtitleImportService(
             episodeId,
             fullPath,
             format,
-            new DateTimeOffset(info.LastWriteTimeUtc),
+            info.LastWriteTimeUtc,
             content,
             cancellationToken);
     }
@@ -33,7 +33,7 @@ public sealed class SubtitleImportService(
         Guid episodeId,
         string sourceKey,
         string format,
-        DateTimeOffset sourceUpdatedAt,
+        DateTime sourceUpdatedAt,
         string content,
         CancellationToken cancellationToken)
     {
@@ -71,7 +71,7 @@ public sealed class SubtitleImportService(
             track.Language = "ja";
             track.Format = normalizedFormat;
             track.SourceUpdatedAt = sourceUpdatedAt;
-            track.ImportedAt = DateTimeOffset.UtcNow;
+            track.ImportedAt = DateTime.UtcNow;
 
             await db.SubtitleCues
                 .Where(x => x.SubtitleTrackId == track.Id)

@@ -82,7 +82,7 @@ public sealed class LibraryScanner(
                 db.Episodes.Add(episode);
             }
 
-            var lastWrite = new DateTimeOffset(file.LastWriteTimeUtc);
+            var lastWrite = file.LastWriteTimeUtc;
             if (existingFiles.TryGetValue(normalizedPath, out var mediaFile))
             {
                 if (mediaFile.SizeBytes != file.Length || mediaFile.LastWriteTimeUtc != lastWrite)
@@ -113,7 +113,7 @@ public sealed class LibraryScanner(
                 lastWrite));
         }
 
-        root.LastScannedAt = DateTimeOffset.UtcNow;
+        root.LastScannedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(cancellationToken);
 
         var episodeIds = subtitleCandidates
@@ -186,12 +186,12 @@ public sealed class LibraryScanner(
     private sealed record SubtitleCandidate(
         Guid EpisodeId,
         string MediaPath,
-        DateTimeOffset SourceUpdatedAt);
+        DateTime SourceUpdatedAt);
 
     private sealed record ExistingEmbeddedTrack(
         Guid EpisodeId,
         string SourceKey,
-        DateTimeOffset SourceUpdatedAt);
+        DateTime SourceUpdatedAt);
 
     private static IEnumerable<string> FindJapaneseSubtitles(string mediaPath)
     {

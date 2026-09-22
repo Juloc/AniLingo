@@ -6,8 +6,8 @@ public sealed class LibraryRoot
     public string Name { get; set; } = "";
     public string Path { get; set; } = "";
     public bool IsEnabled { get; set; } = true;
-    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
-    public DateTimeOffset? LastScannedAt { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? LastScannedAt { get; set; }
 }
 
 public sealed class Anime
@@ -15,7 +15,7 @@ public sealed class Anime
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Key { get; set; } = "";
     public string Title { get; set; } = "";
-    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
 public sealed class Episode
@@ -25,7 +25,7 @@ public sealed class Episode
     public int SeasonNumber { get; set; } = 1;
     public int Number { get; set; }
     public string Title { get; set; } = "";
-    public DateTimeOffset DiscoveredAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTime DiscoveredAt { get; set; } = DateTime.UtcNow;
 }
 
 public sealed class MediaFile
@@ -35,8 +35,8 @@ public sealed class MediaFile
     public Guid EpisodeId { get; set; }
     public string Path { get; set; } = "";
     public long SizeBytes { get; set; }
-    public DateTimeOffset LastWriteTimeUtc { get; set; }
-    public DateTimeOffset DiscoveredAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTime LastWriteTimeUtc { get; set; }
+    public DateTime DiscoveredAt { get; set; } = DateTime.UtcNow;
 }
 
 public sealed class MediaOptions

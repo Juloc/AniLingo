@@ -24,9 +24,9 @@ public sealed class LearningService(
         }
 
         item.State = state;
-        item.UpdatedAt = DateTimeOffset.UtcNow;
+        item.UpdatedAt = DateTime.UtcNow;
         item.NextReviewAt = state == UserTermState.Learning
-            ? item.NextReviewAt ?? DateTimeOffset.UtcNow
+            ? item.NextReviewAt ?? DateTime.UtcNow
             : null;
 
         await db.SaveChangesAsync(cancellationToken);
@@ -46,7 +46,7 @@ public sealed class LearningService(
             .Where(x => x.ProfileId == LearningProfile.DefaultId && ids.Contains(x.TermId))
             .ToDictionaryAsync(x => x.TermId, cancellationToken);
 
-        var now = DateTimeOffset.UtcNow;
+        var now = DateTime.UtcNow;
 
         foreach (var termId in ids)
         {
@@ -78,7 +78,7 @@ public sealed class LearningService(
 
     public Task<List<DueReviewItem>> GetDueAsync(int limit, CancellationToken cancellationToken)
     {
-        var now = DateTimeOffset.UtcNow;
+        var now = DateTime.UtcNow;
 
         return (
             from userTerm in db.UserTerms.AsNoTracking()
@@ -122,16 +122,16 @@ public sealed class LearningService(
         var schedule = scheduler.Schedule(termId, now, history, rating);
 
         userTerm.IntervalDays = schedule.IntervalDays;
-        userTerm.NextReviewAt = schedule.NextReviewAt;
-        userTerm.UpdatedAt = now;
+        userTerm.NextReviewAt = schedule.NextReviewAt.UtcDateTime;
+        userTerm.UpdatedAt = now.UtcDateTime;
 
         db.Reviews.Add(new Review
         {
             ProfileId = LearningProfile.DefaultId,
             TermId = termId,
             Rating = rating,
-            ReviewedAt = now,
-            NextReviewAt = schedule.NextReviewAt
+            ReviewedAt = now.UtcDateTime,
+            NextReviewAt = schedule.NextReviewAt.UtcDateTime
         });
 
         await db.SaveChangesAsync(cancellationToken);
@@ -149,7 +149,9 @@ public sealed class LearningService(
             .ToListAsync(cancellationToken);
 
         return rows
-            .Select(x => new ReviewHistoryItem(x.Rating, x.ReviewedAt))
+            .Select(x => new ReviewHistoryItem(
+                x.Rating,
+                new DateTimeOffset(DateTime.SpecifyKind(x.ReviewedAt, DateTimeKind.Utc))))
             .ToArray();
     }
 

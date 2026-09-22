@@ -133,10 +133,10 @@ public static class PlaybackCache
     public static string BuildPath(
         Guid mediaFileId,
         long sizeBytes,
-        DateTimeOffset sourceUpdatedAt) =>
+        DateTime sourceUpdatedAt) =>
         Path.Combine(
             RootPath,
-            $"{mediaFileId:N}-{sizeBytes}-{sourceUpdatedAt.UtcDateTime.Ticks}.mp4");
+            $"{mediaFileId:N}-{sizeBytes}-{sourceUpdatedAt.Ticks}.mp4");
 
     public static string BuildPattern(Guid mediaFileId) =>
         $"{mediaFileId:N}-*.mp4";

@@ -30,8 +30,8 @@ public sealed class UserTerm
     public Guid TermId { get; set; }
     public UserTermState State { get; set; }
     public int IntervalDays { get; set; }
-    public DateTimeOffset? NextReviewAt { get; set; }
-    public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTime? NextReviewAt { get; set; }
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
 
 public sealed class Review
@@ -40,8 +40,8 @@ public sealed class Review
     public string ProfileId { get; set; } = LearningProfile.DefaultId;
     public Guid TermId { get; set; }
     public ReviewRating Rating { get; set; }
-    public DateTimeOffset ReviewedAt { get; set; } = DateTimeOffset.UtcNow;
-    public DateTimeOffset NextReviewAt { get; set; }
+    public DateTime ReviewedAt { get; set; } = DateTime.UtcNow;
+    public DateTime NextReviewAt { get; set; }
 }
 
 public sealed record ReviewHistoryItem(ReviewRating Rating, DateTimeOffset ReviewedAt);

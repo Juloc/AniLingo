@@ -23,7 +23,7 @@ namespace AniLingo.Web.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
-                    b.Property<DateTimeOffset>("NextReviewAt")
+                    b.Property<DateTime>("NextReviewAt")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("ProfileId")
@@ -34,7 +34,7 @@ namespace AniLingo.Web.Data.Migrations
                     b.Property<int>("Rating")
                         .HasColumnType("INTEGER");
 
-                    b.Property<DateTimeOffset>("ReviewedAt")
+                    b.Property<DateTime>("ReviewedAt")
                         .HasColumnType("TEXT");
 
                     b.Property<Guid>("TermId")
@@ -58,7 +58,7 @@ namespace AniLingo.Web.Data.Migrations
                     b.Property<int>("IntervalDays")
                         .HasColumnType("INTEGER");
 
-                    b.Property<DateTimeOffset?>("NextReviewAt")
+                    b.Property<DateTime?>("NextReviewAt")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("ProfileId")
@@ -72,7 +72,7 @@ namespace AniLingo.Web.Data.Migrations
                     b.Property<Guid>("TermId")
                         .HasColumnType("TEXT");
 
-                    b.Property<DateTimeOffset>("UpdatedAt")
+                    b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
@@ -93,7 +93,7 @@ namespace AniLingo.Web.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
-                    b.Property<DateTimeOffset>("CreatedAt")
+                    b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Key")
@@ -123,7 +123,7 @@ namespace AniLingo.Web.Data.Migrations
                     b.Property<Guid>("AnimeId")
                         .HasColumnType("TEXT");
 
-                    b.Property<DateTimeOffset>("DiscoveredAt")
+                    b.Property<DateTime>("DiscoveredAt")
                         .HasColumnType("TEXT");
 
                     b.Property<int>("Number")
@@ -151,13 +151,13 @@ namespace AniLingo.Web.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
-                    b.Property<DateTimeOffset>("CreatedAt")
+                    b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
 
                     b.Property<bool>("IsEnabled")
                         .HasColumnType("INTEGER");
 
-                    b.Property<DateTimeOffset?>("LastScannedAt")
+                    b.Property<DateTime?>("LastScannedAt")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Name")
@@ -184,13 +184,13 @@ namespace AniLingo.Web.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
-                    b.Property<DateTimeOffset>("DiscoveredAt")
+                    b.Property<DateTime>("DiscoveredAt")
                         .HasColumnType("TEXT");
 
                     b.Property<Guid>("EpisodeId")
                         .HasColumnType("TEXT");
 
-                    b.Property<DateTimeOffset>("LastWriteTimeUtc")
+                    b.Property<DateTime>("LastWriteTimeUtc")
                         .HasColumnType("TEXT");
 
                     b.Property<Guid>("LibraryRootId")
@@ -284,7 +284,7 @@ namespace AniLingo.Web.Data.Migrations
                         .HasMaxLength(80)
                         .HasColumnType("TEXT");
 
-                    b.Property<DateTimeOffset>("UpdatedAt")
+                    b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
@@ -338,7 +338,7 @@ namespace AniLingo.Web.Data.Migrations
                         .HasMaxLength(16)
                         .HasColumnType("TEXT");
 
-                    b.Property<DateTimeOffset>("ImportedAt")
+                    b.Property<DateTime>("ImportedAt")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Language")
@@ -351,7 +351,7 @@ namespace AniLingo.Web.Data.Migrations
                         .HasMaxLength(2048)
                         .HasColumnType("TEXT");
 
-                    b.Property<DateTimeOffset>("SourceUpdatedAt")
+                    b.Property<DateTime>("SourceUpdatedAt")
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
