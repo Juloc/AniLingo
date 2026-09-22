@@ -213,9 +213,33 @@ public sealed class EmbeddedSubtitleExtractor(
     public bool TryQueueAudioTranscription(string mediaPath)
     {
         var fullPath = Path.GetFullPath(mediaPath);
-        return transcriptionStates.TryAdd(
-            fullPath,
-            new AudioTranscriptionState(AudioTranscriptionStatus.Queued));
+        var queued = new AudioTranscriptionState(AudioTranscriptionStatus.Queued);
+
+        while (true)
+        {
+            var current = GetAudioTranscriptionState(fullPath);
+            if (current.Status is AudioTranscriptionStatus.Queued
+                or AudioTranscriptionStatus.Processing
+                or AudioTranscriptionStatus.Ready)
+            {
+                return false;
+            }
+
+            if (current.Status == AudioTranscriptionStatus.None)
+            {
+                if (transcriptionStates.TryAdd(fullPath, queued))
+                {
+                    return true;
+                }
+
+                continue;
+            }
+
+            if (transcriptionStates.TryUpdate(fullPath, queued, current))
+            {
+                return true;
+            }
+        }
     }
 
     public void MarkAudioTranscriptionProcessing(string mediaPath) =>
@@ -282,7 +306,7 @@ public sealed class EmbeddedSubtitleExtractor(
                 return null;
             }
 
-            var wavPath = outputPrefix + ".wav.tmp";
+            var wavPath = outputPrefix + ".input.wav";
             TryDelete(wavPath);
             TryDelete(srtPath);
 
@@ -316,7 +340,7 @@ public sealed class EmbeddedSubtitleExtractor(
                     return null;
                 }
 
-                var threads = Math.Clamp(Environment.ProcessorCount - 1, 1, 4);
+                var threads = Math.Clamp(Environment.ProcessorCount / 2, 1, 2);
                 var transcription = await processRunner.RunAsync(
                     "whisper-cli",
                     [
