@@ -49,6 +49,22 @@ public sealed class LearningService(
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyList<ReviewOption>> GetReviewOptionsAsync(
+        Guid termId,
+        CancellationToken cancellationToken)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var history = await GetHistoryAsync(termId, cancellationToken);
+        var schedules = scheduler.Preview(termId, now, history);
+
+        return Enum.GetValues<ReviewRating>()
+            .Select(rating => new ReviewOption(
+                rating,
+                schedules[rating].NextReviewAt,
+                FormatInterval(now, schedules[rating].NextReviewAt)))
+            .ToArray();
+    }
+
     public async Task ReviewAsync(Guid termId, ReviewRating rating, CancellationToken cancellationToken)
     {
         var userTerm = await db.UserTerms.SingleAsync(
@@ -57,8 +73,9 @@ public sealed class LearningService(
                 && x.State == UserTermState.Learning,
             cancellationToken);
 
+        var history = await GetHistoryAsync(termId, cancellationToken);
         var now = DateTimeOffset.UtcNow;
-        var schedule = scheduler.Schedule(now, userTerm.IntervalDays, rating);
+        var schedule = scheduler.Schedule(termId, now, history, rating);
 
         userTerm.IntervalDays = schedule.IntervalDays;
         userTerm.NextReviewAt = schedule.NextReviewAt;
@@ -74,5 +91,53 @@ public sealed class LearningService(
         });
 
         await db.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<ReviewHistoryItem>> GetHistoryAsync(
+        Guid termId,
+        CancellationToken cancellationToken)
+    {
+        var rows = await db.Reviews
+            .AsNoTracking()
+            .Where(x => x.ProfileId == LearningProfile.DefaultId && x.TermId == termId)
+            .OrderBy(x => x.ReviewedAt)
+            .Select(x => new { x.Rating, x.ReviewedAt })
+            .ToListAsync(cancellationToken);
+
+        return rows
+            .Select(x => new ReviewHistoryItem(x.Rating, x.ReviewedAt))
+            .ToArray();
+    }
+
+    private static string FormatInterval(DateTimeOffset now, DateTimeOffset due)
+    {
+        var interval = due - now;
+
+        if (interval <= TimeSpan.FromMinutes(1))
+        {
+            return "1m";
+        }
+
+        if (interval < TimeSpan.FromHours(1))
+        {
+            return $"{Math.Ceiling(interval.TotalMinutes):0}m";
+        }
+
+        if (interval < TimeSpan.FromDays(1))
+        {
+            return $"{Math.Ceiling(interval.TotalHours):0}h";
+        }
+
+        if (interval < TimeSpan.FromDays(60))
+        {
+            return $"{Math.Round(interval.TotalDays):0}d";
+        }
+
+        if (interval < TimeSpan.FromDays(730))
+        {
+            return $"{interval.TotalDays / 30.44:0.#}mo";
+        }
+
+        return $"{interval.TotalDays / 365.25:0.#}y";
     }
 }

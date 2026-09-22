@@ -25,7 +25,7 @@ builder.Services.AddScoped<VocabularyService>();
 builder.Services.AddSingleton<IJapaneseMorphology, MeCabJapaneseMorphology>();
 builder.Services.AddSingleton<JapaneseTermExtractor>();
 builder.Services.AddSingleton<JapaneseDictionary>();
-builder.Services.AddSingleton<IReviewScheduler, BasicReviewScheduler>();
+builder.Services.AddSingleton<IReviewScheduler, FsrsReviewScheduler>();
 builder.Services.AddScoped<LearningService>();
 
 builder.Services.AddSingleton<CodexCliProvider>();

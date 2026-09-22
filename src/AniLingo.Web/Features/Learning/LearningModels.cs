@@ -1,3 +1,7 @@
+using FsrsSharp.Configuration;
+using FsrsSharp.Core;
+using FsrsSharp.Models;
+
 namespace AniLingo.Web.Features.Learning;
 
 public enum UserTermState
@@ -40,29 +44,107 @@ public sealed class Review
     public DateTimeOffset NextReviewAt { get; set; }
 }
 
+public sealed record ReviewHistoryItem(ReviewRating Rating, DateTimeOffset ReviewedAt);
+
 public sealed record ReviewSchedule(DateTimeOffset NextReviewAt, int IntervalDays);
+
+public sealed record ReviewOption(ReviewRating Rating, DateTimeOffset NextReviewAt, string IntervalLabel);
 
 public interface IReviewScheduler
 {
-    ReviewSchedule Schedule(DateTimeOffset now, int currentIntervalDays, ReviewRating rating);
+    ReviewSchedule Schedule(
+        Guid cardId,
+        DateTimeOffset now,
+        IReadOnlyList<ReviewHistoryItem> history,
+        ReviewRating rating);
+
+    IReadOnlyDictionary<ReviewRating, ReviewSchedule> Preview(
+        Guid cardId,
+        DateTimeOffset now,
+        IReadOnlyList<ReviewHistoryItem> history);
 }
 
-public sealed class BasicReviewScheduler : IReviewScheduler
+public sealed class FsrsReviewScheduler : IReviewScheduler
 {
-    public ReviewSchedule Schedule(DateTimeOffset now, int currentIntervalDays, ReviewRating rating)
+    private readonly Scheduler scheduler = new(new FsrsConfig
     {
-        return rating switch
-        {
-            ReviewRating.Again => new ReviewSchedule(now.AddMinutes(10), 0),
-            ReviewRating.Hard => new ReviewSchedule(now.AddDays(Math.Max(1, currentIntervalDays)), Math.Max(1, currentIntervalDays)),
-            ReviewRating.Good => FromDays(now, currentIntervalDays == 0 ? 3 : Math.Max(2, (int)Math.Round(currentIntervalDays * 2.3))),
-            ReviewRating.Easy => FromDays(now, currentIntervalDays == 0 ? 7 : Math.Max(4, (int)Math.Round(currentIntervalDays * 3.2))),
-            _ => throw new ArgumentOutOfRangeException(nameof(rating), rating, null)
-        };
+        DesiredRetention = 0.90,
+        MaximumInterval = 36500,
+        EnableFuzzing = false,
+        LearningSteps = [TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(10)],
+        RelearningSteps = [TimeSpan.FromMinutes(10)]
+    });
+
+    public ReviewSchedule Schedule(
+        Guid cardId,
+        DateTimeOffset now,
+        IReadOnlyList<ReviewHistoryItem> history,
+        ReviewRating rating)
+    {
+        var card = Replay(cardId, history, now);
+        return ToSchedule(now, scheduler.ReviewCard(card, ToFsrsRating(rating), now).Card.Due);
     }
 
-    private static ReviewSchedule FromDays(DateTimeOffset now, int days) =>
-        new(now.AddDays(days), days);
+    public IReadOnlyDictionary<ReviewRating, ReviewSchedule> Preview(
+        Guid cardId,
+        DateTimeOffset now,
+        IReadOnlyList<ReviewHistoryItem> history)
+    {
+        var card = Replay(cardId, history, now);
+
+        return Enum.GetValues<ReviewRating>()
+            .ToDictionary(
+                rating => rating,
+                rating => ToSchedule(
+                    now,
+                    scheduler.ReviewCard(card, ToFsrsRating(rating), now).Card.Due));
+    }
+
+    private Card Replay(
+        Guid cardId,
+        IReadOnlyList<ReviewHistoryItem> history,
+        DateTimeOffset now)
+    {
+        var card = new Card(
+            cardId: cardId,
+            state: State.New,
+            due: history.Count > 0 ? history.Min(x => x.ReviewedAt) : now);
+
+        foreach (var review in history.OrderBy(x => x.ReviewedAt))
+        {
+            card = scheduler.ReviewCard(
+                card,
+                ToFsrsRating(review.Rating),
+                review.ReviewedAt).Card;
+        }
+
+        return card;
+    }
+
+    private static Rating ToFsrsRating(ReviewRating rating) =>
+        rating switch
+        {
+            ReviewRating.Again => Rating.Again,
+            ReviewRating.Hard => Rating.Hard,
+            ReviewRating.Good => Rating.Good,
+            ReviewRating.Easy => Rating.Easy,
+            _ => throw new ArgumentOutOfRangeException(nameof(rating), rating, null)
+        };
+
+    private static ReviewSchedule ToSchedule(DateTimeOffset now, DateTimeOffset due)
+    {
+        var interval = due - now;
+        var days = interval < TimeSpan.FromDays(1)
+            ? 0
+            : Math.Max(1, (int)Math.Round(interval.TotalDays));
+
+        return new ReviewSchedule(due, days);
+    }
 }
 
-public sealed record DueReviewItem(Guid TermId, string Canonical, string? Reading, string? Meaning, int IntervalDays);
+public sealed record DueReviewItem(
+    Guid TermId,
+    string Canonical,
+    string? Reading,
+    string? Meaning,
+    int IntervalDays);
