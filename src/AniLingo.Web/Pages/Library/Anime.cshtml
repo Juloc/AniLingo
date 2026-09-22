@@ -1,0 +1,37 @@
+@page "/Library/Anime/{id:guid}"
+@model AniLingo.Web.Pages.Library.AnimeModel
+@{
+    ViewData["Title"] = Model.AnimeTitle;
+}
+
+<header class="page-header">
+    <div>
+        <a class="back-link" href="/Library">← Library</a>
+        <h1>@Model.AnimeTitle</h1>
+        <p>@Model.Episodes.Count episodes discovered.</p>
+    </div>
+</header>
+
+<div class="episode-list">
+    @foreach (var episode in Model.Episodes)
+    {
+        <a class="episode-row" href="/Library/Episode/@episode.Id">
+            <div class="episode-number">E@episode.Number.ToString("00")</div>
+            <div class="episode-main">
+                <strong>S@episode.SeasonNumber.ToString("00") · @episode.Title</strong>
+                <span>
+                    @if (episode.JapaneseSubtitleTracks == 0)
+                    {
+                        <text>No Japanese subtitle imported</text>
+                    }
+                    else
+                    {
+                        <text>@episode.TotalTerms vocabulary candidates · @episode.PreparationPercent% known</text>
+                    }
+                </span>
+                <div class="progress-track"><span style="width:@episode.PreparationPercent%"></span></div>
+            </div>
+            <span class="episode-arrow">›</span>
+        </a>
+    }
+</div>
