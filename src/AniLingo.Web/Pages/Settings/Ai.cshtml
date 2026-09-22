@@ -1,0 +1,133 @@
+@page
+@model AniLingo.Web.Pages.Settings.AiModel
+@using AniLingo.Web.Features.Ai
+@{
+    ViewData["Title"] = "AI";
+}
+
+<header class="page-header">
+    <div>
+        <a class="back-link" asp-page="/Settings/Index">← Settings</a>
+        <span class="eyebrow">Optional integration</span>
+        <h1>AI</h1>
+        <p>AI stays outside scanning, vocabulary extraction and review scheduling.</p>
+    </div>
+</header>
+
+<div class="settings-grid">
+    <section class="panel">
+        <div class="panel-heading">
+            <h2>@Model.Provider.DisplayName</h2>
+            @if (Model.Provider.IsAuthenticated)
+            {
+                <span class="status-pill status-ok">Connected</span>
+            }
+            else if (Model.Provider.IsAvailable)
+            {
+                <span class="status-pill">Not connected</span>
+            }
+            else
+            {
+                <span class="status-pill status-error">Unavailable</span>
+            }
+        </div>
+
+        <div class="status-list">
+            <div>
+                <span>CLI</span>
+                <strong>@(Model.Provider.IsAvailable ? "Installed" : "Missing")</strong>
+            </div>
+            <div>
+                <span>Version</span>
+                <strong>@(Model.Provider.Version ?? "—")</strong>
+            </div>
+            <div>
+                <span>Authentication</span>
+                <strong>@(Model.Provider.AuthenticationMethod ?? "—")</strong>
+            </div>
+            <div>
+                <span>Credential storage</span>
+                <strong>/data/codex</strong>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(Model.Provider.Error))
+        {
+            <p class="validation">@Model.Provider.Error</p>
+        }
+
+        @if (Model.Provider.IsAuthenticated)
+        {
+            <form method="post" asp-page-handler="Logout">
+                <button class="button" type="submit">Disconnect</button>
+            </form>
+        }
+        else if (Model.Provider.IsAvailable && !Model.Login.IsActive)
+        {
+            <form method="post" asp-page-handler="Connect">
+                <button class="button button-primary" type="submit">Connect with ChatGPT</button>
+            </form>
+        }
+    </section>
+
+    <section class="panel">
+        <div class="panel-heading"><h2>Device login</h2></div>
+
+        @if (Model.Login.State == DeviceLoginState.WaitingForUser)
+        {
+            <div class="device-login">
+                <p>1. Open the OpenAI login page.</p>
+                <a class="button button-primary" href="@Model.Login.VerificationUrl" target="_blank" rel="noopener noreferrer">
+                    Open login page
+                </a>
+
+                <p>2. Enter this one-time code:</p>
+                <code class="device-code">@Model.Login.UserCode</code>
+
+                <p class="muted">The code expires after about 15 minutes.</p>
+
+                <div class="inline-actions">
+                    <a class="button" asp-page="/Settings/Ai">Check connection</a>
+                    <form method="post" asp-page-handler="Cancel">
+                        <button class="button" type="submit">Cancel</button>
+                    </form>
+                </div>
+            </div>
+        }
+        else if (Model.Login.State == DeviceLoginState.Starting)
+        {
+            <p class="muted">Waiting for Codex to create a device code.</p>
+            <div class="inline-actions">
+                <a class="button" asp-page="/Settings/Ai">Refresh</a>
+                <form method="post" asp-page-handler="Cancel">
+                    <button class="button" type="submit">Cancel</button>
+                </form>
+            </div>
+        }
+        else if (Model.Login.State is DeviceLoginState.Failed or DeviceLoginState.Cancelled)
+        {
+            <p class="validation">@(Model.Login.Message ?? "Login did not complete.")</p>
+            @if (Model.Provider.IsAvailable && !Model.Provider.IsAuthenticated)
+            {
+                <form method="post" asp-page-handler="Connect">
+                    <button class="button" type="submit">Try again</button>
+                </form>
+            }
+        }
+        else
+        {
+            <p class="muted">
+                Device-code login is intended for the headless Docker container.
+                No API key is required for this provider.
+            </p>
+        }
+    </section>
+
+    <section class="panel">
+        <div class="panel-heading"><h2>Provider design</h2></div>
+        <p class="muted">
+            Codex CLI is the first provider. Later providers can use API tokens or other engines
+            behind the same AI boundary. AI calls will only be added where they provide clear value.
+        </p>
+    </section>
+</div>

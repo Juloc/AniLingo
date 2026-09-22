@@ -7,8 +7,8 @@
 <header class="page-header">
     <div>
         <span class="eyebrow">Settings</span>
-        <h1>Library roots</h1>
-        <p>Paths are resolved inside the AniLingo container.</p>
+        <h1>Settings</h1>
+        <p>Library paths and optional integrations.</p>
     </div>
 </header>
 
@@ -61,5 +61,16 @@
             </label>
             <button class="button button-primary" type="submit">Add library root</button>
         </form>
+    </section>
+
+    <section class="panel">
+        <div class="panel-heading">
+            <h2>AI</h2>
+            <span>Optional</span>
+        </div>
+        <p class="muted">
+            Connect Codex only for AI-assisted features. Scanning, vocabulary and reviews do not depend on AI.
+        </p>
+        <a class="button" asp-page="/Settings/Ai">Manage AI</a>
     </section>
 </div>
