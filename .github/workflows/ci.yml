@@ -19,3 +19,4 @@ jobs:
       - run: dotnet restore AniLingo.sln
       - run: dotnet build AniLingo.sln --no-restore --configuration Release
       - run: dotnet test AniLingo.sln --no-build --configuration Release
+      - run: docker build -f src/AniLingo.Web/Dockerfile .
