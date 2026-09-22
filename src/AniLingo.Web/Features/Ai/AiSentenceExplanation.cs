@@ -1,26 +1,26 @@
-using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json;
-using AniLingo.Web.Data;
-using Microsoft.EntityFrameworkCore;
+using System.Text.RegularExpressions;
 
 namespace AniLingo.Web.Features.Ai;
 
-public sealed record AiSentenceExplanationRequest(
-    string Sentence,
-    string Target);
-
-public sealed record AiSentenceExplanationResult(
+public sealed record AiSentenceExplanation(
     string Translation,
-    IReadOnlyList<string> GrammarNotes,
-    IReadOnlyList<string> SpeechNotes);
+    IReadOnlyList<string> Grammar,
+    IReadOnlyList<string> Colloquial,
+    bool FromCache);
+
+public sealed record AiSentenceExplainRequest(
+    string Sentence,
+    string Target,
+    string? Meaning,
+    IReadOnlyList<string> LocalHints);
 
 public interface IAiSentenceExplainer
 {
-    string ProviderId { get; }
+    string Id { get; }
 
-    Task<AiSentenceExplanationResult> ExplainSentenceAsync(
-        AiSentenceExplanationRequest request,
+    Task<AiSentenceExplanation> ExplainSentenceAsync(
+        AiSentenceExplainRequest request,
         CancellationToken cancellationToken);
 }
 
@@ -28,159 +28,56 @@ public sealed class AiSentenceExplanationCache
 {
     public string CacheKey { get; set; } = "";
     public string ProviderId { get; set; } = "";
-    public string PromptVersion { get; set; } = "";
+    public int PromptVersion { get; set; }
     public string Translation { get; set; } = "";
-    public string GrammarNotesJson { get; set; } = "[]";
-    public string SpeechNotesJson { get; set; } = "[]";
+    public string GrammarJson { get; set; } = "[]";
+    public string ColloquialJson { get; set; } = "[]";
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
-public sealed class AiSentenceExplanationService(
-    AppDbContext db,
-    IAiSentenceExplainer explainer)
+public sealed record PreparedJapaneseSentence(
+    string Sentence,
+    IReadOnlyList<string> LocalHints);
+
+public static partial class JapaneseSentencePreprocessor
 {
-    public const string PromptVersion = "sentence-v1";
+    private const int MaxSentenceLength = 500;
 
-    public async Task<AiSentenceExplanationResult?> GetCachedAsync(
-        string sentence,
-        string target,
-        CancellationToken cancellationToken)
+    private static readonly (string Needle, string Hint)[] Patterns =
+    [
+        ("なくちゃ", "なくちゃ→なくては"),
+        ("なきゃ", "なきゃ→なければ"),
+        ("ちゃう", "ちゃう→てしまう"),
+        ("じゃう", "じゃう→でしまう"),
+        ("てない", "てない→ていない"),
+        ("てた", "てた→ていた"),
+        ("てる", "てる→ている"),
+        ("じゃん", "じゃん→じゃないか"),
+        ("んです", "んです→のです"),
+        ("んだ", "んだ→のだ")
+    ];
+
+    public static PreparedJapaneseSentence Prepare(string sentence)
     {
-        var cacheKey = BuildCacheKey(explainer.ProviderId, sentence, target);
+        var normalized = WhitespaceRegex()
+            .Replace(sentence.Normalize(NormalizationForm.FormKC), " ")
+            .Trim();
 
-        var row = await db.AiSentenceExplanations
-            .AsNoTracking()
-            .SingleOrDefaultAsync(x => x.CacheKey == cacheKey, cancellationToken);
-
-        return row is null ? null : FromCache(row);
-    }
-
-    public async Task<AiSentenceExplanationResult> GetOrCreateAsync(
-        string sentence,
-        string target,
-        CancellationToken cancellationToken)
-    {
-        ValidateInput(sentence, target);
-
-        var cached = await GetCachedAsync(sentence, target, cancellationToken);
-        if (cached is not null)
+        if (normalized.Length > MaxSentenceLength)
         {
-            return cached;
+            normalized = normalized[..MaxSentenceLength];
         }
 
-        var result = NormalizeResult(await explainer.ExplainSentenceAsync(
-            new AiSentenceExplanationRequest(sentence, target),
-            cancellationToken));
-
-        var row = new AiSentenceExplanationCache
-        {
-            CacheKey = BuildCacheKey(explainer.ProviderId, sentence, target),
-            ProviderId = explainer.ProviderId,
-            PromptVersion = PromptVersion,
-            Translation = result.Translation,
-            GrammarNotesJson = JsonSerializer.Serialize(result.GrammarNotes),
-            SpeechNotesJson = JsonSerializer.Serialize(result.SpeechNotes),
-            CreatedAt = DateTime.UtcNow
-        };
-
-        db.AiSentenceExplanations.Add(row);
-        await db.SaveChangesAsync(cancellationToken);
-
-        return result;
-    }
-
-    public static AiSentenceExplanationResult NormalizeResult(
-        AiSentenceExplanationResult result)
-    {
-        var translation = NormalizeText(result.Translation, 1200);
-        if (translation.Length == 0)
-        {
-            throw new InvalidOperationException("AI explanation did not contain a translation.");
-        }
-
-        return new AiSentenceExplanationResult(
-            translation,
-            NormalizeNotes(result.GrammarNotes, 6),
-            NormalizeNotes(result.SpeechNotes, 6));
-    }
-
-    private static IReadOnlyList<string> NormalizeNotes(
-        IReadOnlyList<string>? notes,
-        int maxCount) =>
-        (notes ?? [])
-            .Select(note => NormalizeText(note, 800))
-            .Where(note => note.Length > 0)
+        var hints = Patterns
+            .Where(pattern => normalized.Contains(pattern.Needle, StringComparison.Ordinal))
+            .Select(pattern => pattern.Hint)
             .Distinct(StringComparer.Ordinal)
-            .Take(maxCount)
+            .Take(4)
             .ToArray();
 
-    private static string NormalizeText(string? value, int maxLength)
-    {
-        var normalized = (value ?? string.Empty).Trim();
-        return normalized.Length <= maxLength
-            ? normalized
-            : normalized[..maxLength].TrimEnd();
+        return new PreparedJapaneseSentence(normalized, hints);
     }
 
-    private static AiSentenceExplanationResult FromCache(
-        AiSentenceExplanationCache row) =>
-        NormalizeResult(new AiSentenceExplanationResult(
-            row.Translation,
-            DeserializeNotes(row.GrammarNotesJson),
-            DeserializeNotes(row.SpeechNotesJson)));
-
-    private static IReadOnlyList<string> DeserializeNotes(string json)
-    {
-        try
-        {
-            return JsonSerializer.Deserialize<string[]>(json) ?? [];
-        }
-        catch (JsonException exception)
-        {
-            throw new InvalidOperationException("Cached AI explanation is invalid.", exception);
-        }
-    }
-
-    private static string BuildCacheKey(
-        string providerId,
-        string sentence,
-        string target)
-    {
-        var canonical = string.Join(
-            '\n',
-            providerId.Trim(),
-            PromptVersion,
-            sentence.Normalize(NormalizationForm.FormKC).Trim(),
-            target.Normalize(NormalizationForm.FormKC).Trim());
-
-        return Convert.ToHexString(
-            SHA256.HashData(Encoding.UTF8.GetBytes(canonical)));
-    }
-
-    private static void ValidateInput(string sentence, string target)
-    {
-        if (string.IsNullOrWhiteSpace(sentence))
-        {
-            throw new ArgumentException("Sentence is required.", nameof(sentence));
-        }
-
-        if (string.IsNullOrWhiteSpace(target))
-        {
-            throw new ArgumentException("Target term is required.", nameof(target));
-        }
-
-        if (sentence.Length > 4000)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(sentence),
-                "Sentence is too long for a review explanation.");
-        }
-
-        if (target.Length > 300)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(target),
-                "Target term is too long.");
-        }
-    }
+    [GeneratedRegex(@"\s+")]
+    private static partial Regex WhitespaceRegex();
 }
