@@ -10,7 +10,10 @@
         <h1>Your anime</h1>
         <p>Content discovered from configured NAS roots.</p>
     </div>
-    <a class="button" href="/Settings">Manage roots</a>
+    <div class="inline-actions">
+        <a class="button" href="/Settings/Sonarr">Import from Sonarr</a>
+        <a class="button" href="/Settings">Manage roots</a>
+    </div>
 </header>
 
 @if (Model.Anime.Count == 0)

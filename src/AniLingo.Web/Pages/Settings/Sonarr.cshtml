@@ -1,0 +1,126 @@
+@page
+@model AniLingo.Web.Pages.Settings.SonarrModel
+@{
+    ViewData["Title"] = "Sonarr import";
+}
+
+<header class="page-header">
+    <div>
+        <span class="eyebrow">Settings · Migration</span>
+        <h1>Sonarr artwork</h1>
+        <p>Copy your current Sonarr posters and fanart into AniLingo. Sonarr is never modified.</p>
+    </div>
+    <a class="button" href="/Library">Back to library</a>
+</header>
+
+<div class="settings-grid">
+    <section class="panel">
+        <div class="panel-heading">
+            <h2>Connection</h2>
+            <span>@(Model.HasSavedApiKey ? "Saved" : "Not configured")</span>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(Model.Notice))
+        {
+            <p class="metadata-error" style="color:inherit">@Model.Notice</p>
+        }
+        @if (!string.IsNullOrWhiteSpace(Model.Error))
+        {
+            <p class="metadata-error">@Model.Error</p>
+        }
+
+        <form method="post" class="form-stack">
+            <label>
+                <span>Sonarr URL</span>
+                <input asp-for="BaseUrl" placeholder="http://sonarr:8989" />
+            </label>
+            <label>
+                <span>API key</span>
+                <input asp-for="ApiKey"
+                       type="password"
+                       autocomplete="new-password"
+                       placeholder="@(Model.HasSavedApiKey ? "Leave blank to keep saved key" : "Sonarr API key")" />
+            </label>
+
+            <div class="inline-actions">
+                <button class="button"
+                        type="submit"
+                        asp-page-handler="Save">
+                    Save
+                </button>
+                <button class="button"
+                        type="submit"
+                        asp-page-handler="Test">
+                    Test connection
+                </button>
+                <button class="button button-primary"
+                        type="submit"
+                        asp-page-handler="Import">
+                    Import / refresh artwork
+                </button>
+            </div>
+        </form>
+    </section>
+
+    <section class="panel">
+        <div class="panel-heading">
+            <h2>How migration works</h2>
+            <span>Non-destructive</span>
+        </div>
+        <p class="muted">
+            AniLingo matches your local anime against Sonarr, downloads the current poster and fanart,
+            then stores its own copy under <code>/data/artwork</code>. AniList metadata remains independent.
+        </p>
+        <p class="muted">
+            You can keep both apps running and press <strong>Import / refresh artwork</strong> again later.
+            If Sonarr is removed afterwards, the copied images remain available in AniLingo.
+        </p>
+        <p class="muted">
+            Season artwork is intentionally deferred until AniLingo has a real Season model and season UI.
+        </p>
+    </section>
+
+    @if (Model.LastImport is { } import)
+    {
+        <section class="panel">
+            <div class="panel-heading">
+                <h2>Last import</h2>
+                <span>@import.MatchedCount matched</span>
+            </div>
+            <div class="metric-grid">
+                <div class="metric-card">
+                    <span>Sonarr series</span>
+                    <strong>@import.SonarrSeriesCount</strong>
+                </div>
+                <div class="metric-card">
+                    <span>Posters</span>
+                    <strong>@import.PosterCount</strong>
+                </div>
+                <div class="metric-card">
+                    <span>Fanart</span>
+                    <strong>@import.FanartCount</strong>
+                </div>
+                <div class="metric-card">
+                    <span>Unmatched</span>
+                    <strong>@import.UnmatchedCount</strong>
+                </div>
+            </div>
+
+            @if (import.UnmatchedTitles.Count > 0)
+            {
+                <p class="muted">Unmatched local anime:</p>
+                <ul>
+                    @foreach (var title in import.UnmatchedTitles)
+                    {
+                        <li>@title</li>
+                    }
+                </ul>
+            }
+
+            @if (import.FailedCount > 0)
+            {
+                <p class="metadata-error">@import.FailedCount artwork downloads failed.</p>
+            }
+        </section>
+    }
+</div>

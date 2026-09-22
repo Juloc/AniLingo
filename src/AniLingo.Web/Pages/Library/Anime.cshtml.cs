@@ -1,4 +1,5 @@
 using AniLingo.Web.Data;
+using AniLingo.Web.Features.Artwork;
 using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Metadata;
 using Microsoft.AspNetCore.Mvc;
@@ -15,6 +16,8 @@ public sealed class AnimeModel(
     public string AnimeTitle { get; private set; } = "";
     public string LocalAnimeTitle { get; private set; } = "";
     public AnimeMetadata? Metadata { get; private set; }
+    public string? CoverImageUrl { get; private set; }
+    public string? BannerImageUrl { get; private set; }
     public string SearchQuery { get; private set; } = "";
     public string? MetadataError { get; private set; }
     public IReadOnlyList<AnimeMetadataCandidate> SearchResults { get; private set; } = [];
@@ -38,6 +41,12 @@ public sealed class AnimeModel(
         LocalAnimeTitle = anime.Title;
         Metadata = await metadataService.GetAsync(id, cancellationToken);
         AnimeTitle = Metadata?.PreferredTitle ?? anime.Title;
+        CoverImageUrl = AnimeArtworkStore.ResolvePosterUrl(
+            id,
+            Metadata?.CoverImageUrl);
+        BannerImageUrl = AnimeArtworkStore.ResolveFanartUrl(
+            id,
+            Metadata?.BannerImageUrl);
         SearchQuery = string.IsNullOrWhiteSpace(q) ? anime.Title : q.Trim();
 
         if (TempData.TryGetValue("MetadataError", out var metadataError))

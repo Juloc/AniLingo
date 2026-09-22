@@ -5,20 +5,20 @@
 }
 
 <section class="anime-hero">
-    @if (!string.IsNullOrWhiteSpace(Model.Metadata?.BannerImageUrl))
+    @if (!string.IsNullOrWhiteSpace(Model.BannerImageUrl))
     {
         <img class="anime-banner-image"
-             src="@Model.Metadata.BannerImageUrl"
+             src="@Model.BannerImageUrl"
              alt=""
              loading="eager"
              referrerpolicy="no-referrer" />
     }
     <div class="anime-hero-shade"></div>
     <div class="anime-hero-content">
-        @if (!string.IsNullOrWhiteSpace(Model.Metadata?.CoverImageUrl))
+        @if (!string.IsNullOrWhiteSpace(Model.CoverImageUrl))
         {
             <img class="anime-detail-poster"
-                 src="@Model.Metadata.CoverImageUrl"
+                 src="@Model.CoverImageUrl"
                  alt=""
                  loading="eager"
                  referrerpolicy="no-referrer" />

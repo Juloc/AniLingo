@@ -1,4 +1,5 @@
 using AniLingo.Web.Data;
+using AniLingo.Web.Features.Artwork;
 using AniLingo.Web.Features.Learning;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
@@ -26,7 +27,7 @@ public sealed class IndexModel(AppDbContext db) : PageModel
         AnimeCount = await db.Anime.AsNoTracking().CountAsync(cancellationToken);
         EpisodeCount = await db.Episodes.AsNoTracking().CountAsync(cancellationToken);
 
-        RecentEpisodes = await (
+        var recentEpisodes = await (
             from episode in db.Episodes.AsNoTracking()
             join anime in db.Anime.AsNoTracking() on episode.AnimeId equals anime.Id
             join metadataValue in db.AnimeMetadata.AsNoTracking()
@@ -35,6 +36,7 @@ public sealed class IndexModel(AppDbContext db) : PageModel
             orderby episode.DiscoveredAt descending
             select new HomeEpisode(
                 episode.Id,
+                anime.Id,
                 metadata == null ? anime.Title : metadata.PreferredTitle,
                 episode.SeasonNumber,
                 episode.Number,
@@ -50,10 +52,20 @@ public sealed class IndexModel(AppDbContext db) : PageModel
                 metadata == null ? null : metadata.CoverImageUrl))
             .Take(10)
             .ToListAsync(cancellationToken);
+
+        RecentEpisodes = recentEpisodes
+            .Select(row => row with
+            {
+                CoverImageUrl = AnimeArtworkStore.ResolvePosterUrl(
+                    row.AnimeId,
+                    row.CoverImageUrl)
+            })
+            .ToArray();
     }
 
     public sealed record HomeEpisode(
         Guid Id,
+        Guid AnimeId,
         string AnimeTitle,
         int SeasonNumber,
         int Number,
