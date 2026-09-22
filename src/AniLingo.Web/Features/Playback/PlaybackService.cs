@@ -165,16 +165,18 @@ public sealed class PlaybackCueProjector(IJapaneseMorphology morphology)
 }
 
 public sealed record PlaybackStream(
-    string Path,
+    string SourcePath,
     string ContentType,
-    DateTimeOffset LastModified);
+    DateTimeOffset LastModified,
+    PlaybackPreparationPlan? LivePlan)
+{
+    public bool IsLive => LivePlan is not null;
+}
 
 public sealed class PlaybackService(
     AppDbContext db,
     PlaybackCueProjector projector,
-    PlaybackMediaProbe mediaProbe,
-    PlaybackPreparationTracker preparationTracker,
-    PlaybackJobQueue playbackJobs)
+    PlaybackMediaProbe mediaProbe)
 {
     public async Task<PlaybackMedia?> GetMediaAsync(
         Guid episodeId,
@@ -253,7 +255,7 @@ public sealed class PlaybackService(
         }
 
         var probe = await mediaProbe.ProbeAsync(row.Path, cancellationToken);
-        if (probe is null)
+        if (probe is null || !File.Exists(row.Path))
         {
             return null;
         }
@@ -263,9 +265,7 @@ public sealed class PlaybackService(
              IsHevc(probe.VideoCodec) &&
              PlaybackMediaTypes.IsLikelyBrowserSupportedContainer(row.Path)))
         {
-            return File.Exists(row.Path)
-                ? SourceStream(row.Path)
-                : null;
+            return SourceStream(row.Path);
         }
 
         var plan = PlaybackPreparationPlan.Build(probe, mode);
@@ -274,89 +274,11 @@ public sealed class PlaybackService(
             return null;
         }
 
-        var path = PlaybackCache.BuildPath(
-            row.Id,
-            row.SizeBytes,
-            row.LastWriteTimeUtc,
-            plan.Kind.Value);
-
-        return File.Exists(path)
-            ? new PlaybackStream(
-                path,
-                "video/mp4",
-                new DateTimeOffset(File.GetLastWriteTimeUtc(path)))
-            : null;
-    }
-
-    public async Task<bool> QueuePreparationAsync(
-        Guid episodeId,
-        PlaybackRequestedMode mode,
-        CancellationToken cancellationToken)
-    {
-        var row = await GetMediaRowAsync(episodeId, cancellationToken);
-        if (row is null)
-        {
-            return false;
-        }
-
-        var probe = await mediaProbe.ProbeAsync(row.Path, cancellationToken);
-        if (probe is null)
-        {
-            return false;
-        }
-
-        if (IsUniversalDirect(row.Path, probe) ||
-            (mode == PlaybackRequestedMode.Device &&
-             IsHevc(probe.VideoCodec) &&
-             PlaybackMediaTypes.IsLikelyBrowserSupportedContainer(row.Path)))
-        {
-            return false;
-        }
-
-        var plan = PlaybackPreparationPlan.Build(probe, mode);
-        if (!plan.CanPrepare || plan.Kind is null)
-        {
-            return false;
-        }
-
-        var kind = plan.Kind.Value;
-        var outputPath = PlaybackCache.BuildPath(
-            row.Id,
-            row.SizeBytes,
-            row.LastWriteTimeUtc,
-            kind);
-
-        if (File.Exists(outputPath))
-        {
-            preparationTracker.MarkReady(row.Id, kind);
-            return false;
-        }
-
-        if (!preparationTracker.TryQueue(row.Id, kind))
-        {
-            return false;
-        }
-
-        try
-        {
-            await playbackJobs.QueueAsync(
-                async (services, jobCancellationToken) =>
-                {
-                    var preparation = services.GetRequiredService<PlaybackPreparationService>();
-                    await preparation.PrepareAsync(episodeId, mode, jobCancellationToken);
-                },
-                cancellationToken);
-
-            return true;
-        }
-        catch
-        {
-            preparationTracker.MarkFailed(
-                row.Id,
-                kind,
-                "Could not queue playback preparation.");
-            throw;
-        }
+        return new PlaybackStream(
+            row.Path,
+            "video/mp4",
+            new DateTimeOffset(File.GetLastWriteTimeUtc(row.Path)),
+            plan);
     }
 
     public async Task<EpisodePlaybackSnapshot> GetSnapshotAsync(
@@ -409,7 +331,7 @@ public sealed class PlaybackService(
         return new EpisodePlaybackSnapshot(media, projected);
     }
 
-    private PlaybackOption BuildOption(
+    private static PlaybackOption BuildOption(
         MediaRow row,
         PlaybackProbeResult probe,
         PlaybackRequestedMode mode)
@@ -422,45 +344,20 @@ public sealed class PlaybackService(
                 plan.Message);
         }
 
-        var kind = plan.Kind.Value;
-        var outputPath = PlaybackCache.BuildPath(
-            row.Id,
-            row.SizeBytes,
-            row.LastWriteTimeUtc,
-            kind);
-
-        if (File.Exists(outputPath))
+        var message = plan.Kind.Value switch
         {
-            preparationTracker.MarkReady(row.Id, kind);
-            return new PlaybackOption(
-                PlaybackOptionAvailability.Ready,
-                kind switch
-                {
-                    PlaybackPreparationKind.CompatibleRemux => "Browser-compatible MP4 ready",
-                    PlaybackPreparationKind.DeviceHevcRemux => "HEVC MP4 ready for device decoding",
-                    PlaybackPreparationKind.ServerH264Transcode => "Server H.264 fallback ready",
-                    _ => "Prepared stream ready"
-                });
-        }
-
-        var state = preparationTracker.Get(row.Id, kind);
-        return state.Status switch
-        {
-            PlaybackPreparationStatus.Queued => new PlaybackOption(
-                PlaybackOptionAvailability.Preparing,
-                "Queued for playback preparation"),
-            PlaybackPreparationStatus.Processing => new PlaybackOption(
-                PlaybackOptionAvailability.Preparing,
-                kind == PlaybackPreparationKind.ServerH264Transcode
-                    ? "Transcoding H.264 on the server"
-                    : "Preparing MP4 without video re-encoding"),
-            PlaybackPreparationStatus.Failed => new PlaybackOption(
-                PlaybackOptionAvailability.Failed,
-                state.Message ?? "Playback preparation failed."),
-            _ => new PlaybackOption(
-                PlaybackOptionAvailability.CanPrepare,
-                plan.Message)
+            PlaybackPreparationKind.CompatibleRemux =>
+                "Instant MP4 remux; video is copied without re-encoding.",
+            PlaybackPreparationKind.DeviceHevcRemux =>
+                "Instant HEVC MP4 stream for device decoding.",
+            PlaybackPreparationKind.ServerH264Transcode =>
+                "Instant H.264 server transcode.",
+            _ => "Instant playback stream."
         };
+
+        return new PlaybackOption(
+            PlaybackOptionAvailability.Ready,
+            message);
     }
 
     private async Task<MediaRow?> GetMediaRowAsync(
@@ -479,24 +376,36 @@ public sealed class PlaybackService(
 
     private static bool IsUniversalDirect(string path, PlaybackProbeResult probe)
     {
-        if (!PlaybackMediaTypes.IsLikelyBrowserSupportedContainer(path))
+        var extension = Path.GetExtension(path).ToLowerInvariant();
+
+        if (extension is ".mp4" or ".m4v" or ".mov")
         {
-            return false;
+            return string.Equals(
+                       probe.VideoCodec,
+                       "h264",
+                       StringComparison.OrdinalIgnoreCase) &&
+                   (probe.PixelFormat is "yuv420p" or "yuvj420p") &&
+                   IsOneOf(probe.AudioCodec, null, "aac", "mp3");
         }
 
-        if (IsHevc(probe.VideoCodec))
+        if (extension == ".webm")
         {
-            return false;
+            return IsOneOf(probe.VideoCodec, "vp8", "vp9", "av1") &&
+                   IsOneOf(probe.AudioCodec, null, "opus", "vorbis");
         }
 
-        if (string.Equals(probe.VideoCodec, "h264", StringComparison.OrdinalIgnoreCase) &&
-            probe.PixelFormat is not ("yuv420p" or "yuvj420p"))
+        if (extension is ".ogg" or ".ogv")
         {
-            return false;
+            return IsOneOf(probe.VideoCodec, "theora", "vp8") &&
+                   IsOneOf(probe.AudioCodec, null, "vorbis", "opus");
         }
 
-        return true;
+        return false;
     }
+
+    private static bool IsOneOf(string? value, params string?[] choices) =>
+        choices.Any(choice =>
+            string.Equals(value, choice, StringComparison.OrdinalIgnoreCase));
 
     private static bool IsHevc(string? codec) =>
         string.Equals(codec, "hevc", StringComparison.OrdinalIgnoreCase) ||
@@ -506,7 +415,8 @@ public sealed class PlaybackService(
         new(
             path,
             PlaybackMediaTypes.GetContentType(path),
-            new DateTimeOffset(File.GetLastWriteTimeUtc(path)));
+            new DateTimeOffset(File.GetLastWriteTimeUtc(path)),
+            null);
 
     private sealed record MediaRow(
         Guid Id,
