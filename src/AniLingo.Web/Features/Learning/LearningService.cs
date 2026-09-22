@@ -93,6 +93,72 @@ public sealed class LearningService(
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<ReviewAnimeContext?> GetReviewContextAsync(
+        Guid termId,
+        CancellationToken cancellationToken)
+    {
+        var source = await (
+            from episodeTerm in db.EpisodeTerms.AsNoTracking()
+            join episode in db.Episodes.AsNoTracking() on episodeTerm.EpisodeId equals episode.Id
+            join anime in db.Anime.AsNoTracking() on episode.AnimeId equals anime.Id
+            where episodeTerm.TermId == termId
+            orderby episodeTerm.Occurrences descending,
+                anime.Title,
+                episode.SeasonNumber,
+                episode.Number,
+                episode.Id
+            select new
+            {
+                episode.Id,
+                AnimeTitle = anime.Title,
+                episode.SeasonNumber,
+                EpisodeNumber = episode.Number,
+                EpisodeTitle = episode.Title,
+                episodeTerm.FirstCueStartMs
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (source is null)
+        {
+            return null;
+        }
+
+        var trackId = await db.SubtitleTracks
+            .AsNoTracking()
+            .Where(x => x.EpisodeId == source.Id && x.Language == "ja")
+            .OrderByDescending(x => x.ImportedAt)
+            .ThenBy(x => x.Id)
+            .Select(x => (Guid?)x.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (trackId is null)
+        {
+            return null;
+        }
+
+        var sentence = await db.SubtitleCues
+            .AsNoTracking()
+            .Where(x =>
+                x.SubtitleTrackId == trackId.Value &&
+                x.StartMs == source.FirstCueStartMs)
+            .Select(x => x.Text)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (string.IsNullOrWhiteSpace(sentence))
+        {
+            return null;
+        }
+
+        return new ReviewAnimeContext(
+            source.Id,
+            source.AnimeTitle,
+            source.SeasonNumber,
+            source.EpisodeNumber,
+            source.EpisodeTitle,
+            source.FirstCueStartMs,
+            sentence);
+    }
+
     public async Task<IReadOnlyList<ReviewOption>> GetReviewOptionsAsync(
         Guid termId,
         CancellationToken cancellationToken)
