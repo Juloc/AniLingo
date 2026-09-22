@@ -18,6 +18,11 @@ public static partial class MediaPathParser
     [GeneratedRegex(@"^\[[^\]]+\][ ._-]*", RegexOptions.CultureInvariant)]
     private static partial Regex ReleaseGroupRegex();
 
+    [GeneratedRegex(
+        @"(?:\s+|[._\-\[\(]+)(?:WEB[- .]?DL|WEBRIP|BLU[- .]?RAY|BDRIP|HDTV|2160P|1080P|720P|480P|HEVC|H\.?265|H\.?264|X265|X264|AV1)\b.*$",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex TechnicalSuffixRegex();
+
     public static bool TryParse(string rootPath, string filePath, out MediaDescriptor descriptor)
     {
         descriptor = default!;
@@ -70,8 +75,12 @@ public static partial class MediaPathParser
             return false;
         }
 
-        var episodeTitle = CleanTitle(SeasonEpisodeRegex().Replace(fileName, ""));
-        if (episodeTitle.Equals(animeTitle, StringComparison.OrdinalIgnoreCase))
+        var episodeTitle = seasonEpisode.Success
+            ? CleanEpisodeTitle(fileName[(seasonEpisode.Index + seasonEpisode.Length)..])
+            : "";
+
+        if (string.IsNullOrWhiteSpace(episodeTitle) ||
+            episodeTitle.Equals(animeTitle, StringComparison.OrdinalIgnoreCase))
         {
             episodeTitle = $"Episode {episode}";
         }
@@ -90,6 +99,12 @@ public static partial class MediaPathParser
     {
         var withoutGroup = ReleaseGroupRegex().Replace(value, "");
         return Regex.Replace(withoutGroup, @"[._]+", " ").Trim(' ', '-', '_', '.');
+    }
+
+    private static string CleanEpisodeTitle(string value)
+    {
+        var withoutTechnicalSuffix = TechnicalSuffixRegex().Replace(value, "");
+        return CleanTitle(withoutTechnicalSuffix);
     }
 
     private static string NormalizeKey(string value) =>
