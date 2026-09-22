@@ -1,6 +1,5 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Ai;
-using AniLingo.Web.Features.Vocabulary;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
@@ -28,21 +27,10 @@ public sealed class AiSentenceExplanationTests
         try
         {
             await using var db = await CreateDatabaseAsync(databasePath);
-            var term = new Term
-            {
-                Language = "ja",
-                Canonical = "食べる",
-                Reading = "たべる",
-                Meaning = "essen"
-            };
-            db.Terms.Add(term);
-            await db.SaveChangesAsync();
-
             var fake = new FakeExplainer();
             var service = new AiSentenceExplanationService(db, fake);
 
             var cached = await service.GetCachedAsync(
-                term.Id,
                 "まだ食べてない。",
                 CancellationToken.None);
 
@@ -64,32 +52,20 @@ public sealed class AiSentenceExplanationTests
         try
         {
             await using var db = await CreateDatabaseAsync(databasePath);
-            var term = new Term
-            {
-                Language = "ja",
-                Canonical = "食べる",
-                Reading = "たべる",
-                Meaning = "essen"
-            };
-            db.Terms.Add(term);
-            await db.SaveChangesAsync();
-
             var fake = new FakeExplainer
             {
                 Result = new AiSentenceExplanation(
                     "Ich habe noch nicht gegessen.",
-                    ["てない is the casual negative progressive form.", "extra", "third", "ignored"],
-                    ["んだ adds explanatory nuance.", "second", "ignored"],
+                    ["Kurze Grammatik.", "Extra.", "Dritter Punkt.", "Ignoriert."],
+                    ["Umgangssprachlich.", "Zweiter.", "Ignoriert."],
                     FromCache: false)
             };
             var service = new AiSentenceExplanationService(db, fake);
 
             var first = await service.ExplainAsync(
-                term.Id,
                 "まだ食べてないんだ。",
                 CancellationToken.None);
             var second = await service.ExplainAsync(
-                term.Id,
                 "まだ食べてないんだ。",
                 CancellationToken.None);
 
@@ -108,34 +84,25 @@ public sealed class AiSentenceExplanationTests
     }
 
     [TestMethod]
-    public async Task LocalMeaningChangesInvalidateTheCacheKey()
+    public async Task EquivalentWhitespaceSharesOneSentenceCacheEntry()
     {
         var databasePath = TempDatabasePath();
 
         try
         {
             await using var db = await CreateDatabaseAsync(databasePath);
-            var term = new Term
-            {
-                Language = "ja",
-                Canonical = "掛ける",
-                Meaning = "hängen"
-            };
-            db.Terms.Add(term);
-            await db.SaveChangesAsync();
-
             var fake = new FakeExplainer();
             var service = new AiSentenceExplanationService(db, fake);
 
-            await service.ExplainAsync(term.Id, "電話を掛ける。", CancellationToken.None);
+            await service.ExplainAsync(
+                "まだ\n食べてない。",
+                CancellationToken.None);
+            await service.ExplainAsync(
+                "  まだ 食べてない。  ",
+                CancellationToken.None);
 
-            term.Meaning = "anrufen";
-            await db.SaveChangesAsync();
-
-            await service.ExplainAsync(term.Id, "電話を掛ける。", CancellationToken.None);
-
-            Assert.AreEqual(2, fake.Calls);
-            Assert.AreEqual(2, await db.AiSentenceExplanationCache.CountAsync());
+            Assert.AreEqual(1, fake.Calls);
+            Assert.AreEqual(1, await db.AiSentenceExplanationCache.CountAsync());
         }
         finally
         {
