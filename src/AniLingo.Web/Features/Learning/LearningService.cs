@@ -32,6 +32,50 @@ public sealed class LearningService(
         await db.SaveChangesAsync(cancellationToken);
     }
 
+    public async Task AddToLearningAsync(
+        IReadOnlyCollection<Guid> termIds,
+        CancellationToken cancellationToken)
+    {
+        var ids = termIds.Distinct().ToArray();
+        if (ids.Length == 0)
+        {
+            return;
+        }
+
+        var existing = await db.UserTerms
+            .Where(x => x.ProfileId == LearningProfile.DefaultId && ids.Contains(x.TermId))
+            .ToDictionaryAsync(x => x.TermId, cancellationToken);
+
+        var now = DateTimeOffset.UtcNow;
+
+        foreach (var termId in ids)
+        {
+            if (existing.TryGetValue(termId, out var item))
+            {
+                if (item.State is UserTermState.Known or UserTermState.Learning)
+                {
+                    continue;
+                }
+
+                item.State = UserTermState.Learning;
+                item.NextReviewAt ??= now;
+                item.UpdatedAt = now;
+                continue;
+            }
+
+            db.UserTerms.Add(new UserTerm
+            {
+                ProfileId = LearningProfile.DefaultId,
+                TermId = termId,
+                State = UserTermState.Learning,
+                NextReviewAt = now,
+                UpdatedAt = now
+            });
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
     public Task<List<DueReviewItem>> GetDueAsync(int limit, CancellationToken cancellationToken)
     {
         var now = DateTimeOffset.UtcNow;

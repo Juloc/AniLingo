@@ -21,29 +21,86 @@ public sealed class AnimeModel(AppDbContext db) : PageModel
 
         AnimeTitle = anime.Title;
 
-        Episodes = await db.Episodes
+        var episodeRows = await db.Episodes
             .AsNoTracking()
             .Where(x => x.AnimeId == id)
             .OrderBy(x => x.SeasonNumber)
             .ThenBy(x => x.Number)
-            .Select(episode => new EpisodeRow(
+            .Select(episode => new
+            {
                 episode.Id,
                 episode.SeasonNumber,
                 episode.Number,
                 episode.Title,
-                db.EpisodeTerms.Count(x => x.EpisodeId == episode.Id),
-                (
-                    from episodeTerm in db.EpisodeTerms
-                    join userTerm in db.UserTerms on episodeTerm.TermId equals userTerm.TermId
-                    where episodeTerm.EpisodeId == episode.Id
-                        && userTerm.ProfileId == LearningProfile.DefaultId
-                        && userTerm.State == UserTermState.Known
-                    select episodeTerm.TermId
-                ).Count(),
-                db.SubtitleTracks.Count(x => x.EpisodeId == episode.Id && x.Language == "ja")))
+                JapaneseSubtitleTracks = db.SubtitleTracks.Count(
+                    x => x.EpisodeId == episode.Id && x.Language == "ja")
+            })
             .ToListAsync(cancellationToken);
 
+        var episodeIds = episodeRows.Select(x => x.Id).ToArray();
+        List<CoverageRow> coverageRows;
+
+        if (episodeIds.Length == 0)
+        {
+            coverageRows = [];
+        }
+        else
+        {
+            coverageRows = await (
+                from episodeTerm in db.EpisodeTerms.AsNoTracking()
+                join userTermValue in db.UserTerms.AsNoTracking()
+                        .Where(x => x.ProfileId == LearningProfile.DefaultId)
+                    on episodeTerm.TermId equals userTermValue.TermId into userTerms
+                from userTerm in userTerms.DefaultIfEmpty()
+                where episodeIds.Contains(episodeTerm.EpisodeId)
+                select new CoverageRow(
+                    episodeTerm.EpisodeId,
+                    episodeTerm.Occurrences,
+                    userTerm == null ? null : userTerm.State))
+                .ToListAsync(cancellationToken);
+        }
+
+        var coverageByEpisode = coverageRows
+            .GroupBy(x => x.EpisodeId)
+            .ToDictionary(
+                group => group.Key,
+                group => new Coverage(
+                    group.Count(),
+                    group.Sum(x => x.Occurrences),
+                    group.Where(x => x.State is UserTermState.Known or UserTermState.Learning)
+                        .Sum(x => x.Occurrences)));
+
+        Episodes = episodeRows
+            .Select(episode =>
+            {
+                var coverage = coverageByEpisode.GetValueOrDefault(episode.Id, Coverage.Empty);
+
+                return new EpisodeRow(
+                    episode.Id,
+                    episode.SeasonNumber,
+                    episode.Number,
+                    episode.Title,
+                    coverage.TotalTerms,
+                    coverage.TotalOccurrences,
+                    coverage.PreparedOccurrences,
+                    episode.JapaneseSubtitleTracks);
+            })
+            .ToArray();
+
         return Page();
+    }
+
+    private sealed record CoverageRow(
+        Guid EpisodeId,
+        int Occurrences,
+        UserTermState? State);
+
+    private sealed record Coverage(
+        int TotalTerms,
+        int TotalOccurrences,
+        int PreparedOccurrences)
+    {
+        public static Coverage Empty { get; } = new(0, 0, 0);
     }
 
     public sealed record EpisodeRow(
@@ -52,11 +109,12 @@ public sealed class AnimeModel(AppDbContext db) : PageModel
         int Number,
         string Title,
         int TotalTerms,
-        int KnownTerms,
+        int TotalOccurrences,
+        int PreparedOccurrences,
         int JapaneseSubtitleTracks)
     {
-        public int PreparationPercent => TotalTerms == 0
+        public int PreparationPercent => TotalOccurrences == 0
             ? 0
-            : (int)Math.Round((double)KnownTerms / TotalTerms * 100);
+            : (int)Math.Floor((double)PreparedOccurrences / TotalOccurrences * 100);
     }
 }

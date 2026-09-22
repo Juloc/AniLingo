@@ -2,8 +2,6 @@
 @model AniLingo.Web.Pages.Library.EpisodeModel
 @{
     ViewData["Title"] = $"{Model.AnimeTitle} E{Model.EpisodeNumber}";
-    var known = Model.Terms.Count(x => x.State == UserTermState.Known);
-    var learning = Model.Terms.Count(x => x.State == UserTermState.Learning);
 }
 
 <header class="page-header">
@@ -11,7 +9,7 @@
         <a class="back-link" href="/Library/Anime/@Model.AnimeId">← @Model.AnimeTitle</a>
         <span class="eyebrow">S@Model.SeasonNumber.ToString("00") · E@Model.EpisodeNumber.ToString("00")</span>
         <h1>@Model.EpisodeTitle</h1>
-        <p>@Model.Terms.Count candidates · @known known · @learning learning</p>
+        <p>@Model.Terms.Count candidates · @Model.Preparation.KnownPercent% known · @Model.Preparation.PreparedPercent% prepared</p>
     </div>
 </header>
 
@@ -24,6 +22,29 @@
 }
 else
 {
+    <section class="preparation-panel">
+        <div class="preparation-copy">
+            <span class="eyebrow">Episode preparation</span>
+            <strong>@Model.Preparation.PreparedPercent% lexical coverage</strong>
+            <span>@Model.Preparation.PreparedOccurrences of @Model.Preparation.TotalOccurrences subtitle term occurrences are known or queued.</span>
+            <div class="progress-track"><span style="width:@Model.Preparation.PreparedPercent%"></span></div>
+            <small>Coverage is occurrence-weighted vocabulary coverage, not estimated dialogue comprehension.</small>
+        </div>
+
+        @if (Model.Preparation.RecommendedCount > 0)
+        {
+            <form method="post" asp-page-handler="Prepare" asp-route-id="@Model.EpisodeId">
+                <button class="button button-primary" type="submit">
+                    Prepare to @Model.Preparation.TargetPercent% · @Model.Preparation.RecommendedCount words
+                </button>
+            </form>
+        }
+        else
+        {
+            <span class="status-pill status-ok">@Model.Preparation.TargetPercent% prepared</span>
+        }
+    </section>
+
     <div class="term-table">
         <div class="term-table-head">
             <span>Term</span><span>Seen</span><span>Status</span>
@@ -42,7 +63,7 @@ else
                         <small>@term.Meaning</small>
                     }
                 </div>
-                <span class="occurrence">@term.Occurrences×</span>
+                <span class="occurrence">@term.EpisodeOccurrences×</span>
                 <div class="term-actions">
                     <form method="post" asp-page-handler="Learning" asp-route-id="@Model.EpisodeId">
                         <input type="hidden" name="termId" value="@term.TermId" />

@@ -1,5 +1,6 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Learning;
+using AniLingo.Web.Features.Vocabulary;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
@@ -8,7 +9,8 @@ namespace AniLingo.Web.Pages.Library;
 
 public sealed class EpisodeModel(
     AppDbContext db,
-    LearningService learningService) : PageModel
+    LearningService learningService,
+    EpisodePreparationService preparationService) : PageModel
 {
     public Guid EpisodeId { get; private set; }
     public Guid AnimeId { get; private set; }
@@ -16,7 +18,8 @@ public sealed class EpisodeModel(
     public string EpisodeTitle { get; private set; } = "";
     public int SeasonNumber { get; private set; }
     public int EpisodeNumber { get; private set; }
-    public IReadOnlyList<TermRow> Terms { get; private set; } = [];
+    public EpisodePreparationSnapshot Preparation { get; private set; } = EpisodePreparationSnapshot.Empty;
+    public IReadOnlyList<EpisodePreparationTerm> Terms => Preparation.Terms;
 
     public async Task<IActionResult> OnGetAsync(Guid id, CancellationToken cancellationToken)
     {
@@ -46,24 +49,7 @@ public sealed class EpisodeModel(
         EpisodeTitle = header.Title;
         SeasonNumber = header.SeasonNumber;
         EpisodeNumber = header.Number;
-
-        Terms = await (
-            from episodeTerm in db.EpisodeTerms.AsNoTracking()
-            join term in db.Terms.AsNoTracking() on episodeTerm.TermId equals term.Id
-            join userTermValue in db.UserTerms.AsNoTracking()
-                    .Where(x => x.ProfileId == LearningProfile.DefaultId)
-                on term.Id equals userTermValue.TermId into userTerms
-            from userTerm in userTerms.DefaultIfEmpty()
-            where episodeTerm.EpisodeId == id
-            orderby episodeTerm.Occurrences descending, term.Canonical
-            select new TermRow(
-                term.Id,
-                term.Canonical,
-                term.Reading,
-                term.Meaning,
-                episodeTerm.Occurrences,
-                userTerm == null ? null : userTerm.State))
-            .ToListAsync(cancellationToken);
+        Preparation = await preparationService.GetAsync(id, header.AnimeId, cancellationToken);
 
         return Page();
     }
@@ -80,11 +66,14 @@ public sealed class EpisodeModel(
         return RedirectToPage(new { id });
     }
 
-    public sealed record TermRow(
-        Guid TermId,
-        string Canonical,
-        string? Reading,
-        string? Meaning,
-        int Occurrences,
-        UserTermState? State);
+    public async Task<IActionResult> OnPostPrepareAsync(Guid id, CancellationToken cancellationToken)
+    {
+        var preparedCount = await preparationService.PrepareToTargetAsync(id, cancellationToken);
+        if (preparedCount is null)
+        {
+            return NotFound();
+        }
+
+        return RedirectToPage("/Learn/Index");
+    }
 }
