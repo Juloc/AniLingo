@@ -122,7 +122,7 @@ public sealed class LibraryScanner(
             .ToArray();
 
         var embeddedTracks = episodeIds.Length == 0
-            ? []
+            ? new List<ExistingEmbeddedTrack>()
             : await db.SubtitleTracks
                 .AsNoTracking()
                 .Where(x =>
