@@ -110,7 +110,7 @@ namespace AniLingo.Web.Data.Migrations
 
                     b.HasIndex("ProfileId", "State", "NextReviewAt");
 
-                    b.HasIndex("ProfileId", "State", "LearningStartedAt", "QueuePosition");
+                    b.HasIndex("LearningStartedAt", "QueuePosition");
 
                     b.ToTable("UserTerms");
                 });
