@@ -100,6 +100,40 @@ public sealed class PlaybackRemuxTests
     }
 
     [TestMethod]
+    public void CompatibleRemuxStreamsFragmentedMp4WithoutVideoEncoding()
+    {
+        var plan = PlaybackPreparationPlan.Build(
+            new PlaybackProbeResult("h264", "yuv420p", "flac"),
+            PlaybackRequestedMode.Device);
+
+        var arguments = LivePlaybackCommand.BuildArguments(
+            "/media/anime/episode.mkv",
+            plan);
+
+        CollectionAssert.Contains(arguments.ToList(), "pipe:1");
+        CollectionAssert.Contains(arguments.ToList(), "+frag_keyframe+empty_moov+default_base_moof");
+        CollectionAssert.Contains(arguments.ToList(), "copy");
+        CollectionAssert.Contains(arguments.ToList(), "aac");
+        CollectionAssert.DoesNotContain(arguments.ToList(), "libx264");
+    }
+
+    [TestMethod]
+    public void ServerFallbackStreamsH264Immediately()
+    {
+        var plan = PlaybackPreparationPlan.Build(
+            new PlaybackProbeResult("av1", "yuv420p10le", "opus"),
+            PlaybackRequestedMode.Server);
+
+        var arguments = LivePlaybackCommand.BuildArguments(
+            "/media/anime/episode.mkv",
+            plan);
+
+        CollectionAssert.Contains(arguments.ToList(), "libx264");
+        CollectionAssert.Contains(arguments.ToList(), "yuv420p");
+        CollectionAssert.Contains(arguments.ToList(), "pipe:1");
+    }
+
+    [TestMethod]
     public void CacheIdentitySeparatesSourceFingerprintAndPreparationKind()
     {
         var mediaId = Guid.NewGuid();
