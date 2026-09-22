@@ -11,8 +11,6 @@ public sealed record AiSentenceExplanation(
 
 public sealed record AiSentenceExplainRequest(
     string Sentence,
-    string Target,
-    string? Meaning,
     IReadOnlyList<string> LocalHints);
 
 public interface IAiSentenceExplainer
