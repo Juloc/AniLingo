@@ -384,7 +384,7 @@ public sealed class PlaybackService(
                        probe.VideoCodec,
                        "h264",
                        StringComparison.OrdinalIgnoreCase) &&
-                   probe.PixelFormat is "yuv420p" or "yuvj420p" &&
+                   (probe.PixelFormat is "yuv420p" or "yuvj420p") &&
                    IsOneOf(probe.AudioCodec, null, "aac", "mp3");
         }
 
