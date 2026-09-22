@@ -12,13 +12,14 @@ The first vertical slice includes:
 - real Japanese morphological analysis with base forms and readings
 - local JMdict meanings with German-first / common-English fallback
 - episode vocabulary frequency and preparation progress
+- direct-play episode player with synced, clickable Japanese subtitles
 - known / learning term state
 - FSRS-6 spaced repetition with Again / Hard / Good / Easy interval previews
 - responsive Razor Pages UI with a Jellyfin/Plex-style shell
 - embedded SQLite persistence in the single application container
 - optional Codex CLI connection for later AI-assisted features
 
-AniList, AI enrichment, embedded subtitle extraction and the integrated player are later phases. See issue #1 for the staged roadmap.
+AniList, AI enrichment, embedded subtitle extraction and transcoding are later phases. See issue #1 for the staged roadmap.
 
 ## Docker stack
 
@@ -67,6 +68,12 @@ Device-code authorization may need to be enabled in the ChatGPT security setting
 
 The initial integration deliberately exposes no generic prompt or agent execution endpoint. AI capabilities will be added only for narrow learning tasks where they are useful. The provider boundary allows later API-key or other-engine providers without coupling them to the learning pages.
 
+## Playback
+
+Episode pages include an integrated HTML5 direct-play player. AniLingo streams the registered media file with HTTP range support, synchronizes the imported Japanese cue track, and exposes local reading, meaning and learning state when a highlighted subtitle word is clicked. The lookup path is deterministic and does not call AI.
+
+AniLingo does not transcode in this slice. MP4/WebM are the intended direct-play containers and actual codec support still depends on the browser. MKV, AVI and transport-stream containers are exposed with their correct media type but may not direct-play; the player reports that limitation instead of silently falling back to another path.
+
 ## Expected media layout
 
 A common layout works directly:
@@ -95,7 +102,7 @@ EF Core / filesystem / external integration
 
 Pages are page boundaries. Shared visual patterns stay in shared partials/components. JavaScript is reserved for interactions that require it; v0.1 does not use a client-side application shell.
 
-Core areas live under `Features/Library`, `Features/Subtitles`, `Features/Vocabulary`, `Features/Learning` and the optional `Features/Ai` provider boundary. Future playback, AniList metadata and AI enrichment extend those boundaries instead of replacing them.
+Core areas live under `Features/Library`, `Features/Subtitles`, `Features/Vocabulary`, `Features/Learning`, `Features/Playback` and the optional `Features/Ai` provider boundary. Future playback, AniList metadata and AI enrichment extend those boundaries instead of replacing them.
 
 ## v0.1 limitations
 

@@ -1,5 +1,6 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Learning;
+using AniLingo.Web.Features.Playback;
 using AniLingo.Web.Features.Vocabulary;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -10,7 +11,8 @@ namespace AniLingo.Web.Pages.Library;
 public sealed class EpisodeModel(
     AppDbContext db,
     LearningService learningService,
-    EpisodePreparationService preparationService) : PageModel
+    EpisodePreparationService preparationService,
+    PlaybackService playbackService) : PageModel
 {
     public Guid EpisodeId { get; private set; }
     public Guid AnimeId { get; private set; }
@@ -19,6 +21,7 @@ public sealed class EpisodeModel(
     public int SeasonNumber { get; private set; }
     public int EpisodeNumber { get; private set; }
     public EpisodePreparationSnapshot Preparation { get; private set; } = EpisodePreparationSnapshot.Empty;
+    public EpisodePlaybackSnapshot Playback { get; private set; } = EpisodePlaybackSnapshot.Empty;
     public IReadOnlyList<EpisodePreparationTerm> Terms => Preparation.Terms;
 
     public async Task<IActionResult> OnGetAsync(Guid id, CancellationToken cancellationToken)
@@ -50,8 +53,24 @@ public sealed class EpisodeModel(
         SeasonNumber = header.SeasonNumber;
         EpisodeNumber = header.Number;
         Preparation = await preparationService.GetAsync(id, header.AnimeId, cancellationToken);
+        Playback = await playbackService.GetSnapshotAsync(id, cancellationToken);
 
         return Page();
+    }
+
+    public async Task<IActionResult> OnGetMediaAsync(Guid id, CancellationToken cancellationToken)
+    {
+        var media = await playbackService.GetMediaAsync(id, cancellationToken);
+        if (media is null || !System.IO.File.Exists(media.Path))
+        {
+            return NotFound();
+        }
+
+        return new PhysicalFileResult(media.Path, media.ContentType)
+        {
+            EnableRangeProcessing = true,
+            LastModified = new DateTimeOffset(System.IO.File.GetLastWriteTimeUtc(media.Path))
+        };
     }
 
     public async Task<IActionResult> OnPostKnownAsync(Guid id, Guid termId, CancellationToken cancellationToken)
