@@ -1,5 +1,6 @@
 @page "/Library/Episode/{id:guid}"
 @using System.Text.Json
+@using AniLingo.Web.Features.Playback
 @model AniLingo.Web.Pages.Library.EpisodeModel
 @{
     ViewData["Title"] = $"{Model.AnimeTitle} E{Model.EpisodeNumber}";
@@ -16,22 +17,59 @@
 
 @if (Model.Playback.Media is { } media)
 {
-    <section class="player-panel" data-episode-player>
-        <div class="video-stage">
-            <video controls preload="metadata" playsinline
-                   src="@Url.Page("/Library/Episode", "Media", new { id = Model.EpisodeId })"></video>
-            <div class="subtitle-overlay" data-subtitle-overlay lang="ja"></div>
+    <section class="player-panel"
+             data-episode-player
+             data-playback-refresh="@(media.IsPreparing ? "true" : "false")">
+        <div class="video-stage @(media.IsPlayable ? "" : "player-placeholder")">
+            @if (media.IsPlayable)
+            {
+                <video controls preload="metadata" playsinline
+                       src="@Url.Page("/Library/Episode", "Media", new { id = Model.EpisodeId })"></video>
+                <div class="subtitle-overlay" data-subtitle-overlay lang="ja"></div>
+            }
+            else
+            {
+                <div class="playback-preparation">
+                    <span class="eyebrow">Browser playback</span>
+                    <strong>@media.StatusMessage</strong>
+
+                    @if (media.CanQueuePreparation)
+                    {
+                        <form method="post"
+                              asp-page-handler="PreparePlayback"
+                              asp-route-id="@Model.EpisodeId">
+                            <button class="button button-primary" type="submit">
+                                @(media.Availability == PlaybackAvailability.Failed
+                                    ? "Retry preparation"
+                                    : "Prepare browser playback")
+                            </button>
+                        </form>
+                    }
+                    else if (media.IsPreparing)
+                    {
+                        <span class="status-pill status-warning">Working…</span>
+                    }
+                    else
+                    {
+                        <span class="status-pill status-error">Video transcode required</span>
+                    }
+                </div>
+            }
         </div>
 
         <div class="player-meta">
             <div>
                 <span class="eyebrow">Player</span>
                 <strong>@media.FileName</strong>
-                <span>@Model.Playback.Cues.Count synced Japanese cues · click highlighted words for lookup</span>
+                <span>@Model.Playback.Cues.Count synced Japanese cues · @media.StatusMessage</span>
             </div>
-            @if (!media.IsLikelyBrowserSupported)
+            @if (media.Availability == PlaybackAvailability.Prepared)
             {
-                <span class="status-pill status-warning">Container may not direct-play</span>
+                <span class="status-pill status-ok">Prepared MP4</span>
+            }
+            else if (media.Availability == PlaybackAvailability.Direct)
+            {
+                <span class="status-pill status-ok">Direct play</span>
             }
         </div>
 

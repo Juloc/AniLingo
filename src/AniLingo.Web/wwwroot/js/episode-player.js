@@ -4,6 +4,10 @@
         return;
     }
 
+    if (root.dataset.playbackRefresh === "true") {
+        window.setTimeout(() => window.location.reload(), 2500);
+    }
+
     const video = root.querySelector("video");
     const overlay = root.querySelector("[data-subtitle-overlay]");
     const data = root.querySelector("[data-cue-data]");
@@ -107,7 +111,7 @@
     video.addEventListener("loadedmetadata", sync);
     video.addEventListener("error", () => {
         error.hidden = false;
-        error.textContent = "This browser could not direct-play the media file. AniLingo does not transcode yet.";
+        error.textContent = "The prepared browser stream could not be played by this browser.";
     });
 
     replay?.addEventListener("click", () => {
