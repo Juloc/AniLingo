@@ -8,7 +8,7 @@ namespace AniLingo.Tests;
 public sealed class PlaybackProjectionTests
 {
     [TestMethod]
-    public void PreservesCueTextAndAddsMetadataOnlyForEpisodeTerms()
+    public void PreservesNormalizedCueTextAndAddsMetadataOnlyForEpisodeTerms()
     {
         var termId = Guid.NewGuid();
         var projector = new PlaybackCueProjector(new FakeMorphology());
@@ -24,7 +24,7 @@ public sealed class PlaybackProjectionTests
 
         var cue = projector.Project(1000, 2500, "猫 が来た！", terms);
 
-        Assert.AreEqual("猫 が来た！", string.Concat(cue.Tokens.Select(x => x.Surface)));
+        Assert.AreEqual("猫 が来た!", string.Concat(cue.Tokens.Select(x => x.Surface)));
 
         var vocabularyToken = cue.Tokens.Single(x => x.TermId == termId);
         Assert.AreEqual("猫", vocabularyToken.Canonical);
