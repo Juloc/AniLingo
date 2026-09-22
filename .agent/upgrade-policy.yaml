@@ -1,10 +1,10 @@
 schemaVersion: 1
 
-currentEpoch: 2
+currentEpoch: 3
 minimumSupportedEpoch: 2
 
 introducedIn: null
 minimumSupportedVersion: null
 bridgeVersion: null
 
-reason: "Pre-release persistence reset for the canonical single-container SQLite runtime; prototype PostgreSQL state from epoch 1 is intentionally not migrated."
+reason: "Epoch 3 establishes the EF Core migration baseline and provider-neutral metadata persistence. Epoch 2 SQLite databases are bridged in place after their expected core tables are verified."

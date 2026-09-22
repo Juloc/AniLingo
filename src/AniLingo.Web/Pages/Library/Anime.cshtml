@@ -4,13 +4,162 @@
     ViewData["Title"] = Model.AnimeTitle;
 }
 
-<header class="page-header">
-    <div>
-        <a class="back-link" href="/Library">← Library</a>
-        <h1>@Model.AnimeTitle</h1>
-        <p>@Model.Episodes.Count episodes discovered.</p>
+<section class="anime-hero">
+    @if (!string.IsNullOrWhiteSpace(Model.Metadata?.BannerImageUrl))
+    {
+        <img class="anime-banner-image"
+             src="@Model.Metadata.BannerImageUrl"
+             alt=""
+             loading="eager"
+             referrerpolicy="no-referrer" />
+    }
+    <div class="anime-hero-shade"></div>
+    <div class="anime-hero-content">
+        @if (!string.IsNullOrWhiteSpace(Model.Metadata?.CoverImageUrl))
+        {
+            <img class="anime-detail-poster"
+                 src="@Model.Metadata.CoverImageUrl"
+                 alt=""
+                 loading="eager"
+                 referrerpolicy="no-referrer" />
+        }
+        <div class="anime-hero-copy">
+            <a class="back-link" href="/Library">← Library</a>
+            <span class="eyebrow">Anime library</span>
+            <h1>@Model.AnimeTitle</h1>
+
+            @if (Model.Metadata is { } metadata)
+            {
+                @if (!string.Equals(Model.LocalAnimeTitle, Model.AnimeTitle, StringComparison.Ordinal))
+                {
+                    <span class="local-title">@Model.LocalAnimeTitle</span>
+                }
+                @if (!string.IsNullOrWhiteSpace(metadata.NativeTitle))
+                {
+                    <span class="native-title" lang="ja">@metadata.NativeTitle</span>
+                }
+
+                <div class="anime-facts">
+                    @if (metadata.SeasonYear is int seasonYear)
+                    {
+                        <span>@seasonYear</span>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(metadata.Format))
+                    {
+                        <span>@metadata.Format</span>
+                    }
+                    @if (metadata.EpisodeCount is int episodeCount)
+                    {
+                        <span>@episodeCount episodes</span>
+                    }
+                    @if (metadata.EpisodeDurationMinutes is int duration)
+                    {
+                        <span>@duration min</span>
+                    }
+                </div>
+
+                @if (!string.IsNullOrWhiteSpace(metadata.Description))
+                {
+                    <p class="anime-description">@metadata.Description</p>
+                }
+
+                <div class="inline-actions">
+                    <form method="post" asp-page-handler="RefreshMetadata" asp-route-id="@Model.AnimeId">
+                        <button class="button" type="submit">Refresh metadata</button>
+                    </form>
+                    <form method="post" asp-page-handler="RemoveMetadata" asp-route-id="@Model.AnimeId">
+                        <button class="button" type="submit">Remove match</button>
+                    </form>
+                </div>
+            }
+            else
+            {
+                <p>@Model.Episodes.Count episodes discovered.</p>
+            }
+        </div>
     </div>
-</header>
+</section>
+
+<section class="panel metadata-panel">
+    <div class="panel-heading">
+        <h2>@(Model.Metadata is null ? "Match AniList" : "Change AniList match")</h2>
+        @if (Model.Metadata is { } current)
+        {
+            <span>@current.Provider · ID @current.ExternalId</span>
+        }
+    </div>
+
+    <form method="get" class="metadata-search">
+        <input type="search"
+               name="q"
+               value="@Model.SearchQuery"
+               aria-label="Anime title"
+               placeholder="Search AniList" />
+        <button class="button button-primary" type="submit">Search AniList</button>
+    </form>
+
+    @if (!string.IsNullOrWhiteSpace(Model.MetadataError))
+    {
+        <p class="metadata-error">@Model.MetadataError</p>
+    }
+
+    @if (Model.SearchResults.Count > 0)
+    {
+        <div class="metadata-results">
+            @foreach (var candidate in Model.SearchResults)
+            {
+                <article class="metadata-result">
+                    <div class="metadata-result-poster">
+                        @if (!string.IsNullOrWhiteSpace(candidate.CoverImageUrl))
+                        {
+                            <img src="@candidate.CoverImageUrl"
+                                 alt=""
+                                 loading="lazy"
+                                 referrerpolicy="no-referrer" />
+                        }
+                        else
+                        {
+                            <span>@candidate.PreferredTitle[..1]</span>
+                        }
+                    </div>
+                    <div class="metadata-result-copy">
+                        <strong>@candidate.PreferredTitle</strong>
+                        @if (!string.IsNullOrWhiteSpace(candidate.NativeTitle))
+                        {
+                            <span lang="ja">@candidate.NativeTitle</span>
+                        }
+                        <small>
+                            @if (candidate.SeasonYear is int year)
+                            {
+                                <text>@year</text>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(candidate.Format))
+                            {
+                                <text> · @candidate.Format</text>
+                            }
+                            @if (candidate.EpisodeCount is int count)
+                            {
+                                <text> · @count eps</text>
+                            }
+                        </small>
+                    </div>
+                    <form method="post"
+                          asp-page-handler="MatchMetadata"
+                          asp-route-id="@Model.AnimeId">
+                        <input type="hidden" name="provider" value="@candidate.Provider" />
+                        <input type="hidden" name="externalId" value="@candidate.ExternalId" />
+                        <button class="button" type="submit">
+                            @(Model.Metadata?.Provider == candidate.Provider &&
+                              Model.Metadata?.ExternalId == candidate.ExternalId
+                                ? "Matched"
+                                : "Use")
+                        </button>
+                    </form>
+                </article>
+            }
+        </div>
+    }
+</section>
 
 <div class="episode-list">
     @foreach (var episode in Model.Episodes)

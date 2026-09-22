@@ -28,7 +28,8 @@ else
             <partial name="_MediaCard" model='new MediaCardModel(
                 anime.Title,
                 $"{anime.EpisodeCount} episodes",
-                $"/Library/Anime/{anime.Id}")' />
+                $"/Library/Anime/{anime.Id}",
+                ImageUrl: anime.CoverImageUrl)' />
         }
     </div>
 }

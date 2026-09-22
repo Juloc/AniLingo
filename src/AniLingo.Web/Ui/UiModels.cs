@@ -7,4 +7,5 @@ public sealed record MediaCardModel(
     string Subtitle,
     string Href,
     int? ProgressPercent = null,
-    string? Badge = null);
+    string? Badge = null,
+    string? ImageUrl = null);

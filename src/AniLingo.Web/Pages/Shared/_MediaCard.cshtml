@@ -1,7 +1,18 @@
 @model MediaCardModel
 <a class="media-card" href="@Model.Href">
     <div class="media-poster">
-        <span>@(Model.Title.Length > 0 ? Model.Title[..1].ToUpperInvariant() : "A")</span>
+        @if (!string.IsNullOrWhiteSpace(Model.ImageUrl))
+        {
+            <img class="media-poster-image"
+                 src="@Model.ImageUrl"
+                 alt=""
+                 loading="lazy"
+                 referrerpolicy="no-referrer" />
+        }
+        else
+        {
+            <span>@(Model.Title.Length > 0 ? Model.Title[..1].ToUpperInvariant() : "A")</span>
+        }
         @if (!string.IsNullOrWhiteSpace(Model.Badge))
         {
             <span class="media-badge">@Model.Badge</span>

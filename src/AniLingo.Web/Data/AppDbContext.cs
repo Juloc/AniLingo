@@ -1,5 +1,6 @@
 using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Library;
+using AniLingo.Web.Features.Metadata;
 using AniLingo.Web.Features.Subtitles;
 using AniLingo.Web.Features.Vocabulary;
 using Microsoft.EntityFrameworkCore;
@@ -12,6 +13,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<Anime> Anime => Set<Anime>();
     public DbSet<Episode> Episodes => Set<Episode>();
     public DbSet<MediaFile> MediaFiles => Set<MediaFile>();
+    public DbSet<AnimeMetadata> AnimeMetadata => Set<AnimeMetadata>();
     public DbSet<SubtitleTrack> SubtitleTracks => Set<SubtitleTrack>();
     public DbSet<SubtitleCue> SubtitleCues => Set<SubtitleCue>();
     public DbSet<Term> Terms => Set<Term>();
@@ -35,6 +37,25 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(x => x.Key).HasMaxLength(300);
             entity.Property(x => x.Title).HasMaxLength(300);
             entity.HasIndex(x => x.Key).IsUnique();
+        });
+
+        modelBuilder.Entity<AnimeMetadata>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Provider).HasMaxLength(80);
+            entity.Property(x => x.ExternalId).HasMaxLength(200);
+            entity.Property(x => x.PreferredTitle).HasMaxLength(500);
+            entity.Property(x => x.RomajiTitle).HasMaxLength(500);
+            entity.Property(x => x.EnglishTitle).HasMaxLength(500);
+            entity.Property(x => x.NativeTitle).HasMaxLength(500);
+            entity.Property(x => x.CoverImageUrl).HasMaxLength(2048);
+            entity.Property(x => x.BannerImageUrl).HasMaxLength(2048);
+            entity.Property(x => x.Format).HasMaxLength(80);
+            entity.Property(x => x.Status).HasMaxLength(80);
+            entity.Property(x => x.Season).HasMaxLength(80);
+            entity.HasOne<Anime>().WithOne().HasForeignKey<AnimeMetadata>(x => x.AnimeId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(x => x.AnimeId).IsUnique();
+            entity.HasIndex(x => new { x.Provider, x.ExternalId }).IsUnique();
         });
 
         modelBuilder.Entity<Episode>(entity =>
