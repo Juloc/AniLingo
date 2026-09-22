@@ -5,7 +5,8 @@ namespace AniLingo.Web.Features.Vocabulary;
 
 public sealed class VocabularyService(
     AppDbContext db,
-    JapaneseTermExtractor extractor)
+    JapaneseTermExtractor extractor,
+    JapaneseDictionary dictionary)
 {
     public async Task RebuildEpisodeAsync(Guid episodeId, CancellationToken cancellationToken)
     {
@@ -17,19 +18,26 @@ public sealed class VocabularyService(
             select new { cue.Text, cue.StartMs })
             .ToListAsync(cancellationToken);
 
-        var aggregate = new Dictionary<string, (int Count, int FirstMs)>(StringComparer.Ordinal);
+        var aggregate = new Dictionary<string, TermAggregate>(StringComparer.Ordinal);
 
         foreach (var cue in cues)
         {
-            foreach (var canonical in extractor.Extract(cue.Text))
+            foreach (var candidate in extractor.Extract(cue.Text))
             {
-                if (aggregate.TryGetValue(canonical, out var current))
+                if (aggregate.TryGetValue(candidate.Canonical, out var current))
                 {
-                    aggregate[canonical] = (current.Count + 1, current.FirstMs);
+                    aggregate[candidate.Canonical] = current with
+                    {
+                        Count = current.Count + 1,
+                        Reading = PreferReading(current.Reading, candidate.Reading)
+                    };
                 }
                 else
                 {
-                    aggregate[canonical] = (1, cue.StartMs);
+                    aggregate[candidate.Canonical] = new TermAggregate(
+                        Count: 1,
+                        FirstMs: cue.StartMs,
+                        Reading: candidate.Reading);
                 }
             }
         }
@@ -50,11 +58,34 @@ public sealed class VocabularyService(
 
         foreach (var canonical in canonicalTerms)
         {
-            if (!terms.ContainsKey(canonical))
+            var analyzed = aggregate[canonical];
+            var dictionaryEntry = dictionary.Find(canonical);
+            var reading = PreferReading(analyzed.Reading, dictionaryEntry?.Reading);
+            var meaning = dictionaryEntry?.Meaning;
+
+            if (!terms.TryGetValue(canonical, out var term))
             {
-                var term = new Term { Language = "ja", Canonical = canonical };
+                term = new Term
+                {
+                    Language = "ja",
+                    Canonical = canonical,
+                    Reading = NullIfEmpty(reading),
+                    Meaning = NullIfEmpty(meaning)
+                };
+
                 terms.Add(canonical, term);
                 db.Terms.Add(term);
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(term.Reading) && !string.IsNullOrWhiteSpace(reading))
+            {
+                term.Reading = reading;
+            }
+
+            if (string.IsNullOrWhiteSpace(term.Meaning) && !string.IsNullOrWhiteSpace(meaning))
+            {
+                term.Meaning = meaning;
             }
         }
 
@@ -70,4 +101,12 @@ public sealed class VocabularyService(
 
         await db.SaveChangesAsync(cancellationToken);
     }
+
+    private static string? PreferReading(string? primary, string? fallback) =>
+        !string.IsNullOrWhiteSpace(primary) ? primary : fallback;
+
+    private static string? NullIfEmpty(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value;
+
+    private sealed record TermAggregate(int Count, int FirstMs, string? Reading);
 }
