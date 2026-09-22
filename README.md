@@ -1,5 +1,7 @@
 # AniLingo
 
+Current release: **0.1.0-alpha.1**
+
 AniLingo is a Docker-first Japanese learning companion for an existing anime library. It scans media from a read-only NAS mount, imports nearby Japanese subtitles, builds episode vocabulary, and lets you mark terms as known or review them before watching.
 
 ## v0.1
@@ -33,7 +35,7 @@ The minimal stack is:
 ```yaml
 services:
   anilingo:
-    image: ghcr.io/juloc/anilingo:latest
+    image: ghcr.io/juloc/anilingo:0.1.0-alpha.1
     volumes:
       - anilingo-data:/data
       - /path/to/anime:/media/anime:ro
@@ -46,7 +48,7 @@ volumes:
   anilingo-data:
 ```
 
-Replace `/path/to/anime` with the host path of the existing anime library, then run:
+The example is pinned to the current alpha release. Replace `/path/to/anime` with the host path of the existing anime library, then run:
 
 ```bash
 docker compose up -d
