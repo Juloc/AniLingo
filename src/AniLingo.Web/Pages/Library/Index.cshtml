@@ -1,0 +1,34 @@
+@page
+@model AniLingo.Web.Pages.Library.IndexModel
+@{
+    ViewData["Title"] = "Library";
+}
+
+<header class="page-header">
+    <div>
+        <span class="eyebrow">Library</span>
+        <h1>Your anime</h1>
+        <p>Content discovered from configured NAS roots.</p>
+    </div>
+    <a class="button" href="/Settings">Manage roots</a>
+</header>
+
+@if (Model.Anime.Count == 0)
+{
+    <div class="empty-state">
+        <h3>Library is empty</h3>
+        <p>Add a root and run the first scan.</p>
+    </div>
+}
+else
+{
+    <div class="media-grid">
+        @foreach (var anime in Model.Anime)
+        {
+            <partial name="_MediaCard" model='new MediaCardModel(
+                anime.Title,
+                $"{anime.EpisodeCount} episodes",
+                $"/Library/Anime/{anime.Id}")' />
+        }
+    </div>
+}

@@ -1,0 +1,50 @@
+@page
+@model AniLingo.Web.Pages.Learn.IndexModel
+@{
+    ViewData["Title"] = "Learn";
+    var current = Model.Due.FirstOrDefault();
+}
+
+<header class="page-header">
+    <div>
+        <span class="eyebrow">Review</span>
+        <h1>Learn</h1>
+        <p>@Model.Due.Count due now.</p>
+    </div>
+</header>
+
+@if (current is null)
+{
+    <div class="empty-state centered">
+        <div class="empty-symbol">✓</div>
+        <h3>Nothing due</h3>
+        <p>Add terms from an episode or return later.</p>
+        <a class="button" href="/Library">Open library</a>
+    </div>
+}
+else
+{
+    <section class="review-stage">
+        <div class="review-card">
+            <span class="review-counter">@Model.Due.Count due</span>
+            <div class="review-term" lang="ja">@current.Canonical</div>
+            @if (!string.IsNullOrWhiteSpace(current.Reading))
+            {
+                <div class="review-reading">@current.Reading</div>
+            }
+            <div class="review-answer">
+                @(string.IsNullOrWhiteSpace(current.Meaning)
+                    ? "Dictionary enrichment is not available in v0.1 yet."
+                    : current.Meaning)
+            </div>
+        </div>
+
+        <form method="post" asp-page-handler="Review" class="review-actions">
+            <input type="hidden" name="termId" value="@current.TermId" />
+            <button name="rating" value="Again" class="review-button"><strong>Again</strong><span>10 min</span></button>
+            <button name="rating" value="Hard" class="review-button"><strong>Hard</strong><span>short</span></button>
+            <button name="rating" value="Good" class="review-button primary"><strong>Good</strong><span>normal</span></button>
+            <button name="rating" value="Easy" class="review-button"><strong>Easy</strong><span>long</span></button>
+        </form>
+    </section>
+}

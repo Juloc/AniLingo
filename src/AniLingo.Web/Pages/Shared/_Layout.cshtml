@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0b0d11" />
+    <title>@ViewData["Title"] - AniLingo</title>
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+</head>
+<body>
+    <div class="app-shell">
+        <partial name="_AppNavigation" />
+        <main class="app-main">
+            @if (TempData["Status"] is string status)
+            {
+                <div class="toast">@status</div>
+            }
+            @RenderBody()
+        </main>
+    </div>
+</body>
+</html>

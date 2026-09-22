@@ -1,0 +1,65 @@
+@page
+@model AniLingo.Web.Pages.Settings.IndexModel
+@{
+    ViewData["Title"] = "Settings";
+}
+
+<header class="page-header">
+    <div>
+        <span class="eyebrow">Settings</span>
+        <h1>Library roots</h1>
+        <p>Paths are resolved inside the AniLingo container.</p>
+    </div>
+</header>
+
+<div class="settings-grid">
+    <section class="panel">
+        <div class="panel-heading">
+            <h2>Configured roots</h2>
+            <span>@Model.Roots.Count</span>
+        </div>
+
+        @if (Model.Roots.Count == 0)
+        {
+            <p class="muted">No roots configured.</p>
+        }
+        else
+        {
+            <div class="root-list">
+                @foreach (var root in Model.Roots)
+                {
+                    <div class="root-row">
+                        <div>
+                            <strong>@root.Name</strong>
+                            <code>@root.Path</code>
+                            <small>
+                                Last scan:
+                                @(root.LastScannedAt?.ToLocalTime().ToString("g") ?? "never")
+                            </small>
+                        </div>
+                        <form method="post" asp-page-handler="Scan">
+                            <input type="hidden" name="rootId" value="@root.Id" />
+                            <button class="button" type="submit">Scan</button>
+                        </form>
+                    </div>
+                }
+            </div>
+        }
+    </section>
+
+    <section class="panel">
+        <div class="panel-heading"><h2>Add root</h2></div>
+        <form method="post" asp-page-handler="Add" class="form-stack">
+            <div asp-validation-summary="ModelOnly" class="validation"></div>
+            <label>
+                <span>Name</span>
+                <input asp-for="Name" />
+            </label>
+            <label>
+                <span>Container path</span>
+                <input asp-for="Path" />
+            </label>
+            <button class="button button-primary" type="submit">Add library root</button>
+        </form>
+    </section>
+</div>
