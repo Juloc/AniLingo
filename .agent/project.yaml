@@ -1,0 +1,20 @@
+project: AniLingo
+repository: Juloc/AniLingo
+coordination:
+  repository: Juloc/agent-control
+  issue: 1
+  hubUrl: null
+relatedRepositories:
+  - Juloc/agent-control
+validation:
+  - dotnet restore AniLingo.sln
+  - dotnet build AniLingo.sln --no-restore
+  - dotnet test AniLingo.sln --no-build
+protectedPaths:
+  - AGENTS.md
+  - .agent/project.yaml
+notes:
+  - GitHub is the durable source of truth.
+  - Keep AniLingo a modular monolith; do not introduce microservices or duplicate state/configuration paths.
+  - Razor Pages are page boundaries; shared UI belongs in reusable components/partials.
+  - Prefer focused tests for parsing, scanning, aggregation and scheduling behavior rather than trivial plumbing.
