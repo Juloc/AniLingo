@@ -1,5 +1,6 @@
 @page
 @model AniLingo.Web.Pages.Learn.IndexModel
+@using AniLingo.Web.Features.Ai
 @using AniLingo.Web.Features.Learning
 @{
     ViewData["Title"] = "Learn";
@@ -45,6 +46,38 @@ else
             <div class="panel">
                 <span class="eyebrow">Anime context</span>
                 <p lang="ja">@context.Sentence</p>
+
+                @if (Model.LocalHints.Count > 0)
+                {
+                    <p class="muted">
+                        Local: @string.Join(" · ", Model.LocalHints)
+                    </p>
+                }
+
+                @if (Model.AiExplanation is { } explanation)
+                {
+                    <div>
+                        <strong>@explanation.Translation</strong>
+
+                        @if (explanation.Grammar.Count > 0)
+                        {
+                            <p class="muted">Grammar: @string.Join(" · ", explanation.Grammar)</p>
+                        }
+
+                        @if (explanation.Colloquial.Count > 0)
+                        {
+                            <p class="muted">Speech: @string.Join(" · ", explanation.Colloquial)</p>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <form method="post" asp-page-handler="Explain">
+                        <input type="hidden" name="termId" value="@current.TermId" />
+                        <button class="button" type="submit">Explain with AI</button>
+                    </form>
+                }
+
                 <a class="text-link" href="/Library/Episode/@context.EpisodeId">
                     @context.AnimeTitle · S@(context.SeasonNumber.ToString("00")) E@(context.EpisodeNumber.ToString("00"))
                     · @context.EpisodeTitle · @context.TimestampLabel

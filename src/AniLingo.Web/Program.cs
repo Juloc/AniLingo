@@ -66,6 +66,8 @@ builder.Services.AddHttpClient<AniListAccountService>(client =>
 
 builder.Services.AddSingleton<CodexCliProvider>();
 builder.Services.AddSingleton<IAiProvider>(services => services.GetRequiredService<CodexCliProvider>());
+builder.Services.AddSingleton<IAiSentenceExplainer>(services => services.GetRequiredService<CodexCliProvider>());
+builder.Services.AddScoped<AiSentenceExplanationService>();
 
 builder.Services.AddSingleton<BackgroundJobQueue>();
 builder.Services.AddHostedService<BackgroundJobWorker>();

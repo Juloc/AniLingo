@@ -1,3 +1,4 @@
+using AniLingo.Web.Features.Ai;
 using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Library;
 using AniLingo.Web.Features.Metadata;
@@ -21,6 +22,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<UserTerm> UserTerms => Set<UserTerm>();
     public DbSet<Review> Reviews => Set<Review>();
     public DbSet<LearningPreferences> LearningPreferences => Set<LearningPreferences>();
+    public DbSet<AiSentenceExplanationCache> AiSentenceExplanationCache => Set<AiSentenceExplanationCache>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -135,6 +137,13 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         {
             entity.HasKey(x => x.ProfileId);
             entity.Property(x => x.ProfileId).HasMaxLength(80);
+        });
+
+        modelBuilder.Entity<AiSentenceExplanationCache>(entity =>
+        {
+            entity.HasKey(x => x.CacheKey);
+            entity.Property(x => x.CacheKey).HasMaxLength(64);
+            entity.Property(x => x.ProviderId).HasMaxLength(80);
         });
     }
 }
