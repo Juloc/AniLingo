@@ -165,9 +165,9 @@
     @foreach (var episode in Model.Episodes)
     {
         <a class="episode-row" href="/Library/Episode/@episode.Id">
-            <div class="episode-number">E@episode.Number.ToString("00")</div>
+            <div class="episode-number">E@(episode.Number.ToString("00"))</div>
             <div class="episode-main">
-                <strong>S@episode.SeasonNumber.ToString("00") · @episode.Title</strong>
+                <strong>S@(episode.SeasonNumber.ToString("00")) · @episode.Title</strong>
                 <span>
                     @if (episode.JapaneseSubtitleTracks == 0)
                     {
