@@ -70,7 +70,7 @@ public sealed class AniListAccountTests
     {
         var expected = new DateTimeOffset(2027, 9, 22, 12, 0, 0, TimeSpan.Zero);
         var header = Base64Url("""{"alg":"none"}""");
-        var payload = Base64Url($"{{"exp":{expected.ToUnixTimeSeconds()}}}");
+        var payload = Base64Url($"{{\"exp\":{expected.ToUnixTimeSeconds()}}}");
         var token = $"{header}.{payload}.signature";
 
         var expiry = AniListAccountService.TryReadTokenExpiry(token);
