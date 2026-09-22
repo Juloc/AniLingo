@@ -99,7 +99,10 @@ public sealed class MetadataTests
         using var db = new AppDbContext(options);
         var differ = db.GetService<IMigrationsModelDiffer>();
         var runtimeModel = db.GetService<IDesignTimeModel>().Model;
-        var snapshotModel = new AppDbContextModelSnapshot().Model;
+        var initializer = db.GetService<IModelRuntimeInitializer>();
+        var snapshotModel = initializer.Initialize(
+            new AppDbContextModelSnapshot().Model,
+            designTime: true);
 
         var operations = differ.GetDifferences(
             snapshotModel.GetRelationalModel(),
