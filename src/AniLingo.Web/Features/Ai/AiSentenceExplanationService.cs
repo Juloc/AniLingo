@@ -110,7 +110,7 @@ public sealed class AiSentenceExplanationService(
             prepared.Sentence,
             term.Canonical,
             term.Meaning ?? "",
-            string.Join('|', prepared.LocalHints));
+            string.Join("|", prepared.LocalHints));
 
         var cacheKey = Convert.ToHexString(
             SHA256.HashData(Encoding.UTF8.GetBytes(material)));
