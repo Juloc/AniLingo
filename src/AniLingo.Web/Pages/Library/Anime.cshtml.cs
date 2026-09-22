@@ -1,25 +1,65 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Learning;
+using AniLingo.Web.Features.Metadata;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
 
 namespace AniLingo.Web.Pages.Library;
 
-public sealed class AnimeModel(AppDbContext db) : PageModel
+public sealed class AnimeModel(
+    AppDbContext db,
+    AnimeMetadataService metadataService) : PageModel
 {
+    public Guid AnimeId { get; private set; }
     public string AnimeTitle { get; private set; } = "";
+    public string LocalAnimeTitle { get; private set; } = "";
+    public AnimeMetadata? Metadata { get; private set; }
+    public string SearchQuery { get; private set; } = "";
+    public string? MetadataError { get; private set; }
+    public IReadOnlyList<AnimeMetadataCandidate> SearchResults { get; private set; } = [];
     public IReadOnlyList<EpisodeRow> Episodes { get; private set; } = [];
 
-    public async Task<IActionResult> OnGetAsync(Guid id, CancellationToken cancellationToken)
+    public async Task<IActionResult> OnGetAsync(
+        Guid id,
+        string? q,
+        CancellationToken cancellationToken)
     {
-        var anime = await db.Anime.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
+        var anime = await db.Anime
+            .AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
+
         if (anime is null)
         {
             return NotFound();
         }
 
-        AnimeTitle = anime.Title;
+        AnimeId = anime.Id;
+        LocalAnimeTitle = anime.Title;
+        Metadata = await metadataService.GetAsync(id, cancellationToken);
+        AnimeTitle = Metadata?.PreferredTitle ?? anime.Title;
+        SearchQuery = string.IsNullOrWhiteSpace(q) ? anime.Title : q.Trim();
+
+        if (TempData.TryGetValue("MetadataError", out var metadataError))
+        {
+            MetadataError = metadataError?.ToString();
+        }
+
+        if (!string.IsNullOrWhiteSpace(q))
+        {
+            try
+            {
+                SearchResults = await metadataService.SearchAsync(
+                    AniListMetadataProvider.ProviderKey,
+                    SearchQuery,
+                    8,
+                    cancellationToken);
+            }
+            catch (MetadataProviderException exception)
+            {
+                MetadataError = exception.Message;
+            }
+        }
 
         var episodeRows = await db.Episodes
             .AsNoTracking()
@@ -88,6 +128,60 @@ public sealed class AnimeModel(AppDbContext db) : PageModel
             .ToArray();
 
         return Page();
+    }
+
+    public async Task<IActionResult> OnPostMatchMetadataAsync(
+        Guid id,
+        string provider,
+        string externalId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await metadataService.MatchAsync(
+                id,
+                provider,
+                externalId,
+                cancellationToken);
+
+            if (!result.Success)
+            {
+                TempData["MetadataError"] = result.Error;
+            }
+        }
+        catch (MetadataProviderException exception)
+        {
+            TempData["MetadataError"] = exception.Message;
+        }
+
+        return RedirectToPage(new { id });
+    }
+
+    public async Task<IActionResult> OnPostRefreshMetadataAsync(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (!await metadataService.RefreshAsync(id, cancellationToken))
+            {
+                TempData["MetadataError"] = "Metadata could not be refreshed.";
+            }
+        }
+        catch (MetadataProviderException exception)
+        {
+            TempData["MetadataError"] = exception.Message;
+        }
+
+        return RedirectToPage(new { id });
+    }
+
+    public async Task<IActionResult> OnPostRemoveMetadataAsync(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        await metadataService.RemoveAsync(id, cancellationToken);
+        return RedirectToPage(new { id });
     }
 
     private sealed record CoverageRow(
