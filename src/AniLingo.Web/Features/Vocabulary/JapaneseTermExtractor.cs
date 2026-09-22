@@ -1,59 +1,72 @@
 using System.Text;
-using System.Text.RegularExpressions;
 
 namespace AniLingo.Web.Features.Vocabulary;
 
-public sealed partial class JapaneseTermExtractor
+public sealed record JapaneseTermCandidate(string Canonical, string Reading);
+
+public sealed class JapaneseTermExtractor(IJapaneseMorphology morphology)
 {
-    private static readonly string[] TrailingParticles = ["から", "まで", "より", "は", "が", "を", "に", "で", "と", "へ", "も", "の"];
+    private static readonly HashSet<string> IncludedPartsOfSpeech =
+    [
+        "名詞",
+        "動詞",
+        "形容詞",
+        "副詞",
+        "連体詞",
+        "接続詞",
+        "感動詞"
+    ];
 
-    [GeneratedRegex(@"[一-龯々〆ヵヶ]+[ぁ-ゖー]*|[ァ-ヺー]{2,}|[ぁ-ゖー]{2,}", RegexOptions.CultureInvariant)]
-    private static partial Regex CandidateRegex();
-
-    public IReadOnlyList<string> Extract(string text)
+    public IReadOnlyList<JapaneseTermCandidate> Extract(string text)
     {
-        var normalized = text.Normalize(NormalizationForm.FormKC);
-        var result = new List<string>();
+        var result = new List<JapaneseTermCandidate>();
 
-        foreach (Match match in CandidateRegex().Matches(normalized))
+        foreach (var token in morphology.Analyze(text))
         {
-            var candidate = match.Value.Trim();
-            if (candidate.Length == 0)
+            if (!IncludedPartsOfSpeech.Contains(token.PartOfSpeech))
             {
                 continue;
             }
 
-            foreach (var term in SplitTrailingParticle(candidate))
+            var canonical = token.Canonical.Normalize(NormalizationForm.FormKC).Trim();
+            if (!ContainsJapanese(canonical))
             {
-                if (IsUseful(term))
-                {
-                    result.Add(term);
-                }
+                continue;
             }
+
+            var reading = ToHiragana(token.Reading.Normalize(NormalizationForm.FormKC).Trim());
+            if (!ContainsJapanese(reading))
+            {
+                reading = "";
+            }
+
+            result.Add(new JapaneseTermCandidate(canonical, reading));
         }
 
         return result;
     }
 
-    private static IEnumerable<string> SplitTrailingParticle(string candidate)
+    internal static string ToHiragana(string value)
     {
-        foreach (var particle in TrailingParticles)
+        var chars = value.ToCharArray();
+
+        for (var index = 0; index < chars.Length; index++)
         {
-            if (candidate.Length > particle.Length &&
-                candidate.EndsWith(particle, StringComparison.Ordinal) &&
-                ContainsKanji(candidate))
+            if (chars[index] is >= 'ァ' and <= 'ヶ')
             {
-                yield return candidate[..^particle.Length];
-                yield break;
+                chars[index] = (char)(chars[index] - 0x60);
             }
         }
 
-        yield return candidate;
+        return new string(chars);
     }
 
-    private static bool IsUseful(string value) =>
-        value.Length >= 2 || ContainsKanji(value);
-
-    private static bool ContainsKanji(string value) =>
-        value.Any(ch => ch is >= '\u4e00' and <= '\u9fff' or '々' or '〆');
+    private static bool ContainsJapanese(string value) =>
+        value.Any(character =>
+            character is >= '\u3040' and <= '\u30ff'
+                or >= '\u3400' and <= '\u4dbf'
+                or >= '\u4e00' and <= '\u9fff'
+                or '々'
+                or '〆'
+                or 'ヶ');
 }
