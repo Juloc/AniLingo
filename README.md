@@ -1,6 +1,6 @@
 # AniLingo
 
-Current release: **0.1.0-alpha.6**
+Current release: **0.1.0-alpha.7**
 
 AniLingo is a Docker-first Japanese learning companion for an existing anime library. It scans media from a read-only NAS mount, imports nearby Japanese subtitles, builds episode vocabulary, and lets you mark terms as known or review them before watching.
 
@@ -20,13 +20,14 @@ The first vertical slice includes:
 - device-first playback with cached H.264 remux and HEVC device-remux paths
 - optional server H.264 compatibility transcode when the client cannot decode the source
 - provider-neutral anime metadata with explicit AniList matching and cached artwork
+- secure self-hosted AniList account connection via the official Auth PIN flow
 - known / learning term state
 - FSRS-6 spaced repetition with Again / Hard / Good / Easy interval previews
 - responsive Razor Pages UI with a Jellyfin/Plex-style shell
 - embedded SQLite persistence in the single application container
 - optional Codex CLI connection for later AI-assisted features
 
-AniList account synchronization, AI enrichment and image-based subtitle OCR are later phases. See issue #1 for the staged roadmap.
+AniList watch-progress synchronization, AI enrichment and image-based subtitle OCR are later phases. See issue #1 for the staged roadmap.
 
 ## Docker stack
 
@@ -37,7 +38,7 @@ The minimal stack is:
 ```yaml
 services:
   anilingo:
-    image: ghcr.io/juloc/anilingo:0.1.0-alpha.6
+    image: ghcr.io/juloc/anilingo:0.1.0-alpha.7
     volumes:
       - anilingo-data:/data
       - /path/to/anime:/media/anime:ro
@@ -71,7 +72,7 @@ AniLingo can match each locally discovered anime to AniList without requiring an
 
 Normal Home/Library browsing reads the cached SQLite metadata and makes no AniList request. AniList is queried only when you search, match or refresh metadata. The integration is behind `IAnimeMetadataProvider`, and the database stores `Provider` + `ExternalId` instead of an AniList-specific column on the core `Anime` entity.
 
-AniList user login and watch-progress synchronization are not part of this slice.
+AniList account connection is available under **Settings → AniList**. Self-hosted instances use AniList's Auth PIN flow with the user's own client ID; the access token is protected before it is written under `/data`, and the Data Protection key ring is persisted under `/data/keys`. Watch-progress and list mutations are intentionally not part of this slice.
 
 ## Optional Codex connection
 
