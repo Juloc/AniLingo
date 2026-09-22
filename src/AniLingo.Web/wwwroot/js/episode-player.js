@@ -69,7 +69,8 @@
     let preference = readPreference();
     let runtimeDeviceFailed = false;
     let effectiveMode = "device";
-    let refreshScheduled = false;
+    let pendingResumeTime = null;
+    let resumeShouldPlay = false;
     modeSelect.value = preference;
 
     const deviceAllowed = () =>
@@ -152,15 +153,6 @@
         }
     };
 
-    const scheduleRefresh = () => {
-        if (refreshScheduled) {
-            return;
-        }
-
-        refreshScheduled = true;
-        window.setTimeout(() => window.location.reload(), 2500);
-    };
-
     const applyPlayback = () => {
         effectiveMode = chooseMode();
         let option = options[effectiveMode];
@@ -203,9 +195,6 @@
 
         hideVideo();
 
-        if (option.availability === "preparing") {
-            scheduleRefresh();
-        }
     };
 
     modeSelect.addEventListener("change", () => {
@@ -307,7 +296,19 @@
 
     video.addEventListener("timeupdate", sync);
     video.addEventListener("seeked", sync);
-    video.addEventListener("loadedmetadata", sync);
+    video.addEventListener("loadedmetadata", () => {
+        if (pendingResumeTime !== null && Number.isFinite(pendingResumeTime)) {
+            video.currentTime = Math.max(0, pendingResumeTime);
+            pendingResumeTime = null;
+
+            if (resumeShouldPlay) {
+                resumeShouldPlay = false;
+                void video.play().catch(() => {});
+            }
+        }
+
+        sync();
+    });
     video.addEventListener("error", () => {
         if (preference === "auto" && effectiveMode === "device") {
             runtimeDeviceFailed = true;
