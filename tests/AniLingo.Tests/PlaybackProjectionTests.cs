@@ -52,7 +52,7 @@ public sealed class PlaybackProjectionTests
             new("猫", "猫", "ネコ", "名詞"),
             new("が", "が", "ガ", "助詞"),
             new("来た", "来る", "キタ", "動詞"),
-            new("！", "！", "！", "記号")
+            new("!", "!", "!", "記号")
         ];
     }
 }
