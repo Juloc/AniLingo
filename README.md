@@ -14,6 +14,7 @@ The first vertical slice includes:
 - simple spaced review flow behind a replaceable scheduler interface
 - responsive Razor Pages UI with a Jellyfin/Plex-style shell
 - embedded SQLite persistence in the single application container
+- optional Codex CLI connection for later AI-assisted features
 
 AniList, AI enrichment, embedded subtitle extraction and the integrated player are later phases. See issue #1 for the staged roadmap.
 
@@ -49,10 +50,20 @@ Open `http://localhost:8097`.
 
 Runtime paths are fixed and intentionally simple:
 
-- `/data` stores the SQLite database and is the only persistent application-data volume.
+- `/data` stores the SQLite database and Codex authentication state.
 - `/media/anime` is the read-only anime library mount.
 
 For an existing Docker stack, replace `default` with that stack's network if needed. No connection string, database password, media environment variable or second service is required.
+
+## Optional Codex connection
+
+The image includes the Codex CLI, but AniLingo does not require AI to scan media or learn vocabulary.
+
+Open **Settings → AI** and choose **Connect with ChatGPT**. AniLingo starts the Codex device-code flow inside the container and shows the OpenAI login link and one-time code. The resulting Codex credentials are kept under `/data/codex`, so they survive normal container recreation as part of the existing data volume.
+
+Device-code authorization may need to be enabled in the ChatGPT security settings or workspace permissions. AniLingo never reads or displays the stored credential file itself; status and logout are delegated to the Codex CLI.
+
+The initial integration deliberately exposes no generic prompt or agent execution endpoint. AI capabilities will be added only for narrow learning tasks where they are useful. The provider boundary allows later API-key or other-engine providers without coupling them to the learning pages.
 
 ## Expected media layout
 
@@ -82,7 +93,7 @@ EF Core / filesystem / external integration
 
 Pages are page boundaries. Shared visual patterns stay in shared partials/components. JavaScript is reserved for interactions that require it; v0.1 does not use a client-side application shell.
 
-Core areas live under `Features/Library`, `Features/Subtitles`, `Features/Vocabulary` and `Features/Learning`. Future playback, AniList metadata and AI enrichment extend those boundaries instead of replacing them.
+Core areas live under `Features/Library`, `Features/Subtitles`, `Features/Vocabulary`, `Features/Learning` and the optional `Features/Ai` provider boundary. Future playback, AniList metadata and AI enrichment extend those boundaries instead of replacing them.
 
 ## v0.1 limitations
 
