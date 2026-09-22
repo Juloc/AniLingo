@@ -255,6 +255,48 @@ button, input { font: inherit; }
 }
 
 
+
+.subtitle-source-panel { margin-bottom: 18px; }
+.subtitle-source-panel .panel-heading { align-items: flex-start; }
+.subtitle-source-panel .panel-heading > div { display: grid; gap: 4px; }
+.subtitle-source-panel .panel-heading h2 { margin: 0; }
+.subtitle-source-help { margin: 0 0 14px; font-size: 13px; line-height: 1.5; }
+.subtitle-source-message {
+    margin: 0 0 12px; padding: 10px 12px; border-radius: 8px; font-size: 12px;
+}
+.subtitle-source-message.status-ok { background: rgba(79,180,116,.13); color: #8dd2a6; }
+.subtitle-source-message.status-error { background: rgba(224,105,105,.12); color: #e7a1a1; }
+.active-subtitle-source {
+    display: grid; gap: 3px; margin-bottom: 14px; padding: 12px;
+    border-radius: 9px; background: #0e1116;
+}
+.active-subtitle-source span, .active-subtitle-source small {
+    color: var(--muted); font-size: 12px;
+}
+.subtitle-source-list { display: grid; gap: 7px; }
+.subtitle-source-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 14px;
+    padding: 11px 12px; border: 1px solid var(--border); border-radius: 9px;
+    background: #0e1116;
+}
+.subtitle-source-copy { min-width: 0; display: grid; gap: 3px; }
+.subtitle-source-copy strong {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px;
+}
+.subtitle-source-copy span, .subtitle-source-empty {
+    color: var(--muted); font-size: 12px;
+}
+.subtitle-source-row form { margin: 0; flex: none; }
+.subtitle-source-empty {
+    padding: 12px; border: 1px dashed rgba(255,255,255,.11); border-radius: 9px;
+}
+
+@media (max-width: 620px) {
+    .subtitle-source-row { align-items: stretch; flex-direction: column; }
+    .subtitle-source-row .button { width: 100%; }
+    .subtitle-source-row .status-pill { width: fit-content; }
+}
+
 /* Episode playback */
 .player-panel {
     margin-bottom: 22px; overflow: hidden; border: 1px solid var(--border);
