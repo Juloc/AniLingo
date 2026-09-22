@@ -40,6 +40,18 @@ else
             </div>
         </div>
 
+        @if (Model.Context is { } context)
+        {
+            <div class="panel">
+                <span class="eyebrow">Anime context</span>
+                <p lang="ja">@context.Sentence</p>
+                <a class="text-link" href="/Library/Episode/@context.EpisodeId">
+                    @context.AnimeTitle · S@(context.SeasonNumber.ToString("00")) E@(context.EpisodeNumber.ToString("00"))
+                    · @context.EpisodeTitle · @context.TimestampLabel
+                </a>
+            </div>
+        }
+
         <form method="post" asp-page-handler="Review" class="review-actions">
             <input type="hidden" name="termId" value="@current.TermId" />
             <button name="rating" value="Again" class="review-button">

@@ -148,3 +148,25 @@ public sealed record DueReviewItem(
     string? Reading,
     string? Meaning,
     int IntervalDays);
+
+
+public sealed record ReviewAnimeContext(
+    Guid EpisodeId,
+    string AnimeTitle,
+    int SeasonNumber,
+    int EpisodeNumber,
+    string EpisodeTitle,
+    int CueStartMs,
+    string Sentence)
+{
+    public string TimestampLabel
+    {
+        get
+        {
+            var time = TimeSpan.FromMilliseconds(Math.Max(0, CueStartMs));
+            return time.TotalHours >= 1
+                ? $"{(int)time.TotalHours}:{time.Minutes:00}:{time.Seconds:00}"
+                : $"{(int)time.TotalMinutes}:{time.Seconds:00}";
+        }
+    }
+}
