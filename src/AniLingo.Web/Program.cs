@@ -5,9 +5,11 @@ using AniLingo.Web.Features.Library;
 using AniLingo.Web.Features.Metadata;
 using AniLingo.Web.Features.Playback;
 using AniLingo.Web.Features.Subtitles;
+using AniLingo.Web.Features.Tracking;
 using AniLingo.Web.Features.Vocabulary;
 using AniLingo.Web.Infrastructure;
 using AniLingo.Web.Infrastructure.Ai;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
@@ -15,6 +17,12 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddRazorPages();
 builder.Services.Configure<MediaOptions>(builder.Configuration.GetSection(MediaOptions.SectionName));
+
+var dataProtectionDirectory = new DirectoryInfo("/data/keys");
+Directory.CreateDirectory(dataProtectionDirectory.FullName);
+builder.Services.AddDataProtection()
+    .SetApplicationName("AniLingo")
+    .PersistKeysToFileSystem(dataProtectionDirectory);
 
 var connectionString = builder.Configuration.GetConnectionString("Default")
     ?? throw new InvalidOperationException("ConnectionStrings:Default is required.");
@@ -47,6 +55,14 @@ builder.Services.AddHttpClient<AniListMetadataProvider>(client =>
 builder.Services.AddScoped<IAnimeMetadataProvider>(
     services => services.GetRequiredService<AniListMetadataProvider>());
 builder.Services.AddScoped<AnimeMetadataService>();
+
+builder.Services.AddSingleton<AniListAccountStore>();
+builder.Services.AddHttpClient<AniListAccountService>(client =>
+{
+    client.BaseAddress = new Uri("https://graphql.anilist.co/");
+    client.Timeout = TimeSpan.FromSeconds(15);
+    client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
+});
 
 builder.Services.AddSingleton<CodexCliProvider>();
 builder.Services.AddSingleton<IAiProvider>(services => services.GetRequiredService<CodexCliProvider>());
