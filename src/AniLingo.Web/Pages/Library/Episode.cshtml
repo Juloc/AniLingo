@@ -40,6 +40,21 @@
         <div class="subtitle-source-message status-error">@Model.SubtitleError</div>
     }
 
+    @if (Model.ActiveSubtitle is null &&
+         Model.Transcription.Status is AudioTranscriptionStatus.Queued or AudioTranscriptionStatus.Processing)
+    {
+        <div class="subtitle-source-message status-warning">
+            Generating Japanese transcript from the episode audio locally. Playback can start immediately.
+        </div>
+    }
+    else if (Model.ActiveSubtitle is null &&
+             Model.Transcription.Status == AudioTranscriptionStatus.Failed)
+    {
+        <div class="subtitle-source-message status-error">
+            @(Model.Transcription.Message ?? "Japanese audio transcription failed.")
+        </div>
+    }
+
     @if (Model.ActiveSubtitle is { } active)
     {
         <div class="active-subtitle-source">
@@ -51,14 +66,14 @@
     else
     {
         <p class="muted subtitle-source-help">
-            AniLingo did not import a Japanese text track automatically. Choose the correct embedded text stream below; its vocabulary will be built immediately.
+            AniLingo did not import a Japanese text track automatically. If no Japanese text stream is detected, a local Japanese audio transcription is queued automatically while playback remains available.
         </p>
     }
 
     @if (Model.SubtitleSources.Count == 0)
     {
         <div class="subtitle-source-empty">
-            No embedded subtitle streams were found in this media file.
+            No embedded subtitle streams were found. AniLingo will use local Japanese audio transcription as the fallback.
         </div>
     }
     else
@@ -127,37 +142,7 @@
 
             <div class="playback-preparation" data-playback-placeholder>
                 <span class="eyebrow">Browser playback</span>
-                <strong data-playback-status>Checking this device…</strong>
-
-                @if (media.Device.CanPrepare)
-                {
-                    <form method="post"
-                          asp-page-handler="PreparePlayback"
-                          asp-route-id="@Model.EpisodeId"
-                          data-prepare-form="device"
-                          hidden>
-                        <input type="hidden" name="mode" value="device" />
-                        <button class="button button-primary" type="submit">
-                            Prepare device playback
-                        </button>
-                    </form>
-                }
-
-                @if (media.Server.CanPrepare)
-                {
-                    <form method="post"
-                          asp-page-handler="PreparePlayback"
-                          asp-route-id="@Model.EpisodeId"
-                          data-prepare-form="server"
-                          hidden>
-                        <input type="hidden" name="mode" value="server" />
-                        <button class="button button-primary" type="submit">
-                            Prepare server fallback
-                        </button>
-                    </form>
-                }
-
-                <span class="status-pill status-warning" data-playback-working hidden>Working…</span>
+                <strong data-playback-status>Starting instant playback…</strong>
             </div>
         </div>
 
@@ -204,7 +189,7 @@
 {
     <div class="empty-state">
         <h3>No vocabulary yet</h3>
-        <p>Select a Japanese text subtitle source above and AniLingo will build the vocabulary automatically. If the file only contains image subtitles such as PGS, OCR support is still required.</p>
+        <p>AniLingo will build vocabulary from a Japanese text source. When none is available, it generates a local Japanese audio transcript automatically. Image subtitles such as PGS can still be replaced by the audio transcript without OCR.</p>
     </div>
 }
 else
