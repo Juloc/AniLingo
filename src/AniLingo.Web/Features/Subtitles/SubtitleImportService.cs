@@ -17,38 +17,68 @@ public sealed class SubtitleImportService(
             return;
         }
 
-        var updatedAt = new DateTimeOffset(info.LastWriteTimeUtc);
-        var track = await db.SubtitleTracks.SingleOrDefaultAsync(x => x.Path == fullPath, cancellationToken);
+        var format = Path.GetExtension(fullPath).TrimStart('.').ToLowerInvariant();
+        var content = await File.ReadAllTextAsync(fullPath, cancellationToken);
 
-        if (track is not null && track.SourceUpdatedAt == updatedAt)
+        await ImportPreferredContentAsync(
+            episodeId,
+            fullPath,
+            format,
+            new DateTimeOffset(info.LastWriteTimeUtc),
+            content,
+            cancellationToken);
+    }
+
+    public async Task ImportPreferredContentAsync(
+        Guid episodeId,
+        string sourceKey,
+        string format,
+        DateTimeOffset sourceUpdatedAt,
+        string content,
+        CancellationToken cancellationToken)
+    {
+        var normalizedFormat = format.Trim().TrimStart('.').ToLowerInvariant();
+        var cues = SubtitleParser.ParseFormat(normalizedFormat, content);
+        var track = await db.SubtitleTracks
+            .SingleOrDefaultAsync(x => x.Path == sourceKey, cancellationToken);
+
+        if (track is not null && track.SourceUpdatedAt == sourceUpdatedAt)
         {
+            var removed = await RemoveOtherJapaneseTracksAsync(episodeId, track.Id, cancellationToken);
+            if (removed > 0)
+            {
+                await vocabularyService.RebuildEpisodeAsync(episodeId, cancellationToken);
+            }
+
             return;
         }
-
-        var content = await File.ReadAllTextAsync(fullPath, cancellationToken);
-        var cues = SubtitleParser.Parse(fullPath, content);
 
         if (track is null)
         {
             track = new SubtitleTrack
             {
                 EpisodeId = episodeId,
-                Path = fullPath,
+                Path = sourceKey,
                 Language = "ja",
-                Format = Path.GetExtension(fullPath).TrimStart('.').ToLowerInvariant(),
-                SourceUpdatedAt = updatedAt
+                Format = normalizedFormat,
+                SourceUpdatedAt = sourceUpdatedAt
             };
             db.SubtitleTracks.Add(track);
-            await db.SaveChangesAsync(cancellationToken);
         }
         else
         {
-            track.SourceUpdatedAt = updatedAt;
+            track.EpisodeId = episodeId;
+            track.Language = "ja";
+            track.Format = normalizedFormat;
+            track.SourceUpdatedAt = sourceUpdatedAt;
             track.ImportedAt = DateTimeOffset.UtcNow;
+
             await db.SubtitleCues
                 .Where(x => x.SubtitleTrackId == track.Id)
                 .ExecuteDeleteAsync(cancellationToken);
         }
+
+        await RemoveOtherJapaneseTracksAsync(episodeId, track.Id, cancellationToken);
 
         db.SubtitleCues.AddRange(cues.Select(cue => new SubtitleCue
         {
@@ -61,4 +91,15 @@ public sealed class SubtitleImportService(
         await db.SaveChangesAsync(cancellationToken);
         await vocabularyService.RebuildEpisodeAsync(episodeId, cancellationToken);
     }
+
+    private Task<int> RemoveOtherJapaneseTracksAsync(
+        Guid episodeId,
+        Guid preferredTrackId,
+        CancellationToken cancellationToken) =>
+        db.SubtitleTracks
+            .Where(x =>
+                x.EpisodeId == episodeId &&
+                x.Language == "ja" &&
+                x.Id != preferredTrackId)
+            .ExecuteDeleteAsync(cancellationToken);
 }

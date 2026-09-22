@@ -9,6 +9,7 @@ The first vertical slice includes:
 - NAS library roots and background scanning
 - deterministic anime / season / episode discovery from paths and filenames
 - external Japanese SRT and ASS subtitle import
+- automatic embedded Japanese text-subtitle extraction through ffmpeg
 - real Japanese morphological analysis with base forms and readings
 - local JMdict meanings with German-first / common-English fallback
 - episode vocabulary frequency and preparation progress
@@ -19,7 +20,7 @@ The first vertical slice includes:
 - embedded SQLite persistence in the single application container
 - optional Codex CLI connection for later AI-assisted features
 
-AniList, AI enrichment, embedded subtitle extraction and transcoding are later phases. See issue #1 for the staged roadmap.
+AniList, AI enrichment, image-based subtitle OCR and video transcoding are later phases. See issue #1 for the staged roadmap.
 
 ## Docker stack
 
@@ -86,7 +87,7 @@ Anime/
         └── Sousou no Frieren - S01E03.ja.srt
 ```
 
-Recognized Japanese subtitle suffixes include `.ja`, `.jpn` and `.japanese` with `.srt` or `.ass`.
+Recognized Japanese subtitle suffixes include `.ja`, `.jpn` and `.japanese` with `.srt` or `.ass`. A nearby external Japanese subtitle is preferred. If none exists, AniLingo probes the media container and extracts the preferred embedded Japanese text track in memory. ASS/SSA, SubRip, WebVTT and mov_text are supported; image subtitle formats such as PGS/DVD/DVB are not OCR'd. The NAS media mount remains read-only.
 
 ## Architecture
 
