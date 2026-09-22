@@ -23,9 +23,13 @@ public abstract class BackgroundJobQueueBase
         channel.Reader.ReadAllAsync(cancellationToken);
 }
 
-public sealed class BackgroundJobQueue : BackgroundJobQueueBase;
+public sealed class BackgroundJobQueue : BackgroundJobQueueBase
+{
+}
 
-public sealed class PlaybackJobQueue : BackgroundJobQueueBase;
+public sealed class PlaybackJobQueue : BackgroundJobQueueBase
+{
+}
 
 public abstract class BackgroundJobWorkerBase<TQueue>(
     TQueue queue,
@@ -58,10 +62,14 @@ public sealed class BackgroundJobWorker(
     BackgroundJobQueue queue,
     IServiceScopeFactory scopeFactory,
     ILogger<BackgroundJobWorker> logger)
-    : BackgroundJobWorkerBase<BackgroundJobQueue>(queue, scopeFactory, logger);
+    : BackgroundJobWorkerBase<BackgroundJobQueue>(queue, scopeFactory, logger)
+{
+}
 
 public sealed class PlaybackJobWorker(
     PlaybackJobQueue queue,
     IServiceScopeFactory scopeFactory,
     ILogger<PlaybackJobWorker> logger)
-    : BackgroundJobWorkerBase<PlaybackJobQueue>(queue, scopeFactory, logger);
+    : BackgroundJobWorkerBase<PlaybackJobQueue>(queue, scopeFactory, logger)
+{
+}
