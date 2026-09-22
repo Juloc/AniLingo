@@ -311,3 +311,12 @@ button, input { font: inherit; }
     .player-meta, .word-inspector { align-items: stretch; flex-direction: column; }
     .word-inspector-actions { justify-content: space-between; }
 }
+
+
+.player-placeholder { display: grid; place-items: center; min-height: 260px; }
+.playback-preparation {
+    max-width: 620px; display: grid; justify-items: center; gap: 10px;
+    padding: 28px; text-align: center;
+}
+.playback-preparation strong { font-size: 17px; }
+.playback-preparation form { margin: 4px 0 0; }

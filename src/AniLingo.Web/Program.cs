@@ -20,6 +20,7 @@ var connectionString = builder.Configuration.GetConnectionString("Default")
 
 builder.Services.AddDbContext<AppDbContext>(options => options.UseSqlite(connectionString));
 
+builder.Services.AddSingleton<MediaProcessRunner>();
 builder.Services.AddScoped<LibraryScanner>();
 builder.Services.AddScoped<SubtitleImportService>();
 builder.Services.AddSingleton<EmbeddedSubtitleExtractor>();
@@ -31,6 +32,9 @@ builder.Services.AddSingleton<IReviewScheduler, FsrsReviewScheduler>();
 builder.Services.AddScoped<LearningService>();
 builder.Services.AddScoped<EpisodePreparationService>();
 builder.Services.AddSingleton<PlaybackCueProjector>();
+builder.Services.AddSingleton<PlaybackMediaProbe>();
+builder.Services.AddSingleton<PlaybackPreparationTracker>();
+builder.Services.AddScoped<PlaybackRemuxService>();
 builder.Services.AddScoped<PlaybackService>();
 
 builder.Services.AddSingleton<CodexCliProvider>();

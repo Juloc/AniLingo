@@ -1,4 +1,4 @@
-using System.Diagnostics;
+using AniLingo.Web.Infrastructure;
 using System.Text.Json;
 
 namespace AniLingo.Web.Features.Subtitles;
@@ -16,7 +16,9 @@ public sealed record EmbeddedSubtitleContent(
     string Format,
     string Content);
 
-public sealed class EmbeddedSubtitleExtractor(ILogger<EmbeddedSubtitleExtractor> logger)
+public sealed class EmbeddedSubtitleExtractor(
+    MediaProcessRunner processRunner,
+    ILogger<EmbeddedSubtitleExtractor> logger)
 {
     public const string SourcePrefix = "embedded:";
     private static readonly TimeSpan ProcessTimeout = TimeSpan.FromSeconds(45);
@@ -37,7 +39,7 @@ public sealed class EmbeddedSubtitleExtractor(ILogger<EmbeddedSubtitleExtractor>
         CancellationToken cancellationToken)
     {
         var fullPath = Path.GetFullPath(mediaPath);
-        var probe = await RunAsync(
+        var probe = await processRunner.RunAsync(
             "ffprobe",
             [
                 "-v", "error",
@@ -46,6 +48,7 @@ public sealed class EmbeddedSubtitleExtractor(ILogger<EmbeddedSubtitleExtractor>
                 "-of", "json",
                 fullPath
             ],
+            ProcessTimeout,
             cancellationToken);
 
         if (probe is null || probe.ExitCode != 0)
@@ -55,7 +58,7 @@ public sealed class EmbeddedSubtitleExtractor(ILogger<EmbeddedSubtitleExtractor>
                 logger.LogWarning(
                     "ffprobe failed for {MediaPath}: {Error}",
                     fullPath,
-                    TrimError(probe.Error));
+                    probe.ErrorSummary);
             }
 
             return null;
@@ -67,7 +70,7 @@ public sealed class EmbeddedSubtitleExtractor(ILogger<EmbeddedSubtitleExtractor>
             return null;
         }
 
-        var extraction = await RunAsync(
+        var extraction = await processRunner.RunAsync(
             "ffmpeg",
             [
                 "-v", "error",
@@ -78,6 +81,7 @@ public sealed class EmbeddedSubtitleExtractor(ILogger<EmbeddedSubtitleExtractor>
                 "-f", "srt",
                 "pipe:1"
             ],
+            ProcessTimeout,
             cancellationToken);
 
         if (extraction is null || extraction.ExitCode != 0)
@@ -88,7 +92,7 @@ public sealed class EmbeddedSubtitleExtractor(ILogger<EmbeddedSubtitleExtractor>
                     "ffmpeg could not extract Japanese subtitle stream {StreamIndex} from {MediaPath}: {Error}",
                     stream.Index,
                     fullPath,
-                    TrimError(extraction.Error));
+                    extraction.ErrorSummary);
             }
 
             return null;
@@ -217,91 +221,4 @@ public sealed class EmbeddedSubtitleExtractor(ILogger<EmbeddedSubtitleExtractor>
         value.ValueKind == JsonValueKind.Number &&
         value.TryGetInt32(out var flag) &&
         flag != 0;
-
-    private async Task<ProcessResult?> RunAsync(
-        string executable,
-        IReadOnlyList<string> arguments,
-        CancellationToken cancellationToken)
-    {
-        using var process = new Process
-        {
-            StartInfo = new ProcessStartInfo
-            {
-                FileName = executable,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            }
-        };
-
-        foreach (var argument in arguments)
-        {
-            process.StartInfo.ArgumentList.Add(argument);
-        }
-
-        try
-        {
-            if (!process.Start())
-            {
-                return null;
-            }
-        }
-        catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception)
-        {
-            logger.LogWarning(exception, "Could not start {Executable}.", executable);
-            return null;
-        }
-
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(ProcessTimeout);
-
-        var outputTask = process.StandardOutput.ReadToEndAsync(timeout.Token);
-        var errorTask = process.StandardError.ReadToEndAsync(timeout.Token);
-
-        try
-        {
-            await process.WaitForExitAsync(timeout.Token);
-            return new ProcessResult(
-                process.ExitCode,
-                await outputTask,
-                await errorTask);
-        }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            TryKill(process);
-            logger.LogWarning(
-                "{Executable} exceeded the {TimeoutSeconds}s media inspection timeout.",
-                executable,
-                ProcessTimeout.TotalSeconds);
-            return null;
-        }
-        catch (OperationCanceledException)
-        {
-            TryKill(process);
-            throw;
-        }
-    }
-
-    private static void TryKill(Process process)
-    {
-        try
-        {
-            if (!process.HasExited)
-            {
-                process.Kill(entireProcessTree: true);
-            }
-        }
-        catch (InvalidOperationException)
-        {
-        }
-    }
-
-    private static string TrimError(string value)
-    {
-        var trimmed = value.Trim();
-        return trimmed.Length <= 500 ? trimmed : trimmed[..500];
-    }
-
-    private sealed record ProcessResult(int ExitCode, string Output, string Error);
 }

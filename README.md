@@ -14,6 +14,7 @@ The first vertical slice includes:
 - local JMdict meanings with German-first / common-English fallback
 - episode vocabulary frequency and preparation progress
 - direct-play episode player with synced, clickable Japanese subtitles
+- cached browser fallback for common H.264 8-bit MKV files without video re-encoding
 - known / learning term state
 - FSRS-6 spaced repetition with Again / Hard / Good / Easy interval previews
 - responsive Razor Pages UI with a Jellyfin/Plex-style shell
@@ -54,7 +55,7 @@ Open `http://localhost:8097`.
 
 Runtime paths are fixed and intentionally simple:
 
-- `/data` stores the SQLite database and Codex authentication state.
+- `/data` stores the SQLite database, Codex authentication state and prepared browser-playback cache.
 - `/media/anime` is the read-only anime library mount.
 
 For an existing Docker stack, replace `default` with that stack's network if needed. No connection string, database password, media environment variable or second service is required.
@@ -73,7 +74,9 @@ The initial integration deliberately exposes no generic prompt or agent executio
 
 Episode pages include an integrated HTML5 direct-play player. AniLingo streams the registered media file with HTTP range support, synchronizes the imported Japanese cue track, and exposes local reading, meaning and learning state when a highlighted subtitle word is clicked. The lookup path is deterministic and does not call AI.
 
-AniLingo does not transcode in this slice. MP4/WebM are the intended direct-play containers and actual codec support still depends on the browser. MKV, AVI and transport-stream containers are exposed with their correct media type but may not direct-play; the player reports that limitation instead of silently falling back to another path.
+AniLingo does not video-transcode in this slice. MP4/WebM remain direct-play paths. For common H.264 8-bit MKV files, AniLingo can prepare a seekable MP4 under `/data/playback-cache`: the video stream is copied without re-encoding and non-AAC first audio is converted to AAC. The original NAS media stays read-only. The cache identity includes the media-file id, source size and source timestamp, so changed source files do not reuse stale prepared media.
+
+HEVC/H.265 and H.264 10-bit video currently remain outside the fallback because they require real video transcoding for broad browser compatibility. AniLingo reports that clearly instead of silently consuming CPU with an unexpected encode.
 
 ## Expected media layout
 

@@ -60,17 +60,25 @@ public sealed class EpisodeModel(
 
     public async Task<IActionResult> OnGetMediaAsync(Guid id, CancellationToken cancellationToken)
     {
-        var media = await playbackService.GetMediaAsync(id, cancellationToken);
-        if (media is null || !System.IO.File.Exists(media.Path))
+        var stream = await playbackService.GetStreamAsync(id, cancellationToken);
+        if (stream is null || !System.IO.File.Exists(stream.Path))
         {
             return NotFound();
         }
 
-        return new PhysicalFileResult(media.Path, media.ContentType)
+        return new PhysicalFileResult(stream.Path, stream.ContentType)
         {
             EnableRangeProcessing = true,
-            LastModified = new DateTimeOffset(System.IO.File.GetLastWriteTimeUtc(media.Path))
+            LastModified = stream.LastModified
         };
+    }
+
+    public async Task<IActionResult> OnPostPreparePlaybackAsync(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        await playbackService.QueuePreparationAsync(id, cancellationToken);
+        return RedirectToPage(new { id });
     }
 
     public async Task<IActionResult> OnPostKnownAsync(Guid id, Guid termId, CancellationToken cancellationToken)
