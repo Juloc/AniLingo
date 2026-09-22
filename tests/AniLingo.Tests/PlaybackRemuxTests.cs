@@ -69,7 +69,7 @@ public sealed class PlaybackRemuxTests
     public void CacheIdentityChangesWithSourceFingerprint()
     {
         var mediaId = Guid.NewGuid();
-        var time = new DateTimeOffset(2026, 9, 22, 12, 0, 0, TimeSpan.Zero);
+        var time = new DateTime(2026, 9, 22, 12, 0, 0, DateTimeKind.Utc);
 
         var first = PlaybackCache.BuildPath(mediaId, 1000, time);
         var changedSize = PlaybackCache.BuildPath(mediaId, 1001, time);

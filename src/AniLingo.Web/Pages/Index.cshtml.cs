@@ -14,7 +14,7 @@ public sealed class IndexModel(AppDbContext db) : PageModel
 
     public async Task OnGetAsync(CancellationToken cancellationToken)
     {
-        var now = DateTimeOffset.UtcNow;
+        var now = DateTime.UtcNow;
 
         DueReviews = await db.UserTerms.AsNoTracking().CountAsync(
             x => x.ProfileId == LearningProfile.DefaultId

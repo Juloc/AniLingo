@@ -7,8 +7,8 @@ public sealed class SubtitleTrack
     public string Path { get; set; } = "";
     public string Language { get; set; } = "ja";
     public string Format { get; set; } = "";
-    public DateTimeOffset SourceUpdatedAt { get; set; }
-    public DateTimeOffset ImportedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTime SourceUpdatedAt { get; set; }
+    public DateTime ImportedAt { get; set; } = DateTime.UtcNow;
 }
 
 public sealed class SubtitleCue
