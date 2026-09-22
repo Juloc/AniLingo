@@ -17,8 +17,9 @@ The first vertical slice includes:
 - local JMdict meanings with German-first / common-English fallback
 - episode vocabulary frequency and preparation progress
 - direct-play episode player with synced, clickable Japanese subtitles
-- device-first playback with cached H.264 remux and HEVC device-remux paths
-- optional server H.264 compatibility transcode when the client cannot decode the source
+- instant device-first playback with direct play or live fragmented-MP4 remux
+- instant server H.264 compatibility streaming when the client cannot decode the source
+- local Japanese audio transcription fallback through whisper.cpp when no Japanese text subtitles are available
 - provider-neutral anime metadata with explicit AniList matching and cached artwork
 - secure self-hosted AniList account connection via the official Auth PIN flow
 - known / learning term state
@@ -61,7 +62,7 @@ Open `http://localhost:8097`.
 
 Runtime paths are fixed and intentionally simple:
 
-- `/data` stores the SQLite database, Codex authentication state and prepared browser-playback cache.
+- `/data` stores the SQLite database, Codex authentication state, the persistent Whisper model and generated transcription cache.
 - `/media/anime` is the read-only anime library mount.
 
 For an existing Docker stack, replace `default` with that stack's network if needed. No connection string, database password, media environment variable or second service is required.
@@ -88,15 +89,13 @@ The initial integration deliberately exposes no generic prompt or agent executio
 
 Episode pages include an integrated HTML5 player. AniLingo serves media with HTTP range support, synchronizes the imported Japanese cue track, and exposes local reading, meaning and learning state when a highlighted subtitle word is clicked. The lookup path is deterministic and does not call AI.
 
-Playback is **device-first**. Each browser stores its own preference in local storage:
+Playback is **device-first and instant**. Each browser stores its own preference in local storage:
 
-- **Auto** (default): prefer direct play or a video-copy remux that the device can decode; use the server H.264 fallback when the browser does not report the required codec support or device playback fails.
-- **Device only**: never video-transcode on the server. H.264 MKV is remuxed to MP4, and HEVC/H.265 can be remuxed to MP4 with `hvc1` tagging while keeping the video stream unchanged.
-- **Server**: prepare a broadly compatible H.264 `yuv420p` MP4 when video conversion is required. Compatible H.264 is still remuxed rather than wastefully encoded again.
+- **Auto** (default): prefer direct play or a live video-copy remux that the device can decode; use the live server H.264 fallback when the browser does not report the required codec support or device playback fails.
+- **Device only**: never video-transcode on the server. Compatible H.264 is remuxed to fragmented MP4 as it is watched, and HEVC/H.265 can be remuxed with `hvc1` tagging while keeping the video stream unchanged.
+- **Server**: stream a broadly compatible H.264 `yuv420p` MP4 directly from ffmpeg when video conversion is required. Compatible H.264 is still copied rather than wastefully encoded again.
 
-Prepared variants live under `/data/playback-cache` and are keyed by media id, source size, source timestamp and preparation kind. The NAS media stays read-only. Long playback preparation uses a dedicated in-process queue so a full video transcode does not serialize library scans behind it.
-
-The current server fallback is a **prepared-file transcode**, not live HLS/DASH transcoding: ffmpeg completes the MP4 before AniLingo serves it. The container currently uses software `libx264`; hardware-accelerated server transcoding and live segmented streaming can be added later without changing the device-first selection model.
+There is no prepare-playback step. Direct-play files retain HTTP range support; remux/transcode paths emit fragmented MP4 to the browser as ffmpeg produces it, so the whole episode is never encoded before playback starts. The NAS media stays read-only. The current server fallback uses software `libx264`; hardware acceleration can be added later without changing the device-first selection model.
 
 ## Expected media layout
 
@@ -110,7 +109,9 @@ Anime/
         └── Sousou no Frieren - S01E03.ja.srt
 ```
 
-Recognized Japanese subtitle suffixes include `.ja`, `.jpn` and `.japanese` with `.srt` or `.ass`. A nearby external Japanese subtitle is preferred. If none exists, AniLingo probes the media container and extracts the preferred embedded Japanese text track in memory. On the episode page, all embedded subtitle streams are visible; when tags are missing or wrong, any supported text stream can be explicitly selected as the Japanese learning source and vocabulary is rebuilt immediately. ASS/SSA, SubRip, WebVTT and mov_text are supported; image subtitle formats such as PGS/DVD/DVB are shown but not OCR'd. The NAS media mount remains read-only.
+Recognized Japanese subtitle suffixes include `.ja`, `.jpn` and `.japanese` with `.srt` or `.ass`. A nearby external Japanese subtitle is preferred. If none exists, AniLingo probes the media container and extracts the preferred embedded Japanese text track in memory. On the episode page, all embedded subtitle streams are visible; when tags are missing or wrong, any supported text stream can be explicitly selected as the Japanese learning source and vocabulary is rebuilt immediately.
+
+If no Japanese text subtitle is detected, AniLingo queues a local transcription of the preferred Japanese audio stream through `whisper.cpp`. The quantized multilingual small model is downloaded once into `/data/whisper`, verified, and reused. Generated SRT lives under `/data/transcription-cache` and is imported through the same subtitle/vocabulary pipeline; source media is never modified. ASS/SSA, SubRip, WebVTT and mov_text are supported directly. Image subtitle formats such as PGS/DVD/DVB are still shown as image subtitles, but the audio-transcription fallback can provide learning text without OCR.
 
 ## Architecture
 

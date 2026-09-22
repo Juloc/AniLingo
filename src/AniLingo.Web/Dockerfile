@@ -1,3 +1,21 @@
+FROM debian:bookworm-slim AS whisper
+ARG WHISPER_CPP_VERSION=1.9.4
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends build-essential ca-certificates cmake curl tar \
+    && rm -rf /var/lib/apt/lists/*
+RUN mkdir -p /src/whisper \
+    && curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors \
+       "https://github.com/ggml-org/whisper.cpp/archive/refs/tags/v${WHISPER_CPP_VERSION}.tar.gz" \
+       -o /tmp/whisper.tar.gz \
+    && tar -xzf /tmp/whisper.tar.gz -C /src/whisper --strip-components=1 \
+    && cmake -S /src/whisper -B /src/whisper/build \
+       -DBUILD_SHARED_LIBS=OFF \
+       -DWHISPER_BUILD_TESTS=OFF \
+       -DWHISPER_BUILD_EXAMPLES=ON \
+       -DGGML_NATIVE=OFF \
+    && cmake --build /src/whisper/build --config Release --parallel 2 --target whisper-cli \
+    && test -x /src/whisper/build/bin/whisper-cli
+
 FROM debian:bookworm-slim AS codex
 ARG CODEX_VERSION=0.155.1
 RUN apt-get update \
@@ -58,12 +76,13 @@ ENV ASPNETCORE_URLS=http://+:8080 \
     CODEX_HOME=/data/codex
 EXPOSE 8080
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg \
+    && apt-get install -y --no-install-recommends ca-certificates curl ffmpeg libgomp1 libstdc++6 \
     && ffmpeg -version >/dev/null \
     && ffprobe -version >/dev/null \
     && rm -rf /var/lib/apt/lists/* \
-    && mkdir -p /data/codex
+    && mkdir -p /data/codex /data/whisper /data/transcription-cache
 COPY --from=codex /codex /usr/local/bin/codex
+COPY --from=whisper /src/whisper/build/bin/whisper-cli /usr/local/bin/whisper-cli
 COPY --from=japanese-data /var/lib/mecab/dic/open-jtalk/naist-jdic /var/lib/mecab/dic/open-jtalk/naist-jdic
 COPY --from=japanese-data /dictionary ./dictionary
 COPY --from=build /app/publish .
