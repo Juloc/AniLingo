@@ -1,4 +1,5 @@
 using AniLingo.Web.Data;
+using AniLingo.Web.Data.Migrations;
 using AniLingo.Web.Features.Metadata;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
