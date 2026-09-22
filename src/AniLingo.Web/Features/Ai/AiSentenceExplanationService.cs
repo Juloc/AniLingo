@@ -17,11 +17,10 @@ public sealed class AiSentenceExplanationService(
         JapaneseSentencePreprocessor.Prepare(sentence);
 
     public async Task<AiSentenceExplanation?> GetCachedAsync(
-        Guid termId,
         string sentence,
         CancellationToken cancellationToken)
     {
-        var input = await BuildInputAsync(termId, sentence, cancellationToken);
+        var input = BuildInput(sentence);
         var cached = await db.AiSentenceExplanationCache
             .AsNoTracking()
             .SingleOrDefaultAsync(x => x.CacheKey == input.CacheKey, cancellationToken);
@@ -30,11 +29,10 @@ public sealed class AiSentenceExplanationService(
     }
 
     public async Task<AiSentenceExplanation> ExplainAsync(
-        Guid termId,
         string sentence,
         CancellationToken cancellationToken)
     {
-        var input = await BuildInputAsync(termId, sentence, cancellationToken);
+        var input = BuildInput(sentence);
         var cached = await db.AiSentenceExplanationCache
             .AsNoTracking()
             .SingleOrDefaultAsync(x => x.CacheKey == input.CacheKey, cancellationToken);
@@ -59,8 +57,6 @@ public sealed class AiSentenceExplanationService(
             var generated = await explainer.ExplainSentenceAsync(
                 new AiSentenceExplainRequest(
                     input.Prepared.Sentence,
-                    input.Target,
-                    input.Meaning,
                     input.Prepared.LocalHints),
                 cancellationToken);
 
@@ -86,17 +82,8 @@ public sealed class AiSentenceExplanationService(
         }
     }
 
-    private async Task<ExplanationInput> BuildInputAsync(
-        Guid termId,
-        string sentence,
-        CancellationToken cancellationToken)
+    private ExplanationInput BuildInput(string sentence)
     {
-        var term = await db.Terms
-            .AsNoTracking()
-            .Where(x => x.Id == termId)
-            .Select(x => new { x.Canonical, x.Meaning })
-            .SingleAsync(cancellationToken);
-
         var prepared = JapaneseSentencePreprocessor.Prepare(sentence);
         if (prepared.Sentence.Length == 0)
         {
@@ -107,19 +94,12 @@ public sealed class AiSentenceExplanationService(
             '\n',
             PromptVersion,
             explainer.Id,
-            prepared.Sentence,
-            term.Canonical,
-            term.Meaning ?? "",
-            string.Join("|", prepared.LocalHints));
+            prepared.Sentence);
 
         var cacheKey = Convert.ToHexString(
             SHA256.HashData(Encoding.UTF8.GetBytes(material)));
 
-        return new ExplanationInput(
-            cacheKey,
-            prepared,
-            term.Canonical,
-            term.Meaning);
+        return new ExplanationInput(cacheKey, prepared);
     }
 
     private static AiSentenceExplanation Validate(AiSentenceExplanation explanation)
@@ -178,7 +158,5 @@ public sealed class AiSentenceExplanationService(
 
     private sealed record ExplanationInput(
         string CacheKey,
-        PreparedJapaneseSentence Prepared,
-        string Target,
-        string? Meaning);
+        PreparedJapaneseSentence Prepared);
 }
