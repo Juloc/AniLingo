@@ -17,6 +17,40 @@ namespace AniLingo.Web.Data.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.12");
 
+            modelBuilder.Entity("AniLingo.Web.Features.Ai.AiSentenceExplanationCache", b =>
+                {
+                    b.Property<string>("CacheKey")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ColloquialJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("GrammarJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("PromptVersion")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ProviderId")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Translation")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("CacheKey");
+
+                    b.ToTable("AiSentenceExplanationCache");
+                });
+
             modelBuilder.Entity("AniLingo.Web.Features.Learning.LearningPreferences", b =>
                 {
                     b.Property<string>("ProfileId")
