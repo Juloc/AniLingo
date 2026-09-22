@@ -247,10 +247,11 @@ public sealed class LearningPreferencesTests
                 reviewTerms.Select(x => x.Id).ToArray(),
                 due.Select(x => x.TermId).ToArray());
 
+            var newTermIds = newTerms.Select(term => term.Id).ToArray();
             var startedNew = await db.UserTerms
                 .AsNoTracking()
                 .CountAsync(x =>
-                    newTerms.Select(term => term.Id).Contains(x.TermId)
+                    newTermIds.Contains(x.TermId)
                     && x.LearningStartedAt != null);
 
             Assert.AreEqual(0, startedNew);
