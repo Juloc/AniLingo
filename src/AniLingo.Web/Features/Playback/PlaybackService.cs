@@ -88,6 +88,9 @@ public static class PlaybackMediaTypes
     public static bool IsLikelyBrowserSupportedContainer(string path) =>
         Path.GetExtension(path).ToLowerInvariant() is
             ".mp4" or ".m4v" or ".webm" or ".ogg" or ".ogv";
+
+    public static bool IsLikelyBrowserSupported(string path) =>
+        IsLikelyBrowserSupportedContainer(path);
 }
 
 public sealed class PlaybackCueProjector(IJapaneseMorphology morphology)
