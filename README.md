@@ -15,13 +15,14 @@ The first vertical slice includes:
 - episode vocabulary frequency and preparation progress
 - direct-play episode player with synced, clickable Japanese subtitles
 - cached browser fallback for common H.264 8-bit MKV files without video re-encoding
+- provider-neutral anime metadata with explicit AniList matching and cached artwork
 - known / learning term state
 - FSRS-6 spaced repetition with Again / Hard / Good / Easy interval previews
 - responsive Razor Pages UI with a Jellyfin/Plex-style shell
 - embedded SQLite persistence in the single application container
 - optional Codex CLI connection for later AI-assisted features
 
-AniList, AI enrichment, image-based subtitle OCR and video transcoding are later phases. See issue #1 for the staged roadmap.
+AniList account synchronization, AI enrichment, image-based subtitle OCR and video transcoding are later phases. See issue #1 for the staged roadmap.
 
 ## Docker stack
 
@@ -59,6 +60,14 @@ Runtime paths are fixed and intentionally simple:
 - `/media/anime` is the read-only anime library mount.
 
 For an existing Docker stack, replace `default` with that stack's network if needed. No connection string, database password, media environment variable or second service is required.
+
+## AniList metadata
+
+AniLingo can match each locally discovered anime to AniList without requiring an AniList account. Open an anime in **Library**, search AniList, and explicitly choose the correct result. The local NAS grouping remains the source of truth for files and episodes; the AniList match only supplies cached display metadata such as titles, cover art, banner art, format, year and episode count.
+
+Normal Home/Library browsing reads the cached SQLite metadata and makes no AniList request. AniList is queried only when you search, match or refresh metadata. The integration is behind `IAnimeMetadataProvider`, and the database stores `Provider` + `ExternalId` instead of an AniList-specific column on the core `Anime` entity.
+
+AniList user login and watch-progress synchronization are not part of this slice.
 
 ## Optional Codex connection
 
@@ -114,7 +123,7 @@ Japanese vocabulary is analyzed locally with a MeCab-compatible tokenizer and a 
 
 The review scheduler uses FSRS-6 behind `IReviewScheduler`. FSRS state is reconstructed from the durable review history, so scheduler internals do not add database columns.
 
-The pre-release database currently uses a fresh-schema bootstrap and is considered disposable. The persisted-state support boundary is recorded in `.agent/upgrade-policy.yaml`; a migration-backed baseline will replace the prototype bootstrap before a stable release.
+SQLite now uses an EF Core migration baseline. Existing epoch-2 pre-release databases created by the earlier `EnsureCreated` bootstrap are detected once, stamped as the baseline after the expected core tables are verified, and then upgraded through normal migrations. Fresh databases are created entirely through migrations. The supported persistence boundary is recorded in `.agent/upgrade-policy.yaml`.
 
 ## Dictionary data
 
