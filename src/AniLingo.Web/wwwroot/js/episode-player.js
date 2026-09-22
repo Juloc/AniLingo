@@ -119,7 +119,7 @@
         }
 
         if (preference === "server") {
-            modeHint.textContent = "Server mode uses an H.264 compatibility stream when the source needs conversion.";
+            modeHint.textContent = "Server mode streams H.264 from ffmpeg immediately when conversion is required.";
             return;
         }
 
@@ -130,7 +130,7 @@
             return;
         }
 
-        modeHint.textContent = "Auto prefers direct play or remux and only uses server video transcoding when required.";
+        modeHint.textContent = "Auto prefers direct play or live remux and only uses live server transcoding when required.";
     };
 
     const hideVideo = () => {
@@ -315,6 +315,10 @@
                 error.hidden = false;
                 error.textContent = "Device playback failed. Switching to the server fallback.";
             }
+
+            video.addEventListener("canplay", () => {
+                void video.play();
+            }, { once: true });
             applyPlayback();
             return;
         }
