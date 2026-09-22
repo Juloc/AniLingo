@@ -35,7 +35,7 @@ builder.Services.AddScoped<EpisodePreparationService>();
 builder.Services.AddSingleton<PlaybackCueProjector>();
 builder.Services.AddSingleton<PlaybackMediaProbe>();
 builder.Services.AddSingleton<PlaybackPreparationTracker>();
-builder.Services.AddScoped<PlaybackRemuxService>();
+builder.Services.AddScoped<PlaybackPreparationService>();
 builder.Services.AddScoped<PlaybackService>();
 
 builder.Services.AddHttpClient<AniListMetadataProvider>(client =>
@@ -53,6 +53,8 @@ builder.Services.AddSingleton<IAiProvider>(services => services.GetRequiredServi
 
 builder.Services.AddSingleton<BackgroundJobQueue>();
 builder.Services.AddHostedService<BackgroundJobWorker>();
+builder.Services.AddSingleton<PlaybackJobQueue>();
+builder.Services.AddHostedService<PlaybackJobWorker>();
 
 var app = builder.Build();
 

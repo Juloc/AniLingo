@@ -15,8 +15,8 @@ RUN mkdir -p /opt/codex/bin /opt/codex/home \
 
 FROM debian:bookworm-slim AS japanese-data
 ARG JMDICT_VERSION=3.6.2+20260921173324
-ARG JMDICT_GER_ASSET_ID=579524235
-ARG JMDICT_ENG_ASSET_ID=579524203
+ARG JMDICT_GER_URL=https://github.com/scriptin/jmdict-simplified/releases/download/3.6.2%2B20260921173324/jmdict-ger-3.6.2%2B20260921173324.json.tgz
+ARG JMDICT_ENG_URL=https://github.com/scriptin/jmdict-simplified/releases/download/3.6.2%2B20260921173324/jmdict-eng-common-3.6.2%2B20260921173324.json.tgz
 ARG JMDICT_GER_SHA256=3a6c2cb1580ea845d87689e0982664dd1edc4cbc84426bba03e913e8fa6f81fc
 ARG JMDICT_ENG_SHA256=db98447ee0b3918ac29f58c95d0b5b0b1e2aeb15f81fbe13d53ee20427028424
 RUN apt-get update \
@@ -25,14 +25,10 @@ RUN apt-get update \
 RUN test -f /var/lib/mecab/dic/open-jtalk/naist-jdic/sys.dic
 RUN mkdir -p /dictionary /tmp/jmdict-ger /tmp/jmdict-eng \
     && curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors \
-       -H "Accept: application/octet-stream" \
-       -H "X-GitHub-Api-Version: 2022-11-28" \
-       "https://api.github.com/repos/scriptin/jmdict-simplified/releases/assets/${JMDICT_GER_ASSET_ID}" \
+       "${JMDICT_GER_URL}" \
        -o /tmp/jmdict-ger.tgz \
     && curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors \
-       -H "Accept: application/octet-stream" \
-       -H "X-GitHub-Api-Version: 2022-11-28" \
-       "https://api.github.com/repos/scriptin/jmdict-simplified/releases/assets/${JMDICT_ENG_ASSET_ID}" \
+       "${JMDICT_ENG_URL}" \
        -o /tmp/jmdict-eng.tgz \
     && echo "${JMDICT_GER_SHA256}  /tmp/jmdict-ger.tgz" | sha256sum -c - \
     && echo "${JMDICT_ENG_SHA256}  /tmp/jmdict-eng.tgz" | sha256sum -c - \

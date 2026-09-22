@@ -2,7 +2,7 @@ using System.Threading.Channels;
 
 namespace AniLingo.Web.Infrastructure;
 
-public sealed class BackgroundJobQueue
+public abstract class BackgroundJobQueueBase
 {
     private readonly Channel<Func<IServiceProvider, CancellationToken, Task>> channel =
         Channel.CreateBounded<Func<IServiceProvider, CancellationToken, Task>>(
@@ -23,10 +23,19 @@ public sealed class BackgroundJobQueue
         channel.Reader.ReadAllAsync(cancellationToken);
 }
 
-public sealed class BackgroundJobWorker(
-    BackgroundJobQueue queue,
+public sealed class BackgroundJobQueue : BackgroundJobQueueBase
+{
+}
+
+public sealed class PlaybackJobQueue : BackgroundJobQueueBase
+{
+}
+
+public abstract class BackgroundJobWorkerBase<TQueue>(
+    TQueue queue,
     IServiceScopeFactory scopeFactory,
-    ILogger<BackgroundJobWorker> logger) : BackgroundService
+    ILogger logger) : BackgroundService
+    where TQueue : BackgroundJobQueueBase
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -47,4 +56,20 @@ public sealed class BackgroundJobWorker(
             }
         }
     }
+}
+
+public sealed class BackgroundJobWorker(
+    BackgroundJobQueue queue,
+    IServiceScopeFactory scopeFactory,
+    ILogger<BackgroundJobWorker> logger)
+    : BackgroundJobWorkerBase<BackgroundJobQueue>(queue, scopeFactory, logger)
+{
+}
+
+public sealed class PlaybackJobWorker(
+    PlaybackJobQueue queue,
+    IServiceScopeFactory scopeFactory,
+    ILogger<PlaybackJobWorker> logger)
+    : BackgroundJobWorkerBase<PlaybackJobQueue>(queue, scopeFactory, logger)
+{
 }
