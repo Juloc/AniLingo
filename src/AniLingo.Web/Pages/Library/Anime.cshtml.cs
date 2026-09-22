@@ -38,10 +38,15 @@ public sealed class AnimeModel(AppDbContext db) : PageModel
             .ToListAsync(cancellationToken);
 
         var episodeIds = episodeRows.Select(x => x.Id).ToArray();
+        List<CoverageRow> coverageRows;
 
-        var coverageRows = episodeIds.Length == 0
-            ? []
-            : await (
+        if (episodeIds.Length == 0)
+        {
+            coverageRows = [];
+        }
+        else
+        {
+            coverageRows = await (
                 from episodeTerm in db.EpisodeTerms.AsNoTracking()
                 join userTermValue in db.UserTerms.AsNoTracking()
                         .Where(x => x.ProfileId == LearningProfile.DefaultId)
@@ -53,6 +58,7 @@ public sealed class AnimeModel(AppDbContext db) : PageModel
                     episodeTerm.Occurrences,
                     userTerm == null ? null : userTerm.State))
                 .ToListAsync(cancellationToken);
+        }
 
         var coverageByEpisode = coverageRows
             .GroupBy(x => x.EpisodeId)
