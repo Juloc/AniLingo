@@ -30,22 +30,6 @@ public sealed class AddDailyNewWordQueue : Migration
             nullable: false,
             defaultValue: 10);
 
-        migrationBuilder.Sql("""
-            UPDATE UserTerms
-            SET LearningStartedAt = UpdatedAt
-            WHERE State = 2
-              AND NextReviewAt IS NOT NULL
-              AND LearningStartedAt IS NULL;
-            """);
-
-        migrationBuilder.Sql("""
-            UPDATE UserTerms
-            SET QueuePosition = rowid
-            WHERE State = 2
-              AND NextReviewAt IS NULL
-              AND QueuePosition IS NULL;
-            """);
-
         migrationBuilder.CreateIndex(
             name: "IX_UserTerms_ProfileId_State_LearningStartedAt_QueuePosition",
             table: "UserTerms",
