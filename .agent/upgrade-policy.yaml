@@ -1,10 +1,10 @@
 schemaVersion: 1
 
-currentEpoch: 1
-minimumSupportedEpoch: 1
+currentEpoch: 2
+minimumSupportedEpoch: 2
 
 introducedIn: null
 minimumSupportedVersion: null
 bridgeVersion: null
 
-reason: "Initial AniLingo persisted-state baseline; pre-release databases are disposable until the first migration-backed release."
+reason: "Pre-release persistence reset for the canonical single-container SQLite runtime; prototype PostgreSQL state from epoch 1 is intentionally not migrated."

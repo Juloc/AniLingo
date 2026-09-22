@@ -13,26 +13,46 @@ The first vertical slice includes:
 - known / learning term state
 - simple spaced review flow behind a replaceable scheduler interface
 - responsive Razor Pages UI with a Jellyfin/Plex-style shell
-- PostgreSQL persistence
+- embedded SQLite persistence in the single application container
 
 AniList, AI enrichment, embedded subtitle extraction and the integrated player are later phases. See issue #1 for the staged roadmap.
 
-## Run with Docker
+## Docker stack
 
-Set the host path that contains the anime library and start the stack:
+AniLingo runs as one container. There is no database sidecar and no required environment configuration.
+
+The minimal stack is:
+
+```yaml
+services:
+  anilingo:
+    image: ghcr.io/juloc/anilingo:latest
+    volumes:
+      - anilingo-data:/data
+      - /path/to/anime:/media/anime:ro
+    networks:
+      - default
+    ports:
+      - "8097:8080"
+
+volumes:
+  anilingo-data:
+```
+
+Replace `/path/to/anime` with the host path of the existing anime library, then run:
 
 ```bash
-ANIME_PATH=/path/to/anime docker compose up --build
+docker compose up -d
 ```
 
 Open `http://localhost:8097`.
 
-Optional environment variables:
+Runtime paths are fixed and intentionally simple:
 
-- `ANILINGO_PORT` changes the published HTTP port.
-- `ANILINGO_DB_PASSWORD` changes the PostgreSQL password.
+- `/data` stores the SQLite database and is the only persistent application-data volume.
+- `/media/anime` is the read-only anime library mount.
 
-The anime path is mounted read-only at `/media/anime`.
+For an existing Docker stack, replace `default` with that stack's network if needed. No connection string, database password, media environment variable or second service is required.
 
 ## Expected media layout
 
