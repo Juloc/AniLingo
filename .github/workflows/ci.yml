@@ -20,6 +20,10 @@ jobs:
       - run: dotnet restore AniLingo.sln
       - run: dotnet build AniLingo.sln --no-restore --configuration Release
       - run: dotnet test AniLingo.sln --no-build --configuration Release
+      - name: Validate single-container Compose
+        run: |
+          test "$(docker compose config --services)" = "anilingo"
+          test "$(docker compose config --images)" = "ghcr.io/juloc/anilingo:latest"
       - name: Build Docker image
         run: docker build -f src/AniLingo.Web/Dockerfile -t ghcr.io/juloc/anilingo:${{ github.sha }} .
       - name: Log in to GHCR
