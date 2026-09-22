@@ -12,6 +12,7 @@ The first vertical slice includes:
 - deterministic anime / season / episode discovery from paths and filenames
 - external Japanese SRT and ASS subtitle import
 - automatic embedded Japanese text-subtitle extraction through ffmpeg
+- local Japanese audio transcription fallback through whisper.cpp when no Japanese text source is available
 - manual embedded subtitle-stream selection when language tags are missing or wrong
 - real Japanese morphological analysis with base forms and readings
 - local JMdict meanings with German-first / common-English fallback
