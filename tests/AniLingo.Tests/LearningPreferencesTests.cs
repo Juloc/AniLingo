@@ -202,7 +202,7 @@ public sealed class LearningPreferencesTests
             await DatabaseMigrationBridge.UpgradeAsync(db);
 
             var now = DateTime.UtcNow;
-            var reviewTerms = Enumerable.Range(0, 3)
+            var reviewTerms = Enumerable.Range(0, 5)
                 .Select(index => new Term
                 {
                     Language = "ja",
@@ -235,14 +235,14 @@ public sealed class LearningPreferencesTests
             await db.SaveChangesAsync();
 
             var service = new LearningService(db, new FsrsReviewScheduler());
-            await service.SavePreferencesAsync(0.90, 3, 10, CancellationToken.None);
+            await service.SavePreferencesAsync(0.90, 5, 10, CancellationToken.None);
             await service.AddToLearningAsync(
                 newTerms.Select(x => x.Id).ToArray(),
                 CancellationToken.None);
 
             var due = await service.GetDueAsync(CancellationToken.None);
 
-            Assert.AreEqual(3, due.Count);
+            Assert.AreEqual(5, due.Count);
             CollectionAssert.AreEquivalent(
                 reviewTerms.Select(x => x.Id).ToArray(),
                 due.Select(x => x.TermId).ToArray());
