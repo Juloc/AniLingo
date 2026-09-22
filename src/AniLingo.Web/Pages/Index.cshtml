@@ -14,9 +14,9 @@
 </header>
 
 <section class="metric-grid">
-    <partial name="_MetricCard" model="new MetricCardModel(&quot;Due reviews&quot;, Model.DueReviews.ToString(), &quot;Ready now&quot;)" />
-    <partial name="_MetricCard" model="new MetricCardModel(&quot;Anime&quot;, Model.AnimeCount.ToString(), &quot;In your library&quot;)" />
-    <partial name="_MetricCard" model="new MetricCardModel(&quot;Episodes&quot;, Model.EpisodeCount.ToString(), &quot;Discovered on NAS&quot;)" />
+    <partial name="_MetricCard" model='new MetricCardModel("Due reviews", Model.DueReviews.ToString(), "Ready now")' />
+    <partial name="_MetricCard" model='new MetricCardModel("Anime", Model.AnimeCount.ToString(), "In your library")' />
+    <partial name="_MetricCard" model='new MetricCardModel("Episodes", Model.EpisodeCount.ToString(), "Discovered on NAS")' />
 </section>
 
 <section class="section">
@@ -41,12 +41,12 @@
         <div class="media-grid">
             @foreach (var episode in Model.RecentEpisodes)
             {
-                <partial name="_MediaCard" model="new MediaCardModel(
+                <partial name="_MediaCard" model='new MediaCardModel(
                     episode.AnimeTitle,
-                    $&quot;S{episode.SeasonNumber:00} · Episode {episode.Number}&quot;,
-                    $&quot;/Library/Episode/{episode.Id}&quot;,
+                    $"S{episode.SeasonNumber:00} · Episode {episode.Number}",
+                    $"/Library/Episode/{episode.Id}",
                     episode.PreparationPercent,
-                    episode.TotalTerms == 0 ? &quot;No JP subs&quot; : $&quot;{episode.PreparationPercent}%&quot;)" />
+                    episode.TotalTerms == 0 ? "No JP subs" : $"{episode.PreparationPercent}%")' />
             }
         </div>
     }

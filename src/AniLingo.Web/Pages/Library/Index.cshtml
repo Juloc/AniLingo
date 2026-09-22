@@ -25,10 +25,10 @@ else
     <div class="media-grid">
         @foreach (var anime in Model.Anime)
         {
-            <partial name="_MediaCard" model="new MediaCardModel(
+            <partial name="_MediaCard" model='new MediaCardModel(
                 anime.Title,
-                $&quot;{anime.EpisodeCount} episodes&quot;,
-                $&quot;/Library/Anime/{anime.Id}&quot;)" />
+                $"{anime.EpisodeCount} episodes",
+                $"/Library/Anime/{anime.Id}")' />
         }
     </div>
 }
