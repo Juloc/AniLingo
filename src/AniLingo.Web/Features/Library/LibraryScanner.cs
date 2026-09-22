@@ -81,6 +81,14 @@ public sealed class LibraryScanner(
                 episodeByKey.Add(episodeKey, episode);
                 db.Episodes.Add(episode);
             }
+            else if (!string.Equals(
+                         episode.Title,
+                         descriptor.EpisodeTitle,
+                         StringComparison.Ordinal))
+            {
+                episode.Title = descriptor.EpisodeTitle;
+                updated++;
+            }
 
             var lastWrite = file.LastWriteTimeUtc;
             if (existingFiles.TryGetValue(normalizedPath, out var mediaFile))
