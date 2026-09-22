@@ -15,7 +15,7 @@ builder.Services.Configure<MediaOptions>(builder.Configuration.GetSection(MediaO
 var connectionString = builder.Configuration.GetConnectionString("Default")
     ?? throw new InvalidOperationException("ConnectionStrings:Default is required.");
 
-builder.Services.AddDbContext<AppDbContext>(options => options.UseNpgsql(connectionString));
+builder.Services.AddDbContext<AppDbContext>(options => options.UseSqlite(connectionString));
 
 builder.Services.AddScoped<LibraryScanner>();
 builder.Services.AddScoped<SubtitleImportService>();
@@ -46,7 +46,9 @@ static async Task InitializeDatabaseAsync(IServiceProvider services)
 {
     await using var scope = services.CreateAsyncScope();
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
     await db.Database.EnsureCreatedAsync();
+    await db.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;");
 
     if (await db.LibraryRoots.AnyAsync())
     {
