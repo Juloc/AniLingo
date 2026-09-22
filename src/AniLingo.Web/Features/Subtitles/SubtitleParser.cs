@@ -12,11 +12,14 @@ public static partial class SubtitleParser
     private static partial Regex FormattingRegex();
 
     public static IReadOnlyList<SubtitleCueData> Parse(string path, string content) =>
-        Path.GetExtension(path).ToLowerInvariant() switch
+        ParseFormat(Path.GetExtension(path), content);
+
+    public static IReadOnlyList<SubtitleCueData> ParseFormat(string format, string content) =>
+        format.Trim().TrimStart('.').ToLowerInvariant() switch
         {
-            ".srt" => ParseSrt(content),
-            ".ass" => ParseAss(content),
-            _ => throw new NotSupportedException($"Unsupported subtitle format: {Path.GetExtension(path)}")
+            "srt" => ParseSrt(content),
+            "ass" or "ssa" => ParseAss(content),
+            _ => throw new NotSupportedException($"Unsupported subtitle format: {format}")
         };
 
     public static IReadOnlyList<SubtitleCueData> ParseSrt(string content)

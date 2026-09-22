@@ -22,6 +22,7 @@ builder.Services.AddDbContext<AppDbContext>(options => options.UseSqlite(connect
 
 builder.Services.AddScoped<LibraryScanner>();
 builder.Services.AddScoped<SubtitleImportService>();
+builder.Services.AddSingleton<EmbeddedSubtitleExtractor>();
 builder.Services.AddScoped<VocabularyService>();
 builder.Services.AddSingleton<IJapaneseMorphology, MeCabJapaneseMorphology>();
 builder.Services.AddSingleton<JapaneseTermExtractor>();

@@ -7,6 +7,7 @@ namespace AniLingo.Web.Features.Library;
 public sealed class LibraryScanner(
     AppDbContext db,
     SubtitleImportService subtitleImport,
+    EmbeddedSubtitleExtractor embeddedSubtitleExtractor,
     ILogger<LibraryScanner> logger)
 {
     private static readonly HashSet<string> MediaExtensions = new(StringComparer.OrdinalIgnoreCase)
@@ -47,7 +48,7 @@ public sealed class LibraryScanner(
         var discovered = 0;
         var updated = 0;
         var skipped = 0;
-        var subtitleCandidates = new List<(Guid EpisodeId, string MediaPath)>();
+        var subtitleCandidates = new List<SubtitleCandidate>();
 
         foreach (var file in candidates)
         {
@@ -106,20 +107,73 @@ public sealed class LibraryScanner(
                 discovered++;
             }
 
-            subtitleCandidates.Add((episode.Id, normalizedPath));
+            subtitleCandidates.Add(new SubtitleCandidate(
+                episode.Id,
+                normalizedPath,
+                lastWrite));
         }
 
         root.LastScannedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(cancellationToken);
 
+        var episodeIds = subtitleCandidates
+            .Select(x => x.EpisodeId)
+            .Distinct()
+            .ToArray();
+
+        var embeddedTracks = episodeIds.Length == 0
+            ? new List<ExistingEmbeddedTrack>()
+            : await db.SubtitleTracks
+                .AsNoTracking()
+                .Where(x =>
+                    episodeIds.Contains(x.EpisodeId) &&
+                    x.Path.StartsWith(EmbeddedSubtitleExtractor.SourcePrefix))
+                .Select(x => new ExistingEmbeddedTrack(
+                    x.EpisodeId,
+                    x.Path,
+                    x.SourceUpdatedAt))
+                .ToListAsync(cancellationToken);
+
         var subtitleFiles = 0;
         foreach (var candidate in subtitleCandidates)
         {
-            foreach (var subtitlePath in FindJapaneseSubtitles(candidate.MediaPath))
+            var externalSubtitle = FindJapaneseSubtitles(candidate.MediaPath).FirstOrDefault();
+            if (externalSubtitle is not null)
             {
-                await subtitleImport.ImportAsync(candidate.EpisodeId, subtitlePath, cancellationToken);
+                await subtitleImport.ImportAsync(candidate.EpisodeId, externalSubtitle, cancellationToken);
                 subtitleFiles++;
+                continue;
             }
+
+            var sourcePrefix = EmbeddedSubtitleExtractor.BuildSourcePrefix(candidate.MediaPath);
+            var freshEmbeddedCount = embeddedTracks.Count(x =>
+                x.EpisodeId == candidate.EpisodeId &&
+                x.SourceUpdatedAt == candidate.SourceUpdatedAt &&
+                x.SourceKey.StartsWith(sourcePrefix, StringComparison.Ordinal));
+
+            if (freshEmbeddedCount > 0)
+            {
+                subtitleFiles += freshEmbeddedCount;
+                continue;
+            }
+
+            var embedded = await embeddedSubtitleExtractor.ExtractPreferredJapaneseAsync(
+                candidate.MediaPath,
+                cancellationToken);
+
+            if (embedded is null)
+            {
+                continue;
+            }
+
+            await subtitleImport.ImportPreferredContentAsync(
+                candidate.EpisodeId,
+                embedded.SourceKey,
+                embedded.Format,
+                candidate.SourceUpdatedAt,
+                embedded.Content,
+                cancellationToken);
+            subtitleFiles++;
         }
 
         logger.LogInformation(
@@ -128,6 +182,16 @@ public sealed class LibraryScanner(
 
         return new ScanResult(discovered, updated, skipped, subtitleFiles);
     }
+
+    private sealed record SubtitleCandidate(
+        Guid EpisodeId,
+        string MediaPath,
+        DateTimeOffset SourceUpdatedAt);
+
+    private sealed record ExistingEmbeddedTrack(
+        Guid EpisodeId,
+        string SourceKey,
+        DateTimeOffset SourceUpdatedAt);
 
     private static IEnumerable<string> FindJapaneseSubtitles(string mediaPath)
     {
