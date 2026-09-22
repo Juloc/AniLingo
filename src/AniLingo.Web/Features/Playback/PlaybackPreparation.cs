@@ -320,7 +320,7 @@ public sealed class PlaybackRemuxService(
                 break;
         }
 
-        arguments.AddRange(["-movflags", "+faststart", temporaryPath]);
+        arguments.AddRange(["-movflags", "+faststart", "-f", "mp4", temporaryPath]);
 
         try
         {

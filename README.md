@@ -74,7 +74,7 @@ The initial integration deliberately exposes no generic prompt or agent executio
 
 Episode pages include an integrated HTML5 direct-play player. AniLingo streams the registered media file with HTTP range support, synchronizes the imported Japanese cue track, and exposes local reading, meaning and learning state when a highlighted subtitle word is clicked. The lookup path is deterministic and does not call AI.
 
-AniLingo does not transcode in this slice. MP4/WebM remain direct-play paths. For common H.264 8-bit MKV files, AniLingo can prepare a seekable MP4 under `/data/playback-cache`: the video stream is copied without re-encoding and non-AAC first audio is converted to AAC. The original NAS media stays read-only. The cache identity includes the media-file id, source size and source timestamp, so changed source files do not reuse stale prepared media.
+AniLingo does not video-transcode in this slice. MP4/WebM remain direct-play paths. For common H.264 8-bit MKV files, AniLingo can prepare a seekable MP4 under `/data/playback-cache`: the video stream is copied without re-encoding and non-AAC first audio is converted to AAC. The original NAS media stays read-only. The cache identity includes the media-file id, source size and source timestamp, so changed source files do not reuse stale prepared media.
 
 HEVC/H.265 and H.264 10-bit video currently remain outside the fallback because they require real video transcoding for broad browser compatibility. AniLingo reports that clearly instead of silently consuming CPU with an unexpected encode.
 
