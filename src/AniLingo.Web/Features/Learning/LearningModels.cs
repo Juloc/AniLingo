@@ -27,18 +27,24 @@ public sealed class LearningPreferences
 {
     public const double DefaultDesiredRetention = 0.90;
     public const int DefaultReviewBatchSize = 50;
+    public const int DefaultNewWordsPerDay = 10;
 
     public string ProfileId { get; set; } = LearningProfile.DefaultId;
     public double DesiredRetention { get; set; } = DefaultDesiredRetention;
     public int ReviewBatchSize { get; set; } = DefaultReviewBatchSize;
+    public int NewWordsPerDay { get; set; } = DefaultNewWordsPerDay;
 }
 
 public sealed record LearningPreferencesSnapshot(
     double DesiredRetention,
-    int ReviewBatchSize)
+    int ReviewBatchSize,
+    int NewWordsPerDay)
 {
     public static LearningPreferencesSnapshot Default { get; } =
-        new(LearningPreferences.DefaultDesiredRetention, LearningPreferences.DefaultReviewBatchSize);
+        new(
+            LearningPreferences.DefaultDesiredRetention,
+            LearningPreferences.DefaultReviewBatchSize,
+            LearningPreferences.DefaultNewWordsPerDay);
 }
 
 public sealed class UserTerm
@@ -49,6 +55,8 @@ public sealed class UserTerm
     public UserTermState State { get; set; }
     public int IntervalDays { get; set; }
     public DateTime? NextReviewAt { get; set; }
+    public DateTime? LearningStartedAt { get; set; }
+    public long? QueuePosition { get; set; }
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
 
