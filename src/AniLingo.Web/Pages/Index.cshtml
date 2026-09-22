@@ -46,7 +46,8 @@
                     $"S{episode.SeasonNumber:00} · Episode {episode.Number}",
                     $"/Library/Episode/{episode.Id}",
                     episode.PreparationPercent,
-                    episode.TotalTerms == 0 ? "No JP subs" : $"{episode.PreparationPercent}%")' />
+                    episode.TotalTerms == 0 ? "No JP subs" : $"{episode.PreparationPercent}%",
+                    episode.CoverImageUrl)' />
             }
         </div>
     }

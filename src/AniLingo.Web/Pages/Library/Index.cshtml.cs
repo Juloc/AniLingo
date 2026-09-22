@@ -10,15 +10,25 @@ public sealed class IndexModel(AppDbContext db) : PageModel
 
     public async Task OnGetAsync(CancellationToken cancellationToken)
     {
-        Anime = await db.Anime
-            .AsNoTracking()
-            .OrderBy(x => x.Title)
-            .Select(anime => new AnimeRow(
+        Anime = await (
+            from anime in db.Anime.AsNoTracking()
+            join metadataValue in db.AnimeMetadata.AsNoTracking()
+                on anime.Id equals metadataValue.AnimeId into metadataRows
+            from metadata in metadataRows.DefaultIfEmpty()
+            orderby metadata == null ? anime.Title : metadata.PreferredTitle
+            select new AnimeRow(
                 anime.Id,
+                metadata == null ? anime.Title : metadata.PreferredTitle,
                 anime.Title,
-                db.Episodes.Count(episode => episode.AnimeId == anime.Id)))
+                db.Episodes.Count(episode => episode.AnimeId == anime.Id),
+                metadata == null ? null : metadata.CoverImageUrl))
             .ToListAsync(cancellationToken);
     }
 
-    public sealed record AnimeRow(Guid Id, string Title, int EpisodeCount);
+    public sealed record AnimeRow(
+        Guid Id,
+        string Title,
+        string LocalTitle,
+        int EpisodeCount,
+        string? CoverImageUrl);
 }

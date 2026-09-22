@@ -2,6 +2,7 @@ using AniLingo.Web.Data;
 using AniLingo.Web.Features.Ai;
 using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Library;
+using AniLingo.Web.Features.Metadata;
 using AniLingo.Web.Features.Playback;
 using AniLingo.Web.Features.Subtitles;
 using AniLingo.Web.Features.Vocabulary;
@@ -37,6 +38,16 @@ builder.Services.AddSingleton<PlaybackPreparationTracker>();
 builder.Services.AddScoped<PlaybackRemuxService>();
 builder.Services.AddScoped<PlaybackService>();
 
+builder.Services.AddHttpClient<AniListMetadataProvider>(client =>
+{
+    client.BaseAddress = new Uri("https://graphql.anilist.co/");
+    client.Timeout = TimeSpan.FromSeconds(15);
+    client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
+});
+builder.Services.AddScoped<IAnimeMetadataProvider>(
+    services => services.GetRequiredService<AniListMetadataProvider>());
+builder.Services.AddScoped<AnimeMetadataService>();
+
 builder.Services.AddSingleton<CodexCliProvider>();
 builder.Services.AddSingleton<IAiProvider>(services => services.GetRequiredService<CodexCliProvider>());
 
@@ -63,7 +74,7 @@ static async Task InitializeDatabaseAsync(IServiceProvider services)
     await using var scope = services.CreateAsyncScope();
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-    await db.Database.EnsureCreatedAsync();
+    await DatabaseMigrationBridge.UpgradeAsync(db);
     await db.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;");
 
     if (await db.LibraryRoots.AnyAsync())

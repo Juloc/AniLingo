@@ -29,10 +29,13 @@ public sealed class IndexModel(AppDbContext db) : PageModel
         RecentEpisodes = await (
             from episode in db.Episodes.AsNoTracking()
             join anime in db.Anime.AsNoTracking() on episode.AnimeId equals anime.Id
+            join metadataValue in db.AnimeMetadata.AsNoTracking()
+                on anime.Id equals metadataValue.AnimeId into metadataRows
+            from metadata in metadataRows.DefaultIfEmpty()
             orderby episode.DiscoveredAt descending
             select new HomeEpisode(
                 episode.Id,
-                anime.Title,
+                metadata == null ? anime.Title : metadata.PreferredTitle,
                 episode.SeasonNumber,
                 episode.Number,
                 db.EpisodeTerms.Count(x => x.EpisodeId == episode.Id),
@@ -43,7 +46,8 @@ public sealed class IndexModel(AppDbContext db) : PageModel
                         && userTerm.ProfileId == LearningProfile.DefaultId
                         && userTerm.State == UserTermState.Known
                     select episodeTerm.TermId
-                ).Count()))
+                ).Count(),
+                metadata == null ? null : metadata.CoverImageUrl))
             .Take(10)
             .ToListAsync(cancellationToken);
     }
@@ -54,7 +58,8 @@ public sealed class IndexModel(AppDbContext db) : PageModel
         int SeasonNumber,
         int Number,
         int TotalTerms,
-        int KnownTerms)
+        int KnownTerms,
+        string? CoverImageUrl)
     {
         public int PreparationPercent => TotalTerms == 0
             ? 0
