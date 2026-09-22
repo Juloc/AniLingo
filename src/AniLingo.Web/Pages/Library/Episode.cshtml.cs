@@ -198,9 +198,15 @@ public sealed class EpisodeModel(
             : "Embedded subtitle";
     }
 
-    public async Task<IActionResult> OnGetMediaAsync(Guid id, CancellationToken cancellationToken)
+    public async Task<IActionResult> OnGetMediaAsync(
+        Guid id,
+        string? mode,
+        CancellationToken cancellationToken)
     {
-        var stream = await playbackService.GetStreamAsync(id, cancellationToken);
+        var stream = await playbackService.GetStreamAsync(
+            id,
+            ParsePlaybackMode(mode),
+            cancellationToken);
         if (stream is null || !System.IO.File.Exists(stream.Path))
         {
             return NotFound();
@@ -215,9 +221,13 @@ public sealed class EpisodeModel(
 
     public async Task<IActionResult> OnPostPreparePlaybackAsync(
         Guid id,
+        string? mode,
         CancellationToken cancellationToken)
     {
-        await playbackService.QueuePreparationAsync(id, cancellationToken);
+        await playbackService.QueuePreparationAsync(
+            id,
+            ParsePlaybackMode(mode),
+            cancellationToken);
         return RedirectToPage(new { id });
     }
 
@@ -232,6 +242,11 @@ public sealed class EpisodeModel(
         await learningService.SetStateAsync(termId, UserTermState.Learning, cancellationToken);
         return RedirectToPage(new { id });
     }
+
+    private static PlaybackRequestedMode ParsePlaybackMode(string? mode) =>
+        string.Equals(mode, "server", StringComparison.OrdinalIgnoreCase)
+            ? PlaybackRequestedMode.Server
+            : PlaybackRequestedMode.Device;
 
     public async Task<IActionResult> OnPostPrepareAsync(Guid id, CancellationToken cancellationToken)
     {

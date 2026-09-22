@@ -114,58 +114,71 @@
 {
     <section class="player-panel"
              data-episode-player
-             data-playback-refresh="@(media.IsPreparing ? "true" : "false")">
-        <div class="video-stage @(media.IsPlayable ? "" : "player-placeholder")">
-            @if (media.IsPlayable)
-            {
-                <video controls preload="metadata" playsinline
-                       src="@Url.Page("/Library/Episode", "Media", new { id = Model.EpisodeId })"></video>
-                <div class="subtitle-overlay" data-subtitle-overlay lang="ja"></div>
-            }
-            else
-            {
-                <div class="playback-preparation">
-                    <span class="eyebrow">Browser playback</span>
-                    <strong>@media.StatusMessage</strong>
+             data-playback-refresh="@(media.IsPreparing ? "true" : "false")"
+             data-video-codec="@media.VideoCodec"
+             data-device-availability="@(media.Device.Availability.ToString().ToLowerInvariant())"
+             data-device-status="@media.Device.StatusMessage"
+             data-server-availability="@(media.Server.Availability.ToString().ToLowerInvariant())"
+             data-server-status="@media.Server.StatusMessage"
+             data-media-url="@Url.Page("/Library/Episode", "Media", new { id = Model.EpisodeId })">
+        <div class="video-stage player-placeholder" data-video-stage>
+            <video controls preload="metadata" playsinline hidden data-playback-video></video>
+            <div class="subtitle-overlay" data-subtitle-overlay lang="ja"></div>
 
-                    @if (media.CanQueuePreparation)
-                    {
-                        <form method="post"
-                              asp-page-handler="PreparePlayback"
-                              asp-route-id="@Model.EpisodeId">
-                            <button class="button button-primary" type="submit">
-                                @(media.Availability == PlaybackAvailability.Failed
-                                    ? "Retry preparation"
-                                    : "Prepare browser playback")
-                            </button>
-                        </form>
-                    }
-                    else if (media.IsPreparing)
-                    {
-                        <span class="status-pill status-warning">Working…</span>
-                    }
-                    else
-                    {
-                        <span class="status-pill status-error">Video transcode required</span>
-                    }
-                </div>
-            }
+            <div class="playback-preparation" data-playback-placeholder>
+                <span class="eyebrow">Browser playback</span>
+                <strong data-playback-status>Checking this device…</strong>
+
+                @if (media.Device.CanPrepare)
+                {
+                    <form method="post"
+                          asp-page-handler="PreparePlayback"
+                          asp-route-id="@Model.EpisodeId"
+                          data-prepare-form="device"
+                          hidden>
+                        <input type="hidden" name="mode" value="device" />
+                        <button class="button button-primary" type="submit">
+                            Prepare device playback
+                        </button>
+                    </form>
+                }
+
+                @if (media.Server.CanPrepare)
+                {
+                    <form method="post"
+                          asp-page-handler="PreparePlayback"
+                          asp-route-id="@Model.EpisodeId"
+                          data-prepare-form="server"
+                          hidden>
+                        <input type="hidden" name="mode" value="server" />
+                        <button class="button button-primary" type="submit">
+                            Prepare server fallback
+                        </button>
+                    </form>
+                }
+
+                <span class="status-pill status-warning" data-playback-working hidden>Working…</span>
+            </div>
         </div>
 
         <div class="player-meta">
             <div>
                 <span class="eyebrow">Player</span>
                 <strong>@media.FileName</strong>
-                <span>@Model.Playback.Cues.Count synced Japanese cues · @media.StatusMessage</span>
+                <span>@Model.Playback.Cues.Count synced Japanese cues · <span data-playback-summary>Checking device…</span></span>
             </div>
-            @if (media.Availability == PlaybackAvailability.Prepared)
-            {
-                <span class="status-pill status-ok">Prepared MP4</span>
-            }
-            else if (media.Availability == PlaybackAvailability.Direct)
-            {
-                <span class="status-pill status-ok">Direct play</span>
-            }
+            <div class="playback-mode-control">
+                <label>
+                    <span>Playback</span>
+                    <select data-playback-mode>
+                        <option value="auto">Auto · device first</option>
+                        <option value="device">Device only</option>
+                        <option value="server">Server</option>
+                    </select>
+                </label>
+                <small data-playback-mode-hint></small>
+                <span class="status-pill" data-playback-badge>Checking…</span>
+            </div>
         </div>
 
         <div class="player-error" data-player-error hidden></div>

@@ -26,57 +26,115 @@ public sealed class PlaybackRemuxTests
     }
 
     [TestMethod]
-    public void H264EightBitCopiesVideoAndConvertsNonAacAudio()
+    public void H264EightBitUsesUniversalRemuxWithoutVideoEncoding()
     {
-        var plan = PlaybackRemuxPlan.Build(
-            new PlaybackProbeResult("h264", "yuv420p", "flac"));
+        var plan = PlaybackPreparationPlan.Build(
+            new PlaybackProbeResult("h264", "yuv420p", "flac"),
+            PlaybackRequestedMode.Device);
 
         Assert.IsTrue(plan.CanPrepare);
+        Assert.AreEqual(PlaybackPreparationKind.CompatibleRemux, plan.Kind);
+        Assert.AreEqual(PlaybackVideoMode.Copy, plan.VideoMode);
         Assert.AreEqual(PlaybackAudioMode.Aac, plan.AudioMode);
+        Assert.IsFalse(plan.TagHevcAsHvc1);
     }
 
     [TestMethod]
     public void H264WithAacCopiesAudio()
     {
-        var plan = PlaybackRemuxPlan.Build(
-            new PlaybackProbeResult("h264", "yuv420p", "aac"));
+        var plan = PlaybackPreparationPlan.Build(
+            new PlaybackProbeResult("h264", "yuv420p", "aac"),
+            PlaybackRequestedMode.Server);
 
         Assert.IsTrue(plan.CanPrepare);
+        Assert.AreEqual(PlaybackPreparationKind.CompatibleRemux, plan.Kind);
+        Assert.AreEqual(PlaybackVideoMode.Copy, plan.VideoMode);
         Assert.AreEqual(PlaybackAudioMode.Copy, plan.AudioMode);
     }
 
     [TestMethod]
-    public void H264TenBitRequiresVideoTranscode()
+    public void H264TenBitRejectsDevicePathButServerCanTranscode()
     {
-        var plan = PlaybackRemuxPlan.Build(
-            new PlaybackProbeResult("h264", "yuv420p10le", "aac"));
+        var probe = new PlaybackProbeResult("h264", "yuv420p10le", "aac");
 
-        Assert.IsFalse(plan.CanPrepare);
-        StringAssert.Contains(plan.Message, "pixel format");
+        var device = PlaybackPreparationPlan.Build(probe, PlaybackRequestedMode.Device);
+        var server = PlaybackPreparationPlan.Build(probe, PlaybackRequestedMode.Server);
+
+        Assert.IsFalse(device.CanPrepare);
+        Assert.IsTrue(server.CanPrepare);
+        Assert.AreEqual(PlaybackPreparationKind.ServerH264Transcode, server.Kind);
+        Assert.AreEqual(PlaybackVideoMode.H264, server.VideoMode);
     }
 
     [TestMethod]
-    public void HevcRequiresVideoTranscode()
+    public void HevcDevicePathKeepsVideoWhileServerFallbackUsesH264()
     {
-        var plan = PlaybackRemuxPlan.Build(
-            new PlaybackProbeResult("hevc", "yuv420p10le", "aac"));
+        var probe = new PlaybackProbeResult("hevc", "yuv420p10le", "aac");
 
-        Assert.IsFalse(plan.CanPrepare);
-        StringAssert.Contains(plan.Message, "hevc");
+        var device = PlaybackPreparationPlan.Build(probe, PlaybackRequestedMode.Device);
+        var server = PlaybackPreparationPlan.Build(probe, PlaybackRequestedMode.Server);
+
+        Assert.IsTrue(device.CanPrepare);
+        Assert.AreEqual(PlaybackPreparationKind.DeviceHevcRemux, device.Kind);
+        Assert.AreEqual(PlaybackVideoMode.Copy, device.VideoMode);
+        Assert.IsTrue(device.TagHevcAsHvc1);
+
+        Assert.IsTrue(server.CanPrepare);
+        Assert.AreEqual(PlaybackPreparationKind.ServerH264Transcode, server.Kind);
+        Assert.AreEqual(PlaybackVideoMode.H264, server.VideoMode);
+        Assert.IsFalse(server.TagHevcAsHvc1);
     }
 
     [TestMethod]
-    public void CacheIdentityChangesWithSourceFingerprint()
+    public void UnsupportedDeviceCodecStillHasServerFallback()
+    {
+        var probe = new PlaybackProbeResult("av1", "yuv420p10le", "opus");
+
+        var device = PlaybackPreparationPlan.Build(probe, PlaybackRequestedMode.Device);
+        var server = PlaybackPreparationPlan.Build(probe, PlaybackRequestedMode.Server);
+
+        Assert.IsFalse(device.CanPrepare);
+        Assert.IsTrue(server.CanPrepare);
+        Assert.AreEqual(PlaybackVideoMode.H264, server.VideoMode);
+        Assert.AreEqual(PlaybackAudioMode.Aac, server.AudioMode);
+    }
+
+    [TestMethod]
+    public void CacheIdentitySeparatesSourceFingerprintAndPreparationKind()
     {
         var mediaId = Guid.NewGuid();
         var time = new DateTime(2026, 9, 22, 12, 0, 0, DateTimeKind.Utc);
 
-        var first = PlaybackCache.BuildPath(mediaId, 1000, time);
-        var changedSize = PlaybackCache.BuildPath(mediaId, 1001, time);
-        var changedTime = PlaybackCache.BuildPath(mediaId, 1000, time.AddSeconds(1));
+        var compatible = PlaybackCache.BuildPath(
+            mediaId,
+            1000,
+            time,
+            PlaybackPreparationKind.CompatibleRemux);
+        var changedSize = PlaybackCache.BuildPath(
+            mediaId,
+            1001,
+            time,
+            PlaybackPreparationKind.CompatibleRemux);
+        var changedTime = PlaybackCache.BuildPath(
+            mediaId,
+            1000,
+            time.AddSeconds(1),
+            PlaybackPreparationKind.CompatibleRemux);
+        var hevc = PlaybackCache.BuildPath(
+            mediaId,
+            1000,
+            time,
+            PlaybackPreparationKind.DeviceHevcRemux);
+        var server = PlaybackCache.BuildPath(
+            mediaId,
+            1000,
+            time,
+            PlaybackPreparationKind.ServerH264Transcode);
 
-        StringAssert.StartsWith(first, PlaybackCache.RootPath);
-        Assert.AreNotEqual(first, changedSize);
-        Assert.AreNotEqual(first, changedTime);
+        StringAssert.StartsWith(compatible, PlaybackCache.RootPath);
+        Assert.AreNotEqual(compatible, changedSize);
+        Assert.AreNotEqual(compatible, changedTime);
+        Assert.AreNotEqual(compatible, hevc);
+        Assert.AreNotEqual(hevc, server);
     }
 }

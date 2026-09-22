@@ -1,6 +1,6 @@
 # AniLingo
 
-Current release: **0.1.0-alpha.1**
+Current release: **0.1.0-alpha.5**
 
 AniLingo is a Docker-first Japanese learning companion for an existing anime library. It scans media from a read-only NAS mount, imports nearby Japanese subtitles, builds episode vocabulary, and lets you mark terms as known or review them before watching.
 
@@ -12,11 +12,13 @@ The first vertical slice includes:
 - deterministic anime / season / episode discovery from paths and filenames
 - external Japanese SRT and ASS subtitle import
 - automatic embedded Japanese text-subtitle extraction through ffmpeg
+- manual embedded subtitle-stream selection when language tags are missing or wrong
 - real Japanese morphological analysis with base forms and readings
 - local JMdict meanings with German-first / common-English fallback
 - episode vocabulary frequency and preparation progress
 - direct-play episode player with synced, clickable Japanese subtitles
-- cached browser fallback for common H.264 8-bit MKV files without video re-encoding
+- device-first playback with cached H.264 remux and HEVC device-remux paths
+- optional server H.264 compatibility transcode when the client cannot decode the source
 - provider-neutral anime metadata with explicit AniList matching and cached artwork
 - known / learning term state
 - FSRS-6 spaced repetition with Again / Hard / Good / Easy interval previews
@@ -24,7 +26,7 @@ The first vertical slice includes:
 - embedded SQLite persistence in the single application container
 - optional Codex CLI connection for later AI-assisted features
 
-AniList account synchronization, AI enrichment, image-based subtitle OCR and video transcoding are later phases. See issue #1 for the staged roadmap.
+AniList account synchronization, AI enrichment and image-based subtitle OCR are later phases. See issue #1 for the staged roadmap.
 
 ## Docker stack
 
@@ -35,7 +37,7 @@ The minimal stack is:
 ```yaml
 services:
   anilingo:
-    image: ghcr.io/juloc/anilingo:0.1.0-alpha.1
+    image: ghcr.io/juloc/anilingo:0.1.0-alpha.5
     volumes:
       - anilingo-data:/data
       - /path/to/anime:/media/anime:ro
@@ -83,11 +85,17 @@ The initial integration deliberately exposes no generic prompt or agent executio
 
 ## Playback
 
-Episode pages include an integrated HTML5 direct-play player. AniLingo streams the registered media file with HTTP range support, synchronizes the imported Japanese cue track, and exposes local reading, meaning and learning state when a highlighted subtitle word is clicked. The lookup path is deterministic and does not call AI.
+Episode pages include an integrated HTML5 player. AniLingo serves media with HTTP range support, synchronizes the imported Japanese cue track, and exposes local reading, meaning and learning state when a highlighted subtitle word is clicked. The lookup path is deterministic and does not call AI.
 
-AniLingo does not video-transcode in this slice. MP4/WebM remain direct-play paths. For common H.264 8-bit MKV files, AniLingo can prepare a seekable MP4 under `/data/playback-cache`: the video stream is copied without re-encoding and non-AAC first audio is converted to AAC. The original NAS media stays read-only. The cache identity includes the media-file id, source size and source timestamp, so changed source files do not reuse stale prepared media.
+Playback is **device-first**. Each browser stores its own preference in local storage:
 
-HEVC/H.265 and H.264 10-bit video currently remain outside the fallback because they require real video transcoding for broad browser compatibility. AniLingo reports that clearly instead of silently consuming CPU with an unexpected encode.
+- **Auto** (default): prefer direct play or a video-copy remux that the device can decode; use the server H.264 fallback when the browser does not report the required codec support or device playback fails.
+- **Device only**: never video-transcode on the server. H.264 MKV is remuxed to MP4, and HEVC/H.265 can be remuxed to MP4 with `hvc1` tagging while keeping the video stream unchanged.
+- **Server**: prepare a broadly compatible H.264 `yuv420p` MP4 when video conversion is required. Compatible H.264 is still remuxed rather than wastefully encoded again.
+
+Prepared variants live under `/data/playback-cache` and are keyed by media id, source size, source timestamp and preparation kind. The NAS media stays read-only. Long playback preparation uses a dedicated in-process queue so a full video transcode does not serialize library scans behind it.
+
+The current server fallback is a **prepared-file transcode**, not live HLS/DASH transcoding: ffmpeg completes the MP4 before AniLingo serves it. The container currently uses software `libx264`; hardware-accelerated server transcoding and live segmented streaming can be added later without changing the device-first selection model.
 
 ## Expected media layout
 
@@ -101,7 +109,7 @@ Anime/
         └── Sousou no Frieren - S01E03.ja.srt
 ```
 
-Recognized Japanese subtitle suffixes include `.ja`, `.jpn` and `.japanese` with `.srt` or `.ass`. A nearby external Japanese subtitle is preferred. If none exists, AniLingo probes the media container and extracts the preferred embedded Japanese text track in memory. ASS/SSA, SubRip, WebVTT and mov_text are supported; image subtitle formats such as PGS/DVD/DVB are not OCR'd. The NAS media mount remains read-only.
+Recognized Japanese subtitle suffixes include `.ja`, `.jpn` and `.japanese` with `.srt` or `.ass`. A nearby external Japanese subtitle is preferred. If none exists, AniLingo probes the media container and extracts the preferred embedded Japanese text track in memory. On the episode page, all embedded subtitle streams are visible; when tags are missing or wrong, any supported text stream can be explicitly selected as the Japanese learning source and vocabulary is rebuilt immediately. ASS/SSA, SubRip, WebVTT and mov_text are supported; image subtitle formats such as PGS/DVD/DVB are shown but not OCR'd. The NAS media mount remains read-only.
 
 ## Architecture
 
