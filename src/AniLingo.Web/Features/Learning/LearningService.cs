@@ -141,7 +141,8 @@ public sealed class LearningService(
                 .Where(x =>
                     x.ProfileId == LearningProfile.DefaultId
                     && x.State == UserTermState.Learning
-                    && x.LearningStartedAt == null)
+                    && x.LearningStartedAt == null
+                    && x.NextReviewAt == null)
                 .OrderBy(x => x.QueuePosition ?? long.MaxValue)
                 .ThenBy(x => x.UpdatedAt)
                 .ThenBy(x => x.TermId)
