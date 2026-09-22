@@ -13,7 +13,7 @@ The first vertical slice includes:
 - local JMdict meanings with German-first / common-English fallback
 - episode vocabulary frequency and preparation progress
 - known / learning term state
-- simple spaced review flow behind a replaceable scheduler interface
+- FSRS-6 spaced repetition with Again / Hard / Good / Easy interval previews
 - responsive Razor Pages UI with a Jellyfin/Plex-style shell
 - embedded SQLite persistence in the single application container
 - optional Codex CLI connection for later AI-assisted features
@@ -101,7 +101,7 @@ Core areas live under `Features/Library`, `Features/Subtitles`, `Features/Vocabu
 
 Japanese vocabulary is analyzed locally with a MeCab-compatible tokenizer and a bundled NAIST-JDIC dictionary. Meanings come from a pinned local JMdict snapshot, preferring German entries and falling back to common English entries. No dictionary network request or AI call is required at runtime.
 
-The review scheduler is intentionally behind `IReviewScheduler`; FSRS is planned for the learning-quality phase.
+The review scheduler uses FSRS-6 behind `IReviewScheduler`. FSRS state is reconstructed from the durable review history, so scheduler internals do not add database columns.
 
 The pre-release database currently uses a fresh-schema bootstrap and is considered disposable. The persisted-state support boundary is recorded in `.agent/upgrade-policy.yaml`; a migration-backed baseline will replace the prototype bootstrap before a stable release.
 

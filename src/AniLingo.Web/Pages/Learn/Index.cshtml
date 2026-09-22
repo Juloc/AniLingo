@@ -1,5 +1,6 @@
 @page
 @model AniLingo.Web.Pages.Learn.IndexModel
+@using AniLingo.Web.Features.Learning
 @{
     ViewData["Title"] = "Learn";
     var current = Model.Due.FirstOrDefault();
@@ -34,17 +35,25 @@ else
             }
             <div class="review-answer">
                 @(string.IsNullOrWhiteSpace(current.Meaning)
-                    ? "Dictionary enrichment is not available in v0.1 yet."
+                    ? "No local dictionary meaning available."
                     : current.Meaning)
             </div>
         </div>
 
         <form method="post" asp-page-handler="Review" class="review-actions">
             <input type="hidden" name="termId" value="@current.TermId" />
-            <button name="rating" value="Again" class="review-button"><strong>Again</strong><span>10 min</span></button>
-            <button name="rating" value="Hard" class="review-button"><strong>Hard</strong><span>short</span></button>
-            <button name="rating" value="Good" class="review-button primary"><strong>Good</strong><span>normal</span></button>
-            <button name="rating" value="Easy" class="review-button"><strong>Easy</strong><span>long</span></button>
+            <button name="rating" value="Again" class="review-button">
+                <strong>Again</strong><span>@Model.Interval(ReviewRating.Again)</span>
+            </button>
+            <button name="rating" value="Hard" class="review-button">
+                <strong>Hard</strong><span>@Model.Interval(ReviewRating.Hard)</span>
+            </button>
+            <button name="rating" value="Good" class="review-button primary">
+                <strong>Good</strong><span>@Model.Interval(ReviewRating.Good)</span>
+            </button>
+            <button name="rating" value="Easy" class="review-button">
+                <strong>Easy</strong><span>@Model.Interval(ReviewRating.Easy)</span>
+            </button>
         </form>
     </section>
 }
