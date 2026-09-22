@@ -13,7 +13,7 @@ public sealed class IndexModel(LearningService learningService) : PageModel
 
     public async Task OnGetAsync(CancellationToken cancellationToken)
     {
-        Due = await learningService.GetDueAsync(50, cancellationToken);
+        Due = await learningService.GetDueAsync(cancellationToken);
 
         var current = Due.FirstOrDefault();
         if (current is null)
