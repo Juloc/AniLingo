@@ -19,6 +19,19 @@ jobs:
           dotnet-version: 10.0.x
       - run: dotnet restore AniLingo.sln
       - run: dotnet build AniLingo.sln --no-restore --configuration Release
+      - name: Diagnose EF model snapshot
+        run: |
+          dotnet tool install --global dotnet-ef --version 10.0.12
+          $HOME/.dotnet/tools/dotnet-ef migrations add __SnapshotSync \
+            --project src/AniLingo.Web/AniLingo.Web.csproj \
+            --startup-project src/AniLingo.Web/AniLingo.Web.csproj \
+            --output-dir Data/Migrations \
+            --configuration Release \
+            --no-build
+          echo '=== GENERATED MIGRATION ==='
+          cat src/AniLingo.Web/Data/Migrations/*__SnapshotSync.cs
+          echo '=== GENERATED SNAPSHOT ==='
+          cat src/AniLingo.Web/Data/Migrations/AppDbContextModelSnapshot.cs
       - run: dotnet test AniLingo.sln --no-build --configuration Release
       - name: Validate single-container Compose
         run: |
