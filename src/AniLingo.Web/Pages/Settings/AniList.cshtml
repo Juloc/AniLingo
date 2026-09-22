@@ -1,0 +1,165 @@
+@page
+@model AniLingo.Web.Pages.Settings.AniListModel
+@{
+    ViewData["Title"] = "AniList";
+}
+
+<header class="page-header">
+    <div>
+        <a class="back-link" asp-page="/Settings/Index">← Settings</a>
+        <span class="eyebrow">Optional integration</span>
+        <h1>AniList</h1>
+        <p>Connect your personal account for AniLingo's complementary learning workflow.</p>
+    </div>
+</header>
+
+<div class="settings-grid">
+    <section class="panel">
+        <div class="panel-heading">
+            <h2>Account</h2>
+            @if (Model.Account.IsConnected)
+            {
+                <span class="status-pill @(Model.Account.IsExpired ? "status-error" : "status-ok")">
+                    @(Model.Account.IsExpired ? "Reconnect" : "Connected")
+                </span>
+            }
+            else
+            {
+                <span class="status-pill">Not connected</span>
+            }
+        </div>
+
+        @if (Model.Account.IsConnected)
+        {
+            <div class="status-list">
+                <div>
+                    <span>User</span>
+                    <strong>@Model.Account.ViewerName</strong>
+                </div>
+                <div>
+                    <span>AniList user ID</span>
+                    <strong>@Model.Account.ViewerId</strong>
+                </div>
+                <div>
+                    <span>Client ID</span>
+                    <strong>@Model.Account.ClientId</strong>
+                </div>
+                <div>
+                    <span>Connected</span>
+                    <strong>@Model.Account.ConnectedAt?.ToLocalTime().ToString("g")</strong>
+                </div>
+                <div>
+                    <span>Token expires</span>
+                    <strong>
+                        @(Model.Account.TokenExpiresAt?.ToLocalTime().ToString("g") ?? "Unknown")
+                    </strong>
+                </div>
+                <div>
+                    <span>Credential storage</span>
+                    <strong>Protected under /data</strong>
+                </div>
+            </div>
+
+            <p class="muted">
+                This release validates and stores the connection only. It does not modify your AniList list yet.
+            </p>
+
+            <form method="post" asp-page-handler="Disconnect">
+                <button class="button" type="submit">Disconnect</button>
+            </form>
+        }
+        else
+        {
+            <p class="muted">
+                AniLingo uses AniList's self-host friendly auth PIN flow. Your access token is protected before it is written to disk.
+            </p>
+        }
+    </section>
+
+    @if (!Model.Account.IsConnected)
+    {
+        <section class="panel">
+            <div class="panel-heading">
+                <h2>1. Create an AniList app</h2>
+                <span>One time</span>
+            </div>
+
+            <p class="muted">
+                Create an application in AniList Developer Settings and set its redirect URL exactly to:
+            </p>
+            <code class="device-code">https://anilist.co/api/v2/oauth/pin</code>
+
+            <div class="inline-actions">
+                <a class="button"
+                   href="https://anilist.co/settings/developer"
+                   target="_blank"
+                   rel="noopener noreferrer">
+                    Open AniList Developer Settings
+                </a>
+            </div>
+        </section>
+
+        <section class="panel">
+            <div class="panel-heading">
+                <h2>2. Authorize AniLingo</h2>
+                <span>Client ID</span>
+            </div>
+
+            <form method="post" asp-page-handler="Prepare" class="form-stack">
+                <div asp-validation-summary="ModelOnly" class="validation"></div>
+                <label>
+                    <span>AniList client ID</span>
+                    <input asp-for="ClientId" inputmode="numeric" autocomplete="off" />
+                    <span asp-validation-for="ClientId" class="validation"></span>
+                </label>
+                <button class="button button-primary" type="submit">Create login link</button>
+            </form>
+
+            @if (!string.IsNullOrWhiteSpace(Model.AuthorizationUrl))
+            {
+                <div class="device-login">
+                    <p>Open AniList, approve access, then copy the token shown on the PIN page.</p>
+                    <a class="button button-primary"
+                       href="@Model.AuthorizationUrl"
+                       target="_blank"
+                       rel="noopener noreferrer">
+                        Open AniList login
+                    </a>
+                </div>
+            }
+        </section>
+
+        <section class="panel">
+            <div class="panel-heading">
+                <h2>3. Save connection</h2>
+                <span>Access token</span>
+            </div>
+
+            <form method="post" asp-page-handler="Connect" class="form-stack">
+                <div asp-validation-summary="ModelOnly" class="validation"></div>
+                <input type="hidden" asp-for="ClientId" />
+                <label>
+                    <span>AniList access token</span>
+                    <input asp-for="AccessToken"
+                           type="password"
+                           autocomplete="off"
+                           spellcheck="false" />
+                    <span asp-validation-for="AccessToken" class="validation"></span>
+                </label>
+                <button class="button button-primary" type="submit">Connect AniList</button>
+            </form>
+        </section>
+    }
+
+    <section class="panel">
+        <div class="panel-heading">
+            <h2>Integration boundary</h2>
+            <span>Read-only foundation</span>
+        </div>
+        <p class="muted">
+            Public anime metadata matching remains separate from account authentication.
+            This account connection is the foundation for user-specific progress features.
+            AniLingo does not write watch progress or list status to AniList in this release.
+        </p>
+    </section>
+</div>
