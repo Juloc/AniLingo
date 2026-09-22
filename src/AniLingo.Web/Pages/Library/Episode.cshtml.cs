@@ -3,6 +3,7 @@ using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Playback;
 using AniLingo.Web.Features.Subtitles;
 using AniLingo.Web.Features.Vocabulary;
+using AniLingo.Web.Infrastructure;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
@@ -30,7 +31,8 @@ public sealed class EpisodeModel(
     EpisodePreparationService preparationService,
     PlaybackService playbackService,
     EmbeddedSubtitleExtractor embeddedSubtitleExtractor,
-    SubtitleImportService subtitleImportService) : PageModel
+    SubtitleImportService subtitleImportService,
+    BackgroundJobQueue transcriptionJobs) : PageModel
 {
     public Guid EpisodeId { get; private set; }
     public Guid AnimeId { get; private set; }
@@ -43,6 +45,8 @@ public sealed class EpisodeModel(
     public IReadOnlyList<EpisodePreparationTerm> Terms => Preparation.Terms;
     public IReadOnlyList<EpisodeSubtitleSource> SubtitleSources { get; private set; } = [];
     public ActiveEpisodeSubtitle? ActiveSubtitle { get; private set; }
+    public AudioTranscriptionState Transcription { get; private set; } =
+        new(AudioTranscriptionStatus.None);
     public string? SubtitleNotice => TempData["SubtitleNotice"] as string;
     public string? SubtitleError => TempData["SubtitleError"] as string;
 
@@ -77,6 +81,24 @@ public sealed class EpisodeModel(
         Preparation = await preparationService.GetAsync(id, header.AnimeId, cancellationToken);
         Playback = await playbackService.GetSnapshotAsync(id, cancellationToken);
         await LoadSubtitleSourcesAsync(id, Playback.Media?.SourcePath, cancellationToken);
+
+        if (ActiveSubtitle is null && Playback.Media is { } media)
+        {
+            var hasJapaneseTextSource = SubtitleSources.Any(source =>
+                source.IsText &&
+                EmbeddedSubtitleExtractor.IsJapanese(source.Language, source.Title));
+
+            if (!hasJapaneseTextSource)
+            {
+                await QueueAudioTranscriptionAsync(
+                    id,
+                    media.SourcePath,
+                    cancellationToken);
+            }
+
+            Transcription =
+                embeddedSubtitleExtractor.GetAudioTranscriptionState(media.SourcePath);
+        }
 
         return Page();
     }
@@ -185,6 +207,13 @@ public sealed class EpisodeModel(
 
     private static string BuildSubtitleLabel(string sourceKey)
     {
+        if (sourceKey.StartsWith(
+                EmbeddedSubtitleExtractor.TranscriptionSourcePrefix,
+                StringComparison.Ordinal))
+        {
+            return "Japanese audio transcription";
+        }
+
         if (!sourceKey.StartsWith(
                 EmbeddedSubtitleExtractor.SourcePrefix,
                 StringComparison.Ordinal))
@@ -207,28 +236,38 @@ public sealed class EpisodeModel(
             id,
             ParsePlaybackMode(mode),
             cancellationToken);
-        if (stream is null || !System.IO.File.Exists(stream.Path))
+        if (stream is null || !System.IO.File.Exists(stream.SourcePath))
         {
             return NotFound();
         }
 
-        return new PhysicalFileResult(stream.Path, stream.ContentType)
+        if (!stream.IsLive)
         {
-            EnableRangeProcessing = true,
-            LastModified = stream.LastModified
-        };
-    }
+            return new PhysicalFileResult(stream.SourcePath, stream.ContentType)
+            {
+                EnableRangeProcessing = true,
+                LastModified = stream.LastModified
+            };
+        }
 
-    public async Task<IActionResult> OnPostPreparePlaybackAsync(
-        Guid id,
-        string? mode,
-        CancellationToken cancellationToken)
-    {
-        await playbackService.QueuePreparationAsync(
-            id,
-            ParsePlaybackMode(mode),
-            cancellationToken);
-        return RedirectToPage(new { id });
+        try
+        {
+            var liveStream = LivePlaybackStream.Start(
+                stream.SourcePath,
+                stream.LivePlan!);
+
+            return new FileStreamResult(liveStream, stream.ContentType)
+            {
+                EnableRangeProcessing = false,
+                LastModified = stream.LastModified
+            };
+        }
+        catch (Exception exception) when (
+            exception is InvalidOperationException or
+            System.ComponentModel.Win32Exception)
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable);
+        }
     }
 
     public async Task<IActionResult> OnPostKnownAsync(Guid id, Guid termId, CancellationToken cancellationToken)
@@ -247,6 +286,114 @@ public sealed class EpisodeModel(
         string.Equals(mode, "server", StringComparison.OrdinalIgnoreCase)
             ? PlaybackRequestedMode.Server
             : PlaybackRequestedMode.Device;
+
+    private async Task QueueAudioTranscriptionAsync(
+        Guid episodeId,
+        string mediaPath,
+        CancellationToken cancellationToken)
+    {
+        if (!embeddedSubtitleExtractor.TryQueueAudioTranscription(mediaPath))
+        {
+            return;
+        }
+
+        try
+        {
+            await transcriptionJobs.QueueAsync(
+                async (services, jobCancellationToken) =>
+                {
+                    var extractor =
+                        services.GetRequiredService<EmbeddedSubtitleExtractor>();
+                    var importer =
+                        services.GetRequiredService<SubtitleImportService>();
+                    var jobDb =
+                        services.GetRequiredService<AppDbContext>();
+
+                    try
+                    {
+                        var media = await jobDb.MediaFiles
+                            .AsNoTracking()
+                            .Where(x => x.EpisodeId == episodeId)
+                            .OrderBy(x => x.Path)
+                            .Select(x => new
+                            {
+                                x.Path,
+                                x.LastWriteTimeUtc
+                            })
+                            .FirstOrDefaultAsync(jobCancellationToken);
+
+                        if (media is null)
+                        {
+                            extractor.MarkAudioTranscriptionFailed(
+                                mediaPath,
+                                "Media file no longer exists.");
+                            return;
+                        }
+
+                        var alreadyHasJapaneseText = await jobDb.SubtitleTracks
+                            .AsNoTracking()
+                            .AnyAsync(
+                                x => x.EpisodeId == episodeId &&
+                                     x.Language == "ja",
+                                jobCancellationToken);
+
+                        if (alreadyHasJapaneseText)
+                        {
+                            extractor.MarkAudioTranscriptionReady(media.Path);
+                            return;
+                        }
+
+                        var transcript =
+                            await extractor.TranscribeJapaneseAudioAsync(
+                                media.Path,
+                                jobCancellationToken);
+
+                        if (transcript is null)
+                        {
+                            return;
+                        }
+
+                        alreadyHasJapaneseText = await jobDb.SubtitleTracks
+                            .AsNoTracking()
+                            .AnyAsync(
+                                x => x.EpisodeId == episodeId &&
+                                     x.Language == "ja",
+                                jobCancellationToken);
+
+                        if (alreadyHasJapaneseText)
+                        {
+                            extractor.MarkAudioTranscriptionReady(media.Path);
+                            return;
+                        }
+
+                        await importer.ImportPreferredContentAsync(
+                            episodeId,
+                            transcript.SourceKey,
+                            transcript.Format,
+                            media.LastWriteTimeUtc,
+                            transcript.Content,
+                            jobCancellationToken);
+
+                        extractor.MarkAudioTranscriptionReady(media.Path);
+                    }
+                    catch (Exception)
+                    {
+                        extractor.MarkAudioTranscriptionFailed(
+                            mediaPath,
+                            "Japanese audio transcription could not be imported.");
+                        throw;
+                    }
+                },
+                cancellationToken);
+        }
+        catch
+        {
+            embeddedSubtitleExtractor.MarkAudioTranscriptionFailed(
+                mediaPath,
+                "Could not queue Japanese audio transcription.");
+            throw;
+        }
+    }
 
     public async Task<IActionResult> OnPostPrepareAsync(Guid id, CancellationToken cancellationToken)
     {
