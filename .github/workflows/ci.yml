@@ -6,7 +6,7 @@ on:
   pull_request:
 
 permissions:
-  contents: read
+  contents: write
   packages: write
 
 jobs:
@@ -35,3 +35,21 @@ jobs:
           docker tag ghcr.io/juloc/anilingo:${{ github.sha }} ghcr.io/juloc/anilingo:latest
           docker push ghcr.io/juloc/anilingo:${{ github.sha }}
           docker push ghcr.io/juloc/anilingo:latest
+
+          if [ "${{ startsWith(github.event.head_commit.message, 'release:') }}" = "true" ]; then
+            VERSION="$(dotnet msbuild src/AniLingo.Web/AniLingo.Web.csproj -nologo -getProperty:Version)"
+            docker tag ghcr.io/juloc/anilingo:${{ github.sha }} "ghcr.io/juloc/anilingo:${VERSION}"
+            docker push "ghcr.io/juloc/anilingo:${VERSION}"
+          fi
+
+      - name: Create GitHub prerelease
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'release:')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="$(dotnet msbuild src/AniLingo.Web/AniLingo.Web.csproj -nologo -getProperty:Version)"
+          gh release create "v${VERSION}" \
+            --target "${GITHUB_SHA}" \
+            --title "AniLingo ${VERSION}" \
+            --prerelease \
+            --generate-notes
