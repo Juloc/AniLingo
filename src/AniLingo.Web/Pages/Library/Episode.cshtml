@@ -15,6 +15,101 @@
     </div>
 </header>
 
+<section class="panel subtitle-source-panel">
+    <div class="panel-heading">
+        <div>
+            <span class="eyebrow">Learning source</span>
+            <h2>Japanese subtitles</h2>
+        </div>
+        @if (Model.ActiveSubtitle is { } activeBadge)
+        {
+            <span class="status-pill status-ok">@activeBadge.CueCount cues · @Model.Terms.Count terms</span>
+        }
+        else
+        {
+            <span class="status-pill status-warning">Not imported</span>
+        }
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(Model.SubtitleNotice))
+    {
+        <div class="subtitle-source-message status-ok">@Model.SubtitleNotice</div>
+    }
+    @if (!string.IsNullOrWhiteSpace(Model.SubtitleError))
+    {
+        <div class="subtitle-source-message status-error">@Model.SubtitleError</div>
+    }
+
+    @if (Model.ActiveSubtitle is { } active)
+    {
+        <div class="active-subtitle-source">
+            <span>Current Japanese source</span>
+            <strong>@active.Label</strong>
+            <small>@active.Format.ToUpperInvariant() · @active.CueCount imported cues</small>
+        </div>
+    }
+    else
+    {
+        <p class="muted subtitle-source-help">
+            AniLingo did not import a Japanese text track automatically. Choose the correct embedded text stream below; its vocabulary will be built immediately.
+        </p>
+    }
+
+    @if (Model.SubtitleSources.Count == 0)
+    {
+        <div class="subtitle-source-empty">
+            No embedded subtitle streams were found in this media file.
+        </div>
+    }
+    else
+    {
+        <div class="subtitle-source-list">
+            @foreach (var source in Model.SubtitleSources)
+            {
+                <div class="subtitle-source-row">
+                    <div class="subtitle-source-copy">
+                        <strong>
+                            @(string.IsNullOrWhiteSpace(source.Title)
+                                ? $"Stream #{source.StreamIndex}"
+                                : source.Title)
+                        </strong>
+                        <span>
+                            #@source.StreamIndex · @source.Codec.ToUpperInvariant() ·
+                            @(string.IsNullOrWhiteSpace(source.Language) ? "und" : source.Language)
+                            @if (source.IsDefault)
+                            {
+                                <text> · default</text>
+                            }
+                            @if (source.IsForced)
+                            {
+                                <text> · forced</text>
+                            }
+                        </span>
+                    </div>
+
+                    @if (source.IsSelected)
+                    {
+                        <span class="status-pill status-ok">Japanese source</span>
+                    }
+                    else if (source.IsText)
+                    {
+                        <form method="post"
+                              asp-page-handler="UseSubtitle"
+                              asp-route-id="@Model.EpisodeId">
+                            <input type="hidden" name="streamIndex" value="@source.StreamIndex" />
+                            <button class="button" type="submit">Use as Japanese</button>
+                        </form>
+                    }
+                    else
+                    {
+                        <span class="status-pill status-warning">Image/unsupported · OCR required</span>
+                    }
+                </div>
+            }
+        </div>
+    }
+</section>
+
 @if (Model.Playback.Media is { } media)
 {
     <section class="player-panel"
@@ -96,7 +191,7 @@
 {
     <div class="empty-state">
         <h3>No vocabulary yet</h3>
-        <p>No usable Japanese text subtitles were found. AniLingo supports external SRT/ASS files and embedded Japanese text tracks; image subtitles such as PGS need OCR support later.</p>
+        <p>Select a Japanese text subtitle source above and AniLingo will build the vocabulary automatically. If the file only contains image subtitles such as PGS, OCR support is still required.</p>
     </div>
 }
 else
