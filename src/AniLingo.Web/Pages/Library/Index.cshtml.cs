@@ -1,4 +1,5 @@
 using AniLingo.Web.Data;
+using AniLingo.Web.Features.Artwork;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
 
@@ -10,7 +11,7 @@ public sealed class IndexModel(AppDbContext db) : PageModel
 
     public async Task OnGetAsync(CancellationToken cancellationToken)
     {
-        Anime = await (
+        var rows = await (
             from anime in db.Anime.AsNoTracking()
             join metadataValue in db.AnimeMetadata.AsNoTracking()
                 on anime.Id equals metadataValue.AnimeId into metadataRows
@@ -23,6 +24,15 @@ public sealed class IndexModel(AppDbContext db) : PageModel
                 db.Episodes.Count(episode => episode.AnimeId == anime.Id),
                 metadata == null ? null : metadata.CoverImageUrl))
             .ToListAsync(cancellationToken);
+
+        Anime = rows
+            .Select(row => row with
+            {
+                CoverImageUrl = AnimeArtworkStore.ResolvePosterUrl(
+                    row.Id,
+                    row.CoverImageUrl)
+            })
+            .ToArray();
     }
 
     public sealed record AnimeRow(
