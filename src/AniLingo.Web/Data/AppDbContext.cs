@@ -120,7 +120,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasOne<Term>().WithMany().HasForeignKey(x => x.TermId).OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(x => new { x.ProfileId, x.TermId }).IsUnique();
             entity.HasIndex(x => new { x.ProfileId, x.State, x.NextReviewAt });
-            entity.HasIndex(x => new { x.ProfileId, x.State, x.LearningStartedAt, x.QueuePosition });
+            entity.HasIndex(x => new { x.LearningStartedAt, x.QueuePosition });
         });
 
         modelBuilder.Entity<Review>(entity =>
