@@ -63,6 +63,8 @@ ENV ASPNETCORE_URLS=http://+:8080 \
 EXPOSE 8080
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ffmpeg \
+    && ffmpeg -version >/dev/null \
+    && ffprobe -version >/dev/null \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /data/codex
 COPY --from=codex /codex /usr/local/bin/codex
