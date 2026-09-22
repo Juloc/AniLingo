@@ -1,4 +1,5 @@
 @page "/Library/Episode/{id:guid}"
+@using System.Text.Json
 @model AniLingo.Web.Pages.Library.EpisodeModel
 @{
     ViewData["Title"] = $"{Model.AnimeTitle} E{Model.EpisodeNumber}";
@@ -12,6 +13,46 @@
         <p>@Model.Terms.Count candidates · @Model.Preparation.KnownPercent% known · @Model.Preparation.PreparedPercent% prepared</p>
     </div>
 </header>
+
+@if (Model.Playback.Media is { } media)
+{
+    <section class="player-panel" data-episode-player>
+        <div class="video-stage">
+            <video controls preload="metadata" playsinline
+                   src="@Url.Page("/Library/Episode", "Media", new { id = Model.EpisodeId })"></video>
+            <div class="subtitle-overlay" data-subtitle-overlay lang="ja"></div>
+        </div>
+
+        <div class="player-meta">
+            <div>
+                <span class="eyebrow">Player</span>
+                <strong>@media.FileName</strong>
+                <span>@Model.Playback.Cues.Count synced Japanese cues · click highlighted words for lookup</span>
+            </div>
+            @if (!media.IsLikelyBrowserSupported)
+            {
+                <span class="status-pill status-warning">Container may not direct-play</span>
+            }
+        </div>
+
+        <div class="player-error" data-player-error hidden></div>
+
+        <div class="word-inspector" data-word-inspector hidden>
+            <div>
+                <strong data-word lang="ja"></strong>
+                <span data-reading lang="ja"></span>
+                <p data-meaning></p>
+            </div>
+            <div class="word-inspector-actions">
+                <span class="status-pill" data-state></span>
+                <button class="button" type="button" data-replay>Replay line</button>
+            </div>
+        </div>
+
+        <script type="application/json" data-cue-data>@Html.Raw(JsonSerializer.Serialize(Model.Playback.Cues, new JsonSerializerOptions(JsonSerializerDefaults.Web)))</script>
+    </section>
+    <script src="~/js/episode-player.js" asp-append-version="true"></script>
+}
 
 @if (Model.Terms.Count == 0)
 {
