@@ -31,6 +31,19 @@
         </label>
 
         <label>
+            <span>New words per day</span>
+            <input asp-for="NewWordsPerDay"
+                   type="number"
+                   min="0"
+                   max="100"
+                   step="1" />
+            <small class="muted">
+                Prepared words wait in a queue. Reviews come first; AniLingo introduces at most this many new words per day.
+            </small>
+            <span asp-validation-for="NewWordsPerDay" class="validation"></span>
+        </label>
+
+        <label>
             <span>Reviews per learning round</span>
             <input asp-for="ReviewBatchSize"
                    type="number"
