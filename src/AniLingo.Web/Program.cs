@@ -27,6 +27,7 @@ builder.Services.AddSingleton<JapaneseTermExtractor>();
 builder.Services.AddSingleton<JapaneseDictionary>();
 builder.Services.AddSingleton<IReviewScheduler, FsrsReviewScheduler>();
 builder.Services.AddScoped<LearningService>();
+builder.Services.AddScoped<EpisodePreparationService>();
 
 builder.Services.AddSingleton<CodexCliProvider>();
 builder.Services.AddSingleton<IAiProvider>(services => services.GetRequiredService<CodexCliProvider>());
