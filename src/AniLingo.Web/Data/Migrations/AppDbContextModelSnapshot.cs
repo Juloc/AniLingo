@@ -17,6 +17,23 @@ namespace AniLingo.Web.Data.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.12");
 
+            modelBuilder.Entity("AniLingo.Web.Features.Learning.LearningPreferences", b =>
+                {
+                    b.Property<string>("ProfileId")
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<double>("DesiredRetention")
+                        .HasColumnType("REAL");
+
+                    b.Property<int>("ReviewBatchSize")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("ProfileId");
+
+                    b.ToTable("LearningPreferences");
+                });
+
             modelBuilder.Entity("AniLingo.Web.Features.Learning.Review", b =>
                 {
                     b.Property<long>("Id")
