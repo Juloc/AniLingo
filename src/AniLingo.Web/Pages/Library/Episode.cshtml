@@ -45,7 +45,7 @@
         <div class="active-subtitle-source">
             <span>Current Japanese source</span>
             <strong>@active.Label</strong>
-            <small>@active.Format.ToUpperInvariant() · @active.CueCount imported cues</small>
+            <small>@(active.Format.ToUpperInvariant()) · @active.CueCount imported cues</small>
         </div>
     }
     else
@@ -74,7 +74,7 @@
                                 : source.Title)
                         </strong>
                         <span>
-                            #@source.StreamIndex · @source.Codec.ToUpperInvariant() ·
+                            #@source.StreamIndex · @(source.Codec.ToUpperInvariant()) ·
                             @(string.IsNullOrWhiteSpace(source.Language) ? "und" : source.Language)
                             @if (source.IsDefault)
                             {
