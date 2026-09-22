@@ -2,6 +2,9 @@ using AniLingo.Web.Data;
 using AniLingo.Web.Features.Metadata;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 
 namespace AniLingo.Tests;
 
@@ -82,6 +85,29 @@ public sealed class MetadataTests
         Assert.AreEqual(28, result.EpisodeCount);
         Assert.AreEqual(24, result.EpisodeDurationMinutes);
         Assert.AreEqual("https://img.example/frieren-large.jpg", result.CoverImageUrl);
+    }
+
+
+    [TestMethod]
+    public void MigrationSnapshotMatchesRuntimeModel()
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseSqlite("Data Source=:memory:")
+            .Options;
+
+        using var db = new AppDbContext(options);
+        var differ = db.GetService<IMigrationsModelDiffer>();
+        var runtimeModel = db.GetService<IDesignTimeModel>().Model;
+        var snapshotModel = new AppDbContextModelSnapshot().Model;
+
+        var operations = differ.GetDifferences(
+            snapshotModel.GetRelationalModel(),
+            runtimeModel.GetRelationalModel());
+
+        Assert.AreEqual(
+            0,
+            operations.Count,
+            string.Join(", ", operations.Select(operation => operation.GetType().Name)));
     }
 
     [TestMethod]
