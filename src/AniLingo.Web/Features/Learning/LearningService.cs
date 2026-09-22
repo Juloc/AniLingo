@@ -14,21 +14,41 @@ public sealed class LearningService(
             x => x.ProfileId == LearningProfile.DefaultId && x.TermId == termId,
             cancellationToken);
 
+        var now = DateTime.UtcNow;
+
         if (item is null)
         {
             item = new UserTerm
             {
                 ProfileId = LearningProfile.DefaultId,
-                TermId = termId
+                TermId = termId,
+                State = state,
+                UpdatedAt = now
             };
             db.UserTerms.Add(item);
         }
 
-        item.State = state;
-        item.UpdatedAt = DateTime.UtcNow;
-        item.NextReviewAt = state == UserTermState.Learning
-            ? item.NextReviewAt ?? DateTime.UtcNow
-            : null;
+        if (state == UserTermState.Known)
+        {
+            item.State = UserTermState.Known;
+            item.NextReviewAt = null;
+            item.UpdatedAt = now;
+            await db.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
+        item.State = UserTermState.Learning;
+        item.UpdatedAt = now;
+
+        if (item.LearningStartedAt is null)
+        {
+            item.NextReviewAt = null;
+            item.QueuePosition ??= await GetNextQueuePositionAsync(cancellationToken);
+        }
+        else
+        {
+            item.NextReviewAt ??= now;
+        }
 
         await db.SaveChangesAsync(cancellationToken);
     }
@@ -37,7 +57,8 @@ public sealed class LearningService(
         IReadOnlyCollection<Guid> termIds,
         CancellationToken cancellationToken)
     {
-        var ids = termIds.Distinct().ToArray();
+        var seen = new HashSet<Guid>();
+        var ids = termIds.Where(seen.Add).ToArray();
         if (ids.Length == 0)
         {
             return;
@@ -47,6 +68,7 @@ public sealed class LearningService(
             .Where(x => x.ProfileId == LearningProfile.DefaultId && ids.Contains(x.TermId))
             .ToDictionaryAsync(x => x.TermId, cancellationToken);
 
+        var nextQueuePosition = await GetCurrentMaxQueuePositionAsync(cancellationToken);
         var now = DateTime.UtcNow;
 
         foreach (var termId in ids)
@@ -59,7 +81,9 @@ public sealed class LearningService(
                 }
 
                 item.State = UserTermState.Learning;
-                item.NextReviewAt ??= now;
+                item.NextReviewAt = null;
+                item.LearningStartedAt = null;
+                item.QueuePosition = ++nextQueuePosition;
                 item.UpdatedAt = now;
                 continue;
             }
@@ -69,7 +93,9 @@ public sealed class LearningService(
                 ProfileId = LearningProfile.DefaultId,
                 TermId = termId,
                 State = UserTermState.Learning,
-                NextReviewAt = now,
+                NextReviewAt = null,
+                LearningStartedAt = null,
+                QueuePosition = ++nextQueuePosition,
                 UpdatedAt = now
             });
         }
@@ -82,6 +108,60 @@ public sealed class LearningService(
         var preferences = await GetPreferencesAsync(cancellationToken);
         var now = DateTime.UtcNow;
 
+        var dueStartedCount = await db.UserTerms
+            .AsNoTracking()
+            .CountAsync(
+                x => x.ProfileId == LearningProfile.DefaultId
+                    && x.State == UserTermState.Learning
+                    && x.NextReviewAt != null
+                    && x.NextReviewAt <= now,
+                cancellationToken);
+
+        var batchSlotsForNew = Math.Max(
+            0,
+            preferences.ReviewBatchSize - Math.Min(dueStartedCount, preferences.ReviewBatchSize));
+
+        var dayStart = now.Date;
+        var dayEnd = dayStart.AddDays(1);
+        var startedToday = await db.UserTerms
+            .AsNoTracking()
+            .CountAsync(
+                x => x.ProfileId == LearningProfile.DefaultId
+                    && x.LearningStartedAt != null
+                    && x.LearningStartedAt >= dayStart
+                    && x.LearningStartedAt < dayEnd,
+                cancellationToken);
+
+        var dailySlotsForNew = Math.Max(0, preferences.NewWordsPerDay - startedToday);
+        var activateCount = Math.Min(batchSlotsForNew, dailySlotsForNew);
+
+        if (activateCount > 0)
+        {
+            var queued = await db.UserTerms
+                .Where(x =>
+                    x.ProfileId == LearningProfile.DefaultId
+                    && x.State == UserTermState.Learning
+                    && x.LearningStartedAt == null
+                    && x.NextReviewAt == null)
+                .OrderBy(x => x.QueuePosition ?? long.MaxValue)
+                .ThenBy(x => x.UpdatedAt)
+                .ThenBy(x => x.TermId)
+                .Take(activateCount)
+                .ToListAsync(cancellationToken);
+
+            foreach (var item in queued)
+            {
+                item.LearningStartedAt = now;
+                item.NextReviewAt = now;
+                item.UpdatedAt = now;
+            }
+
+            if (queued.Count > 0)
+            {
+                await db.SaveChangesAsync(cancellationToken);
+            }
+        }
+
         return await (
             from userTerm in db.UserTerms.AsNoTracking()
             join term in db.Terms.AsNoTracking() on userTerm.TermId equals term.Id
@@ -89,7 +169,7 @@ public sealed class LearningService(
                 && userTerm.State == UserTermState.Learning
                 && userTerm.NextReviewAt != null
                 && userTerm.NextReviewAt <= now
-            orderby userTerm.NextReviewAt
+            orderby userTerm.NextReviewAt, userTerm.QueuePosition, term.Canonical
             select new DueReviewItem(term.Id, term.Canonical, term.Reading, term.Meaning, userTerm.IntervalDays))
             .Take(preferences.ReviewBatchSize)
             .ToListAsync(cancellationToken);
@@ -108,7 +188,8 @@ public sealed class LearningService(
             .Where(x => x.ProfileId == LearningProfile.DefaultId)
             .Select(x => new LearningPreferencesSnapshot(
                 x.DesiredRetention,
-                x.ReviewBatchSize))
+                x.ReviewBatchSize,
+                x.NewWordsPerDay))
             .SingleOrDefaultAsync(cancellationToken);
 
         preferencesCache = row ?? LearningPreferencesSnapshot.Default;
@@ -118,6 +199,7 @@ public sealed class LearningService(
     public async Task SavePreferencesAsync(
         double desiredRetention,
         int reviewBatchSize,
+        int newWordsPerDay,
         CancellationToken cancellationToken)
     {
         if (desiredRetention is < 0.80 or > 0.97)
@@ -132,6 +214,13 @@ public sealed class LearningService(
             throw new ArgumentOutOfRangeException(
                 nameof(reviewBatchSize),
                 "Review batch size must be between 5 and 200.");
+        }
+
+        if (newWordsPerDay is < 0 or > 100)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(newWordsPerDay),
+                "New words per day must be between 0 and 100.");
         }
 
         var row = await db.LearningPreferences
@@ -150,11 +239,13 @@ public sealed class LearningService(
 
         row.DesiredRetention = desiredRetention;
         row.ReviewBatchSize = reviewBatchSize;
+        row.NewWordsPerDay = newWordsPerDay;
         await db.SaveChangesAsync(cancellationToken);
 
         preferencesCache = new LearningPreferencesSnapshot(
             desiredRetention,
-            reviewBatchSize);
+            reviewBatchSize,
+            newWordsPerDay);
     }
 
     public async Task<ReviewAnimeContext?> GetReviewContextAsync(
@@ -277,6 +368,15 @@ public sealed class LearningService(
 
         await db.SaveChangesAsync(cancellationToken);
     }
+
+    private async Task<long> GetNextQueuePositionAsync(CancellationToken cancellationToken) =>
+        (await GetCurrentMaxQueuePositionAsync(cancellationToken)) + 1;
+
+    private async Task<long> GetCurrentMaxQueuePositionAsync(CancellationToken cancellationToken) =>
+        await db.UserTerms
+            .Where(x => x.ProfileId == LearningProfile.DefaultId)
+            .MaxAsync(x => (long?)x.QueuePosition, cancellationToken)
+        ?? 0;
 
     private async Task<IReadOnlyList<ReviewHistoryItem>> GetHistoryAsync(
         Guid termId,

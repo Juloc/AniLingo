@@ -29,6 +29,9 @@ namespace AniLingo.Web.Data.Migrations
                     b.Property<int>("ReviewBatchSize")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int>("NewWordsPerDay")
+                        .HasColumnType("INTEGER");
+
                     b.HasKey("ProfileId");
 
                     b.ToTable("LearningPreferences");
@@ -75,6 +78,9 @@ namespace AniLingo.Web.Data.Migrations
                     b.Property<int>("IntervalDays")
                         .HasColumnType("INTEGER");
 
+                    b.Property<DateTime?>("LearningStartedAt")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime?>("NextReviewAt")
                         .HasColumnType("TEXT");
 
@@ -82,6 +88,9 @@ namespace AniLingo.Web.Data.Migrations
                         .IsRequired()
                         .HasMaxLength(80)
                         .HasColumnType("TEXT");
+
+                    b.Property<long?>("QueuePosition")
+                        .HasColumnType("INTEGER");
 
                     b.Property<int>("State")
                         .HasColumnType("INTEGER");
@@ -100,6 +109,8 @@ namespace AniLingo.Web.Data.Migrations
                         .IsUnique();
 
                     b.HasIndex("ProfileId", "State", "NextReviewAt");
+
+                    b.HasIndex("LearningStartedAt", "QueuePosition");
 
                     b.ToTable("UserTerms");
                 });
