@@ -61,7 +61,10 @@ WORKDIR /app
 ENV ASPNETCORE_URLS=http://+:8080 \
     CODEX_HOME=/data/codex
 EXPOSE 8080
-RUN mkdir -p /data/codex
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /data/codex
 COPY --from=codex /codex /usr/local/bin/codex
 COPY --from=japanese-data /var/lib/mecab/dic/open-jtalk/naist-jdic /var/lib/mecab/dic/open-jtalk/naist-jdic
 COPY --from=japanese-data /dictionary ./dictionary
