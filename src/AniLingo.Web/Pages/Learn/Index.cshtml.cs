@@ -9,6 +9,7 @@ public sealed class IndexModel(LearningService learningService) : PageModel
     public IReadOnlyList<DueReviewItem> Due { get; private set; } = [];
     public IReadOnlyDictionary<ReviewRating, string> Intervals { get; private set; } =
         new Dictionary<ReviewRating, string>();
+    public ReviewAnimeContext? Context { get; private set; }
 
     public async Task OnGetAsync(CancellationToken cancellationToken)
     {
@@ -22,6 +23,7 @@ public sealed class IndexModel(LearningService learningService) : PageModel
 
         Intervals = (await learningService.GetReviewOptionsAsync(current.TermId, cancellationToken))
             .ToDictionary(option => option.Rating, option => option.IntervalLabel);
+        Context = await learningService.GetReviewContextAsync(current.TermId, cancellationToken);
     }
 
     public async Task<IActionResult> OnPostReviewAsync(
