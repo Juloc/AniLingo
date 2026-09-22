@@ -74,7 +74,6 @@ public static partial class JapaneseSentencePreprocessor
         ("てる", "てる→ている"),
         ("じゃん", "じゃん→じゃないか"),
         ("んです", "んです→のです"),
-        ("んだ", "んだ→のだ")
     ];
 
     private static readonly (Regex Pattern, string Hint)[] RegexRules =
@@ -114,6 +113,6 @@ public static partial class JapaneseSentencePreprocessor
     [GeneratedRegex(@"しか[^。！？!?]{0,48}ない")]
     private static partial Regex ShikaNaiRegex();
 
-    [GeneratedRegex(@"たり[^。！？!?]{0,48}たり(?:する|して|した|します|しない)?")]
+    [GeneratedRegex(@"(?:たり|だり)[^。！？!?]{0,48}(?:たり|だり)(?:する|して|した|します|しない)?")]
     private static partial Regex TariTariRegex();
 }
