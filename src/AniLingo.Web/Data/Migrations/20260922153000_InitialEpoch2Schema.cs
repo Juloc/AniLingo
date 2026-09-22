@@ -1,9 +1,11 @@
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 namespace AniLingo.Web.Data.Migrations;
 
+[DbContext(typeof(AppDbContext))]
 [Migration("20260922153000_InitialEpoch2Schema")]
 public sealed class InitialEpoch2Schema : Migration
 {

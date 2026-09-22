@@ -1,9 +1,11 @@
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 namespace AniLingo.Web.Data.Migrations;
 
+[DbContext(typeof(AppDbContext))]
 [Migration("20260922153100_AddAnimeMetadata")]
 public sealed class AddAnimeMetadata : Migration
 {
