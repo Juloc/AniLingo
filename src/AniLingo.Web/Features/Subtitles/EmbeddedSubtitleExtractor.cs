@@ -44,7 +44,8 @@ public sealed class EmbeddedSubtitleExtractor(
     private const string WhisperModelPath = "/data/whisper/ggml-small-q5_1.bin";
     private const string WhisperModelUrl =
         "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin";
-    private const string WhisperModelSha1 = "6fe57ddcfdd1c6b07cdcc73aaf620810ce5fc771";
+    private const string WhisperModelSha256 =
+        "ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb";
 
     private static readonly TimeSpan ProcessTimeout = TimeSpan.FromSeconds(45);
     private static readonly TimeSpan LongProcessTimeout = TimeSpan.FromHours(2);
@@ -561,10 +562,10 @@ public sealed class EmbeddedSubtitleExtractor(
         CancellationToken cancellationToken)
     {
         await using var stream = File.OpenRead(path);
-        var hash = await SHA1.HashDataAsync(stream, cancellationToken);
+        var hash = await SHA256.HashDataAsync(stream, cancellationToken);
         return string.Equals(
             Convert.ToHexString(hash),
-            WhisperModelSha1,
+            WhisperModelSha256,
             StringComparison.OrdinalIgnoreCase);
     }
 
