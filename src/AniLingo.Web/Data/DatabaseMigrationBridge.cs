@@ -26,34 +26,45 @@ public static class DatabaseMigrationBridge
         AppDbContext db,
         CancellationToken cancellationToken = default)
     {
-        await using var connection = db.Database.GetDbConnection();
+        var connection = db.Database.GetDbConnection();
+        var openedHere = connection.State != ConnectionState.Open;
 
-        if (connection.State != ConnectionState.Open)
+        if (openedHere)
         {
             await connection.OpenAsync(cancellationToken);
         }
 
-        var existingTables = await ReadTablesAsync(connection, cancellationToken);
-        var hasHistory = existingTables.Contains("__EFMigrationsHistory", StringComparer.Ordinal);
-
-        if (!hasHistory && Epoch2Tables.All(
-                table => existingTables.Contains(table, StringComparer.Ordinal)))
+        try
         {
-            await db.Database.ExecuteSqlRawAsync(
-                """
-                CREATE TABLE IF NOT EXISTS "__EFMigrationsHistory" (
-                    "MigrationId" TEXT NOT NULL CONSTRAINT "PK___EFMigrationsHistory" PRIMARY KEY,
-                    "ProductVersion" TEXT NOT NULL
-                );
-                """,
-                cancellationToken);
+            var existingTables = await ReadTablesAsync(connection, cancellationToken);
+            var hasHistory = existingTables.Contains("__EFMigrationsHistory", StringComparer.Ordinal);
 
-            await db.Database.ExecuteSqlInterpolatedAsync(
-                $"""
-                INSERT OR IGNORE INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
-                VALUES ({Epoch2BaselineMigration}, {ProductVersion});
-                """,
-                cancellationToken);
+            if (!hasHistory && Epoch2Tables.All(
+                    table => existingTables.Contains(table, StringComparer.Ordinal)))
+            {
+                await db.Database.ExecuteSqlRawAsync(
+                    """
+                    CREATE TABLE IF NOT EXISTS "__EFMigrationsHistory" (
+                        "MigrationId" TEXT NOT NULL CONSTRAINT "PK___EFMigrationsHistory" PRIMARY KEY,
+                        "ProductVersion" TEXT NOT NULL
+                    );
+                    """,
+                    cancellationToken);
+
+                await db.Database.ExecuteSqlInterpolatedAsync(
+                    $"""
+                    INSERT OR IGNORE INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
+                    VALUES ({Epoch2BaselineMigration}, {ProductVersion});
+                    """,
+                    cancellationToken);
+            }
+        }
+        finally
+        {
+            if (openedHere)
+            {
+                await connection.CloseAsync();
+            }
         }
 
         await db.Database.MigrateAsync(cancellationToken);
