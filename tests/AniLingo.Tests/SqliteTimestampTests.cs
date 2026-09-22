@@ -150,8 +150,8 @@ public sealed class SqliteTimestampTests
                     VALUES
                         ($id, 'default', $termId, 2, 0, '2026-09-21 12:00:00+00:00', '2026-09-21 12:00:00+00:00');
                     """;
-                command.Parameters.Add(new SqliteParameter("$id", Guid.NewGuid().ToString()));
-                command.Parameters.Add(new SqliteParameter("$termId", term.Id.ToString()));
+                command.Parameters.Add(new SqliteParameter("$id", Guid.NewGuid()));
+                command.Parameters.Add(new SqliteParameter("$termId", term.Id));
                 await command.ExecuteNonQueryAsync();
                 await db.Database.CloseConnectionAsync();
             }
