@@ -9,7 +9,7 @@
 <header class="page-header">
     <div>
         <a class="back-link" href="/Library/Anime/@Model.AnimeId">← @Model.AnimeTitle</a>
-        <span class="eyebrow">S@Model.SeasonNumber.ToString("00") · E@Model.EpisodeNumber.ToString("00")</span>
+        <span class="eyebrow">S@(Model.SeasonNumber.ToString("00")) · E@(Model.EpisodeNumber.ToString("00"))</span>
         <h1>@Model.EpisodeTitle</h1>
         <p>@Model.Terms.Count candidates · @Model.Preparation.KnownPercent% known · @Model.Preparation.PreparedPercent% prepared</p>
     </div>
@@ -96,7 +96,7 @@
 {
     <div class="empty-state">
         <h3>No vocabulary yet</h3>
-        <p>Attach a Japanese .ja.srt/.ja.ass subtitle next to the media file and scan the root again.</p>
+        <p>No usable Japanese text subtitles were found. AniLingo supports external SRT/ASS files and embedded Japanese text tracks; image subtitles such as PGS need OCR support later.</p>
     </div>
 }
 else
