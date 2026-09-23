@@ -1,4 +1,5 @@
 using AniLingo.Web.Features.Ai;
+using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Learning;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -7,36 +8,28 @@ namespace AniLingo.Web.Pages.Learn;
 
 public sealed class IndexModel(
     LearningService learningService,
-    AiSentenceExplanationService aiExplanationService) : PageModel
+    AiSentenceExplanationService aiExplanationService,
+    CurrentAccountContext currentAccount) : PageModel
 {
-    public IReadOnlyList<DueReviewItem> Due { get; private set; } = [];
-    public IReadOnlyDictionary<ReviewRating, string> Intervals { get; private set; } =
-        new Dictionary<ReviewRating, string>();
-    public ReviewAnimeContext? Context { get; private set; }
+    public IReadOnlyList<ReviewSessionCard> Session { get; private set; } = [];
+    public ReviewSessionCard? Current => Session.FirstOrDefault();
     public IReadOnlyList<string> LocalHints { get; private set; } = [];
     public AiSentenceExplanation? AiExplanation { get; private set; }
+    public string ProfileId => currentAccount.ProfileId;
 
     public async Task OnGetAsync(CancellationToken cancellationToken)
     {
-        Due = await learningService.GetDueAsync(cancellationToken);
+        Session = await learningService.GetReviewSessionAsync(cancellationToken);
 
-        var current = Due.FirstOrDefault();
-        if (current is null)
+        if (Current?.Context is not { } context)
         {
             return;
         }
 
-        Intervals = (await learningService.GetReviewOptionsAsync(current.TermId, cancellationToken))
-            .ToDictionary(option => option.Rating, option => option.IntervalLabel);
-        Context = await learningService.GetReviewContextAsync(current.TermId, cancellationToken);
-
-        if (Context is not null)
-        {
-            LocalHints = aiExplanationService.PrepareLocal(Context.Sentence).LocalHints;
-            AiExplanation = await aiExplanationService.GetCachedAsync(
-                Context.Sentence,
-                cancellationToken);
-        }
+        LocalHints = aiExplanationService.PrepareLocal(context.Sentence).LocalHints;
+        AiExplanation = await aiExplanationService.GetCachedAsync(
+            context.Sentence,
+            cancellationToken);
     }
 
     public async Task<IActionResult> OnPostExplainAsync(
@@ -74,6 +67,20 @@ public sealed class IndexModel(
         return RedirectToPage();
     }
 
-    public string Interval(ReviewRating rating) =>
-        Intervals.GetValueOrDefault(rating, "—");
+    public async Task<IActionResult> OnPostSyncOfflineReviewsAsync(
+        [FromBody] OfflineReviewSyncRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (request.Events is null)
+        {
+            return BadRequest();
+        }
+
+        var result = await learningService.SyncOfflineReviewsAsync(
+            request.Events,
+            DateTime.UtcNow,
+            cancellationToken);
+
+        return new JsonResult(result);
+    }
 }

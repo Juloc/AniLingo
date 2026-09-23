@@ -166,11 +166,17 @@ public sealed class MetadataTests
                     CREATE TABLE EpisodeTerms (EpisodeId TEXT NOT NULL, TermId TEXT NOT NULL, PRIMARY KEY (EpisodeId, TermId));
                     CREATE TABLE LibraryRoots (Id TEXT NOT NULL PRIMARY KEY);
                     CREATE TABLE MediaFiles (Id TEXT NOT NULL PRIMARY KEY);
-                    CREATE TABLE Reviews (Id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT);
+                    CREATE TABLE Reviews (
+                        Id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                        ProfileId TEXT NOT NULL DEFAULT 'default'
+                    );
                     CREATE TABLE SubtitleCues (Id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT);
                     CREATE TABLE SubtitleTracks (Id TEXT NOT NULL PRIMARY KEY);
                     CREATE TABLE Terms (Id TEXT NOT NULL PRIMARY KEY);
-                    CREATE TABLE UserTerms (Id TEXT NOT NULL PRIMARY KEY);
+                    CREATE TABLE UserTerms (
+                        Id TEXT NOT NULL PRIMARY KEY,
+                        ProfileId TEXT NOT NULL DEFAULT 'default'
+                    );
                     """;
                 await command.ExecuteNonQueryAsync();
             }
@@ -189,12 +195,19 @@ public sealed class MetadataTests
             CollectionAssert.Contains(
                 applied,
                 "20260922153100_AddAnimeMetadata");
+            CollectionAssert.Contains(
+                applied,
+                "20260923110000_AddOfflineReviewEventIds");
 
             await using var verification = new SqliteConnection($"Data Source={databasePath}");
             await verification.OpenAsync();
             await using var check = verification.CreateCommand();
             check.CommandText =
                 "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='AnimeMetadata';";
+            Assert.AreEqual(1L, Convert.ToInt64(await check.ExecuteScalarAsync()));
+
+            check.CommandText =
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='IX_Reviews_ProfileId_ClientEventId';";
             Assert.AreEqual(1L, Convert.ToInt64(await check.ExecuteScalarAsync()));
         }
         finally

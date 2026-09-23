@@ -9,6 +9,7 @@ public sealed class LearningService
     private readonly AppDbContext db;
     private readonly IReviewScheduler scheduler;
     private readonly string profileId;
+    private static readonly SemaphoreSlim OfflineSyncGate = new(1, 1);
 
     public LearningService(
         AppDbContext db,
@@ -200,6 +201,151 @@ public sealed class LearningService
             select new DueReviewItem(term.Id, term.Canonical, term.Reading, term.Meaning, userTerm.IntervalDays))
             .Take(preferences.ReviewBatchSize)
             .ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<ReviewSessionCard>> GetReviewSessionAsync(
+        CancellationToken cancellationToken)
+    {
+        var due = await GetDueAsync(cancellationToken);
+        if (due.Count == 0)
+        {
+            return [];
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var preferences = await GetPreferencesAsync(cancellationToken);
+        var termIds = due.Select(x => x.TermId).ToArray();
+
+        var reviewRows = await db.Reviews
+            .AsNoTracking()
+            .Where(x => x.ProfileId == profileId && termIds.Contains(x.TermId))
+            .OrderBy(x => x.TermId)
+            .ThenBy(x => x.ReviewedAt)
+            .Select(x => new { x.TermId, x.Rating, x.ReviewedAt })
+            .ToListAsync(cancellationToken);
+
+        var histories = reviewRows
+            .GroupBy(x => x.TermId)
+            .ToDictionary(
+                group => group.Key,
+                group => (IReadOnlyList<ReviewHistoryItem>)group
+                    .Select(x => new ReviewHistoryItem(
+                        x.Rating,
+                        new DateTimeOffset(DateTime.SpecifyKind(
+                            x.ReviewedAt,
+                            DateTimeKind.Utc))))
+                    .ToArray());
+
+        var contextCandidates = await (
+            from episodeTerm in db.EpisodeTerms.AsNoTracking()
+            join episode in db.Episodes.AsNoTracking()
+                on episodeTerm.EpisodeId equals episode.Id
+            join anime in db.Anime.AsNoTracking()
+                on episode.AnimeId equals anime.Id
+            where termIds.Contains(episodeTerm.TermId)
+            orderby episodeTerm.TermId,
+                episodeTerm.Occurrences descending,
+                anime.Title,
+                episode.SeasonNumber,
+                episode.Number,
+                episode.Id
+            select new ReviewContextCandidate(
+                episodeTerm.TermId,
+                episode.Id,
+                anime.Title,
+                episode.SeasonNumber,
+                episode.Number,
+                episode.Title,
+                episodeTerm.FirstCueStartMs))
+            .ToListAsync(cancellationToken);
+
+        var selectedContexts = contextCandidates
+            .GroupBy(x => x.TermId)
+            .ToDictionary(x => x.Key, x => x.First());
+
+        var episodeIds = selectedContexts.Values
+            .Select(x => x.EpisodeId)
+            .Distinct()
+            .ToArray();
+
+        var trackRows = episodeIds.Length == 0
+            ? []
+            : await db.SubtitleTracks
+                .AsNoTracking()
+                .Where(x => episodeIds.Contains(x.EpisodeId) && x.Language == "ja")
+                .OrderByDescending(x => x.ImportedAt)
+                .ThenBy(x => x.Id)
+                .Select(x => new ReviewTrackCandidate(x.EpisodeId, x.Id))
+                .ToListAsync(cancellationToken);
+
+        var trackByEpisode = trackRows
+            .GroupBy(x => x.EpisodeId)
+            .ToDictionary(x => x.Key, x => x.First().TrackId);
+
+        var selectedTrackIds = trackByEpisode.Values.Distinct().ToArray();
+        var selectedStarts = selectedContexts.Values
+            .Select(x => x.CueStartMs)
+            .Distinct()
+            .ToArray();
+
+        var cueRows = selectedTrackIds.Length == 0
+            ? []
+            : await db.SubtitleCues
+                .AsNoTracking()
+                .Where(x =>
+                    selectedTrackIds.Contains(x.SubtitleTrackId)
+                    && selectedStarts.Contains(x.StartMs))
+                .Select(x => new ReviewCueCandidate(
+                    x.SubtitleTrackId,
+                    x.StartMs,
+                    x.Text))
+                .ToListAsync(cancellationToken);
+
+        var cueByKey = cueRows
+            .GroupBy(x => (x.TrackId, x.StartMs))
+            .ToDictionary(x => x.Key, x => x.First().Text);
+
+        return due
+            .Select(item =>
+            {
+                var history = histories.GetValueOrDefault(
+                    item.TermId,
+                    Array.Empty<ReviewHistoryItem>());
+                var schedules = scheduler.Preview(
+                    item.TermId,
+                    now,
+                    history,
+                    preferences.DesiredRetention);
+                var intervals = schedules.ToDictionary(
+                    x => x.Key,
+                    x => FormatInterval(now, x.Value.NextReviewAt));
+
+                ReviewAnimeContext? context = null;
+                if (selectedContexts.TryGetValue(item.TermId, out var selected)
+                    && trackByEpisode.TryGetValue(selected.EpisodeId, out var trackId)
+                    && cueByKey.TryGetValue((trackId, selected.CueStartMs), out var sentence)
+                    && !string.IsNullOrWhiteSpace(sentence))
+                {
+                    context = new ReviewAnimeContext(
+                        selected.EpisodeId,
+                        selected.AnimeTitle,
+                        selected.SeasonNumber,
+                        selected.EpisodeNumber,
+                        selected.EpisodeTitle,
+                        selected.CueStartMs,
+                        sentence);
+                }
+
+                return new ReviewSessionCard(
+                    item.TermId,
+                    item.Canonical,
+                    item.Reading,
+                    item.Meaning,
+                    item.IntervalDays,
+                    intervals,
+                    context);
+            })
+            .ToArray();
     }
 
     public async Task<LearningPreferencesSnapshot> GetPreferencesAsync(
@@ -396,6 +542,198 @@ public sealed class LearningService
         await db.SaveChangesAsync(cancellationToken);
     }
 
+    public async Task<OfflineReviewSyncResult> SyncOfflineReviewsAsync(
+        IReadOnlyList<OfflineReviewEvent> events,
+        DateTime nowUtc,
+        CancellationToken cancellationToken)
+    {
+        const int maxBatchSize = 100;
+        nowUtc = NormalizeUtc(nowUtc);
+
+        var accepted = new List<Guid>();
+        var alreadyApplied = new List<Guid>();
+        var rejected = new List<Guid>();
+
+        if (events.Count == 0)
+        {
+            return new OfflineReviewSyncResult(accepted, alreadyApplied, rejected);
+        }
+
+        await OfflineSyncGate.WaitAsync(cancellationToken);
+        try
+        {
+            var batch = events.Take(maxBatchSize).ToArray();
+            rejected.AddRange(events.Skip(maxBatchSize).Select(x => x.EventId));
+
+            var seenEventIds = new HashSet<Guid>();
+            var candidates = new List<OfflineReviewEvent>();
+
+            foreach (var item in batch)
+            {
+                var reviewedAt = NormalizeUtc(item.ReviewedAtUtc);
+
+                if (item.EventId == Guid.Empty
+                    || item.TermId == Guid.Empty
+                    || !Enum.IsDefined(item.Rating)
+                    || reviewedAt > nowUtc
+                    || !seenEventIds.Add(item.EventId))
+                {
+                    rejected.Add(item.EventId);
+                    continue;
+                }
+
+                candidates.Add(item with { ReviewedAtUtc = reviewedAt });
+            }
+
+            if (candidates.Count == 0)
+            {
+                return new OfflineReviewSyncResult(
+                    accepted.Distinct().ToArray(),
+                    alreadyApplied.Distinct().ToArray(),
+                    rejected.Distinct().ToArray());
+            }
+
+            var eventIds = candidates.Select(x => x.EventId).ToArray();
+            var existingEventIds = await db.Reviews
+                .AsNoTracking()
+                .Where(x =>
+                    x.ProfileId == profileId
+                    && x.ClientEventId != null
+                    && eventIds.Contains(x.ClientEventId.Value))
+                .Select(x => x.ClientEventId!.Value)
+                .ToListAsync(cancellationToken);
+
+            var existingSet = existingEventIds.ToHashSet();
+            alreadyApplied.AddRange(existingEventIds);
+
+            var remaining = candidates
+                .Where(x => !existingSet.Contains(x.EventId))
+                .ToArray();
+
+            var termIds = remaining.Select(x => x.TermId).Distinct().ToArray();
+            var ownedTerms = termIds.Length == 0
+                ? new HashSet<Guid>()
+                : (await db.UserTerms
+                    .AsNoTracking()
+                    .Where(x =>
+                        x.ProfileId == profileId
+                        && x.State == UserTermState.Learning
+                        && termIds.Contains(x.TermId))
+                    .Select(x => x.TermId)
+                    .ToListAsync(cancellationToken))
+                    .ToHashSet();
+
+            var toApply = remaining
+                .Where(x =>
+                {
+                    if (ownedTerms.Contains(x.TermId))
+                    {
+                        return true;
+                    }
+
+                    rejected.Add(x.EventId);
+                    return false;
+                })
+                .OrderBy(x => x.ReviewedAtUtc)
+                .ThenBy(x => x.EventId)
+                .ToArray();
+
+            foreach (var item in toApply)
+            {
+                db.Reviews.Add(new Review
+                {
+                    ProfileId = profileId,
+                    TermId = item.TermId,
+                    Rating = item.Rating,
+                    ClientEventId = item.EventId,
+                    ReviewedAt = item.ReviewedAtUtc,
+                    NextReviewAt = item.ReviewedAtUtc
+                });
+                accepted.Add(item.EventId);
+            }
+
+            if (toApply.Length > 0)
+            {
+                await db.SaveChangesAsync(cancellationToken);
+
+                var preferences = await GetPreferencesAsync(cancellationToken);
+                foreach (var termId in toApply.Select(x => x.TermId).Distinct())
+                {
+                    await RebuildTermScheduleAsync(
+                        termId,
+                        preferences.DesiredRetention,
+                        cancellationToken);
+                }
+
+                await db.SaveChangesAsync(cancellationToken);
+            }
+
+            return new OfflineReviewSyncResult(
+                accepted.Distinct().ToArray(),
+                alreadyApplied.Distinct().ToArray(),
+                rejected.Distinct().ToArray());
+        }
+        finally
+        {
+            OfflineSyncGate.Release();
+        }
+    }
+
+    private async Task RebuildTermScheduleAsync(
+        Guid termId,
+        double desiredRetention,
+        CancellationToken cancellationToken)
+    {
+        var userTerm = await db.UserTerms
+            .SingleAsync(
+                x => x.ProfileId == profileId
+                    && x.TermId == termId
+                    && x.State == UserTermState.Learning,
+                cancellationToken);
+
+        var reviews = await db.Reviews
+            .Where(x => x.ProfileId == profileId && x.TermId == termId)
+            .OrderBy(x => x.ReviewedAt)
+            .ThenBy(x => x.Id)
+            .ToListAsync(cancellationToken);
+
+        var history = new List<ReviewHistoryItem>(reviews.Count);
+        ReviewSchedule? finalSchedule = null;
+
+        foreach (var review in reviews)
+        {
+            var reviewedAt = new DateTimeOffset(
+                DateTime.SpecifyKind(review.ReviewedAt, DateTimeKind.Utc));
+            var schedule = scheduler.Schedule(
+                termId,
+                reviewedAt,
+                history,
+                review.Rating,
+                desiredRetention);
+
+            review.NextReviewAt = schedule.NextReviewAt.UtcDateTime;
+            history.Add(new ReviewHistoryItem(review.Rating, reviewedAt));
+            finalSchedule = schedule;
+        }
+
+        if (finalSchedule is null)
+        {
+            return;
+        }
+
+        userTerm.IntervalDays = finalSchedule.IntervalDays;
+        userTerm.NextReviewAt = finalSchedule.NextReviewAt.UtcDateTime;
+        userTerm.UpdatedAt = DateTime.UtcNow;
+    }
+
+    private static DateTime NormalizeUtc(DateTime value) =>
+        value.Kind switch
+        {
+            DateTimeKind.Utc => value,
+            DateTimeKind.Local => value.ToUniversalTime(),
+            _ => DateTime.SpecifyKind(value, DateTimeKind.Utc)
+        };
+
     private async Task<long> GetNextQueuePositionAsync(CancellationToken cancellationToken) =>
         (await GetCurrentMaxQueuePositionAsync(cancellationToken)) + 1;
 
@@ -454,4 +792,16 @@ public sealed class LearningService
 
         return $"{interval.TotalDays / 365.25:0.#}y";
     }
+    private sealed record ReviewContextCandidate(
+        Guid TermId,
+        Guid EpisodeId,
+        string AnimeTitle,
+        int SeasonNumber,
+        int EpisodeNumber,
+        string EpisodeTitle,
+        int CueStartMs);
+
+    private sealed record ReviewTrackCandidate(Guid EpisodeId, Guid TrackId);
+    private sealed record ReviewCueCandidate(Guid TrackId, int StartMs, string Text);
+
 }
