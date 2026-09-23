@@ -1,5 +1,6 @@
 using System.Text;
 using AniLingo.Web.Data;
+using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Vocabulary;
 using AniLingo.Web.Infrastructure;
@@ -173,11 +174,41 @@ public sealed record PlaybackStream(
     public bool IsLive => LivePlan is not null;
 }
 
-public sealed class PlaybackService(
-    AppDbContext db,
-    PlaybackCueProjector projector,
-    PlaybackMediaProbe mediaProbe)
+public sealed class PlaybackService
 {
+    private readonly AppDbContext db;
+    private readonly PlaybackCueProjector projector;
+    private readonly PlaybackMediaProbe mediaProbe;
+    private readonly string profileId;
+
+    public PlaybackService(
+        AppDbContext db,
+        PlaybackCueProjector projector,
+        PlaybackMediaProbe mediaProbe,
+        CurrentAccountContext currentAccount)
+        : this(db, projector, mediaProbe, currentAccount.ProfileId)
+    {
+    }
+
+    public PlaybackService(
+        AppDbContext db,
+        PlaybackCueProjector projector,
+        PlaybackMediaProbe mediaProbe)
+        : this(db, projector, mediaProbe, profileId)
+    {
+    }
+
+    private PlaybackService(
+        AppDbContext db,
+        PlaybackCueProjector projector,
+        PlaybackMediaProbe mediaProbe,
+        string profileId)
+    {
+        this.db = db;
+        this.projector = projector;
+        this.mediaProbe = mediaProbe;
+        this.profileId = profileId;
+    }
     public async Task<PlaybackMedia?> GetMediaAsync(
         Guid episodeId,
         CancellationToken cancellationToken)
@@ -311,7 +342,7 @@ public sealed class PlaybackService(
             from episodeTerm in db.EpisodeTerms.AsNoTracking()
             join term in db.Terms.AsNoTracking() on episodeTerm.TermId equals term.Id
             join userTermValue in db.UserTerms.AsNoTracking()
-                    .Where(x => x.ProfileId == LearningProfile.DefaultId)
+                    .Where(x => x.ProfileId == profileId)
                 on term.Id equals userTermValue.TermId into userTerms
             from userTerm in userTerms.DefaultIfEmpty()
             where episodeTerm.EpisodeId == episodeId
