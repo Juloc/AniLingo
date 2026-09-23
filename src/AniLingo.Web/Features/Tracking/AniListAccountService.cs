@@ -775,6 +775,7 @@ public sealed class AniListAccountService(
 
     private static int? ReadInt(JsonElement element, string propertyName) =>
         element.TryGetProperty(propertyName, out var value) &&
+        value.ValueKind == JsonValueKind.Number &&
         value.TryGetInt32(out var number)
             ? number
             : null;
@@ -791,12 +792,14 @@ public sealed class AniListAccountService(
 
     private static long? ReadLong(JsonElement element, string propertyName) =>
         element.TryGetProperty(propertyName, out var value) &&
+        value.ValueKind == JsonValueKind.Number &&
         value.TryGetInt64(out var number)
             ? number
             : null;
 
     private static double? ReadDouble(JsonElement element, string propertyName) =>
         element.TryGetProperty(propertyName, out var value) &&
+        value.ValueKind == JsonValueKind.Number &&
         value.TryGetDouble(out var number)
             ? number
             : null;
