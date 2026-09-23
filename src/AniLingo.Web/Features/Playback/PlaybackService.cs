@@ -19,7 +19,8 @@ public enum PlaybackOptionAvailability
 
 public sealed record PlaybackOption(
     PlaybackOptionAvailability Availability,
-    string StatusMessage)
+    string StatusMessage,
+    bool UsesLiveStream = false)
 {
     public bool IsReady => Availability == PlaybackOptionAvailability.Ready;
     public bool CanPrepare =>
@@ -35,7 +36,8 @@ public sealed record PlaybackMedia(
     string ContentType,
     string? VideoCodec,
     PlaybackOption Device,
-    PlaybackOption Server)
+    PlaybackOption Server,
+    double? DurationSeconds = null)
 {
     public bool HasReadyOption => Device.IsReady || Server.IsReady;
     public bool IsPreparing => Device.IsPreparing || Server.IsPreparing;
@@ -169,7 +171,8 @@ public sealed record PlaybackStream(
     string SourcePath,
     string ContentType,
     DateTimeOffset LastModified,
-    PlaybackPreparationPlan? LivePlan)
+    PlaybackPreparationPlan? LivePlan,
+    double? DurationSeconds = null)
 {
     public bool IsLive => LivePlan is not null;
 }
@@ -249,7 +252,8 @@ public sealed class PlaybackService
                 PlaybackMediaTypes.GetContentType(row.Path),
                 probe.VideoCodec,
                 direct,
-                direct);
+                direct,
+                probe.DurationSeconds);
         }
 
         var device = BuildOption(row, probe, PlaybackRequestedMode.Device);
@@ -271,7 +275,8 @@ public sealed class PlaybackService
             PlaybackMediaTypes.GetContentType(row.Path),
             probe.VideoCodec,
             device,
-            server);
+            server,
+            probe.DurationSeconds);
     }
 
     public async Task<PlaybackStream?> GetStreamAsync(
@@ -296,7 +301,7 @@ public sealed class PlaybackService
              IsHevc(probe.VideoCodec) &&
              PlaybackMediaTypes.IsLikelyBrowserSupportedContainer(row.Path)))
         {
-            return SourceStream(row.Path);
+            return SourceStream(row.Path, probe.DurationSeconds);
         }
 
         var plan = PlaybackPreparationPlan.Build(probe, mode);
@@ -309,7 +314,8 @@ public sealed class PlaybackService
             row.Path,
             "video/mp4",
             new DateTimeOffset(File.GetLastWriteTimeUtc(row.Path)),
-            plan);
+            plan,
+            probe.DurationSeconds);
     }
 
     public async Task<EpisodePlaybackSnapshot> GetSnapshotAsync(
@@ -388,7 +394,8 @@ public sealed class PlaybackService
 
         return new PlaybackOption(
             PlaybackOptionAvailability.Ready,
-            message);
+            message,
+            UsesLiveStream: true);
     }
 
     private async Task<MediaRow?> GetMediaRowAsync(
@@ -442,12 +449,15 @@ public sealed class PlaybackService
         string.Equals(codec, "hevc", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(codec, "h265", StringComparison.OrdinalIgnoreCase);
 
-    private static PlaybackStream SourceStream(string path) =>
+    private static PlaybackStream SourceStream(
+        string path,
+        double? durationSeconds) =>
         new(
             path,
             PlaybackMediaTypes.GetContentType(path),
             new DateTimeOffset(File.GetLastWriteTimeUtc(path)),
-            null);
+            null,
+            durationSeconds);
 
     private sealed record MediaRow(
         Guid Id,

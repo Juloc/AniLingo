@@ -247,6 +247,7 @@ public sealed class EpisodeModel(
     public async Task<IActionResult> OnGetMediaAsync(
         Guid id,
         string? mode,
+        double? start,
         CancellationToken cancellationToken)
     {
         var stream = await playbackService.GetStreamAsync(
@@ -269,9 +270,11 @@ public sealed class EpisodeModel(
 
         try
         {
+            var startSeconds = NormalizePlaybackStart(start, stream.DurationSeconds);
             var liveStream = LivePlaybackStream.Start(
                 stream.SourcePath,
-                stream.LivePlan!);
+                stream.LivePlan!,
+                startSeconds);
 
             return new FileStreamResult(liveStream, stream.ContentType)
             {
@@ -320,6 +323,27 @@ public sealed class EpisodeModel(
         string.Equals(mode, "server", StringComparison.OrdinalIgnoreCase)
             ? PlaybackRequestedMode.Server
             : PlaybackRequestedMode.Device;
+
+    private static double NormalizePlaybackStart(
+        double? requestedStart,
+        double? durationSeconds)
+    {
+        if (requestedStart is null ||
+            !double.IsFinite(requestedStart.Value) ||
+            requestedStart.Value <= 0)
+        {
+            return 0;
+        }
+
+        if (durationSeconds is > 0 && double.IsFinite(durationSeconds.Value))
+        {
+            return Math.Min(
+                requestedStart.Value,
+                Math.Max(0, durationSeconds.Value - 0.05));
+        }
+
+        return requestedStart.Value;
+    }
 
     private async Task QueueAudioTranscriptionAsync(
         Guid episodeId,
