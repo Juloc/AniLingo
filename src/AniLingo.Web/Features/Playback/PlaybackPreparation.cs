@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Text.Json;
 using AniLingo.Web.Data;
 using AniLingo.Web.Infrastructure;
@@ -88,7 +89,8 @@ public sealed class PlaybackPreparationTracker
 public sealed record PlaybackProbeResult(
     string? VideoCodec,
     string? PixelFormat,
-    string? AudioCodec);
+    string? AudioCodec,
+    double? DurationSeconds = null);
 
 public enum PlaybackAudioMode
 {
@@ -246,7 +248,7 @@ public sealed class PlaybackMediaProbe(
             "ffprobe",
             [
                 "-v", "error",
-                "-show_entries", "stream=codec_type,codec_name,pix_fmt",
+                "-show_entries", "stream=codec_type,codec_name,pix_fmt:format=duration",
                 "-of", "json",
                 fullPath
             ],
@@ -291,14 +293,26 @@ public sealed class PlaybackMediaProbe(
         string? videoCodec = null;
         string? pixelFormat = null;
         string? audioCodec = null;
+        double? durationSeconds = null;
 
-        if (!document.RootElement.TryGetProperty("streams", out var streams) ||
-            streams.ValueKind != JsonValueKind.Array)
+        if (document.RootElement.TryGetProperty("format", out var format) &&
+            format.ValueKind == JsonValueKind.Object &&
+            ReadString(format, "duration") is { } durationValue &&
+            double.TryParse(
+                durationValue,
+                NumberStyles.Float,
+                CultureInfo.InvariantCulture,
+                out var parsedDuration) &&
+            double.IsFinite(parsedDuration) &&
+            parsedDuration > 0)
         {
-            return new PlaybackProbeResult(null, null, null);
+            durationSeconds = parsedDuration;
         }
 
-        foreach (var stream in streams.EnumerateArray())
+        if (document.RootElement.TryGetProperty("streams", out var streams) &&
+            streams.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var stream in streams.EnumerateArray())
         {
             var type = ReadString(stream, "codec_type");
             if (videoCodec is null && string.Equals(type, "video", StringComparison.OrdinalIgnoreCase))
@@ -306,13 +320,18 @@ public sealed class PlaybackMediaProbe(
                 videoCodec = ReadString(stream, "codec_name");
                 pixelFormat = ReadString(stream, "pix_fmt");
             }
-            else if (audioCodec is null && string.Equals(type, "audio", StringComparison.OrdinalIgnoreCase))
-            {
-                audioCodec = ReadString(stream, "codec_name");
+                else if (audioCodec is null && string.Equals(type, "audio", StringComparison.OrdinalIgnoreCase))
+                {
+                    audioCodec = ReadString(stream, "codec_name");
+                }
             }
         }
 
-        return new PlaybackProbeResult(videoCodec, pixelFormat, audioCodec);
+        return new PlaybackProbeResult(
+            videoCodec,
+            pixelFormat,
+            audioCodec,
+            durationSeconds);
     }
 
     private static string? ReadString(JsonElement element, string propertyName) =>
