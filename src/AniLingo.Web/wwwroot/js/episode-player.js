@@ -66,10 +66,24 @@
         }
     };
 
+    const readSceneStartSeconds = () => {
+        const value = new URL(window.location.href).searchParams.get("at");
+        if (value === null || !/^\d+$/.test(value)) {
+            return null;
+        }
+
+        const milliseconds = Number(value);
+        if (!Number.isSafeInteger(milliseconds) || milliseconds < 0) {
+            return null;
+        }
+
+        return milliseconds / 1000;
+    };
+
     let preference = readPreference();
     let runtimeDeviceFailed = false;
     let effectiveMode = "device";
-    let pendingResumeTime = null;
+    let pendingResumeTime = readSceneStartSeconds();
     let resumeShouldPlay = false;
     modeSelect.value = preference;
 
@@ -298,7 +312,10 @@
     video.addEventListener("seeked", sync);
     video.addEventListener("loadedmetadata", () => {
         if (pendingResumeTime !== null && Number.isFinite(pendingResumeTime)) {
-            video.currentTime = Math.max(0, pendingResumeTime);
+            const target = Math.max(0, pendingResumeTime);
+            video.currentTime = Number.isFinite(video.duration) && video.duration >= 0
+                ? Math.min(target, video.duration)
+                : target;
             pendingResumeTime = null;
 
             if (resumeShouldPlay) {
