@@ -66,20 +66,6 @@ public sealed class AddLocalAccounts : Migration
 
     protected override void Down(MigrationBuilder migrationBuilder)
     {
-        migrationBuilder.Sql("""
-            UPDATE UserTerms
-            SET ProfileId = 'default'
-            WHERE ProfileId = 'owner';
-
-            UPDATE Reviews
-            SET ProfileId = 'default'
-            WHERE ProfileId = 'owner';
-
-            UPDATE LearningPreferences
-            SET ProfileId = 'default'
-            WHERE ProfileId = 'owner';
-            """);
-
         migrationBuilder.DropColumn(
             name: "IsEnabled",
             table: "OwnerAccounts");
