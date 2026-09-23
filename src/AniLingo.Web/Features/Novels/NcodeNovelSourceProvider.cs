@@ -264,7 +264,7 @@ public sealed partial class NcodeNovelSourceProvider(
 
         var lines = value
             .Split('\n')
-            .Select(line => line.TrimEnd())
+            .Select(line => line.Trim(' ', '\\t'))
             .ToList();
 
         while (lines.Count > 0 && string.IsNullOrWhiteSpace(lines[0]))
