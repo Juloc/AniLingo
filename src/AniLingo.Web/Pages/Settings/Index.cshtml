@@ -15,84 +15,89 @@
 <div class="settings-grid">
     <section class="panel">
         <div class="panel-heading">
-            <h2>Configured roots</h2>
-            <span>@Model.Roots.Count</span>
-        </div>
-
-        @if (Model.Roots.Count == 0)
-        {
-            <p class="muted">No roots configured.</p>
-        }
-        else
-        {
-            <div class="root-list">
-                @foreach (var root in Model.Roots)
-                {
-                    <div class="root-row">
-                        <div>
-                            <strong>@root.Name</strong>
-                            <code>@root.Path</code>
-                            <small>
-                                Last scan:
-                                @(root.LastScannedAt?.ToLocalTime().ToString("g") ?? "never")
-                            </small>
-                        </div>
-                        <form method="post" asp-page-handler="Scan">
-                            <input type="hidden" name="rootId" value="@root.Id" />
-                            <button class="button" type="submit">Scan</button>
-                        </form>
-                    </div>
-                }
-            </div>
-        }
-    </section>
-
-    <section class="panel">
-        <div class="panel-heading"><h2>Add root</h2></div>
-        <form method="post" asp-page-handler="Add" class="form-stack">
-            <div asp-validation-summary="ModelOnly" class="validation"></div>
-            <label>
-                <span>Name</span>
-                <input asp-for="Name" />
-            </label>
-            <label>
-                <span>Container path</span>
-                <input asp-for="Path" />
-            </label>
-            <button class="button button-primary" type="submit">Add library root</button>
-        </form>
-    </section>
-
-    <section class="panel">
-        <div class="panel-heading">
             <h2>Learning</h2>
             <span>FSRS</span>
         </div>
         <p class="muted">
-            Adjust desired retention and the number of reviews loaded per learning round.
+            Adjust your own desired retention, review batch size and daily new words.
         </p>
         <a class="button" asp-page="/Settings/Learning">Manage learning</a>
     </section>
 
-    <section class="panel">
-        <div class="panel-heading">
-            <h2>AniList</h2>
-            <span>Optional</span>
-        </div>
-        <p class="muted">
-            Connect your personal AniList account for future user-specific progress features.
-        </p>
-        <a class="button" asp-page="/Settings/AniList">Manage AniList</a>
-    </section>
+    @if (Model.IsOwner)
+    {
+        <section class="panel">
+            <div class="panel-heading">
+                <h2>Configured roots</h2>
+                <span>@Model.Roots.Count</span>
+            </div>
 
-    <section class="panel">
-        <div class="panel-heading">
-            <h2>AI</h2>
-            <span>Optional</span>
-        </div>
-        <p class="muted">
-            Connect Codex only for AI-assisted features. Scanning, vocabulary and reviews do not depend on AI.
-        </p>
-        <a class="button" asp-page="/Settings/Ai">Manage AI</a>
-    </section>
+            @if (Model.Roots.Count == 0)
+            {
+                <p class="muted">No roots configured.</p>
+            }
+            else
+            {
+                <div class="root-list">
+                    @foreach (var root in Model.Roots)
+                    {
+                        <div class="root-row">
+                            <div>
+                                <strong>@root.Name</strong>
+                                <code>@root.Path</code>
+                                <small>
+                                    Last scan:
+                                    @(root.LastScannedAt?.ToLocalTime().ToString("g") ?? "never")
+                                </small>
+                            </div>
+                            <form method="post" asp-page-handler="Scan">
+                                <input type="hidden" name="rootId" value="@root.Id" />
+                                <button class="button" type="submit">Scan</button>
+                            </form>
+                        </div>
+                    }
+                </div>
+            }
+        </section>
+
+        <section class="panel">
+            <div class="panel-heading"><h2>Add root</h2></div>
+            <form method="post" asp-page-handler="Add" class="form-stack">
+                <div asp-validation-summary="ModelOnly" class="validation"></div>
+                <label>
+                    <span>Name</span>
+                    <input asp-for="Name" />
+                </label>
+                <label>
+                    <span>Container path</span>
+                    <input asp-for="Path" />
+                </label>
+                <button class="button button-primary" type="submit">Add library root</button>
+            </form>
+        </section>
+
+        <section class="panel">
+            <div class="panel-heading"><h2>Users</h2><span>Local</span></div>
+            <p class="muted">Create, disable and reset local learner accounts.</p>
+            <a class="button" asp-page="/Settings/Users">Manage users</a>
+        </section>
+
+        <section class="panel">
+            <div class="panel-heading"><h2>Sonarr</h2><span>Optional</span></div>
+            <p class="muted">Configure artwork import from your existing Sonarr library.</p>
+            <a class="button" asp-page="/Settings/Sonarr">Manage Sonarr</a>
+        </section>
+
+        <section class="panel">
+            <div class="panel-heading"><h2>AniList</h2><span>Optional</span></div>
+            <p class="muted">Manage the server-wide AniList connection and progress sync.</p>
+            <a class="button" asp-page="/Settings/AniList">Manage AniList</a>
+        </section>
+
+        <section class="panel">
+            <div class="panel-heading"><h2>AI</h2><span>Optional</span></div>
+            <p class="muted">Manage Codex for optional cached sentence explanations.</p>
+            <a class="button" asp-page="/Settings/Ai">Manage AI</a>
+        </section>
+    }
 </div>
