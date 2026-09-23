@@ -1,8 +1,10 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Library;
+using AniLingo.Web.Features.Sonarr;
 using AniLingo.Web.Features.Subtitles;
 using AniLingo.Web.Features.Vocabulary;
 using AniLingo.Web.Infrastructure;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -89,10 +91,22 @@ public sealed class LibraryScannerIdempotencyTests
             var embedded = new EmbeddedSubtitleExtractor(
                 processRunner,
                 NullLogger<EmbeddedSubtitleExtractor>.Instance);
+            var sonarrStore = new SonarrConnectionStore(
+                DataProtectionProvider.Create(
+                    new DirectoryInfo(Path.Combine(tempRoot, "keys"))));
+            var sonarrImport = new SonarrArtworkImportService(
+                db,
+                new TestHttpClientFactory(),
+                NullLogger<SonarrArtworkImportService>.Instance);
+            var sonarrSync = new SonarrArtworkSyncService(
+                sonarrStore,
+                sonarrImport,
+                NullLogger<SonarrArtworkSyncService>.Instance);
             var scanner = new LibraryScanner(
                 db,
                 subtitleImport,
                 embedded,
+                sonarrSync,
                 NullLogger<LibraryScanner>.Instance);
 
             var first = await scanner.ScanAsync(root.Id, CancellationToken.None);
@@ -123,6 +137,11 @@ public sealed class LibraryScannerIdempotencyTests
                 Directory.Delete(tempRoot, recursive: true);
             }
         }
+    }
+
+    private sealed class TestHttpClientFactory : IHttpClientFactory
+    {
+        public HttpClient CreateClient(string name) => new();
     }
 
     private sealed class StubMorphology(
