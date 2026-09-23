@@ -98,9 +98,9 @@
 
     <footer class="novel-reader-footer">
         <div>
-            @if (Model.PreviousChapterId is Guid previous)
+            @if (Model.PreviousChapterId is Guid previousFooter)
             {
-                <a class="button" href="/Novels/Read/@previous">← Previous</a>
+                <a class="button" href="/Novels/Read/@previousFooter">← Previous</a>
             }
         </div>
         <div class="novel-toolbar-actions">
@@ -110,9 +110,9 @@
                     <button class="button" type="submit">Refresh source</button>
                 </form>
             }
-            @if (Model.NextChapterId is Guid next)
+            @if (Model.NextChapterId is Guid nextFooter)
             {
-                <a class="button button-primary" href="/Novels/Read/@next">Next →</a>
+                <a class="button button-primary" href="/Novels/Read/@nextFooter">Next →</a>
             }
         </div>
     </footer>
