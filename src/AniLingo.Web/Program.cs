@@ -7,6 +7,7 @@ using AniLingo.Web.Features.Metadata;
 using AniLingo.Web.Features.Novels;
 using AniLingo.Web.Features.Playback;
 using AniLingo.Web.Features.Sonarr;
+using AniLingo.Web.Features.Statistics;
 using AniLingo.Web.Features.Subtitles;
 using AniLingo.Web.Features.Tracking;
 using AniLingo.Web.Features.Vocabulary;
@@ -21,6 +22,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using System.Threading.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using System.Security.Claims;
 
 Console.WriteLine($"[AniLingo] {DateTimeOffset.UtcNow:O} Process starting.");
 
@@ -40,6 +42,8 @@ var connectionString = builder.Configuration.GetConnectionString("Default")
 
 builder.Services.AddDbContext<AppDbContext>(options => options.UseSqlite(connectionString));
 
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<CurrentAccountContext>();
 builder.Services.AddScoped<OwnerAuthService>();
 builder.Services.AddSingleton<IPasswordHasher<OwnerAccount>, PasswordHasher<OwnerAccount>>();
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
@@ -53,6 +57,38 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         options.AccessDeniedPath = "/Account/Login";
         options.ExpireTimeSpan = TimeSpan.FromDays(14);
         options.SlidingExpiration = true;
+        options.Events.OnValidatePrincipal = async context =>
+        {
+            var accountId = OwnerAuthService.GetAccountId(context.Principal!);
+            if (string.IsNullOrWhiteSpace(accountId))
+            {
+                context.RejectPrincipal();
+                return;
+            }
+
+            var auth = context.HttpContext.RequestServices
+                .GetRequiredService<OwnerAuthService>();
+            var account = await auth.GetEnabledAccountAsync(
+                accountId,
+                context.HttpContext.RequestAborted);
+
+            if (account is null)
+            {
+                context.RejectPrincipal();
+                return;
+            }
+
+            var currentName = context.Principal?.Identity?.Name;
+            var currentRole = context.Principal?.FindFirstValue(ClaimTypes.Role);
+            var expectedRole = account.Role.ToString();
+
+            if (!string.Equals(currentName, account.UserName, StringComparison.Ordinal)
+                || !string.Equals(currentRole, expectedRole, StringComparison.Ordinal))
+            {
+                context.ReplacePrincipal(OwnerAuthService.CreatePrincipal(account));
+                context.ShouldRenew = true;
+            }
+        };
     });
 builder.Services.AddAuthorization(options =>
 {
@@ -95,6 +131,7 @@ builder.Services.AddSingleton<JapaneseDictionary>();
 builder.Services.AddSingleton<IReviewScheduler, FsrsReviewScheduler>();
 builder.Services.AddScoped<LearningService>();
 builder.Services.AddScoped<EpisodePreparationService>();
+builder.Services.AddScoped<LearningStatisticsService>();
 builder.Services.AddSingleton<PlaybackCueProjector>();
 builder.Services.AddSingleton<PlaybackMediaProbe>();
 builder.Services.AddSingleton<PlaybackPreparationTracker>();
