@@ -61,7 +61,8 @@
             </div>
 
             <p class="muted">
-                This release validates and stores the connection only. It does not modify your AniList list yet.
+                AniLingo can now sync episode progress from an episode page. Writes are explicit and progress-only:
+                AniLingo never sends score, notes, repeat count, list status, custom lists or dates.
             </p>
 
             <form method="post" asp-page-handler="Disconnect">
@@ -153,13 +154,18 @@
 
     <section class="panel">
         <div class="panel-heading">
-            <h2>Integration boundary</h2>
-            <span>Read-only foundation</span>
+            <h2>Safe progress sync</h2>
+            <span>Progress only</span>
         </div>
         <p class="muted">
-            Public anime metadata matching remains separate from account authentication.
-            This account connection is the foundation for user-specific progress features.
-            AniLingo does not write watch progress or list status to AniList in this release.
+            AniLingo reads the current remote list entry again immediately before every write.
+            Progress can only move upward and only for an existing list entry with an unambiguous AniList match.
+            Multi-season local groupings are blocked rather than guessed. Every write gets a local pre-write snapshot
+            under /data/integrations.
+        </p>
+        <p class="muted">
+            AniLingo does not automatically create list entries, change list status, mark entries completed,
+            change scores, notes, repeat counts, priorities, privacy, custom lists or dates.
         </p>
     </section>
 </div>
