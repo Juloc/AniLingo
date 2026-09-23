@@ -1,0 +1,183 @@
+@page
+@model AniLingo.Web.Pages.Kana.IndexModel
+@using AniLingo.Web.Features.Kana
+@{
+    ViewData["Title"] = "Kana & Sätze";
+    var scriptKey = Model.SelectedScript == KanaScript.Hiragana ? "hiragana" : "katakana";
+    var otherScript = Model.SelectedScript == KanaScript.Hiragana ? "katakana" : "hiragana";
+    var otherLabel = Model.SelectedScript == KanaScript.Hiragana ? "Katakana" : "Hiragana";
+    var previousStage = Math.Max(1, Model.Stage - 1);
+    var nextStage = Math.Min(KanaCatalog.MaxStage, Model.Stage + 1);
+}
+
+@section Head {
+    <link rel="stylesheet" href="~/css/kana.css" asp-append-version="true" />
+}
+
+<header class="page-header kana-header">
+    <div>
+        <span class="eyebrow">Lesen · Hören · Verstehen</span>
+        <h1>Kana & Sätze</h1>
+        <p>Lerne kleine Kana-Gruppen, höre die Aussprache und übe deine Wörter direkt in echten Anime-Sätzen.</p>
+    </div>
+</header>
+
+<section class="metric-grid">
+    <partial name="_MetricCard" model='new MetricCardModel("Lerne ich", Model.LearningCount.ToString(), "Kana im FSRS")' />
+    <partial name="_MetricCard" model='new MetricCardModel("Sicher", Model.KnownCount.ToString(), "Als bekannt markiert")' />
+    <partial name="_MetricCard" model='new MetricCardModel("Fällig", Model.DueCount.ToString(), "Jetzt wiederholen")' />
+</section>
+
+<section class="kana-toolbar" aria-label="Kana-Auswahl">
+    <div class="kana-script-tabs">
+        <a class="button @(scriptKey == "hiragana" ? "button-primary" : "")" href="/Kana?script=hiragana&stage=@Model.Stage">Hiragana</a>
+        <a class="button @(scriptKey == "katakana" ? "button-primary" : "")" href="/Kana?script=katakana&stage=@Model.Stage">Katakana</a>
+    </div>
+    <div class="kana-stage-nav">
+        <a class="button @(Model.Stage <= 1 ? "disabled" : "")" href="/Kana?script=@scriptKey&stage=@previousStage" aria-disabled="@(Model.Stage <= 1)">←</a>
+        <strong>@Model.Stage / @KanaCatalog.MaxStage</strong>
+        <a class="button @(Model.Stage >= KanaCatalog.MaxStage ? "disabled" : "")" href="/Kana?script=@scriptKey&stage=@nextStage" aria-disabled="@(Model.Stage >= KanaCatalog.MaxStage)">→</a>
+    </div>
+</section>
+
+<section class="section">
+    <div class="section-heading">
+        <div>
+            <span class="eyebrow">Kleine Gruppe</span>
+            <h2>@Model.StageTitle</h2>
+        </div>
+        <form method="post" asp-page-handler="StartGroup">
+            <input type="hidden" name="script" value="@scriptKey" />
+            <input type="hidden" name="stage" value="@Model.Stage" />
+            <button class="button button-primary" type="submit">Gruppe lernen</button>
+        </form>
+    </div>
+
+    <div class="kana-grid">
+        @foreach (var card in Model.Cards)
+        {
+            <article class="kana-card" data-state="@card.State">
+                <div class="kana-card-top">
+                    <span class="kana-state">@(
+                        card.State == "known" ? "Sicher" :
+                        card.Due ? "Fällig" :
+                        card.State == "learning" ? "Lerne ich" : "Neu")</span>
+                    <button class="kana-audio" type="button" data-speak="@card.Symbol" data-rate="0.86" aria-label="@card.Symbol anhören">🔊</button>
+                </div>
+                <div class="kana-symbol" lang="ja">@card.Symbol</div>
+                <div class="kana-romaji">@card.Romaji</div>
+                @if (card.State != "known")
+                {
+                    <form method="post" asp-page-handler="Known">
+                        <input type="hidden" name="termId" value="@card.TermId" />
+                        <input type="hidden" name="script" value="@scriptKey" />
+                        <input type="hidden" name="stage" value="@Model.Stage" />
+                        <button class="text-link kana-known" type="submit">Kann ich sicher</button>
+                    </form>
+                }
+            </article>
+        }
+    </div>
+</section>
+
+<section class="section kana-practice-section" id="kana-practice">
+    <div class="section-heading">
+        <div>
+            <span class="eyebrow">Aktiv üben</span>
+            <h2>Mix-Runde</h2>
+            <p class="muted">Zeichen → Laut, Laut → Zeichen und Romaji → Zeichen wechseln automatisch.</p>
+        </div>
+    </div>
+
+    <div class="kana-challenge" data-kana-challenge>
+        <div class="challenge-mode" data-challenge-mode>Bereit</div>
+        <button class="challenge-audio" type="button" data-challenge-audio hidden>🔊 Nochmal hören</button>
+        <div class="challenge-prompt" data-challenge-prompt>Starte eine kurze Runde mit dieser Gruppe.</div>
+        <div class="challenge-choices" data-challenge-choices></div>
+        <div class="challenge-feedback" data-challenge-feedback aria-live="polite"></div>
+        <button class="button button-primary" type="button" data-challenge-start>Übung starten</button>
+        <button class="button button-primary" type="button" data-challenge-next hidden>Nächste Aufgabe</button>
+    </div>
+</section>
+
+<section class="section">
+    <div class="section-heading">
+        <div>
+            <span class="eyebrow">Wörter im Kontext</span>
+            <h2>Sätze üben</h2>
+            <p class="muted">Bevorzugt werden Sätze mit Wörtern, die du bereits lernst. Tippe Wörter für Lesung und Bedeutung an.</p>
+        </div>
+    </div>
+
+    @if (Model.Sentences.Count == 0)
+    {
+        <div class="empty-state">
+            <h3>Noch keine japanischen Untertitel</h3>
+            <p>Nach einem Library-Scan erscheinen hier kurze Sätze aus deinen Anime.</p>
+        </div>
+    }
+    else
+    {
+        <div class="sentence-list">
+            @foreach (var sentence in Model.Sentences)
+            {
+                <article class="sentence-card">
+                    <div class="sentence-meta">
+                        <span>@sentence.AnimeTitle · S@(sentence.SeasonNumber.ToString("00")) E@(sentence.EpisodeNumber.ToString("00")) · @sentence.TimestampLabel</span>
+                        <a class="text-link" href="@($"/Library/Episode/{sentence.EpisodeId}?at={sentence.CueStartMs}")">Szene öffnen</a>
+                    </div>
+
+                    @if (!string.IsNullOrWhiteSpace(sentence.Cloze))
+                    {
+                        <div class="sentence-cloze" lang="ja">@sentence.Cloze</div>
+                        <button class="button sentence-reveal" type="button" data-reveal-sentence>Antwort zeigen</button>
+                        <div class="sentence-answer" hidden>
+                            <strong lang="ja">@sentence.Text</strong>
+                            @if (!string.IsNullOrWhiteSpace(sentence.TargetCanonical))
+                            {
+                                <span class="muted">@sentence.TargetCanonical · @sentence.TargetReading · @sentence.TargetMeaning</span>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="sentence-full" lang="ja">@sentence.Text</div>
+                    }
+
+                    <div class="sentence-audio-row">
+                        <button class="button" type="button" data-speak="@sentence.Text" data-rate="1">🔊 Normal</button>
+                        <button class="button" type="button" data-speak="@sentence.Text" data-rate="0.72">🐢 Langsam</button>
+                    </div>
+
+                    <div class="sentence-tokens" lang="ja">
+                        @foreach (var token in sentence.Tokens)
+                        {
+                            if (token.Interactive)
+                            {
+                                <button class="sentence-token @(token.IsTarget ? "target" : "")"
+                                        type="button"
+                                        data-token-surface="@token.Surface"
+                                        data-token-reading="@token.Reading"
+                                        data-token-meaning="@token.Meaning">@token.Surface</button>
+                            }
+                            else
+                            {
+                                <span>@token.Surface</span>
+                            }
+                        }
+                    </div>
+                    <div class="token-details muted" data-token-details>Tippe ein Wort an.</div>
+                </article>
+            }
+        </div>
+    }
+</section>
+
+<form method="post" id="kana-answer-token" hidden>
+    @Html.AntiForgeryToken()
+</form>
+<script id="kana-catalog" type="application/json">@Html.Raw(Model.CatalogJson)</script>
+
+@section Scripts {
+    <script src="~/js/kana.js" asp-append-version="true"></script>
+}
