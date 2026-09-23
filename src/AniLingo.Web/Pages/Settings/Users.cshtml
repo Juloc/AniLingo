@@ -32,13 +32,20 @@
                     @if (account.Role != AccountRole.Owner)
                     {
                         <div class="inline-actions">
-                            <form method="post" asp-page-handler="SetEnabled">
-                                <input type="hidden" name="accountId" value="@account.Id" />
-                                <input type="hidden" name="enabled" value="@(!account.IsEnabled)" />
-                                <button class="button" type="submit">
-                                    @(account.IsEnabled ? "Disable" : "Approve / enable")
-                                </button>
-                            </form>
+                            @if (account.IsEnabled)
+                            {
+                                <form method="post" asp-page-handler="Disable">
+                                    <input type="hidden" name="accountId" value="@account.Id" />
+                                    <button class="button" type="submit">Disable</button>
+                                </form>
+                            }
+                            else
+                            {
+                                <form method="post" asp-page-handler="Approve">
+                                    <input type="hidden" name="accountId" value="@account.Id" />
+                                    <button class="button button-primary" type="submit">Approve / enable</button>
+                                </form>
+                            }
                         </div>
                     }
                 </div>

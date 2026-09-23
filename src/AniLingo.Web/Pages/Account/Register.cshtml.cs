@@ -17,15 +17,15 @@ public sealed class RegisterModel(OwnerAuthService ownerAuth) : PageModel
     public string UserName { get; set; } = string.Empty;
 
     [BindProperty]
-    [Required]
-    [MinLength(12)]
+    [Required(ErrorMessage = "Password is required.")]
+    [MinLength(12, ErrorMessage = "Password must be at least 12 characters long.")]
     [DataType(DataType.Password)]
     public string Password { get; set; } = string.Empty;
 
     [BindProperty]
-    [Required]
+    [Required(ErrorMessage = "Please confirm your password.")]
     [DataType(DataType.Password)]
-    [Compare(nameof(Password))]
+    [Compare(nameof(Password), ErrorMessage = "Passwords do not match.")]
     public string ConfirmPassword { get; set; } = string.Empty;
 
     public async Task<IActionResult> OnGetAsync(CancellationToken cancellationToken)

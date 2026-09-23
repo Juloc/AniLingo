@@ -17,9 +17,9 @@ public sealed class UsersModel(OwnerAuthService authService) : PageModel
     public string UserName { get; set; } = "";
 
     [BindProperty]
-    [Required]
+    [Required(ErrorMessage = "Password is required.")]
     [DataType(DataType.Password)]
-    [MinLength(12)]
+    [MinLength(12, ErrorMessage = "Password must be at least 12 characters long.")]
     public string Password { get; set; } = "";
 
     public async Task OnGetAsync(CancellationToken cancellationToken) =>
@@ -48,15 +48,34 @@ public sealed class UsersModel(OwnerAuthService authService) : PageModel
         }
     }
 
-    public async Task<IActionResult> OnPostSetEnabledAsync(
+    public Task<IActionResult> OnPostApproveAsync(
+        string accountId,
+        CancellationToken cancellationToken) =>
+        SetEnabledAsync(
+            accountId,
+            enabled: true,
+            successMessage: "User approved and enabled.",
+            cancellationToken);
+
+    public Task<IActionResult> OnPostDisableAsync(
+        string accountId,
+        CancellationToken cancellationToken) =>
+        SetEnabledAsync(
+            accountId,
+            enabled: false,
+            successMessage: "User disabled.",
+            cancellationToken);
+
+    private async Task<IActionResult> SetEnabledAsync(
         string accountId,
         bool enabled,
+        string successMessage,
         CancellationToken cancellationToken)
     {
         try
         {
             await authService.SetEnabledAsync(accountId, enabled, cancellationToken);
-            TempData["Status"] = enabled ? "User approved and enabled." : "User disabled.";
+            TempData["Status"] = successMessage;
         }
         catch (InvalidOperationException exception)
         {

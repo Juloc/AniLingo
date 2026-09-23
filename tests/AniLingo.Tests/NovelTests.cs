@@ -4,6 +4,8 @@ using AniLingo.Web.Features.Metadata;
 using AniLingo.Web.Features.Novels;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
+using System.Net;
 
 namespace AniLingo.Tests;
 
@@ -53,6 +55,78 @@ public sealed class NovelTests
         Assert.AreEqual(2, chapters.Count);
         Assert.AreEqual(171, chapters[0].Number);
         Assert.AreEqual(172, chapters[1].Number);
+    }
+
+    [TestMethod]
+    public async Task NcodeWorkImportStopsAtLastLinkedTocPage()
+    {
+        var requested = new List<string>();
+
+        using var httpClient = new HttpClient(
+            new DelegateHttpMessageHandler(request =>
+            {
+                var uri = request.RequestUri
+                    ?? throw new AssertFailedException("Narou request URI was missing.");
+                requested.Add(uri.ToString());
+
+                var html = uri.PathAndQuery switch
+                {
+                    "/n9669bk/" => """
+                        <html>
+                          <head><title>無職転生 - 小説家になろう</title></head>
+                          <body>
+                            <h1 class="p-novel__title">無職転生</h1>
+                            <a href="/n9669bk/1/">One</a>
+                            <a href="?p=2">Next</a>
+                            <a href="?p=3">Last</a>
+                          </body>
+                        </html>
+                        """,
+                    "/n9669bk/?p=2" => """
+                        <html>
+                          <body>
+                            <a href="/n9669bk/101/">One hundred one</a>
+                            <a href="?p=1">Previous</a>
+                            <a href="?p=3">Next</a>
+                          </body>
+                        </html>
+                        """,
+                    "/n9669bk/?p=3" => """
+                        <html>
+                          <body>
+                            <a href="/n9669bk/201/">Two hundred one</a>
+                            <a href="?p=1">First</a>
+                            <a href="?p=2">Previous</a>
+                          </body>
+                        </html>
+                        """,
+                    _ => throw new AssertFailedException(
+                        $"Unexpected Narou TOC request: {uri}")
+                };
+
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(html)
+                };
+            }));
+
+        var provider = new NcodeNovelSourceProvider(
+            httpClient,
+            NullLogger<NcodeNovelSourceProvider>.Instance);
+
+        var work = await provider.GetWorkAsync(
+            new Uri("https://ncode.syosetu.com/n9669bk"),
+            CancellationToken.None);
+
+        CollectionAssert.AreEqual(
+            new[]
+            {
+                "https://ncode.syosetu.com/n9669bk/",
+                "https://ncode.syosetu.com/n9669bk/?p=2",
+                "https://ncode.syosetu.com/n9669bk/?p=3"
+            },
+            requested);
+        Assert.AreEqual(3, work.Chapters.Count);
     }
 
     [TestMethod]
@@ -262,6 +336,15 @@ public sealed class NovelTests
         var db = new AppDbContext(options);
         await DatabaseMigrationBridge.UpgradeAsync(db);
         return db;
+    }
+
+    private sealed class DelegateHttpMessageHandler(
+        Func<HttpRequestMessage, HttpResponseMessage> handler) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(handler(request));
     }
 
     private sealed class FakeNovelSourceProvider : INovelSourceProvider

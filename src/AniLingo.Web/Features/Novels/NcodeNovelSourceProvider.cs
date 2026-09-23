@@ -35,12 +35,23 @@ public sealed partial class NcodeNovelSourceProvider(
         var chapters = new Dictionary<int, NovelSourceChapterReference>();
         AddChapterLinks(firstHtml, sourceKey, chapters);
 
-        for (var page = 2; page <= MaxTocPages; page++)
+        var currentPage = 1;
+        var currentHtml = firstHtml;
+
+        while (currentPage < MaxTocPages)
         {
-            var pageUri = new Uri($"{workUrl}?p={page}");
-            var html = await GetStringAsync(pageUri, cancellationToken);
+            var nextPage = FindNextTocPage(currentHtml, currentPage);
+            if (nextPage is null)
+            {
+                break;
+            }
+
+            var pageUri = new Uri($"{workUrl}?p={nextPage.Value}");
+            currentHtml = await GetStringAsync(pageUri, cancellationToken);
+            currentPage = nextPage.Value;
+
             var before = chapters.Count;
-            AddChapterLinks(html, sourceKey, chapters);
+            AddChapterLinks(currentHtml, sourceKey, chapters);
 
             if (chapters.Count == before)
             {
@@ -241,6 +252,21 @@ public sealed partial class NcodeNovelSourceProvider(
         return number > 0;
     }
 
+    private static int? FindNextTocPage(string html, int currentPage)
+    {
+        var nextPage = TocPageLinkRegex()
+            .Matches(html)
+            .Select(match =>
+                int.TryParse(match.Groups["page"].Value, out var page)
+                    ? page
+                    : 0)
+            .Where(page => page > currentPage && page <= MaxTocPages)
+            .DefaultIfEmpty()
+            .Min();
+
+        return nextPage > currentPage ? nextPage : null;
+    }
+
     private static string? FirstMatch(Regex regex, string input)
     {
         var match = regex.Match(input);
@@ -292,6 +318,11 @@ public sealed partial class NcodeNovelSourceProvider(
         @"<a\b[^>]*href\s*=\s*[""']/(?:novel/)?(?<key>n[0-9a-z]+)/(?<number>\d+)/?[""'][^>]*>(?<title>.*?)</a>",
         RegexOptions.IgnoreCase | RegexOptions.Singleline)]
     private static partial Regex ChapterLinkRegex();
+
+    [GeneratedRegex(
+        @"href\s*=\s*[""'][^""']*[?&](?:amp;)?p=(?<page>\d+)[^""']*[""']",
+        RegexOptions.IgnoreCase)]
+    private static partial Regex TocPageLinkRegex();
 
     [GeneratedRegex(
         @"<h1\b[^>]*class\s*=\s*[""'][^""']*p-novel__title[^""']*[""'][^>]*>(?<value>.*?)</h1>",
