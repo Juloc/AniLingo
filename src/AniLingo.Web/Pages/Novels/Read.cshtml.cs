@@ -1,4 +1,4 @@
-using System.Security.Claims;
+using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Novels;
 using AniLingo.Web.Infrastructure;
 using Microsoft.AspNetCore.Mvc;
@@ -11,7 +11,8 @@ public sealed class ReadModel(
     NovelService novels,
     NovelTranslationService translations,
     NovelMappingService mappings,
-    BackgroundJobQueue jobs) : PageModel
+    BackgroundJobQueue jobs,
+    CurrentAccountContext account) : PageModel
 {
     public NovelWork Work { get; private set; } = null!;
     public NovelChapter Chapter { get; private set; } = null!;
@@ -20,6 +21,7 @@ public sealed class ReadModel(
     public Guid? PreviousChapterId { get; private set; }
     public Guid? NextChapterId { get; private set; }
     public int ProgressPermille { get; private set; }
+    public bool IsOwner => account.IsOwner;
 
     public async Task<IActionResult> OnGetAsync(
         Guid id,
@@ -63,7 +65,7 @@ public sealed class ReadModel(
                 cancellationToken);
 
         var progress = await novels.GetProgressAsync(
-            GetProfileId(),
+            account.ProfileId,
             Work.Id,
             cancellationToken);
 
@@ -79,6 +81,11 @@ public sealed class ReadModel(
         Guid id,
         CancellationToken cancellationToken)
     {
+        if (!account.IsOwner)
+        {
+            return Forbid();
+        }
+
         var result = await novels.GetChapterAsync(id, cancellationToken);
         if (result is null)
         {
@@ -112,6 +119,11 @@ public sealed class ReadModel(
         Guid id,
         CancellationToken cancellationToken)
     {
+        if (!account.IsOwner)
+        {
+            return Forbid();
+        }
+
         try
         {
             await novels.EnsureChapterContentAsync(
@@ -140,7 +152,7 @@ public sealed class ReadModel(
         }
 
         await novels.SaveProgressAsync(
-            GetProfileId(),
+            account.ProfileId,
             result.Value.Work.Id,
             result.Value.Chapter.Id,
             positionPermille,
@@ -149,8 +161,4 @@ public sealed class ReadModel(
         return new OkResult();
     }
 
-    private string GetProfileId() =>
-        User.FindFirstValue(ClaimTypes.NameIdentifier)
-        ?? User.Identity?.Name
-        ?? "owner";
 }
