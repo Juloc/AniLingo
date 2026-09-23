@@ -35,7 +35,7 @@ else
         <div class="review-card">
             <span class="review-counter">@Model.Session.Count due</span>
             <div class="review-term" lang="ja">@current.Canonical</div>
-            <div class="review-reading" lang="ja" hidden="@(string.IsNullOrWhiteSpace(current.Reading))">
+            <div class="review-reading" lang="ja" hidden="@(string.IsNullOrWhiteSpace(current.Reading) ? "hidden" : null)">
                 @current.Reading
             </div>
 
@@ -50,7 +50,7 @@ else
 
                 <div class="panel review-context"
                      data-review-context
-                     hidden="@(context is null)">
+                     hidden="@(context is null ? "hidden" : null)">
                     <span class="eyebrow">Anime context</span>
                     <p lang="ja" data-review-sentence>@context?.Sentence</p>
 
