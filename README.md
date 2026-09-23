@@ -1,6 +1,6 @@
 # AniLingo
 
-Current release: **0.1.0-alpha.15** — local NAS artwork discovery during library scans.
+Current prerelease: **0.1.0-alpha.16**.
 
 AniLingo is a Docker-first Japanese learning companion for an existing anime library. It scans media from a read-only NAS mount, imports nearby Japanese subtitles, builds episode vocabulary, and lets you mark terms as known or review them before watching.
 
@@ -45,10 +45,9 @@ The minimal stack is:
 ```yaml
 services:
   anilingo:
-    image: ghcr.io/juloc/anilingo:0.1.0-alpha.15
+    image: ghcr.io/juloc/anilingo:latest
     volumes:
       - anilingo-data:/data
-      - /path/to/anime:/media/anime:ro
     networks:
       - default
     ports:
@@ -58,13 +57,25 @@ volumes:
   anilingo-data:
 ```
 
-The example is pinned to the current alpha release. Replace `/path/to/anime` with the host path of the existing anime library, then run:
+This minimal stack starts without a NAS or anime mount:
 
 ```bash
 docker compose up -d
 ```
 
-Open `http://localhost:8097`. On the first visit AniLingo redirects to **Create owner account**. After that, every application page requires the owner login; there is no public registration.
+Open `http://localhost:8097`. On the first visit AniLingo redirects to **Create owner account**. Additional local users can request an account and remain blocked until the owner approves them.
+
+To scan an anime library, add a read-only media mount:
+
+```yaml
+services:
+  anilingo:
+    volumes:
+      - anilingo-data:/data
+      - /path/to/anime:/media/anime:ro
+```
+
+Then add `/media/anime` as a library root in AniLingo. Existing persisted library roots remain unchanged when upgrading.
 
 ### Public URL / Caddy
 
@@ -77,7 +88,7 @@ When Caddy shares a Docker network with AniLingo, Caddy can proxy directly to `a
 Runtime paths are fixed and intentionally simple:
 
 - `/data` stores the SQLite database, Codex authentication state, the persistent Whisper model and generated transcription cache.
-- `/media/anime` is the read-only anime library mount.
+- `/media/anime` is the optional conventional read-only anime library mount; AniLingo also starts without it.
 
 For an existing Docker stack, replace `default` with that stack's network if needed. No connection string, database password, media environment variable or second service is required.
 
