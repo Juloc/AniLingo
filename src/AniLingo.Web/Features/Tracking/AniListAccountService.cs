@@ -114,6 +114,7 @@ public sealed class AniListAccountService(
     HttpClient httpClient,
     AniListAccountStore store,
     AppDbContext db,
+    AnimeMetadataService metadataService,
     ILogger<AniListAccountService> logger)
 {
     private const string ViewerQuery = """
@@ -343,52 +344,46 @@ public sealed class AniListAccountService(
                     episode.AnimeTitle));
         }
 
-        var metadata = await db.AnimeMetadata
-            .AsNoTracking()
-            .SingleOrDefaultAsync(x => x.AnimeId == episode.AnimeId, cancellationToken);
-
-        if (metadata is null ||
-            !string.Equals(
-                metadata.Provider,
-                AniListMetadataProvider.ProviderKey,
-                StringComparison.OrdinalIgnoreCase) ||
-            !int.TryParse(metadata.ExternalId, out var mediaId) ||
-            mediaId <= 0)
+        ResolvedAnimeEpisodeMetadata? resolved;
+        try
+        {
+            resolved = await metadataService.ResolveEpisodeAsync(
+                episodeId,
+                cancellationToken);
+        }
+        catch (AniListAccountException exception)
         {
             return ProgressContext.Blocked(
                 AniListProgressPreview.Blocked(
-                    "Match this anime to AniList before syncing progress.",
+                    exception.Message,
                     episode.Number,
                     episode.AnimeTitle));
         }
 
-        var seasonCount = await db.Episodes
-            .AsNoTracking()
-            .Where(x => x.AnimeId == episode.AnimeId)
-            .Select(x => x.SeasonNumber)
-            .Distinct()
-            .Take(2)
-            .CountAsync(cancellationToken);
-
-        if (seasonCount > 1)
+        if (resolved is null ||
+            !string.Equals(
+                resolved.Provider,
+                AniListMetadataProvider.ProviderKey,
+                StringComparison.OrdinalIgnoreCase) ||
+            !int.TryParse(resolved.ExternalId, out var mediaId) ||
+            mediaId <= 0)
         {
             return ProgressContext.Blocked(
                 AniListProgressPreview.Blocked(
-                    "Progress sync is blocked because this local anime contains multiple seasons. AniList usually stores seasons as separate entries, so AniLingo will not guess.",
+                    $"No AniList episode mapping exists for S{episode.SeasonNumber:00}E{episode.Number:00}. Add a range mapping on the anime page before syncing progress.",
                     episode.Number,
-                    metadata.PreferredTitle,
-                    aniListEpisodeCount: metadata.EpisodeCount));
+                    episode.AnimeTitle));
         }
 
-        if (metadata.EpisodeCount is > 0 &&
-            episode.Number > metadata.EpisodeCount.Value)
+        if (resolved.EpisodeCount is > 0 &&
+            resolved.RemoteEpisodeNumber > resolved.EpisodeCount.Value)
         {
             return ProgressContext.Blocked(
                 AniListProgressPreview.Blocked(
-                    $"Episode {episode.Number} is above AniList's known episode count ({metadata.EpisodeCount}). Sync blocked.",
-                    episode.Number,
-                    metadata.PreferredTitle,
-                    aniListEpisodeCount: metadata.EpisodeCount));
+                    $"Mapped AniList episode {resolved.RemoteEpisodeNumber} is above the known episode count ({resolved.EpisodeCount}). Sync blocked.",
+                    resolved.RemoteEpisodeNumber,
+                    resolved.PreferredTitle,
+                    aniListEpisodeCount: resolved.EpisodeCount));
         }
 
         var account = await store.LoadAsync(cancellationToken);
@@ -397,9 +392,9 @@ public sealed class AniListAccountService(
             return ProgressContext.Blocked(
                 AniListProgressPreview.Blocked(
                     "Connect your AniList account in Settings before syncing progress.",
-                    episode.Number,
-                    metadata.PreferredTitle,
-                    aniListEpisodeCount: metadata.EpisodeCount));
+                    resolved.RemoteEpisodeNumber,
+                    resolved.PreferredTitle,
+                    aniListEpisodeCount: resolved.EpisodeCount));
         }
 
         if (account.TokenExpiresAt is not null &&
@@ -408,9 +403,9 @@ public sealed class AniListAccountService(
             return ProgressContext.Blocked(
                 AniListProgressPreview.Blocked(
                     "Your AniList connection has expired. Reconnect it in Settings.",
-                    episode.Number,
-                    metadata.PreferredTitle,
-                    aniListEpisodeCount: metadata.EpisodeCount));
+                    resolved.RemoteEpisodeNumber,
+                    resolved.PreferredTitle,
+                    aniListEpisodeCount: resolved.EpisodeCount));
         }
 
         var remote = await FetchListEntryAsync(
@@ -423,21 +418,21 @@ public sealed class AniListAccountService(
             return ProgressContext.Blocked(
                 AniListProgressPreview.Blocked(
                     "This anime is not on your AniList list. AniLingo will not create a list entry automatically.",
-                    episode.Number,
-                    metadata.PreferredTitle,
-                    aniListEpisodeCount: metadata.EpisodeCount));
+                    resolved.RemoteEpisodeNumber,
+                    resolved.PreferredTitle,
+                    aniListEpisodeCount: resolved.EpisodeCount));
         }
 
         var remoteSafety = EvaluateRemoteProgressSafety(
             remote,
-            episode.Number,
-            metadata.EpisodeCount,
-            metadata.PreferredTitle);
+            resolved.RemoteEpisodeNumber,
+            resolved.EpisodeCount,
+            resolved.PreferredTitle);
 
         return new ProgressContext(
             account,
             remote,
-            episode.Number,
+            resolved.RemoteEpisodeNumber,
             remoteSafety);
     }
 

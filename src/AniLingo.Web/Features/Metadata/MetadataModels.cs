@@ -69,3 +69,83 @@ public static class AnimeMetadataTitles
     private static string? FirstNonEmpty(params string?[] values) =>
         values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim();
 }
+
+
+public sealed record AnimeEpisodeMetadataMapping(
+    Guid Id,
+    Guid AnimeId,
+    int SeasonNumber,
+    int LocalEpisodeStart,
+    int LocalEpisodeEnd,
+    int RemoteEpisodeStart,
+    string Provider,
+    string ExternalId,
+    string PreferredTitle,
+    int? EpisodeCount,
+    DateTimeOffset UpdatedAt)
+{
+    public bool Contains(int seasonNumber, int episodeNumber) =>
+        SeasonNumber == seasonNumber &&
+        episodeNumber >= LocalEpisodeStart &&
+        episodeNumber <= LocalEpisodeEnd;
+
+    public int ResolveRemoteEpisode(int localEpisodeNumber) =>
+        RemoteEpisodeStart + (localEpisodeNumber - LocalEpisodeStart);
+}
+
+public sealed record ResolvedAnimeEpisodeMetadata(
+    string Provider,
+    string ExternalId,
+    string PreferredTitle,
+    int RemoteEpisodeNumber,
+    int? EpisodeCount,
+    bool IsExplicitRange);
+
+public static class AnimeEpisodeMetadataRules
+{
+    public static bool Overlaps(
+        AnimeEpisodeMetadataMapping mapping,
+        int seasonNumber,
+        int localEpisodeStart,
+        int localEpisodeEnd) =>
+        mapping.SeasonNumber == seasonNumber &&
+        localEpisodeStart <= mapping.LocalEpisodeEnd &&
+        localEpisodeEnd >= mapping.LocalEpisodeStart;
+
+    public static int ResolveAutomaticLocalEnd(
+        int localEpisodeStart,
+        int localSeasonMaximum,
+        int remoteEpisodeStart,
+        int? remoteEpisodeCount)
+    {
+        if (localEpisodeStart <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(localEpisodeStart));
+        }
+
+        if (localSeasonMaximum < localEpisodeStart)
+        {
+            throw new ArgumentOutOfRangeException(nameof(localSeasonMaximum));
+        }
+
+        if (remoteEpisodeStart <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(remoteEpisodeStart));
+        }
+
+        if (remoteEpisodeCount is not > 0)
+        {
+            return localEpisodeStart;
+        }
+
+        var availableRemoteEpisodes = remoteEpisodeCount.Value - remoteEpisodeStart + 1;
+        if (availableRemoteEpisodes <= 0)
+        {
+            return localEpisodeStart;
+        }
+
+        return Math.Min(
+            localSeasonMaximum,
+            localEpisodeStart + availableRemoteEpisodes - 1);
+    }
+}

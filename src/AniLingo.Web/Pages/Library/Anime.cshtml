@@ -148,25 +148,110 @@
                                 }
                             </small>
                         </div>
-                        <form method="post"
-                              asp-page-handler="MatchMetadata"
-                              asp-route-id="@Model.AnimeId">
-                            <input type="hidden" name="provider" value="@candidate.Provider" />
-                            <input type="hidden" name="externalId" value="@candidate.ExternalId" />
-                            <button class="button" type="submit">
-                                @(Model.Metadata?.Provider == candidate.Provider &&
-                                  Model.Metadata?.ExternalId == candidate.ExternalId
-                                    ? "Matched"
-                                    : "Use")
-                            </button>
-                        </form>
+                        <div>
+                            <form method="post"
+                                  asp-page-handler="MatchMetadata"
+                                  asp-route-id="@Model.AnimeId">
+                                <input type="hidden" name="provider" value="@candidate.Provider" />
+                                <input type="hidden" name="externalId" value="@candidate.ExternalId" />
+                                <button class="button" type="submit">
+                                    @(Model.Metadata?.Provider == candidate.Provider &&
+                                      Model.Metadata?.ExternalId == candidate.ExternalId
+                                        ? "Matched"
+                                        : "Use for display")
+                                </button>
+                            </form>
+
+                            <details>
+                                <summary>Map local episodes</summary>
+                                <form method="post"
+                                      asp-page-handler="MatchEpisodeRange"
+                                      asp-route-id="@Model.AnimeId">
+                                    <input type="hidden" name="provider" value="@candidate.Provider" />
+                                    <input type="hidden" name="externalId" value="@candidate.ExternalId" />
+                                    <label>
+                                        Local season
+                                        <input type="number"
+                                               name="seasonNumber"
+                                               min="0"
+                                               value="@Model.SuggestedMappingSeason"
+                                               required />
+                                    </label>
+                                    <label>
+                                        Local from
+                                        <input type="number"
+                                               name="localEpisodeStart"
+                                               min="1"
+                                               value="@Model.SuggestedMappingEpisodeStart"
+                                               required />
+                                    </label>
+                                    <label>
+                                        Local to
+                                        <input type="number"
+                                               name="localEpisodeEnd"
+                                               min="1"
+                                               placeholder="auto" />
+                                    </label>
+                                    <label>
+                                        AniList starts at
+                                        <input type="number"
+                                               name="remoteEpisodeStart"
+                                               min="1"
+                                               value="1"
+                                               required />
+                                    </label>
+                                    <small>Leave “Local to” empty to use the AniList episode count automatically.</small>
+                                    <button class="button button-primary" type="submit">Add mapping</button>
+                                </form>
+                            </details>
+                        </div>
                     </article>
                 }
             </div>
         }
     </section>
-    
-    
+
+    <section class="panel metadata-panel">
+        <div class="panel-heading">
+            <h2>AniList episode mappings</h2>
+            <span>Local season/episode range → AniList media entry</span>
+        </div>
+
+        @if (Model.EpisodeMappings.Count == 0)
+        {
+            <p>No explicit ranges yet. Single-season anime still use the normal AniList match. Multi-season anime and specials require explicit ranges for safe progress sync.</p>
+        }
+        else
+        {
+            <div class="episode-list">
+                @foreach (var mapping in Model.EpisodeMappings)
+                {
+                    var remoteEnd = mapping.RemoteEpisodeStart
+                        + (mapping.LocalEpisodeEnd - mapping.LocalEpisodeStart);
+
+                    <div class="episode-row">
+                        <div class="episode-number">S@(mapping.SeasonNumber.ToString("00"))</div>
+                        <div class="episode-main">
+                            <strong>
+                                E@(mapping.LocalEpisodeStart.ToString("00"))–E@(mapping.LocalEpisodeEnd.ToString("00"))
+                                → @mapping.PreferredTitle
+                            </strong>
+                            <span>
+                                AniList E@(mapping.RemoteEpisodeStart.ToString("00"))–E@(remoteEnd.ToString("00"))
+                                · ID @mapping.ExternalId
+                            </span>
+                        </div>
+                        <form method="post"
+                              asp-page-handler="RemoveEpisodeMapping"
+                              asp-route-id="@Model.AnimeId">
+                            <input type="hidden" name="mappingId" value="@mapping.Id" />
+                            <button class="button" type="submit">Remove</button>
+                        </form>
+                    </div>
+                }
+            </div>
+        }
+    </section>
 }
 
 <div class="episode-list">
