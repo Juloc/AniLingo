@@ -56,7 +56,7 @@ public sealed class UsersModel(OwnerAuthService authService) : PageModel
         try
         {
             await authService.SetEnabledAsync(accountId, enabled, cancellationToken);
-            TempData["Status"] = enabled ? "User enabled." : "User disabled.";
+            TempData["Status"] = enabled ? "User approved and enabled." : "User disabled.";
         }
         catch (InvalidOperationException exception)
         {
