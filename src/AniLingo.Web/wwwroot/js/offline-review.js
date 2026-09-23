@@ -128,47 +128,55 @@
   }
 
   async function sync(profileId, syncUrl, antiForgeryToken) {
-    const events = await listEvents(profileId);
-    if (!events.length) {
-      return { synced: 0, rejected: 0 };
+    const batchSize = 100;
+    let synced = 0;
+    let rejectedCount = 0;
+
+    while (true) {
+      const events = (await listEvents(profileId)).slice(0, batchSize);
+      if (!events.length) {
+        return { synced, rejected: rejectedCount };
+      }
+
+      const response = await fetch(syncUrl, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/json",
+          "RequestVerificationToken": antiForgeryToken
+        },
+        body: JSON.stringify({
+          events: events.map(event => ({
+            eventId: event.eventId,
+            termId: event.termId,
+            rating: event.rating,
+            reviewedAtUtc: event.reviewedAtUtc
+          }))
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error("Offline review sync failed.");
+      }
+
+      const result = await response.json();
+      const accepted = result.accepted ?? [];
+      const alreadyApplied = result.alreadyApplied ?? [];
+      const rejected = result.rejected ?? [];
+      const completed = [
+        ...accepted,
+        ...alreadyApplied,
+        ...rejected
+      ];
+
+      if (!completed.length) {
+        throw new Error("Offline review sync made no progress.");
+      }
+
+      await removeEvents(profileId, completed);
+      synced += accepted.length + alreadyApplied.length;
+      rejectedCount += rejected.length;
     }
-
-    const response = await fetch(syncUrl, {
-      method: "POST",
-      credentials: "same-origin",
-      headers: {
-        "Content-Type": "application/json",
-        "RequestVerificationToken": antiForgeryToken
-      },
-      body: JSON.stringify({
-        events: events.map(event => ({
-          eventId: event.eventId,
-          termId: event.termId,
-          rating: event.rating,
-          reviewedAtUtc: event.reviewedAtUtc
-        }))
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error("Offline review sync failed.");
-    }
-
-    const result = await response.json();
-    const accepted = result.accepted ?? [];
-    const alreadyApplied = result.alreadyApplied ?? [];
-    const rejected = result.rejected ?? [];
-
-    await removeEvents(profileId, [
-      ...accepted,
-      ...alreadyApplied,
-      ...rejected
-    ]);
-
-    return {
-      synced: accepted.length + alreadyApplied.length,
-      rejected: rejected.length
-    };
   }
 
   function setActiveProfile(profileId) {
