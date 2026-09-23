@@ -42,6 +42,14 @@ public sealed class VocabularyService(
             }
         }
 
+        foreach (var entry in db.ChangeTracker
+                     .Entries<EpisodeTerm>()
+                     .Where(x => x.Entity.EpisodeId == episodeId)
+                     .ToArray())
+        {
+            entry.State = EntityState.Detached;
+        }
+
         await db.EpisodeTerms
             .Where(x => x.EpisodeId == episodeId)
             .ExecuteDeleteAsync(cancellationToken);
