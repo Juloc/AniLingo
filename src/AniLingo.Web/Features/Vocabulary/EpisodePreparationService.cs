@@ -115,7 +115,7 @@ public sealed class EpisodePreparationService
     public EpisodePreparationService(
         AppDbContext db,
         LearningService learningService)
-        : this(db, learningService, profileId)
+        : this(db, learningService, LearningProfile.DefaultId)
     {
     }
 
