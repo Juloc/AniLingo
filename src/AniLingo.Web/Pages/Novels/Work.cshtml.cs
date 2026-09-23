@@ -1,3 +1,4 @@
+using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Novels;
 using AniLingo.Web.Infrastructure;
 using Microsoft.AspNetCore.Mvc;
@@ -10,12 +11,14 @@ public sealed class WorkModel(
     NovelService novels,
     NovelMetadataService metadata,
     NovelMappingService mappings,
-    BackgroundJobQueue jobs) : PageModel
+    BackgroundJobQueue jobs,
+    CurrentAccountContext account) : PageModel
 {
     public NovelWorkDetail? Detail { get; private set; }
     public IReadOnlyList<NovelMetadataCandidate> SearchResults { get; private set; } = [];
     public IReadOnlyList<NovelAnimeChoice> AnimeChoices { get; private set; } = [];
     public string SearchQuery { get; private set; } = "";
+    public bool IsOwner => account.IsOwner;
 
     public async Task<IActionResult> OnGetAsync(
         Guid id,
@@ -28,12 +31,14 @@ public sealed class WorkModel(
             return NotFound();
         }
 
-        AnimeChoices = await mappings.GetAnimeChoicesAsync(cancellationToken);
+        AnimeChoices = account.IsOwner
+            ? await mappings.GetAnimeChoicesAsync(cancellationToken)
+            : [];
         SearchQuery = string.IsNullOrWhiteSpace(q)
             ? Detail.Work.MetadataTitle ?? Detail.Work.Title
             : q.Trim();
 
-        if (!string.IsNullOrWhiteSpace(q))
+        if (account.IsOwner && !string.IsNullOrWhiteSpace(q))
         {
             try
             {
@@ -56,6 +61,11 @@ public sealed class WorkModel(
         Guid id,
         CancellationToken cancellationToken)
     {
+        if (!account.IsOwner)
+        {
+            return Forbid();
+        }
+
         try
         {
             await novels.RefreshWorkAsync(id, cancellationToken);
@@ -73,6 +83,11 @@ public sealed class WorkModel(
         Guid id,
         CancellationToken cancellationToken)
     {
+        if (!account.IsOwner)
+        {
+            return Forbid();
+        }
+
         var detail = await novels.GetWorkAsync(id, cancellationToken);
         if (detail is null)
         {
@@ -112,6 +127,11 @@ public sealed class WorkModel(
         string externalId,
         CancellationToken cancellationToken)
     {
+        if (!account.IsOwner)
+        {
+            return Forbid();
+        }
+
         try
         {
             await metadata.MatchAsync(id, provider, externalId, cancellationToken);
@@ -130,6 +150,11 @@ public sealed class WorkModel(
         Guid id,
         CancellationToken cancellationToken)
     {
+        if (!account.IsOwner)
+        {
+            return Forbid();
+        }
+
         await metadata.RemoveAsync(id, cancellationToken);
         TempData["Status"] = "AniList novel match removed.";
         return RedirectToPage(new { id });
@@ -146,6 +171,11 @@ public sealed class WorkModel(
         string? label,
         CancellationToken cancellationToken)
     {
+        if (!account.IsOwner)
+        {
+            return Forbid();
+        }
+
         try
         {
             await mappings.AddManualAsync(
@@ -173,6 +203,11 @@ public sealed class WorkModel(
         Guid animeId,
         CancellationToken cancellationToken)
     {
+        if (!account.IsOwner)
+        {
+            return Forbid();
+        }
+
         await jobs.QueueAsync(
             async (services, workerToken) =>
             {
@@ -190,6 +225,11 @@ public sealed class WorkModel(
         Guid mappingId,
         CancellationToken cancellationToken)
     {
+        if (!account.IsOwner)
+        {
+            return Forbid();
+        }
+
         await mappings.RemoveAsync(id, mappingId, cancellationToken);
         TempData["Status"] = "Episode mapping removed.";
         return RedirectToPage(new { id });
