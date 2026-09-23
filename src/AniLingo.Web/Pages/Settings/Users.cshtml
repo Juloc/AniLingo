@@ -26,7 +26,7 @@
                 <div class="root-row">
                     <div>
                         <strong>@account.UserName</strong>
-                        <small>@account.Role · @(account.IsEnabled ? "enabled" : "disabled")</small>
+                        <small>@account.Role · @(account.IsEnabled ? "enabled" : "awaiting approval / disabled")</small>
                     </div>
 
                     @if (account.Role != AccountRole.Owner)
@@ -36,7 +36,7 @@
                                 <input type="hidden" name="accountId" value="@account.Id" />
                                 <input type="hidden" name="enabled" value="@(!account.IsEnabled)" />
                                 <button class="button" type="submit">
-                                    @(account.IsEnabled ? "Disable" : "Enable")
+                                    @(account.IsEnabled ? "Disable" : "Approve / enable")
                                 </button>
                             </form>
                         </div>
