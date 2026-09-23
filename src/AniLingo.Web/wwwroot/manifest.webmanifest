@@ -1,0 +1,21 @@
+{
+  "id": "/",
+  "name": "AniLingo",
+  "short_name": "AniLingo",
+  "description": "Learn Japanese with your own anime library.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#090b0f",
+  "theme_color": "#0b0d11",
+  "lang": "en",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/icons/anilingo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

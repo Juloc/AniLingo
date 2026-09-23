@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="AniLingo">
+  <rect width="512" height="512" rx="112" fill="#0b0d11"/>
+  <rect x="72" y="72" width="368" height="368" rx="92" fill="#e7a91b"/>
+  <path d="M166 354 241 158h47l75 196h-47l-16-46h-73l-16 46h-45Zm75-86h46l-23-67-23 67Z" fill="#111318"/>
+  <path d="M347 143h34v118h-34z" fill="#111318"/>
+</svg>
