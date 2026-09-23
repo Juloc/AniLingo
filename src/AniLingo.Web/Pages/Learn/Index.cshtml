@@ -6,6 +6,7 @@
 @{
     ViewData["Title"] = "Learn";
     var current = Model.Current;
+    var context = current?.Context;
 }
 
 <header class="page-header">
@@ -34,10 +35,9 @@ else
         <div class="review-card">
             <span class="review-counter">@Model.Session.Count due</span>
             <div class="review-term" lang="ja">@current.Canonical</div>
-            @if (!string.IsNullOrWhiteSpace(current.Reading))
-            {
-                <div class="review-reading">@current.Reading</div>
-            }
+            <div class="review-reading" lang="ja" hidden="@(string.IsNullOrWhiteSpace(current.Reading))">
+                @current.Reading
+            </div>
 
             <details class="review-details" data-review-details>
                 <summary class="button review-reveal" data-review-reveal>Show answer</summary>
@@ -48,12 +48,13 @@ else
                         : current.Meaning)
                 </div>
 
-                @if (current.Context is { } context)
-                {
-                    <div class="panel review-context">
-                        <span class="eyebrow">Anime context</span>
-                        <p lang="ja">@context.Sentence</p>
+                <div class="panel review-context"
+                     data-review-context
+                     hidden="@(context is null)">
+                    <span class="eyebrow">Anime context</span>
+                    <p lang="ja" data-review-sentence>@context?.Sentence</p>
 
+                    <div data-review-enrichment hidden="@(context is null)">
                         @if (Model.LocalHints.Count > 0)
                         {
                             <p class="muted">
@@ -77,21 +78,27 @@ else
                                 }
                             </div>
                         }
-                        else
+                        else if (context is not null)
                         {
                             <form method="post" asp-page-handler="Explain">
                                 <input type="hidden" name="termId" value="@current.TermId" />
                                 <button class="button" type="submit">Explain with AI</button>
                             </form>
                         }
-
-                        <a class="text-link"
-                           href="/Library/Episode/@context.EpisodeId?at=@context.CueStartMs">
-                            @context.AnimeTitle · S@(context.SeasonNumber.ToString("00")) E@(context.EpisodeNumber.ToString("00"))
-                            · @context.EpisodeTitle · @context.TimestampLabel
-                        </a>
                     </div>
-                }
+
+                    <a class="text-link"
+                       data-review-scene
+                       href="@(context is null ? "#" : $"/Library/Episode/{context.EpisodeId}?at={context.CueStartMs}")">
+                        @if (context is not null)
+                        {
+                            <text>
+                                @context.AnimeTitle · S@(context.SeasonNumber.ToString("00")) E@(context.EpisodeNumber.ToString("00"))
+                                · @context.EpisodeTitle · @context.TimestampLabel
+                            </text>
+                        }
+                    </a>
+                </div>
 
                 <form method="post"
                       asp-page-handler="Review"
