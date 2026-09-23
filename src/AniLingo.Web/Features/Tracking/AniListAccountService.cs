@@ -259,16 +259,19 @@ public sealed class AniListAccountService(
             var remote = context.RemoteEntry
                 ?? throw new AniListAccountException("AniList list entry is missing.");
 
+            var account = context.Account
+                ?? throw new AniListAccountException("AniList account context is missing.");
+
             await store.AppendProgressBackupAsync(
                 new AniListProgressBackup(
                     DateTimeOffset.UtcNow,
-                    context.Account.ViewerName,
+                    account.ViewerName,
                     context.RequestedProgress,
                     remote),
                 cancellationToken);
 
             var updated = await SaveProgressAsync(
-                context.Account.AccessToken,
+                account.AccessToken,
                 remote.Id,
                 context.RequestedProgress,
                 cancellationToken);
@@ -524,17 +527,34 @@ public sealed class AniListAccountService(
         var body = await SendAuthenticatedAsync(
             accessToken,
             SaveProgressMutation,
-            new
-            {
-                id = listEntryId,
-                progress
-            },
+            BuildProgressMutationVariables(listEntryId, progress),
             "saving list progress",
             cancellationToken);
 
         return ParseListEntryResponse(body, "SaveMediaListEntry")
             ?? throw new AniListAccountException(
                 "AniList returned no list entry after saving progress.");
+    }
+
+    public static IReadOnlyDictionary<string, int> BuildProgressMutationVariables(
+        int listEntryId,
+        int progress)
+    {
+        if (listEntryId <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(listEntryId));
+        }
+
+        if (progress < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(progress));
+        }
+
+        return new Dictionary<string, int>(StringComparer.Ordinal)
+        {
+            ["id"] = listEntryId,
+            ["progress"] = progress
+        };
     }
 
     private async Task<string> SendAuthenticatedAsync(
@@ -808,21 +828,14 @@ public sealed class AniListAccountService(
             account.TokenExpiresAt);
 
     private sealed record ProgressContext(
-        StoredAniListAccount Account,
+        StoredAniListAccount? Account,
         AniListRemoteListEntry? RemoteEntry,
         int RequestedProgress,
         AniListProgressPreview Preview)
     {
         public static ProgressContext Blocked(AniListProgressPreview preview) =>
             new(
-                new StoredAniListAccount(
-                    0,
-                    0,
-                    "",
-                    null,
-                    "",
-                    DateTimeOffset.MinValue,
-                    null),
+                null,
                 null,
                 preview.RequestedProgress,
                 preview);
