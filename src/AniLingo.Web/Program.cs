@@ -13,6 +13,8 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
+Console.WriteLine($"[AniLingo] {DateTimeOffset.UtcNow:O} Process starting.");
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddRazorPages();
@@ -85,16 +87,33 @@ app.UseStaticFiles();
 app.UseRouting();
 app.MapRazorPages();
 
-await InitializeDatabaseAsync(app.Services);
+try
+{
+    Console.WriteLine($"[AniLingo] {DateTimeOffset.UtcNow:O} Initializing persistent database.");
+    await InitializeDatabaseAsync(
+        app.Services,
+        message => Console.WriteLine($"[AniLingo] {DateTimeOffset.UtcNow:O} {message}"));
+    Console.WriteLine($"[AniLingo] {DateTimeOffset.UtcNow:O} Database ready. Starting web server.");
+}
+catch (Exception ex)
+{
+    Console.Error.WriteLine($"[AniLingo] {DateTimeOffset.UtcNow:O} Startup database initialization failed.");
+    Console.Error.WriteLine(ex);
+    throw;
+}
 
-app.Run();
+await app.RunAsync();
 
-static async Task InitializeDatabaseAsync(IServiceProvider services)
+static async Task InitializeDatabaseAsync(
+    IServiceProvider services,
+    Action<string> log)
 {
     await using var scope = services.CreateAsyncScope();
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-    await DatabaseMigrationBridge.UpgradeAsync(db);
+    await DatabaseMigrationBridge.UpgradeAsync(db, log: log);
+
+    log("Enabling SQLite WAL journal mode.");
     await db.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;");
 
     if (await db.LibraryRoots.AnyAsync())
@@ -107,6 +126,8 @@ static async Task InitializeDatabaseAsync(IServiceProvider services)
     {
         return;
     }
+
+    log($"Creating bootstrap library root {media.BootstrapRoot}.");
 
     db.LibraryRoots.Add(new LibraryRoot
     {
