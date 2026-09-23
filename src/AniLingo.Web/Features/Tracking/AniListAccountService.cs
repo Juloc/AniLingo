@@ -2,6 +2,10 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using AniLingo.Web.Data;
+using AniLingo.Web.Features.Metadata;
+using Microsoft.EntityFrameworkCore;
 
 namespace AniLingo.Web.Features.Tracking;
 
@@ -30,9 +34,86 @@ public sealed record AniListAccountStatus(
         TokenExpiresAt <= DateTimeOffset.UtcNow;
 }
 
+public sealed record AniListFuzzyDate(
+    int? Year,
+    int? Month,
+    int? Day);
+
+public sealed record AniListRemoteListEntry(
+    int Id,
+    int UserId,
+    int MediaId,
+    string? Status,
+    int Progress,
+    double? Score,
+    int Repeat,
+    int Priority,
+    bool Private,
+    string? Notes,
+    bool HiddenFromStatusLists,
+    JsonNode? CustomLists,
+    JsonNode? AdvancedScores,
+    AniListFuzzyDate? StartedAt,
+    AniListFuzzyDate? CompletedAt,
+    long? UpdatedAt)
+{
+    public bool ProtectedFieldsEqual(AniListRemoteListEntry other) =>
+        string.Equals(Status, other.Status, StringComparison.Ordinal) &&
+        Nullable.Equals(Score, other.Score) &&
+        Repeat == other.Repeat &&
+        Priority == other.Priority &&
+        Private == other.Private &&
+        string.Equals(Notes, other.Notes, StringComparison.Ordinal) &&
+        HiddenFromStatusLists == other.HiddenFromStatusLists &&
+        JsonNode.DeepEquals(CustomLists, other.CustomLists) &&
+        JsonNode.DeepEquals(AdvancedScores, other.AdvancedScores) &&
+        Equals(StartedAt, other.StartedAt) &&
+        Equals(CompletedAt, other.CompletedAt);
+}
+
+public sealed record AniListProgressPreview(
+    bool CanSync,
+    bool IsNoOp,
+    string Message,
+    string? MediaTitle,
+    int RequestedProgress,
+    int? RemoteProgress,
+    string? RemoteStatus,
+    int? AniListEpisodeCount)
+{
+    public static AniListProgressPreview Blocked(
+        string message,
+        int requestedProgress = 0,
+        string? mediaTitle = null,
+        int? remoteProgress = null,
+        string? remoteStatus = null,
+        int? aniListEpisodeCount = null) =>
+        new(
+            false,
+            false,
+            message,
+            mediaTitle,
+            requestedProgress,
+            remoteProgress,
+            remoteStatus,
+            aniListEpisodeCount);
+}
+
+public sealed record AniListProgressSyncResult(
+    bool Success,
+    bool Changed,
+    string Message);
+
+public sealed record AniListProgressBackup(
+    DateTimeOffset CapturedAt,
+    string ViewerName,
+    int RequestedProgress,
+    AniListRemoteListEntry RemoteEntry);
+
 public sealed class AniListAccountService(
     HttpClient httpClient,
     AniListAccountStore store,
+    AppDbContext db,
     ILogger<AniListAccountService> logger)
 {
     private const string ViewerQuery = """
@@ -41,6 +122,54 @@ public sealed class AniListAccountService(
             id
             name
             avatar { medium }
+          }
+        }
+        """;
+
+    private const string MediaListQuery = """
+        query ($userId: Int!, $mediaId: Int!) {
+          MediaList(userId: $userId, mediaId: $mediaId, type: ANIME) {
+            id
+            userId
+            mediaId
+            status
+            progress
+            score
+            repeat
+            priority
+            private
+            notes
+            hiddenFromStatusLists
+            customLists
+            advancedScores
+            startedAt { year month day }
+            completedAt { year month day }
+            updatedAt
+          }
+        }
+        """;
+
+    // Safety invariant: the mutation has exactly two variables and only one mutable
+    // list field: progress. Do not add status, score, notes, dates or list settings.
+    private const string SaveProgressMutation = """
+        mutation ($id: Int!, $progress: Int!) {
+          SaveMediaListEntry(id: $id, progress: $progress) {
+            id
+            userId
+            mediaId
+            status
+            progress
+            score
+            repeat
+            priority
+            private
+            notes
+            hiddenFromStatusLists
+            customLists
+            advancedScores
+            startedAt { year month day }
+            completedAt { year month day }
+            updatedAt
           }
         }
         """;
@@ -96,8 +225,310 @@ public sealed class AniListAccountService(
 
     public Task DisconnectAsync() => store.DisconnectAsync();
 
+    public async Task<AniListProgressPreview> GetEpisodeProgressPreviewAsync(
+        Guid episodeId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var context = await BuildProgressContextAsync(episodeId, cancellationToken);
+            return context.Preview;
+        }
+        catch (AniListAccountException exception)
+        {
+            return AniListProgressPreview.Blocked(exception.Message);
+        }
+    }
+
+    public async Task<AniListProgressSyncResult> SyncEpisodeProgressAsync(
+        Guid episodeId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            // Read immediately before every write. Never trust a stale page preview.
+            var context = await BuildProgressContextAsync(episodeId, cancellationToken);
+            if (!context.Preview.CanSync)
+            {
+                return new AniListProgressSyncResult(
+                    Success: context.Preview.IsNoOp,
+                    Changed: false,
+                    context.Preview.Message);
+            }
+
+            var remote = context.RemoteEntry
+                ?? throw new AniListAccountException("AniList list entry is missing.");
+
+            await store.AppendProgressBackupAsync(
+                new AniListProgressBackup(
+                    DateTimeOffset.UtcNow,
+                    context.Account.ViewerName,
+                    context.RequestedProgress,
+                    remote),
+                cancellationToken);
+
+            var updated = await SaveProgressAsync(
+                context.Account.AccessToken,
+                remote.Id,
+                context.RequestedProgress,
+                cancellationToken);
+
+            if (updated.Id != remote.Id ||
+                updated.UserId != remote.UserId ||
+                updated.MediaId != remote.MediaId ||
+                updated.Progress != context.RequestedProgress)
+            {
+                logger.LogCritical(
+                    "AniList returned an unexpected list entry after progress sync. Entry {EntryId}, media {MediaId}.",
+                    remote.Id,
+                    remote.MediaId);
+                throw new AniListAccountException(
+                    "AniList returned an unexpected progress response. No further sync was attempted.");
+            }
+
+            if (!remote.ProtectedFieldsEqual(updated))
+            {
+                logger.LogCritical(
+                    "AniList protected list fields changed unexpectedly while updating progress-only for entry {EntryId}. A pre-write backup was saved under /data/integrations.",
+                    remote.Id);
+                throw new AniListAccountException(
+                    "AniList changed fields outside progress unexpectedly. Sync stopped and a pre-write backup was saved.");
+            }
+
+            return new AniListProgressSyncResult(
+                Success: true,
+                Changed: true,
+                $"AniList progress updated from {remote.Progress} to {updated.Progress}. No other list fields were sent.");
+        }
+        catch (AniListAccountException exception)
+        {
+            return new AniListProgressSyncResult(
+                Success: false,
+                Changed: false,
+                exception.Message);
+        }
+    }
+
+    private async Task<ProgressContext> BuildProgressContextAsync(
+        Guid episodeId,
+        CancellationToken cancellationToken)
+    {
+        var episode = await (
+            from localEpisode in db.Episodes.AsNoTracking()
+            join anime in db.Anime.AsNoTracking() on localEpisode.AnimeId equals anime.Id
+            where localEpisode.Id == episodeId
+            select new
+            {
+                localEpisode.AnimeId,
+                localEpisode.Number,
+                localEpisode.SeasonNumber,
+                AnimeTitle = anime.Title
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (episode is null)
+        {
+            throw new AniListAccountException("Local episode was not found.");
+        }
+
+        if (episode.Number <= 0)
+        {
+            return ProgressContext.Blocked(
+                AniListProgressPreview.Blocked(
+                    "Special/unnumbered episodes are not synced automatically.",
+                    episode.Number,
+                    episode.AnimeTitle));
+        }
+
+        var metadata = await db.AnimeMetadata
+            .AsNoTracking()
+            .SingleOrDefaultAsync(x => x.AnimeId == episode.AnimeId, cancellationToken);
+
+        if (metadata is null ||
+            !string.Equals(
+                metadata.Provider,
+                AniListMetadataProvider.ProviderKey,
+                StringComparison.OrdinalIgnoreCase) ||
+            !int.TryParse(metadata.ExternalId, out var mediaId) ||
+            mediaId <= 0)
+        {
+            return ProgressContext.Blocked(
+                AniListProgressPreview.Blocked(
+                    "Match this anime to AniList before syncing progress.",
+                    episode.Number,
+                    episode.AnimeTitle));
+        }
+
+        var seasonCount = await db.Episodes
+            .AsNoTracking()
+            .Where(x => x.AnimeId == episode.AnimeId)
+            .Select(x => x.SeasonNumber)
+            .Distinct()
+            .Take(2)
+            .CountAsync(cancellationToken);
+
+        if (seasonCount > 1)
+        {
+            return ProgressContext.Blocked(
+                AniListProgressPreview.Blocked(
+                    "Progress sync is blocked because this local anime contains multiple seasons. AniList usually stores seasons as separate entries, so AniLingo will not guess.",
+                    episode.Number,
+                    metadata.PreferredTitle,
+                    aniListEpisodeCount: metadata.EpisodeCount));
+        }
+
+        if (metadata.EpisodeCount is > 0 &&
+            episode.Number > metadata.EpisodeCount.Value)
+        {
+            return ProgressContext.Blocked(
+                AniListProgressPreview.Blocked(
+                    $"Episode {episode.Number} is above AniList's known episode count ({metadata.EpisodeCount}). Sync blocked.",
+                    episode.Number,
+                    metadata.PreferredTitle,
+                    aniListEpisodeCount: metadata.EpisodeCount));
+        }
+
+        var account = await store.LoadAsync(cancellationToken);
+        if (account is null)
+        {
+            return ProgressContext.Blocked(
+                AniListProgressPreview.Blocked(
+                    "Connect your AniList account in Settings before syncing progress.",
+                    episode.Number,
+                    metadata.PreferredTitle,
+                    aniListEpisodeCount: metadata.EpisodeCount));
+        }
+
+        if (account.TokenExpiresAt is not null &&
+            account.TokenExpiresAt <= DateTimeOffset.UtcNow)
+        {
+            return ProgressContext.Blocked(
+                AniListProgressPreview.Blocked(
+                    "Your AniList connection has expired. Reconnect it in Settings.",
+                    episode.Number,
+                    metadata.PreferredTitle,
+                    aniListEpisodeCount: metadata.EpisodeCount));
+        }
+
+        var remote = await FetchListEntryAsync(
+            account,
+            mediaId,
+            cancellationToken);
+
+        if (remote is null)
+        {
+            return ProgressContext.Blocked(
+                AniListProgressPreview.Blocked(
+                    "This anime is not on your AniList list. AniLingo will not create a list entry automatically.",
+                    episode.Number,
+                    metadata.PreferredTitle,
+                    aniListEpisodeCount: metadata.EpisodeCount));
+        }
+
+        if (remote.Progress >= episode.Number)
+        {
+            return new ProgressContext(
+                account,
+                remote,
+                episode.Number,
+                new AniListProgressPreview(
+                    CanSync: false,
+                    IsNoOp: true,
+                    $"AniList already has progress {remote.Progress}; AniLingo never lowers progress.",
+                    metadata.PreferredTitle,
+                    episode.Number,
+                    remote.Progress,
+                    remote.Status,
+                    metadata.EpisodeCount));
+        }
+
+        if (string.Equals(remote.Status, "COMPLETED", StringComparison.OrdinalIgnoreCase))
+        {
+            return ProgressContext.Blocked(
+                AniListProgressPreview.Blocked(
+                    "AniList marks this entry as completed. AniLingo will not modify a completed entry.",
+                    episode.Number,
+                    metadata.PreferredTitle,
+                    remote.Progress,
+                    remote.Status,
+                    metadata.EpisodeCount));
+        }
+
+        return new ProgressContext(
+            account,
+            remote,
+            episode.Number,
+            new AniListProgressPreview(
+                CanSync: true,
+                IsNoOp: false,
+                $"Ready to increase AniList progress from {remote.Progress} to {episode.Number}.",
+                metadata.PreferredTitle,
+                episode.Number,
+                remote.Progress,
+                remote.Status,
+                metadata.EpisodeCount));
+    }
+
     private async Task<AniListViewer> FetchViewerAsync(
         string accessToken,
+        CancellationToken cancellationToken)
+    {
+        var body = await SendAuthenticatedAsync(
+            accessToken,
+            ViewerQuery,
+            new { },
+            "validating the account",
+            cancellationToken);
+
+        return ParseViewerResponse(body);
+    }
+
+    private async Task<AniListRemoteListEntry?> FetchListEntryAsync(
+        StoredAniListAccount account,
+        int mediaId,
+        CancellationToken cancellationToken)
+    {
+        var body = await SendAuthenticatedAsync(
+            account.AccessToken,
+            MediaListQuery,
+            new
+            {
+                userId = account.ViewerId,
+                mediaId
+            },
+            "reading list progress",
+            cancellationToken);
+
+        return ParseListEntryResponse(body, "MediaList");
+    }
+
+    private async Task<AniListRemoteListEntry> SaveProgressAsync(
+        string accessToken,
+        int listEntryId,
+        int progress,
+        CancellationToken cancellationToken)
+    {
+        var body = await SendAuthenticatedAsync(
+            accessToken,
+            SaveProgressMutation,
+            new
+            {
+                id = listEntryId,
+                progress
+            },
+            "saving list progress",
+            cancellationToken);
+
+        return ParseListEntryResponse(body, "SaveMediaListEntry")
+            ?? throw new AniListAccountException(
+                "AniList returned no list entry after saving progress.");
+    }
+
+    private async Task<string> SendAuthenticatedAsync(
+        string accessToken,
+        string query,
+        object variables,
+        string operation,
         CancellationToken cancellationToken)
     {
         try
@@ -107,7 +538,8 @@ public sealed class AniListAccountService(
                 new AuthenticationHeaderValue("Bearer", accessToken);
             request.Content = JsonContent.Create(new
             {
-                query = ViewerQuery
+                query,
+                variables
             });
 
             using var response = await httpClient.SendAsync(
@@ -119,10 +551,11 @@ public sealed class AniListAccountService(
             if (!response.IsSuccessStatusCode)
             {
                 throw new AniListAccountException(
-                    $"AniList returned HTTP {(int)response.StatusCode} while validating the account.");
+                    $"AniList returned HTTP {(int)response.StatusCode} while {operation}.");
             }
 
-            return ParseViewerResponse(body);
+            ThrowIfGraphQlErrors(body);
+            return body;
         }
         catch (AniListAccountException)
         {
@@ -133,9 +566,9 @@ public sealed class AniListAccountService(
             TaskCanceledException or
             JsonException)
         {
-            logger.LogWarning(exception, "AniList account validation failed.");
+            logger.LogWarning(exception, "AniList request failed while {Operation}.", operation);
             throw new AniListAccountException(
-                "AniList account validation is currently unavailable.",
+                $"AniList is currently unavailable while {operation}.",
                 exception);
         }
     }
@@ -143,20 +576,7 @@ public sealed class AniListAccountService(
     public static AniListViewer ParseViewerResponse(string json)
     {
         using var document = JsonDocument.Parse(json);
-
-        if (document.RootElement.TryGetProperty("errors", out var errors) &&
-            errors.ValueKind == JsonValueKind.Array &&
-            errors.GetArrayLength() > 0)
-        {
-            var message = errors[0].TryGetProperty("message", out var messageElement)
-                ? messageElement.GetString()
-                : null;
-
-            throw new AniListAccountException(
-                string.IsNullOrWhiteSpace(message)
-                    ? "AniList rejected the account token."
-                    : $"AniList: {message}");
-        }
+        ThrowIfGraphQlErrors(document.RootElement);
 
         if (!document.RootElement.TryGetProperty("data", out var data) ||
             !data.TryGetProperty("Viewer", out var viewer) ||
@@ -187,6 +607,48 @@ public sealed class AniListAccountService(
         }
 
         return new AniListViewer(id, name, avatarUrl);
+    }
+
+    public static AniListRemoteListEntry? ParseListEntryResponse(
+        string json,
+        string fieldName)
+    {
+        using var document = JsonDocument.Parse(json);
+        ThrowIfGraphQlErrors(document.RootElement);
+
+        if (!document.RootElement.TryGetProperty("data", out var data) ||
+            !data.TryGetProperty(fieldName, out var entry) ||
+            entry.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+        {
+            return null;
+        }
+
+        if (entry.ValueKind != JsonValueKind.Object ||
+            !TryReadInt(entry, "id", out var id) ||
+            !TryReadInt(entry, "userId", out var userId) ||
+            !TryReadInt(entry, "mediaId", out var mediaId))
+        {
+            throw new AniListAccountException(
+                "AniList returned an unexpected list-entry response.");
+        }
+
+        return new AniListRemoteListEntry(
+            id,
+            userId,
+            mediaId,
+            ReadString(entry, "status"),
+            ReadInt(entry, "progress") ?? 0,
+            ReadDouble(entry, "score"),
+            ReadInt(entry, "repeat") ?? 0,
+            ReadInt(entry, "priority") ?? 0,
+            ReadBool(entry, "private"),
+            ReadString(entry, "notes"),
+            ReadBool(entry, "hiddenFromStatusLists"),
+            ReadJsonNode(entry, "customLists"),
+            ReadJsonNode(entry, "advancedScores"),
+            ReadFuzzyDate(entry, "startedAt"),
+            ReadFuzzyDate(entry, "completedAt"),
+            ReadLong(entry, "updatedAt"));
     }
 
     public static DateTimeOffset? TryReadTokenExpiry(string accessToken)
@@ -227,6 +689,101 @@ public sealed class AniListAccountService(
         }
     }
 
+    private static void ThrowIfGraphQlErrors(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        ThrowIfGraphQlErrors(document.RootElement);
+    }
+
+    private static void ThrowIfGraphQlErrors(JsonElement root)
+    {
+        if (!root.TryGetProperty("errors", out var errors) ||
+            errors.ValueKind != JsonValueKind.Array ||
+            errors.GetArrayLength() == 0)
+        {
+            return;
+        }
+
+        var message = errors[0].TryGetProperty("message", out var messageElement)
+            ? messageElement.GetString()
+            : null;
+
+        throw new AniListAccountException(
+            string.IsNullOrWhiteSpace(message)
+                ? "AniList returned a GraphQL error."
+                : $"AniList: {message}");
+    }
+
+    private static string? ReadString(JsonElement element, string propertyName) =>
+        element.TryGetProperty(propertyName, out var value) &&
+        value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
+
+    private static int? ReadInt(JsonElement element, string propertyName) =>
+        element.TryGetProperty(propertyName, out var value) &&
+        value.TryGetInt32(out var number)
+            ? number
+            : null;
+
+    private static bool TryReadInt(
+        JsonElement element,
+        string propertyName,
+        out int value)
+    {
+        var parsed = ReadInt(element, propertyName);
+        value = parsed ?? 0;
+        return parsed.HasValue;
+    }
+
+    private static long? ReadLong(JsonElement element, string propertyName) =>
+        element.TryGetProperty(propertyName, out var value) &&
+        value.TryGetInt64(out var number)
+            ? number
+            : null;
+
+    private static double? ReadDouble(JsonElement element, string propertyName) =>
+        element.TryGetProperty(propertyName, out var value) &&
+        value.TryGetDouble(out var number)
+            ? number
+            : null;
+
+    private static bool ReadBool(JsonElement element, string propertyName) =>
+        element.TryGetProperty(propertyName, out var value) &&
+        value.ValueKind == JsonValueKind.True;
+
+    private static JsonNode? ReadJsonNode(
+        JsonElement element,
+        string propertyName)
+    {
+        if (!element.TryGetProperty(propertyName, out var value) ||
+            value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+        {
+            return null;
+        }
+
+        return JsonNode.Parse(value.GetRawText());
+    }
+
+    private static AniListFuzzyDate? ReadFuzzyDate(
+        JsonElement element,
+        string propertyName)
+    {
+        if (!element.TryGetProperty(propertyName, out var value) ||
+            value.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        var year = ReadInt(value, "year");
+        var month = ReadInt(value, "month");
+        var day = ReadInt(value, "day");
+
+        return year is null && month is null && day is null
+            ? null
+            : new AniListFuzzyDate(year, month, day);
+    }
+
     private static AniListAccountStatus ToStatus(StoredAniListAccount account) =>
         new(
             true,
@@ -236,4 +793,25 @@ public sealed class AniListAccountService(
             account.ViewerAvatarUrl,
             account.ConnectedAt,
             account.TokenExpiresAt);
+
+    private sealed record ProgressContext(
+        StoredAniListAccount Account,
+        AniListRemoteListEntry? RemoteEntry,
+        int RequestedProgress,
+        AniListProgressPreview Preview)
+    {
+        public static ProgressContext Blocked(AniListProgressPreview preview) =>
+            new(
+                new StoredAniListAccount(
+                    0,
+                    0,
+                    "",
+                    null,
+                    "",
+                    DateTimeOffset.MinValue,
+                    null),
+                null,
+                preview.RequestedProgress,
+                preview);
+    }
 }
