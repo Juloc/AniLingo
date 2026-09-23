@@ -26,6 +26,7 @@ The first vertical slice includes:
 - known / learning term state
 - FSRS-6 spaced repetition with Again / Hard / Good / Easy interval previews
 - responsive Razor Pages UI with a Jellyfin/Plex-style shell
+- built-in single-owner login for safe reverse-proxy exposure
 - embedded SQLite persistence in the single application container
 - optional Codex CLI connection for later AI-assisted features
 
@@ -59,7 +60,15 @@ The example is pinned to the current alpha release. Replace `/path/to/anime` wit
 docker compose up -d
 ```
 
-Open `http://localhost:8097`.
+Open `http://localhost:8097`. On the first visit AniLingo redirects to **Create owner account**. After that, every application page requires the owner login; there is no public registration.
+
+### Public URL / Caddy
+
+For Internet access, terminate HTTPS at Caddy (or another trusted reverse proxy) and keep AniLingo itself on the private Docker network. Do not forward port 8097 directly from the router to the Internet. AniLingo accepts `X-Forwarded-For` and `X-Forwarded-Proto` from loopback and private RFC1918/ULA proxy networks, so HTTPS cookies are marked correctly when Caddy terminates TLS.
+
+The authentication cookie is HttpOnly, SameSite=Lax and secure whenever the original request is HTTPS. Login attempts are rate-limited. Passwords are stored only as ASP.NET Core Identity password hashes in the existing SQLite database, while the existing Data Protection key ring under `/data/keys` keeps authentication cookies valid across normal container recreation.
+
+When Caddy shares a Docker network with AniLingo, Caddy can proxy directly to `anilingo:8080`; publishing `8097:8080` is only needed when you also want direct host access.
 
 Runtime paths are fixed and intentionally simple:
 
