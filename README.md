@@ -29,7 +29,10 @@ The first vertical slice includes:
 - responsive Razor Pages UI with a Jellyfin/Plex-style shell
 - built-in single-owner login for safe reverse-proxy exposure
 - embedded SQLite persistence in the single application container
-- optional Codex CLI connection for later AI-assisted features
+- optional Codex CLI connection for AI-assisted features
+- Japanese Web/Light Novel library with Narou import, on-demand chapter caching, a responsive reader and persisted reading position
+- optional one-time German AI translation cached against the exact Japanese source text
+- independent AniList novel matching plus manual or optional AI-assisted novel-chapter → anime-episode mappings
 
 AI enrichment and image-based subtitle OCR are later phases. See issue #1 for the staged roadmap.
 
@@ -88,6 +91,14 @@ AniList account connection is available under **Settings → AniList**. Self-hos
 
 Episode pages can explicitly sync watched progress for an already-existing AniList entry. AniLingo reloads the remote entry immediately before each write, never lowers progress, and sends only the list-entry `id` plus `progress`. It does not send score, notes, repeat count, priority, privacy, custom-list membership, dates or list status. Sync is blocked for ambiguous multi-season local groupings, non-`CURRENT` entries and the final episode to avoid completion-status/date side effects. A pre-write snapshot is appended under `/data/integrations` before every mutation; if that backup cannot be written, AniList is not modified.
 
+## Web / Light Novels
+
+Open **Novels** to import a supported Japanese web novel. The first source provider is **Shōsetsuka ni Narō / ncode.syosetu.com**. AniLingo stores the work and chapter index in the existing SQLite database; Japanese chapter text is fetched and cached when a chapter is opened. **Cache all Japanese text** can queue the remaining chapters through the existing in-process background worker.
+
+The reader works without AI and provides Japanese-only reading, chapter navigation, persisted per-profile reading position, adjustable text size/line spacing/width and mobile-friendly layout. When Codex is connected under **Settings → AI**, a chapter can be translated to German explicitly. AniLingo translates bounded chapter segments, stores the completed result only after every segment succeeds, and keys reuse to the chapter's exact source hash + provider + prompt version. Refreshing changed Japanese source text therefore makes an older translation stale instead of silently showing it.
+
+Novel metadata is separate from anime metadata. AniLingo searches AniList's novel media entries and stores the provider-neutral match on the imported novel. A novel can also map chapter ranges to an already-matched local anime's season/episode ranges. Manual mappings remain authoritative; optional Codex suggestions are stored as AI suggestions and never replace manual mappings.
+
 ## Optional Codex connection
 
 The image includes the Codex CLI, but AniLingo does not require AI to scan media or learn vocabulary.
@@ -140,7 +151,7 @@ EF Core / filesystem / external integration
 
 Pages are page boundaries. Shared visual patterns stay in shared partials/components. JavaScript is reserved for interactions that require it; v0.1 does not use a client-side application shell.
 
-Core areas live under `Features/Library`, `Features/Subtitles`, `Features/Vocabulary`, `Features/Learning`, `Features/Playback` and the optional `Features/Ai` provider boundary. Future playback, AniList metadata and AI enrichment extend those boundaries instead of replacing them.
+Core areas live under `Features/Library`, `Features/Subtitles`, `Features/Vocabulary`, `Features/Learning`, `Features/Playback`, `Features/Novels` and the optional `Features/Ai` provider boundary. Future playback, AniList metadata and AI enrichment extend those boundaries instead of replacing them.
 
 ## v0.1 limitations
 

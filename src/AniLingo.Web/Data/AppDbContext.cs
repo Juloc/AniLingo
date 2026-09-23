@@ -3,6 +3,7 @@ using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Library;
 using AniLingo.Web.Features.Metadata;
+using AniLingo.Web.Features.Novels;
 using AniLingo.Web.Features.Subtitles;
 using AniLingo.Web.Features.Vocabulary;
 using Microsoft.EntityFrameworkCore;
@@ -25,6 +26,11 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<LearningPreferences> LearningPreferences => Set<LearningPreferences>();
     public DbSet<AiSentenceExplanationCache> AiSentenceExplanationCache => Set<AiSentenceExplanationCache>();
     public DbSet<OwnerAccount> OwnerAccounts => Set<OwnerAccount>();
+    public DbSet<NovelWork> NovelWorks => Set<NovelWork>();
+    public DbSet<NovelChapter> NovelChapters => Set<NovelChapter>();
+    public DbSet<NovelTranslation> NovelTranslations => Set<NovelTranslation>();
+    public DbSet<NovelProgress> NovelProgress => Set<NovelProgress>();
+    public DbSet<NovelAnimeMapping> NovelAnimeMappings => Set<NovelAnimeMapping>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -157,6 +163,72 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasKey(x => x.CacheKey);
             entity.Property(x => x.CacheKey).HasMaxLength(64);
             entity.Property(x => x.ProviderId).HasMaxLength(80);
+        });
+
+        modelBuilder.Entity<NovelWork>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.SourceProvider).HasMaxLength(80);
+            entity.Property(x => x.SourceKey).HasMaxLength(80);
+            entity.Property(x => x.SourceUrl).HasMaxLength(2048);
+            entity.Property(x => x.Title).HasMaxLength(500);
+            entity.Property(x => x.Author).HasMaxLength(300);
+            entity.Property(x => x.MetadataProvider).HasMaxLength(80);
+            entity.Property(x => x.MetadataExternalId).HasMaxLength(200);
+            entity.Property(x => x.MetadataTitle).HasMaxLength(500);
+            entity.Property(x => x.MetadataNativeTitle).HasMaxLength(500);
+            entity.Property(x => x.CoverImageUrl).HasMaxLength(2048);
+            entity.Property(x => x.Format).HasMaxLength(80);
+            entity.HasIndex(x => new { x.SourceProvider, x.SourceKey }).IsUnique();
+            entity.HasIndex(x => new { x.MetadataProvider, x.MetadataExternalId }).IsUnique();
+        });
+
+        modelBuilder.Entity<NovelChapter>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.SourceUrl).HasMaxLength(2048);
+            entity.Property(x => x.Title).HasMaxLength(500);
+            entity.Property(x => x.SourceHash).HasMaxLength(64);
+            entity.HasOne<NovelWork>().WithMany().HasForeignKey(x => x.WorkId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(x => new { x.WorkId, x.Number }).IsUnique();
+        });
+
+        modelBuilder.Entity<NovelTranslation>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.TargetLanguage).HasMaxLength(16);
+            entity.Property(x => x.ProviderId).HasMaxLength(80);
+            entity.Property(x => x.SourceHash).HasMaxLength(64);
+            entity.HasOne<NovelChapter>().WithMany().HasForeignKey(x => x.ChapterId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(x => new
+            {
+                x.ChapterId,
+                x.TargetLanguage,
+                x.ProviderId,
+                x.PromptVersion,
+                x.SourceHash
+            }).IsUnique();
+        });
+
+        modelBuilder.Entity<NovelProgress>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.ProfileId).HasMaxLength(80);
+            entity.HasOne<NovelWork>().WithMany().HasForeignKey(x => x.WorkId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<NovelChapter>().WithMany().HasForeignKey(x => x.ChapterId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(x => new { x.ProfileId, x.WorkId }).IsUnique();
+        });
+
+        modelBuilder.Entity<NovelAnimeMapping>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.AnimeProvider).HasMaxLength(80);
+            entity.Property(x => x.AnimeExternalId).HasMaxLength(200);
+            entity.Property(x => x.Label).HasMaxLength(200);
+            entity.Property(x => x.Source).HasMaxLength(20);
+            entity.HasOne<NovelWork>().WithMany().HasForeignKey(x => x.WorkId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(x => new { x.WorkId, x.ChapterStart, x.ChapterEnd });
+            entity.HasIndex(x => new { x.AnimeProvider, x.AnimeExternalId });
         });
     }
 }
