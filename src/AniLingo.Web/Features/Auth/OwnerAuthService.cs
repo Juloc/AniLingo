@@ -47,10 +47,23 @@ public sealed class OwnerAuthService(
         return owner;
     }
 
-    public async Task<OwnerAccount> CreateUserAsync(
+    public Task<OwnerAccount> CreateUserAsync(
         string userName,
         string password,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        CreateUserCoreAsync(userName, password, isEnabled: true, cancellationToken);
+
+    public Task<OwnerAccount> CreateRegistrationRequestAsync(
+        string userName,
+        string password,
+        CancellationToken cancellationToken = default) =>
+        CreateUserCoreAsync(userName, password, isEnabled: false, cancellationToken);
+
+    private async Task<OwnerAccount> CreateUserCoreAsync(
+        string userName,
+        string password,
+        bool isEnabled,
+        CancellationToken cancellationToken)
     {
         var cleanedUserName = CleanUserName(userName);
         ValidatePassword(password);
@@ -69,7 +82,7 @@ public sealed class OwnerAuthService(
             UserName = cleanedUserName,
             NormalizedUserName = normalized,
             Role = AccountRole.User,
-            IsEnabled = true,
+            IsEnabled = isEnabled,
             CreatedAt = DateTime.UtcNow
         };
         account.PasswordHash = passwordHasher.HashPassword(account, password);
