@@ -166,11 +166,17 @@ public sealed class MetadataTests
                     CREATE TABLE EpisodeTerms (EpisodeId TEXT NOT NULL, TermId TEXT NOT NULL, PRIMARY KEY (EpisodeId, TermId));
                     CREATE TABLE LibraryRoots (Id TEXT NOT NULL PRIMARY KEY);
                     CREATE TABLE MediaFiles (Id TEXT NOT NULL PRIMARY KEY);
-                    CREATE TABLE Reviews (Id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT);
+                    CREATE TABLE Reviews (
+                        Id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                        ProfileId TEXT NOT NULL DEFAULT 'default'
+                    );
                     CREATE TABLE SubtitleCues (Id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT);
                     CREATE TABLE SubtitleTracks (Id TEXT NOT NULL PRIMARY KEY);
                     CREATE TABLE Terms (Id TEXT NOT NULL PRIMARY KEY);
-                    CREATE TABLE UserTerms (Id TEXT NOT NULL PRIMARY KEY);
+                    CREATE TABLE UserTerms (
+                        Id TEXT NOT NULL PRIMARY KEY,
+                        ProfileId TEXT NOT NULL DEFAULT 'default'
+                    );
                     """;
                 await command.ExecuteNonQueryAsync();
             }
