@@ -72,9 +72,12 @@
                 <strong>No German translation cached yet.</strong>
                 <div class="novel-muted">Japanese is always available. AI translation runs only when requested and is stored for reuse.</div>
             </div>
-            <form method="post" asp-page-handler="Translate" asp-route-id="@Model.Chapter.Id">
-                <button class="button button-primary" type="submit">Translate once with AI</button>
-            </form>
+            @if (Model.IsOwner)
+            {
+                <form method="post" asp-page-handler="Translate" asp-route-id="@Model.Chapter.Id">
+                    <button class="button button-primary" type="submit">Translate once with AI</button>
+                </form>
+            }
         </section>
     }
 
@@ -101,9 +104,12 @@
             }
         </div>
         <div class="novel-toolbar-actions">
-            <form method="post" asp-page-handler="RefreshSource" asp-route-id="@Model.Chapter.Id">
-                <button class="button" type="submit">Refresh source</button>
-            </form>
+            @if (Model.IsOwner)
+            {
+                <form method="post" asp-page-handler="RefreshSource" asp-route-id="@Model.Chapter.Id">
+                    <button class="button" type="submit">Refresh source</button>
+                </form>
+            }
             @if (Model.NextChapterId is Guid next)
             {
                 <a class="button button-primary" href="/Novels/Read/@next">Next →</a>
