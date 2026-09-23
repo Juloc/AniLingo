@@ -353,7 +353,7 @@ public sealed partial class CodexCliProvider : IAiProvider, IAiSentenceExplainer
                   "seasonNumber": { "type": "integer" },
                   "episodeStart": { "type": "integer" },
                   "episodeEnd": { "type": "integer" },
-                  "label": { "type": ["string", "null"] }
+                  "label": { "type": "string" }
                 },
                 "required": [
                   "chapterStart",
