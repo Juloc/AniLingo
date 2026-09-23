@@ -9,9 +9,7 @@ public sealed record AiSentenceExplanation(
     IReadOnlyList<string> Colloquial,
     bool FromCache);
 
-public sealed record AiSentenceExplainRequest(
-    string Sentence,
-    IReadOnlyList<string> LocalHints);
+public sealed record AiSentenceExplainRequest(string Sentence);
 
 public interface IAiSentenceExplainer
 {
@@ -41,8 +39,32 @@ public static partial class JapaneseSentencePreprocessor
 {
     private const int MaxSentenceLength = 500;
 
-    private static readonly (string Needle, string Hint)[] Patterns =
+    private static readonly (string Needle, string Hint)[] LiteralRules =
     [
+        ("なければならない", "なければならない = müssen"),
+        ("なければいけない", "なければいけない = müssen"),
+        ("なくてはいけない", "なくてはいけない = müssen"),
+        ("なくてもいい", "なくてもいい = muss nicht / darf ohne"),
+        ("てはいけない", "てはいけない = darf nicht"),
+        ("ちゃいけない", "ちゃいけない→てはいけない"),
+        ("ことにする", "ことにする = sich entscheiden, etwas zu tun"),
+        ("ことになる", "ことになる = es wird entschieden / dazu kommen"),
+        ("ことがある", "ことがある = Erfahrung / etwas kommt vor"),
+        ("ようになる", "ようになる = Veränderung: dazu kommen, etwas zu tun/können"),
+        ("ようにする", "ようにする = sich bemühen / dafür sorgen"),
+        ("かもしれない", "かもしれない = vielleicht / möglicherweise"),
+        ("と思う", "と思う = denken, dass … / Zitat + denken"),
+        ("ほうがいい", "ほうがいい = Empfehlung: besser …"),
+        ("てほしい", "てほしい = wollen, dass jemand etwas tut"),
+        ("てみる", "てみる = versuchsweise etwas tun"),
+        ("ておく", "ておく = im Voraus / vorsorglich tun"),
+        ("てしまう", "てしまう = vollständig/versehentlich tun; oft Bedauern"),
+        ("てくれる", "てくれる = jemand tut etwas für mich/uns"),
+        ("てもらう", "てもらう = etwas von jemandem getan bekommen"),
+        ("てあげる", "てあげる = etwas für jemand anderen tun"),
+        ("けれど", "けれど = aber / obwohl"),
+        ("けど", "けど = aber / obwohl"),
+        ("ので", "ので = weil / da"),
         ("なくちゃ", "なくちゃ→なくては"),
         ("なきゃ", "なきゃ→なければ"),
         ("ちゃう", "ちゃう→てしまう"),
@@ -52,7 +74,12 @@ public static partial class JapaneseSentencePreprocessor
         ("てる", "てる→ている"),
         ("じゃん", "じゃん→じゃないか"),
         ("んです", "んです→のです"),
-        ("んだ", "んだ→のだ")
+    ];
+
+    private static readonly (Regex Pattern, string Hint)[] RegexRules =
+    [
+        (ShikaNaiRegex(), "しか…ない = nur / nichts außer"),
+        (TariTariRegex(), "たり…たりする = Beispiele von Handlungen aufzählen")
     ];
 
     public static PreparedJapaneseSentence Prepare(string sentence)
@@ -66,11 +93,15 @@ public static partial class JapaneseSentencePreprocessor
             normalized = normalized[..MaxSentenceLength];
         }
 
-        var hints = Patterns
-            .Where(pattern => normalized.Contains(pattern.Needle, StringComparison.Ordinal))
-            .Select(pattern => pattern.Hint)
+        var hints = LiteralRules
+            .Where(rule => normalized.Contains(rule.Needle, StringComparison.Ordinal))
+            .Select(rule => rule.Hint)
+            .Concat(
+                RegexRules
+                    .Where(rule => rule.Pattern.IsMatch(normalized))
+                    .Select(rule => rule.Hint))
             .Distinct(StringComparer.Ordinal)
-            .Take(4)
+            .Take(8)
             .ToArray();
 
         return new PreparedJapaneseSentence(normalized, hints);
@@ -78,4 +109,10 @@ public static partial class JapaneseSentencePreprocessor
 
     [GeneratedRegex(@"\s+")]
     private static partial Regex WhitespaceRegex();
+
+    [GeneratedRegex(@"しか[^。！？!?]{0,48}ない")]
+    private static partial Regex ShikaNaiRegex();
+
+    [GeneratedRegex(@"(?:たり|だり)[^。！？!?]{0,48}(?:たり|だり)(?:する|して|した|します|しない)?")]
+    private static partial Regex TariTariRegex();
 }
