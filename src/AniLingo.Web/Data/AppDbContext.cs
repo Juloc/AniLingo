@@ -144,6 +144,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(x => x.ProfileId).HasMaxLength(80);
             entity.HasOne<Term>().WithMany().HasForeignKey(x => x.TermId).OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(x => new { x.ProfileId, x.ReviewedAt });
+            entity.HasIndex(x => new { x.ProfileId, x.ClientEventId }).IsUnique();
         });
 
         modelBuilder.Entity<LearningPreferences>(entity =>
