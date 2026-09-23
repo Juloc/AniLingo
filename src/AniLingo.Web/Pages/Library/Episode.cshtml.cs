@@ -1,4 +1,5 @@
 using AniLingo.Web.Data;
+using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Playback;
 using AniLingo.Web.Features.Subtitles;
@@ -34,7 +35,8 @@ public sealed class EpisodeModel(
     EmbeddedSubtitleExtractor embeddedSubtitleExtractor,
     SubtitleImportService subtitleImportService,
     AniListAccountService aniListAccountService,
-    BackgroundJobQueue transcriptionJobs) : PageModel
+    BackgroundJobQueue transcriptionJobs,
+    CurrentAccountContext currentAccount) : PageModel
 {
     public Guid EpisodeId { get; private set; }
     public Guid AnimeId { get; private set; }
@@ -52,6 +54,7 @@ public sealed class EpisodeModel(
     public AniListProgressPreview? AniListProgress { get; private set; }
     public string? SubtitleNotice => TempData["SubtitleNotice"] as string;
     public string? SubtitleError => TempData["SubtitleError"] as string;
+    public bool IsOwner => currentAccount.IsOwner;
 
     public async Task<IActionResult> OnGetAsync(Guid id, CancellationToken cancellationToken)
     {
@@ -83,12 +86,15 @@ public sealed class EpisodeModel(
         EpisodeNumber = header.Number;
         Preparation = await preparationService.GetAsync(id, header.AnimeId, cancellationToken);
         Playback = await playbackService.GetSnapshotAsync(id, cancellationToken);
-        AniListProgress = await aniListAccountService.GetEpisodeProgressPreviewAsync(
-            id,
-            cancellationToken);
-        await LoadSubtitleSourcesAsync(id, Playback.Media?.SourcePath, cancellationToken);
+        if (IsOwner)
+        {
+            AniListProgress = await aniListAccountService.GetEpisodeProgressPreviewAsync(
+                id,
+                cancellationToken);
+            await LoadSubtitleSourcesAsync(id, Playback.Media?.SourcePath, cancellationToken);
+        }
 
-        if (ActiveSubtitle is null && Playback.Media is { } media)
+        if (IsOwner && ActiveSubtitle is null && Playback.Media is { } media)
         {
             var hasJapaneseTextSource = SubtitleSources.Any(source =>
                 source.IsText &&
@@ -114,6 +120,11 @@ public sealed class EpisodeModel(
         int streamIndex,
         CancellationToken cancellationToken)
     {
+        if (!IsOwner)
+        {
+            return Forbid();
+        }
+
         var media = await db.MediaFiles
             .AsNoTracking()
             .Where(x => x.EpisodeId == id)
@@ -280,6 +291,11 @@ public sealed class EpisodeModel(
         Guid id,
         CancellationToken cancellationToken)
     {
+        if (!IsOwner)
+        {
+            return Forbid();
+        }
+
         var result = await aniListAccountService.SyncEpisodeProgressAsync(
             id,
             cancellationToken);
