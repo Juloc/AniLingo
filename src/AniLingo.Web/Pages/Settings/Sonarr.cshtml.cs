@@ -1,19 +1,14 @@
-using AniLingo.Web.Data;
 using AniLingo.Web.Features.Sonarr;
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
 namespace AniLingo.Web.Pages.Settings;
 
 public sealed class SonarrModel(
-    AppDbContext db,
-    IHttpClientFactory httpClientFactory,
-    IDataProtectionProvider dataProtectionProvider,
+    SonarrConnectionStore connectionStore,
+    SonarrArtworkImportService sonarrService,
     ILogger<SonarrModel> logger) : PageModel
 {
-    private readonly SonarrConnectionStore connectionStore =
-        new(dataProtectionProvider);
 
     [BindProperty]
     public string BaseUrl { get; set; } = "http://sonarr:8989";
@@ -60,8 +55,7 @@ public sealed class SonarrModel(
             return RedirectToPage();
         }
 
-        var service = new SonarrArtworkImportService(db, httpClientFactory, logger);
-        var result = await service.TestAsync(settings, cancellationToken);
+        var result = await sonarrService.TestAsync(settings, cancellationToken);
 
         if (result.Success)
         {
@@ -84,11 +78,9 @@ public sealed class SonarrModel(
             return RedirectToPage();
         }
 
-        var service = new SonarrArtworkImportService(db, httpClientFactory, logger);
-
         try
         {
-            var test = await service.TestAsync(settings, cancellationToken);
+            var test = await sonarrService.TestAsync(settings, cancellationToken);
             if (!test.Success)
             {
                 TempData["SonarrError"] = test.Message;
@@ -96,7 +88,7 @@ public sealed class SonarrModel(
             }
 
             await connectionStore.SaveAsync(settings, cancellationToken);
-            var result = await service.ImportAsync(settings, cancellationToken);
+            var result = await sonarrService.ImportAsync(settings, cancellationToken);
 
             TempData["SonarrNotice"] =
                 $"Imported {result.PosterCount} posters and {result.FanartCount} fanart images.";

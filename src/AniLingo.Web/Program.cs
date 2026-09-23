@@ -5,6 +5,7 @@ using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Library;
 using AniLingo.Web.Features.Metadata;
 using AniLingo.Web.Features.Playback;
+using AniLingo.Web.Features.Sonarr;
 using AniLingo.Web.Features.Subtitles;
 using AniLingo.Web.Features.Tracking;
 using AniLingo.Web.Features.Vocabulary;
@@ -108,6 +109,10 @@ builder.Services.AddHttpClient<AniListMetadataProvider>(client =>
 builder.Services.AddScoped<IAnimeMetadataProvider>(
     services => services.GetRequiredService<AniListMetadataProvider>());
 builder.Services.AddScoped<AnimeMetadataService>();
+
+builder.Services.AddSingleton<SonarrConnectionStore>();
+builder.Services.AddScoped<SonarrArtworkImportService>();
+builder.Services.AddScoped<SonarrArtworkSyncService>();
 
 builder.Services.AddSingleton<AniListAccountStore>();
 builder.Services.AddHttpClient<AniListAccountService>(client =>

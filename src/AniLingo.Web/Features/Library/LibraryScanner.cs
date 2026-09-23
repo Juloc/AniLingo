@@ -1,4 +1,5 @@
 using AniLingo.Web.Data;
+using AniLingo.Web.Features.Sonarr;
 using AniLingo.Web.Features.Subtitles;
 using Microsoft.EntityFrameworkCore;
 
@@ -8,6 +9,7 @@ public sealed class LibraryScanner(
     AppDbContext db,
     SubtitleImportService subtitleImport,
     EmbeddedSubtitleExtractor embeddedSubtitleExtractor,
+    SonarrArtworkSyncService sonarrArtworkSync,
     ILogger<LibraryScanner> logger)
 {
     private static readonly HashSet<string> MediaExtensions = new(StringComparer.OrdinalIgnoreCase)
@@ -123,6 +125,8 @@ public sealed class LibraryScanner(
 
         root.LastScannedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(cancellationToken);
+
+        await sonarrArtworkSync.SyncIfConfiguredAsync(cancellationToken);
 
         var episodeIds = subtitleCandidates
             .Select(x => x.EpisodeId)
