@@ -18,11 +18,16 @@ public sealed class AniListAccountStore(
     ILogger<AniListAccountStore> logger)
 {
     private const string StorePath = "/data/integrations/anilist.json";
+    private const string ProgressBackupPath =
+        "/data/integrations/anilist-progress-backups.ndjson";
+
     private static readonly JsonSerializerOptions JsonOptions =
         new(JsonSerializerDefaults.Web) { WriteIndented = true };
 
     private readonly IDataProtector protector =
         dataProtectionProvider.CreateProtector("AniLingo.AniList.AccessToken.v1");
+
+    private readonly SemaphoreSlim backupGate = new(1, 1);
 
     public async Task<StoredAniListAccount?> LoadAsync(
         CancellationToken cancellationToken)
@@ -99,6 +104,53 @@ public sealed class AniListAccountStore(
         }
 
         File.Move(temporaryPath, StorePath, overwrite: true);
+    }
+
+    public async Task AppendProgressBackupAsync(
+        AniListProgressBackup backup,
+        CancellationToken cancellationToken)
+    {
+        var directory = Path.GetDirectoryName(ProgressBackupPath)
+            ?? throw new InvalidOperationException(
+                "AniList backup path has no directory.");
+
+        Directory.CreateDirectory(directory);
+
+        await backupGate.WaitAsync(cancellationToken);
+        try
+        {
+            var line = JsonSerializer.Serialize(
+                backup,
+                new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+            await File.AppendAllTextAsync(
+                ProgressBackupPath,
+                line + Environment.NewLine,
+                cancellationToken);
+
+            if (OperatingSystem.IsLinux())
+            {
+                File.SetUnixFileMode(
+                    ProgressBackupPath,
+                    UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            }
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException)
+        {
+            logger.LogError(
+                exception,
+                "Could not persist AniList pre-write progress backup.");
+
+            // Never write to AniList if the safety backup cannot be persisted.
+            throw new AniListAccountException(
+                "AniList sync was not attempted because the local pre-write backup could not be saved.",
+                exception);
+        }
+        finally
+        {
+            backupGate.Release();
+        }
     }
 
     public Task DisconnectAsync()
