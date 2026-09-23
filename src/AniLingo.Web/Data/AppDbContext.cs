@@ -1,4 +1,5 @@
 using AniLingo.Web.Features.Ai;
+using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Library;
 using AniLingo.Web.Features.Metadata;
@@ -23,9 +24,20 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<Review> Reviews => Set<Review>();
     public DbSet<LearningPreferences> LearningPreferences => Set<LearningPreferences>();
     public DbSet<AiSentenceExplanationCache> AiSentenceExplanationCache => Set<AiSentenceExplanationCache>();
+    public DbSet<OwnerAccount> OwnerAccounts => Set<OwnerAccount>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<OwnerAccount>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Id).HasMaxLength(32);
+            entity.Property(x => x.UserName).HasMaxLength(80);
+            entity.Property(x => x.NormalizedUserName).HasMaxLength(80);
+            entity.Property(x => x.PasswordHash).HasMaxLength(1024);
+            entity.HasIndex(x => x.NormalizedUserName).IsUnique();
+        });
+
         modelBuilder.Entity<LibraryRoot>(entity =>
         {
             entity.HasKey(x => x.Id);

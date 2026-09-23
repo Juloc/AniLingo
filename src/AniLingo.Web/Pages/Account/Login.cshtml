@@ -1,0 +1,40 @@
+@page
+@model AniLingo.Web.Pages.Account.LoginModel
+@{
+    ViewData["Title"] = "Sign in";
+}
+
+<section class="auth-card">
+    <div class="auth-brand">
+        <span class="brand-mark">A</span>
+        <span>AniLingo</span>
+    </div>
+
+    <span class="eyebrow">Owner access</span>
+    <h1>Sign in</h1>
+    <p>Use the owner account created for this AniLingo instance.</p>
+
+    <form method="post" class="form-stack">
+        <div asp-validation-summary="ModelOnly" class="validation"></div>
+        <input asp-for="ReturnUrl" type="hidden" />
+
+        <label asp-for="UserName">
+            User name
+            <input asp-for="UserName" autocomplete="username" autofocus />
+        </label>
+        <span asp-validation-for="UserName" class="validation"></span>
+
+        <label asp-for="Password">
+            Password
+            <input asp-for="Password" type="password" autocomplete="current-password" />
+        </label>
+        <span asp-validation-for="Password" class="validation"></span>
+
+        <label class="checkbox-row">
+            <input asp-for="RememberMe" />
+            <span>Keep me signed in</span>
+        </label>
+
+        <button class="button button-primary" type="submit">Sign in</button>
+    </form>
+</section>
