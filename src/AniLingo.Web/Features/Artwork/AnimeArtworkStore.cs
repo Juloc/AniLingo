@@ -11,7 +11,7 @@ public static class AnimeArtworkStore
     public const string RootPath = "/data/artwork/anime";
     private const long MaxImageBytes = 20 * 1024 * 1024;
 
-    private static readonly string[] SupportedExtensions = [".jpg", ".png", ".webp"];
+    private static readonly string[] SupportedExtensions = [".jpg", ".jpeg", ".png", ".webp"];
 
     public static string? ResolvePosterUrl(Guid animeId, string? fallbackUrl) =>
         GetPublicUrl(animeId, AnimeArtworkKind.Poster) ?? fallbackUrl;
@@ -56,6 +56,62 @@ public static class AnimeArtworkStore
             ".webp" => "image/webp",
             _ => "application/octet-stream"
         };
+
+    public static async Task<bool> ImportFileIfChangedAsync(
+        Guid animeId,
+        AnimeArtworkKind kind,
+        string sourcePath,
+        CancellationToken cancellationToken)
+    {
+        var source = new FileInfo(sourcePath);
+        if (!source.Exists)
+        {
+            return false;
+        }
+
+        var contentType = GetContentType(source.FullName);
+        if (contentType == "application/octet-stream")
+        {
+            return false;
+        }
+
+        var existingPath = FindPath(animeId, kind);
+        if (existingPath is not null)
+        {
+            var existing = new FileInfo(existingPath);
+            if (existing.Length == source.Length &&
+                existing.LastWriteTimeUtc == source.LastWriteTimeUtc)
+            {
+                return false;
+            }
+        }
+
+        await using var stream = new FileStream(
+            source.FullName,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read,
+            64 * 1024,
+            FileOptions.Asynchronous | FileOptions.SequentialScan);
+
+        if (!await SaveAsync(
+                animeId,
+                kind,
+                stream,
+                contentType,
+                cancellationToken))
+        {
+            return false;
+        }
+
+        var importedPath = FindPath(animeId, kind);
+        if (importedPath is not null)
+        {
+            File.SetLastWriteTimeUtc(importedPath, source.LastWriteTimeUtc);
+        }
+
+        return true;
+    }
 
     public static async Task<bool> SaveAsync(
         Guid animeId,
