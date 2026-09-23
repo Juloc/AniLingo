@@ -66,6 +66,7 @@ public sealed class Review
     public string ProfileId { get; set; } = LearningProfile.DefaultId;
     public Guid TermId { get; set; }
     public ReviewRating Rating { get; set; }
+    public Guid? ClientEventId { get; set; }
     public DateTime ReviewedAt { get; set; } = DateTime.UtcNow;
     public DateTime NextReviewAt { get; set; }
 }
@@ -204,3 +205,27 @@ public sealed record ReviewAnimeContext(
         }
     }
 }
+
+
+public sealed record OfflineReviewEvent(
+    Guid EventId,
+    Guid TermId,
+    ReviewRating Rating,
+    DateTime ReviewedAtUtc);
+
+public sealed record OfflineReviewSyncRequest(
+    IReadOnlyList<OfflineReviewEvent> Events);
+
+public sealed record OfflineReviewSyncResult(
+    IReadOnlyList<Guid> Accepted,
+    IReadOnlyList<Guid> AlreadyApplied,
+    IReadOnlyList<Guid> Rejected);
+
+public sealed record ReviewSessionCard(
+    Guid TermId,
+    string Canonical,
+    string? Reading,
+    string? Meaning,
+    int IntervalDays,
+    IReadOnlyDictionary<ReviewRating, string> Intervals,
+    ReviewAnimeContext? Context);

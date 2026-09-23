@@ -230,7 +230,7 @@ button, input { font: inherit; }
     .sidebar { display: none; }
     .app-main { margin-left: 0; padding: 24px 18px 90px; }
     .mobile-nav {
-        position: fixed; display: grid; grid-template-columns: repeat(5, 1fr); inset: auto 0 0;
+        position: fixed; display: grid; grid-template-columns: repeat(6, 1fr); inset: auto 0 0;
         background: rgba(13,16,21,.96); border-top: 1px solid var(--border); z-index: 20;
         backdrop-filter: blur(14px);
     }
@@ -625,4 +625,23 @@ button, input { font: inherit; }
     }
 
     .media-card:hover .media-poster { transform: none; }
+}
+
+
+.review-details { width: 100%; margin-top: 22px; }
+.review-details > summary {
+    width: fit-content; margin: 0 auto; list-style: none;
+}
+.review-details > summary::-webkit-details-marker { display: none; }
+.review-details[open] > summary { display: none; }
+.review-details .review-answer { text-align: center; }
+.review-context { margin-top: 18px; text-align: left; }
+.review-context[hidden] { display: none; }
+
+@media (max-width: 520px) {
+    .mobile-nav a,
+    .mobile-nav button {
+        padding-inline: 2px;
+        font-size: 10px;
+    }
 }

@@ -14,3 +14,11 @@ if ("serviceWorker" in navigator) {
     }
   });
 }
+
+
+document.addEventListener("submit", event => {
+  if (event.target instanceof HTMLFormElement
+      && event.target.matches("[data-offline-logout]")) {
+    localStorage.removeItem("anilingo.activeProfile");
+  }
+});
