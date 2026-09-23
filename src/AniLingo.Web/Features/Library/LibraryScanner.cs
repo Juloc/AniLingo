@@ -1,4 +1,5 @@
 using AniLingo.Web.Data;
+using AniLingo.Web.Features.Artwork;
 using AniLingo.Web.Features.Sonarr;
 using AniLingo.Web.Features.Subtitles;
 using Microsoft.EntityFrameworkCore;
@@ -51,6 +52,7 @@ public sealed class LibraryScanner(
         var updated = 0;
         var skipped = 0;
         var subtitleCandidates = new List<SubtitleCandidate>();
+        var artworkDirectories = new Dictionary<Guid, string>();
 
         foreach (var file in candidates)
         {
@@ -68,6 +70,12 @@ public sealed class LibraryScanner(
                 anime = new Anime { Key = descriptor.AnimeKey, Title = descriptor.AnimeTitle };
                 animeByKey.Add(anime.Key, anime);
                 db.Anime.Add(anime);
+            }
+
+            var animeDirectory = TryGetAnimeDirectory(rootPath, normalizedPath);
+            if (animeDirectory is not null)
+            {
+                artworkDirectories.TryAdd(anime.Id, animeDirectory);
             }
 
             var episodeKey = (anime.Id, descriptor.SeasonNumber, descriptor.EpisodeNumber);
@@ -127,6 +135,18 @@ public sealed class LibraryScanner(
         await db.SaveChangesAsync(cancellationToken);
 
         await sonarrArtworkSync.SyncIfConfiguredAsync(cancellationToken);
+
+        var localArtworkImported = 0;
+        var localArtworkUnchanged = 0;
+        foreach (var (animeId, animeDirectory) in artworkDirectories)
+        {
+            var artwork = await LocalAnimeArtworkImporter.ImportAsync(
+                animeId,
+                animeDirectory,
+                cancellationToken);
+            localArtworkImported += artwork.ImportedCount;
+            localArtworkUnchanged += artwork.UnchangedCount;
+        }
 
         var episodeIds = subtitleCandidates
             .Select(x => x.EpisodeId)
@@ -189,8 +209,14 @@ public sealed class LibraryScanner(
         }
 
         logger.LogInformation(
-            "Library scan completed for {Root}: {Discovered} new, {Updated} updated, {Skipped} skipped, {Subtitles} subtitle files.",
-            root.Path, discovered, updated, skipped, subtitleFiles);
+            "Library scan completed for {Root}: {Discovered} new, {Updated} updated, {Skipped} skipped, {Subtitles} subtitle files, {ArtworkImported} local artwork imported, {ArtworkUnchanged} unchanged.",
+            root.Path,
+            discovered,
+            updated,
+            skipped,
+            subtitleFiles,
+            localArtworkImported,
+            localArtworkUnchanged);
 
         return new ScanResult(discovered, updated, skipped, subtitleFiles);
     }
@@ -204,6 +230,30 @@ public sealed class LibraryScanner(
         Guid EpisodeId,
         string SourceKey,
         DateTime SourceUpdatedAt);
+
+    private static string? TryGetAnimeDirectory(
+        string rootPath,
+        string mediaPath)
+    {
+        var relative = Path.GetRelativePath(rootPath, mediaPath);
+        var parts = relative.Split(
+            new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar },
+            StringSplitOptions.RemoveEmptyEntries);
+
+        if (parts.Length < 2)
+        {
+            return null;
+        }
+
+        var directory = Path.GetFullPath(Path.Combine(rootPath, parts[0]));
+        var normalizedRoot = Path.GetFullPath(rootPath)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            + Path.DirectorySeparatorChar;
+
+        return directory.StartsWith(normalizedRoot, StringComparison.Ordinal)
+            ? directory
+            : null;
+    }
 
     private static IEnumerable<string> FindJapaneseSubtitles(string mediaPath)
     {
