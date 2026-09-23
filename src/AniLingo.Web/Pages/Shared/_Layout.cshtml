@@ -7,8 +7,13 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#0b0d11" />
+    <meta name="application-name" content="AniLingo" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <title>@ViewData["Title"] - AniLingo</title>
+    <link rel="manifest" href="~/manifest.webmanifest" />
+    <link rel="icon" href="~/icons/anilingo.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <script src="~/js/pwa.js" asp-append-version="true" defer></script>
 </head>
 <body class="@(isAuthenticated ? "" : "auth-page")">
     <div class="app-shell @(isAuthenticated ? "" : "auth-shell")">
