@@ -27,9 +27,9 @@ public sealed class PwaManifestTests
 
         StringAssert.Contains(serviceWorker, "\"/offline.html\"");
         StringAssert.Contains(serviceWorker, "\"/css/site.css\"");
-        StringAssert.DoesNotContain(serviceWorker, "\"/Learn");
-        StringAssert.DoesNotContain(serviceWorker, "\"/Library");
-        StringAssert.DoesNotContain(serviceWorker, "handler=Media");
+        Assert.IsFalse(serviceWorker.Contains("\"/Learn", StringComparison.Ordinal));
+        Assert.IsFalse(serviceWorker.Contains("\"/Library", StringComparison.Ordinal));
+        Assert.IsFalse(serviceWorker.Contains("handler=Media", StringComparison.Ordinal));
     }
 
     private static string FindRepositoryRoot()
