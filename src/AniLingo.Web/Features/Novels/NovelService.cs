@@ -129,15 +129,12 @@ public sealed class NovelService(
                 work.CoverImageUrl,
                 db.NovelChapters.Count(x => x.WorkId == work.Id),
                 db.NovelChapters.Count(x => x.WorkId == work.Id && x.OriginalText != ""),
-                (
-                    from chapter in db.NovelChapters
-                    join translation in db.NovelTranslations
-                        on chapter.Id equals translation.ChapterId
-                    where chapter.WorkId == work.Id &&
+                db.NovelChapters.Count(chapter =>
+                    chapter.WorkId == work.Id &&
+                    db.NovelTranslations.Any(translation =>
+                        translation.ChapterId == chapter.Id &&
                         translation.TargetLanguage == "de" &&
-                        translation.SourceHash == chapter.SourceHash
-                    select chapter.Id
-                ).Distinct().Count()))
+                        translation.SourceHash == chapter.SourceHash))))
             .ToListAsync(cancellationToken);
 
     public async Task<NovelWorkDetail?> GetWorkAsync(
