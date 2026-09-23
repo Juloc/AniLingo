@@ -1,7 +1,7 @@
 @page
-@model AniLingo.Web.Pages.Account.SetupModel
+@model AniLingo.Web.Pages.Account.RegisterModel
 @{
-    ViewData["Title"] = "Create owner account";
+    ViewData["Title"] = "Request account";
 }
 
 <section class="auth-card">
@@ -10,13 +10,12 @@
         <span>AniLingo</span>
     </div>
 
-    <span class="eyebrow">First-time setup</span>
-    <h1>Create owner account</h1>
-    <p>Create the owner account for this AniLingo instance. Additional users can request access afterward and require owner approval.</p>
+    <span class="eyebrow">Registration</span>
+    <h1>Request an account</h1>
+    <p>Create your login request. The owner must approve it before you can sign in.</p>
 
     <form method="post" class="form-stack">
         <div asp-validation-summary="ModelOnly" class="validation"></div>
-        <input asp-for="ReturnUrl" type="hidden" />
 
         <label asp-for="UserName">
             User name
@@ -36,6 +35,8 @@
         </label>
         <span asp-validation-for="ConfirmPassword" class="validation"></span>
 
-        <button class="button button-primary" type="submit">Create owner account</button>
+        <button class="button button-primary" type="submit">Submit registration</button>
     </form>
+
+    <p><a asp-page="/Account/Login">Back to sign in</a></p>
 </section>

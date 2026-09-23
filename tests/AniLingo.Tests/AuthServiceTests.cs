@@ -165,6 +165,54 @@ public sealed class AuthServiceTests
     }
 
     [TestMethod]
+    public async Task RegistrationRequestIsDisabledUntilOwnerApproval()
+    {
+        var databasePath = CreateDatabasePath();
+
+        try
+        {
+            var options = CreateOptions(databasePath);
+            await using var db = new AppDbContext(options);
+            await DatabaseMigrationBridge.UpgradeAsync(db);
+
+            var service = new OwnerAuthService(db, new PasswordHasher<OwnerAccount>());
+            await service.CreateOwnerAsync(
+                "owner",
+                "a sufficiently long owner password");
+
+            var request = await service.CreateRegistrationRequestAsync(
+                "learner",
+                "a sufficiently long user password");
+
+            Assert.AreEqual(AccountRole.User, request.Role);
+            Assert.IsFalse(request.IsEnabled);
+            Assert.AreNotEqual(
+                "a sufficiently long user password",
+                request.PasswordHash);
+
+            Assert.IsNull(await service.ValidateCredentialsAsync(
+                "learner",
+                "a sufficiently long user password"));
+
+            await service.SetEnabledAsync(request.Id, true);
+
+            Assert.IsNotNull(await service.ValidateCredentialsAsync(
+                "learner",
+                "a sufficiently long user password"));
+
+            await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+                () => service.CreateRegistrationRequestAsync(
+                    "LEARNER",
+                    "another sufficiently long password"));
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            File.Delete(databasePath);
+        }
+    }
+
+    [TestMethod]
     public async Task ExistingDefaultLearningProfileMigratesToOwner()
     {
         var databasePath = CreateDatabasePath();

@@ -10,9 +10,9 @@
         <span>AniLingo</span>
     </div>
 
-    <span class="eyebrow">Owner access</span>
+    <span class="eyebrow">Local account</span>
     <h1>Sign in</h1>
-    <p>Use the owner account created for this AniLingo instance.</p>
+    <p>Use your AniLingo account to sign in.</p>
 
     <form method="post" class="form-stack">
         <div asp-validation-summary="ModelOnly" class="validation"></div>
@@ -37,4 +37,6 @@
 
         <button class="button button-primary" type="submit">Sign in</button>
     </form>
+
+    <p><a asp-page="/Account/Register">Request an account</a></p>
 </section>
