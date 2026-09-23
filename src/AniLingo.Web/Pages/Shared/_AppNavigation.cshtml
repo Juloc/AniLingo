@@ -40,7 +40,7 @@
     <a class="@(path.StartsWithSegments("/Learn") ? "active" : "")" href="/Learn">Learn</a>
     <a class="@(path.StartsWithSegments("/Statistics") ? "active" : "")" href="/Statistics">Progress</a>
     <a class="@(path.StartsWithSegments("/Settings") ? "active" : "")" href="/Settings">Settings</a>
-    <form method="post" asp-page="/Account/Logout">
+    <form method="post" asp-page="/Account/Logout" data-offline-logout>
         <button type="submit">Sign out</button>
     </form>
 </nav>
