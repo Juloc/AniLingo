@@ -1,6 +1,6 @@
 # AniLingo
 
-Current release: **0.1.0-alpha.14** — automatic Sonarr artwork refresh after library scans.
+Current release: **0.1.0-alpha.15** — local NAS artwork discovery during library scans.
 
 AniLingo is a Docker-first Japanese learning companion for an existing anime library. It scans media from a read-only NAS mount, imports nearby Japanese subtitles, builds episode vocabulary, and lets you mark terms as known or review them before watching.
 
@@ -42,7 +42,7 @@ The minimal stack is:
 ```yaml
 services:
   anilingo:
-    image: ghcr.io/juloc/anilingo:0.1.0-alpha.14
+    image: ghcr.io/juloc/anilingo:0.1.0-alpha.15
     volumes:
       - anilingo-data:/data
       - /path/to/anime:/media/anime:ro
