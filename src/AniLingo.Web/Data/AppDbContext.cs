@@ -35,6 +35,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(x => x.UserName).HasMaxLength(80);
             entity.Property(x => x.NormalizedUserName).HasMaxLength(80);
             entity.Property(x => x.PasswordHash).HasMaxLength(1024);
+            entity.Property(x => x.Role).HasConversion<int>();
             entity.HasIndex(x => x.NormalizedUserName).IsUnique();
         });
 

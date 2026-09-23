@@ -13,7 +13,10 @@ public sealed class OwnerAuthService(
     public Task<bool> HasOwnerAsync(CancellationToken cancellationToken = default) =>
         db.OwnerAccounts
             .AsNoTracking()
-            .AnyAsync(x => x.Id == OwnerAccount.SingletonId, cancellationToken);
+            .AnyAsync(
+                x => x.Id == OwnerAccount.SingletonId
+                    && x.Role == AccountRole.Owner,
+                cancellationToken);
 
     public async Task<OwnerAccount> CreateOwnerAsync(
         string userName,
@@ -33,6 +36,8 @@ public sealed class OwnerAuthService(
             Id = OwnerAccount.SingletonId,
             UserName = cleanedUserName,
             NormalizedUserName = NormalizeUserName(cleanedUserName),
+            Role = AccountRole.Owner,
+            IsEnabled = true,
             CreatedAt = DateTime.UtcNow
         };
         owner.PasswordHash = passwordHasher.HashPassword(owner, password);
@@ -42,24 +47,105 @@ public sealed class OwnerAuthService(
         return owner;
     }
 
+    public async Task<OwnerAccount> CreateUserAsync(
+        string userName,
+        string password,
+        CancellationToken cancellationToken = default)
+    {
+        var cleanedUserName = CleanUserName(userName);
+        ValidatePassword(password);
+        var normalized = NormalizeUserName(cleanedUserName);
+
+        if (await db.OwnerAccounts.AnyAsync(
+                x => x.NormalizedUserName == normalized,
+                cancellationToken))
+        {
+            throw new InvalidOperationException("This user name already exists.");
+        }
+
+        var account = new OwnerAccount
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            UserName = cleanedUserName,
+            NormalizedUserName = normalized,
+            Role = AccountRole.User,
+            IsEnabled = true,
+            CreatedAt = DateTime.UtcNow
+        };
+        account.PasswordHash = passwordHasher.HashPassword(account, password);
+
+        db.OwnerAccounts.Add(account);
+        await db.SaveChangesAsync(cancellationToken);
+        return account;
+    }
+
+    public async Task<IReadOnlyList<LocalAccountSummary>> ListAsync(
+        CancellationToken cancellationToken = default) =>
+        await db.OwnerAccounts
+            .AsNoTracking()
+            .OrderBy(x => x.Role)
+            .ThenBy(x => x.UserName)
+            .Select(x => new LocalAccountSummary(
+                x.Id,
+                x.UserName,
+                x.Role,
+                x.IsEnabled,
+                x.CreatedAt))
+            .ToListAsync(cancellationToken);
+
+    public async Task SetEnabledAsync(
+        string accountId,
+        bool enabled,
+        CancellationToken cancellationToken = default)
+    {
+        var account = await db.OwnerAccounts
+            .SingleOrDefaultAsync(x => x.Id == accountId, cancellationToken)
+            ?? throw new InvalidOperationException("Account was not found.");
+
+        if (account.Role == AccountRole.Owner && !enabled)
+        {
+            throw new InvalidOperationException("The owner account cannot be disabled.");
+        }
+
+        account.IsEnabled = enabled;
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task ResetPasswordAsync(
+        string accountId,
+        string password,
+        CancellationToken cancellationToken = default)
+    {
+        ValidatePassword(password);
+
+        var account = await db.OwnerAccounts
+            .SingleOrDefaultAsync(x => x.Id == accountId, cancellationToken)
+            ?? throw new InvalidOperationException("Account was not found.");
+
+        account.PasswordHash = passwordHasher.HashPassword(account, password);
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
     public async Task<OwnerAccount?> ValidateCredentialsAsync(
         string userName,
         string password,
         CancellationToken cancellationToken = default)
     {
-        var owner = await db.OwnerAccounts
-            .SingleOrDefaultAsync(x => x.Id == OwnerAccount.SingletonId, cancellationToken);
+        var normalized = NormalizeUserName(userName);
+        var account = await db.OwnerAccounts
+            .SingleOrDefaultAsync(
+                x => x.NormalizedUserName == normalized,
+                cancellationToken);
 
-        if (owner is null
-            || !string.Equals(
-                owner.NormalizedUserName,
-                NormalizeUserName(userName),
-                StringComparison.Ordinal))
+        if (account is null || !account.IsEnabled)
         {
             return null;
         }
 
-        var result = passwordHasher.VerifyHashedPassword(owner, owner.PasswordHash, password);
+        var result = passwordHasher.VerifyHashedPassword(
+            account,
+            account.PasswordHash,
+            password);
         if (result == PasswordVerificationResult.Failed)
         {
             return null;
@@ -67,24 +153,37 @@ public sealed class OwnerAuthService(
 
         if (result == PasswordVerificationResult.SuccessRehashNeeded)
         {
-            owner.PasswordHash = passwordHasher.HashPassword(owner, password);
+            account.PasswordHash = passwordHasher.HashPassword(account, password);
             await db.SaveChangesAsync(cancellationToken);
         }
 
-        return owner;
+        return account;
     }
 
-    public static ClaimsPrincipal CreatePrincipal(OwnerAccount owner)
+    public async Task<OwnerAccount?> GetEnabledAccountAsync(
+        string accountId,
+        CancellationToken cancellationToken = default) =>
+        await db.OwnerAccounts
+            .AsNoTracking()
+            .SingleOrDefaultAsync(
+                x => x.Id == accountId && x.IsEnabled,
+                cancellationToken);
+
+    public static ClaimsPrincipal CreatePrincipal(OwnerAccount account)
     {
         var identity = new ClaimsIdentity(
         [
-            new Claim(ClaimTypes.NameIdentifier, owner.Id),
-            new Claim(ClaimTypes.Name, owner.UserName)
+            new Claim(ClaimTypes.NameIdentifier, account.Id),
+            new Claim(ClaimTypes.Name, account.UserName),
+            new Claim(ClaimTypes.Role, account.Role.ToString())
         ],
         CookieAuthenticationDefaults.AuthenticationScheme);
 
         return new ClaimsPrincipal(identity);
     }
+
+    public static string? GetAccountId(ClaimsPrincipal principal) =>
+        principal.FindFirstValue(ClaimTypes.NameIdentifier);
 
     private static string CleanUserName(string userName)
     {
@@ -93,7 +192,9 @@ public sealed class OwnerAuthService(
 
         if (cleaned.Length > 80)
         {
-            throw new ArgumentException("User name must be 80 characters or fewer.", nameof(userName));
+            throw new ArgumentException(
+                "User name must be 80 characters or fewer.",
+                nameof(userName));
         }
 
         return cleaned;
@@ -108,7 +209,9 @@ public sealed class OwnerAuthService(
 
         if (password.Length < 12)
         {
-            throw new ArgumentException("Password must contain at least 12 characters.", nameof(password));
+            throw new ArgumentException(
+                "Password must contain at least 12 characters.",
+                nameof(password));
         }
     }
 }

@@ -22,154 +22,159 @@
     </div>
 </header>
 
-@if (Model.AniListProgress is { } aniList)
+@if (Model.IsOwner)
 {
-    <section class="panel">
+    @if (Model.AniListProgress is { } aniList)
+    {
+        <section class="panel">
+            <div class="panel-heading">
+                <div>
+                    <span class="eyebrow">AniList progress</span>
+                    <h2>@(aniList.MediaTitle ?? Model.AnimeTitle)</h2>
+                </div>
+                @if (aniList.RemoteProgress is not null)
+                {
+                    <span class="status-pill">
+                        @aniList.RemoteProgress watched
+                        @if (!string.IsNullOrWhiteSpace(aniList.RemoteStatus))
+                        {
+                            <text> · @aniList.RemoteStatus</text>
+                        }
+                    </span>
+                }
+            </div>
+    
+            <p class="muted">@aniList.Message</p>
+    
+            @if (aniList.CanSync)
+            {
+                <form method="post"
+                      asp-page-handler="SyncAniList"
+                      asp-route-id="@Model.EpisodeId">
+                    <button class="button button-primary" type="submit">
+                        Sync episode @aniList.RequestedProgress as watched
+                    </button>
+                </form>
+            }
+            else if (aniList.IsNoOp)
+            {
+                <span class="status-pill status-ok">No write needed</span>
+            }
+        </section>
+    }
+    
+    <section class="panel subtitle-source-panel">
         <div class="panel-heading">
             <div>
-                <span class="eyebrow">AniList progress</span>
-                <h2>@(aniList.MediaTitle ?? Model.AnimeTitle)</h2>
+                <span class="eyebrow">Learning source</span>
+                <h2>Japanese subtitles</h2>
             </div>
-            @if (aniList.RemoteProgress is not null)
+            @if (Model.ActiveSubtitle is { } activeBadge)
             {
-                <span class="status-pill">
-                    @aniList.RemoteProgress watched
-                    @if (!string.IsNullOrWhiteSpace(aniList.RemoteStatus))
-                    {
-                        <text> · @aniList.RemoteStatus</text>
-                    }
-                </span>
+                <span class="status-pill status-ok">@activeBadge.CueCount cues · @Model.Terms.Count terms</span>
+            }
+            else
+            {
+                <span class="status-pill status-warning">Not imported</span>
             }
         </div>
-
-        <p class="muted">@aniList.Message</p>
-
-        @if (aniList.CanSync)
+    
+        @if (!string.IsNullOrWhiteSpace(Model.SubtitleNotice))
         {
-            <form method="post"
-                  asp-page-handler="SyncAniList"
-                  asp-route-id="@Model.EpisodeId">
-                <button class="button button-primary" type="submit">
-                    Sync episode @aniList.RequestedProgress as watched
-                </button>
-            </form>
+            <div class="subtitle-source-message status-ok">@Model.SubtitleNotice</div>
         }
-        else if (aniList.IsNoOp)
+        @if (!string.IsNullOrWhiteSpace(Model.SubtitleError))
         {
-            <span class="status-pill status-ok">No write needed</span>
+            <div class="subtitle-source-message status-error">@Model.SubtitleError</div>
         }
-    </section>
-}
-
-<section class="panel subtitle-source-panel">
-    <div class="panel-heading">
-        <div>
-            <span class="eyebrow">Learning source</span>
-            <h2>Japanese subtitles</h2>
-        </div>
-        @if (Model.ActiveSubtitle is { } activeBadge)
+    
+        @if (Model.ActiveSubtitle is null &&
+             Model.Transcription.Status is AudioTranscriptionStatus.Queued or AudioTranscriptionStatus.Processing)
         {
-            <span class="status-pill status-ok">@activeBadge.CueCount cues · @Model.Terms.Count terms</span>
+            <div class="subtitle-source-message status-warning">
+                Generating Japanese transcript from the episode audio locally. Playback can start immediately.
+            </div>
+        }
+        else if (Model.ActiveSubtitle is null &&
+                 Model.Transcription.Status == AudioTranscriptionStatus.Failed)
+        {
+            <div class="subtitle-source-message status-error">
+                @(Model.Transcription.Message ?? "Japanese audio transcription failed.")
+            </div>
+        }
+    
+        @if (Model.ActiveSubtitle is { } active)
+        {
+            <div class="active-subtitle-source">
+                <span>Current Japanese source</span>
+                <strong>@active.Label</strong>
+                <small>@(active.Format.ToUpperInvariant()) · @active.CueCount imported cues</small>
+            </div>
         }
         else
         {
-            <span class="status-pill status-warning">Not imported</span>
+            <p class="muted subtitle-source-help">
+                AniLingo did not import a Japanese text track automatically. If no Japanese text stream is detected, a local Japanese audio transcription is queued automatically while playback remains available.
+            </p>
         }
-    </div>
-
-    @if (!string.IsNullOrWhiteSpace(Model.SubtitleNotice))
-    {
-        <div class="subtitle-source-message status-ok">@Model.SubtitleNotice</div>
-    }
-    @if (!string.IsNullOrWhiteSpace(Model.SubtitleError))
-    {
-        <div class="subtitle-source-message status-error">@Model.SubtitleError</div>
-    }
-
-    @if (Model.ActiveSubtitle is null &&
-         Model.Transcription.Status is AudioTranscriptionStatus.Queued or AudioTranscriptionStatus.Processing)
-    {
-        <div class="subtitle-source-message status-warning">
-            Generating Japanese transcript from the episode audio locally. Playback can start immediately.
-        </div>
-    }
-    else if (Model.ActiveSubtitle is null &&
-             Model.Transcription.Status == AudioTranscriptionStatus.Failed)
-    {
-        <div class="subtitle-source-message status-error">
-            @(Model.Transcription.Message ?? "Japanese audio transcription failed.")
-        </div>
-    }
-
-    @if (Model.ActiveSubtitle is { } active)
-    {
-        <div class="active-subtitle-source">
-            <span>Current Japanese source</span>
-            <strong>@active.Label</strong>
-            <small>@(active.Format.ToUpperInvariant()) · @active.CueCount imported cues</small>
-        </div>
-    }
-    else
-    {
-        <p class="muted subtitle-source-help">
-            AniLingo did not import a Japanese text track automatically. If no Japanese text stream is detected, a local Japanese audio transcription is queued automatically while playback remains available.
-        </p>
-    }
-
-    @if (Model.SubtitleSources.Count == 0)
-    {
-        <div class="subtitle-source-empty">
-            No embedded subtitle streams were found. AniLingo will use local Japanese audio transcription as the fallback.
-        </div>
-    }
-    else
-    {
-        <div class="subtitle-source-list">
-            @foreach (var source in Model.SubtitleSources)
-            {
-                <div class="subtitle-source-row">
-                    <div class="subtitle-source-copy">
-                        <strong>
-                            @(string.IsNullOrWhiteSpace(source.Title)
-                                ? $"Stream #{source.StreamIndex}"
-                                : source.Title)
-                        </strong>
-                        <span>
-                            #@source.StreamIndex · @(source.Codec.ToUpperInvariant()) ·
-                            @(string.IsNullOrWhiteSpace(source.Language) ? "und" : source.Language)
-                            @if (source.IsDefault)
-                            {
-                                <text> · default</text>
-                            }
-                            @if (source.IsForced)
-                            {
-                                <text> · forced</text>
-                            }
-                        </span>
+    
+        @if (Model.SubtitleSources.Count == 0)
+        {
+            <div class="subtitle-source-empty">
+                No embedded subtitle streams were found. AniLingo will use local Japanese audio transcription as the fallback.
+            </div>
+        }
+        else
+        {
+            <div class="subtitle-source-list">
+                @foreach (var source in Model.SubtitleSources)
+                {
+                    <div class="subtitle-source-row">
+                        <div class="subtitle-source-copy">
+                            <strong>
+                                @(string.IsNullOrWhiteSpace(source.Title)
+                                    ? $"Stream #{source.StreamIndex}"
+                                    : source.Title)
+                            </strong>
+                            <span>
+                                #@source.StreamIndex · @(source.Codec.ToUpperInvariant()) ·
+                                @(string.IsNullOrWhiteSpace(source.Language) ? "und" : source.Language)
+                                @if (source.IsDefault)
+                                {
+                                    <text> · default</text>
+                                }
+                                @if (source.IsForced)
+                                {
+                                    <text> · forced</text>
+                                }
+                            </span>
+                        </div>
+    
+                        @if (source.IsSelected)
+                        {
+                            <span class="status-pill status-ok">Japanese source</span>
+                        }
+                        else if (source.IsText)
+                        {
+                            <form method="post"
+                                  asp-page-handler="UseSubtitle"
+                                  asp-route-id="@Model.EpisodeId">
+                                <input type="hidden" name="streamIndex" value="@source.StreamIndex" />
+                                <button class="button" type="submit">Use as Japanese</button>
+                            </form>
+                        }
+                        else
+                        {
+                            <span class="status-pill status-warning">Image subtitle · audio transcript fallback</span>
+                        }
                     </div>
-
-                    @if (source.IsSelected)
-                    {
-                        <span class="status-pill status-ok">Japanese source</span>
-                    }
-                    else if (source.IsText)
-                    {
-                        <form method="post"
-                              asp-page-handler="UseSubtitle"
-                              asp-route-id="@Model.EpisodeId">
-                            <input type="hidden" name="streamIndex" value="@source.StreamIndex" />
-                            <button class="button" type="submit">Use as Japanese</button>
-                        </form>
-                    }
-                    else
-                    {
-                        <span class="status-pill status-warning">Image subtitle · audio transcript fallback</span>
-                    }
-                </div>
-            }
-        </div>
-    }
-</section>
+                }
+            </div>
+        }
+    </section>
+    
+    
+}
 
 @if (Model.Playback.Media is { } media)
 {

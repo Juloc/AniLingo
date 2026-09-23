@@ -1,3 +1,5 @@
+using AniLingo.Web.Features.Auth;
+using Microsoft.AspNetCore.Authorization;
 using AniLingo.Web.Features.Ai;
 using AniLingo.Web.Infrastructure.Ai;
 using Microsoft.AspNetCore.Mvc;
@@ -5,6 +7,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 
 namespace AniLingo.Web.Pages.Settings;
 
+[Authorize(Roles = AccountRoles.Owner)]
 public sealed class AiModel(CodexCliProvider codex) : PageModel
 {
     public AiProviderStatus Provider { get; private set; } =

@@ -1,17 +1,44 @@
 using AniLingo.Web.Data;
+using AniLingo.Web.Features.Auth;
 using Microsoft.EntityFrameworkCore;
 
 namespace AniLingo.Web.Features.Learning;
 
-public sealed class LearningService(
-    AppDbContext db,
-    IReviewScheduler scheduler)
+public sealed class LearningService
 {
+    private readonly AppDbContext db;
+    private readonly IReviewScheduler scheduler;
+    private readonly string profileId;
+
+    public LearningService(
+        AppDbContext db,
+        IReviewScheduler scheduler,
+        CurrentAccountContext currentAccount)
+        : this(db, scheduler, currentAccount.ProfileId)
+    {
+    }
+
+    public LearningService(
+        AppDbContext db,
+        IReviewScheduler scheduler)
+        : this(db, scheduler, LearningProfile.DefaultId)
+    {
+    }
+
+    private LearningService(
+        AppDbContext db,
+        IReviewScheduler scheduler,
+        string profileId)
+    {
+        this.db = db;
+        this.scheduler = scheduler;
+        this.profileId = profileId;
+    }
     private LearningPreferencesSnapshot? preferencesCache;
     public async Task SetStateAsync(Guid termId, UserTermState state, CancellationToken cancellationToken)
     {
         var item = await db.UserTerms.SingleOrDefaultAsync(
-            x => x.ProfileId == LearningProfile.DefaultId && x.TermId == termId,
+            x => x.ProfileId == profileId && x.TermId == termId,
             cancellationToken);
 
         var now = DateTime.UtcNow;
@@ -20,7 +47,7 @@ public sealed class LearningService(
         {
             item = new UserTerm
             {
-                ProfileId = LearningProfile.DefaultId,
+                ProfileId = profileId,
                 TermId = termId,
                 State = state,
                 UpdatedAt = now
@@ -65,7 +92,7 @@ public sealed class LearningService(
         }
 
         var existing = await db.UserTerms
-            .Where(x => x.ProfileId == LearningProfile.DefaultId && ids.Contains(x.TermId))
+            .Where(x => x.ProfileId == profileId && ids.Contains(x.TermId))
             .ToDictionaryAsync(x => x.TermId, cancellationToken);
 
         var nextQueuePosition = await GetCurrentMaxQueuePositionAsync(cancellationToken);
@@ -90,7 +117,7 @@ public sealed class LearningService(
 
             db.UserTerms.Add(new UserTerm
             {
-                ProfileId = LearningProfile.DefaultId,
+                ProfileId = profileId,
                 TermId = termId,
                 State = UserTermState.Learning,
                 NextReviewAt = null,
@@ -111,7 +138,7 @@ public sealed class LearningService(
         var dueStartedCount = await db.UserTerms
             .AsNoTracking()
             .CountAsync(
-                x => x.ProfileId == LearningProfile.DefaultId
+                x => x.ProfileId == profileId
                     && x.State == UserTermState.Learning
                     && x.NextReviewAt != null
                     && x.NextReviewAt <= now,
@@ -126,7 +153,7 @@ public sealed class LearningService(
         var startedToday = await db.UserTerms
             .AsNoTracking()
             .CountAsync(
-                x => x.ProfileId == LearningProfile.DefaultId
+                x => x.ProfileId == profileId
                     && x.LearningStartedAt != null
                     && x.LearningStartedAt >= dayStart
                     && x.LearningStartedAt < dayEnd,
@@ -139,7 +166,7 @@ public sealed class LearningService(
         {
             var queued = await db.UserTerms
                 .Where(x =>
-                    x.ProfileId == LearningProfile.DefaultId
+                    x.ProfileId == profileId
                     && x.State == UserTermState.Learning
                     && x.LearningStartedAt == null
                     && x.NextReviewAt == null)
@@ -165,7 +192,7 @@ public sealed class LearningService(
         return await (
             from userTerm in db.UserTerms.AsNoTracking()
             join term in db.Terms.AsNoTracking() on userTerm.TermId equals term.Id
-            where userTerm.ProfileId == LearningProfile.DefaultId
+            where userTerm.ProfileId == profileId
                 && userTerm.State == UserTermState.Learning
                 && userTerm.NextReviewAt != null
                 && userTerm.NextReviewAt <= now
@@ -185,7 +212,7 @@ public sealed class LearningService(
 
         var row = await db.LearningPreferences
             .AsNoTracking()
-            .Where(x => x.ProfileId == LearningProfile.DefaultId)
+            .Where(x => x.ProfileId == profileId)
             .Select(x => new LearningPreferencesSnapshot(
                 x.DesiredRetention,
                 x.ReviewBatchSize,
@@ -225,14 +252,14 @@ public sealed class LearningService(
 
         var row = await db.LearningPreferences
             .SingleOrDefaultAsync(
-                x => x.ProfileId == LearningProfile.DefaultId,
+                x => x.ProfileId == profileId,
                 cancellationToken);
 
         if (row is null)
         {
             row = new LearningPreferences
             {
-                ProfileId = LearningProfile.DefaultId
+                ProfileId = profileId
             };
             db.LearningPreferences.Add(row);
         }
@@ -338,7 +365,7 @@ public sealed class LearningService(
     public async Task ReviewAsync(Guid termId, ReviewRating rating, CancellationToken cancellationToken)
     {
         var userTerm = await db.UserTerms.SingleAsync(
-            x => x.ProfileId == LearningProfile.DefaultId
+            x => x.ProfileId == profileId
                 && x.TermId == termId
                 && x.State == UserTermState.Learning,
             cancellationToken);
@@ -359,7 +386,7 @@ public sealed class LearningService(
 
         db.Reviews.Add(new Review
         {
-            ProfileId = LearningProfile.DefaultId,
+            ProfileId = profileId,
             TermId = termId,
             Rating = rating,
             ReviewedAt = now.UtcDateTime,
@@ -374,7 +401,7 @@ public sealed class LearningService(
 
     private async Task<long> GetCurrentMaxQueuePositionAsync(CancellationToken cancellationToken) =>
         await db.UserTerms
-            .Where(x => x.ProfileId == LearningProfile.DefaultId)
+            .Where(x => x.ProfileId == profileId)
             .MaxAsync(x => (long?)x.QueuePosition, cancellationToken)
         ?? 0;
 
@@ -384,7 +411,7 @@ public sealed class LearningService(
     {
         var rows = await db.Reviews
             .AsNoTracking()
-            .Where(x => x.ProfileId == LearningProfile.DefaultId && x.TermId == termId)
+            .Where(x => x.ProfileId == profileId && x.TermId == termId)
             .OrderBy(x => x.ReviewedAt)
             .Select(x => new { x.Rating, x.ReviewedAt })
             .ToListAsync(cancellationToken);

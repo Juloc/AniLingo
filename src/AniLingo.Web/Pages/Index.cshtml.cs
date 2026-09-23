@@ -1,12 +1,13 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Artwork;
+using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Learning;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
 
 namespace AniLingo.Web.Pages;
 
-public sealed class IndexModel(AppDbContext db) : PageModel
+public sealed class IndexModel(AppDbContext db, CurrentAccountContext currentAccount) : PageModel
 {
     public int DueReviews { get; private set; }
     public int AnimeCount { get; private set; }
@@ -18,7 +19,7 @@ public sealed class IndexModel(AppDbContext db) : PageModel
         var now = DateTime.UtcNow;
 
         DueReviews = await db.UserTerms.AsNoTracking().CountAsync(
-            x => x.ProfileId == LearningProfile.DefaultId
+            x => x.ProfileId == currentAccount.ProfileId
                 && x.State == UserTermState.Learning
                 && x.NextReviewAt != null
                 && x.NextReviewAt <= now,
@@ -41,7 +42,7 @@ public sealed class IndexModel(AppDbContext db) : PageModel
             from episodeTerm in db.EpisodeTerms.AsNoTracking()
             join userTerm in db.UserTerms.AsNoTracking()
                     .Where(x =>
-                        x.ProfileId == LearningProfile.DefaultId
+                        x.ProfileId == currentAccount.ProfileId
                         && (x.State == UserTermState.Known
                             || x.State == UserTermState.Learning))
                 on episodeTerm.TermId equals userTerm.TermId

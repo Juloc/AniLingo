@@ -102,7 +102,155 @@ public static class DatabaseMigrationBridge
                 "Check Docker logs for another AniLingo instance or a database lock.");
         }
 
+        await MigrateLegacyLearningProfileAsync(db, cancellationToken, log);
+
         log?.Invoke("Database migrations are complete.");
+    }
+
+    private static async Task MigrateLegacyLearningProfileAsync(
+        AppDbContext db,
+        CancellationToken cancellationToken,
+        Action<string>? log)
+    {
+        var connection = db.Database.GetDbConnection();
+        var openedHere = connection.State != ConnectionState.Open;
+
+        if (openedHere)
+        {
+            await connection.OpenAsync(cancellationToken);
+        }
+
+        try
+        {
+            var userTermColumns = await ReadColumnsAsync(connection, "UserTerms", cancellationToken);
+            var reviewColumns = await ReadColumnsAsync(connection, "Reviews", cancellationToken);
+            var preferenceColumns = await ReadColumnsAsync(connection, "LearningPreferences", cancellationToken);
+            var ownerColumns = await ReadColumnsAsync(connection, "OwnerAccounts", cancellationToken);
+
+            if (!ownerColumns.Contains("Id"))
+            {
+                return;
+            }
+
+            var ownerExists = await ScalarLongAsync(
+                connection,
+                "SELECT COUNT(*) FROM OwnerAccounts WHERE Id = 'owner';",
+                cancellationToken) > 0;
+
+            if (!ownerExists)
+            {
+                return;
+            }
+
+            var migrated = 0;
+
+            if (userTermColumns.Contains("ProfileId") && userTermColumns.Contains("TermId"))
+            {
+                migrated += await ExecuteAsync(
+                    connection,
+                    """
+                    DELETE FROM UserTerms
+                    WHERE ProfileId = 'default'
+                      AND EXISTS (
+                        SELECT 1
+                        FROM UserTerms AS existing
+                        WHERE existing.ProfileId = 'owner'
+                          AND existing.TermId = UserTerms.TermId
+                      );
+
+                    UPDATE UserTerms
+                    SET ProfileId = 'owner'
+                    WHERE ProfileId = 'default';
+                    """,
+                    cancellationToken);
+            }
+
+            if (reviewColumns.Contains("ProfileId"))
+            {
+                migrated += await ExecuteAsync(
+                    connection,
+                    """
+                    UPDATE Reviews
+                    SET ProfileId = 'owner'
+                    WHERE ProfileId = 'default';
+                    """,
+                    cancellationToken);
+            }
+
+            if (preferenceColumns.Contains("ProfileId"))
+            {
+                migrated += await ExecuteAsync(
+                    connection,
+                    """
+                    DELETE FROM LearningPreferences
+                    WHERE ProfileId = 'default'
+                      AND EXISTS (
+                        SELECT 1
+                        FROM LearningPreferences AS existing
+                        WHERE existing.ProfileId = 'owner'
+                      );
+
+                    UPDATE LearningPreferences
+                    SET ProfileId = 'owner'
+                    WHERE ProfileId = 'default';
+                    """,
+                    cancellationToken);
+            }
+
+            if (migrated > 0)
+            {
+                log?.Invoke("Migrated legacy learning profile data to the owner account.");
+            }
+        }
+        finally
+        {
+            if (openedHere)
+            {
+                await connection.CloseAsync();
+            }
+        }
+    }
+
+    private static async Task<HashSet<string>> ReadColumnsAsync(
+        System.Data.Common.DbConnection connection,
+        string table,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = $"PRAGMA table_info(\"{table.Replace("\"", "\"\"")}\");";
+
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            if (!reader.IsDBNull(1))
+            {
+                names.Add(reader.GetString(1));
+            }
+        }
+
+        return names;
+    }
+
+    private static async Task<long> ScalarLongAsync(
+        System.Data.Common.DbConnection connection,
+        string sql,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        return Convert.ToInt64(await command.ExecuteScalarAsync(cancellationToken), CultureInfo.InvariantCulture);
+    }
+
+    private static async Task<int> ExecuteAsync(
+        System.Data.Common.DbConnection connection,
+        string sql,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        return await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private static async Task RecoverAbandonedMigrationLockAsync(
