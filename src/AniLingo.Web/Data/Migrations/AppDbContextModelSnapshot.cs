@@ -26,6 +26,9 @@ namespace AniLingo.Web.Data.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("NormalizedUserName")
                         .IsRequired()
                         .HasMaxLength(80)
@@ -35,6 +38,9 @@ namespace AniLingo.Web.Data.Migrations
                         .IsRequired()
                         .HasMaxLength(1024)
                         .HasColumnType("TEXT");
+
+                    b.Property<int>("Role")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("UserName")
                         .IsRequired()
