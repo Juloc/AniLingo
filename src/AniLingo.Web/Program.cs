@@ -4,6 +4,7 @@ using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Library;
 using AniLingo.Web.Features.Metadata;
+using AniLingo.Web.Features.Novels;
 using AniLingo.Web.Features.Playback;
 using AniLingo.Web.Features.Sonarr;
 using AniLingo.Web.Features.Statistics;
@@ -147,6 +148,27 @@ builder.Services.AddScoped<IAnimeMetadataProvider>(
     services => services.GetRequiredService<AniListMetadataProvider>());
 builder.Services.AddScoped<AnimeMetadataService>();
 
+builder.Services.AddHttpClient<NcodeNovelSourceProvider>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(20);
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("AniLingo/0.1 (+https://github.com/Juloc/AniLingo)");
+});
+builder.Services.AddScoped<INovelSourceProvider>(
+    services => services.GetRequiredService<NcodeNovelSourceProvider>());
+builder.Services.AddScoped<NovelService>();
+
+builder.Services.AddHttpClient<NovelAniListProvider>(client =>
+{
+    client.BaseAddress = new Uri("https://graphql.anilist.co/");
+    client.Timeout = TimeSpan.FromSeconds(15);
+    client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
+});
+builder.Services.AddScoped<INovelMetadataProvider>(
+    services => services.GetRequiredService<NovelAniListProvider>());
+builder.Services.AddScoped<NovelMetadataService>();
+builder.Services.AddScoped<NovelTranslationService>();
+builder.Services.AddScoped<NovelMappingService>();
+
 builder.Services.AddSingleton<SonarrConnectionStore>();
 builder.Services.AddScoped<SonarrArtworkImportService>();
 builder.Services.AddScoped<SonarrArtworkSyncService>();
@@ -162,6 +184,8 @@ builder.Services.AddHttpClient<AniListAccountService>(client =>
 builder.Services.AddSingleton<CodexCliProvider>();
 builder.Services.AddSingleton<IAiProvider>(services => services.GetRequiredService<CodexCliProvider>());
 builder.Services.AddSingleton<IAiSentenceExplainer>(services => services.GetRequiredService<CodexCliProvider>());
+builder.Services.AddSingleton<INovelTranslator>(services => services.GetRequiredService<CodexCliProvider>());
+builder.Services.AddSingleton<INovelMappingSuggester>(services => services.GetRequiredService<CodexCliProvider>());
 builder.Services.AddScoped<AiSentenceExplanationService>();
 
 builder.Services.AddSingleton<BackgroundJobQueue>();
