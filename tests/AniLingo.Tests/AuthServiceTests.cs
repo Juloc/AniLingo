@@ -75,6 +75,93 @@ public sealed class AuthServiceTests
         }
     }
 
+    [TestMethod]
+    public async Task LocalUserCanBeCreatedDisabledAndPasswordReset()
+    {
+        var databasePath = CreateDatabasePath();
+
+        try
+        {
+            var options = CreateOptions(databasePath);
+            await using var db = new AppDbContext(options);
+            await DatabaseMigrationBridge.UpgradeAsync(db);
+
+            var service = new OwnerAuthService(db, new PasswordHasher<OwnerAccount>());
+            var owner = await service.CreateOwnerAsync(
+                "owner",
+                "a sufficiently long owner password");
+            var user = await service.CreateUserAsync(
+                "learner",
+                "a sufficiently long user password");
+
+            Assert.AreEqual(AccountRole.Owner, owner.Role);
+            Assert.AreEqual(AccountRole.User, user.Role);
+            Assert.IsTrue(user.IsEnabled);
+
+            var login = await service.ValidateCredentialsAsync(
+                "learner",
+                "a sufficiently long user password");
+            Assert.IsNotNull(login);
+            Assert.IsTrue(OwnerAuthService.CreatePrincipal(login).IsInRole(AccountRoles.User));
+
+            await service.SetEnabledAsync(user.Id, false);
+            Assert.IsNull(await service.ValidateCredentialsAsync(
+                "learner",
+                "a sufficiently long user password"));
+
+            await service.SetEnabledAsync(user.Id, true);
+            await service.ResetPasswordAsync(
+                user.Id,
+                "a completely different long password");
+
+            Assert.IsNull(await service.ValidateCredentialsAsync(
+                "learner",
+                "a sufficiently long user password"));
+            Assert.IsNotNull(await service.ValidateCredentialsAsync(
+                "learner",
+                "a completely different long password"));
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            File.Delete(databasePath);
+        }
+    }
+
+    [TestMethod]
+    public async Task OwnerCannotBeDisabledAndUserNamesAreUnique()
+    {
+        var databasePath = CreateDatabasePath();
+
+        try
+        {
+            var options = CreateOptions(databasePath);
+            await using var db = new AppDbContext(options);
+            await DatabaseMigrationBridge.UpgradeAsync(db);
+
+            var service = new OwnerAuthService(db, new PasswordHasher<OwnerAccount>());
+            var owner = await service.CreateOwnerAsync(
+                "Julian",
+                "a sufficiently long owner password");
+            await service.CreateUserAsync(
+                "Learner",
+                "a sufficiently long user password");
+
+            await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+                () => service.SetEnabledAsync(owner.Id, false));
+
+            await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+                () => service.CreateUserAsync(
+                    "learner",
+                    "another sufficiently long password"));
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            File.Delete(databasePath);
+        }
+    }
+
     private static DbContextOptions<AppDbContext> CreateOptions(string databasePath) =>
         new DbContextOptionsBuilder<AppDbContext>()
             .UseSqlite($"Data Source={databasePath};Foreign Keys=True")
