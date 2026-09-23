@@ -1,0 +1,121 @@
+@page "/Novels/Read/{id:guid}"
+@model AniLingo.Web.Pages.Novels.ReadModel
+@{
+    ViewData["Title"] = $"{Model.Chapter.Number}. {Model.Chapter.Title}";
+    var hasTranslation = Model.Translation is not null;
+}
+@section Head {
+    <link rel="stylesheet" href="~/css/novels.css" asp-append-version="true" />
+}
+@section Scripts {
+    <script src="~/js/novel-reader.js" asp-append-version="true"></script>
+}
+
+<div class="novel-reader-shell"
+     data-novel-reader
+     data-work-id="@Model.Work.Id"
+     data-view="@(hasTranslation ? "de" : "ja")"
+     data-has-translation="@hasTranslation.ToString().ToLowerInvariant()"
+     data-progress-permille="@Model.ProgressPermille">
+
+    <nav class="novel-reader-toolbar" aria-label="Reader controls">
+        <div class="novel-toolbar-actions">
+            <a class="button" href="/Novels/Work/@Model.Work.Id">Chapters</a>
+            @if (Model.PreviousChapterId is Guid previous)
+            {
+                <a class="button" href="/Novels/Read/@previous">← Previous</a>
+            }
+            @if (Model.NextChapterId is Guid next)
+            {
+                <a class="button" href="/Novels/Read/@next">Next →</a>
+            }
+        </div>
+
+        <div class="novel-toolbar-actions">
+            <button class="button" type="button" data-reader-view="ja" aria-pressed="@(!hasTranslation)">日本語</button>
+            @if (hasTranslation)
+            {
+                <button class="button" type="button" data-reader-view="de" aria-pressed="true">Deutsch</button>
+                <button class="button" type="button" data-reader-view="both" aria-pressed="false">Beide</button>
+            }
+            <button class="button" type="button" data-reader-adjust="size-down" aria-label="Smaller text">A−</button>
+            <button class="button" type="button" data-reader-adjust="size-up" aria-label="Larger text">A+</button>
+            <button class="button" type="button" data-reader-adjust="leading" aria-label="Change line spacing">↕</button>
+            <button class="button" type="button" data-reader-adjust="width" aria-label="Change text width">↔</button>
+        </div>
+    </nav>
+
+    <header class="novel-reader-title">
+        <span class="eyebrow">@(Model.Work.MetadataTitle ?? Model.Work.Title)</span>
+        <h1><span class="novel-chapter-number">@Model.Chapter.Number.</span> @Model.Chapter.Title</h1>
+        <div class="novel-meta">
+            <span>Japanese source cached</span>
+            @if (hasTranslation)
+            {
+                <span>German AI translation cached</span>
+            }
+            @foreach (var mapping in Model.AnimeMappings)
+            {
+                <span class="novel-status-pill">
+                    S@(mapping.SeasonNumber.ToString("00"))
+                    E@(mapping.EpisodeStart.ToString("00"))@(mapping.EpisodeEnd == mapping.EpisodeStart ? "" : $"–E{mapping.EpisodeEnd:00}")
+                    · @mapping.Source
+                </span>
+            }
+        </div>
+    </header>
+
+    @if (!hasTranslation)
+    {
+        <section class="novel-translation-callout">
+            <div>
+                <strong>No German translation cached yet.</strong>
+                <div class="novel-muted">Japanese is always available. AI translation runs only when requested and is stored for reuse.</div>
+            </div>
+            <form method="post" asp-page-handler="Translate" asp-route-id="@Model.Chapter.Id">
+                <button class="button button-primary" type="submit">Translate once with AI</button>
+            </form>
+        </section>
+    }
+
+    <div class="novel-reader-columns">
+        <article class="novel-reader-column ja">
+            <h2>Japanese</h2>
+            <div class="novel-reader-text" lang="ja">@Model.Chapter.OriginalText</div>
+        </article>
+
+        @if (Model.Translation is { } translation)
+        {
+            <article class="novel-reader-column de">
+                <h2>German</h2>
+                <div class="novel-reader-text" lang="de">@translation.Text</div>
+            </article>
+        }
+    </div>
+
+    <footer class="novel-reader-footer">
+        <div>
+            @if (Model.PreviousChapterId is Guid previous)
+            {
+                <a class="button" href="/Novels/Read/@previous">← Previous</a>
+            }
+        </div>
+        <div class="novel-toolbar-actions">
+            <form method="post" asp-page-handler="RefreshSource" asp-route-id="@Model.Chapter.Id">
+                <button class="button" type="submit">Refresh source</button>
+            </form>
+            @if (Model.NextChapterId is Guid next)
+            {
+                <a class="button button-primary" href="/Novels/Read/@next">Next →</a>
+            }
+        </div>
+    </footer>
+
+    <form method="post"
+          asp-page-handler="Progress"
+          asp-route-id="@Model.Chapter.Id"
+          data-progress-form
+          hidden>
+        <input type="hidden" name="positionPermille" value="@Model.ProgressPermille" />
+    </form>
+</div>
