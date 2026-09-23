@@ -442,11 +442,24 @@ public sealed class AniListAccountService(
                     metadata.EpisodeCount));
         }
 
-        if (string.Equals(remote.Status, "COMPLETED", StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(remote.Status, "CURRENT", StringComparison.OrdinalIgnoreCase))
         {
             return ProgressContext.Blocked(
                 AniListProgressPreview.Blocked(
-                    "AniList marks this entry as completed. AniLingo will not modify a completed entry.",
+                    $"AniList status is {remote.Status ?? "unknown"}. For safety, AniLingo only writes progress while the entry is CURRENT (Watching). Change the status in AniList first.",
+                    episode.Number,
+                    metadata.PreferredTitle,
+                    remote.Progress,
+                    remote.Status,
+                    metadata.EpisodeCount));
+        }
+
+        if (metadata.EpisodeCount is > 0 &&
+            episode.Number >= metadata.EpisodeCount.Value)
+        {
+            return ProgressContext.Blocked(
+                AniListProgressPreview.Blocked(
+                    "This is the final AniList episode. AniLingo does not sync the last episode automatically because AniList may also change completion status/date. Finish the entry in AniList itself.",
                     episode.Number,
                     metadata.PreferredTitle,
                     remote.Progress,
