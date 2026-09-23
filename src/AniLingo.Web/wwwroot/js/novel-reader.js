@@ -105,7 +105,7 @@
     if (initial > 10 && window.scrollY === 0) {
         requestAnimationFrame(() => {
             const max = document.documentElement.scrollHeight - window.innerHeight;
-            if (max > 0) window.scrollTo({ top: max * initial / 1000, behavior: "instant" });
+            if (max > 0) window.scrollTo({ top: max * initial / 1000, behavior: "auto" });
         });
     }
 })();
