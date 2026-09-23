@@ -17,6 +17,45 @@
     </div>
 </header>
 
+@if (Model.AniListProgress is { } aniList)
+{
+    <section class="panel">
+        <div class="panel-heading">
+            <div>
+                <span class="eyebrow">AniList progress</span>
+                <h2>@(aniList.MediaTitle ?? Model.AnimeTitle)</h2>
+            </div>
+            @if (aniList.RemoteProgress is not null)
+            {
+                <span class="status-pill">
+                    @aniList.RemoteProgress watched
+                    @if (!string.IsNullOrWhiteSpace(aniList.RemoteStatus))
+                    {
+                        <text> · @aniList.RemoteStatus</text>
+                    }
+                </span>
+            }
+        </div>
+
+        <p class="muted">@aniList.Message</p>
+
+        @if (aniList.CanSync)
+        {
+            <form method="post"
+                  asp-page-handler="SyncAniList"
+                  asp-route-id="@Model.EpisodeId">
+                <button class="button button-primary" type="submit">
+                    Sync episode @aniList.RequestedProgress as watched
+                </button>
+            </form>
+        }
+        else if (aniList.IsNoOp)
+        {
+            <span class="status-pill status-ok">No write needed</span>
+        }
+    </section>
+}
+
 <section class="panel subtitle-source-panel">
     <div class="panel-heading">
         <div>

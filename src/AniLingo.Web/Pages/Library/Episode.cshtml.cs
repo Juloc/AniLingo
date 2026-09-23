@@ -2,6 +2,7 @@ using AniLingo.Web.Data;
 using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Playback;
 using AniLingo.Web.Features.Subtitles;
+using AniLingo.Web.Features.Tracking;
 using AniLingo.Web.Features.Vocabulary;
 using AniLingo.Web.Infrastructure;
 using Microsoft.AspNetCore.Mvc;
@@ -32,6 +33,7 @@ public sealed class EpisodeModel(
     PlaybackService playbackService,
     EmbeddedSubtitleExtractor embeddedSubtitleExtractor,
     SubtitleImportService subtitleImportService,
+    AniListAccountService aniListAccountService,
     BackgroundJobQueue transcriptionJobs) : PageModel
 {
     public Guid EpisodeId { get; private set; }
@@ -47,6 +49,7 @@ public sealed class EpisodeModel(
     public ActiveEpisodeSubtitle? ActiveSubtitle { get; private set; }
     public AudioTranscriptionState Transcription { get; private set; } =
         new(AudioTranscriptionStatus.None);
+    public AniListProgressPreview? AniListProgress { get; private set; }
     public string? SubtitleNotice => TempData["SubtitleNotice"] as string;
     public string? SubtitleError => TempData["SubtitleError"] as string;
 
@@ -80,6 +83,9 @@ public sealed class EpisodeModel(
         EpisodeNumber = header.Number;
         Preparation = await preparationService.GetAsync(id, header.AnimeId, cancellationToken);
         Playback = await playbackService.GetSnapshotAsync(id, cancellationToken);
+        AniListProgress = await aniListAccountService.GetEpisodeProgressPreviewAsync(
+            id,
+            cancellationToken);
         await LoadSubtitleSourcesAsync(id, Playback.Media?.SourcePath, cancellationToken);
 
         if (ActiveSubtitle is null && Playback.Media is { } media)
@@ -268,6 +274,18 @@ public sealed class EpisodeModel(
         {
             return StatusCode(StatusCodes.Status503ServiceUnavailable);
         }
+    }
+
+    public async Task<IActionResult> OnPostSyncAniListAsync(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var result = await aniListAccountService.SyncEpisodeProgressAsync(
+            id,
+            cancellationToken);
+
+        TempData["Status"] = result.Message;
+        return RedirectToPage(new { id });
     }
 
     public async Task<IActionResult> OnPostKnownAsync(Guid id, Guid termId, CancellationToken cancellationToken)
