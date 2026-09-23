@@ -243,6 +243,19 @@ public sealed class NovelMappingService(
     AppDbContext db,
     INovelMappingSuggester suggester)
 {
+    public Task<List<NovelAnimeMapping>> GetForChapterAsync(
+        Guid workId,
+        int chapterNumber,
+        CancellationToken cancellationToken) =>
+        db.NovelAnimeMappings
+            .AsNoTracking()
+            .Where(x => x.WorkId == workId &&
+                x.ChapterStart <= chapterNumber &&
+                x.ChapterEnd >= chapterNumber)
+            .OrderBy(x => x.SeasonNumber)
+            .ThenBy(x => x.EpisodeStart)
+            .ToListAsync(cancellationToken);
+
     public Task<List<NovelAnimeChoice>> GetAnimeChoicesAsync(
         CancellationToken cancellationToken) =>
         (
