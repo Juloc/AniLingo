@@ -1,0 +1,42 @@
+@page
+@model AniLingo.Web.Pages.Account.RegisterModel
+@{
+    ViewData["Title"] = "Request account";
+}
+
+<section class="auth-card">
+    <div class="auth-brand">
+        <span class="brand-mark">A</span>
+        <span>AniLingo</span>
+    </div>
+
+    <span class="eyebrow">Registration</span>
+    <h1>Request an account</h1>
+    <p>Create your login request. The owner must approve it before you can sign in.</p>
+
+    <form method="post" class="form-stack">
+        <div asp-validation-summary="ModelOnly" class="validation"></div>
+
+        <label asp-for="UserName">
+            User name
+            <input asp-for="UserName" autocomplete="username" autofocus />
+        </label>
+        <span asp-validation-for="UserName" class="validation"></span>
+
+        <label asp-for="Password">
+            Password
+            <input asp-for="Password" type="password" autocomplete="new-password" />
+        </label>
+        <span asp-validation-for="Password" class="validation"></span>
+
+        <label asp-for="ConfirmPassword">
+            Confirm password
+            <input asp-for="ConfirmPassword" type="password" autocomplete="new-password" />
+        </label>
+        <span asp-validation-for="ConfirmPassword" class="validation"></span>
+
+        <button class="button button-primary" type="submit">Submit registration</button>
+    </form>
+
+    <p><a asp-page="/Account/Login">Back to sign in</a></p>
+</section>
