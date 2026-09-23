@@ -24,8 +24,23 @@ jobs:
         run: |
           test "$(docker compose config --services)" = "anilingo"
           test "$(docker compose config --images)" = "ghcr.io/juloc/anilingo:latest"
+          ! docker compose config | grep -q '/media/anime'
       - name: Build Docker image
         run: docker build -f src/AniLingo.Web/Dockerfile -t ghcr.io/juloc/anilingo:${{ github.sha }} .
+      - name: Smoke test startup without NAS
+        run: |
+          docker run -d --name anilingo-no-nas -p 127.0.0.1:18097:8080 ghcr.io/juloc/anilingo:${{ github.sha }}
+          trap 'docker rm -f anilingo-no-nas >/dev/null 2>&1 || true' EXIT
+
+          for attempt in {1..30}; do
+            if curl -fsS http://127.0.0.1:18097/Account/Setup >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+
+          docker logs anilingo-no-nas
+          exit 1
       - name: Log in to GHCR
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
