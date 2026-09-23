@@ -26,6 +26,26 @@ public sealed class PlaybackRemuxTests
     }
 
     [TestMethod]
+    public void ParsesSourceDurationFromFormat()
+    {
+        const string json = """
+        {
+          "streams": [
+            { "codec_type": "video", "codec_name": "h264", "pix_fmt": "yuv420p" }
+          ],
+          "format": {
+            "duration": "1440.250"
+          }
+        }
+        """;
+
+        var probe = PlaybackMediaProbe.Parse(json);
+
+        Assert.IsNotNull(probe.DurationSeconds);
+        Assert.AreEqual(1440.25, probe.DurationSeconds.Value, 0.001);
+    }
+
+    [TestMethod]
     public void H264EightBitUsesUniversalRemuxWithoutVideoEncoding()
     {
         var plan = PlaybackPreparationPlan.Build(
@@ -115,6 +135,28 @@ public sealed class PlaybackRemuxTests
         CollectionAssert.Contains(arguments.ToList(), "copy");
         CollectionAssert.Contains(arguments.ToList(), "aac");
         CollectionAssert.DoesNotContain(arguments.ToList(), "libx264");
+        CollectionAssert.DoesNotContain(arguments.ToList(), "-ss");
+    }
+
+    [TestMethod]
+    public void InstantPlaybackSeekStartsFfmpegNearRequestedPosition()
+    {
+        var plan = PlaybackPreparationPlan.Build(
+            new PlaybackProbeResult("av1", "yuv420p10le", "opus"),
+            PlaybackRequestedMode.Server);
+
+        var arguments = LivePlaybackCommand.BuildArguments(
+            "/media/anime/episode.mkv",
+            plan,
+            1080.5).ToList();
+
+        var seekIndex = arguments.IndexOf("-ss");
+        var inputIndex = arguments.IndexOf("-i");
+
+        Assert.IsTrue(seekIndex >= 0);
+        Assert.IsTrue(inputIndex > seekIndex);
+        Assert.AreEqual("1080.5", arguments[seekIndex + 1]);
+        CollectionAssert.Contains(arguments, "make_zero");
     }
 
     [TestMethod]
