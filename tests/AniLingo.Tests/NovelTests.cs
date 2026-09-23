@@ -204,8 +204,10 @@ public sealed class NovelTests
 
             Assert.AreEqual(1, await db.NovelAnimeMappings.CountAsync());
 
-            await Assert.ThrowsExceptionAsync<InvalidOperationException>(
-                () => service.AddManualAsync(
+            var invalidRangeRejected = false;
+            try
+            {
+                await service.AddManualAsync(
                     work.Id,
                     anime.Id,
                     1,
@@ -214,7 +216,14 @@ public sealed class NovelTests
                     1,
                     99,
                     null,
-                    CancellationToken.None));
+                    CancellationToken.None);
+            }
+            catch (InvalidOperationException)
+            {
+                invalidRangeRejected = true;
+            }
+
+            Assert.IsTrue(invalidRangeRejected);
         }
         finally
         {
