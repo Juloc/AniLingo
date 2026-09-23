@@ -78,7 +78,7 @@ else
                     </form>
                 }
 
-                <a class="text-link" href="/Library/Episode/@context.EpisodeId">
+                <a class="text-link" href="/Library/Episode/@context.EpisodeId?at=@context.CueStartMs">
                     @context.AnimeTitle · S@(context.SeasonNumber.ToString("00")) E@(context.EpisodeNumber.ToString("00"))
                     · @context.EpisodeTitle · @context.TimestampLabel
                 </a>
