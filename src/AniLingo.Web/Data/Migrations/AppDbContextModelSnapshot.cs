@@ -115,6 +115,9 @@ namespace AniLingo.Web.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<Guid?>("ClientEventId")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime>("NextReviewAt")
                         .HasColumnType("TEXT");
 
@@ -137,6 +140,9 @@ namespace AniLingo.Web.Data.Migrations
                     b.HasIndex("TermId");
 
                     b.HasIndex("ProfileId", "ReviewedAt");
+
+                    b.HasIndex("ProfileId", "ClientEventId")
+                        .IsUnique();
 
                     b.ToTable("Reviews");
                 });
