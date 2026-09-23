@@ -1,3 +1,6 @@
+@{
+    var isAuthenticated = User.Identity?.IsAuthenticated == true;
+}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -7,10 +10,13 @@
     <title>@ViewData["Title"] - AniLingo</title>
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
 </head>
-<body>
-    <div class="app-shell">
-        <partial name="_AppNavigation" />
-        <main class="app-main">
+<body class="@(isAuthenticated ? "" : "auth-page")">
+    <div class="app-shell @(isAuthenticated ? "" : "auth-shell")">
+        @if (isAuthenticated)
+        {
+            <partial name="_AppNavigation" />
+        }
+        <main class="@(isAuthenticated ? "app-main" : "auth-main")">
             @if (TempData["Status"] is string status)
             {
                 <div class="toast">@status</div>

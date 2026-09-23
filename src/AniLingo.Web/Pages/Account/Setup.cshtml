@@ -1,0 +1,41 @@
+@page
+@model AniLingo.Web.Pages.Account.SetupModel
+@{
+    ViewData["Title"] = "Create owner account";
+}
+
+<section class="auth-card">
+    <div class="auth-brand">
+        <span class="brand-mark">A</span>
+        <span>AniLingo</span>
+    </div>
+
+    <span class="eyebrow">First-time setup</span>
+    <h1>Create owner account</h1>
+    <p>This is the only AniLingo account. Public registration stays disabled.</p>
+
+    <form method="post" class="form-stack">
+        <div asp-validation-summary="ModelOnly" class="validation"></div>
+        <input asp-for="ReturnUrl" type="hidden" />
+
+        <label asp-for="UserName">
+            User name
+            <input asp-for="UserName" autocomplete="username" autofocus />
+        </label>
+        <span asp-validation-for="UserName" class="validation"></span>
+
+        <label asp-for="Password">
+            Password
+            <input asp-for="Password" type="password" autocomplete="new-password" />
+        </label>
+        <span asp-validation-for="Password" class="validation"></span>
+
+        <label asp-for="ConfirmPassword">
+            Confirm password
+            <input asp-for="ConfirmPassword" type="password" autocomplete="new-password" />
+        </label>
+        <span asp-validation-for="ConfirmPassword" class="validation"></span>
+
+        <button class="button button-primary" type="submit">Create owner account</button>
+    </form>
+</section>
