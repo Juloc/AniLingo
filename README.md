@@ -1,6 +1,6 @@
 # AniLingo
 
-Current release: **0.1.0-alpha.12**
+Current release: **0.1.0-alpha.13**
 
 AniLingo is a Docker-first Japanese learning companion for an existing anime library. It scans media from a read-only NAS mount, imports nearby Japanese subtitles, builds episode vocabulary, and lets you mark terms as known or review them before watching.
 
@@ -23,6 +23,7 @@ The first vertical slice includes:
 - local Japanese audio transcription fallback through whisper.cpp when no Japanese text subtitles are available
 - provider-neutral anime metadata with explicit AniList matching and cached artwork
 - secure self-hosted AniList account connection via the official Auth PIN flow
+- conservative AniList episode-progress sync with read-before-write, monotonic progress-only updates and local pre-write backups
 - known / learning term state
 - FSRS-6 spaced repetition with Again / Hard / Good / Easy interval previews
 - responsive Razor Pages UI with a Jellyfin/Plex-style shell
@@ -30,7 +31,7 @@ The first vertical slice includes:
 - embedded SQLite persistence in the single application container
 - optional Codex CLI connection for later AI-assisted features
 
-AniList watch-progress synchronization, AI enrichment and image-based subtitle OCR are later phases. See issue #1 for the staged roadmap.
+AI enrichment and image-based subtitle OCR are later phases. See issue #1 for the staged roadmap.
 
 ## Docker stack
 
@@ -41,7 +42,7 @@ The minimal stack is:
 ```yaml
 services:
   anilingo:
-    image: ghcr.io/juloc/anilingo:0.1.0-alpha.12
+    image: ghcr.io/juloc/anilingo:0.1.0-alpha.13
     volumes:
       - anilingo-data:/data
       - /path/to/anime:/media/anime:ro
@@ -83,7 +84,9 @@ AniLingo can match each locally discovered anime to AniList without requiring an
 
 Normal Home/Library browsing reads the cached SQLite metadata and makes no AniList request. AniList is queried only when you search, match or refresh metadata. The integration is behind `IAnimeMetadataProvider`, and the database stores `Provider` + `ExternalId` instead of an AniList-specific column on the core `Anime` entity.
 
-AniList account connection is available under **Settings → AniList**. Self-hosted instances use AniList's Auth PIN flow with the user's own client ID; the access token is protected before it is written under `/data`, and the Data Protection key ring is persisted under `/data/keys`. Watch-progress and list mutations are intentionally not part of this slice.
+AniList account connection is available under **Settings → AniList**. Self-hosted instances use AniList's Auth PIN flow with the user's own client ID; the access token is protected before it is written under `/data`, and the Data Protection key ring is persisted under `/data/keys`.
+
+Episode pages can explicitly sync watched progress for an already-existing AniList entry. AniLingo reloads the remote entry immediately before each write, never lowers progress, and sends only the list-entry `id` plus `progress`. It does not send score, notes, repeat count, priority, privacy, custom-list membership, dates or list status. Sync is blocked for ambiguous multi-season local groupings, non-`CURRENT` entries and the final episode to avoid completion-status/date side effects. A pre-write snapshot is appended under `/data/integrations` before every mutation; if that backup cannot be written, AniList is not modified.
 
 ## Optional Codex connection
 
