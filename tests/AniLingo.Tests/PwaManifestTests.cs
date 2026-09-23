@@ -25,10 +25,10 @@ public sealed class PwaManifestTests
         var serviceWorker = File.ReadAllText(
             Path.Combine(webRoot, "service-worker.js"));
 
-        StringAssert.Contains(serviceWorker, ""/offline.html"");
-        StringAssert.Contains(serviceWorker, ""/css/site.css"");
-        StringAssert.DoesNotContain(serviceWorker, ""/Learn");
-        StringAssert.DoesNotContain(serviceWorker, ""/Library");
+        StringAssert.Contains(serviceWorker, "\"/offline.html\"");
+        StringAssert.Contains(serviceWorker, "\"/css/site.css\"");
+        StringAssert.DoesNotContain(serviceWorker, "\"/Learn");
+        StringAssert.DoesNotContain(serviceWorker, "\"/Library");
         StringAssert.DoesNotContain(serviceWorker, "handler=Media");
     }
 
