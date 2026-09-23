@@ -16,7 +16,56 @@ public sealed class AiSentenceExplanationTests
 
         Assert.AreEqual("まだ 食べてないんだ。", prepared.Sentence);
         CollectionAssert.Contains(prepared.LocalHints.ToArray(), "てない→ていない");
-        CollectionAssert.Contains(prepared.LocalHints.ToArray(), "んだ→のだ");
+        Assert.IsFalse(prepared.LocalHints.Contains("んだ→のだ"));
+    }
+
+    [TestMethod]
+    public void PreprocessorFindsHighConfidenceGrammarWithoutAi()
+    {
+        var prepared = JapaneseSentencePreprocessor.Prepare(
+            "行かなければならないけど、やってみることにする。");
+
+        CollectionAssert.Contains(
+            prepared.LocalHints.ToArray(),
+            "なければならない = müssen");
+        CollectionAssert.Contains(
+            prepared.LocalHints.ToArray(),
+            "けど = aber / obwohl");
+        CollectionAssert.Contains(
+            prepared.LocalHints.ToArray(),
+            "てみる = versuchsweise etwas tun");
+        CollectionAssert.Contains(
+            prepared.LocalHints.ToArray(),
+            "ことにする = sich entscheiden, etwas zu tun");
+    }
+
+    [TestMethod]
+    public void PreprocessorFindsBoundedMultiPartPatterns()
+    {
+        var prepared = JapaneseSentencePreprocessor.Prepare(
+            "水しか飲まない。休んだり勉強したりする。");
+
+        CollectionAssert.Contains(
+            prepared.LocalHints.ToArray(),
+            "しか…ない = nur / nichts außer");
+        CollectionAssert.Contains(
+            prepared.LocalHints.ToArray(),
+            "たり…たりする = Beispiele von Handlungen aufzählen");
+        Assert.IsFalse(prepared.LocalHints.Contains("んだ→のだ"));
+    }
+
+    [TestMethod]
+    public void PreprocessorAvoidsAmbiguousBroadRules()
+    {
+        var prepared = JapaneseSentencePreprocessor.Prepare(
+            "とてもいい。そうだね。ここから行こう。見たい。");
+
+        Assert.IsFalse(
+            prepared.LocalHints.Any(hint =>
+                hint.Contains("たい", StringComparison.Ordinal)
+                || hint.Contains("そう", StringComparison.Ordinal)
+                || hint.Contains("から", StringComparison.Ordinal)
+                || hint.Contains("てもいい", StringComparison.Ordinal)));
     }
 
     [TestMethod]

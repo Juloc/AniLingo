@@ -10,7 +10,7 @@ public sealed class AiSentenceExplanationService(
     AppDbContext db,
     IAiSentenceExplainer explainer)
 {
-    public const int PromptVersion = 1;
+    public const int PromptVersion = 2;
     private static readonly SemaphoreSlim GenerateGate = new(1, 1);
 
     public PreparedJapaneseSentence PrepareLocal(string sentence) =>
@@ -55,9 +55,7 @@ public sealed class AiSentenceExplanationService(
             }
 
             var generated = await explainer.ExplainSentenceAsync(
-                new AiSentenceExplainRequest(
-                    input.Prepared.Sentence,
-                    input.Prepared.LocalHints),
+                new AiSentenceExplainRequest(input.Prepared.Sentence),
                 cancellationToken);
 
             var validated = Validate(generated);
