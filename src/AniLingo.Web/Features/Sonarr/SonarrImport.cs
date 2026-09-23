@@ -298,7 +298,7 @@ public sealed class SonarrArtworkManifestStore
 public sealed class SonarrArtworkImportService(
     AppDbContext db,
     IHttpClientFactory httpClientFactory,
-    ILogger logger)
+    ILogger<SonarrArtworkImportService> logger)
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -621,5 +621,46 @@ public sealed class SonarrArtworkImportService(
         public string? CoverType { get; init; }
         public string? Url { get; init; }
         public string? RemoteUrl { get; init; }
+    }
+}
+
+
+public sealed class SonarrArtworkSyncService(
+    SonarrConnectionStore connectionStore,
+    SonarrArtworkImportService importService,
+    ILogger<SonarrArtworkSyncService> logger)
+{
+    public async Task<SonarrArtworkImportResult?> SyncIfConfiguredAsync(
+        CancellationToken cancellationToken)
+    {
+        var settings = await connectionStore.LoadAsync(cancellationToken);
+        if (settings is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            var result = await importService.ImportAsync(settings, cancellationToken);
+            logger.LogInformation(
+                "Sonarr artwork sync completed: {Matched} matched, {Posters} posters, {Fanart} fanart, {Unmatched} unmatched, {Failed} failed.",
+                result.MatchedCount,
+                result.PosterCount,
+                result.FanartCount,
+                result.UnmatchedCount,
+                result.FailedCount);
+            return result;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(
+                exception,
+                "Sonarr artwork sync failed. The library scan remains successful.");
+            return null;
+        }
     }
 }
