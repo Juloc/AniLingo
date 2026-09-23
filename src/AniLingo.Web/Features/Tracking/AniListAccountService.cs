@@ -428,61 +428,81 @@ public sealed class AniListAccountService(
                     aniListEpisodeCount: metadata.EpisodeCount));
         }
 
-        if (remote.Progress >= episode.Number)
-        {
-            return new ProgressContext(
-                account,
-                remote,
-                episode.Number,
-                new AniListProgressPreview(
-                    CanSync: false,
-                    IsNoOp: true,
-                    $"AniList already has progress {remote.Progress}; AniLingo never lowers progress.",
-                    metadata.PreferredTitle,
-                    episode.Number,
-                    remote.Progress,
-                    remote.Status,
-                    metadata.EpisodeCount));
-        }
-
-        if (!string.Equals(remote.Status, "CURRENT", StringComparison.OrdinalIgnoreCase))
-        {
-            return ProgressContext.Blocked(
-                AniListProgressPreview.Blocked(
-                    $"AniList status is {remote.Status ?? "unknown"}. For safety, AniLingo only writes progress while the entry is CURRENT (Watching). Change the status in AniList first.",
-                    episode.Number,
-                    metadata.PreferredTitle,
-                    remote.Progress,
-                    remote.Status,
-                    metadata.EpisodeCount));
-        }
-
-        if (metadata.EpisodeCount is > 0 &&
-            episode.Number >= metadata.EpisodeCount.Value)
-        {
-            return ProgressContext.Blocked(
-                AniListProgressPreview.Blocked(
-                    "This is the final AniList episode. AniLingo does not sync the last episode automatically because AniList may also change completion status/date. Finish the entry in AniList itself.",
-                    episode.Number,
-                    metadata.PreferredTitle,
-                    remote.Progress,
-                    remote.Status,
-                    metadata.EpisodeCount));
-        }
+        var remoteSafety = EvaluateRemoteProgressSafety(
+            remote,
+            episode.Number,
+            metadata.EpisodeCount,
+            metadata.PreferredTitle);
 
         return new ProgressContext(
             account,
             remote,
             episode.Number,
-            new AniListProgressPreview(
-                CanSync: true,
-                IsNoOp: false,
-                $"Ready to increase AniList progress from {remote.Progress} to {episode.Number}.",
-                metadata.PreferredTitle,
-                episode.Number,
+            remoteSafety);
+    }
+
+    public static AniListProgressPreview EvaluateRemoteProgressSafety(
+        AniListRemoteListEntry remote,
+        int requestedProgress,
+        int? aniListEpisodeCount,
+        string? mediaTitle)
+    {
+        if (requestedProgress <= 0)
+        {
+            return AniListProgressPreview.Blocked(
+                "Special/unnumbered episodes are not synced automatically.",
+                requestedProgress,
+                mediaTitle,
                 remote.Progress,
                 remote.Status,
-                metadata.EpisodeCount));
+                aniListEpisodeCount);
+        }
+
+        if (remote.Progress >= requestedProgress)
+        {
+            return new AniListProgressPreview(
+                CanSync: false,
+                IsNoOp: true,
+                $"AniList already has progress {remote.Progress}; AniLingo never lowers progress.",
+                mediaTitle,
+                requestedProgress,
+                remote.Progress,
+                remote.Status,
+                aniListEpisodeCount);
+        }
+
+        if (!string.Equals(remote.Status, "CURRENT", StringComparison.OrdinalIgnoreCase))
+        {
+            return AniListProgressPreview.Blocked(
+                $"AniList status is {remote.Status ?? "unknown"}. For safety, AniLingo only writes progress while the entry is CURRENT (Watching). Change the status in AniList first.",
+                requestedProgress,
+                mediaTitle,
+                remote.Progress,
+                remote.Status,
+                aniListEpisodeCount);
+        }
+
+        if (aniListEpisodeCount is > 0 &&
+            requestedProgress >= aniListEpisodeCount.Value)
+        {
+            return AniListProgressPreview.Blocked(
+                "This is the final AniList episode. AniLingo does not sync the last episode automatically because AniList may also change completion status/date. Finish the entry in AniList itself.",
+                requestedProgress,
+                mediaTitle,
+                remote.Progress,
+                remote.Status,
+                aniListEpisodeCount);
+        }
+
+        return new AniListProgressPreview(
+            CanSync: true,
+            IsNoOp: false,
+            $"Ready to increase AniList progress from {remote.Progress} to {requestedProgress}.",
+            mediaTitle,
+            requestedProgress,
+            remote.Progress,
+            remote.Status,
+            aniListEpisodeCount);
     }
 
     private async Task<AniListViewer> FetchViewerAsync(
