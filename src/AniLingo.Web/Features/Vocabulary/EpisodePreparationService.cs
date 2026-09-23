@@ -24,6 +24,10 @@ public sealed record EpisodePreparationSnapshot(
     public static EpisodePreparationSnapshot Empty { get; } =
         new(95, 0, 0, 0, [], []);
 
+    public int DistinctTermCount => Terms.Count;
+    public int KnownTermCount => Terms.Count(x => x.State == UserTermState.Known);
+    public int LearningTermCount => Terms.Count(x => x.State == UserTermState.Learning);
+    public int NewTermCount => Terms.Count(x => x.State is null);
     public int KnownPercent => Percentage(KnownOccurrences, TotalOccurrences);
     public int PreparedPercent => Percentage(PreparedOccurrences, TotalOccurrences);
     public int RecommendedCount => RecommendedTermIds.Count;
