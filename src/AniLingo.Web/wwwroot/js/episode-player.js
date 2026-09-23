@@ -26,14 +26,20 @@
     const state = root.querySelector("[data-state]");
     const replay = root.querySelector("[data-replay]");
     const error = root.querySelector("[data-player-error]");
+    const timeline = root.querySelector("[data-playback-timeline]");
+    const timelineCurrent = root.querySelector("[data-playback-current]");
+    const timelineDuration = root.querySelector("[data-playback-duration]");
 
     if (!video || !stage || !placeholder || !playbackStatus ||
-        !playbackSummary || !playbackBadge || !modeSelect || !overlay || !data) {
+        !playbackSummary || !playbackBadge || !modeSelect || !overlay || !data ||
+        !timeline || !timelineCurrent || !timelineDuration) {
         return;
     }
 
     const videoCodec = (root.dataset.videoCodec || "").toLowerCase();
     const isHevc = videoCodec === "hevc" || videoCodec === "h265";
+    const durationSeconds = Number(root.dataset.durationSeconds);
+    const hasKnownDuration = Number.isFinite(durationSeconds) && durationSeconds > 0;
     const capabilityProbe = document.createElement("video");
     const supportsHevc =
         capabilityProbe.canPlayType('video/mp4; codecs="hvc1"') !== "" ||
@@ -42,11 +48,13 @@
     const options = {
         device: {
             availability: root.dataset.deviceAvailability || "unsupported",
-            status: root.dataset.deviceStatus || "Device playback is unavailable."
+            status: root.dataset.deviceStatus || "Device playback is unavailable.",
+            live: root.dataset.deviceLive === "true"
         },
         server: {
             availability: root.dataset.serverAvailability || "unsupported",
-            status: root.dataset.serverStatus || "Server playback is unavailable."
+            status: root.dataset.serverStatus || "Server playback is unavailable.",
+            live: root.dataset.serverLive === "true"
         }
     };
 
@@ -85,7 +93,61 @@
     let effectiveMode = "device";
     let pendingResumeTime = readSceneStartSeconds();
     let resumeShouldPlay = false;
+    let streamStartSeconds = 0;
+    let timelinePreviewing = false;
     modeSelect.value = preference;
+
+    const clampToDuration = (seconds) => {
+        const safe = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
+        if (!hasKnownDuration) {
+            return safe;
+        }
+
+        return Math.min(safe, Math.max(0, durationSeconds - 0.05));
+    };
+
+    const formatTime = (seconds) => {
+        if (!Number.isFinite(seconds) || seconds < 0) {
+            return "--:--";
+        }
+
+        const totalSeconds = Math.floor(seconds);
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const remainder = totalSeconds % 60;
+
+        if (hours > 0) {
+            return `${hours}:${String(minutes).padStart(2, "0")}:${String(remainder).padStart(2, "0")}`;
+        }
+
+        return `${minutes}:${String(remainder).padStart(2, "0")}`;
+    };
+
+    const absoluteCurrentTime = () => {
+        const localTime = Number.isFinite(video.currentTime) ? video.currentTime : 0;
+        const absolute = options[effectiveMode]?.live
+            ? streamStartSeconds + localTime
+            : localTime;
+        return clampToDuration(absolute);
+    };
+
+    const updateTimeline = () => {
+        if (!hasKnownDuration) {
+            timeline.disabled = true;
+            timelineDuration.textContent = "--:--";
+            return;
+        }
+
+        timeline.disabled = false;
+        timeline.max = String(durationSeconds);
+        timelineDuration.textContent = formatTime(durationSeconds);
+
+        if (!timelinePreviewing) {
+            const current = absoluteCurrentTime();
+            timeline.value = String(current);
+            timelineCurrent.textContent = formatTime(current);
+        }
+    };
 
     const deviceAllowed = () =>
         options.device.availability !== "unsupported" &&
@@ -104,9 +166,16 @@
         return deviceAllowed() ? "device" : "server";
     };
 
-    const buildMediaUrl = (mode) => {
+    const buildMediaUrl = (mode, startSeconds = 0) => {
         const url = new URL(root.dataset.mediaUrl || window.location.href, window.location.origin);
         url.searchParams.set("mode", mode);
+
+        if (options[mode]?.live && startSeconds > 0) {
+            url.searchParams.set("start", String(startSeconds));
+        } else {
+            url.searchParams.delete("start");
+        }
+
         return url.toString();
     };
 
@@ -155,16 +224,50 @@
         stage.classList.add("player-placeholder");
     };
 
+    const loadSource = (mode, requestedStart = 0) => {
+        const live = options[mode]?.live === true;
+        streamStartSeconds = live ? clampToDuration(requestedStart) : 0;
+        const sourceKey = live
+            ? `${mode}:${streamStartSeconds.toFixed(3)}`
+            : mode;
+
+        if (video.dataset.playbackSource === sourceKey) {
+            return false;
+        }
+
+        video.dataset.playbackMode = mode;
+        video.dataset.playbackSource = sourceKey;
+        video.src = buildMediaUrl(mode, streamStartSeconds);
+        video.load();
+        return true;
+    };
+
     const showVideo = (mode) => {
         placeholder.hidden = true;
         video.hidden = false;
         stage.classList.remove("player-placeholder");
 
-        if (video.dataset.playbackMode !== mode) {
-            video.dataset.playbackMode = mode;
-            video.src = buildMediaUrl(mode);
-            video.load();
+        const live = options[mode]?.live === true;
+        const requestedStart = pendingResumeTime !== null && Number.isFinite(pendingResumeTime)
+            ? clampToDuration(pendingResumeTime)
+            : 0;
+
+        if (live) {
+            pendingResumeTime = null;
         }
+
+        const changed = loadSource(mode, live ? requestedStart : 0);
+        if (!changed && !live && pendingResumeTime !== null && video.readyState >= 1) {
+            video.currentTime = requestedStart;
+            pendingResumeTime = null;
+
+            if (resumeShouldPlay) {
+                resumeShouldPlay = false;
+                void video.play().catch(() => {});
+            }
+        }
+
+        updateTimeline();
     };
 
     const applyPlayback = () => {
@@ -212,8 +315,13 @@
     };
 
     modeSelect.addEventListener("change", () => {
+        const resumeAt = absoluteCurrentTime();
+        const shouldResume = !video.paused && !video.ended;
+
         preference = modeSelect.value;
         runtimeDeviceFailed = false;
+        pendingResumeTime = resumeAt;
+        resumeShouldPlay = shouldResume;
         storePreference(preference);
 
         if (error) {
@@ -299,7 +407,7 @@
     };
 
     const sync = () => {
-        const index = findCueIndex(Math.floor(video.currentTime * 1000));
+        const index = findCueIndex(Math.floor(absoluteCurrentTime() * 1000));
         if (index === activeIndex) {
             return;
         }
@@ -308,35 +416,78 @@
         renderCue(index);
     };
 
-    video.addEventListener("timeupdate", sync);
-    video.addEventListener("seeked", sync);
+    const seekToAbsolute = (requestedSeconds, shouldPlay = !video.paused && !video.ended) => {
+        const target = clampToDuration(requestedSeconds);
+
+        if (options[effectiveMode]?.live) {
+            pendingResumeTime = null;
+            resumeShouldPlay = shouldPlay;
+            loadSource(effectiveMode, target);
+        } else if (video.readyState >= 1) {
+            video.currentTime = target;
+            if (shouldPlay) {
+                void video.play().catch(() => {});
+            }
+        } else {
+            pendingResumeTime = target;
+            resumeShouldPlay = shouldPlay;
+        }
+
+        timelinePreviewing = false;
+        updateTimeline();
+        sync();
+    };
+
+    timeline.addEventListener("input", () => {
+        if (!hasKnownDuration) {
+            return;
+        }
+
+        timelinePreviewing = true;
+        timelineCurrent.textContent = formatTime(Number(timeline.value));
+    });
+
+    timeline.addEventListener("change", () => {
+        seekToAbsolute(Number(timeline.value));
+    });
+
+    video.addEventListener("timeupdate", () => {
+        updateTimeline();
+        sync();
+    });
+    video.addEventListener("seeked", () => {
+        updateTimeline();
+        sync();
+    });
     video.addEventListener("loadedmetadata", () => {
-        if (pendingResumeTime !== null && Number.isFinite(pendingResumeTime)) {
-            const target = Math.max(0, pendingResumeTime);
+        if (!options[effectiveMode]?.live &&
+            pendingResumeTime !== null &&
+            Number.isFinite(pendingResumeTime)) {
+            const target = clampToDuration(pendingResumeTime);
             video.currentTime = Number.isFinite(video.duration) && video.duration >= 0
                 ? Math.min(target, video.duration)
                 : target;
             pendingResumeTime = null;
-
-            if (resumeShouldPlay) {
-                resumeShouldPlay = false;
-                void video.play().catch(() => {});
-            }
         }
 
+        updateTimeline();
         sync();
+
+        if (resumeShouldPlay) {
+            resumeShouldPlay = false;
+            void video.play().catch(() => {});
+        }
     });
     video.addEventListener("error", () => {
         if (preference === "auto" && effectiveMode === "device") {
+            pendingResumeTime = absoluteCurrentTime();
+            resumeShouldPlay = true;
             runtimeDeviceFailed = true;
             if (error) {
                 error.hidden = false;
                 error.textContent = "Device playback failed. Switching to the server fallback.";
             }
 
-            video.addEventListener("canplay", () => {
-                void video.play();
-            }, { once: true });
             applyPlayback();
             return;
         }
@@ -348,10 +499,10 @@
     });
 
     replay?.addEventListener("click", () => {
-        video.currentTime = Math.max(0, selectedCueStartMs / 1000 - 0.5);
-        void video.play();
+        seekToAbsolute(Math.max(0, selectedCueStartMs / 1000 - 0.5), true);
     });
 
+    updateTimeline();
     applyPlayback();
     sync();
 })();

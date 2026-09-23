@@ -182,10 +182,13 @@
              data-episode-player
              data-playback-refresh="@(media.IsPreparing ? "true" : "false")"
              data-video-codec="@media.VideoCodec"
+             data-duration-seconds="@(media.DurationSeconds?.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) ?? "")"
              data-device-availability="@(media.Device.Availability.ToString().ToLowerInvariant())"
              data-device-status="@media.Device.StatusMessage"
+             data-device-live="@media.Device.UsesLiveStream.ToString().ToLowerInvariant()"
              data-server-availability="@(media.Server.Availability.ToString().ToLowerInvariant())"
              data-server-status="@media.Server.StatusMessage"
+             data-server-live="@media.Server.UsesLiveStream.ToString().ToLowerInvariant()"
              data-media-url="@Url.Page("/Library/Episode", "Media", new { id = Model.EpisodeId })">
         <div class="video-stage player-placeholder" data-video-stage>
             <video controls preload="none" playsinline hidden data-playback-video></video>
@@ -215,6 +218,20 @@
                 <small data-playback-mode-hint></small>
                 <span class="status-pill" data-playback-badge>Checking…</span>
             </div>
+        </div>
+
+        <div class="player-meta" data-playback-timeline-row>
+            <div><span data-playback-current>0:00</span></div>
+            <input type="range"
+                   min="0"
+                   max="0"
+                   step="0.1"
+                   value="0"
+                   disabled
+                   aria-label="Seek through the full episode"
+                   data-playback-timeline
+                   style="flex:1; width:100%; min-width:0;" />
+            <div><span data-playback-duration>--:--</span></div>
         </div>
 
         <div class="player-error" data-player-error hidden></div>
