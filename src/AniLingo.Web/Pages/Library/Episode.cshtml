@@ -13,7 +13,13 @@
         <a class="back-link" href="/Library/Anime/@Model.AnimeId">← @Model.AnimeTitle</a>
         <span class="eyebrow">S@(Model.SeasonNumber.ToString("00")) · E@(Model.EpisodeNumber.ToString("00"))</span>
         <h1>@Model.EpisodeTitle</h1>
-        <p>@Model.Terms.Count candidates · @Model.Preparation.KnownPercent% known · @Model.Preparation.PreparedPercent% prepared</p>
+        <p>
+            @Model.Preparation.DistinctTermCount distinct terms ·
+            @Model.Preparation.KnownTermCount known ·
+            @Model.Preparation.LearningTermCount learning ·
+            @Model.Preparation.NewTermCount new ·
+            @Model.Preparation.PreparedPercent% prepared
+        </p>
     </div>
 </header>
 
