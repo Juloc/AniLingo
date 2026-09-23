@@ -35,7 +35,7 @@ public sealed class IndexModel(AppDbContext db, CurrentAccountContext currentAcc
             select new
             {
                 EpisodeId = episodeGroup.Key,
-                TotalOccurrences = episodeGroup.Sum(x => x.Occurrences)
+                TotalOccurrences = episodeGroup.Sum(x => (int?)x.Occurrences)
             };
 
         var preparedTotals =
@@ -51,7 +51,7 @@ public sealed class IndexModel(AppDbContext db, CurrentAccountContext currentAcc
             select new
             {
                 EpisodeId = episodeGroup.Key,
-                PreparedOccurrences = episodeGroup.Sum(x => x.Occurrences)
+                PreparedOccurrences = episodeGroup.Sum(x => (int?)x.Occurrences)
             };
 
         var recentEpisodes = await (
@@ -73,8 +73,8 @@ public sealed class IndexModel(AppDbContext db, CurrentAccountContext currentAcc
                 metadata == null ? anime.Title : metadata.PreferredTitle,
                 episode.SeasonNumber,
                 episode.Number,
-                occurrences == null ? 0 : occurrences.TotalOccurrences,
-                prepared == null ? 0 : prepared.PreparedOccurrences,
+                occurrences.TotalOccurrences ?? 0,
+                prepared.PreparedOccurrences ?? 0,
                 metadata == null ? null : metadata.CoverImageUrl))
             .Take(10)
             .ToListAsync(cancellationToken);
