@@ -1,5 +1,6 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Artwork;
+using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Metadata;
 using Microsoft.AspNetCore.Mvc;
@@ -10,7 +11,8 @@ namespace AniLingo.Web.Pages.Library;
 
 public sealed class AnimeModel(
     AppDbContext db,
-    AnimeMetadataService metadataService) : PageModel
+    AnimeMetadataService metadataService,
+    CurrentAccountContext currentAccount) : PageModel
 {
     public Guid AnimeId { get; private set; }
     public string AnimeTitle { get; private set; } = "";
@@ -22,6 +24,7 @@ public sealed class AnimeModel(
     public string? MetadataError { get; private set; }
     public IReadOnlyList<AnimeMetadataCandidate> SearchResults { get; private set; } = [];
     public IReadOnlyList<EpisodeRow> Episodes { get; private set; } = [];
+    public bool IsOwner => currentAccount.IsOwner;
 
     public async Task<IActionResult> OnGetAsync(
         Guid id,
@@ -54,7 +57,7 @@ public sealed class AnimeModel(
             MetadataError = metadataError?.ToString();
         }
 
-        if (!string.IsNullOrWhiteSpace(q))
+        if (IsOwner && !string.IsNullOrWhiteSpace(q))
         {
             try
             {
@@ -98,7 +101,7 @@ public sealed class AnimeModel(
             coverageRows = await (
                 from episodeTerm in db.EpisodeTerms.AsNoTracking()
                 join userTermValue in db.UserTerms.AsNoTracking()
-                        .Where(x => x.ProfileId == LearningProfile.DefaultId)
+                        .Where(x => x.ProfileId == currentAccount.ProfileId)
                     on episodeTerm.TermId equals userTermValue.TermId into userTerms
                 from userTerm in userTerms.DefaultIfEmpty()
                 where episodeIds.Contains(episodeTerm.EpisodeId)
@@ -145,6 +148,11 @@ public sealed class AnimeModel(
         string externalId,
         CancellationToken cancellationToken)
     {
+        if (!IsOwner)
+        {
+            return Forbid();
+        }
+
         try
         {
             var result = await metadataService.MatchAsync(
@@ -170,6 +178,11 @@ public sealed class AnimeModel(
         Guid id,
         CancellationToken cancellationToken)
     {
+        if (!IsOwner)
+        {
+            return Forbid();
+        }
+
         try
         {
             if (!await metadataService.RefreshAsync(id, cancellationToken))
@@ -189,6 +202,11 @@ public sealed class AnimeModel(
         Guid id,
         CancellationToken cancellationToken)
     {
+        if (!IsOwner)
+        {
+            return Forbid();
+        }
+
         await metadataService.RemoveAsync(id, cancellationToken);
         return RedirectToPage(new { id });
     }

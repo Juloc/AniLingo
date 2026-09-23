@@ -1,4 +1,5 @@
 using AniLingo.Web.Data;
+using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Library;
 using AniLingo.Web.Infrastructure;
 using Microsoft.AspNetCore.Mvc;
@@ -12,6 +13,7 @@ public sealed class IndexModel(
     BackgroundJobQueue jobs) : PageModel
 {
     public IReadOnlyList<LibraryRoot> Roots { get; private set; } = [];
+    public bool IsOwner => User.IsInRole(AccountRoles.Owner);
 
     [BindProperty]
     public string Name { get; set; } = "Anime";
@@ -21,11 +23,19 @@ public sealed class IndexModel(
 
     public async Task OnGetAsync(CancellationToken cancellationToken)
     {
-        await LoadAsync(cancellationToken);
+        if (IsOwner)
+        {
+            await LoadAsync(cancellationToken);
+        }
     }
 
     public async Task<IActionResult> OnPostAddAsync(CancellationToken cancellationToken)
     {
+        if (!IsOwner)
+        {
+            return Forbid();
+        }
+
         if (string.IsNullOrWhiteSpace(Name) || string.IsNullOrWhiteSpace(Path))
         {
             ModelState.AddModelError(string.Empty, "Name and path are required.");
@@ -54,6 +64,11 @@ public sealed class IndexModel(
 
     public async Task<IActionResult> OnPostScanAsync(Guid rootId, CancellationToken cancellationToken)
     {
+        if (!IsOwner)
+        {
+            return Forbid();
+        }
+
         if (!await db.LibraryRoots.AnyAsync(x => x.Id == rootId, cancellationToken))
         {
             return NotFound();

@@ -3,6 +3,8 @@ using AniLingo.Web.Features.Auth;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 
 namespace AniLingo.Tests;
 
@@ -67,6 +69,153 @@ public sealed class AuthServiceTests
 
             await Assert.ThrowsExactlyAsync<InvalidOperationException>(
                 () => service.CreateOwnerAsync("other", "another sufficiently long password"));
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            File.Delete(databasePath);
+        }
+    }
+
+    [TestMethod]
+    public async Task LocalUserCanBeCreatedDisabledAndPasswordReset()
+    {
+        var databasePath = CreateDatabasePath();
+
+        try
+        {
+            var options = CreateOptions(databasePath);
+            await using var db = new AppDbContext(options);
+            await DatabaseMigrationBridge.UpgradeAsync(db);
+
+            var service = new OwnerAuthService(db, new PasswordHasher<OwnerAccount>());
+            var owner = await service.CreateOwnerAsync(
+                "owner",
+                "a sufficiently long owner password");
+            var user = await service.CreateUserAsync(
+                "learner",
+                "a sufficiently long user password");
+
+            Assert.AreEqual(AccountRole.Owner, owner.Role);
+            Assert.AreEqual(AccountRole.User, user.Role);
+            Assert.IsTrue(user.IsEnabled);
+
+            var login = await service.ValidateCredentialsAsync(
+                "learner",
+                "a sufficiently long user password");
+            Assert.IsNotNull(login);
+            Assert.IsTrue(OwnerAuthService.CreatePrincipal(login).IsInRole(AccountRoles.User));
+
+            await service.SetEnabledAsync(user.Id, false);
+            Assert.IsNull(await service.ValidateCredentialsAsync(
+                "learner",
+                "a sufficiently long user password"));
+
+            await service.SetEnabledAsync(user.Id, true);
+            await service.ResetPasswordAsync(
+                user.Id,
+                "a completely different long password");
+
+            Assert.IsNull(await service.ValidateCredentialsAsync(
+                "learner",
+                "a sufficiently long user password"));
+            Assert.IsNotNull(await service.ValidateCredentialsAsync(
+                "learner",
+                "a completely different long password"));
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            File.Delete(databasePath);
+        }
+    }
+
+    [TestMethod]
+    public async Task OwnerCannotBeDisabledAndUserNamesAreUnique()
+    {
+        var databasePath = CreateDatabasePath();
+
+        try
+        {
+            var options = CreateOptions(databasePath);
+            await using var db = new AppDbContext(options);
+            await DatabaseMigrationBridge.UpgradeAsync(db);
+
+            var service = new OwnerAuthService(db, new PasswordHasher<OwnerAccount>());
+            var owner = await service.CreateOwnerAsync(
+                "Julian",
+                "a sufficiently long owner password");
+            await service.CreateUserAsync(
+                "Learner",
+                "a sufficiently long user password");
+
+            await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+                () => service.SetEnabledAsync(owner.Id, false));
+
+            await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+                () => service.CreateUserAsync(
+                    "learner",
+                    "another sufficiently long password"));
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            File.Delete(databasePath);
+        }
+    }
+
+    [TestMethod]
+    public async Task ExistingDefaultLearningProfileMigratesToOwner()
+    {
+        var databasePath = CreateDatabasePath();
+
+        try
+        {
+            var options = CreateOptions(databasePath);
+            await using var db = new AppDbContext(options);
+
+            var migrator = db.Database.GetService<IMigrator>();
+            await migrator.MigrateAsync("20260923071000_AddOwnerAccount");
+
+            var termId = Guid.NewGuid();
+            var userTermId = Guid.NewGuid();
+            var now = DateTime.UtcNow.ToString("O");
+
+            await db.Database.ExecuteSqlRawAsync(
+                $"""
+                INSERT INTO OwnerAccounts
+                    (Id, UserName, NormalizedUserName, PasswordHash, CreatedAt)
+                VALUES
+                    ('owner', 'Julian', 'JULIAN', 'hash', '{now}');
+
+                INSERT INTO Terms
+                    (Id, Language, Canonical, Reading, Meaning)
+                VALUES
+                    ('{termId}', 'ja', '猫', 'ねこ', 'Katze');
+
+                INSERT INTO UserTerms
+                    (Id, ProfileId, TermId, State, IntervalDays, NextReviewAt, LearningStartedAt, QueuePosition, UpdatedAt)
+                VALUES
+                    ('{userTermId}', 'default', '{termId}', 1, 0, NULL, NULL, NULL, '{now}');
+
+                INSERT INTO LearningPreferences
+                    (ProfileId, DesiredRetention, ReviewBatchSize, NewWordsPerDay)
+                VALUES
+                    ('default', 0.91, 20, 5);
+                """);
+
+            await DatabaseMigrationBridge.UpgradeAsync(db);
+
+            var migratedTerm = await db.UserTerms.AsNoTracking().SingleAsync();
+            Assert.AreEqual(OwnerAccount.SingletonId, migratedTerm.ProfileId);
+
+            var preferences = await db.LearningPreferences.AsNoTracking().SingleAsync();
+            Assert.AreEqual(OwnerAccount.SingletonId, preferences.ProfileId);
+            Assert.AreEqual(0.91, preferences.DesiredRetention, 0.0001);
+
+            var owner = await db.OwnerAccounts.AsNoTracking().SingleAsync();
+            Assert.AreEqual(AccountRole.Owner, owner.Role);
+            Assert.IsTrue(owner.IsEnabled);
         }
         finally
         {

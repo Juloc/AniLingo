@@ -1,4 +1,5 @@
 using AniLingo.Web.Data;
+using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Learning;
 using Microsoft.EntityFrameworkCore;
 
@@ -97,10 +98,36 @@ public static class EpisodePreparationPlanner
     }
 }
 
-public sealed class EpisodePreparationService(
-    AppDbContext db,
-    LearningService learningService)
+public sealed class EpisodePreparationService
 {
+    private readonly AppDbContext db;
+    private readonly LearningService learningService;
+    private readonly string profileId;
+
+    public EpisodePreparationService(
+        AppDbContext db,
+        LearningService learningService,
+        CurrentAccountContext currentAccount)
+        : this(db, learningService, currentAccount.ProfileId)
+    {
+    }
+
+    public EpisodePreparationService(
+        AppDbContext db,
+        LearningService learningService)
+        : this(db, learningService, LearningProfile.DefaultId)
+    {
+    }
+
+    private EpisodePreparationService(
+        AppDbContext db,
+        LearningService learningService,
+        string profileId)
+    {
+        this.db = db;
+        this.learningService = learningService;
+        this.profileId = profileId;
+    }
     public async Task<EpisodePreparationSnapshot> GetAsync(
         Guid episodeId,
         Guid animeId,
@@ -110,7 +137,7 @@ public sealed class EpisodePreparationService(
             from episodeTerm in db.EpisodeTerms.AsNoTracking()
             join term in db.Terms.AsNoTracking() on episodeTerm.TermId equals term.Id
             join userTermValue in db.UserTerms.AsNoTracking()
-                    .Where(x => x.ProfileId == LearningProfile.DefaultId)
+                    .Where(x => x.ProfileId == profileId)
                 on term.Id equals userTermValue.TermId into userTerms
             from userTerm in userTerms.DefaultIfEmpty()
             where episodeTerm.EpisodeId == episodeId
