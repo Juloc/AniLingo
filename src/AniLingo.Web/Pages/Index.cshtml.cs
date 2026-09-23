@@ -73,8 +73,8 @@ public sealed class IndexModel(AppDbContext db, CurrentAccountContext currentAcc
                 metadata == null ? anime.Title : metadata.PreferredTitle,
                 episode.SeasonNumber,
                 episode.Number,
-                occurrences == null ? 0 : (occurrences.TotalOccurrences ?? 0),
-                prepared == null ? 0 : (prepared.PreparedOccurrences ?? 0),
+                occurrences.TotalOccurrences ?? 0,
+                prepared.PreparedOccurrences ?? 0,
                 metadata == null ? null : metadata.CoverImageUrl))
             .Take(10)
             .ToListAsync(cancellationToken);
