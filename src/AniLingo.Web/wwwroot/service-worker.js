@@ -1,8 +1,9 @@
-const CACHE_VERSION = "anilingo-static-v1";
+const CACHE_VERSION = "anilingo-static-v2";
 const PRECACHE = [
   "/offline.html",
   "/css/site.css",
   "/js/pwa.js",
+  "/js/offline-review.js",
   "/icons/anilingo.svg",
   "/manifest.webmanifest"
 ];
