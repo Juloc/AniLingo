@@ -194,7 +194,7 @@ public sealed class PlaybackService
         AppDbContext db,
         PlaybackCueProjector projector,
         PlaybackMediaProbe mediaProbe)
-        : this(db, projector, mediaProbe, profileId)
+        : this(db, projector, mediaProbe, LearningProfile.DefaultId)
     {
     }
 
