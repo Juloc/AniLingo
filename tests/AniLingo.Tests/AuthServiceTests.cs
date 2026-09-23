@@ -5,12 +5,52 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using System.ComponentModel.DataAnnotations;
+using AniLingo.Web.Pages.Account;
 
 namespace AniLingo.Tests;
 
 [TestClass]
 public sealed class AuthServiceTests
 {
+    [TestMethod]
+    public void RegistrationValidationUsesUserFacingPasswordMessages()
+    {
+        var shortPassword = new RegisterModel(null!)
+        {
+            UserName = "learner",
+            Password = "short",
+            ConfirmPassword = "short"
+        };
+        var shortResults = new List<ValidationResult>();
+
+        Validator.TryValidateObject(
+            shortPassword,
+            new ValidationContext(shortPassword),
+            shortResults,
+            validateAllProperties: true);
+
+        Assert.IsTrue(shortResults.Any(result =>
+            result.ErrorMessage == "Password must be at least 12 characters long."));
+
+        var mismatch = new RegisterModel(null!)
+        {
+            UserName = "learner",
+            Password = "123456789012",
+            ConfirmPassword = "123456789013"
+        };
+        var mismatchResults = new List<ValidationResult>();
+
+        Validator.TryValidateObject(
+            mismatch,
+            new ValidationContext(mismatch),
+            mismatchResults,
+            validateAllProperties: true);
+
+        Assert.IsTrue(mismatchResults.Any(result =>
+            result.ErrorMessage == "Passwords do not match."));
+    }
+
     [TestMethod]
     public async Task OwnerAccountIsCreatedHashedAndUsedForLogin()
     {
