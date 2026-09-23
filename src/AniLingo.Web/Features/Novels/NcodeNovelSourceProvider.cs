@@ -329,7 +329,7 @@ public sealed partial class NcodeNovelSourceProvider(
     private static partial Regex SummaryRegex();
 
     [GeneratedRegex(
-        @"<div\b[^>]*id\s*=\s*[""']novel_honbun[""'][^>]*>(?<value>.*?)</div>",
+        @"<div\b(?=[^>]*(?:id\s*=\s*[""']novel_honbun[""']|class\s*=\s*[""'][^""']*p-novel__body[^""']*[""']))[^>]*>(?<value>.*?)</div>",
         RegexOptions.IgnoreCase | RegexOptions.Singleline)]
     private static partial Regex MainBodyRegex();
 
