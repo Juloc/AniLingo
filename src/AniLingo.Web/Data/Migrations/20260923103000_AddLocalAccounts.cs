@@ -31,37 +31,6 @@ public sealed class AddLocalAccounts : Migration
                 IsEnabled = 1
             WHERE Id = 'owner';
             """);
-
-        migrationBuilder.Sql("""
-            DELETE FROM UserTerms
-            WHERE ProfileId = 'default'
-              AND EXISTS (
-                SELECT 1
-                FROM UserTerms AS existing
-                WHERE existing.ProfileId = 'owner'
-                  AND existing.TermId = UserTerms.TermId
-              );
-
-            UPDATE UserTerms
-            SET ProfileId = 'owner'
-            WHERE ProfileId = 'default';
-
-            UPDATE Reviews
-            SET ProfileId = 'owner'
-            WHERE ProfileId = 'default';
-
-            DELETE FROM LearningPreferences
-            WHERE ProfileId = 'default'
-              AND EXISTS (
-                SELECT 1
-                FROM LearningPreferences AS existing
-                WHERE existing.ProfileId = 'owner'
-              );
-
-            UPDATE LearningPreferences
-            SET ProfileId = 'owner'
-            WHERE ProfileId = 'default';
-            """);
     }
 
     protected override void Down(MigrationBuilder migrationBuilder)
