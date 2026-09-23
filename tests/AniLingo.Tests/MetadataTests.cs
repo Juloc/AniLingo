@@ -195,12 +195,19 @@ public sealed class MetadataTests
             CollectionAssert.Contains(
                 applied,
                 "20260922153100_AddAnimeMetadata");
+            CollectionAssert.Contains(
+                applied,
+                "20260923110000_AddOfflineReviewEventIds");
 
             await using var verification = new SqliteConnection($"Data Source={databasePath}");
             await verification.OpenAsync();
             await using var check = verification.CreateCommand();
             check.CommandText =
                 "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='AnimeMetadata';";
+            Assert.AreEqual(1L, Convert.ToInt64(await check.ExecuteScalarAsync()));
+
+            check.CommandText =
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='IX_Reviews_ProfileId_ClientEventId';";
             Assert.AreEqual(1L, Convert.ToInt64(await check.ExecuteScalarAsync()));
         }
         finally
