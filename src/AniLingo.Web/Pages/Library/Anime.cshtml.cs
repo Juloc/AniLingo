@@ -3,6 +3,7 @@ using AniLingo.Web.Features.Artwork;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Metadata;
+using AniLingo.Web.Features.Tracking;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
@@ -23,7 +24,11 @@ public sealed class AnimeModel(
     public string SearchQuery { get; private set; } = "";
     public string? MetadataError { get; private set; }
     public IReadOnlyList<AnimeMetadataCandidate> SearchResults { get; private set; } = [];
+    public IReadOnlyList<AnimeEpisodeMetadataMapping> EpisodeMappings { get; private set; } = [];
     public IReadOnlyList<EpisodeRow> Episodes { get; private set; } = [];
+    public IReadOnlyList<SeasonRow> Seasons { get; private set; } = [];
+    public int SuggestedMappingSeason { get; private set; }
+    public int SuggestedMappingEpisodeStart { get; private set; } = 1;
     public bool IsOwner => currentAccount.IsOwner;
 
     public async Task<IActionResult> OnGetAsync(
@@ -88,6 +93,46 @@ public sealed class AnimeModel(
                     x => x.EpisodeId == episode.Id && x.Language == "ja")
             })
             .ToListAsync(cancellationToken);
+
+        if (IsOwner)
+        {
+            try
+            {
+                EpisodeMappings = await metadataService.GetEpisodeMappingsAsync(
+                    id,
+                    cancellationToken);
+            }
+            catch (AniListAccountException exception)
+            {
+                MetadataError ??= exception.Message;
+                EpisodeMappings = [];
+            }
+
+            Seasons = episodeRows
+                .GroupBy(x => x.SeasonNumber)
+                .Select(group => new SeasonRow(
+                    group.Key,
+                    group.Min(x => x.Number),
+                    group.Max(x => x.Number),
+                    group.Count()))
+                .ToArray();
+
+            var firstUnmapped = episodeRows.FirstOrDefault(episode =>
+                episode.Number > 0 &&
+                !EpisodeMappings.Any(mapping =>
+                    mapping.Contains(episode.SeasonNumber, episode.Number)));
+
+            if (firstUnmapped is not null)
+            {
+                SuggestedMappingSeason = firstUnmapped.SeasonNumber;
+                SuggestedMappingEpisodeStart = firstUnmapped.Number;
+            }
+            else if (episodeRows.Count > 0)
+            {
+                SuggestedMappingSeason = episodeRows[0].SeasonNumber;
+                SuggestedMappingEpisodeStart = Math.Max(1, episodeRows[0].Number);
+            }
+        }
 
         var episodeIds = episodeRows.Select(x => x.Id).ToArray();
         List<CoverageRow> coverageRows;
@@ -174,6 +219,74 @@ public sealed class AnimeModel(
         return RedirectToPage(new { id });
     }
 
+    public async Task<IActionResult> OnPostMatchEpisodeRangeAsync(
+        Guid id,
+        int seasonNumber,
+        int localEpisodeStart,
+        int? localEpisodeEnd,
+        int remoteEpisodeStart,
+        string provider,
+        string externalId,
+        CancellationToken cancellationToken)
+    {
+        if (!IsOwner)
+        {
+            return Forbid();
+        }
+
+        try
+        {
+            var result = await metadataService.MatchEpisodeRangeAsync(
+                id,
+                seasonNumber,
+                localEpisodeStart,
+                localEpisodeEnd,
+                remoteEpisodeStart,
+                provider,
+                externalId,
+                cancellationToken);
+
+            if (!result.Success)
+            {
+                TempData["MetadataError"] = result.Error;
+            }
+        }
+        catch (MetadataProviderException exception)
+        {
+            TempData["MetadataError"] = exception.Message;
+        }
+
+        return RedirectToPage(new { id });
+    }
+
+    public async Task<IActionResult> OnPostRemoveEpisodeMappingAsync(
+        Guid id,
+        Guid mappingId,
+        CancellationToken cancellationToken)
+    {
+        if (!IsOwner)
+        {
+            return Forbid();
+        }
+
+        try
+        {
+            if (!await metadataService.RemoveEpisodeMappingAsync(
+                    id,
+                    mappingId,
+                    cancellationToken))
+            {
+                TempData["MetadataError"] = "Episode mapping was not found.";
+            }
+        }
+        catch (AniListAccountException exception)
+        {
+            TempData["MetadataError"] = exception.Message;
+        }
+
+        return RedirectToPage(new { id });
+    }
+
     public async Task<IActionResult> OnPostRefreshMetadataAsync(
         Guid id,
         CancellationToken cancellationToken)
@@ -223,6 +336,12 @@ public sealed class AnimeModel(
     {
         public static Coverage Empty { get; } = new(0, 0, 0);
     }
+
+    public sealed record SeasonRow(
+        int Number,
+        int FirstEpisode,
+        int LastEpisode,
+        int EpisodeCount);
 
     public sealed record EpisodeRow(
         Guid Id,
