@@ -1,0 +1,79 @@
+@page
+@using AniLingo.Web.Features.Auth
+@model AniLingo.Web.Pages.Settings.UsersModel
+@{
+    ViewData["Title"] = "Users";
+}
+
+<header class="page-header">
+    <div>
+        <span class="eyebrow">Settings</span>
+        <h1>Users</h1>
+        <p>Local AniLingo accounts. Learning data stays separate per account.</p>
+    </div>
+</header>
+
+<div class="settings-grid">
+    <section class="panel">
+        <div class="panel-heading">
+            <h2>Accounts</h2>
+            <span>@Model.Accounts.Count</span>
+        </div>
+
+        <div class="root-list">
+            @foreach (var account in Model.Accounts)
+            {
+                <div class="root-row">
+                    <div>
+                        <strong>@account.UserName</strong>
+                        <small>@account.Role · @(account.IsEnabled ? "enabled" : "disabled")</small>
+                    </div>
+
+                    @if (account.Role != AccountRole.Owner)
+                    {
+                        <div class="inline-actions">
+                            <form method="post" asp-page-handler="SetEnabled">
+                                <input type="hidden" name="accountId" value="@account.Id" />
+                                <input type="hidden" name="enabled" value="@(!account.IsEnabled)" />
+                                <button class="button" type="submit">
+                                    @(account.IsEnabled ? "Disable" : "Enable")
+                                </button>
+                            </form>
+                        </div>
+                    }
+                </div>
+
+                <form method="post" asp-page-handler="ResetPassword" class="form-stack">
+                    <input type="hidden" name="accountId" value="@account.Id" />
+                    <label>
+                        <span>New password for @account.UserName</span>
+                        <input name="newPassword"
+                               type="password"
+                               minlength="12"
+                               autocomplete="new-password"
+                               required />
+                    </label>
+                    <button class="button" type="submit">Reset password</button>
+                </form>
+            }
+        </div>
+    </section>
+
+    <section class="panel">
+        <div class="panel-heading"><h2>Create user</h2></div>
+        <form method="post" asp-page-handler="Create" class="form-stack">
+            <div asp-validation-summary="ModelOnly" class="validation"></div>
+            <label>
+                <span>User name</span>
+                <input asp-for="UserName" autocomplete="username" />
+                <span asp-validation-for="UserName" class="validation"></span>
+            </label>
+            <label>
+                <span>Initial password</span>
+                <input asp-for="Password" autocomplete="new-password" />
+                <span asp-validation-for="Password" class="validation"></span>
+            </label>
+            <button class="button button-primary" type="submit">Create user</button>
+        </form>
+    </section>
+</div>
