@@ -313,13 +313,13 @@ public sealed class PlaybackMediaProbe(
             streams.ValueKind == JsonValueKind.Array)
         {
             foreach (var stream in streams.EnumerateArray())
-        {
-            var type = ReadString(stream, "codec_type");
-            if (videoCodec is null && string.Equals(type, "video", StringComparison.OrdinalIgnoreCase))
             {
-                videoCodec = ReadString(stream, "codec_name");
-                pixelFormat = ReadString(stream, "pix_fmt");
-            }
+                var type = ReadString(stream, "codec_type");
+                if (videoCodec is null && string.Equals(type, "video", StringComparison.OrdinalIgnoreCase))
+                {
+                    videoCodec = ReadString(stream, "codec_name");
+                    pixelFormat = ReadString(stream, "pix_fmt");
+                }
                 else if (audioCodec is null && string.Equals(type, "audio", StringComparison.OrdinalIgnoreCase))
                 {
                     audioCodec = ReadString(stream, "codec_name");
