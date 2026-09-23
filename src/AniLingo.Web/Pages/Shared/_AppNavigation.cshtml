@@ -14,6 +14,9 @@
         <a class="nav-item @(path.StartsWithSegments("/Library") ? "active" : "")" href="/Library">
             <span class="nav-glyph">L</span><span>Library</span>
         </a>
+        <a class="nav-item @(path.StartsWithSegments("/Novels") ? "active" : "")" href="/Novels">
+            <span class="nav-glyph">N</span><span>Novels</span>
+        </a>
         <a class="nav-item @(path.StartsWithSegments("/Learn") ? "active" : "")" href="/Learn">
             <span class="nav-glyph">R</span><span>Learn</span>
         </a>
@@ -34,6 +37,7 @@
 <nav class="mobile-nav" aria-label="Primary mobile">
     <a class="@(path == "/" ? "active" : "")" href="/">Home</a>
     <a class="@(path.StartsWithSegments("/Library") ? "active" : "")" href="/Library">Library</a>
+    <a class="@(path.StartsWithSegments("/Novels") ? "active" : "")" href="/Novels">Novels</a>
     <a class="@(path.StartsWithSegments("/Learn") ? "active" : "")" href="/Learn">Learn</a>
     <a class="@(path.StartsWithSegments("/Settings") ? "active" : "")" href="/Settings">Settings</a>
     <form method="post" asp-page="/Account/Logout">
