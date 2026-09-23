@@ -27,12 +27,44 @@ public sealed class IndexModel(AppDbContext db) : PageModel
         AnimeCount = await db.Anime.AsNoTracking().CountAsync(cancellationToken);
         EpisodeCount = await db.Episodes.AsNoTracking().CountAsync(cancellationToken);
 
+        var occurrenceTotals =
+            from episodeTerm in db.EpisodeTerms.AsNoTracking()
+            group episodeTerm by episodeTerm.EpisodeId
+            into episodeGroup
+            select new
+            {
+                EpisodeId = episodeGroup.Key,
+                TotalOccurrences = episodeGroup.Sum(x => x.Occurrences)
+            };
+
+        var preparedTotals =
+            from episodeTerm in db.EpisodeTerms.AsNoTracking()
+            join userTerm in db.UserTerms.AsNoTracking()
+                    .Where(x =>
+                        x.ProfileId == LearningProfile.DefaultId
+                        && (x.State == UserTermState.Known
+                            || x.State == UserTermState.Learning))
+                on episodeTerm.TermId equals userTerm.TermId
+            group episodeTerm by episodeTerm.EpisodeId
+            into episodeGroup
+            select new
+            {
+                EpisodeId = episodeGroup.Key,
+                PreparedOccurrences = episodeGroup.Sum(x => x.Occurrences)
+            };
+
         var recentEpisodes = await (
             from episode in db.Episodes.AsNoTracking()
             join anime in db.Anime.AsNoTracking() on episode.AnimeId equals anime.Id
             join metadataValue in db.AnimeMetadata.AsNoTracking()
                 on anime.Id equals metadataValue.AnimeId into metadataRows
             from metadata in metadataRows.DefaultIfEmpty()
+            join occurrenceValue in occurrenceTotals
+                on episode.Id equals occurrenceValue.EpisodeId into occurrenceRows
+            from occurrences in occurrenceRows.DefaultIfEmpty()
+            join preparedValue in preparedTotals
+                on episode.Id equals preparedValue.EpisodeId into preparedRows
+            from prepared in preparedRows.DefaultIfEmpty()
             orderby episode.DiscoveredAt descending
             select new HomeEpisode(
                 episode.Id,
@@ -40,15 +72,8 @@ public sealed class IndexModel(AppDbContext db) : PageModel
                 metadata == null ? anime.Title : metadata.PreferredTitle,
                 episode.SeasonNumber,
                 episode.Number,
-                db.EpisodeTerms.Count(x => x.EpisodeId == episode.Id),
-                (
-                    from episodeTerm in db.EpisodeTerms
-                    join userTerm in db.UserTerms on episodeTerm.TermId equals userTerm.TermId
-                    where episodeTerm.EpisodeId == episode.Id
-                        && userTerm.ProfileId == LearningProfile.DefaultId
-                        && userTerm.State == UserTermState.Known
-                    select episodeTerm.TermId
-                ).Count(),
+                occurrences == null ? 0 : occurrences.TotalOccurrences,
+                prepared == null ? 0 : prepared.PreparedOccurrences,
                 metadata == null ? null : metadata.CoverImageUrl))
             .Take(10)
             .ToListAsync(cancellationToken);
@@ -69,12 +94,12 @@ public sealed class IndexModel(AppDbContext db) : PageModel
         string AnimeTitle,
         int SeasonNumber,
         int Number,
-        int TotalTerms,
-        int KnownTerms,
+        int TotalOccurrences,
+        int PreparedOccurrences,
         string? CoverImageUrl)
     {
-        public int PreparationPercent => TotalTerms == 0
+        public int PreparationPercent => TotalOccurrences == 0
             ? 0
-            : (int)Math.Round((double)KnownTerms / TotalTerms * 100);
+            : (int)Math.Floor((double)PreparedOccurrences / TotalOccurrences * 100);
     }
 }
