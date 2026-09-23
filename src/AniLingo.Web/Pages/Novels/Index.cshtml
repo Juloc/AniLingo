@@ -15,20 +15,23 @@
     </div>
 </section>
 
-<section class="novel-import-card">
-    <div>
-        <strong>Import from Narou</strong>
-        <span>Paste a ncode.syosetu.com work or chapter URL. The table of contents is stored immediately; chapter text loads when you open it.</span>
-    </div>
-    <form method="post" asp-page-handler="Import" class="novel-import-form">
-        <input type="url"
-               name="sourceUrl"
-               required
-               inputmode="url"
-               placeholder="https://ncode.syosetu.com/n9669bk/" />
-        <button class="button button-primary" type="submit">Import</button>
-    </form>
-</section>
+@if (Model.IsOwner)
+{
+    <section class="novel-import-card">
+        <div>
+            <strong>Import from Narou</strong>
+            <span>Paste a ncode.syosetu.com work or chapter URL. The table of contents is stored immediately; chapter text loads when you open it.</span>
+        </div>
+        <form method="post" asp-page-handler="Import" class="novel-import-form">
+            <input type="url"
+                   name="sourceUrl"
+                   required
+                   inputmode="url"
+                   placeholder="https://ncode.syosetu.com/n9669bk/" />
+            <button class="button button-primary" type="submit">Import</button>
+        </form>
+    </section>
+}
 
 @if (Model.Works.Count == 0)
 {
