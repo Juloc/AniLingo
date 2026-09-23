@@ -18,7 +18,7 @@ public sealed class NovelTests
               <head><title>Fallback title - 無職転生</title></head>
               <body>
                 <h1 class="p-novel__title">第百五十七話「覚悟」</h1>
-                <div id="novel_honbun">
+                <div class="p-novel__body">
                   <p>最近、<ruby>ルディ<rt>Rudy</rt></ruby>の様子がおかしい。</p>
                   <p>でも、大丈夫だ。</p>
                 </div>
