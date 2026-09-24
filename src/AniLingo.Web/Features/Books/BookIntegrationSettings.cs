@@ -19,16 +19,19 @@ public static class BookIntegrationSettingsStore
     public static string SettingsPath =>
         Path.Combine("/data", "books", "integrations.json");
 
-    public static BookIntegrationSettings Load()
+    public static BookIntegrationSettings Load(
+        string? path = null)
     {
+        path ??= SettingsPath;
+
         try
         {
-            if (!File.Exists(SettingsPath))
+            if (!File.Exists(path))
             {
                 return BookIntegrationSettings.Empty;
             }
 
-            var json = File.ReadAllText(SettingsPath);
+            var json = File.ReadAllText(path);
             return JsonSerializer.Deserialize<BookIntegrationSettings>(json)
                 ?? BookIntegrationSettings.Empty;
         }
@@ -43,12 +46,15 @@ public static class BookIntegrationSettingsStore
 
     public static async Task SaveAsync(
         BookIntegrationSettings settings,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? path = null)
     {
+        path ??= SettingsPath;
+
         await Gate.WaitAsync(cancellationToken);
         try
         {
-            var directory = Path.GetDirectoryName(SettingsPath)
+            var directory = Path.GetDirectoryName(path)
                 ?? throw new InvalidOperationException(
                     "Books integration settings directory is unavailable.");
             Directory.CreateDirectory(directory);
@@ -61,7 +67,7 @@ public static class BookIntegrationSettingsStore
                     WriteIndented = true
                 });
 
-            var temporary = SettingsPath + ".tmp";
+            var temporary = path + ".tmp";
             await File.WriteAllTextAsync(
                 temporary,
                 json,
@@ -69,7 +75,7 @@ public static class BookIntegrationSettingsStore
 
             File.Move(
                 temporary,
-                SettingsPath,
+                path,
                 overwrite: true);
         }
         finally
