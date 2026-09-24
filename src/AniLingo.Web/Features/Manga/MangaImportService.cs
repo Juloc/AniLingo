@@ -5,9 +5,19 @@ using System.Text.RegularExpressions;
 
 namespace AniLingo.Web.Features.Manga;
 
-public sealed partial class MangaImportService(MangaRepository repository)
+public sealed partial class MangaImportService
 {
     public const string CacheRoot = "/data/manga-cache";
+    private readonly MangaRepository repository;
+    private readonly string cacheRoot;
+
+    public MangaImportService(
+        MangaRepository repository,
+        string? cacheRoot = null)
+    {
+        this.repository = repository;
+        this.cacheRoot = Path.GetFullPath(cacheRoot ?? CacheRoot);
+    }
     private const int MaximumPagesPerChapter = 2000;
     private const long MaximumPageBytes = 100L * 1024 * 1024;
     private const long MaximumChapterBytes = 4L * 1024 * 1024 * 1024;
@@ -394,11 +404,11 @@ public sealed partial class MangaImportService(MangaRepository repository)
         Directory.Move(temporary, destination);
     }
 
-    private static string GetChapterCacheDirectory(
+    private string GetChapterCacheDirectory(
         Guid seriesId,
         Guid chapterId) =>
         Path.Combine(
-            CacheRoot,
+            cacheRoot,
             seriesId.ToString("N"),
             chapterId.ToString("N"));
 
