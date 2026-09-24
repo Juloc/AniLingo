@@ -385,6 +385,11 @@
     </div>
 
     <main class="novel-reader-content" data-reader-content>
+        <header class="novel-reader-title novel-reader-page-title">
+            <span class="novel-chapter-label">Kapitel @Model.Chapter.Number</span>
+            <h1>@Model.Chapter.Title</h1>
+        </header>
+
         @for (var index = 0; index < pairCount; index++)
         {
             <section class="novel-reader-segment" data-reader-segment="@index">
