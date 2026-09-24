@@ -1,5 +1,7 @@
+using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Novels;
+using AniLingo.Web.Features.ReaderPreferences;
 using AniLingo.Web.Infrastructure;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -12,6 +14,7 @@ public sealed class ReadModel(
     NovelTranslationService translations,
     NovelMappingService mappings,
     BackgroundJobQueue jobs,
+    AppDbContext db,
     CurrentAccountContext account) : PageModel
 {
     public NovelWork Work { get; private set; } = null!;
@@ -25,6 +28,7 @@ public sealed class ReadModel(
     public IReadOnlyList<NovelChapterItem> Chapters { get; private set; } = [];
     public NovelProgress? Progress { get; private set; }
     public NovelBookmark? JumpBookmark { get; private set; }
+    public ReaderSettingsSnapshot ReaderSettings { get; private set; } = null!;
     public Guid? PreviousChapterId { get; private set; }
     public Guid? NextChapterId { get; private set; }
     public bool IsOwner => account.IsOwner;
@@ -55,6 +59,13 @@ public sealed class ReadModel(
 
         Work = result.Value.Work;
         Chapter = result.Value.Chapter;
+
+        ReaderSettings = await ReaderPreferenceStore.GetAsync(
+            db,
+            account.ProfileId,
+            Work.Id,
+            Work.MetadataGenresJson,
+            cancellationToken);
 
         var workDetail = await novels.GetWorkAsync(
             Work.Id,
@@ -234,6 +245,8 @@ public sealed class ReadModel(
         int? paragraphIndex,
         int characterOffset,
         string? label,
+        string? style,
+        string? color,
         CancellationToken cancellationToken)
     {
         try
@@ -246,6 +259,8 @@ public sealed class ReadModel(
                 paragraphIndex,
                 characterOffset,
                 label,
+                style,
+                color,
                 cancellationToken);
 
             return new JsonResult(new
@@ -257,7 +272,9 @@ public sealed class ReadModel(
                 bookmark.ParagraphIndex,
                 bookmark.CharacterOffset,
                 bookmark.AnchorText,
-                bookmark.Label
+                bookmark.Label,
+                bookmark.Style,
+                bookmark.Color
             });
         }
         catch (InvalidOperationException exception)
@@ -279,6 +296,113 @@ public sealed class ReadModel(
         return IsFetchRequest()
             ? new OkResult()
             : RedirectToPage(new { id });
+    }
+
+    public async Task<IActionResult> OnPostReaderSettingsAsync(
+        Guid id,
+        string? scope,
+        string? changedKey,
+        ReaderSettingsInput input,
+        CancellationToken cancellationToken)
+    {
+        var result = await novels.GetChapterAsync(id, cancellationToken);
+        if (result is null)
+        {
+            return NotFound();
+        }
+
+        try
+        {
+            if (string.Equals(scope, "default", StringComparison.OrdinalIgnoreCase))
+            {
+                await ReaderPreferenceStore.SaveUserDefaultsAsync(
+                    db,
+                    account.ProfileId,
+                    input,
+                    cancellationToken);
+            }
+            else
+            {
+                if (string.IsNullOrWhiteSpace(changedKey))
+                {
+                    return BadRequest("A reader setting key is required.");
+                }
+
+                await ReaderPreferenceStore.SaveBookOverrideAsync(
+                    db,
+                    account.ProfileId,
+                    result.Value.Work.Id,
+                    changedKey,
+                    input,
+                    cancellationToken);
+            }
+
+            var settings = await ReaderPreferenceStore.GetAsync(
+                db,
+                account.ProfileId,
+                result.Value.Work.Id,
+                result.Value.Work.MetadataGenresJson,
+                cancellationToken);
+
+            return new JsonResult(new { settings });
+        }
+        catch (InvalidOperationException exception)
+        {
+            return BadRequest(exception.Message);
+        }
+    }
+
+    public async Task<IActionResult> OnPostResetReaderSettingsAsync(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var result = await novels.GetChapterAsync(id, cancellationToken);
+        if (result is null)
+        {
+            return NotFound();
+        }
+
+        await ReaderPreferenceStore.ResetBookAsync(
+            db,
+            account.ProfileId,
+            result.Value.Work.Id,
+            cancellationToken);
+
+        var settings = await ReaderPreferenceStore.GetAsync(
+            db,
+            account.ProfileId,
+            result.Value.Work.Id,
+            result.Value.Work.MetadataGenresJson,
+            cancellationToken);
+
+        return new JsonResult(new { settings });
+    }
+
+    public async Task<IActionResult> OnPostBookmarkAppearanceAsync(
+        Guid id,
+        Guid bookmarkId,
+        string? style,
+        string? color,
+        CancellationToken cancellationToken)
+    {
+        var bookmark = await novels.UpdateBookmarkAppearanceAsync(
+            account.ProfileId,
+            bookmarkId,
+            style,
+            color,
+            cancellationToken);
+
+        if (bookmark is null)
+        {
+            return NotFound();
+        }
+
+        return new JsonResult(new
+        {
+            bookmark.Id,
+            bookmark.Style,
+            bookmark.Color
+        });
     }
 
     public async Task<IActionResult> OnPostHighlightAsync(

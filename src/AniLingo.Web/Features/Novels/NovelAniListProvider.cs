@@ -29,6 +29,7 @@ public sealed partial class NovelAniListProvider(
               status
               chapters
               volumes
+              genres
               isAdult
             }
           }
@@ -211,7 +212,8 @@ public sealed partial class NovelAniListProvider(
             format,
             ReadString(media, "status"),
             ReadInt(media, "chapters"),
-            ReadInt(media, "volumes"));
+            ReadInt(media, "volumes"),
+            ReadStringArray(media, "genres"));
     }
 
     private static string? NormalizeDescription(string? value)
@@ -245,6 +247,28 @@ public sealed partial class NovelAniListProvider(
         value.TryGetInt32(out var number)
             ? number
             : null;
+
+    private static IReadOnlyList<string> ReadStringArray(
+        JsonElement element,
+        string propertyName)
+    {
+        if (element.ValueKind != JsonValueKind.Object ||
+            !element.TryGetProperty(propertyName, out var value) ||
+            value.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        return value.EnumerateArray()
+            .Where(x => x.ValueKind == JsonValueKind.String)
+            .Select(x => x.GetString()?.Trim())
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(24)
+            .ToArray();
+    }
+
 
     private static string? FirstNonEmpty(params string?[] values) =>
         values.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x))?.Trim();

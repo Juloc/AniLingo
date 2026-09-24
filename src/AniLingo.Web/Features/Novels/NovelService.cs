@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using AniLingo.Web.Data;
+using AniLingo.Web.Features.ReaderPreferences;
 using Microsoft.EntityFrameworkCore;
 
 namespace AniLingo.Web.Features.Novels;
@@ -343,6 +344,27 @@ public sealed class NovelService(
                 x => x.ProfileId == profileId && x.WorkId == workId,
                 cancellationToken);
 
+    public Task<NovelBookmark> AddBookmarkAsync(
+        string profileId,
+        Guid chapterId,
+        int positionPermille,
+        string language,
+        int? paragraphIndex,
+        int characterOffset,
+        string? label,
+        CancellationToken cancellationToken) =>
+        AddBookmarkAsync(
+            profileId,
+            chapterId,
+            positionPermille,
+            language,
+            paragraphIndex,
+            characterOffset,
+            label,
+            null,
+            null,
+            cancellationToken);
+
     public async Task<NovelBookmark> AddBookmarkAsync(
         string profileId,
         Guid chapterId,
@@ -351,6 +373,8 @@ public sealed class NovelService(
         int? paragraphIndex,
         int characterOffset,
         string? label,
+        string? style,
+        string? color,
         CancellationToken cancellationToken)
     {
         var chapter = await db.NovelChapters
@@ -376,7 +400,9 @@ public sealed class NovelService(
             ParagraphIndex = resolvedParagraph,
             CharacterOffset = resolvedOffset,
             AnchorText = anchorText,
-            Label = NormalizeOptional(label, 120)
+            Label = NormalizeOptional(label, 120),
+            Style = ReaderPreferenceRules.NormalizeBookmarkStyle(style),
+            Color = ReaderPreferenceRules.NormalizeBookmarkColor(color)
         };
 
         db.NovelBookmarks.Add(bookmark);
@@ -393,6 +419,29 @@ public sealed class NovelService(
             .Where(x => x.ProfileId == profileId && x.WorkId == workId)
             .OrderBy(x => x.CreatedAt)
             .ToListAsync(cancellationToken);
+
+    public async Task<NovelBookmark?> UpdateBookmarkAppearanceAsync(
+        string profileId,
+        Guid bookmarkId,
+        string? style,
+        string? color,
+        CancellationToken cancellationToken)
+    {
+        var bookmark = await db.NovelBookmarks
+            .SingleOrDefaultAsync(
+                x => x.Id == bookmarkId && x.ProfileId == profileId,
+                cancellationToken);
+
+        if (bookmark is null)
+        {
+            return null;
+        }
+
+        bookmark.Style = ReaderPreferenceRules.NormalizeBookmarkStyle(style);
+        bookmark.Color = ReaderPreferenceRules.NormalizeBookmarkColor(color);
+        await db.SaveChangesAsync(cancellationToken);
+        return bookmark;
+    }
 
     public async Task RemoveBookmarkAsync(
         string profileId,

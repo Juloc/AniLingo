@@ -109,6 +109,37 @@ namespace AniLingo.Web.Data.Migrations
                     b.ToTable("LearningPreferences");
                 });
 
+            modelBuilder.Entity("AniLingo.Web.Features.ReaderPreferences.ReaderPreference", b =>
+                {
+                    b.Property<Guid>("Id").ValueGeneratedOnAdd().HasColumnType("TEXT");
+                    b.Property<double?>("AutoScrollSpeed").HasColumnType("REAL");
+                    b.Property<double?>("BackgroundIntensity").HasColumnType("REAL");
+                    b.Property<string>("BackgroundAssetId").HasMaxLength(120).HasColumnType("TEXT");
+                    b.Property<string>("BookmarkColor").HasMaxLength(16).HasColumnType("TEXT");
+                    b.Property<string>("BookmarkStyle").HasMaxLength(24).HasColumnType("TEXT");
+                    b.Property<string>("ChapterStyle").HasMaxLength(32).HasColumnType("TEXT");
+                    b.Property<string>("FontFamily").HasMaxLength(100).HasColumnType("TEXT");
+                    b.Property<double?>("FontSizeRem").HasColumnType("REAL");
+                    b.Property<bool?>("GenreArtworkEnabled").HasColumnType("INTEGER");
+                    b.Property<string>("GenreTheme").HasMaxLength(48).HasColumnType("TEXT");
+                    b.Property<double?>("LineHeight").HasColumnType("REAL");
+                    b.Property<string>("PageTransition").HasMaxLength(24).HasColumnType("TEXT");
+                    b.Property<string>("PaperStyle").HasMaxLength(32).HasColumnType("TEXT");
+                    b.Property<double?>("ParagraphSpacingEm").HasColumnType("REAL");
+                    b.Property<string>("ProfileId").IsRequired().HasMaxLength(80).HasColumnType("TEXT");
+                    b.Property<string>("ReadingMode").HasMaxLength(24).HasColumnType("TEXT");
+                    b.Property<string>("ScopeKey").IsRequired().HasMaxLength(80).HasColumnType("TEXT");
+                    b.Property<string>("TextAlignment").HasMaxLength(24).HasColumnType("TEXT");
+                    b.Property<int?>("TextWidthPx").HasColumnType("INTEGER");
+                    b.Property<bool?>("TwoPageSpread").HasColumnType("INTEGER");
+                    b.Property<DateTime>("UpdatedAt").HasColumnType("TEXT");
+                    b.Property<Guid?>("WorkId").HasColumnType("TEXT");
+                    b.HasKey("Id");
+                    b.HasIndex("WorkId");
+                    b.HasIndex("ProfileId", "ScopeKey").IsUnique();
+                    b.ToTable("ReaderPreferences");
+                });
+
             modelBuilder.Entity("AniLingo.Web.Features.Learning.Review", b =>
                 {
                     b.Property<long>("Id")
@@ -618,6 +649,8 @@ namespace AniLingo.Web.Data.Migrations
                     b.Property<Guid>("ChapterId").HasColumnType("TEXT");
                     b.Property<DateTime>("CreatedAt").HasColumnType("TEXT");
                     b.Property<string>("Label").HasMaxLength(120).HasColumnType("TEXT");
+                    b.Property<string>("Style").HasMaxLength(24).HasColumnType("TEXT");
+                    b.Property<string>("Color").HasMaxLength(16).HasColumnType("TEXT");
                     b.Property<string>("Language").IsRequired().HasMaxLength(16).HasColumnType("TEXT");
                     b.Property<int?>("ParagraphIndex").HasColumnType("INTEGER");
                     b.Property<int>("PositionPermille").HasColumnType("INTEGER");
@@ -698,6 +731,7 @@ namespace AniLingo.Web.Data.Migrations
                     b.Property<int?>("MetadataChapterCount").HasColumnType("INTEGER");
                     b.Property<string>("MetadataDescription").HasColumnType("TEXT");
                     b.Property<string>("MetadataExternalId").HasMaxLength(200).HasColumnType("TEXT");
+                    b.Property<string>("MetadataGenresJson").HasColumnType("TEXT");
                     b.Property<string>("MetadataNativeTitle").HasMaxLength(500).HasColumnType("TEXT");
                     b.Property<string>("MetadataProvider").HasMaxLength(80).HasColumnType("TEXT");
                     b.Property<string>("MetadataStatus").HasMaxLength(80).HasColumnType("TEXT");
@@ -805,6 +839,14 @@ namespace AniLingo.Web.Data.Migrations
                         .HasForeignKey("TermId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("AniLingo.Web.Features.ReaderPreferences.ReaderPreference", b =>
+                {
+                    b.HasOne("AniLingo.Web.Features.Novels.NovelWork", null)
+                        .WithMany()
+                        .HasForeignKey("WorkId")
+                        .OnDelete(DeleteBehavior.Cascade);
                 });
 
             modelBuilder.Entity("AniLingo.Web.Features.Novels.NovelAnimeMapping", b =>
