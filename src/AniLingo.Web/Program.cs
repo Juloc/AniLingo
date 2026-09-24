@@ -90,27 +90,35 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
                 context.ShouldRenew = true;
             }
         };
-        options.Events.OnRedirectToLogin = context =>
+        options.Events.OnRedirectToLogin = async context =>
         {
             if (ClientApiRoutes.IsClientApi(context.Request.Path))
             {
                 context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                return Task.CompletedTask;
+                await context.Response.WriteAsJsonAsync(
+                    new ClientErrorResponse(
+                        "authentication_required",
+                        "Authentication is required for this AniLingo client API endpoint."),
+                    context.HttpContext.RequestAborted);
+                return;
             }
 
             context.Response.Redirect(context.RedirectUri);
-            return Task.CompletedTask;
         };
-        options.Events.OnRedirectToAccessDenied = context =>
+        options.Events.OnRedirectToAccessDenied = async context =>
         {
             if (ClientApiRoutes.IsClientApi(context.Request.Path))
             {
                 context.Response.StatusCode = StatusCodes.Status403Forbidden;
-                return Task.CompletedTask;
+                await context.Response.WriteAsJsonAsync(
+                    new ClientErrorResponse(
+                        "access_denied",
+                        "The authenticated account is not allowed to use this endpoint."),
+                    context.HttpContext.RequestAborted);
+                return;
             }
 
             context.Response.Redirect(context.RedirectUri);
-            return Task.CompletedTask;
         };
     });
 builder.Services.AddAuthorization(options =>
