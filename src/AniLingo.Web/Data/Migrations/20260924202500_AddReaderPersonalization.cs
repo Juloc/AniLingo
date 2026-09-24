@@ -40,6 +40,7 @@ public sealed class AddReaderPersonalization : Migration
                 "PaperStyle" TEXT NULL,
                 "GenreArtworkEnabled" INTEGER NULL,
                 "GenreTheme" TEXT NULL,
+                "BackgroundAssetId" TEXT NULL,
                 "BackgroundIntensity" REAL NULL,
                 "BookmarkStyle" TEXT NULL,
                 "BookmarkColor" TEXT NULL,
