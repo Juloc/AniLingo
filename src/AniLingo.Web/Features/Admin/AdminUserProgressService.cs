@@ -189,12 +189,13 @@ public sealed class AdminUserProgressService(AppDbContext db)
             .ToArray();
     }
 
-    private static DateTime? MaxDate(params DateTime?[] values) =>
-        values
+    private static DateTime? MaxDate(params DateTime?[] values)
+    {
+        var dates = values
             .Where(x => x.HasValue)
             .Select(x => x!.Value)
-            .DefaultIfEmpty()
-            .Max() is var maximum && maximum != default
-                ? maximum
-                : null;
+            .ToArray();
+
+        return dates.Length == 0 ? null : dates.Max();
+    }
 }
