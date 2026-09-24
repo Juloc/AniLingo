@@ -432,6 +432,69 @@ public sealed class BookCatalogServiceTests
     }
 
     [TestMethod]
+    public async Task LaterBookChapterUsesPreviousTargetTranslationAsContinuityContext()
+    {
+        var path = TempDatabasePath();
+
+        try
+        {
+            await using var db = await CreateDatabaseAsync(path);
+            using var client = new HttpClient(new DelegateHttpMessageHandler(
+                _ => throw new AssertFailedException("Translation should not use HTTP.")))
+            {
+                BaseAddress = new Uri("https://gutendex.com/")
+            };
+            var translator = new FakeBookTranslator();
+            var service = NewService(db, client, translator);
+
+            await using var epub = BuildTestEpub();
+            var workId = await service.ImportUploadedEpubAsync(
+                epub,
+                "continuity.epub",
+                CancellationToken.None);
+
+            var chapters = await db.NovelChapters
+                .Where(x => x.WorkId == workId)
+                .OrderBy(x => x.Number)
+                .Select(x => x.Id)
+                .ToArrayAsync();
+
+            Assert.AreEqual(2, chapters.Length);
+
+            await service.TranslateChapterAsync(
+                chapters[0],
+                "id",
+                CancellationToken.None);
+            await service.TranslateChapterAsync(
+                chapters[1],
+                "id",
+                CancellationToken.None);
+
+            Assert.AreEqual(2, translator.CallCount);
+            Assert.AreEqual(2, translator.Contexts.Count);
+
+            var secondContext = translator.Contexts[1];
+            StringAssert.Contains(
+                secondContext,
+                "Previous source chapter ending");
+            StringAssert.Contains(
+                secondContext,
+                "Previously established Indonesian translation ending");
+            StringAssert.Contains(
+                secondContext,
+                "Hello world.");
+            StringAssert.Contains(
+                secondContext,
+                "[id]");
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            File.Delete(path);
+        }
+    }
+
+    [TestMethod]
     public async Task IntegrationSettingsPersistWithoutExposingDefaults()
     {
         var directory = Path.Combine(
@@ -705,6 +768,7 @@ public sealed class BookCatalogServiceTests
     {
         public string Id => "fake-books";
         public int CallCount { get; private set; }
+        public List<string> Contexts { get; } = [];
 
         public Task<string> TranslateLiteraryAsync(
             string sourceText,
@@ -714,6 +778,7 @@ public sealed class BookCatalogServiceTests
             CancellationToken cancellationToken)
         {
             CallCount++;
+            Contexts.Add(context);
             return Task.FromResult(
                 $"[{targetLanguage}] {sourceText}");
         }
