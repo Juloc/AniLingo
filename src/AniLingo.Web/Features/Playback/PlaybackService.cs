@@ -347,6 +347,7 @@ public sealed class PlaybackService
         var media = await GetMediaAsync(episodeId, cancellationToken);
         var cueSet = await GetCueSetAsync(
             episodeId,
+            trackId: null,
             fromMs: null,
             toMs: null,
             cancellationToken);
@@ -356,6 +357,7 @@ public sealed class PlaybackService
 
     public async Task<PlaybackCueSet> GetCueSetAsync(
         Guid episodeId,
+        Guid? trackId,
         int? fromMs,
         int? toMs,
         CancellationToken cancellationToken)
@@ -371,22 +373,29 @@ public sealed class PlaybackService
             throw new ArgumentException("fromMs must be less than or equal to toMs.");
         }
 
-        var trackId = await db.SubtitleTracks
+        var trackQuery = db.SubtitleTracks
             .AsNoTracking()
-            .Where(x => x.EpisodeId == episodeId && x.Language == "ja")
+            .Where(x => x.EpisodeId == episodeId && x.Language == "ja");
+
+        if (trackId.HasValue)
+        {
+            trackQuery = trackQuery.Where(x => x.Id == trackId.Value);
+        }
+
+        var resolvedTrackId = await trackQuery
             .OrderByDescending(x => x.ImportedAt)
             .ThenBy(x => x.Id)
             .Select(x => (Guid?)x.Id)
             .FirstOrDefaultAsync(cancellationToken);
 
-        if (trackId is null)
+        if (resolvedTrackId is null)
         {
             return PlaybackCueSet.Empty;
         }
 
         var cueQuery = db.SubtitleCues
             .AsNoTracking()
-            .Where(x => x.SubtitleTrackId == trackId.Value);
+            .Where(x => x.SubtitleTrackId == resolvedTrackId.Value);
 
         if (fromMs.HasValue)
         {
@@ -430,7 +439,7 @@ public sealed class PlaybackService
                 cue.Id))
             .ToArray();
 
-        return new PlaybackCueSet(trackId, projected);
+        return new PlaybackCueSet(resolvedTrackId, projected);
     }
 
     public async Task<PlaybackStream?> GetOriginalContentAsync(
