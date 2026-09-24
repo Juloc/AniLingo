@@ -88,3 +88,11 @@ Localization and learning languages are separate concepts.
 A user may use AniLingo UI in German, Japanese → Indonesian as one Learning course, German → Indonesian as another Learning course, or no Learning system at all.
 
 Learning capability visibility is resolved independently through the Learning v2 profile → media type → work/series → content inheritance hierarchy tracked in issue #226.
+
+## Runtime selection
+
+The Owner registers and generates application locales at /Admin/Languages. Each authenticated profile can choose one of those enabled locales at /Settings/Language.
+
+The profile choice is stored in UiProfileLocales. Runtime UI reads use UiTranslationCatalogStore.LoadProfileBundleAsync: persisted exact-locale values override parent-locale values, which override the English source resource. Runtime reads never invoke the AI generator.
+
+The shared layout applies the resolved BCP-47 lang and text direction. Home and Learning are the first migrated surfaces; remaining hardcoded fixed UI text must move incrementally to the same catalog rather than creating page-specific localization systems.
