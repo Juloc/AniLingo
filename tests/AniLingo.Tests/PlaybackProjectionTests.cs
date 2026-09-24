@@ -32,7 +32,18 @@ public sealed class PlaybackProjectionTests
         Assert.AreEqual("Katze", vocabularyToken.Meaning);
         Assert.AreEqual("Known", vocabularyToken.State);
 
-        Assert.IsFalse(cue.Tokens.Single(x => x.Surface == "が").IsVocabulary);
+        var particle = cue.Tokens.Single(x => x.Surface == "が");
+        Assert.IsFalse(particle.IsVocabulary);
+        Assert.IsTrue(particle.IsInteractive);
+        Assert.AreEqual("が", particle.Canonical);
+        Assert.AreEqual("が", particle.Reading);
+
+        var verb = cue.Tokens.Single(x => x.Surface == "来た");
+        Assert.IsTrue(verb.IsInteractive);
+        Assert.AreEqual("来る", verb.Canonical);
+        Assert.AreEqual("きた", verb.Reading);
+
+        Assert.IsFalse(cue.Tokens.Single(x => x.Surface == "!").IsInteractive);
     }
 
     [TestMethod]
