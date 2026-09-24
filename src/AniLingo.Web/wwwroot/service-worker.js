@@ -1,10 +1,15 @@
-const CACHE_VERSION = "anilingo-static-v2";
+const CACHE_PREFIX = "anilingo-static-";
+const CACHE_VERSION = CACHE_PREFIX + "v3";
 const PRECACHE = [
   "/offline.html",
   "/css/site.css",
   "/js/pwa.js",
   "/js/offline-review.js",
   "/icons/anilingo.svg",
+  "/icons/anilingo-192.png",
+  "/icons/anilingo-512.png",
+  "/icons/anilingo-maskable-512.png",
+  "/icons/apple-touch-icon.png",
   "/manifest.webmanifest"
 ];
 
@@ -12,7 +17,6 @@ self.addEventListener("install", event => {
   event.waitUntil(
     caches.open(CACHE_VERSION)
       .then(cache => cache.addAll(PRECACHE))
-      .then(() => self.skipWaiting())
   );
 });
 
@@ -21,11 +25,17 @@ self.addEventListener("activate", event => {
     caches.keys()
       .then(keys => Promise.all(
         keys
-          .filter(key => key.startsWith("anilingo-static-") && key !== CACHE_VERSION)
+          .filter(key => key.startsWith(CACHE_PREFIX) && key !== CACHE_VERSION)
           .map(key => caches.delete(key))
       ))
       .then(() => self.clients.claim())
   );
+});
+
+self.addEventListener("message", event => {
+  if (event.data?.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener("fetch", event => {
