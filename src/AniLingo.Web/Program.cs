@@ -2,6 +2,7 @@ using AniLingo.Web.Data;
 using AniLingo.Web.Features.Admin;
 using AniLingo.Web.Features.Ai;
 using AniLingo.Web.Features.Auth;
+using AniLingo.Web.Features.Books;
 using AniLingo.Web.Features.ClientApi;
 using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Library;
@@ -224,6 +225,14 @@ builder.Services.AddScoped<NovelMetadataService>();
 builder.Services.AddScoped<NovelTranslationService>();
 builder.Services.AddScoped<NovelMappingService>();
 
+builder.Services.AddHttpClient<BookCatalogService>(client =>
+{
+    client.BaseAddress = new Uri("https://gutendex.com/");
+    client.Timeout = TimeSpan.FromSeconds(20);
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("AniLingo/0.1 (+https://github.com/Juloc/AniLingo)");
+    client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
+});
+
 builder.Services.AddSingleton<SonarrConnectionStore>();
 builder.Services.AddScoped<SonarrArtworkImportService>();
 builder.Services.AddScoped<SonarrArtworkSyncService>();
@@ -240,6 +249,7 @@ builder.Services.AddSingleton<CodexCliProvider>();
 builder.Services.AddSingleton<IAiProvider>(services => services.GetRequiredService<CodexCliProvider>());
 builder.Services.AddSingleton<IAiSentenceExplainer>(services => services.GetRequiredService<CodexCliProvider>());
 builder.Services.AddSingleton<INovelTranslator>(services => services.GetRequiredService<CodexCliProvider>());
+builder.Services.AddSingleton<IBookTranslator>(services => services.GetRequiredService<CodexCliProvider>());
 builder.Services.AddSingleton<INovelMappingSuggester>(services => services.GetRequiredService<CodexCliProvider>());
 builder.Services.AddScoped<AiSentenceExplanationService>();
 

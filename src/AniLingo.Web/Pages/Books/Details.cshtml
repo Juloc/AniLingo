@@ -1,0 +1,108 @@
+@page "/Books/{id:int}"
+@model AniLingo.Web.Pages.Books.DetailsModel
+@{
+    ViewData["Title"] = Model.Book?.Title ?? "Book";
+}
+@section Head {
+    <link rel="stylesheet" href="~/css/books.css" asp-append-version="true" />
+}
+
+<a class="books-back" href="/Books">← Books</a>
+
+@if (Model.Book is not null)
+{
+    <header class="book-detail-header">
+        <div class="book-detail-cover">
+            @if (!string.IsNullOrWhiteSpace(Model.Book.CoverImageUrl))
+            {
+                <img src="@Model.Book.CoverImageUrl"
+                     alt=""
+                     referrerpolicy="no-referrer" />
+            }
+            else
+            {
+                <span>B</span>
+            }
+        </div>
+
+        <div class="book-detail-copy">
+            <h1>@Model.Book.Title</h1>
+            @if (!string.IsNullOrWhiteSpace(Model.Book.Author))
+            {
+                <p class="book-author">@Model.Book.Author</p>
+            }
+            @if (!string.IsNullOrWhiteSpace(Model.Book.Summary))
+            {
+                <p class="book-summary">@Model.Book.Summary</p>
+            }
+            @if (Model.Book.Subjects.Count > 0)
+            {
+                <div class="book-tags">
+                    @foreach (var subject in Model.Book.Subjects.Take(5))
+                    {
+                        <span>@subject</span>
+                    }
+                </div>
+            }
+
+            <div class="book-actions">
+                <form method="post"
+                      asp-page-handler="Translate"
+                      asp-route-id="@Model.Book.Id">
+                    <button class="button button-primary"
+                            type="submit"
+                            disabled="@string.IsNullOrWhiteSpace(Model.SourceText)">
+                        Translate to Indonesian
+                    </button>
+                </form>
+                <a class="button"
+                   href="https://www.gutenberg.org/ebooks/@Model.Book.Id"
+                   target="_blank"
+                   rel="noopener noreferrer">Source</a>
+            </div>
+        </div>
+    </header>
+}
+
+@if (!string.IsNullOrWhiteSpace(Model.Error))
+{
+    <div class="books-message">@Model.Error</div>
+}
+
+@if (Model.TranslatedParagraphs.Count > 0)
+{
+    <section class="book-reader">
+        <div class="book-reader-heading">
+            <div>
+                <span class="book-reader-language">Indonesian</span>
+                <h2>Translation preview</h2>
+            </div>
+            <span>temporary test · not saved yet</span>
+        </div>
+        <article class="book-prose">
+            @foreach (var paragraph in Model.TranslatedParagraphs)
+            {
+                <p>@paragraph</p>
+            }
+        </article>
+    </section>
+}
+
+@if (Model.OriginalParagraphs.Count > 0)
+{
+    <section class="book-reader book-reader-original">
+        <div class="book-reader-heading">
+            <div>
+                <span class="book-reader-language">English</span>
+                <h2>Original sample</h2>
+            </div>
+            <span>Project Gutenberg</span>
+        </div>
+        <article class="book-prose">
+            @foreach (var paragraph in Model.OriginalParagraphs)
+            {
+                <p>@paragraph</p>
+            }
+        </article>
+    </section>
+}

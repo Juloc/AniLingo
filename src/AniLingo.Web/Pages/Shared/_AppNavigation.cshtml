@@ -17,6 +17,9 @@
         <a class="nav-item @(path.StartsWithSegments("/Novels") ? "active" : "")" href="/Novels">
             <span class="nav-glyph">N</span><span>Novels</span>
         </a>
+        <a class="nav-item @(path.StartsWithSegments("/Books") ? "active" : "")" href="/Books">
+            <span class="nav-glyph">B</span><span>Books</span>
+        </a>
         <a class="nav-item @(path.StartsWithSegments("/Learn") ? "active" : "")" href="/Learn">
             <span class="nav-glyph">R</span><span>Learn</span>
         </a>
@@ -41,6 +44,7 @@
     <a class="@(path == "/" ? "active" : "")" href="/">Home</a>
     <a class="@(path.StartsWithSegments("/Library") ? "active" : "")" href="/Library">Library</a>
     <a class="@(path.StartsWithSegments("/Novels") ? "active" : "")" href="/Novels">Novels</a>
+    <a class="@(path.StartsWithSegments("/Books") ? "active" : "")" href="/Books">Books</a>
     <a class="@(path.StartsWithSegments("/Learn") ? "active" : "")" href="/Learn">Learn</a>
     <a class="@(path.StartsWithSegments("/Statistics") ? "active" : "")" href="/Statistics">Progress</a>
     <a class="@(path.StartsWithSegments("/Settings") ? "active" : "")" href="/Settings">Settings</a>
