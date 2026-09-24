@@ -72,26 +72,27 @@ public sealed partial class MangaUploadService
         Directory.CreateDirectory(seriesDirectory);
 
         var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var staged = new List<(string Temporary, string Destination)>();
 
-        foreach (var archive in usable)
+        try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            var fileName = SanitizeFileName(archive.FileName);
-            if (!seenNames.Add(fileName))
+            foreach (var archive in usable)
             {
-                throw new InvalidOperationException(
-                    $"The upload contains the file name '{fileName}' more than once.");
-            }
+                cancellationToken.ThrowIfCancellationRequested();
 
-            var destination = Path.GetFullPath(
-                Path.Combine(seriesDirectory, fileName));
-            EnsureInsideRoot(destination);
+                var fileName = SanitizeFileName(archive.FileName);
+                if (!seenNames.Add(fileName))
+                {
+                    throw new InvalidOperationException(
+                        $"The upload contains the file name '{fileName}' more than once.");
+                }
 
-            var temporary = destination + $".upload-{Guid.NewGuid():N}.tmp";
+                var destination = Path.GetFullPath(
+                    Path.Combine(seriesDirectory, fileName));
+                EnsureInsideRoot(destination);
 
-            try
-            {
+                var temporary = destination + $".upload-{Guid.NewGuid():N}.tmp";
+
                 await using (var input = archive.OpenReadStream())
                 await using (var output = new FileStream(
                     temporary,
@@ -105,27 +106,39 @@ public sealed partial class MangaUploadService
                 }
 
                 ValidateArchive(temporary);
-                File.Move(temporary, destination, overwrite: true);
+                staged.Add((temporary, destination));
             }
-            finally
+
+            // Do not replace any existing managed source until every selected
+            // archive has been copied and validated successfully.
+            foreach (var item in staged)
             {
-                if (File.Exists(temporary))
+                File.Move(item.Temporary, item.Destination, overwrite: true);
+            }
+
+            return seriesDirectory;
+        }
+        finally
+        {
+            foreach (var item in staged)
+            {
+                if (!File.Exists(item.Temporary))
                 {
-                    try
-                    {
-                        File.Delete(temporary);
-                    }
-                    catch (IOException)
-                    {
-                    }
-                    catch (UnauthorizedAccessException)
-                    {
-                    }
+                    continue;
+                }
+
+                try
+                {
+                    File.Delete(item.Temporary);
+                }
+                catch (IOException)
+                {
+                }
+                catch (UnauthorizedAccessException)
+                {
                 }
             }
         }
-
-        return seriesDirectory;
     }
 
     private static string NormalizeSeriesTitle(
