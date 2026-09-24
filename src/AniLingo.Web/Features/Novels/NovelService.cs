@@ -118,24 +118,88 @@ public sealed class NovelService(
         return chapter;
     }
 
-    public Task<List<NovelListItem>> GetWorksAsync(CancellationToken cancellationToken) =>
-        db.NovelWorks
+    public async Task<List<NovelListItem>> GetWorksAsync(
+        string profileId,
+        CancellationToken cancellationToken)
+    {
+        var works = await db.NovelWorks
             .AsNoTracking()
-            .OrderBy(x => x.Title)
-            .Select(work => new NovelListItem(
+            .OrderBy(x => x.MetadataTitle ?? x.Title)
+            .ToListAsync(cancellationToken);
+
+        if (works.Count == 0)
+        {
+            return [];
+        }
+
+        var workIds = works.Select(x => x.Id).ToArray();
+
+        var chapters = await db.NovelChapters
+            .AsNoTracking()
+            .Where(x => workIds.Contains(x.WorkId))
+            .Select(x => new
+            {
+                x.Id,
+                x.WorkId,
+                x.Number,
+                x.Title,
+                x.SourceHash,
+                HasContent = x.OriginalText != ""
+            })
+            .ToListAsync(cancellationToken);
+
+        var translations = await db.NovelTranslations
+            .AsNoTracking()
+            .Where(x => x.TargetLanguage == "de")
+            .Select(x => new { x.ChapterId, x.SourceHash })
+            .ToListAsync(cancellationToken);
+
+        var translated = translations
+            .Select(x => (x.ChapterId, x.SourceHash))
+            .ToHashSet();
+
+        var progresses = await db.NovelProgress
+            .AsNoTracking()
+            .Where(x => x.ProfileId == profileId && workIds.Contains(x.WorkId))
+            .ToDictionaryAsync(x => x.WorkId, cancellationToken);
+
+        var chaptersByWork = chapters
+            .GroupBy(x => x.WorkId)
+            .ToDictionary(x => x.Key, x => x.OrderBy(chapter => chapter.Number).ToArray());
+
+        var result = new List<NovelListItem>(works.Count);
+
+        foreach (var work in works)
+        {
+            var workChapters = chaptersByWork.GetValueOrDefault(work.Id) ?? [];
+            progresses.TryGetValue(work.Id, out var progress);
+            var current = progress is null
+                ? null
+                : workChapters.FirstOrDefault(x => x.Id == progress.ChapterId);
+
+            result.Add(new NovelListItem(
                 work.Id,
                 work.MetadataTitle ?? work.Title,
+                work.MetadataNativeTitle,
                 work.Author,
+                work.MetadataDescription ?? work.Description,
                 work.CoverImageUrl,
-                db.NovelChapters.Count(x => x.WorkId == work.Id),
-                db.NovelChapters.Count(x => x.WorkId == work.Id && x.OriginalText != ""),
-                db.NovelChapters.Count(chapter =>
-                    chapter.WorkId == work.Id &&
-                    db.NovelTranslations.Any(translation =>
-                        translation.ChapterId == chapter.Id &&
-                        translation.TargetLanguage == "de" &&
-                        translation.SourceHash == chapter.SourceHash))))
-            .ToListAsync(cancellationToken);
+                work.BannerImageUrl,
+                work.MetadataStatus,
+                work.MetadataChapterCount,
+                work.MetadataVolumeCount,
+                workChapters.Length,
+                workChapters.Count(x => x.HasContent),
+                workChapters.Count(x => translated.Contains((x.Id, x.SourceHash))),
+                current?.Id,
+                current?.Number,
+                current?.Title,
+                progress?.PositionPermille ?? 0,
+                progress?.UpdatedAt));
+        }
+
+        return result;
+    }
 
     public async Task<NovelWorkDetail?> GetWorkAsync(
         Guid workId,
@@ -223,8 +287,26 @@ public sealed class NovelService(
         Guid workId,
         Guid chapterId,
         int positionPermille,
+        string anchorLanguage,
+        int? anchorParagraphIndex,
+        int anchorOffset,
         CancellationToken cancellationToken)
     {
+        var chapter = await db.NovelChapters
+            .AsNoTracking()
+            .SingleOrDefaultAsync(
+                x => x.Id == chapterId && x.WorkId == workId,
+                cancellationToken)
+            ?? throw new InvalidOperationException("Novel chapter was not found in this work.");
+
+        var language = NormalizeLanguage(anchorLanguage);
+        var (paragraphIndex, offset, anchorText) = await ResolveAnchorAsync(
+            chapter,
+            language,
+            anchorParagraphIndex,
+            anchorOffset,
+            cancellationToken);
+
         var progress = await db.NovelProgress
             .SingleOrDefaultAsync(
                 x => x.ProfileId == profileId && x.WorkId == workId,
@@ -242,7 +324,12 @@ public sealed class NovelService(
 
         progress.ChapterId = chapterId;
         progress.PositionPermille = Math.Clamp(positionPermille, 0, 1000);
+        progress.AnchorLanguage = language;
+        progress.AnchorParagraphIndex = paragraphIndex;
+        progress.AnchorOffset = offset;
+        progress.AnchorText = anchorText;
         progress.UpdatedAt = DateTime.UtcNow;
+
         await db.SaveChangesAsync(cancellationToken);
     }
 
@@ -255,6 +342,211 @@ public sealed class NovelService(
             .SingleOrDefaultAsync(
                 x => x.ProfileId == profileId && x.WorkId == workId,
                 cancellationToken);
+
+    public async Task<NovelBookmark> AddBookmarkAsync(
+        string profileId,
+        Guid chapterId,
+        int positionPermille,
+        string language,
+        int? paragraphIndex,
+        int characterOffset,
+        string? label,
+        CancellationToken cancellationToken)
+    {
+        var chapter = await db.NovelChapters
+            .AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == chapterId, cancellationToken)
+            ?? throw new InvalidOperationException("Novel chapter was not found.");
+
+        language = NormalizeLanguage(language);
+        var (resolvedParagraph, resolvedOffset, anchorText) = await ResolveAnchorAsync(
+            chapter,
+            language,
+            paragraphIndex,
+            characterOffset,
+            cancellationToken);
+
+        var bookmark = new NovelBookmark
+        {
+            ProfileId = profileId,
+            WorkId = chapter.WorkId,
+            ChapterId = chapter.Id,
+            PositionPermille = Math.Clamp(positionPermille, 0, 1000),
+            Language = language,
+            ParagraphIndex = resolvedParagraph,
+            CharacterOffset = resolvedOffset,
+            AnchorText = anchorText,
+            Label = NormalizeOptional(label, 120)
+        };
+
+        db.NovelBookmarks.Add(bookmark);
+        await db.SaveChangesAsync(cancellationToken);
+        return bookmark;
+    }
+
+    public Task<List<NovelBookmark>> GetBookmarksAsync(
+        string profileId,
+        Guid workId,
+        CancellationToken cancellationToken) =>
+        db.NovelBookmarks
+            .AsNoTracking()
+            .Where(x => x.ProfileId == profileId && x.WorkId == workId)
+            .OrderBy(x => x.CreatedAt)
+            .ToListAsync(cancellationToken);
+
+    public async Task RemoveBookmarkAsync(
+        string profileId,
+        Guid bookmarkId,
+        CancellationToken cancellationToken)
+    {
+        var bookmark = await db.NovelBookmarks
+            .SingleOrDefaultAsync(
+                x => x.Id == bookmarkId && x.ProfileId == profileId,
+                cancellationToken);
+
+        if (bookmark is null)
+        {
+            return;
+        }
+
+        db.NovelBookmarks.Remove(bookmark);
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task<NovelHighlight> AddHighlightAsync(
+        string profileId,
+        Guid chapterId,
+        string language,
+        int paragraphIndex,
+        int startOffset,
+        int endOffset,
+        string? note,
+        CancellationToken cancellationToken)
+    {
+        var chapter = await db.NovelChapters
+            .AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == chapterId, cancellationToken)
+            ?? throw new InvalidOperationException("Novel chapter was not found.");
+
+        language = NormalizeLanguage(language);
+        var paragraphs = await GetParagraphsAsync(chapter, language, cancellationToken);
+
+        if (paragraphIndex < 0 || paragraphIndex >= paragraphs.Count)
+        {
+            throw new InvalidOperationException("The selected paragraph no longer exists.");
+        }
+
+        var paragraph = paragraphs[paragraphIndex];
+        var start = Math.Clamp(startOffset, 0, paragraph.Length);
+        var end = Math.Clamp(endOffset, 0, paragraph.Length);
+
+        if (end <= start)
+        {
+            throw new InvalidOperationException("Select some text before creating a highlight.");
+        }
+
+        if (end - start > 2000)
+        {
+            throw new InvalidOperationException("A highlight can contain at most 2000 characters.");
+        }
+
+        var highlight = new NovelHighlight
+        {
+            ProfileId = profileId,
+            WorkId = chapter.WorkId,
+            ChapterId = chapter.Id,
+            Language = language,
+            ParagraphIndex = paragraphIndex,
+            StartOffset = start,
+            EndOffset = end,
+            Text = paragraph[start..end],
+            Note = NormalizeOptional(note, 2000)
+        };
+
+        db.NovelHighlights.Add(highlight);
+        await db.SaveChangesAsync(cancellationToken);
+        return highlight;
+    }
+
+    public Task<List<NovelHighlight>> GetHighlightsAsync(
+        string profileId,
+        Guid workId,
+        CancellationToken cancellationToken) =>
+        db.NovelHighlights
+            .AsNoTracking()
+            .Where(x => x.ProfileId == profileId && x.WorkId == workId)
+            .OrderBy(x => x.CreatedAt)
+            .ToListAsync(cancellationToken);
+
+    public async Task RemoveHighlightAsync(
+        string profileId,
+        Guid highlightId,
+        CancellationToken cancellationToken)
+    {
+        var highlight = await db.NovelHighlights
+            .SingleOrDefaultAsync(
+                x => x.Id == highlightId && x.ProfileId == profileId,
+                cancellationToken);
+
+        if (highlight is null)
+        {
+            return;
+        }
+
+        db.NovelHighlights.Remove(highlight);
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task<(int? ParagraphIndex, int Offset, string? AnchorText)> ResolveAnchorAsync(
+        NovelChapter chapter,
+        string language,
+        int? paragraphIndex,
+        int characterOffset,
+        CancellationToken cancellationToken)
+    {
+        if (paragraphIndex is null)
+        {
+            return (null, 0, null);
+        }
+
+        var paragraphs = await GetParagraphsAsync(chapter, language, cancellationToken);
+        if (paragraphIndex < 0 || paragraphIndex >= paragraphs.Count)
+        {
+            return (null, 0, null);
+        }
+
+        var paragraph = paragraphs[paragraphIndex.Value];
+        return (
+            paragraphIndex,
+            Math.Clamp(characterOffset, 0, paragraph.Length),
+            NovelTextLayout.CreateAnchorText(paragraph));
+    }
+
+    private async Task<IReadOnlyList<string>> GetParagraphsAsync(
+        NovelChapter chapter,
+        string language,
+        CancellationToken cancellationToken)
+    {
+        if (language == "de")
+        {
+            var translation = await db.NovelTranslations
+                .AsNoTracking()
+                .Where(x =>
+                    x.ChapterId == chapter.Id &&
+                    x.TargetLanguage == "de" &&
+                    x.SourceHash == chapter.SourceHash)
+                .OrderByDescending(x => x.CreatedAt)
+                .Select(x => x.Text)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (!string.IsNullOrWhiteSpace(translation))
+            {
+                return NovelTextLayout.SplitParagraphs(translation);
+            }
+        }
+
+        return NovelTextLayout.SplitParagraphs(chapter.OriginalText);
+    }
 
     private INovelSourceProvider GetProvider(Uri sourceUri) =>
         sourceProviders.FirstOrDefault(provider => provider.CanHandle(sourceUri))
@@ -270,6 +562,24 @@ public sealed class NovelService(
         work.Author = snapshot.Author;
         work.Description = snapshot.Description;
         work.UpdatedAt = DateTime.UtcNow;
+    }
+
+    private static string NormalizeLanguage(string? language) =>
+        string.Equals(language?.Trim(), "de", StringComparison.OrdinalIgnoreCase)
+            ? "de"
+            : "ja";
+
+    private static string? NormalizeOptional(string? value, int maxLength)
+    {
+        var normalized = value?.Trim();
+        if (string.IsNullOrEmpty(normalized))
+        {
+            return null;
+        }
+
+        return normalized.Length <= maxLength
+            ? normalized
+            : normalized[..maxLength];
     }
 
     private static string Hash(string text) =>

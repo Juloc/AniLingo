@@ -307,6 +307,202 @@ public sealed class NovelTests
     }
 
     [TestMethod]
+    public async Task ProgressStoresStableParagraphAnchorPerProfile()
+    {
+        var path = TempDatabasePath();
+
+        try
+        {
+            await using var db = await CreateDatabaseAsync(path);
+            var work = new NovelWork
+            {
+                SourceProvider = "fake",
+                SourceKey = "anchored",
+                SourceUrl = "https://example.invalid/anchored",
+                Title = "Anchored Novel"
+            };
+            var chapter = new NovelChapter
+            {
+                WorkId = work.Id,
+                Number = 7,
+                SourceUrl = "https://example.invalid/anchored/7",
+                Title = "Seven",
+                OriginalText = "最初の段落。\n\n二番目の段落です。\n\n最後。",
+                SourceHash = "ANCHOR-SOURCE"
+            };
+            db.Add(work);
+            db.Add(chapter);
+            await db.SaveChangesAsync();
+
+            var service = new NovelService(db, [new FakeNovelSourceProvider()]);
+
+            await service.SaveProgressAsync(
+                "reader-a",
+                work.Id,
+                chapter.Id,
+                420,
+                "ja",
+                1,
+                4,
+                CancellationToken.None);
+
+            await service.SaveProgressAsync(
+                "reader-b",
+                work.Id,
+                chapter.Id,
+                120,
+                "ja",
+                0,
+                1,
+                CancellationToken.None);
+
+            var progress = await service.GetProgressAsync(
+                "reader-a",
+                work.Id,
+                CancellationToken.None);
+
+            Assert.IsNotNull(progress);
+            Assert.AreEqual(chapter.Id, progress.ChapterId);
+            Assert.AreEqual(420, progress.PositionPermille);
+            Assert.AreEqual("ja", progress.AnchorLanguage);
+            Assert.AreEqual(1, progress.AnchorParagraphIndex);
+            Assert.AreEqual(4, progress.AnchorOffset);
+            Assert.AreEqual("二番目の段落です。", progress.AnchorText);
+
+            var library = await service.GetWorksAsync(
+                "reader-a",
+                CancellationToken.None);
+
+            Assert.AreEqual(1, library.Count);
+            Assert.AreEqual(chapter.Id, library[0].CurrentChapterId);
+            Assert.AreEqual(7, library[0].CurrentChapterNumber);
+            Assert.AreEqual(420, library[0].ProgressPermille);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            File.Delete(path);
+        }
+    }
+
+    [TestMethod]
+    public async Task BookmarksAndHighlightsAreProfileScoped()
+    {
+        var path = TempDatabasePath();
+
+        try
+        {
+            await using var db = await CreateDatabaseAsync(path);
+            var work = new NovelWork
+            {
+                SourceProvider = "fake",
+                SourceKey = "notes",
+                SourceUrl = "https://example.invalid/notes",
+                Title = "Notes Novel"
+            };
+            var chapter = new NovelChapter
+            {
+                WorkId = work.Id,
+                Number = 1,
+                SourceUrl = "https://example.invalid/notes/1",
+                Title = "One",
+                OriginalText = "これは重要な文です。\n\n次の段落。",
+                SourceHash = "NOTES-SOURCE"
+            };
+            db.Add(work);
+            db.Add(chapter);
+            await db.SaveChangesAsync();
+
+            var service = new NovelService(db, [new FakeNovelSourceProvider()]);
+
+            var bookmark = await service.AddBookmarkAsync(
+                "reader-a",
+                chapter.Id,
+                310,
+                "ja",
+                0,
+                3,
+                null,
+                CancellationToken.None);
+
+            var highlight = await service.AddHighlightAsync(
+                "reader-a",
+                chapter.Id,
+                "ja",
+                0,
+                0,
+                3,
+                "Remember this",
+                CancellationToken.None);
+
+            Assert.AreEqual(
+                1,
+                (await service.GetBookmarksAsync(
+                    "reader-a",
+                    work.Id,
+                    CancellationToken.None)).Count);
+            Assert.AreEqual(
+                0,
+                (await service.GetBookmarksAsync(
+                    "reader-b",
+                    work.Id,
+                    CancellationToken.None)).Count);
+
+            var highlights = await service.GetHighlightsAsync(
+                "reader-a",
+                work.Id,
+                CancellationToken.None);
+
+            Assert.AreEqual(1, highlights.Count);
+            Assert.AreEqual("これは", highlights[0].Text);
+            Assert.AreEqual("Remember this", highlights[0].Note);
+
+            await service.RemoveBookmarkAsync(
+                "reader-b",
+                bookmark.Id,
+                CancellationToken.None);
+            await service.RemoveHighlightAsync(
+                "reader-b",
+                highlight.Id,
+                CancellationToken.None);
+
+            Assert.AreEqual(1, await db.NovelBookmarks.CountAsync());
+            Assert.AreEqual(1, await db.NovelHighlights.CountAsync());
+
+            await service.RemoveBookmarkAsync(
+                "reader-a",
+                bookmark.Id,
+                CancellationToken.None);
+            await service.RemoveHighlightAsync(
+                "reader-a",
+                highlight.Id,
+                CancellationToken.None);
+
+            Assert.AreEqual(0, await db.NovelBookmarks.CountAsync());
+            Assert.AreEqual(0, await db.NovelHighlights.CountAsync());
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            File.Delete(path);
+        }
+    }
+
+    [TestMethod]
+    public void NovelTextLayoutCreatesStableParagraphsAndAnchorText()
+    {
+        var paragraphs = NovelTextLayout.SplitParagraphs(
+            "  first   paragraph \r\n\r\n second paragraph  ");
+
+        Assert.AreEqual(2, paragraphs.Count);
+        Assert.AreEqual("first   paragraph", paragraphs[0]);
+        Assert.AreEqual("second paragraph", paragraphs[1]);
+        Assert.AreEqual(
+            "first paragraph",
+            NovelTextLayout.CreateAnchorText(paragraphs[0]));
+    }
+
+    [TestMethod]
     public void TranslationChunkingPreservesAllTextWithinBounds()
     {
         var text = string.Join(

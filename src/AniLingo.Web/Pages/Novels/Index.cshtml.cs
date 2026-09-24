@@ -8,10 +8,18 @@ namespace AniLingo.Web.Pages.Novels;
 public sealed class IndexModel(NovelService novels, CurrentAccountContext account) : PageModel
 {
     public IReadOnlyList<NovelListItem> Works { get; private set; } = [];
+    public IReadOnlyList<NovelListItem> ContinueReading { get; private set; } = [];
     public bool IsOwner => account.IsOwner;
 
-    public async Task OnGetAsync(CancellationToken cancellationToken) =>
-        Works = await novels.GetWorksAsync(cancellationToken);
+    public async Task OnGetAsync(CancellationToken cancellationToken)
+    {
+        Works = await novels.GetWorksAsync(account.ProfileId, cancellationToken);
+        ContinueReading = Works
+            .Where(x => x.HasProgress)
+            .OrderByDescending(x => x.LastReadAt)
+            .Take(8)
+            .ToArray();
+    }
 
     public async Task<IActionResult> OnPostImportAsync(
         string sourceUrl,
