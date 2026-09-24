@@ -335,7 +335,17 @@ public sealed class SubtitleImportService
             batchQueued = 1;
         }
 
-        var episodeIds = await GetMissingEpisodeIdsAsync(cancellationToken);
+        List<Guid> episodeIds;
+        try
+        {
+            episodeIds = await GetMissingEpisodeIdsAsync(cancellationToken);
+        }
+        catch
+        {
+            Interlocked.Exchange(ref batchQueued, 0);
+            throw;
+        }
+
         if (episodeIds.Count == 0)
         {
             Interlocked.Exchange(ref batchQueued, 0);
@@ -984,7 +994,7 @@ public sealed class SubtitleImportService
         string relativeUrl,
         CancellationToken cancellationToken)
     {
-        using var client = httpClientFactory.CreateClient();
+        var client = httpClientFactory.CreateClient();
         client.BaseAddress = new Uri(JimakuApiBase);
         client.Timeout = TimeSpan.FromSeconds(20);
 
