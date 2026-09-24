@@ -70,6 +70,8 @@ public sealed class PwaManifestTests
             Path.Combine(webRoot, "js", "pwa.js"));
 
         StringAssert.Contains(pwaRuntime, "beforeinstallprompt");
+        StringAssert.Contains(pwaRuntime, "Add to Home Screen");
+        StringAssert.Contains(pwaRuntime, "Add to Dock");
         StringAssert.Contains(pwaRuntime, "apple-mobile-web-app-capable");
         StringAssert.Contains(pwaRuntime, "viewport-fit=cover");
         StringAssert.Contains(pwaRuntime, "mediaSession");
