@@ -215,8 +215,11 @@ public sealed class ReadModel(
                 bookmark.Id,
                 bookmark.ChapterId,
                 bookmark.PositionPermille,
+                bookmark.Language,
                 bookmark.ParagraphIndex,
-                bookmark.CharacterOffset
+                bookmark.CharacterOffset,
+                bookmark.AnchorText,
+                bookmark.Label
             });
         }
         catch (InvalidOperationException exception)
@@ -235,7 +238,9 @@ public sealed class ReadModel(
             bookmarkId,
             cancellationToken);
 
-        return RedirectToPage(new { id });
+        return IsFetchRequest()
+            ? new OkResult()
+            : RedirectToPage(new { id });
     }
 
     public async Task<IActionResult> OnPostHighlightAsync(
@@ -262,6 +267,7 @@ public sealed class ReadModel(
             return new JsonResult(new
             {
                 highlight.Id,
+                highlight.ChapterId,
                 highlight.Language,
                 highlight.ParagraphIndex,
                 highlight.StartOffset,
@@ -286,6 +292,14 @@ public sealed class ReadModel(
             highlightId,
             cancellationToken);
 
-        return RedirectToPage(new { id });
+        return IsFetchRequest()
+            ? new OkResult()
+            : RedirectToPage(new { id });
     }
+
+    private bool IsFetchRequest() =>
+        string.Equals(
+            Request.Headers["X-Requested-With"].ToString(),
+            "fetch",
+            StringComparison.OrdinalIgnoreCase);
 }
