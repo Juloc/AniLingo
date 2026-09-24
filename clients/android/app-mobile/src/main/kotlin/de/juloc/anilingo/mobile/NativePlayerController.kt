@@ -7,6 +7,7 @@ import android.os.SystemClock
 import androidx.media3.common.C
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
 import de.juloc.anilingo.core.api.ClientApiHttpException
 import de.juloc.anilingo.core.api.ClientApiRoutes
 import de.juloc.anilingo.core.api.HttpAniLingoClientApi
@@ -58,6 +59,7 @@ data class NativePlayerUiState(
     val wakeInProgress: Boolean = false,
 )
 
+@OptIn(UnstableApi::class)
 class NativePlayerController(
     context: Context,
     private val episodeId: String,
