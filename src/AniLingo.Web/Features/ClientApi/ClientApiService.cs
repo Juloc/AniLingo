@@ -245,17 +245,31 @@ public sealed class ClientApiService(
             episodeId,
             cancellationToken);
 
-        var learningTrack = await db.SubtitleTracks
+        var learningTrackRows = await db.SubtitleTracks
             .AsNoTracking()
             .Where(x => x.EpisodeId == episodeId && x.Language == "ja")
             .OrderByDescending(x => x.ImportedAt)
             .ThenBy(x => x.Id)
+            .Select(x => new
+            {
+                x.Id,
+                x.Language,
+                x.Format
+            })
+            .ToListAsync(cancellationToken);
+
+        var activeLearningTrackId = learningTrackRows
+            .Select(x => (Guid?)x.Id)
+            .FirstOrDefault();
+
+        var learningTracks = learningTrackRows
             .Select(x => new ClientLearningSubtitle(
                 x.Id,
                 x.Language,
                 x.Format,
-                ClientApiRoutes.Cues(episodeId)))
-            .FirstOrDefaultAsync(cancellationToken);
+                x.Id == activeLearningTrackId,
+                $"{ClientApiRoutes.Cues(episodeId)}?trackId={x.Id:D}"))
+            .ToArray();
 
         if (media is null)
         {
@@ -265,7 +279,8 @@ public sealed class ClientApiService(
                 null,
                 [],
                 [],
-                learningTrack,
+                learningTracks,
+                activeLearningTrackId,
                 null,
                 null,
                 new ClientCompatibilityFallback(
@@ -314,7 +329,8 @@ public sealed class ClientApiService(
             clientMedia,
             audioTracks,
             subtitleTracks,
-            learningTrack,
+            learningTracks,
+            activeLearningTrackId,
             defaultAudio?.Id,
             defaultSubtitle?.Id,
             new ClientCompatibilityFallback(
@@ -327,6 +343,7 @@ public sealed class ClientApiService(
 
     public async Task<ClientCueResponse?> GetCuesAsync(
         Guid episodeId,
+        Guid? trackId,
         int? fromMs,
         int? toMs,
         CancellationToken cancellationToken)
@@ -342,6 +359,7 @@ public sealed class ClientApiService(
 
         var cueSet = await playbackService.GetCueSetAsync(
             episodeId,
+            trackId,
             fromMs,
             toMs,
             cancellationToken);
