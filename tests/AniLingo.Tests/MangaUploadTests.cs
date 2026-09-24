@@ -127,17 +127,21 @@ public sealed class MangaUploadTests
                 0,
                 4,
                 "archives",
-                "Ch. 1.cbz");
+                "Ch. 2.cbz");
 
             await Assert.ThrowsExactlyAsync<InvalidOperationException>(
                 () => upload.SaveSeriesAsync(
                     "Series",
-                    [invalid],
+                    [
+                        CreateArchive("Ch. 1.cbz", 2),
+                        invalid
+                    ],
                     CancellationToken.None));
 
             CollectionAssert.AreEqual(
                 before,
                 await File.ReadAllBytesAsync(destination));
+            Assert.IsFalse(File.Exists(Path.Combine(goodSource, "Ch. 2.cbz")));
         }
         finally
         {
