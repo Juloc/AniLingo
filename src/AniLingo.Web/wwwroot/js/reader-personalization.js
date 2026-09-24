@@ -15,6 +15,7 @@
     const autoScrollButton = shell.querySelector("[data-reader-autoscroll-toggle]");
     const overrideState = shell.querySelector("[data-reader-override-state]");
     const settingsPanel = shell.querySelector("[data-reader-settings-panel]");
+    const backgroundSelect = shell.querySelector("[data-reader-background-select]");
     const toast = shell.querySelector("[data-reader-toast]");
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
@@ -35,6 +36,9 @@
     let autoScrollRunning = false;
     let toastTimer = null;
     let saveQueue = Promise.resolve();
+    let backgroundCatalog = [];
+    let backgroundSuggestedId = null;
+    let backgroundCatalogGenre = null;
 
     const bookmarkState = new Map();
 
@@ -76,6 +80,7 @@
         setFormValue(data, "PaperStyle", source.paperStyle);
         setFormValue(data, "GenreArtworkEnabled", source.genreArtworkEnabled);
         setFormValue(data, "GenreTheme", source.genreTheme);
+        setFormValue(data, "BackgroundAssetId", source.backgroundAssetId || "auto");
         setFormValue(data, "BackgroundIntensity", source.backgroundIntensity);
         setFormValue(data, "BookmarkStyle", source.bookmarkStyle);
         setFormValue(data, "BookmarkColor", source.bookmarkColor);
@@ -126,6 +131,9 @@
                         state.resolvedGenreTheme = saved.resolvedGenreTheme;
                     }
                     applySettings();
+                    if (changedKey === "genreTheme") {
+                        loadBackgroundCatalog(true);
+                    }
                 }
                 if (overrideState) overrideState.textContent = "Buch-Override";
             })
@@ -383,6 +391,98 @@
         });
     };
 
+    const syncBackgroundOptions = () => {
+        if (!backgroundSelect) return;
+
+        const selected = state.backgroundAssetId || "auto";
+        backgroundSelect.replaceChildren();
+
+        const auto = document.createElement("option");
+        auto.value = "auto";
+        auto.textContent = "Automatisch";
+        backgroundSelect.append(auto);
+
+        const groups = new Map();
+        for (const item of backgroundCatalog) {
+            const genre = item.genreLabel || item.genre || "Weitere";
+            let group = groups.get(genre);
+            if (!group) {
+                group = document.createElement("optgroup");
+                group.label = genre;
+                groups.set(genre, group);
+                backgroundSelect.append(group);
+            }
+
+            const option = document.createElement("option");
+            option.value = item.id;
+            option.textContent = item.name || item.variant || item.id;
+            group.append(option);
+        }
+
+        if (selected !== "auto" &&
+            !backgroundCatalog.some(item => item.id === selected)) {
+            const unavailable = document.createElement("option");
+            unavailable.value = selected;
+            unavailable.textContent = selected + " (nicht verfügbar)";
+            backgroundSelect.append(unavailable);
+        }
+
+        backgroundSelect.value = selected;
+    };
+
+    const applyBackgroundImage = () => {
+        if (!state.genreArtworkEnabled) {
+            shell.style.removeProperty("--reader-genre-background-image");
+            return;
+        }
+
+        const requested = state.backgroundAssetId || "auto";
+        const id = requested === "auto" ? backgroundSuggestedId : requested;
+        const item = backgroundCatalog.find(candidate => candidate.id === id);
+        if (!item?.url || !item.url.startsWith("/reader-backgrounds/")) {
+            shell.style.removeProperty("--reader-genre-background-image");
+            return;
+        }
+
+        const safeUrl = item.url.replace(/["\\()]/g, character =>
+            encodeURIComponent(character));
+        shell.style.setProperty(
+            "--reader-genre-background-image",
+            `url("${safeUrl}")`);
+    };
+
+    const loadBackgroundCatalog = async (force = false) => {
+        const genre =
+            state.resolvedGenreTheme ||
+            (state.genreTheme === "auto" ? "neutral" : state.genreTheme) ||
+            "neutral";
+
+        if (!force && backgroundCatalogGenre === genre && backgroundCatalog.length > 0) {
+            syncBackgroundOptions();
+            applyBackgroundImage();
+            return;
+        }
+
+        try {
+            const response = await fetch(
+                "/api/reader-backgrounds?genre=" + encodeURIComponent(genre),
+                {
+                    credentials: "same-origin",
+                    headers: { "X-Requested-With": "fetch" }
+                });
+            if (!response.ok) return;
+
+            const payload = await response.json();
+            backgroundCatalog = Array.isArray(payload?.items) ? payload.items : [];
+            backgroundSuggestedId = payload?.suggestedId || null;
+            backgroundCatalogGenre = genre;
+            syncBackgroundOptions();
+            applyBackgroundImage();
+        } catch {
+            // The CSS mood fallback remains active if the optional catalog is unavailable.
+        }
+    };
+
     const applySettings = (preserveAnchor = true) => {
         const anchor = preserveAnchor ? captureLogicalAnchor() : initialAnchorElement();
         const previousMode = shell.dataset.readingMode || state.readingMode;
@@ -402,6 +502,7 @@
         document.documentElement.style.setProperty("--reader-paragraph-spacing", `${state.paragraphSpacingEm}em`);
         document.documentElement.style.setProperty("--reader-background-intensity", state.backgroundIntensity);
         document.documentElement.style.setProperty("--reader-font-family", fontCss(state.fontFamily));
+        applyBackgroundImage();
 
         const bookmarkStyle = bookmarkForm?.querySelector('[name="style"]');
         const bookmarkColor = bookmarkForm?.querySelector('[name="color"]');
@@ -748,6 +849,9 @@
                     : state.genreTheme;
         }
         applySettings();
+        if (key === "genreTheme") {
+            loadBackgroundCatalog(true);
+        }
     });
 
     settingsForm.addEventListener("change", event => {
@@ -930,4 +1034,5 @@
     collectBookmarks();
     syncControls();
     applySettings(false);
+    loadBackgroundCatalog();
 })();
