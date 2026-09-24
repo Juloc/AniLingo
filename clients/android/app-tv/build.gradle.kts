@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "de.juloc.anilingo.tv"
-    compileSdk = 37
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "de.juloc.anilingo.tv"
