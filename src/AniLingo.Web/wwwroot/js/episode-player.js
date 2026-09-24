@@ -4,6 +4,11 @@
         return;
     }
 
+    const design = window.AniLingoPlayerDesign;
+    if (!design) {
+        return;
+    }
+
     const preferenceKey = "anilingo.playbackMode";
     const video = root.querySelector("[data-playback-video]");
     const stage = root.querySelector("[data-video-stage]");
@@ -20,11 +25,13 @@
     const overlay = root.querySelector("[data-subtitle-overlay]");
     const data = root.querySelector("[data-cue-data]");
     const inspector = root.querySelector("[data-word-inspector]");
+    const learningKicker = root.querySelector("[data-learning-kicker]");
     const word = root.querySelector("[data-word]");
     const reading = root.querySelector("[data-reading]");
     const meaning = root.querySelector("[data-meaning]");
     const state = root.querySelector("[data-state]");
     const replay = root.querySelector("[data-replay]");
+    const closeLearning = root.querySelector("[data-close-learning]");
     const error = root.querySelector("[data-player-error]");
     const timeline = root.querySelector("[data-playback-timeline]");
     const timelineCurrent = root.querySelector("[data-playback-current]");
@@ -32,7 +39,9 @@
 
     if (!video || !stage || !placeholder || !playbackStatus ||
         !playbackSummary || !playbackBadge || !modeSelect || !overlay || !data ||
-        !timeline || !timelineCurrent || !timelineDuration) {
+        !timeline || !timelineCurrent || !timelineDuration || !inspector ||
+        !learningKicker || !word || !reading || !meaning || !state ||
+        !replay || !closeLearning) {
         return;
     }
 
@@ -344,6 +353,7 @@
 
     let activeIndex = -2;
     let selectedCueStartMs = 0;
+    let learningResumeOnClose = false;
 
     const findCueIndex = (timeMs) => {
         let low = 0;
@@ -367,44 +377,81 @@
         return -1;
     };
 
-    const showWord = (token, cue) => {
-        if (!inspector) {
+    const openLearning = (cue, token = null) => {
+        learningResumeOnClose = !video.paused && !video.ended;
+        video.pause();
+        selectedCueStartMs = cue.startMs;
+
+        if (token) {
+            learningKicker.textContent = "Word";
+            word.textContent = token.canonical || token.surface;
+            reading.textContent = token.reading || "";
+            meaning.textContent = token.meaning || "No local meaning available yet.";
+            state.textContent = token.state || "New";
+            state.hidden = false;
+        } else {
+            learningKicker.textContent = "Sentence";
+            word.textContent = design.cueText(cue);
+            reading.textContent = "";
+            meaning.textContent = "Tap a highlighted word in the subtitle to inspect its reading and meaning.";
+            state.textContent = "";
+            state.hidden = true;
+        }
+
+        inspector.hidden = false;
+        closeLearning.focus();
+    };
+
+    const closeLearningSheet = (resume = true) => {
+        if (inspector.hidden) {
             return;
         }
 
-        video.pause();
-        selectedCueStartMs = cue.startMs;
-        word.textContent = token.canonical || token.surface;
-        reading.textContent = token.reading || "";
-        meaning.textContent = token.meaning || "No local meaning available.";
-        state.textContent = token.state || "New";
-        inspector.hidden = false;
+        inspector.hidden = true;
+        overlay.querySelectorAll('[aria-pressed="true"]').forEach(element =>
+            element.removeAttribute("aria-pressed"));
+
+        const shouldResume = resume && learningResumeOnClose;
+        learningResumeOnClose = false;
+        if (shouldResume) {
+            void video.play().catch(() => {});
+        }
     };
 
     const renderCue = (index) => {
-        overlay.replaceChildren();
-
-        if (index < 0) {
-            return;
-        }
-
-        const cue = cues[index];
-        for (const token of cue.tokens) {
-            if (token.isVocabulary) {
-                const button = document.createElement("button");
-                button.type = "button";
-                button.className = "subtitle-token";
-                button.textContent = token.surface;
-                button.title = [token.reading, token.meaning].filter(Boolean).join(" · ");
-                button.addEventListener("click", () => showWord(token, cue));
-                overlay.append(button);
-            } else {
-                const span = document.createElement("span");
-                span.textContent = token.surface;
-                overlay.append(span);
-            }
-        }
+        design.renderCue(root, overlay, index < 0 ? null : cues[index]);
     };
+
+    root.addEventListener(design.actionEvent, event => {
+        const detail = event.detail || {};
+        switch (detail.action) {
+            case design.actions.openWord:
+                openLearning(detail.cue, detail.token);
+                break;
+            case design.actions.learnCurrentCue:
+                openLearning(detail.cue);
+                break;
+            case design.actions.repeatCurrentCue:
+                closeLearningSheet(false);
+                seekToAbsolute(Math.max(0, selectedCueStartMs / 1000), true);
+                break;
+            case design.actions.closeOverlay:
+                closeLearningSheet(true);
+                break;
+        }
+    });
+
+    replay.addEventListener("click", () =>
+        design.dispatch(root, design.actions.repeatCurrentCue));
+    closeLearning.addEventListener("click", () =>
+        design.dispatch(root, design.actions.closeOverlay));
+
+    root.addEventListener("keydown", event => {
+        if (event.key === "Escape" && !inspector.hidden) {
+            event.preventDefault();
+            design.dispatch(root, design.actions.closeOverlay);
+        }
+    });
 
     const sync = () => {
         const index = findCueIndex(Math.floor(absoluteCurrentTime() * 1000));
@@ -496,10 +543,6 @@
             error.hidden = false;
             error.textContent = "The selected playback stream could not be played by this browser.";
         }
-    });
-
-    replay?.addEventListener("click", () => {
-        seekToAbsolute(Math.max(0, selectedCueStartMs / 1000 - 0.5), true);
     });
 
     updateTimeline();
