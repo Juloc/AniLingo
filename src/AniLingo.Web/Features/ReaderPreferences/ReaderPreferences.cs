@@ -28,6 +28,7 @@ public sealed class ReaderPreference
     public string? PaperStyle { get; set; }
     public bool? GenreArtworkEnabled { get; set; }
     public string? GenreTheme { get; set; }
+    public string? BackgroundAssetId { get; set; }
     public double? BackgroundIntensity { get; set; }
 
     public string? BookmarkStyle { get; set; }
@@ -54,6 +55,7 @@ public sealed class ReaderSettingsInput
     public string? PaperStyle { get; set; }
     public bool GenreArtworkEnabled { get; set; }
     public string? GenreTheme { get; set; }
+    public string? BackgroundAssetId { get; set; }
     public double BackgroundIntensity { get; set; }
 
     public string? BookmarkStyle { get; set; }
@@ -76,6 +78,7 @@ public sealed record ReaderSettingsSnapshot(
     bool GenreArtworkEnabled,
     string GenreTheme,
     string ResolvedGenreTheme,
+    string BackgroundAssetId,
     double BackgroundIntensity,
     string BookmarkStyle,
     string BookmarkColor,
@@ -140,6 +143,20 @@ public static partial class ReaderPreferenceRules
 
     public static string NormalizeBookmarkStyle(string? value) =>
         NormalizeChoice(value, BookmarkStyles, "fabric");
+
+    public static string NormalizeBackgroundAssetId(string? value)
+    {
+        var normalized = value?.Trim().Replace('\\', '/').Trim('/');
+        if (string.IsNullOrWhiteSpace(normalized) ||
+            string.Equals(normalized, "auto", StringComparison.OrdinalIgnoreCase))
+        {
+            return "auto";
+        }
+
+        return normalized.Length <= 120 && BackgroundAssetId().IsMatch(normalized)
+            ? normalized.ToLowerInvariant()
+            : "auto";
+    }
 
     public static string NormalizeBookmarkColor(string? value)
     {
@@ -248,6 +265,9 @@ public static partial class ReaderPreferenceRules
             : fallback;
     }
 
+    [GeneratedRegex("^[a-zA-Z0-9][a-zA-Z0-9_-]*/[a-zA-Z0-9][a-zA-Z0-9_/-]*$", RegexOptions.CultureInvariant)]
+    private static partial Regex BackgroundAssetId();
+
     [GeneratedRegex("^#[0-9a-fA-F]{6}$", RegexOptions.CultureInvariant)]
     private static partial Regex HexColor();
 
@@ -314,6 +334,8 @@ public static class ReaderPreferenceStore
             ResolvedGenreTheme: genreSelection == "auto"
                 ? ReaderPreferenceRules.InferGenreTheme(genres)
                 : genreSelection,
+            BackgroundAssetId: ReaderPreferenceRules.NormalizeBackgroundAssetId(
+                First(book?.BackgroundAssetId, user?.BackgroundAssetId, "auto")),
             BackgroundIntensity: ReaderPreferenceRules.NormalizeBackgroundIntensity(
                 book?.BackgroundIntensity ?? user?.BackgroundIntensity ?? .055),
             BookmarkStyle: ReaderPreferenceRules.NormalizeBookmarkStyle(
@@ -362,6 +384,8 @@ public static class ReaderPreferenceStore
         preference.GenreArtworkEnabled = input.GenreArtworkEnabled;
         preference.GenreTheme =
             ReaderPreferenceRules.NormalizeGenreTheme(input.GenreTheme);
+        preference.BackgroundAssetId =
+            ReaderPreferenceRules.NormalizeBackgroundAssetId(input.BackgroundAssetId);
         preference.BackgroundIntensity =
             ReaderPreferenceRules.NormalizeBackgroundIntensity(input.BackgroundIntensity);
         preference.BookmarkStyle =
@@ -443,6 +467,10 @@ public static class ReaderPreferenceStore
             case "genreTheme":
                 preference.GenreTheme =
                     ReaderPreferenceRules.NormalizeGenreTheme(input.GenreTheme);
+                break;
+            case "backgroundAssetId":
+                preference.BackgroundAssetId =
+                    ReaderPreferenceRules.NormalizeBackgroundAssetId(input.BackgroundAssetId);
                 break;
             case "backgroundIntensity":
                 preference.BackgroundIntensity =
