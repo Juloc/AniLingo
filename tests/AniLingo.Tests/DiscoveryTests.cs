@@ -85,11 +85,11 @@ public sealed class DiscoveryTests
             includeNovels: false,
             includeManga: true);
 
-        Assert.HasCount(1, novels);
+        Assert.AreEqual(1, novels.Count);
         Assert.IsTrue(novels[0].IsNovel);
         Assert.AreEqual("Novel A", novels[0].PreferredTitle);
 
-        Assert.HasCount(1, manga);
+        Assert.AreEqual(1, manga.Count);
         Assert.IsFalse(manga[0].IsNovel);
         Assert.AreEqual("Manga B", manga[0].PreferredTitle);
     }
@@ -141,7 +141,7 @@ public sealed class DiscoveryTests
 
         var items = AniListAccountService.ParseLibraryResponse(json);
 
-        Assert.HasCount(1, items);
+        Assert.AreEqual(1, items.Count);
         Assert.IsTrue(items[0].IsNovel);
         Assert.AreEqual(5, items[0].Progress);
         Assert.AreEqual(20, items[0].TotalProgress);
