@@ -1,0 +1,147 @@
+@page
+@using AniLingo.Web.Features.Subtitles
+@model AniLingo.Web.Pages.Admin.SubtitlesModel
+@{
+    ViewData["Title"] = "Subtitle learning text";
+}
+
+<header class="page-header">
+    <div>
+        <a class="back-link" asp-page="/Admin/System">← System</a>
+        <span class="eyebrow">Learning text</span>
+        <h1>Japanese subtitles & transcripts</h1>
+        <p>Fallback order: local subtitle → embedded text → Jimaku → local Whisper transcription.</p>
+    </div>
+</header>
+
+<partial name="_AdminNavigation" />
+
+@if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
+{
+    <div class="subtitle-source-message status-ok">@Model.StatusMessage</div>
+}
+@if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+{
+    <div class="subtitle-source-message status-error">@Model.ErrorMessage</div>
+}
+
+<div class="settings-grid">
+    <section class="panel">
+        <div class="panel-heading">
+            <h2>Coverage</h2>
+            <span>@Model.Coverage.ReadyEpisodes / @Model.Coverage.TotalEpisodes ready</span>
+        </div>
+
+        <p class="muted">
+            Ready: @Model.Coverage.ReadyEpisodes ·
+            queued: @Model.Coverage.QueuedEpisodes ·
+            processing: @Model.Coverage.ProcessingEpisodes ·
+            failed: @Model.Coverage.FailedEpisodes ·
+            not prepared: @Model.Coverage.MissingEpisodes
+        </p>
+
+        @if (Model.Coverage.ReadyEpisodes < Model.Coverage.TotalEpisodes)
+        {
+            <form method="post" asp-page-handler="PrepareAll">
+                <button class="button button-primary" type="submit">
+                    Prepare all missing episodes
+                </button>
+            </form>
+        }
+        else
+        {
+            <span class="status-pill status-ok">All discovered episodes have learning text</span>
+        }
+    </section>
+
+    <section class="panel">
+        <div class="panel-heading">
+            <h2>Jimaku</h2>
+            <span>@(Model.Jimaku.Configured ? "Connected" : "Optional")</span>
+        </div>
+
+        <p class="muted">
+            Jimaku is searched only when no local or embedded Japanese text subtitle exists.
+            If Jimaku is unavailable or has no match, AniLingo falls back to local Whisper.
+        </p>
+
+        @if (Model.Jimaku.Configured)
+        {
+            <p>
+                <span class="status-pill status-ok">API key configured</span>
+                @if (Model.Jimaku.UpdatedAt is { } updatedAt)
+                {
+                    <small>Updated @updatedAt.ToLocalTime().ToString("g")</small>
+                }
+            </p>
+            <form method="post" asp-page-handler="DisconnectJimaku">
+                <button class="button" type="submit">Remove Jimaku key</button>
+            </form>
+        }
+        else
+        {
+            <form method="post" asp-page-handler="SaveJimaku" class="form-stack">
+                <label>
+                    <span>Jimaku API key</span>
+                    <input asp-for="JimakuApiKey"
+                           type="password"
+                           autocomplete="new-password"
+                           required />
+                </label>
+                <button class="button button-primary" type="submit">
+                    Test and save
+                </button>
+            </form>
+        }
+    </section>
+</div>
+
+<section class="panel">
+    <div class="panel-heading">
+        <h2>Episodes without learning text</h2>
+        <span>@Model.MissingEpisodes.Count shown</span>
+    </div>
+
+    @if (Model.MissingEpisodes.Count == 0)
+    {
+        <p class="muted">No missing episodes.</p>
+    }
+    else
+    {
+        <div class="root-list">
+            @foreach (var episode in Model.MissingEpisodes)
+            {
+                <div class="root-row">
+                    <div>
+                        <strong>@episode.AnimeTitle · S@(episode.SeasonNumber.ToString("00"))E@(episode.EpisodeNumber.ToString("00"))</strong>
+                        <span>@episode.EpisodeTitle</span>
+                        <small>
+                            @switch (episode.State.Status)
+                            {
+                                case LearningTextPreparationStatus.Queued:
+                                    <text>Queued</text>
+                                    break;
+                                case LearningTextPreparationStatus.Processing:
+                                    <text>Processing</text>
+                                    break;
+                                case LearningTextPreparationStatus.Failed:
+                                    <text>Failed: @(episode.State.Message ?? "Unknown error")</text>
+                                    break;
+                                default:
+                                    <text>Not prepared</text>
+                                    break;
+                            }
+                        </small>
+                    </div>
+
+                    <form method="post" asp-page-handler="Retry">
+                        <input type="hidden" name="episodeId" value="@episode.EpisodeId" />
+                        <button class="button" type="submit">
+                            @(episode.State.Status == LearningTextPreparationStatus.Failed ? "Retry" : "Prepare")
+                        </button>
+                    </form>
+                </div>
+            }
+        </div>
+    }
+</section>
