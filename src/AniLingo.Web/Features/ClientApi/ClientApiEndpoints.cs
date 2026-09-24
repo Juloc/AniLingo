@@ -71,6 +71,7 @@ public static class ClientApiEndpoints
 
         group.MapGet("/episodes/{episodeId:guid}/cues", async (
             Guid episodeId,
+            Guid? trackId,
             int? fromMs,
             int? toMs,
             ClientApiService service,
@@ -94,13 +95,26 @@ public static class ClientApiEndpoints
 
             var cues = await service.GetCuesAsync(
                 episodeId,
+                trackId,
                 fromMs,
                 toMs,
                 cancellationToken);
 
-            return cues is null
-                ? NotFound("episode_not_found", "The requested episode does not exist.")
-                : Results.Ok(cues);
+            if (cues is null)
+            {
+                return NotFound(
+                    "episode_not_found",
+                    "The requested episode does not exist.");
+            }
+
+            if (trackId.HasValue && cues.TrackId is null)
+            {
+                return NotFound(
+                    "subtitle_track_not_found",
+                    "The requested Japanese learning subtitle track does not exist for this episode.");
+            }
+
+            return Results.Ok(cues);
         });
 
         group.MapGet("/media/{mediaFileId:guid}/content", async (
