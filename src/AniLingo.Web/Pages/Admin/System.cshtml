@@ -75,10 +75,19 @@
                                     <input type="hidden" name="rootId" value="@root.Id" />
                                     <label>
                                         <span>
-                                            <input type="checkbox"
-                                                   name="wakeOnLanEnabled"
-                                                   value="true"
-                                                   checked="@root.WakeOnLanEnabled" />
+                                            @if (root.WakeOnLanEnabled)
+                                            {
+                                                <input type="checkbox"
+                                                       name="wakeOnLanEnabled"
+                                                       value="true"
+                                                       checked />
+                                            }
+                                            else
+                                            {
+                                                <input type="checkbox"
+                                                       name="wakeOnLanEnabled"
+                                                       value="true" />
+                                            }
                                             Enable Wake-on-LAN
                                         </span>
                                     </label>
