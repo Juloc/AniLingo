@@ -116,7 +116,7 @@ public sealed class UserModel(
         if (!string.Equals(
                 account.UserName,
                 confirmation?.Trim(),
-                StringComparison.OrdinalIgnoreCase))
+                StringComparison.Ordinal))
         {
             ModelState.AddModelError(
                 string.Empty,
