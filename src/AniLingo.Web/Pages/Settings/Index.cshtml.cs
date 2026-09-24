@@ -117,14 +117,23 @@ public sealed class IndexModel(
         }
 
         string? normalizedMac = null;
-        if (wakeOnLanEnabled &&
+        if (!string.IsNullOrWhiteSpace(wakeMacAddress) &&
             !WakeOnLanService.TryNormalizeMacAddress(
                 wakeMacAddress,
                 out normalizedMac))
         {
             ModelState.AddModelError(
                 string.Empty,
-                "Enter a valid 6-byte MAC address before enabling Wake-on-LAN.");
+                "Enter a valid 6-byte MAC address.");
+            await LoadAsync(cancellationToken);
+            return Page();
+        }
+
+        if (wakeOnLanEnabled && normalizedMac is null)
+        {
+            ModelState.AddModelError(
+                string.Empty,
+                "Enter a MAC address before enabling Wake-on-LAN.");
             await LoadAsync(cancellationToken);
             return Page();
         }
