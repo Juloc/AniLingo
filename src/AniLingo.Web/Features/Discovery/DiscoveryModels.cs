@@ -60,7 +60,7 @@ public sealed record DiscoveryRequest(
                 (char[]?)null,
                 StringSplitOptions.RemoveEmptyEntries);
 
-        return string.Join(' ', parts)
+        return string.Join(" ", parts)
             .Truncate(120);
     }
 
