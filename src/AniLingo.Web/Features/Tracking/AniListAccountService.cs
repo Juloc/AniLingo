@@ -1057,6 +1057,10 @@ public sealed class AniListAccountService(
         {
             throw;
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception exception) when (
             exception is HttpRequestException or
             TaskCanceledException or
