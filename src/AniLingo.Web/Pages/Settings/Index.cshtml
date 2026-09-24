@@ -28,9 +28,14 @@
     {
         <section class="panel">
             <div class="panel-heading">
-                <h2>Configured roots</h2>
+                <div>
+                    <span class="eyebrow">Media storage</span>
+                    <h2>Configured roots</h2>
+                </div>
                 <span>@Model.Roots.Count</span>
             </div>
+
+            <div asp-validation-summary="ModelOnly" class="validation"></div>
 
             @if (Model.Roots.Count == 0)
             {
@@ -42,18 +47,73 @@
                     @foreach (var root in Model.Roots)
                     {
                         <div class="root-row">
-                            <div>
-                                <strong>@root.Name</strong>
+                            <div class="form-stack" style="flex:1; min-width:0;">
+                                <div>
+                                    <strong>@root.Name</strong>
+                                    <span class="status-pill @root.AvailabilityCss">@root.AvailabilityLabel</span>
+                                </div>
                                 <code>@root.Path</code>
                                 <small>
-                                    Last scan:
+                                    Last available:
+                                    @(root.Availability.LastAvailableAtUtc?.ToLocalTime().ToString("g") ?? "not yet in this server session")
+                                    · Last scan:
                                     @(root.LastScannedAt?.ToLocalTime().ToString("g") ?? "never")
                                 </small>
+
+                                <div style="display:flex; gap:.5rem; flex-wrap:wrap;">
+                                    <form method="post" asp-page-handler="TestRoot">
+                                        <input type="hidden" name="rootId" value="@root.Id" />
+                                        <button class="button" type="submit">Test storage</button>
+                                    </form>
+
+                                    <form method="post" asp-page-handler="Scan">
+                                        <input type="hidden" name="rootId" value="@root.Id" />
+                                        <button class="button" type="submit">Scan library</button>
+                                    </form>
+
+                                    @if (root.WakeOnLanEnabled && root.Availability.WakeConfigured)
+                                    {
+                                        <form method="post" asp-page-handler="WakeRoot">
+                                            <input type="hidden" name="rootId" value="@root.Id" />
+                                            <button class="button button-primary" type="submit">Wake NAS</button>
+                                        </form>
+                                    }
+                                </div>
+
+                                <details>
+                                    <summary>Wake-on-LAN</summary>
+                                    <form method="post" asp-page-handler="ConfigureWake" class="form-stack" style="margin-top:.75rem;">
+                                        <input type="hidden" name="rootId" value="@root.Id" />
+                                        <label>
+                                            <span>
+                                                <input type="checkbox"
+                                                       name="wakeOnLanEnabled"
+                                                       value="true"
+                                                       checked="@root.WakeOnLanEnabled" />
+                                                Enable Wake-on-LAN
+                                            </span>
+                                        </label>
+                                        <label>
+                                            <span>NAS MAC address</span>
+                                            <input name="wakeMacAddress"
+                                                   value="@root.WakeMacAddress"
+                                                   autocomplete="off"
+                                                   placeholder="AA:BB:CC:DD:EE:FF" />
+                                        </label>
+                                        <label>
+                                            <span>Broadcast IPv4 (optional)</span>
+                                            <input name="wakeBroadcastAddress"
+                                                   value="@root.WakeBroadcastAddress"
+                                                   autocomplete="off"
+                                                   placeholder="255.255.255.255" />
+                                        </label>
+                                        <small class="muted">
+                                            Wake is Owner-only. Playing a video never wakes the NAS automatically.
+                                        </small>
+                                        <button class="button" type="submit">Save Wake-on-LAN</button>
+                                    </form>
+                                </details>
                             </div>
-                            <form method="post" asp-page-handler="Scan">
-                                <input type="hidden" name="rootId" value="@root.Id" />
-                                <button class="button" type="submit">Scan</button>
-                            </form>
                         </div>
                     }
                 </div>
