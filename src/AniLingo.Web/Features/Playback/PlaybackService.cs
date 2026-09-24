@@ -59,7 +59,6 @@ public sealed record PlaybackToken(
     string? State)
 {
     public bool IsVocabulary => TermId.HasValue;
-    public bool IsInteractive => TermId.HasValue || !string.IsNullOrWhiteSpace(Canonical);
 }
 
 public sealed record PlaybackCue(
@@ -145,19 +144,6 @@ public sealed class PlaybackCueProjector(IJapaneseMorphology morphology)
                     term.Meaning,
                     term.State?.ToString()));
             }
-            else if (ContainsJapanese(token.Surface))
-            {
-                var reading = JapaneseTermExtractor.ToHiragana(
-                    token.Reading.Normalize(NormalizationForm.FormKC).Trim());
-
-                tokens.Add(new PlaybackToken(
-                    token.Surface,
-                    null,
-                    canonical.Length == 0 ? token.Surface : canonical,
-                    ContainsJapanese(reading) ? reading : null,
-                    null,
-                    null));
-            }
             else
             {
                 tokens.Add(PlainToken(token.Surface));
@@ -179,15 +165,6 @@ public sealed class PlaybackCueProjector(IJapaneseMorphology morphology)
 
     private static PlaybackToken PlainToken(string surface) =>
         new(surface, null, null, null, null, null);
-
-    private static bool ContainsJapanese(string value) =>
-        value.Any(character =>
-            character is >= '\u3040' and <= '\u30ff'
-                or >= '\u3400' and <= '\u4dbf'
-                or >= '\u4e00' and <= '\u9fff'
-                or '々'
-                or '〆'
-                or 'ヶ');
 }
 
 public sealed record PlaybackStream(
