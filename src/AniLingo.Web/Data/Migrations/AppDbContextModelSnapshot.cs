@@ -193,6 +193,44 @@ namespace AniLingo.Web.Data.Migrations
                     b.ToTable("UserTerms");
                 });
 
+            modelBuilder.Entity("AniLingo.Web.Features.Progress.EpisodeProgress", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("DurationMs")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("EpisodeId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsCompleted")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("PositionMs")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ProfileId")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EpisodeId");
+
+                    b.HasIndex("ProfileId", "EpisodeId")
+                        .IsUnique();
+
+                    b.HasIndex("ProfileId", "UpdatedAt");
+
+                    b.ToTable("EpisodeProgress");
+                });
+
             modelBuilder.Entity("AniLingo.Web.Features.Library.Anime", b =>
                 {
                     b.Property<Guid>("Id")
@@ -690,6 +728,15 @@ namespace AniLingo.Web.Data.Migrations
                     b.HasOne("AniLingo.Web.Features.Vocabulary.Term", null)
                         .WithMany()
                         .HasForeignKey("TermId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("AniLingo.Web.Features.Progress.EpisodeProgress", b =>
+                {
+                    b.HasOne("AniLingo.Web.Features.Library.Episode", null)
+                        .WithMany()
+                        .HasForeignKey("EpisodeId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
