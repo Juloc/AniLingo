@@ -245,7 +245,7 @@ public sealed class OperationStore(AppDbContext db)
             id,
             """
             Status = @status,
-            ProgressPercent = COALESCE(ProgressPercent, 100),
+            ProgressPercent = 100,
             Message = COALESCE(@message, Message),
             Error = NULL,
             FinishedAtUtc = @now,
