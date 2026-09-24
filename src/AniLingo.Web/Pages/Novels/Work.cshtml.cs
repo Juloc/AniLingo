@@ -1,5 +1,6 @@
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Novels;
+using AniLingo.Web.Features.Operations;
 using AniLingo.Web.Features.Tracking;
 using AniLingo.Web.Infrastructure;
 using Microsoft.AspNetCore.Mvc;
@@ -130,17 +131,46 @@ public sealed class WorkModel(
             .ToArray();
 
         await jobs.QueueAsync(
-            async (services, workerToken) =>
+            new OperationDescriptor(
+                "novel-chapter-download",
+                "Novels",
+                "Download novel chapters",
+                detail.Work.MetadataTitle ?? detail.Work.Title,
+                account.ProfileId,
+                OperationLane.Normal,
+                IsDownload: true,
+                Retryable: true),
+            async (operation, services, workerToken) =>
             {
                 var service = services.GetRequiredService<NovelService>();
-                foreach (var chapterId in chapterIds)
+
+                if (chapterIds.Length == 0)
                 {
+                    await operation.ReportAsync(
+                        100,
+                        "All chapter text is already cached.",
+                        cancellationToken: workerToken);
+                    return;
+                }
+
+                for (var index = 0; index < chapterIds.Length; index++)
+                {
+                    await operation.ReportAsync(
+                        Math.Clamp((int)Math.Round(index * 100d / chapterIds.Length), 0, 99),
+                        $"Downloading chapter {index + 1} of {chapterIds.Length}.",
+                        cancellationToken: workerToken);
+
                     await service.EnsureChapterContentAsync(
-                        chapterId,
+                        chapterIds[index],
                         forceRefresh: false,
                         workerToken);
                     await Task.Delay(150, workerToken);
                 }
+
+                await operation.ReportAsync(
+                    100,
+                    $"Downloaded {chapterIds.Length} chapter(s).",
+                    cancellationToken: workerToken);
             },
             cancellationToken);
 
@@ -239,10 +269,28 @@ public sealed class WorkModel(
         }
 
         await jobs.QueueAsync(
-            async (services, workerToken) =>
+            new OperationDescriptor(
+                "novel-episode-mapping",
+                "AI",
+                "Suggest novel episode mappings",
+                Detail?.Work.MetadataTitle ?? Detail?.Work.Title ?? "Novel",
+                account.ProfileId,
+                OperationLane.Normal,
+                Retryable: true),
+            async (operation, services, workerToken) =>
             {
+                await operation.ReportAsync(
+                    5,
+                    "Generating mapping suggestions.",
+                    cancellationToken: workerToken);
+
                 var service = services.GetRequiredService<NovelMappingService>();
                 await service.SuggestAsync(id, animeId, workerToken);
+
+                await operation.ReportAsync(
+                    100,
+                    "Mapping suggestions are ready.",
+                    cancellationToken: workerToken);
             },
             cancellationToken);
 
