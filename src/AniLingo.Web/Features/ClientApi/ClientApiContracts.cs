@@ -43,7 +43,9 @@ public static class ClientApiContract
 public static class ClientApiRoutes
 {
     public static bool IsClientApi(PathString path) =>
-        path.StartsWithSegments(ClientApiContract.BasePath, StringComparison.OrdinalIgnoreCase);
+        path.StartsWithSegments(
+            new PathString(ClientApiContract.BasePath),
+            StringComparison.OrdinalIgnoreCase);
 
     public static string Anime(Guid animeId) =>
         $"{ClientApiContract.BasePath}/anime/{animeId:D}";
