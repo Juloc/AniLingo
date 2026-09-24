@@ -1,3 +1,4 @@
+using System.Text.Json;
 using AniLingo.Web.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -56,6 +57,9 @@ public sealed class NovelMetadataService(
         work.MetadataStatus = candidate.Status;
         work.MetadataChapterCount = candidate.ChapterCount;
         work.MetadataVolumeCount = candidate.VolumeCount;
+        work.MetadataGenresJson = candidate.Genres is { Count: > 0 }
+            ? JsonSerializer.Serialize(candidate.Genres)
+            : null;
         work.UpdatedAt = DateTime.UtcNow;
 
         await db.SaveChangesAsync(cancellationToken);
@@ -84,6 +88,7 @@ public sealed class NovelMetadataService(
         work.MetadataStatus = null;
         work.MetadataChapterCount = null;
         work.MetadataVolumeCount = null;
+        work.MetadataGenresJson = null;
         work.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(cancellationToken);
     }
