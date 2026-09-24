@@ -164,6 +164,20 @@ public sealed class DiscoveryTests
     }
 
     [TestMethod]
+    public void NovelProgressSyncBlocksUnknownAniListChapterCount()
+    {
+        var preview = AniListAccountService.EvaluateRemoteChapterProgressSafety(
+            Remote(progress: 3, status: "CURRENT"),
+            requestedProgress: 4,
+            aniListChapterCount: null,
+            mediaTitle: "Novel");
+
+        Assert.IsFalse(preview.CanSync);
+        Assert.IsFalse(preview.IsNoOp);
+        StringAssert.Contains(preview.Message, "chapter count");
+    }
+
+    [TestMethod]
     public void NovelProgressSyncRequiresCurrentAndAvoidsFinalChapter()
     {
         var paused = AniListAccountService.EvaluateRemoteChapterProgressSafety(
