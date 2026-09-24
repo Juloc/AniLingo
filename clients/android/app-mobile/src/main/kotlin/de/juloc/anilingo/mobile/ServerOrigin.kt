@@ -3,7 +3,7 @@ package de.juloc.anilingo.mobile
 import java.net.URI
 import java.util.UUID
 
-data class ServerOrigin private constructor(
+class ServerOrigin private constructor(
     val uri: URI,
 ) {
     val value: String = buildString {
