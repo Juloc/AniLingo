@@ -1,4 +1,6 @@
 using AniLingo.Web.Features.Auth;
+using AniLingo.Web.Features.Operations;
+using AniLingo.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using AniLingo.Web.Features.Sonarr;
 using Microsoft.AspNetCore.Mvc;
@@ -10,7 +12,8 @@ namespace AniLingo.Web.Pages.Admin;
 public sealed class SonarrModel(
     SonarrConnectionStore connectionStore,
     SonarrArtworkImportService sonarrService,
-    ILogger<SonarrModel> logger) : PageModel
+    BackgroundJobQueue jobs,
+    CurrentAccountContext account) : PageModel
 {
 
     [BindProperty]
@@ -81,33 +84,47 @@ public sealed class SonarrModel(
             return RedirectToPage();
         }
 
-        try
+        var test = await sonarrService.TestAsync(settings, cancellationToken);
+        if (!test.Success)
         {
-            var test = await sonarrService.TestAsync(settings, cancellationToken);
-            if (!test.Success)
+            TempData["SonarrError"] = test.Message;
+            return RedirectToPage();
+        }
+
+        await connectionStore.SaveAsync(settings, cancellationToken);
+
+        await jobs.QueueAsync(
+            new OperationDescriptor(
+                "sonarr-artwork-import",
+                "Artwork",
+                "Import Sonarr artwork",
+                "Posters and fanart",
+                account.ProfileId,
+                OperationLane.Maintenance,
+                IsDownload: true,
+                Retryable: true),
+            async (operation, services, workerToken) =>
             {
-                TempData["SonarrError"] = test.Message;
-                return RedirectToPage();
-            }
+                await operation.ReportAsync(
+                    5,
+                    "Loading Sonarr library.",
+                    cancellationToken: workerToken);
 
-            await connectionStore.SaveAsync(settings, cancellationToken);
-            var result = await sonarrService.ImportAsync(settings, cancellationToken);
+                var service =
+                    services.GetRequiredService<SonarrArtworkImportService>();
+                var result = await service.ImportAsync(
+                    settings,
+                    workerToken);
 
-            TempData["SonarrNotice"] =
-                $"Imported {result.PosterCount} posters and {result.FanartCount} fanart images.";
-            TempData["SonarrImportResult"] =
-                System.Text.Json.JsonSerializer.Serialize(result);
-        }
-        catch (HttpRequestException exception)
-        {
-            logger.LogWarning(exception, "Sonarr artwork import failed.");
-            TempData["SonarrError"] = "Sonarr artwork import failed.";
-        }
-        catch (InvalidOperationException exception)
-        {
-            TempData["SonarrError"] = exception.Message;
-        }
+                await operation.ReportAsync(
+                    100,
+                    $"Imported {result.PosterCount} posters and {result.FanartCount} fanart images; {result.UnmatchedCount} unmatched.",
+                    cancellationToken: workerToken);
+            },
+            cancellationToken);
 
+        TempData["SonarrNotice"] =
+            "Artwork import queued. Progress is available under Admin → Operations → Downloads.";
         return RedirectToPage();
     }
 
