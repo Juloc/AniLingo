@@ -117,11 +117,14 @@ public sealed class EpisodeProgressService(
             db.EpisodeProgress.Add(progress);
         }
 
-        progress.PositionMs = completed && durationMs is { } completedDuration
+        var finalDurationMs = durationMs ?? progress.DurationMs;
+        var finalCompleted = progress.IsCompleted || completed;
+
+        progress.PositionMs = finalCompleted && finalDurationMs is { } completedDuration
             ? completedDuration
             : positionMs;
-        progress.DurationMs = durationMs ?? progress.DurationMs;
-        progress.IsCompleted = progress.IsCompleted || completed;
+        progress.DurationMs = finalDurationMs;
+        progress.IsCompleted = finalCompleted;
         progress.UpdatedAt = DateTime.UtcNow;
 
         await db.SaveChangesAsync(cancellationToken);
