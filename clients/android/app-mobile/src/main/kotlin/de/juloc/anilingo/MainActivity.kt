@@ -104,6 +104,7 @@ private fun AniLingoMobileApp(
     var activeEpisodeId by rememberSaveable { mutableStateOf<String?>(null) }
     var securityError by remember { mutableStateOf<String?>(null) }
     var gateRetry by remember { mutableStateOf(0) }
+    var currentWebView by remember { mutableStateOf<WebView?>(null) }
 
     val origin = remember(originValue) {
         originValue?.let { ServerOrigin.parse(it).getOrNull() }
@@ -197,7 +198,10 @@ private fun AniLingoMobileApp(
                         restoredWebOrigin == origin.value
                     },
                     modifier = Modifier.fillMaxSize(),
-                    onWebViewChanged = onWebViewChanged,
+                    onWebViewChanged = {
+                        currentWebView = it
+                        onWebViewChanged(it)
+                    },
                     onEpisodeRequested = { episodeId ->
                         activeEpisodeId = episodeId
                     },
@@ -218,14 +222,8 @@ private fun AniLingoMobileApp(
             }
 
             BackHandler(enabled = activeEpisodeId == null) {
-                val current = (context as? MainActivity)?.let { activity ->
-                    activity.javaClass
-                    activity
-                }
-                val activity = context as? MainActivity
-                val currentWebView = activity?.currentWebViewForBack()
                 when {
-                    currentWebView?.canGoBack() == true -> currentWebView.goBack()
+                    currentWebView?.canGoBack() == true -> currentWebView?.goBack()
                     else -> onFinish()
                 }
             }
@@ -246,11 +244,6 @@ private fun AniLingoMobileApp(
     }
 }
 
-private fun MainActivity.currentWebViewForBack(): WebView? {
-    val field = MainActivity::class.java.getDeclaredField("webView")
-    field.isAccessible = true
-    return field.get(this) as? WebView
-}
 
 @Composable
 private fun ServerSetupScreen(
