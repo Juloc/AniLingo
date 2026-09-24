@@ -8,10 +8,7 @@
 }
 
 <header class="novel-library-header">
-    <div>
-        <h1>Light novels</h1>
-        <p>@Model.Works.Count title@(Model.Works.Count == 1 ? "" : "s") · reading progress is saved automatically</p>
-    </div>
+    <h1>Light novels</h1>
 
     @if (Model.IsOwner)
     {
@@ -77,10 +74,7 @@
 
     @if (Model.Works.Count == 0)
     {
-        <div class="novel-empty">
-            <strong>No novels yet</strong>
-            <span>Add a Narou/Ncode work to start reading.</span>
-        </div>
+        <div class="novel-empty">No novels yet.</div>
     }
     else
     {
