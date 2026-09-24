@@ -4,6 +4,7 @@ using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Metadata;
 using AniLingo.Web.Features.Playback;
+using AniLingo.Web.Features.Storage;
 using Microsoft.EntityFrameworkCore;
 
 namespace AniLingo.Web.Features.ClientApi;
@@ -12,6 +13,7 @@ public sealed class ClientApiService(
     AppDbContext db,
     PlaybackService playbackService,
     LearningService learningService,
+    MediaAvailabilityService mediaAvailability,
     CurrentAccountContext currentAccount)
 {
     public async Task<ClientLibraryResponse> GetLibraryAsync(
@@ -306,6 +308,13 @@ public sealed class ClientApiService(
         var defaultSubtitle = subtitleTracks.FirstOrDefault(x => x.IsDefault);
 
         var fallbackAvailable = media.Server.IsReady && media.Server.UsesLiveStream;
+        var storage = media.Storage
+            ?? await mediaAvailability.CheckMediaAsync(
+                media.MediaFileId,
+                force: false,
+                cancellationToken)
+            ?? throw new InvalidOperationException(
+                "Playback media exists without an availability record.");
 
         var clientMedia = new ClientPlayerMedia(
             media.MediaFileId,
@@ -321,7 +330,10 @@ public sealed class ClientApiService(
             ClientApiRoutes.DirectContent(media.MediaFileId),
             true,
             ClientApiMappings.ToClientOption(media.Device),
-            ClientApiMappings.ToClientOption(media.Server));
+            ClientApiMappings.ToClientOption(media.Server),
+            ClientApiMappings.ToClientAvailability(
+                storage,
+                currentAccount.IsOwner));
 
         return new ClientPlayerBootstrap(
             ClientApiContract.ApiVersion,
