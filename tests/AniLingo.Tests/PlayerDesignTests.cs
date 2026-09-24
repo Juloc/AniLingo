@@ -51,7 +51,7 @@ public sealed class PlayerDesignTests
         StringAssert.Contains(page, "~/css/player.css");
         StringAssert.Contains(page, "~/js/player-design.js");
         StringAssert.Contains(page, "data-word-inspector");
-        StringAssert.Contains(page, "data-player-action="repeatCurrentCue"");
+        StringAssert.Contains(page, "data-player-action=\"repeatCurrentCue\"");
 
         var designScriptIndex = page.IndexOf("~/js/player-design.js", StringComparison.Ordinal);
         var episodeScriptIndex = page.IndexOf("~/js/episode-player.js", StringComparison.Ordinal);
