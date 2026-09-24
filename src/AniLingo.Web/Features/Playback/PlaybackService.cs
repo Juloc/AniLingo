@@ -37,7 +37,11 @@ public sealed record PlaybackMedia(
     string? VideoCodec,
     PlaybackOption Device,
     PlaybackOption Server,
-    double? DurationSeconds = null)
+    double? DurationSeconds = null,
+    string? PixelFormat = null,
+    string? AudioCodec = null,
+    long? SizeBytes = null,
+    IReadOnlyList<PlaybackMediaTrack>? Tracks = null)
 {
     public bool HasReadyOption => Device.IsReady || Server.IsReady;
     public bool IsPreparing => Device.IsPreparing || Server.IsPreparing;
@@ -64,7 +68,15 @@ public sealed record PlaybackToken(
 public sealed record PlaybackCue(
     int StartMs,
     int EndMs,
-    IReadOnlyList<PlaybackToken> Tokens);
+    IReadOnlyList<PlaybackToken> Tokens,
+    long CueId = 0);
+
+public sealed record PlaybackCueSet(
+    Guid? TrackId,
+    IReadOnlyList<PlaybackCue> Cues)
+{
+    public static PlaybackCueSet Empty { get; } = new(null, []);
+}
 
 public sealed record EpisodePlaybackSnapshot(
     PlaybackMedia? Media,
@@ -102,14 +114,15 @@ public sealed class PlaybackCueProjector(IJapaneseMorphology morphology)
         int startMs,
         int endMs,
         string text,
-        IReadOnlyDictionary<string, PlaybackTermInfo> terms)
+        IReadOnlyDictionary<string, PlaybackTermInfo> terms,
+        long cueId = 0)
     {
         var normalized = text.Normalize(NormalizationForm.FormKC);
         var analyzed = morphology.Analyze(normalized);
 
         if (analyzed.Count == 0)
         {
-            return Plain(startMs, endMs, normalized);
+            return Plain(startMs, endMs, normalized, cueId);
         }
 
         var tokens = new List<PlaybackToken>(analyzed.Count + 2);
@@ -125,7 +138,7 @@ public sealed class PlaybackCueProjector(IJapaneseMorphology morphology)
             var index = normalized.IndexOf(token.Surface, cursor, StringComparison.Ordinal);
             if (index < 0)
             {
-                return Plain(startMs, endMs, normalized);
+                return Plain(startMs, endMs, normalized, cueId);
             }
 
             if (index > cursor)
@@ -157,11 +170,11 @@ public sealed class PlaybackCueProjector(IJapaneseMorphology morphology)
             tokens.Add(PlainToken(normalized[cursor..]));
         }
 
-        return new PlaybackCue(startMs, endMs, tokens);
+        return new PlaybackCue(startMs, endMs, tokens, cueId);
     }
 
-    private static PlaybackCue Plain(int startMs, int endMs, string text) =>
-        new(startMs, endMs, string.IsNullOrEmpty(text) ? [] : [PlainToken(text)]);
+    private static PlaybackCue Plain(int startMs, int endMs, string text, long cueId) =>
+        new(startMs, endMs, string.IsNullOrEmpty(text) ? [] : [PlainToken(text)], cueId);
 
     private static PlaybackToken PlainToken(string surface) =>
         new(surface, null, null, null, null, null);
@@ -236,7 +249,8 @@ public sealed class PlaybackService
                 PlaybackMediaTypes.GetContentType(row.Path),
                 null,
                 failed,
-                failed);
+                failed,
+                SizeBytes: row.SizeBytes);
         }
 
         if (IsUniversalDirect(row.Path, probe))
@@ -253,7 +267,11 @@ public sealed class PlaybackService
                 probe.VideoCodec,
                 direct,
                 direct,
-                probe.DurationSeconds);
+                probe.DurationSeconds,
+                probe.PixelFormat,
+                probe.AudioCodec,
+                row.SizeBytes,
+                probe.Tracks);
         }
 
         var device = BuildOption(row, probe, PlaybackRequestedMode.Device);
@@ -276,7 +294,11 @@ public sealed class PlaybackService
             probe.VideoCodec,
             device,
             server,
-            probe.DurationSeconds);
+            probe.DurationSeconds,
+            probe.PixelFormat,
+            probe.AudioCodec,
+            row.SizeBytes,
+            probe.Tracks);
     }
 
     public async Task<PlaybackStream?> GetStreamAsync(
@@ -323,6 +345,31 @@ public sealed class PlaybackService
         CancellationToken cancellationToken)
     {
         var media = await GetMediaAsync(episodeId, cancellationToken);
+        var cueSet = await GetCueSetAsync(
+            episodeId,
+            fromMs: null,
+            toMs: null,
+            cancellationToken);
+
+        return new EpisodePlaybackSnapshot(media, cueSet.Cues);
+    }
+
+    public async Task<PlaybackCueSet> GetCueSetAsync(
+        Guid episodeId,
+        int? fromMs,
+        int? toMs,
+        CancellationToken cancellationToken)
+    {
+        if (fromMs is < 0 || toMs is < 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                fromMs is < 0 ? nameof(fromMs) : nameof(toMs));
+        }
+
+        if (fromMs.HasValue && toMs.HasValue && fromMs.Value > toMs.Value)
+        {
+            throw new ArgumentException("fromMs must be less than or equal to toMs.");
+        }
 
         var trackId = await db.SubtitleTracks
             .AsNoTracking()
@@ -334,14 +381,27 @@ public sealed class PlaybackService
 
         if (trackId is null)
         {
-            return new EpisodePlaybackSnapshot(media, []);
+            return PlaybackCueSet.Empty;
         }
 
-        var cues = await db.SubtitleCues
+        var cueQuery = db.SubtitleCues
             .AsNoTracking()
-            .Where(x => x.SubtitleTrackId == trackId.Value)
+            .Where(x => x.SubtitleTrackId == trackId.Value);
+
+        if (fromMs.HasValue)
+        {
+            cueQuery = cueQuery.Where(x => x.EndMs >= fromMs.Value);
+        }
+
+        if (toMs.HasValue)
+        {
+            cueQuery = cueQuery.Where(x => x.StartMs <= toMs.Value);
+        }
+
+        var cues = await cueQuery
             .OrderBy(x => x.StartMs)
-            .Select(x => new { x.StartMs, x.EndMs, x.Text })
+            .ThenBy(x => x.Id)
+            .Select(x => new { x.Id, x.StartMs, x.EndMs, x.Text })
             .ToListAsync(cancellationToken);
 
         var termRows = await (
@@ -362,10 +422,41 @@ public sealed class PlaybackService
 
         var terms = termRows.ToDictionary(x => x.Canonical, StringComparer.Ordinal);
         var projected = cues
-            .Select(cue => projector.Project(cue.StartMs, cue.EndMs, cue.Text, terms))
+            .Select(cue => projector.Project(
+                cue.StartMs,
+                cue.EndMs,
+                cue.Text,
+                terms,
+                cue.Id))
             .ToArray();
 
-        return new EpisodePlaybackSnapshot(media, projected);
+        return new PlaybackCueSet(trackId, projected);
+    }
+
+    public async Task<PlaybackStream?> GetOriginalContentAsync(
+        Guid mediaFileId,
+        CancellationToken cancellationToken)
+    {
+        var row = await db.MediaFiles
+            .AsNoTracking()
+            .Where(x => x.Id == mediaFileId)
+            .Select(x => new MediaRow(
+                x.Id,
+                x.Path,
+                x.SizeBytes,
+                x.LastWriteTimeUtc))
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (row is null || !File.Exists(row.Path))
+        {
+            return null;
+        }
+
+        return new PlaybackStream(
+            row.Path,
+            PlaybackMediaTypes.GetContentType(row.Path),
+            new DateTimeOffset(File.GetLastWriteTimeUtc(row.Path)),
+            null);
     }
 
     private static PlaybackOption BuildOption(
