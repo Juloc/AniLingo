@@ -6,6 +6,7 @@ public sealed record MangaSeriesItem(
     string? NativeTitle,
     string? CoverImageUrl,
     int ChapterCount,
+    Guid? PreviewChapterId,
     Guid? CurrentChapterId,
     double? CurrentChapterNumber,
     int CurrentPageIndex,
