@@ -1,0 +1,184 @@
+@page "/Admin/Languages"
+@using AniLingo.Web.Features.Localization
+@model AniLingo.Web.Pages.LocalizationAdmin.IndexModel
+@{
+    ViewData["Title"] = "UI languages";
+    var selected = Model.Locales.FirstOrDefault(x =>
+        x.Locale.Equals(Model.SelectedLocale, StringComparison.OrdinalIgnoreCase));
+}
+
+<header class="page-header">
+    <div>
+        <span class="eyebrow">Admin · Localization</span>
+        <h1>UI languages</h1>
+        <p>Persistent interface translations with contextual AI generation. Normal page loads never call AI.</p>
+    </div>
+</header>
+
+<div asp-validation-summary="ModelOnly" class="validation"></div>
+
+<section class="panel">
+    <div class="panel-heading">
+        <div>
+            <span class="eyebrow">Add locale</span>
+            <h2>BCP-47 language</h2>
+        </div>
+        <span>@(Model.AiStatus?.IsAuthenticated == true ? "AI connected" : "AI not connected")</span>
+    </div>
+
+    <form method="post" asp-page-handler="AddLanguage" class="form-stack">
+        <label>
+            <span>Locale</span>
+            <input name="locale" placeholder="de, id, ro, ja, pt-BR…" autocomplete="off" required />
+            <small class="muted">UI language is independent from content and learning languages.</small>
+        </label>
+        <label>
+            <span>
+                <input type="checkbox" name="generateNow" value="true" />
+                Generate missing translations immediately with AI
+            </span>
+        </label>
+        <button class="button button-primary" type="submit">Add language</button>
+    </form>
+</section>
+
+<section class="section">
+    <div class="section-heading">
+        <div>
+            <span class="eyebrow">Catalog</span>
+            <h2>Languages</h2>
+        </div>
+    </div>
+
+    <div class="settings-grid">
+        @foreach (var locale in Model.Locales)
+        {
+            <a class="panel" href="@Url.Page("/LocalizationAdmin/Index", new { locale = locale.Locale })">
+                <div class="panel-heading">
+                    <div>
+                        <strong>@locale.NativeName</strong>
+                        <small>@locale.EnglishName · @locale.Locale · @locale.Direction</small>
+                    </div>
+                    <span>@locale.CoveragePercent%</span>
+                </div>
+                @if (locale.IsSource)
+                {
+                    <p class="muted">English source catalog · @locale.Total resources</p>
+                }
+                else
+                {
+                    <p class="muted">
+                        @locale.Ready ready · @locale.Missing missing · @locale.Outdated outdated · @locale.Manual manual
+                    </p>
+                }
+            </a>
+        }
+    </div>
+</section>
+
+@if (selected is not null)
+{
+    <section class="panel">
+        <div class="panel-heading">
+            <div>
+                <span class="eyebrow">Selected locale</span>
+                <h2>@selected.NativeName · @selected.Locale</h2>
+            </div>
+            <span>@selected.CoveragePercent% ready</span>
+        </div>
+
+        @if (!selected.IsSource)
+        {
+            <div class="inline-actions">
+                <form method="post" asp-page-handler="GenerateMissing">
+                    <input type="hidden" name="locale" value="@selected.Locale" />
+                    <button class="button button-primary" type="submit"
+                            disabled="@(Model.AiStatus?.IsAuthenticated != true)">
+                        Generate missing
+                    </button>
+                </form>
+                <form method="post" asp-page-handler="RegenerateOutdated">
+                    <input type="hidden" name="locale" value="@selected.Locale" />
+                    <button class="button" type="submit"
+                            disabled="@(selected.Outdated == 0 || Model.AiStatus?.IsAuthenticated != true)">
+                        Regenerate outdated
+                    </button>
+                </form>
+            </div>
+        }
+
+        <form method="get" class="form-stack" style="margin-top:1rem;">
+            <input type="hidden" name="locale" value="@selected.Locale" />
+            <label>
+                <span>Search resources</span>
+                <input name="search" value="@Model.Search" placeholder="player, learning.saveWord, Save…" />
+            </label>
+            <button class="button" type="submit">Search</button>
+        </form>
+    </section>
+
+    @foreach (var entry in Model.Entries)
+    {
+        <section class="panel">
+            <div class="panel-heading">
+                <div>
+                    <span class="eyebrow">@entry.Message.Feature · @entry.Message.Surface</span>
+                    <h3><code>@entry.Message.Key</code></h3>
+                </div>
+                <span class="status-pill">@(selected.IsSource ? "Source" : entry.Status.ToString())</span>
+            </div>
+
+            <div class="status-list">
+                <div><span>English source</span><strong>@entry.Message.DefaultText</strong></div>
+                <div><span>Meaning / context</span><strong>@entry.Message.Description</strong></div>
+                <div><span>Tone</span><strong>@entry.Message.Tone</strong></div>
+                @if (entry.Message.MaxLength is { } max)
+                {
+                    <div><span>Length guidance</span><strong>≤ @max characters when natural</strong></div>
+                }
+                @if (entry.Message.Placeholders is { Count: > 0 })
+                {
+                    <div>
+                        <span>Placeholders</span>
+                        <strong>@string.Join(", ", entry.Message.Placeholders.Select(x => $"{x.Key}: {x.Value}"))</strong>
+                    </div>
+                }
+            </div>
+
+            @if (!selected.IsSource)
+            {
+                <form method="post" asp-page-handler="SaveManual" class="form-stack">
+                    <input type="hidden" name="locale" value="@selected.Locale" />
+                    <input type="hidden" name="key" value="@entry.Message.Key" />
+                    <label>
+                        <span>@selected.NativeName translation</span>
+                        <textarea name="text" rows="2" required>@entry.Text</textarea>
+                    </label>
+                    <div class="inline-actions">
+                        <button class="button" type="submit">Save manual</button>
+                    </div>
+                </form>
+
+                @if (entry.Status == UiTranslationStatus.Generated)
+                {
+                    <form method="post" asp-page-handler="MarkReviewed">
+                        <input type="hidden" name="locale" value="@selected.Locale" />
+                        <input type="hidden" name="key" value="@entry.Message.Key" />
+                        <button class="text-link" type="submit">Mark reviewed</button>
+                    </form>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(entry.Provider))
+                {
+                    <small class="muted">
+                        @entry.Provider
+                        @if (!string.IsNullOrWhiteSpace(entry.Model))
+                        {
+                            <text> · @entry.Model</text>
+                        }
+                    </small>
+                }
+            }
+        </section>
+    }
+}
