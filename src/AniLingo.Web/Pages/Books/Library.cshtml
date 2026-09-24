@@ -1,0 +1,136 @@
+@page "/Books/Library/{id:guid}"
+@model AniLingo.Web.Pages.Books.LibraryModel
+@{
+    ViewData["Title"] = Model.Book.Work.MetadataTitle ?? Model.Book.Work.Title;
+    var title = Model.Book.Work.MetadataTitle ?? Model.Book.Work.Title;
+    var translatedCount = Model.Book.Chapters.Count(x => x.HasTranslation);
+    var firstChapter = Model.Book.Progress?.ChapterId
+        ?? Model.Book.Chapters.FirstOrDefault()?.Id;
+}
+@section Head {
+    <link rel="stylesheet" href="~/css/books.css" asp-append-version="true" />
+}
+
+<a class="books-back" href="/Books?lang=@Model.TargetLanguage">← Books</a>
+
+@if (TempData["Status"] is string status)
+{
+    <div class="books-message">@status</div>
+}
+
+<header class="book-detail-header book-library-header">
+    <div class="book-detail-cover">
+        @if (!string.IsNullOrWhiteSpace(Model.Book.Work.CoverImageUrl))
+        {
+            <img src="@Model.Book.Work.CoverImageUrl"
+                 alt=""
+                 referrerpolicy="no-referrer" />
+        }
+        else
+        {
+            <span>B</span>
+        }
+    </div>
+
+    <div class="book-detail-copy">
+        <h1>@title</h1>
+        @if (!string.IsNullOrWhiteSpace(Model.Book.Work.Author))
+        {
+            <p class="book-author">@Model.Book.Work.Author</p>
+        }
+        @if (!string.IsNullOrWhiteSpace(Model.Book.Work.Description))
+        {
+            <p class="book-summary">@Model.Book.Work.Description</p>
+        }
+        @if (Model.Book.Subjects.Count > 0)
+        {
+            <div class="book-tags">
+                @foreach (var genre in Model.Book.Subjects.Take(8))
+                {
+                    <span>@genre</span>
+                }
+            </div>
+        }
+
+        <div class="book-language-row">
+            <form method="get">
+                <label>
+                    Reading language
+                    <select name="lang" onchange="this.form.submit()">
+                        @foreach (var language in AniLingo.Web.Features.Books.BookLanguageCatalog.Supported)
+                        {
+                            <option value="@language.Key"
+                                    selected="@(language.Key == Model.TargetLanguage)">
+                                @language.Value
+                            </option>
+                        }
+                    </select>
+                </label>
+            </form>
+
+            @if (!Model.SourceIsTarget)
+            {
+                <form method="post"
+                      asp-page-handler="TranslateBook"
+                      asp-route-id="@Model.Book.Work.Id">
+                    <input type="hidden" name="lang" value="@Model.TargetLanguage" />
+                    <button class="button button-primary" type="submit">
+                        Translate whole book to @AniLingo.Web.Features.Books.BookLanguageCatalog.GetName(Model.TargetLanguage)
+                    </button>
+                </form>
+            }
+        </div>
+
+        <div class="book-translation-summary">
+            @if (Model.SourceIsTarget)
+            {
+                <span>Original language selected · no translation needed</span>
+            }
+            else
+            {
+                <span>@translatedCount / @Model.Book.Chapters.Count chapters translated</span>
+                <div class="book-card-progress">
+                    <span style="width:@(Model.Book.Chapters.Count == 0 ? 0 : translatedCount * 100 / Model.Book.Chapters.Count)%"></span>
+                </div>
+            }
+        </div>
+
+        @if (firstChapter is Guid chapterId)
+        {
+            <div class="book-actions">
+                <a class="button button-primary"
+                   href="/Books/Read/@chapterId?lang=@Model.TargetLanguage">
+                    @(Model.Book.Progress is null ? "Start reading" : "Continue reading")
+                </a>
+            </div>
+        }
+    </div>
+</header>
+
+<section class="book-chapter-list">
+    <div class="books-results-heading">
+        <strong>Chapters</strong>
+        <span>@Model.Book.Chapters.Count</span>
+    </div>
+
+    @foreach (var chapter in Model.Book.Chapters)
+    {
+        <a class="book-chapter-row"
+           href="/Books/Read/@chapter.Id?lang=@Model.TargetLanguage">
+            <span class="book-chapter-number">@chapter.Number</span>
+            <strong>@chapter.Title</strong>
+            @if (Model.SourceIsTarget)
+            {
+                <small>Original</small>
+            }
+            else if (chapter.HasTranslation)
+            {
+                <small class="ready">Translated</small>
+            }
+            else
+            {
+                <small>Original available</small>
+            }
+        </a>
+    }
+</section>
