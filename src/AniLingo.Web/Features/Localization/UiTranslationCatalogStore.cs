@@ -584,6 +584,131 @@ public sealed class UiTranslationCatalogStore(AppDbContext db)
         }
     }
 
+    public async Task<UiLocaleMetadata> GetProfileLocaleAsync(
+        string profileId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(profileId))
+        {
+            return UiTranslationCatalog.ParseLocale(
+                UiTranslationCatalog.SourceLocale);
+        }
+
+        var connection = db.Database.GetDbConnection();
+        var openedHere = connection.State != ConnectionState.Open;
+        if (openedHere)
+        {
+            await connection.OpenAsync(cancellationToken);
+        }
+
+        try
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText =
+                """
+                SELECT l."Locale", l."EnglishName", l."NativeName", l."Direction"
+                FROM "UiProfileLocales" AS p
+                INNER JOIN "UiLocales" AS l ON l."Locale" = p."Locale"
+                WHERE p."ProfileId" = $profileId
+                  AND l."IsEnabled" = 1
+                LIMIT 1;
+                """;
+            Add(command, "$profileId", profileId);
+
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (await reader.ReadAsync(cancellationToken))
+            {
+                return new UiLocaleMetadata(
+                    reader.GetString(0),
+                    reader.GetString(1),
+                    reader.GetString(2),
+                    reader.GetString(3));
+            }
+
+            return UiTranslationCatalog.ParseLocale(
+                UiTranslationCatalog.SourceLocale);
+        }
+        finally
+        {
+            if (openedHere)
+            {
+                await connection.CloseAsync();
+            }
+        }
+    }
+
+    public async Task SetProfileLocaleAsync(
+        string profileId,
+        string locale,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(profileId))
+        {
+            throw new ArgumentException("Profile ID is required.", nameof(profileId));
+        }
+
+        var metadata = UiTranslationCatalog.ParseLocale(locale);
+        var connection = db.Database.GetDbConnection();
+        var openedHere = connection.State != ConnectionState.Open;
+        if (openedHere)
+        {
+            await connection.OpenAsync(cancellationToken);
+        }
+
+        try
+        {
+            await using (var exists = connection.CreateCommand())
+            {
+                exists.CommandText =
+                    """
+                    SELECT COUNT(*)
+                    FROM "UiLocales"
+                    WHERE "Locale" = $locale
+                      AND "IsEnabled" = 1;
+                    """;
+                Add(exists, "$locale", metadata.Locale);
+                var count = Convert.ToInt32(
+                    await exists.ExecuteScalarAsync(cancellationToken),
+                    CultureInfo.InvariantCulture);
+                if (count == 0)
+                {
+                    throw new InvalidOperationException(
+                        $"UI locale {metadata.Locale} has not been added by an Owner.");
+                }
+            }
+
+            await using var command = connection.CreateCommand();
+            command.CommandText =
+                """
+                INSERT INTO "UiProfileLocales" ("ProfileId", "Locale", "UpdatedAt")
+                VALUES ($profileId, $locale, $updatedAt)
+                ON CONFLICT("ProfileId") DO UPDATE SET
+                    "Locale" = excluded."Locale",
+                    "UpdatedAt" = excluded."UpdatedAt";
+                """;
+            Add(command, "$profileId", profileId);
+            Add(command, "$locale", metadata.Locale);
+            Add(command, "$updatedAt", DateTime.UtcNow);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        finally
+        {
+            if (openedHere)
+            {
+                await connection.CloseAsync();
+            }
+        }
+    }
+
+    public async Task<UiTextBundle> LoadProfileBundleAsync(
+        string profileId,
+        CancellationToken cancellationToken)
+    {
+        var locale = await GetProfileLocaleAsync(profileId, cancellationToken);
+        var values = await LoadBundleAsync(locale.Locale, cancellationToken);
+        return new UiTextBundle(locale.Locale, locale.Direction, values);
+    }
+
     private static async Task EnsureSourceLocaleAsync(
         DbConnection connection,
         DbTransaction transaction,
