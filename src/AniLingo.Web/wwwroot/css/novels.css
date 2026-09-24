@@ -8,6 +8,10 @@
     color: var(--muted, #9aa4b2);
 }
 
+.is-hidden {
+    display: none !important;
+}
+
 .novel-library-header,
 .novel-section-heading,
 .panel-heading,
@@ -635,10 +639,9 @@
     background: var(--reader-surface-strong);
 }
 
-.novel-toolbar-count {
+.novel-toolbar-count,
+.novel-bookmark-button-count {
     position: absolute;
-    right: 0;
-    top: 0;
     min-width: 16px;
     height: 16px;
     display: grid;
@@ -648,6 +651,22 @@
     background: var(--accent, #7c8cff);
     color: white;
     font-size: .62rem;
+    font-weight: 700;
+}
+
+.novel-toolbar-count {
+    right: 0;
+    top: 0;
+}
+
+.novel-bookmark-button-count {
+    right: -2px;
+    bottom: -2px;
+}
+
+.novel-icon-button.has-bookmarks {
+    background: color-mix(in srgb, var(--accent, #7c8cff) 16%, transparent);
+    color: var(--accent, #9aa5ff);
 }
 
 .novel-view-switch {
@@ -670,6 +689,73 @@
     color: var(--reader-text);
     background: var(--reader-surface);
     box-shadow: 0 1px 5px rgba(0, 0, 0, .15);
+}
+
+.novel-bookmark-rail {
+    position: fixed;
+    z-index: 22;
+    top: 18vh;
+    bottom: 14vh;
+    left: max(.75rem, calc(50% - (var(--novel-reader-width) / 2) - 52px));
+    width: 34px;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    justify-items: center;
+    gap: .45rem;
+    pointer-events: none;
+}
+
+.novel-bookmark-rail-icon {
+    width: 32px;
+    height: 32px;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--reader-border);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--reader-surface) 92%, transparent);
+    color: var(--reader-muted);
+    cursor: pointer;
+    pointer-events: auto;
+    backdrop-filter: blur(12px);
+}
+
+.novel-bookmark-rail-icon:hover {
+    color: var(--reader-text);
+    background: var(--reader-surface-strong);
+}
+
+.novel-bookmark-rail-track {
+    position: relative;
+    width: 3px;
+    min-height: 120px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--reader-muted) 22%, transparent);
+}
+
+.novel-bookmark-marker {
+    position: absolute;
+    left: 50%;
+    width: 20px;
+    height: 20px;
+    display: grid;
+    place-items: center;
+    transform: translate(-50%, -50%);
+    border: 1px solid var(--reader-border);
+    border-radius: 999px;
+    background: var(--reader-surface);
+    color: var(--accent, #9aa5ff);
+    cursor: pointer;
+    pointer-events: auto;
+    font-size: .58rem;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, .2);
+}
+
+.novel-bookmark-marker:hover,
+.novel-bookmark-marker:focus-visible {
+    width: 24px;
+    height: 24px;
+    outline: none;
+    background: var(--reader-surface-strong);
 }
 
 .novel-reader-settings {
@@ -980,6 +1066,12 @@
     color: var(--reader-text);
     box-shadow: 0 8px 24px rgba(0, 0, 0, .24);
     font-size: .82rem;
+}
+
+@media (max-width: 920px) {
+    .novel-bookmark-rail {
+        display: none;
+    }
 }
 
 @media (max-width: 820px) {
