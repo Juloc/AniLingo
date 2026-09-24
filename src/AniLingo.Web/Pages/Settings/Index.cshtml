@@ -24,6 +24,12 @@
         <a class="button" asp-page="/Settings/Learning">Manage learning</a>
     </section>
 
+    <section class="panel">
+        <div class="panel-heading"><h2>AniList</h2><span>Personal</span></div>
+        <p class="muted">Connect your own AniList account and sync only your progress.</p>
+        <a class="button" asp-page="/Settings/AniList">Manage AniList</a>
+    </section>
+
     @if (Model.IsOwner)
     {
         <section class="panel">
@@ -161,12 +167,6 @@
             <div class="panel-heading"><h2>Sonarr</h2><span>Optional</span></div>
             <p class="muted">Configure artwork import from your existing Sonarr library.</p>
             <a class="button" asp-page="/Settings/Sonarr">Manage Sonarr</a>
-        </section>
-
-        <section class="panel">
-            <div class="panel-heading"><h2>AniList</h2><span>Optional</span></div>
-            <p class="muted">Manage the server-wide AniList connection and progress sync.</p>
-            <a class="button" asp-page="/Settings/AniList">Manage AniList</a>
         </section>
 
         <section class="panel">
