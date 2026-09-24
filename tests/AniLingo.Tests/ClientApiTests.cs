@@ -107,16 +107,16 @@ public sealed class ClientApiTests
         Assert.AreEqual("yuv420p", result.PixelFormat);
         Assert.AreEqual("aac", result.AudioCodec);
         Assert.AreEqual(123.45, result.DurationSeconds);
-        Assert.IsNotNull(result.Tracks);
-        Assert.AreEqual(2, result.Tracks.Count);
+        var tracks = result.Tracks ?? throw new AssertFailedException("Expected media tracks.");
+        Assert.AreEqual(2, tracks.Count);
 
-        var audio = result.Tracks.Single(x => x.Kind == PlaybackTrackKind.Audio);
+        var audio = tracks.Single(x => x.Kind == PlaybackTrackKind.Audio);
         Assert.AreEqual(1, audio.StreamIndex);
         Assert.AreEqual("jpn", audio.Language);
         Assert.AreEqual("Japanese", audio.Title);
         Assert.IsTrue(audio.IsDefault);
 
-        var subtitle = result.Tracks.Single(x => x.Kind == PlaybackTrackKind.Subtitle);
+        var subtitle = tracks.Single(x => x.Kind == PlaybackTrackKind.Subtitle);
         Assert.AreEqual(2, subtitle.StreamIndex);
         Assert.AreEqual("ass", subtitle.Codec);
         Assert.IsTrue(subtitle.IsText);
@@ -157,12 +157,12 @@ public sealed class ClientApiTests
         var episodeId = Guid.NewGuid();
         var mediaId = Guid.NewGuid();
 
-        StringAssert.StartsWith(
-            ClientApiRoutes.Player(episodeId),
-            "/api/client/v1/");
-        StringAssert.StartsWith(
-            ClientApiRoutes.DirectContent(mediaId),
-            "/api/client/v1/");
+        Assert.IsTrue(
+            ClientApiRoutes.Player(episodeId)
+                .StartsWith("/api/client/v1/", StringComparison.Ordinal));
+        Assert.IsTrue(
+            ClientApiRoutes.DirectContent(mediaId)
+                .StartsWith("/api/client/v1/", StringComparison.Ordinal));
         StringAssert.DoesNotContain(
             ClientApiRoutes.DirectContent(mediaId),
             "\\");
