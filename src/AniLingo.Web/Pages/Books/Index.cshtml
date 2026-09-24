@@ -10,7 +10,7 @@
 <header class="books-header">
     <div>
         <h1>Books</h1>
-        <p>Search English books and test Indonesian translation.</p>
+        <p>Search books and test Indonesian translation when readable text is available.</p>
     </div>
     <form method="get" action="/Books" class="books-search" role="search">
         <input type="search"
@@ -56,7 +56,14 @@ else
                     {
                         <span>@book.Author</span>
                     }
-                    <small>@book.DownloadCount.ToString("N0") downloads</small>
+                    @if (book.FirstPublishYear is not null)
+                    {
+                        <small>@book.FirstPublishYear</small>
+                    }
+                    else
+                    {
+                        <small>@book.SourceName</small>
+                    }
                 </div>
             </a>
         }

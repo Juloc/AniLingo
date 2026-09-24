@@ -20,7 +20,7 @@ public sealed class DetailsModel(
         SplitParagraphs(TranslatedText);
 
     public async Task<IActionResult> OnGetAsync(
-        int id,
+        string id,
         CancellationToken cancellationToken)
     {
         return await LoadAsync(id, cancellationToken)
@@ -29,7 +29,7 @@ public sealed class DetailsModel(
     }
 
     public async Task<IActionResult> OnPostTranslateAsync(
-        int id,
+        string id,
         CancellationToken cancellationToken)
     {
         if (!await LoadAsync(id, cancellationToken))
@@ -39,7 +39,7 @@ public sealed class DetailsModel(
 
         if (string.IsNullOrWhiteSpace(SourceText))
         {
-            Error = "No readable English text is available for this book.";
+            Error = "No readable text source is available for this book yet.";
             return Page();
         }
 
@@ -59,7 +59,7 @@ public sealed class DetailsModel(
     }
 
     private async Task<bool> LoadAsync(
-        int id,
+        string id,
         CancellationToken cancellationToken)
     {
         try
@@ -70,13 +70,26 @@ public sealed class DetailsModel(
                 return false;
             }
 
-            SourceText = await books.GetReadableSampleAsync(
-                Book,
-                cancellationToken);
+            if (Book.CanRead)
+            {
+                SourceText = await books.GetReadableSampleAsync(
+                    Book,
+                    cancellationToken);
+            }
+
             return true;
         }
-        catch (Exception exception) when (
-            exception is HttpRequestException or InvalidOperationException or TaskCanceledException)
+        catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            Error = "The book source timed out. Please try again.";
+            return Book is not null;
+        }
+        catch (HttpRequestException)
+        {
+            Error = "The book source is temporarily unavailable. Please try again.";
+            return Book is not null;
+        }
+        catch (InvalidOperationException exception)
         {
             Error = exception.Message;
             return Book is not null;

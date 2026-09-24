@@ -1,4 +1,4 @@
-@page "/Books/{id:int}"
+@page "/Books/{id}"
 @model AniLingo.Web.Pages.Books.DetailsModel
 @{
     ViewData["Title"] = Model.Book?.Title ?? "Book";
@@ -31,6 +31,10 @@
             {
                 <p class="book-author">@Model.Book.Author</p>
             }
+            @if (Model.Book.FirstPublishYear is not null)
+            {
+                <p class="book-author">First published @Model.Book.FirstPublishYear</p>
+            }
             @if (!string.IsNullOrWhiteSpace(Model.Book.Summary))
             {
                 <p class="book-summary">@Model.Book.Summary</p>
@@ -51,17 +55,25 @@
                       asp-route-id="@Model.Book.Id">
                     <button class="button button-primary"
                             type="submit"
-                            disabled="@string.IsNullOrWhiteSpace(Model.SourceText)">
+                            disabled="@(!Model.Book.CanRead)">
                         Translate to Indonesian
                     </button>
                 </form>
                 <a class="button"
-                   href="https://www.gutenberg.org/ebooks/@Model.Book.Id"
+                   href="@Model.Book.SourceUrl"
                    target="_blank"
-                   rel="noopener noreferrer">Source</a>
+                   rel="noopener noreferrer">@Model.Book.SourceName</a>
             </div>
         </div>
     </header>
+
+    @if (!Model.Book.CanRead && string.IsNullOrWhiteSpace(Model.Error))
+    {
+        <div class="books-message">
+            Metadata is available, but this preview has no readable text source for this title.
+            Translation becomes available when AniLingo has readable book text.
+        </div>
+    }
 }
 
 @if (!string.IsNullOrWhiteSpace(Model.Error))
@@ -96,7 +108,7 @@
                 <span class="book-reader-language">English</span>
                 <h2>Original sample</h2>
             </div>
-            <span>Project Gutenberg</span>
+            <span>@(Model.Book?.TextSourceName ?? Model.Book?.SourceName)</span>
         </div>
         <article class="book-prose">
             @foreach (var paragraph in Model.OriginalParagraphs)

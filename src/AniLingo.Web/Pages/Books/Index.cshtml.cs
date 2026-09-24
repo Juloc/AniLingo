@@ -19,10 +19,17 @@ public sealed class IndexModel(BookCatalogService books) : PageModel
         {
             Books = await books.SearchAsync(Query, cancellationToken);
         }
-        catch (Exception exception) when (
-            exception is HttpRequestException or InvalidOperationException or TaskCanceledException)
+        catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            Error = "Book search is currently unavailable. " + exception.Message;
+            Error = "Book search timed out. Please try again.";
+        }
+        catch (HttpRequestException)
+        {
+            Error = "Book search is temporarily unavailable. Please try again.";
+        }
+        catch (InvalidOperationException exception)
+        {
+            Error = exception.Message;
         }
     }
 }
