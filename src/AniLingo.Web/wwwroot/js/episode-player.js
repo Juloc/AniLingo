@@ -494,7 +494,7 @@
 
         storageRecoveryActive = true;
         storageRetryStartedAt = Date.now();
-        storageRetryAttempt = 0;
+        storageRetryAttempt = 1;
         showStorageState({ state: storageState, retryable: true }, false);
         scheduleStorageRetry(0);
     };
@@ -763,15 +763,19 @@
     });
 
     storageRetry?.addEventListener("click", () => {
+        playbackWasRequested = true;
+        resumeShouldPlay = true;
         stopStorageRetry();
         storageRecoveryActive = true;
         storageRetryStartedAt = Date.now();
-        storageRetryAttempt = 0;
+        storageRetryAttempt = 1;
         showStorageState({ state: storageState, retryable: true }, false);
         scheduleStorageRetry(0);
     });
 
     storageWake?.addEventListener("click", async () => {
+        playbackWasRequested = true;
+        resumeShouldPlay = true;
         const wakeUrl = root.dataset.storageWakeUrl;
         if (!wakeUrl) {
             return;
@@ -798,7 +802,7 @@
             stopStorageRetry();
             storageRecoveryActive = true;
             storageRetryStartedAt = Date.now();
-            storageRetryAttempt = 0;
+            storageRetryAttempt = 1;
             showStorageState(
                 {
                     state: storageState,
