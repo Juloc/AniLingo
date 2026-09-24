@@ -16,13 +16,16 @@
 }
 @section Head {
     <link rel="stylesheet" href="~/css/books.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/reader-themes.css" asp-append-version="true" />
 }
 @section Scripts {
+    <script src="~/js/reader-themes.js" asp-append-version="true"></script>
     <script src="~/js/books-reader.js" asp-append-version="true"></script>
 }
 
 <div class="book-reader-page"
      data-book-reader
+     data-reader-personalization
      data-view="@defaultView"
      data-target-language="@Model.Reader.TargetLanguage"
      data-has-translation="@(translatedParagraphs.Count > 0 ? "true" : "false")"
@@ -223,10 +226,104 @@
                         </select>
                     </label>
 
-                    <input type="hidden" name="Settings.GenreArtworkEnabled" value="@Model.ReaderSettings.GenreArtworkEnabled.ToString().ToLowerInvariant()" />
-                    <input type="hidden" name="Settings.GenreTheme" value="@Model.ReaderSettings.GenreTheme" />
-                    <input type="hidden" name="Settings.BackgroundAssetId" value="@Model.ReaderSettings.BackgroundAssetId" />
-                    <input type="hidden" name="Settings.BackgroundIntensity" value="@Model.ReaderSettings.BackgroundIntensity.ToString(System.Globalization.CultureInfo.InvariantCulture)" />
+                    <label class="book-settings-check">
+                        <input type="checkbox"
+                               name="Settings.GenreArtworkEnabled"
+                               value="true"
+                               data-book-setting="genreArtworkEnabled" />
+                        Genre background
+                    </label>
+
+                    <label>
+                        Genre / mood
+                        <select name="Settings.GenreTheme"
+                                data-book-setting="genreTheme"
+                                data-reader-genre-select>
+                            <option value="auto">Automatic</option>
+                        </select>
+                    </label>
+
+                    <label>
+                        Background
+                        <select name="Settings.BackgroundAssetId"
+                                data-book-setting="backgroundAssetId"
+                                data-reader-background-select>
+                            <option value="auto">Automatic</option>
+                        </select>
+                    </label>
+
+                    <label>
+                        Background intensity
+                        <input type="range"
+                               name="Settings.BackgroundIntensity"
+                               min="0"
+                               max="0.12"
+                               step="0.005"
+                               data-book-setting="backgroundIntensity" />
+                        <output data-book-setting-output="backgroundIntensity"></output>
+                    </label>
+
+                    <label>
+                        Background motion
+                        <select name="Settings.BackgroundMotionMode"
+                                data-book-setting="backgroundMotionMode">
+                            <option value="auto">Automatic</option>
+                            <option value="static">Static</option>
+                            <option value="parallax">2.5D / Parallax</option>
+                        </select>
+                    </label>
+
+                    <details class="novel-theme-advanced">
+                        <summary>Theme fine tuning</summary>
+                        <div class="book-theme-advanced-grid">
+                            <label>Effects
+                                <input type="range" name="Settings.ThemeEffectStrength" min="0" max="2" step="0.05"
+                                       data-book-setting="themeEffectStrength" />
+                                <output data-book-setting-output="themeEffectStrength"></output>
+                            </label>
+                            <label>Brightness
+                                <input type="range" name="Settings.ThemeBrightness" min="0.65" max="1.35" step="0.05"
+                                       data-book-setting="themeBrightness" />
+                                <output data-book-setting-output="themeBrightness"></output>
+                            </label>
+                            <label>Contrast
+                                <input type="range" name="Settings.ThemeContrast" min="0.7" max="1.3" step="0.05"
+                                       data-book-setting="themeContrast" />
+                                <output data-book-setting-output="themeContrast"></output>
+                            </label>
+                            <label>Saturation
+                                <input type="range" name="Settings.ThemeSaturation" min="0" max="1.5" step="0.05"
+                                       data-book-setting="themeSaturation" />
+                                <output data-book-setting-output="themeSaturation"></output>
+                            </label>
+                            <label>Vignette
+                                <input type="range" name="Settings.ThemeVignetteStrength" min="0" max="2" step="0.05"
+                                       data-book-setting="themeVignetteStrength" />
+                                <output data-book-setting-output="themeVignetteStrength"></output>
+                            </label>
+                            <label>Grain
+                                <input type="range" name="Settings.ThemeGrainStrength" min="0" max="2" step="0.05"
+                                       data-book-setting="themeGrainStrength" />
+                                <output data-book-setting-output="themeGrainStrength"></output>
+                            </label>
+                            <label>Text surface
+                                <input type="range" name="Settings.ThemeTextBackdropStrength" min="0" max="2" step="0.05"
+                                       data-book-setting="themeTextBackdropStrength" />
+                                <output data-book-setting-output="themeTextBackdropStrength"></output>
+                            </label>
+                            <label>Parallax
+                                <input type="range" name="Settings.ThemeParallaxStrength" min="0" max="2" step="0.05"
+                                       data-book-setting="themeParallaxStrength" />
+                                <output data-book-setting-output="themeParallaxStrength"></output>
+                            </label>
+                            <label>Tint
+                                <input type="range" name="Settings.ThemeTintStrength" min="0" max="2" step="0.05"
+                                       data-book-setting="themeTintStrength" />
+                                <output data-book-setting-output="themeTintStrength"></output>
+                            </label>
+                        </div>
+                    </details>
+
                     <input type="hidden" name="Settings.BookmarkStyle" value="@Model.ReaderSettings.BookmarkStyle" />
                     <input type="hidden" name="Settings.BookmarkColor" value="@Model.ReaderSettings.BookmarkColor" />
 
