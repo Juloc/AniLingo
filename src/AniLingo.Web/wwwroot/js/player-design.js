@@ -27,6 +27,20 @@
     const cueText = cue =>
         (cue?.tokens || []).map(token => token.surface || "").join("");
 
+    const containsJapanese = value =>
+        [...(value || "")].some(character => {
+            const code = character.codePointAt(0);
+            return (code >= 0x3040 && code <= 0x30ff) ||
+                (code >= 0x3400 && code <= 0x4dbf) ||
+                (code >= 0x4e00 && code <= 0x9fff) ||
+                character === "々" || character === "〆" || character === "ヶ";
+        });
+
+    const isClickableToken = token =>
+        token.isInteractive === true ||
+        token.isVocabulary === true ||
+        containsJapanese(token.surface);
+
     const tokenLabel = token => {
         const bits = [token.surface];
         if (token.reading) bits.push(token.reading);
@@ -54,7 +68,7 @@
         bubble.setAttribute("aria-label", "Interactive Japanese subtitle");
 
         for (const token of cue.tokens || []) {
-            if (token.isInteractive) {
+            if (isClickableToken(token)) {
                 const button = document.createElement("button");
                 button.type = "button";
                 button.className = "player-subtitle-token";
@@ -101,6 +115,7 @@
         actions,
         dispatch,
         cueText,
+        isClickableToken,
         renderCue
     });
 })();
