@@ -282,52 +282,49 @@ public static class ReaderPreferenceStore
         var user = preferences.FirstOrDefault(
             x => x.ScopeKey == ReaderPreferenceRules.UserDefaultScope);
         var book = preferences.FirstOrDefault(x => x.ScopeKey == workScope);
-        var genres = ReaderPreferenceRules.ParseGenres(genresJson);
 
-        var genreSelection = First(
-            book?.GenreTheme,
-            user?.GenreTheme,
-            "auto");
-        genreSelection = ReaderPreferenceRules.NormalizeGenreTheme(genreSelection);
+        return BuildSnapshot(
+            user,
+            null,
+            book,
+            ReaderPreferenceRules.ParseGenres(genresJson),
+            defaultReadingMode: "continuous",
+            defaultPageTransition: "curl",
+            defaultTwoPageSpread: true);
+    }
 
-        return new ReaderSettingsSnapshot(
-            ReadingMode: ReaderPreferenceRules.NormalizeReadingMode(
-                First(book?.ReadingMode, user?.ReadingMode, "continuous")),
-            PageTransition: ReaderPreferenceRules.NormalizePageTransition(
-                First(book?.PageTransition, user?.PageTransition, "curl")),
-            TwoPageSpread: book?.TwoPageSpread ?? user?.TwoPageSpread ?? true,
-            AutoScrollSpeed: ReaderPreferenceRules.NormalizeAutoScrollSpeed(
-                book?.AutoScrollSpeed ?? user?.AutoScrollSpeed ?? 36),
-            FontFamily: ReaderPreferenceRules.NormalizeFontFamily(
-                First(book?.FontFamily, user?.FontFamily, "literary-serif")),
-            FontSizeRem: ReaderPreferenceRules.NormalizeFontSize(
-                book?.FontSizeRem ?? user?.FontSizeRem ?? 1.06),
-            LineHeight: ReaderPreferenceRules.NormalizeLineHeight(
-                book?.LineHeight ?? user?.LineHeight ?? 1.9),
-            ParagraphSpacingEm: ReaderPreferenceRules.NormalizeParagraphSpacing(
-                book?.ParagraphSpacingEm ?? user?.ParagraphSpacingEm ?? .85),
-            TextWidthPx: ReaderPreferenceRules.NormalizeTextWidth(
-                book?.TextWidthPx ?? user?.TextWidthPx ?? 760),
-            TextAlignment: ReaderPreferenceRules.NormalizeTextAlignment(
-                First(book?.TextAlignment, user?.TextAlignment, "start")),
-            ChapterStyle: ReaderPreferenceRules.NormalizeChapterStyle(
-                First(book?.ChapterStyle, user?.ChapterStyle, "light-novel")),
-            PaperStyle: ReaderPreferenceRules.NormalizePaperStyle(
-                First(book?.PaperStyle, user?.PaperStyle, "midnight")),
-            GenreArtworkEnabled:
-                book?.GenreArtworkEnabled ?? user?.GenreArtworkEnabled ?? true,
-            GenreTheme: genreSelection,
-            ResolvedGenreTheme: genreSelection,
-            SourceGenres: genres,
-            BackgroundAssetId: ReaderPreferenceRules.NormalizeBackgroundAssetId(
-                First(book?.BackgroundAssetId, user?.BackgroundAssetId, "auto")),
-            BackgroundIntensity: ReaderPreferenceRules.NormalizeBackgroundIntensity(
-                book?.BackgroundIntensity ?? user?.BackgroundIntensity ?? .055),
-            BookmarkStyle: ReaderPreferenceRules.NormalizeBookmarkStyle(
-                First(book?.BookmarkStyle, user?.BookmarkStyle, "fabric")),
-            BookmarkColor: ReaderPreferenceRules.NormalizeBookmarkColor(
-                First(book?.BookmarkColor, user?.BookmarkColor, "#b04455")),
-            HasBookOverride: book is not null);
+    public static async Task<ReaderSettingsSnapshot> GetMediaAsync(
+        AppDbContext db,
+        string profileId,
+        string mediaType,
+        Guid seriesId,
+        CancellationToken cancellationToken)
+    {
+        var mediaScope = MediaScope(mediaType);
+        var seriesScope = MediaSeriesScope(mediaType, seriesId);
+
+        var preferences = await db.ReaderPreferences
+            .AsNoTracking()
+            .Where(x =>
+                x.ProfileId == profileId &&
+                (x.ScopeKey == ReaderPreferenceRules.UserDefaultScope ||
+                 x.ScopeKey == mediaScope ||
+                 x.ScopeKey == seriesScope))
+            .ToListAsync(cancellationToken);
+
+        var user = preferences.FirstOrDefault(
+            x => x.ScopeKey == ReaderPreferenceRules.UserDefaultScope);
+        var media = preferences.FirstOrDefault(x => x.ScopeKey == mediaScope);
+        var series = preferences.FirstOrDefault(x => x.ScopeKey == seriesScope);
+
+        return BuildSnapshot(
+            user,
+            media,
+            series,
+            [],
+            defaultReadingMode: "paged",
+            defaultPageTransition: "slide",
+            defaultTwoPageSpread: true);
     }
 
     public static async Task SaveUserDefaultsAsync(
@@ -343,6 +340,204 @@ public static class ReaderPreferenceStore
             null,
             cancellationToken);
 
+        ApplyAll(preference, input);
+        preference.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    public static async Task SaveBookOverrideAsync(
+        AppDbContext db,
+        string profileId,
+        Guid workId,
+        string changedKey,
+        ReaderSettingsInput input,
+        CancellationToken cancellationToken)
+    {
+        var preference = await FindOrCreateAsync(
+            db,
+            profileId,
+            WorkScope(workId),
+            workId,
+            cancellationToken);
+
+        ApplyChangedSetting(preference, changedKey, input);
+        preference.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    public static async Task SaveMediaSettingAsync(
+        AppDbContext db,
+        string profileId,
+        string mediaType,
+        Guid? seriesId,
+        string changedKey,
+        ReaderSettingsInput input,
+        CancellationToken cancellationToken)
+    {
+        var scope = seriesId is Guid id
+            ? MediaSeriesScope(mediaType, id)
+            : MediaScope(mediaType);
+
+        var preference = await FindOrCreateAsync(
+            db,
+            profileId,
+            scope,
+            null,
+            cancellationToken);
+
+        ApplyChangedSetting(preference, changedKey, input);
+        preference.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    public static async Task ResetBookAsync(
+        AppDbContext db,
+        string profileId,
+        Guid workId,
+        CancellationToken cancellationToken)
+    {
+        await ResetScopeAsync(
+            db,
+            profileId,
+            WorkScope(workId),
+            cancellationToken);
+    }
+
+    public static async Task ResetMediaSeriesAsync(
+        AppDbContext db,
+        string profileId,
+        string mediaType,
+        Guid seriesId,
+        CancellationToken cancellationToken)
+    {
+        await ResetScopeAsync(
+            db,
+            profileId,
+            MediaSeriesScope(mediaType, seriesId),
+            cancellationToken);
+    }
+
+    private static ReaderSettingsSnapshot BuildSnapshot(
+        ReaderPreference? user,
+        ReaderPreference? media,
+        ReaderPreference? specific,
+        IReadOnlyList<string> genres,
+        string defaultReadingMode,
+        string defaultPageTransition,
+        bool defaultTwoPageSpread)
+    {
+        var genreSelection = First(
+            specific?.GenreTheme,
+            media?.GenreTheme,
+            user?.GenreTheme,
+            "auto");
+        genreSelection = ReaderPreferenceRules.NormalizeGenreTheme(genreSelection);
+
+        return new ReaderSettingsSnapshot(
+            ReadingMode: ReaderPreferenceRules.NormalizeReadingMode(
+                First(
+                    specific?.ReadingMode,
+                    media?.ReadingMode,
+                    user?.ReadingMode,
+                    defaultReadingMode)),
+            PageTransition: ReaderPreferenceRules.NormalizePageTransition(
+                First(
+                    specific?.PageTransition,
+                    media?.PageTransition,
+                    user?.PageTransition,
+                    defaultPageTransition)),
+            TwoPageSpread:
+                specific?.TwoPageSpread
+                ?? media?.TwoPageSpread
+                ?? user?.TwoPageSpread
+                ?? defaultTwoPageSpread,
+            AutoScrollSpeed: ReaderPreferenceRules.NormalizeAutoScrollSpeed(
+                specific?.AutoScrollSpeed
+                ?? media?.AutoScrollSpeed
+                ?? user?.AutoScrollSpeed
+                ?? 36),
+            FontFamily: ReaderPreferenceRules.NormalizeFontFamily(
+                First(
+                    specific?.FontFamily,
+                    media?.FontFamily,
+                    user?.FontFamily,
+                    "literary-serif")),
+            FontSizeRem: ReaderPreferenceRules.NormalizeFontSize(
+                specific?.FontSizeRem
+                ?? media?.FontSizeRem
+                ?? user?.FontSizeRem
+                ?? 1.06),
+            LineHeight: ReaderPreferenceRules.NormalizeLineHeight(
+                specific?.LineHeight
+                ?? media?.LineHeight
+                ?? user?.LineHeight
+                ?? 1.9),
+            ParagraphSpacingEm: ReaderPreferenceRules.NormalizeParagraphSpacing(
+                specific?.ParagraphSpacingEm
+                ?? media?.ParagraphSpacingEm
+                ?? user?.ParagraphSpacingEm
+                ?? .85),
+            TextWidthPx: ReaderPreferenceRules.NormalizeTextWidth(
+                specific?.TextWidthPx
+                ?? media?.TextWidthPx
+                ?? user?.TextWidthPx
+                ?? 760),
+            TextAlignment: ReaderPreferenceRules.NormalizeTextAlignment(
+                First(
+                    specific?.TextAlignment,
+                    media?.TextAlignment,
+                    user?.TextAlignment,
+                    "start")),
+            ChapterStyle: ReaderPreferenceRules.NormalizeChapterStyle(
+                First(
+                    specific?.ChapterStyle,
+                    media?.ChapterStyle,
+                    user?.ChapterStyle,
+                    "light-novel")),
+            PaperStyle: ReaderPreferenceRules.NormalizePaperStyle(
+                First(
+                    specific?.PaperStyle,
+                    media?.PaperStyle,
+                    user?.PaperStyle,
+                    "midnight")),
+            GenreArtworkEnabled:
+                specific?.GenreArtworkEnabled
+                ?? media?.GenreArtworkEnabled
+                ?? user?.GenreArtworkEnabled
+                ?? true,
+            GenreTheme: genreSelection,
+            ResolvedGenreTheme: genreSelection,
+            SourceGenres: genres,
+            BackgroundAssetId: ReaderPreferenceRules.NormalizeBackgroundAssetId(
+                First(
+                    specific?.BackgroundAssetId,
+                    media?.BackgroundAssetId,
+                    user?.BackgroundAssetId,
+                    "auto")),
+            BackgroundIntensity: ReaderPreferenceRules.NormalizeBackgroundIntensity(
+                specific?.BackgroundIntensity
+                ?? media?.BackgroundIntensity
+                ?? user?.BackgroundIntensity
+                ?? .055),
+            BookmarkStyle: ReaderPreferenceRules.NormalizeBookmarkStyle(
+                First(
+                    specific?.BookmarkStyle,
+                    media?.BookmarkStyle,
+                    user?.BookmarkStyle,
+                    "fabric")),
+            BookmarkColor: ReaderPreferenceRules.NormalizeBookmarkColor(
+                First(
+                    specific?.BookmarkColor,
+                    media?.BookmarkColor,
+                    user?.BookmarkColor,
+                    "#b04455")),
+            HasBookOverride: specific is not null);
+    }
+
+    private static void ApplyAll(
+        ReaderPreference preference,
+        ReaderSettingsInput input)
+    {
         preference.ReadingMode =
             ReaderPreferenceRules.NormalizeReadingMode(input.ReadingMode);
         preference.PageTransition =
@@ -377,26 +572,13 @@ public static class ReaderPreferenceStore
             ReaderPreferenceRules.NormalizeBookmarkStyle(input.BookmarkStyle);
         preference.BookmarkColor =
             ReaderPreferenceRules.NormalizeBookmarkColor(input.BookmarkColor);
-        preference.UpdatedAt = DateTime.UtcNow;
-
-        await db.SaveChangesAsync(cancellationToken);
     }
 
-    public static async Task SaveBookOverrideAsync(
-        AppDbContext db,
-        string profileId,
-        Guid workId,
+    private static void ApplyChangedSetting(
+        ReaderPreference preference,
         string changedKey,
-        ReaderSettingsInput input,
-        CancellationToken cancellationToken)
+        ReaderSettingsInput input)
     {
-        var preference = await FindOrCreateAsync(
-            db,
-            profileId,
-            WorkScope(workId),
-            workId,
-            cancellationToken);
-
         switch (changedKey.Trim())
         {
             case "readingMode":
@@ -472,18 +654,14 @@ public static class ReaderPreferenceStore
             default:
                 throw new InvalidOperationException("Unknown reader setting.");
         }
-
-        preference.UpdatedAt = DateTime.UtcNow;
-        await db.SaveChangesAsync(cancellationToken);
     }
 
-    public static async Task ResetBookAsync(
+    private static async Task ResetScopeAsync(
         AppDbContext db,
         string profileId,
-        Guid workId,
+        string scope,
         CancellationToken cancellationToken)
     {
-        var scope = WorkScope(workId);
         var preference = await db.ReaderPreferences
             .SingleOrDefaultAsync(
                 x => x.ProfileId == profileId && x.ScopeKey == scope,
@@ -526,6 +704,20 @@ public static class ReaderPreferenceStore
     }
 
     private static string WorkScope(Guid workId) => $"work:{workId:N}";
+
+    private static string MediaScope(string mediaType) =>
+        $"media:{NormalizeMediaType(mediaType)}";
+
+    private static string MediaSeriesScope(string mediaType, Guid seriesId) =>
+        $"media:{NormalizeMediaType(mediaType)}:series:{seriesId:N}";
+
+    private static string NormalizeMediaType(string mediaType)
+    {
+        var normalized = mediaType.Trim().ToLowerInvariant();
+        return normalized is "novel" or "manga" or "book"
+            ? normalized
+            : throw new InvalidOperationException("Unknown reader media type.");
+    }
 
     private static string First(params string?[] values) =>
         values.First(x => !string.IsNullOrWhiteSpace(x))!;
