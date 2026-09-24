@@ -49,8 +49,13 @@ public sealed class NovelMetadataService(
         work.MetadataExternalId = candidate.ExternalId;
         work.MetadataTitle = candidate.PreferredTitle;
         work.MetadataNativeTitle = candidate.NativeTitle;
+        work.MetadataDescription = candidate.Description;
         work.CoverImageUrl = candidate.CoverImageUrl;
+        work.BannerImageUrl = candidate.BannerImageUrl;
         work.Format = candidate.Format;
+        work.MetadataStatus = candidate.Status;
+        work.MetadataChapterCount = candidate.ChapterCount;
+        work.MetadataVolumeCount = candidate.VolumeCount;
         work.UpdatedAt = DateTime.UtcNow;
 
         await db.SaveChangesAsync(cancellationToken);
@@ -72,8 +77,13 @@ public sealed class NovelMetadataService(
         work.MetadataExternalId = null;
         work.MetadataTitle = null;
         work.MetadataNativeTitle = null;
+        work.MetadataDescription = null;
         work.CoverImageUrl = null;
+        work.BannerImageUrl = null;
         work.Format = null;
+        work.MetadataStatus = null;
+        work.MetadataChapterCount = null;
+        work.MetadataVolumeCount = null;
         work.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(cancellationToken);
     }

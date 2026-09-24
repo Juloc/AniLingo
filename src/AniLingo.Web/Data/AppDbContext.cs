@@ -30,6 +30,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<NovelChapter> NovelChapters => Set<NovelChapter>();
     public DbSet<NovelTranslation> NovelTranslations => Set<NovelTranslation>();
     public DbSet<NovelProgress> NovelProgress => Set<NovelProgress>();
+    public DbSet<NovelBookmark> NovelBookmarks => Set<NovelBookmark>();
+    public DbSet<NovelHighlight> NovelHighlights => Set<NovelHighlight>();
     public DbSet<NovelAnimeMapping> NovelAnimeMappings => Set<NovelAnimeMapping>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -179,7 +181,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(x => x.MetadataTitle).HasMaxLength(500);
             entity.Property(x => x.MetadataNativeTitle).HasMaxLength(500);
             entity.Property(x => x.CoverImageUrl).HasMaxLength(2048);
+            entity.Property(x => x.BannerImageUrl).HasMaxLength(2048);
             entity.Property(x => x.Format).HasMaxLength(80);
+            entity.Property(x => x.MetadataStatus).HasMaxLength(80);
             entity.HasIndex(x => new { x.SourceProvider, x.SourceKey }).IsUnique();
             entity.HasIndex(x => new { x.MetadataProvider, x.MetadataExternalId }).IsUnique();
         });
@@ -215,9 +219,37 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         {
             entity.HasKey(x => x.Id);
             entity.Property(x => x.ProfileId).HasMaxLength(80);
+            entity.Property(x => x.AnchorLanguage).HasMaxLength(16);
+            entity.Property(x => x.AnchorText).HasMaxLength(NovelTextLayout.AnchorTextLimit);
             entity.HasOne<NovelWork>().WithMany().HasForeignKey(x => x.WorkId).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne<NovelChapter>().WithMany().HasForeignKey(x => x.ChapterId).OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(x => new { x.ProfileId, x.WorkId }).IsUnique();
+        });
+
+        modelBuilder.Entity<NovelBookmark>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.ProfileId).HasMaxLength(80);
+            entity.Property(x => x.Language).HasMaxLength(16);
+            entity.Property(x => x.AnchorText).HasMaxLength(NovelTextLayout.AnchorTextLimit);
+            entity.Property(x => x.Label).HasMaxLength(120);
+            entity.HasOne<NovelWork>().WithMany().HasForeignKey(x => x.WorkId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<NovelChapter>().WithMany().HasForeignKey(x => x.ChapterId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(x => new { x.ProfileId, x.WorkId, x.CreatedAt });
+            entity.HasIndex(x => new { x.ProfileId, x.ChapterId });
+        });
+
+        modelBuilder.Entity<NovelHighlight>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.ProfileId).HasMaxLength(80);
+            entity.Property(x => x.Language).HasMaxLength(16);
+            entity.Property(x => x.Text).HasMaxLength(2000);
+            entity.Property(x => x.Note).HasMaxLength(2000);
+            entity.HasOne<NovelWork>().WithMany().HasForeignKey(x => x.WorkId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<NovelChapter>().WithMany().HasForeignKey(x => x.ChapterId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(x => new { x.ProfileId, x.WorkId, x.CreatedAt });
+            entity.HasIndex(x => new { x.ProfileId, x.ChapterId, x.Language, x.ParagraphIndex });
         });
 
         modelBuilder.Entity<NovelAnimeMapping>(entity =>

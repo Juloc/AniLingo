@@ -1,5 +1,7 @@
+using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace AniLingo.Web.Features.Novels;
 
@@ -7,7 +9,7 @@ public sealed class NovelMetadataProviderException(
     string message,
     Exception? innerException = null) : Exception(message, innerException);
 
-public sealed class NovelAniListProvider(
+public sealed partial class NovelAniListProvider(
     HttpClient httpClient,
     ILogger<NovelAniListProvider> logger) : INovelMetadataProvider
 {
@@ -20,7 +22,9 @@ public sealed class NovelAniListProvider(
             media(search: $search, type: MANGA, format: NOVEL, isAdult: false) {
               id
               title { romaji english native }
+              description(asHtml: false)
               coverImage { extraLarge large }
+              bannerImage
               format
               status
               chapters
@@ -36,7 +40,9 @@ public sealed class NovelAniListProvider(
           Media(id: $id, type: MANGA) {
             id
             title { romaji english native }
+            description(asHtml: false)
             coverImage { extraLarge large }
+            bannerImage
             format
             status
             chapters
@@ -199,11 +205,25 @@ public sealed class NovelAniListProvider(
             id.ToString(),
             preferred,
             native,
+            NormalizeDescription(ReadString(media, "description")),
             cover,
+            ReadString(media, "bannerImage"),
             format,
             ReadString(media, "status"),
             ReadInt(media, "chapters"),
             ReadInt(media, "volumes"));
+    }
+
+    private static string? NormalizeDescription(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var decoded = WebUtility.HtmlDecode(HtmlTag().Replace(value, " "));
+        var normalized = Whitespace().Replace(decoded, " ").Trim();
+        return normalized.Length == 0 ? null : normalized;
     }
 
     private static string? ReadString(JsonElement element, string propertyName)
@@ -228,4 +248,10 @@ public sealed class NovelAniListProvider(
 
     private static string? FirstNonEmpty(params string?[] values) =>
         values.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x))?.Trim();
+
+    [GeneratedRegex("<[^>]+>", RegexOptions.CultureInvariant)]
+    private static partial Regex HtmlTag();
+
+    [GeneratedRegex(@"\s+", RegexOptions.CultureInvariant)]
+    private static partial Regex Whitespace();
 }
