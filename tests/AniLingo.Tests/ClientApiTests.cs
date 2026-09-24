@@ -66,8 +66,8 @@ public sealed class ClientApiTests
             new ClientPlaybackOption("ready", "Direct", false),
             new ClientPlaybackOption("ready", "Server", true)));
 
-        StringAssert.DoesNotContain(json, "/media/anime");
-        StringAssert.DoesNotContain(json, "SourcePath");
+        Assert.IsFalse(json.Contains("/media/anime", StringComparison.Ordinal));
+        Assert.IsFalse(json.Contains("SourcePath", StringComparison.Ordinal));
     }
 
     [TestMethod]
@@ -163,8 +163,8 @@ public sealed class ClientApiTests
         Assert.IsTrue(
             ClientApiRoutes.DirectContent(mediaId)
                 .StartsWith("/api/client/v1/", StringComparison.Ordinal));
-        StringAssert.DoesNotContain(
-            ClientApiRoutes.DirectContent(mediaId),
-            "\\");
+        Assert.IsFalse(
+            ClientApiRoutes.DirectContent(mediaId)
+                .Contains("\\", StringComparison.Ordinal));
     }
 }
