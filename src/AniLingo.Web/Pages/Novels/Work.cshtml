@@ -79,12 +79,7 @@
 @if (Model.IsOwner)
 {
     <details class="novel-panel novel-admin-panel">
-        <summary>
-            <span>
-                <strong>Manage novel</strong>
-                <small>Source cache, AniList metadata and anime matching</small>
-            </span>
-        </summary>
+        <summary><strong>Manage novel</strong></summary>
 
         <div class="novel-admin-content">
             <div class="novel-inline-form">
@@ -98,13 +93,7 @@
 
             <section class="novel-admin-section">
                 <div class="panel-heading">
-                    <div>
-                        <h2>@(string.IsNullOrWhiteSpace(work.MetadataExternalId) ? "Match AniList novel" : "AniList novel")</h2>
-                        @if (!string.IsNullOrWhiteSpace(work.MetadataExternalId))
-                        {
-                            <span>@work.MetadataProvider · ID @work.MetadataExternalId</span>
-                        }
-                    </div>
+                    <h2>@(string.IsNullOrWhiteSpace(work.MetadataExternalId) ? "Match AniList novel" : "AniList novel")</h2>
                     @if (!string.IsNullOrWhiteSpace(work.MetadataExternalId))
                     {
                         <form method="post" asp-page-handler="RemoveMetadata" asp-route-id="@work.Id">
@@ -163,10 +152,7 @@
 
             <section class="novel-admin-section">
                 <div class="panel-heading">
-                    <div>
-                        <h2>Anime episode matching</h2>
-                        <span>Manual mappings are authoritative. AI suggestions never overwrite them.</span>
-                    </div>
+                    <h2>Anime episode matching</h2>
                 </div>
 
                 @if (Model.AnimeChoices.Count == 0)
@@ -228,17 +214,15 @@
 
 <section class="novel-chapters-section">
     <div class="novel-chapters-heading">
-        <div>
-            <h2>Chapters</h2>
-            <span>@detail.Chapters.Count chapters · @detail.Chapters.Count(x => x.HasTranslation) translated</span>
-        </div>
+        <h2>Chapters</h2>
     </div>
 
     <div class="novel-chapter-list">
         @foreach (var chapter in detail.Chapters)
         {
             var isCurrent = Model.Progress?.ChapterId == chapter.Id;
-            <a class="novel-chapter-row @(isCurrent ? "current" : "")" href="/Novels/Read/@chapter.Id">
+            var isEarlier = currentChapter is not null && chapter.Number < currentChapter.Number;
+            <a class="novel-chapter-row @(isCurrent ? "current" : isEarlier ? "earlier" : "")" href="/Novels/Read/@chapter.Id">
                 <span class="novel-chapter-number">@chapter.Number</span>
                 <div class="novel-chapter-copy">
                     <strong lang="ja">@chapter.Title</strong>
