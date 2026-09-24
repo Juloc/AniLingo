@@ -1,7 +1,6 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Manga;
-using AniLingo.Web.Features.ReaderPreferences;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
@@ -17,7 +16,7 @@ public sealed class ReadModel(
     public Guid? PreviousChapterId { get; private set; }
     public Guid? NextChapterId { get; private set; }
     public int InitialPage { get; private set; }
-    public ReaderSettingsSnapshot ReaderSettings { get; private set; } = null!;
+    public MangaReaderPreset ReaderSettings { get; private set; } = null!;
     public string ProfileId => account.ProfileId;
 
     public async Task<IActionResult> OnGetAsync(
@@ -52,10 +51,9 @@ public sealed class ReadModel(
             chapter.SeriesId,
             cancellationToken);
 
-        ReaderSettings = await ReaderPreferenceStore.GetMediaAsync(
+        ReaderSettings = await MangaReaderPreferenceStore.GetAsync(
             db,
             account.ProfileId,
-            "manga",
             chapter.SeriesId,
             cancellationToken);
 
@@ -84,17 +82,6 @@ public sealed class ReadModel(
             return NotFound();
         }
 
-        var normalizedMode = mode?.Trim().ToLowerInvariant() switch
-        {
-            "continuous" => "continuous",
-            "double" => "paged",
-            _ => "paged"
-        };
-        var twoPageSpread = string.Equals(
-            mode,
-            "double",
-            StringComparison.OrdinalIgnoreCase);
-
         var seriesId = string.Equals(
             scope,
             "media",
@@ -102,27 +89,11 @@ public sealed class ReadModel(
             ? (Guid?)null
             : chapter.SeriesId;
 
-        var input = new ReaderSettingsInput
-        {
-            ReadingMode = normalizedMode,
-            TwoPageSpread = twoPageSpread
-        };
-
-        await ReaderPreferenceStore.SaveMediaSettingAsync(
+        await MangaReaderPreferenceStore.SaveModeAsync(
             db,
             account.ProfileId,
-            "manga",
             seriesId,
-            "readingMode",
-            input,
-            cancellationToken);
-        await ReaderPreferenceStore.SaveMediaSettingAsync(
-            db,
-            account.ProfileId,
-            "manga",
-            seriesId,
-            "twoPageSpread",
-            input,
+            mode,
             cancellationToken);
 
         return new OkResult();
@@ -139,28 +110,19 @@ public sealed class ReadModel(
             return NotFound();
         }
 
-        await ReaderPreferenceStore.ResetMediaSeriesAsync(
+        await MangaReaderPreferenceStore.ResetSeriesAsync(
             db,
             account.ProfileId,
-            "manga",
             chapter.SeriesId,
             cancellationToken);
 
-        var settings = await ReaderPreferenceStore.GetMediaAsync(
+        var settings = await MangaReaderPreferenceStore.GetAsync(
             db,
             account.ProfileId,
-            "manga",
             chapter.SeriesId,
             cancellationToken);
 
-        return new JsonResult(new
-        {
-            mode = settings.ReadingMode == "continuous"
-                ? "continuous"
-                : settings.TwoPageSpread
-                    ? "double"
-                    : "single"
-        });
+        return new JsonResult(new { mode = settings.UiMode });
     }
 
     public async Task<IActionResult> OnGetPageAsync(
