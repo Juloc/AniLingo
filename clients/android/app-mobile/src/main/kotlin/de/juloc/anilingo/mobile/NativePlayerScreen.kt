@@ -1,5 +1,6 @@
 package de.juloc.anilingo.mobile
 
+import androidx.annotation.OptIn
 import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
