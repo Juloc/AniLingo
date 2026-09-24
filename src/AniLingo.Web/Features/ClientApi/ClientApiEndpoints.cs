@@ -121,13 +121,14 @@ public static class ClientApiEndpoints
 
         group.MapGet("/media/{mediaFileId:guid}/availability", async (
             Guid mediaFileId,
+            bool fresh,
             MediaAvailabilityService mediaAvailability,
             CurrentAccountContext currentAccount,
             CancellationToken cancellationToken) =>
         {
             var availability = await mediaAvailability.CheckMediaAsync(
                 mediaFileId,
-                force: false,
+                force: fresh,
                 cancellationToken);
 
             return availability is null
