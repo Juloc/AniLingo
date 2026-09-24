@@ -319,7 +319,7 @@ public sealed class ClientApiService(
             media.PixelFormat,
             media.AudioCodec,
             ClientApiRoutes.DirectContent(media.MediaFileId),
-            SupportsRangeRequests: true,
+            true,
             ClientApiMappings.ToClientOption(media.Device),
             ClientApiMappings.ToClientOption(media.Server));
 
@@ -336,8 +336,8 @@ public sealed class ClientApiService(
             new ClientCompatibilityFallback(
                 fallbackAvailable,
                 fallbackAvailable ? "live-fragmented-mp4" : null,
-                SeekableWithinStream: false,
-                CanRestartAtPosition: fallbackAvailable,
+                false,
+                fallbackAvailable,
                 fallbackAvailable ? ClientApiRoutes.Fallback(episodeId) : null));
     }
 
