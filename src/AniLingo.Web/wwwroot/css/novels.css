@@ -1029,12 +1029,12 @@
 
 [data-orientation="horizontal"] .novel-bookmark-marker {
     position: absolute;
-    top: 50%;
-    width: 12px;
-    height: 12px;
-    transform: translate(-50%, -50%);
+    top: 0;
+    width: 10px;
+    height: 9px;
+    transform: translateX(-50%);
     display: grid;
-    place-items: center;
+    place-items: start center;
     padding: 0;
     background: transparent;
     pointer-events: auto;
@@ -1046,6 +1046,15 @@
     transform: rotate(45deg);
     border: 1px solid var(--reader-accent);
     background: var(--reader-bg);
+}
+
+[data-orientation="horizontal"] .novel-bookmark-marker span {
+    width: 2px;
+    height: 7px;
+    transform: none;
+    border: 0;
+    border-radius: 1px;
+    background: var(--reader-accent);
 }
 
 .novel-reader-progress-rail .novel-bookmark-marker:hover span {
