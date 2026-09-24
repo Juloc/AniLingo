@@ -65,8 +65,7 @@
                 </svg>
             </button>
             <div class="novel-toolbar-location">
-                <span>Kapitel @Model.Chapter.Number</span>
-                <strong>@Model.Chapter.Title</strong>
+                <strong>@Model.Chapter.Number · @Model.Chapter.Title</strong>
             </div>
         </div>
 
@@ -140,9 +139,6 @@
     </aside>
 
     <header class="novel-reader-title">
-        <a class="novel-reader-series" href="/Novels/Work/@Model.Work.Id">
-            @(Model.Work.MetadataTitle ?? Model.Work.Title)
-        </a>
         <h1><span>@Model.Chapter.Number.</span> @Model.Chapter.Title</h1>
         @if (Model.AnimeMappings.Count > 0)
         {
@@ -230,10 +226,7 @@
            hidden
            aria-label="Kapitel">
         <header class="novel-drawer-header">
-            <div>
-                <strong>@(Model.Work.MetadataTitle ?? Model.Work.Title)</strong>
-                <span>@Model.Chapters.Count Kapitel</span>
-            </div>
+            <strong>@(Model.Work.MetadataTitle ?? Model.Work.Title)</strong>
             <button class="novel-icon-button"
                     type="button"
                     data-chapter-drawer-close
@@ -247,10 +240,7 @@
             {
                 <a href="/Novels/Read/@drawerPrevious" aria-label="Vorheriges Kapitel">←</a>
             }
-            <div>
-                <span>Du liest</span>
-                <strong>@Model.Chapter.Number. @Model.Chapter.Title</strong>
-            </div>
+            <strong>@Model.Chapter.Number. @Model.Chapter.Title</strong>
             @if (Model.NextChapterId is Guid drawerNext)
             {
                 <a href="/Novels/Read/@drawerNext" aria-label="Nächstes Kapitel">→</a>
@@ -294,10 +284,7 @@
 
     <aside class="novel-reader-notes" data-reader-notes hidden aria-label="Lesezeichen und Markierungen">
         <div class="novel-notes-header">
-            <div>
-                <strong>Lesezeichen & Markierungen</strong>
-                <span>@(Model.Work.MetadataTitle ?? Model.Work.Title)</span>
-            </div>
+            <strong>Lesezeichen & Markierungen</strong>
             <button class="novel-icon-button" type="button" data-reader-notes-close aria-label="Schließen">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
             </button>
