@@ -1,0 +1,489 @@
+.discover-shell {
+    max-width: 1420px;
+    margin: 0 auto;
+}
+
+.discover-header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 24px;
+    margin-bottom: 22px;
+}
+
+.discover-header h1 {
+    margin: 4px 0 5px;
+    font-size: clamp(28px, 4vw, 38px);
+    letter-spacing: -.035em;
+}
+
+.discover-header p {
+    margin: 0;
+    color: var(--muted);
+}
+
+.discover-library-links {
+    display: flex;
+    gap: 14px;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 650;
+}
+
+.discover-library-links a:hover { color: var(--text); }
+
+.discover-controls {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    padding: 10px 0 14px;
+    background: linear-gradient(var(--bg) 78%, transparent);
+}
+
+.discover-search {
+    min-height: 48px;
+    display: grid;
+    grid-template-columns: 20px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 11px;
+    padding: 0 14px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface);
+}
+
+.discover-search:focus-within {
+    border-color: rgba(231,169,27,.5);
+    box-shadow: 0 0 0 3px rgba(231,169,27,.08);
+}
+
+.discover-search svg {
+    width: 19px;
+    fill: none;
+    stroke: var(--muted);
+    stroke-width: 1.8;
+    stroke-linecap: round;
+}
+
+.discover-search input {
+    min-width: 0;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: var(--text);
+    font-size: 15px;
+}
+
+.discover-search input::placeholder { color: #68717e; }
+
+.discover-search kbd {
+    padding: 2px 6px;
+    border: 1px solid var(--border);
+    border-bottom-color: rgba(255,255,255,.15);
+    border-radius: 5px;
+    color: #737c89;
+    background: var(--surface-2);
+    font-size: 11px;
+}
+
+.discover-filter-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 14px;
+    margin-top: 10px;
+}
+
+.discover-tabs,
+.discover-categories {
+    display: flex;
+    gap: 5px;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.discover-tabs::-webkit-scrollbar,
+.discover-categories::-webkit-scrollbar { display: none; }
+
+.discover-tabs button,
+.discover-categories button {
+    flex: 0 0 auto;
+    min-height: 34px;
+    padding: 6px 11px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.discover-tabs button:hover,
+.discover-categories button:hover {
+    color: var(--text);
+    background: var(--surface);
+}
+
+.discover-tabs button.active,
+.discover-categories button.active {
+    color: #f6c554;
+    border-color: rgba(231,169,27,.18);
+    background: var(--accent-soft);
+}
+
+.discover-summary {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 10px 1px 12px;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.discover-summary strong {
+    color: var(--text);
+    font-size: 14px;
+}
+
+.discover-warning {
+    margin-bottom: 12px;
+    padding: 10px 12px;
+    border: 1px solid rgba(231,169,27,.22);
+    border-radius: 9px;
+    background: rgba(231,169,27,.07);
+    color: #d8c28d;
+    font-size: 12px;
+}
+
+.discover-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(285px, 1fr));
+    gap: 10px;
+}
+
+.discover-card {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: 88px minmax(0, 1fr);
+    gap: 12px;
+    min-height: 132px;
+    padding: 9px;
+    border: 1px solid var(--border);
+    border-radius: 11px;
+    background: var(--surface);
+}
+
+.discover-card:hover {
+    border-color: rgba(255,255,255,.14);
+    background: #13171d;
+}
+
+.discover-cover {
+    width: 88px;
+    height: 124px;
+    overflow: hidden;
+    border-radius: 7px;
+    background: var(--surface-2);
+}
+
+.discover-cover img {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: cover;
+}
+
+.discover-cover-placeholder {
+    height: 100%;
+    display: grid;
+    place-items: center;
+    color: #5d6672;
+    font-size: 18px;
+    font-weight: 800;
+}
+
+.discover-card-copy {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 2px 2px 1px 0;
+}
+
+.discover-card-kicker {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    color: #7e8794;
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: .07em;
+}
+
+.discover-local {
+    color: #8cc89b;
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+.discover-card-title {
+    margin-top: 5px;
+    color: var(--text);
+    font-size: 14px;
+    font-weight: 750;
+    line-height: 1.25;
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
+.discover-native-title {
+    margin-top: 3px;
+    color: #767f8c;
+    font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.discover-card-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px 8px;
+    margin-top: 7px;
+    color: var(--muted);
+    font-size: 11px;
+}
+
+.discover-card-meta span + span::before {
+    content: "·";
+    margin-right: 8px;
+    color: #4f5661;
+}
+
+.discover-progress {
+    margin-top: 8px;
+}
+
+.discover-progress-copy {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 4px;
+    color: var(--muted);
+    font-size: 10px;
+}
+
+.discover-progress-track {
+    height: 3px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: var(--surface-3);
+}
+
+.discover-progress-track span {
+    height: 100%;
+    display: block;
+    border-radius: inherit;
+    background: var(--accent);
+}
+
+.discover-card-actions {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-top: auto;
+    padding-top: 8px;
+}
+
+.discover-card-actions a,
+.discover-card-actions button {
+    min-height: 28px;
+    padding: 4px 8px;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    background: var(--surface-2);
+    color: #cbd0d7;
+    cursor: pointer;
+    font-size: 10px;
+    font-weight: 750;
+}
+
+.discover-card-actions a:hover,
+.discover-card-actions button:hover {
+    color: var(--text);
+    border-color: rgba(255,255,255,.15);
+}
+
+.discover-card-actions .primary {
+    border-color: rgba(231,169,27,.22);
+    background: var(--accent-soft);
+    color: #f2c75d;
+}
+
+.discover-empty {
+    min-height: 180px;
+    display: grid;
+    place-items: center;
+    align-content: center;
+    gap: 5px;
+    color: var(--muted);
+    text-align: center;
+}
+
+.discover-empty strong { color: var(--text); }
+
+.discover-import {
+    margin-top: 24px;
+    border-top: 1px solid var(--border);
+    padding-top: 14px;
+}
+
+.discover-import summary {
+    width: fit-content;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.discover-import[open] summary { color: var(--text); }
+
+.discover-import-form {
+    max-width: 720px;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+    margin-top: 12px;
+    padding: 14px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface);
+}
+
+.discover-import-form > div:first-child {
+    display: grid;
+    gap: 3px;
+}
+
+.discover-import-form > div:first-child span,
+.discover-import-form label span {
+    color: var(--muted);
+    font-size: 11px;
+}
+
+.discover-import-form label {
+    display: grid;
+    gap: 5px;
+}
+
+.discover-import-form input[type="url"] {
+    min-height: 40px;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    outline: 0;
+    background: var(--surface-2);
+    color: var(--text);
+}
+
+.discover-import-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.discover-card-skeleton {
+    pointer-events: none;
+}
+
+.discover-card-skeleton .discover-cover,
+.discover-card-skeleton .discover-card-copy span {
+    position: relative;
+    overflow: hidden;
+    background: var(--surface-2);
+}
+
+.discover-card-skeleton .discover-card-copy {
+    gap: 10px;
+    padding-top: 7px;
+}
+
+.discover-card-skeleton .discover-card-copy span {
+    width: 88%;
+    height: 11px;
+    border-radius: 5px;
+}
+
+.discover-card-skeleton .discover-card-copy span:nth-child(2) { width: 62%; }
+.discover-card-skeleton .discover-card-copy span:nth-child(3) { width: 45%; }
+
+.discover-card-skeleton .discover-cover::after,
+.discover-card-skeleton .discover-card-copy span::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,.035), transparent);
+    animation: discover-shimmer 1.3s infinite;
+}
+
+@keyframes discover-shimmer {
+    to { transform: translateX(100%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .discover-card-skeleton .discover-cover::after,
+    .discover-card-skeleton .discover-card-copy span::after {
+        animation: none;
+    }
+}
+
+@media (max-width: 820px) {
+    .discover-header {
+        align-items: flex-start;
+        flex-direction: column;
+        margin-bottom: 12px;
+    }
+
+    .discover-library-links {
+        width: 100%;
+        overflow-x: auto;
+        white-space: nowrap;
+    }
+
+    .discover-controls {
+        top: var(--safe-top, 0);
+        margin-inline: -18px;
+        padding: 8px 18px 12px;
+    }
+
+    .discover-filter-row {
+        align-items: stretch;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .discover-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 440px) {
+    .discover-card {
+        grid-template-columns: 76px minmax(0, 1fr);
+        min-height: 114px;
+        padding: 8px;
+    }
+
+    .discover-cover {
+        width: 76px;
+        height: 108px;
+    }
+
+    .discover-card-meta {
+        margin-top: 5px;
+    }
+}
