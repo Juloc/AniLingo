@@ -28,7 +28,7 @@ class MobileShellStateTest {
             shouldPlay = true,
         )
 
-        assertEquals(50_000, preserved.positionMs)
+        assertEquals(50_000L, preserved.positionMs)
         assertEquals(true, preserved.shouldPlay)
     }
 }
