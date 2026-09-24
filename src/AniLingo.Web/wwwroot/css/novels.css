@@ -37,14 +37,8 @@
 }
 
 .novel-library-header h1 {
-    font-size: clamp(1.75rem, 4vw, 2.25rem);
-    line-height: 1.1;
-}
-
-.novel-library-header p {
-    margin: .35rem 0 0;
-    color: var(--muted, #9aa4b2);
-    font-size: .9rem;
+    font-size: clamp(1.45rem, 3vw, 1.8rem);
+    line-height: 1.15;
 }
 
 .novel-add-button {
@@ -133,7 +127,7 @@
 }
 
 .novel-section-heading h2 {
-    font-size: 1.2rem;
+    font-size: 1.05rem;
 }
 
 .novel-continue-list {
@@ -341,8 +335,8 @@
 }
 
 .novel-work-copy h1 {
-    font-size: clamp(1.4rem, 3vw, 2rem);
-    line-height: 1.18;
+    font-size: clamp(1.3rem, 2.4vw, 1.65rem);
+    line-height: 1.2;
 }
 
 .novel-work-native {
@@ -536,6 +530,15 @@
     background: color-mix(in srgb, var(--accent, #e9aa18) 6%, transparent);
 }
 
+.novel-chapter-row.earlier {
+    color: color-mix(in srgb, currentColor 68%, var(--muted, #9aa4b2));
+}
+
+.novel-chapter-row.earlier .novel-chapter-number,
+.novel-chapter-row.earlier .novel-chapter-badges {
+    opacity: .72;
+}
+
 .novel-chapter-number {
     color: var(--muted, #9aa4b2);
     font-variant-numeric: tabular-nums;
@@ -664,23 +667,15 @@
 
 .novel-toolbar-location {
     min-width: 0;
-    display: grid;
-    line-height: 1.1;
-}
-
-.novel-toolbar-location span {
-    color: var(--reader-muted);
-    font-size: .68rem;
-    text-transform: uppercase;
-    letter-spacing: .04em;
+    line-height: 1;
 }
 
 .novel-toolbar-location strong {
-    margin-top: .12rem;
+    display: block;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: .78rem;
+    font-size: .76rem;
     font-weight: 600;
 }
 
@@ -836,9 +831,8 @@
 }
 
 .novel-reader-title h1 {
-    margin-top: .35rem;
-    font-size: clamp(1.35rem, 3vw, 1.9rem);
-    line-height: 1.2;
+    font-size: clamp(1.2rem, 2.4vw, 1.55rem);
+    line-height: 1.25;
 }
 
 .novel-reader-title h1 > span {
@@ -884,12 +878,14 @@
 }
 
 .novel-text-action {
+    min-width: 78px;
     margin-left: auto;
     padding: .25rem 0;
     background: transparent;
     color: var(--reader-accent);
     font-size: .76rem;
     font-weight: 650;
+    text-align: right;
 }
 
 .novel-text-action:disabled {
@@ -1116,25 +1112,13 @@
     border-bottom: 1px solid var(--reader-border);
 }
 
-.novel-drawer-header > div,
-.novel-notes-header > div {
+.novel-drawer-header > strong,
+.novel-notes-header > strong {
     min-width: 0;
-    display: grid;
-    gap: .12rem;
-}
-
-.novel-drawer-header strong,
-.novel-notes-header strong {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: .9rem;
-}
-
-.novel-drawer-header span,
-.novel-notes-header span {
-    color: var(--reader-muted);
-    font-size: .72rem;
+    font-size: .88rem;
 }
 
 .novel-drawer-current {
@@ -1147,22 +1131,18 @@
     border-bottom: 1px solid var(--reader-border);
 }
 
-.novel-drawer-current > div {
-    min-width: 0;
-    display: grid;
-    gap: .1rem;
-}
-
-.novel-drawer-current span {
-    color: var(--reader-muted);
-    font-size: .68rem;
+.novel-drawer-current > span {
+    width: 30px;
+    height: 30px;
 }
 
 .novel-drawer-current strong {
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: .82rem;
+    text-align: center;
+    font-size: .8rem;
 }
 
 .novel-drawer-current a {
@@ -1387,9 +1367,19 @@
     }
 }
 
+body:has(.novel-reader-shell) .sidebar,
+body:has(.novel-reader-shell) .mobile-nav {
+    display: none !important;
+}
+
+body:has(.novel-reader-shell) .app-main {
+    margin-left: 0;
+    padding: 0;
+}
+
 @media (max-width: 820px) {
     .novel-library-header {
-        align-items: end;
+        align-items: center;
     }
 
     .novel-reader-toolbar {
@@ -1468,10 +1458,6 @@
         align-items: start;
     }
 
-    .novel-library-header p {
-        max-width: 240px;
-    }
-
     .novel-add-button {
         min-height: 36px;
         padding-inline: .65rem;
@@ -1523,7 +1509,7 @@
     }
 
     .novel-work-copy h1 {
-        font-size: 1.25rem;
+        font-size: 1.18rem;
     }
 
     .novel-reader-toolbar {
@@ -1559,7 +1545,7 @@
     }
 
     .novel-reader-title h1 {
-        font-size: 1.28rem;
+        font-size: 1.15rem;
     }
 
     .novel-reader-footer {
