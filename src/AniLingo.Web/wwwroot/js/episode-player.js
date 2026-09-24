@@ -359,7 +359,9 @@
         }
 
         try {
-            const response = await fetch(url, {
+            const probeUrl = new URL(url, window.location.origin);
+            probeUrl.searchParams.set("fresh", "true");
+            const response = await fetch(probeUrl, {
                 credentials: "same-origin",
                 headers: { "Accept": "application/json" }
             });
