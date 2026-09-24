@@ -72,10 +72,13 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
                 return;
             }
 
+            var cookieSessionVersion = OwnerAuthService.GetSessionVersion(
+                context.Principal!);
             var auth = context.HttpContext.RequestServices
                 .GetRequiredService<OwnerAuthService>();
             var account = await auth.GetEnabledAccountAsync(
                 accountId,
+                cookieSessionVersion,
                 context.HttpContext.RequestAborted);
 
             if (account is null)
@@ -89,7 +92,8 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
             var expectedRole = account.Role.ToString();
 
             if (!string.Equals(currentName, account.UserName, StringComparison.Ordinal)
-                || !string.Equals(currentRole, expectedRole, StringComparison.Ordinal))
+                || !string.Equals(currentRole, expectedRole, StringComparison.Ordinal)
+                || cookieSessionVersion != account.SessionVersion)
             {
                 context.ReplacePrincipal(OwnerAuthService.CreatePrincipal(account));
                 context.ShouldRenew = true;
