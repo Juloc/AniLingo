@@ -1,9 +1,7 @@
 const CACHE_PREFIX = "anilingo-static-";
-const CACHE_VERSION = CACHE_PREFIX + "v3";
+const CACHE_VERSION = CACHE_PREFIX + "v4";
 const PRECACHE = [
   "/offline.html",
-  "/css/site.css",
-  "/js/pwa.js",
   "/js/offline-review.js",
   "/icons/anilingo.svg",
   "/icons/anilingo-192.png",
@@ -35,6 +33,11 @@ self.addEventListener("activate", event => {
 self.addEventListener("message", event => {
   if (event.data?.type === "SKIP_WAITING") {
     self.skipWaiting();
+    return;
+  }
+
+  if (event.data?.type === "CACHE_CURRENT_ASSETS") {
+    event.waitUntil(cacheCurrentAssets(event.data.urls));
   }
 });
 
@@ -77,7 +80,7 @@ async function networkFirstStatic(request) {
   try {
     const response = await fetch(request);
     if (response.ok) {
-      await cache.put(request, response.clone());
+      await putLatestAsset(cache, request, response.clone());
     }
     return response;
   } catch {
@@ -85,4 +88,47 @@ async function networkFirstStatic(request) {
       || (await cache.match(new URL(request.url).pathname))
       || Response.error();
   }
+}
+
+async function cacheCurrentAssets(urls) {
+  if (!Array.isArray(urls)) {
+    return;
+  }
+
+  const cache = await caches.open(CACHE_VERSION);
+  const uniqueUrls = [...new Set(urls)].slice(0, 32);
+
+  await Promise.all(uniqueUrls.map(async value => {
+    try {
+      const url = new URL(value, self.location.origin);
+      if (url.origin !== self.location.origin
+          || !isStaticAsset(url.pathname)
+          || !url.searchParams.has("v")) {
+        return;
+      }
+
+      const request = new Request(url.href, { cache: "reload" });
+      const response = await fetch(request);
+      if (response.ok) {
+        await putLatestAsset(cache, request, response);
+      }
+    } catch {
+      // A failed optional refresh must never break the installed PWA.
+    }
+  }));
+}
+
+async function putLatestAsset(cache, request, response) {
+  const current = new URL(request.url);
+  const keys = await cache.keys();
+
+  await Promise.all(keys
+    .filter(key => {
+      const cached = new URL(key.url);
+      return cached.pathname === current.pathname
+        && cached.href !== current.href;
+    })
+    .map(key => cache.delete(key)));
+
+  await cache.put(request, response);
 }
