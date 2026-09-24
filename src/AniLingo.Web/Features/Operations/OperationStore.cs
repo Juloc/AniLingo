@@ -324,6 +324,35 @@ public sealed class OperationStore(AppDbContext db)
             cancellationToken);
     }
 
+    public async Task MarkInterruptedAsync(
+        Guid id,
+        string? message = null,
+        CancellationToken cancellationToken = default)
+    {
+        var now = DateTime.UtcNow;
+        await UpdateAsync(
+            id,
+            """
+            Status = @status,
+            Message = COALESCE(@message, Message),
+            FinishedAtUtc = @now,
+            UpdatedAtUtc = @now
+            """,
+            [
+                ("@status", (object?)(int)OperationStatus.Interrupted),
+                ("@message", Trim(message, MaxMessageLength)),
+                ("@now", Format(now))
+            ],
+            cancellationToken);
+
+        await AppendLogAsync(
+            id,
+            OperationLogLevel.Warning,
+            "Worker",
+            message ?? "Operation interrupted.",
+            cancellationToken);
+    }
+
     public async Task<int> RecoverInterruptedAsync(
         OperationLane lane,
         CancellationToken cancellationToken = default)
