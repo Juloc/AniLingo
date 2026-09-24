@@ -32,12 +32,15 @@
     const chapterDrawer = shell.querySelector("[data-chapter-drawer]");
     const chapterDrawerBackdrop = shell.querySelector("[data-chapter-drawer-backdrop]");
     const chapterFilter = shell.querySelector("[data-chapter-filter]");
+    const chapterList = shell.querySelector("[data-chapter-list]");
+    const chapterDataElement = shell.querySelector("[data-chapter-data]");
     const translateForm = shell.querySelector("[data-translate-form]");
     const translationSlot = shell.querySelector("[data-translation-slot]");
     let hasTranslation = shell.dataset.hasTranslation === "true";
     const chapterBookmarks = new Map();
 
     let restoreComplete = false;
+    let chapterRowsReady = false;
     let progressTimer = null;
     let toastTimer = null;
     let pendingSelection = null;
@@ -812,8 +815,68 @@
         }
     };
 
+    const ensureChapterRows = () => {
+        if (chapterRowsReady || !chapterList || !chapterDataElement) return;
+
+        let chapters = [];
+        try {
+            chapters = JSON.parse(chapterDataElement.textContent || "[]");
+        } catch {
+            chapters = [];
+        }
+
+        const fragment = document.createDocumentFragment();
+
+        for (const chapter of chapters) {
+            const link = document.createElement("a");
+            link.className = [
+                "novel-drawer-row",
+                chapter.isCurrent
+                    ? "current"
+                    : chapter.isEarlier
+                        ? "earlier"
+                        : ""
+            ].filter(Boolean).join(" ");
+            link.href = `/Novels/Read/${encodeURIComponent(chapter.id)}`;
+            link.dataset.chapterRow = "";
+            link.dataset.chapterSearch =
+                normalizeText(`${chapter.number} ${chapter.title}`)
+                    .toLocaleLowerCase();
+
+            const number = document.createElement("span");
+            number.className = "novel-drawer-number";
+            number.textContent = String(chapter.number);
+
+            const title = document.createElement("span");
+            title.className = "novel-drawer-title";
+            title.lang = "ja";
+            title.textContent = chapter.title;
+
+            const lang = document.createElement("span");
+            lang.className = "novel-drawer-lang";
+            lang.textContent = chapter.hasTranslation ? "DE" : "";
+
+            const current = document.createElement("span");
+            if (chapter.isCurrent) {
+                current.className = "novel-drawer-current-mark";
+                current.setAttribute("aria-label", "Aktuelles Kapitel");
+            }
+
+            link.append(number, title, lang, current);
+            fragment.append(link);
+        }
+
+        chapterList.append(fragment);
+        chapterRowsReady = true;
+    };
+
     const setChapterDrawer = open => {
         if (!chapterDrawer || !chapterDrawerBackdrop) return;
+
+        if (open) {
+            ensureChapterRows();
+        }
+
         chapterDrawer.hidden = !open;
         chapterDrawerBackdrop.hidden = !open;
         shell.classList.toggle("chapter-drawer-open", open);
