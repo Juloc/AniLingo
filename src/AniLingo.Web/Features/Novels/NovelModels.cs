@@ -21,6 +21,7 @@ public sealed class NovelWork
     public string? MetadataStatus { get; set; }
     public int? MetadataChapterCount { get; set; }
     public int? MetadataVolumeCount { get; set; }
+    public string? MetadataGenresJson { get; set; }
 
     public DateTime ImportedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
@@ -80,6 +81,8 @@ public sealed class NovelBookmark
     public int CharacterOffset { get; set; }
     public string? AnchorText { get; set; }
     public string? Label { get; set; }
+    public string? Style { get; set; }
+    public string? Color { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
@@ -197,7 +200,8 @@ public sealed record NovelMetadataCandidate(
     string? Format,
     string? Status,
     int? ChapterCount,
-    int? VolumeCount);
+    int? VolumeCount,
+    IReadOnlyList<string>? Genres = null);
 
 public interface INovelMetadataProvider
 {
