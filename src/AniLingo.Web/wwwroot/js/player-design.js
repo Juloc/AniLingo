@@ -50,9 +50,8 @@
         const bubble = document.createElement("div");
         bubble.className = "player-subtitle-bubble";
         bubble.dataset.playerAction = actions.learnCurrentCue;
-        bubble.tabIndex = 0;
-        bubble.setAttribute("role", "button");
-        bubble.setAttribute("aria-label", "Open learning for this subtitle line");
+        bubble.setAttribute("role", "group");
+        bubble.setAttribute("aria-label", "Interactive Japanese subtitle");
 
         for (const token of cue.tokens || []) {
             if (token.isInteractive) {
@@ -77,17 +76,22 @@
 
         const learn = () => dispatch(root, actions.learnCurrentCue, { cue });
         bubble.addEventListener("click", event => {
-            if (event.target === bubble || !(event.target instanceof HTMLButtonElement)) {
+            if (!(event.target instanceof HTMLButtonElement)) {
                 learn();
             }
         });
-        bubble.addEventListener("keydown", event => {
-            if (event.target !== bubble) return;
-            if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                learn();
-            }
+
+        const lineButton = document.createElement("button");
+        lineButton.type = "button";
+        lineButton.className = "player-subtitle-line-action";
+        lineButton.dataset.playerAction = actions.learnCurrentCue;
+        lineButton.textContent = "Learn";
+        lineButton.setAttribute("aria-label", "Learn this subtitle line");
+        lineButton.addEventListener("click", event => {
+            event.stopPropagation();
+            learn();
         });
+        bubble.append(lineButton);
 
         overlay.append(bubble);
     };
