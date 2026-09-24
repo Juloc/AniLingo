@@ -229,23 +229,7 @@ class HttpAniLingoClientApi(
         minimumSupportedApiVersion = getInt("minimumSupportedApiVersion"),
         serverVersion = getString("serverVersion"),
         features = getJSONObject("features").let { features ->
-            ClientFeatureFlags(
-                library = features.getBoolean("library"),
-                nativePlayerBootstrap = features.getBoolean("nativePlayerBootstrap"),
-                directPlayback = features.getBoolean("directPlayback"),
-                playbackProgress = features.getBoolean("playbackProgress"),
-                httpRangeRequests = features.getBoolean("httpRangeRequests"),
-                mediaTrackMetadata = features.getBoolean("mediaTrackMetadata"),
-                normalizedLearningCues = features.getBoolean("normalizedLearningCues"),
-                learningStateMutation = features.getBoolean("learningStateMutation"),
-                liveMp4Fallback = features.getBoolean("liveMp4Fallback"),
-                hlsFallback = features.getBoolean("hlsFallback"),
-                playbackSessions = features.getBoolean("playbackSessions"),
-                companionPairing = features.getBoolean("companionPairing"),
-                companionControl = features.getBoolean("companionControl"),
-                storageAvailability = features.getBoolean("storageAvailability"),
-                ownerWakeOnLan = features.getBoolean("ownerWakeOnLan"),
-            )
+            ClientFeatureFlagParser.parse(features::getBoolean)
         },
     )
 
@@ -519,4 +503,26 @@ class HttpAniLingoClientApi(
                 80
             }
     }
+}
+
+
+internal object ClientFeatureFlagParser {
+    fun parse(readBoolean: (String) -> Boolean) = ClientFeatureFlags(
+        library = readBoolean("library"),
+        nativeSessionAuth = readBoolean("nativeSessionAuth"),
+        nativePlayerBootstrap = readBoolean("nativePlayerBootstrap"),
+        directPlayback = readBoolean("directPlayback"),
+        playbackProgress = readBoolean("playbackProgress"),
+        httpRangeRequests = readBoolean("httpRangeRequests"),
+        mediaTrackMetadata = readBoolean("mediaTrackMetadata"),
+        normalizedLearningCues = readBoolean("normalizedLearningCues"),
+        learningStateMutation = readBoolean("learningStateMutation"),
+        liveMp4Fallback = readBoolean("liveMp4Fallback"),
+        hlsFallback = readBoolean("hlsFallback"),
+        playbackSessions = readBoolean("playbackSessions"),
+        companionPairing = readBoolean("companionPairing"),
+        companionControl = readBoolean("companionControl"),
+        storageAvailability = readBoolean("storageAvailability"),
+        ownerWakeOnLan = readBoolean("ownerWakeOnLan"),
+    )
 }
