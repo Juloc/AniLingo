@@ -198,6 +198,8 @@
              data-storage-state="@(media.Storage is { } storage ? ClientApiMappings.AvailabilityStateName(storage.State) : "unknown")"
              data-storage-availability-url="@ClientApiRoutes.MediaAvailability(media.MediaFileId)"
              data-player-bootstrap-url="@ClientApiRoutes.Player(Model.EpisodeId)"
+             data-progress-url="@ClientApiRoutes.Progress(Model.EpisodeId)"
+             data-resume-seconds="@Model.ResumePositionSeconds.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)"
              data-storage-wake-url="@(Model.IsOwner && media.Storage is { WakeConfigured: true } ownerStorage ? ClientApiRoutes.WakeRoot(ownerStorage.RootId) : "")"
              data-media-url="@Url.Page("/Library/Episode", "Media", new { id = Model.EpisodeId })">
         <div class="video-stage player-placeholder" data-video-stage>

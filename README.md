@@ -28,7 +28,7 @@ The first vertical slice includes:
 - known / learning term state
 - FSRS-6 spaced repetition with Again / Hard / Good / Easy interval previews
 - responsive Razor Pages UI with a Jellyfin/Plex-style shell
-- built-in single-owner login for safe reverse-proxy exposure
+- built-in local accounts with owner-only user management and per-user anime, novel and learning progress
 - embedded SQLite persistence in the single application container
 - optional Codex CLI connection for AI-assisted features
 - Japanese Web/Light Novel library with Narou import, on-demand chapter caching, a responsive reader and persisted reading position

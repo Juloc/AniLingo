@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using AniLingo.Web.Features.Admin;
 using AniLingo.Web.Features.Auth;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -7,9 +8,11 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 namespace AniLingo.Web.Pages.Settings;
 
 [Authorize(Roles = AccountRoles.Owner)]
-public sealed class UsersModel(OwnerAuthService authService) : PageModel
+public sealed class UsersModel(
+    OwnerAuthService authService,
+    AdminUserProgressService progressService) : PageModel
 {
-    public IReadOnlyList<LocalAccountSummary> Accounts { get; private set; } = [];
+    public IReadOnlyList<AdminUserProgressSummary> Users { get; private set; } = [];
 
     [BindProperty]
     [Required]
@@ -108,5 +111,5 @@ public sealed class UsersModel(OwnerAuthService authService) : PageModel
     }
 
     private async Task LoadAsync(CancellationToken cancellationToken) =>
-        Accounts = await authService.ListAsync(cancellationToken);
+        Users = await progressService.GetAsync(cancellationToken);
 }
