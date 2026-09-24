@@ -2,6 +2,7 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Manga;
+using AniLingo.Web.Features.ReaderPreferences;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
@@ -175,6 +176,175 @@ public sealed class MangaTests
                     "reader-a",
                     chapter.SeriesId,
                     CancellationToken.None)).Count);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            TryDelete(root);
+        }
+    }
+
+
+    [TestMethod]
+    public async Task SeriesCoverBesideChapterFoldersIsNotImportedAsChapter()
+    {
+        var root = TempDirectory();
+        var database = Path.Combine(root, "anilingo.db");
+        var source = Path.Combine(root, "Series");
+        var chapter = Path.Combine(source, "Ch. 1");
+        var cache = Path.Combine(root, "cache");
+
+        try
+        {
+            Directory.CreateDirectory(chapter);
+            await File.WriteAllBytesAsync(Path.Combine(source, "cover.jpg"), [9, 9, 9]);
+            await File.WriteAllBytesAsync(Path.Combine(chapter, "001.jpg"), [1, 2, 3]);
+
+            await using var db = await CreateDatabaseAsync(database);
+            var repository = new MangaRepository(db);
+            var importer = new MangaImportService(repository, cache);
+
+            var result = await importer.ImportAsync(source, CancellationToken.None);
+            var series = await repository.GetSeriesAsync(result.SeriesId, CancellationToken.None);
+
+            Assert.AreEqual(1, result.ChapterCount);
+            Assert.IsNotNull(series);
+            Assert.AreEqual(1, series.Chapters.Count);
+            Assert.AreEqual(1d, series.Chapters[0].Number);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            TryDelete(root);
+        }
+    }
+
+    [TestMethod]
+    public async Task ReaderPreferencesResolveGlobalMediaAndSeriesScopes()
+    {
+        var root = TempDirectory();
+        var database = Path.Combine(root, "anilingo.db");
+        var seriesId = Guid.NewGuid();
+
+        try
+        {
+            await using var db = await CreateDatabaseAsync(database);
+
+            await ReaderPreferenceStore.SaveUserDefaultsAsync(
+                db,
+                "reader-a",
+                new ReaderSettingsInput
+                {
+                    ReadingMode = "continuous",
+                    PageTransition = "slide",
+                    TwoPageSpread = false,
+                    AutoScrollSpeed = 36,
+                    FontFamily = "literary-serif",
+                    FontSizeRem = 1.06,
+                    LineHeight = 1.9,
+                    ParagraphSpacingEm = .85,
+                    TextWidthPx = 760,
+                    TextAlignment = "start",
+                    ChapterStyle = "light-novel",
+                    PaperStyle = "midnight",
+                    GenreArtworkEnabled = true,
+                    GenreTheme = "auto",
+                    BackgroundAssetId = "auto",
+                    BackgroundIntensity = .055,
+                    BookmarkStyle = "fabric",
+                    BookmarkColor = "#b04455"
+                },
+                CancellationToken.None);
+
+            var global = await ReaderPreferenceStore.GetMediaAsync(
+                db,
+                "reader-a",
+                "manga",
+                seriesId,
+                CancellationToken.None);
+            Assert.AreEqual("continuous", global.ReadingMode);
+            Assert.IsFalse(global.TwoPageSpread);
+            Assert.IsFalse(global.HasBookOverride);
+
+            var mediaInput = new ReaderSettingsInput
+            {
+                ReadingMode = "paged",
+                TwoPageSpread = true
+            };
+            await ReaderPreferenceStore.SaveMediaSettingAsync(
+                db,
+                "reader-a",
+                "manga",
+                null,
+                "readingMode",
+                mediaInput,
+                CancellationToken.None);
+            await ReaderPreferenceStore.SaveMediaSettingAsync(
+                db,
+                "reader-a",
+                "manga",
+                null,
+                "twoPageSpread",
+                mediaInput,
+                CancellationToken.None);
+
+            var media = await ReaderPreferenceStore.GetMediaAsync(
+                db,
+                "reader-a",
+                "manga",
+                seriesId,
+                CancellationToken.None);
+            Assert.AreEqual("paged", media.ReadingMode);
+            Assert.IsTrue(media.TwoPageSpread);
+
+            var seriesInput = new ReaderSettingsInput
+            {
+                ReadingMode = "continuous",
+                TwoPageSpread = false
+            };
+            await ReaderPreferenceStore.SaveMediaSettingAsync(
+                db,
+                "reader-a",
+                "manga",
+                seriesId,
+                "readingMode",
+                seriesInput,
+                CancellationToken.None);
+            await ReaderPreferenceStore.SaveMediaSettingAsync(
+                db,
+                "reader-a",
+                "manga",
+                seriesId,
+                "twoPageSpread",
+                seriesInput,
+                CancellationToken.None);
+
+            var series = await ReaderPreferenceStore.GetMediaAsync(
+                db,
+                "reader-a",
+                "manga",
+                seriesId,
+                CancellationToken.None);
+            Assert.AreEqual("continuous", series.ReadingMode);
+            Assert.IsFalse(series.TwoPageSpread);
+            Assert.IsTrue(series.HasBookOverride);
+
+            await ReaderPreferenceStore.ResetMediaSeriesAsync(
+                db,
+                "reader-a",
+                "manga",
+                seriesId,
+                CancellationToken.None);
+
+            var reset = await ReaderPreferenceStore.GetMediaAsync(
+                db,
+                "reader-a",
+                "manga",
+                seriesId,
+                CancellationToken.None);
+            Assert.AreEqual("paged", reset.ReadingMode);
+            Assert.IsTrue(reset.TwoPageSpread);
+            Assert.IsFalse(reset.HasBookOverride);
         }
         finally
         {
