@@ -61,6 +61,7 @@ public sealed class NovelProgress
     public Guid WorkId { get; set; }
     public Guid ChapterId { get; set; }
     public int PositionPermille { get; set; }
+    public string AnchorLanguage { get; set; } = "ja";
     public int? AnchorParagraphIndex { get; set; }
     public int AnchorOffset { get; set; }
     public string? AnchorText { get; set; }
@@ -74,6 +75,7 @@ public sealed class NovelBookmark
     public Guid WorkId { get; set; }
     public Guid ChapterId { get; set; }
     public int PositionPermille { get; set; }
+    public string Language { get; set; } = "ja";
     public int? ParagraphIndex { get; set; }
     public int CharacterOffset { get; set; }
     public string? AnchorText { get; set; }
