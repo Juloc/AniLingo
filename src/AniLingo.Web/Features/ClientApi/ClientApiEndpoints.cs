@@ -1,6 +1,8 @@
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Playback;
+using AniLingo.Web.Features.Storage;
+using Microsoft.AspNetCore.Authorization;
 
 namespace AniLingo.Web.Features.ClientApi;
 
@@ -117,11 +119,55 @@ public static class ClientApiEndpoints
             return Results.Ok(cues);
         });
 
+        group.MapGet("/media/{mediaFileId:guid}/availability", async (
+            Guid mediaFileId,
+            bool fresh,
+            MediaAvailabilityService mediaAvailability,
+            CurrentAccountContext currentAccount,
+            CancellationToken cancellationToken) =>
+        {
+            var availability = await mediaAvailability.CheckMediaAsync(
+                mediaFileId,
+                force: fresh,
+                cancellationToken);
+
+            return availability is null
+                ? NotFound("media_not_found", "The requested media file does not exist.")
+                : Results.Ok(ClientApiMappings.ToClientAvailability(
+                    availability,
+                    currentAccount.IsOwner));
+        });
+
         group.MapGet("/media/{mediaFileId:guid}/content", async (
             Guid mediaFileId,
             PlaybackService playbackService,
+            MediaAvailabilityService mediaAvailability,
+            CurrentAccountContext currentAccount,
             CancellationToken cancellationToken) =>
         {
+            var availability = await mediaAvailability.CheckMediaAsync(
+                mediaFileId,
+                force: false,
+                cancellationToken);
+
+            if (availability is null)
+            {
+                return NotFound(
+                    "media_not_found",
+                    "The requested media file does not exist.");
+            }
+
+            if (!availability.IsAvailable)
+            {
+                return Results.Json(
+                    ClientApiMappings.ToClientAvailability(
+                        availability,
+                        currentAccount.IsOwner),
+                    statusCode: availability.State == StorageAvailabilityState.FileMissing
+                        ? StatusCodes.Status404NotFound
+                        : StatusCodes.Status503ServiceUnavailable);
+            }
+
             var stream = await playbackService.GetOriginalContentAsync(
                 mediaFileId,
                 cancellationToken);
@@ -145,6 +191,8 @@ public static class ClientApiEndpoints
             string? mode,
             double? startSeconds,
             PlaybackService playbackService,
+            MediaAvailabilityService mediaAvailability,
+            CurrentAccountContext currentAccount,
             CancellationToken cancellationToken) =>
         {
             if (startSeconds.HasValue &&
@@ -161,6 +209,29 @@ public static class ClientApiEndpoints
                 StringComparison.OrdinalIgnoreCase)
                 ? PlaybackRequestedMode.Device
                 : PlaybackRequestedMode.Server;
+
+            var availability = await mediaAvailability.CheckEpisodeAsync(
+                episodeId,
+                force: false,
+                cancellationToken);
+
+            if (availability is null)
+            {
+                return NotFound(
+                    "media_not_found",
+                    "This episode does not have a media file.");
+            }
+
+            if (!availability.IsAvailable)
+            {
+                return Results.Json(
+                    ClientApiMappings.ToClientAvailability(
+                        availability,
+                        currentAccount.IsOwner),
+                    statusCode: availability.State == StorageAvailabilityState.FileMissing
+                        ? StatusCodes.Status404NotFound
+                        : StatusCodes.Status503ServiceUnavailable);
+            }
 
             var stream = await playbackService.GetStreamAsync(
                 episodeId,
@@ -209,6 +280,67 @@ public static class ClientApiEndpoints
                     statusCode: StatusCodes.Status503ServiceUnavailable);
             }
         });
+
+        group.MapGet("/library-roots/{rootId:guid}/availability", async (
+            Guid rootId,
+            LibraryRootAvailabilityService availability,
+            CancellationToken cancellationToken) =>
+        {
+            var status = await availability.CheckAsync(
+                rootId,
+                force: false,
+                cancellationToken);
+
+            return status is null
+                ? NotFound("library_root_not_found", "The requested library root does not exist.")
+                : Results.Ok(ClientApiMappings.ToClientRootAvailability(status));
+        })
+        .RequireAuthorization(new AuthorizeAttribute { Roles = AccountRoles.Owner });
+
+        group.MapPost("/library-roots/{rootId:guid}/test", async (
+            Guid rootId,
+            LibraryRootAvailabilityService availability,
+            CancellationToken cancellationToken) =>
+        {
+            var status = await availability.CheckAsync(
+                rootId,
+                force: true,
+                cancellationToken);
+
+            return status is null
+                ? NotFound("library_root_not_found", "The requested library root does not exist.")
+                : Results.Ok(ClientApiMappings.ToClientRootAvailability(status));
+        })
+        .RequireAuthorization(new AuthorizeAttribute { Roles = AccountRoles.Owner });
+
+        group.MapPost("/library-roots/{rootId:guid}/wake", async (
+            Guid rootId,
+            WakeOnLanService wakeOnLan,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await wakeOnLan.WakeAsync(
+                rootId,
+                cancellationToken);
+
+            if (result.Availability is null)
+            {
+                return NotFound(
+                    "library_root_not_found",
+                    "The requested library root does not exist.");
+            }
+
+            if (!result.Accepted)
+            {
+                return Results.Conflict(new ClientErrorResponse(
+                    "wake_unavailable",
+                    result.Message));
+            }
+
+            return Results.Ok(ClientApiMappings.ToClientRootAvailability(
+                result.Availability));
+        })
+        .RequireAuthorization(new AuthorizeAttribute { Roles = AccountRoles.Owner })
+        .RequireRateLimiting("wake");
 
         group.MapGet("/terms/{termId:guid}", async (
             Guid termId,

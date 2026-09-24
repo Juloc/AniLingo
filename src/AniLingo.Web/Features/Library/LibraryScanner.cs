@@ -62,6 +62,13 @@ public sealed class LibraryScanner(
             .Where(x => x.LibraryRootId == rootId)
             .ToDictionaryAsync(x => x.Path, StringComparer.Ordinal, cancellationToken);
 
+        if (existingFiles.Count > 0 && candidates.Count == 0)
+        {
+            throw new IOException(
+                "Library root returned no media files while AniLingo still has known media for it. " +
+                "Reconciliation was stopped to avoid treating an unavailable NAS mount as a mass deletion.");
+        }
+
         var animeByKey = await db.Anime.ToDictionaryAsync(x => x.Key, StringComparer.Ordinal, cancellationToken);
         var episodes = await db.Episodes.ToListAsync(cancellationToken);
         var episodeByKey = episodes.ToDictionary(

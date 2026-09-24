@@ -2,6 +2,7 @@ using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Playback;
+using AniLingo.Web.Features.Storage;
 using AniLingo.Web.Features.Subtitles;
 using AniLingo.Web.Features.Tracking;
 using AniLingo.Web.Features.Vocabulary;
@@ -89,10 +90,17 @@ public sealed class EpisodeModel(
             AniListProgress = await aniListAccountService.GetEpisodeProgressPreviewAsync(
                 id,
                 cancellationToken);
-            await LoadSubtitleSourcesAsync(id, Playback.Media?.SourcePath, cancellationToken);
+            await LoadSubtitleSourcesAsync(
+                id,
+                Playback.Media is { Storage.IsAvailable: true } availableMedia
+                    ? availableMedia.SourcePath
+                    : null,
+                cancellationToken);
         }
 
-        if (IsOwner && ActiveSubtitle is null && Playback.Media is { } media)
+        if (IsOwner &&
+            ActiveSubtitle is null &&
+            Playback.Media is { Storage.IsAvailable: true } media)
         {
             await subtitleImportService.QueueLearningTextAsync(
                 id,

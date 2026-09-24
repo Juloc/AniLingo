@@ -1,6 +1,6 @@
 # AniLingo
 
-Current prerelease: **0.1.0-alpha.19**.
+Current prerelease: **0.1.0-alpha.22**.
 
 AniLingo is a Docker-first Japanese learning companion for an existing anime library. It scans media from a read-only NAS mount, imports nearby Japanese subtitles, builds episode vocabulary, and lets you mark terms as known or review them before watching.
 
@@ -77,6 +77,14 @@ services:
 ```
 
 Then add `/media/anime` as a library root in AniLingo. Existing persisted library roots remain unchanged when upgrading.
+
+### Sleeping / unavailable NAS and Wake-on-LAN
+
+AniLingo treats temporary media-storage outages separately from deleted files. A sleeping or unavailable NAS does not remove the persisted Library, and an unexpectedly empty previously-populated root is rejected as unsafe reconciliation rather than interpreted as a mass deletion.
+
+Under **Settings → Media storage**, the owner can test each configured root without running a library scan. Wake-on-LAN can optionally be configured per root with a MAC address and, when needed from Docker networking, the LAN broadcast IPv4 address such as `192.168.178.255`. Wake actions are owner-only and rate-limited. Pressing Play as a normal user never sends a magic packet automatically.
+
+Playback checks the owning storage before codec selection. If storage is temporarily unavailable, the player preserves playback intent/position and retries with bounded backoff for up to about one minute. It resumes automatically when storage returns; after the automatic window it offers **Try again**. An owner also gets an explicit **Wake NAS** action in the player when Wake-on-LAN is configured. A root that is online while one concrete file is absent is reported as a real missing-file condition instead of being retried as a NAS outage.
 
 ### Public URL / Caddy
 

@@ -2,6 +2,7 @@ using System.Text;
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Learning;
+using AniLingo.Web.Features.Storage;
 using AniLingo.Web.Features.Vocabulary;
 using AniLingo.Web.Infrastructure;
 using Microsoft.EntityFrameworkCore;
@@ -41,7 +42,8 @@ public sealed record PlaybackMedia(
     string? PixelFormat = null,
     string? AudioCodec = null,
     long? SizeBytes = null,
-    IReadOnlyList<PlaybackMediaTrack>? Tracks = null)
+    IReadOnlyList<PlaybackMediaTrack>? Tracks = null,
+    MediaAvailabilitySnapshot? Storage = null)
 {
     public bool HasReadyOption => Device.IsReady || Server.IsReady;
     public bool IsPreparing => Device.IsPreparing || Server.IsPreparing;
@@ -195,14 +197,16 @@ public sealed class PlaybackService
     private readonly AppDbContext db;
     private readonly PlaybackCueProjector projector;
     private readonly PlaybackMediaProbe mediaProbe;
+    private readonly MediaAvailabilityService? mediaAvailability;
     private readonly string profileId;
 
     public PlaybackService(
         AppDbContext db,
         PlaybackCueProjector projector,
         PlaybackMediaProbe mediaProbe,
+        MediaAvailabilityService mediaAvailability,
         CurrentAccountContext currentAccount)
-        : this(db, projector, mediaProbe, currentAccount.ProfileId)
+        : this(db, projector, mediaProbe, mediaAvailability, currentAccount.ProfileId)
     {
     }
 
@@ -210,7 +214,7 @@ public sealed class PlaybackService
         AppDbContext db,
         PlaybackCueProjector projector,
         PlaybackMediaProbe mediaProbe)
-        : this(db, projector, mediaProbe, LearningProfile.DefaultId)
+        : this(db, projector, mediaProbe, null, LearningProfile.DefaultId)
     {
     }
 
@@ -218,11 +222,13 @@ public sealed class PlaybackService
         AppDbContext db,
         PlaybackCueProjector projector,
         PlaybackMediaProbe mediaProbe,
+        MediaAvailabilityService? mediaAvailability,
         string profileId)
     {
         this.db = db;
         this.projector = projector;
         this.mediaProbe = mediaProbe;
+        this.mediaAvailability = mediaAvailability;
         this.profileId = profileId;
     }
     public async Task<PlaybackMedia?> GetMediaAsync(
@@ -235,9 +241,60 @@ public sealed class PlaybackService
             return null;
         }
 
+        var availability = await CheckAvailabilityAsync(
+            row.Id,
+            cancellationToken);
+
+        if (availability is { IsAvailable: false })
+        {
+            var unavailable = new PlaybackOption(
+                PlaybackOptionAvailability.Unsupported,
+                availability.State == StorageAvailabilityState.FileMissing
+                    ? "The media file is missing from otherwise available storage."
+                    : "Media storage is currently unavailable.");
+
+            return new PlaybackMedia(
+                episodeId,
+                row.Id,
+                row.Path,
+                Path.GetFileName(row.Path),
+                PlaybackMediaTypes.GetContentType(row.Path),
+                null,
+                unavailable,
+                unavailable,
+                SizeBytes: row.SizeBytes,
+                Storage: availability);
+        }
+
         var probe = await mediaProbe.ProbeAsync(row.Path, cancellationToken);
         if (probe is null)
         {
+            availability = await CheckAvailabilityAsync(
+                row.Id,
+                cancellationToken,
+                force: true);
+
+            if (availability is { IsAvailable: false })
+            {
+                var unavailable = new PlaybackOption(
+                    PlaybackOptionAvailability.Unsupported,
+                    availability.State == StorageAvailabilityState.FileMissing
+                        ? "The media file is missing from otherwise available storage."
+                        : "Media storage is currently unavailable.");
+
+                return new PlaybackMedia(
+                    episodeId,
+                    row.Id,
+                    row.Path,
+                    Path.GetFileName(row.Path),
+                    PlaybackMediaTypes.GetContentType(row.Path),
+                    null,
+                    unavailable,
+                    unavailable,
+                    SizeBytes: row.SizeBytes,
+                    Storage: availability);
+            }
+
             var failed = new PlaybackOption(
                 PlaybackOptionAvailability.Unsupported,
                 "Could not inspect this media file.");
@@ -250,7 +307,8 @@ public sealed class PlaybackService
                 null,
                 failed,
                 failed,
-                SizeBytes: row.SizeBytes);
+                SizeBytes: row.SizeBytes,
+                Storage: availability);
         }
 
         if (IsUniversalDirect(row.Path, probe))
@@ -271,7 +329,8 @@ public sealed class PlaybackService
                 probe.PixelFormat,
                 probe.AudioCodec,
                 row.SizeBytes,
-                probe.Tracks);
+                probe.Tracks,
+                availability);
         }
 
         var device = BuildOption(row, probe, PlaybackRequestedMode.Device);
@@ -298,7 +357,8 @@ public sealed class PlaybackService
             probe.PixelFormat,
             probe.AudioCodec,
             row.SizeBytes,
-            probe.Tracks);
+            probe.Tracks,
+            availability);
     }
 
     public async Task<PlaybackStream?> GetStreamAsync(
@@ -312,9 +372,21 @@ public sealed class PlaybackService
             return null;
         }
 
+        var availability = await CheckAvailabilityAsync(
+            row.Id,
+            cancellationToken);
+        if (availability is { IsAvailable: false })
+        {
+            return null;
+        }
+
         var probe = await mediaProbe.ProbeAsync(row.Path, cancellationToken);
         if (probe is null || !File.Exists(row.Path))
         {
+            _ = await CheckAvailabilityAsync(
+                row.Id,
+                cancellationToken,
+                force: true);
             return null;
         }
 
@@ -456,8 +528,25 @@ public sealed class PlaybackService
                 x.LastWriteTimeUtc))
             .SingleOrDefaultAsync(cancellationToken);
 
-        if (row is null || !File.Exists(row.Path))
+        if (row is null)
         {
+            return null;
+        }
+
+        var availability = await CheckAvailabilityAsync(
+            row.Id,
+            cancellationToken);
+        if (availability is { IsAvailable: false })
+        {
+            return null;
+        }
+
+        if (!File.Exists(row.Path))
+        {
+            _ = await CheckAvailabilityAsync(
+                row.Id,
+                cancellationToken,
+                force: true);
             return null;
         }
 
@@ -467,6 +556,17 @@ public sealed class PlaybackService
             new DateTimeOffset(File.GetLastWriteTimeUtc(row.Path)),
             null);
     }
+
+    private async Task<MediaAvailabilitySnapshot?> CheckAvailabilityAsync(
+        Guid mediaFileId,
+        CancellationToken cancellationToken,
+        bool force = false) =>
+        mediaAvailability is null
+            ? null
+            : await mediaAvailability.CheckMediaAsync(
+                mediaFileId,
+                force,
+                cancellationToken);
 
     private static PlaybackOption BuildOption(
         MediaRow row,
