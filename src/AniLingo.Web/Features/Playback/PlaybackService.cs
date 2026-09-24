@@ -269,6 +269,32 @@ public sealed class PlaybackService
         var probe = await mediaProbe.ProbeAsync(row.Path, cancellationToken);
         if (probe is null)
         {
+            availability = await CheckAvailabilityAsync(
+                row.Id,
+                cancellationToken,
+                force: true);
+
+            if (availability is { IsAvailable: false })
+            {
+                var unavailable = new PlaybackOption(
+                    PlaybackOptionAvailability.Unsupported,
+                    availability.State == StorageAvailabilityState.FileMissing
+                        ? "The media file is missing from otherwise available storage."
+                        : "Media storage is currently unavailable.");
+
+                return new PlaybackMedia(
+                    episodeId,
+                    row.Id,
+                    row.Path,
+                    Path.GetFileName(row.Path),
+                    PlaybackMediaTypes.GetContentType(row.Path),
+                    null,
+                    unavailable,
+                    unavailable,
+                    SizeBytes: row.SizeBytes,
+                    Storage: availability);
+            }
+
             var failed = new PlaybackOption(
                 PlaybackOptionAvailability.Unsupported,
                 "Could not inspect this media file.");
@@ -357,6 +383,10 @@ public sealed class PlaybackService
         var probe = await mediaProbe.ProbeAsync(row.Path, cancellationToken);
         if (probe is null || !File.Exists(row.Path))
         {
+            _ = await CheckAvailabilityAsync(
+                row.Id,
+                cancellationToken,
+                force: true);
             return null;
         }
 
@@ -506,8 +536,17 @@ public sealed class PlaybackService
         var availability = await CheckAvailabilityAsync(
             row.Id,
             cancellationToken);
-        if (availability is { IsAvailable: false } || !File.Exists(row.Path))
+        if (availability is { IsAvailable: false })
         {
+            return null;
+        }
+
+        if (!File.Exists(row.Path))
+        {
+            _ = await CheckAvailabilityAsync(
+                row.Id,
+                cancellationToken,
+                force: true);
             return null;
         }
 
@@ -520,12 +559,13 @@ public sealed class PlaybackService
 
     private async Task<MediaAvailabilitySnapshot?> CheckAvailabilityAsync(
         Guid mediaFileId,
-        CancellationToken cancellationToken) =>
+        CancellationToken cancellationToken,
+        bool force = false) =>
         mediaAvailability is null
             ? null
             : await mediaAvailability.CheckMediaAsync(
                 mediaFileId,
-                force: false,
+                force,
                 cancellationToken);
 
     private static PlaybackOption BuildOption(
