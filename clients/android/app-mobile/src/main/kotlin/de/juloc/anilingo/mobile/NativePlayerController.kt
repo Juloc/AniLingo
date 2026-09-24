@@ -133,6 +133,20 @@ class NativePlayerController(
         }
     }
 
+    fun pauseForLearning() {
+        player.pause()
+    }
+
+    fun resumeAfterLearning() {
+        player.play()
+    }
+
+    fun retryPlayback() {
+        scope.launch {
+            initialize()
+        }
+    }
+
     fun seekBy(deltaMs: Long) {
         seekTo((absolutePositionMs() + deltaMs).coerceAtLeast(0))
     }
