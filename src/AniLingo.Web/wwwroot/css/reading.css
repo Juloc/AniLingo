@@ -1,3 +1,30 @@
+.reading-type-switch {
+    display: inline-flex;
+    gap: .2rem;
+    padding: 2px;
+    border-radius: 8px;
+    background: var(--panel, #12161d);
+}
+
+.reading-type-switch a {
+    padding: .36rem .65rem;
+    border-radius: 6px;
+    color: var(--muted, #9aa4b2);
+    text-decoration: none;
+    font-size: .8rem;
+    font-weight: 650;
+}
+
+.reading-type-switch a.active {
+    background: color-mix(in srgb, var(--accent, #e9aa18) 12%, transparent);
+    color: var(--accent, #e9aa18);
+}
+
+.novel-library-title-block {
+    display: grid;
+    gap: .5rem;
+}
+
 .reading-header {
     margin-bottom: 1rem;
 }
