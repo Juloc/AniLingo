@@ -182,6 +182,18 @@ public sealed partial class MangaImportService
             .Select(path => new ChapterSource(Path.GetFullPath(path), "directory"))
             .ToList();
 
+        var normalizedRoot = Path.GetFullPath(sourcePath);
+
+        // A series folder often contains cover.jpg next to chapter folders/archives.
+        // Only treat root-level images as a chapter when the root is the only chapter source.
+        if (imageDirectories.Any(x =>
+                !string.Equals(x.Path, normalizedRoot, StringComparison.Ordinal)) ||
+            archives.Count > 0)
+        {
+            imageDirectories.RemoveAll(x =>
+                string.Equals(x.Path, normalizedRoot, StringComparison.Ordinal));
+        }
+
         // Prefer archives when a folder contains both an archive and extracted copies.
         if (archives.Count > 0)
         {
