@@ -29,6 +29,9 @@
     const timeline = root.querySelector("[data-playback-timeline]");
     const timelineCurrent = root.querySelector("[data-playback-current]");
     const timelineDuration = root.querySelector("[data-playback-duration]");
+    const storageActions = root.querySelector("[data-storage-actions]");
+    const storageRetry = root.querySelector("[data-storage-retry]");
+    const storageWake = root.querySelector("[data-storage-wake]");
 
     if (!video || !stage || !placeholder || !playbackStatus ||
         !playbackSummary || !playbackBadge || !modeSelect || !overlay || !data ||
@@ -36,10 +39,10 @@
         return;
     }
 
-    const videoCodec = (root.dataset.videoCodec || "").toLowerCase();
-    const isHevc = videoCodec === "hevc" || videoCodec === "h265";
-    const durationSeconds = Number(root.dataset.durationSeconds);
-    const hasKnownDuration = Number.isFinite(durationSeconds) && durationSeconds > 0;
+    let videoCodec = (root.dataset.videoCodec || "").toLowerCase();
+    let isHevc = videoCodec === "hevc" || videoCodec === "h265";
+    let durationSeconds = Number(root.dataset.durationSeconds);
+    let hasKnownDuration = Number.isFinite(durationSeconds) && durationSeconds > 0;
     const capabilityProbe = document.createElement("video");
     const supportsHevc =
         capabilityProbe.canPlayType('video/mp4; codecs="hvc1"') !== "" ||
@@ -95,6 +98,12 @@
     let resumeShouldPlay = false;
     let streamStartSeconds = 0;
     let timelinePreviewing = false;
+    let playbackWasRequested = false;
+    let storageState = root.dataset.storageState || "unknown";
+    let storageRetryStartedAt = null;
+    let storageRetryAttempt = 0;
+    let storageRetryTimer = null;
+    let storageRecoveryActive = false;
     modeSelect.value = preference;
 
     const clampToDuration = (seconds) => {
