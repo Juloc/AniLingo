@@ -279,7 +279,232 @@
         updateTimeline();
     };
 
+    const storageIsAvailable = () => storageState === "available";
+
+    const stopStorageRetry = () => {
+        if (storageRetryTimer !== null) {
+            window.clearTimeout(storageRetryTimer);
+            storageRetryTimer = null;
+        }
+
+        storageRecoveryActive = false;
+        storageRetryStartedAt = null;
+        storageRetryAttempt = 0;
+    };
+
+    const showStorageState = (availability, exhausted = false) => {
+        storageState = availability?.state || storageState || "unknown";
+        const retryable = availability?.retryable !== false &&
+            storageState !== "file_missing" &&
+            storageState !== "source_unreachable";
+
+        if (storageIsAvailable()) {
+            if (storageActions) {
+                storageActions.hidden = true;
+            }
+            return;
+        }
+
+        storageRecoveryActive = true;
+        hideVideo();
+        playbackBadge.classList.remove("status-ok", "status-warning", "status-error");
+
+        if (storageState === "file_missing") {
+            playbackStatus.textContent = "This media file is missing.";
+            playbackSummary.textContent = "Media file missing";
+            playbackBadge.classList.add("status-error");
+            playbackBadge.textContent = "Missing";
+        } else if (storageState === "source_unreachable") {
+            playbackStatus.textContent = "Media storage cannot currently be read.";
+            playbackSummary.textContent = "Storage unreachable";
+            playbackBadge.classList.add("status-error");
+            playbackBadge.textContent = "Storage";
+        } else if (storageState === "source_starting") {
+            playbackStatus.textContent = "Starting NAS… waiting for media storage.";
+            playbackSummary.textContent = "Storage starting";
+            playbackBadge.classList.add("status-warning");
+            playbackBadge.textContent = "Starting";
+        } else if (exhausted) {
+            playbackStatus.textContent = "Media storage is still offline.";
+            playbackSummary.textContent = "Storage offline";
+            playbackBadge.classList.add("status-error");
+            playbackBadge.textContent = "Offline";
+        } else {
+            playbackStatus.textContent = "Waiting for media storage… retrying automatically.";
+            playbackSummary.textContent = "Storage unavailable";
+            playbackBadge.classList.add("status-warning");
+            playbackBadge.textContent = "Waiting";
+        }
+
+        if (storageActions) {
+            storageActions.hidden = false;
+        }
+
+        if (storageRetry) {
+            storageRetry.hidden = !exhausted && retryable;
+        }
+
+        if (storageWake) {
+            const wakeableState = storageState === "source_offline" ||
+                storageState === "source_starting" ||
+                storageState === "unknown";
+            storageWake.hidden = !root.dataset.storageWakeUrl || !wakeableState;
+        }
+    };
+
+    const readStorageAvailability = async () => {
+        const url = root.dataset.storageAvailabilityUrl;
+        if (!url) {
+            return null;
+        }
+
+        try {
+            const response = await fetch(url, {
+                credentials: "same-origin",
+                headers: { "Accept": "application/json" }
+            });
+
+            if (!response.ok) {
+                return null;
+            }
+
+            return await response.json();
+        } catch {
+            return null;
+        }
+    };
+
+    const refreshPlayerBootstrap = async () => {
+        const url = root.dataset.playerBootstrapUrl;
+        if (!url) {
+            return false;
+        }
+
+        try {
+            const response = await fetch(url, {
+                credentials: "same-origin",
+                headers: { "Accept": "application/json" }
+            });
+            if (!response.ok) {
+                return false;
+            }
+
+            const bootstrap = await response.json();
+            if (!bootstrap?.media) {
+                return false;
+            }
+
+            options.device = {
+                availability: bootstrap.media.device?.availability || "unsupported",
+                status: bootstrap.media.device?.message || "Device playback is unavailable.",
+                live: bootstrap.media.device?.usesLiveStream === true
+            };
+            options.server = {
+                availability: bootstrap.media.server?.availability || "unsupported",
+                status: bootstrap.media.server?.message || "Server playback is unavailable.",
+                live: bootstrap.media.server?.usesLiveStream === true
+            };
+
+            videoCodec = (bootstrap.media.videoCodec || "").toLowerCase();
+            isHevc = videoCodec === "hevc" || videoCodec === "h265";
+            durationSeconds = Number(bootstrap.media.durationMs) / 1000;
+            hasKnownDuration = Number.isFinite(durationSeconds) && durationSeconds > 0;
+
+            if (bootstrap.media.availability) {
+                storageState = bootstrap.media.availability.state || "unknown";
+                root.dataset.storageWakeUrl = bootstrap.media.availability.wakeUrl || "";
+            }
+
+            runtimeDeviceFailed = false;
+            video.removeAttribute("src");
+            delete video.dataset.playbackSource;
+            video.load();
+            return storageIsAvailable();
+        } catch {
+            return false;
+        }
+    };
+
+    const scheduleStorageRetry = (delayMs) => {
+        if (!storageRecoveryActive) {
+            return;
+        }
+
+        if (storageRetryTimer !== null) {
+            window.clearTimeout(storageRetryTimer);
+        }
+
+        storageRetryTimer = window.setTimeout(() => {
+            void pollStorageAvailability();
+        }, Math.max(0, delayMs));
+    };
+
+    const pollStorageAvailability = async () => {
+        if (!storageRecoveryActive) {
+            return;
+        }
+
+        const startedAt = storageRetryStartedAt ?? Date.now();
+        storageRetryStartedAt = startedAt;
+
+        if (Date.now() - startedAt >= 60000) {
+            storageRetryTimer = null;
+            showStorageState({ state: storageState, retryable: true }, true);
+            return;
+        }
+
+        const availability = await readStorageAvailability();
+        if (availability?.state === "available") {
+            storageState = "available";
+            const refreshed = await refreshPlayerBootstrap();
+            if (refreshed) {
+                stopStorageRetry();
+                if (storageActions) {
+                    storageActions.hidden = true;
+                }
+                applyPlayback();
+                return;
+            }
+        }
+
+        if (availability) {
+            showStorageState(availability, false);
+            if (availability.retryable === false) {
+                storageRetryTimer = null;
+                showStorageState(availability, true);
+                return;
+            }
+        }
+
+        const delays = [0, 1000, 2000, 4000, 5000];
+        const delay = delays[Math.min(storageRetryAttempt, delays.length - 1)];
+        storageRetryAttempt += 1;
+        scheduleStorageRetry(delay);
+    };
+
+    const startStorageRetry = (preservePlaybackIntent = false) => {
+        if (preservePlaybackIntent) {
+            pendingResumeTime = absoluteCurrentTime();
+            resumeShouldPlay = playbackWasRequested;
+        }
+
+        if (storageRecoveryActive) {
+            return;
+        }
+
+        storageRecoveryActive = true;
+        storageRetryStartedAt = Date.now();
+        storageRetryAttempt = 0;
+        showStorageState({ state: storageState, retryable: true }, false);
+        scheduleStorageRetry(0);
+    };
+
     const applyPlayback = () => {
+        if (!storageIsAvailable()) {
+            startStorageRetry(false);
+            return;
+        }
+
         effectiveMode = chooseMode();
         let option = options[effectiveMode];
 
