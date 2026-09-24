@@ -109,6 +109,12 @@ Normal Home/Library browsing reads the cached SQLite metadata and makes no AniLi
 
 AniList account connection is available under **Settings → AniList** for every local AniLingo account. Each profile connects its own AniList account through AniList's Auth PIN flow with its own client ID; tokens are protected and stored separately per AniLingo profile under `/data`, while the Data Protection key ring remains under `/data/keys`. Anime metadata and episode-range mappings remain shared library state managed independently from personal AniList credentials.
 
+## Discover
+
+Open **Discover** for one fast search surface across AniList anime, light novels/manga and the existing Books catalog. Search is debounced and cancels stale requests while typing; category filters plus **Trending**, **Top** and **My AniList** browse modes update without full page reloads. Provider failures are isolated so one unavailable catalog does not blank the whole page.
+
+**My AniList** always uses the currently signed-in AniLingo profile's own AniList connection. Results already present in AniLingo link directly to the local anime/reading entry. Unmatched light novels can hand off to the existing authorized source importer and retain the AniList metadata match. AniLingo does not include a piracy/shadow-library indexer or DRM bypass; user-owned or otherwise authorized source URLs/files remain the fallback when automatic acquisition is unavailable.
+
 Episode pages can explicitly sync watched progress for the currently signed-in AniLingo profile's connected AniList account. AniLingo reloads that profile's remote entry immediately before each write, never lowers progress, and sends only the list-entry `id` plus `progress`. It does not send score, notes, repeat count, priority, privacy, custom-list membership, dates or list status. Sync is blocked for ambiguous multi-season local groupings, non-`CURRENT` entries and the final episode to avoid completion-status/date side effects. A pre-write snapshot containing the local profile ID is appended under `/data/integrations` before every mutation; if that backup cannot be written, AniList is not modified.
 
 ## Web / Light Novels
@@ -117,7 +123,7 @@ Open **Novels** to import a supported Japanese web novel. The first source provi
 
 The reader works without AI and provides Japanese-only reading, chapter navigation, persisted per-profile reading position, profile-scoped browser appearance preferences, adjustable text size/line spacing/width and mobile-friendly layout. When Codex is connected under **Settings → AI**, a chapter can be translated to German explicitly. AniLingo translates bounded chapter segments, stores the completed result only after every segment succeeds, and keys reuse to the chapter's exact source hash + provider + prompt version. Refreshing changed Japanese source text therefore makes an older translation stale instead of silently showing it.
 
-Novel metadata is separate from anime metadata. AniLingo searches AniList's novel media entries and stores the provider-neutral match on the imported novel. A novel can also map chapter ranges to an already-matched local anime's season/episode ranges. Manual mappings remain authoritative; optional Codex suggestions are stored as AI suggestions and never replace manual mappings.
+Novel metadata is separate from anime metadata. AniLingo searches AniList's novel media entries and stores the provider-neutral match on the imported novel. Each user can explicitly sync completed chapter progress to their own AniList entry; sync is monotonic, only updates existing `CURRENT` entries, snapshots the remote entry before writing, and leaves final-chapter completion/status changes to AniList. A novel can also map chapter ranges to an already-matched local anime's season/episode ranges. Manual mappings remain authoritative; optional Codex suggestions are stored as AI suggestions and never replace manual mappings.
 
 ## Optional Codex connection
 

@@ -1,5 +1,6 @@
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Novels;
+using AniLingo.Web.Features.Tracking;
 using AniLingo.Web.Infrastructure;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -11,6 +12,7 @@ public sealed class WorkModel(
     NovelService novels,
     NovelMetadataService metadata,
     NovelMappingService mappings,
+    AniListAccountService aniListAccount,
     BackgroundJobQueue jobs,
     CurrentAccountContext account) : PageModel
 {
@@ -18,6 +20,7 @@ public sealed class WorkModel(
     public IReadOnlyList<NovelMetadataCandidate> SearchResults { get; private set; } = [];
     public IReadOnlyList<NovelAnimeChoice> AnimeChoices { get; private set; } = [];
     public NovelProgress? Progress { get; private set; }
+    public AniListReadingProgressPreview? AniListProgress { get; private set; }
     public string SearchQuery { get; private set; } = "";
     public bool IsOwner => account.IsOwner;
 
@@ -36,6 +39,16 @@ public sealed class WorkModel(
             account.ProfileId,
             id,
             cancellationToken);
+
+        if (string.Equals(
+                Detail.Work.MetadataProvider,
+                NovelAniListProvider.ProviderKey,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            AniListProgress = await aniListAccount.GetNovelProgressPreviewAsync(
+                id,
+                cancellationToken);
+        }
 
         AnimeChoices = account.IsOwner
             ? await mappings.GetAnimeChoicesAsync(cancellationToken)
@@ -61,6 +74,17 @@ public sealed class WorkModel(
         }
 
         return Page();
+    }
+
+    public async Task<IActionResult> OnPostSyncAniListProgressAsync(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var result = await aniListAccount.SyncNovelProgressAsync(
+            id,
+            cancellationToken);
+        TempData["Status"] = result.Message;
+        return RedirectToPage(new { id });
     }
 
     public async Task<IActionResult> OnPostRefreshAsync(
