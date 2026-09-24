@@ -1,0 +1,244 @@
+.books-header {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 24px;
+    margin-bottom: 28px;
+}
+
+.books-header h1,
+.book-detail-copy h1 {
+    margin: 0;
+}
+
+.books-header p {
+    margin: 6px 0 0;
+    color: var(--muted);
+}
+
+.books-search {
+    display: flex;
+    gap: 8px;
+    width: min(520px, 100%);
+}
+
+.books-search input {
+    width: 100%;
+    min-width: 0;
+}
+
+.books-results-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 16px;
+    margin-bottom: 14px;
+    color: var(--muted);
+}
+
+.books-results-heading strong {
+    color: var(--text);
+}
+
+.books-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 20px 16px;
+}
+
+.book-card {
+    color: inherit;
+    text-decoration: none;
+    min-width: 0;
+}
+
+.book-cover,
+.book-detail-cover {
+    overflow: hidden;
+    background: var(--surface-raised, rgba(127, 127, 127, .12));
+    border-radius: 10px;
+}
+
+.book-cover {
+    aspect-ratio: 2 / 3;
+}
+
+.book-cover img,
+.book-detail-cover img {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: cover;
+}
+
+.book-cover > span,
+.book-detail-cover > span {
+    display: grid;
+    place-items: center;
+    width: 100%;
+    height: 100%;
+    font-size: 32px;
+    color: var(--muted);
+}
+
+.book-card-copy {
+    display: grid;
+    gap: 4px;
+    padding-top: 9px;
+}
+
+.book-card-copy strong {
+    line-height: 1.3;
+}
+
+.book-card-copy span,
+.book-card-copy small {
+    color: var(--muted);
+    line-height: 1.3;
+}
+
+.books-back {
+    display: inline-flex;
+    margin-bottom: 18px;
+    color: var(--muted);
+    text-decoration: none;
+}
+
+.book-detail-header {
+    display: grid;
+    grid-template-columns: 180px minmax(0, 760px);
+    gap: 28px;
+    align-items: start;
+    margin-bottom: 34px;
+}
+
+.book-detail-cover {
+    aspect-ratio: 2 / 3;
+}
+
+.book-detail-copy h1 {
+    font-size: clamp(28px, 4vw, 46px);
+    line-height: 1.05;
+}
+
+.book-author {
+    margin: 8px 0 0;
+    color: var(--muted);
+    font-size: 18px;
+}
+
+.book-summary {
+    max-width: 72ch;
+    line-height: 1.55;
+}
+
+.book-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    margin-top: 14px;
+}
+
+.book-tags span {
+    padding: 5px 9px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.book-actions {
+    display: flex;
+    gap: 9px;
+    align-items: center;
+    margin-top: 18px;
+}
+
+.books-message {
+    margin: 16px 0;
+    padding: 12px 14px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+}
+
+.book-reader {
+    width: min(760px, 100%);
+    margin: 28px auto;
+}
+
+.book-reader-original {
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+}
+
+.book-reader-heading {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 22px;
+    color: var(--muted);
+}
+
+.book-reader-heading h2 {
+    margin: 3px 0 0;
+    font-size: 22px;
+}
+
+.book-reader-language {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: var(--muted);
+}
+
+.book-prose {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: clamp(18px, 2vw, 21px);
+    line-height: 1.75;
+}
+
+.book-prose p {
+    margin: 0 0 1.15em;
+}
+
+@media (max-width: 720px) {
+    .books-header {
+        align-items: stretch;
+        flex-direction: column;
+        gap: 14px;
+    }
+
+    .books-search {
+        width: 100%;
+    }
+
+    .books-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 18px 12px;
+    }
+
+    .book-detail-header {
+        grid-template-columns: 110px minmax(0, 1fr);
+        gap: 16px;
+    }
+
+    .book-detail-copy h1 {
+        font-size: 26px;
+    }
+
+    .book-summary,
+    .book-tags {
+        grid-column: 1 / -1;
+    }
+
+    .book-actions {
+        flex-wrap: wrap;
+    }
+
+    .book-reader-heading {
+        align-items: start;
+        flex-direction: column;
+        gap: 5px;
+    }
+}

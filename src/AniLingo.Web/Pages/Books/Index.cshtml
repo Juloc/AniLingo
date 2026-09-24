@@ -1,0 +1,64 @@
+@page "/Books"
+@model AniLingo.Web.Pages.Books.IndexModel
+@{
+    ViewData["Title"] = "Books";
+}
+@section Head {
+    <link rel="stylesheet" href="~/css/books.css" asp-append-version="true" />
+}
+
+<header class="books-header">
+    <div>
+        <h1>Books</h1>
+        <p>Search English books and test Indonesian translation.</p>
+    </div>
+    <form method="get" action="/Books" class="books-search" role="search">
+        <input type="search"
+               name="q"
+               value="@Model.Query"
+               placeholder="Search title or author"
+               aria-label="Search books" />
+        <button class="button button-primary" type="submit">Search</button>
+    </form>
+</header>
+
+@if (!string.IsNullOrWhiteSpace(Model.Error))
+{
+    <div class="books-message">@Model.Error</div>
+}
+else
+{
+    <div class="books-results-heading">
+        <strong>@(string.IsNullOrWhiteSpace(Model.Query) ? "Popular books" : $"Results for “{Model.Query}”")</strong>
+        <span>@Model.Books.Count shown</span>
+    </div>
+
+    <section class="books-grid" aria-label="Book results">
+        @foreach (var book in Model.Books)
+        {
+            <a class="book-card" href="/Books/@book.Id">
+                <div class="book-cover">
+                    @if (!string.IsNullOrWhiteSpace(book.CoverImageUrl))
+                    {
+                        <img src="@book.CoverImageUrl"
+                             alt=""
+                             loading="lazy"
+                             referrerpolicy="no-referrer" />
+                    }
+                    else
+                    {
+                        <span>B</span>
+                    }
+                </div>
+                <div class="book-card-copy">
+                    <strong>@book.Title</strong>
+                    @if (!string.IsNullOrWhiteSpace(book.Author))
+                    {
+                        <span>@book.Author</span>
+                    }
+                    <small>@book.DownloadCount.ToString("N0") downloads</small>
+                </div>
+            </a>
+        }
+    </section>
+}
