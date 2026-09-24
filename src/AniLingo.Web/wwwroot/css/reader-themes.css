@@ -1,5 +1,5 @@
 /* Reader theme engine ----------------------------------------------------- */
-.novel-reader-shell[data-reader-personalization] {
+[data-reader-personalization] {
     --reader-theme-image-opacity: .055;
     --reader-theme-overlay: .08;
     --reader-theme-brightness: .92;
@@ -26,7 +26,7 @@
     contain: strict;
 }
 
-.novel-reader-shell[data-reader-personalization] > :not(.reader-theme-stack) {
+[data-reader-personalization] > :not(.reader-theme-stack) {
     position: relative;
     z-index: 1;
 }
@@ -103,7 +103,7 @@
     opacity: var(--reader-theme-effect-strength);
 }
 
-.novel-reader-shell[data-theme-effect="fog"] .reader-theme-effect {
+[data-reader-personalization][data-theme-effect="fog"] .reader-theme-effect {
     background:
         radial-gradient(ellipse at 20% 35%, rgba(230, 238, 244, .35), transparent 38%),
         radial-gradient(ellipse at 75% 62%, rgba(220, 230, 236, .25), transparent 42%),
@@ -112,7 +112,7 @@
     animation: reader-theme-fog 26s ease-in-out infinite alternate;
 }
 
-.novel-reader-shell[data-theme-effect="rain"] .reader-theme-effect {
+[data-reader-personalization][data-theme-effect="rain"] .reader-theme-effect {
     opacity: calc(var(--reader-theme-effect-strength) * .6);
     background-image:
         repeating-linear-gradient(
@@ -124,7 +124,7 @@
     animation: reader-theme-rain 3.8s linear infinite;
 }
 
-.novel-reader-shell[data-theme-effect="embers"] .reader-theme-effect {
+[data-reader-personalization][data-theme-effect="embers"] .reader-theme-effect {
     background-image:
         radial-gradient(circle at 15% 85%, rgba(255, 151, 48, .75) 0 1px, transparent 2px),
         radial-gradient(circle at 78% 76%, rgba(255, 98, 36, .65) 0 1.5px, transparent 2.5px),
@@ -133,7 +133,7 @@
     animation: reader-theme-embers 12s linear infinite;
 }
 
-.novel-reader-shell[data-theme-effect="stars"] .reader-theme-effect {
+[data-reader-personalization][data-theme-effect="stars"] .reader-theme-effect {
     background-image:
         radial-gradient(circle at 15% 22%, rgba(255,255,255,.9) 0 1px, transparent 1.7px),
         radial-gradient(circle at 68% 18%, rgba(195,221,255,.8) 0 1px, transparent 1.7px),
@@ -143,7 +143,7 @@
     animation: reader-theme-stars 7s ease-in-out infinite alternate;
 }
 
-.novel-reader-shell[data-theme-effect="shimmer"] .reader-theme-effect {
+[data-reader-personalization][data-theme-effect="shimmer"] .reader-theme-effect {
     background:
         radial-gradient(circle at 30% 45%, rgba(255,255,255,.45), transparent 2.2%),
         radial-gradient(circle at 70% 65%, rgba(220,235,255,.35), transparent 1.8%),
@@ -152,7 +152,7 @@
     animation: reader-theme-shimmer 9s ease-in-out infinite alternate;
 }
 
-.novel-reader-shell[data-reader-personalization] .novel-reader-content {
+[data-reader-personalization] .novel-reader-content {
     background-color:
         color-mix(
             in srgb,
@@ -161,7 +161,7 @@
     border-radius: 10px;
 }
 
-.novel-reader-shell[data-reading-mode="paged"] .novel-reader-content {
+[data-reader-personalization][data-reading-mode="paged"] .novel-reader-content {
     background-color:
         color-mix(
             in srgb,
@@ -247,4 +247,35 @@
         animation: none !important;
         transform: none !important;
     }
+}
+
+
+/* Shared Books reader integration ----------------------------------------- */
+.book-reader-page[data-reader-personalization] .book-reader-content {
+    position: relative;
+    border-radius: 12px;
+    background-color:
+        color-mix(
+            in srgb,
+            currentColor calc(var(--reader-theme-text-backdrop) * 2%),
+            transparent);
+}
+
+.book-reader-page[data-reading-mode="paged"] .book-reader-content {
+    box-shadow:
+        0 14px 40px rgba(0, 0, 0, var(--reader-theme-page-shadow)),
+        inset 18px 0 30px -34px rgba(0,0,0,.45),
+        inset -18px 0 30px -34px rgba(0,0,0,.45);
+}
+
+.book-reader-page.book-turn-next .book-reader-content {
+    transform:
+        perspective(1100px)
+        rotateY(calc(-2.4deg * var(--reader-theme-page-curl)));
+}
+
+.book-reader-page.book-turn-prev .book-reader-content {
+    transform:
+        perspective(1100px)
+        rotateY(calc(2.4deg * var(--reader-theme-page-curl)));
 }
