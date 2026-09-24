@@ -28,6 +28,7 @@ public static class ClientApiContract
             version,
             new ClientFeatureFlags(
                 Library: true,
+                NativeSessionAuth: true,
                 NativePlayerBootstrap: true,
                 DirectPlayback: true,
                 PlaybackProgress: true,
@@ -51,6 +52,10 @@ public static class ClientApiRoutes
         path.StartsWithSegments(
             new PathString(ClientApiContract.BasePath),
             StringComparison.OrdinalIgnoreCase);
+
+    public static string Login => $"{ClientApiContract.BasePath}/session/login";
+
+    public static string Logout => $"{ClientApiContract.BasePath}/session/logout";
 
     public static string Anime(Guid animeId) =>
         $"{ClientApiContract.BasePath}/anime/{animeId:D}";
@@ -91,6 +96,7 @@ public sealed record ClientCapabilitiesResponse(
 
 public sealed record ClientFeatureFlags(
     bool Library,
+    bool NativeSessionAuth,
     bool NativePlayerBootstrap,
     bool DirectPlayback,
     bool PlaybackProgress,
@@ -114,6 +120,11 @@ public sealed record ClientAccountResponse(
     string ProfileId,
     string? UserName,
     string Role);
+
+public sealed record ClientLoginRequest(
+    string UserName,
+    string Password,
+    bool RememberMe = true);
 
 public sealed record ClientLibraryResponse(
     IReadOnlyList<ClientAnimeSummary> Anime);
