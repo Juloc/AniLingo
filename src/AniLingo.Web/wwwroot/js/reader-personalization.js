@@ -16,6 +16,7 @@
     const overrideState = shell.querySelector("[data-reader-override-state]");
     const settingsPanel = shell.querySelector("[data-reader-settings-panel]");
     const backgroundSelect = shell.querySelector("[data-reader-background-select]");
+    const genreSelect = shell.querySelector("[data-reader-genre-select]");
     const toast = shell.querySelector("[data-reader-toast]");
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
@@ -391,6 +392,41 @@
         });
     };
 
+    const syncGenreOptions = () => {
+        if (!genreSelect) return;
+
+        const selected = state.genreTheme || "auto";
+        genreSelect.replaceChildren();
+
+        const auto = document.createElement("option");
+        auto.value = "auto";
+        auto.textContent = "Automatisch";
+        genreSelect.append(auto);
+
+        const genres = new Map();
+        for (const item of backgroundCatalog) {
+            if (!item?.genre || genres.has(item.genre)) continue;
+            genres.set(item.genre, item.genreLabel || item.genre);
+        }
+
+        for (const [genre, label] of [...genres.entries()]
+            .sort((a, b) => a[1].localeCompare(b[1]))) {
+            const option = document.createElement("option");
+            option.value = genre;
+            option.textContent = label;
+            genreSelect.append(option);
+        }
+
+        if (selected !== "auto" && !genres.has(selected)) {
+            const unavailable = document.createElement("option");
+            unavailable.value = selected;
+            unavailable.textContent = selected + " (nicht verfügbar)";
+            genreSelect.append(unavailable);
+        }
+
+        genreSelect.value = selected;
+    };
+
     const syncBackgroundOptions = () => {
         if (!backgroundSelect) return;
 
@@ -431,15 +467,17 @@
     };
 
     const applyBackgroundImage = () => {
-        if (!state.genreArtworkEnabled) {
-            shell.style.removeProperty("--reader-genre-background-image");
-            return;
-        }
-
         const requested = state.backgroundAssetId || "auto";
         const id = requested === "auto" ? backgroundSuggestedId : requested;
         const item = backgroundCatalog.find(candidate => candidate.id === id);
-        if (!item?.url || !item.url.startsWith("/reader-backgrounds/")) {
+
+        shell.dataset.genreTheme =
+            item?.genre ||
+            (state.genreTheme === "auto" ? "auto" : state.genreTheme);
+
+        if (!state.genreArtworkEnabled ||
+            !item?.url ||
+            !item.url.startsWith("/reader-backgrounds/")) {
             shell.style.removeProperty("--reader-genre-background-image");
             return;
         }
@@ -452,12 +490,20 @@
     };
 
     const loadBackgroundCatalog = async (force = false) => {
-        const genre =
-            state.resolvedGenreTheme ||
-            (state.genreTheme === "auto" ? "neutral" : state.genreTheme) ||
-            "neutral";
+        const params = new URLSearchParams();
+        if (state.genreTheme && state.genreTheme !== "auto") {
+            params.append("genre", state.genreTheme);
+        } else {
+            for (const genre of state.sourceGenres || []) {
+                if (genre) params.append("genre", genre);
+            }
+        }
 
-        if (!force && backgroundCatalogGenre === genre && backgroundCatalog.length > 0) {
+        const query = params.toString();
+        if (!force &&
+            backgroundCatalogGenre === query &&
+            backgroundCatalog.length > 0) {
+            syncGenreOptions();
             syncBackgroundOptions();
             applyBackgroundImage();
             return;
@@ -465,7 +511,7 @@
 
         try {
             const response = await fetch(
-                "/api/reader-backgrounds?genre=" + encodeURIComponent(genre),
+                "/api/reader-backgrounds" + (query ? "?" + query : ""),
                 {
                     credentials: "same-origin",
                     headers: { "X-Requested-With": "fetch" }
@@ -475,11 +521,12 @@
             const payload = await response.json();
             backgroundCatalog = Array.isArray(payload?.items) ? payload.items : [];
             backgroundSuggestedId = payload?.suggestedId || null;
-            backgroundCatalogGenre = genre;
+            backgroundCatalogGenre = query;
+            syncGenreOptions();
             syncBackgroundOptions();
             applyBackgroundImage();
         } catch {
-            // The CSS mood fallback remains active if the optional catalog is unavailable.
+            // The reader remains fully usable when the optional catalog is unavailable.
         }
     };
 
@@ -493,7 +540,7 @@
         shell.dataset.chapterStyle = state.chapterStyle;
         shell.dataset.paperStyle = state.paperStyle;
         shell.dataset.genreArtwork = String(Boolean(state.genreArtworkEnabled));
-        shell.dataset.genreTheme = state.resolvedGenreTheme || state.genreTheme || "neutral";
+        shell.dataset.genreTheme = state.genreTheme || "auto";
         shell.dataset.textAlignment = state.textAlignment;
 
         document.documentElement.style.setProperty("--novel-reader-size", `${state.fontSizeRem}rem`);
@@ -843,10 +890,7 @@
                 : control.value;
 
         if (key === "genreTheme") {
-            state.resolvedGenreTheme =
-                state.genreTheme === "auto"
-                    ? state.resolvedGenreTheme
-                    : state.genreTheme;
+            state.resolvedGenreTheme = state.genreTheme;
         }
         applySettings();
         if (key === "genreTheme") {
