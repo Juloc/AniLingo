@@ -1,0 +1,551 @@
+using System.Collections.Concurrent;
+using AniLingo.Web.Data;
+using AniLingo.Web.Features.Books;
+using AniLingo.Web.Features.Metadata;
+using AniLingo.Web.Features.Novels;
+using AniLingo.Web.Features.Tracking;
+using Microsoft.EntityFrameworkCore;
+
+namespace AniLingo.Web.Features.Discovery;
+
+public sealed class DiscoveryCoordinator(
+    AniListMetadataProvider animeProvider,
+    NovelAniListProvider readingProvider,
+    BookCatalogService books,
+    AniListAccountService aniListAccount,
+    AppDbContext db)
+{
+    private const int AnimeLimit = 10;
+    private const int ReadingLimit = 14;
+    private const int BookLimit = 10;
+    private const int MaximumResultCount = 30;
+
+    private static readonly ConcurrentDictionary<string, CacheEntry> Cache =
+        new(StringComparer.Ordinal);
+
+    public async Task<DiscoveryResponse> GetAsync(
+        DiscoveryRequest request,
+        string profileId,
+        bool isOwner,
+        CancellationToken cancellationToken)
+    {
+        var cacheKey = request.CacheKey(profileId);
+        if (TryGetCached(cacheKey, out var cached))
+        {
+            return cached;
+        }
+
+        var status = await aniListAccount.GetStatusAsync(cancellationToken);
+        var warnings = new List<string>();
+        IReadOnlyList<DiscoveryItem> items;
+
+        if (request.Mode == DiscoveryMode.MyList)
+        {
+            if (!status.IsConnected)
+            {
+                return new DiscoveryResponse(
+                    request.Query,
+                    CategoryName(request.Category),
+                    ModeName(request.Mode),
+                    false,
+                    [],
+                    ["Connect your AniList account in Settings to browse My AniList."]);
+            }
+
+            items = await LoadMyListAsync(
+                request.Category,
+                isOwner,
+                warnings,
+                cancellationToken);
+        }
+        else
+        {
+            items = await LoadProviderResultsAsync(
+                request,
+                isOwner,
+                warnings,
+                cancellationToken);
+        }
+
+        items = await ApplyLocalStateAsync(items, cancellationToken);
+
+        var response = new DiscoveryResponse(
+            request.Query,
+            CategoryName(request.Category),
+            ModeName(request.Mode),
+            status.IsConnected,
+            items.Take(MaximumResultCount).ToArray(),
+            warnings.Distinct(StringComparer.Ordinal).ToArray());
+
+        PutCached(
+            cacheKey,
+            response,
+            request.Mode switch
+            {
+                DiscoveryMode.MyList => TimeSpan.FromSeconds(20),
+                DiscoveryMode.Search => TimeSpan.FromSeconds(45),
+                _ => TimeSpan.FromMinutes(3)
+            });
+
+        return response;
+    }
+
+    private async Task<IReadOnlyList<DiscoveryItem>> LoadProviderResultsAsync(
+        DiscoveryRequest request,
+        bool isOwner,
+        ICollection<string> warnings,
+        CancellationToken cancellationToken)
+    {
+        var includeAnime = request.Category is DiscoveryCategory.All or DiscoveryCategory.Anime;
+        var includeNovel = request.Category is DiscoveryCategory.All or DiscoveryCategory.LightNovel;
+        var includeManga = request.Category is DiscoveryCategory.All or DiscoveryCategory.Manga;
+        var includeBook = request.Category is DiscoveryCategory.All or DiscoveryCategory.Book;
+
+        var animeTask = includeAnime
+            ? CaptureAsync(
+                async () =>
+                {
+                    var rows = request.Mode == DiscoveryMode.Search
+                        ? await animeProvider.SearchAsync(
+                            request.Query,
+                            AnimeLimit,
+                            cancellationToken)
+                        : await animeProvider.BrowseAsync(
+                            request.Mode == DiscoveryMode.Trending,
+                            AnimeLimit,
+                            cancellationToken);
+
+                    return rows
+                        .Select(MapAnime)
+                        .ToArray();
+                },
+                "AniList anime search is temporarily unavailable.",
+                warnings)
+            : Task.FromResult<IReadOnlyList<DiscoveryItem>>([]);
+
+        var readingTask = includeNovel || includeManga
+            ? CaptureAsync(
+                async () =>
+                {
+                    var rows = request.Mode == DiscoveryMode.Search
+                        ? await readingProvider.SearchReadingMediaAsync(
+                            request.Query,
+                            ReadingLimit,
+                            includeNovel,
+                            includeManga,
+                            cancellationToken)
+                        : await readingProvider.BrowseReadingMediaAsync(
+                            request.Mode == DiscoveryMode.Trending,
+                            ReadingLimit,
+                            includeNovel,
+                            includeManga,
+                            cancellationToken);
+
+                    return rows
+                        .Select(x => MapReading(x, isOwner))
+                        .ToArray();
+                },
+                "AniList novel/manga search is temporarily unavailable.",
+                warnings)
+            : Task.FromResult<IReadOnlyList<DiscoveryItem>>([]);
+
+        var bookTask = includeBook
+            ? CaptureAsync(
+                async () =>
+                {
+                    var rows = await books.SearchAsync(
+                        request.Mode == DiscoveryMode.Search
+                            ? request.Query
+                            : null,
+                        cancellationToken);
+
+                    return rows
+                        .Take(BookLimit)
+                        .Select(MapBook)
+                        .ToArray();
+                },
+                "Book search is temporarily unavailable.",
+                warnings)
+            : Task.FromResult<IReadOnlyList<DiscoveryItem>>([]);
+
+        await Task.WhenAll(animeTask, readingTask, bookTask);
+
+        return Interleave(
+            animeTask.Result,
+            readingTask.Result,
+            bookTask.Result);
+    }
+
+    private async Task<IReadOnlyList<DiscoveryItem>> LoadMyListAsync(
+        DiscoveryCategory category,
+        bool isOwner,
+        ICollection<string> warnings,
+        CancellationToken cancellationToken)
+    {
+        var includeAnime = category is DiscoveryCategory.All or DiscoveryCategory.Anime;
+        var includeReading = category is DiscoveryCategory.All or
+            DiscoveryCategory.LightNovel or DiscoveryCategory.Manga;
+
+        var animeTask = includeAnime
+            ? CaptureAsync(
+                async () =>
+                {
+                    var rows = await aniListAccount.GetLibraryAsync(
+                        AniListLibraryMediaType.Anime,
+                        cancellationToken);
+                    return rows.Select(x => MapLibrary(x, isOwner)).ToArray();
+                },
+                "Your AniList anime list could not be loaded.",
+                warnings)
+            : Task.FromResult<IReadOnlyList<DiscoveryItem>>([]);
+
+        var readingTask = includeReading
+            ? CaptureAsync(
+                async () =>
+                {
+                    var rows = await aniListAccount.GetLibraryAsync(
+                        AniListLibraryMediaType.Manga,
+                        cancellationToken);
+
+                    return rows
+                        .Where(x => category switch
+                        {
+                            DiscoveryCategory.LightNovel => x.IsNovel,
+                            DiscoveryCategory.Manga => !x.IsNovel,
+                            _ => true
+                        })
+                        .Select(x => MapLibrary(x, isOwner))
+                        .ToArray();
+                },
+                "Your AniList novel/manga list could not be loaded.",
+                warnings)
+            : Task.FromResult<IReadOnlyList<DiscoveryItem>>([]);
+
+        await Task.WhenAll(animeTask, readingTask);
+        return Interleave(animeTask.Result, readingTask.Result);
+    }
+
+    private async Task<IReadOnlyList<DiscoveryItem>> ApplyLocalStateAsync(
+        IReadOnlyList<DiscoveryItem> items,
+        CancellationToken cancellationToken)
+    {
+        if (items.Count == 0)
+        {
+            return items;
+        }
+
+        var animeIds = items
+            .Where(x => x.Category == "anime" && x.Provider == "anilist")
+            .Select(x => x.ExternalId)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        var readingIds = items
+            .Where(x =>
+                (x.Category == "light-novel" || x.Category == "manga") &&
+                x.Provider == "anilist")
+            .Select(x => x.ExternalId)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        var animeMatches = animeIds.Length == 0
+            ? new Dictionary<string, Guid>(StringComparer.Ordinal)
+            : await db.AnimeMetadata
+                .AsNoTracking()
+                .Where(x =>
+                    x.Provider == AniListMetadataProvider.ProviderKey &&
+                    animeIds.Contains(x.ExternalId))
+                .GroupBy(x => x.ExternalId)
+                .Select(group => new
+                {
+                    ExternalId = group.Key,
+                    AnimeId = group.Select(x => x.AnimeId).First()
+                })
+                .ToDictionaryAsync(
+                    x => x.ExternalId,
+                    x => x.AnimeId,
+                    StringComparer.Ordinal,
+                    cancellationToken);
+
+        var readingMatches = readingIds.Length == 0
+            ? new Dictionary<string, Guid>(StringComparer.Ordinal)
+            : await db.NovelWorks
+                .AsNoTracking()
+                .Where(x =>
+                    x.MetadataProvider == NovelAniListProvider.ProviderKey &&
+                    x.MetadataExternalId != null &&
+                    readingIds.Contains(x.MetadataExternalId))
+                .Select(x => new
+                {
+                    ExternalId = x.MetadataExternalId!,
+                    x.Id
+                })
+                .ToDictionaryAsync(
+                    x => x.ExternalId,
+                    x => x.Id,
+                    StringComparer.Ordinal,
+                    cancellationToken);
+
+        return items
+            .Select(item =>
+            {
+                if (item.Category == "anime" &&
+                    animeMatches.TryGetValue(item.ExternalId, out var animeId))
+                {
+                    return item with
+                    {
+                        IsLocal = true,
+                        LocalUrl = $"/Library/Anime/{animeId}"
+                    };
+                }
+
+                if ((item.Category == "light-novel" || item.Category == "manga") &&
+                    readingMatches.TryGetValue(item.ExternalId, out var workId))
+                {
+                    return item with
+                    {
+                        IsLocal = true,
+                        LocalUrl = $"/Novels/Work/{workId}"
+                    };
+                }
+
+                return item;
+            })
+            .ToArray();
+    }
+
+    private static DiscoveryItem MapAnime(AnimeMetadataCandidate row) =>
+        new(
+            $"anilist:anime:{row.ExternalId}",
+            "anime",
+            row.Provider,
+            row.ExternalId,
+            row.PreferredTitle,
+            row.NativeTitle,
+            row.Description,
+            row.CoverImageUrl,
+            row.Format,
+            row.Status,
+            row.SeasonYear,
+            null,
+            row.EpisodeCount,
+            null,
+            null,
+            [],
+            false,
+            null,
+            $"https://anilist.co/anime/{row.ExternalId}",
+            false);
+
+    private static DiscoveryItem MapReading(
+        AniListReadingMediaCandidate row,
+        bool isOwner) =>
+        new(
+            $"anilist:{(row.IsNovel ? "novel" : "manga")}:{row.ExternalId}",
+            row.IsNovel ? "light-novel" : "manga",
+            NovelAniListProvider.ProviderKey,
+            row.ExternalId,
+            row.PreferredTitle,
+            row.NativeTitle,
+            row.Description,
+            row.CoverImageUrl,
+            row.Format,
+            row.Status,
+            row.StartYear,
+            null,
+            row.ChapterCount,
+            row.VolumeCount,
+            null,
+            row.Genres,
+            false,
+            null,
+            $"https://anilist.co/manga/{row.ExternalId}",
+            isOwner && row.IsNovel);
+
+    private static DiscoveryItem MapBook(BookCatalogItem row) =>
+        new(
+            $"book:{row.Id}",
+            "book",
+            row.SourceName,
+            row.Id,
+            row.Title,
+            null,
+            row.Summary,
+            row.CoverImageUrl,
+            "BOOK",
+            null,
+            row.FirstPublishYear,
+            null,
+            null,
+            null,
+            null,
+            row.Subjects.Take(8).ToArray(),
+            false,
+            null,
+            $"/Books/{Uri.EscapeDataString(row.Id)}",
+            false);
+
+    private static DiscoveryItem MapLibrary(
+        AniListLibraryMedia row,
+        bool isOwner)
+    {
+        var category = string.Equals(
+                row.MediaType,
+                "ANIME",
+                StringComparison.OrdinalIgnoreCase)
+            ? "anime"
+            : row.IsNovel
+                ? "light-novel"
+                : "manga";
+
+        return new DiscoveryItem(
+            $"anilist:{category}:{row.MediaId}",
+            category,
+            "anilist",
+            row.MediaId.ToString(),
+            row.Title,
+            row.NativeTitle,
+            null,
+            row.CoverImageUrl,
+            row.Format,
+            row.MediaStatus,
+            row.Year,
+            row.Progress,
+            row.TotalProgress,
+            row.VolumeCount,
+            row.ListStatus,
+            row.Genres,
+            false,
+            null,
+            category == "anime"
+                ? $"https://anilist.co/anime/{row.MediaId}"
+                : $"https://anilist.co/manga/{row.MediaId}",
+            isOwner && category == "light-novel");
+    }
+
+    private static async Task<IReadOnlyList<DiscoveryItem>> CaptureAsync(
+        Func<Task<IReadOnlyList<DiscoveryItem>>> action,
+        string warning,
+        ICollection<string> warnings)
+    {
+        try
+        {
+            return await action();
+        }
+        catch (Exception exception) when (
+            exception is MetadataProviderException or
+            NovelMetadataProviderException or
+            AniListAccountException or
+            HttpRequestException or
+            TaskCanceledException or
+            InvalidOperationException)
+        {
+            lock (warnings)
+            {
+                warnings.Add(warning);
+            }
+
+            return [];
+        }
+    }
+
+    private static IReadOnlyList<DiscoveryItem> Interleave(
+        params IReadOnlyList<DiscoveryItem>[] groups)
+    {
+        var result = new List<DiscoveryItem>();
+        var index = 0;
+
+        while (result.Count < MaximumResultCount)
+        {
+            var added = false;
+            foreach (var group in groups)
+            {
+                if (index >= group.Count)
+                {
+                    continue;
+                }
+
+                result.Add(group[index]);
+                added = true;
+
+                if (result.Count >= MaximumResultCount)
+                {
+                    break;
+                }
+            }
+
+            if (!added)
+            {
+                break;
+            }
+
+            index++;
+        }
+
+        return result;
+    }
+
+    private static bool TryGetCached(
+        string key,
+        out DiscoveryResponse response)
+    {
+        if (Cache.TryGetValue(key, out var entry))
+        {
+            if (entry.ExpiresAt > DateTimeOffset.UtcNow)
+            {
+                response = entry.Response;
+                return true;
+            }
+
+            Cache.TryRemove(key, out _);
+        }
+
+        response = null!;
+        return false;
+    }
+
+    private static void PutCached(
+        string key,
+        DiscoveryResponse response,
+        TimeSpan lifetime)
+    {
+        if (Cache.Count > 256)
+        {
+            var now = DateTimeOffset.UtcNow;
+            foreach (var item in Cache)
+            {
+                if (item.Value.ExpiresAt <= now)
+                {
+                    Cache.TryRemove(item.Key, out _);
+                }
+            }
+        }
+
+        Cache[key] = new CacheEntry(
+            response,
+            DateTimeOffset.UtcNow.Add(lifetime));
+    }
+
+    private static string CategoryName(DiscoveryCategory category) =>
+        category switch
+        {
+            DiscoveryCategory.Anime => "anime",
+            DiscoveryCategory.LightNovel => "light-novel",
+            DiscoveryCategory.Manga => "manga",
+            DiscoveryCategory.Book => "book",
+            _ => "all"
+        };
+
+    private static string ModeName(DiscoveryMode mode) =>
+        mode switch
+        {
+            DiscoveryMode.Top => "top",
+            DiscoveryMode.MyList => "my-list",
+            DiscoveryMode.Search => "search",
+            _ => "trending"
+        };
+
+    private sealed record CacheEntry(
+        DiscoveryResponse Response,
+        DateTimeOffset ExpiresAt);
+}
