@@ -189,6 +189,20 @@ public sealed class StorageAvailabilityCoordinator
         }
     }
 
+    public void MarkWakeFailed(Guid rootId)
+    {
+        if (!roots.TryGetValue(rootId, out var runtime))
+        {
+            return;
+        }
+
+        lock (runtime.Gate)
+        {
+            runtime.StartingUntilUtc = null;
+            runtime.CacheUntilUtc = DateTimeOffset.MinValue;
+        }
+    }
+
     public LibraryRootAvailabilitySnapshot? GetCached(Guid rootId, bool wakeConfigured)
     {
         if (!roots.TryGetValue(rootId, out var runtime))
@@ -505,15 +519,33 @@ public sealed class WakeOnLanService(
         }
 
         var packet = BuildMagicPacket(mac!);
-        using var udp = new UdpClient(AddressFamily.InterNetwork)
-        {
-            EnableBroadcast = true
-        };
 
-        await udp.SendAsync(
-            packet,
-            packet.Length,
-            new IPEndPoint(broadcast!, 9));
+        try
+        {
+            using var udp = new UdpClient(AddressFamily.InterNetwork)
+            {
+                EnableBroadcast = true
+            };
+
+            await udp.SendAsync(
+                packet,
+                packet.Length,
+                new IPEndPoint(broadcast!, 9));
+        }
+        catch (SocketException exception)
+        {
+            coordinator.MarkWakeFailed(rootId);
+            logger.LogWarning(
+                exception,
+                "Wake-on-LAN packet could not be sent for library root {RootId}.",
+                rootId);
+
+            return new WakeOnLanResult(
+                false,
+                false,
+                "Wake-on-LAN could not be sent from the AniLingo container. Check the configured LAN broadcast address and Docker networking.",
+                await availability.CheckAsync(rootId, true, cancellationToken));
+        }
 
         logger.LogInformation(
             "Wake-on-LAN packet sent for library root {RootId}.",
