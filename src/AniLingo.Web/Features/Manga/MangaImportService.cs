@@ -554,21 +554,21 @@ public sealed partial class MangaImportService
         }
     }
 
-    [GeneratedRegex(@"(?:chapter|chap|ch|c)[s._-]*(?<number>d+(?:.d+)?)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"(?:chapter|chap|ch|c)[\s._-]*(?<number>\d+(?:\.\d+)?)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex ChapterNumberRegex();
 
-    [GeneratedRegex(@"^D*(?<number>d+(?:.d+)?)", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^\D*(?<number>\d+(?:\.\d+)?)", RegexOptions.CultureInvariant)]
     private static partial Regex LeadingNumberRegex();
 
-    [GeneratedRegex(@"(?:volume|vol|v)[s._-]*(?<number>d+)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"(?:volume|vol|v)[\s._-]*(?<number>\d+)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex VolumeNumberRegex();
 
     [GeneratedRegex(@"[._-]+", RegexOptions.CultureInvariant)]
     private static partial Regex SeparatorRegex();
 
-    [GeneratedRegex(@"s+", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"\s+", RegexOptions.CultureInvariant)]
     private static partial Regex WhitespaceRegex();
 
-    [GeneratedRegex(@"d+|D+", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"\d+|\D+", RegexOptions.CultureInvariant)]
     private static partial Regex NaturalPartsRegex();
 }
