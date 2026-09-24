@@ -68,8 +68,8 @@
         }[value] || "Trending";
     }
 
-    function syncControls() {
-        searchInput.value = state.query;
+    function syncControls(syncSearchValue = true) {
+        if (syncSearchValue) searchInput.value = state.query;
 
         modeButtons.forEach(button => {
             const active = button.dataset.discoverMode ===
@@ -87,7 +87,7 @@
 
     function updateUrl(push) {
         const params = new URLSearchParams();
-        if (state.query) params.set("q", state.query);
+        if (state.query.trim()) params.set("q", state.query.trim());
         if (state.category !== "all") params.set("category", state.category);
         const urlMode = state.mode === "search" ? browseMode : state.mode;
         if (urlMode !== "trending") params.set("mode", urlMode);
@@ -123,7 +123,7 @@
             category: state.category,
             mode: state.mode
         });
-        if (state.query) params.set("q", state.query);
+        if (state.query.trim()) params.set("q", state.query.trim());
 
         try {
             const response = await fetch(
@@ -162,7 +162,7 @@
         const warnings = Array.isArray(payload.warnings) ? payload.warnings : [];
 
         title.textContent = state.query
-            ? `Results for “${state.query}”`
+            ? `Results for “${payload.query || state.query.trim()}”`
             : `${modeLabel(payload.mode)} · ${categoryLabel(payload.category)}`;
 
         count.textContent = `${items.length} shown`;
@@ -395,9 +395,9 @@
     }
 
     searchInput.addEventListener("input", () => {
-        state.query = searchInput.value.trim();
-        state.mode = state.query ? "search" : browseMode;
-        syncControls();
+        state.query = searchInput.value;
+        state.mode = state.query.trim() ? "search" : browseMode;
+        syncControls(false);
         scheduleSearch();
     });
 
