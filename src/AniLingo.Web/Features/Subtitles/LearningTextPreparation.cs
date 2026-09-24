@@ -157,13 +157,17 @@ public static class JimakuSubtitleMatcher
         var explicitMatches = ExplicitEpisodeRegex.Matches(fileName);
         if (explicitMatches.Count > 0)
         {
-            return explicitMatches.Any(match =>
-                int.TryParse(match.Groups["episode"].Value, out var parsed) &&
-                parsed == episodeNumber);
+            return explicitMatches
+                .Cast<Match>()
+                .Any(match =>
+                    int.TryParse(match.Groups["episode"].Value, out var parsed) &&
+                    parsed == episodeNumber);
         }
 
-        return LooseEpisodeRegex.Matches(fileName).Any(match =>
-            int.TryParse(match.Groups["episode"].Value, out var parsed) &&
-            parsed == episodeNumber);
+        return LooseEpisodeRegex.Matches(fileName)
+            .Cast<Match>()
+            .Any(match =>
+                int.TryParse(match.Groups["episode"].Value, out var parsed) &&
+                parsed == episodeNumber);
     }
 }
