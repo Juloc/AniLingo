@@ -18,7 +18,7 @@ This directory contains the first-party Android phone and Android TV clients def
 - Gradle 9.6.0
 - JDK 17
 - Kotlin/Compose compiler 2.4.20
-- compileSdk 36
+- compileSdk 37
 - targetSdk 36
 - minSdk 26
 - Media3 1.11.1
