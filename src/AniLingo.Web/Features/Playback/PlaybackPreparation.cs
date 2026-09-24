@@ -86,11 +86,28 @@ public sealed class PlaybackPreparationTracker
             message);
 }
 
+public enum PlaybackTrackKind
+{
+    Audio,
+    Subtitle
+}
+
+public sealed record PlaybackMediaTrack(
+    int StreamIndex,
+    PlaybackTrackKind Kind,
+    string? Codec,
+    string? Language,
+    string? Title,
+    bool IsDefault,
+    bool IsForced,
+    bool IsText);
+
 public sealed record PlaybackProbeResult(
     string? VideoCodec,
     string? PixelFormat,
     string? AudioCodec,
-    double? DurationSeconds = null);
+    double? DurationSeconds = null,
+    IReadOnlyList<PlaybackMediaTrack>? Tracks = null);
 
 public enum PlaybackAudioMode
 {
@@ -248,7 +265,7 @@ public sealed class PlaybackMediaProbe(
             "ffprobe",
             [
                 "-v", "error",
-                "-show_entries", "stream=codec_type,codec_name,pix_fmt:format=duration",
+                "-show_entries", "stream=index,codec_type,codec_name,pix_fmt:stream_tags=language,title:stream_disposition=default,forced:format=duration",
                 "-of", "json",
                 fullPath
             ],
@@ -294,6 +311,7 @@ public sealed class PlaybackMediaProbe(
         string? pixelFormat = null;
         string? audioCodec = null;
         double? durationSeconds = null;
+        var tracks = new List<PlaybackMediaTrack>();
 
         if (document.RootElement.TryGetProperty("format", out var format) &&
             format.ValueKind == JsonValueKind.Object &&
@@ -315,14 +333,23 @@ public sealed class PlaybackMediaProbe(
             foreach (var stream in streams.EnumerateArray())
             {
                 var type = ReadString(stream, "codec_type");
+                var codec = ReadString(stream, "codec_name");
+
                 if (videoCodec is null && string.Equals(type, "video", StringComparison.OrdinalIgnoreCase))
                 {
-                    videoCodec = ReadString(stream, "codec_name");
+                    videoCodec = codec;
                     pixelFormat = ReadString(stream, "pix_fmt");
+                    continue;
                 }
-                else if (audioCodec is null && string.Equals(type, "audio", StringComparison.OrdinalIgnoreCase))
+
+                if (string.Equals(type, "audio", StringComparison.OrdinalIgnoreCase))
                 {
-                    audioCodec = ReadString(stream, "codec_name");
+                    audioCodec ??= codec;
+                    tracks.Add(ParseTrack(stream, PlaybackTrackKind.Audio, codec));
+                }
+                else if (string.Equals(type, "subtitle", StringComparison.OrdinalIgnoreCase))
+                {
+                    tracks.Add(ParseTrack(stream, PlaybackTrackKind.Subtitle, codec));
                 }
             }
         }
@@ -331,8 +358,58 @@ public sealed class PlaybackMediaProbe(
             videoCodec,
             pixelFormat,
             audioCodec,
-            durationSeconds);
+            durationSeconds,
+            tracks);
     }
+
+    private static PlaybackMediaTrack ParseTrack(
+        JsonElement stream,
+        PlaybackTrackKind kind,
+        string? codec)
+    {
+        var streamIndex =
+            stream.TryGetProperty("index", out var indexElement) &&
+            indexElement.TryGetInt32(out var parsedIndex)
+                ? parsedIndex
+                : -1;
+
+        string? language = null;
+        string? title = null;
+        if (stream.TryGetProperty("tags", out var tags) &&
+            tags.ValueKind == JsonValueKind.Object)
+        {
+            language = ReadString(tags, "language");
+            title = ReadString(tags, "title");
+        }
+
+        var isDefault = false;
+        var isForced = false;
+        if (stream.TryGetProperty("disposition", out var disposition) &&
+            disposition.ValueKind == JsonValueKind.Object)
+        {
+            isDefault = ReadFlag(disposition, "default");
+            isForced = ReadFlag(disposition, "forced");
+        }
+
+        return new PlaybackMediaTrack(
+            streamIndex,
+            kind,
+            codec,
+            language,
+            title,
+            isDefault,
+            isForced,
+            kind == PlaybackTrackKind.Subtitle && IsTextSubtitleCodec(codec));
+    }
+
+    private static bool IsTextSubtitleCodec(string? codec) =>
+        codec?.ToLowerInvariant() is
+            "ass" or "ssa" or "subrip" or "srt" or "webvtt" or "mov_text" or "text";
+
+    private static bool ReadFlag(JsonElement element, string propertyName) =>
+        element.TryGetProperty(propertyName, out var value) &&
+        ((value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var number) && number != 0) ||
+         value.ValueKind == JsonValueKind.True);
 
     private static string? ReadString(JsonElement element, string propertyName) =>
         element.TryGetProperty(propertyName, out var value) &&
