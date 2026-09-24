@@ -34,7 +34,7 @@
     let autoScrollLastTime = null;
     let autoScrollRunning = false;
     let toastTimer = null;
-    let saveTimer = null;
+    let saveQueue = Promise.resolve();
 
     const bookmarkState = new Map();
 
@@ -61,29 +61,33 @@
         data.set(key, value == null ? "" : String(value));
     };
 
-    const fillSettingsData = data => {
-        setFormValue(data, "ReadingMode", state.readingMode);
-        setFormValue(data, "PageTransition", state.pageTransition);
-        setFormValue(data, "TwoPageSpread", state.twoPageSpread);
-        setFormValue(data, "AutoScrollSpeed", state.autoScrollSpeed);
-        setFormValue(data, "FontFamily", state.fontFamily);
-        setFormValue(data, "FontSizeRem", state.fontSizeRem);
-        setFormValue(data, "LineHeight", state.lineHeight);
-        setFormValue(data, "ParagraphSpacingEm", state.paragraphSpacingEm);
-        setFormValue(data, "TextWidthPx", state.textWidthPx);
-        setFormValue(data, "TextAlignment", state.textAlignment);
-        setFormValue(data, "ChapterStyle", state.chapterStyle);
-        setFormValue(data, "PaperStyle", state.paperStyle);
-        setFormValue(data, "GenreArtworkEnabled", state.genreArtworkEnabled);
-        setFormValue(data, "GenreTheme", state.genreTheme);
-        setFormValue(data, "BackgroundIntensity", state.backgroundIntensity);
-        setFormValue(data, "BookmarkStyle", state.bookmarkStyle);
-        setFormValue(data, "BookmarkColor", state.bookmarkColor);
+    const fillSettingsData = (data, source = state) => {
+        setFormValue(data, "ReadingMode", source.readingMode);
+        setFormValue(data, "PageTransition", source.pageTransition);
+        setFormValue(data, "TwoPageSpread", source.twoPageSpread);
+        setFormValue(data, "AutoScrollSpeed", source.autoScrollSpeed);
+        setFormValue(data, "FontFamily", source.fontFamily);
+        setFormValue(data, "FontSizeRem", source.fontSizeRem);
+        setFormValue(data, "LineHeight", source.lineHeight);
+        setFormValue(data, "ParagraphSpacingEm", source.paragraphSpacingEm);
+        setFormValue(data, "TextWidthPx", source.textWidthPx);
+        setFormValue(data, "TextAlignment", source.textAlignment);
+        setFormValue(data, "ChapterStyle", source.chapterStyle);
+        setFormValue(data, "PaperStyle", source.paperStyle);
+        setFormValue(data, "GenreArtworkEnabled", source.genreArtworkEnabled);
+        setFormValue(data, "GenreTheme", source.genreTheme);
+        setFormValue(data, "BackgroundIntensity", source.backgroundIntensity);
+        setFormValue(data, "BookmarkStyle", source.bookmarkStyle);
+        setFormValue(data, "BookmarkColor", source.bookmarkColor);
     };
 
-    const postSettings = async (scope, changedKey) => {
+    const postSettings = async (
+        scope,
+        changedKey,
+        source = state,
+        applyResponse = true) => {
         const data = new FormData(settingsForm);
-        fillSettingsData(data);
+        fillSettingsData(data, source);
         setFormValue(data, "scope", scope);
         if (changedKey) setFormValue(data, "changedKey", changedKey);
 
@@ -98,22 +102,36 @@
         }
 
         const payload = await response.json();
-        if (payload?.settings) {
+        if (payload?.settings && applyResponse) {
             state = payload.settings;
             applySettings();
         }
+        return payload?.settings || null;
     };
 
     const scheduleBookSave = changedKey => {
-        clearTimeout(saveTimer);
-        saveTimer = setTimeout(async () => {
-            try {
-                await postSettings("book", changedKey);
+        const snapshot = { ...state };
+        saveQueue = saveQueue
+            .then(async () => {
+                const saved = await postSettings(
+                    "book",
+                    changedKey,
+                    snapshot,
+                    false);
+
+                state.hasBookOverride = true;
+                if (saved && state[changedKey] === snapshot[changedKey]) {
+                    state[changedKey] = saved[changedKey];
+                    if (changedKey === "genreTheme") {
+                        state.resolvedGenreTheme = saved.resolvedGenreTheme;
+                    }
+                    applySettings();
+                }
                 if (overrideState) overrideState.textContent = "Buch-Override";
-            } catch (error) {
+            })
+            .catch(error => {
                 showToast(error.message);
-            }
-        }, 260);
+            });
     };
 
     const fontStacks = {
