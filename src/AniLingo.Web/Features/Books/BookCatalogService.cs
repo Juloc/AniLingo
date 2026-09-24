@@ -30,7 +30,7 @@ public sealed record BookCatalogItem(
     public bool CanAcquire => !string.IsNullOrWhiteSpace(EpubUrl);
 }
 
-public sealed class BookCatalogService(
+public sealed partial class BookCatalogService(
     HttpClient httpClient,
     AppDbContext db,
     IBookTranslator translator,
@@ -48,37 +48,40 @@ public sealed class BookCatalogService(
     private static readonly SemaphoreSlim TranslationGate = new(1, 1);
 
     public async Task<IReadOnlyList<BookCatalogItem>> SearchAsync(
-        string query,
+        string? query,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(query))
         {
-            return [];
+            return await BrowsePopularBooksAsync(cancellationToken);
         }
 
         var normalizedQuery = query.Trim();
 
-        try
-        {
-            var openLibrary = await SearchOpenLibraryAsync(
-                normalizedQuery,
-                cancellationToken);
-
-            if (openLibrary.Count > 0)
-            {
-                return openLibrary;
-            }
-        }
-        catch (Exception exception) when (
-            exception is HttpRequestException or TaskCanceledException)
-        {
-            // Explicit search can fall back to Gutenberg when the broad
-            // metadata provider is unavailable.
-        }
-
-        return await SearchGutenbergAsync(
-            normalizedQuery,
+        var openLibraryTask = CaptureCatalogAsync(
+            token => SearchOpenLibraryAsync(normalizedQuery, token),
             cancellationToken);
+        var googleTask = CaptureCatalogAsync(
+            token => SearchGoogleBooksAsync(normalizedQuery, token),
+            cancellationToken);
+
+        await Task.WhenAll(openLibraryTask, googleTask);
+
+        var merged = MergeCatalogResults(
+            openLibraryTask.Result,
+            googleTask.Result);
+
+        if (merged.Count > 0)
+        {
+            return merged
+                .Take(SearchLimit)
+                .ToArray();
+        }
+
+        return await CaptureCatalogAsync(
+            token => SearchGutenbergAsync(normalizedQuery, token),
+            cancellationToken,
+            fallbackToEmpty: true);
     }
 
     public async Task<BookCatalogItem?> GetAsync(
@@ -96,6 +99,13 @@ public sealed class BookCatalogService(
         {
             return await GetOpenLibraryAsync(
                 workKey,
+                cancellationToken);
+        }
+
+        if (TryParseGoogleBooksId(id, out var googleId))
+        {
+            return await GetGoogleBooksAsync(
+                googleId,
                 cancellationToken);
         }
 

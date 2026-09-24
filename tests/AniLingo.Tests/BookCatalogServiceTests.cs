@@ -56,22 +56,44 @@ public sealed class BookCatalogServiceTests
             await using var db = await CreateDatabaseAsync(path);
             using var client = new HttpClient(new DelegateHttpMessageHandler(request =>
             {
-                Assert.AreEqual("openlibrary.org", request.RequestUri?.Host);
-
-                return JsonResponse("""
-                    {
-                      "docs": [
+                return request.RequestUri?.Host switch
+                {
+                    "openlibrary.org" => JsonResponse("""
                         {
-                          "key": "/works/OL27448W",
-                          "title": "The Lord of the Rings",
-                          "author_name": ["J. R. R. Tolkien"],
-                          "cover_i": 14625765,
-                          "first_publish_year": 1954,
-                          "subject": ["Fantasy fiction", "Middle Earth"]
+                          "docs": [
+                            {
+                              "key": "/works/OL27448W",
+                              "title": "The Lord of the Rings",
+                              "author_name": ["J. R. R. Tolkien"],
+                              "cover_i": 14625765,
+                              "first_publish_year": 1954,
+                              "subject": ["Fantasy fiction", "Middle Earth"]
+                            }
+                          ]
                         }
-                      ]
-                    }
-                    """);
+                        """),
+                    "www.googleapis.com" => JsonResponse("""
+                        {
+                          "items": [
+                            {
+                              "id": "google-lotr",
+                              "volumeInfo": {
+                                "title": "The Lord of the Rings",
+                                "authors": ["J. R. R. Tolkien"],
+                                "description": "<p>Epic high fantasy in Middle-earth.</p>",
+                                "categories": ["Fantasy"],
+                                "publishedDate": "1954",
+                                "imageLinks": {
+                                  "thumbnail": "http://books.google.com/cover.jpg"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                        """),
+                    _ => throw new AssertFailedException(
+                        $"Unexpected request: {request.RequestUri}")
+                };
             }))
             {
                 BaseAddress = new Uri("https://gutendex.com/")
@@ -87,7 +109,129 @@ public sealed class BookCatalogServiceTests
             Assert.AreEqual("The Lord of the Rings", books[0].Title);
             Assert.AreEqual("J. R. R. Tolkien", books[0].Author);
             Assert.AreEqual(1954, books[0].FirstPublishYear);
+            Assert.AreEqual(
+                "Epic high fantasy in Middle-earth.",
+                books[0].Summary);
+            Assert.IsTrue(
+                books[0].Subjects.Contains(
+                    "Fantasy",
+                    StringComparer.OrdinalIgnoreCase));
+            Assert.IsTrue(
+                books[0].CoverImageUrl?.StartsWith(
+                    "https://",
+                    StringComparison.OrdinalIgnoreCase));
             Assert.IsFalse(books[0].CanAcquire);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            File.Delete(path);
+        }
+    }
+
+    [TestMethod]
+    public async Task EmptySearchReturnsPopularGutenbergBooks()
+    {
+        var path = TempDatabasePath();
+
+        try
+        {
+            await using var db = await CreateDatabaseAsync(path);
+
+            using var client = new HttpClient(new DelegateHttpMessageHandler(request =>
+            {
+                Assert.AreEqual("gutendex.com", request.RequestUri?.Host);
+                StringAssert.Contains(
+                    request.RequestUri?.Query ?? "",
+                    "sort=popular");
+
+                return JsonResponse("""
+                    {
+                      "count": 1,
+                      "results": [
+                        {
+                          "id": 2701,
+                          "title": "Moby Dick; Or, The Whale",
+                          "subjects": ["Sea stories"],
+                          "authors": [{"name": "Melville, Herman"}],
+                          "summaries": ["A whaling voyage."],
+                          "formats": {
+                            "application/epub+zip": "https://www.gutenberg.org/ebooks/2701.epub3.images",
+                            "image/jpeg": "https://www.gutenberg.org/cache/epub/2701/pg2701.cover.medium.jpg"
+                          },
+                          "download_count": 12345
+                        }
+                      ]
+                    }
+                    """);
+            }))
+            {
+                BaseAddress = new Uri("https://gutendex.com/")
+            };
+
+            var service = NewService(db, client);
+            var books = await service.SearchAsync(
+                null,
+                CancellationToken.None);
+
+            Assert.AreEqual(1, books.Count);
+            Assert.AreEqual("2701", books[0].Id);
+            Assert.IsTrue(books[0].CanAcquire);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            File.Delete(path);
+        }
+    }
+
+    [TestMethod]
+    public async Task GoogleOnlyBookCanBeOpenedAsMetadataResult()
+    {
+        var path = TempDatabasePath();
+
+        try
+        {
+            await using var db = await CreateDatabaseAsync(path);
+
+            using var client = new HttpClient(new DelegateHttpMessageHandler(request =>
+            {
+                Assert.AreEqual("www.googleapis.com", request.RequestUri?.Host);
+
+                return JsonResponse("""
+                    {
+                      "id": "abc_DEF-123",
+                      "volumeInfo": {
+                        "title": "A Metadata Only Book",
+                        "authors": ["Example Author"],
+                        "description": "Description from Google Books.",
+                        "categories": ["History"],
+                        "publishedDate": "2019-06-01",
+                        "infoLink": "https://books.google.com/books?id=abc_DEF-123"
+                      }
+                    }
+                    """);
+            }))
+            {
+                BaseAddress = new Uri("https://gutendex.com/")
+            };
+
+            var service = NewService(db, client);
+            var book = await service.GetAsync(
+                "gb-abc_DEF-123",
+                CancellationToken.None);
+
+            Assert.IsNotNull(book);
+            Assert.AreEqual(
+                "A Metadata Only Book",
+                book.Title);
+            Assert.AreEqual(
+                "Google Books",
+                book.SourceName);
+            Assert.AreEqual(
+                2019,
+                book.FirstPublishYear);
+            Assert.IsFalse(book.CanAcquire);
         }
         finally
         {
