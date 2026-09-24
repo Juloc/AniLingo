@@ -1,0 +1,152 @@
+@page "/Manga/Read/{id:guid}"
+@model AniLingo.Web.Pages.Manga.ReadModel
+@{
+    var chapter = Model.Chapter;
+    var currentBookmarks = Model.Bookmarks
+        .Where(x => x.ChapterId == chapter.Id)
+        .ToArray();
+    var chapterData = System.Text.Json.JsonSerializer.Serialize(
+        Model.Chapters.Select(item => new
+        {
+            id = item.Id,
+            number = item.Number,
+            title = item.Title,
+            pageCount = item.PageCount,
+            current = item.Id == chapter.Id,
+            earlier = item.Number < chapter.Number
+        }));
+
+    ViewData["Title"] = $"{chapter.SeriesTitle} · {chapter.Title}";
+}
+@section Head {
+    <link rel="stylesheet" href="~/css/manga.css" asp-append-version="true" />
+}
+@section Scripts {
+    <script src="~/js/manga-reader.js" asp-append-version="true"></script>
+}
+
+<div class="manga-reader-shell"
+     data-manga-reader
+     data-profile="@Model.ProfileId"
+     data-chapter-id="@chapter.Id"
+     data-series-id="@chapter.SeriesId"
+     data-page-count="@chapter.PageCount"
+     data-page="@Model.InitialPage"
+     data-direction="@chapter.Direction"
+     data-default-mode="@(Model.ReaderDefaults.ReadingMode == "continuous" ? "continuous" : Model.ReaderDefaults.TwoPageSpread ? "double" : "single")"
+     style="--manga-bookmark-color:@Model.ReaderDefaults.BookmarkColor">
+
+    <nav class="manga-reader-toolbar" aria-label="Manga reader controls">
+        <div class="manga-toolbar-start">
+            <button type="button"
+                    class="manga-icon-button"
+                    data-chapters-toggle
+                    aria-label="Chapters">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
+            </button>
+            <span class="manga-reader-location">Ch. @chapter.Number · @chapter.Title</span>
+        </div>
+
+        <div class="manga-mode-switch" role="group" aria-label="Page mode">
+            <button type="button" data-mode="single">1</button>
+            <button type="button" data-mode="double">2</button>
+            <button type="button" data-mode="continuous">Scroll</button>
+        </div>
+
+        <div class="manga-toolbar-end">
+            <button type="button"
+                    class="manga-icon-button"
+                    data-direction-toggle
+                    aria-label="Reading direction"
+                    title="Reading direction">@chapter.Direction.ToUpperInvariant()</button>
+            <button type="button"
+                    class="manga-icon-button"
+                    data-bookmark
+                    aria-label="Bookmark page">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5h10v15l-5-3-5 3z" /></svg>
+                <span data-bookmark-count hidden="@(currentBookmarks.Length == 0)">@currentBookmarks.Length</span>
+            </button>
+            <details class="manga-settings">
+                <summary class="manga-icon-button" aria-label="Reader settings">Aa</summary>
+                <div class="manga-settings-popover">
+                    <button type="button" data-fit="height">Fit height</button>
+                    <button type="button" data-fit="width">Fit width</button>
+                    <div>
+                        <button type="button" data-zoom="-">−</button>
+                        <span data-zoom-label>100%</span>
+                        <button type="button" data-zoom="+">+</button>
+                    </div>
+                </div>
+            </details>
+        </div>
+    </nav>
+
+    <main class="manga-reader-stage" data-stage>
+        <button class="manga-tap-zone start" type="button" data-tap="start" aria-label="Previous or next page"></button>
+
+        <div class="manga-page-frame" data-page-frame>
+            <img data-page-left alt="" draggable="false" />
+            <img data-page-primary alt="" draggable="false" />
+            <img data-page-right alt="" draggable="false" />
+        </div>
+
+        <div class="manga-continuous" data-continuous hidden></div>
+
+        <button class="manga-tap-zone end" type="button" data-tap="end" aria-label="Previous or next page"></button>
+    </main>
+
+    <footer class="manga-reader-footer">
+        <a class="manga-chapter-step @(Model.PreviousChapterId is null ? "disabled" : "")"
+           href="@(Model.PreviousChapterId is Guid previous ? $"/Manga/Read/{previous}" : "#")">←</a>
+
+        <div class="manga-scrubber">
+            <input type="range"
+                   min="0"
+                   max="@(Math.Max(0, chapter.PageCount - 1))"
+                   value="@Model.InitialPage"
+                   data-page-scrubber
+                   aria-label="Page" />
+            <div class="manga-bookmark-ticks" data-bookmark-ticks></div>
+        </div>
+
+        <output data-page-label>@(Model.InitialPage + 1) / @chapter.PageCount</output>
+
+        <a class="manga-chapter-step @(Model.NextChapterId is null ? "disabled" : "")"
+           href="@(Model.NextChapterId is Guid next ? $"/Manga/Read/{next}" : "#")">→</a>
+    </footer>
+
+    <div class="manga-drawer-backdrop" data-drawer-backdrop hidden></div>
+    <aside class="manga-chapter-drawer" data-chapter-drawer hidden>
+        <header>
+            <strong>@chapter.SeriesTitle</strong>
+            <button type="button" class="manga-icon-button" data-drawer-close aria-label="Close">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+            </button>
+        </header>
+        <input type="search" data-chapter-search placeholder="Search chapters" />
+        <nav data-chapter-list></nav>
+        <script type="application/json" data-chapter-data>@Html.Raw(chapterData)</script>
+    </aside>
+
+    <form method="post" asp-page-handler="Progress" asp-route-id="@chapter.Id" data-progress-form hidden>
+        <input type="hidden" name="pageIndex" value="@Model.InitialPage" />
+    </form>
+    <form method="post" asp-page-handler="Bookmark" asp-route-id="@chapter.Id" data-bookmark-form hidden>
+        <input type="hidden" name="pageIndex" value="@Model.InitialPage" />
+        <input type="hidden" name="label" value="" />
+    </form>
+    <form method="post" asp-page-handler="RemoveBookmark" asp-route-id="@chapter.Id" data-remove-bookmark-form hidden>
+        <input type="hidden" name="bookmarkId" value="" />
+    </form>
+
+    @foreach (var bookmark in currentBookmarks)
+    {
+        <span hidden
+              data-saved-bookmark
+              data-bookmark-id="@bookmark.Id"
+              data-page="@bookmark.PageIndex"
+              data-label="@bookmark.Label"></span>
+    }
+
+    <div class="manga-reader-toast" data-toast hidden></div>
+</div>

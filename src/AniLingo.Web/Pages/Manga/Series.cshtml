@@ -1,0 +1,144 @@
+@page "/Manga/Series/{id:guid}"
+@model AniLingo.Web.Pages.Manga.SeriesModel
+@{
+    var series = Model.Series;
+    var current = Model.Progress is null
+        ? null
+        : series.Chapters.FirstOrDefault(x => x.Id == Model.Progress.ChapterId);
+    ViewData["Title"] = series.Title;
+}
+@section Head {
+    <link rel="stylesheet" href="~/css/manga.css" asp-append-version="true" />
+}
+
+<div class="reading-type-switch manga-series-switch">
+    <a href="/Novels">Novels</a>
+    <a class="active" href="/Manga">Manga</a>
+</div>
+
+<header class="manga-series-header">
+    <div class="manga-series-cover">
+        @if (!string.IsNullOrWhiteSpace(series.CoverImageUrl))
+        {
+            <img src="@series.CoverImageUrl" alt="" referrerpolicy="no-referrer" />
+        }
+        else if (series.Chapters.FirstOrDefault() is { } preview)
+        {
+            <img src="/Manga/Read/@preview.Id?handler=Page&page=0" alt="" />
+        }
+    </div>
+
+    <div>
+        <h1>@series.Title</h1>
+        <div class="manga-series-meta">
+            @if (!string.IsNullOrWhiteSpace(series.NativeTitle))
+            {
+                <span lang="ja">@series.NativeTitle</span>
+            }
+            <span>@series.Chapters.Count chapters</span>
+            <span>@series.Direction.ToUpperInvariant()</span>
+            @if (!string.IsNullOrWhiteSpace(series.Status))
+            {
+                <span>@series.Status.Replace("_", " ").ToLowerInvariant()</span>
+            }
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(series.Description))
+        {
+            <p>@series.Description</p>
+        }
+
+        <div class="manga-series-actions">
+            @if (current is not null)
+            {
+                <a class="button button-primary"
+                   href="/Manga/Read/@current.Id?page=@Model.Progress!.PageIndex">
+                    Continue ch. @current.Number
+                </a>
+            }
+            else if (series.Chapters.FirstOrDefault() is { } first)
+            {
+                <a class="button button-primary" href="/Manga/Read/@first.Id">Start reading</a>
+            }
+        </div>
+    </div>
+</header>
+
+@if (TempData["Status"] is string status)
+{
+    <div class="manga-message">@status</div>
+}
+
+@if (Model.IsOwner)
+{
+    <details class="manga-manage">
+        <summary>Manage</summary>
+        <div class="manga-manage-body">
+            <div class="manga-inline-actions">
+                <form method="post" asp-page-handler="Refresh" asp-route-id="@series.Id">
+                    <button class="button" type="submit">Refresh source</button>
+                </form>
+                <form method="post" asp-page-handler="Direction" asp-route-id="@series.Id">
+                    <input type="hidden" name="direction" value="@(series.Direction == "rtl" ? "ltr" : "rtl")" />
+                    <button class="button" type="submit">
+                        Switch to @(series.Direction == "rtl" ? "LTR" : "RTL")
+                    </button>
+                </form>
+            </div>
+
+            <form method="get" class="manga-metadata-search">
+                <input type="search" name="q" value="@Model.Query" placeholder="Match AniList manga" />
+                <button class="button" type="submit">Search</button>
+            </form>
+
+            @if (Model.SearchResults.Count > 0)
+            {
+                <div class="manga-metadata-results">
+                    @foreach (var candidate in Model.SearchResults)
+                    {
+                        <article>
+                            @if (!string.IsNullOrWhiteSpace(candidate.CoverImageUrl))
+                            {
+                                <img src="@candidate.CoverImageUrl" alt="" loading="lazy" referrerpolicy="no-referrer" />
+                            }
+                            <div>
+                                <strong>@candidate.Title</strong>
+                                @if (!string.IsNullOrWhiteSpace(candidate.NativeTitle))
+                                {
+                                    <span lang="ja">@candidate.NativeTitle</span>
+                                }
+                            </div>
+                            <form method="post" asp-page-handler="Match" asp-route-id="@series.Id">
+                                <input type="hidden" name="externalId" value="@candidate.ExternalId" />
+                                <button class="button" type="submit">Use</button>
+                            </form>
+                        </article>
+                    }
+                </div>
+            }
+        </div>
+    </details>
+}
+
+<section class="manga-chapters">
+    <h2>Chapters</h2>
+    @foreach (var chapter in series.Chapters)
+    {
+        var isCurrent = current?.Id == chapter.Id;
+        var earlier = current is not null && chapter.Number < current.Number;
+        <a class="manga-chapter-row @(isCurrent ? "current" : earlier ? "earlier" : "")"
+           href="/Manga/Read/@chapter.Id">
+            <span>@chapter.Number</span>
+            <strong>@chapter.Title</strong>
+            @if (chapter.VolumeNumber is int volume)
+            {
+                <small>Vol. @volume</small>
+            }
+            <small>@chapter.PageCount pages</small>
+            @if (isCurrent)
+            {
+                <span class="manga-current-dot"></span>
+            }
+        </a>
+    }
+</section>
