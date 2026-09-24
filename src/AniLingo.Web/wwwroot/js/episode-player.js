@@ -9,7 +9,8 @@
         return;
     }
 
-    const preferenceKey = "anilingo.playbackMode";
+    const profileId = document.body?.dataset.profileId || "unknown";
+    const preferenceKey = `anilingo.profile.${profileId}.playbackMode`;
     const progressUrl = root.dataset.progressUrl || "";
     const persistedResumeSeconds = Number(root.dataset.resumeSeconds);
     const video = root.querySelector("[data-playback-video]");
