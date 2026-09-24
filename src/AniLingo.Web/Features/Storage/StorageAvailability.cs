@@ -87,7 +87,8 @@ public sealed class StorageAvailabilityCoordinator
         string path,
         bool wakeConfigured,
         bool force,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool expectedNonEmpty = false)
     {
         var runtime = roots.GetOrAdd(rootId, _ => new RootRuntimeState());
         var now = DateTimeOffset.UtcNow;
@@ -104,7 +105,7 @@ public sealed class StorageAvailabilityCoordinator
 
             if (runtime.ProbeTask is null || runtime.ProbeTask.IsCompleted)
             {
-                runtime.ProbeTask = Task.Run(() => ProbePath(path));
+                runtime.ProbeTask = Task.Run(() => ProbePath(path, expectedNonEmpty));
             }
 
             probeTask = runtime.ProbeTask;
@@ -230,7 +231,9 @@ public sealed class StorageAvailabilityCoordinator
         return snapshot with { WakeConfigured = wakeConfigured };
     }
 
-    private static RootProbeResult ProbePath(string path)
+    private static RootProbeResult ProbePath(
+        string path,
+        bool expectedNonEmpty)
     {
         try
         {
@@ -245,11 +248,18 @@ public sealed class StorageAvailabilityCoordinator
             using var enumerator = Directory
                 .EnumerateFileSystemEntries(fullPath, "*", SearchOption.TopDirectoryOnly)
                 .GetEnumerator();
-            _ = enumerator.MoveNext();
+            var hasEntries = enumerator.MoveNext();
+
+            if (!hasEntries && expectedNonEmpty)
+            {
+                return new RootProbeResult(
+                    StorageAvailabilityState.Offline,
+                    "unexpectedly_empty_root");
+            }
 
             return new RootProbeResult(
                 StorageAvailabilityState.Available,
-                null);
+                hasEntries ? null : "root_empty");
         }
         catch (UnauthorizedAccessException)
         {
@@ -320,12 +330,19 @@ public sealed class LibraryRootAvailabilityService(
                 root.WakeMacAddress,
                 out _);
 
+        var expectedNonEmpty = await db.MediaFiles
+            .AsNoTracking()
+            .AnyAsync(
+                x => x.LibraryRootId == root.Id,
+                cancellationToken);
+
         return await coordinator.ProbeAsync(
             root.Id,
             root.Path,
             wakeConfigured,
             force,
-            cancellationToken);
+            cancellationToken,
+            expectedNonEmpty);
     }
 
     public LibraryRootAvailabilitySnapshot? GetCached(
