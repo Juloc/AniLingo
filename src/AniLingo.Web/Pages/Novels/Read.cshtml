@@ -17,9 +17,13 @@
         ?? 0;
     var initialAnchorText = initialBookmark?.AnchorText
         ?? Model.Progress?.AnchorText;
+    var currentBookmarks = Model.Bookmarks
+        .Where(x => x.ChapterId == Model.Chapter.Id)
+        .ToArray();
     var currentHighlights = Model.Highlights
         .Where(x => x.ChapterId == Model.Chapter.Id)
         .ToArray();
+    var noteCount = Model.Bookmarks.Count + Model.Highlights.Count;
 }
 @section Head {
     <link rel="stylesheet" href="~/css/novels.css" asp-append-version="true" />
@@ -68,12 +72,30 @@
         </div>
 
         <div class="novel-toolbar-group">
-            <button class="novel-icon-button" type="button" data-reader-bookmark aria-label="Add bookmark" title="Add bookmark">🔖</button>
+            <button class="novel-icon-button @(currentBookmarks.Length > 0 ? "has-bookmarks" : "")"
+                    type="button"
+                    data-reader-bookmark
+                    aria-label="Add bookmark"
+                    title="Add bookmark">
+                🔖
+                @if (currentBookmarks.Length > 0)
+                {
+                    <span class="novel-bookmark-button-count" data-current-bookmark-count>@currentBookmarks.Length</span>
+                }
+                else
+                {
+                    <span class="novel-bookmark-button-count" data-current-bookmark-count hidden>0</span>
+                }
+            </button>
             <button class="novel-icon-button" type="button" data-reader-notes-toggle aria-label="Bookmarks and highlights" title="Bookmarks and highlights">
                 ✎
-                @if (Model.Bookmarks.Count + Model.Highlights.Count > 0)
+                @if (noteCount > 0)
                 {
-                    <span class="novel-toolbar-count">@(Model.Bookmarks.Count + Model.Highlights.Count)</span>
+                    <span class="novel-toolbar-count" data-reader-note-count>@noteCount</span>
+                }
+                else
+                {
+                    <span class="novel-toolbar-count" data-reader-note-count hidden>0</span>
                 }
             </button>
 
@@ -96,6 +118,15 @@
             </details>
         </div>
     </nav>
+
+    <aside class="novel-bookmark-rail" data-bookmark-rail aria-label="Bookmarks in this chapter">
+        <button class="novel-bookmark-rail-icon"
+                type="button"
+                data-reader-notes-toggle
+                aria-label="Show bookmarks"
+                title="Show bookmarks">🔖</button>
+        <div class="novel-bookmark-rail-track" data-bookmark-rail-track></div>
+    </aside>
 
     <header class="novel-reader-title">
         <a class="novel-reader-series" href="/Novels/Work/@Model.Work.Id">
@@ -190,60 +221,54 @@
 
         <section>
             <h3>Bookmarks</h3>
-            @if (Model.Bookmarks.Count == 0)
-            {
-                <p class="novel-muted" data-empty-bookmarks>No bookmarks yet.</p>
-            }
-            else
-            {
-                <div class="novel-note-list">
-                    @foreach (var bookmark in Model.Bookmarks.OrderByDescending(x => x.CreatedAt))
-                    {
-                        <article class="novel-note-card">
-                            <a href="/Novels/Read/@bookmark.ChapterId?bookmark=@bookmark.Id">
-                                <strong>@(bookmark.Label ?? $"Bookmark · {bookmark.PositionPermille / 10}%")</strong>
-                                @if (!string.IsNullOrWhiteSpace(bookmark.AnchorText))
-                                {
-                                    <span>@bookmark.AnchorText</span>
-                                }
-                            </a>
-                            <form method="post" asp-page-handler="RemoveBookmark" asp-route-id="@Model.Chapter.Id">
-                                <input type="hidden" name="bookmarkId" value="@bookmark.Id" />
-                                <button class="novel-note-remove" type="submit" aria-label="Remove bookmark">Remove</button>
-                            </form>
-                        </article>
-                    }
-                </div>
-            }
+            <p class="novel-muted @(Model.Bookmarks.Count == 0 ? "" : "is-hidden")" data-empty-bookmarks>No bookmarks yet.</p>
+            <div class="novel-note-list" data-bookmark-list>
+                @foreach (var bookmark in Model.Bookmarks.OrderByDescending(x => x.CreatedAt))
+                {
+                    <article class="novel-note-card" data-bookmark-card data-bookmark-id="@bookmark.Id">
+                        <a href="/Novels/Read/@bookmark.ChapterId?bookmark=@bookmark.Id">
+                            <strong>@(bookmark.Label ?? $"Bookmark · {bookmark.PositionPermille / 10}%")</strong>
+                            @if (!string.IsNullOrWhiteSpace(bookmark.AnchorText))
+                            {
+                                <span>@bookmark.AnchorText</span>
+                            }
+                        </a>
+                        <form method="post"
+                              asp-page-handler="RemoveBookmark"
+                              asp-route-id="@Model.Chapter.Id"
+                              data-remove-bookmark-form>
+                            <input type="hidden" name="bookmarkId" value="@bookmark.Id" />
+                            <button class="novel-note-remove" type="submit" aria-label="Remove bookmark">Remove</button>
+                        </form>
+                    </article>
+                }
+            </div>
         </section>
 
         <section>
             <h3>Highlights</h3>
-            @if (Model.Highlights.Count == 0)
-            {
-                <p class="novel-muted" data-empty-highlights>Select text in the reader to create a highlight.</p>
-            }
-            else
-            {
-                <div class="novel-note-list">
-                    @foreach (var highlight in Model.Highlights.OrderByDescending(x => x.CreatedAt))
-                    {
-                        <article class="novel-note-card">
-                            <a href="/Novels/Read/@highlight.ChapterId">
-                                <strong>@highlight.Text</strong>
-                                @if (!string.IsNullOrWhiteSpace(highlight.Note))
-                                {
-                                    <span>@highlight.Note</span>
-                                }
-                            </a>
-                            <form method="post" asp-page-handler="RemoveHighlight" asp-route-id="@Model.Chapter.Id">
-                                <input type="hidden" name="highlightId" value="@highlight.Id" />
-                                <button class="novel-note-remove" type="submit" aria-label="Remove highlight">Remove</button>
-                            </form>
-                        </article>
-                    }
-                </div>
-            }
+            <p class="novel-muted @(Model.Highlights.Count == 0 ? "" : "is-hidden")" data-empty-highlights>Select text in the reader to create a highlight.</p>
+            <div class="novel-note-list" data-highlight-list>
+                @foreach (var highlight in Model.Highlights.OrderByDescending(x => x.CreatedAt))
+                {
+                    <article class="novel-note-card" data-highlight-card data-highlight-id="@highlight.Id">
+                        <a href="/Novels/Read/@highlight.ChapterId">
+                            <strong>@highlight.Text</strong>
+                            @if (!string.IsNullOrWhiteSpace(highlight.Note))
+                            {
+                                <span>@highlight.Note</span>
+                            }
+                        </a>
+                        <form method="post"
+                              asp-page-handler="RemoveHighlight"
+                              asp-route-id="@Model.Chapter.Id"
+                              data-remove-highlight-form>
+                            <input type="hidden" name="highlightId" value="@highlight.Id" />
+                            <button class="novel-note-remove" type="submit" aria-label="Remove highlight">Remove</button>
+                        </form>
+                    </article>
+                }
+            </div>
         </section>
     </aside>
 
@@ -251,6 +276,19 @@
         <button type="button" data-save-highlight>Highlight</button>
         <button type="button" data-save-highlight-note>Highlight + note</button>
     </div>
+
+    @foreach (var bookmark in currentBookmarks)
+    {
+        <span hidden
+              data-saved-bookmark
+              data-bookmark-id="@bookmark.Id"
+              data-chapter-id="@bookmark.ChapterId"
+              data-position="@bookmark.PositionPermille"
+              data-language="@bookmark.Language"
+              data-paragraph="@bookmark.ParagraphIndex"
+              data-offset="@bookmark.CharacterOffset"
+              data-anchor-text="@bookmark.AnchorText"></span>
+    }
 
     @foreach (var highlight in currentHighlights)
     {
@@ -296,6 +334,22 @@
         <input type="hidden" name="startOffset" value="0" />
         <input type="hidden" name="endOffset" value="0" />
         <input type="hidden" name="note" value="" />
+    </form>
+
+    <form method="post"
+          asp-page-handler="RemoveBookmark"
+          asp-route-id="@Model.Chapter.Id"
+          data-remove-bookmark-endpoint
+          hidden>
+        <input type="hidden" name="bookmarkId" value="" />
+    </form>
+
+    <form method="post"
+          asp-page-handler="RemoveHighlight"
+          asp-route-id="@Model.Chapter.Id"
+          data-remove-highlight-endpoint
+          hidden>
+        <input type="hidden" name="highlightId" value="" />
     </form>
 
     <div class="novel-reader-toast" data-reader-toast hidden role="status" aria-live="polite"></div>
