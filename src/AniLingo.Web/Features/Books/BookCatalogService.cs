@@ -887,25 +887,77 @@ public sealed class BookCatalogService(
                 "SABnzbd is not configured for AniLingo.");
         }
 
-        var endpoint = new UriBuilder(new Uri(baseUri, "api"))
+        var fields = new Dictionary<string, string>
         {
-            Query = BuildQuery(
-                ("mode", "addurl"),
-                ("name", source.ToString()),
-                ("nzbname", displayName ?? "AniLingo book"),
-                ("apikey", apiKey),
-                ("output", "json"),
-                ("cat", category))
-        }.Uri;
+            ["mode"] = "addurl",
+            ["name"] = source.ToString(),
+            ["nzbname"] = displayName ?? "AniLingo book",
+            ["apikey"] = apiKey,
+            ["output"] = "json"
+        };
+        if (!string.IsNullOrWhiteSpace(category))
+        {
+            fields["cat"] = category;
+        }
 
-        using var response = await httpClient.GetAsync(
-            endpoint,
+        using var content = new FormUrlEncodedContent(fields);
+        using var response = await httpClient.PostAsync(
+            new Uri(baseUri, "api"),
+            content,
             cancellationToken);
         var body = await response.Content.ReadAsStringAsync(
             cancellationToken);
 
         response.EnsureSuccessStatusCode();
         return ParseSabResponse(body);
+    }
+
+    public async Task<string> TestSabnzbdAsync(
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetSabnzbdConfiguration(
+                out var baseUri,
+                out var apiKey,
+                out _))
+        {
+            throw new InvalidOperationException(
+                "SABnzbd is not configured for AniLingo.");
+        }
+
+        using var content = new FormUrlEncodedContent(
+            new Dictionary<string, string>
+            {
+                ["mode"] = "version",
+                ["apikey"] = apiKey,
+                ["output"] = "json"
+            });
+
+        using var response = await httpClient.PostAsync(
+            new Uri(baseUri, "api"),
+            content,
+            cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(
+            cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            if (document.RootElement.TryGetProperty(
+                    "version",
+                    out var version)
+                && version.ValueKind == JsonValueKind.String)
+            {
+                return "Connected to SABnzbd "
+                    + version.GetString()
+                    + ".";
+            }
+        }
+        catch (JsonException)
+        {
+        }
+
+        return "Connected to SABnzbd.";
     }
 
     public async Task<SabnzbdSubmissionResult> QueueSabnzbdFileAsync(
