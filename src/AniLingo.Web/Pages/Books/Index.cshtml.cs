@@ -1,5 +1,7 @@
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Books;
+using AniLingo.Web.Features.Operations;
+using AniLingo.Web.Data;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
@@ -7,7 +9,8 @@ namespace AniLingo.Web.Pages.Books;
 
 public sealed class IndexModel(
     BookCatalogService books,
-    CurrentAccountContext account) : PageModel
+    CurrentAccountContext account,
+    AppDbContext db) : PageModel
 {
     public string Query { get; private set; } = "";
     public string TargetLanguage { get; private set; } = "id";
@@ -129,10 +132,29 @@ public sealed class IndexModel(
             return Forbid();
         }
 
+        var operationStore = new OperationStore(db);
+        var operationId = await operationStore.CreateAsync(
+            new OperationDescriptor(
+                "remote-epub-import",
+                "Books",
+                "Download remote EPUB",
+                ProfileId: account.ProfileId,
+                Lane: OperationLane.Normal,
+                IsDownload: true,
+                Retryable: false),
+            cancellationToken);
+
+        await operationStore.MarkRunningAsync(operationId, cancellationToken);
+
         try
         {
             var workId = await books.ImportRemoteEpubAsync(
                 epubUrl ?? "",
+                cancellationToken);
+
+            await operationStore.MarkSucceededAsync(
+                operationId,
+                "EPUB downloaded and imported.",
                 cancellationToken);
 
             return RedirectToPage(
@@ -144,6 +166,10 @@ public sealed class IndexModel(
                 or HttpRequestException
                 or TaskCanceledException)
         {
+            await operationStore.MarkFailedAsync(
+                operationId,
+                $"{exception.GetType().Name}: {exception.Message}",
+                CancellationToken.None);
             TempData["Status"] = exception.Message;
             return RedirectToPage();
         }
@@ -186,11 +212,30 @@ public sealed class IndexModel(
             return Forbid();
         }
 
+        var operationStore = new OperationStore(db);
+        var operationId = await operationStore.CreateAsync(
+            new OperationDescriptor(
+                "sabnzbd-submit-url",
+                "External downloads",
+                "Submit SABnzbd download",
+                displayName,
+                account.ProfileId,
+                OperationLane.Normal,
+                IsDownload: true,
+                Retryable: false),
+            cancellationToken);
+
+        await operationStore.MarkRunningAsync(operationId, cancellationToken);
+
         try
         {
             var result = await books.QueueSabnzbdUrlAsync(
                 nzbUrl ?? "",
                 displayName,
+                cancellationToken);
+            await operationStore.MarkSucceededAsync(
+                operationId,
+                result.Message,
                 cancellationToken);
             TempData["Status"] = result.Message;
         }
@@ -199,6 +244,10 @@ public sealed class IndexModel(
                 or HttpRequestException
                 or TaskCanceledException)
         {
+            await operationStore.MarkFailedAsync(
+                operationId,
+                $"{exception.GetType().Name}: {exception.Message}",
+                CancellationToken.None);
             TempData["Status"] = exception.Message;
         }
 
@@ -220,12 +269,31 @@ public sealed class IndexModel(
             return RedirectToPage();
         }
 
+        var operationStore = new OperationStore(db);
+        var operationId = await operationStore.CreateAsync(
+            new OperationDescriptor(
+                "sabnzbd-submit-file",
+                "External downloads",
+                "Submit SABnzbd NZB",
+                nzb.FileName,
+                account.ProfileId,
+                OperationLane.Normal,
+                IsDownload: true,
+                Retryable: false),
+            cancellationToken);
+
+        await operationStore.MarkRunningAsync(operationId, cancellationToken);
+
         try
         {
             await using var stream = nzb.OpenReadStream();
             var result = await books.QueueSabnzbdFileAsync(
                 stream,
                 nzb.FileName,
+                cancellationToken);
+            await operationStore.MarkSucceededAsync(
+                operationId,
+                result.Message,
                 cancellationToken);
             TempData["Status"] = result.Message;
         }
@@ -234,6 +302,10 @@ public sealed class IndexModel(
                 or HttpRequestException
                 or TaskCanceledException)
         {
+            await operationStore.MarkFailedAsync(
+                operationId,
+                $"{exception.GetType().Name}: {exception.Message}",
+                CancellationToken.None);
             TempData["Status"] = exception.Message;
         }
 
