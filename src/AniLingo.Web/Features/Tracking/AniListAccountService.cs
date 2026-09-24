@@ -867,6 +867,17 @@ public sealed class AniListAccountService(
                 aniListChapterCount);
         }
 
+        if (aniListChapterCount is not > 0)
+        {
+            return AniListReadingProgressPreview.Blocked(
+                "AniList does not expose a reliable chapter count for this light novel, so AniLingo cannot safely assume the local chapter numbering matches.",
+                requestedProgress,
+                mediaTitle,
+                remote.Progress,
+                remote.Status,
+                aniListChapterCount);
+        }
+
         if (!string.Equals(remote.Status, "CURRENT", StringComparison.OrdinalIgnoreCase))
         {
             return AniListReadingProgressPreview.Blocked(
