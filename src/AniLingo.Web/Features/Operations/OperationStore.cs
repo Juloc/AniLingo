@@ -405,13 +405,12 @@ public sealed class OperationStore(AppDbContext db)
                         UpdatedAtUtc = @now
                     WHERE Id = @id
                       AND Retryable = 1
-                      AND Status IN (@failed, @cancelled, @interrupted);
+                      AND Status IN (@failed, @interrupted);
                     """;
                 Add(command, "@queued", (int)OperationStatus.Queued);
                 Add(command, "@now", Format(now));
                 Add(command, "@id", id.ToString("D"));
                 Add(command, "@failed", (int)OperationStatus.Failed);
-                Add(command, "@cancelled", (int)OperationStatus.Cancelled);
                 Add(command, "@interrupted", (int)OperationStatus.Interrupted);
                 return await command.ExecuteNonQueryAsync(cancellationToken);
             },
