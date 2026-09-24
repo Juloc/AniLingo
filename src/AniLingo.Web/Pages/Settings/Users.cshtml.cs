@@ -88,28 +88,6 @@ public sealed class UsersModel(
         return RedirectToPage();
     }
 
-    public async Task<IActionResult> OnPostResetPasswordAsync(
-        string accountId,
-        string newPassword,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            await authService.ResetPasswordAsync(
-                accountId,
-                newPassword,
-                cancellationToken);
-            TempData["Status"] = "Password reset.";
-        }
-        catch (Exception exception) when (
-            exception is ArgumentException or InvalidOperationException)
-        {
-            TempData["Status"] = exception.Message;
-        }
-
-        return RedirectToPage();
-    }
-
     private async Task LoadAsync(CancellationToken cancellationToken) =>
         Users = await progressService.GetAsync(cancellationToken);
 }
