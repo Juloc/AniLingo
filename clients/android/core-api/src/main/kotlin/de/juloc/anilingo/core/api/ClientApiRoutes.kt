@@ -4,6 +4,8 @@ object ClientApiRoutes {
     const val ApiVersion = 1
     const val Base = "/api/client/v1"
     const val Capabilities = "$Base/capabilities"
+    const val Login = "$Base/session/login"
+    const val Logout = "$Base/session/logout"
     const val Me = "$Base/me"
     const val Library = "$Base/library"
 
