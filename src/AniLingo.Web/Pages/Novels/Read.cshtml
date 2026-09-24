@@ -240,10 +240,20 @@
             {
                 <a href="/Novels/Read/@drawerPrevious" aria-label="Vorheriges Kapitel">←</a>
             }
+            else
+            {
+                <span aria-hidden="true"></span>
+            }
+
             <strong>@Model.Chapter.Number. @Model.Chapter.Title</strong>
+
             @if (Model.NextChapterId is Guid drawerNext)
             {
                 <a href="/Novels/Read/@drawerNext" aria-label="Nächstes Kapitel">→</a>
+            }
+            else
+            {
+                <span aria-hidden="true"></span>
             }
         </div>
 
