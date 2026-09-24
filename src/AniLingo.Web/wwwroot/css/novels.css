@@ -717,8 +717,18 @@
     background: var(--reader-surface-2);
 }
 
-.novel-icon-button.has-bookmarks {
+.novel-icon-button.has-bookmarks,
+.novel-icon-button.is-active {
     color: var(--reader-accent);
+}
+
+.novel-icon-button.is-active {
+    background: color-mix(in srgb, var(--reader-accent) 10%, transparent);
+}
+
+.novel-icon-button:disabled {
+    opacity: .35;
+    cursor: default;
 }
 
 .novel-toolbar-count,
@@ -1073,6 +1083,27 @@
 .novel-reader-shell.reader-focus .novel-reader-toolbar:hover,
 .novel-reader-shell.reader-focus .novel-reader-toolbar:focus-within {
     opacity: 1;
+}
+
+.novel-reader-shell:fullscreen,
+.novel-reader-shell:-webkit-full-screen {
+    min-height: 100dvh;
+    width: 100%;
+    margin: 0;
+    padding-top: max(.45rem, env(safe-area-inset-top));
+    padding-bottom: max(22vh, env(safe-area-inset-bottom));
+    background: var(--reader-bg);
+}
+
+.novel-reader-shell:fullscreen .novel-reader-toolbar,
+.novel-reader-shell:-webkit-full-screen .novel-reader-toolbar,
+.novel-reader-shell.reader-immersive-fallback .novel-reader-toolbar {
+    top: max(.45rem, env(safe-area-inset-top));
+}
+
+.novel-reader-shell.reader-immersive-fallback {
+    min-height: 100dvh;
+    padding-bottom: max(22vh, env(safe-area-inset-bottom));
 }
 
 /* Reader drawers */
@@ -1463,6 +1494,21 @@ body:has(.novel-reader-shell) .app-main {
 }
 
 @media (max-width: 560px) {
+    .novel-reader-toolbar {
+        grid-template-columns: 32px 112px minmax(0, 1fr);
+    }
+
+    .novel-view-switch {
+        width: 112px;
+    }
+
+    .novel-toolbar-end .novel-icon-button,
+    .novel-toolbar-end .novel-reader-settings > summary {
+        width: 30px;
+        height: 34px;
+        flex-basis: 30px;
+    }
+
     .novel-library-header {
         align-items: start;
     }
