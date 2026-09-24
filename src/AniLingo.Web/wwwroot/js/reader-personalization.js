@@ -13,6 +13,8 @@
     const pageNumber = shell.querySelector("[data-reader-page-number]");
     const pageBookmarks = shell.querySelector("[data-page-bookmarks]");
     const autoScrollButton = shell.querySelector("[data-reader-autoscroll-toggle]");
+    const wakeLockButton = shell.querySelector("[data-reader-wake-lock-toggle]");
+    const immersiveButton = shell.querySelector("[data-reader-immersive-toggle]");
     const overrideState = shell.querySelector("[data-reader-override-state]");
     const settingsPanel = shell.querySelector("[data-reader-settings-panel]");
     const backgroundSelect = shell.querySelector("[data-reader-background-select]");
@@ -35,6 +37,8 @@
     let autoScrollFrame = null;
     let autoScrollLastTime = null;
     let autoScrollRunning = false;
+    let readerWakeLock = null;
+    let keepAwake = true;
     let toastTimer = null;
     let saveQueue = Promise.resolve();
     let backgroundCatalog = [];
@@ -57,6 +61,178 @@
         toastTimer = setTimeout(() => {
             toast.hidden = true;
         }, 1800);
+    };
+
+    const profileId = document.body?.dataset.profileId || "unknown";
+    const wakeLockStorageKey = `anilingo.profile.${profileId}.novel.keepAwake`;
+
+    const readKeepAwakePreference = () => {
+        try {
+            const stored = localStorage.getItem(wakeLockStorageKey);
+            return stored == null ? true : stored === "true";
+        } catch {
+            return true;
+        }
+    };
+
+    const writeKeepAwakePreference = value => {
+        try {
+            localStorage.setItem(wakeLockStorageKey, String(value));
+        } catch {
+            // Reader controls remain usable when storage is unavailable.
+        }
+    };
+
+    const wakeLockSupported = () =>
+        typeof navigator.wakeLock?.request === "function";
+
+    const syncWakeLockButton = () => {
+        if (!wakeLockButton) return;
+        const supported = wakeLockSupported();
+        wakeLockButton.disabled = !supported;
+        wakeLockButton.setAttribute(
+            "aria-pressed",
+            supported && keepAwake ? "true" : "false");
+        wakeLockButton.classList.toggle("is-active", supported && keepAwake);
+        wakeLockButton.dataset.wakeLockActive = String(Boolean(readerWakeLock));
+        wakeLockButton.title = !supported
+            ? "Bildschirm an wird von diesem Browser nicht unterstützt"
+            : keepAwake
+                ? "Bildschirm bleibt an"
+                : "Bildschirm darf ausgehen";
+        wakeLockButton.setAttribute(
+            "aria-label",
+            keepAwake
+                ? "Bildschirm darf wieder ausgehen"
+                : "Bildschirm eingeschaltet lassen");
+    };
+
+    const releaseReaderWakeLock = async () => {
+        const active = readerWakeLock;
+        readerWakeLock = null;
+        syncWakeLockButton();
+        if (!active) return;
+        try {
+            await active.release();
+        } catch {
+            // The browser may already have released the lock.
+        }
+    };
+
+    const acquireReaderWakeLock = async () => {
+        if (!keepAwake ||
+            !wakeLockSupported() ||
+            readerWakeLock ||
+            document.visibilityState !== "visible") {
+            syncWakeLockButton();
+            return;
+        }
+
+        try {
+            const requested = await navigator.wakeLock.request("screen");
+            readerWakeLock = requested;
+            requested.addEventListener("release", () => {
+                if (readerWakeLock === requested) {
+                    readerWakeLock = null;
+                }
+                syncWakeLockButton();
+            }, { once: true });
+        } catch {
+            readerWakeLock = null;
+        }
+        syncWakeLockButton();
+    };
+
+    const toggleReaderWakeLock = async () => {
+        if (!wakeLockSupported()) {
+            showToast("Bildschirm an wird von diesem Browser nicht unterstützt.");
+            return;
+        }
+
+        keepAwake = !keepAwake;
+        writeKeepAwakePreference(keepAwake);
+        if (keepAwake) {
+            await acquireReaderWakeLock();
+            if (!readerWakeLock) {
+                showToast("Bildschirm konnte nicht dauerhaft aktiviert werden.");
+            }
+        } else {
+            await releaseReaderWakeLock();
+        }
+        syncWakeLockButton();
+    };
+
+    const fullscreenElement = () =>
+        document.fullscreenElement || document.webkitFullscreenElement || null;
+
+    const immersiveFallbackActive = () =>
+        shell.classList.contains("reader-immersive-fallback");
+
+    const syncImmersiveButton = () => {
+        if (!immersiveButton) return;
+        const active = fullscreenElement() === shell || immersiveFallbackActive();
+        immersiveButton.setAttribute("aria-pressed", active ? "true" : "false");
+        immersiveButton.classList.toggle("is-active", active);
+        immersiveButton.title = active ? "Immersiv beenden" : "Immersiv";
+        immersiveButton.setAttribute(
+            "aria-label",
+            active
+                ? "Immersiven Lesemodus beenden"
+                : "Immersiven Lesemodus öffnen");
+    };
+
+    const exitFullscreen = async () => {
+        if (typeof document.exitFullscreen === "function") {
+            await document.exitFullscreen();
+            return true;
+        }
+        if (typeof document.webkitExitFullscreen === "function") {
+            document.webkitExitFullscreen();
+            return true;
+        }
+        return false;
+    };
+
+    const requestReaderFullscreen = async () => {
+        if (typeof shell.requestFullscreen === "function") {
+            await shell.requestFullscreen();
+            return true;
+        }
+        if (typeof shell.webkitRequestFullscreen === "function") {
+            shell.webkitRequestFullscreen();
+            return true;
+        }
+        return false;
+    };
+
+    const toggleImmersiveReader = async () => {
+        if (fullscreenElement() === shell) {
+            try {
+                await exitFullscreen();
+            } catch {
+                // Browser-specific fullscreen exits can reject without user-visible impact.
+            }
+            return;
+        }
+
+        if (immersiveFallbackActive()) {
+            shell.classList.remove("reader-immersive-fallback", "reader-focus");
+            syncImmersiveButton();
+            return;
+        }
+
+        try {
+            if (await requestReaderFullscreen()) {
+                syncImmersiveButton();
+                return;
+            }
+        } catch {
+            // Fall through to the in-page focus mode.
+        }
+
+        shell.classList.add("reader-immersive-fallback", "reader-focus");
+        syncImmersiveButton();
+        showToast("Systemleisten können in diesem Browser nicht vollständig ausgeblendet werden.");
     };
 
     const tokenFrom = form =>
@@ -947,6 +1123,19 @@
     });
 
     autoScrollButton?.addEventListener("click", toggleAutoScroll);
+    wakeLockButton?.addEventListener("click", () => void toggleReaderWakeLock());
+    immersiveButton?.addEventListener("click", () => void toggleImmersiveReader());
+
+    document.addEventListener("fullscreenchange", syncImmersiveButton);
+    document.addEventListener("webkitfullscreenchange", syncImmersiveButton);
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") {
+            void acquireReaderWakeLock();
+        } else {
+            void releaseReaderWakeLock();
+        }
+    });
+    window.addEventListener("pagehide", () => void releaseReaderWakeLock());
 
     content.addEventListener("pointerdown", event => {
         if (autoScrollRunning && !event.target.closest("a, button, input, select, textarea")) {
@@ -1075,8 +1264,12 @@
     shell.querySelectorAll("[data-bookmark-track]").forEach(track =>
         bookmarkObserver.observe(track, { childList: true, subtree: true }));
 
+    keepAwake = readKeepAwakePreference();
+    syncWakeLockButton();
+    syncImmersiveButton();
     collectBookmarks();
     syncControls();
     applySettings(false);
     loadBackgroundCatalog();
+    void acquireReaderWakeLock();
 })();
