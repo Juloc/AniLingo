@@ -39,22 +39,22 @@ public sealed class SubtitleImportService
 
     private readonly AppDbContext db;
     private readonly VocabularyService vocabularyService;
-    private readonly EmbeddedSubtitleExtractor embeddedSubtitleExtractor;
-    private readonly AnimeMetadataService animeMetadataService;
-    private readonly BackgroundJobQueue jobs;
-    private readonly IHttpClientFactory httpClientFactory;
-    private readonly IDataProtector jimakuProtector;
-    private readonly ILogger<SubtitleImportService> logger;
+    private readonly EmbeddedSubtitleExtractor? embeddedSubtitleExtractor;
+    private readonly AnimeMetadataService? animeMetadataService;
+    private readonly BackgroundJobQueue? jobs;
+    private readonly IHttpClientFactory? httpClientFactory;
+    private readonly IDataProtector? jimakuProtector;
+    private readonly ILogger<SubtitleImportService>? logger;
 
     public SubtitleImportService(
         AppDbContext db,
         VocabularyService vocabularyService,
-        EmbeddedSubtitleExtractor embeddedSubtitleExtractor,
-        AnimeMetadataService animeMetadataService,
-        BackgroundJobQueue jobs,
-        IHttpClientFactory httpClientFactory,
-        IDataProtectionProvider dataProtectionProvider,
-        ILogger<SubtitleImportService> logger)
+        EmbeddedSubtitleExtractor? embeddedSubtitleExtractor = null,
+        AnimeMetadataService? animeMetadataService = null,
+        BackgroundJobQueue? jobs = null,
+        IHttpClientFactory? httpClientFactory = null,
+        IDataProtectionProvider? dataProtectionProvider = null,
+        ILogger<SubtitleImportService>? logger = null)
     {
         this.db = db;
         this.vocabularyService = vocabularyService;
@@ -63,7 +63,7 @@ public sealed class SubtitleImportService
         this.jobs = jobs;
         this.httpClientFactory = httpClientFactory;
         this.logger = logger;
-        jimakuProtector = dataProtectionProvider.CreateProtector(
+        jimakuProtector = dataProtectionProvider?.CreateProtector(
             "AniLingo.Subtitles.Jimaku.ApiKey.v1");
     }
 
@@ -303,7 +303,7 @@ public sealed class SubtitleImportService
 
         try
         {
-            await jobs.QueueAsync(
+            await RequireJobs().QueueAsync(
                 async (services, jobCancellationToken) =>
                 {
                     var importer = services.GetRequiredService<SubtitleImportService>();
@@ -368,7 +368,7 @@ public sealed class SubtitleImportService
 
         try
         {
-            await jobs.QueueAsync(
+            await RequireJobs().QueueAsync(
                 async (services, jobCancellationToken) =>
                 {
                     try
@@ -461,7 +461,7 @@ public sealed class SubtitleImportService
             }
 
             var audioState =
-                embeddedSubtitleExtractor.GetAudioTranscriptionState(media.MediaPath);
+                RequireEmbeddedSubtitleExtractor().GetAudioTranscriptionState(media.MediaPath);
             MarkPreparationFailed(
                 episodeId,
                 audioState.Message ??
@@ -473,7 +473,7 @@ public sealed class SubtitleImportService
         }
         catch (Exception exception)
         {
-            logger.LogError(
+            logger?.LogError(
                 exception,
                 "Learning-text preparation failed for episode {EpisodeId}.",
                 episodeId);
@@ -494,14 +494,14 @@ public sealed class SubtitleImportService
 
         try
         {
-            var key = jimakuProtector.Unprotect(persisted.ProtectedApiKey);
+            var key = RequireJimakuProtector().Unprotect(persisted.ProtectedApiKey);
             return new JimakuConnectionStatus(
                 !string.IsNullOrWhiteSpace(key),
                 persisted.UpdatedAt);
         }
         catch (CryptographicException exception)
         {
-            logger.LogWarning(exception, "Could not decrypt the Jimaku API key.");
+            logger?.LogWarning(exception, "Could not decrypt the Jimaku API key.");
             return new JimakuConnectionStatus(false);
         }
     }
@@ -527,7 +527,7 @@ public sealed class SubtitleImportService
         Directory.CreateDirectory(directory);
 
         var persisted = new PersistedJimakuSettings(
-            jimakuProtector.Protect(normalized),
+            RequireJimakuProtector().Protect(normalized),
             DateTimeOffset.UtcNow);
         var json = JsonSerializer.Serialize(persisted, JsonOptions);
         var temporaryPath = $"{JimakuStorePath}.tmp-{Guid.NewGuid():N}";
@@ -619,7 +619,7 @@ public sealed class SubtitleImportService
                 UnauthorizedAccessException or
                 NotSupportedException)
             {
-                logger.LogWarning(
+                logger?.LogWarning(
                     exception,
                     "Could not import local Japanese subtitle {SubtitlePath}.",
                     path);
@@ -633,7 +633,7 @@ public sealed class SubtitleImportService
         EpisodeMediaSnapshot media,
         CancellationToken cancellationToken)
     {
-        var embedded = await embeddedSubtitleExtractor.ExtractPreferredJapaneseAsync(
+        var embedded = await RequireEmbeddedSubtitleExtractor().ExtractPreferredJapaneseAsync(
             media.MediaPath,
             cancellationToken);
 
@@ -669,7 +669,7 @@ public sealed class SubtitleImportService
     {
         try
         {
-            var resolved = await animeMetadataService.ResolveEpisodeAsync(
+            var resolved = await RequireAnimeMetadataService().ResolveEpisodeAsync(
                 media.EpisodeId,
                 cancellationToken);
 
@@ -755,7 +755,7 @@ public sealed class SubtitleImportService
             InvalidDataException or
             IOException)
         {
-            logger.LogWarning(
+            logger?.LogWarning(
                 exception,
                 "Jimaku lookup failed for episode {EpisodeId}; falling back to Whisper.",
                 media.EpisodeId);
@@ -768,7 +768,7 @@ public sealed class SubtitleImportService
         EpisodeMediaSnapshot media,
         CancellationToken cancellationToken)
     {
-        var transcript = await embeddedSubtitleExtractor.TranscribeJapaneseAudioAsync(
+        var transcript = await RequireEmbeddedSubtitleExtractor().TranscribeJapaneseAudioAsync(
             media.MediaPath,
             cancellationToken);
 
@@ -790,7 +790,7 @@ public sealed class SubtitleImportService
             return false;
         }
 
-        embeddedSubtitleExtractor.MarkAudioTranscriptionReady(media.MediaPath);
+        RequireEmbeddedSubtitleExtractor().MarkAudioTranscriptionReady(media.MediaPath);
         MarkPreparationReady(
             media.EpisodeId,
             LearningTextSourceKind.Whisper,
@@ -826,7 +826,7 @@ public sealed class SubtitleImportService
 
         if (!response.IsSuccessStatusCode)
         {
-            logger.LogWarning(
+            logger?.LogWarning(
                 "Jimaku entry search returned HTTP {StatusCode}.",
                 (int)response.StatusCode);
             return [];
@@ -885,13 +885,13 @@ public sealed class SubtitleImportService
             !(uri.Host.Equals("jimaku.cc", StringComparison.OrdinalIgnoreCase) ||
               uri.Host.EndsWith(".jimaku.cc", StringComparison.OrdinalIgnoreCase)))
         {
-            logger.LogWarning(
+            logger?.LogWarning(
                 "Rejected unexpected Jimaku download host for {FileName}.",
                 candidate.Name);
             return null;
         }
 
-        using var client = httpClientFactory.CreateClient();
+        using var client = RequireHttpClientFactory().CreateClient();
         client.Timeout = TimeSpan.FromSeconds(30);
 
         using var request = new HttpRequestMessage(HttpMethod.Get, uri);
@@ -994,7 +994,7 @@ public sealed class SubtitleImportService
         string relativeUrl,
         CancellationToken cancellationToken)
     {
-        var client = httpClientFactory.CreateClient();
+        var client = RequireHttpClientFactory().CreateClient();
         client.BaseAddress = new Uri(JimakuApiBase);
         client.Timeout = TimeSpan.FromSeconds(20);
 
@@ -1021,12 +1021,12 @@ public sealed class SubtitleImportService
 
         try
         {
-            var key = jimakuProtector.Unprotect(persisted.ProtectedApiKey);
+            var key = RequireJimakuProtector().Unprotect(persisted.ProtectedApiKey);
             return string.IsNullOrWhiteSpace(key) ? null : key.Trim();
         }
         catch (CryptographicException exception)
         {
-            logger.LogWarning(exception, "Could not decrypt the Jimaku API key.");
+            logger?.LogWarning(exception, "Could not decrypt the Jimaku API key.");
             return null;
         }
     }
@@ -1054,7 +1054,7 @@ public sealed class SubtitleImportService
             IOException or
             UnauthorizedAccessException)
         {
-            logger.LogWarning(exception, "Could not load Jimaku settings.");
+            logger?.LogWarning(exception, "Could not load Jimaku settings.");
             return null;
         }
         finally
@@ -1233,6 +1233,26 @@ public sealed class SubtitleImportService
             await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
         }
     }
+
+    private EmbeddedSubtitleExtractor RequireEmbeddedSubtitleExtractor() =>
+        embeddedSubtitleExtractor ?? throw new InvalidOperationException(
+            "Learning-text preparation requires EmbeddedSubtitleExtractor.");
+
+    private AnimeMetadataService RequireAnimeMetadataService() =>
+        animeMetadataService ?? throw new InvalidOperationException(
+            "Jimaku lookup requires AnimeMetadataService.");
+
+    private BackgroundJobQueue RequireJobs() =>
+        jobs ?? throw new InvalidOperationException(
+            "Learning-text preparation requires BackgroundJobQueue.");
+
+    private IHttpClientFactory RequireHttpClientFactory() =>
+        httpClientFactory ?? throw new InvalidOperationException(
+            "Jimaku lookup requires IHttpClientFactory.");
+
+    private IDataProtector RequireJimakuProtector() =>
+        jimakuProtector ?? throw new InvalidOperationException(
+            "Jimaku settings require ASP.NET Core Data Protection.");
 
     private static void SetPrivateFileMode(string path)
     {
