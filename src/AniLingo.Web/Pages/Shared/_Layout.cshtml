@@ -1,5 +1,8 @@
 @{
     var isAuthenticated = User.Identity?.IsAuthenticated == true;
+    var profileId = isAuthenticated
+        ? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+        : null;
 }
 <!DOCTYPE html>
 <html lang="en">
@@ -16,7 +19,8 @@
     <script src="~/js/pwa.js" asp-append-version="true" defer></script>
     @await RenderSectionAsync("Head", required: false)
 </head>
-<body class="@(isAuthenticated ? "" : "auth-page")">
+<body class="@(isAuthenticated ? "" : "auth-page")"
+      data-profile-id="@profileId">
     <div class="app-shell @(isAuthenticated ? "" : "auth-shell")">
         @if (isAuthenticated)
         {

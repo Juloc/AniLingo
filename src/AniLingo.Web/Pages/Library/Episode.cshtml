@@ -28,9 +28,7 @@
     </div>
 </header>
 
-@if (Model.IsOwner)
-{
-    @if (Model.AniListProgress is { } aniList)
+@if (Model.AniListProgress is { } aniList)
     {
         <section class="panel">
             <div class="panel-heading">
@@ -67,8 +65,10 @@
                 <span class="status-pill status-ok">No write needed</span>
             }
         </section>
-    }
-    
+}
+
+@if (Model.IsOwner)
+{
     <section class="panel subtitle-source-panel">
         <div class="panel-heading">
             <div>
