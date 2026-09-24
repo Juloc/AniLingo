@@ -3,7 +3,15 @@ name: CI
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "clients/android/**"
+      - "docs/ANDROID_CLIENTS.md"
+      - ".github/workflows/android.yml"
   pull_request:
+    paths-ignore:
+      - "clients/android/**"
+      - "docs/ANDROID_CLIENTS.md"
+      - ".github/workflows/android.yml"
 
 permissions:
   contents: write

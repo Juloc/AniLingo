@@ -3,7 +3,10 @@ using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Playback;
 using AniLingo.Web.Features.Progress;
 using AniLingo.Web.Features.Storage;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace AniLingo.Web.Features.ClientApi;
 
@@ -18,6 +21,74 @@ public static class ClientApiEndpoints
         group.MapGet("/capabilities", () =>
                 Results.Ok(ClientApiContract.Capabilities()))
             .AllowAnonymous();
+
+        group.MapPost("/session/login", async (
+            ClientLoginRequest request,
+            OwnerAuthService ownerAuth,
+            HttpContext httpContext,
+            CancellationToken cancellationToken) =>
+        {
+            if (!await ownerAuth.HasOwnerAsync(cancellationToken))
+            {
+                return Results.Json(
+                    new ClientErrorResponse(
+                        "setup_required",
+                        "AniLingo must be set up in the browser before a native client can sign in."),
+                    statusCode: StatusCodes.Status409Conflict);
+            }
+
+            if (string.IsNullOrWhiteSpace(request.UserName) ||
+                string.IsNullOrEmpty(request.Password))
+            {
+                return BadRequest(
+                    "invalid_credentials",
+                    "User name and password are required.");
+            }
+
+            var account = await ownerAuth.ValidateCredentialsAsync(
+                request.UserName,
+                request.Password,
+                cancellationToken);
+
+            if (account is null)
+            {
+                return Results.Json(
+                    new ClientErrorResponse(
+                        "invalid_credentials",
+                        "Invalid user name or password."),
+                    statusCode: StatusCodes.Status401Unauthorized);
+            }
+
+            var properties = new AuthenticationProperties
+            {
+                IsPersistent = request.RememberMe,
+                AllowRefresh = true
+            };
+
+            if (request.RememberMe)
+            {
+                properties.ExpiresUtc = DateTimeOffset.UtcNow.AddDays(30);
+            }
+
+            await httpContext.SignInAsync(
+                CookieAuthenticationDefaults.AuthenticationScheme,
+                OwnerAuthService.CreatePrincipal(account),
+                properties);
+
+            return Results.Ok(new ClientAccountResponse(
+                account.Id,
+                account.UserName,
+                account.Role == AccountRole.Owner ? "owner" : "user"));
+        })
+        .AllowAnonymous()
+        .RequireRateLimiting("login");
+
+        group.MapPost("/session/logout", async (HttpContext httpContext) =>
+        {
+            await httpContext.SignOutAsync(
+                CookieAuthenticationDefaults.AuthenticationScheme);
+            return Results.NoContent();
+        });
 
         group.MapGet("/me", (
             HttpContext httpContext,

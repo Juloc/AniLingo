@@ -10,7 +10,7 @@
 <header class="books-header">
     <div>
         <h1>Books</h1>
-        <p>Search books and test Indonesian translation when readable text is available.</p>
+        <p>Search, import, translate and read books in AniLingo.</p>
     </div>
     <form method="get" action="/Books" class="books-search" role="search">
         <input type="search"
@@ -18,54 +18,190 @@
                value="@Model.Query"
                placeholder="Search title or author"
                aria-label="Search books" />
+        <input type="hidden" name="lang" value="@Model.TargetLanguage" />
         <button class="button button-primary" type="submit">Search</button>
     </form>
 </header>
+
+@if (TempData["Status"] is string status)
+{
+    <div class="books-message">@status</div>
+}
 
 @if (!string.IsNullOrWhiteSpace(Model.Error))
 {
     <div class="books-message">@Model.Error</div>
 }
-else
-{
+
+<section class="books-library-section">
     <div class="books-results-heading">
-        <strong>@(string.IsNullOrWhiteSpace(Model.Query) ? "Popular books" : $"Results for “{Model.Query}”")</strong>
-        <span>@Model.Books.Count shown</span>
+        <strong>My books</strong>
+        <span>@Model.Library.Count</span>
     </div>
 
-    <section class="books-grid" aria-label="Book results">
-        @foreach (var book in Model.Books)
+    @if (Model.Library.Count == 0)
+    {
+        <div class="books-empty">
+            <p>No books imported yet.</p>
+            @if (Model.IsOwner)
+            {
+                <span>Search for a downloadable edition or upload an EPUB.</span>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="books-grid">
+            @foreach (var book in Model.Library)
+            {
+                <a class="book-card"
+                   href="/Books/Library/@book.WorkId?lang=@Model.TargetLanguage">
+                    <div class="book-cover">
+                        @if (!string.IsNullOrWhiteSpace(book.CoverImageUrl))
+                        {
+                            <img src="@book.CoverImageUrl"
+                                 alt=""
+                                 loading="lazy"
+                                 referrerpolicy="no-referrer" />
+                        }
+                        else
+                        {
+                            <span>B</span>
+                        }
+                    </div>
+                    <div class="book-card-copy">
+                        <strong>@book.Title</strong>
+                        @if (!string.IsNullOrWhiteSpace(book.Author))
+                        {
+                            <span>@book.Author</span>
+                        }
+                        <small>
+                            @book.ChapterCount chapters ·
+                            @book.TranslatedChapterCount translated
+                        </small>
+                        @if (book.ProgressPermille > 0)
+                        {
+                            <div class="book-card-progress">
+                                <span style="width:@(book.ProgressPermille / 10)%"></span>
+                            </div>
+                        }
+                    </div>
+                </a>
+            }
+        </div>
+    }
+</section>
+
+@if (Model.IsOwner)
+{
+    <section class="books-tools">
+        <div>
+            <h2>Import EPUB</h2>
+            <p>Use a DRM-free EPUB you are allowed to read.</p>
+            <form method="post"
+                  asp-page-handler="Upload"
+                  enctype="multipart/form-data"
+                  class="books-inline-form">
+                <input type="file"
+                       name="epub"
+                       accept=".epub,application/epub+zip"
+                       required />
+                <button class="button button-primary" type="submit">Import</button>
+            </form>
+        </div>
+
+        @if (Model.IsInboxConfigured)
         {
-            <a class="book-card" href="/Books/@book.Id">
-                <div class="book-cover">
-                    @if (!string.IsNullOrWhiteSpace(book.CoverImageUrl))
-                    {
-                        <img src="@book.CoverImageUrl"
-                             alt=""
-                             loading="lazy"
-                             referrerpolicy="no-referrer" />
-                    }
-                    else
-                    {
-                        <span>B</span>
-                    }
-                </div>
-                <div class="book-card-copy">
-                    <strong>@book.Title</strong>
-                    @if (!string.IsNullOrWhiteSpace(book.Author))
-                    {
-                        <span>@book.Author</span>
-                    }
-                    @if (book.FirstPublishYear is not null)
-                    {
-                        <small>@book.FirstPublishYear</small>
-                    }
-                    else
-                    {
-                        <small>@book.SourceName</small>
-                    }
-                </div>
-            </a>
+            <div>
+                <h2>Books inbox</h2>
+                <p>Import completed EPUB files from the configured shared download folder.</p>
+                <form method="post" asp-page-handler="ImportInbox">
+                    <button class="button" type="submit">Import inbox now</button>
+                </form>
+            </div>
+        }
+
+        @if (Model.IsSabnzbdConfigured)
+        {
+            <div>
+                <h2>SABnzbd transport</h2>
+                <p>Send an NZB URL or NZB file you selected from an authorized source.</p>
+                <form method="post"
+                      asp-page-handler="SabUrl"
+                      class="books-stack-form">
+                    <input type="url"
+                           name="nzbUrl"
+                           placeholder="https://…/book.nzb"
+                           required />
+                    <input type="text"
+                           name="displayName"
+                           placeholder="Optional queue name" />
+                    <button class="button" type="submit">Send URL to SABnzbd</button>
+                </form>
+                <form method="post"
+                      asp-page-handler="SabFile"
+                      enctype="multipart/form-data"
+                      class="books-inline-form">
+                    <input type="file"
+                           name="nzb"
+                           accept=".nzb,application/x-nzb"
+                           required />
+                    <button class="button" type="submit">Send NZB file</button>
+                </form>
+            </div>
+        }
+    </section>
+}
+
+@if (Model.Query.Length > 0 && string.IsNullOrWhiteSpace(Model.Error))
+{
+    <section class="books-search-results">
+        <div class="books-results-heading">
+            <strong>Results for “@Model.Query”</strong>
+            <span>@Model.Results.Count shown</span>
+        </div>
+
+        @if (Model.Results.Count == 0)
+        {
+            <div class="books-empty">No matching books found.</div>
+        }
+        else
+        {
+            <div class="books-grid">
+                @foreach (var book in Model.Results)
+                {
+                    <a class="book-card" href="/Books/@book.Id">
+                        <div class="book-cover">
+                            @if (!string.IsNullOrWhiteSpace(book.CoverImageUrl))
+                            {
+                                <img src="@book.CoverImageUrl"
+                                     alt=""
+                                     loading="lazy"
+                                     referrerpolicy="no-referrer" />
+                            }
+                            else
+                            {
+                                <span>B</span>
+                            }
+                        </div>
+                        <div class="book-card-copy">
+                            <strong>@book.Title</strong>
+                            @if (!string.IsNullOrWhiteSpace(book.Author))
+                            {
+                                <span>@book.Author</span>
+                            }
+                            @if (book.FirstPublishYear is not null)
+                            {
+                                <small>@book.FirstPublishYear</small>
+                            }
+                            else
+                            {
+                                <small>@book.SourceName</small>
+                            }
+                        </div>
+                    </a>
+                }
+            </div>
         }
     </section>
 }
