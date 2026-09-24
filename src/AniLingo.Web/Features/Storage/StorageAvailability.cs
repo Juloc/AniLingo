@@ -412,6 +412,26 @@ public sealed class MediaAvailabilityService(
             root.WakeConfigured,
             DateTimeOffset.UtcNow);
     }
+
+    public async Task<MediaAvailabilitySnapshot?> CheckEpisodeAsync(
+        Guid episodeId,
+        bool force,
+        CancellationToken cancellationToken)
+    {
+        var mediaFileId = await db.MediaFiles
+            .AsNoTracking()
+            .Where(x => x.EpisodeId == episodeId)
+            .OrderBy(x => x.Path)
+            .Select(x => (Guid?)x.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return mediaFileId is null
+            ? null
+            : await CheckMediaAsync(
+                mediaFileId.Value,
+                force,
+                cancellationToken);
+    }
 }
 
 public sealed class WakeOnLanService(
@@ -447,15 +467,6 @@ public sealed class WakeOnLanService(
                 await availability.CheckAsync(rootId, false, cancellationToken));
         }
 
-        if (!coordinator.TryMarkWakeStarting(rootId))
-        {
-            return new WakeOnLanResult(
-                true,
-                true,
-                "Wake-on-LAN was already requested recently.",
-                await availability.CheckAsync(rootId, false, cancellationToken));
-        }
-
         if (!TryResolveBroadcastAddress(
                 root.WakeBroadcastAddress,
                 out var broadcast))
@@ -464,6 +475,15 @@ public sealed class WakeOnLanService(
                 false,
                 false,
                 "The configured Wake-on-LAN broadcast address is invalid.",
+                await availability.CheckAsync(rootId, false, cancellationToken));
+        }
+
+        if (!coordinator.TryMarkWakeStarting(rootId))
+        {
+            return new WakeOnLanResult(
+                true,
+                true,
+                "Wake-on-LAN was already requested recently.",
                 await availability.CheckAsync(rootId, false, cancellationToken));
         }
 
