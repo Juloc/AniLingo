@@ -168,6 +168,8 @@ public sealed class StorageAvailabilityTests
             db.MediaFiles.Add(media);
             await db.SaveChangesAsync();
 
+            Directory.CreateDirectory(Path.Combine(libraryPath, "mounted-marker"));
+
             var coordinator = new StorageAvailabilityCoordinator();
             var rootAvailability = new LibraryRootAvailabilityService(
                 db,
