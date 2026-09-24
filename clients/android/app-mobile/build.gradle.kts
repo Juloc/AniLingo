@@ -44,3 +44,8 @@ dependencies {
     testImplementation(libs.junit)
     debugImplementation(libs.androidx.compose.ui.tooling)
 }
+
+
+tasks.matching { it.name == "lintDebug" }.configureEach {
+    dependsOn("testDebugUnitTest")
+}
