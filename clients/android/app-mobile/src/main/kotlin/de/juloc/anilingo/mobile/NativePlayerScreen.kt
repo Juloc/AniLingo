@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import de.juloc.anilingo.core.api.HttpAniLingoClientApi
@@ -57,6 +58,7 @@ import de.juloc.anilingo.core.model.SubtitleCue
 import de.juloc.anilingo.core.player.PlaybackTransport
 import kotlinx.coroutines.launch
 
+@OptIn(UnstableApi::class)
 @Composable
 fun NativePlayerScreen(
     episodeId: String,
