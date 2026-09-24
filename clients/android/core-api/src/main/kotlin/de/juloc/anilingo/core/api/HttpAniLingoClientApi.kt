@@ -2,7 +2,6 @@ package de.juloc.anilingo.core.api
 
 import de.juloc.anilingo.core.model.AnimeDetail
 import de.juloc.anilingo.core.model.AnimeSummary
-import de.juloc.anilingo.core.model.AudioTrack
 import de.juloc.anilingo.core.model.ClientAccount
 import de.juloc.anilingo.core.model.ClientCapabilities
 import de.juloc.anilingo.core.model.ClientFeatureFlags
