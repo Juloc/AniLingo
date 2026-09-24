@@ -497,6 +497,7 @@
                     <article class="novel-note-card"
                              data-bookmark-card
                              data-bookmark-id="@bookmark.Id"
+                             data-bookmark-chapter-id="@bookmark.ChapterId"
                              data-bookmark-style="@(bookmark.Style ?? Model.ReaderSettings.BookmarkStyle)"
                              data-bookmark-color="@(bookmark.Color ?? Model.ReaderSettings.BookmarkColor)">
                         <a href="/Novels/Read/@bookmark.ChapterId?bookmark=@bookmark.Id">
