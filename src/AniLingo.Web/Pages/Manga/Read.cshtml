@@ -5,11 +5,7 @@
     var currentBookmarks = Model.Bookmarks
         .Where(x => x.ChapterId == chapter.Id)
         .ToArray();
-    var initialMode = Model.ReaderSettings.ReadingMode == "continuous"
-        ? "continuous"
-        : Model.ReaderSettings.TwoPageSpread
-            ? "double"
-            : "single";
+    var initialMode = Model.ReaderSettings.UiMode;
     var chapterData = System.Text.Json.JsonSerializer.Serialize(
         Model.Chapters.Select(item => new
         {
@@ -85,7 +81,7 @@
                     <button type="button" data-save-manga-default>Use mode for all manga</button>
                     <button type="button"
                             data-reset-manga-series
-                            hidden="@(!Model.ReaderSettings.HasBookOverride)">
+                            hidden="@(!Model.ReaderSettings.HasSeriesOverride)">
                         Use manga default
                     </button>
                 </div>
