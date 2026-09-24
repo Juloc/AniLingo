@@ -114,6 +114,7 @@ namespace AniLingo.Web.Data.Migrations
                     b.Property<Guid>("Id").ValueGeneratedOnAdd().HasColumnType("TEXT");
                     b.Property<double?>("AutoScrollSpeed").HasColumnType("REAL");
                     b.Property<double?>("BackgroundIntensity").HasColumnType("REAL");
+                    b.Property<string>("BackgroundAssetId").HasMaxLength(120).HasColumnType("TEXT");
                     b.Property<string>("BookmarkColor").HasMaxLength(16).HasColumnType("TEXT");
                     b.Property<string>("BookmarkStyle").HasMaxLength(24).HasColumnType("TEXT");
                     b.Property<string>("ChapterStyle").HasMaxLength(32).HasColumnType("TEXT");
