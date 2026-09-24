@@ -280,7 +280,7 @@ public sealed partial class NovelAniListProvider(
         }
     }
 
-    internal static IReadOnlyList<AniListReadingMediaCandidate> ParseReadingMediaResponse(
+    public static IReadOnlyList<AniListReadingMediaCandidate> ParseReadingMediaResponse(
         string json,
         bool includeNovels,
         bool includeManga)
