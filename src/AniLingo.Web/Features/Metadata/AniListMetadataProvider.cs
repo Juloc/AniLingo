@@ -12,11 +12,33 @@ public sealed class AniListMetadataProvider(
 {
     public const string ProviderKey = "anilist";
     private const int MaximumSearchLimit = 12;
+    private const int MaximumBrowseLimit = 24;
 
     private const string SearchQuery = """
         query ($search: String!, $perPage: Int!) {
           Page(page: 1, perPage: $perPage) {
             media(search: $search, type: ANIME, isAdult: false) {
+              id
+              title { romaji english native }
+              description(asHtml: false)
+              coverImage { extraLarge large }
+              bannerImage
+              format
+              status
+              season
+              seasonYear
+              episodes
+              duration
+              isAdult
+            }
+          }
+        }
+        """;
+
+    private const string BrowseQuery = """
+        query ($perPage: Int!, $sort: [MediaSort!]) {
+          Page(page: 1, perPage: $perPage) {
+            media(type: ANIME, isAdult: false, sort: $sort) {
               id
               title { romaji english native }
               description(asHtml: false)
@@ -72,6 +94,25 @@ public sealed class AniListMetadataProvider(
             {
                 search = normalized,
                 perPage = Math.Clamp(limit, 1, MaximumSearchLimit)
+            },
+            cancellationToken);
+
+        return ParseSearchResponse(response);
+    }
+
+    public async Task<IReadOnlyList<AnimeMetadataCandidate>> BrowseAsync(
+        bool trending,
+        int limit,
+        CancellationToken cancellationToken)
+    {
+        var response = await SendAsync(
+            BrowseQuery,
+            new
+            {
+                perPage = Math.Clamp(limit, 1, MaximumBrowseLimit),
+                sort = trending
+                    ? new[] { "TRENDING_DESC", "POPULARITY_DESC" }
+                    : new[] { "SCORE_DESC", "POPULARITY_DESC" }
             },
             cancellationToken);
 
@@ -136,6 +177,10 @@ public sealed class AniListMetadataProvider(
             return body;
         }
         catch (MetadataProviderException)
+        {
+            throw;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             throw;
         }
