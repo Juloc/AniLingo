@@ -110,6 +110,17 @@
             </form>
         </div>
 
+        @if (Model.IsInboxConfigured)
+        {
+            <div>
+                <h2>Books inbox</h2>
+                <p>Import completed EPUB files from the configured shared download folder.</p>
+                <form method="post" asp-page-handler="ImportInbox">
+                    <button class="button" type="submit">Import inbox now</button>
+                </form>
+            </div>
+        }
+
         @if (Model.IsSabnzbdConfigured)
         {
             <div>
