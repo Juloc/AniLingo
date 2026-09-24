@@ -89,7 +89,7 @@ public sealed class UserManagementTests
 
             var refreshed = await auth.GetEnabledAccountAsync(user.Id);
             Assert.IsNotNull(refreshed);
-            Assert.IsGreaterThan(firstVersion.Value, refreshed.SessionVersion);
+            Assert.IsTrue(refreshed.SessionVersion > firstVersion.Value);
 
             var refreshedPrincipal = OwnerAuthService.CreatePrincipal(refreshed);
             var refreshedVersion = OwnerAuthService.GetSessionVersion(refreshedPrincipal);
