@@ -2,12 +2,14 @@
     const shell = document.querySelector("[data-novel-reader]");
     if (!shell) return;
 
+    const profileId = document.body?.dataset.profileId || "unknown";
+    const storagePrefix = `anilingo.profile.${profileId}.novel`;
     const storage = {
-        view: "anilingo.novel.view",
-        size: "anilingo.novel.size",
-        leading: "anilingo.novel.leading",
-        width: "anilingo.novel.width",
-        theme: "anilingo.novel.theme"
+        view: `${storagePrefix}.view`,
+        size: `${storagePrefix}.size`,
+        leading: `${storagePrefix}.leading`,
+        width: `${storagePrefix}.width`,
+        theme: `${storagePrefix}.theme`
     };
 
     const progressForm = shell.querySelector("[data-progress-form]");
