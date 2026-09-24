@@ -26,6 +26,28 @@ public sealed class IndexModel(
         Query = q?.Trim() ?? "";
         TargetLanguage = BookLanguageCatalog.Normalize(lang);
 
+        if (account.IsOwner && books.IsInboxConfigured)
+        {
+            try
+            {
+                var imported = await books.ImportInboxAsync(
+                    cancellationToken);
+                if (imported.Count > 0)
+                {
+                    TempData["Status"] =
+                        $"Automatically imported {imported.Count} book(s) from the Books inbox.";
+                }
+            }
+            catch (Exception exception) when (
+                exception is InvalidOperationException
+                    or IOException
+                    or UnauthorizedAccessException)
+            {
+                // The inbox is optional. A missing/offline download mount
+                // must not make the local Books library unavailable.
+            }
+        }
+
         Library = await books.GetLibraryAsync(
             account.ProfileId,
             TargetLanguage,
@@ -92,6 +114,35 @@ public sealed class IndexModel(
                 new { id = workId, lang = "id" });
         }
         catch (InvalidOperationException exception)
+        {
+            TempData["Status"] = exception.Message;
+            return RedirectToPage();
+        }
+    }
+
+    public async Task<IActionResult> OnPostRemoteEpubAsync(
+        string? epubUrl,
+        CancellationToken cancellationToken)
+    {
+        if (!account.IsOwner)
+        {
+            return Forbid();
+        }
+
+        try
+        {
+            var workId = await books.ImportRemoteEpubAsync(
+                epubUrl ?? "",
+                cancellationToken);
+
+            return RedirectToPage(
+                "/Books/Library",
+                new { id = workId, lang = "id" });
+        }
+        catch (Exception exception) when (
+            exception is InvalidOperationException
+                or HttpRequestException
+                or TaskCanceledException)
         {
             TempData["Status"] = exception.Message;
             return RedirectToPage();
