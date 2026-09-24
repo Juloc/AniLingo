@@ -19,7 +19,9 @@
     const notes = shell.querySelector("[data-reader-notes]");
     const bookmarkList = shell.querySelector("[data-bookmark-list]");
     const highlightList = shell.querySelector("[data-highlight-list]");
-    const bookmarkRailTrack = shell.querySelector("[data-bookmark-rail-track]");
+    const bookmarkTracks = Array.from(shell.querySelectorAll("[data-bookmark-track]"));
+    const railFill = shell.querySelector("[data-reader-rail-fill]");
+    const percentOutput = shell.querySelector("[data-reader-percent]");
     const bookmarkButton = shell.querySelector("[data-reader-bookmark]");
     const noteCountBadge = shell.querySelector("[data-reader-note-count]");
     const currentBookmarkCountBadge = shell.querySelector("[data-current-bookmark-count]");
@@ -27,10 +29,18 @@
     const emptyHighlights = shell.querySelector("[data-empty-highlights]");
     const removeBookmarkEndpoint = shell.querySelector("[data-remove-bookmark-endpoint]");
     const removeHighlightEndpoint = shell.querySelector("[data-remove-highlight-endpoint]");
-    const hasTranslation = shell.dataset.hasTranslation === "true";
+    const chapterDrawer = shell.querySelector("[data-chapter-drawer]");
+    const chapterDrawerBackdrop = shell.querySelector("[data-chapter-drawer-backdrop]");
+    const chapterFilter = shell.querySelector("[data-chapter-filter]");
+    const chapterList = shell.querySelector("[data-chapter-list]");
+    const chapterDataElement = shell.querySelector("[data-chapter-data]");
+    const translateForm = shell.querySelector("[data-translate-form]");
+    const translationSlot = shell.querySelector("[data-translation-slot]");
+    let hasTranslation = shell.dataset.hasTranslation === "true";
     const chapterBookmarks = new Map();
 
     let restoreComplete = false;
+    let chapterRowsReady = false;
     let progressTimer = null;
     let toastTimer = null;
     let pendingSelection = null;
@@ -82,6 +92,14 @@
         return "ja";
     };
 
+    const syncLanguageControls = () => {
+        shell.querySelectorAll("[data-reader-view]").forEach(button => {
+            if (button.dataset.readerView !== "ja") {
+                button.disabled = !hasTranslation;
+            }
+        });
+    };
+
     const applyView = view => {
         const allowed = hasTranslation ? ["ja", "de", "both"] : ["ja"];
         const next = allowed.includes(view) ? view : "ja";
@@ -125,6 +143,7 @@
         ? initialAnchorLanguage
         : (storedView || initialAnchorLanguage);
 
+    syncLanguageControls();
     applyView(initialView);
     applyTheme(localStorage.getItem(storage.theme) || "dark");
 
@@ -185,8 +204,17 @@
     };
 
     const updateProgressBar = () => {
+        const progress = positionPermille();
+        const percent = Math.round(progress / 10);
+
         if (progressBar) {
-            progressBar.style.width = (positionPermille() / 10) + "%";
+            progressBar.style.width = (progress / 10) + "%";
+        }
+        if (railFill) {
+            railFill.style.height = (progress / 10) + "%";
+        }
+        if (percentOutput) {
+            percentOutput.textContent = percent + "%";
         }
     };
 
@@ -526,26 +554,33 @@
     };
 
     const renderBookmarkRailMarker = bookmark => {
-        if (!bookmarkRailTrack || !bookmark.id) return;
+        if (!bookmark.id) return;
 
-        bookmarkRailTrack
-            .querySelector(
+        for (const track of bookmarkTracks) {
+            track.querySelector(
                 `[data-bookmark-marker][data-bookmark-id="${escapeAttributeSelector(bookmark.id)}"]`)
-            ?.remove();
+                ?.remove();
 
-        const marker = document.createElement("button");
-        marker.type = "button";
-        marker.className = "novel-bookmark-marker";
-        marker.dataset.bookmarkMarker = "";
-        marker.dataset.bookmarkId = bookmark.id;
-        marker.style.top =
-            clamp(bookmark.positionPermille / 10, 1.5, 98.5) + "%";
-        marker.textContent = "◆";
-        marker.title = bookmark.anchorText
-            ? `Bookmark · ${bookmark.anchorText}`
-            : `Bookmark · ${Math.round(bookmark.positionPermille / 10)}%`;
-        marker.setAttribute("aria-label", marker.title);
-        bookmarkRailTrack.append(marker);
+            const marker = document.createElement("button");
+            marker.type = "button";
+            marker.className = "novel-bookmark-marker";
+            marker.dataset.bookmarkMarker = "";
+            marker.dataset.bookmarkId = bookmark.id;
+
+            const position = clamp(bookmark.positionPermille / 10, 1.5, 98.5);
+            if (track.dataset.orientation === "horizontal") {
+                marker.style.left = position + "%";
+            } else {
+                marker.style.top = position + "%";
+            }
+
+            marker.innerHTML = "<span></span>";
+            marker.title = bookmark.anchorText
+                ? `Lesezeichen · ${bookmark.anchorText}`
+                : `Lesezeichen · ${Math.round(bookmark.positionPermille / 10)}%`;
+            marker.setAttribute("aria-label", marker.title);
+            track.append(marker);
+        }
     };
 
     const renderBookmarkCard = bookmark => {
@@ -652,11 +687,11 @@
         shell.querySelectorAll("[data-saved-bookmark]").forEach(element => {
             if (element.dataset.bookmarkId === bookmarkId) element.remove();
         });
-        bookmarkRailTrack
-            ?.querySelectorAll("[data-bookmark-marker]")
-            .forEach(marker => {
+        bookmarkTracks.forEach(track => {
+            track.querySelectorAll("[data-bookmark-marker]").forEach(marker => {
                 if (marker.dataset.bookmarkId === bookmarkId) marker.remove();
             });
+        });
         chapterBookmarks.delete(bookmarkId);
         syncAnnotationUi();
     };
@@ -780,7 +815,217 @@
         }
     };
 
+    const ensureChapterRows = () => {
+        if (chapterRowsReady || !chapterList || !chapterDataElement) return;
+
+        let chapters = [];
+        try {
+            chapters = JSON.parse(chapterDataElement.textContent || "[]");
+        } catch {
+            chapters = [];
+        }
+
+        const fragment = document.createDocumentFragment();
+
+        for (const chapter of chapters) {
+            const link = document.createElement("a");
+            link.className = [
+                "novel-drawer-row",
+                chapter.isCurrent
+                    ? "current"
+                    : chapter.isEarlier
+                        ? "earlier"
+                        : ""
+            ].filter(Boolean).join(" ");
+            link.href = `/Novels/Read/${encodeURIComponent(chapter.id)}`;
+            link.dataset.chapterRow = "";
+            link.dataset.chapterSearch =
+                normalizeText(`${chapter.number} ${chapter.title}`)
+                    .toLocaleLowerCase();
+
+            const number = document.createElement("span");
+            number.className = "novel-drawer-number";
+            number.textContent = String(chapter.number);
+
+            const title = document.createElement("span");
+            title.className = "novel-drawer-title";
+            title.lang = "ja";
+            title.textContent = chapter.title;
+
+            const lang = document.createElement("span");
+            lang.className = "novel-drawer-lang";
+            lang.textContent = chapter.hasTranslation ? "DE" : "";
+
+            const current = document.createElement("span");
+            if (chapter.isCurrent) {
+                current.className = "novel-drawer-current-mark";
+                current.setAttribute("aria-label", "Aktuelles Kapitel");
+            }
+
+            link.append(number, title, lang, current);
+            fragment.append(link);
+        }
+
+        chapterList.append(fragment);
+        chapterRowsReady = true;
+    };
+
+    const setChapterDrawer = open => {
+        if (!chapterDrawer || !chapterDrawerBackdrop) return;
+
+        if (open) {
+            ensureChapterRows();
+        }
+
+        chapterDrawer.hidden = !open;
+        chapterDrawerBackdrop.hidden = !open;
+        shell.classList.toggle("chapter-drawer-open", open);
+        document.documentElement.classList.toggle("novel-drawer-lock", open);
+
+        if (open) {
+            requestAnimationFrame(() => {
+                chapterFilter?.focus({ preventScroll: true });
+                chapterDrawer.querySelector(".novel-drawer-row.current")
+                    ?.scrollIntoView({ block: "center" });
+            });
+        }
+    };
+
+    const filterChapters = query => {
+        const needle = normalizeText(query).toLocaleLowerCase();
+        shell.querySelectorAll("[data-chapter-row]").forEach(row => {
+            row.hidden =
+                needle.length > 0 &&
+                !(row.dataset.chapterSearch || "").includes(needle);
+        });
+    };
+
+    const installGermanParagraphs = paragraphs => {
+        if (!Array.isArray(paragraphs) || paragraphs.length === 0) return;
+
+        const content = shell.querySelector(".novel-reader-content");
+        if (!content) return;
+
+        paragraphs.forEach((text, index) => {
+            let segment = content.querySelector(
+                `[data-reader-segment="${index}"]`);
+
+            if (!segment) {
+                segment = document.createElement("section");
+                segment.className = "novel-reader-segment";
+                segment.dataset.readerSegment = String(index);
+                content.append(segment);
+            }
+
+            let paragraph = segment.querySelector(
+                '[data-reader-paragraph][data-language="de"]');
+
+            if (!paragraph) {
+                paragraph = document.createElement("p");
+                paragraph.className = "novel-reader-paragraph de";
+                paragraph.lang = "de";
+                paragraph.dataset.readerParagraph = "";
+                paragraph.dataset.language = "de";
+                paragraph.dataset.index = String(index);
+                segment.append(paragraph);
+            }
+
+            paragraph.textContent = text;
+        });
+
+        hasTranslation = true;
+        shell.dataset.hasTranslation = "true";
+        syncLanguageControls();
+
+        const state = translationSlot?.querySelector(".novel-translation-state");
+        if (state) {
+            state.classList.add("ready");
+            state.textContent = "Deutsch bereit";
+        }
+
+        translateForm?.remove();
+    };
+
+    const waitForTranslation = async () => {
+        for (let attempt = 0; attempt < 45; attempt++) {
+            await new Promise(resolve => setTimeout(resolve, 2000));
+
+            try {
+                const response = await fetch(
+                    `${window.location.pathname}?handler=TranslationStatus`,
+                    {
+                        credentials: "same-origin",
+                        cache: "no-store",
+                        headers: { "X-Requested-With": "fetch" }
+                    });
+
+                if (!response.ok) continue;
+                const result = await response.json();
+
+                if (result?.status === "ready") {
+                    installGermanParagraphs(result.paragraphs);
+                    showToast("Deutsche Übersetzung ist bereit");
+                    return;
+                }
+            } catch {
+                // Keep the reader usable if a background status request fails.
+            }
+        }
+    };
+
+    const queueTranslation = async form => {
+        const button = form?.querySelector("button");
+        if (!form || !button) return;
+
+        button.disabled = true;
+        const previous = button.textContent;
+        button.textContent = "Startet…";
+
+        try {
+            const result = await postForm(form);
+
+            if (result?.status === "ready") {
+                const statusResponse = await fetch(
+                    `${window.location.pathname}?handler=TranslationStatus`,
+                    {
+                        credentials: "same-origin",
+                        cache: "no-store",
+                        headers: { "X-Requested-With": "fetch" }
+                    });
+                if (statusResponse.ok) {
+                    const status = await statusResponse.json();
+                    installGermanParagraphs(status.paragraphs);
+                }
+                return;
+            }
+
+            const state = translationSlot?.querySelector(".novel-translation-state");
+            if (state) {
+                state.textContent = "Übersetzung läuft";
+            }
+
+            button.textContent = "Läuft";
+            showToast("Übersetzung gestartet");
+            void waitForTranslation();
+        } catch (error) {
+            button.disabled = false;
+            button.textContent = previous;
+            showToast(error.message || "Übersetzung konnte nicht gestartet werden");
+        }
+    };
+
     document.addEventListener("click", event => {
+        if (event.target.closest("[data-reader-chapters-toggle]")) {
+            setChapterDrawer(true);
+            return;
+        }
+
+        if (event.target.closest("[data-chapter-drawer-close]") ||
+            event.target.closest("[data-chapter-drawer-backdrop]")) {
+            setChapterDrawer(false);
+            return;
+        }
+
         const viewButton = event.target.closest("[data-reader-view]");
         if (viewButton) {
             applyView(viewButton.dataset.readerView);
@@ -904,6 +1149,30 @@
             event.preventDefault();
             removeHighlight(
                 highlightRemoveForm.querySelector('[name="highlightId"]')?.value);
+            return;
+        }
+
+        const translationForm = event.target.closest("[data-translate-form]");
+        if (translationForm) {
+            event.preventDefault();
+            queueTranslation(translationForm);
+        }
+    });
+
+    chapterFilter?.addEventListener("input", event => {
+        filterChapters(event.target.value || "");
+    });
+
+    document.addEventListener("keydown", event => {
+        if (event.key === "Escape") {
+            if (chapterDrawer && !chapterDrawer.hidden) {
+                setChapterDrawer(false);
+                return;
+            }
+            if (notes && !notes.hidden) {
+                notes.hidden = true;
+                shell.classList.remove("notes-open");
+            }
         }
     });
 

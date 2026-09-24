@@ -22,6 +22,7 @@ public sealed class ReadModel(
     public IReadOnlyList<NovelAnimeMapping> AnimeMappings { get; private set; } = [];
     public IReadOnlyList<NovelBookmark> Bookmarks { get; private set; } = [];
     public IReadOnlyList<NovelHighlight> Highlights { get; private set; } = [];
+    public IReadOnlyList<NovelChapterItem> Chapters { get; private set; } = [];
     public NovelProgress? Progress { get; private set; }
     public NovelBookmark? JumpBookmark { get; private set; }
     public Guid? PreviousChapterId { get; private set; }
@@ -54,6 +55,12 @@ public sealed class ReadModel(
 
         Work = result.Value.Work;
         Chapter = result.Value.Chapter;
+
+        var workDetail = await novels.GetWorkAsync(
+            Work.Id,
+            cancellationToken);
+        Chapters = workDetail?.Chapters ?? [];
+
         Translation = await translations.GetCachedAsync(
             id,
             "de",
@@ -121,6 +128,11 @@ public sealed class ReadModel(
 
         if (cached is not null)
         {
+            if (IsFetchRequest())
+            {
+                return new JsonResult(new { status = "ready" });
+            }
+
             TempData["Status"] = "German translation is already cached.";
             return RedirectToPage(new { id });
         }
@@ -133,8 +145,34 @@ public sealed class ReadModel(
             },
             cancellationToken);
 
+        if (IsFetchRequest())
+        {
+            return new JsonResult(new { status = "queued" });
+        }
+
         TempData["Status"] = "German AI translation queued.";
         return RedirectToPage(new { id });
+    }
+
+    public async Task<IActionResult> OnGetTranslationStatusAsync(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var cached = await translations.GetCachedAsync(
+            id,
+            "de",
+            cancellationToken);
+
+        if (cached is null)
+        {
+            return new JsonResult(new { status = "pending" });
+        }
+
+        return new JsonResult(new
+        {
+            status = "ready",
+            paragraphs = NovelTextLayout.SplitParagraphs(cached.Text)
+        });
     }
 
     public async Task<IActionResult> OnPostRefreshSourceAsync(
