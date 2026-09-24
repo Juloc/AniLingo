@@ -1,3 +1,4 @@
+using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Books;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -6,102 +7,95 @@ namespace AniLingo.Web.Pages.Books;
 
 public sealed class DetailsModel(
     BookCatalogService books,
-    IBookTranslator translator) : PageModel
+    CurrentAccountContext account) : PageModel
 {
     public BookCatalogItem? Book { get; private set; }
-    public string? SourceText { get; private set; }
-    public string? TranslatedText { get; private set; }
     public string? Error { get; private set; }
-
-    public IReadOnlyList<string> OriginalParagraphs =>
-        SplitParagraphs(SourceText);
-
-    public IReadOnlyList<string> TranslatedParagraphs =>
-        SplitParagraphs(TranslatedText);
+    public bool IsOwner => account.IsOwner;
 
     public async Task<IActionResult> OnGetAsync(
         string id,
         CancellationToken cancellationToken)
     {
-        return await LoadAsync(id, cancellationToken)
-            ? Page()
-            : NotFound();
-    }
-
-    public async Task<IActionResult> OnPostTranslateAsync(
-        string id,
-        CancellationToken cancellationToken)
-    {
-        if (!await LoadAsync(id, cancellationToken))
-        {
-            return NotFound();
-        }
-
-        if (string.IsNullOrWhiteSpace(SourceText))
-        {
-            Error = "No readable text source is available for this book yet.";
-            return Page();
-        }
-
         try
         {
-            TranslatedText = await translator.TranslateEnglishAsync(
-                SourceText,
-                "Indonesian",
+            Book = await books.GetAsync(
+                id,
                 cancellationToken);
-        }
-        catch (InvalidOperationException exception)
-        {
-            Error = exception.Message;
-        }
-
-        return Page();
-    }
-
-    private async Task<bool> LoadAsync(
-        string id,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            Book = await books.GetAsync(id, cancellationToken);
-            if (Book is null)
-            {
-                return false;
-            }
-
-            if (Book.CanRead)
-            {
-                SourceText = await books.GetReadableSampleAsync(
-                    Book,
-                    cancellationToken);
-            }
-
-            return true;
+            return Book is null
+                ? NotFound()
+                : Page();
         }
         catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            Error = "The book source timed out. Please try again.";
-            return Book is not null;
+            Error = "The catalog request timed out. Please try again.";
+            return Page();
         }
         catch (HttpRequestException)
         {
-            Error = "The book source is temporarily unavailable. Please try again.";
-            return Book is not null;
-        }
-        catch (InvalidOperationException exception)
-        {
-            Error = exception.Message;
-            return Book is not null;
+            Error = "The catalog is temporarily unavailable.";
+            return Page();
         }
     }
 
-    private static IReadOnlyList<string> SplitParagraphs(string? text) =>
-        string.IsNullOrWhiteSpace(text)
-            ? []
-            : text.Replace("\r\n", "\n", StringComparison.Ordinal)
-                .Replace('\r', '\n')
-                .Split(
-                    "\n\n",
-                    StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    public async Task<IActionResult> OnPostAcquireAsync(
+        string id,
+        CancellationToken cancellationToken)
+    {
+        if (!account.IsOwner)
+        {
+            return Forbid();
+        }
+
+        try
+        {
+            var workId = await books.AcquireCatalogBookAsync(
+                id,
+                cancellationToken);
+            return RedirectToPage(
+                "/Books/Library",
+                new { id = workId, lang = "id" });
+        }
+        catch (Exception exception) when (
+            exception is InvalidOperationException
+                or HttpRequestException
+                or TaskCanceledException)
+        {
+            TempData["Status"] = exception.Message;
+            return RedirectToPage(new { id });
+        }
+    }
+
+    public async Task<IActionResult> OnPostSabUrlAsync(
+        string id,
+        string? nzbUrl,
+        CancellationToken cancellationToken)
+    {
+        if (!account.IsOwner)
+        {
+            return Forbid();
+        }
+
+        var title = (await books.GetAsync(
+            id,
+            cancellationToken))?.Title;
+
+        try
+        {
+            var result = await books.QueueSabnzbdUrlAsync(
+                nzbUrl ?? "",
+                title,
+                cancellationToken);
+            TempData["Status"] = result.Message;
+        }
+        catch (Exception exception) when (
+            exception is InvalidOperationException
+                or HttpRequestException
+                or TaskCanceledException)
+        {
+            TempData["Status"] = exception.Message;
+        }
+
+        return RedirectToPage(new { id });
+    }
 }
