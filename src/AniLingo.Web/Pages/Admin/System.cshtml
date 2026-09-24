@@ -1,0 +1,143 @@
+@page
+@model AniLingo.Web.Pages.Admin.SystemModel
+@{
+    ViewData["Title"] = "System";
+}
+
+<header class="page-header">
+    <div>
+        <span class="eyebrow">Admin</span>
+        <h1>System</h1>
+        <p>Server-wide media storage and integrations.</p>
+    </div>
+</header>
+
+<partial name="_AdminNavigation" />
+
+<div class="settings-grid">
+    <section class="panel">
+        <div class="panel-heading">
+            <div>
+                <span class="eyebrow">Media storage</span>
+                <h2>Configured roots</h2>
+            </div>
+            <span>@Model.Roots.Count</span>
+        </div>
+
+        <div asp-validation-summary="ModelOnly" class="validation"></div>
+
+        @if (Model.Roots.Count == 0)
+        {
+            <p class="muted">No roots configured.</p>
+        }
+        else
+        {
+            <div class="root-list">
+                @foreach (var root in Model.Roots)
+                {
+                    <div class="root-row">
+                        <div class="form-stack" style="flex:1; min-width:0;">
+                            <div>
+                                <strong>@root.Name</strong>
+                                <span class="status-pill @root.AvailabilityCss">@root.AvailabilityLabel</span>
+                            </div>
+                            <code>@root.Path</code>
+                            <small>
+                                Last available:
+                                @(root.Availability.LastAvailableAtUtc?.ToLocalTime().ToString("g") ?? "not yet")
+                                · Last scan:
+                                @(root.LastScannedAt?.ToLocalTime().ToString("g") ?? "never")
+                            </small>
+
+                            <div class="inline-actions">
+                                <form method="post" asp-page-handler="TestRoot">
+                                    <input type="hidden" name="rootId" value="@root.Id" />
+                                    <button class="button" type="submit">Test storage</button>
+                                </form>
+
+                                <form method="post" asp-page-handler="Scan">
+                                    <input type="hidden" name="rootId" value="@root.Id" />
+                                    <button class="button button-primary" type="submit">Queue library scan</button>
+                                </form>
+
+                                @if (root.WakeOnLanEnabled && root.Availability.WakeConfigured)
+                                {
+                                    <form method="post" asp-page-handler="WakeRoot">
+                                        <input type="hidden" name="rootId" value="@root.Id" />
+                                        <button class="button" type="submit">Wake NAS</button>
+                                    </form>
+                                }
+                            </div>
+
+                            <details>
+                                <summary>Wake-on-LAN</summary>
+                                <form method="post" asp-page-handler="ConfigureWake" class="form-stack" style="margin-top:.75rem;">
+                                    <input type="hidden" name="rootId" value="@root.Id" />
+                                    <label>
+                                        <span>
+                                            <input type="checkbox"
+                                                   name="wakeOnLanEnabled"
+                                                   value="true"
+                                                   checked="@root.WakeOnLanEnabled" />
+                                            Enable Wake-on-LAN
+                                        </span>
+                                    </label>
+                                    <label>
+                                        <span>NAS MAC address</span>
+                                        <input name="wakeMacAddress"
+                                               value="@root.WakeMacAddress"
+                                               autocomplete="off"
+                                               placeholder="AA:BB:CC:DD:EE:FF" />
+                                    </label>
+                                    <label>
+                                        <span>Broadcast IPv4 (optional)</span>
+                                        <input name="wakeBroadcastAddress"
+                                               value="@root.WakeBroadcastAddress"
+                                               autocomplete="off"
+                                               placeholder="255.255.255.255" />
+                                    </label>
+                                    <button class="button" type="submit">Save Wake-on-LAN</button>
+                                </form>
+                            </details>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    </section>
+
+    <section class="panel">
+        <div class="panel-heading"><h2>Add root</h2></div>
+        <form method="post" asp-page-handler="Add" class="form-stack">
+            <label>
+                <span>Name</span>
+                <input asp-for="Name" />
+            </label>
+            <label>
+                <span>Container path</span>
+                <input asp-for="Path" />
+            </label>
+            <button class="button button-primary" type="submit">Add library root</button>
+        </form>
+    </section>
+</div>
+
+<div class="settings-grid">
+    <section class="panel">
+        <div class="panel-heading"><h2>Subtitles</h2><span>Server</span></div>
+        <p class="muted">Coverage, Jimaku lookup and missing transcript preparation.</p>
+        <a class="button" asp-page="/Admin/Subtitles">Manage subtitles</a>
+    </section>
+
+    <section class="panel">
+        <div class="panel-heading"><h2>Sonarr</h2><span>Server</span></div>
+        <p class="muted">Configure artwork import from the server's Sonarr library.</p>
+        <a class="button" asp-page="/Admin/Sonarr">Manage Sonarr</a>
+    </section>
+
+    <section class="panel">
+        <div class="panel-heading"><h2>AI</h2><span>Server</span></div>
+        <p class="muted">Configure optional server-side AI providers and caches.</p>
+        <a class="button" asp-page="/Admin/Ai">Manage AI</a>
+    </section>
+</div>
