@@ -72,6 +72,33 @@ public sealed record AniListRemoteListEntry(
         Equals(CompletedAt, other.CompletedAt);
 }
 
+public enum AniListLibraryMediaType
+{
+    Anime,
+    Manga
+}
+
+public sealed record AniListLibraryMedia(
+    int MediaId,
+    string MediaType,
+    string? Format,
+    string Title,
+    string? NativeTitle,
+    string? CoverImageUrl,
+    string? MediaStatus,
+    string? ListStatus,
+    int Progress,
+    int? TotalProgress,
+    int? VolumeCount,
+    int? Year,
+    long? UpdatedAt,
+    IReadOnlyList<string> Genres)
+{
+    public bool IsNovel =>
+        string.Equals(MediaType, "MANGA", StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(Format, "NOVEL", StringComparison.OrdinalIgnoreCase);
+}
+
 public sealed record AniListProgressPreview(
     bool CanSync,
     bool IsNoOp,
@@ -149,6 +176,38 @@ public sealed class AniListAccountService(
             startedAt { year month day }
             completedAt { year month day }
             updatedAt
+          }
+        }
+        """;
+
+    private const string PersonalLibraryQuery = """
+        query ($userId: Int!, $type: MediaType!) {
+          MediaListCollection(userId: $userId, type: $type) {
+            lists {
+              status
+              entries {
+                id
+                status
+                progress
+                repeat
+                updatedAt
+                media {
+                  id
+                  type
+                  format
+                  title { romaji english native }
+                  coverImage { extraLarge large }
+                  status
+                  episodes
+                  chapters
+                  volumes
+                  seasonYear
+                  startDate { year }
+                  genres
+                  isAdult
+                }
+              }
+            }
           }
         }
         """;
@@ -234,6 +293,41 @@ public sealed class AniListAccountService(
 
     public Task DisconnectAsync(CancellationToken cancellationToken = default) =>
         store.DisconnectAsync(currentAccount.ProfileId, cancellationToken);
+
+    public async Task<IReadOnlyList<AniListLibraryMedia>> GetLibraryAsync(
+        AniListLibraryMediaType mediaType,
+        CancellationToken cancellationToken)
+    {
+        var account = await store.LoadAsync(
+            currentAccount.ProfileId,
+            cancellationToken);
+        if (account is null)
+        {
+            return [];
+        }
+
+        if (account.TokenExpiresAt is not null &&
+            account.TokenExpiresAt <= DateTimeOffset.UtcNow)
+        {
+            throw new AniListAccountException(
+                "Your AniList connection has expired. Reconnect it in Settings.");
+        }
+
+        var body = await SendAuthenticatedAsync(
+            account.AccessToken,
+            PersonalLibraryQuery,
+            new
+            {
+                userId = account.ViewerId,
+                type = mediaType == AniListLibraryMediaType.Anime
+                    ? "ANIME"
+                    : "MANGA"
+            },
+            "reading your AniList library",
+            cancellationToken);
+
+        return ParseLibraryResponse(body);
+    }
 
     public async Task<AniListProgressPreview> GetEpisodeProgressPreviewAsync(
         Guid episodeId,
@@ -633,6 +727,102 @@ public sealed class AniListAccountService(
         }
     }
 
+    public static IReadOnlyList<AniListLibraryMedia> ParseLibraryResponse(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        ThrowIfGraphQlErrors(document.RootElement);
+
+        if (!document.RootElement.TryGetProperty("data", out var data) ||
+            !data.TryGetProperty("MediaListCollection", out var collection) ||
+            collection.ValueKind != JsonValueKind.Object ||
+            !collection.TryGetProperty("lists", out var lists) ||
+            lists.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        var result = new List<AniListLibraryMedia>();
+        foreach (var list in lists.EnumerateArray())
+        {
+            if (!list.TryGetProperty("entries", out var entries) ||
+                entries.ValueKind != JsonValueKind.Array)
+            {
+                continue;
+            }
+
+            foreach (var entry in entries.EnumerateArray())
+            {
+                if (!entry.TryGetProperty("media", out var media) ||
+                    media.ValueKind != JsonValueKind.Object ||
+                    ReadBool(media, "isAdult") ||
+                    !TryReadInt(media, "id", out var mediaId))
+                {
+                    continue;
+                }
+
+                var type = ReadString(media, "type") ?? "";
+                if (type.Length == 0)
+                {
+                    continue;
+                }
+
+                var titleElement = media.TryGetProperty("title", out var title)
+                    ? title
+                    : default;
+                var preferredTitle =
+                    ReadString(titleElement, "english") ??
+                    ReadString(titleElement, "romaji") ??
+                    ReadString(titleElement, "native") ??
+                    $"AniList {mediaId}";
+
+                string? cover = null;
+                if (media.TryGetProperty("coverImage", out var coverElement) &&
+                    coverElement.ValueKind == JsonValueKind.Object)
+                {
+                    cover =
+                        ReadString(coverElement, "extraLarge") ??
+                        ReadString(coverElement, "large");
+                }
+
+                int? year = ReadInt(media, "seasonYear");
+                if (year is null &&
+                    media.TryGetProperty("startDate", out var startDate) &&
+                    startDate.ValueKind == JsonValueKind.Object)
+                {
+                    year = ReadInt(startDate, "year");
+                }
+
+                var totalProgress = string.Equals(
+                        type,
+                        "ANIME",
+                        StringComparison.OrdinalIgnoreCase)
+                    ? ReadInt(media, "episodes")
+                    : ReadInt(media, "chapters");
+
+                result.Add(new AniListLibraryMedia(
+                    mediaId,
+                    type,
+                    ReadString(media, "format"),
+                    preferredTitle,
+                    ReadString(titleElement, "native"),
+                    cover,
+                    ReadString(media, "status"),
+                    ReadString(entry, "status"),
+                    ReadInt(entry, "progress") ?? 0,
+                    totalProgress,
+                    ReadInt(media, "volumes"),
+                    year,
+                    ReadLong(entry, "updatedAt"),
+                    ReadStringArray(media, "genres")));
+            }
+        }
+
+        return result
+            .OrderByDescending(x => x.UpdatedAt ?? 0)
+            .ThenBy(x => x.Title, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
     public static AniListViewer ParseViewerResponse(string json)
     {
         using var document = JsonDocument.Parse(json);
@@ -814,6 +1004,26 @@ public sealed class AniListAccountService(
     private static bool ReadBool(JsonElement element, string propertyName) =>
         element.TryGetProperty(propertyName, out var value) &&
         value.ValueKind == JsonValueKind.True;
+
+    private static IReadOnlyList<string> ReadStringArray(
+        JsonElement element,
+        string propertyName)
+    {
+        if (!element.TryGetProperty(propertyName, out var value) ||
+            value.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        return value.EnumerateArray()
+            .Where(x => x.ValueKind == JsonValueKind.String)
+            .Select(x => x.GetString()?.Trim())
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(24)
+            .ToArray();
+    }
 
     private static JsonNode? ReadJsonNode(
         JsonElement element,
