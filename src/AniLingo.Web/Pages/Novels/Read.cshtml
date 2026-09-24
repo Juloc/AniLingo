@@ -25,6 +25,16 @@
         .ToArray();
     var noteCount = Model.Bookmarks.Count + Model.Highlights.Count;
     var pairCount = Math.Max(Model.JapaneseParagraphs.Count, Model.GermanParagraphs.Count);
+    var chapterDataJson = System.Text.Json.JsonSerializer.Serialize(
+        Model.Chapters.Select(chapter => new
+        {
+            id = chapter.Id,
+            number = chapter.Number,
+            title = chapter.Title,
+            hasTranslation = chapter.HasTranslation,
+            isCurrent = chapter.Id == Model.Chapter.Id,
+            isEarlier = chapter.Number < Model.Chapter.Number
+        }));
 }
 @section Head {
     <link rel="stylesheet" href="~/css/novels.css" asp-append-version="true" />
@@ -268,28 +278,8 @@
                    autocomplete="off" />
         </label>
 
-        <nav class="novel-drawer-list" data-chapter-list>
-            @foreach (var chapter in Model.Chapters)
-            {
-                var isCurrent = chapter.Id == Model.Chapter.Id;
-                var isEarlier = chapter.Number < Model.Chapter.Number;
-                <a class="novel-drawer-row @(isCurrent ? "current" : isEarlier ? "earlier" : "")"
-                   href="/Novels/Read/@chapter.Id"
-                   data-chapter-row
-                   data-chapter-search="@($"{chapter.Number} {chapter.Title}".ToLowerInvariant())">
-                    <span class="novel-drawer-number">@chapter.Number</span>
-                    <span class="novel-drawer-title" lang="ja">@chapter.Title</span>
-                    @if (chapter.HasTranslation)
-                    {
-                        <span class="novel-drawer-lang">DE</span>
-                    }
-                    @if (isCurrent)
-                    {
-                        <span class="novel-drawer-current-mark" aria-label="Aktuelles Kapitel"></span>
-                    }
-                </a>
-            }
-        </nav>
+        <nav class="novel-drawer-list" data-chapter-list></nav>
+        <script type="application/json" data-chapter-data>@Html.Raw(chapterDataJson)</script>
     </aside>
 
     <aside class="novel-reader-notes" data-reader-notes hidden aria-label="Lesezeichen und Markierungen">
