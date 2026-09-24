@@ -1,0 +1,117 @@
+@page "/Manga"
+@model AniLingo.Web.Pages.Manga.IndexModel
+@{
+    ViewData["Title"] = "Manga";
+}
+@section Head {
+    <link rel="stylesheet" href="~/css/manga.css" asp-append-version="true" />
+}
+
+<header class="manga-library-header">
+    <div class="reading-type-switch" aria-label="Reading type">
+        <a href="/Novels">Novels</a>
+        <a class="active" href="/Manga">Manga</a>
+    </div>
+
+    @if (Model.IsOwner)
+    {
+        <details class="manga-import">
+            <summary class="button">Import</summary>
+            <form method="post" asp-page-handler="Import">
+                <label for="sourcePath">CBZ/ZIP or manga directory</label>
+                <input id="sourcePath"
+                       name="sourcePath"
+                       type="text"
+                       required
+                       placeholder="/media/manga/Series" />
+                <button class="button button-primary" type="submit">Import</button>
+            </form>
+        </details>
+    }
+</header>
+
+@if (TempData["Status"] is string status)
+{
+    <div class="manga-message">@status</div>
+}
+
+@if (Model.ContinueReading.Count > 0)
+{
+    <section class="manga-section">
+        <h1>Continue reading</h1>
+        <div class="manga-continue-list">
+            @foreach (var series in Model.ContinueReading)
+            {
+                <a class="manga-continue-row" href="/Manga/Read/@series.CurrentChapterId?page=@series.CurrentPageIndex">
+                    <div class="manga-thumb">
+                        @if (!string.IsNullOrWhiteSpace(series.CoverImageUrl))
+                        {
+                            <img src="@series.CoverImageUrl" alt="" loading="lazy" referrerpolicy="no-referrer" />
+                        }
+                        else if (series.PreviewChapterId is Guid preview)
+                        {
+                            <img src="/Manga/Read/@preview?handler=Page&page=0" alt="" loading="lazy" />
+                        }
+                    </div>
+                    <div>
+                        <strong>@series.Title</strong>
+                        <span>Ch. @series.CurrentChapterNumber · page @(series.CurrentPageIndex + 1)/@series.CurrentPageCount</span>
+                        <div class="manga-progress"><span style="width:@series.ProgressPercent%"></span></div>
+                    </div>
+                    <span>@series.ProgressPercent%</span>
+                </a>
+            }
+        </div>
+    </section>
+}
+
+<section class="manga-section">
+    <h1>Manga</h1>
+
+    @if (Model.Series.Count == 0)
+    {
+        <div class="manga-empty">No manga imported yet.</div>
+    }
+    else
+    {
+        <div class="manga-grid">
+            @foreach (var series in Model.Series)
+            {
+                <article class="manga-card">
+                    <a class="manga-cover" href="/Manga/Series/@series.Id">
+                        @if (!string.IsNullOrWhiteSpace(series.CoverImageUrl))
+                        {
+                            <img src="@series.CoverImageUrl" alt="" loading="lazy" referrerpolicy="no-referrer" />
+                        }
+                        else if (series.PreviewChapterId is Guid preview)
+                        {
+                            <img src="/Manga/Read/@preview?handler=Page&page=0" alt="" loading="lazy" />
+                        }
+                        else
+                        {
+                            <span>M</span>
+                        }
+
+                        @if (series.HasProgress)
+                        {
+                            <div class="manga-cover-progress">
+                                <span style="width:@series.ProgressPercent%"></span>
+                            </div>
+                        }
+                    </a>
+
+                    <div class="manga-card-copy">
+                        <a href="/Manga/Series/@series.Id">@series.Title</a>
+                        <span>@series.ChapterCount ch.</span>
+                        @if (series.HasProgress)
+                        {
+                            <a class="manga-resume" href="/Manga/Read/@series.CurrentChapterId?page=@series.CurrentPageIndex">
+                                Continue ch. @series.CurrentChapterNumber
+                            </a>
+                        }
+                    </div>
+                </article>
+            }
+        </div>
+    }
+</section>
