@@ -15,12 +15,7 @@
 
 <a class="back-link" href="/Novels">← Novels</a>
 
-<section class="novel-work-hero">
-    @if (!string.IsNullOrWhiteSpace(work.BannerImageUrl))
-    {
-        <img class="novel-work-banner" src="@work.BannerImageUrl" alt="" referrerpolicy="no-referrer" />
-    }
-
+<header class="novel-work-header">
     <div class="novel-work-cover">
         @if (!string.IsNullOrWhiteSpace(work.CoverImageUrl))
         {
@@ -33,7 +28,6 @@
     </div>
 
     <div class="novel-work-copy">
-        <span class="eyebrow">Web / Light Novel</span>
         <h1>@(work.MetadataTitle ?? work.Title)</h1>
 
         @if (!string.IsNullOrWhiteSpace(work.MetadataNativeTitle))
@@ -46,21 +40,14 @@
             {
                 <span>@work.Author</span>
             }
-            @if (!string.IsNullOrWhiteSpace(work.MetadataStatus))
-            {
-                <span>@work.MetadataStatus.Replace("_", " ")</span>
-            }
             @if (work.MetadataVolumeCount is int volumes)
             {
                 <span>@volumes volumes</span>
             }
-            @if (work.MetadataChapterCount is int metadataChapters)
+            <span>@(work.MetadataChapterCount ?? detail.Chapters.Count) chapters</span>
+            @if (!string.IsNullOrWhiteSpace(work.MetadataStatus))
             {
-                <span>@metadataChapters chapters</span>
-            }
-            else
-            {
-                <span>@detail.Chapters.Count chapters</span>
+                <span>@work.MetadataStatus.Replace("_", " ").ToLowerInvariant()</span>
             }
         </div>
 
@@ -73,19 +60,21 @@
             @if (currentChapter is not null)
             {
                 <a class="button button-primary novel-primary-action" href="/Novels/Read/@currentChapter.Id">
-                    Continue chapter @currentChapter.Number
+                    Continue ch. @currentChapter.Number
                 </a>
-                <span class="novel-progress-label">@(Model.Progress!.PositionPermille / 10)% through this chapter</span>
+                <span class="novel-progress-label">@(Model.Progress!.PositionPermille / 10)% through chapter</span>
             }
             else if (detail.Chapters.FirstOrDefault() is { } firstChapter)
             {
                 <a class="button button-primary novel-primary-action" href="/Novels/Read/@firstChapter.Id">Start reading</a>
             }
 
-            <a class="button" href="@work.SourceUrl" target="_blank" rel="noreferrer">Source</a>
+            <a class="novel-source-link" href="@work.SourceUrl" target="_blank" rel="noreferrer">
+                Source ↗
+            </a>
         </div>
     </div>
-</section>
+</header>
 
 @if (Model.IsOwner)
 {
@@ -237,13 +226,12 @@
     </details>
 }
 
-<section class="novel-panel novel-chapters-panel">
-    <div class="panel-heading">
+<section class="novel-chapters-section">
+    <div class="novel-chapters-heading">
         <div>
             <h2>Chapters</h2>
-            <span>Japanese is available directly; German AI translation is cached once requested.</span>
+            <span>@detail.Chapters.Count chapters · @detail.Chapters.Count(x => x.HasTranslation) translated</span>
         </div>
-        <span class="novel-muted">@detail.Chapters.Count(x => x.HasTranslation) translated</span>
     </div>
 
     <div class="novel-chapter-list">
@@ -269,13 +257,13 @@
                     }
                 </div>
                 <div class="novel-chapter-badges">
-                    @if (isCurrent)
-                    {
-                        <span class="novel-status-pill current">Current</span>
-                    }
                     @if (chapter.HasTranslation)
                     {
-                        <span class="novel-status-pill">DE</span>
+                        <span>DE</span>
+                    }
+                    @if (isCurrent)
+                    {
+                        <span class="current-dot" title="Current chapter"></span>
                     }
                 </div>
             </a>
