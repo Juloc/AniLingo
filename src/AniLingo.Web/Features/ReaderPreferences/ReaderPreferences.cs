@@ -78,6 +78,7 @@ public sealed record ReaderSettingsSnapshot(
     bool GenreArtworkEnabled,
     string GenreTheme,
     string ResolvedGenreTheme,
+    IReadOnlyList<string> SourceGenres,
     string BackgroundAssetId,
     double BackgroundIntensity,
     string BookmarkStyle,
@@ -103,13 +104,6 @@ public static partial class ReaderPreferenceRules
         new(StringComparer.OrdinalIgnoreCase)
         {
             "white", "cream", "sepia", "old-paper", "midnight", "oled"
-        };
-    private static readonly HashSet<string> GenreThemes =
-        new(StringComparer.OrdinalIgnoreCase)
-        {
-            "auto", "neutral", "horror", "romance", "fantasy", "sci-fi",
-            "mystery", "adventure", "slice-of-life", "psychological",
-            "dark-fantasy", "urban-fantasy", "isekai", "supernatural", "gothic"
         };
     private static readonly HashSet<string> BookmarkStyles =
         new(StringComparer.OrdinalIgnoreCase)
@@ -138,8 +132,19 @@ public static partial class ReaderPreferenceRules
     public static string NormalizePaperStyle(string? value) =>
         NormalizeChoice(value, PaperStyles, "midnight");
 
-    public static string NormalizeGenreTheme(string? value) =>
-        NormalizeChoice(value, GenreThemes, "auto");
+    public static string NormalizeGenreTheme(string? value)
+    {
+        var normalized = value?.Trim();
+        if (string.IsNullOrWhiteSpace(normalized) ||
+            string.Equals(normalized, "auto", StringComparison.OrdinalIgnoreCase))
+        {
+            return "auto";
+        }
+
+        return normalized.Length <= 80 && CatalogKey().IsMatch(normalized)
+            ? normalized.ToLowerInvariant()
+            : "auto";
+    }
 
     public static string NormalizeBookmarkStyle(string? value) =>
         NormalizeChoice(value, BookmarkStyles, "fabric");
@@ -231,28 +236,6 @@ public static partial class ReaderPreferenceRules
         }
     }
 
-    public static string InferGenreTheme(IReadOnlyList<string> genres)
-    {
-        foreach (var genre in genres)
-        {
-            var key = genre.Trim().ToLowerInvariant();
-            if (key.Contains("horror", StringComparison.Ordinal)) return "horror";
-            if (key.Contains("romance", StringComparison.Ordinal)) return "romance";
-            if (key.Contains("psychological", StringComparison.Ordinal)) return "psychological";
-            if (key.Contains("supernatural", StringComparison.Ordinal)) return "supernatural";
-            if (key.Contains("mystery", StringComparison.Ordinal) ||
-                key.Contains("crime", StringComparison.Ordinal) ||
-                key.Contains("detective", StringComparison.Ordinal)) return "mystery";
-            if (key.Contains("sci-fi", StringComparison.Ordinal) ||
-                key.Contains("science fiction", StringComparison.Ordinal)) return "sci-fi";
-            if (key.Contains("adventure", StringComparison.Ordinal)) return "adventure";
-            if (key.Contains("slice of life", StringComparison.Ordinal)) return "slice-of-life";
-            if (key.Contains("fantasy", StringComparison.Ordinal)) return "fantasy";
-            if (key.Contains("gothic", StringComparison.Ordinal)) return "gothic";
-        }
-
-        return "neutral";
-    }
 
     private static string NormalizeChoice(
         string? value,
@@ -264,6 +247,9 @@ public static partial class ReaderPreferenceRules
             ? normalized.ToLowerInvariant()
             : fallback;
     }
+
+    [GeneratedRegex("^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$", RegexOptions.CultureInvariant)]
+    private static partial Regex CatalogKey();
 
     [GeneratedRegex("^[a-zA-Z0-9][a-zA-Z0-9_-]*/[a-zA-Z0-9][a-zA-Z0-9_/-]*$", RegexOptions.CultureInvariant)]
     private static partial Regex BackgroundAssetId();
@@ -331,9 +317,8 @@ public static class ReaderPreferenceStore
             GenreArtworkEnabled:
                 book?.GenreArtworkEnabled ?? user?.GenreArtworkEnabled ?? true,
             GenreTheme: genreSelection,
-            ResolvedGenreTheme: genreSelection == "auto"
-                ? ReaderPreferenceRules.InferGenreTheme(genres)
-                : genreSelection,
+            ResolvedGenreTheme: genreSelection,
+            SourceGenres: genres,
             BackgroundAssetId: ReaderPreferenceRules.NormalizeBackgroundAssetId(
                 First(book?.BackgroundAssetId, user?.BackgroundAssetId, "auto")),
             BackgroundIntensity: ReaderPreferenceRules.NormalizeBackgroundIntensity(
