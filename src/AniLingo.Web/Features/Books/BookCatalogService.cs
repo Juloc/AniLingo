@@ -37,7 +37,7 @@ public sealed partial class BookCatalogService(
     IConfiguration configuration)
 {
     public const string ImportedBookProvider = "book-epub";
-    public const int TranslationPromptVersion = 2;
+    public const int TranslationPromptVersion = 3;
 
     private const int SearchLimit = 24;
     private const int DefaultSampleCharacters = 5500;
@@ -582,14 +582,29 @@ public sealed partial class BookCatalogService(
                 return cached;
             }
 
-            var previousContext = await db.NovelChapters
+            var previousChapter = await db.NovelChapters
                 .AsNoTracking()
                 .Where(x =>
                     x.WorkId == work.Id
                     && x.Number < chapter.Number)
                 .OrderByDescending(x => x.Number)
-                .Select(x => x.OriginalText)
                 .FirstOrDefaultAsync(cancellationToken);
+
+            string? previousTargetContext = null;
+            if (previousChapter is not null)
+            {
+                previousTargetContext = await db.NovelTranslations
+                    .AsNoTracking()
+                    .Where(x =>
+                        x.ChapterId == previousChapter.Id
+                        && x.TargetLanguage == targetLanguage
+                        && x.ProviderId == translator.Id
+                        && x.PromptVersion == TranslationPromptVersion
+                        && x.SourceHash == previousChapter.SourceHash)
+                    .OrderByDescending(x => x.CreatedAt)
+                    .Select(x => x.Text)
+                    .FirstOrDefaultAsync(cancellationToken);
+            }
 
             var nextContext = await db.NovelChapters
                 .AsNoTracking()
@@ -603,8 +618,10 @@ public sealed partial class BookCatalogService(
             var bookContext = BuildTranslationContext(
                 work,
                 chapter,
-                previousContext,
-                nextContext);
+                previousChapter?.OriginalText,
+                previousTargetContext,
+                nextContext,
+                targetLanguage);
 
             var translatedChunks = new List<string>();
             var chunks = NovelTranslationService.ChunkText(
@@ -1945,8 +1962,10 @@ public sealed partial class BookCatalogService(
     private static string BuildTranslationContext(
         NovelWork work,
         NovelChapter chapter,
-        string? previous,
-        string? next)
+        string? previousSource,
+        string? previousTarget,
+        string? nextSource,
+        string targetLanguage)
     {
         var builder = new StringBuilder();
         builder.AppendLine(
@@ -1975,20 +1994,29 @@ public sealed partial class BookCatalogService(
         builder.AppendLine(
             $"Chapter {chapter.Number}: {chapter.Title}");
 
-        if (!string.IsNullOrWhiteSpace(previous))
+        if (!string.IsNullOrWhiteSpace(previousSource))
         {
             builder.AppendLine(
-                "Previous chapter ending (context only; do not translate it):");
+                "Previous source chapter ending (semantic context only; do not translate it):");
             builder.AppendLine(
-                Tail(previous, 1600));
+                Tail(previousSource, 1600));
         }
 
-        if (!string.IsNullOrWhiteSpace(next))
+        if (!string.IsNullOrWhiteSpace(previousTarget))
         {
             builder.AppendLine(
-                "Next chapter opening (context only; do not translate it):");
+                $"Previously established {BookLanguageCatalog.GetName(targetLanguage)} translation ending "
+                + "(translation-memory context only; do not repeat it):");
             builder.AppendLine(
-                Head(next, 900));
+                Tail(previousTarget, 1800));
+        }
+
+        if (!string.IsNullOrWhiteSpace(nextSource))
+        {
+            builder.AppendLine(
+                "Next source chapter opening (disambiguation context only; do not translate it):");
+            builder.AppendLine(
+                Head(nextSource, 900));
         }
 
         return builder.ToString();
