@@ -192,7 +192,37 @@
              data-media-url="@Url.Page("/Library/Episode", "Media", new { id = Model.EpisodeId })">
         <div class="video-stage player-placeholder" data-video-stage>
             <video controls preload="none" playsinline hidden data-playback-video></video>
-            <div class="subtitle-overlay" data-subtitle-overlay lang="ja"></div>
+            <div class="subtitle-overlay"
+                 data-subtitle-overlay
+                 lang="ja"
+                 aria-live="polite"
+                 hidden></div>
+
+            <aside class="player-learning-sheet"
+                   data-word-inspector
+                   aria-label="Subtitle learning"
+                   hidden>
+                <div class="player-learning-sheet-header">
+                    <div class="player-learning-copy">
+                        <span class="player-learning-kicker" data-learning-kicker>Word</span>
+                        <strong class="player-learning-word" data-word lang="ja"></strong>
+                        <span class="player-learning-reading" data-reading lang="ja"></span>
+                    </div>
+                    <button class="player-icon-button"
+                            type="button"
+                            data-close-learning
+                            data-player-action="closeOverlay"
+                            aria-label="Close learning overlay">✕</button>
+                </div>
+                <p class="player-learning-meaning" data-meaning></p>
+                <div class="player-learning-actions">
+                    <button class="button player-action-button"
+                            type="button"
+                            data-replay
+                            data-player-action="repeatCurrentCue">↻ Repeat line</button>
+                    <span class="status-pill" data-state></span>
+                </div>
+            </aside>
 
             <div class="playback-preparation" data-playback-placeholder>
                 <span class="eyebrow">Browser playback</span>
@@ -236,20 +266,9 @@
 
         <div class="player-error" data-player-error hidden></div>
 
-        <div class="word-inspector" data-word-inspector hidden>
-            <div>
-                <strong data-word lang="ja"></strong>
-                <span data-reading lang="ja"></span>
-                <p data-meaning></p>
-            </div>
-            <div class="word-inspector-actions">
-                <span class="status-pill" data-state></span>
-                <button class="button" type="button" data-replay>Replay line</button>
-            </div>
-        </div>
-
         <script type="application/json" data-cue-data>@Html.Raw(JsonSerializer.Serialize(Model.Playback.Cues, new JsonSerializerOptions(JsonSerializerDefaults.Web)))</script>
     </section>
+    <script src="~/js/player-design.js" asp-append-version="true"></script>
     <script src="~/js/episode-player.js" asp-append-version="true"></script>
 }
 
