@@ -9,6 +9,7 @@ data class ClientCapabilities(
 
 data class ClientFeatureFlags(
     val library: Boolean,
+    val nativeSessionAuth: Boolean,
     val nativePlayerBootstrap: Boolean,
     val directPlayback: Boolean,
     val playbackProgress: Boolean,
@@ -29,6 +30,12 @@ data class ClientAccount(
     val profileId: String,
     val userName: String?,
     val role: String,
+)
+
+data class ClientLogin(
+    val userName: String,
+    val password: String,
+    val rememberMe: Boolean = true,
 )
 
 data class ClientLibrary(
