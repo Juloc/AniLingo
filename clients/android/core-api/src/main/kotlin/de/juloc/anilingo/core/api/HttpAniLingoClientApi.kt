@@ -7,7 +7,6 @@ import de.juloc.anilingo.core.model.ClientCapabilities
 import de.juloc.anilingo.core.model.ClientFeatureFlags
 import de.juloc.anilingo.core.model.ClientLibrary
 import de.juloc.anilingo.core.model.ClientLogin
-import de.juloc.anilingo.core.model.ClientLogin
 import de.juloc.anilingo.core.model.CompatibilityFallback
 import de.juloc.anilingo.core.model.CueResponse
 import de.juloc.anilingo.core.model.CueToken
