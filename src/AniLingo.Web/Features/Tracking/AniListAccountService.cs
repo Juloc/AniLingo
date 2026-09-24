@@ -530,58 +530,73 @@ public sealed class AniListAccountService(
         Guid workId,
         CancellationToken cancellationToken)
     {
-        var local = await (
-            from work in db.NovelWorks.AsNoTracking()
-            join progress in db.NovelProgress.AsNoTracking()
-                .Where(x => x.ProfileId == currentAccount.ProfileId)
-                on work.Id equals progress.WorkId into progressRows
-            from progress in progressRows.DefaultIfEmpty()
-            join chapter in db.NovelChapters.AsNoTracking()
-                on progress.ChapterId equals chapter.Id into chapterRows
-            from chapter in chapterRows.DefaultIfEmpty()
-            where work.Id == workId
-            select new
+        var work = await db.NovelWorks
+            .AsNoTracking()
+            .Where(x => x.Id == workId)
+            .Select(x => new
             {
-                Title = work.MetadataTitle ?? work.Title,
-                work.MetadataProvider,
-                work.MetadataExternalId,
-                work.MetadataChapterCount,
-                Progress = progress,
-                ChapterNumber = chapter == null ? (int?)null : chapter.Number
+                Title = x.MetadataTitle ?? x.Title,
+                x.MetadataProvider,
+                x.MetadataExternalId,
+                x.MetadataChapterCount
             })
             .SingleOrDefaultAsync(cancellationToken);
 
-        if (local is null)
+        if (work is null)
         {
             throw new AniListAccountException("Novel work was not found.");
         }
 
         if (!string.Equals(
-                local.MetadataProvider,
+                work.MetadataProvider,
                 "anilist",
                 StringComparison.OrdinalIgnoreCase) ||
-            !int.TryParse(local.MetadataExternalId, out var mediaId) ||
+            !int.TryParse(work.MetadataExternalId, out var mediaId) ||
             mediaId <= 0)
         {
             return ReadingProgressContext.Blocked(
                 AniListReadingProgressPreview.Blocked(
                     "Match this light novel to AniList before syncing progress.",
-                    mediaTitle: local.Title,
-                    aniListChapterCount: local.MetadataChapterCount));
+                    mediaTitle: work.Title,
+                    aniListChapterCount: work.MetadataChapterCount));
         }
 
-        if (local.Progress is null || local.ChapterNumber is null)
+        var localProgress = await db.NovelProgress
+            .AsNoTracking()
+            .SingleOrDefaultAsync(
+                x => x.ProfileId == currentAccount.ProfileId &&
+                    x.WorkId == workId,
+                cancellationToken);
+
+        if (localProgress is null)
         {
             return ReadingProgressContext.Blocked(
                 AniListReadingProgressPreview.Blocked(
                     "Read part of the novel in AniLingo before syncing progress.",
-                    mediaTitle: local.Title,
-                    aniListChapterCount: local.MetadataChapterCount));
+                    mediaTitle: work.Title,
+                    aniListChapterCount: work.MetadataChapterCount));
         }
 
-        var requestedProgress = local.Progress.PositionPermille >= 950
-            ? local.ChapterNumber.Value
-            : Math.Max(0, local.ChapterNumber.Value - 1);
+        var chapterNumber = await db.NovelChapters
+            .AsNoTracking()
+            .Where(x =>
+                x.Id == localProgress.ChapterId &&
+                x.WorkId == workId)
+            .Select(x => (int?)x.Number)
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (chapterNumber is null)
+        {
+            return ReadingProgressContext.Blocked(
+                AniListReadingProgressPreview.Blocked(
+                    "The current local reading chapter could not be resolved.",
+                    mediaTitle: work.Title,
+                    aniListChapterCount: work.MetadataChapterCount));
+        }
+
+        var requestedProgress = localProgress.PositionPermille >= 950
+            ? chapterNumber.Value
+            : Math.Max(0, chapterNumber.Value - 1);
 
         if (requestedProgress <= 0)
         {
@@ -589,8 +604,8 @@ public sealed class AniListAccountService(
                 AniListReadingProgressPreview.Blocked(
                     "Finish the first chapter before syncing AniList chapter progress.",
                     requestedProgress,
-                    local.Title,
-                    aniListChapterCount: local.MetadataChapterCount));
+                    work.Title,
+                    aniListChapterCount: work.MetadataChapterCount));
         }
 
         var account = await store.LoadAsync(
@@ -602,8 +617,8 @@ public sealed class AniListAccountService(
                 AniListReadingProgressPreview.Blocked(
                     "Connect your AniList account in Settings before syncing progress.",
                     requestedProgress,
-                    local.Title,
-                    aniListChapterCount: local.MetadataChapterCount));
+                    work.Title,
+                    aniListChapterCount: work.MetadataChapterCount));
         }
 
         if (account.TokenExpiresAt is not null &&
@@ -613,8 +628,8 @@ public sealed class AniListAccountService(
                 AniListReadingProgressPreview.Blocked(
                     "Your AniList connection has expired. Reconnect it in Settings.",
                     requestedProgress,
-                    local.Title,
-                    aniListChapterCount: local.MetadataChapterCount));
+                    work.Title,
+                    aniListChapterCount: work.MetadataChapterCount));
         }
 
         var remote = await FetchMangaListEntryAsync(
@@ -627,15 +642,15 @@ public sealed class AniListAccountService(
                 AniListReadingProgressPreview.Blocked(
                     "This light novel is not on your AniList list. Add it in AniList first.",
                     requestedProgress,
-                    local.Title,
-                    aniListChapterCount: local.MetadataChapterCount));
+                    work.Title,
+                    aniListChapterCount: work.MetadataChapterCount));
         }
 
         var preview = EvaluateRemoteChapterProgressSafety(
             remote,
             requestedProgress,
-            local.MetadataChapterCount,
-            local.Title);
+            work.MetadataChapterCount,
+            work.Title);
 
         return new ReadingProgressContext(
             account,
