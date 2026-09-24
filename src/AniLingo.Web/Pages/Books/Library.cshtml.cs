@@ -15,6 +15,7 @@ public sealed class LibraryModel(
     public BookLibraryDetail Book { get; private set; } = null!;
     public string TargetLanguage { get; private set; } = "id";
     public bool SourceIsTarget { get; private set; }
+    public bool IsOwner => account.IsOwner;
 
     public async Task<IActionResult> OnGetAsync(
         Guid id,
@@ -83,6 +84,84 @@ public sealed class LibraryModel(
             $"{BookLanguageCatalog.GetName(targetLanguage)} translation queued. You can start reading immediately; completed chapters appear as they finish.";
 
         return RedirectToPage(new { id, lang = targetLanguage });
+    }
+
+    public async Task<IActionResult> OnPostRegenerateAsync(
+        Guid id,
+        string? lang,
+        CancellationToken cancellationToken)
+    {
+        if (!account.IsOwner)
+        {
+            return Forbid();
+        }
+
+        var targetLanguage = BookLanguageCatalog.Normalize(lang);
+        var detail = await books.GetLibraryBookAsync(
+            id,
+            account.ProfileId,
+            targetLanguage,
+            cancellationToken);
+
+        if (detail is null)
+        {
+            return NotFound();
+        }
+
+        var sourceLanguage = GetSourceLanguage(detail.Work);
+        if (sourceLanguage.Equals(
+                targetLanguage,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            TempData["Status"] = "The selected language is the original language.";
+            return RedirectToPage(new { id, lang = targetLanguage });
+        }
+
+        await books.ClearBookTranslationsAsync(
+            id,
+            targetLanguage,
+            cancellationToken);
+
+        await jobs.QueueAsync(
+            async (services, workerToken) =>
+            {
+                var service = services.GetRequiredService<BookCatalogService>();
+                await service.TranslateBookAsync(
+                    id,
+                    targetLanguage,
+                    workerToken);
+            },
+            cancellationToken);
+
+        TempData["Status"] =
+            $"{BookLanguageCatalog.GetName(targetLanguage)} translation cleared and queued again.";
+
+        return RedirectToPage(new { id, lang = targetLanguage });
+    }
+
+    public async Task<IActionResult> OnPostDeleteAsync(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        if (!account.IsOwner)
+        {
+            return Forbid();
+        }
+
+        try
+        {
+            await books.DeleteImportedBookAsync(
+                id,
+                cancellationToken);
+            TempData["Status"] =
+                "Book removed from AniLingo. External source/download files were not changed.";
+            return RedirectToPage("/Books");
+        }
+        catch (InvalidOperationException exception)
+        {
+            TempData["Status"] = exception.Message;
+            return RedirectToPage(new { id });
+        }
     }
 
     private static string GetSourceLanguage(
