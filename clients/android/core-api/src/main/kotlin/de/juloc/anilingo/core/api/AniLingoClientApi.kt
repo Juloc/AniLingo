@@ -4,6 +4,7 @@ import de.juloc.anilingo.core.model.AnimeDetail
 import de.juloc.anilingo.core.model.ClientAccount
 import de.juloc.anilingo.core.model.ClientCapabilities
 import de.juloc.anilingo.core.model.ClientLibrary
+import de.juloc.anilingo.core.model.ClientLogin
 import de.juloc.anilingo.core.model.CueResponse
 import de.juloc.anilingo.core.model.EpisodeDetail
 import de.juloc.anilingo.core.model.EpisodeProgress
@@ -16,6 +17,8 @@ import de.juloc.anilingo.core.model.TermStateResult
 
 interface AniLingoClientApi {
     suspend fun getCapabilities(): ClientCapabilities
+    suspend fun login(credentials: ClientLogin): ClientAccount
+    suspend fun logout()
     suspend fun getMe(): ClientAccount
     suspend fun getLibrary(): ClientLibrary
     suspend fun getAnime(animeId: String): AnimeDetail
