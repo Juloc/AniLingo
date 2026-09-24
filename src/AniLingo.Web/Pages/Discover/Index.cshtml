@@ -1,0 +1,133 @@
+@page "/Discover"
+@model AniLingo.Web.Pages.Discover.IndexModel
+@{
+    ViewData["Title"] = "Discover";
+}
+
+@section Head {
+    <link rel="stylesheet" href="~/css/discover.css" asp-append-version="true" />
+}
+
+<div class="discover-shell"
+     data-discover
+     data-is-owner="@Model.IsOwner.ToString().ToLowerInvariant()">
+    <header class="discover-header">
+        <div>
+            <span class="eyebrow">Library discovery</span>
+            <h1>Discover</h1>
+            <p>Anime, light novels, manga and books in one search.</p>
+        </div>
+
+        <div class="discover-library-links" aria-label="Local libraries">
+            <a href="/Library">Anime library</a>
+            <a href="/Novels">Reading library</a>
+            <a href="/Books">Books</a>
+        </div>
+    </header>
+
+    <section class="discover-controls" aria-label="Discovery controls">
+        <div class="discover-search-row">
+            <label class="discover-search">
+                <span class="sr-only">Search titles, authors or series</span>
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="m21 21-4.4-4.4m2.4-5.1a7.5 7.5 0 1 1-15 0 7.5 7.5 0 0 1 15 0Z" />
+                </svg>
+                <input type="search"
+                       data-discover-search
+                       autocomplete="off"
+                       spellcheck="false"
+                       placeholder="Search titles, authors or series…" />
+                <kbd>/</kbd>
+            </label>
+        </div>
+
+        <div class="discover-filter-row">
+            <div class="discover-tabs" role="tablist" aria-label="Browse mode">
+                <button type="button" data-discover-mode="trending">Trending</button>
+                <button type="button" data-discover-mode="top">Top</button>
+                <button type="button" data-discover-mode="my-list">My AniList</button>
+            </div>
+
+            <div class="discover-categories" aria-label="Category">
+                <button type="button" data-discover-category="all">All</button>
+                <button type="button" data-discover-category="anime">Anime</button>
+                <button type="button" data-discover-category="light-novel">Light novels</button>
+                <button type="button" data-discover-category="manga">Manga</button>
+                <button type="button" data-discover-category="book">Books</button>
+            </div>
+        </div>
+    </section>
+
+    <div class="discover-summary">
+        <strong data-discover-title>Trending</strong>
+        <span data-discover-count>Loading…</span>
+    </div>
+
+    <div class="discover-warning" data-discover-warning hidden></div>
+
+    <section class="discover-grid"
+             data-discover-results
+             aria-live="polite"
+             aria-busy="true">
+        @for (var i = 0; i < 10; i++)
+        {
+            <div class="discover-card discover-card-skeleton" aria-hidden="true">
+                <div class="discover-cover"></div>
+                <div class="discover-card-copy">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+            </div>
+        }
+    </section>
+
+    <div class="discover-empty" data-discover-empty hidden>
+        <strong>No results</strong>
+        <span>Try another title or category.</span>
+    </div>
+
+    @if (Model.IsOwner)
+    {
+        <details class="discover-import" data-discover-import>
+            <summary>Import an authorized light-novel source</summary>
+            <form method="post"
+                  asp-page-handler="ImportSource"
+                  class="discover-import-form"
+                  data-discover-import-form>
+                <div>
+                    <strong data-import-title>Source URL</strong>
+                    <span>
+                        Use a source you own or are allowed to import. Supported source providers are validated by AniLingo.
+                    </span>
+                </div>
+                <input type="hidden"
+                       name="metadataProvider"
+                       data-import-provider />
+                <input type="hidden"
+                       name="metadataExternalId"
+                       data-import-external-id />
+                <label>
+                    <span>Source URL</span>
+                    <input type="url"
+                           name="sourceUrl"
+                           required
+                           inputmode="url"
+                           autocomplete="url"
+                           data-import-url
+                           placeholder="https://ncode.syosetu.com/…" />
+                </label>
+                <div class="discover-import-actions">
+                    <button class="button button-primary" type="submit">Import source</button>
+                    <button class="button"
+                            type="button"
+                            data-import-clear>Clear match</button>
+                </div>
+            </form>
+        </details>
+    }
+</div>
+
+@section Scripts {
+    <script src="~/js/discover.js" asp-append-version="true"></script>
+}
