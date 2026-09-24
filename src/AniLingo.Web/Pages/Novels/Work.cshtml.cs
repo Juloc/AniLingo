@@ -17,6 +17,7 @@ public sealed class WorkModel(
     public NovelWorkDetail? Detail { get; private set; }
     public IReadOnlyList<NovelMetadataCandidate> SearchResults { get; private set; } = [];
     public IReadOnlyList<NovelAnimeChoice> AnimeChoices { get; private set; } = [];
+    public NovelProgress? Progress { get; private set; }
     public string SearchQuery { get; private set; } = "";
     public bool IsOwner => account.IsOwner;
 
@@ -30,6 +31,11 @@ public sealed class WorkModel(
         {
             return NotFound();
         }
+
+        Progress = await novels.GetProgressAsync(
+            account.ProfileId,
+            id,
+            cancellationToken);
 
         AnimeChoices = account.IsOwner
             ? await mappings.GetAnimeChoicesAsync(cancellationToken)

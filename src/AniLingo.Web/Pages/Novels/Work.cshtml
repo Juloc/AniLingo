@@ -3,6 +3,10 @@
 @{
     var detail = Model.Detail!;
     var work = detail.Work;
+    var description = work.MetadataDescription ?? work.Description;
+    var currentChapter = Model.Progress is null
+        ? null
+        : detail.Chapters.FirstOrDefault(x => x.Id == Model.Progress.ChapterId);
     ViewData["Title"] = work.MetadataTitle ?? work.Title;
 }
 @section Head {
@@ -12,42 +16,72 @@
 <a class="back-link" href="/Novels">← Novels</a>
 
 <section class="novel-work-hero">
+    @if (!string.IsNullOrWhiteSpace(work.BannerImageUrl))
+    {
+        <img class="novel-work-banner" src="@work.BannerImageUrl" alt="" referrerpolicy="no-referrer" />
+    }
+
     <div class="novel-work-cover">
         @if (!string.IsNullOrWhiteSpace(work.CoverImageUrl))
         {
             <img src="@work.CoverImageUrl" alt="" referrerpolicy="no-referrer" />
         }
+        else
+        {
+            <span>文</span>
+        }
     </div>
+
     <div class="novel-work-copy">
         <span class="eyebrow">Web / Light Novel</span>
         <h1>@(work.MetadataTitle ?? work.Title)</h1>
+
         @if (!string.IsNullOrWhiteSpace(work.MetadataNativeTitle))
         {
-            <div lang="ja">@work.MetadataNativeTitle</div>
+            <div class="novel-work-native" lang="ja">@work.MetadataNativeTitle</div>
         }
+
         <div class="novel-meta">
             @if (!string.IsNullOrWhiteSpace(work.Author))
             {
                 <span>@work.Author</span>
             }
-            <span>@detail.Chapters.Count chapters</span>
-            <span>@detail.Chapters.Count(x => x.HasContent) cached</span>
-            <span>@detail.Chapters.Count(x => x.HasTranslation) translated</span>
-        </div>
-        @if (!string.IsNullOrWhiteSpace(work.Description))
-        {
-            <p>@work.Description</p>
-        }
-        <div class="novel-inline-form">
-            @if (Model.IsOwner)
+            @if (!string.IsNullOrWhiteSpace(work.MetadataStatus))
             {
-                <form method="post" asp-page-handler="Refresh" asp-route-id="@work.Id">
-                    <button class="button" type="submit">Refresh chapters</button>
-                </form>
-                <form method="post" asp-page-handler="LoadAll" asp-route-id="@work.Id">
-                    <button class="button" type="submit">Cache all Japanese text</button>
-                </form>
+                <span>@work.MetadataStatus.Replace("_", " ")</span>
             }
+            @if (work.MetadataVolumeCount is int volumes)
+            {
+                <span>@volumes volumes</span>
+            }
+            @if (work.MetadataChapterCount is int metadataChapters)
+            {
+                <span>@metadataChapters chapters</span>
+            }
+            else
+            {
+                <span>@detail.Chapters.Count chapters</span>
+            }
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(description))
+        {
+            <p class="novel-work-description">@description</p>
+        }
+
+        <div class="novel-work-actions">
+            @if (currentChapter is not null)
+            {
+                <a class="button button-primary novel-primary-action" href="/Novels/Read/@currentChapter.Id">
+                    Continue chapter @currentChapter.Number
+                </a>
+                <span class="novel-progress-label">@(Model.Progress!.PositionPermille / 10)% through this chapter</span>
+            }
+            else if (detail.Chapters.FirstOrDefault() is { } firstChapter)
+            {
+                <a class="button button-primary novel-primary-action" href="/Novels/Read/@firstChapter.Id">Start reading</a>
+            }
+
             <a class="button" href="@work.SourceUrl" target="_blank" rel="noreferrer">Source</a>
         </div>
     </div>
@@ -55,156 +89,195 @@
 
 @if (Model.IsOwner)
 {
-    <section class="novel-panel">
-        <div class="panel-heading">
-            <div>
-                <h2>@(string.IsNullOrWhiteSpace(work.MetadataExternalId) ? "Match AniList novel" : "AniList novel")</h2>
-                @if (!string.IsNullOrWhiteSpace(work.MetadataExternalId))
-                {
-                    <span>@work.MetadataProvider · ID @work.MetadataExternalId</span>
-                }
-            </div>
-            @if (!string.IsNullOrWhiteSpace(work.MetadataExternalId))
-            {
-                <form method="post" asp-page-handler="RemoveMetadata" asp-route-id="@work.Id">
-                    <button class="button" type="submit">Remove match</button>
+    <details class="novel-panel novel-admin-panel">
+        <summary>
+            <span>
+                <strong>Manage novel</strong>
+                <small>Source cache, AniList metadata and anime matching</small>
+            </span>
+        </summary>
+
+        <div class="novel-admin-content">
+            <div class="novel-inline-form">
+                <form method="post" asp-page-handler="Refresh" asp-route-id="@work.Id">
+                    <button class="button" type="submit">Refresh chapters</button>
                 </form>
-            }
-        </div>
-    
-        <form method="get" class="novel-inline-form">
-            <input type="search" name="q" value="@Model.SearchQuery" placeholder="Search AniList light novel" />
-            <button class="button button-primary" type="submit">Search</button>
-        </form>
-    
-        @if (Model.SearchResults.Count > 0)
-        {
-            <div class="novel-results">
-                @foreach (var candidate in Model.SearchResults)
-                {
-                    <article class="novel-result">
-                        @if (!string.IsNullOrWhiteSpace(candidate.CoverImageUrl))
-                        {
-                            <img src="@candidate.CoverImageUrl" alt="" loading="lazy" referrerpolicy="no-referrer" />
-                        }
-                        else
-                        {
-                            <div></div>
-                        }
-                        <div>
-                            <strong>@candidate.PreferredTitle</strong>
-                            @if (!string.IsNullOrWhiteSpace(candidate.NativeTitle))
-                            {
-                                <div lang="ja">@candidate.NativeTitle</div>
-                            }
-                            <small class="novel-muted">
-                                @candidate.Format
-                                @if (candidate.VolumeCount is int volumes)
-                                {
-                                    <text> · @volumes volumes</text>
-                                }
-                                @if (candidate.ChapterCount is int chapters)
-                                {
-                                    <text> · @chapters chapters</text>
-                                }
-                            </small>
-                        </div>
-                        <form method="post" asp-page-handler="MatchMetadata" asp-route-id="@work.Id">
-                            <input type="hidden" name="provider" value="@candidate.Provider" />
-                            <input type="hidden" name="externalId" value="@candidate.ExternalId" />
-                            <button class="button" type="submit">Use</button>
-                        </form>
-                    </article>
-                }
+                <form method="post" asp-page-handler="LoadAll" asp-route-id="@work.Id">
+                    <button class="button" type="submit">Cache all Japanese text</button>
+                </form>
             </div>
-        }
-    </section>
-    
-    <section class="novel-panel">
-        <div class="panel-heading">
-            <div>
-                <h2>Anime episode matching</h2>
-                <span>Manual mappings are authoritative. AI suggestions are stored separately and never overwrite them.</span>
-            </div>
-        </div>
-    
-        @if (Model.AnimeChoices.Count == 0)
-        {
-            <p class="novel-muted">Match a local anime to AniList first, then it becomes available here.</p>
-        }
-        else
-        {
-            <form method="post" asp-page-handler="AddMapping" asp-route-id="@work.Id" class="novel-mapping-form">
-                <select name="animeId" required>
-                    @foreach (var anime in Model.AnimeChoices)
+
+            <section class="novel-admin-section">
+                <div class="panel-heading">
+                    <div>
+                        <h2>@(string.IsNullOrWhiteSpace(work.MetadataExternalId) ? "Match AniList novel" : "AniList novel")</h2>
+                        @if (!string.IsNullOrWhiteSpace(work.MetadataExternalId))
+                        {
+                            <span>@work.MetadataProvider · ID @work.MetadataExternalId</span>
+                        }
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(work.MetadataExternalId))
                     {
-                        <option value="@anime.AnimeId">@anime.Title</option>
-                    }
-                </select>
-                <input name="chapterStart" type="number" min="1" placeholder="Ch. from" required />
-                <input name="chapterEnd" type="number" min="1" placeholder="Ch. to" required />
-                <input name="seasonNumber" type="number" min="0" value="1" aria-label="Season" required />
-                <input name="episodeStart" type="number" min="1" placeholder="Ep. from" required />
-                <input name="episodeEnd" type="number" min="1" placeholder="Ep. to" required />
-                <input name="label" type="text" maxlength="200" placeholder="Optional note" />
-                <button class="button" type="submit">Add mapping</button>
-            </form>
-    
-            <form method="post" asp-page-handler="SuggestMappings" asp-route-id="@work.Id" class="novel-inline-form">
-                <select name="animeId" required>
-                    @foreach (var anime in Model.AnimeChoices)
-                    {
-                        <option value="@anime.AnimeId">@anime.Title</option>
-                    }
-                </select>
-                <button class="button" type="submit">Suggest mappings with AI</button>
-            </form>
-        }
-    
-        @if (detail.Mappings.Count > 0)
-        {
-            <div class="novel-mapping-list">
-                @foreach (var mapping in detail.Mappings)
-                {
-                    <div class="novel-mapping-row">
-                        <div>
-                            <strong>Ch. @mapping.ChapterStart–@mapping.ChapterEnd → S@(mapping.SeasonNumber.ToString("00")) E@(mapping.EpisodeStart.ToString("00"))–E@(mapping.EpisodeEnd.ToString("00"))</strong>
-                            <div class="novel-muted">@mapping.AnimeProvider · @mapping.AnimeExternalId @mapping.Label</div>
-                        </div>
-                        <span class="novel-source-pill @(mapping.Source == "ai" ? "ai" : "")">@mapping.Source</span>
-                        <form method="post" asp-page-handler="RemoveMapping" asp-route-id="@work.Id">
-                            <input type="hidden" name="mappingId" value="@mapping.Id" />
-                            <button class="button" type="submit">Remove</button>
+                        <form method="post" asp-page-handler="RemoveMetadata" asp-route-id="@work.Id">
+                            <button class="button" type="submit">Remove match</button>
                         </form>
+                    }
+                </div>
+
+                <form method="get" class="novel-inline-form">
+                    <input type="search" name="q" value="@Model.SearchQuery" placeholder="Search AniList light novel" />
+                    <button class="button button-primary" type="submit">Search</button>
+                </form>
+
+                @if (Model.SearchResults.Count > 0)
+                {
+                    <div class="novel-results">
+                        @foreach (var candidate in Model.SearchResults)
+                        {
+                            <article class="novel-result">
+                                @if (!string.IsNullOrWhiteSpace(candidate.CoverImageUrl))
+                                {
+                                    <img src="@candidate.CoverImageUrl" alt="" loading="lazy" referrerpolicy="no-referrer" />
+                                }
+                                else
+                                {
+                                    <div></div>
+                                }
+                                <div>
+                                    <strong>@candidate.PreferredTitle</strong>
+                                    @if (!string.IsNullOrWhiteSpace(candidate.NativeTitle))
+                                    {
+                                        <div lang="ja">@candidate.NativeTitle</div>
+                                    }
+                                    <small class="novel-muted">
+                                        @candidate.Format
+                                        @if (candidate.VolumeCount is int candidateVolumes)
+                                        {
+                                            <text> · @candidateVolumes volumes</text>
+                                        }
+                                        @if (candidate.ChapterCount is int candidateChapters)
+                                        {
+                                            <text> · @candidateChapters chapters</text>
+                                        }
+                                    </small>
+                                </div>
+                                <form method="post" asp-page-handler="MatchMetadata" asp-route-id="@work.Id">
+                                    <input type="hidden" name="provider" value="@candidate.Provider" />
+                                    <input type="hidden" name="externalId" value="@candidate.ExternalId" />
+                                    <button class="button" type="submit">Use</button>
+                                </form>
+                            </article>
+                        }
                     </div>
                 }
-            </div>
-        }
-    </section>
-    
-    }
+            </section>
 
-<section class="novel-panel">
+            <section class="novel-admin-section">
+                <div class="panel-heading">
+                    <div>
+                        <h2>Anime episode matching</h2>
+                        <span>Manual mappings are authoritative. AI suggestions never overwrite them.</span>
+                    </div>
+                </div>
+
+                @if (Model.AnimeChoices.Count == 0)
+                {
+                    <p class="novel-muted">Match a local anime to AniList first, then it becomes available here.</p>
+                }
+                else
+                {
+                    <form method="post" asp-page-handler="AddMapping" asp-route-id="@work.Id" class="novel-mapping-form">
+                        <select name="animeId" required>
+                            @foreach (var anime in Model.AnimeChoices)
+                            {
+                                <option value="@anime.AnimeId">@anime.Title</option>
+                            }
+                        </select>
+                        <input name="chapterStart" type="number" min="1" placeholder="Ch. from" required />
+                        <input name="chapterEnd" type="number" min="1" placeholder="Ch. to" required />
+                        <input name="seasonNumber" type="number" min="0" value="1" aria-label="Season" required />
+                        <input name="episodeStart" type="number" min="1" placeholder="Ep. from" required />
+                        <input name="episodeEnd" type="number" min="1" placeholder="Ep. to" required />
+                        <input name="label" type="text" maxlength="200" placeholder="Optional note" />
+                        <button class="button" type="submit">Add mapping</button>
+                    </form>
+
+                    <form method="post" asp-page-handler="SuggestMappings" asp-route-id="@work.Id" class="novel-inline-form">
+                        <select name="animeId" required>
+                            @foreach (var anime in Model.AnimeChoices)
+                            {
+                                <option value="@anime.AnimeId">@anime.Title</option>
+                            }
+                        </select>
+                        <button class="button" type="submit">Suggest mappings with AI</button>
+                    </form>
+                }
+
+                @if (detail.Mappings.Count > 0)
+                {
+                    <div class="novel-mapping-list">
+                        @foreach (var mapping in detail.Mappings)
+                        {
+                            <div class="novel-mapping-row">
+                                <div>
+                                    <strong>Ch. @mapping.ChapterStart–@mapping.ChapterEnd → S@(mapping.SeasonNumber.ToString("00")) E@(mapping.EpisodeStart.ToString("00"))–E@(mapping.EpisodeEnd.ToString("00"))</strong>
+                                    <div class="novel-muted">@mapping.AnimeProvider · @mapping.AnimeExternalId @mapping.Label</div>
+                                </div>
+                                <span class="novel-source-pill @(mapping.Source == "ai" ? "ai" : "")">@mapping.Source</span>
+                                <form method="post" asp-page-handler="RemoveMapping" asp-route-id="@work.Id">
+                                    <input type="hidden" name="mappingId" value="@mapping.Id" />
+                                    <button class="button" type="submit">Remove</button>
+                                </form>
+                            </div>
+                        }
+                    </div>
+                }
+            </section>
+        </div>
+    </details>
+}
+
+<section class="novel-panel novel-chapters-panel">
     <div class="panel-heading">
-        <h2>Chapters</h2>
-        <span>Japanese text opens immediately; German AI translation is optional.</span>
+        <div>
+            <h2>Chapters</h2>
+            <span>Japanese is available directly; German AI translation is cached once requested.</span>
+        </div>
+        <span class="novel-muted">@detail.Chapters.Count(x => x.HasTranslation) translated</span>
     </div>
 
     <div class="novel-chapter-list">
         @foreach (var chapter in detail.Chapters)
         {
-            <a class="novel-chapter-row" href="/Novels/Read/@chapter.Id">
+            var isCurrent = Model.Progress?.ChapterId == chapter.Id;
+            <a class="novel-chapter-row @(isCurrent ? "current" : "")" href="/Novels/Read/@chapter.Id">
                 <span class="novel-chapter-number">@chapter.Number</span>
-                <div>
+                <div class="novel-chapter-copy">
                     <strong lang="ja">@chapter.Title</strong>
                     <div class="novel-muted">
-                        @(chapter.HasContent ? "Japanese cached" : "loads on open")
+                        @(chapter.HasContent ? "Japanese cached" : "Loads on open")
+                        @if (isCurrent)
+                        {
+                            <text> · @(Model.Progress!.PositionPermille / 10)% read</text>
+                        }
                     </div>
+                    @if (isCurrent)
+                    {
+                        <div class="novel-progress-track compact">
+                            <span style="width:@(Model.Progress!.PositionPermille / 10)%"></span>
+                        </div>
+                    }
                 </div>
-                @if (chapter.HasTranslation)
-                {
-                    <span class="novel-status-pill">DE cached</span>
-                }
+                <div class="novel-chapter-badges">
+                    @if (isCurrent)
+                    {
+                        <span class="novel-status-pill current">Current</span>
+                    }
+                    @if (chapter.HasTranslation)
+                    {
+                        <span class="novel-status-pill">DE</span>
+                    }
+                </div>
             </a>
         }
     </div>

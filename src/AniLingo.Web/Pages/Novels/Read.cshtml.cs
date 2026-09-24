@@ -17,14 +17,20 @@ public sealed class ReadModel(
     public NovelWork Work { get; private set; } = null!;
     public NovelChapter Chapter { get; private set; } = null!;
     public NovelTranslation? Translation { get; private set; }
+    public IReadOnlyList<string> JapaneseParagraphs { get; private set; } = [];
+    public IReadOnlyList<string> GermanParagraphs { get; private set; } = [];
     public IReadOnlyList<NovelAnimeMapping> AnimeMappings { get; private set; } = [];
+    public IReadOnlyList<NovelBookmark> Bookmarks { get; private set; } = [];
+    public IReadOnlyList<NovelHighlight> Highlights { get; private set; } = [];
+    public NovelProgress? Progress { get; private set; }
+    public NovelBookmark? JumpBookmark { get; private set; }
     public Guid? PreviousChapterId { get; private set; }
     public Guid? NextChapterId { get; private set; }
-    public int ProgressPermille { get; private set; }
     public bool IsOwner => account.IsOwner;
 
     public async Task<IActionResult> OnGetAsync(
         Guid id,
+        Guid? bookmark,
         CancellationToken cancellationToken)
     {
         try
@@ -53,6 +59,9 @@ public sealed class ReadModel(
             "de",
             cancellationToken);
 
+        JapaneseParagraphs = NovelTextLayout.SplitParagraphs(Chapter.OriginalText);
+        GermanParagraphs = NovelTextLayout.SplitParagraphs(Translation?.Text);
+
         AnimeMappings = await mappings.GetForChapterAsync(
             Work.Id,
             Chapter.Number,
@@ -69,9 +78,22 @@ public sealed class ReadModel(
             Work.Id,
             cancellationToken);
 
-        if (progress?.ChapterId == Chapter.Id)
+        Progress = progress?.ChapterId == Chapter.Id ? progress : null;
+
+        Bookmarks = await novels.GetBookmarksAsync(
+            account.ProfileId,
+            Work.Id,
+            cancellationToken);
+
+        Highlights = await novels.GetHighlightsAsync(
+            account.ProfileId,
+            Work.Id,
+            cancellationToken);
+
+        if (bookmark is Guid bookmarkId)
         {
-            ProgressPermille = progress.PositionPermille;
+            JumpBookmark = Bookmarks.FirstOrDefault(
+                x => x.Id == bookmarkId && x.ChapterId == Chapter.Id);
         }
 
         return Page();
@@ -143,6 +165,9 @@ public sealed class ReadModel(
     public async Task<IActionResult> OnPostProgressAsync(
         Guid id,
         int positionPermille,
+        string? anchorLanguage,
+        int? anchorParagraphIndex,
+        int anchorOffset,
         CancellationToken cancellationToken)
     {
         var result = await novels.GetChapterAsync(id, cancellationToken);
@@ -156,9 +181,125 @@ public sealed class ReadModel(
             result.Value.Work.Id,
             result.Value.Chapter.Id,
             positionPermille,
+            anchorLanguage ?? "ja",
+            anchorParagraphIndex,
+            anchorOffset,
             cancellationToken);
 
         return new OkResult();
     }
 
+    public async Task<IActionResult> OnPostBookmarkAsync(
+        Guid id,
+        int positionPermille,
+        string? language,
+        int? paragraphIndex,
+        int characterOffset,
+        string? label,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var bookmark = await novels.AddBookmarkAsync(
+                account.ProfileId,
+                id,
+                positionPermille,
+                language ?? "ja",
+                paragraphIndex,
+                characterOffset,
+                label,
+                cancellationToken);
+
+            return new JsonResult(new
+            {
+                bookmark.Id,
+                bookmark.ChapterId,
+                bookmark.PositionPermille,
+                bookmark.Language,
+                bookmark.ParagraphIndex,
+                bookmark.CharacterOffset,
+                bookmark.AnchorText,
+                bookmark.Label
+            });
+        }
+        catch (InvalidOperationException exception)
+        {
+            return BadRequest(exception.Message);
+        }
+    }
+
+    public async Task<IActionResult> OnPostRemoveBookmarkAsync(
+        Guid id,
+        Guid bookmarkId,
+        CancellationToken cancellationToken)
+    {
+        await novels.RemoveBookmarkAsync(
+            account.ProfileId,
+            bookmarkId,
+            cancellationToken);
+
+        return IsFetchRequest()
+            ? new OkResult()
+            : RedirectToPage(new { id });
+    }
+
+    public async Task<IActionResult> OnPostHighlightAsync(
+        Guid id,
+        string? language,
+        int paragraphIndex,
+        int startOffset,
+        int endOffset,
+        string? note,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var highlight = await novels.AddHighlightAsync(
+                account.ProfileId,
+                id,
+                language ?? "ja",
+                paragraphIndex,
+                startOffset,
+                endOffset,
+                note,
+                cancellationToken);
+
+            return new JsonResult(new
+            {
+                highlight.Id,
+                highlight.ChapterId,
+                highlight.Language,
+                highlight.ParagraphIndex,
+                highlight.StartOffset,
+                highlight.EndOffset,
+                highlight.Text,
+                highlight.Note
+            });
+        }
+        catch (InvalidOperationException exception)
+        {
+            return BadRequest(exception.Message);
+        }
+    }
+
+    public async Task<IActionResult> OnPostRemoveHighlightAsync(
+        Guid id,
+        Guid highlightId,
+        CancellationToken cancellationToken)
+    {
+        await novels.RemoveHighlightAsync(
+            account.ProfileId,
+            highlightId,
+            cancellationToken);
+
+        return IsFetchRequest()
+            ? new OkResult()
+            : RedirectToPage(new { id });
+    }
+
+    private bool IsFetchRequest() =>
+        string.Equals(
+            Request.Headers["X-Requested-With"].ToString(),
+            "fetch",
+            StringComparison.OrdinalIgnoreCase);
 }
