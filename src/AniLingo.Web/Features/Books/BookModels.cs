@@ -54,7 +54,9 @@ public sealed record ParsedEpubBook(
     string? Description,
     string? Language,
     IReadOnlyList<string> Subjects,
-    IReadOnlyList<ImportedBookChapter> Chapters);
+    IReadOnlyList<ImportedBookChapter> Chapters,
+    byte[]? CoverBytes,
+    string? CoverMediaType);
 
 public sealed record BookLibraryItem(
     Guid WorkId,
