@@ -1,6 +1,7 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Ai;
 using AniLingo.Web.Features.Auth;
+using AniLingo.Web.Features.ClientApi;
 using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Library;
 using AniLingo.Web.Features.Metadata;
@@ -89,6 +90,28 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
                 context.ShouldRenew = true;
             }
         };
+        options.Events.OnRedirectToLogin = context =>
+        {
+            if (ClientApiRoutes.IsClientApi(context.Request.Path))
+            {
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                return Task.CompletedTask;
+            }
+
+            context.Response.Redirect(context.RedirectUri);
+            return Task.CompletedTask;
+        };
+        options.Events.OnRedirectToAccessDenied = context =>
+        {
+            if (ClientApiRoutes.IsClientApi(context.Request.Path))
+            {
+                context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                return Task.CompletedTask;
+            }
+
+            context.Response.Redirect(context.RedirectUri);
+            return Task.CompletedTask;
+        };
     });
 builder.Services.AddAuthorization(options =>
 {
@@ -137,6 +160,7 @@ builder.Services.AddSingleton<PlaybackMediaProbe>();
 builder.Services.AddSingleton<PlaybackPreparationTracker>();
 builder.Services.AddScoped<PlaybackPreparationService>();
 builder.Services.AddScoped<PlaybackService>();
+builder.Services.AddScoped<ClientApiService>();
 
 builder.Services.AddHttpClient<AniListMetadataProvider>(client =>
 {
@@ -206,6 +230,7 @@ app.UseRouting();
 app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
+app.MapClientApiV1();
 app.MapRazorPages();
 
 try
