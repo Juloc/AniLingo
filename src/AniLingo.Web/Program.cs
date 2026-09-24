@@ -1,6 +1,7 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Ai;
 using AniLingo.Web.Features.Auth;
+using AniLingo.Web.Features.ClientApi;
 using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Library;
 using AniLingo.Web.Features.Metadata;
@@ -89,6 +90,36 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
                 context.ShouldRenew = true;
             }
         };
+        options.Events.OnRedirectToLogin = async context =>
+        {
+            if (ClientApiRoutes.IsClientApi(context.Request.Path))
+            {
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                await context.Response.WriteAsJsonAsync(
+                    new ClientErrorResponse(
+                        "authentication_required",
+                        "Authentication is required for this AniLingo client API endpoint."),
+                    context.HttpContext.RequestAborted);
+                return;
+            }
+
+            context.Response.Redirect(context.RedirectUri);
+        };
+        options.Events.OnRedirectToAccessDenied = async context =>
+        {
+            if (ClientApiRoutes.IsClientApi(context.Request.Path))
+            {
+                context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                await context.Response.WriteAsJsonAsync(
+                    new ClientErrorResponse(
+                        "access_denied",
+                        "The authenticated account is not allowed to use this endpoint."),
+                    context.HttpContext.RequestAborted);
+                return;
+            }
+
+            context.Response.Redirect(context.RedirectUri);
+        };
     });
 builder.Services.AddAuthorization(options =>
 {
@@ -137,6 +168,7 @@ builder.Services.AddSingleton<PlaybackMediaProbe>();
 builder.Services.AddSingleton<PlaybackPreparationTracker>();
 builder.Services.AddScoped<PlaybackPreparationService>();
 builder.Services.AddScoped<PlaybackService>();
+builder.Services.AddScoped<ClientApiService>();
 
 builder.Services.AddHttpClient<AniListMetadataProvider>(client =>
 {
@@ -206,6 +238,7 @@ app.UseRouting();
 app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
+app.MapClientApiV1();
 app.MapRazorPages();
 
 try

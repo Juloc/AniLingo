@@ -101,20 +101,34 @@ Do not introduce a separate Android repository.
 
 Native clients use `/api/client/v1`. Razor page handlers remain for web UI and are not the native-client contract.
 
-Minimum endpoints:
+Core v1 endpoints:
 
 ```text
 GET  /api/client/v1/capabilities
+GET  /api/client/v1/me
+GET  /api/client/v1/library
+GET  /api/client/v1/anime/{animeId}
+GET  /api/client/v1/episodes/{episodeId}
 GET  /api/client/v1/episodes/{episodeId}/player
-GET  /api/client/v1/episodes/{episodeId}/cues?trackId={trackId}
+GET  /api/client/v1/episodes/{episodeId}/cues?trackId={trackId}&fromMs={fromMs}&toMs={toMs}
+GET  /api/client/v1/media/{mediaFileId}/content
+GET  /api/client/v1/episodes/{episodeId}/fallback?mode={device|server}&startSeconds={seconds}
 GET  /api/client/v1/terms/{termId}
+PUT  /api/client/v1/terms/{termId}/state
+```
 
+All endpoints except `/capabilities` use the normal AniLingo authenticated account and therefore the same profile-scoped learning state as the web UI. API authentication failures return JSON `401/403` responses instead of redirects to Razor login pages.
+
+The first v1 contract deliberately reports not-yet-implemented facilities through capability flags. HLS fallback, playback sessions, pairing and companion control remain `false` until their later delivery slices are merged. Clients must not infer support from route guesses.
+
+Later session/companion endpoints extend the same v1 boundary:
+
+```text
 POST /api/client/v1/playback-sessions
 GET  /api/client/v1/playback-sessions/{sessionId}
 POST /api/client/v1/playback-sessions/{sessionId}/pair-code
 POST /api/client/v1/playback-sessions/{sessionId}/commands
 POST /api/client/v1/playback-sessions/{sessionId}/leave
-
 POST /api/client/v1/pair
 ```
 
@@ -169,6 +183,8 @@ GET /api/client/v1/media/{mediaFileId}/hls/{playbackId}/{segment}
 ```
 
 The HLS cache is bounded and disposable. It belongs under `/data`, never beside source media.
+
+The current v1 API also exposes the existing on-demand fragmented-MP4 compatibility stream at `/episodes/{episodeId}/fallback`. It can restart at a supplied playback position but is not seekable within the live response. This is explicitly advertised as `liveMp4Fallback=true` and `hlsFallback=false`; native clients must switch to HLS behavior only after the HLS capability becomes true.
 
 The existing browser fragmented-MP4 path may remain while native support is added. Long term, web may consume the same HLS compatibility path, but the Android milestone does not block on that migration.
 
