@@ -7,6 +7,10 @@
     ViewData["Title"] = $"{Model.AnimeTitle} E{Model.EpisodeNumber}";
 }
 
+@section Head {
+    <link rel="stylesheet" href="~/css/player.css" asp-append-version="true" />
+}
+
 <header class="page-header">
     <div>
         <a class="back-link" href="/Library/Anime/@Model.AnimeId">← @Model.AnimeTitle</a>
