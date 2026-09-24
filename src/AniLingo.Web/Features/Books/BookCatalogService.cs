@@ -393,6 +393,22 @@ public sealed class BookCatalogService(
 
         var hash = Convert.ToHexString(
             SHA256.HashData(copy.ToArray()));
+        var sourceKey =
+            "upload-" + hash[..48].ToLowerInvariant();
+
+        var existingId = await db.NovelWorks
+            .AsNoTracking()
+            .Where(x =>
+                x.SourceProvider == ImportedBookProvider
+                && x.SourceKey == sourceKey)
+            .Select(x => (Guid?)x.Id)
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (existingId is Guid existing)
+        {
+            return existing;
+        }
+
         copy.Position = 0;
 
         var parsed = EpubBookParser.Parse(
@@ -401,7 +417,7 @@ public sealed class BookCatalogService(
 
         return await ImportParsedBookAsync(
             parsed,
-            sourceKey: "upload-" + hash[..48].ToLowerInvariant(),
+            sourceKey: sourceKey,
             sourceUrl: "upload://" + Uri.EscapeDataString(fileName),
             metadataProvider: null,
             metadataExternalId: null,
@@ -711,6 +727,65 @@ public sealed class BookCatalogService(
                 x.Id == bookmarkId
                 && x.ProfileId == profileId)
             .ExecuteDeleteAsync(cancellationToken);
+    }
+
+    public bool IsInboxConfigured =>
+        TryGetInboxPath(out _);
+
+    public async Task<IReadOnlyList<Guid>> ImportInboxAsync(
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetInboxPath(out var inboxPath))
+        {
+            throw new InvalidOperationException(
+                "Books inbox is not configured.");
+        }
+
+        if (!Directory.Exists(inboxPath))
+        {
+            throw new InvalidOperationException(
+                $"Books inbox '{inboxPath}' is not available.");
+        }
+
+        var files = Directory
+            .EnumerateFiles(
+                inboxPath,
+                "*.epub",
+                SearchOption.TopDirectoryOnly)
+            .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+            .Take(200)
+            .ToArray();
+
+        var imported = new List<Guid>(files.Length);
+        foreach (var path in files)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            try
+            {
+                await using var stream = new FileStream(
+                    path,
+                    FileMode.Open,
+                    FileAccess.Read,
+                    FileShare.ReadWrite | FileShare.Delete,
+                    bufferSize: 81920,
+                    useAsync: true);
+
+                imported.Add(await ImportUploadedEpubAsync(
+                    stream,
+                    Path.GetFileName(path),
+                    cancellationToken));
+            }
+            catch (IOException)
+            {
+                // A downloader may still be moving/writing this file.
+                // The next inbox scan can retry it safely.
+            }
+        }
+
+        return imported
+            .Distinct()
+            .ToArray();
     }
 
     public bool IsSabnzbdConfigured =>
@@ -1581,6 +1656,22 @@ public sealed class BookCatalogService(
         }
 
         return builder.ToString();
+    }
+
+    private bool TryGetInboxPath(
+        out string inboxPath)
+    {
+        var configured = configuration[
+            "Books:InboxPath"]?.Trim();
+
+        if (string.IsNullOrWhiteSpace(configured))
+        {
+            inboxPath = "";
+            return false;
+        }
+
+        inboxPath = Path.GetFullPath(configured);
+        return true;
     }
 
     private bool TryGetSabnzbdConfiguration(
