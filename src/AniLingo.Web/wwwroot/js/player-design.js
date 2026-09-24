@@ -64,7 +64,7 @@
                 button.setAttribute("aria-label", tokenLabel(token));
                 button.addEventListener("click", event => {
                     event.stopPropagation();
-                    dispatch(root, actions.openWord, { token, cue });
+                    dispatch(root, actions.openWord, { token, cue, element: button });
                 });
                 bubble.append(button);
             } else {
