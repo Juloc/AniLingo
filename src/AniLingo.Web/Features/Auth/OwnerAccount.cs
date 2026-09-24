@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations.Schema;
+
 namespace AniLingo.Web.Features.Auth;
 
 public enum AccountRole
@@ -23,6 +25,9 @@ public sealed class OwnerAccount
     public AccountRole Role { get; set; } = AccountRole.Owner;
     public bool IsEnabled { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    [NotMapped]
+    public long SessionVersion { get; set; } = 1;
 }
 
 public sealed record LocalAccountSummary(
