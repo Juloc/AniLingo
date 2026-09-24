@@ -203,6 +203,8 @@ public sealed class ReaderPersonalizationTests
         StringAssert.Contains(script, "sendPagedProgress");
         StringAssert.Contains(script, "prefers-reduced-motion");
         StringAssert.Contains(script, "google:");
+        StringAssert.Contains(script, "/api/reader-backgrounds");
+        StringAssert.Contains(script, "backgroundAssetId");
         Assert.IsFalse(script.Contains("canvas", StringComparison.OrdinalIgnoreCase));
 
         StringAssert.Contains(css, "[data-reading-mode=\"paged\"]");
@@ -228,6 +230,7 @@ public sealed class ReaderPersonalizationTests
             PaperStyle = paper,
             GenreArtworkEnabled = true,
             GenreTheme = "auto",
+            BackgroundAssetId = "auto",
             BackgroundIntensity = .05,
             BookmarkStyle = "fabric",
             BookmarkColor = "#b04455"
