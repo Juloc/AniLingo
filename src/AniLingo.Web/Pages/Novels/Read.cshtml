@@ -24,6 +24,7 @@
         .Where(x => x.ChapterId == Model.Chapter.Id)
         .ToArray();
     var noteCount = Model.Bookmarks.Count + Model.Highlights.Count;
+    var pairCount = Math.Max(Model.JapaneseParagraphs.Count, Model.GermanParagraphs.Count);
 }
 @section Head {
     <link rel="stylesheet" href="~/css/novels.css" asp-append-version="true" />
@@ -34,6 +35,9 @@
 
 <div class="novel-reading-progress" aria-hidden="true">
     <span data-reading-progress style="width:@(initialPermille / 10)%"></span>
+    <div class="novel-mobile-bookmark-track"
+         data-bookmark-track
+         data-orientation="horizontal"></div>
 </div>
 
 <div class="novel-reader-shell"
@@ -50,184 +54,264 @@
      data-force-anchor="@((initialBookmark is not null).ToString().ToLowerInvariant())">
 
     <nav class="novel-reader-toolbar" aria-label="Reader controls">
-        <div class="novel-toolbar-group">
-            <a class="novel-icon-button" href="/Novels/Work/@Model.Work.Id" aria-label="Back to chapters" title="Chapters">☰</a>
-            @if (Model.PreviousChapterId is Guid previous)
-            {
-                <a class="novel-icon-button" href="/Novels/Read/@previous" aria-label="Previous chapter" title="Previous chapter">←</a>
-            }
-            @if (Model.NextChapterId is Guid next)
-            {
-                <a class="novel-icon-button" href="/Novels/Read/@next" aria-label="Next chapter" title="Next chapter">→</a>
-            }
+        <div class="novel-toolbar-start">
+            <button class="novel-icon-button"
+                    type="button"
+                    data-reader-chapters-toggle
+                    aria-label="Kapitel öffnen"
+                    title="Kapitel">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+            </button>
+            <div class="novel-toolbar-location">
+                <span>Kapitel @Model.Chapter.Number</span>
+                <strong>@Model.Chapter.Title</strong>
+            </div>
         </div>
 
-        <div class="novel-view-switch" role="group" aria-label="Reading language">
-            <button type="button" data-reader-view="ja">日本語</button>
-            @if (hasTranslation)
-            {
-                <button type="button" data-reader-view="de">Deutsch</button>
-                <button type="button" data-reader-view="both">Beide</button>
-            }
+        <div class="novel-view-switch" role="group" aria-label="Lesesprache">
+            <button type="button" data-reader-view="ja" aria-label="Japanisch">JP</button>
+            <button type="button"
+                    data-reader-view="de"
+                    aria-label="Deutsch"
+                    disabled="@(!hasTranslation)">DE</button>
+            <button type="button"
+                    data-reader-view="both"
+                    aria-label="Japanisch und Deutsch"
+                    disabled="@(!hasTranslation)">JP+DE</button>
         </div>
 
-        <div class="novel-toolbar-group">
+        <div class="novel-toolbar-end">
             <button class="novel-icon-button @(currentBookmarks.Length > 0 ? "has-bookmarks" : "")"
                     type="button"
                     data-reader-bookmark
-                    aria-label="Add bookmark"
-                    title="Add bookmark">
-                🔖
-                @if (currentBookmarks.Length > 0)
-                {
-                    <span class="novel-bookmark-button-count" data-current-bookmark-count>@currentBookmarks.Length</span>
-                }
-                else
-                {
-                    <span class="novel-bookmark-button-count" data-current-bookmark-count hidden>0</span>
-                }
+                    aria-label="Lesezeichen setzen"
+                    title="Lesezeichen setzen">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M7 4.5h10v15l-5-3-5 3z" />
+                </svg>
+                <span class="novel-bookmark-button-count"
+                      data-current-bookmark-count
+                      hidden="@(currentBookmarks.Length == 0)">@currentBookmarks.Length</span>
             </button>
-            <button class="novel-icon-button" type="button" data-reader-notes-toggle aria-label="Bookmarks and highlights" title="Bookmarks and highlights">
-                ✎
-                @if (noteCount > 0)
-                {
-                    <span class="novel-toolbar-count" data-reader-note-count>@noteCount</span>
-                }
-                else
-                {
-                    <span class="novel-toolbar-count" data-reader-note-count hidden>0</span>
-                }
+
+            <button class="novel-icon-button"
+                    type="button"
+                    data-reader-notes-toggle
+                    aria-label="Lesezeichen und Markierungen"
+                    title="Lesezeichen und Markierungen">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M5 19l1-4L15.5 5.5a2.1 2.1 0 0 1 3 3L9 18zM13.5 7.5l3 3" />
+                </svg>
+                <span class="novel-toolbar-count"
+                      data-reader-note-count
+                      hidden="@(noteCount == 0)">@noteCount</span>
             </button>
 
             <details class="novel-reader-settings">
-                <summary class="novel-icon-button" aria-label="Reading settings" title="Reading settings">Aa</summary>
+                <summary class="novel-icon-button" aria-label="Leseeinstellungen" title="Leseeinstellungen">Aa</summary>
                 <div class="novel-settings-popover">
-                    <strong>Reading settings</strong>
+                    <strong>Leseeinstellungen</strong>
                     <div class="novel-setting-row">
-                        <span>Text size</span>
+                        <span>Textgröße</span>
                         <div>
                             <button class="button" type="button" data-reader-adjust="size-down">A−</button>
                             <button class="button" type="button" data-reader-adjust="size-up">A+</button>
                         </div>
                     </div>
-                    <button class="button" type="button" data-reader-adjust="leading">Line spacing</button>
-                    <button class="button" type="button" data-reader-adjust="width">Text width</button>
+                    <button class="button" type="button" data-reader-adjust="leading">Zeilenabstand</button>
+                    <button class="button" type="button" data-reader-adjust="width">Textbreite</button>
                     <button class="button" type="button" data-reader-theme>Theme: <span data-reader-theme-label>Dark</span></button>
-                    <button class="button" type="button" data-reader-focus>Focus mode</button>
+                    <button class="button" type="button" data-reader-focus>Fokusmodus</button>
                 </div>
             </details>
         </div>
     </nav>
 
-    <aside class="novel-bookmark-rail" data-bookmark-rail aria-label="Bookmarks in this chapter">
-        <button class="novel-bookmark-rail-icon"
-                type="button"
-                data-reader-notes-toggle
-                aria-label="Show bookmarks"
-                title="Show bookmarks">🔖</button>
-        <div class="novel-bookmark-rail-track" data-bookmark-rail-track></div>
+    <aside class="novel-reader-progress-rail" aria-label="Lesefortschritt">
+        <div class="novel-reader-progress-track">
+            <span class="novel-reader-progress-fill"
+                  data-reader-rail-fill
+                  style="height:@(initialPermille / 10)%"></span>
+            <div data-bookmark-track data-orientation="vertical"></div>
+        </div>
+        <output data-reader-percent>@(initialPermille / 10)%</output>
     </aside>
 
     <header class="novel-reader-title">
         <a class="novel-reader-series" href="/Novels/Work/@Model.Work.Id">
             @(Model.Work.MetadataTitle ?? Model.Work.Title)
         </a>
-        <h1><span class="novel-chapter-number">@Model.Chapter.Number.</span> @Model.Chapter.Title</h1>
-        <div class="novel-meta">
-            @foreach (var mapping in Model.AnimeMappings)
-            {
-                <span class="novel-status-pill">
-                    S@(mapping.SeasonNumber.ToString("00"))
-                    E@(mapping.EpisodeStart.ToString("00"))@(mapping.EpisodeEnd == mapping.EpisodeStart ? "" : $"–E{mapping.EpisodeEnd:00}")
-                </span>
-            }
-            @if (hasTranslation)
-            {
-                <span>German translation cached</span>
-            }
-        </div>
-    </header>
-
-    @if (!hasTranslation)
-    {
-        <section class="novel-translation-callout">
-            <div>
-                <strong>Japanese source</strong>
-                <div class="novel-muted">No German translation is cached for this chapter yet.</div>
-            </div>
-            @if (Model.IsOwner)
-            {
-                <form method="post" asp-page-handler="Translate" asp-route-id="@Model.Chapter.Id">
-                    <button class="button button-primary" type="submit">Translate once with AI</button>
-                </form>
-            }
-        </section>
-    }
-
-    <main class="novel-reader-columns">
-        <article class="novel-reader-column ja" data-reader-column="ja">
-            <div class="novel-reader-language-label">Japanese</div>
-            <div class="novel-reader-text" lang="ja">
-                @for (var index = 0; index < Model.JapaneseParagraphs.Count; index++)
+        <h1><span>@Model.Chapter.Number.</span> @Model.Chapter.Title</h1>
+        @if (Model.AnimeMappings.Count > 0)
+        {
+            <div class="novel-reader-related">
+                @foreach (var mapping in Model.AnimeMappings)
                 {
-                    <p data-reader-paragraph data-language="ja" data-index="@index">@Model.JapaneseParagraphs[index]</p>
+                    <span>
+                        Anime S@(mapping.SeasonNumber.ToString("00"))
+                        E@(mapping.EpisodeStart.ToString("00"))@(mapping.EpisodeEnd == mapping.EpisodeStart ? "" : $"–E{mapping.EpisodeEnd:00}")
+                    </span>
                 }
             </div>
-        </article>
+        }
+    </header>
 
+    <div class="novel-translation-slot" data-translation-slot>
         @if (hasTranslation)
         {
-            <article class="novel-reader-column de" data-reader-column="de">
-                <div class="novel-reader-language-label">Deutsch</div>
-                <div class="novel-reader-text" lang="de">
-                    @for (var index = 0; index < Model.GermanParagraphs.Count; index++)
-                    {
-                        <p data-reader-paragraph data-language="de" data-index="@index">@Model.GermanParagraphs[index]</p>
-                    }
-                </div>
-            </article>
+            <span class="novel-translation-state ready">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4 10-10" /></svg>
+                Deutsch bereit
+            </span>
+        }
+        else
+        {
+            <span class="novel-translation-state">Deutsch noch nicht vorbereitet</span>
+            @if (Model.IsOwner)
+            {
+                <form method="post"
+                      asp-page-handler="Translate"
+                      asp-route-id="@Model.Chapter.Id"
+                      data-translate-form>
+                    <button class="novel-text-action" type="submit">Übersetzen</button>
+                </form>
+            }
+        }
+    </div>
+
+    <main class="novel-reader-content">
+        @for (var index = 0; index < pairCount; index++)
+        {
+            <section class="novel-reader-segment" data-reader-segment="@index">
+                @if (index < Model.JapaneseParagraphs.Count)
+                {
+                    <p class="novel-reader-paragraph ja"
+                       lang="ja"
+                       data-reader-paragraph
+                       data-language="ja"
+                       data-index="@index">@Model.JapaneseParagraphs[index]</p>
+                }
+
+                @if (index < Model.GermanParagraphs.Count)
+                {
+                    <p class="novel-reader-paragraph de"
+                       lang="de"
+                       data-reader-paragraph
+                       data-language="de"
+                       data-index="@index">@Model.GermanParagraphs[index]</p>
+                }
+            </section>
         }
     </main>
 
     <footer class="novel-reader-footer">
-        <div>
-            @if (Model.PreviousChapterId is Guid previousFooter)
-            {
-                <a class="button" href="/Novels/Read/@previousFooter">← Previous chapter</a>
-            }
-        </div>
-        <div class="novel-toolbar-group">
-            @if (Model.IsOwner)
-            {
-                <form method="post" asp-page-handler="RefreshSource" asp-route-id="@Model.Chapter.Id">
-                    <button class="button" type="submit">Refresh source</button>
-                </form>
-            }
-            @if (Model.NextChapterId is Guid nextFooter)
-            {
-                <a class="button button-primary" href="/Novels/Read/@nextFooter">Next chapter →</a>
-            }
-        </div>
+        @if (Model.PreviousChapterId is Guid previousFooter)
+        {
+            <a href="/Novels/Read/@previousFooter">← Vorheriges Kapitel</a>
+        }
+        else
+        {
+            <span></span>
+        }
+
+        @if (Model.NextChapterId is Guid nextFooter)
+        {
+            <a href="/Novels/Read/@nextFooter">Nächstes Kapitel →</a>
+        }
     </footer>
 
-    <aside class="novel-reader-notes" data-reader-notes hidden aria-label="Bookmarks and highlights">
+    <div class="novel-drawer-backdrop"
+         data-chapter-drawer-backdrop
+         hidden></div>
+    <aside class="novel-chapter-drawer"
+           data-chapter-drawer
+           hidden
+           aria-label="Kapitel">
+        <header class="novel-drawer-header">
+            <div>
+                <strong>@(Model.Work.MetadataTitle ?? Model.Work.Title)</strong>
+                <span>@Model.Chapters.Count Kapitel</span>
+            </div>
+            <button class="novel-icon-button"
+                    type="button"
+                    data-chapter-drawer-close
+                    aria-label="Kapitel schließen">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+            </button>
+        </header>
+
+        <div class="novel-drawer-current">
+            @if (Model.PreviousChapterId is Guid drawerPrevious)
+            {
+                <a href="/Novels/Read/@drawerPrevious" aria-label="Vorheriges Kapitel">←</a>
+            }
+            <div>
+                <span>Du liest</span>
+                <strong>@Model.Chapter.Number. @Model.Chapter.Title</strong>
+            </div>
+            @if (Model.NextChapterId is Guid drawerNext)
+            {
+                <a href="/Novels/Read/@drawerNext" aria-label="Nächstes Kapitel">→</a>
+            }
+        </div>
+
+        <label class="novel-chapter-search">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="11" cy="11" r="6" />
+                <path d="m16 16 4 4" />
+            </svg>
+            <input type="search"
+                   data-chapter-filter
+                   placeholder="Kapitel suchen"
+                   autocomplete="off" />
+        </label>
+
+        <nav class="novel-drawer-list" data-chapter-list>
+            @foreach (var chapter in Model.Chapters)
+            {
+                var isCurrent = chapter.Id == Model.Chapter.Id;
+                var isEarlier = chapter.Number < Model.Chapter.Number;
+                <a class="novel-drawer-row @(isCurrent ? "current" : isEarlier ? "earlier" : "")"
+                   href="/Novels/Read/@chapter.Id"
+                   data-chapter-row
+                   data-chapter-search="@($"{chapter.Number} {chapter.Title}".ToLowerInvariant())">
+                    <span class="novel-drawer-number">@chapter.Number</span>
+                    <span class="novel-drawer-title" lang="ja">@chapter.Title</span>
+                    @if (chapter.HasTranslation)
+                    {
+                        <span class="novel-drawer-lang">DE</span>
+                    }
+                    @if (isCurrent)
+                    {
+                        <span class="novel-drawer-current-mark" aria-label="Aktuelles Kapitel"></span>
+                    }
+                </a>
+            }
+        </nav>
+    </aside>
+
+    <aside class="novel-reader-notes" data-reader-notes hidden aria-label="Lesezeichen und Markierungen">
         <div class="novel-notes-header">
             <div>
-                <span class="eyebrow">Reading notes</span>
-                <h2>Bookmarks & highlights</h2>
+                <strong>Lesezeichen & Markierungen</strong>
+                <span>@(Model.Work.MetadataTitle ?? Model.Work.Title)</span>
             </div>
-            <button class="novel-icon-button" type="button" data-reader-notes-close aria-label="Close">×</button>
+            <button class="novel-icon-button" type="button" data-reader-notes-close aria-label="Schließen">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+            </button>
         </div>
 
         <section>
-            <h3>Bookmarks</h3>
-            <p class="novel-muted @(Model.Bookmarks.Count == 0 ? "" : "is-hidden")" data-empty-bookmarks>No bookmarks yet.</p>
+            <h3>Lesezeichen</h3>
+            <p class="novel-muted @(Model.Bookmarks.Count == 0 ? "" : "is-hidden")" data-empty-bookmarks>Noch keine Lesezeichen.</p>
             <div class="novel-note-list" data-bookmark-list>
                 @foreach (var bookmark in Model.Bookmarks.OrderByDescending(x => x.CreatedAt))
                 {
                     <article class="novel-note-card" data-bookmark-card data-bookmark-id="@bookmark.Id">
                         <a href="/Novels/Read/@bookmark.ChapterId?bookmark=@bookmark.Id">
-                            <strong>@(bookmark.Label ?? $"Bookmark · {bookmark.PositionPermille / 10}%")</strong>
+                            <strong>@(bookmark.Label ?? $"Lesezeichen · {bookmark.PositionPermille / 10}%")</strong>
                             @if (!string.IsNullOrWhiteSpace(bookmark.AnchorText))
                             {
                                 <span>@bookmark.AnchorText</span>
@@ -238,7 +322,7 @@
                               asp-route-id="@Model.Chapter.Id"
                               data-remove-bookmark-form>
                             <input type="hidden" name="bookmarkId" value="@bookmark.Id" />
-                            <button class="novel-note-remove" type="submit" aria-label="Remove bookmark">Remove</button>
+                            <button class="novel-note-remove" type="submit">Entfernen</button>
                         </form>
                     </article>
                 }
@@ -246,8 +330,8 @@
         </section>
 
         <section>
-            <h3>Highlights</h3>
-            <p class="novel-muted @(Model.Highlights.Count == 0 ? "" : "is-hidden")" data-empty-highlights>Select text in the reader to create a highlight.</p>
+            <h3>Markierungen</h3>
+            <p class="novel-muted @(Model.Highlights.Count == 0 ? "" : "is-hidden")" data-empty-highlights>Text auswählen, um ihn zu markieren.</p>
             <div class="novel-note-list" data-highlight-list>
                 @foreach (var highlight in Model.Highlights.OrderByDescending(x => x.CreatedAt))
                 {
@@ -264,7 +348,7 @@
                               asp-route-id="@Model.Chapter.Id"
                               data-remove-highlight-form>
                             <input type="hidden" name="highlightId" value="@highlight.Id" />
-                            <button class="novel-note-remove" type="submit" aria-label="Remove highlight">Remove</button>
+                            <button class="novel-note-remove" type="submit">Entfernen</button>
                         </form>
                     </article>
                 }
@@ -273,8 +357,8 @@
     </aside>
 
     <div class="novel-selection-menu" data-selection-menu hidden>
-        <button type="button" data-save-highlight>Highlight</button>
-        <button type="button" data-save-highlight-note>Highlight + note</button>
+        <button type="button" data-save-highlight>Markieren</button>
+        <button type="button" data-save-highlight-note>Markieren + Notiz</button>
     </div>
 
     @foreach (var bookmark in currentBookmarks)
