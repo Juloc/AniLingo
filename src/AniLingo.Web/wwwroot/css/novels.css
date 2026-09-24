@@ -1612,72 +1612,8 @@ body:has(.novel-reader-shell) .app-main {
     background-image: var(--reader-genre-background-image, none);
 }
 
-.novel-reader-shell[data-genre-artwork="false"]::before,
-.novel-reader-shell[data-genre-theme="neutral"]::before {
+.novel-reader-shell[data-genre-artwork="false"]::before {
     display: none;
-}
-
-.novel-reader-shell[data-genre-artwork="true"][data-genre-theme="horror"]::before {
-    background-image:
-        var(--reader-genre-background-image,
-            radial-gradient(circle at 72% 18%, #d9d9d9 0 2%, transparent 24%),
-            linear-gradient(155deg, transparent 35%, #000 100%),
-            repeating-linear-gradient(115deg, #555 0 1px, transparent 1px 24px));
-}
-
-.novel-reader-shell[data-genre-artwork="true"][data-genre-theme="romance"]::before {
-    background-image:
-        var(--reader-genre-background-image,
-            radial-gradient(circle at 15% 20%, #ff9eb6 0 4%, transparent 18%),
-            radial-gradient(circle at 82% 72%, #ffd1dc 0 5%, transparent 20%),
-            linear-gradient(135deg, #fff0f4, #ffdce6));
-}
-
-.novel-reader-shell[data-genre-artwork="true"][data-genre-theme="fantasy"]::before,
-.novel-reader-shell[data-genre-artwork="true"][data-genre-theme="dark-fantasy"]::before,
-.novel-reader-shell[data-genre-artwork="true"][data-genre-theme="isekai"]::before {
-    background-image:
-        var(--reader-genre-background-image,
-            radial-gradient(circle at 75% 12%, #f4dd9d 0 2%, transparent 16%),
-            linear-gradient(165deg, transparent 50%, #2c4730 100%),
-            repeating-linear-gradient(22deg, transparent 0 38px, #91764a 39px 40px));
-}
-
-.novel-reader-shell[data-genre-artwork="true"][data-genre-theme="sci-fi"]::before {
-    background-image:
-        var(--reader-genre-background-image,
-            radial-gradient(circle at 76% 18%, #dff8ff 0 1px, transparent 2px),
-            radial-gradient(circle at 18% 64%, #b5eaff 0 1px, transparent 2px),
-            repeating-linear-gradient(90deg, transparent 0 39px, #75d3ff 40px),
-            linear-gradient(145deg, #061226, #183a5d));
-}
-
-.novel-reader-shell[data-genre-artwork="true"][data-genre-theme="mystery"]::before,
-.novel-reader-shell[data-genre-artwork="true"][data-genre-theme="psychological"]::before {
-    background-image:
-        var(--reader-genre-background-image,
-            linear-gradient(110deg, transparent 42%, #637468 43% 45%, transparent 46%),
-            radial-gradient(ellipse at 80% 25%, #aab8ad 0 8%, transparent 30%),
-            linear-gradient(145deg, #1b2421, #59645b));
-}
-
-.novel-reader-shell[data-genre-artwork="true"][data-genre-theme="adventure"]::before,
-.novel-reader-shell[data-genre-artwork="true"][data-genre-theme="slice-of-life"]::before {
-    background-image:
-        var(--reader-genre-background-image,
-            radial-gradient(circle at 22% 25%, #f3d899 0 6%, transparent 22%),
-            linear-gradient(155deg, transparent 58%, #67805f 59% 64%, transparent 65%),
-            linear-gradient(145deg, #efe0bd, #b8cfbf));
-}
-
-.novel-reader-shell[data-genre-artwork="true"][data-genre-theme="supernatural"]::before,
-.novel-reader-shell[data-genre-artwork="true"][data-genre-theme="gothic"]::before,
-.novel-reader-shell[data-genre-artwork="true"][data-genre-theme="urban-fantasy"]::before {
-    background-image:
-        var(--reader-genre-background-image,
-            radial-gradient(circle at 75% 18%, #dbe6ff 0 4%, transparent 17%),
-            linear-gradient(90deg, transparent 20%, #20202a 21% 24%, transparent 25%),
-            linear-gradient(150deg, #141322, #40384c));
 }
 
 .novel-reader-shell[data-paper-style="white"] {
