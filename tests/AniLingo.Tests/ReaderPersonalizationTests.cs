@@ -44,7 +44,8 @@ public sealed class ReaderPersonalizationTests
 
             Assert.AreEqual("book-serif", first.FontFamily);
             Assert.AreEqual("sepia", first.PaperStyle);
-            Assert.AreEqual("fantasy", first.ResolvedGenreTheme);
+            CollectionAssert.Contains(first.SourceGenres.ToArray(), "Fantasy");
+            Assert.AreEqual("auto", first.ResolvedGenreTheme);
             Assert.IsTrue(first.HasBookOverride);
 
             await ReaderPreferenceStore.SaveUserDefaultsAsync(
@@ -198,6 +199,8 @@ public sealed class ReaderPersonalizationTests
         StringAssert.Contains(page, "data-reader-reset-book");
         StringAssert.Contains(page, "data-bookmark-style-control");
         StringAssert.Contains(page, "Kapitel @Model.Chapter.Number");
+        StringAssert.Contains(page, "data-reader-genre-select");
+        Assert.IsFalse(page.Contains("<option value=\"horror\">", StringComparison.Ordinal));
 
         StringAssert.Contains(script, "captureLogicalAnchor");
         StringAssert.Contains(script, "sendPagedProgress");
