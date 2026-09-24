@@ -107,6 +107,9 @@ public sealed class StorageAvailabilityTests
 
             Assert.AreEqual(StorageAvailabilityState.Starting, starting.State);
             Assert.IsFalse(coordinator.TryMarkWakeStarting(rootId));
+
+            coordinator.MarkWakeFailed(rootId);
+            Assert.IsTrue(coordinator.TryMarkWakeStarting(rootId));
         }
         finally
         {
@@ -186,6 +189,19 @@ public sealed class StorageAvailabilityTests
             Assert.IsNotNull(missing);
             Assert.AreEqual(StorageAvailabilityState.FileMissing, missing.State);
             Assert.IsFalse(missing.Retryable);
+
+            Directory.Delete(
+                Path.Combine(libraryPath, "mounted-marker"),
+                recursive: true);
+
+            var emptyMount = await mediaAvailability.CheckMediaAsync(
+                media.Id,
+                force: true,
+                CancellationToken.None);
+
+            Assert.IsNotNull(emptyMount);
+            Assert.AreEqual(StorageAvailabilityState.Offline, emptyMount.State);
+            Assert.IsTrue(emptyMount.Retryable);
 
             Directory.Delete(libraryPath, recursive: true);
 
