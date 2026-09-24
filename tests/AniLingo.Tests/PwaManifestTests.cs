@@ -54,13 +54,20 @@ public sealed class PwaManifestTests
         StringAssert.Contains(layout, "apple-mobile-web-app-capable");
         StringAssert.Contains(layout, "apple-mobile-web-app-status-bar-style");
         StringAssert.Contains(layout, "apple-touch-icon");
+        StringAssert.Contains(layout, "href=\"~/css/site.css\" asp-append-version=\"true\"");
+        StringAssert.Contains(layout, "src=\"~/js/pwa.js\" asp-append-version=\"true\"");
 
         var serviceWorker = File.ReadAllText(
             Path.Combine(webRoot, "service-worker.js"));
 
         StringAssert.Contains(serviceWorker, "\"/offline.html\"");
-        StringAssert.Contains(serviceWorker, "\"/css/site.css\"");
+        Assert.IsFalse(serviceWorker.Contains("\"/css/site.css\"", StringComparison.Ordinal));
+        Assert.IsFalse(serviceWorker.Contains("\"/js/pwa.js\"", StringComparison.Ordinal));
         StringAssert.Contains(serviceWorker, "SKIP_WAITING");
+        StringAssert.Contains(serviceWorker, "CACHE_CURRENT_ASSETS");
+        StringAssert.Contains(serviceWorker, "cache: \"reload\"");
+        StringAssert.Contains(serviceWorker, "putLatestAsset");
+        StringAssert.Contains(serviceWorker, "cached.pathname === current.pathname");
         StringAssert.Contains(serviceWorker, "request.mode === \"navigate\"");
         Assert.IsFalse(serviceWorker.Contains("\"/Learn", StringComparison.Ordinal));
         Assert.IsFalse(serviceWorker.Contains("\"/Library", StringComparison.Ordinal));
@@ -78,6 +85,10 @@ public sealed class PwaManifestTests
         StringAssert.Contains(pwaRuntime, "wakeLock");
         StringAssert.Contains(pwaRuntime, "requestPictureInPicture");
         StringAssert.Contains(pwaRuntime, "navigator.share");
+        StringAssert.Contains(pwaRuntime, "currentFingerprintedAssets");
+        StringAssert.Contains(pwaRuntime, "url.searchParams.has(\"v\")");
+        StringAssert.Contains(pwaRuntime, "CACHE_CURRENT_ASSETS");
+        StringAssert.Contains(pwaRuntime, "updateViaCache: \"none\"");
     }
 
     private static string FindRepositoryRoot()
