@@ -333,15 +333,15 @@ public sealed class BookCatalogServiceTests
     [TestMethod]
     public void RemoteEpubUrlRejectsUnsafeTargets()
     {
-        Assert.ThrowsException<InvalidOperationException>(() =>
+        AssertThrows<InvalidOperationException>(() =>
             BookCatalogService.ValidateExternalEpubUriSyntax(
                 new Uri("http://example.com/book.epub")));
 
-        Assert.ThrowsException<InvalidOperationException>(() =>
+        AssertThrows<InvalidOperationException>(() =>
             BookCatalogService.ValidateExternalEpubUriSyntax(
                 new Uri("https://127.0.0.1/book.epub")));
 
-        Assert.ThrowsException<InvalidOperationException>(() =>
+        AssertThrows<InvalidOperationException>(() =>
             BookCatalogService.ValidateExternalEpubUriSyntax(
                 new Uri("https://[::1]/book.epub")));
 
@@ -410,6 +410,20 @@ public sealed class BookCatalogServiceTests
         {
             SqliteConnection.ClearAllPools();
             File.Delete(path);
+        }
+    }
+
+    private static void AssertThrows<TException>(Action action)
+        where TException : Exception
+    {
+        try
+        {
+            action();
+            Assert.Fail(
+                $"Expected {typeof(TException).Name} to be thrown.");
+        }
+        catch (TException)
+        {
         }
     }
 
