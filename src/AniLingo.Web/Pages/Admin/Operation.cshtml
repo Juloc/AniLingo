@@ -68,7 +68,9 @@
                 </form>
             }
 
-            @if (operation.Retryable && !operation.IsActive)
+            @if (operation.Retryable
+                && operation.Status is AniLingo.Web.Features.Operations.OperationStatus.Failed
+                    or AniLingo.Web.Features.Operations.OperationStatus.Interrupted)
             {
                 <form method="post" asp-page-handler="Retry">
                     <input type="hidden" name="id" value="@operation.Id" />
@@ -79,7 +81,10 @@
             }
         </div>
 
-        @if (operation.Retryable && !operation.IsActive && !Model.RuntimeAvailable)
+        @if (operation.Retryable
+            && operation.Status is AniLingo.Web.Features.Operations.OperationStatus.Failed
+                or AniLingo.Web.Features.Operations.OperationStatus.Interrupted
+            && !Model.RuntimeAvailable)
         {
             <small class="muted">Retry payload is no longer available after an application restart.</small>
         }
