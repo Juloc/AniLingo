@@ -1,0 +1,39 @@
+# AniLingo Android clients
+
+This directory contains the first-party Android phone and Android TV clients defined by [`docs/ANDROID_CLIENTS.md`](../../docs/ANDROID_CLIENTS.md).
+
+## Modules
+
+- `app-mobile`: phone shell; the full AniLingo web UI remains the normal Library/Learn/Settings surface, while episode playback becomes native.
+- `app-tv`: native TV shell and player surface.
+- `core-api`: versioned `/api/client/v1` route/compatibility contract.
+- `core-model`: shared immutable client models.
+- `core-player`: Media3 player/session foundation and deterministic direct/fallback selection.
+- `core-session`: shared playback-session/companion command models for the later pairing slice.
+- `core-design`: packages the canonical JSON under `design/player` as Android assets. Those JSON files remain the source of truth.
+
+## Baseline
+
+- AGP 9.4.0
+- Gradle 9.6.0
+- JDK 17
+- Kotlin/Compose compiler 2.4.20
+- compileSdk 37
+- targetSdk 36
+- minSdk 26
+- Media3 1.11.1
+- Compose BOM 2026.09.00
+- TV Material 1.1.0
+
+The repository CI installs Gradle 9.6 directly and builds both debug APKs. Release signing is intentionally not enabled in this foundation slice; release APK signing remains a later #69 step using protected GitHub secrets.
+
+## Build
+
+From this directory with Android SDK 37 available:
+
+```bash
+gradle :core-api:testDebugUnitTest :core-player:testDebugUnitTest
+gradle :app-mobile:assembleDebug :app-tv:assembleDebug
+```
+
+The next delivery slice connects the server-side `/api/client/v1` endpoints, same-origin phone WebView shell, and native episode bootstrap/player flow.
