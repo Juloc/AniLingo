@@ -56,7 +56,7 @@
                 </div>
                 <div>
                     <span>Credential storage</span>
-                    <strong>Protected under /data</strong>
+                    <strong>Protected per AniLingo profile under /data</strong>
                 </div>
             </div>
 
@@ -161,7 +161,7 @@
             AniLingo reads the current remote list entry again immediately before every write.
             Progress can only move upward and only for an existing CURRENT (Watching) list entry with an unambiguous AniList match.
             Multi-season local groupings are blocked rather than guessed. The final episode is intentionally not synced because
-            AniList may also change completion status/date. Every write gets a local pre-write snapshot under /data/integrations.
+            AniList may also change completion status/date. Every write gets a local pre-write snapshot with the local AniLingo profile ID under /data/integrations.
         </p>
         <p class="muted">
             AniLingo does not automatically create list entries, change list status, mark entries completed,
