@@ -17,7 +17,7 @@ public sealed class ReadModel(
     public Guid? PreviousChapterId { get; private set; }
     public Guid? NextChapterId { get; private set; }
     public int InitialPage { get; private set; }
-    public ReaderSettingsSnapshot ReaderDefaults { get; private set; } = null!;
+    public ReaderSettingsSnapshot ReaderSettings { get; private set; } = null!;
     public string ProfileId => account.ProfileId;
 
     public async Task<IActionResult> OnGetAsync(
@@ -33,12 +33,6 @@ public sealed class ReadModel(
         }
 
         Chapter = chapter;
-        ReaderDefaults = await ReaderPreferenceStore.GetAsync(
-            db,
-            account.ProfileId,
-            Guid.Empty,
-            null,
-            cancellationToken);
         Chapters = await repository.GetChaptersAsync(
             chapter.SeriesId,
             cancellationToken);
