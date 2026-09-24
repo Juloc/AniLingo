@@ -2,6 +2,7 @@ package de.juloc.anilingo.mobile
 
 import de.juloc.anilingo.core.api.ApiCompatibility
 import de.juloc.anilingo.core.api.ClientApiCompatibility
+import de.juloc.anilingo.core.api.ClientApiRoutes
 import de.juloc.anilingo.core.model.ClientCapabilities
 
 data class MobileShellState(
@@ -28,13 +29,9 @@ object MobileCompatibilityGate {
                 "This AniLingo server requires client API ${compatibility.minimumSupportedApiVersion}.",
             )
             is ApiCompatibility.ServerTooOld -> MobileCompatibilityState.UpdateRequired(
-                "This app requires AniLingo client API ${ClientApiCompatibilityVersion.current}, but the server exposes ${compatibility.serverApiVersion}.",
+                "This app requires AniLingo client API ${ClientApiRoutes.ApiVersion}, but the server exposes ${compatibility.serverApiVersion}.",
             )
         }
-
-    private object ClientApiCompatibilityVersion {
-        const val current = 1
-    }
 }
 
 object PlaybackPositionPolicy {
