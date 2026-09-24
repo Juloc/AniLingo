@@ -242,11 +242,14 @@
                 <span class="novel-chapter-number">@chapter.Number</span>
                 <div class="novel-chapter-copy">
                     <strong lang="ja">@chapter.Title</strong>
-                    <div class="novel-muted">
-                        @(chapter.HasContent ? "Japanese cached" : "Loads on open")
+                    <div class="novel-chapter-subline">
                         @if (isCurrent)
                         {
-                            <text> · @(Model.Progress!.PositionPermille / 10)% read</text>
+                            <span>@(Model.Progress!.PositionPermille / 10)% read</span>
+                        }
+                        else if (chapter.PublishedAt is DateTime published)
+                        {
+                            <span>@published.ToString("yyyy-MM-dd")</span>
                         }
                     </div>
                     @if (isCurrent)
