@@ -2,6 +2,7 @@ using System.Text.Json;
 using AniLingo.Web.Features.ClientApi;
 using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Playback;
+using AniLingo.Web.Features.Storage;
 using Microsoft.AspNetCore.Http;
 
 namespace AniLingo.Tests;
@@ -26,6 +27,8 @@ public sealed class ClientApiTests
         Assert.IsFalse(capabilities.Features.PlaybackSessions);
         Assert.IsFalse(capabilities.Features.CompanionPairing);
         Assert.IsFalse(capabilities.Features.CompanionControl);
+        Assert.IsTrue(capabilities.Features.StorageAvailability);
+        Assert.IsTrue(capabilities.Features.OwnerWakeOnLan);
     }
 
     [TestMethod]
@@ -64,10 +67,46 @@ public sealed class ClientApiTests
             "/api/client/v1/media/id/content",
             true,
             new ClientPlaybackOption("ready", "Direct", false),
-            new ClientPlaybackOption("ready", "Server", true)));
+            new ClientPlaybackOption("ready", "Server", true),
+            new ClientMediaAvailability(
+                "available",
+                false,
+                0,
+                false,
+                null,
+                "/api/client/v1/media/id/availability",
+                null)));
 
         Assert.IsFalse(json.Contains("/media/anime", StringComparison.Ordinal));
         Assert.IsFalse(json.Contains("SourcePath", StringComparison.Ordinal));
+        Assert.IsFalse(json.Contains("WakeMacAddress", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void NormalClientAvailabilityDoesNotExposeOwnerWakeDetails()
+    {
+        var mediaId = Guid.NewGuid();
+        var rootId = Guid.NewGuid();
+        var snapshot = new MediaAvailabilitySnapshot(
+            mediaId,
+            rootId,
+            StorageAvailabilityState.Offline,
+            true,
+            2000,
+            true,
+            DateTimeOffset.UtcNow);
+
+        var normal = ClientApiMappings.ToClientAvailability(snapshot, isOwner: false);
+        var owner = ClientApiMappings.ToClientAvailability(snapshot, isOwner: true);
+
+        Assert.IsTrue(normal.Retryable);
+        Assert.IsFalse(normal.CanWake);
+        Assert.IsNull(normal.RootId);
+        Assert.IsNull(normal.WakeUrl);
+
+        Assert.IsTrue(owner.CanWake);
+        Assert.AreEqual(rootId, owner.RootId);
+        Assert.AreEqual(ClientApiRoutes.WakeRoot(rootId), owner.WakeUrl);
     }
 
     [TestMethod]
@@ -166,5 +205,8 @@ public sealed class ClientApiTests
         Assert.IsFalse(
             ClientApiRoutes.DirectContent(mediaId)
                 .Contains("\\", StringComparison.Ordinal));
+        Assert.IsTrue(
+            ClientApiRoutes.MediaAvailability(mediaId)
+                .StartsWith("/api/client/v1/", StringComparison.Ordinal));
     }
 }
