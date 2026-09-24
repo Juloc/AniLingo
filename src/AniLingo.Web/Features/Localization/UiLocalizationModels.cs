@@ -62,6 +62,46 @@ public sealed record UiTranslationEntry(
     string? Model,
     DateTime? UpdatedAt);
 
+public sealed class UiTextBundle(
+    string locale,
+    string direction,
+    IReadOnlyDictionary<string, string> values)
+{
+    public static UiTextBundle English { get; } = new(
+        UiTranslationCatalog.SourceLocale,
+        "ltr",
+        UiTranslationResources.All.ToDictionary(
+            x => x.Key,
+            x => x.DefaultText,
+            StringComparer.Ordinal));
+
+    public string Locale { get; } = locale;
+    public string Direction { get; } = direction;
+
+    public string this[string key] =>
+        values.TryGetValue(key, out var value)
+            ? value
+            : UiTranslationResources.TryGet(key, out var message)
+                ? message.DefaultText
+                : key;
+
+    public string Format(
+        string key,
+        params (string Name, object? Value)[] replacements)
+    {
+        var text = this[key];
+        foreach (var (name, value) in replacements)
+        {
+            text = text.Replace(
+                "{" + name + "}",
+                Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty,
+                StringComparison.Ordinal);
+        }
+
+        return text;
+    }
+}
+
 public sealed record UiGeneratedTranslation(string Key, string Text);
 
 public sealed record UiTranslationGenerationRequest(
