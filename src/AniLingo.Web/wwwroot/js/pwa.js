@@ -243,6 +243,41 @@
     });
   };
 
+  const currentFingerprintedAssets = () => {
+    const candidates = document.querySelectorAll(
+      'link[rel="stylesheet"][href], script[src]');
+
+    return [...new Set(Array.from(candidates)
+      .map(element => element.href || element.src)
+      .filter(Boolean)
+      .map(value => {
+        try {
+          return new URL(value, window.location.href);
+        } catch {
+          return null;
+        }
+      })
+      .filter(url =>
+        url
+        && url.origin === window.location.origin
+        && (url.pathname.startsWith("/css/") || url.pathname.startsWith("/js/"))
+        && url.searchParams.has("v"))
+      .map(url => url.pathname + url.search))];
+  };
+
+  const syncCurrentAssets = registration => {
+    const worker = registration?.active || navigator.serviceWorker.controller;
+    const urls = currentFingerprintedAssets();
+    if (!worker || urls.length === 0) {
+      return;
+    }
+
+    worker.postMessage({
+      type: "CACHE_CURRENT_ASSETS",
+      urls
+    });
+  };
+
   const registerServiceWorker = async () => {
     if (!("serviceWorker" in navigator)) {
       return;
@@ -277,6 +312,8 @@
         }
       });
 
+      syncCurrentAssets(registration);
+      void navigator.serviceWorker.ready.then(syncCurrentAssets).catch(() => {});
       void registration.update();
     } catch {
       // PWA support is progressive enhancement and must never block AniLingo.
