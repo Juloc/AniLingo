@@ -93,11 +93,12 @@ public sealed class EpisodeModel(
         Preparation = await preparationService.GetAsync(id, header.AnimeId, cancellationToken);
         Playback = await playbackService.GetSnapshotAsync(id, cancellationToken);
         LocalProgress = await episodeProgressService.GetAsync(id, cancellationToken);
+        AniListProgress = await aniListAccountService.GetEpisodeProgressPreviewAsync(
+            id,
+            cancellationToken);
+
         if (IsOwner)
         {
-            AniListProgress = await aniListAccountService.GetEpisodeProgressPreviewAsync(
-                id,
-                cancellationToken);
             await LoadSubtitleSourcesAsync(
                 id,
                 Playback.Media is { Storage.IsAvailable: true } availableMedia
@@ -307,11 +308,6 @@ public sealed class EpisodeModel(
         Guid id,
         CancellationToken cancellationToken)
     {
-        if (!IsOwner)
-        {
-            return Forbid();
-        }
-
         var result = await aniListAccountService.SyncEpisodeProgressAsync(
             id,
             cancellationToken);

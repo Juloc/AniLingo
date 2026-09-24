@@ -1,14 +1,16 @@
 using AniLingo.Web.Features.Auth;
-using Microsoft.AspNetCore.Authorization;
 using AniLingo.Web.Features.Tracking;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
 namespace AniLingo.Web.Pages.Settings;
 
-[Authorize(Roles = AccountRoles.Owner)]
-public sealed class AniListModel(AniListAccountService accountService) : PageModel
+public sealed class AniListModel(
+    AniListAccountService accountService,
+    CurrentAccountContext currentAccount) : PageModel
 {
+    private string ClientIdTempDataKey =>
+        $"AniListClientId:{currentAccount.ProfileId}";
     [BindProperty]
     public int ClientId { get; set; }
 
@@ -24,13 +26,13 @@ public sealed class AniListModel(AniListAccountService accountService) : PageMod
     {
         Account = await accountService.GetStatusAsync(cancellationToken);
 
-        if (TempData.TryGetValue("AniListClientId", out var value) &&
+        if (TempData.TryGetValue(ClientIdTempDataKey, out var value) &&
             int.TryParse(value?.ToString(), out var clientId) &&
             clientId > 0)
         {
             ClientId = clientId;
             AuthorizationUrl = AniListAccountService.BuildAuthorizationUrl(clientId);
-            TempData.Keep("AniListClientId");
+            TempData.Keep(ClientIdTempDataKey);
         }
     }
 
@@ -44,7 +46,7 @@ public sealed class AniListModel(AniListAccountService accountService) : PageMod
             return Page();
         }
 
-        TempData["AniListClientId"] = ClientId.ToString();
+        TempData[ClientIdTempDataKey] = ClientId.ToString();
         return RedirectToPage();
     }
 
@@ -79,7 +81,7 @@ public sealed class AniListModel(AniListAccountService accountService) : PageMod
                 AccessToken,
                 cancellationToken);
 
-            TempData.Remove("AniListClientId");
+            TempData.Remove(ClientIdTempDataKey);
             TempData["Status"] = "AniList connected.";
             return RedirectToPage();
         }
@@ -92,10 +94,11 @@ public sealed class AniListModel(AniListAccountService accountService) : PageMod
         }
     }
 
-    public async Task<IActionResult> OnPostDisconnectAsync()
+    public async Task<IActionResult> OnPostDisconnectAsync(
+        CancellationToken cancellationToken)
     {
-        await accountService.DisconnectAsync();
-        TempData.Remove("AniListClientId");
+        await accountService.DisconnectAsync(cancellationToken);
+        TempData.Remove(ClientIdTempDataKey);
         TempData["Status"] = "AniList disconnected.";
         return RedirectToPage();
     }

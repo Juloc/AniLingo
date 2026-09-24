@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using AniLingo.Web.Data;
+using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Metadata;
 using Microsoft.EntityFrameworkCore;
 
@@ -105,6 +106,7 @@ public sealed record AniListProgressSyncResult(
     string Message);
 
 public sealed record AniListProgressBackup(
+    string ProfileId,
     DateTimeOffset CapturedAt,
     string ViewerName,
     int RequestedProgress,
@@ -115,6 +117,7 @@ public sealed class AniListAccountService(
     AniListAccountStore store,
     AppDbContext db,
     AnimeMetadataService metadataService,
+    CurrentAccountContext currentAccount,
     ILogger<AniListAccountService> logger)
 {
     private const string ViewerQuery = """
@@ -188,7 +191,9 @@ public sealed class AniListAccountService(
     public async Task<AniListAccountStatus> GetStatusAsync(
         CancellationToken cancellationToken)
     {
-        var stored = await store.LoadAsync(cancellationToken);
+        var stored = await store.LoadAsync(
+            currentAccount.ProfileId,
+            cancellationToken);
         return stored is null
             ? AniListAccountStatus.Disconnected
             : ToStatus(stored);
@@ -220,11 +225,15 @@ public sealed class AniListAccountService(
             DateTimeOffset.UtcNow,
             TryReadTokenExpiry(token));
 
-        await store.SaveAsync(account, cancellationToken);
+        await store.SaveAsync(
+            currentAccount.ProfileId,
+            account,
+            cancellationToken);
         return ToStatus(account);
     }
 
-    public Task DisconnectAsync() => store.DisconnectAsync();
+    public Task DisconnectAsync(CancellationToken cancellationToken = default) =>
+        store.DisconnectAsync(currentAccount.ProfileId, cancellationToken);
 
     public async Task<AniListProgressPreview> GetEpisodeProgressPreviewAsync(
         Guid episodeId,
@@ -265,6 +274,7 @@ public sealed class AniListAccountService(
 
             await store.AppendProgressBackupAsync(
                 new AniListProgressBackup(
+                    currentAccount.ProfileId,
                     DateTimeOffset.UtcNow,
                     account.ViewerName,
                     context.RequestedProgress,
@@ -386,7 +396,9 @@ public sealed class AniListAccountService(
                     aniListEpisodeCount: resolved.EpisodeCount));
         }
 
-        var account = await store.LoadAsync(cancellationToken);
+        var account = await store.LoadAsync(
+            currentAccount.ProfileId,
+            cancellationToken);
         if (account is null)
         {
             return ProgressContext.Blocked(
