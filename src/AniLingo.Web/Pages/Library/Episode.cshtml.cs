@@ -2,6 +2,7 @@ using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Playback;
+using AniLingo.Web.Features.Progress;
 using AniLingo.Web.Features.Storage;
 using AniLingo.Web.Features.Subtitles;
 using AniLingo.Web.Features.Tracking;
@@ -32,6 +33,7 @@ public sealed class EpisodeModel(
     LearningService learningService,
     EpisodePreparationService preparationService,
     PlaybackService playbackService,
+    EpisodeProgressService episodeProgressService,
     EmbeddedSubtitleExtractor embeddedSubtitleExtractor,
     SubtitleImportService subtitleImportService,
     AniListAccountService aniListAccountService,
@@ -45,6 +47,11 @@ public sealed class EpisodeModel(
     public int EpisodeNumber { get; private set; }
     public EpisodePreparationSnapshot Preparation { get; private set; } = EpisodePreparationSnapshot.Empty;
     public EpisodePlaybackSnapshot Playback { get; private set; } = EpisodePlaybackSnapshot.Empty;
+    public EpisodeProgressSnapshot? LocalProgress { get; private set; }
+    public double ResumePositionSeconds =>
+        LocalProgress is { IsCompleted: false, PositionMs: >= 5000 } progress
+            ? progress.PositionMs / 1000d
+            : 0;
     public IReadOnlyList<EpisodePreparationTerm> Terms => Preparation.Terms;
     public IReadOnlyList<EpisodeSubtitleSource> SubtitleSources { get; private set; } = [];
     public ActiveEpisodeSubtitle? ActiveSubtitle { get; private set; }
@@ -85,6 +92,7 @@ public sealed class EpisodeModel(
         EpisodeNumber = header.Number;
         Preparation = await preparationService.GetAsync(id, header.AnimeId, cancellationToken);
         Playback = await playbackService.GetSnapshotAsync(id, cancellationToken);
+        LocalProgress = await episodeProgressService.GetAsync(id, cancellationToken);
         if (IsOwner)
         {
             AniListProgress = await aniListAccountService.GetEpisodeProgressPreviewAsync(
