@@ -86,7 +86,8 @@ public static partial class EpubBookParser
             .Select(x => new ManifestItem(
                 Id: x.Attribute("id")?.Value?.Trim() ?? "",
                 Href: x.Attribute("href")?.Value?.Trim() ?? "",
-                MediaType: x.Attribute("media-type")?.Value?.Trim() ?? ""))
+                MediaType: x.Attribute("media-type")?.Value?.Trim() ?? "",
+                Properties: x.Attribute("properties")?.Value?.Trim() ?? ""))
             .Where(x => x.Id.Length > 0 && x.Href.Length > 0)
             .ToDictionary(x => x.Id, StringComparer.Ordinal);
 
@@ -148,13 +149,63 @@ public static partial class EpubBookParser
                 "EPUB does not contain readable text chapters.");
         }
 
+        var coverId = package
+            .Descendants()
+            .FirstOrDefault(x =>
+                x.Name.LocalName == "meta"
+                && string.Equals(
+                    x.Attribute("name")?.Value,
+                    "cover",
+                    StringComparison.OrdinalIgnoreCase))
+            ?.Attribute("content")
+            ?.Value
+            ?.Trim();
+
+        var coverItem = manifest.Values.FirstOrDefault(x =>
+                x.Properties.Split(
+                        ' ',
+                        StringSplitOptions.RemoveEmptyEntries)
+                    .Contains(
+                        "cover-image",
+                        StringComparer.OrdinalIgnoreCase))
+            ?? (coverId is not null
+                && manifest.TryGetValue(coverId, out var legacyCover)
+                    ? legacyCover
+                    : null);
+
+        byte[]? coverBytes = null;
+        string? coverMediaType = null;
+        if (coverItem is not null
+            && coverItem.MediaType.StartsWith(
+                "image/",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            var coverEntry = FindEntry(
+                archive,
+                ResolveRelativePath(
+                    packageDirectory,
+                    coverItem.Href));
+
+            if (coverEntry is not null
+                && coverEntry.Length is > 0 and <= 10 * 1024 * 1024)
+            {
+                using var coverStream = coverEntry.Open();
+                using var coverMemory = new MemoryStream();
+                coverStream.CopyTo(coverMemory);
+                coverBytes = coverMemory.ToArray();
+                coverMediaType = coverItem.MediaType;
+            }
+        }
+
         return new ParsedEpubBook(
             Clean(title, 500) ?? "Untitled book",
             Clean(author, 300),
             Clean(description, 4000),
             Clean(language, 16),
             subjects,
-            chapters);
+            chapters,
+            coverBytes,
+            coverMediaType);
     }
 
     private static ImportedBookChapter ParseChapter(
@@ -516,7 +567,8 @@ public static partial class EpubBookParser
     private sealed record ManifestItem(
         string Id,
         string Href,
-        string MediaType);
+        string MediaType,
+        string Properties);
 
     [GeneratedRegex(@"\s+")]
     private static partial Regex InlineWhitespaceRegex();
