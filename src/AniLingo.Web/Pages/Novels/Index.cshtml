@@ -7,17 +7,16 @@
     <link rel="stylesheet" href="~/css/novels.css" asp-append-version="true" />
 }
 
-<section class="novel-library-header">
-    <div>
-        <span class="eyebrow">Reading library</span>
-        <h1>Light novels</h1>
-        <p>Your Japanese reading library with AniList metadata, cached translations and synced reading progress.</p>
-    </div>
+<header class="novel-library-header">
+    <h1>Light novels</h1>
 
     @if (Model.IsOwner)
     {
         <details class="novel-import-popover">
-            <summary class="button button-primary">Add novel</summary>
+            <summary class="novel-add-button">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+                Add novel
+            </summary>
             <form method="post" asp-page-handler="Import" class="novel-import-form">
                 <label for="sourceUrl">Narou / Ncode URL</label>
                 <input id="sourceUrl"
@@ -30,22 +29,19 @@
             </form>
         </details>
     }
-</section>
+</header>
 
 @if (Model.ContinueReading.Count > 0)
 {
     <section class="novel-shelf" aria-labelledby="continue-reading-heading">
         <div class="novel-section-heading">
-            <div>
-                <span class="eyebrow">Pick up where you left off</span>
-                <h2 id="continue-reading-heading">Continue reading</h2>
-            </div>
+            <h2 id="continue-reading-heading">Continue reading</h2>
         </div>
 
-        <div class="novel-continue-grid">
+        <div class="novel-continue-list">
             @foreach (var work in Model.ContinueReading)
             {
-                <a class="novel-continue-card" href="/Novels/Read/@work.CurrentChapterId">
+                <a class="novel-continue-row" href="/Novels/Read/@work.CurrentChapterId">
                     <div class="novel-continue-cover">
                         @if (!string.IsNullOrWhiteSpace(work.CoverImageUrl))
                         {
@@ -58,13 +54,13 @@
                     </div>
                     <div class="novel-continue-copy">
                         <strong>@work.Title</strong>
-                        <span>Chapter @work.CurrentChapterNumber · @work.CurrentChapterTitle</span>
+                        <span>Ch. @work.CurrentChapterNumber · @work.CurrentChapterTitle</span>
                         <div class="novel-progress-track" aria-label="Chapter progress">
                             <span style="width:@(work.ProgressPermille / 10)%"></span>
                         </div>
-                        <small>@(work.ProgressPermille / 10)% of this chapter</small>
                     </div>
-                    <span class="novel-continue-arrow" aria-hidden="true">→</span>
+                    <span class="novel-continue-percent">@(work.ProgressPermille / 10)%</span>
+                    <svg class="novel-row-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7" /></svg>
                 </a>
             }
         </div>
@@ -73,22 +69,12 @@
 
 <section class="novel-shelf" aria-labelledby="library-heading">
     <div class="novel-section-heading">
-        <div>
-            <span class="eyebrow">Collection</span>
-            <h2 id="library-heading">My novels</h2>
-        </div>
-        @if (Model.Works.Count > 0)
-        {
-            <span class="novel-muted">@Model.Works.Count title@(Model.Works.Count == 1 ? "" : "s")</span>
-        }
+        <h2 id="library-heading">Library</h2>
     </div>
 
     @if (Model.Works.Count == 0)
     {
-        <div class="novel-empty">
-            <strong>No novels imported yet.</strong>
-            <span>Add a Narou/Ncode work to start your reading library.</span>
-        </div>
+        <div class="novel-empty">No novels yet.</div>
     }
     else
     {
@@ -116,32 +102,24 @@
 
                     <div class="novel-library-copy">
                         <a href="/Novels/Work/@work.Id" class="novel-library-title">@work.Title</a>
-                        @if (!string.IsNullOrWhiteSpace(work.NativeTitle))
-                        {
-                            <span class="novel-library-native" lang="ja">@work.NativeTitle</span>
-                        }
 
                         <div class="novel-library-meta">
-                            @if (!string.IsNullOrWhiteSpace(work.MetadataStatus))
-                            {
-                                <span>@work.MetadataStatus.Replace("_", " ")</span>
-                            }
                             @if (work.MetadataVolumeCount is int volumes)
                             {
                                 <span>@volumes vol.</span>
                             }
                             <span>@work.ChapterCount ch.</span>
+                            @if (!string.IsNullOrWhiteSpace(work.MetadataStatus))
+                            {
+                                <span>@work.MetadataStatus.Replace("_", " ").ToLowerInvariant()</span>
+                            }
                         </div>
 
                         @if (work.HasProgress)
                         {
                             <a class="novel-resume-link" href="/Novels/Read/@work.CurrentChapterId">
-                                Continue · Ch. @work.CurrentChapterNumber
+                                Continue ch. @work.CurrentChapterNumber
                             </a>
-                        }
-                        else
-                        {
-                            <a class="novel-resume-link" href="/Novels/Work/@work.Id">View chapters</a>
                         }
                     </div>
                 </article>
