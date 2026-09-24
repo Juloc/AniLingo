@@ -30,12 +30,11 @@
     <div class="novel-work-copy">
         <h1>@(work.MetadataTitle ?? work.Title)</h1>
 
-        @if (!string.IsNullOrWhiteSpace(work.MetadataNativeTitle))
-        {
-            <div class="novel-work-native" lang="ja">@work.MetadataNativeTitle</div>
-        }
-
         <div class="novel-meta">
+            @if (!string.IsNullOrWhiteSpace(work.MetadataNativeTitle))
+            {
+                <span lang="ja">@work.MetadataNativeTitle</span>
+            }
             @if (!string.IsNullOrWhiteSpace(work.Author))
             {
                 <span>@work.Author</span>
