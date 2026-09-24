@@ -19,6 +19,7 @@ public sealed class ClientApiTests
         Assert.AreEqual(1, capabilities.MinimumSupportedApiVersion);
         Assert.IsTrue(capabilities.Features.Library);
         Assert.IsTrue(capabilities.Features.DirectPlayback);
+        Assert.IsTrue(capabilities.Features.PlaybackProgress);
         Assert.IsTrue(capabilities.Features.HttpRangeRequests);
         Assert.IsTrue(capabilities.Features.MediaTrackMetadata);
         Assert.IsTrue(capabilities.Features.NormalizedLearningCues);
@@ -202,6 +203,9 @@ public sealed class ClientApiTests
         Assert.IsTrue(
             ClientApiRoutes.DirectContent(mediaId)
                 .StartsWith("/api/client/v1/", StringComparison.Ordinal));
+        Assert.IsTrue(
+            ClientApiRoutes.Progress(episodeId)
+                .EndsWith("/progress", StringComparison.Ordinal));
         Assert.IsFalse(
             ClientApiRoutes.DirectContent(mediaId)
                 .Contains("\\", StringComparison.Ordinal));

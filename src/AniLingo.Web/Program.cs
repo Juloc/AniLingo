@@ -1,4 +1,5 @@
 using AniLingo.Web.Data;
+using AniLingo.Web.Features.Admin;
 using AniLingo.Web.Features.Ai;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.ClientApi;
@@ -7,6 +8,7 @@ using AniLingo.Web.Features.Library;
 using AniLingo.Web.Features.Metadata;
 using AniLingo.Web.Features.Novels;
 using AniLingo.Web.Features.Playback;
+using AniLingo.Web.Features.Progress;
 using AniLingo.Web.Features.Sonarr;
 using AniLingo.Web.Features.Statistics;
 using AniLingo.Web.Features.Storage;
@@ -47,6 +49,7 @@ builder.Services.AddDbContext<AppDbContext>(options => options.UseSqlite(connect
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<CurrentAccountContext>();
 builder.Services.AddScoped<OwnerAuthService>();
+builder.Services.AddScoped<AdminUserProgressService>();
 builder.Services.AddSingleton<IPasswordHasher<OwnerAccount>, PasswordHasher<OwnerAccount>>();
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
@@ -187,6 +190,7 @@ builder.Services.AddSingleton<PlaybackMediaProbe>();
 builder.Services.AddSingleton<PlaybackPreparationTracker>();
 builder.Services.AddScoped<PlaybackPreparationService>();
 builder.Services.AddScoped<PlaybackService>();
+builder.Services.AddScoped<EpisodeProgressService>();
 builder.Services.AddScoped<ClientApiService>();
 
 builder.Services.AddHttpClient<AniListMetadataProvider>(client =>

@@ -10,6 +10,8 @@
     }
 
     const preferenceKey = "anilingo.playbackMode";
+    const progressUrl = root.dataset.progressUrl || "";
+    const persistedResumeSeconds = Number(root.dataset.resumeSeconds);
     const video = root.querySelector("[data-playback-video]");
     const stage = root.querySelector("[data-video-stage]");
     const placeholder = root.querySelector("[data-playback-placeholder]");
@@ -103,7 +105,12 @@
     let preference = readPreference();
     let runtimeDeviceFailed = false;
     let effectiveMode = "device";
-    let pendingResumeTime = readSceneStartSeconds();
+    const sceneStartSeconds = readSceneStartSeconds();
+    let pendingResumeTime = sceneStartSeconds !== null
+        ? sceneStartSeconds
+        : Number.isFinite(persistedResumeSeconds) && persistedResumeSeconds > 0
+            ? persistedResumeSeconds
+            : null;
     let resumeShouldPlay = false;
     let streamStartSeconds = 0;
     let timelinePreviewing = false;
@@ -165,6 +172,44 @@
             timeline.value = String(current);
             timelineCurrent.textContent = formatTime(current);
         }
+    };
+
+    let lastProgressSentAt = Date.now();
+    let lastProgressPositionMs = -1;
+
+    const persistProgress = (completed = false, force = false) => {
+        if (!progressUrl) {
+            return;
+        }
+
+        const positionMs = Math.max(0, Math.round(absoluteCurrentTime() * 1000));
+        const durationMs = hasKnownDuration
+            ? Math.max(0, Math.round(durationSeconds * 1000))
+            : null;
+        const now = Date.now();
+
+        if (!force && now - lastProgressSentAt < 15000) {
+            return;
+        }
+
+        if (!force && positionMs === lastProgressPositionMs) {
+            return;
+        }
+
+        lastProgressSentAt = now;
+        lastProgressPositionMs = positionMs;
+
+        void fetch(progressUrl, {
+            method: "PUT",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                positionMs,
+                durationMs,
+                completed
+            }),
+            keepalive: force
+        }).catch(() => {});
     };
 
     const deviceAllowed = () =>
@@ -746,10 +791,12 @@
     video.addEventListener("timeupdate", () => {
         updateTimeline();
         sync();
+        persistProgress();
     });
     video.addEventListener("seeked", () => {
         updateTimeline();
         sync();
+        persistProgress(false, true);
     });
     video.addEventListener("loadedmetadata", () => {
         if (!options[effectiveMode]?.live &&
@@ -775,12 +822,17 @@
     });
 
     video.addEventListener("pause", () => {
+        if (!video.ended) {
+            persistProgress(false, true);
+        }
+
         if (!storageRecoveryActive && !video.ended) {
             playbackWasRequested = false;
         }
     });
 
     video.addEventListener("ended", () => {
+        persistProgress(true, true);
         playbackWasRequested = false;
     });
 
@@ -875,6 +927,12 @@
             }
         } finally {
             storageWake.disabled = false;
+        }
+    });
+
+    window.addEventListener("pagehide", () => {
+        if (absoluteCurrentTime() > 0) {
+            persistProgress(false, true);
         }
     });
 

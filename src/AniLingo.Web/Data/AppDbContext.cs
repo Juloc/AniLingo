@@ -4,6 +4,7 @@ using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Library;
 using AniLingo.Web.Features.Metadata;
 using AniLingo.Web.Features.Novels;
+using AniLingo.Web.Features.Progress;
 using AniLingo.Web.Features.Subtitles;
 using AniLingo.Web.Features.Vocabulary;
 using Microsoft.EntityFrameworkCore;
@@ -26,6 +27,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<LearningPreferences> LearningPreferences => Set<LearningPreferences>();
     public DbSet<AiSentenceExplanationCache> AiSentenceExplanationCache => Set<AiSentenceExplanationCache>();
     public DbSet<OwnerAccount> OwnerAccounts => Set<OwnerAccount>();
+    public DbSet<EpisodeProgress> EpisodeProgress => Set<EpisodeProgress>();
     public DbSet<NovelWork> NovelWorks => Set<NovelWork>();
     public DbSet<NovelChapter> NovelChapters => Set<NovelChapter>();
     public DbSet<NovelTranslation> NovelTranslations => Set<NovelTranslation>();
@@ -136,6 +138,15 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasOne<Episode>().WithMany().HasForeignKey(x => x.EpisodeId).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne<Term>().WithMany().HasForeignKey(x => x.TermId).OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(x => x.TermId);
+        });
+
+        modelBuilder.Entity<EpisodeProgress>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.ProfileId).HasMaxLength(80);
+            entity.HasOne<Episode>().WithMany().HasForeignKey(x => x.EpisodeId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(x => new { x.ProfileId, x.EpisodeId }).IsUnique();
+            entity.HasIndex(x => new { x.ProfileId, x.UpdatedAt });
         });
 
         modelBuilder.Entity<UserTerm>(entity =>

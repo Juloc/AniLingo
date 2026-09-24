@@ -226,6 +226,45 @@ button, input { font: inherit; }
 .inline-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .inline-actions form { margin: 0; }
 
+.user-admin-list { display: grid; gap: 10px; }
+.user-admin-card {
+    overflow: hidden; border: 1px solid var(--border); border-radius: 10px;
+    background: #0e1116;
+}
+.user-admin-header {
+    display: flex; justify-content: space-between; align-items: center; gap: 16px;
+    padding: 13px 14px; border-bottom: 1px solid var(--border);
+}
+.user-admin-header > div:first-child { min-width: 0; display: grid; gap: 3px; }
+.user-admin-header small { color: var(--muted); }
+.user-progress-grid {
+    display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.user-progress-item {
+    min-width: 0; display: grid; align-content: start; gap: 4px;
+    padding: 14px; border-right: 1px solid var(--border);
+}
+.user-progress-item:last-child { border-right: 0; }
+.user-progress-item > span {
+    color: var(--muted); font-size: 10px; font-weight: 800;
+    text-transform: uppercase; letter-spacing: .08em;
+}
+.user-progress-item strong,
+.user-progress-item small,
+.user-progress-item em {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.user-progress-item strong { font-size: 13px; }
+.user-progress-item small { color: #c2c8d0; font-size: 12px; }
+.user-progress-item em { color: var(--muted); font-size: 11px; font-style: normal; }
+.user-account-actions { border-top: 1px solid var(--border); }
+.user-account-actions > summary {
+    padding: 10px 14px; color: var(--muted); font-size: 12px; cursor: pointer;
+}
+.user-account-actions[open] > summary { border-bottom: 1px solid var(--border); }
+.user-account-actions .form-stack { padding: 14px; }
+
+
 @media (max-width: 820px) {
     .sidebar { display: none; }
     .app-main { margin-left: 0; padding: 24px 18px 90px; }
@@ -247,6 +286,9 @@ button, input { font: inherit; }
     .metric-value { font-size: 22px; }
     .metric-hint { display: none; }
     .settings-grid { grid-template-columns: 1fr; }
+    .user-progress-grid { grid-template-columns: 1fr; }
+    .user-progress-item { border-right: 0; border-bottom: 1px solid var(--border); }
+    .user-progress-item:last-child { border-bottom: 0; }
     .preparation-panel { align-items: stretch; flex-direction: column; }
     .preparation-panel .button { width: 100%; }
     .term-table-head { display: none; }
@@ -264,6 +306,7 @@ button, input { font: inherit; }
     .review-actions { grid-template-columns: repeat(2, 1fr); }
     .review-card { min-height: 280px; padding: 24px; }
     .root-row { align-items: flex-start; flex-direction: column; }
+    .user-admin-header { align-items: flex-start; flex-direction: column; }
 }
 
 

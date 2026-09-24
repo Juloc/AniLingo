@@ -1,6 +1,7 @@
 using System.Reflection;
 using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Playback;
+using AniLingo.Web.Features.Progress;
 using AniLingo.Web.Features.Storage;
 
 namespace AniLingo.Web.Features.ClientApi;
@@ -29,6 +30,7 @@ public static class ClientApiContract
                 Library: true,
                 NativePlayerBootstrap: true,
                 DirectPlayback: true,
+                PlaybackProgress: true,
                 HttpRangeRequests: true,
                 MediaTrackMetadata: true,
                 NormalizedLearningCues: true,
@@ -59,6 +61,9 @@ public static class ClientApiRoutes
     public static string Player(Guid episodeId) =>
         $"{Episode(episodeId)}/player";
 
+    public static string Progress(Guid episodeId) =>
+        $"{Episode(episodeId)}/progress";
+
     public static string Cues(Guid episodeId) =>
         $"{Episode(episodeId)}/cues";
 
@@ -88,6 +93,7 @@ public sealed record ClientFeatureFlags(
     bool Library,
     bool NativePlayerBootstrap,
     bool DirectPlayback,
+    bool PlaybackProgress,
     bool HttpRangeRequests,
     bool MediaTrackMetadata,
     bool NormalizedLearningCues,
@@ -165,6 +171,18 @@ public sealed record ClientLearningCoverage(
     int KnownTerms,
     int LearningTerms,
     int NewTerms);
+
+public sealed record ClientEpisodeProgressUpdate(
+    long PositionMs,
+    long? DurationMs,
+    bool Completed);
+
+public sealed record ClientEpisodeProgress(
+    long PositionMs,
+    long? DurationMs,
+    int Percent,
+    bool IsCompleted,
+    DateTime? UpdatedAtUtc);
 
 public sealed record ClientPlayerBootstrap(
     int ApiVersion,
@@ -286,6 +304,15 @@ public sealed record ClientTermStateResult(
 
 public static class ClientApiMappings
 {
+    public static ClientEpisodeProgress ToClientEpisodeProgress(
+        EpisodeProgressSnapshot progress) =>
+        new(
+            progress.PositionMs,
+            progress.DurationMs,
+            progress.Percent,
+            progress.IsCompleted,
+            progress.UpdatedAt);
+
     public static ClientMediaTrack ToClientTrack(PlaybackMediaTrack track) =>
         new(
             $"stream:{track.StreamIndex}",

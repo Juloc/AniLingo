@@ -1,6 +1,7 @@
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Playback;
+using AniLingo.Web.Features.Progress;
 using AniLingo.Web.Features.Storage;
 using Microsoft.AspNetCore.Authorization;
 
@@ -56,6 +57,46 @@ public static class ClientApiEndpoints
             return episode is null
                 ? NotFound("episode_not_found", "The requested episode does not exist.")
                 : Results.Ok(episode);
+        });
+
+        group.MapGet("/episodes/{episodeId:guid}/progress", async (
+            Guid episodeId,
+            EpisodeProgressService progressService,
+            CancellationToken cancellationToken) =>
+        {
+            var progress = await progressService.GetAsync(
+                episodeId,
+                cancellationToken);
+
+            return progress is null
+                ? NotFound("episode_not_found", "The requested episode does not exist.")
+                : Results.Ok(ClientApiMappings.ToClientEpisodeProgress(progress));
+        });
+
+        group.MapPut("/episodes/{episodeId:guid}/progress", async (
+            Guid episodeId,
+            ClientEpisodeProgressUpdate update,
+            EpisodeProgressService progressService,
+            CancellationToken cancellationToken) =>
+        {
+            if (update.PositionMs < 0 || update.DurationMs is < 0)
+            {
+                return BadRequest(
+                    "invalid_progress",
+                    "Playback progress values must be zero or greater.");
+            }
+
+            var progress = await progressService.UpdateAsync(
+                episodeId,
+                new EpisodeProgressUpdate(
+                    update.PositionMs,
+                    update.DurationMs,
+                    update.Completed),
+                cancellationToken);
+
+            return progress is null
+                ? NotFound("episode_not_found", "The requested episode does not exist.")
+                : Results.Ok(ClientApiMappings.ToClientEpisodeProgress(progress));
         });
 
         group.MapGet("/episodes/{episodeId:guid}/player", async (
