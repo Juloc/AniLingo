@@ -712,10 +712,40 @@
             void video.play().catch(() => {});
         }
     });
-    video.addEventListener("error", () => {
+    video.addEventListener("play", () => {
+        playbackWasRequested = true;
+    });
+
+    video.addEventListener("pause", () => {
+        if (!storageRecoveryActive && !video.ended) {
+            playbackWasRequested = false;
+        }
+    });
+
+    video.addEventListener("ended", () => {
+        playbackWasRequested = false;
+    });
+
+    video.addEventListener("error", async () => {
+        const availability = await readStorageAvailability();
+        if (availability && availability.state !== "available") {
+            storageState = availability.state || "unknown";
+            pendingResumeTime = absoluteCurrentTime();
+            resumeShouldPlay = playbackWasRequested;
+
+            if (availability.retryable === false) {
+                storageRecoveryActive = true;
+                showStorageState(availability, true);
+            } else {
+                storageRecoveryActive = false;
+                startStorageRetry(false);
+            }
+            return;
+        }
+
         if (preference === "auto" && effectiveMode === "device") {
             pendingResumeTime = absoluteCurrentTime();
-            resumeShouldPlay = true;
+            resumeShouldPlay = playbackWasRequested;
             runtimeDeviceFailed = true;
             if (error) {
                 error.hidden = false;
@@ -729,6 +759,60 @@
         if (error) {
             error.hidden = false;
             error.textContent = "The selected playback stream could not be played by this browser.";
+        }
+    });
+
+    storageRetry?.addEventListener("click", () => {
+        stopStorageRetry();
+        storageRecoveryActive = true;
+        storageRetryStartedAt = Date.now();
+        storageRetryAttempt = 0;
+        showStorageState({ state: storageState, retryable: true }, false);
+        scheduleStorageRetry(0);
+    });
+
+    storageWake?.addEventListener("click", async () => {
+        const wakeUrl = root.dataset.storageWakeUrl;
+        if (!wakeUrl) {
+            return;
+        }
+
+        storageWake.disabled = true;
+        try {
+            const response = await fetch(wakeUrl, {
+                method: "POST",
+                credentials: "same-origin",
+                headers: { "Accept": "application/json" }
+            });
+
+            if (!response.ok) {
+                if (error) {
+                    error.hidden = false;
+                    error.textContent = "Wake-on-LAN could not be sent.";
+                }
+                return;
+            }
+
+            const availability = await response.json();
+            storageState = availability.state || "source_starting";
+            stopStorageRetry();
+            storageRecoveryActive = true;
+            storageRetryStartedAt = Date.now();
+            storageRetryAttempt = 0;
+            showStorageState(
+                {
+                    state: storageState,
+                    retryable: availability.retryable !== false
+                },
+                false);
+            scheduleStorageRetry(0);
+        } catch {
+            if (error) {
+                error.hidden = false;
+                error.textContent = "Wake-on-LAN request failed.";
+            }
+        } finally {
+            storageWake.disabled = false;
         }
     });
 
