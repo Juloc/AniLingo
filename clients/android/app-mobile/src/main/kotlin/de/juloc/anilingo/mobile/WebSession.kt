@@ -17,6 +17,13 @@ class WebSession(
         return mapOf("Cookie" to cookie)
     }
 
+    fun acceptResponseCookies(cookies: List<String>) {
+        cookies.forEach { cookie ->
+            cookieManager.setCookie(origin.value, cookie)
+        }
+        cookieManager.flush()
+    }
+
     fun configureFor(webView: android.webkit.WebView) {
         cookieManager.setAcceptCookie(true)
         cookieManager.setAcceptThirdPartyCookies(webView, false)
