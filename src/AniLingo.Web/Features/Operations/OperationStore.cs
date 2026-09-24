@@ -2,6 +2,7 @@ using System.Data;
 using System.Data.Common;
 using System.Globalization;
 using AniLingo.Web.Data;
+using Microsoft.EntityFrameworkCore;
 
 namespace AniLingo.Web.Features.Operations;
 
