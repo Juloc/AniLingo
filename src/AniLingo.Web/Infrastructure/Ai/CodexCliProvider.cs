@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using AniLingo.Web.Features.Ai;
+using AniLingo.Web.Features.Books;
 using AniLingo.Web.Features.Novels;
 
 namespace AniLingo.Web.Infrastructure.Ai;
