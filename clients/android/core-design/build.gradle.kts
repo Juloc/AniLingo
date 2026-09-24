@@ -17,16 +17,14 @@ android {
 }
 
 
-val generatedAssetsDir = layout.buildDirectory.dir("generated/playerDesign/assets")
+val playerDesignAssetsDir = layout.projectDirectory.dir("src/main/assets")
 
 tasks.register<Sync>("syncPlayerDesignAssets") {
     from(rootProject.file("../../design/player")) {
         include("player-tokens.json", "player-icons.json", "player-actions.json")
     }
-    into(generatedAssetsDir)
+    into(playerDesignAssetsDir)
 }
-
-android.sourceSets["main"].assets.srcDir(generatedAssetsDir)
 
 tasks.named("preBuild").configure {
     dependsOn("syncPlayerDesignAssets")
