@@ -55,7 +55,7 @@
         bubble.setAttribute("aria-label", "Open learning for this subtitle line");
 
         for (const token of cue.tokens || []) {
-            if (token.isVocabulary) {
+            if (token.isInteractive) {
                 const button = document.createElement("button");
                 button.type = "button";
                 button.className = "player-subtitle-token";
