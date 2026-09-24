@@ -50,7 +50,3 @@ tasks.matching { it.name == "lintDebug" }.configureEach {
     dependsOn("testDebugUnitTest")
 }
 
-
-tasks.matching { it.name == "lintDebug" }.configureEach {
-    dependsOn("testDebugUnitTest")
-}
