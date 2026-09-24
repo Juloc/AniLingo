@@ -17,6 +17,14 @@
       || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
   };
 
+  const isMacSafari = () => {
+    const userAgent = navigator.userAgent || "";
+    return navigator.platform === "MacIntel"
+      && navigator.maxTouchPoints <= 1
+      && /Safari\//.test(userAgent)
+      && !/(Chrome|Chromium|Edg|OPR)\//.test(userAgent);
+  };
+
   const safeLocalStorageGet = key => {
     try {
       return window.localStorage.getItem(key);
@@ -70,7 +78,9 @@
       : "browser";
     document.documentElement.dataset.platform = isAppleMobile()
       ? "apple-mobile"
-      : "standard";
+      : isMacSafari()
+        ? "apple-desktop"
+        : "standard";
   };
 
   const noticeHost = () => {
@@ -188,7 +198,10 @@
   };
 
   const offerAppleInstallGuide = () => {
-    if (!isAppleMobile() || isStandalone() || installDismissed()) {
+    const appleMobile = isAppleMobile();
+    const macSafari = isMacSafari();
+
+    if ((!appleMobile && !macSafari) || isStandalone() || installDismissed()) {
       return;
     }
 
@@ -199,7 +212,9 @@
 
       showNotice({
         id: "pwa-install-notice",
-        message: "Install AniLingo on iPhone/iPad: open Share, then choose Add to Home Screen.",
+        message: appleMobile
+          ? "Install AniLingo on iPhone/iPad: open Share, then choose Add to Home Screen."
+          : "Install AniLingo on Mac: in Safari, choose File, then Add to Dock.",
         primaryLabel: "Got it",
         secondaryLabel: "Not now",
         onSecondary: () => dismissInstall(),
