@@ -37,9 +37,9 @@
                             </small>
                         </div>
 
-                        @if (account.Role != AccountRole.Owner)
-                        {
-                            <div class="inline-actions">
+                        <div class="inline-actions">
+                            @if (account.Role != AccountRole.Owner)
+                            {
                                 @if (account.IsEnabled)
                                 {
                                     <form method="post" asp-page-handler="Disable">
@@ -54,8 +54,11 @@
                                         <button class="button button-primary" type="submit">Approve / enable</button>
                                     </form>
                                 }
-                            </div>
-                        }
+                            }
+                            <a class="button"
+                               asp-page="/Settings/User"
+                               asp-route-id="@account.Id">Manage</a>
+                        </div>
                     </div>
 
                     <div class="user-progress-grid">
@@ -109,21 +112,6 @@
                         </div>
                     </div>
 
-                    <details class="user-account-actions">
-                        <summary>Account actions</summary>
-                        <form method="post" asp-page-handler="ResetPassword" class="form-stack">
-                            <input type="hidden" name="accountId" value="@account.Id" />
-                            <label>
-                                <span>New password for @account.UserName</span>
-                                <input name="newPassword"
-                                       type="password"
-                                       minlength="12"
-                                       autocomplete="new-password"
-                                       required />
-                            </label>
-                            <button class="button" type="submit">Reset password</button>
-                        </form>
-                    </details>
                 </article>
             }
         </div>
