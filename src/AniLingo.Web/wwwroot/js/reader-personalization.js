@@ -391,7 +391,7 @@
         if (bookmarkColor) bookmarkColor.value = state.bookmarkColor;
 
         if (state.readingMode === "paged") {
-            setupPaged(previousMode === "paged" ? null : anchor);
+            setupPaged(anchor);
         } else if (previousMode === "paged") {
             teardownPaged(anchor);
         } else {
@@ -482,14 +482,11 @@
 
         shell.querySelectorAll("[data-bookmark-card]").forEach(card => {
             const id = card.dataset.bookmarkId;
-            if (!id) return;
-            const existing = bookmarkState.get(id) || {
-                id,
-                positionPermille: 0
-            };
+            if (!id || card.dataset.bookmarkChapterId !== shell.dataset.chapterId) return;
+            const existing = bookmarkState.get(id);
+            if (!existing) return;
             existing.style = card.dataset.bookmarkStyle || existing.style || state.bookmarkStyle;
             existing.color = card.dataset.bookmarkColor || existing.color || state.bookmarkColor;
-            bookmarkState.set(id, existing);
         });
     };
 
@@ -498,10 +495,11 @@
 
         shell.querySelectorAll("[data-bookmark-card]").forEach(card => {
             const item = bookmarkState.get(card.dataset.bookmarkId);
-            if (!item) return;
-            card.dataset.bookmarkStyle = item.style;
-            card.dataset.bookmarkColor = item.color;
-            card.style.setProperty("--bookmark-color", item.color);
+            const style = item?.style || card.dataset.bookmarkStyle || state.bookmarkStyle;
+            const color = item?.color || card.dataset.bookmarkColor || state.bookmarkColor;
+            card.dataset.bookmarkStyle = style;
+            card.dataset.bookmarkColor = color;
+            card.style.setProperty("--bookmark-color", color);
 
             let appearance = card.querySelector(".novel-bookmark-appearance");
             if (!appearance) {
@@ -523,8 +521,8 @@
 
             const styleControl = card.querySelector("[data-bookmark-style-control]");
             const colorControl = card.querySelector("[data-bookmark-color-control]");
-            if (styleControl) styleControl.value = item.style;
-            if (colorControl) colorControl.value = item.color;
+            if (styleControl) styleControl.value = style;
+            if (colorControl) colorControl.value = color;
         });
 
         const bookmarkCount =
@@ -610,6 +608,7 @@
             card.className = "novel-note-card";
             card.dataset.bookmarkCard = "";
             card.dataset.bookmarkId = item.id;
+            card.dataset.bookmarkChapterId = bookmark.chapterId || shell.dataset.chapterId;
             card.dataset.bookmarkStyle = item.style;
             card.dataset.bookmarkColor = item.color;
 
@@ -853,17 +852,27 @@
         const id = card?.dataset.bookmarkId;
         if (!id) return;
 
-        const item = bookmarkState.get(id) || {
-            id,
-            positionPermille: 0,
-            style: state.bookmarkStyle,
-            color: state.bookmarkColor
-        };
-        item.style = card.querySelector("[data-bookmark-style-control]")?.value || item.style;
-        item.color = card.querySelector("[data-bookmark-color-control]")?.value || item.color;
-        bookmarkState.set(id, item);
+        const currentItem = bookmarkState.get(id);
+        const style =
+            card.querySelector("[data-bookmark-style-control]")?.value ||
+            currentItem?.style ||
+            card.dataset.bookmarkStyle ||
+            state.bookmarkStyle;
+        const color =
+            card.querySelector("[data-bookmark-color-control]")?.value ||
+            currentItem?.color ||
+            card.dataset.bookmarkColor ||
+            state.bookmarkColor;
+
+        card.dataset.bookmarkStyle = style;
+        card.dataset.bookmarkColor = color;
+        card.style.setProperty("--bookmark-color", color);
+        if (currentItem) {
+            currentItem.style = style;
+            currentItem.color = color;
+        }
         decorateBookmarks();
-        saveBookmarkAppearance(id, item.style, item.color).catch(error => showToast(error.message));
+        saveBookmarkAppearance(id, style, color).catch(error => showToast(error.message));
     });
 
     pageBookmarks?.addEventListener("click", event => {
