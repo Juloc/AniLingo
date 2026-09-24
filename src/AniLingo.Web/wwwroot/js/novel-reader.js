@@ -458,8 +458,7 @@
             : null;
     };
 
-    const escapeAttributeSelector = value =>
-        window.CSS?.escape ? CSS.escape(value) : value.replace(/["\\]/g, "\\    const saveBookmark = async () => {");
+    const escapeAttributeSelector = value => value || "";
 
     const bookmarkFromElement = element => ({
         id: element.dataset.bookmarkId || "",
