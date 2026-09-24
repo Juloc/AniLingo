@@ -199,6 +199,7 @@ public sealed class StorageAvailabilityCoordinator
         lock (runtime.Gate)
         {
             runtime.StartingUntilUtc = null;
+            runtime.LastWakeAtUtc = null;
             runtime.CacheUntilUtc = DateTimeOffset.MinValue;
         }
     }
