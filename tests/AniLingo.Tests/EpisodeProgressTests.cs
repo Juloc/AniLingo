@@ -125,7 +125,12 @@ public sealed class EpisodeProgressTests
         };
 
         return new CurrentAccountContext(
-            new HttpContextAccessor { HttpContext = httpContext });
+            new FixedHttpContextAccessor { HttpContext = httpContext });
+    }
+
+    private sealed class FixedHttpContextAccessor : IHttpContextAccessor
+    {
+        public HttpContext? HttpContext { get; set; }
     }
 
     private static string TempDatabasePath() =>
