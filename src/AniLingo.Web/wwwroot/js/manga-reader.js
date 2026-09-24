@@ -405,9 +405,15 @@
 
     const applySettings = () => {
         const stored = readSettings();
+        const sharedDefaultMode =
+            ["single", "double", "continuous"].includes(shell.dataset.defaultMode)
+                ? shell.dataset.defaultMode
+                : "single";
         mode = ["single", "double", "continuous"].includes(stored.mode)
             ? stored.mode
-            : (window.matchMedia("(max-width: 720px)").matches ? "single" : "double");
+            : (window.matchMedia("(max-width: 720px)").matches
+                ? (sharedDefaultMode === "continuous" ? "continuous" : "single")
+                : sharedDefaultMode);
         direction = stored.direction === "ltr"
             ? "ltr"
             : stored.direction === "rtl"
