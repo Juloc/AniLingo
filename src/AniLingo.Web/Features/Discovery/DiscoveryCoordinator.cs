@@ -120,7 +120,8 @@ public sealed class DiscoveryCoordinator(
                         .ToArray();
                 },
                 "AniList anime search is temporarily unavailable.",
-                warnings)
+                warnings,
+                cancellationToken)
             : Task.FromResult<IReadOnlyList<DiscoveryItem>>([]);
 
         var readingTask = includeNovel || includeManga
@@ -146,7 +147,8 @@ public sealed class DiscoveryCoordinator(
                         .ToArray();
                 },
                 "AniList novel/manga search is temporarily unavailable.",
-                warnings)
+                warnings,
+                cancellationToken)
             : Task.FromResult<IReadOnlyList<DiscoveryItem>>([]);
 
         var bookTask = includeBook
@@ -165,7 +167,8 @@ public sealed class DiscoveryCoordinator(
                         .ToArray();
                 },
                 "Book search is temporarily unavailable.",
-                warnings)
+                warnings,
+                cancellationToken)
             : Task.FromResult<IReadOnlyList<DiscoveryItem>>([]);
 
         await Task.WhenAll(animeTask, readingTask, bookTask);
@@ -196,7 +199,8 @@ public sealed class DiscoveryCoordinator(
                     return rows.Select(x => MapLibrary(x, isOwner)).ToArray();
                 },
                 "Your AniList anime list could not be loaded.",
-                warnings)
+                warnings,
+                cancellationToken)
             : Task.FromResult<IReadOnlyList<DiscoveryItem>>([]);
 
         var readingTask = includeReading
@@ -218,7 +222,8 @@ public sealed class DiscoveryCoordinator(
                         .ToArray();
                 },
                 "Your AniList novel/manga list could not be loaded.",
-                warnings)
+                warnings,
+                cancellationToken)
             : Task.FromResult<IReadOnlyList<DiscoveryItem>>([]);
 
         await Task.WhenAll(animeTask, readingTask);
@@ -248,28 +253,31 @@ public sealed class DiscoveryCoordinator(
             .Distinct(StringComparer.Ordinal)
             .ToArray();
 
-        var animeMatches = animeIds.Length == 0
-            ? new Dictionary<string, Guid>(StringComparer.Ordinal)
-            : await db.AnimeMetadata
+        var animeMatches = new Dictionary<string, Guid>(StringComparer.Ordinal);
+        if (animeIds.Length > 0)
+        {
+            var rows = await db.AnimeMetadata
                 .AsNoTracking()
                 .Where(x =>
                     x.Provider == AniListMetadataProvider.ProviderKey &&
                     animeIds.Contains(x.ExternalId))
-                .GroupBy(x => x.ExternalId)
-                .Select(group => new
+                .Select(x => new
                 {
-                    ExternalId = group.Key,
-                    AnimeId = group.Select(x => x.AnimeId).First()
+                    x.ExternalId,
+                    x.AnimeId
                 })
-                .ToDictionaryAsync(
-                    x => x.ExternalId,
-                    x => x.AnimeId,
-                    StringComparer.Ordinal,
-                    cancellationToken);
+                .ToListAsync(cancellationToken);
 
-        var readingMatches = readingIds.Length == 0
-            ? new Dictionary<string, Guid>(StringComparer.Ordinal)
-            : await db.NovelWorks
+            foreach (var row in rows)
+            {
+                animeMatches.TryAdd(row.ExternalId, row.AnimeId);
+            }
+        }
+
+        var readingMatches = new Dictionary<string, Guid>(StringComparer.Ordinal);
+        if (readingIds.Length > 0)
+        {
+            var rows = await db.NovelWorks
                 .AsNoTracking()
                 .Where(x =>
                     x.MetadataProvider == NovelAniListProvider.ProviderKey &&
@@ -280,11 +288,13 @@ public sealed class DiscoveryCoordinator(
                     ExternalId = x.MetadataExternalId!,
                     x.Id
                 })
-                .ToDictionaryAsync(
-                    x => x.ExternalId,
-                    x => x.Id,
-                    StringComparer.Ordinal,
-                    cancellationToken);
+                .ToListAsync(cancellationToken);
+
+            foreach (var row in rows)
+            {
+                readingMatches.TryAdd(row.ExternalId, row.Id);
+            }
+        }
 
         return items
             .Select(item =>
@@ -426,11 +436,16 @@ public sealed class DiscoveryCoordinator(
     private static async Task<IReadOnlyList<DiscoveryItem>> CaptureAsync(
         Func<Task<IReadOnlyList<DiscoveryItem>>> action,
         string warning,
-        ICollection<string> warnings)
+        ICollection<string> warnings,
+        CancellationToken cancellationToken)
     {
         try
         {
             return await action();
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception exception) when (
             exception is MetadataProviderException or
