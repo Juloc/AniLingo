@@ -30,6 +30,7 @@ public sealed class IndexModel(
         string? q,
         string? category,
         string? mode,
+        string? source,
         CancellationToken cancellationToken)
     {
         Response.Headers.CacheControl = "no-store";
@@ -42,10 +43,16 @@ public sealed class IndexModel(
             aniListAccount,
             db);
 
+        var normalizedSource = source?.Trim().ToLowerInvariant();
+        var includeAniList = normalizedSource is not "books";
+        var includeBooks = normalizedSource is not "anilist";
+
         var result = await coordinator.GetAsync(
             request,
             account.ProfileId,
             account.IsOwner,
+            includeAniList,
+            includeBooks,
             cancellationToken);
 
         return new JsonResult(result);
