@@ -1,10 +1,12 @@
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Subtitles;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
 namespace AniLingo.Web.Pages.Admin;
 
+[Authorize(Roles = AccountRoles.Owner)]
 public sealed class SubtitlesModel(
     SubtitleImportService subtitleImportService) : PageModel
 {
