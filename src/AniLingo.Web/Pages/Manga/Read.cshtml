@@ -5,6 +5,11 @@
     var currentBookmarks = Model.Bookmarks
         .Where(x => x.ChapterId == chapter.Id)
         .ToArray();
+    var initialMode = Model.ReaderSettings.ReadingMode == "continuous"
+        ? "continuous"
+        : Model.ReaderSettings.TwoPageSpread
+            ? "double"
+            : "single";
     var chapterData = System.Text.Json.JsonSerializer.Serialize(
         Model.Chapters.Select(item => new
         {
@@ -76,6 +81,13 @@
                         <span data-zoom-label>100%</span>
                         <button type="button" data-zoom="+">+</button>
                     </div>
+                    <hr />
+                    <button type="button" data-save-manga-default>Use mode for all manga</button>
+                    <button type="button"
+                            data-reset-manga-series
+                            hidden="@(!Model.ReaderSettings.HasBookOverride)">
+                        Use manga default
+                    </button>
                 </div>
             </details>
         </div>
@@ -127,6 +139,12 @@
         <nav data-chapter-list></nav>
         <script type="application/json" data-chapter-data>@Html.Raw(chapterData)</script>
     </aside>
+
+    <form method="post" asp-page-handler="Preference" asp-route-id="@chapter.Id" data-preference-form hidden>
+        <input type="hidden" name="scope" value="series" />
+        <input type="hidden" name="mode" value="@initialMode" />
+    </form>
+    <form method="post" asp-page-handler="ResetPreference" asp-route-id="@chapter.Id" data-reset-preference-form hidden></form>
 
     <form method="post" asp-page-handler="Progress" asp-route-id="@chapter.Id" data-progress-form hidden>
         <input type="hidden" name="pageIndex" value="@Model.InitialPage" />
