@@ -1,6 +1,7 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Library;
+using AniLingo.Web.Features.Subtitles;
 using AniLingo.Web.Infrastructure;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -79,6 +80,10 @@ public sealed class IndexModel(
             {
                 var scanner = services.GetRequiredService<LibraryScanner>();
                 await scanner.ScanAsync(rootId, jobToken);
+
+                var subtitles =
+                    services.GetRequiredService<SubtitleImportService>();
+                await subtitles.QueueAllMissingAsync(jobToken);
             },
             cancellationToken);
 
