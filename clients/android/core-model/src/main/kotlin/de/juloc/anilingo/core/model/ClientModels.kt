@@ -9,7 +9,7 @@ data class ClientCapabilities(
 
 data class ClientFeatureFlags(
     val library: Boolean,
-    val nativeSessionAuth: Boolean,
+    val nativeSessionAuth: Boolean = false,
     val nativePlayerBootstrap: Boolean,
     val directPlayback: Boolean,
     val playbackProgress: Boolean,
