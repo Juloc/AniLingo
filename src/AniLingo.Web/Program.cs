@@ -2,6 +2,7 @@ using AniLingo.Web.Data;
 using AniLingo.Web.Features.Admin;
 using AniLingo.Web.Features.Ai;
 using AniLingo.Web.Features.Auth;
+using AniLingo.Web.Features.Books;
 using AniLingo.Web.Features.ClientApi;
 using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Library;
