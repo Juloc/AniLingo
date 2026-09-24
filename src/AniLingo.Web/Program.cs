@@ -9,6 +9,7 @@ using AniLingo.Web.Features.Novels;
 using AniLingo.Web.Features.Playback;
 using AniLingo.Web.Features.Sonarr;
 using AniLingo.Web.Features.Statistics;
+using AniLingo.Web.Features.Storage;
 using AniLingo.Web.Features.Subtitles;
 using AniLingo.Web.Features.Tracking;
 using AniLingo.Web.Features.Vocabulary;
@@ -141,6 +142,19 @@ builder.Services.AddRateLimiter(options =>
                 QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
                 QueueLimit = 0
             }));
+    options.AddPolicy("wake", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier)
+                ?? httpContext.Connection.RemoteIpAddress?.ToString()
+                ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                AutoReplenishment = true,
+                PermitLimit = 6,
+                Window = TimeSpan.FromMinutes(1),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0
+            }));
 });
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
@@ -154,6 +168,10 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 builder.Services.AddSingleton<MediaProcessRunner>();
 builder.Services.AddScoped<LibraryScanner>();
 builder.Services.AddHostedService<LibraryStartupScanService>();
+builder.Services.AddSingleton<StorageAvailabilityCoordinator>();
+builder.Services.AddScoped<LibraryRootAvailabilityService>();
+builder.Services.AddScoped<MediaAvailabilityService>();
+builder.Services.AddScoped<WakeOnLanService>();
 builder.Services.AddScoped<SubtitleImportService>();
 builder.Services.AddSingleton<EmbeddedSubtitleExtractor>();
 builder.Services.AddScoped<VocabularyService>();
