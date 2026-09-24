@@ -131,6 +131,7 @@ private fun AniLingoMobileApp(
         HttpAniLingoClientApi(
             origin = origin.value,
             requestHeaders = webSession::requestHeaders,
+            responseCookieSink = webSession::acceptResponseCookies,
         )
     }
 
