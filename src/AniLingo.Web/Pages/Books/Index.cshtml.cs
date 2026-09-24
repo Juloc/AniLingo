@@ -16,6 +16,7 @@ public sealed class IndexModel(
     public string? Error { get; private set; }
     public bool IsOwner => account.IsOwner;
     public bool IsSabnzbdConfigured => books.IsSabnzbdConfigured;
+    public bool IsInboxConfigured => books.IsInboxConfigured;
 
     public async Task OnGetAsync(
         string? q,
@@ -95,6 +96,33 @@ public sealed class IndexModel(
             TempData["Status"] = exception.Message;
             return RedirectToPage();
         }
+    }
+
+    public async Task<IActionResult> OnPostImportInboxAsync(
+        CancellationToken cancellationToken)
+    {
+        if (!account.IsOwner)
+        {
+            return Forbid();
+        }
+
+        try
+        {
+            var imported = await books.ImportInboxAsync(
+                cancellationToken);
+            TempData["Status"] = imported.Count == 0
+                ? "No EPUB files were found in the Books inbox."
+                : $"Books inbox imported {imported.Count} book(s).";
+        }
+        catch (Exception exception) when (
+            exception is InvalidOperationException
+                or IOException
+                or UnauthorizedAccessException)
+        {
+            TempData["Status"] = exception.Message;
+        }
+
+        return RedirectToPage();
     }
 
     public async Task<IActionResult> OnPostSabUrlAsync(
