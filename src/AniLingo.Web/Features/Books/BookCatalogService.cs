@@ -719,6 +719,87 @@ public sealed partial class BookCatalogService(
         }
     }
 
+    public async Task<int> ClearBookTranslationsAsync(
+        Guid workId,
+        string targetLanguage,
+        CancellationToken cancellationToken)
+    {
+        targetLanguage = BookLanguageCatalog.Normalize(targetLanguage);
+
+        var isBook = await db.NovelWorks
+            .AsNoTracking()
+            .AnyAsync(
+                x => x.Id == workId
+                    && x.SourceProvider == ImportedBookProvider,
+                cancellationToken);
+
+        if (!isBook)
+        {
+            throw new InvalidOperationException(
+                "Imported book was not found.");
+        }
+
+        var chapterIds = db.NovelChapters
+            .Where(x => x.WorkId == workId)
+            .Select(x => x.Id);
+
+        return await db.NovelTranslations
+            .Where(x =>
+                chapterIds.Contains(x.ChapterId)
+                && x.TargetLanguage == targetLanguage
+                && x.ProviderId == translator.Id
+                && x.PromptVersion == TranslationPromptVersion)
+            .ExecuteDeleteAsync(cancellationToken);
+    }
+
+    public async Task DeleteImportedBookAsync(
+        Guid workId,
+        CancellationToken cancellationToken)
+    {
+        var work = await db.NovelWorks
+            .SingleOrDefaultAsync(
+                x => x.Id == workId
+                    && x.SourceProvider == ImportedBookProvider,
+                cancellationToken)
+            ?? throw new InvalidOperationException(
+                "Imported book was not found.");
+
+        db.NovelWorks.Remove(work);
+        await db.SaveChangesAsync(cancellationToken);
+
+        DeleteLocalCoverFiles(workId);
+    }
+
+    private static void DeleteLocalCoverFiles(Guid workId)
+    {
+        var directory = Path.Combine(
+            "/data",
+            "books",
+            "covers");
+
+        if (!Directory.Exists(directory))
+        {
+            return;
+        }
+
+        foreach (var path in Directory.EnumerateFiles(
+                     directory,
+                     workId.ToString("N") + ".*",
+                     SearchOption.TopDirectoryOnly))
+        {
+            try
+            {
+                File.Delete(path);
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
+        }
+    }
+
     public async Task SaveProgressAsync(
         string profileId,
         Guid workId,
