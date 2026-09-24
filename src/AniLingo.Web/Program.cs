@@ -153,6 +153,7 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 
 builder.Services.AddSingleton<MediaProcessRunner>();
 builder.Services.AddScoped<LibraryScanner>();
+builder.Services.AddHostedService<LibraryStartupScanService>();
 builder.Services.AddScoped<SubtitleImportService>();
 builder.Services.AddSingleton<EmbeddedSubtitleExtractor>();
 builder.Services.AddScoped<VocabularyService>();
