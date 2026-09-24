@@ -27,20 +27,36 @@ public sealed class DiscoveryCoordinator(
         DiscoveryRequest request,
         string profileId,
         bool isOwner,
+        bool includeAniList,
+        bool includeBooks,
         CancellationToken cancellationToken)
     {
-        var cacheKey = request.CacheKey(profileId);
+        var cacheKey = request.CacheKey(profileId)
+            + $"|anilist:{includeAniList}|books:{includeBooks}";
         if (TryGetCached(cacheKey, out var cached))
         {
             return cached;
         }
 
-        var status = await aniListAccount.GetStatusAsync(cancellationToken);
+        var status = includeAniList
+            ? await aniListAccount.GetStatusAsync(cancellationToken)
+            : AniListAccountStatus.Disconnected;
         var warnings = new List<string>();
         IReadOnlyList<DiscoveryItem> items;
 
         if (request.Mode == DiscoveryMode.MyList)
         {
+            if (!includeAniList)
+            {
+                return new DiscoveryResponse(
+                    request.Query,
+                    CategoryName(request.Category),
+                    ModeName(request.Mode),
+                    false,
+                    [],
+                    []);
+            }
+
             if (!status.IsConnected)
             {
                 return new DiscoveryResponse(
@@ -64,6 +80,8 @@ public sealed class DiscoveryCoordinator(
                 request,
                 isOwner,
                 warnings,
+                includeAniList,
+                includeBooks,
                 cancellationToken);
         }
 
@@ -94,12 +112,18 @@ public sealed class DiscoveryCoordinator(
         DiscoveryRequest request,
         bool isOwner,
         ICollection<string> warnings,
+        bool includeAniList,
+        bool includeBooks,
         CancellationToken cancellationToken)
     {
-        var includeAnime = request.Category is DiscoveryCategory.All or DiscoveryCategory.Anime;
-        var includeNovel = request.Category is DiscoveryCategory.All or DiscoveryCategory.LightNovel;
-        var includeManga = request.Category is DiscoveryCategory.All or DiscoveryCategory.Manga;
-        var includeBook = request.Category is DiscoveryCategory.All or DiscoveryCategory.Book;
+        var includeAnime = includeAniList &&
+            request.Category is DiscoveryCategory.All or DiscoveryCategory.Anime;
+        var includeNovel = includeAniList &&
+            request.Category is DiscoveryCategory.All or DiscoveryCategory.LightNovel;
+        var includeManga = includeAniList &&
+            request.Category is DiscoveryCategory.All or DiscoveryCategory.Manga;
+        var includeBook = includeBooks &&
+            request.Category is DiscoveryCategory.All or DiscoveryCategory.Book;
 
         var animeTask = includeAnime
             ? CaptureAsync(
