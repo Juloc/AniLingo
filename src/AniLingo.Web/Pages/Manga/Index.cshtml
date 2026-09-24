@@ -17,15 +17,38 @@
     {
         <details class="manga-import">
             <summary class="button">Import</summary>
-            <form method="post" asp-page-handler="Import">
-                <label for="sourcePath">CBZ/ZIP or manga directory</label>
-                <input id="sourcePath"
-                       name="sourcePath"
-                       type="text"
-                       required
-                       placeholder="/media/manga/Series" />
-                <button class="button button-primary" type="submit">Import</button>
-            </form>
+            <div class="manga-import-panel">
+                <form method="post"
+                      asp-page-handler="Upload"
+                      enctype="multipart/form-data">
+                    <label for="seriesTitle">Series name</label>
+                    <input id="seriesTitle"
+                           name="seriesTitle"
+                           type="text"
+                           placeholder="Optional for one archive" />
+
+                    <label for="archives">CBZ / ZIP chapters</label>
+                    <input id="archives"
+                           name="archives"
+                           type="file"
+                           accept=".cbz,.zip,application/zip"
+                           multiple
+                           required />
+                    <button class="button button-primary" type="submit">Upload & import</button>
+                </form>
+
+                <div class="manga-import-divider">Server path</div>
+
+                <form method="post" asp-page-handler="Import">
+                    <label for="sourcePath">Mounted CBZ/ZIP or manga directory</label>
+                    <input id="sourcePath"
+                           name="sourcePath"
+                           type="text"
+                           required
+                           placeholder="/media/manga/Series" />
+                    <button class="button" type="submit">Import path</button>
+                </form>
+            </div>
         </details>
     }
 </header>
