@@ -38,8 +38,8 @@
      data-page-count="@chapter.PageCount"
      data-page="@Model.InitialPage"
      data-direction="@chapter.Direction"
-     data-default-mode="@(Model.ReaderDefaults.ReadingMode == "continuous" ? "continuous" : Model.ReaderDefaults.TwoPageSpread ? "double" : "single")"
-     style="--manga-bookmark-color:@Model.ReaderDefaults.BookmarkColor">
+     data-default-mode="@(Model.ReaderSettings.ReadingMode == "continuous" ? "continuous" : Model.ReaderSettings.TwoPageSpread ? "double" : "single")"
+     style="--manga-bookmark-color:@Model.ReaderSettings.BookmarkColor">
 
     <nav class="manga-reader-toolbar" aria-label="Manga reader controls">
         <div class="manga-toolbar-start">
