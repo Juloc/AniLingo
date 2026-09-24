@@ -884,7 +884,9 @@
 
         if (open) {
             requestAnimationFrame(() => {
-                chapterFilter?.focus({ preventScroll: true });
+                if (window.matchMedia("(min-width: 821px)").matches) {
+                    chapterFilter?.focus({ preventScroll: true });
+                }
                 chapterDrawer.querySelector(".novel-drawer-row.current")
                     ?.scrollIntoView({ block: "center" });
             });
