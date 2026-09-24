@@ -34,7 +34,7 @@
     const chapterFilter = shell.querySelector("[data-chapter-filter]");
     const translateForm = shell.querySelector("[data-translate-form]");
     const translationSlot = shell.querySelector("[data-translation-slot]");
-    const hasTranslation = shell.dataset.hasTranslation === "true";
+    let hasTranslation = shell.dataset.hasTranslation === "true";
     const chapterBookmarks = new Map();
 
     let restoreComplete = false;
@@ -89,6 +89,14 @@
         return "ja";
     };
 
+    const syncLanguageControls = () => {
+        shell.querySelectorAll("[data-reader-view]").forEach(button => {
+            if (button.dataset.readerView !== "ja") {
+                button.disabled = !hasTranslation;
+            }
+        });
+    };
+
     const applyView = view => {
         const allowed = hasTranslation ? ["ja", "de", "both"] : ["ja"];
         const next = allowed.includes(view) ? view : "ja";
@@ -132,6 +140,7 @@
         ? initialAnchorLanguage
         : (storedView || initialAnchorLanguage);
 
+    syncLanguageControls();
     applyView(initialView);
     applyTheme(localStorage.getItem(storage.theme) || "dark");
 
@@ -828,33 +837,113 @@
         });
     };
 
+    const installGermanParagraphs = paragraphs => {
+        if (!Array.isArray(paragraphs) || paragraphs.length === 0) return;
+
+        const content = shell.querySelector(".novel-reader-content");
+        if (!content) return;
+
+        paragraphs.forEach((text, index) => {
+            let segment = content.querySelector(
+                `[data-reader-segment="${index}"]`);
+
+            if (!segment) {
+                segment = document.createElement("section");
+                segment.className = "novel-reader-segment";
+                segment.dataset.readerSegment = String(index);
+                content.append(segment);
+            }
+
+            let paragraph = segment.querySelector(
+                '[data-reader-paragraph][data-language="de"]');
+
+            if (!paragraph) {
+                paragraph = document.createElement("p");
+                paragraph.className = "novel-reader-paragraph de";
+                paragraph.lang = "de";
+                paragraph.dataset.readerParagraph = "";
+                paragraph.dataset.language = "de";
+                paragraph.dataset.index = String(index);
+                segment.append(paragraph);
+            }
+
+            paragraph.textContent = text;
+        });
+
+        hasTranslation = true;
+        shell.dataset.hasTranslation = "true";
+        syncLanguageControls();
+
+        const state = translationSlot?.querySelector(".novel-translation-state");
+        if (state) {
+            state.classList.add("ready");
+            state.textContent = "Deutsch bereit";
+        }
+
+        translateForm?.remove();
+    };
+
+    const waitForTranslation = async () => {
+        for (let attempt = 0; attempt < 45; attempt++) {
+            await new Promise(resolve => setTimeout(resolve, 2000));
+
+            try {
+                const response = await fetch(
+                    `${window.location.pathname}?handler=TranslationStatus`,
+                    {
+                        credentials: "same-origin",
+                        cache: "no-store",
+                        headers: { "X-Requested-With": "fetch" }
+                    });
+
+                if (!response.ok) continue;
+                const result = await response.json();
+
+                if (result?.status === "ready") {
+                    installGermanParagraphs(result.paragraphs);
+                    showToast("Deutsche Übersetzung ist bereit");
+                    return;
+                }
+            } catch {
+                // Keep the reader usable if a background status request fails.
+            }
+        }
+    };
+
     const queueTranslation = async form => {
         const button = form?.querySelector("button");
         if (!form || !button) return;
 
         button.disabled = true;
         const previous = button.textContent;
-        button.textContent = "Wird gestartet…";
+        button.textContent = "Startet…";
 
         try {
             const result = await postForm(form);
-            if (translationSlot) {
-                const state = translationSlot.querySelector(".novel-translation-state");
-                if (state) {
-                    state.textContent =
-                        result?.status === "ready"
-                            ? "Deutsch bereit"
-                            : "Übersetzung läuft im Hintergrund";
+
+            if (result?.status === "ready") {
+                const statusResponse = await fetch(
+                    `${window.location.pathname}?handler=TranslationStatus`,
+                    {
+                        credentials: "same-origin",
+                        cache: "no-store",
+                        headers: { "X-Requested-With": "fetch" }
+                    });
+                if (statusResponse.ok) {
+                    const status = await statusResponse.json();
+                    installGermanParagraphs(status.paragraphs);
                 }
+                return;
             }
-            button.textContent =
-                result?.status === "ready"
-                    ? "Bereit"
-                    : "Gestartet";
-            showToast(
-                result?.status === "ready"
-                    ? "Deutsch ist bereits verfügbar"
-                    : "Übersetzung gestartet");
+
+            const state = translationSlot?.querySelector(".novel-translation-state");
+            if (state) {
+                state.textContent = "Übersetzung läuft";
+            }
+
+            button.textContent = "Läuft";
+            showToast("Übersetzung gestartet");
+            void waitForTranslation();
         } catch (error) {
             button.disabled = false;
             button.textContent = previous;
