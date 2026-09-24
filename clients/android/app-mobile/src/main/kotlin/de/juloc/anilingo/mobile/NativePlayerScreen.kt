@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -241,6 +242,7 @@ fun NativePlayerScreen(
 
             ui.storage?.let { storage ->
                 StorageRecoveryOverlay(
+                    modifier = Modifier.align(Alignment.Center),
                     availability = storage,
                     exhausted = ui.storageRetryExhausted,
                     wakeInProgress = ui.wakeInProgress,
@@ -252,6 +254,7 @@ fun NativePlayerScreen(
 
             if (ui.loading && ui.storage == null) {
                 StatusOverlay(
+                    modifier = Modifier.align(Alignment.Center),
                     title = "Starting player",
                     detail = "Loading AniLingo playback state…",
                     design = design,
@@ -261,6 +264,7 @@ fun NativePlayerScreen(
 
             ui.updateRequired?.let {
                 StatusOverlay(
+                    modifier = Modifier.align(Alignment.Center),
                     title = "Update required",
                     detail = it,
                     design = design,
@@ -272,6 +276,7 @@ fun NativePlayerScreen(
 
             ui.error?.let {
                 StatusOverlay(
+                    modifier = Modifier.align(Alignment.Center),
                     title = "Playback unavailable",
                     detail = it,
                     design = design,
@@ -285,6 +290,7 @@ fun NativePlayerScreen(
 
             if (learningState != null) {
                 LearningSheet(
+                    modifier = Modifier.align(Alignment.BottomCenter),
                     cue = ui.currentCue,
                     selectedTerm = ui.selectedTerm,
                     termLoading = ui.termLoading,
@@ -475,6 +481,7 @@ private fun PlayerControls(
 
 @Composable
 private fun StorageRecoveryOverlay(
+    modifier: Modifier = Modifier,
     availability: MediaAvailability,
     exhausted: Boolean,
     wakeInProgress: Boolean,
@@ -491,6 +498,7 @@ private fun StorageRecoveryOverlay(
     }
 
     StatusOverlay(
+        modifier = modifier,
         title = if (exhausted) "Storage still unavailable" else "Waiting for storage",
         detail = detail,
         design = design,
@@ -513,6 +521,7 @@ private fun StorageRecoveryOverlay(
 
 @Composable
 private fun StatusOverlay(
+    modifier: Modifier = Modifier,
     title: String,
     detail: String,
     design: MobilePlayerDesign,
@@ -525,9 +534,7 @@ private fun StatusOverlay(
     Surface(
         color = design.sheet,
         shape = RoundedCornerShape(design.sheetRadiusDp.dp),
-        modifier = Modifier
-            .alignInParentCenter()
-            .padding(24.dp),
+        modifier = modifier.padding(24.dp),
     ) {
         Column(
             modifier = Modifier.padding(20.dp),
@@ -561,10 +568,9 @@ private fun StatusOverlay(
     }
 }
 
-private fun Modifier.alignInParentCenter(): Modifier = this
-
 @Composable
 private fun LearningSheet(
+    modifier: Modifier = Modifier,
     cue: SubtitleCue?,
     selectedTerm: de.juloc.anilingo.core.model.TermDetail?,
     termLoading: Boolean,
@@ -582,9 +588,7 @@ private fun LearningSheet(
             topStart = design.sheetRadiusDp.dp,
             topEnd = design.sheetRadiusDp.dp,
         ),
-        modifier = Modifier
-            .fillMaxWidth()
-            .alignBottomInBox(),
+        modifier = modifier.fillMaxWidth(),
     ) {
         Column(
             modifier = Modifier.padding(18.dp),
@@ -682,8 +686,6 @@ private fun LearningSheet(
         }
     }
 }
-
-private fun Modifier.alignBottomInBox(): Modifier = this
 
 private fun trackLabel(
     track: MediaTrack,
