@@ -14,6 +14,8 @@
     const continuous = shell.querySelector("[data-continuous]");
     const scrubber = shell.querySelector("[data-page-scrubber]");
     const label = shell.querySelector("[data-page-label]");
+    const preferenceForm = shell.querySelector("[data-preference-form]");
+    const resetPreferenceForm = shell.querySelector("[data-reset-preference-form]");
     const progressForm = shell.querySelector("[data-progress-form]");
     const bookmarkForm = shell.querySelector("[data-bookmark-form]");
     const removeBookmarkForm = shell.querySelector("[data-remove-bookmark-form]");
@@ -58,7 +60,6 @@
 
     const writeSettings = () => {
         localStorage.setItem(settingsKey, JSON.stringify({
-            mode,
             direction,
             fit,
             zoom
@@ -263,6 +264,56 @@
         }
     };
 
+    const saveReaderPreset = async scope => {
+        if (!preferenceForm) return;
+
+        try {
+            await postForm(preferenceForm, data => {
+                data.set("scope", scope);
+                data.set("mode", mode);
+            });
+
+            if (scope === "series") {
+                shell.dataset.seriesOverride = "true";
+                const reset = shell.querySelector("[data-reset-manga-series]");
+                if (reset) reset.hidden = false;
+            }
+
+            showToast(
+                scope === "media"
+                    ? "Manga default updated"
+                    : "Series reader mode saved");
+        } catch (error) {
+            showToast(error.message || "Reader setting could not be saved");
+        }
+    };
+
+    const resetSeriesPreset = async () => {
+        if (!resetPreferenceForm) return;
+
+        try {
+            const result = await postForm(resetPreferenceForm);
+            if (result?.mode) {
+                mode = result.mode;
+                shell.dataset.defaultMode = result.mode;
+            }
+
+            shell.dataset.seriesOverride = "false";
+            const reset = shell.querySelector("[data-reset-manga-series]");
+            if (reset) reset.hidden = true;
+
+            if (mode === "double") {
+                page -= page % 2;
+            }
+
+            render(mode === "continuous");
+            queueProgress();
+            showToast("Using manga default");
+        } catch (error) {
+            showToast(error.message || "Reader setting could not be reset");
+        }
+    };
+
     const queueProgress = () => {
         clearTimeout(saveTimer);
         saveTimer = setTimeout(saveProgress, 350);
@@ -409,11 +460,7 @@
             ["single", "double", "continuous"].includes(shell.dataset.defaultMode)
                 ? shell.dataset.defaultMode
                 : "single";
-        mode = ["single", "double", "continuous"].includes(stored.mode)
-            ? stored.mode
-            : (window.matchMedia("(max-width: 720px)").matches
-                ? (sharedDefaultMode === "continuous" ? "continuous" : "single")
-                : sharedDefaultMode);
+        mode = sharedDefaultMode;
         direction = stored.direction === "ltr"
             ? "ltr"
             : stored.direction === "rtl"
@@ -441,6 +488,7 @@
             writeSettings();
             render(mode === "continuous");
             queueProgress();
+            void saveReaderPreset("series");
             return;
         }
 
@@ -472,6 +520,16 @@
 
         if (event.target.closest("[data-bookmark]")) {
             void toggleBookmark();
+            return;
+        }
+
+        if (event.target.closest("[data-save-manga-default]")) {
+            void saveReaderPreset("media");
+            return;
+        }
+
+        if (event.target.closest("[data-reset-manga-series]")) {
+            void resetSeriesPreset();
             return;
         }
 
