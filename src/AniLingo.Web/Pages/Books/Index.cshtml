@@ -11,6 +11,10 @@
     <div>
         <h1>Books</h1>
         <p>Search, import, translate and read books in AniLingo.</p>
+        @if (Model.IsOwner)
+        {
+            <a class="books-settings-link" href="/Books/Integrations">Acquisition settings</a>
+        }
     </div>
     <form method="get" action="/Books" class="books-search" role="search">
         <input type="search"
@@ -97,7 +101,7 @@
     <section class="books-tools">
         <div>
             <h2>Import EPUB</h2>
-            <p>Use a DRM-free EPUB you are allowed to read.</p>
+            <p>Upload a DRM-free EPUB or import one from an authorized HTTPS download URL.</p>
             <form method="post"
                   asp-page-handler="Upload"
                   enctype="multipart/form-data"
@@ -106,7 +110,17 @@
                        name="epub"
                        accept=".epub,application/epub+zip"
                        required />
-                <button class="button button-primary" type="submit">Import</button>
+                <button class="button button-primary" type="submit">Import file</button>
+            </form>
+            <form method="post"
+                  asp-page-handler="RemoteEpub"
+                  class="books-stack-form">
+                <input type="url"
+                       name="epubUrl"
+                       placeholder="https://publisher.example/book.epub"
+                       inputmode="url"
+                       required />
+                <button class="button" type="submit">Import EPUB URL</button>
             </form>
         </div>
 
@@ -148,6 +162,14 @@
                            required />
                     <button class="button" type="submit">Send NZB file</button>
                 </form>
+            </div>
+        }
+        else
+        {
+            <div>
+                <h2>SABnzbd transport</h2>
+                <p>SABnzbd is not configured yet.</p>
+                <a class="button" href="/Books/Integrations">Configure SABnzbd</a>
             </div>
         }
     </section>
