@@ -377,8 +377,10 @@
         return -1;
     };
 
-    const openLearning = (cue, token = null) => {
-        learningResumeOnClose = !video.paused && !video.ended;
+    const openLearning = (cue, token = null, selectedElement = null) => {
+        if (inspector.hidden) {
+            learningResumeOnClose = !video.paused && !video.ended;
+        }
         video.pause();
         selectedCueStartMs = cue.startMs;
 
@@ -396,6 +398,12 @@
             meaning.textContent = "Tap a highlighted word in the subtitle to inspect its reading and meaning.";
             state.textContent = "";
             state.hidden = true;
+        }
+
+        overlay.querySelectorAll('[aria-pressed="true"]').forEach(element =>
+            element.removeAttribute("aria-pressed"));
+        if (selectedElement instanceof HTMLElement) {
+            selectedElement.setAttribute("aria-pressed", "true");
         }
 
         inspector.hidden = false;
@@ -426,7 +434,7 @@
         const detail = event.detail || {};
         switch (detail.action) {
             case design.actions.openWord:
-                openLearning(detail.cue, detail.token);
+                openLearning(detail.cue, detail.token, detail.element);
                 break;
             case design.actions.learnCurrentCue:
                 openLearning(detail.cue);
