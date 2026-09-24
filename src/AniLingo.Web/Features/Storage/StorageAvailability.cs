@@ -78,7 +78,7 @@ public sealed class StorageAvailabilityCoordinator
     private static readonly TimeSpan OnlineCache = TimeSpan.FromSeconds(8);
     private static readonly TimeSpan OfflineCache = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan WakeStartingWindow = TimeSpan.FromSeconds(60);
-    private static readonly TimeSpan WakeDebounce = TimeSpan.FromSeconds(8);
+    private static readonly TimeSpan WakeDebounce = TimeSpan.FromSeconds(10);
 
     private readonly ConcurrentDictionary<Guid, RootRuntimeState> roots = new();
 
