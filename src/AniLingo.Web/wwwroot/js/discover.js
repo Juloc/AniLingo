@@ -113,59 +113,123 @@
         abortController?.abort();
         abortController = new AbortController();
         const version = ++requestVersion;
+        const sources = providerSources();
 
         results.setAttribute("aria-busy", "true");
-        count.textContent = state.query ? "Searching…" : "Loading…";
+        count.textContent = state.query.trim() ? "Searching…" : "Loading…";
         warning.hidden = true;
 
-        const params = new URLSearchParams({
-            handler: "Results",
-            category: state.category,
-            mode: state.mode
+        const payloads = [];
+        const failures = [];
+
+        const tasks = sources.map(async source => {
+            try {
+                const payload = await loadSource(source, abortController.signal);
+                if (version !== requestVersion) return;
+
+                payloads.push(payload);
+                renderCombined(
+                    payloads,
+                    failures,
+                    Math.max(0, sources.length - payloads.length - failures.length));
+            } catch (error) {
+                if (error?.name === "AbortError" || version !== requestVersion) {
+                    return;
+                }
+
+                failures.push(error?.message || "A discovery provider is unavailable.");
+                renderCombined(
+                    payloads,
+                    failures,
+                    Math.max(0, sources.length - payloads.length - failures.length));
+            }
         });
-        if (state.query.trim()) params.set("q", state.query.trim());
 
-        try {
-            const response = await fetch(
-                `${window.location.pathname}?${params}`,
-                {
-                    signal: abortController.signal,
-                    cache: "no-store",
-                    headers: { "X-Requested-With": "fetch" }
-                });
+        await Promise.allSettled(tasks);
 
-            if (!response.ok) {
-                throw new Error(`Discovery returned HTTP ${response.status}.`);
-            }
-
-            const payload = await response.json();
-            if (version !== requestVersion) return;
-
-            render(payload);
-        } catch (error) {
-            if (error?.name === "AbortError" || version !== requestVersion) {
-                return;
-            }
-
-            showError(error?.message || "Discovery is temporarily unavailable.");
-        } finally {
-            if (version === requestVersion) {
-                results.setAttribute("aria-busy", "false");
-            }
+        if (version === requestVersion) {
+            results.setAttribute("aria-busy", "false");
+            renderCombined(payloads, failures, 0);
         }
     }
 
-    function render(payload) {
+    function providerSources() {
+        if (state.mode === "my-list") return ["anilist"];
+        if (state.category === "book") return ["books"];
+        if (state.category !== "all") return ["anilist"];
+        return ["anilist", "books"];
+    }
+
+    async function loadSource(source, signal) {
+        const params = new URLSearchParams({
+            handler: "Results",
+            category: state.category,
+            mode: state.mode,
+            source
+        });
+        if (state.query.trim()) params.set("q", state.query.trim());
+
+        const response = await fetch(
+            `${window.location.pathname}?${params}`,
+            {
+                signal,
+                cache: "no-store",
+                headers: { "X-Requested-With": "fetch" }
+            });
+
+        if (!response.ok) {
+            throw new Error(`Discovery returned HTTP ${response.status}.`);
+        }
+
+        return await response.json();
+    }
+
+    function renderCombined(payloads, failures, pendingCount) {
+        const first = payloads[0] || {
+            query: state.query.trim(),
+            category: state.category,
+            mode: state.mode,
+            aniListConnected: false,
+            items: [],
+            warnings: []
+        };
+
+        const itemMap = new Map();
+        const warnings = [...failures];
+        let aniListConnected = false;
+
+        payloads.forEach(payload => {
+            aniListConnected ||= payload.aniListConnected === true;
+            (payload.warnings || []).forEach(message => warnings.push(message));
+            (payload.items || []).forEach(item => {
+                if (!itemMap.has(item.id)) itemMap.set(item.id, item);
+            });
+        });
+
+        render({
+            ...first,
+            query: first.query || state.query.trim(),
+            category: state.category,
+            mode: state.mode,
+            aniListConnected,
+            items: [...itemMap.values()],
+            warnings: [...new Set(warnings)]
+        }, pendingCount);
+    }
+
+    function render(payload, pendingCount = 0) {
         results.replaceChildren();
 
         const items = Array.isArray(payload.items) ? payload.items : [];
         const warnings = Array.isArray(payload.warnings) ? payload.warnings : [];
 
-        title.textContent = state.query
+        title.textContent = state.query.trim()
             ? `Results for “${payload.query || state.query.trim()}”`
             : `${modeLabel(payload.mode)} · ${categoryLabel(payload.category)}`;
 
-        count.textContent = `${items.length} shown`;
+        count.textContent = pendingCount > 0
+            ? `${items.length} shown · loading more…`
+            : `${items.length} shown`;
 
         if (warnings.length) {
             warning.textContent = warnings.join(" ");
@@ -174,8 +238,8 @@
             warning.hidden = true;
         }
 
-        empty.hidden = items.length !== 0;
-        if (items.length === 0) {
+        empty.hidden = items.length !== 0 || pendingCount > 0;
+        if (items.length === 0 && pendingCount === 0) {
             const strong = empty.querySelector("strong");
             const detail = empty.querySelector("span");
 
@@ -185,6 +249,9 @@
             } else if (payload.mode === "my-list" && !payload.aniListConnected) {
                 strong.textContent = "AniList is not connected";
                 detail.textContent = "Connect your account in Settings → AniList.";
+            } else if (warnings.length && payloadsEmpty(payload)) {
+                strong.textContent = "Search unavailable";
+                detail.textContent = "Try again in a moment.";
             } else {
                 strong.textContent = "No results";
                 detail.textContent = "Try another title, category or browse mode.";
@@ -195,6 +262,10 @@
         const fragment = document.createDocumentFragment();
         items.forEach(item => fragment.append(createCard(item)));
         results.append(fragment);
+    }
+
+    function payloadsEmpty(payload) {
+        return !Array.isArray(payload.items) || payload.items.length === 0;
     }
 
     function createCard(item) {
