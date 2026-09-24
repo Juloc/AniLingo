@@ -1057,3 +1057,15 @@
     display: flex;
     justify-content: flex-start;
 }
+
+.book-theme-advanced-grid {
+    display: grid;
+    gap: 10px;
+    padding-top: 10px;
+}
+
+.book-reader-settings-panel .novel-theme-advanced > summary {
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 12px;
+}
