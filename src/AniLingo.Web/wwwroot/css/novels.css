@@ -2167,3 +2167,23 @@ body.novel-paged-body {
         scroll-behavior: auto !important;
     }
 }
+
+
+.novel-reader-page-title {
+    display: none;
+}
+
+.novel-reader-shell[data-reading-mode="paged"] > .novel-reader-title {
+    display: none;
+}
+
+.novel-reader-shell[data-reading-mode="paged"] .novel-reader-page-title {
+    display: block;
+    break-inside: avoid;
+    margin: 0 0 2.4rem;
+    padding-top: min(9vh, 5rem);
+}
+
+.novel-reader-shell[data-reading-mode="paged"] [data-reader-autoscroll-toggle] {
+    display: none;
+}
