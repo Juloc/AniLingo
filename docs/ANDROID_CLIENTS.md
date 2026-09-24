@@ -111,10 +111,17 @@ GET  /api/client/v1/anime/{animeId}
 GET  /api/client/v1/episodes/{episodeId}
 GET  /api/client/v1/episodes/{episodeId}/player
 GET  /api/client/v1/episodes/{episodeId}/cues?trackId={trackId}&fromMs={fromMs}&toMs={toMs}
+GET  /api/client/v1/media/{mediaFileId}/availability
 GET  /api/client/v1/media/{mediaFileId}/content
 GET  /api/client/v1/episodes/{episodeId}/fallback?mode={device|server}&startSeconds={seconds}
 GET  /api/client/v1/terms/{termId}
 PUT  /api/client/v1/terms/{termId}/state
+
+Owner-only storage operations:
+
+GET  /api/client/v1/library-roots/{rootId}/availability
+POST /api/client/v1/library-roots/{rootId}/test
+POST /api/client/v1/library-roots/{rootId}/wake
 ```
 
 All endpoints except `/capabilities` use the normal AniLingo authenticated account and therefore the same profile-scoped learning state as the web UI. API authentication failures return JSON `401/403` responses instead of redirects to Razor login pages.
@@ -206,6 +213,25 @@ For both phone and TV:
 10. Continue automatically; do not ask the user to press Prepare or start again.
 
 A network error is not treated as a codec failure. Network retry and codec fallback are separate states.
+
+### 5.1.1 Media-storage availability and recovery
+
+Before treating a playback failure as a decoder/container problem, clients consume the server's media availability state:
+
+- `available`
+- `source_starting`
+- `source_offline`
+- `source_unreachable`
+- `file_missing`
+- `unknown`
+
+Temporary source outages are retryable and use the shared bounded recovery cadence: immediate check, then 1s, 2s, 4s, and 5s intervals up to about 60 seconds. The client preserves the requested playback position and whether the user intended playback to continue. Once storage becomes available, it refreshes the player bootstrap and resumes automatically.
+
+`file_missing` is not a Wake-on-LAN or codec-fallback state: the root is readable but the concrete media file is absent. `source_unreachable` is also not blindly retried forever.
+
+Normal users can query only the media availability information needed for playback. They never receive MAC addresses, mount paths or an implicit wake capability. Owners may receive a session-independent `wakeUrl` for the owning root when Wake-on-LAN is configured. Wake remains an explicit owner action; pressing Play never wakes storage automatically.
+
+The server keeps library state while a NAS is sleeping/offline and treats an unexpectedly empty previously-populated root as unavailable instead of a mass deletion. Native clients therefore keep library/detail navigation usable while playback storage is down.
 
 ### 5.2 Fallback profile
 

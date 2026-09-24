@@ -8,6 +8,9 @@ public sealed class LibraryRoot
     public bool IsEnabled { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? LastScannedAt { get; set; }
+    public bool WakeOnLanEnabled { get; set; }
+    public string? WakeMacAddress { get; set; }
+    public string? WakeBroadcastAddress { get; set; }
 }
 
 public sealed class Anime

@@ -1,6 +1,7 @@
 using System.Reflection;
 using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Playback;
+using AniLingo.Web.Features.Storage;
 
 namespace AniLingo.Web.Features.ClientApi;
 
@@ -36,7 +37,9 @@ public static class ClientApiContract
                 HlsFallback: false,
                 PlaybackSessions: false,
                 CompanionPairing: false,
-                CompanionControl: false));
+                CompanionControl: false,
+                StorageAvailability: true,
+                OwnerWakeOnLan: true));
     }
 }
 
@@ -62,6 +65,15 @@ public static class ClientApiRoutes
     public static string DirectContent(Guid mediaFileId) =>
         $"{ClientApiContract.BasePath}/media/{mediaFileId:D}/content";
 
+    public static string MediaAvailability(Guid mediaFileId) =>
+        $"{ClientApiContract.BasePath}/media/{mediaFileId:D}/availability";
+
+    public static string RootAvailability(Guid rootId) =>
+        $"{ClientApiContract.BasePath}/library-roots/{rootId:D}/availability";
+
+    public static string WakeRoot(Guid rootId) =>
+        $"{ClientApiContract.BasePath}/library-roots/{rootId:D}/wake";
+
     public static string Fallback(Guid episodeId) =>
         $"{Episode(episodeId)}/fallback";
 }
@@ -84,7 +96,9 @@ public sealed record ClientFeatureFlags(
     bool HlsFallback,
     bool PlaybackSessions,
     bool CompanionPairing,
-    bool CompanionControl);
+    bool CompanionControl,
+    bool StorageAvailability,
+    bool OwnerWakeOnLan);
 
 public sealed record ClientErrorResponse(
     string Code,
@@ -184,12 +198,32 @@ public sealed record ClientPlayerMedia(
     string DirectContentUrl,
     bool SupportsRangeRequests,
     ClientPlaybackOption Device,
-    ClientPlaybackOption Server);
+    ClientPlaybackOption Server,
+    ClientMediaAvailability Availability);
 
 public sealed record ClientPlaybackOption(
     string Availability,
     string Message,
     bool UsesLiveStream);
+
+
+public sealed record ClientMediaAvailability(
+    string State,
+    bool Retryable,
+    int RetryAfterMs,
+    bool CanWake,
+    Guid? RootId,
+    string AvailabilityUrl,
+    string? WakeUrl);
+
+public sealed record ClientRootAvailability(
+    Guid RootId,
+    string State,
+    bool Retryable,
+    DateTimeOffset CheckedAtUtc,
+    DateTimeOffset? LastAvailableAtUtc,
+    bool WakeConfigured,
+    string? DiagnosticCode);
 
 public sealed record ClientMediaTrack(
     string Id,
@@ -269,6 +303,43 @@ public static class ClientApiMappings
             option.Availability.ToString().ToLowerInvariant(),
             option.StatusMessage,
             option.UsesLiveStream);
+
+
+    public static ClientMediaAvailability ToClientAvailability(
+        MediaAvailabilitySnapshot availability,
+        bool isOwner) =>
+        new(
+            AvailabilityStateName(availability.State),
+            availability.Retryable,
+            availability.RetryAfterMs,
+            isOwner && availability.WakeConfigured,
+            isOwner ? availability.RootId : null,
+            ClientApiRoutes.MediaAvailability(availability.MediaFileId),
+            isOwner && availability.WakeConfigured
+                ? ClientApiRoutes.WakeRoot(availability.RootId)
+                : null);
+
+    public static ClientRootAvailability ToClientRootAvailability(
+        LibraryRootAvailabilitySnapshot availability) =>
+        new(
+            availability.RootId,
+            AvailabilityStateName(availability.State),
+            availability.IsRetryable,
+            availability.CheckedAtUtc,
+            availability.LastAvailableAtUtc,
+            availability.WakeConfigured,
+            availability.DiagnosticCode);
+
+    public static string AvailabilityStateName(StorageAvailabilityState state) =>
+        state switch
+        {
+            StorageAvailabilityState.Available => "available",
+            StorageAvailabilityState.Starting => "source_starting",
+            StorageAvailabilityState.Offline => "source_offline",
+            StorageAvailabilityState.Unreachable => "source_unreachable",
+            StorageAvailabilityState.FileMissing => "file_missing",
+            _ => "unknown"
+        };
 
     public static string StateName(UserTermState? state) =>
         state switch
