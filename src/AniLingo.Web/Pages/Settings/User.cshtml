@@ -110,7 +110,7 @@
             <div class="inline-actions">
                 <form method="post" asp-page-handler="SetEnabled">
                     <input type="hidden" name="id" value="@account.Id" />
-                    <input type="hidden" name="enabled" value="@(!account.IsEnabled ? "true" : "false")" />
+                    <input type="hidden" name="enabled" value="@(!account.IsEnabled)" />
                     <button class="button" type="submit">
                         @(account.IsEnabled ? "Disable user" : "Approve / enable")
                     </button>
