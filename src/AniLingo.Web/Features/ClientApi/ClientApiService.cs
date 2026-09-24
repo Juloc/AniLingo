@@ -1,0 +1,406 @@
+using AniLingo.Web.Data;
+using AniLingo.Web.Features.Artwork;
+using AniLingo.Web.Features.Auth;
+using AniLingo.Web.Features.Learning;
+using AniLingo.Web.Features.Metadata;
+using AniLingo.Web.Features.Playback;
+using Microsoft.EntityFrameworkCore;
+
+namespace AniLingo.Web.Features.ClientApi;
+
+public sealed class ClientApiService(
+    AppDbContext db,
+    PlaybackService playbackService,
+    LearningService learningService,
+    CurrentAccountContext currentAccount)
+{
+    public async Task<ClientLibraryResponse> GetLibraryAsync(
+        CancellationToken cancellationToken)
+    {
+        var animeRows = await (
+            from anime in db.Anime.AsNoTracking()
+            join metadataValue in db.AnimeMetadata.AsNoTracking()
+                on anime.Id equals metadataValue.AnimeId into metadataRows
+            from metadata in metadataRows.DefaultIfEmpty()
+            orderby metadata != null ? metadata.PreferredTitle : anime.Title
+            select new
+            {
+                anime.Id,
+                LocalTitle = anime.Title,
+                PreferredTitle = metadata == null ? null : metadata.PreferredTitle,
+                NativeTitle = metadata == null ? null : metadata.NativeTitle,
+                CoverImageUrl = metadata == null ? null : metadata.CoverImageUrl,
+                BannerImageUrl = metadata == null ? null : metadata.BannerImageUrl,
+                SeasonYear = metadata == null ? null : metadata.SeasonYear,
+                Format = metadata == null ? null : metadata.Format
+            })
+            .ToListAsync(cancellationToken);
+
+        var episodeCounts = await db.Episodes
+            .AsNoTracking()
+            .GroupBy(x => x.AnimeId)
+            .Select(group => new
+            {
+                AnimeId = group.Key,
+                EpisodeCount = group.Count(),
+                SeasonCount = group.Select(x => x.SeasonNumber).Distinct().Count()
+            })
+            .ToDictionaryAsync(x => x.AnimeId, cancellationToken);
+
+        return new ClientLibraryResponse(
+            animeRows.Select(row =>
+            {
+                episodeCounts.TryGetValue(row.Id, out var counts);
+
+                return new ClientAnimeSummary(
+                    row.Id,
+                    row.PreferredTitle ?? row.LocalTitle,
+                    row.LocalTitle,
+                    row.NativeTitle,
+                    AnimeArtworkStore.ResolvePosterUrl(row.Id, row.CoverImageUrl),
+                    AnimeArtworkStore.ResolveFanartUrl(row.Id, row.BannerImageUrl),
+                    counts?.EpisodeCount ?? 0,
+                    counts?.SeasonCount ?? 0,
+                    row.SeasonYear,
+                    row.Format);
+            }).ToArray());
+    }
+
+    public async Task<ClientAnimeDetail?> GetAnimeAsync(
+        Guid animeId,
+        CancellationToken cancellationToken)
+    {
+        var row = await (
+            from anime in db.Anime.AsNoTracking()
+            join metadataValue in db.AnimeMetadata.AsNoTracking()
+                on anime.Id equals metadataValue.AnimeId into metadataRows
+            from metadata in metadataRows.DefaultIfEmpty()
+            where anime.Id == animeId
+            select new
+            {
+                anime.Id,
+                LocalTitle = anime.Title,
+                PreferredTitle = metadata == null ? null : metadata.PreferredTitle,
+                NativeTitle = metadata == null ? null : metadata.NativeTitle,
+                Description = metadata == null ? null : metadata.Description,
+                CoverImageUrl = metadata == null ? null : metadata.CoverImageUrl,
+                BannerImageUrl = metadata == null ? null : metadata.BannerImageUrl,
+                SeasonYear = metadata == null ? null : metadata.SeasonYear,
+                Format = metadata == null ? null : metadata.Format
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (row is null)
+        {
+            return null;
+        }
+
+        var episodeRows = await db.Episodes
+            .AsNoTracking()
+            .Where(x => x.AnimeId == animeId)
+            .OrderBy(x => x.SeasonNumber)
+            .ThenBy(x => x.Number)
+            .Select(x => new
+            {
+                x.Id,
+                x.SeasonNumber,
+                x.Number,
+                x.Title,
+                HasMedia = db.MediaFiles.Any(media => media.EpisodeId == x.Id),
+                HasJapaneseLearningSubtitle = db.SubtitleTracks.Any(
+                    track => track.EpisodeId == x.Id && track.Language == "ja")
+            })
+            .ToListAsync(cancellationToken);
+
+        var seasons = episodeRows
+            .GroupBy(x => x.SeasonNumber)
+            .Select(group => new ClientSeason(
+                group.Key,
+                group.Select(episode => new ClientEpisodeSummary(
+                    episode.Id,
+                    episode.SeasonNumber,
+                    episode.Number,
+                    episode.Title,
+                    episode.HasMedia,
+                    episode.HasJapaneseLearningSubtitle))
+                    .ToArray()))
+            .ToArray();
+
+        return new ClientAnimeDetail(
+            row.Id,
+            row.PreferredTitle ?? row.LocalTitle,
+            row.LocalTitle,
+            row.NativeTitle,
+            row.Description,
+            AnimeArtworkStore.ResolvePosterUrl(row.Id, row.CoverImageUrl),
+            AnimeArtworkStore.ResolveFanartUrl(row.Id, row.BannerImageUrl),
+            row.SeasonYear,
+            row.Format,
+            seasons);
+    }
+
+    public async Task<ClientEpisodeDetail?> GetEpisodeAsync(
+        Guid episodeId,
+        CancellationToken cancellationToken)
+    {
+        var row = await (
+            from episode in db.Episodes.AsNoTracking()
+            join anime in db.Anime.AsNoTracking() on episode.AnimeId equals anime.Id
+            join metadataValue in db.AnimeMetadata.AsNoTracking()
+                on anime.Id equals metadataValue.AnimeId into metadataRows
+            from metadata in metadataRows.DefaultIfEmpty()
+            where episode.Id == episodeId
+            select new
+            {
+                episode.Id,
+                episode.AnimeId,
+                AnimeTitle = metadata == null ? anime.Title : metadata.PreferredTitle,
+                episode.Title,
+                episode.SeasonNumber,
+                episode.Number
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (row is null)
+        {
+            return null;
+        }
+
+        var hasMedia = await db.MediaFiles
+            .AsNoTracking()
+            .AnyAsync(x => x.EpisodeId == episodeId, cancellationToken);
+
+        var activeTrack = await db.SubtitleTracks
+            .AsNoTracking()
+            .Where(x => x.EpisodeId == episodeId && x.Language == "ja")
+            .OrderByDescending(x => x.ImportedAt)
+            .ThenBy(x => x.Id)
+            .Select(x => new { x.Id })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var cueCount = activeTrack is null
+            ? 0
+            : await db.SubtitleCues
+                .AsNoTracking()
+                .CountAsync(
+                    x => x.SubtitleTrackId == activeTrack.Id,
+                    cancellationToken);
+
+        var termStates = await (
+            from episodeTerm in db.EpisodeTerms.AsNoTracking()
+            join userTermValue in db.UserTerms.AsNoTracking()
+                    .Where(x => x.ProfileId == currentAccount.ProfileId)
+                on episodeTerm.TermId equals userTermValue.TermId into userTerms
+            from userTerm in userTerms.DefaultIfEmpty()
+            where episodeTerm.EpisodeId == episodeId
+            select userTerm == null ? (UserTermState?)null : userTerm.State)
+            .ToListAsync(cancellationToken);
+
+        var known = termStates.Count(x => x == UserTermState.Known);
+        var learning = termStates.Count(x => x == UserTermState.Learning);
+
+        return new ClientEpisodeDetail(
+            row.Id,
+            row.AnimeId,
+            row.AnimeTitle,
+            row.Title,
+            row.SeasonNumber,
+            row.Number,
+            hasMedia,
+            activeTrack?.Id,
+            cueCount,
+            new ClientLearningCoverage(
+                termStates.Count,
+                known,
+                learning,
+                termStates.Count - known - learning));
+    }
+
+    public async Task<ClientPlayerBootstrap?> GetPlayerAsync(
+        Guid episodeId,
+        CancellationToken cancellationToken)
+    {
+        var episode = await (
+            from localEpisode in db.Episodes.AsNoTracking()
+            join anime in db.Anime.AsNoTracking() on localEpisode.AnimeId equals anime.Id
+            join metadataValue in db.AnimeMetadata.AsNoTracking()
+                on anime.Id equals metadataValue.AnimeId into metadataRows
+            from metadata in metadataRows.DefaultIfEmpty()
+            where localEpisode.Id == episodeId
+            select new ClientPlayerEpisode(
+                localEpisode.Id,
+                anime.Id,
+                metadata == null ? anime.Title : metadata.PreferredTitle,
+                localEpisode.Title,
+                localEpisode.SeasonNumber,
+                localEpisode.Number))
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (episode is null)
+        {
+            return null;
+        }
+
+        var media = await playbackService.GetMediaAsync(
+            episodeId,
+            cancellationToken);
+
+        var learningTrack = await db.SubtitleTracks
+            .AsNoTracking()
+            .Where(x => x.EpisodeId == episodeId && x.Language == "ja")
+            .OrderByDescending(x => x.ImportedAt)
+            .ThenBy(x => x.Id)
+            .Select(x => new ClientLearningSubtitle(
+                x.Id,
+                x.Language,
+                x.Format,
+                ClientApiRoutes.Cues(episodeId)))
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (media is null)
+        {
+            return new ClientPlayerBootstrap(
+                ClientApiContract.ApiVersion,
+                episode,
+                null,
+                [],
+                [],
+                learningTrack,
+                null,
+                null,
+                new ClientCompatibilityFallback(
+                    false,
+                    null,
+                    false,
+                    false,
+                    null));
+        }
+
+        var tracks = media.Tracks ?? [];
+        var audioTracks = tracks
+            .Where(x => x.Kind == PlaybackTrackKind.Audio)
+            .Select(ClientApiMappings.ToClientTrack)
+            .ToArray();
+        var subtitleTracks = tracks
+            .Where(x => x.Kind == PlaybackTrackKind.Subtitle)
+            .Select(ClientApiMappings.ToClientTrack)
+            .ToArray();
+
+        var defaultAudio = audioTracks.FirstOrDefault(x => x.IsDefault)
+            ?? audioTracks.FirstOrDefault();
+        var defaultSubtitle = subtitleTracks.FirstOrDefault(x => x.IsDefault);
+
+        var fallbackAvailable = media.Server.IsReady && media.Server.UsesLiveStream;
+
+        var clientMedia = new ClientPlayerMedia(
+            media.MediaFileId,
+            media.FileName,
+            media.ContentType,
+            media.SizeBytes,
+            media.DurationSeconds is > 0
+                ? (long?)Math.Round(media.DurationSeconds.Value * 1000)
+                : null,
+            media.VideoCodec,
+            media.PixelFormat,
+            media.AudioCodec,
+            ClientApiRoutes.DirectContent(media.MediaFileId),
+            SupportsRangeRequests: true,
+            ClientApiMappings.ToClientOption(media.Device),
+            ClientApiMappings.ToClientOption(media.Server));
+
+        return new ClientPlayerBootstrap(
+            ClientApiContract.ApiVersion,
+            episode,
+            clientMedia,
+            audioTracks,
+            subtitleTracks,
+            learningTrack,
+            defaultAudio?.Id,
+            defaultSubtitle?.Id,
+            new ClientCompatibilityFallback(
+                fallbackAvailable,
+                fallbackAvailable ? "live-fragmented-mp4" : null,
+                SeekableWithinStream: false,
+                CanRestartAtPosition: fallbackAvailable,
+                fallbackAvailable ? ClientApiRoutes.Fallback(episodeId) : null));
+    }
+
+    public async Task<ClientCueResponse?> GetCuesAsync(
+        Guid episodeId,
+        int? fromMs,
+        int? toMs,
+        CancellationToken cancellationToken)
+    {
+        var exists = await db.Episodes
+            .AsNoTracking()
+            .AnyAsync(x => x.Id == episodeId, cancellationToken);
+
+        if (!exists)
+        {
+            return null;
+        }
+
+        var cueSet = await playbackService.GetCueSetAsync(
+            episodeId,
+            fromMs,
+            toMs,
+            cancellationToken);
+
+        return new ClientCueResponse(
+            cueSet.TrackId,
+            fromMs,
+            toMs,
+            cueSet.Cues.Select(ClientApiMappings.ToClientCue).ToArray());
+    }
+
+    public async Task<ClientTermDetail?> GetTermAsync(
+        Guid termId,
+        CancellationToken cancellationToken)
+    {
+        var row = await (
+            from term in db.Terms.AsNoTracking()
+            join userTermValue in db.UserTerms.AsNoTracking()
+                    .Where(x => x.ProfileId == currentAccount.ProfileId)
+                on term.Id equals userTermValue.TermId into userTerms
+            from userTerm in userTerms.DefaultIfEmpty()
+            where term.Id == termId
+            select new
+            {
+                term.Id,
+                term.Canonical,
+                term.Reading,
+                term.Meaning,
+                State = userTerm == null ? (UserTermState?)null : userTerm.State
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        return row is null
+            ? null
+            : new ClientTermDetail(
+                row.Id,
+                row.Canonical,
+                row.Reading,
+                row.Meaning,
+                ClientApiMappings.StateName(row.State));
+    }
+
+    public async Task<ClientTermStateResult?> SetTermStateAsync(
+        Guid termId,
+        UserTermState state,
+        CancellationToken cancellationToken)
+    {
+        var exists = await db.Terms
+            .AsNoTracking()
+            .AnyAsync(x => x.Id == termId, cancellationToken);
+
+        if (!exists)
+        {
+            return null;
+        }
+
+        await learningService.SetStateAsync(termId, state, cancellationToken);
+        return new ClientTermStateResult(
+            termId,
+            ClientApiMappings.StateName(state));
+    }
+}
