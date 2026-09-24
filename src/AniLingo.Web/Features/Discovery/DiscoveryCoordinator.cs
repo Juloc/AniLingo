@@ -117,13 +117,13 @@ public sealed class DiscoveryCoordinator(
         CancellationToken cancellationToken)
     {
         var includeAnime = includeAniList &&
-            request.Category is DiscoveryCategory.All or DiscoveryCategory.Anime;
+            (request.Category is DiscoveryCategory.All or DiscoveryCategory.Anime);
         var includeNovel = includeAniList &&
-            request.Category is DiscoveryCategory.All or DiscoveryCategory.LightNovel;
+            (request.Category is DiscoveryCategory.All or DiscoveryCategory.LightNovel);
         var includeManga = includeAniList &&
-            request.Category is DiscoveryCategory.All or DiscoveryCategory.Manga;
+            (request.Category is DiscoveryCategory.All or DiscoveryCategory.Manga);
         var includeBook = includeBooks &&
-            request.Category is DiscoveryCategory.All or DiscoveryCategory.Book;
+            (request.Category is DiscoveryCategory.All or DiscoveryCategory.Book);
 
         var animeTask = includeAnime
             ? CaptureAsync(
