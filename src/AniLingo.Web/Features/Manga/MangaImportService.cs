@@ -434,7 +434,9 @@ public sealed partial class MangaImportService
 
     private static double? TryParseChapterNumber(string path)
     {
-        var name = Path.GetFileNameWithoutExtension(path);
+        var name = Directory.Exists(path)
+            ? new DirectoryInfo(path).Name
+            : Path.GetFileNameWithoutExtension(path);
         var match = ChapterNumberRegex().Match(name);
         if (!match.Success)
         {
