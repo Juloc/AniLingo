@@ -9,6 +9,16 @@
 
 <a class="books-back" href="/Books">← Books</a>
 
+@if (TempData["Status"] is string status)
+{
+    <div class="books-message">@status</div>
+}
+
+@if (!string.IsNullOrWhiteSpace(Model.Error))
+{
+    <div class="books-message">@Model.Error</div>
+}
+
 @if (Model.Book is not null)
 {
     <header class="book-detail-header">
@@ -33,7 +43,7 @@
             }
             @if (Model.Book.FirstPublishYear is not null)
             {
-                <p class="book-author">First published @Model.Book.FirstPublishYear</p>
+                <p class="book-meta">First published @Model.Book.FirstPublishYear</p>
             }
             @if (!string.IsNullOrWhiteSpace(Model.Book.Summary))
             {
@@ -42,7 +52,7 @@
             @if (Model.Book.Subjects.Count > 0)
             {
                 <div class="book-tags">
-                    @foreach (var subject in Model.Book.Subjects.Take(5))
+                    @foreach (var subject in Model.Book.Subjects.Take(8))
                     {
                         <span>@subject</span>
                     }
@@ -50,71 +60,46 @@
             }
 
             <div class="book-actions">
-                <form method="post"
-                      asp-page-handler="Translate"
-                      asp-route-id="@Model.Book.Id">
-                    <button class="button button-primary"
-                            type="submit"
-                            disabled="@(!Model.Book.CanRead)">
-                        Translate to Indonesian
-                    </button>
-                </form>
+                @if (Model.IsOwner)
+                {
+                    <form method="post"
+                          asp-page-handler="Acquire"
+                          asp-route-id="@Model.Book.Id">
+                        <button class="button button-primary" type="submit">
+                            @(Model.Book.CanAcquire ? "Add EPUB to library" : "Find free edition & add")
+                        </button>
+                    </form>
+                }
                 <a class="button"
                    href="@Model.Book.SourceUrl"
                    target="_blank"
                    rel="noopener noreferrer">@Model.Book.SourceName</a>
             </div>
+
+            @if (!Model.Book.CanAcquire)
+            {
+                <p class="book-meta">
+                    AniLingo will check Project Gutenberg when you choose “Find free edition & add”.
+                    If no downloadable edition is available, import your EPUB from the Books page.
+                </p>
+            }
+
+            @if (Model.IsOwner && Model.Book.SourceName != "Project Gutenberg")
+            {
+                <details class="book-sab-panel">
+                    <summary>Send an NZB URL to SABnzbd</summary>
+                    <form method="post"
+                          asp-page-handler="SabUrl"
+                          asp-route-id="@Model.Book.Id"
+                          class="books-inline-form">
+                        <input type="url"
+                               name="nzbUrl"
+                               placeholder="https://…/book.nzb"
+                               required />
+                        <button class="button" type="submit">Send</button>
+                    </form>
+                </details>
+            }
         </div>
     </header>
-
-    @if (!Model.Book.CanRead && string.IsNullOrWhiteSpace(Model.Error))
-    {
-        <div class="books-message">
-            Metadata is available, but this preview has no readable text source for this title.
-            Translation becomes available when AniLingo has readable book text.
-        </div>
-    }
-}
-
-@if (!string.IsNullOrWhiteSpace(Model.Error))
-{
-    <div class="books-message">@Model.Error</div>
-}
-
-@if (Model.TranslatedParagraphs.Count > 0)
-{
-    <section class="book-reader">
-        <div class="book-reader-heading">
-            <div>
-                <span class="book-reader-language">Indonesian</span>
-                <h2>Translation preview</h2>
-            </div>
-            <span>temporary test · not saved yet</span>
-        </div>
-        <article class="book-prose">
-            @foreach (var paragraph in Model.TranslatedParagraphs)
-            {
-                <p>@paragraph</p>
-            }
-        </article>
-    </section>
-}
-
-@if (Model.OriginalParagraphs.Count > 0)
-{
-    <section class="book-reader book-reader-original">
-        <div class="book-reader-heading">
-            <div>
-                <span class="book-reader-language">English</span>
-                <h2>Original sample</h2>
-            </div>
-            <span>@(Model.Book?.TextSourceName ?? Model.Book?.SourceName)</span>
-        </div>
-        <article class="book-prose">
-            @foreach (var paragraph in Model.OriginalParagraphs)
-            {
-                <p>@paragraph</p>
-            }
-        </article>
-    </section>
 }
