@@ -1046,6 +1046,21 @@ public sealed class BookCatalogService(
         work.CoverImageUrl = TruncateNullable(
             coverImageUrl,
             2048);
+
+        if (parsed.CoverBytes is { Length: > 0 }
+            && !string.IsNullOrWhiteSpace(parsed.CoverMediaType))
+        {
+            var localCover = await SaveLocalCoverAsync(
+                work.Id,
+                parsed.CoverBytes,
+                parsed.CoverMediaType,
+                cancellationToken);
+            if (localCover is not null)
+            {
+                work.CoverImageUrl = $"/Books/Cover/{work.Id}";
+            }
+        }
+
         work.Format = "EPUB:" + NormalizeSourceLanguage(
             parsed.Language);
         work.MetadataStatus = "IMPORTED";
@@ -1656,6 +1671,92 @@ public sealed class BookCatalogService(
         }
 
         return builder.ToString();
+    }
+
+    public string? GetLocalCoverPath(Guid workId)
+    {
+        var directory = Path.Combine(
+            "/data",
+            "books",
+            "covers");
+
+        if (!Directory.Exists(directory))
+        {
+            return null;
+        }
+
+        var prefix = workId.ToString("N") + ".";
+        return Directory
+            .EnumerateFiles(
+                directory,
+                prefix + "*",
+                SearchOption.TopDirectoryOnly)
+            .FirstOrDefault();
+    }
+
+    public static string GetCoverContentType(string path) =>
+        Path.GetExtension(path).ToLowerInvariant() switch
+        {
+            ".png" => "image/png",
+            ".webp" => "image/webp",
+            ".gif" => "image/gif",
+            _ => "image/jpeg"
+        };
+
+    private static async Task<string?> SaveLocalCoverAsync(
+        Guid workId,
+        byte[] bytes,
+        string mediaType,
+        CancellationToken cancellationToken)
+    {
+        if (bytes.Length == 0 || bytes.Length > 10 * 1024 * 1024)
+        {
+            return null;
+        }
+
+        var extension = mediaType.ToLowerInvariant() switch
+        {
+            "image/png" => ".png",
+            "image/webp" => ".webp",
+            "image/gif" => ".gif",
+            "image/jpeg" or "image/jpg" => ".jpg",
+            _ => null
+        };
+
+        if (extension is null)
+        {
+            return null;
+        }
+
+        var directory = Path.Combine(
+            "/data",
+            "books",
+            "covers");
+        Directory.CreateDirectory(directory);
+
+        foreach (var stale in Directory.EnumerateFiles(
+                     directory,
+                     workId.ToString("N") + ".*",
+                     SearchOption.TopDirectoryOnly))
+        {
+            try
+            {
+                File.Delete(stale);
+            }
+            catch (IOException)
+            {
+            }
+        }
+
+        var path = Path.Combine(
+            directory,
+            workId.ToString("N") + extension);
+
+        await File.WriteAllBytesAsync(
+            path,
+            bytes,
+            cancellationToken);
+        return path;
     }
 
     private bool TryGetInboxPath(
