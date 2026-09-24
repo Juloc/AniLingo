@@ -58,7 +58,7 @@ public sealed record ReaderThemeDescriptor(
         Assets.ParallaxFront is not null;
 }
 
-public sealed class ReaderThemeCatalog
+public sealed partial class ReaderThemeCatalog
 {
     public const string AssetRoot = "reader-backgrounds";
 
