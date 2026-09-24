@@ -154,6 +154,27 @@ public sealed class ReadModel(
         return RedirectToPage(new { id });
     }
 
+    public async Task<IActionResult> OnGetTranslationStatusAsync(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var cached = await translations.GetCachedAsync(
+            id,
+            "de",
+            cancellationToken);
+
+        if (cached is null)
+        {
+            return new JsonResult(new { status = "pending" });
+        }
+
+        return new JsonResult(new
+        {
+            status = "ready",
+            paragraphs = NovelTextLayout.SplitParagraphs(cached.Text)
+        });
+    }
+
     public async Task<IActionResult> OnPostRefreshSourceAsync(
         Guid id,
         CancellationToken cancellationToken)
