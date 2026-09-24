@@ -75,12 +75,22 @@ WORKDIR /app
 ENV ASPNETCORE_URLS=http://+:8080 \
     CODEX_HOME=/data/codex
 EXPOSE 8080
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl ffmpeg libgomp1 libstdc++6 \
-    && ffmpeg -version >/dev/null \
-    && ffprobe -version >/dev/null \
-    && rm -rf /var/lib/apt/lists/* \
-    && mkdir -p /data/codex /data/whisper /data/transcription-cache
+RUN set -eux; \
+    for attempt in 1 2 3; do \
+        rm -rf /var/lib/apt/lists/*; \
+        apt-get update -o Acquire::Retries=5; \
+        if apt-get install -y --no-install-recommends -o Acquire::Retries=5 ca-certificates curl ffmpeg libgomp1 libstdc++6; then \
+            break; \
+        fi; \
+        if [ "$attempt" = "3" ]; then \
+            exit 1; \
+        fi; \
+        sleep $((attempt * 3)); \
+    done; \
+    ffmpeg -version >/dev/null; \
+    ffprobe -version >/dev/null; \
+    rm -rf /var/lib/apt/lists/*; \
+    mkdir -p /data/codex /data/whisper /data/transcription-cache
 COPY --from=codex /codex /usr/local/bin/codex
 COPY --from=whisper /src/whisper/build/bin/whisper-cli /usr/local/bin/whisper-cli
 COPY --from=japanese-data /var/lib/mecab/dic/open-jtalk/naist-jdic /var/lib/mecab/dic/open-jtalk/naist-jdic
