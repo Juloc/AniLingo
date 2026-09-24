@@ -43,14 +43,14 @@ public sealed class NovelReaderDesignTests
             "novels.css"));
 
         StringAssert.Contains(page, "data-reader-segment");
-        StringAssert.Contains(page, "data-language="ja"");
-        StringAssert.Contains(page, "data-language="de"");
+        StringAssert.Contains(page, """data-language="ja"""");
+        StringAssert.Contains(page, """data-language="de"""");
         StringAssert.Contains(
             css,
-            ".novel-reader-shell[data-view="both"] .novel-reader-segment");
+            """.novel-reader-shell[data-view="both"] .novel-reader-segment""");
         StringAssert.Contains(
             css,
-            ".novel-reader-shell[data-view="both"] .novel-reader-paragraph.de");
+            """.novel-reader-shell[data-view="both"] .novel-reader-paragraph.de""");
     }
 
     [TestMethod]
