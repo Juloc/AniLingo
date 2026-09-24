@@ -1,5 +1,9 @@
 @{
     var path = Context.Request.Path;
+    var isReading =
+        path.StartsWithSegments("/Reading")
+        || path.StartsWithSegments("/Novels")
+        || path.StartsWithSegments("/Manga");
 }
 <aside class="sidebar">
     <a class="brand" href="/">
@@ -17,14 +21,14 @@
         <a class="nav-item @(path.StartsWithSegments("/Library") ? "active" : "")" href="/Library">
             <span class="nav-glyph">L</span><span>Library</span>
         </a>
-        <a class="nav-item @(path.StartsWithSegments("/Novels") ? "active" : "")" href="/Novels">
-            <span class="nav-glyph">N</span><span>Novels</span>
+        <a class="nav-item @(isReading ? "active" : "")" href="/Reading">
+            <span class="nav-glyph">R</span><span>Reading</span>
         </a>
         <a class="nav-item @(path.StartsWithSegments("/Books") ? "active" : "")" href="/Books">
             <span class="nav-glyph">B</span><span>Books</span>
         </a>
         <a class="nav-item @(path.StartsWithSegments("/Learn") ? "active" : "")" href="/Learn">
-            <span class="nav-glyph">R</span><span>Learn</span>
+            <span class="nav-glyph">V</span><span>Learn</span>
         </a>
         <a class="nav-item @(path.StartsWithSegments("/Statistics") ? "active" : "")" href="/Statistics">
             <span class="nav-glyph">P</span><span>Progress</span>
@@ -47,6 +51,7 @@
     <a class="@(path == "/" ? "active" : "")" href="/">Home</a>
     <a class="@(path.StartsWithSegments("/Discover") ? "active" : "")" href="/Discover">Discover</a>
     <a class="@(path.StartsWithSegments("/Library") ? "active" : "")" href="/Library">Library</a>
+    <a class="@(isReading ? "active" : "")" href="/Reading">Reading</a>
     <a class="@(path.StartsWithSegments("/Learn") ? "active" : "")" href="/Learn">Learn</a>
     <a class="@(path.StartsWithSegments("/Statistics") ? "active" : "")" href="/Statistics">Progress</a>
     <a class="@(path.StartsWithSegments("/Settings") ? "active" : "")" href="/Settings">Settings</a>

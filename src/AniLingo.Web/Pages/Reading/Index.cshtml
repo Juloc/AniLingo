@@ -1,0 +1,31 @@
+@page "/Reading"
+@{
+    ViewData["Title"] = "Reading";
+}
+@section Head {
+    <link rel="stylesheet" href="~/css/reading.css" asp-append-version="true" />
+}
+
+<header class="reading-header">
+    <h1>Reading</h1>
+</header>
+
+<div class="reading-grid">
+    <a class="reading-card" href="/Novels">
+        <span class="reading-card-mark">文</span>
+        <div>
+            <strong>Novels</strong>
+            <span>Text, translations, highlights and learning</span>
+        </div>
+        <span class="reading-arrow">→</span>
+    </a>
+
+    <a class="reading-card" href="/Manga">
+        <span class="reading-card-mark">漫</span>
+        <div>
+            <strong>Manga</strong>
+            <span>CBZ, image chapters and page reading</span>
+        </div>
+        <span class="reading-arrow">→</span>
+    </a>
+</div>

@@ -5,10 +5,17 @@
 }
 @section Head {
     <link rel="stylesheet" href="~/css/novels.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/reading.css" asp-append-version="true" />
 }
 
 <header class="novel-library-header">
-    <h1>Light novels</h1>
+    <div class="novel-library-title-block">
+        <div class="reading-type-switch" aria-label="Reading type">
+            <a class="active" href="/Novels">Novels</a>
+            <a href="/Manga">Manga</a>
+        </div>
+        <h1>Light novels</h1>
+    </div>
 
     @if (Model.IsOwner)
     {
