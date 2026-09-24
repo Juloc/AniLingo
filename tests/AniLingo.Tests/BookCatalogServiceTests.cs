@@ -287,6 +287,146 @@ public sealed class BookCatalogServiceTests
         }
     }
 
+    [TestMethod]
+    public async Task IntegrationSettingsPersistWithoutExposingDefaults()
+    {
+        var directory = Path.Combine(
+            Path.GetTempPath(),
+            "anilingo-books-settings-" + Guid.NewGuid().ToString("N"));
+        var path = Path.Combine(directory, "integrations.json");
+
+        try
+        {
+            await BookIntegrationSettingsStore.SaveAsync(
+                new BookIntegrationSettings(
+                    "http://sabnzbd:8080/",
+                    "secret-api-key",
+                    "",
+                    "./book-inbox"),
+                CancellationToken.None,
+                path);
+
+            var loaded = BookIntegrationSettingsStore.Load(path);
+
+            Assert.AreEqual(
+                "http://sabnzbd:8080",
+                loaded.SabnzbdBaseUrl);
+            Assert.AreEqual(
+                "secret-api-key",
+                loaded.SabnzbdApiKey);
+            Assert.IsNull(loaded.SabnzbdCategory);
+            Assert.AreEqual(
+                Path.GetFullPath("./book-inbox"),
+                loaded.InboxPath);
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(
+                    directory,
+                    recursive: true);
+            }
+        }
+    }
+
+    [TestMethod]
+    public void RemoteEpubUrlRejectsUnsafeTargets()
+    {
+        AssertThrows<InvalidOperationException>(() =>
+            BookCatalogService.ValidateExternalEpubUriSyntax(
+                new Uri("http://example.com/book.epub")));
+
+        AssertThrows<InvalidOperationException>(() =>
+            BookCatalogService.ValidateExternalEpubUriSyntax(
+                new Uri("https://127.0.0.1/book.epub")));
+
+        AssertThrows<InvalidOperationException>(() =>
+            BookCatalogService.ValidateExternalEpubUriSyntax(
+                new Uri("https://[::1]/book.epub")));
+
+        BookCatalogService.ValidateExternalEpubUriSyntax(
+            new Uri("https://example.com/book.epub"));
+    }
+
+    [TestMethod]
+    public async Task SabSubmissionKeepsApiKeyOutOfRequestUrl()
+    {
+        var path = TempDatabasePath();
+
+        try
+        {
+            await using var db = await CreateDatabaseAsync(path);
+            var observedMethod = HttpMethod.Get;
+            var observedUri = "";
+            var observedBody = "";
+
+            using var client = new HttpClient(new DelegateHttpMessageHandler(request =>
+            {
+                observedMethod = request.Method;
+                observedUri = request.RequestUri?.ToString() ?? "";
+                observedBody = request.Content?
+                    .ReadAsStringAsync()
+                    .GetAwaiter()
+                    .GetResult()
+                    ?? "";
+
+                return JsonResponse(
+                    """{"status":true}""");
+            }))
+            {
+                BaseAddress = new Uri("https://gutendex.com/")
+            };
+
+            var service = NewService(
+                db,
+                client,
+                configuration: new Dictionary<string, string?>
+                {
+                    ["Books:SABnzbd:BaseUrl"] = "http://sabnzbd:8080/",
+                    ["Books:SABnzbd:ApiKey"] = "top-secret",
+                    ["Books:SABnzbd:Category"] = "books"
+                });
+
+            var result = await service.QueueSabnzbdUrlAsync(
+                "https://downloads.example/book.nzb",
+                "Test Book",
+                CancellationToken.None);
+
+            Assert.IsTrue(result.Accepted);
+            Assert.AreEqual(HttpMethod.Post, observedMethod);
+            Assert.IsFalse(
+                observedUri.Contains(
+                    "top-secret",
+                    StringComparison.Ordinal));
+            StringAssert.Contains(
+                observedBody,
+                "apikey=top-secret");
+            StringAssert.Contains(
+                observedBody,
+                "mode=addurl");
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            File.Delete(path);
+        }
+    }
+
+    private static void AssertThrows<TException>(Action action)
+        where TException : Exception
+    {
+        try
+        {
+            action();
+            Assert.Fail(
+                $"Expected {typeof(TException).Name} to be thrown.");
+        }
+        catch (TException)
+        {
+        }
+    }
+
     private static BookCatalogService NewService(
         AppDbContext db,
         HttpClient client,
