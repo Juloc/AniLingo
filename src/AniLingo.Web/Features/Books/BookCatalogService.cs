@@ -428,6 +428,75 @@ public sealed class BookCatalogService(
             cancellationToken);
     }
 
+    public async Task<Guid> ImportRemoteEpubAsync(
+        string sourceUrl,
+        CancellationToken cancellationToken)
+    {
+        if (!Uri.TryCreate(
+                sourceUrl?.Trim(),
+                UriKind.Absolute,
+                out var initialUri))
+        {
+            throw new InvalidOperationException(
+                "Enter a valid absolute EPUB URL.");
+        }
+
+        await ValidateExternalEpubUriAsync(
+            initialUri,
+            cancellationToken);
+
+        var (bytes, finalUri) = await DownloadExternalEpubAsync(
+            initialUri,
+            cancellationToken);
+
+        var hash = Convert.ToHexString(
+            SHA256.HashData(bytes));
+        var sourceKey =
+            "remote-" + hash[..48].ToLowerInvariant();
+
+        var existingId = await db.NovelWorks
+            .AsNoTracking()
+            .Where(x =>
+                x.SourceProvider == ImportedBookProvider
+                && x.SourceKey == sourceKey)
+            .Select(x => (Guid?)x.Id)
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (existingId is Guid existing)
+        {
+            return existing;
+        }
+
+        using var stream = new MemoryStream(
+            bytes,
+            writable: false);
+        var fileName = Path.GetFileName(
+            finalUri.LocalPath);
+        if (string.IsNullOrWhiteSpace(fileName)
+            || !fileName.EndsWith(
+                ".epub",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            fileName = "remote-book.epub";
+        }
+
+        var parsed = EpubBookParser.Parse(
+            stream,
+            fileName);
+
+        return await ImportParsedBookAsync(
+            parsed,
+            sourceKey,
+            finalUri.ToString(),
+            metadataProvider: "direct-epub",
+            metadataExternalId: null,
+            coverImageUrl: null,
+            fallbackAuthor: null,
+            fallbackDescription: null,
+            fallbackSubjects: [],
+            cancellationToken);
+    }
+
     public async Task<NovelTranslation?> GetCachedTranslationAsync(
         Guid chapterId,
         string targetLanguage,
@@ -728,6 +797,9 @@ public sealed class BookCatalogService(
                 && x.ProfileId == profileId)
             .ExecuteDeleteAsync(cancellationToken);
     }
+
+    public BookIntegrationSettings StoredIntegrationSettings =>
+        BookIntegrationSettingsStore.Load();
 
     public bool IsInboxConfigured =>
         TryGetInboxPath(out _);
@@ -1421,6 +1493,193 @@ public sealed class BookCatalogService(
             "The ebook download could not be completed.");
     }
 
+    private async Task<(byte[] Bytes, Uri FinalUri)> DownloadExternalEpubAsync(
+        Uri initialUri,
+        CancellationToken cancellationToken)
+    {
+        using var timeout =
+            CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken);
+        timeout.CancelAfter(EpubDownloadTimeout);
+
+        var currentUri = initialUri;
+        for (var redirect = 0;
+             redirect <= MaxRedirects;
+             redirect++)
+        {
+            await ValidateExternalEpubUriAsync(
+                currentUri,
+                timeout.Token);
+
+            using var response = await httpClient.SendAsync(
+                new HttpRequestMessage(
+                    HttpMethod.Get,
+                    currentUri),
+                HttpCompletionOption.ResponseHeadersRead,
+                timeout.Token);
+
+            if (IsRedirect(response.StatusCode))
+            {
+                if (redirect == MaxRedirects
+                    || response.Headers.Location is null)
+                {
+                    throw new InvalidOperationException(
+                        "The EPUB download redirected too many times.");
+                }
+
+                currentUri = response.Headers.Location.IsAbsoluteUri
+                    ? response.Headers.Location
+                    : new Uri(
+                        currentUri,
+                        response.Headers.Location);
+                continue;
+            }
+
+            response.EnsureSuccessStatusCode();
+
+            if (response.Content.Headers.ContentLength is > MaxEpubBytes)
+            {
+                throw new InvalidOperationException(
+                    "EPUB exceeds the 100 MB import limit.");
+            }
+
+            await using var stream =
+                await response.Content.ReadAsStreamAsync(
+                    timeout.Token);
+            using var memory = await CopyToMemoryBoundedAsync(
+                stream,
+                MaxEpubBytes,
+                timeout.Token);
+
+            var bytes = memory.ToArray();
+            if (bytes.Length < 4
+                || bytes[0] != (byte)'P'
+                || bytes[1] != (byte)'K')
+            {
+                throw new InvalidOperationException(
+                    "The remote URL did not return an EPUB/ZIP file.");
+            }
+
+            return (bytes, currentUri);
+        }
+
+        throw new InvalidOperationException(
+            "The EPUB download could not be completed.");
+    }
+
+    public static void ValidateExternalEpubUriSyntax(Uri uri)
+    {
+        if (!uri.Scheme.Equals(
+                Uri.UriSchemeHttps,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                "Remote EPUB imports require HTTPS.");
+        }
+
+        if (string.IsNullOrWhiteSpace(uri.Host)
+            || uri.UserInfo.Length > 0)
+        {
+            throw new InvalidOperationException(
+                "Remote EPUB URL is not allowed.");
+        }
+
+        if (IPAddress.TryParse(
+                uri.Host,
+                out var literal)
+            && IsPrivateOrSpecialAddress(literal))
+        {
+            throw new InvalidOperationException(
+                "Remote EPUB URL must not target a private or local address.");
+        }
+    }
+
+    private static async Task ValidateExternalEpubUriAsync(
+        Uri uri,
+        CancellationToken cancellationToken)
+    {
+        ValidateExternalEpubUriSyntax(uri);
+
+        if (IPAddress.TryParse(
+                uri.Host,
+                out _))
+        {
+            return;
+        }
+
+        IPAddress[] addresses;
+        try
+        {
+            addresses = await Dns.GetHostAddressesAsync(
+                uri.DnsSafeHost,
+                cancellationToken);
+        }
+        catch (Exception exception) when (
+            exception is System.Net.Sockets.SocketException
+                or ArgumentException)
+        {
+            throw new InvalidOperationException(
+                "Remote EPUB host could not be resolved.",
+                exception);
+        }
+
+        if (addresses.Length == 0
+            || addresses.Any(IsPrivateOrSpecialAddress))
+        {
+            throw new InvalidOperationException(
+                "Remote EPUB host resolves to a private or local address.");
+        }
+    }
+
+    private static bool IsPrivateOrSpecialAddress(
+        IPAddress address)
+    {
+        if (IPAddress.IsLoopback(address)
+            || address.Equals(IPAddress.Any)
+            || address.Equals(IPAddress.IPv6Any)
+            || address.Equals(IPAddress.None))
+        {
+            return true;
+        }
+
+        if (address.IsIPv4MappedToIPv6)
+        {
+            return IsPrivateOrSpecialAddress(
+                address.MapToIPv4());
+        }
+
+        if (address.AddressFamily
+            == System.Net.Sockets.AddressFamily.InterNetworkV6)
+        {
+            var bytes = address.GetAddressBytes();
+            return address.IsIPv6LinkLocal
+                || address.IsIPv6SiteLocal
+                || address.IsIPv6Multicast
+                || (bytes[0] & 0xfe) == 0xfc;
+        }
+
+        var octets = address.GetAddressBytes();
+        if (octets.Length != 4)
+        {
+            return true;
+        }
+
+        return octets[0] == 0
+            || octets[0] == 10
+            || octets[0] == 127
+            || (octets[0] == 100
+                && octets[1] is >= 64 and <= 127)
+            || (octets[0] == 169
+                && octets[1] == 254)
+            || (octets[0] == 172
+                && octets[1] is >= 16 and <= 31)
+            || (octets[0] == 192
+                && octets[1] == 168)
+            || (octets[0] == 198
+                && octets[1] is 18 or 19)
+            || octets[0] >= 224;
+    }
+
     private async Task<string> GetTextFollowingRedirectsAsync(
         Uri initialUri,
         CancellationToken cancellationToken)
@@ -1762,8 +2021,10 @@ public sealed class BookCatalogService(
     private bool TryGetInboxPath(
         out string inboxPath)
     {
-        var configured = configuration[
-            "Books:InboxPath"]?.Trim();
+        var stored = BookIntegrationSettingsStore.Load();
+        var configured = FirstNonEmpty(
+            configuration["Books:InboxPath"],
+            stored.InboxPath);
 
         if (string.IsNullOrWhiteSpace(configured))
         {
@@ -1780,14 +2041,18 @@ public sealed class BookCatalogService(
         out string apiKey,
         out string category)
     {
-        var rawBase = configuration[
-            "Books:SABnzbd:BaseUrl"];
-        apiKey = configuration[
-            "Books:SABnzbd:ApiKey"]?.Trim()
+        var stored = BookIntegrationSettingsStore.Load();
+        var rawBase = FirstNonEmpty(
+            configuration["Books:SABnzbd:BaseUrl"],
+            stored.SabnzbdBaseUrl);
+        apiKey = FirstNonEmpty(
+            configuration["Books:SABnzbd:ApiKey"],
+            stored.SabnzbdApiKey)
             ?? "";
-        category = configuration[
-            "Books:SABnzbd:Category"]?.Trim()
-            ?? "books";
+        category = FirstNonEmpty(
+            configuration["Books:SABnzbd:Category"],
+            stored.SabnzbdCategory)
+            ?? "";
 
         if (!Uri.TryCreate(
                 rawBase?.TrimEnd('/') + "/",
@@ -1803,6 +2068,16 @@ public sealed class BookCatalogService(
         }
 
         return true;
+    }
+
+    private static string? FirstNonEmpty(
+        string? primary,
+        string? fallback)
+    {
+        var cleanPrimary = primary?.Trim();
+        return string.IsNullOrWhiteSpace(cleanPrimary)
+            ? fallback?.Trim()
+            : cleanPrimary;
     }
 
     private static SabnzbdSubmissionResult ParseSabResponse(
