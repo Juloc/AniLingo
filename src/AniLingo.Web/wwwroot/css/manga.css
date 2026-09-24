@@ -393,6 +393,7 @@ body:has(.manga-reader-shell) .app-main {
     --manga-text: #ecf0f3;
     --manga-muted: #8d97a3;
     --manga-accent: #e9aa18;
+    --manga-bookmark-color: #b04455;
     --manga-zoom: 1;
     min-height: 100dvh;
     color: var(--manga-text);
@@ -493,8 +494,8 @@ body:has(.manga-reader-shell) .app-main {
     display: grid;
     place-items: center;
     border-radius: 999px;
-    background: var(--manga-accent);
-    color: #17130b;
+    background: var(--manga-bookmark-color);
+    color: #fff;
     font-size: .55rem;
 }
 
@@ -722,7 +723,7 @@ body:has(.manga-reader-shell) .app-main {
     padding: 0;
     transform: translate(-50%, -50%);
     border-radius: 1px;
-    background: var(--manga-accent);
+    background: var(--manga-bookmark-color);
     pointer-events: auto;
 }
 
