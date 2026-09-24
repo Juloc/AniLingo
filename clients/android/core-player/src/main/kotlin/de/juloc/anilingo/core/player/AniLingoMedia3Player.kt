@@ -5,12 +5,14 @@ import android.net.Uri
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaSession
 import java.io.Closeable
 
+@UnstableApi
 class AniLingoMedia3Player(context: Context) : Closeable {
     private val httpDataSourceFactory = DefaultHttpDataSource.Factory()
         .setAllowCrossProtocolRedirects(false)
