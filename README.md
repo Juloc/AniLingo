@@ -1,6 +1,6 @@
 # AniLingo
 
-Current prerelease: **0.1.0-alpha.21**.
+Current prerelease: **0.1.0-alpha.22**.
 
 AniLingo is a Docker-first Japanese learning companion for an existing anime library. It scans media from a read-only NAS mount, imports nearby Japanese subtitles, builds episode vocabulary, and lets you mark terms as known or review them before watching.
 
