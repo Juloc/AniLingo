@@ -156,7 +156,8 @@ public sealed record ClientPlayerBootstrap(
     ClientPlayerMedia? Media,
     IReadOnlyList<ClientMediaTrack> AudioTracks,
     IReadOnlyList<ClientMediaTrack> SubtitleTracks,
-    ClientLearningSubtitle? LearningSubtitle,
+    IReadOnlyList<ClientLearningSubtitle> LearningSubtitles,
+    Guid? ActiveLearningSubtitleTrackId,
     string? DefaultAudioTrackId,
     string? DefaultSubtitleTrackId,
     ClientCompatibilityFallback Fallback);
@@ -203,6 +204,7 @@ public sealed record ClientLearningSubtitle(
     Guid TrackId,
     string Language,
     string Format,
+    bool IsActive,
     string CuesUrl);
 
 public sealed record ClientCompatibilityFallback(
