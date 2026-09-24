@@ -1,6 +1,8 @@
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Books;
 using AniLingo.Web.Features.Novels;
+using AniLingo.Web.Features.ReaderPreferences;
+using AniLingo.Web.Data;
 using AniLingo.Web.Infrastructure;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -11,9 +13,11 @@ namespace AniLingo.Web.Pages.Books;
 public sealed class ReadModel(
     BookCatalogService books,
     CurrentAccountContext account,
-    BackgroundJobQueue jobs) : PageModel
+    BackgroundJobQueue jobs,
+    AppDbContext db) : PageModel
 {
     public BookReaderChapter Reader { get; private set; } = null!;
+    public ReaderSettingsSnapshot ReaderSettings { get; private set; } = null!;
     public bool HasTranslation =>
         Reader.Translation is not null
         || Reader.SourceLanguage.Equals(
@@ -38,7 +42,103 @@ public sealed class ReadModel(
         }
 
         Reader = reader;
+        ReaderSettings = await ReaderPreferenceStore.GetAsync(
+            db,
+            account.ProfileId,
+            reader.Work.Id,
+            reader.Work.MetadataGenresJson,
+            cancellationToken);
         return Page();
+    }
+
+    public async Task<IActionResult> OnPostReaderSettingsAsync(
+        Guid id,
+        string? lang,
+        string? scope,
+        string? changedKey,
+        [Bind(Prefix = "Settings")] ReaderSettingsInput input,
+        CancellationToken cancellationToken)
+    {
+        var target = BookLanguageCatalog.Normalize(lang);
+        var reader = await books.GetReaderChapterAsync(
+            id,
+            account.ProfileId,
+            target,
+            cancellationToken);
+
+        if (reader is null)
+        {
+            return NotFound();
+        }
+
+        if (string.Equals(
+                scope,
+                "default",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            await ReaderPreferenceStore.SaveUserDefaultsAsync(
+                db,
+                account.ProfileId,
+                input,
+                cancellationToken);
+        }
+        else
+        {
+            if (string.IsNullOrWhiteSpace(changedKey))
+            {
+                return BadRequest("Reader setting key is required.");
+            }
+
+            await ReaderPreferenceStore.SaveBookOverrideAsync(
+                db,
+                account.ProfileId,
+                reader.Work.Id,
+                changedKey,
+                input,
+                cancellationToken);
+        }
+
+        var settings = await ReaderPreferenceStore.GetAsync(
+            db,
+            account.ProfileId,
+            reader.Work.Id,
+            reader.Work.MetadataGenresJson,
+            cancellationToken);
+
+        return new JsonResult(new { settings });
+    }
+
+    public async Task<IActionResult> OnPostResetReaderSettingsAsync(
+        Guid id,
+        string? lang,
+        CancellationToken cancellationToken)
+    {
+        var target = BookLanguageCatalog.Normalize(lang);
+        var reader = await books.GetReaderChapterAsync(
+            id,
+            account.ProfileId,
+            target,
+            cancellationToken);
+
+        if (reader is null)
+        {
+            return NotFound();
+        }
+
+        await ReaderPreferenceStore.ResetBookAsync(
+            db,
+            account.ProfileId,
+            reader.Work.Id,
+            cancellationToken);
+
+        var settings = await ReaderPreferenceStore.GetAsync(
+            db,
+            account.ProfileId,
+            reader.Work.Id,
+            reader.Work.MetadataGenresJson,
+            cancellationToken);
+
+        return new JsonResult(new { settings });
     }
 
     public async Task<IActionResult> OnPostTranslateAsync(
