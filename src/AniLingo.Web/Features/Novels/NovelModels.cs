@@ -14,8 +14,13 @@ public sealed class NovelWork
     public string? MetadataExternalId { get; set; }
     public string? MetadataTitle { get; set; }
     public string? MetadataNativeTitle { get; set; }
+    public string? MetadataDescription { get; set; }
     public string? CoverImageUrl { get; set; }
+    public string? BannerImageUrl { get; set; }
     public string? Format { get; set; }
+    public string? MetadataStatus { get; set; }
+    public int? MetadataChapterCount { get; set; }
+    public int? MetadataVolumeCount { get; set; }
 
     public DateTime ImportedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
@@ -56,7 +61,39 @@ public sealed class NovelProgress
     public Guid WorkId { get; set; }
     public Guid ChapterId { get; set; }
     public int PositionPermille { get; set; }
+    public int? AnchorParagraphIndex { get; set; }
+    public int AnchorOffset { get; set; }
+    public string? AnchorText { get; set; }
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}
+
+public sealed class NovelBookmark
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string ProfileId { get; set; } = "";
+    public Guid WorkId { get; set; }
+    public Guid ChapterId { get; set; }
+    public int PositionPermille { get; set; }
+    public int? ParagraphIndex { get; set; }
+    public int CharacterOffset { get; set; }
+    public string? AnchorText { get; set; }
+    public string? Label { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
+public sealed class NovelHighlight
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string ProfileId { get; set; } = "";
+    public Guid WorkId { get; set; }
+    public Guid ChapterId { get; set; }
+    public string Language { get; set; } = "ja";
+    public int ParagraphIndex { get; set; }
+    public int StartOffset { get; set; }
+    public int EndOffset { get; set; }
+    public string Text { get; set; } = "";
+    public string? Note { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
 public sealed class NovelAnimeMapping
@@ -114,11 +151,25 @@ public interface INovelSourceProvider
 public sealed record NovelListItem(
     Guid Id,
     string Title,
+    string? NativeTitle,
     string? Author,
+    string? Description,
     string? CoverImageUrl,
+    string? BannerImageUrl,
+    string? MetadataStatus,
+    int? MetadataChapterCount,
+    int? MetadataVolumeCount,
     int ChapterCount,
     int LoadedChapterCount,
-    int TranslatedChapterCount);
+    int TranslatedChapterCount,
+    Guid? CurrentChapterId,
+    int? CurrentChapterNumber,
+    string? CurrentChapterTitle,
+    int ProgressPermille,
+    DateTime? LastReadAt)
+{
+    public bool HasProgress => CurrentChapterId is not null;
+}
 
 public sealed record NovelChapterItem(
     Guid Id,
@@ -138,7 +189,9 @@ public sealed record NovelMetadataCandidate(
     string ExternalId,
     string PreferredTitle,
     string? NativeTitle,
+    string? Description,
     string? CoverImageUrl,
+    string? BannerImageUrl,
     string? Format,
     string? Status,
     int? ChapterCount,
