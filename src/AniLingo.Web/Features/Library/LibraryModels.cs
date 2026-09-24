@@ -45,4 +45,7 @@ public sealed class MediaOptions
     public string? BootstrapRoot { get; set; }
 }
 
-public sealed record ScanResult(int Discovered, int Updated, int Skipped, int SubtitleFiles);
+public sealed record ScanResult(int Discovered, int Updated, int Skipped, int SubtitleFiles)
+{
+    public int Removed { get; init; }
+}

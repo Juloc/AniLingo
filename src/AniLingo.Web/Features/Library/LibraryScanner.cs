@@ -32,11 +32,31 @@ public sealed class LibraryScanner(
             throw new DirectoryNotFoundException($"Library root does not exist: {rootPath}");
         }
 
-        var candidates = Directory
-            .EnumerateFiles(rootPath, "*", SearchOption.AllDirectories)
-            .Where(path => MediaExtensions.Contains(Path.GetExtension(path)))
-            .Select(path => new FileInfo(path))
-            .ToList();
+        List<FileInfo> candidates;
+        try
+        {
+            candidates = Directory
+                .EnumerateFiles(rootPath, "*", SearchOption.AllDirectories)
+                .Where(path => MediaExtensions.Contains(Path.GetExtension(path)))
+                .Select(path => new FileInfo(path))
+                .ToList();
+        }
+        catch (IOException exception)
+        {
+            throw new IOException(
+                $"Library root could not be enumerated safely: {rootPath}",
+                exception);
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            throw new IOException(
+                $"Library root could not be enumerated safely: {rootPath}",
+                exception);
+        }
+
+        var observedMediaPaths = candidates
+            .Select(file => Path.GetFullPath(file.FullName))
+            .ToHashSet(StringComparer.Ordinal);
 
         var existingFiles = await db.MediaFiles
             .Where(x => x.LibraryRootId == rootId)
@@ -131,8 +151,42 @@ public sealed class LibraryScanner(
                 lastWrite));
         }
 
+        var staleMediaFiles = existingFiles.Values
+            .Where(mediaFile => !observedMediaPaths.Contains(mediaFile.Path))
+            .ToArray();
+
+        if (staleMediaFiles.Length > 0)
+        {
+            db.MediaFiles.RemoveRange(staleMediaFiles);
+        }
+
         root.LastScannedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(cancellationToken);
+
+        var removed = staleMediaFiles.Length;
+        if (removed > 0)
+        {
+            var staleEpisodeIds = staleMediaFiles
+                .Select(x => x.EpisodeId)
+                .Distinct()
+                .ToArray();
+
+            var orphanEpisodeIds = await db.Episodes
+                .Where(episode =>
+                    staleEpisodeIds.Contains(episode.Id) &&
+                    !db.MediaFiles.Any(media => media.EpisodeId == episode.Id))
+                .Select(episode => episode.Id)
+                .ToArrayAsync(cancellationToken);
+
+            if (orphanEpisodeIds.Length > 0)
+            {
+                var orphanEpisodes = await db.Episodes
+                    .Where(x => orphanEpisodeIds.Contains(x.Id))
+                    .ToArrayAsync(cancellationToken);
+                db.Episodes.RemoveRange(orphanEpisodes);
+                await db.SaveChangesAsync(cancellationToken);
+            }
+        }
 
         await sonarrArtworkSync.SyncIfConfiguredAsync(cancellationToken);
 
@@ -209,16 +263,20 @@ public sealed class LibraryScanner(
         }
 
         logger.LogInformation(
-            "Library scan completed for {Root}: {Discovered} new, {Updated} updated, {Skipped} skipped, {Subtitles} subtitle files, {ArtworkImported} local artwork imported, {ArtworkUnchanged} unchanged.",
+            "Library reconciliation completed for {Root}: {Discovered} new, {Updated} updated, {Removed} removed, {Skipped} skipped, {Subtitles} subtitle files, {ArtworkImported} local artwork imported, {ArtworkUnchanged} unchanged.",
             root.Path,
             discovered,
             updated,
+            removed,
             skipped,
             subtitleFiles,
             localArtworkImported,
             localArtworkUnchanged);
 
-        return new ScanResult(discovered, updated, skipped, subtitleFiles);
+        return new ScanResult(discovered, updated, skipped, subtitleFiles)
+        {
+            Removed = removed
+        };
     }
 
     private sealed record SubtitleCandidate(
