@@ -18,18 +18,18 @@ This directory contains the first-party Android phone and Android TV clients def
 - Gradle 9.6.0
 - JDK 17
 - Kotlin/Compose compiler 2.4.20
-- compileSdk 37
+- compileSdk 36
 - targetSdk 36
 - minSdk 26
 - Media3 1.11.1
-- Compose BOM 2026.09.00
+- Compose BOM 2026.06.00
 - TV Material 1.1.0
 
 The repository CI installs Gradle 9.6 directly and builds both debug APKs. Release signing is intentionally not enabled in this foundation slice; release APK signing remains a later #69 step using protected GitHub secrets.
 
 ## Build
 
-From this directory with Android SDK 37 available:
+From this directory with Android SDK 36 available:
 
 ```bash
 gradle :core-api:testDebugUnitTest :core-player:testDebugUnitTest
