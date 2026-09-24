@@ -2,6 +2,7 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Manga;
+using AniLingo.Web.Features.ReaderPreferences;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
@@ -175,6 +176,128 @@ public sealed class MangaTests
                     "reader-a",
                     chapter.SeriesId,
                     CancellationToken.None)).Count);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            TryDelete(root);
+        }
+    }
+
+
+    [TestMethod]
+    public async Task SeriesCoverBesideChapterFoldersIsNotImportedAsChapter()
+    {
+        var root = TempDirectory();
+        var database = Path.Combine(root, "anilingo.db");
+        var source = Path.Combine(root, "Series");
+        var chapter = Path.Combine(source, "Ch. 1");
+        var cache = Path.Combine(root, "cache");
+
+        try
+        {
+            Directory.CreateDirectory(chapter);
+            await File.WriteAllBytesAsync(Path.Combine(source, "cover.jpg"), [9, 9, 9]);
+            await File.WriteAllBytesAsync(Path.Combine(chapter, "001.jpg"), [1, 2, 3]);
+
+            await using var db = await CreateDatabaseAsync(database);
+            var repository = new MangaRepository(db);
+            var importer = new MangaImportService(repository, cache);
+
+            var result = await importer.ImportAsync(source, CancellationToken.None);
+            var series = await repository.GetSeriesAsync(result.SeriesId, CancellationToken.None);
+
+            Assert.AreEqual(1, result.ChapterCount);
+            Assert.IsNotNull(series);
+            Assert.AreEqual(1, series.Chapters.Count);
+            Assert.AreEqual(1d, series.Chapters[0].Number);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            TryDelete(root);
+        }
+    }
+
+    [TestMethod]
+    public async Task ReaderPreferencesResolveGlobalMediaAndSeriesScopes()
+    {
+        var root = TempDirectory();
+        var database = Path.Combine(root, "anilingo.db");
+        var seriesId = Guid.NewGuid();
+
+        try
+        {
+            await using var db = await CreateDatabaseAsync(database);
+            db.ReaderPreferences.Add(new ReaderPreference
+            {
+                ProfileId = "reader-a",
+                ScopeKey = ReaderPreferenceRules.UserDefaultScope,
+                ReadingMode = "continuous",
+                TwoPageSpread = false,
+                PageTransition = "fade",
+                BookmarkColor = "#123456"
+            });
+            await db.SaveChangesAsync();
+
+            var global = await MangaReaderPreferenceStore.GetAsync(
+                db,
+                "reader-a",
+                seriesId,
+                CancellationToken.None);
+            Assert.AreEqual("continuous", global.ReadingMode);
+            Assert.IsFalse(global.TwoPageSpread);
+            Assert.AreEqual("#123456", global.BookmarkColor);
+            Assert.IsFalse(global.HasSeriesOverride);
+
+            await MangaReaderPreferenceStore.SaveModeAsync(
+                db,
+                "reader-a",
+                null,
+                "double",
+                CancellationToken.None);
+
+            var media = await MangaReaderPreferenceStore.GetAsync(
+                db,
+                "reader-a",
+                seriesId,
+                CancellationToken.None);
+            Assert.AreEqual("paged", media.ReadingMode);
+            Assert.IsTrue(media.TwoPageSpread);
+            Assert.AreEqual("double", media.UiMode);
+
+            await MangaReaderPreferenceStore.SaveModeAsync(
+                db,
+                "reader-a",
+                seriesId,
+                "continuous",
+                CancellationToken.None);
+
+            var series = await MangaReaderPreferenceStore.GetAsync(
+                db,
+                "reader-a",
+                seriesId,
+                CancellationToken.None);
+            Assert.AreEqual("continuous", series.ReadingMode);
+            Assert.IsFalse(series.TwoPageSpread);
+            Assert.AreEqual("continuous", series.UiMode);
+            Assert.IsTrue(series.HasSeriesOverride);
+
+            await MangaReaderPreferenceStore.ResetSeriesAsync(
+                db,
+                "reader-a",
+                seriesId,
+                CancellationToken.None);
+
+            var reset = await MangaReaderPreferenceStore.GetAsync(
+                db,
+                "reader-a",
+                seriesId,
+                CancellationToken.None);
+            Assert.AreEqual("paged", reset.ReadingMode);
+            Assert.IsTrue(reset.TwoPageSpread);
+            Assert.AreEqual("double", reset.UiMode);
+            Assert.IsFalse(reset.HasSeriesOverride);
         }
         finally
         {

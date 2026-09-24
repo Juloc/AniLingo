@@ -1,7 +1,6 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Manga;
-using AniLingo.Web.Features.ReaderPreferences;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
@@ -17,7 +16,7 @@ public sealed class ReadModel(
     public Guid? PreviousChapterId { get; private set; }
     public Guid? NextChapterId { get; private set; }
     public int InitialPage { get; private set; }
-    public ReaderSettingsSnapshot ReaderDefaults { get; private set; } = null!;
+    public MangaReaderPreset ReaderSettings { get; private set; } = null!;
     public string ProfileId => account.ProfileId;
 
     public async Task<IActionResult> OnGetAsync(
@@ -33,12 +32,6 @@ public sealed class ReadModel(
         }
 
         Chapter = chapter;
-        ReaderDefaults = await ReaderPreferenceStore.GetAsync(
-            db,
-            account.ProfileId,
-            Guid.Empty,
-            null,
-            cancellationToken);
         Chapters = await repository.GetChaptersAsync(
             chapter.SeriesId,
             cancellationToken);
@@ -58,6 +51,12 @@ public sealed class ReadModel(
             chapter.SeriesId,
             cancellationToken);
 
+        ReaderSettings = await MangaReaderPreferenceStore.GetAsync(
+            db,
+            account.ProfileId,
+            chapter.SeriesId,
+            cancellationToken);
+
         var requested = page
             ?? (progress?.ChapterId == chapter.Id ? progress.PageIndex : 0);
 
@@ -67,6 +66,63 @@ public sealed class ReadModel(
             Math.Max(0, chapter.PageCount - 1));
 
         return Page();
+    }
+
+
+    public async Task<IActionResult> OnPostPreferenceAsync(
+        Guid id,
+        string? scope,
+        string? mode,
+        CancellationToken cancellationToken)
+    {
+        var repository = new MangaRepository(db);
+        var chapter = await repository.GetChapterAsync(id, cancellationToken);
+        if (chapter is null)
+        {
+            return NotFound();
+        }
+
+        var seriesId = string.Equals(
+            scope,
+            "media",
+            StringComparison.OrdinalIgnoreCase)
+            ? (Guid?)null
+            : chapter.SeriesId;
+
+        await MangaReaderPreferenceStore.SaveModeAsync(
+            db,
+            account.ProfileId,
+            seriesId,
+            mode,
+            cancellationToken);
+
+        return new OkResult();
+    }
+
+    public async Task<IActionResult> OnPostResetPreferenceAsync(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var repository = new MangaRepository(db);
+        var chapter = await repository.GetChapterAsync(id, cancellationToken);
+        if (chapter is null)
+        {
+            return NotFound();
+        }
+
+        await MangaReaderPreferenceStore.ResetSeriesAsync(
+            db,
+            account.ProfileId,
+            chapter.SeriesId,
+            cancellationToken);
+
+        var settings = await MangaReaderPreferenceStore.GetAsync(
+            db,
+            account.ProfileId,
+            chapter.SeriesId,
+            cancellationToken);
+
+        return new JsonResult(new { mode = settings.UiMode });
     }
 
     public async Task<IActionResult> OnGetPageAsync(
