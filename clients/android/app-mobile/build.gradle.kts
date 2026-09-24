@@ -49,3 +49,8 @@ dependencies {
 tasks.matching { it.name == "lintDebug" }.configureEach {
     dependsOn("testDebugUnitTest")
 }
+
+
+tasks.named("lintDebug") {
+    dependsOn("testDebugUnitTest")
+}
