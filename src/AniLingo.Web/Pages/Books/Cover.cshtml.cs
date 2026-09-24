@@ -17,7 +17,6 @@ public sealed class CoverModel(
 
         return PhysicalFile(
             path,
-            BookCatalogService.GetCoverContentType(path),
-            enableRangeProcessing: true);
+            BookCatalogService.GetCoverContentType(path));
     }
 }
