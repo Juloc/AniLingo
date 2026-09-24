@@ -18,6 +18,7 @@ public sealed class ClientApiTests
         Assert.AreEqual(1, capabilities.ApiVersion);
         Assert.AreEqual(1, capabilities.MinimumSupportedApiVersion);
         Assert.IsTrue(capabilities.Features.Library);
+        Assert.IsTrue(capabilities.Features.NativeSessionAuth);
         Assert.IsTrue(capabilities.Features.DirectPlayback);
         Assert.IsTrue(capabilities.Features.PlaybackProgress);
         Assert.IsTrue(capabilities.Features.HttpRangeRequests);
@@ -212,5 +213,7 @@ public sealed class ClientApiTests
         Assert.IsTrue(
             ClientApiRoutes.MediaAvailability(mediaId)
                 .StartsWith("/api/client/v1/", StringComparison.Ordinal));
+        Assert.AreEqual("/api/client/v1/session/login", ClientApiRoutes.Login);
+        Assert.AreEqual("/api/client/v1/session/logout", ClientApiRoutes.Logout);
     }
 }
