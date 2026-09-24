@@ -1,0 +1,130 @@
+@page "{id:guid}"
+@model AniLingo.Web.Pages.Admin.OperationModel
+@{
+    ViewData["Title"] = Model.Operation.Title;
+    var operation = Model.Operation;
+}
+
+<header class="page-header">
+    <div>
+        <span class="eyebrow">Admin · Operation</span>
+        <h1>@operation.Title</h1>
+        <p>@operation.Category · @operation.Kind</p>
+    </div>
+    <a class="button" asp-page="/Admin/Operations">Back to operations</a>
+</header>
+
+<partial name="_AdminNavigation" />
+
+<div class="settings-grid">
+    <section class="panel">
+        <div class="panel-heading">
+            <h2>Status</h2>
+            <span class="status-pill operation-status-@operation.Status.ToString().ToLowerInvariant()">
+                @operation.StatusLabel
+            </span>
+        </div>
+
+        <div class="status-list">
+            <div><span>Lane</span><strong>@operation.Lane</strong></div>
+            <div><span>Attempt</span><strong>@operation.Attempt</strong></div>
+            <div><span>Created</span><strong>@operation.CreatedAtUtc.ToLocalTime().ToString("g")</strong></div>
+            <div><span>Started</span><strong>@(operation.StartedAtUtc?.ToLocalTime().ToString("g") ?? "—")</strong></div>
+            <div><span>Finished</span><strong>@(operation.FinishedAtUtc?.ToLocalTime().ToString("g") ?? "—")</strong></div>
+            @if (!string.IsNullOrWhiteSpace(operation.ProfileId))
+            {
+                <div><span>User</span><strong>@operation.ProfileId</strong></div>
+            }
+            @if (!string.IsNullOrWhiteSpace(operation.Subject))
+            {
+                <div><span>Subject</span><strong>@operation.Subject</strong></div>
+            }
+        </div>
+
+        @if (operation.ProgressPercent is { } progress)
+        {
+            <div class="operation-progress operation-progress-large">
+                <span style="width:@progress%"></span>
+            </div>
+            <p class="muted">@progress% complete</p>
+        }
+
+        @if (!string.IsNullOrWhiteSpace(operation.Message))
+        {
+            <p>@operation.Message</p>
+        }
+
+        @if (!string.IsNullOrWhiteSpace(operation.Error))
+        {
+            <div class="operation-error">@operation.Error</div>
+        }
+
+        <div class="inline-actions">
+            @if (operation.CanCancel)
+            {
+                <form method="post" asp-page-handler="Cancel">
+                    <input type="hidden" name="id" value="@operation.Id" />
+                    <button class="button" type="submit">Cancel</button>
+                </form>
+            }
+
+            @if (operation.Retryable && !operation.IsActive)
+            {
+                <form method="post" asp-page-handler="Retry">
+                    <input type="hidden" name="id" value="@operation.Id" />
+                    <button class="button button-primary"
+                            type="submit"
+                            disabled="@(!Model.RuntimeAvailable)">Retry</button>
+                </form>
+            }
+        </div>
+
+        @if (operation.Retryable && !operation.IsActive && !Model.RuntimeAvailable)
+        {
+            <small class="muted">Retry payload is no longer available after an application restart.</small>
+        }
+    </section>
+
+    <section class="panel">
+        <div class="panel-heading"><h2>Download</h2></div>
+        @if (!operation.IsDownload)
+        {
+            <p class="muted">This operation is not a download.</p>
+        }
+        else
+        {
+            <div class="status-list">
+                <div><span>Downloaded</span><strong>@(operation.BytesCompleted?.ToString("N0") ?? "—") bytes</strong></div>
+                <div><span>Total</span><strong>@(operation.BytesTotal?.ToString("N0") ?? "unknown")</strong></div>
+                <div><span>Speed</span><strong>@(operation.BytesPerSecond is { } speed ? $"{speed / 1024d:N1} KiB/s" : "—")</strong></div>
+                <div><span>ETA</span><strong>@(operation.EtaUtc?.ToLocalTime().ToString("T") ?? "—")</strong></div>
+            </div>
+        }
+    </section>
+</div>
+
+<section class="panel">
+    <div class="panel-heading">
+        <h2>Operation log</h2>
+        <a class="button" asp-page="/Admin/Logs" asp-route-operationId="@operation.Id">Open in Logs</a>
+    </div>
+
+    @if (Model.Logs.Count == 0)
+    {
+        <p class="muted">No log entries.</p>
+    }
+    else
+    {
+        <div class="admin-log-list">
+            @foreach (var entry in Model.Logs)
+            {
+                <div class="admin-log-row admin-log-@entry.Level.ToString().ToLowerInvariant()">
+                    <time>@entry.CreatedAtUtc.ToLocalTime().ToString("G")</time>
+                    <span>@entry.Level</span>
+                    <strong>@entry.Module</strong>
+                    <p>@entry.Message</p>
+                </div>
+            }
+        </div>
+    }
+</section>
