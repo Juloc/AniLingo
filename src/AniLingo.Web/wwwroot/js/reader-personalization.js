@@ -144,12 +144,22 @@
             ":wght@400;500;600;700&display=swap";
     };
 
+    const bundledGoogleFonts = {
+        "literary-serif": "Literata",
+        "book-serif": "Lora",
+        "atkinson": "Atkinson Hyperlegible",
+        "noto-serif-jp": "Noto Serif JP",
+        "noto-sans-jp": "Noto Sans JP"
+    };
+
     const fontCss = font => {
         if (font?.startsWith("google:")) {
             const family = font.slice("google:".length).trim();
             loadGoogleFont(family);
             return `"${family.replace(/"/g, "")}", "Noto Serif JP", serif`;
         }
+        const remoteFamily = bundledGoogleFonts[font];
+        if (remoteFamily) loadGoogleFont(remoteFamily);
         return fontStacks[font] || fontStacks["literary-serif"];
     };
 
@@ -210,7 +220,7 @@
 
         if (paragraphs.length === 0) return null;
 
-        if (state.readingMode === "paged") {
+        if ((shell.dataset.readingMode || state.readingMode) === "paged") {
             const contentRect = content.getBoundingClientRect();
             return paragraphs.find(paragraph => {
                 const rect = paragraph.getBoundingClientRect();
