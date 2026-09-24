@@ -100,7 +100,7 @@
         const payload = await response.json();
         if (payload?.settings) {
             state = payload.settings;
-            applySettings(false);
+            applySettings();
         }
     };
 
@@ -208,6 +208,14 @@
                 ? "Buch-Override"
                 : "User-Standard";
         }
+    };
+
+    const initialAnchorElement = () => {
+        const language = shell.dataset.anchorLanguage || "ja";
+        const index = shell.dataset.anchorParagraph;
+        if (index == null || index === "") return null;
+        return shell.querySelector(
+            `[data-reader-paragraph][data-language="${cssEscape(language)}"][data-index="${cssEscape(index)}"]`);
     };
 
     const captureLogicalAnchor = () => {
@@ -358,7 +366,7 @@
     };
 
     const applySettings = (preserveAnchor = true) => {
-        const anchor = preserveAnchor ? captureLogicalAnchor() : null;
+        const anchor = preserveAnchor ? captureLogicalAnchor() : initialAnchorElement();
         const previousMode = shell.dataset.readingMode || state.readingMode;
 
         shell.dataset.readingMode = state.readingMode;
@@ -445,6 +453,22 @@
     };
 
     const collectBookmarks = () => {
+        shell.querySelectorAll("[data-bookmark-marker]").forEach(marker => {
+            const id = marker.dataset.bookmarkId;
+            if (!id) return;
+            const rawPosition = marker.style.top || marker.style.left || "";
+            const percent = Number.parseFloat(rawPosition);
+            const existing = bookmarkState.get(id) || {
+                id,
+                style: state.bookmarkStyle,
+                color: state.bookmarkColor
+            };
+            if (Number.isFinite(percent) && !(existing.positionPermille > 0)) {
+                existing.positionPermille = Math.round(percent * 10);
+            }
+            bookmarkState.set(id, existing);
+        });
+
         shell.querySelectorAll("[data-saved-bookmark]").forEach(element => {
             const id = element.dataset.bookmarkId;
             if (!id) return;
@@ -479,11 +503,47 @@
             card.dataset.bookmarkColor = item.color;
             card.style.setProperty("--bookmark-color", item.color);
 
+            let appearance = card.querySelector(".novel-bookmark-appearance");
+            if (!appearance) {
+                appearance = document.createElement("div");
+                appearance.className = "novel-bookmark-appearance";
+                appearance.innerHTML =
+                    '<select data-bookmark-style-control aria-label="Lesezeichen-Stil">' +
+                    '<option value="fabric">Stoff</option>' +
+                    '<option value="paper">Papier</option>' +
+                    '<option value="leather">Leder</option>' +
+                    '<option value="cord">Schnur</option>' +
+                    '<option value="minimal">Minimal</option>' +
+                    '</select>' +
+                    '<input type="color" data-bookmark-color-control aria-label="Lesezeichen-Farbe" />';
+                const remove = card.querySelector("[data-remove-bookmark-form], [data-remove-bookmark-button]");
+                if (remove) card.insertBefore(appearance, remove);
+                else card.append(appearance);
+            }
+
             const styleControl = card.querySelector("[data-bookmark-style-control]");
             const colorControl = card.querySelector("[data-bookmark-color-control]");
             if (styleControl) styleControl.value = item.style;
             if (colorControl) colorControl.value = item.color;
         });
+
+        const bookmarkCount =
+            shell.querySelectorAll("[data-bookmark-card]").length;
+        const currentCount = bookmarkState.size;
+        const noteCount =
+            bookmarkCount + shell.querySelectorAll("[data-highlight-card]").length;
+        const currentBadge = shell.querySelector("[data-current-bookmark-count]");
+        const notesBadge = shell.querySelector("[data-reader-note-count]");
+        const bookmarkButton = shell.querySelector("[data-reader-bookmark]");
+        if (currentBadge) {
+            currentBadge.textContent = String(currentCount);
+            currentBadge.hidden = currentCount <= 0;
+        }
+        if (notesBadge) {
+            notesBadge.textContent = String(noteCount);
+            notesBadge.hidden = noteCount <= 0;
+        }
+        bookmarkButton?.classList.toggle("has-bookmarks", currentCount > 0);
 
         shell.querySelectorAll("[data-bookmark-marker]").forEach(marker => {
             const item = bookmarkState.get(marker.dataset.bookmarkId);
@@ -517,6 +577,118 @@
             button.setAttribute("aria-label", "Lesezeichen auf dieser Seite");
             pageBookmarks.append(button);
         }
+    };
+
+    const addPagedBookmarkUi = bookmark => {
+        if (!bookmark?.id) return;
+        const item = {
+            id: bookmark.id,
+            positionPermille: Number(bookmark.positionPermille || 0),
+            style: bookmark.style || state.bookmarkStyle,
+            color: bookmark.color || state.bookmarkColor
+        };
+        bookmarkState.set(item.id, item);
+
+        const hidden = document.createElement("span");
+        hidden.hidden = true;
+        hidden.dataset.savedBookmark = "";
+        hidden.dataset.bookmarkId = item.id;
+        hidden.dataset.chapterId = bookmark.chapterId || shell.dataset.chapterId;
+        hidden.dataset.position = String(item.positionPermille);
+        hidden.dataset.language = bookmark.language || "ja";
+        hidden.dataset.paragraph =
+            bookmark.paragraphIndex == null ? "" : String(bookmark.paragraphIndex);
+        hidden.dataset.offset = String(bookmark.characterOffset || 0);
+        hidden.dataset.anchorText = bookmark.anchorText || "";
+        hidden.dataset.bookmarkStyle = item.style;
+        hidden.dataset.bookmarkColor = item.color;
+        shell.append(hidden);
+
+        const list = shell.querySelector("[data-bookmark-list]");
+        if (list) {
+            const card = document.createElement("article");
+            card.className = "novel-note-card";
+            card.dataset.bookmarkCard = "";
+            card.dataset.bookmarkId = item.id;
+            card.dataset.bookmarkStyle = item.style;
+            card.dataset.bookmarkColor = item.color;
+
+            const link = document.createElement("a");
+            link.href =
+                `/Novels/Read/${encodeURIComponent(bookmark.chapterId || shell.dataset.chapterId)}?bookmark=${encodeURIComponent(item.id)}`;
+            link.dataset.localBookmarkId = item.id;
+
+            const title = document.createElement("strong");
+            title.textContent =
+                bookmark.label ||
+                `Lesezeichen · ${Math.round(item.positionPermille / 10)}%`;
+            link.append(title);
+            if (bookmark.anchorText) {
+                const excerpt = document.createElement("span");
+                excerpt.textContent = bookmark.anchorText;
+                link.append(excerpt);
+            }
+
+            const remove = document.createElement("button");
+            remove.type = "button";
+            remove.className = "novel-note-remove";
+            remove.dataset.removeBookmarkButton = "";
+            remove.dataset.bookmarkId = item.id;
+            remove.textContent = "Entfernen";
+            card.append(link, remove);
+            list.prepend(card);
+        }
+
+        shell.querySelectorAll("[data-bookmark-track]").forEach(track => {
+            const marker = document.createElement("button");
+            marker.type = "button";
+            marker.className = "novel-bookmark-marker";
+            marker.dataset.bookmarkMarker = "";
+            marker.dataset.bookmarkId = item.id;
+            marker.dataset.bookmarkStyle = item.style;
+            marker.style.setProperty("--bookmark-color", item.color);
+            const percent = clamp(item.positionPermille / 10, 1.5, 98.5);
+            if (track.dataset.orientation === "horizontal") marker.style.left = percent + "%";
+            else marker.style.top = percent + "%";
+            marker.innerHTML = "<span></span>";
+            marker.title = bookmark.anchorText || "Lesezeichen";
+            track.append(marker);
+        });
+
+        shell.querySelector("[data-empty-bookmarks]")?.classList.add("is-hidden");
+        decorateBookmarks();
+    };
+
+    const savePagedBookmark = async () => {
+        if (!bookmarkForm) return;
+        const paragraph = captureLogicalAnchor();
+        const language =
+            shell.dataset.view === "de" && shell.dataset.hasTranslation === "true"
+                ? "de"
+                : "ja";
+        const position =
+            pageCount <= 1 ? 1000 : Math.round(currentPage / (pageCount - 1) * 1000);
+        const data = new FormData(bookmarkForm);
+        setFormValue(data, "positionPermille", position);
+        setFormValue(data, "language", language);
+        setFormValue(data, "paragraphIndex", paragraph?.dataset.index ?? "");
+        setFormValue(data, "characterOffset", 0);
+        setFormValue(data, "label", "");
+        setFormValue(data, "style", state.bookmarkStyle);
+        setFormValue(data, "color", state.bookmarkColor);
+
+        const response = await fetch(bookmarkForm.action, {
+            method: "POST",
+            body: data,
+            credentials: "same-origin",
+            headers: { "X-Requested-With": "fetch" }
+        });
+        if (!response.ok) {
+            throw new Error((await response.text()) || "Lesezeichen konnte nicht gespeichert werden.");
+        }
+
+        addPagedBookmarkUi(await response.json());
+        showToast("Lesezeichen gespeichert.");
     };
 
     const saveBookmarkAppearance = async (id, style, color) => {
@@ -646,6 +818,31 @@
             goToPage(currentPage - 1);
         }
     });
+
+    document.addEventListener("click", event => {
+        if (state.readingMode !== "paged") return;
+
+        const bookmarkButton = event.target.closest("[data-reader-bookmark]");
+        if (bookmarkButton) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            savePagedBookmark().catch(error => showToast(error.message));
+            return;
+        }
+
+        const localBookmark = event.target.closest("[data-local-bookmark-id]");
+        if (localBookmark) {
+            const item = bookmarkState.get(localBookmark.dataset.localBookmarkId);
+            if (!item) return;
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            const target =
+                pageCount <= 1
+                    ? 0
+                    : Math.round(item.positionPermille / 1000 * (pageCount - 1));
+            goToPage(target);
+        }
+    }, true);
 
     document.addEventListener("change", event => {
         const styleControl = event.target.closest("[data-bookmark-style-control]");
