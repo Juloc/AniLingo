@@ -209,16 +209,16 @@ public sealed class MangaTests
             "Manga",
             "Index.cshtml"));
 
-        StringAssert.Contains(reader, "data-mode="single"");
-        StringAssert.Contains(reader, "data-mode="double"");
-        StringAssert.Contains(reader, "data-mode="continuous"");
+        StringAssert.Contains(reader, "data-mode=\"single\"");
+        StringAssert.Contains(reader, "data-mode=\"double\"");
+        StringAssert.Contains(reader, "data-mode=\"continuous\"");
         StringAssert.Contains(reader, "data-direction-toggle");
         StringAssert.Contains(reader, "data-page-scrubber");
-        StringAssert.Contains(script, "direction === "rtl"");
+        StringAssert.Contains(script, "direction === \"rtl\"");
         StringAssert.Contains(script, "prefetch");
         StringAssert.Contains(script, "toggleBookmark");
-        StringAssert.Contains(library, "href="/Novels"");
-        StringAssert.Contains(library, "href="/Manga"");
+        StringAssert.Contains(library, "href=\"/Novels\"");
+        StringAssert.Contains(library, "href=\"/Manga\"");
     }
 
     [TestMethod]
