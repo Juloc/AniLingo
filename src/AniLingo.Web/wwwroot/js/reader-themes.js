@@ -1,5 +1,5 @@
 (() => {
-    const shell = document.querySelector("[data-novel-reader][data-reader-personalization]");
+    const shell = document.querySelector("[data-reader-personalization]");
     if (!shell) return;
 
     const genreSelect = shell.querySelector("[data-reader-genre-select]");
