@@ -1,0 +1,146 @@
+@page "/Books/Read/{id:guid}"
+@model AniLingo.Web.Pages.Books.ReadModel
+@{
+    ViewData["Title"] = Model.Reader.Chapter.Title;
+    var translatedParagraphs = Model.Reader.SourceLanguage.Equals(
+        Model.Reader.TargetLanguage,
+        StringComparison.OrdinalIgnoreCase)
+        ? Model.Reader.OriginalParagraphs
+        : Model.Reader.TranslatedParagraphs;
+    var defaultView = translatedParagraphs.Count > 0 ? "translated" : "original";
+    var initialProgress = Model.Reader.Progress?.PositionPermille ?? 0;
+}
+@section Head {
+    <link rel="stylesheet" href="~/css/books.css" asp-append-version="true" />
+}
+@section Scripts {
+    <script src="~/js/books-reader.js" asp-append-version="true"></script>
+}
+
+<div class="book-reader-page"
+     data-book-reader
+     data-view="@defaultView"
+     data-target-language="@Model.Reader.TargetLanguage"
+     data-has-translation="@(translatedParagraphs.Count > 0 ? "true" : "false")"
+     data-progress="@initialProgress">
+
+    <div class="book-reading-progress" aria-hidden="true">
+        <span data-book-progress-bar style="width:@(initialProgress / 10)%"></span>
+    </div>
+
+    <nav class="book-reader-toolbar" aria-label="Book reader controls">
+        <a class="book-reader-back"
+           href="/Books/Library/@Model.Reader.Work.Id?lang=@Model.Reader.TargetLanguage">
+            ←
+        </a>
+
+        <div class="book-reader-location">
+            <strong>@Model.Reader.Chapter.Title</strong>
+            <span>@(Model.Reader.Work.MetadataTitle ?? Model.Reader.Work.Title)</span>
+        </div>
+
+        <div class="book-reader-view-switch" role="group" aria-label="Reading text">
+            <button type="button"
+                    data-book-view="translated"
+                    disabled="@(translatedParagraphs.Count == 0)">
+                @AniLingo.Web.Features.Books.BookLanguageCatalog.GetName(Model.Reader.TargetLanguage)
+            </button>
+            <button type="button" data-book-view="original">Original</button>
+            <button type="button"
+                    data-book-view="both"
+                    disabled="@(translatedParagraphs.Count == 0)">
+                Both
+            </button>
+        </div>
+
+        <button class="book-reader-bookmark"
+                type="button"
+                data-bookmark-button
+                aria-label="Add bookmark"
+                title="Add bookmark">
+            ♡
+            <span data-bookmark-count>@Model.Reader.Bookmarks.Count</span>
+        </button>
+    </nav>
+
+    <header class="book-reader-chapter-title">
+        <span>Chapter @Model.Reader.Chapter.Number</span>
+        <h1>@Model.Reader.Chapter.Title</h1>
+    </header>
+
+    @if (!Model.Reader.SourceLanguage.Equals(
+        Model.Reader.TargetLanguage,
+        StringComparison.OrdinalIgnoreCase)
+        && translatedParagraphs.Count == 0)
+    {
+        <div class="book-translation-slot" data-translation-slot>
+            <span data-translation-state>
+                @AniLingo.Web.Features.Books.BookLanguageCatalog.GetName(Model.Reader.TargetLanguage)
+                translation is not ready yet.
+            </span>
+            <form method="post"
+                  asp-page-handler="Translate"
+                  asp-route-id="@Model.Reader.Chapter.Id"
+                  data-book-translate-form>
+                <input type="hidden" name="lang" value="@Model.Reader.TargetLanguage" />
+                <button class="button button-primary" type="submit">
+                    Translate this chapter
+                </button>
+            </form>
+        </div>
+    }
+
+    <main class="book-reader-content" data-book-reader-content>
+        <article class="book-reader-column original" data-book-original>
+            @foreach (var paragraph in Model.Reader.OriginalParagraphs)
+            {
+                <p>@paragraph</p>
+            }
+        </article>
+
+        <article class="book-reader-column translated"
+                 data-book-translated
+                 hidden="@(defaultView == "original")">
+            @foreach (var paragraph in translatedParagraphs)
+            {
+                <p>@paragraph</p>
+            }
+        </article>
+    </main>
+
+    <footer class="book-reader-footer">
+        @if (Model.Reader.PreviousChapterId is Guid previous)
+        {
+            <a href="/Books/Read/@previous?lang=@Model.Reader.TargetLanguage">← Previous</a>
+        }
+        else
+        {
+            <span></span>
+        }
+
+        @if (Model.Reader.NextChapterId is Guid next)
+        {
+            <a href="/Books/Read/@next?lang=@Model.Reader.TargetLanguage">Next →</a>
+        }
+    </footer>
+
+    <form method="post"
+          asp-page-handler="Progress"
+          asp-route-id="@Model.Reader.Chapter.Id"
+          data-book-progress-form
+          hidden>
+        <input type="hidden" name="positionPermille" value="@initialProgress" />
+        <input type="hidden" name="lang" value="@Model.Reader.TargetLanguage" />
+    </form>
+
+    <form method="post"
+          asp-page-handler="Bookmark"
+          asp-route-id="@Model.Reader.Chapter.Id"
+          data-book-bookmark-form
+          hidden>
+        <input type="hidden" name="positionPermille" value="@initialProgress" />
+        <input type="hidden" name="lang" value="@Model.Reader.TargetLanguage" />
+    </form>
+
+    <div class="book-reader-toast" data-book-toast hidden role="status" aria-live="polite"></div>
+</div>
