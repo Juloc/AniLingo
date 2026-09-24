@@ -19,6 +19,7 @@ public sealed class MangaRepository(AppDbContext db)
                 s."MetadataNativeTitle",
                 s."CoverImageUrl",
                 (SELECT COUNT(*) FROM "MangaChapters" c WHERE c."SeriesId" = s."Id") AS "ChapterCount",
+                (SELECT c0."Id" FROM "MangaChapters" c0 WHERE c0."SeriesId" = s."Id" ORDER BY c0."Number" LIMIT 1) AS "PreviewChapterId",
                 p."ChapterId",
                 c."Number",
                 COALESCE(p."PageIndex", 0),
@@ -42,10 +43,11 @@ public sealed class MangaRepository(AppDbContext db)
                 ReadNullableString(reader, 3),
                 reader.GetInt32(4),
                 ReadNullableGuid(reader, 5),
-                ReadNullableDouble(reader, 6),
-                reader.GetInt32(7),
+                ReadNullableGuid(reader, 6),
+                ReadNullableDouble(reader, 7),
                 reader.GetInt32(8),
-                ReadNullableDateTime(reader, 9)),
+                reader.GetInt32(9),
+                ReadNullableDateTime(reader, 10)),
             cancellationToken);
     }
 
