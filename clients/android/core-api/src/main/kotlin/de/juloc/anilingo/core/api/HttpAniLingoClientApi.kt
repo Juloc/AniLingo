@@ -6,6 +6,7 @@ import de.juloc.anilingo.core.model.ClientAccount
 import de.juloc.anilingo.core.model.ClientCapabilities
 import de.juloc.anilingo.core.model.ClientFeatureFlags
 import de.juloc.anilingo.core.model.ClientLibrary
+import de.juloc.anilingo.core.model.ClientLogin
 import de.juloc.anilingo.core.model.CompatibilityFallback
 import de.juloc.anilingo.core.model.CueResponse
 import de.juloc.anilingo.core.model.CueToken
@@ -42,11 +43,26 @@ class ClientApiHttpException(
 class HttpAniLingoClientApi(
     origin: String,
     private val requestHeaders: () -> Map<String, String> = { emptyMap() },
+    private val responseCookieSink: (List<String>) -> Unit = {},
 ) : AniLingoClientApi {
     private val originUri = normalizeOrigin(origin)
 
     override suspend fun getCapabilities(): ClientCapabilities =
         requestJson("GET", ClientApiRoutes.Capabilities).toCapabilities()
+
+    override suspend fun login(credentials: ClientLogin): ClientAccount =
+        requestJson(
+            method = "POST",
+            route = ClientApiRoutes.Login,
+            body = JSONObject()
+                .put("userName", credentials.userName)
+                .put("password", credentials.password)
+                .put("rememberMe", credentials.rememberMe),
+        ).toAccount()
+
+    override suspend fun logout() {
+        requestJson("POST", ClientApiRoutes.Logout)
+    }
 
     override suspend fun getMe(): ClientAccount =
         requestJson("GET", ClientApiRoutes.Me).toAccount()
@@ -160,6 +176,17 @@ class HttpAniLingoClientApi(
             }
 
             val status = connection.responseCode
+            val setCookies = connection.headerFields
+                .entries
+                .firstOrNull { entry ->
+                    entry.key?.equals("Set-Cookie", ignoreCase = true) == true
+                }
+                ?.value
+                .orEmpty()
+            if (setCookies.isNotEmpty()) {
+                responseCookieSink(setCookies)
+            }
+
             val stream = if (status in 200..299) {
                 connection.inputStream
             } else {
