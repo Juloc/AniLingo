@@ -78,6 +78,31 @@ public sealed class LocalizationCatalogTests
     }
 
     [TestMethod]
+    public async Task ProfileLocaleLoadsPersistedLocalizedBundle()
+    {
+        await using var fixture = await CatalogFixture.CreateAsync();
+        await fixture.Store.AddLocaleAsync("de", CancellationToken.None);
+        await fixture.Store.SaveManualAsync(
+            "de",
+            "common.save",
+            "Speichern",
+            CancellationToken.None);
+
+        await fixture.Store.SetProfileLocaleAsync(
+            "reader-1",
+            "de",
+            CancellationToken.None);
+
+        var bundle = await fixture.Store.LoadProfileBundleAsync(
+            "reader-1",
+            CancellationToken.None);
+
+        Assert.AreEqual("de", bundle.Locale);
+        Assert.AreEqual("ltr", bundle.Direction);
+        Assert.AreEqual("Speichern", bundle["common.save"]);
+    }
+
+    [TestMethod]
     public async Task AiGenerationCannotOverwriteManualTranslation()
     {
         await using var fixture = await CatalogFixture.CreateAsync();
