@@ -1,5 +1,6 @@
 package de.juloc.anilingo.mobile
 
+import androidx.annotation.OptIn
 import android.content.Context
 import android.media.MediaCodecList
 import android.net.Uri
