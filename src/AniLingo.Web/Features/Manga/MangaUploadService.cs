@@ -10,6 +10,12 @@ public sealed partial class MangaUploadService
     private const long MaximumFileBytes = 1024L * 1024 * 1024;
     private const long MaximumTotalBytes = 4L * 1024 * 1024 * 1024;
 
+    private static readonly HashSet<string> ImageExtensions =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ".jpg", ".jpeg", ".png", ".webp", ".avif", ".gif"
+        };
+
     private readonly string uploadRoot;
 
     public MangaUploadService(string? uploadRoot = null)
@@ -200,10 +206,14 @@ public sealed partial class MangaUploadService
         try
         {
             using var archive = ZipFile.OpenRead(path);
-            if (archive.Entries.Count == 0)
+            var hasImage = archive.Entries.Any(entry =>
+                entry.Length > 0 &&
+                ImageExtensions.Contains(Path.GetExtension(entry.Name)));
+
+            if (!hasImage)
             {
                 throw new InvalidOperationException(
-                    "A selected Manga archive contains no files.");
+                    "A selected Manga archive contains no supported image pages.");
             }
         }
         catch (InvalidDataException exception)
