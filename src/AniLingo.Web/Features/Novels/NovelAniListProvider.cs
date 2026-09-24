@@ -9,6 +9,24 @@ public sealed class NovelMetadataProviderException(
     string message,
     Exception? innerException = null) : Exception(message, innerException);
 
+public sealed record AniListReadingMediaCandidate(
+    string ExternalId,
+    string PreferredTitle,
+    string? NativeTitle,
+    string? Description,
+    string? CoverImageUrl,
+    string? BannerImageUrl,
+    string? Format,
+    string? Status,
+    int? ChapterCount,
+    int? VolumeCount,
+    int? StartYear,
+    IReadOnlyList<string> Genres)
+{
+    public bool IsNovel =>
+        string.Equals(Format, "NOVEL", StringComparison.OrdinalIgnoreCase);
+}
+
 public sealed partial class NovelAniListProvider(
     HttpClient httpClient,
     ILogger<NovelAniListProvider> logger) : INovelMetadataProvider
@@ -29,6 +47,48 @@ public sealed partial class NovelAniListProvider(
               status
               chapters
               volumes
+              genres
+              isAdult
+            }
+          }
+        }
+        """;
+
+    private const string ReadingSearchQuery = """
+        query ($search: String!, $perPage: Int!) {
+          Page(page: 1, perPage: $perPage) {
+            media(search: $search, type: MANGA, isAdult: false) {
+              id
+              title { romaji english native }
+              description(asHtml: false)
+              coverImage { extraLarge large }
+              bannerImage
+              format
+              status
+              chapters
+              volumes
+              startDate { year }
+              genres
+              isAdult
+            }
+          }
+        }
+        """;
+
+    private const string ReadingBrowseQuery = """
+        query ($perPage: Int!, $sort: [MediaSort!]) {
+          Page(page: 1, perPage: $perPage) {
+            media(type: MANGA, isAdult: false, sort: $sort) {
+              id
+              title { romaji english native }
+              description(asHtml: false)
+              coverImage { extraLarge large }
+              bannerImage
+              format
+              status
+              chapters
+              volumes
+              startDate { year }
               genres
               isAdult
             }
@@ -89,6 +149,63 @@ public sealed partial class NovelAniListProvider(
             .Where(x => x is not null)
             .Cast<NovelMetadataCandidate>()
             .ToArray();
+    }
+
+    public async Task<IReadOnlyList<AniListReadingMediaCandidate>> SearchReadingMediaAsync(
+        string query,
+        int limit,
+        bool includeNovels,
+        bool includeManga,
+        CancellationToken cancellationToken)
+    {
+        var normalized = query.Trim();
+        if (normalized.Length == 0 || (!includeNovels && !includeManga))
+        {
+            return [];
+        }
+
+        var json = await SendAsync(
+            ReadingSearchQuery,
+            new
+            {
+                search = normalized,
+                perPage = Math.Clamp(limit, 1, 24)
+            },
+            cancellationToken);
+
+        return ParseReadingMediaResponse(
+            json,
+            includeNovels,
+            includeManga);
+    }
+
+    public async Task<IReadOnlyList<AniListReadingMediaCandidate>> BrowseReadingMediaAsync(
+        bool trending,
+        int limit,
+        bool includeNovels,
+        bool includeManga,
+        CancellationToken cancellationToken)
+    {
+        if (!includeNovels && !includeManga)
+        {
+            return [];
+        }
+
+        var json = await SendAsync(
+            ReadingBrowseQuery,
+            new
+            {
+                perPage = Math.Clamp(limit, 1, 24),
+                sort = trending
+                    ? new[] { "TRENDING_DESC", "POPULARITY_DESC" }
+                    : new[] { "SCORE_DESC", "POPULARITY_DESC" }
+            },
+            cancellationToken);
+
+        return ParseReadingMediaResponse(
+            json,
+            includeNovels,
+            includeManga);
     }
 
     public async Task<NovelMetadataCandidate?> GetAsync(
@@ -161,6 +278,81 @@ public sealed partial class NovelAniListProvider(
                 "AniList novel metadata is currently unavailable.",
                 exception);
         }
+    }
+
+    internal static IReadOnlyList<AniListReadingMediaCandidate> ParseReadingMediaResponse(
+        string json,
+        bool includeNovels,
+        bool includeManga)
+    {
+        using var document = JsonDocument.Parse(json);
+        if (!document.RootElement.TryGetProperty("data", out var data) ||
+            !data.TryGetProperty("Page", out var page) ||
+            !page.TryGetProperty("media", out var media) ||
+            media.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        return media.EnumerateArray()
+            .Select(ParseReadingMedia)
+            .Where(x => x is not null)
+            .Cast<AniListReadingMediaCandidate>()
+            .Where(x => x.IsNovel ? includeNovels : includeManga)
+            .ToArray();
+    }
+
+    private static AniListReadingMediaCandidate? ParseReadingMedia(JsonElement media)
+    {
+        if (!media.TryGetProperty("id", out var idElement) ||
+            !idElement.TryGetInt32(out var id))
+        {
+            return null;
+        }
+
+        if (media.TryGetProperty("isAdult", out var adultElement) &&
+            adultElement.ValueKind == JsonValueKind.True)
+        {
+            return null;
+        }
+
+        var title = media.TryGetProperty("title", out var titleElement)
+            ? titleElement
+            : default;
+        var english = ReadString(title, "english");
+        var romaji = ReadString(title, "romaji");
+        var native = ReadString(title, "native");
+        var preferred = FirstNonEmpty(english, romaji, native) ?? $"AniList {id}";
+
+        string? cover = null;
+        if (media.TryGetProperty("coverImage", out var coverElement) &&
+            coverElement.ValueKind == JsonValueKind.Object)
+        {
+            cover = FirstNonEmpty(
+                ReadString(coverElement, "extraLarge"),
+                ReadString(coverElement, "large"));
+        }
+
+        int? startYear = null;
+        if (media.TryGetProperty("startDate", out var startDate) &&
+            startDate.ValueKind == JsonValueKind.Object)
+        {
+            startYear = ReadInt(startDate, "year");
+        }
+
+        return new AniListReadingMediaCandidate(
+            id.ToString(),
+            preferred,
+            native,
+            NormalizeDescription(ReadString(media, "description")),
+            cover,
+            ReadString(media, "bannerImage"),
+            ReadString(media, "format"),
+            ReadString(media, "status"),
+            ReadInt(media, "chapters"),
+            ReadInt(media, "volumes"),
+            startYear,
+            ReadStringArray(media, "genres"));
     }
 
     internal static NovelMetadataCandidate? ParseMedia(JsonElement media)
