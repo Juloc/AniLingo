@@ -269,22 +269,22 @@ public sealed class AuthServiceTests
             var userTermId = Guid.NewGuid();
             var now = DateTime.UtcNow.ToString("O");
 
-            await db.Database.ExecuteSqlRawAsync(
+            await db.Database.ExecuteSqlAsync(
                 $"""
                 INSERT INTO OwnerAccounts
                     (Id, UserName, NormalizedUserName, PasswordHash, CreatedAt)
                 VALUES
-                    ('owner', 'Julian', 'JULIAN', 'hash', '{now}');
+                    ('owner', 'Julian', 'JULIAN', 'hash', {now});
 
                 INSERT INTO Terms
                     (Id, Language, Canonical, Reading, Meaning)
                 VALUES
-                    ('{termId}', 'ja', '猫', 'ねこ', 'Katze');
+                    ({termId.ToString()}, 'ja', '猫', 'ねこ', 'Katze');
 
                 INSERT INTO UserTerms
                     (Id, ProfileId, TermId, State, IntervalDays, NextReviewAt, LearningStartedAt, QueuePosition, UpdatedAt)
                 VALUES
-                    ('{userTermId}', 'default', '{termId}', 1, 0, NULL, NULL, NULL, '{now}');
+                    ({userTermId.ToString()}, 'default', {termId.ToString()}, 1, 0, NULL, NULL, NULL, {now});
 
                 INSERT INTO LearningPreferences
                     (ProfileId, DesiredRetention, ReviewBatchSize, NewWordsPerDay)

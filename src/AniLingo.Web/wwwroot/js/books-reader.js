@@ -263,42 +263,46 @@
 
         if (overrideState) {
             overrideState.textContent = settings.hasBookOverride
-                ? "Book override"
-                : "My defaults";
+                ? "Customized for this book"
+                : settings.hasGenreOverride
+                    ? "Genre default"
+                    : settings.hasTypeOverride
+                        ? "Type default"
+                        : "My default";
         }
     }
 
     function setSettingsFormState(data) {
         const names = {
-            readingMode: "Settings.ReadingMode",
-            pageTransition: "Settings.PageTransition",
-            twoPageSpread: "Settings.TwoPageSpread",
-            autoScrollSpeed: "Settings.AutoScrollSpeed",
-            fontFamily: "Settings.FontFamily",
-            fontSizeRem: "Settings.FontSizeRem",
-            lineHeight: "Settings.LineHeight",
-            paragraphSpacingEm: "Settings.ParagraphSpacingEm",
-            textWidthPx: "Settings.TextWidthPx",
-            textAlignment: "Settings.TextAlignment",
-            chapterStyle: "Settings.ChapterStyle",
-            paperStyle: "Settings.PaperStyle",
-            genreArtworkEnabled: "Settings.GenreArtworkEnabled",
-            genreTheme: "Settings.GenreTheme",
-            backgroundAssetId: "Settings.BackgroundAssetId",
-            backgroundIntensity: "Settings.BackgroundIntensity",
-            backgroundMotionMode: "Settings.BackgroundMotionMode",
-            themeEffectStrength: "Settings.ThemeEffectStrength",
-            themeBrightness: "Settings.ThemeBrightness",
-            themeContrast: "Settings.ThemeContrast",
-            themeSaturation: "Settings.ThemeSaturation",
-            themeBlurPx: "Settings.ThemeBlurPx",
-            themeVignetteStrength: "Settings.ThemeVignetteStrength",
-            themeGrainStrength: "Settings.ThemeGrainStrength",
-            themeTextBackdropStrength: "Settings.ThemeTextBackdropStrength",
-            themeParallaxStrength: "Settings.ThemeParallaxStrength",
-            themeTintStrength: "Settings.ThemeTintStrength",
-            bookmarkStyle: "Settings.BookmarkStyle",
-            bookmarkColor: "Settings.BookmarkColor"
+            readingMode: "ReadingMode",
+            pageTransition: "PageTransition",
+            twoPageSpread: "TwoPageSpread",
+            autoScrollSpeed: "AutoScrollSpeed",
+            fontFamily: "FontFamily",
+            fontSizeRem: "FontSizeRem",
+            lineHeight: "LineHeight",
+            paragraphSpacingEm: "ParagraphSpacingEm",
+            textWidthPx: "TextWidthPx",
+            textAlignment: "TextAlignment",
+            chapterStyle: "ChapterStyle",
+            paperStyle: "PaperStyle",
+            genreArtworkEnabled: "GenreArtworkEnabled",
+            genreTheme: "GenreTheme",
+            backgroundAssetId: "BackgroundAssetId",
+            backgroundIntensity: "BackgroundIntensity",
+            backgroundMotionMode: "BackgroundMotionMode",
+            themeEffectStrength: "ThemeEffectStrength",
+            themeBrightness: "ThemeBrightness",
+            themeContrast: "ThemeContrast",
+            themeSaturation: "ThemeSaturation",
+            themeBlurPx: "ThemeBlurPx",
+            themeVignetteStrength: "ThemeVignetteStrength",
+            themeGrainStrength: "ThemeGrainStrength",
+            themeTextBackdropStrength: "ThemeTextBackdropStrength",
+            themeParallaxStrength: "ThemeParallaxStrength",
+            themeTintStrength: "ThemeTintStrength",
+            bookmarkStyle: "BookmarkStyle",
+            bookmarkColor: "BookmarkColor"
         };
 
         for (const [key, name] of Object.entries(names)) {
@@ -334,12 +338,19 @@
         return result;
     }
 
+    function activePreferenceTarget() {
+        return settingsForm?.querySelector('[name="scope"]')?.value || "work";
+    }
+
     function scheduleSettingSave(changedKey) {
-        settings.hasBookOverride = true;
+        const scope = activePreferenceTarget();
+        if (scope === "work" || scope === "book") {
+            settings.hasBookOverride = true;
+        }
         syncSettingControls();
 
         settingsSave = settingsSave
-            .then(() => saveSettings("book", changedKey))
+            .then(() => saveSettings(scope, changedKey))
             .catch((error) => showToast(error.message));
     }
 
@@ -609,6 +620,18 @@
     if (pagePrev) pagePrev.addEventListener("click", () => turnPage(-1));
     if (pageNext) pageNext.addEventListener("click", () => turnPage(1));
 
+    root.addEventListener("anilingo:reader-settings-response", (event) => {
+        if (!event.detail?.settings) return;
+        settings = Object.assign(settings, event.detail.settings);
+        applySettings(false);
+    });
+
+    root.addEventListener("anilingo:reader-page-edge", (event) => {
+        const direction = Number(event.detail?.direction || 0);
+        if (!direction || settings.readingMode !== "paged") return;
+        turnPage(direction);
+    });
+
     for (const column of [original, translated]) {
         if (!column) continue;
         column.addEventListener("scroll", () => {
@@ -638,10 +661,23 @@
 
     const initial = Number(root.dataset.progress || "0");
     if (initial > 0 && settings.readingMode === "continuous") {
+        root.dispatchEvent(new CustomEvent("anilingo:reader-restoring", {
+            detail: { active: true }
+        }));
         requestAnimationFrame(() => {
             const max = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
             window.scrollTo({ top: max * initial / 1000, behavior: "auto" });
+            requestAnimationFrame(() => {
+                root.classList.remove("reader-chrome-hidden");
+                root.dispatchEvent(new CustomEvent("anilingo:reader-restoring", {
+                    detail: { active: false }
+                }));
+            });
         });
+    } else {
+        root.dispatchEvent(new CustomEvent("anilingo:reader-restoring", {
+            detail: { active: false }
+        }));
     }
 
     if (root.dataset.hasTranslation !== "true" && translateForm) {

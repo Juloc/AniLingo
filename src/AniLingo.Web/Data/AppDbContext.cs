@@ -30,6 +30,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<AiSentenceExplanationCache> AiSentenceExplanationCache => Set<AiSentenceExplanationCache>();
     public DbSet<OwnerAccount> OwnerAccounts => Set<OwnerAccount>();
     public DbSet<EpisodeProgress> EpisodeProgress => Set<EpisodeProgress>();
+    public DbSet<EpisodePlaybackHistoryEntry> EpisodePlaybackHistory => Set<EpisodePlaybackHistoryEntry>();
+    public DbSet<ProfilePlaybackPreferences> ProfilePlaybackPreferences => Set<ProfilePlaybackPreferences>();
     public DbSet<NovelWork> NovelWorks => Set<NovelWork>();
     public DbSet<BookEdition> BookEditions => Set<BookEdition>();
     public DbSet<BookFile> BookFiles => Set<BookFile>();
@@ -152,6 +154,21 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasOne<Episode>().WithMany().HasForeignKey(x => x.EpisodeId).OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(x => new { x.ProfileId, x.EpisodeId }).IsUnique();
             entity.HasIndex(x => new { x.ProfileId, x.UpdatedAt });
+        });
+
+        modelBuilder.Entity<EpisodePlaybackHistoryEntry>(entity =>
+        {
+            entity.ToTable("EpisodePlaybackHistory");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.ProfileId).HasMaxLength(80);
+            entity.HasOne<Episode>().WithMany().HasForeignKey(x => x.EpisodeId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(x => new { x.ProfileId, x.LastPlayedAt });
+        });
+
+        modelBuilder.Entity<ProfilePlaybackPreferences>(entity =>
+        {
+            entity.HasKey(x => x.ProfileId);
+            entity.Property(x => x.ProfileId).HasMaxLength(80);
         });
 
         modelBuilder.Entity<UserTerm>(entity =>

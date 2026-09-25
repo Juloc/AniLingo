@@ -1,0 +1,11 @@
+@using AniLingo.Web.Features.Localization
+@model UiNavigationItem
+@{
+    var ui = ViewData["UiTextBundle"] as UiTextBundle ?? UiTextBundle.English;
+}
+<a class="nav-item @(Model.IsActive ? "active" : "")"
+   href="@Model.Href"
+   aria-current="@(Model.IsActive ? "page" : null)">
+    <partial name="_AppIcon" model="Model.Icon" />
+    <span class="nav-label">@ui[Model.LabelKey]</span>
+</a>
