@@ -223,6 +223,19 @@ public sealed class NovelMetadataService(
         string localTitle,
         CancellationToken cancellationToken)
     {
+        if (await segmentMappings.HasManualMappingsAsync(
+                "novel",
+                workId.ToString(),
+                cancellationToken))
+        {
+            await reviewStore.ResolveAsync(
+                "novel",
+                workId.ToString(),
+                "reading-segments",
+                cancellationToken);
+            return;
+        }
+
         var aniListProvider = providers
             .OfType<NovelAniListProvider>()
             .FirstOrDefault();
