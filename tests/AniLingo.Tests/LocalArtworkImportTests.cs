@@ -1,7 +1,5 @@
 using AniLingo.Web.Features.Artwork;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Formats.Png;
-using SixLabors.ImageSharp.PixelFormats;
+using SkiaSharp;
 
 namespace AniLingo.Tests;
 
@@ -85,8 +83,8 @@ public sealed class LocalArtworkImportTests
             CancellationToken.None);
 
         Assert.IsTrue(saved);
-        destination.Position = 0;
-        using var result = await Image.LoadAsync(destination);
+        using var result = SKBitmap.Decode(destination.ToArray());
+        Assert.IsNotNull(result);
         Assert.AreEqual(AnimeArtworkStore.PosterMaxWidth, result.Width);
         Assert.AreEqual(768, result.Height);
     }
@@ -104,8 +102,8 @@ public sealed class LocalArtworkImportTests
             CancellationToken.None);
 
         Assert.IsTrue(saved);
-        destination.Position = 0;
-        using var result = await Image.LoadAsync(destination);
+        using var result = SKBitmap.Decode(destination.ToArray());
+        Assert.IsNotNull(result);
         Assert.AreEqual(AnimeArtworkStore.FanartMaxWidth, result.Width);
         Assert.AreEqual(800, result.Height);
     }
@@ -123,8 +121,8 @@ public sealed class LocalArtworkImportTests
             CancellationToken.None);
 
         Assert.IsTrue(saved);
-        destination.Position = 0;
-        using var result = await Image.LoadAsync(destination);
+        using var result = SKBitmap.Decode(destination.ToArray());
+        Assert.IsNotNull(result);
         Assert.AreEqual(300, result.Width);
         Assert.AreEqual(450, result.Height);
     }
@@ -145,13 +143,14 @@ public sealed class LocalArtworkImportTests
         Assert.AreEqual(0, destination.Length);
     }
 
-    private static async Task<MemoryStream> CreatePngAsync(int width, int height)
+    private static Task<MemoryStream> CreatePngAsync(int width, int height)
     {
-        using var image = new Image<Rgba32>(width, height);
-        var stream = new MemoryStream();
-        await image.SaveAsync(stream, new PngEncoder());
-        stream.Position = 0;
-        return stream;
+        using var bitmap = new SKBitmap(width, height);
+        bitmap.Erase(SKColors.CornflowerBlue);
+        using var image = SKImage.FromBitmap(bitmap);
+        using var data = image.Encode(SKEncodedImageFormat.Png, 100);
+
+        return Task.FromResult(new MemoryStream(data.ToArray(), writable: false));
     }
 
     private sealed class TemporaryDirectory : IDisposable
