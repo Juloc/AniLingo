@@ -1,4 +1,5 @@
 @page
+@using AniLingo.Web.Features.Learning
 @model AniLingo.Web.Pages.Settings.LearningModel
 @{
     ViewData["Title"] = "Learning settings";
@@ -7,55 +8,149 @@
 <header class="page-header">
     <div>
         <a class="back-link" asp-page="/Settings/Index">← Settings</a>
-        <span class="eyebrow">Learning</span>
+        <span class="eyebrow">Optional learning</span>
         <h1>Learning settings</h1>
-        <p>Small controls that directly affect FSRS reviews.</p>
+        <p>Choose how much language help AniLingo should show. Watching and reading stay primary.</p>
     </div>
 </header>
 
-<section class="panel">
-    <form method="post" class="form-stack">
-        <div asp-validation-summary="ModelOnly" class="validation"></div>
+<form method="post" class="form-stack">
+    <div asp-validation-summary="ModelOnly" class="validation"></div>
 
-        <label>
-            <span>Desired retention (%)</span>
-            <input asp-for="DesiredRetentionPercent"
-                   type="number"
-                   min="80"
-                   max="97"
-                   step="1" />
-            <small class="muted">
-                Higher values schedule reviews sooner. 90% is a balanced default.
-            </small>
-            <span asp-validation-for="DesiredRetentionPercent" class="validation"></span>
-        </label>
+    <section class="panel">
+        <div class="panel-heading">
+            <div>
+                <span class="eyebrow">Default behavior</span>
+                <h2>Learning mode</h2>
+            </div>
+            <span>@Model.Mode</span>
+        </div>
 
-        <label>
-            <span>New words per day</span>
-            <input asp-for="NewWordsPerDay"
-                   type="number"
-                   min="0"
-                   max="100"
-                   step="1" />
-            <small class="muted">
-                Prepared words wait in a queue. Reviews come first; AniLingo introduces at most this many new words per day.
-            </small>
-            <span asp-validation-for="NewWordsPerDay" class="validation"></span>
-        </label>
+        <div class="settings-grid">
+            @foreach (var mode in Enum.GetValues<LearningMode>())
+            {
+                <label class="panel">
+                    <span>
+                        <input asp-for="Mode"
+                               type="radio"
+                               value="@mode" />
+                        <strong>@(mode == LearningMode.LanguageTools ? "Language tools" : mode.ToString())</strong>
+                    </span>
+                    <small class="muted">@LearningModel.ModeDescription(mode)</small>
+                </label>
+            }
+        </div>
+    </section>
 
-        <label>
-            <span>Reviews per learning round</span>
-            <input asp-for="ReviewBatchSize"
-                   type="number"
-                   min="5"
-                   max="200"
-                   step="5" />
-            <small class="muted">
-                Limits how many due cards AniLingo loads into one review round.
-            </small>
-            <span asp-validation-for="ReviewBatchSize" class="validation"></span>
-        </label>
+    <details class="panel">
+        <summary>
+            <strong>Customize individual features</strong>
+            <span class="muted">Global overrides</span>
+        </summary>
+        <div class="form-stack" style="margin-top:1rem;">
+            @foreach (var option in LearningModel.CapabilityOptions)
+            {
+                var current = Model.Global.GetOverride(option.Capability);
+                <label>
+                    <span>@option.Label</span>
+                    <select name="cap_@option.Capability"
+                            asp-items='Model.OverrideOptions(current, "Use mode default")'></select>
+                    <small class="muted">@option.Description</small>
+                </label>
+            }
+        </div>
+    </details>
 
-        <button class="button button-primary" type="submit">Save learning settings</button>
-    </form>
-</section>
+    <section class="panel">
+        <div class="panel-heading">
+            <div>
+                <span class="eyebrow">Granular visibility</span>
+                <h2>Per media type</h2>
+            </div>
+            <span>Inherits by default</span>
+        </div>
+        <p class="muted">
+            A media type can inherit your default, turn Learning off, or use a different mode.
+            Individual series/books and content can override this again through the same hierarchy.
+        </p>
+
+        <div class="form-stack">
+            @foreach (var mediaType in LearningModel.MediaTypes)
+            {
+                var settings = Model.Media[mediaType];
+                <details class="panel">
+                    <summary>
+                        <strong>@mediaType</strong>
+                        <span class="muted">@(settings.ModeOverride?.ToString() ?? "Inherit")</span>
+                    </summary>
+                    <div class="form-stack" style="margin-top:1rem;">
+                        <label>
+                            <span>Mode</span>
+                            <select name="mediaMode_@mediaType"
+                                    asp-items="Model.ModeOverrideOptions(settings.ModeOverride)"></select>
+                        </label>
+
+                        @foreach (var option in LearningModel.CapabilityOptions)
+                        {
+                            var current = settings.GetOverride(option.Capability);
+                            <label>
+                                <span>@option.Label</span>
+                                <select name="media_@mediaType_@option.Capability"
+                                        asp-items='Model.OverrideOptions(current, "Inherit")'></select>
+                                <small class="muted">@option.Description</small>
+                            </label>
+                        }
+                    </div>
+                </details>
+            }
+        </div>
+    </section>
+
+    <details class="panel">
+        <summary>
+            <strong>Advanced review scheduling</strong>
+            <span class="muted">FSRS</span>
+        </summary>
+
+        <div class="form-stack" style="margin-top:1rem;">
+            <label>
+                <span>Desired retention (%)</span>
+                <input asp-for="DesiredRetentionPercent"
+                       type="number"
+                       min="80"
+                       max="97"
+                       step="1" />
+                <small class="muted">
+                    Higher values schedule reviews sooner. Leave this at 90% unless you have a reason to tune FSRS.
+                </small>
+                <span asp-validation-for="DesiredRetentionPercent" class="validation"></span>
+            </label>
+
+            <label>
+                <span>New words per day</span>
+                <input asp-for="NewWordsPerDay"
+                       type="number"
+                       min="0"
+                       max="100"
+                       step="1" />
+                <small class="muted">
+                    Limits how many queued vocabulary items can enter active review in one day.
+                </small>
+                <span asp-validation-for="NewWordsPerDay" class="validation"></span>
+            </label>
+
+            <label>
+                <span>Reviews per round</span>
+                <input asp-for="ReviewBatchSize"
+                       type="number"
+                       min="5"
+                       max="200"
+                       step="5" />
+                <small class="muted">Limits one review session; it does not delete or skip due cards.</small>
+                <span asp-validation-for="ReviewBatchSize" class="validation"></span>
+            </label>
+        </div>
+    </details>
+
+    <button class="button button-primary" type="submit">Save learning preferences</button>
+</form>
