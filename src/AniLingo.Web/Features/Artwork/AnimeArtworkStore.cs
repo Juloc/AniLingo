@@ -1,3 +1,7 @@
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Webp;
+using SixLabors.ImageSharp.Processing;
+
 namespace AniLingo.Web.Features.Artwork;
 
 public enum AnimeArtworkKind
@@ -9,7 +13,12 @@ public enum AnimeArtworkKind
 public static class AnimeArtworkStore
 {
     public const string RootPath = "/data/artwork/anime";
+    public const int PosterMaxWidth = 512;
+    public const int FanartMaxWidth = 1600;
+
     private const long MaxImageBytes = 20 * 1024 * 1024;
+    private const int WebpQuality = 82;
+    private const string DerivativeVersion = "v1:webp82:poster512:fanart1600";
 
     private static readonly string[] SupportedExtensions = [".jpg", ".jpeg", ".png", ".webp"];
 
@@ -33,7 +42,7 @@ public static class AnimeArtworkStore
 
     public static string? FindPath(Guid animeId, AnimeArtworkKind kind)
     {
-        var directory = Path.Combine(RootPath, animeId.ToString("N"));
+        var directory = GetArtworkDirectory(animeId);
         var name = ToSlug(kind);
 
         foreach (var extension in SupportedExtensions)
@@ -57,6 +66,79 @@ public static class AnimeArtworkStore
             _ => "application/octet-stream"
         };
 
+    public static bool IsOptimizedDerivative(Guid animeId, AnimeArtworkKind kind)
+    {
+        var path = FindPath(animeId, kind);
+        if (path is null ||
+            !Path.GetExtension(path).Equals(".webp", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var markerPath = GetDerivativeMarkerPath(animeId, kind);
+        try
+        {
+            return File.Exists(markerPath) &&
+                   string.Equals(
+                       File.ReadAllText(markerPath).Trim(),
+                       DerivativeVersion,
+                       StringComparison.Ordinal);
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    public static async Task<bool> EnsureOptimizedAsync(
+        Guid animeId,
+        AnimeArtworkKind kind,
+        CancellationToken cancellationToken)
+    {
+        if (IsOptimizedDerivative(animeId, kind))
+        {
+            return false;
+        }
+
+        var existingPath = FindPath(animeId, kind);
+        if (existingPath is null)
+        {
+            return false;
+        }
+
+        var existing = new FileInfo(existingPath);
+        if (!existing.Exists || existing.Length == 0 || existing.Length > MaxImageBytes)
+        {
+            return false;
+        }
+
+        byte[] bytes;
+        try
+        {
+            bytes = await File.ReadAllBytesAsync(existingPath, cancellationToken);
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+
+        await using var source = new MemoryStream(bytes, writable: false);
+        return await SaveAsync(
+            animeId,
+            kind,
+            source,
+            GetContentType(existingPath),
+            cancellationToken);
+    }
+
     public static async Task<bool> ImportFileIfChangedAsync(
         Guid animeId,
         AnimeArtworkKind kind,
@@ -70,20 +152,19 @@ public static class AnimeArtworkStore
         }
 
         var contentType = GetContentType(source.FullName);
-        if (contentType == "application/octet-stream")
+        if (!IsSupportedContentType(contentType))
         {
             return false;
         }
 
-        var existingPath = FindPath(animeId, kind);
-        if (existingPath is not null)
+        var sourceIdentity = BuildSourceIdentity(source);
+        if (IsOptimizedDerivative(animeId, kind) &&
+            string.Equals(
+                await ReadSourceIdentityAsync(animeId, kind, cancellationToken),
+                sourceIdentity,
+                StringComparison.Ordinal))
         {
-            var existing = new FileInfo(existingPath);
-            if (existing.Length == source.Length &&
-                existing.LastWriteTimeUtc == source.LastWriteTimeUtc)
-            {
-                return false;
-            }
+            return false;
         }
 
         await using var stream = new FileStream(
@@ -110,6 +191,11 @@ public static class AnimeArtworkStore
             File.SetLastWriteTimeUtc(importedPath, source.LastWriteTimeUtc);
         }
 
+        await WriteTextAtomicAsync(
+            GetSourceMarkerPath(animeId, kind),
+            sourceIdentity,
+            cancellationToken);
+
         return true;
     }
 
@@ -120,16 +206,15 @@ public static class AnimeArtworkStore
         string? contentType,
         CancellationToken cancellationToken)
     {
-        var extension = ExtensionForContentType(contentType);
-        if (extension is null)
+        if (!IsSupportedContentType(contentType))
         {
             return false;
         }
 
-        var directory = Path.Combine(RootPath, animeId.ToString("N"));
+        var directory = GetArtworkDirectory(animeId);
         Directory.CreateDirectory(directory);
 
-        var finalPath = Path.Combine(directory, ToSlug(kind) + extension);
+        var finalPath = Path.Combine(directory, ToSlug(kind) + ".webp");
         var temporaryPath = finalPath + ".tmp";
 
         try
@@ -142,27 +227,11 @@ public static class AnimeArtworkStore
                              64 * 1024,
                              FileOptions.Asynchronous | FileOptions.SequentialScan))
             {
-                var buffer = new byte[64 * 1024];
-                long total = 0;
-
-                while (true)
-                {
-                    var read = await source.ReadAsync(buffer, cancellationToken);
-                    if (read == 0)
-                    {
-                        break;
-                    }
-
-                    total += read;
-                    if (total > MaxImageBytes)
-                    {
-                        return false;
-                    }
-
-                    await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
-                }
-
-                if (total == 0)
+                if (!await CreateOptimizedDerivativeAsync(
+                        kind,
+                        source,
+                        output,
+                        cancellationToken))
                 {
                     return false;
                 }
@@ -179,6 +248,10 @@ public static class AnimeArtworkStore
             }
 
             File.Move(temporaryPath, finalPath, true);
+            await WriteTextAtomicAsync(
+                GetDerivativeMarkerPath(animeId, kind),
+                DerivativeVersion,
+                cancellationToken);
             return true;
         }
         finally
@@ -190,15 +263,143 @@ public static class AnimeArtworkStore
         }
     }
 
+    public static async Task<bool> CreateOptimizedDerivativeAsync(
+        AnimeArtworkKind kind,
+        Stream source,
+        Stream destination,
+        CancellationToken cancellationToken)
+    {
+        await using var buffered = new MemoryStream();
+        var buffer = new byte[64 * 1024];
+        long total = 0;
+
+        while (true)
+        {
+            var read = await source.ReadAsync(buffer, cancellationToken);
+            if (read == 0)
+            {
+                break;
+            }
+
+            total += read;
+            if (total > MaxImageBytes)
+            {
+                return false;
+            }
+
+            await buffered.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+        }
+
+        if (total == 0)
+        {
+            return false;
+        }
+
+        buffered.Position = 0;
+
+        try
+        {
+            using var image = await Image.LoadAsync(buffered, cancellationToken);
+            image.Mutate(context => context.AutoOrient());
+
+            var maxWidth = kind == AnimeArtworkKind.Poster
+                ? PosterMaxWidth
+                : FanartMaxWidth;
+
+            if (image.Width > maxWidth)
+            {
+                image.Mutate(context => context.Resize(maxWidth, 0));
+            }
+
+            await image.SaveAsync(
+                destination,
+                new WebpEncoder { Quality = WebpQuality },
+                cancellationToken);
+
+            return true;
+        }
+        catch (UnknownImageFormatException)
+        {
+            return false;
+        }
+        catch (InvalidImageContentException)
+        {
+            return false;
+        }
+        catch (NotSupportedException)
+        {
+            return false;
+        }
+    }
+
+    private static string GetArtworkDirectory(Guid animeId) =>
+        Path.Combine(RootPath, animeId.ToString("N"));
+
+    private static string GetDerivativeMarkerPath(Guid animeId, AnimeArtworkKind kind) =>
+        Path.Combine(
+            GetArtworkDirectory(animeId),
+            ToSlug(kind) + ".derivative");
+
+    private static string GetSourceMarkerPath(Guid animeId, AnimeArtworkKind kind) =>
+        Path.Combine(
+            GetArtworkDirectory(animeId),
+            ToSlug(kind) + ".source");
+
+    private static string BuildSourceIdentity(FileInfo source) =>
+        $"{source.Length}:{source.LastWriteTimeUtc.Ticks}";
+
+    private static async Task<string?> ReadSourceIdentityAsync(
+        Guid animeId,
+        AnimeArtworkKind kind,
+        CancellationToken cancellationToken)
+    {
+        var path = GetSourceMarkerPath(animeId, kind);
+        if (!File.Exists(path))
+        {
+            return null;
+        }
+
+        try
+        {
+            return (await File.ReadAllTextAsync(path, cancellationToken)).Trim();
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    private static async Task WriteTextAtomicAsync(
+        string path,
+        string value,
+        CancellationToken cancellationToken)
+    {
+        var temporaryPath = path + ".tmp";
+        try
+        {
+            await File.WriteAllTextAsync(temporaryPath, value, cancellationToken);
+            File.Move(temporaryPath, path, true);
+        }
+        finally
+        {
+            if (File.Exists(temporaryPath))
+            {
+                File.Delete(temporaryPath);
+            }
+        }
+    }
+
+    private static bool IsSupportedContentType(string? contentType) =>
+        contentType?.Split(';', 2)[0].Trim().ToLowerInvariant() is
+            "image/jpeg" or
+            "image/jpg" or
+            "image/png" or
+            "image/webp";
+
     private static string ToSlug(AnimeArtworkKind kind) =>
         kind == AnimeArtworkKind.Poster ? "poster" : "fanart";
-
-    private static string? ExtensionForContentType(string? contentType) =>
-        contentType?.Split(';', 2)[0].Trim().ToLowerInvariant() switch
-        {
-            "image/jpeg" or "image/jpg" => ".jpg",
-            "image/png" => ".png",
-            "image/webp" => ".webp",
-            _ => null
-        };
 }
