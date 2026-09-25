@@ -1,0 +1,191 @@
+@page
+@using AniLingo.Web.Features.Acquisition.Ownership
+@model AniLingo.Web.Pages.Settings.SonarrMigrationModel
+@{
+    ViewData["Title"] = "Sonarr migration";
+    var statusClass = Model.Sonarr.Status switch
+    {
+        SonarrObservationStatus.Observed => "status-pill status-ok",
+        SonarrObservationStatus.Unavailable => "status-pill status-error",
+        _ => "status-pill"
+    };
+    var statusText = Model.Sonarr.Status switch
+    {
+        SonarrObservationStatus.Observed => $"Observed {Model.Sonarr.ObservedAtUtc:u}",
+        SonarrObservationStatus.Unavailable => "Sonarr unavailable",
+        _ => "Sonarr not configured"
+    };
+}
+
+<header class="page-header">
+    <div>
+        <a class="back-link" href="/Settings">&larr; Settings</a>
+        <span class="eyebrow">Settings &middot; Acquisition</span>
+        <h1>Sonarr migration</h1>
+        <p>
+            Decide per anime whether Sonarr keeps managing it or AniLingo takes over.
+            AniLingo only reads Sonarr; the optional monitoring change is the single Sonarr update it makes, and only when you tick it.
+        </p>
+    </div>
+    <span class="@statusClass">@statusText</span>
+</header>
+
+@if (!string.IsNullOrWhiteSpace(Model.Notice))
+{
+    <p class="metadata-error" style="color:inherit">@Model.Notice</p>
+}
+@if (!string.IsNullOrWhiteSpace(Model.Error))
+{
+    <p class="metadata-error">@Model.Error</p>
+}
+
+<div class="settings-grid">
+    <section class="panel">
+        <div class="panel-heading">
+            <h2>Sonarr observation</h2>
+            <span>@Model.Sonarr.Series.Count series &middot; @Model.Sonarr.Queue.Count queued</span>
+        </div>
+        @if (Model.Sonarr.Status == SonarrObservationStatus.NotConfigured)
+        {
+            <p class="muted">
+                Configure the Sonarr connection under <a href="/Admin/Sonarr">Admin &rarr; Sonarr</a>.
+                Without Sonarr, AniLingo only enforces the per-anime management mode.
+            </p>
+        }
+        else if (Model.Sonarr.Status == SonarrObservationStatus.Unavailable)
+        {
+            <p class="metadata-error">
+                @Model.Sonarr.StatusDetail
+                AniLingo pauses grabs, imports and renames for Sonarr-linked anime until Sonarr can be observed again.
+            </p>
+        }
+        else
+        {
+            <p class="muted">
+                Series, episode files, queue and recent history are read from Sonarr's v3 API to recognise Sonarr-owned releases, downloads and paths.
+            </p>
+        }
+        <div class="inline-actions">
+            <a class="button" href="?refresh=true@(string.IsNullOrWhiteSpace(Model.Q) ? "" : "&q=" + Uri.EscapeDataString(Model.Q))">Refresh from Sonarr</a>
+        </div>
+    </section>
+
+    <section class="panel">
+        <div class="panel-heading">
+            <h2>Conflicts</h2>
+            <span class="@(Model.Conflicts.Count == 0 ? "status-pill status-ok" : "status-pill status-warning")">@Model.Conflicts.Count</span>
+        </div>
+        @if (Model.Conflicts.Count == 0)
+        {
+            <p class="muted">No conflicting AniLingo/Sonarr actions detected.</p>
+        }
+        else
+        {
+            <ul>
+                @foreach (var conflict in Model.Conflicts)
+                {
+                    <li><strong>@conflict.AnimeKey</strong> (@conflict.Kind, @conflict.Value): @conflict.Reason</li>
+                }
+            </ul>
+        }
+    </section>
+
+    <section class="panel">
+        <div class="panel-heading">
+            <h2>Safe rollout</h2>
+            <span>Title by title</span>
+        </div>
+        <ol class="muted">
+            <li><strong>Keep Sonarr</strong> is the default: AniLingo never grabs, imports or renames the anime.</li>
+            <li><strong>Parallel</strong> lets AniLingo acquire, but it only touches files its own jobs created and skips anything Sonarr is downloading.</li>
+            <li><strong>Hand over</strong> once Sonarr's queue for the series is empty. Tick the monitoring option to unmonitor the series in Sonarr; otherwise AniLingo keeps grabs and renames blocked until you do it yourself.</li>
+            <li><strong>Revert</strong> returns the anime to Sonarr (finish or cancel AniLingo jobs first). With the monitoring option it re-enables exactly the monitoring AniLingo turned off.</li>
+        </ol>
+    </section>
+</div>
+
+<section class="panel">
+    <div class="panel-heading">
+        <h2>Anime</h2>
+        <form method="get" class="inline-actions">
+            <input name="q" value="@Model.Q" placeholder="Filter anime" />
+            <button class="button" type="submit">Filter</button>
+        </form>
+    </div>
+
+    @if (Model.Rows.Count == 0)
+    {
+        <p class="muted">No anime found.</p>
+    }
+
+    @foreach (var row in Model.Rows)
+    {
+        <article class="panel">
+            <div class="panel-heading">
+                <div>
+                    <h3>@row.Title</h3>
+                    <span class="muted">@row.AnimeKey</span>
+                </div>
+                <span class="@(row.Mode == AnimeManagementMode.AniLingoManaged ? "status-pill status-ok" : row.Mode == AnimeManagementMode.ParallelAcquisition ? "status-pill status-warning" : "status-pill")">
+                    @AniLingo.Web.Pages.Settings.SonarrMigrationModel.DescribeMode(row.Mode)@(row.HasExplicitDecision ? "" : " (default)")
+                </span>
+            </div>
+
+            <p class="muted">
+                @if (row.SeriesId is null)
+                {
+                    <span>Not found in Sonarr.</span>
+                }
+                else
+                {
+                    <span>
+                        Sonarr series: <strong>@(row.SeriesTitle ?? $"#{row.SeriesId}")</strong>@(row.SeriesSuggested ? " (suggested match)" : "")
+                        &middot; @(row.Series is null ? "not observed" : row.Series.Monitored ? "monitored in Sonarr" : "unmonitored in Sonarr")
+                        &middot; @row.ActiveSonarrDownloads active Sonarr download(s)
+                        @if (row.SonarrUnmonitoredByAniLingo)
+                        {
+                            <span>&middot; unmonitored by AniLingo</span>
+                        }
+                    </span>
+                }
+            </p>
+
+            @foreach (var conflict in row.Conflicts)
+            {
+                <p class="metadata-error">@conflict.Reason</p>
+            }
+
+            <form method="post" asp-page-handler="Apply" asp-route-q="@Model.Q" class="inline-actions">
+                <input type="hidden" name="animeKey" value="@row.AnimeKey" />
+                <input type="hidden" name="sonarrSeriesId" value="@row.SeriesId" />
+                @if (row.SeriesId is not null)
+                {
+                    <label class="checkbox-row">
+                        <input type="checkbox" name="applySonarrMonitoring" value="true" />
+                        <span>Also update Sonarr monitoring</span>
+                    </label>
+                }
+                <button class="button" type="submit" name="migrationAction" value="@AnimeMigrationAction.KeepSonarr">Keep Sonarr</button>
+                <button class="button" type="submit" name="migrationAction" value="@AnimeMigrationAction.StartParallel">Parallel</button>
+                <button class="button button-primary" type="submit" name="migrationAction" value="@AnimeMigrationAction.HandOverToAniLingo">Hand over to AniLingo</button>
+                <button class="button" type="submit" name="migrationAction" value="@AnimeMigrationAction.Revert">Revert</button>
+            </form>
+        </article>
+    }
+</section>
+
+@if (Model.RecentEvents.Count > 0)
+{
+    <section class="panel">
+        <div class="panel-heading">
+            <h2>Migration log</h2>
+            <span>Latest @Model.RecentEvents.Count</span>
+        </div>
+        <ul>
+            @foreach (var entry in Model.RecentEvents)
+            {
+                <li>@entry.AtUtc.ToString("u") &middot; <strong>@entry.AnimeKey</strong> &middot; @entry.Action: @entry.Detail</li>
+            }
+        </ul>
+    </section>
+}

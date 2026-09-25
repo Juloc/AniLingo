@@ -1,6 +1,6 @@
 namespace AniLingo.Web.Features.Acquisition.Ownership;
 
-public static class SonarrParallelSafety
+public static partial class SonarrParallelSafety
 {
     public static AnimeManagementMode GetMode(
         AcquisitionOwnershipState state,
@@ -122,11 +122,17 @@ public static class SonarrParallelSafety
             throw new InvalidOperationException(decision.Reason);
         }
 
+        // Keep the Sonarr link and monitoring marker: a mode change must not forget which
+        // Sonarr series manages the anime or which Sonarr change a revert has to restore.
+        var assignment = state.Anime.TryGetValue(animeKey, out var existing)
+            ? existing with { Mode = target, ChangedAtUtc = now }
+            : new AnimeManagementAssignment(animeKey, target, now);
+
         var anime = new Dictionary<string, AnimeManagementAssignment>(
             state.Anime,
             StringComparer.OrdinalIgnoreCase)
         {
-            [animeKey] = new(animeKey, target, now)
+            [animeKey] = assignment
         };
 
         return state with { Anime = anime };
@@ -198,6 +204,7 @@ public static class SonarrParallelSafety
             }
         }
 
+        conflicts.AddRange(DetectSonarrConflicts(state, sonarr));
         return conflicts;
     }
 

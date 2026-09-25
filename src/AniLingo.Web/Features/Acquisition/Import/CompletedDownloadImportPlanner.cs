@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using AniLingo.Web.Features.Acquisition.Ownership;
 using AniLingo.Web.Features.Acquisition.Quality;
 
 namespace AniLingo.Web.Features.Acquisition.Import;
@@ -20,7 +21,8 @@ public static class CompletedDownloadImportPlanner
     public static CompletedDownloadImportPlan Plan(
         CompletedDownloadImportContext context,
         IEnumerable<CompletedDownloadFile> completedFiles,
-        IEnumerable<ExistingAnimeFile>? existingFiles = null)
+        IEnumerable<ExistingAnimeFile>? existingFiles = null,
+        AcquisitionOwnershipSnapshot? ownership = null)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(completedFiles);
@@ -29,6 +31,31 @@ public static class CompletedDownloadImportPlanner
         var allFiles = completedFiles
             .Where(file => !string.IsNullOrWhiteSpace(file.Path))
             .ToArray();
+
+        if (ownership is not null)
+        {
+            var download = SonarrParallelSafety.CanImport(
+                ownership,
+                new AcquisitionImportRequest(context.AnimeKey, context.AcquisitionId, context.DownloadId, ""));
+            if (!download.Allowed)
+            {
+                var reason = $"Ownership: {download.Reason}";
+                return new CompletedDownloadImportPlan(
+                    context.AcquisitionId,
+                    allFiles
+                        .Select(file => new PlannedAnimeImport(
+                            file,
+                            AnimeImportDisposition.Ignore,
+                            context.PreferredAction,
+                            [],
+                            [],
+                            [],
+                            0,
+                            [reason]))
+                        .ToArray(),
+                    reason);
+            }
+        }
 
         var videos = allFiles
             .Where(file => VideoExtensions.Contains(Path.GetExtension(file.Path)))
@@ -43,7 +70,8 @@ public static class CompletedDownloadImportPlanner
 
         foreach (var video in videos)
         {
-            plans.Add(PlanVideo(context, video, videos.Length, sidecars, existing));
+            var planned = PlanVideo(context, video, videos.Length, sidecars, existing);
+            plans.Add(ownership is null ? planned : ApplyOwnership(context, planned, ownership));
         }
 
         foreach (var nonVideo in allFiles.Except(videos).Except(sidecars))
@@ -60,6 +88,52 @@ public static class CompletedDownloadImportPlanner
         }
 
         return new CompletedDownloadImportPlan(context.AcquisitionId, plans);
+    }
+
+    // Sonarr-owned sources are left to Sonarr; replacing a file AniLingo may not mutate needs
+    // an owner decision instead of an automatic import.
+    private static PlannedAnimeImport ApplyOwnership(
+        CompletedDownloadImportContext context,
+        PlannedAnimeImport planned,
+        AcquisitionOwnershipSnapshot ownership)
+    {
+        var source = SonarrParallelSafety.CanImport(
+            ownership,
+            new AcquisitionImportRequest(
+                context.AnimeKey,
+                context.AcquisitionId,
+                context.DownloadId,
+                planned.Source.Path));
+        if (!source.Allowed)
+        {
+            return planned with
+            {
+                Disposition = AnimeImportDisposition.Ignore,
+                ExistingPathsToReplaceAfterCommit = [],
+                Reasons = [.. planned.Reasons, $"Ownership: {source.Reason}"]
+            };
+        }
+
+        if (planned.Disposition != AnimeImportDisposition.AutoImport)
+        {
+            return planned;
+        }
+
+        foreach (var replacement in planned.ExistingPathsToReplaceAfterCommit)
+        {
+            var decision = SonarrParallelSafety.CanMutateLibraryPath(ownership, context.AnimeKey, replacement);
+            if (!decision.Allowed)
+            {
+                return planned with
+                {
+                    Disposition = AnimeImportDisposition.ManualReview,
+                    ExistingPathsToReplaceAfterCommit = [],
+                    Reasons = [.. planned.Reasons, $"Ownership: existing file cannot be replaced. {decision.Reason}"]
+                };
+            }
+        }
+
+        return planned;
     }
 
     private static PlannedAnimeImport PlanVideo(

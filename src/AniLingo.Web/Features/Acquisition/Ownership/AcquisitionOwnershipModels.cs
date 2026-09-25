@@ -22,10 +22,24 @@ public enum AcquisitionOwnershipStatus
     Cancelled
 }
 
+public enum AnimeMigrationAction
+{
+    KeepSonarr,
+    StartParallel,
+    HandOverToAniLingo,
+    Revert
+}
+
+// SonarrSeriesId links the AniLingo anime to the Sonarr series that manages it.
+// SonarrUnmonitoredByAniLingo records that a documented migration action unmonitored the
+// series in Sonarr, so a revert can restore exactly that change and nothing else.
 public sealed record AnimeManagementAssignment(
     string AnimeKey,
     AnimeManagementMode Mode,
-    DateTimeOffset ChangedAtUtc);
+    DateTimeOffset ChangedAtUtc,
+    int? SonarrSeriesId = null,
+    string? SonarrSeriesTitle = null,
+    bool SonarrUnmonitoredByAniLingo = false);
 
 public sealed record AcquisitionOwnership(
     string JobId,
@@ -33,7 +47,8 @@ public sealed record AcquisitionOwnership(
     AcquisitionOwner Owner,
     string? ReleaseKey,
     AcquisitionOwnershipStatus Status,
-    DateTimeOffset UpdatedAtUtc);
+    DateTimeOffset UpdatedAtUtc,
+    string? DownloadId = null);
 
 public sealed record ManagedMediaPath(
     string Path,
@@ -42,15 +57,13 @@ public sealed record ManagedMediaPath(
     string? JobId,
     DateTimeOffset UpdatedAtUtc);
 
-public sealed record SonarrObservedState(
-    IReadOnlySet<string> ActiveReleaseKeys,
-    IReadOnlySet<string> ActivePaths)
-{
-    public static SonarrObservedState Empty { get; } =
-        new(
-            new HashSet<string>(StringComparer.OrdinalIgnoreCase),
-            new HashSet<string>(StringComparer.OrdinalIgnoreCase));
-}
+public sealed record AnimeMigrationEvent(
+    DateTimeOffset AtUtc,
+    string AnimeKey,
+    AnimeMigrationAction Action,
+    AnimeManagementMode FromMode,
+    AnimeManagementMode ToMode,
+    string Detail);
 
 public sealed record OwnershipDecision(bool Allowed, string Reason);
 
@@ -66,6 +79,10 @@ public sealed record AcquisitionOwnershipState(
     Dictionary<string, AcquisitionOwnership> Jobs,
     Dictionary<string, ManagedMediaPath> Paths)
 {
+    public const int MaxMigrationEvents = 500;
+
+    public List<AnimeMigrationEvent> MigrationLog { get; init; } = [];
+
     public static AcquisitionOwnershipState Empty() =>
         new(
             1,
@@ -73,3 +90,9 @@ public sealed record AcquisitionOwnershipState(
             new Dictionary<string, AcquisitionOwnership>(StringComparer.OrdinalIgnoreCase),
             new Dictionary<string, ManagedMediaPath>(StringComparer.OrdinalIgnoreCase));
 }
+
+// Everything an acquisition decision seam needs: persisted AniLingo ownership plus the
+// latest read-only Sonarr observation.
+public sealed record AcquisitionOwnershipSnapshot(
+    AcquisitionOwnershipState State,
+    SonarrObservedState Sonarr);

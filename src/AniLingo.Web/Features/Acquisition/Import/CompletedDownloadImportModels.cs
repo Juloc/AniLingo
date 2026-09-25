@@ -37,7 +37,8 @@ public sealed record CompletedDownloadImportContext(
     IReadOnlyList<RequestedAnimeEpisode> RequestedEpisodes,
     AnimeQualityProfile QualityProfile,
     AnimeImportFileAction PreferredAction = AnimeImportFileAction.Move,
-    double AutoImportConfidenceThreshold = 0.90);
+    double AutoImportConfidenceThreshold = 0.90,
+    string? DownloadId = null);
 
 public sealed record PlannedAnimeImport(
     CompletedDownloadFile Source,
@@ -51,8 +52,11 @@ public sealed record PlannedAnimeImport(
 
 public sealed record CompletedDownloadImportPlan(
     string AcquisitionId,
-    IReadOnlyList<PlannedAnimeImport> Files)
+    IReadOnlyList<PlannedAnimeImport> Files,
+    string? OwnershipBlockReason = null)
 {
+    public bool BlockedByOwnership => OwnershipBlockReason is not null;
+
     public bool RequiresManualIntervention =>
         Files.Any(file => file.Disposition == AnimeImportDisposition.ManualReview);
 

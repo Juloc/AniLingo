@@ -1,4 +1,5 @@
 using AniLingo.Web.Features.Acquisition;
+using AniLingo.Web.Features.Acquisition.Ownership;
 using AniLingo.Web.Features.Acquisition.Quality;
 
 namespace AniLingo.Web.Features.Acquisition.Monitoring;
@@ -147,7 +148,9 @@ public static class AnimeMonitoringEngine
         AnimeWantedEpisode wanted,
         AnimeReleaseScoreResult candidate,
         AnimeReleaseScoreResult? currentFile,
-        AnimeMonitoringState state)
+        AnimeMonitoringState state,
+        AcquisitionOwnershipSnapshot? ownership = null,
+        DateTimeOffset? now = null)
     {
         ArgumentNullException.ThrowIfNull(profile);
         ArgumentNullException.ThrowIfNull(wanted);
@@ -171,6 +174,26 @@ public static class AnimeMonitoringEngine
                 attempt.Status is AnimeAcquisitionAttemptStatus.Pending or AnimeAcquisitionAttemptStatus.Grabbed))
         {
             return new(false, "Release is already pending or was already grabbed.", candidate);
+        }
+
+        if (ownership is not null)
+        {
+            var key = wanted.Key;
+            var ownershipDecision = SonarrParallelSafety.CanGrab(
+                ownership,
+                new AcquisitionGrabRequest(
+                    key.AnimeKey,
+                    release.ReleaseKey,
+                    release.SeasonNumber ?? key.SeasonNumber,
+                    release.EpisodeStart ?? key.EpisodeNumber,
+                    release.EpisodeEnd ?? key.EpisodeNumber,
+                    release.AbsoluteEpisodeStart ?? key.AbsoluteEpisodeNumber,
+                    release.AbsoluteEpisodeEnd ?? key.AbsoluteEpisodeNumber),
+                now ?? DateTimeOffset.UtcNow);
+            if (!ownershipDecision.Allowed)
+            {
+                return new(false, $"Ownership: {ownershipDecision.Reason}", candidate);
+            }
         }
 
         if (wanted.Reason == AnimeWantedReason.Missing)
