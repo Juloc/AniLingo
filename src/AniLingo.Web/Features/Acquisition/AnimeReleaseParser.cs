@@ -178,7 +178,7 @@ public static partial class AnimeReleaseParser
     [GeneratedRegex(@"\b(?:DOVI|DOLBY[ ._-]?VISION|DV)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex DolbyVisionRegex();
 
-    [GeneratedRegex(@"\bHDR10\+\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"\bHDR10\+(?!\w)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex Hdr10PlusRegex();
 
     [GeneratedRegex(@"\bHDR10\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
