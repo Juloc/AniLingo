@@ -10,7 +10,8 @@ namespace AniLingo.Web.Pages.Books;
 public sealed class IndexModel(
     BookCatalogService books,
     CurrentAccountContext account,
-    AppDbContext db) : PageModel
+    AppDbContext db,
+    SabnzbdOperationsClient sabnzbdOperations) : PageModel
 {
     public string Query { get; private set; } = "";
     public string TargetLanguage { get; private set; } = "id";
@@ -212,32 +213,97 @@ public sealed class IndexModel(
             return Forbid();
         }
 
+        var effectiveName = string.IsNullOrWhiteSpace(displayName)
+            ? "AniLingo book"
+            : displayName.Trim();
+
         var operationStore = new OperationStore(db);
         var operationId = await operationStore.CreateAsync(
             new OperationDescriptor(
-                "sabnzbd-submit-url",
+                "sabnzbd-download",
                 "External downloads",
-                "Submit SABnzbd download",
-                displayName,
+                "SABnzbd download",
+                effectiveName,
                 account.ProfileId,
                 OperationLane.Normal,
                 IsDownload: true,
-                Retryable: false),
+                Retryable: false,
+                ExternalProvider: SabnzbdOperationsClient.ProviderId),
             cancellationToken);
 
         await operationStore.MarkRunningAsync(operationId, cancellationToken);
+        await operationStore.ReportProgressAsync(
+            operationId,
+            0,
+            "Submitting download to SABnzbd.",
+            cancellationToken: cancellationToken);
+
+        IReadOnlySet<string>? existingIds = null;
+        try
+        {
+            existingIds = await sabnzbdOperations.CaptureJobIdsAsync(
+                cancellationToken);
+        }
+        catch (Exception exception) when (
+            exception is HttpRequestException
+                or TaskCanceledException
+                or InvalidOperationException)
+        {
+            await operationStore.AppendLogAsync(
+                operationId,
+                OperationLogLevel.Warning,
+                "SABnzbd",
+                "Live queue access is unavailable; AniLingo will still try to submit the download.",
+                CancellationToken.None);
+        }
 
         try
         {
             var result = await books.QueueSabnzbdUrlAsync(
                 nzbUrl ?? "",
-                displayName,
+                effectiveName,
                 cancellationToken);
-            await operationStore.MarkSucceededAsync(
-                operationId,
-                result.Message,
-                cancellationToken);
-            TempData["Status"] = result.Message;
+
+            if (!result.Accepted)
+            {
+                await operationStore.MarkFailedAsync(
+                    operationId,
+                    result.Message,
+                    CancellationToken.None);
+                TempData["Status"] = result.Message;
+                return RedirectToPage();
+            }
+
+            var externalId = existingIds is null
+                ? null
+                : await sabnzbdOperations.ResolveNewJobIdAsync(
+                    existingIds,
+                    effectiveName,
+                    cancellationToken);
+
+            if (string.IsNullOrWhiteSpace(externalId))
+            {
+                await operationStore.MarkSucceededAsync(
+                    operationId,
+                    "Sent to SABnzbd. Live progress could not be linked; use a full SABnzbd API key to enable queue/history monitoring.",
+                    CancellationToken.None);
+            }
+            else
+            {
+                await operationStore.SetExternalReferenceAsync(
+                    operationId,
+                    SabnzbdOperationsClient.ProviderId,
+                    externalId,
+                    cancellationToken);
+                await operationStore.ReportProgressAsync(
+                    operationId,
+                    0,
+                    "Accepted by SABnzbd; waiting for download progress.",
+                    cancellationToken: cancellationToken);
+            }
+
+            TempData["Status"] =
+                "SABnzbd download submitted. Track it under Admin → Operations → Downloads.";
         }
         catch (Exception exception) when (
             exception is InvalidOperationException
@@ -272,17 +338,42 @@ public sealed class IndexModel(
         var operationStore = new OperationStore(db);
         var operationId = await operationStore.CreateAsync(
             new OperationDescriptor(
-                "sabnzbd-submit-file",
+                "sabnzbd-download",
                 "External downloads",
-                "Submit SABnzbd NZB",
+                "SABnzbd download",
                 nzb.FileName,
                 account.ProfileId,
                 OperationLane.Normal,
                 IsDownload: true,
-                Retryable: false),
+                Retryable: false,
+                ExternalProvider: SabnzbdOperationsClient.ProviderId),
             cancellationToken);
 
         await operationStore.MarkRunningAsync(operationId, cancellationToken);
+        await operationStore.ReportProgressAsync(
+            operationId,
+            0,
+            "Submitting NZB to SABnzbd.",
+            cancellationToken: cancellationToken);
+
+        IReadOnlySet<string>? existingIds = null;
+        try
+        {
+            existingIds = await sabnzbdOperations.CaptureJobIdsAsync(
+                cancellationToken);
+        }
+        catch (Exception exception) when (
+            exception is HttpRequestException
+                or TaskCanceledException
+                or InvalidOperationException)
+        {
+            await operationStore.AppendLogAsync(
+                operationId,
+                OperationLogLevel.Warning,
+                "SABnzbd",
+                "Live queue access is unavailable; AniLingo will still try to submit the NZB.",
+                CancellationToken.None);
+        }
 
         try
         {
@@ -291,11 +382,47 @@ public sealed class IndexModel(
                 stream,
                 nzb.FileName,
                 cancellationToken);
-            await operationStore.MarkSucceededAsync(
-                operationId,
-                result.Message,
-                cancellationToken);
-            TempData["Status"] = result.Message;
+
+            if (!result.Accepted)
+            {
+                await operationStore.MarkFailedAsync(
+                    operationId,
+                    result.Message,
+                    CancellationToken.None);
+                TempData["Status"] = result.Message;
+                return RedirectToPage();
+            }
+
+            var externalId = existingIds is null
+                ? null
+                : await sabnzbdOperations.ResolveNewJobIdAsync(
+                    existingIds,
+                    nzb.FileName,
+                    cancellationToken);
+
+            if (string.IsNullOrWhiteSpace(externalId))
+            {
+                await operationStore.MarkSucceededAsync(
+                    operationId,
+                    "Sent to SABnzbd. Live progress could not be linked; use a full SABnzbd API key to enable queue/history monitoring.",
+                    CancellationToken.None);
+            }
+            else
+            {
+                await operationStore.SetExternalReferenceAsync(
+                    operationId,
+                    SabnzbdOperationsClient.ProviderId,
+                    externalId,
+                    cancellationToken);
+                await operationStore.ReportProgressAsync(
+                    operationId,
+                    0,
+                    "Accepted by SABnzbd; waiting for download progress.",
+                    cancellationToken: cancellationToken);
+            }
+
+            TempData["Status"] =
+                "SABnzbd download submitted. Track it under Admin → Operations → Downloads.";
         }
         catch (Exception exception) when (
             exception is InvalidOperationException
@@ -311,4 +438,5 @@ public sealed class IndexModel(
 
         return RedirectToPage();
     }
+
 }

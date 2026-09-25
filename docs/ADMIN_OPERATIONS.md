@@ -49,9 +49,11 @@ Other terminal states:
 - `Cancelled`
 - `Interrupted`
 
-When AniLingo starts, operations left in `Queued` or `Running` for a worker lane from the previous process are marked `Interrupted`. Anonymous .NET delegates are deliberately not serialized. This prevents phantom running jobs while preserving accurate history.
+When AniLingo starts, local operations left in `Queued` or `Running` for a worker lane from the previous process are marked `Interrupted`. Anonymous .NET delegates are deliberately not serialized. This prevents phantom running jobs while preserving accurate history.
 
-Retry is available while the current process still owns the original retryable delegate. After a process restart, history remains but that transient delegate is intentionally unavailable. Durable resumable handler payloads can be introduced later for individual job kinds without creating a second queue model.
+External operations can persist an `ExternalProvider` + `ExternalId`. Those jobs are not marked interrupted by the local worker reconciliation because their authoritative work continues outside AniLingo. Provider monitors resume after restart and keep the same canonical operation record current.
+
+Retry is available while the current process still owns the original retryable local delegate. After a process restart, local history remains but that transient delegate is intentionally unavailable. Durable provider-backed jobs such as SABnzbd instead resume status monitoring from their persisted external reference.
 
 ## Downloads
 
@@ -64,7 +66,7 @@ Initial tracked network/import work includes:
 - novel chapter downloads
 - remote novel imports
 - remote EPUB imports
-- SABnzbd submissions
+- SABnzbd downloads, including live queue/post-processing state when a full SABnzbd API key allows queue/history access
 - Sonarr artwork downloads
 
 Other job producers should use the same operation descriptor rather than adding their own history table.
@@ -82,3 +84,12 @@ Persisted operational data must not contain:
 - private filesystem paths
 
 Exceptions are persisted as bounded type/message summaries rather than stack traces. Full server diagnostics may continue to use the normal application logger.
+
+
+## External download monitoring
+
+SABnzbd submissions remain canonical in the Books integration. Operations does not implement a second submit path.
+
+Before submission AniLingo snapshots visible SAB job IDs. After the existing submit succeeds it resolves the newly assigned `nzo_id` and stores it on the operation. A hosted monitor then projects SAB queue/history state into the operation's progress, bytes, speed/ETA (when SAB exposes them), and terminal success/failure.
+
+The full SABnzbd API key can read queue/history. An NZB-only key may still submit a job but cannot provide live monitoring; AniLingo records the submission and clearly marks live tracking as unavailable rather than storing the API key in Operations.
