@@ -32,14 +32,23 @@ public sealed class ReadingSegmentMappingTests
             Assert.AreEqual(1, stored.Count);
             Assert.AreEqual(first.Id, stored[0].Id);
 
-            await Assert.ThrowsExceptionAsync<InvalidOperationException>(
-                () => reloaded.AddAsync(
+            var overlapRejected = false;
+            try
+            {
+                await reloaded.AddAsync(
                     Mapping(
                         localId,
                         localStart: 12,
                         localEnd: 24,
                         externalId: "101",
-                        remoteStart: 1)));
+                        remoteStart: 1));
+            }
+            catch (InvalidOperationException)
+            {
+                overlapRejected = true;
+            }
+
+            Assert.IsTrue(overlapRejected);
         }
         finally
         {
