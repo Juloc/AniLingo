@@ -1,25 +1,25 @@
 using AniLingo.Web.Features.ReaderCore;
-using Xunit;
 
 namespace AniLingo.Tests;
 
+[TestClass]
 public sealed class ReaderDocumentTests
 {
-    [Theory]
-    [InlineData("NOVEL", "narou", ReaderContentType.LightNovel)]
-    [InlineData("LIGHT_NOVEL", "narou", ReaderContentType.LightNovel)]
-    [InlineData(null, "narou", ReaderContentType.WebNovel)]
+    [DataTestMethod]
+    [DataRow("NOVEL", "narou", ReaderContentType.LightNovel)]
+    [DataRow("LIGHT_NOVEL", "narou", ReaderContentType.LightNovel)]
+    [DataRow(null, "narou", ReaderContentType.WebNovel)]
     public void NovelMetadataResolvesContentType(
         string? format,
         string? sourceProvider,
         ReaderContentType expected)
     {
-        Assert.Equal(
+        Assert.AreEqual(
             expected,
             ReaderContentTypes.FromNovelMetadata(format, sourceProvider));
     }
 
-    [Fact]
+    [TestMethod]
     public void ReflowReadersExposeSharedCapabilities()
     {
         var book = ReaderDocumentDescriptor.Create(
@@ -31,24 +31,24 @@ public sealed class ReaderDocumentTests
             ReaderContentType.LightNovel,
             "LN");
 
-        Assert.Equal(ReaderLayoutKind.ReflowableText, book.LayoutKind);
-        Assert.True(book.Capabilities.SupportsTypography);
-        Assert.True(book.Capabilities.SupportsPaged);
-        Assert.True(lightNovel.Capabilities.SupportsContinuous);
-        Assert.True(lightNovel.Capabilities.SupportsEmbeddedImages);
+        Assert.AreEqual(ReaderLayoutKind.ReflowableText, book.LayoutKind);
+        Assert.IsTrue(book.Capabilities.SupportsTypography);
+        Assert.IsTrue(book.Capabilities.SupportsPaged);
+        Assert.IsTrue(lightNovel.Capabilities.SupportsContinuous);
+        Assert.IsTrue(lightNovel.Capabilities.SupportsEmbeddedImages);
     }
 
-    [Fact]
+    [TestMethod]
     public void BuiltInPresetsDifferByTypeWithoutChangingTheEngine()
     {
         var book = ReaderPresetCatalog.For(ReaderContentType.Book);
         var lightNovel = ReaderPresetCatalog.For(ReaderContentType.LightNovel);
         var webNovel = ReaderPresetCatalog.For(ReaderContentType.WebNovel);
 
-        Assert.Equal("paged", book.ReadingMode);
-        Assert.Equal("paged", lightNovel.ReadingMode);
-        Assert.Equal("light-novel", lightNovel.ChapterStyle);
-        Assert.Equal("continuous", webNovel.ReadingMode);
-        Assert.False(webNovel.TwoPageSpread);
+        Assert.AreEqual("paged", book.ReadingMode);
+        Assert.AreEqual("paged", lightNovel.ReadingMode);
+        Assert.AreEqual("light-novel", lightNovel.ChapterStyle);
+        Assert.AreEqual("continuous", webNovel.ReadingMode);
+        Assert.IsFalse(webNovel.TwoPageSpread);
     }
 }
