@@ -1,14 +1,13 @@
 @page
-@using AniLingo.Web.Features.Localization
 @model AniLingo.Web.Pages.Settings.IndexModel
 @{
-    var ui = ViewData["UiTextBundle"] as UiTextBundle ?? UiTextBundle.English;
+    var ui = Model.Ui;
     ViewData["Title"] = ui["settings.title"];
 }
 
 <header class="page-header">
     <div>
-        <span class="eyebrow">Personal</span>
+        <span class="eyebrow">@ui["settings.scope.personal"]</span>
         <h1>@ui["settings.title"]</h1>
         <p>@ui["settings.subtitle"]</p>
     </div>
@@ -18,7 +17,7 @@
     <section class="panel">
         <div class="panel-heading">
             <h2>@ui["settings.language.title"]</h2>
-            <span>Personal</span>
+            <span>@ui["settings.scope.personal"]</span>
         </div>
         <p class="muted">@ui["settings.language.description"]</p>
         <a class="button" asp-page="/Settings/Language">@ui["settings.language.manage"]</a>
@@ -27,7 +26,7 @@
     <section class="panel">
         <div class="panel-heading">
             <h2>@ui["settings.learning.title"]</h2>
-            <span>Personal</span>
+            <span>@ui["settings.scope.personal"]</span>
         </div>
         <p class="muted">@ui["settings.learning.description"]</p>
         <a class="button" asp-page="/Settings/Learning">@ui["settings.learning.manage"]</a>
@@ -36,15 +35,36 @@
     <section class="panel">
         <div class="panel-heading">
             <h2>@ui["settings.ai.title"]</h2>
-            <span>Personal</span>
+            <span>@ui["settings.scope.personal"]</span>
         </div>
         <p class="muted">@ui["settings.ai.description"]</p>
         <a class="button" asp-page="/Settings/Ai">@ui["settings.ai.manage"]</a>
     </section>
 
     <section class="panel">
-        <div class="panel-heading"><h2>@ui["settings.anilist.title"]</h2><span>Personal</span></div>
+        <div class="panel-heading">
+            <h2>@ui["settings.anilist.title"]</h2>
+            <span>@ui["settings.scope.personal"]</span>
+        </div>
         <p class="muted">@ui["settings.anilist.description"]</p>
         <a class="button" asp-page="/Settings/AniList">@ui["settings.anilist.manage"]</a>
+    </section>
+
+    <section class="panel">
+        <div class="panel-heading">
+            <h2>@ui["settings.mappingReview.title"]</h2>
+            <span>@ui["settings.scope.owner"]</span>
+        </div>
+        <p class="muted">@ui["settings.mappingReview.description"]</p>
+        <a class="button" asp-page="/Settings/MappingReview">@ui["settings.mappingReview.manage"]</a>
+    </section>
+
+    <section class="panel">
+        <div class="panel-heading">
+            <h2>@ui["settings.mappingSegments.title"]</h2>
+            <span>@ui["settings.scope.owner"]</span>
+        </div>
+        <p class="muted">@ui["settings.mappingSegments.description"]</p>
+        <a class="button" asp-page="/Settings/MappingSegments">@ui["settings.mappingSegments.manage"]</a>
     </section>
 </div>

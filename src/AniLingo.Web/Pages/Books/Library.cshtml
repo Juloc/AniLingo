@@ -104,15 +104,25 @@
             }
         </div>
 
-        @if (firstChapter is Guid chapterId)
-        {
-            <div class="book-actions">
+        <div class="book-actions">
+            @if (firstChapter is Guid chapterId)
+            {
                 <a class="button button-primary"
                    href="/Books/Read/@chapterId?lang=@Model.TargetLanguage">
                     @(Model.Book.Progress is null ? "Start reading" : "Continue reading")
                 </a>
-            </div>
-        }
+            }
+            <a class="button"
+               href="@Url.Page("/Settings/LearningScope", new {
+                   mediaType = AniLingo.Web.Features.Learning.LearningMediaType.Book,
+                   scope = "work",
+                   workKey = Model.Book.Work.Id.ToString(),
+                   label = title,
+                   returnUrl = $"/Books/Library/{Model.Book.Work.Id}?lang={Model.TargetLanguage}"
+               })">
+                Language tools &amp; Learning
+            </a>
+        </div>
     </div>
 </header>
 

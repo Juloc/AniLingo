@@ -8,15 +8,11 @@
     var profileId = isAuthenticated
         ? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
         : null;
-    var ui = UiTextBundle.English;
+    var ui = await UiRequestLocalization.GetBundleAsync(Context, LocalizationDb);
     var appTheme = AppTheme.System;
     if (isAuthenticated && !string.IsNullOrWhiteSpace(profileId))
     {
-        var localizationStore = new UiTranslationCatalogStore(LocalizationDb);
-        ui = await localizationStore.LoadProfileBundleAsync(
-            profileId,
-            Context.RequestAborted);
-        appTheme = await localizationStore.GetProfileThemeAsync(
+        appTheme = await new UiTranslationCatalogStore(LocalizationDb).GetProfileThemeAsync(
             profileId,
             Context.RequestAborted);
     }
@@ -41,21 +37,23 @@
     <link rel="icon" href="~/icons/anilingo.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" sizes="180x180" href="~/icons/apple-touch-icon.png" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <script type="application/json" id="app-shell-text">@Json.Serialize(ui.WithPrefix("pwa."))</script>
     <script src="~/js/app-theme.js" asp-append-version="true" defer></script>
     <script src="~/js/pwa.js" asp-append-version="true" defer></script>
     @await RenderSectionAsync("Head", required: false)
 </head>
 <body class="@(isAuthenticated ? "" : "auth-page")"
       data-profile-id="@profileId">
+    <a class="skip-link" href="#main-content">@ui["shell.skipToContent"]</a>
     <div class="app-shell @(isAuthenticated ? "" : "auth-shell")">
         @if (isAuthenticated)
         {
             <partial name="_AppNavigation" />
         }
-        <main class="@(isAuthenticated ? "app-main" : "auth-main")">
+        <main id="main-content" tabindex="-1" class="@(isAuthenticated ? "app-main" : "auth-main")">
             @if (TempData["Status"] is string status)
             {
-                <div class="toast">@status</div>
+                <div class="toast" role="status">@status</div>
             }
             @RenderBody()
         </main>

@@ -6,9 +6,9 @@ namespace AniLingo.Web.Features.Manga;
 public sealed partial class MangaUploadService
 {
     public const string UploadRoot = "/data/manga-imports";
-    private const int MaximumFiles = 200;
-    private const long MaximumFileBytes = 1024L * 1024 * 1024;
-    private const long MaximumTotalBytes = 4L * 1024 * 1024 * 1024;
+    public const int MaximumFiles = 200;
+    public const long MaximumFileBytes = 1024L * 1024 * 1024;
+    public const long MaximumTotalBytes = 4L * 1024 * 1024 * 1024;
 
     private static readonly HashSet<string> ImageExtensions =
         new(StringComparer.OrdinalIgnoreCase)

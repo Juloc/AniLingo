@@ -6,6 +6,7 @@ using AniLingo.Web.Features.Books;
 using AniLingo.Web.Features.ClientApi;
 using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Library;
+using AniLingo.Web.Features.MediaMapping;
 using AniLingo.Web.Features.Metadata;
 using AniLingo.Web.Features.Novels;
 using AniLingo.Web.Features.Operations;
@@ -253,6 +254,8 @@ builder.Services.AddSingleton<SonarrConnectionStore>();
 builder.Services.AddScoped<SonarrArtworkImportService>();
 builder.Services.AddScoped<SonarrArtworkSyncService>();
 
+builder.Services.AddSingleton<MediaMappingReviewStore>();
+builder.Services.AddSingleton<ReadingSegmentMappingStore>();
 builder.Services.AddSingleton<AniListAccountStore>();
 builder.Services.AddHttpClient<AniListAccountService>(client =>
 {

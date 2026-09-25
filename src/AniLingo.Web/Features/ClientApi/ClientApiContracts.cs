@@ -42,7 +42,10 @@ public static class ClientApiContract
                 CompanionPairing: true,
                 CompanionControl: true,
                 StorageAvailability: true,
-                OwnerWakeOnLan: true));
+                OwnerWakeOnLan: true,
+                EpisodeFlow: true,
+                ContinueWatching: true,
+                PlaybackHistory: true));
     }
 }
 
@@ -68,6 +71,21 @@ public static class ClientApiRoutes
 
     public static string Progress(Guid episodeId) =>
         $"{Episode(episodeId)}/progress";
+
+    public static string Watched(Guid episodeId) =>
+        $"{Episode(episodeId)}/watched";
+
+    public static string Flow(Guid episodeId) =>
+        $"{Episode(episodeId)}/flow";
+
+    public static string ContinueWatching =>
+        $"{ClientApiContract.BasePath}/continue-watching";
+
+    public static string PlaybackPreferences =>
+        $"{ClientApiContract.BasePath}/me/playback-preferences";
+
+    public static string PlaybackHistory =>
+        $"{ClientApiContract.BasePath}/me/playback-history";
 
     public static string Cues(Guid episodeId) =>
         $"{Episode(episodeId)}/cues";
@@ -151,7 +169,10 @@ public sealed record ClientFeatureFlags(
     bool CompanionPairing,
     bool CompanionControl,
     bool StorageAvailability,
-    bool OwnerWakeOnLan);
+    bool OwnerWakeOnLan,
+    bool EpisodeFlow,
+    bool ContinueWatching,
+    bool PlaybackHistory);
 
 public sealed record ClientErrorResponse(
     string Code,
@@ -234,7 +255,60 @@ public sealed record ClientEpisodeProgress(
     long? DurationMs,
     int Percent,
     bool IsCompleted,
-    DateTime? UpdatedAtUtc);
+    DateTime? UpdatedAtUtc,
+    long ResumePositionMs);
+
+public sealed record ClientEpisodeWatchedUpdate(bool Watched);
+
+public sealed record ClientEpisodeReference(
+    Guid Id,
+    int SeasonNumber,
+    int Number,
+    string Title);
+
+public sealed record ClientEpisodeFlow(
+    Guid EpisodeId,
+    Guid AnimeId,
+    ClientEpisodeReference? Previous,
+    ClientEpisodeReference? Next,
+    bool AutoplayNext);
+
+public sealed record ClientContinueWatchingResponse(
+    IReadOnlyList<ClientContinueWatchingItem> Items);
+
+public sealed record ClientContinueWatchingItem(
+    string Kind,
+    Guid EpisodeId,
+    Guid AnimeId,
+    string AnimeTitle,
+    int SeasonNumber,
+    int EpisodeNumber,
+    string EpisodeTitle,
+    long ResumePositionMs,
+    long? DurationMs,
+    int Percent,
+    DateTime UpdatedAtUtc,
+    string? CoverImageUrl);
+
+public sealed record ClientPlaybackPreferences(bool AutoplayNext);
+
+public sealed record ClientPlaybackHistoryResponse(
+    int Limit,
+    IReadOnlyList<ClientPlaybackHistoryItem> Items);
+
+public sealed record ClientPlaybackHistoryItem(
+    Guid Id,
+    Guid EpisodeId,
+    Guid AnimeId,
+    string AnimeTitle,
+    int SeasonNumber,
+    int EpisodeNumber,
+    string EpisodeTitle,
+    DateTime StartedAtUtc,
+    DateTime LastPlayedAtUtc,
+    long PositionMs,
+    long? DurationMs,
+    bool ReachedEnd);
 
 public sealed record ClientPlayerBootstrap(
     int ApiVersion,
@@ -363,7 +437,58 @@ public static class ClientApiMappings
             progress.DurationMs,
             progress.Percent,
             progress.IsCompleted,
-            progress.UpdatedAt);
+            progress.UpdatedAt,
+            progress.ResumePositionMs);
+
+    public static ClientEpisodeFlow ToClientEpisodeFlow(EpisodeFlowSnapshot flow) =>
+        new(
+            flow.EpisodeId,
+            flow.AnimeId,
+            ToClientEpisodeReference(flow.Previous),
+            ToClientEpisodeReference(flow.Next),
+            flow.AutoplayNext);
+
+    public static ClientContinueWatchingItem ToClientContinueWatchingItem(
+        ContinueWatchingItem item) =>
+        new(
+            item.Kind == ContinueWatchingKind.UpNext ? "up_next" : "resume",
+            item.EpisodeId,
+            item.AnimeId,
+            item.AnimeTitle,
+            item.SeasonNumber,
+            item.EpisodeNumber,
+            item.EpisodeTitle,
+            item.ResumePositionMs,
+            item.DurationMs,
+            item.Percent,
+            DateTime.SpecifyKind(item.UpdatedAt, DateTimeKind.Utc),
+            item.CoverImageUrl);
+
+    public static ClientPlaybackHistoryItem ToClientPlaybackHistoryItem(
+        PlaybackHistoryItem item) =>
+        new(
+            item.Id,
+            item.EpisodeId,
+            item.AnimeId,
+            item.AnimeTitle,
+            item.SeasonNumber,
+            item.EpisodeNumber,
+            item.EpisodeTitle,
+            DateTime.SpecifyKind(item.StartedAt, DateTimeKind.Utc),
+            DateTime.SpecifyKind(item.LastPlayedAt, DateTimeKind.Utc),
+            item.PositionMs,
+            item.DurationMs,
+            item.ReachedEnd);
+
+    private static ClientEpisodeReference? ToClientEpisodeReference(
+        EpisodeReference? episode) =>
+        episode is null
+            ? null
+            : new ClientEpisodeReference(
+                episode.Id,
+                episode.SeasonNumber,
+                episode.Number,
+                episode.Title);
 
     public static ClientMediaTrack ToClientTrack(PlaybackMediaTrack track) =>
         new(

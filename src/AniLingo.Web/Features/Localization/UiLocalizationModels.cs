@@ -85,6 +85,11 @@ public sealed class UiTextBundle(
                 ? message.DefaultText
                 : key;
 
+    public IReadOnlyDictionary<string, string> WithPrefix(string prefix) =>
+        UiTranslationResources.All
+            .Where(x => x.Key.StartsWith(prefix, StringComparison.Ordinal))
+            .ToDictionary(x => x.Key, x => this[x.Key], StringComparer.Ordinal);
+
     public string Format(
         string key,
         params (string Name, object? Value)[] replacements)

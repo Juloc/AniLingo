@@ -33,6 +33,15 @@
     z-index: 1;
 }
 
+/* Lift content above the theme layers without un-sticking the reader
+   chrome; a relative toolbar scrolls away and leaves no way back to the
+   reader controls. */
+[data-reader-personalization] > .book-reader-toolbar,
+[data-reader-personalization] > .novel-reader-toolbar {
+    position: sticky;
+    z-index: 50;
+}
+
 .reader-theme-layer,
 .reader-theme-overlay,
 .reader-theme-vignette,
