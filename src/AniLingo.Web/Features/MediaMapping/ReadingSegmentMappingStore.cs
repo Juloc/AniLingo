@@ -153,15 +153,40 @@ public sealed class ReadingSegmentMappingStore
         try
         {
             var mappings = await ReadUnsafeAsync(cancellationToken);
+            var normalizedMediaType = NormalizeMediaType(mapping.MediaType);
+            var normalizedLocalId = mapping.LocalId.Trim();
+            var source = string.Equals(
+                    mapping.Source,
+                    "automatic",
+                    StringComparison.OrdinalIgnoreCase)
+                ? "automatic"
+                : "manual";
+
+            if (source == "manual")
+            {
+                mappings.RemoveAll(existing =>
+                    string.Equals(
+                        existing.MediaType,
+                        normalizedMediaType,
+                        StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(
+                        existing.LocalId,
+                        normalizedLocalId,
+                        StringComparison.Ordinal) &&
+                    string.Equals(
+                        existing.Source,
+                        "automatic",
+                        StringComparison.OrdinalIgnoreCase));
+            }
 
             var overlap = mappings.Any(existing =>
                 string.Equals(
                     existing.MediaType,
-                    mapping.MediaType,
+                    normalizedMediaType,
                     StringComparison.OrdinalIgnoreCase) &&
                 string.Equals(
                     existing.LocalId,
-                    mapping.LocalId,
+                    normalizedLocalId,
                     StringComparison.Ordinal) &&
                 mapping.LocalChapterStart <= existing.LocalChapterEnd &&
                 mapping.LocalChapterEnd >= existing.LocalChapterStart);
@@ -177,12 +202,13 @@ public sealed class ReadingSegmentMappingStore
                 Id = mapping.Id == Guid.Empty
                     ? Guid.NewGuid()
                     : mapping.Id,
-                MediaType = NormalizeMediaType(mapping.MediaType),
-                LocalId = mapping.LocalId.Trim(),
+                MediaType = normalizedMediaType,
+                LocalId = normalizedLocalId,
                 Provider = mapping.Provider.Trim().ToLowerInvariant(),
                 ExternalId = mapping.ExternalId.Trim(),
                 PreferredTitle = NormalizeOptional(mapping.PreferredTitle),
-                UpdatedAt = DateTimeOffset.UtcNow
+                UpdatedAt = DateTimeOffset.UtcNow,
+                Source = source
             };
 
             mappings.Add(normalized);
