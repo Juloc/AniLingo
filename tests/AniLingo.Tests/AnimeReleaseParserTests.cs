@@ -78,6 +78,14 @@ public sealed class AnimeReleaseParserTests
     }
 
     [TestMethod]
+    public void ParsesHdr10PlusWithoutFallingBackToHdr10()
+    {
+        var release = AnimeReleaseParser.Parse("[Group] Anime - 01 WEB-DL 2160p HEVC HDR10+ FLAC");
+
+        Assert.AreEqual(AnimeHdrFormat.Hdr10Plus, release.HdrFormat);
+    }
+
+    [TestMethod]
     public void ParsesSeasonPackWithoutInventingEpisodes()
     {
         const string input = "[Group] Anime Name S02 Complete BluRay 1080p x265 FLAC 5.1";
