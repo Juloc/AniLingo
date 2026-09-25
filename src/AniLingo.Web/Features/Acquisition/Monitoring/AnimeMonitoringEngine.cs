@@ -386,6 +386,8 @@ public static class AnimeMonitoringEngine
             Attempts = attempts,
             History = history
         };
+    }
+
     private static void TrimHistory(List<AnimeMonitoringHistoryEntry> history)
     {
         const int maxHistory = 2_000;
@@ -393,7 +395,5 @@ public static class AnimeMonitoringEngine
         {
             history.RemoveRange(0, history.Count - maxHistory);
         }
-    }
-
     }
 }
