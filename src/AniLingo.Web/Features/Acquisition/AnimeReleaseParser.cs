@@ -339,7 +339,7 @@ public static partial class AnimeReleaseParser
         var seriesTitle = ExtractSeriesTitle(rawTitle, leadingGroup, numberingMatch);
 
         var resolutionMatch = ResolutionRegex().Match(rawTitle);
-        var resolution = resolutionMatch.Success ? ParseInt(resolutionMatch.Groups["resolution"].Value) : null;
+        int? resolution = resolutionMatch.Success ? ParseInt(resolutionMatch.Groups["resolution"].Value) : null;
         if (resolution is not null)
         {
             AddEvidence(evidence, "resolution", $"{resolution}p", resolutionMatch.Value);
