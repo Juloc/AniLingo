@@ -2,17 +2,31 @@
 @model AniLingo.Web.Pages.Books.ReadModel
 @{
     ViewData["Title"] = Model.Reader.Chapter.Title;
-    var translatedParagraphs = Model.Reader.SourceLanguage.Equals(
+    var sourceIsTarget = Model.Reader.SourceLanguage.Equals(
         Model.Reader.TargetLanguage,
-        StringComparison.OrdinalIgnoreCase)
-        ? Model.Reader.OriginalParagraphs
+        StringComparison.OrdinalIgnoreCase);
+    var translatedParagraphs = sourceIsTarget
+        ? Array.Empty<string>()
         : Model.Reader.TranslatedParagraphs;
-    var defaultView = translatedParagraphs.Count > 0 ? "translated" : "original";
-    var initialProgress = Model.Reader.Progress?.PositionPermille ?? 0;
+    var hasAlternate = translatedParagraphs.Count > 0;
+    var defaultView = Model.RequestedView switch
+    {
+        "original" => "original",
+        "translated" when hasAlternate => "translated",
+        "both" when hasAlternate => "both",
+        _ => hasAlternate ? "translated" : "original"
+    };
+    var initialProgress = Model.RequestedPositionPermille
+        ?? Model.Reader.Progress?.PositionPermille
+        ?? 0;
+    var jsonOptions = new System.Text.Json.JsonSerializerOptions(
+        System.Text.Json.JsonSerializerDefaults.Web);
     var settingsJson = System.Text.Json.JsonSerializer.Serialize(
         Model.ReaderSettings,
-        new System.Text.Json.JsonSerializerOptions(
-            System.Text.Json.JsonSerializerDefaults.Web));
+        jsonOptions);
+    var highlightsJson = System.Text.Json.JsonSerializer.Serialize(
+        Model.CurrentHighlights,
+        jsonOptions);
 }
 @section Head {
     <link rel="stylesheet" href="~/css/books.css" asp-append-version="true" />
@@ -25,13 +39,15 @@
      data-book-reader
      data-view="@defaultView"
      data-target-language="@Model.Reader.TargetLanguage"
-     data-has-translation="@(translatedParagraphs.Count > 0 ? "true" : "false")"
+     data-chapter-id="@Model.Reader.Chapter.Id"
+     data-has-translation="@(hasAlternate ? "true" : "false")"
      data-progress="@initialProgress"
      data-reading-mode="@Model.ReaderSettings.ReadingMode"
      data-paper-style="@Model.ReaderSettings.PaperStyle"
      data-chapter-style="@Model.ReaderSettings.ChapterStyle">
 
     <script type="application/json" data-book-settings-json>@Html.Raw(settingsJson)</script>
+    <script type="application/json" data-book-highlights-json>@Html.Raw(highlightsJson)</script>
 
     <div class="book-reading-progress" aria-hidden="true">
         <span data-book-progress-bar style="width:@(initialProgress / 10)%"></span>
@@ -49,18 +65,32 @@
             <span>@(Model.Reader.Work.MetadataTitle ?? Model.Reader.Work.Title)</span>
         </div>
 
+        <button class="book-reader-navigation"
+                type="button"
+                data-book-drawer-open
+                aria-label="Chapters and annotations"
+                title="Chapters and annotations">
+            ☰
+        </button>
+
         <div class="book-reader-view-switch" role="group" aria-label="Reading text">
-            <button type="button"
-                    data-book-view="translated"
-                    disabled="@(translatedParagraphs.Count == 0)">
-                @AniLingo.Web.Features.Books.BookLanguageCatalog.GetName(Model.Reader.TargetLanguage)
-            </button>
+            @if (!sourceIsTarget)
+            {
+                <button type="button"
+                        data-book-view="translated"
+                        disabled="@(!hasAlternate)">
+                    @AniLingo.Web.Features.Books.BookLanguageCatalog.GetName(Model.Reader.TargetLanguage)
+                </button>
+            }
             <button type="button" data-book-view="original">Original</button>
-            <button type="button"
-                    data-book-view="both"
-                    disabled="@(translatedParagraphs.Count == 0)">
-                Both
-            </button>
+            @if (!sourceIsTarget)
+            {
+                <button type="button"
+                        data-book-view="both"
+                        disabled="@(!hasAlternate)">
+                    Both
+                </button>
+            }
         </div>
 
         <button class="book-reader-bookmark"
@@ -263,7 +293,7 @@
     @if (!Model.Reader.SourceLanguage.Equals(
         Model.Reader.TargetLanguage,
         StringComparison.OrdinalIgnoreCase)
-        && translatedParagraphs.Count == 0)
+        && !hasAlternate)
     {
         <div class="book-translation-slot" data-translation-slot>
             <span data-translation-state>
@@ -283,19 +313,22 @@
     }
 
     <main class="book-reader-content" data-book-reader-content>
-        <article class="book-reader-column original" data-book-original>
-            @foreach (var paragraph in Model.Reader.OriginalParagraphs)
+        <article class="book-reader-column original"
+                 data-book-original
+                 data-book-language="original">
+            @for (var index = 0; index < Model.Reader.OriginalParagraphs.Count; index++)
             {
-                <p>@paragraph</p>
+                <p data-book-paragraph="@index">@Model.Reader.OriginalParagraphs[index]</p>
             }
         </article>
 
         <article class="book-reader-column translated"
                  data-book-translated
-                 hidden="@(defaultView == "original")">
-            @foreach (var paragraph in translatedParagraphs)
+                 data-book-language="@Model.Reader.TargetLanguage"
+                 hidden="@(!hasAlternate || defaultView == "original")">
+            @for (var index = 0; index < translatedParagraphs.Count; index++)
             {
-                <p>@paragraph</p>
+                <p data-book-paragraph="@index">@translatedParagraphs[index]</p>
             }
         </article>
     </main>
@@ -338,7 +371,69 @@
           hidden>
         <input type="hidden" name="positionPermille" value="@initialProgress" />
         <input type="hidden" name="lang" value="@Model.Reader.TargetLanguage" />
+        <input type="hidden" name="anchorLanguage" value="@defaultView" />
     </form>
+
+    <form method="post"
+          asp-page-handler="Highlight"
+          asp-route-id="@Model.Reader.Chapter.Id"
+          data-book-highlight-form
+          hidden>
+        <input type="hidden" name="lang" value="@Model.Reader.TargetLanguage" />
+        <input type="hidden" name="anchorLanguage" value="original" />
+        <input type="hidden" name="paragraphIndex" value="0" />
+        <input type="hidden" name="startOffset" value="0" />
+        <input type="hidden" name="endOffset" value="0" />
+        <input type="hidden" name="note" value="" />
+    </form>
+
+    <div class="book-selection-toolbar" data-book-selection-toolbar hidden>
+        <button type="button" data-book-highlight-button>Highlight</button>
+    </div>
+
+    <dialog class="book-reader-drawer" data-book-drawer>
+        <div class="book-reader-drawer-shell">
+            <header>
+                <div>
+                    <strong>@(Model.Reader.Work.MetadataTitle ?? Model.Reader.Work.Title)</strong>
+                    <span>Chapter @Model.Reader.Chapter.Number · @Model.Reader.Chapter.Title</span>
+                </div>
+                <button type="button"
+                        data-book-drawer-close
+                        aria-label="Close">×</button>
+            </header>
+
+            <div class="book-reader-drawer-tabs" role="tablist" aria-label="Reader navigation">
+                <button type="button" class="active" data-book-drawer-tab="chapters">Chapters</button>
+                <button type="button" data-book-drawer-tab="bookmarks">Bookmarks</button>
+                <button type="button" data-book-drawer-tab="highlights">Highlights</button>
+            </div>
+
+            <section data-book-drawer-panel="chapters">
+                <label class="book-reader-drawer-search">
+                    <span class="sr-only">Search chapters</span>
+                    <input type="search"
+                           placeholder="Search chapters"
+                           data-book-chapter-search />
+                </label>
+                <div class="book-reader-drawer-list" data-book-chapter-list>
+                    <span class="books-muted">Loading chapters…</span>
+                </div>
+            </section>
+
+            <section data-book-drawer-panel="bookmarks" hidden>
+                <div class="book-reader-drawer-list" data-book-bookmark-list>
+                    <span class="books-muted">Loading bookmarks…</span>
+                </div>
+            </section>
+
+            <section data-book-drawer-panel="highlights" hidden>
+                <div class="book-reader-drawer-list" data-book-highlight-list>
+                    <span class="books-muted">Loading highlights…</span>
+                </div>
+            </section>
+        </div>
+    </dialog>
 
     <div class="book-reader-toast" data-book-toast hidden role="status" aria-live="polite"></div>
 </div>
