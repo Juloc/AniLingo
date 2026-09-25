@@ -518,6 +518,24 @@ public sealed class NovelTests
             string.Join("\n\n", chunks));
     }
 
+    [TestMethod]
+    public void TranslationChunkingNormalizesNewlinesAndCountsParagraphSeparators()
+    {
+        var normalized = new string('a', 99) + "\n\n" + new string('b', 99)
+            + "\n\n" + new string('c', 199);
+
+        foreach (var newline in new[] { "\n", "\r\n", "\r" })
+        {
+            var input = normalized.Replace("\n", newline, StringComparison.Ordinal);
+            var chunks = NovelTranslationService.ChunkText(input, 200);
+
+            Assert.AreEqual(2, chunks.Count);
+            Assert.AreEqual(200, chunks[0].Length);
+            Assert.AreEqual(199, chunks[1].Length);
+            Assert.AreEqual(normalized, string.Join("\n\n", chunks));
+        }
+    }
+
     private static string TempDatabasePath() =>
         Path.Combine(
             Path.GetTempPath(),
