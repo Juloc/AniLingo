@@ -1,5 +1,6 @@
 using System.Text;
 using AniLingo.Web.Data;
+using AniLingo.Web.Features.Ai;
 using Microsoft.EntityFrameworkCore;
 
 namespace AniLingo.Web.Features.Novels;
@@ -83,6 +84,11 @@ public sealed class NovelTranslationService(
 
         if (cached is not null)
         {
+            if (translator is IAiUsageReporter usageReporter)
+            {
+                usageReporter.RecordCacheHit("novel-chapter-translation");
+            }
+
             return cached;
         }
 
@@ -97,6 +103,11 @@ public sealed class NovelTranslationService(
 
             if (cached is not null)
             {
+                if (translator is IAiUsageReporter usageReporter)
+                {
+                    usageReporter.RecordCacheHit("novel-chapter-translation");
+                }
+
                 return cached;
             }
 
