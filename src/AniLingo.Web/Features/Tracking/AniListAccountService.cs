@@ -611,6 +611,99 @@ public sealed class AniListAccountService(
         }
     }
 
+    private async Task<ReadingProgressContext> BuildMangaProgressContextAsync(
+        Guid seriesId,
+        CancellationToken cancellationToken)
+    {
+        var repository = new MangaRepository(db);
+        var local = await repository.GetAniListProgressContextAsync(
+            currentAccount.ProfileId,
+            seriesId,
+            cancellationToken);
+
+        if (local is null)
+        {
+            return ReadingProgressContext.Blocked(
+                AniListReadingProgressPreview.Blocked(
+                    "Read part of the manga in AniLingo before syncing progress."));
+        }
+
+        if (!int.TryParse(local.MetadataExternalId, out var mediaId) ||
+            mediaId <= 0)
+        {
+            return ReadingProgressContext.Blocked(
+                AniListReadingProgressPreview.Blocked(
+                    "Match this manga to AniList before syncing progress.",
+                    mediaTitle: local.Title));
+        }
+
+        var resolved = AutomaticMediaMatcher.ResolveReadingProgress(
+            local.ChapterNumber,
+            local.PageIndex,
+            Math.Max(0, local.PageCount - 1));
+
+        if (!resolved.CanSync)
+        {
+            return ReadingProgressContext.Blocked(
+                AniListReadingProgressPreview.Blocked(
+                    resolved.Reason ?? "The local manga progress cannot be mapped safely.",
+                    resolved.Progress,
+                    local.Title));
+        }
+
+        var account = await store.LoadAsync(
+            currentAccount.ProfileId,
+            cancellationToken);
+        if (account is null)
+        {
+            return ReadingProgressContext.Blocked(
+                AniListReadingProgressPreview.Blocked(
+                    "Connect your AniList account in Settings before syncing progress.",
+                    resolved.Progress,
+                    local.Title));
+        }
+
+        if (account.TokenExpiresAt is not null &&
+            account.TokenExpiresAt <= DateTimeOffset.UtcNow)
+        {
+            return ReadingProgressContext.Blocked(
+                AniListReadingProgressPreview.Blocked(
+                    "Your AniList connection has expired. Reconnect it in Settings.",
+                    resolved.Progress,
+                    local.Title));
+        }
+
+        var remote = await FetchMangaListEntryAsync(
+            account,
+            mediaId,
+            cancellationToken);
+        if (remote is null)
+        {
+            return ReadingProgressContext.Blocked(
+                AniListReadingProgressPreview.Blocked(
+                    "This manga is not on your AniList list. Add it in AniList first.",
+                    resolved.Progress,
+                    local.Title));
+        }
+
+        var chapterCount = await FetchMangaChapterCountAsync(
+            account,
+            mediaId,
+            cancellationToken);
+        var preview = EvaluateRemoteChapterProgressSafety(
+            remote,
+            resolved.Progress,
+            chapterCount,
+            local.Title,
+            "manga");
+
+        return new ReadingProgressContext(
+            account,
+            remote,
+            resolved.Progress,
+            preview);
+    }
+
     private async Task<ReadingProgressContext> BuildNovelProgressContextAsync(
         Guid workId,
         CancellationToken cancellationToken)
