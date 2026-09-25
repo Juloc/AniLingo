@@ -748,29 +748,6 @@ public sealed partial class BookCatalogService(
             for (var index = 0; index < chunks.Count; index++)
             {
                 var chunk = chunks[index];
-                var cachedChunk = await chunkStore.TryLoadAsync(
-                    work.Id,
-                    chapter.Id,
-                    targetLanguage,
-                    chapter.SourceHash,
-                    TranslationPromptVersion,
-                    translationMode,
-                    index,
-                    chunk,
-                    cancellationToken);
-
-                if (!string.IsNullOrWhiteSpace(cachedChunk))
-                {
-                    if (translator is IAiUsageReporter usageReporter)
-                    {
-                        usageReporter.RecordResumedChunk(
-                            "book-translation-chunk");
-                    }
-
-                    translatedChunks.Add(cachedChunk);
-                    continue;
-                }
-
                 var bibleContext =
                     BookTranslationMemoryStore.RenderRelevantContext(
                         bible,
@@ -790,6 +767,30 @@ public sealed partial class BookCatalogService(
                     localContext +=
                         "\nPrevious final translated segment ending:\n"
                         + Tail(translatedChunks[^1], 900);
+                }
+
+                var cachedChunk = await chunkStore.TryLoadAsync(
+                    work.Id,
+                    chapter.Id,
+                    targetLanguage,
+                    chapter.SourceHash,
+                    TranslationPromptVersion,
+                    translationMode,
+                    index,
+                    chunk,
+                    localContext,
+                    cancellationToken);
+
+                if (!string.IsNullOrWhiteSpace(cachedChunk))
+                {
+                    if (translator is IAiUsageReporter usageReporter)
+                    {
+                        usageReporter.RecordResumedChunk(
+                            "book-translation-chunk");
+                    }
+
+                    translatedChunks.Add(cachedChunk);
+                    continue;
                 }
 
                 var draft = await translator.TranslateLiteraryAsync(
@@ -859,6 +860,7 @@ public sealed partial class BookCatalogService(
                     translationMode,
                     index,
                     chunk,
+                    localContext,
                     candidate,
                     cancellationToken);
 
