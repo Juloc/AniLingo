@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using AniLingo.Web.Data;
+using AniLingo.Web.Features.ReaderCore;
 using Microsoft.EntityFrameworkCore;
 
 namespace AniLingo.Web.Features.ReaderPreferences;
@@ -116,7 +117,14 @@ public sealed record ReaderSettingsSnapshot(
     double ThemeTintStrength,
     string BookmarkStyle,
     string BookmarkColor,
-    bool HasBookOverride);
+    bool HasBookOverride)
+{
+    public string ContentTypeKey { get; init; } = "light-novel";
+    public bool HasTypeOverride { get; init; }
+    public bool HasGenreOverride { get; init; }
+    public IReadOnlyDictionary<string, string> EffectiveSources { get; init; } =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+}
 
 public static partial class ReaderPreferenceRules
 {
@@ -334,108 +342,416 @@ public static partial class ReaderPreferenceRules
 
 public static class ReaderPreferenceStore
 {
+    public static Task<ReaderSettingsSnapshot> GetAsync(
+        AppDbContext db,
+        string profileId,
+        Guid workId,
+        string? genresJson,
+        CancellationToken cancellationToken) =>
+        GetAsync(
+            db,
+            profileId,
+            workId,
+            genresJson,
+            ReaderContentType.LightNovel,
+            cancellationToken);
+
     public static async Task<ReaderSettingsSnapshot> GetAsync(
         AppDbContext db,
         string profileId,
         Guid workId,
         string? genresJson,
+        ReaderContentType contentType,
         CancellationToken cancellationToken)
     {
-        var workScope = WorkScope(workId);
         var preferences = await db.ReaderPreferences
             .AsNoTracking()
-            .Where(x =>
-                x.ProfileId == profileId &&
-                (x.ScopeKey == ReaderPreferenceRules.UserDefaultScope ||
-                 x.ScopeKey == workScope))
+            .Where(x => x.ProfileId == profileId)
             .ToListAsync(cancellationToken);
 
-        var user = preferences.FirstOrDefault(
-            x => x.ScopeKey == ReaderPreferenceRules.UserDefaultScope);
-        var book = preferences.FirstOrDefault(x => x.ScopeKey == workScope);
         var genres = ReaderPreferenceRules.ParseGenres(genresJson);
+        var genreKeys = genres
+            .Select(ReaderPreferenceScopes.NormalizeGenreKey)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var typeScope = ReaderPreferenceScopes.Type(contentType);
+        var workScope = ReaderPreferenceScopes.Work(workId);
 
-        var genreSelection = First(
-            book?.GenreTheme,
-            user?.GenreTheme,
-            "auto");
-        genreSelection = ReaderPreferenceRules.NormalizeGenreTheme(genreSelection);
+        var global = preferences.FirstOrDefault(
+            x => x.ScopeKey == ReaderPreferenceRules.UserDefaultScope);
+        var type = preferences.FirstOrDefault(
+            x => x.ScopeKey.Equals(typeScope, StringComparison.OrdinalIgnoreCase));
+        var work = preferences.FirstOrDefault(
+            x => x.ScopeKey.Equals(workScope, StringComparison.OrdinalIgnoreCase));
 
-        return new ReaderSettingsSnapshot(
+        var genreLayers = preferences
+            .Select(preference =>
+            {
+                var matched = ReaderPreferenceScopes.TryParseGenre(
+                    preference.ScopeKey,
+                    out var priority,
+                    out var genreKey);
+                return new
+                {
+                    Preference = preference,
+                    Matched = matched && genreKeys.Contains(genreKey),
+                    Priority = priority,
+                    GenreKey = genreKey
+                };
+            })
+            .Where(x => x.Matched)
+            .OrderBy(x => x.Priority)
+            .ThenBy(x => x.GenreKey, StringComparer.OrdinalIgnoreCase)
+            .Select(x => x.Preference)
+            .ToArray();
+
+        var layers = new List<ReaderPreference>();
+        if (global is not null) layers.Add(global);
+        if (type is not null) layers.Add(type);
+        layers.AddRange(genreLayers);
+        if (work is not null) layers.Add(work);
+
+        var sources = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var preset = ReaderPresetCatalog.For(contentType);
+
+        string ResolveString(
+            string key,
+            Func<ReaderPreference, string?> selector,
+            string fallback)
+        {
+            var value = fallback;
+            sources[key] = "system";
+
+            foreach (var layer in layers)
+            {
+                var candidate = selector(layer);
+                if (string.IsNullOrWhiteSpace(candidate))
+                {
+                    continue;
+                }
+
+                value = candidate;
+                sources[key] = layer.ScopeKey;
+            }
+
+            return value;
+        }
+
+        T ResolveValue<T>(
+            string key,
+            Func<ReaderPreference, T?> selector,
+            T fallback)
+            where T : struct
+        {
+            var value = fallback;
+            sources[key] = "system";
+
+            foreach (var layer in layers)
+            {
+                var candidate = selector(layer);
+                if (candidate is null)
+                {
+                    continue;
+                }
+
+                value = candidate.Value;
+                sources[key] = layer.ScopeKey;
+            }
+
+            return value;
+        }
+
+        var genreSelection = ReaderPreferenceRules.NormalizeGenreTheme(
+            ResolveString("genreTheme", x => x.GenreTheme, preset.GenreTheme));
+
+        var snapshot = new ReaderSettingsSnapshot(
             ReadingMode: ReaderPreferenceRules.NormalizeReadingMode(
-                First(book?.ReadingMode, user?.ReadingMode, "continuous")),
+                ResolveString("readingMode", x => x.ReadingMode, preset.ReadingMode)),
             PageTransition: ReaderPreferenceRules.NormalizePageTransition(
-                First(book?.PageTransition, user?.PageTransition, "curl")),
-            TwoPageSpread: book?.TwoPageSpread ?? user?.TwoPageSpread ?? true,
+                ResolveString("pageTransition", x => x.PageTransition, preset.PageTransition)),
+            TwoPageSpread: ResolveValue(
+                "twoPageSpread", x => x.TwoPageSpread, preset.TwoPageSpread),
             AutoScrollSpeed: ReaderPreferenceRules.NormalizeAutoScrollSpeed(
-                book?.AutoScrollSpeed ?? user?.AutoScrollSpeed ?? 36),
+                ResolveValue("autoScrollSpeed", x => x.AutoScrollSpeed, preset.AutoScrollSpeed)),
             FontFamily: ReaderPreferenceRules.NormalizeFontFamily(
-                First(book?.FontFamily, user?.FontFamily, "literary-serif")),
+                ResolveString("fontFamily", x => x.FontFamily, preset.FontFamily)),
             FontSizeRem: ReaderPreferenceRules.NormalizeFontSize(
-                book?.FontSizeRem ?? user?.FontSizeRem ?? 1.06),
+                ResolveValue("fontSizeRem", x => x.FontSizeRem, preset.FontSizeRem)),
             LineHeight: ReaderPreferenceRules.NormalizeLineHeight(
-                book?.LineHeight ?? user?.LineHeight ?? 1.9),
+                ResolveValue("lineHeight", x => x.LineHeight, preset.LineHeight)),
             ParagraphSpacingEm: ReaderPreferenceRules.NormalizeParagraphSpacing(
-                book?.ParagraphSpacingEm ?? user?.ParagraphSpacingEm ?? .85),
+                ResolveValue(
+                    "paragraphSpacingEm",
+                    x => x.ParagraphSpacingEm,
+                    preset.ParagraphSpacingEm)),
             TextWidthPx: ReaderPreferenceRules.NormalizeTextWidth(
-                book?.TextWidthPx ?? user?.TextWidthPx ?? 760),
+                ResolveValue("textWidthPx", x => x.TextWidthPx, preset.TextWidthPx)),
             TextAlignment: ReaderPreferenceRules.NormalizeTextAlignment(
-                First(book?.TextAlignment, user?.TextAlignment, "start")),
+                ResolveString(
+                    "textAlignment",
+                    x => x.TextAlignment,
+                    preset.TextAlignment)),
             ChapterStyle: ReaderPreferenceRules.NormalizeChapterStyle(
-                First(book?.ChapterStyle, user?.ChapterStyle, "light-novel")),
+                ResolveString(
+                    "chapterStyle",
+                    x => x.ChapterStyle,
+                    preset.ChapterStyle)),
             PaperStyle: ReaderPreferenceRules.NormalizePaperStyle(
-                First(book?.PaperStyle, user?.PaperStyle, "midnight")),
-            GenreArtworkEnabled:
-                book?.GenreArtworkEnabled ?? user?.GenreArtworkEnabled ?? true,
+                ResolveString("paperStyle", x => x.PaperStyle, preset.PaperStyle)),
+            GenreArtworkEnabled: ResolveValue(
+                "genreArtworkEnabled",
+                x => x.GenreArtworkEnabled,
+                preset.GenreArtworkEnabled),
             GenreTheme: genreSelection,
             ResolvedGenreTheme: genreSelection,
             SourceGenres: genres,
             BackgroundAssetId: ReaderPreferenceRules.NormalizeBackgroundAssetId(
-                First(book?.BackgroundAssetId, user?.BackgroundAssetId, "auto")),
+                ResolveString(
+                    "backgroundAssetId",
+                    x => x.BackgroundAssetId,
+                    preset.BackgroundAssetId)),
             BackgroundIntensity: ReaderPreferenceRules.NormalizeBackgroundIntensity(
-                book?.BackgroundIntensity ?? user?.BackgroundIntensity ?? .055),
+                ResolveValue(
+                    "backgroundIntensity",
+                    x => x.BackgroundIntensity,
+                    preset.BackgroundIntensity)),
             BackgroundMotionMode: ReaderPreferenceRules.NormalizeBackgroundMotionMode(
-                First(book?.BackgroundMotionMode, user?.BackgroundMotionMode, "auto")),
+                ResolveString(
+                    "backgroundMotionMode",
+                    x => x.BackgroundMotionMode,
+                    preset.BackgroundMotionMode)),
             ThemeEffectStrength: ReaderPreferenceRules.NormalizeThemeEffectStrength(
-                book?.ThemeEffectStrength ?? user?.ThemeEffectStrength ?? 1),
+                ResolveValue(
+                    "themeEffectStrength",
+                    x => x.ThemeEffectStrength,
+                    preset.ThemeEffectStrength)),
             ThemeBrightness: ReaderPreferenceRules.NormalizeThemeBrightness(
-                book?.ThemeBrightness ?? user?.ThemeBrightness ?? 1),
+                ResolveValue(
+                    "themeBrightness",
+                    x => x.ThemeBrightness,
+                    preset.ThemeBrightness)),
             ThemeContrast: ReaderPreferenceRules.NormalizeThemeContrast(
-                book?.ThemeContrast ?? user?.ThemeContrast ?? 1),
+                ResolveValue(
+                    "themeContrast",
+                    x => x.ThemeContrast,
+                    preset.ThemeContrast)),
             ThemeSaturation: ReaderPreferenceRules.NormalizeThemeSaturation(
-                book?.ThemeSaturation ?? user?.ThemeSaturation ?? 1),
+                ResolveValue(
+                    "themeSaturation",
+                    x => x.ThemeSaturation,
+                    preset.ThemeSaturation)),
             ThemeBlurPx: ReaderPreferenceRules.NormalizeThemeBlurPx(
-                book?.ThemeBlurPx ?? user?.ThemeBlurPx ?? 0),
+                ResolveValue("themeBlurPx", x => x.ThemeBlurPx, preset.ThemeBlurPx)),
             ThemeVignetteStrength: ReaderPreferenceRules.NormalizeThemeVignetteStrength(
-                book?.ThemeVignetteStrength ?? user?.ThemeVignetteStrength ?? 1),
+                ResolveValue(
+                    "themeVignetteStrength",
+                    x => x.ThemeVignetteStrength,
+                    preset.ThemeVignetteStrength)),
             ThemeGrainStrength: ReaderPreferenceRules.NormalizeThemeGrainStrength(
-                book?.ThemeGrainStrength ?? user?.ThemeGrainStrength ?? 1),
+                ResolveValue(
+                    "themeGrainStrength",
+                    x => x.ThemeGrainStrength,
+                    preset.ThemeGrainStrength)),
             ThemeTextBackdropStrength: ReaderPreferenceRules.NormalizeThemeTextBackdropStrength(
-                book?.ThemeTextBackdropStrength ?? user?.ThemeTextBackdropStrength ?? 1),
+                ResolveValue(
+                    "themeTextBackdropStrength",
+                    x => x.ThemeTextBackdropStrength,
+                    preset.ThemeTextBackdropStrength)),
             ThemeParallaxStrength: ReaderPreferenceRules.NormalizeThemeParallaxStrength(
-                book?.ThemeParallaxStrength ?? user?.ThemeParallaxStrength ?? 1),
+                ResolveValue(
+                    "themeParallaxStrength",
+                    x => x.ThemeParallaxStrength,
+                    preset.ThemeParallaxStrength)),
             ThemeTintStrength: ReaderPreferenceRules.NormalizeThemeTintStrength(
-                book?.ThemeTintStrength ?? user?.ThemeTintStrength ?? 1),
+                ResolveValue(
+                    "themeTintStrength",
+                    x => x.ThemeTintStrength,
+                    preset.ThemeTintStrength)),
             BookmarkStyle: ReaderPreferenceRules.NormalizeBookmarkStyle(
-                First(book?.BookmarkStyle, user?.BookmarkStyle, "fabric")),
+                ResolveString(
+                    "bookmarkStyle",
+                    x => x.BookmarkStyle,
+                    preset.BookmarkStyle)),
             BookmarkColor: ReaderPreferenceRules.NormalizeBookmarkColor(
-                First(book?.BookmarkColor, user?.BookmarkColor, "#b04455")),
-            HasBookOverride: book is not null);
+                ResolveString(
+                    "bookmarkColor",
+                    x => x.BookmarkColor,
+                    preset.BookmarkColor)),
+            HasBookOverride: work is not null)
+        {
+            ContentTypeKey = ReaderContentTypes.ToKey(contentType),
+            HasTypeOverride = type is not null,
+            HasGenreOverride = genreLayers.Length > 0,
+            EffectiveSources = sources
+        };
+
+        return snapshot;
     }
 
-    public static async Task SaveUserDefaultsAsync(
+    public static Task SaveUserDefaultsAsync(
         AppDbContext db,
         string profileId,
+        ReaderSettingsInput input,
+        CancellationToken cancellationToken) =>
+        SaveScopeAsync(
+            db,
+            profileId,
+            ReaderPreferenceRules.UserDefaultScope,
+            null,
+            input,
+            cancellationToken);
+
+    public static Task SaveTypeDefaultsAsync(
+        AppDbContext db,
+        string profileId,
+        ReaderContentType contentType,
+        ReaderSettingsInput input,
+        CancellationToken cancellationToken) =>
+        SaveScopeAsync(
+            db,
+            profileId,
+            ReaderPreferenceScopes.Type(contentType),
+            null,
+            input,
+            cancellationToken);
+
+    public static Task SaveGenreDefaultsAsync(
+        AppDbContext db,
+        string profileId,
+        string genre,
+        int priority,
+        ReaderSettingsInput input,
+        CancellationToken cancellationToken) =>
+        SaveScopeAsync(
+            db,
+            profileId,
+            ReaderPreferenceScopes.Genre(genre, priority),
+            null,
+            input,
+            cancellationToken);
+
+    public static async Task SaveScopeAsync(
+        AppDbContext db,
+        string profileId,
+        string scopeKey,
+        Guid? workId,
+        ReaderSettingsInput input,
+        CancellationToken cancellationToken)
+    {
+        ValidateScope(scopeKey);
+        var preference = await FindOrCreateAsync(
+            db,
+            profileId,
+            scopeKey,
+            workId,
+            cancellationToken);
+
+        ApplyAll(preference, input);
+        preference.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    public static async Task SaveBookOverrideAsync(
+        AppDbContext db,
+        string profileId,
+        Guid workId,
+        string changedKey,
         ReaderSettingsInput input,
         CancellationToken cancellationToken)
     {
         var preference = await FindOrCreateAsync(
             db,
             profileId,
-            ReaderPreferenceRules.UserDefaultScope,
-            null,
+            ReaderPreferenceScopes.Work(workId),
+            workId,
             cancellationToken);
 
+        ApplyField(preference, changedKey, input);
+        preference.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    public static async Task SaveScopeFieldAsync(
+        AppDbContext db,
+        string profileId,
+        string scopeKey,
+        string changedKey,
+        ReaderSettingsInput input,
+        CancellationToken cancellationToken)
+    {
+        ValidateScope(scopeKey);
+        var preference = await FindOrCreateAsync(
+            db,
+            profileId,
+            scopeKey,
+            scopeKey.StartsWith("work:", StringComparison.OrdinalIgnoreCase)
+                ? TryParseWorkId(scopeKey)
+                : null,
+            cancellationToken);
+
+        ApplyField(preference, changedKey, input);
+        preference.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    public static Task ResetBookAsync(
+        AppDbContext db,
+        string profileId,
+        Guid workId,
+        CancellationToken cancellationToken) =>
+        ResetScopeAsync(
+            db,
+            profileId,
+            ReaderPreferenceScopes.Work(workId),
+            cancellationToken);
+
+    public static Task ResetTypeAsync(
+        AppDbContext db,
+        string profileId,
+        ReaderContentType contentType,
+        CancellationToken cancellationToken) =>
+        ResetScopeAsync(
+            db,
+            profileId,
+            ReaderPreferenceScopes.Type(contentType),
+            cancellationToken);
+
+    public static Task ResetGenreAsync(
+        AppDbContext db,
+        string profileId,
+        string genre,
+        int priority,
+        CancellationToken cancellationToken) =>
+        ResetScopeAsync(
+            db,
+            profileId,
+            ReaderPreferenceScopes.Genre(genre, priority),
+            cancellationToken);
+
+    public static async Task ResetScopeAsync(
+        AppDbContext db,
+        string profileId,
+        string scopeKey,
+        CancellationToken cancellationToken)
+    {
+        ValidateScope(scopeKey);
+        var preference = await db.ReaderPreferences
+            .SingleOrDefaultAsync(
+                x => x.ProfileId == profileId && x.ScopeKey == scopeKey,
+                cancellationToken);
+
+        if (preference is null)
+        {
+            return;
+        }
+
+        db.ReaderPreferences.Remove(preference);
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    private static void ApplyAll(
+        ReaderPreference preference,
+        ReaderSettingsInput input)
+    {
         preference.ReadingMode =
             ReaderPreferenceRules.NormalizeReadingMode(input.ReadingMode);
         preference.PageTransition =
@@ -492,26 +808,13 @@ public static class ReaderPreferenceStore
             ReaderPreferenceRules.NormalizeBookmarkStyle(input.BookmarkStyle);
         preference.BookmarkColor =
             ReaderPreferenceRules.NormalizeBookmarkColor(input.BookmarkColor);
-        preference.UpdatedAt = DateTime.UtcNow;
-
-        await db.SaveChangesAsync(cancellationToken);
     }
 
-    public static async Task SaveBookOverrideAsync(
-        AppDbContext db,
-        string profileId,
-        Guid workId,
+    private static void ApplyField(
+        ReaderPreference preference,
         string changedKey,
-        ReaderSettingsInput input,
-        CancellationToken cancellationToken)
+        ReaderSettingsInput input)
     {
-        var preference = await FindOrCreateAsync(
-            db,
-            profileId,
-            WorkScope(workId),
-            workId,
-            cancellationToken);
-
         switch (changedKey.Trim())
         {
             case "readingMode":
@@ -631,30 +934,6 @@ public static class ReaderPreferenceStore
             default:
                 throw new InvalidOperationException("Unknown reader setting.");
         }
-
-        preference.UpdatedAt = DateTime.UtcNow;
-        await db.SaveChangesAsync(cancellationToken);
-    }
-
-    public static async Task ResetBookAsync(
-        AppDbContext db,
-        string profileId,
-        Guid workId,
-        CancellationToken cancellationToken)
-    {
-        var scope = WorkScope(workId);
-        var preference = await db.ReaderPreferences
-            .SingleOrDefaultAsync(
-                x => x.ProfileId == profileId && x.ScopeKey == scope,
-                cancellationToken);
-
-        if (preference is null)
-        {
-            return;
-        }
-
-        db.ReaderPreferences.Remove(preference);
-        await db.SaveChangesAsync(cancellationToken);
     }
 
     private static async Task<ReaderPreference> FindOrCreateAsync(
@@ -684,8 +963,25 @@ public static class ReaderPreferenceStore
         return preference;
     }
 
-    private static string WorkScope(Guid workId) => $"work:{workId:N}";
+    private static void ValidateScope(string scopeKey)
+    {
+        if (scopeKey == ReaderPreferenceRules.UserDefaultScope ||
+            scopeKey.StartsWith("type:", StringComparison.OrdinalIgnoreCase) ||
+            scopeKey.StartsWith("genre:", StringComparison.OrdinalIgnoreCase) ||
+            scopeKey.StartsWith("work:", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
 
-    private static string First(params string?[] values) =>
-        values.First(x => !string.IsNullOrWhiteSpace(x))!;
+        throw new InvalidOperationException("Unknown reader preference scope.");
+    }
+
+    private static Guid? TryParseWorkId(string scopeKey)
+    {
+        var raw = scopeKey["work:".Length..];
+        return Guid.TryParseExact(raw, "N", out var workId)
+            ? workId
+            : null;
+    }
 }
+
