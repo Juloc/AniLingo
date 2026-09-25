@@ -305,7 +305,17 @@ public static class AnimeArtworkStore
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        using var bitmap = SKBitmap.Decode(buffered.ToArray());
+        SKBitmap? decoded;
+        try
+        {
+            decoded = SKBitmap.Decode(buffered.ToArray());
+        }
+        catch (ArgumentNullException)
+        {
+            return false;
+        }
+
+        using var bitmap = decoded;
         if (bitmap is null || bitmap.Width <= 0 || bitmap.Height <= 0)
         {
             return false;
