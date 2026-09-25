@@ -47,7 +47,6 @@
     let toastTimer = null;
     let pendingSelection = null;
     let lastSentKey = "";
-    let lastScrollY = window.scrollY;
 
     const normalizeText = value =>
         (value || "").replace(/\s+/g, " ").trim();
@@ -307,7 +306,6 @@
         updateProgressBar();
         setTimeout(() => {
             restoreComplete = true;
-            lastScrollY = window.scrollY;
         }, 50);
     };
 
@@ -1194,16 +1192,6 @@
         clearTimeout(progressTimer);
         progressTimer = setTimeout(sendProgress, 700);
 
-        const toolbar = shell.querySelector(".novel-reader-toolbar");
-        const y = window.scrollY;
-        if (toolbar && !shell.classList.contains("notes-open")) {
-            if (y > lastScrollY + 16 && y > 160) {
-                toolbar.classList.add("toolbar-hidden");
-            } else if (y < lastScrollY - 10) {
-                toolbar.classList.remove("toolbar-hidden");
-            }
-        }
-        lastScrollY = y;
     }, { passive: true });
 
     window.addEventListener("pagehide", sendProgress);
