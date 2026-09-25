@@ -165,12 +165,15 @@ public sealed partial class BookCatalogService(
             .ToListAsync(cancellationToken);
 
         var chapterIds = chapters.Select(x => x.Id).ToArray();
+        var cacheIdentity = TranslationCacheIdentity(
+            await translator.GetTranslationModeAsync(cancellationToken));
 
         var translations = await db.NovelTranslations
             .AsNoTracking()
             .Where(x =>
                 chapterIds.Contains(x.ChapterId)
                 && x.TargetLanguage == targetLanguage
+                && x.ProviderId == cacheIdentity
                 && x.PromptVersion == TranslationPromptVersion)
             .Select(x => new
             {
@@ -237,6 +240,9 @@ public sealed partial class BookCatalogService(
             return null;
         }
 
+        var cacheIdentity = TranslationCacheIdentity(
+            await translator.GetTranslationModeAsync(cancellationToken));
+
         var chapters = await db.NovelChapters
             .AsNoTracking()
             .Where(x => x.WorkId == workId)
@@ -248,6 +254,7 @@ public sealed partial class BookCatalogService(
                 db.NovelTranslations.Any(translation =>
                     translation.ChapterId == chapter.Id
                     && translation.TargetLanguage == targetLanguage
+                    && translation.ProviderId == cacheIdentity
                     && translation.PromptVersion == TranslationPromptVersion
                     && translation.SourceHash == chapter.SourceHash)))
             .ToListAsync(cancellationToken);
@@ -561,7 +568,22 @@ public sealed partial class BookCatalogService(
         string targetLanguage,
         CancellationToken cancellationToken)
     {
+        var mode = await translator.GetTranslationModeAsync(cancellationToken);
+        return await GetCachedTranslationAsync(
+            chapterId,
+            targetLanguage,
+            mode,
+            cancellationToken);
+    }
+
+    private async Task<NovelTranslation?> GetCachedTranslationAsync(
+        Guid chapterId,
+        string targetLanguage,
+        AiTranslationMode mode,
+        CancellationToken cancellationToken)
+    {
         targetLanguage = BookLanguageCatalog.Normalize(targetLanguage);
+        var cacheIdentity = TranslationCacheIdentity(mode);
 
         return await (
             from translation in db.NovelTranslations.AsNoTracking()
@@ -569,6 +591,7 @@ public sealed partial class BookCatalogService(
                 on translation.ChapterId equals chapter.Id
             where translation.ChapterId == chapterId
                 && translation.TargetLanguage == targetLanguage
+                && translation.ProviderId == cacheIdentity
                 && translation.PromptVersion == TranslationPromptVersion
                 && translation.SourceHash == chapter.SourceHash
             orderby translation.CreatedAt descending
@@ -608,9 +631,14 @@ public sealed partial class BookCatalogService(
                 "This chapter is already in the selected language.");
         }
 
+        var translationMode =
+            await translator.GetTranslationModeAsync(cancellationToken);
+        var cacheIdentity = TranslationCacheIdentity(translationMode);
+
         var cached = await GetCachedTranslationAsync(
             chapterId,
             targetLanguage,
+            translationMode,
             cancellationToken);
 
         if (cached is not null)
@@ -629,6 +657,7 @@ public sealed partial class BookCatalogService(
             cached = await GetCachedTranslationAsync(
                 chapterId,
                 targetLanguage,
+                translationMode,
                 cancellationToken);
             if (cached is not null)
             {
@@ -639,9 +668,6 @@ public sealed partial class BookCatalogService(
 
                 return cached;
             }
-
-            var translationMode =
-                await translator.GetTranslationModeAsync(cancellationToken);
 
             var previousChapter = await db.NovelChapters
                 .AsNoTracking()
@@ -659,6 +685,7 @@ public sealed partial class BookCatalogService(
                     .Where(x =>
                         x.ChapterId == previousChapter.Id
                         && x.TargetLanguage == targetLanguage
+                        && x.ProviderId == cacheIdentity
                         && x.PromptVersion == TranslationPromptVersion
                         && x.SourceHash == previousChapter.SourceHash)
                     .OrderByDescending(x => x.CreatedAt)
@@ -871,7 +898,7 @@ public sealed partial class BookCatalogService(
             {
                 ChapterId = chapter.Id,
                 TargetLanguage = targetLanguage,
-                ProviderId = translator.Id,
+                ProviderId = cacheIdentity,
                 PromptVersion = TranslationPromptVersion,
                 SourceHash = chapter.SourceHash,
                 Text = finalText,
@@ -2449,6 +2476,10 @@ public sealed partial class BookCatalogService(
                 ? BookTranslationMemoryStore.DefaultRoot
                 : configured);
     }
+
+    private static string TranslationCacheIdentity(
+        AiTranslationMode mode) =>
+        $"book-v{TranslationPromptVersion}-{mode.ToString().ToLowerInvariant()}";
 
     private BookTranslationChunkStore CreateTranslationChunkStore()
     {
