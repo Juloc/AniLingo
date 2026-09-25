@@ -1048,7 +1048,8 @@ public sealed class AniListAccountService(
                     "Connect your AniList account in Settings before syncing progress.",
                     requestedProgress,
                     displayTitle,
-                    aniListChapterCount: configuredChapterCount),
+                    aniListChapterCount: configuredChapterCount,
+                    requestedVolumeProgress: requestedVolumeProgress),
                 AniListExternalProgressStateKind.NotConnected);
         }
 
@@ -1075,7 +1076,8 @@ public sealed class AniListAccountService(
                     "The mapped manga entry is not on your AniList list. Add it in AniList first.",
                     requestedProgress,
                     displayTitle,
-                    aniListChapterCount: configuredChapterCount),
+                    aniListChapterCount: configuredChapterCount,
+                    requestedVolumeProgress: requestedVolumeProgress),
                 AniListExternalProgressStateKind.NotOnList);
         }
 
