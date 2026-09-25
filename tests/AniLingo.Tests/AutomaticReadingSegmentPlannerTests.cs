@@ -281,6 +281,52 @@ public sealed class AutomaticReadingSegmentPlannerTests
     }
 
     [TestMethod]
+    public async Task AddingManualSegmentReplacesExistingAutomaticSet()
+    {
+        var directory = TempDirectory();
+
+        try
+        {
+            var store = new ReadingSegmentMappingStore(
+                NullLogger<ReadingSegmentMappingStore>.Instance,
+                new DirectoryInfo(directory));
+            var localId = Guid.NewGuid().ToString();
+
+            Assert.IsTrue(await store.ReplaceAutomaticAsync(
+                "manga",
+                localId,
+                [
+                    Mapping(
+                        localId,
+                        "750",
+                        1,
+                        12) with
+                    {
+                        Source = "automatic"
+                    }
+                ]));
+
+            await store.AddAsync(
+                Mapping(
+                    localId,
+                    "751",
+                    5,
+                    8));
+
+            var mappings = await store.ListAsync("manga", localId);
+            Assert.AreEqual(1, mappings.Count);
+            Assert.AreEqual("751", mappings[0].ExternalId);
+            Assert.AreEqual("manual", mappings[0].Source);
+            Assert.AreEqual(5d, mappings[0].LocalChapterStart);
+            Assert.AreEqual(8d, mappings[0].LocalChapterEnd);
+        }
+        finally
+        {
+            TryDelete(directory);
+        }
+    }
+
+    [TestMethod]
     public async Task AutomaticSegmentSetCanBeReconciledAtomically()
     {
         var directory = TempDirectory();
