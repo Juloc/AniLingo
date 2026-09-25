@@ -1,11 +1,25 @@
+@using AniLingo.Web.Data
+@using AniLingo.Web.Features.Auth
+@using AniLingo.Web.Features.Localization
+@inject AppDbContext LocalizationDb
 @{
     var isAuthenticated = User.Identity?.IsAuthenticated == true;
     var profileId = isAuthenticated
         ? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
         : null;
+    var ui = UiTextBundle.English;
+    if (isAuthenticated && !string.IsNullOrWhiteSpace(profileId))
+    {
+        var localizationStore = new UiTranslationCatalogStore(LocalizationDb);
+        ui = await localizationStore.LoadProfileBundleAsync(
+            profileId,
+            Context.RequestAborted);
+    }
+
+    ViewData["UiTextBundle"] = ui;
 }
 <!DOCTYPE html>
-<html lang="en">
+<html lang="@ui.Locale" dir="@ui.Direction">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />

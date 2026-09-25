@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Books;
 using AniLingo.Web.Features.Metadata;
+using AniLingo.Web.Features.Manga;
 using AniLingo.Web.Features.Novels;
 using AniLingo.Web.Features.Tracking;
 using Microsoft.EntityFrameworkCore;
@@ -269,9 +270,17 @@ public sealed class DiscoveryCoordinator(
             .Distinct(StringComparer.Ordinal)
             .ToArray();
 
-        var readingIds = items
+        var novelIds = items
             .Where(x =>
-                (x.Category == "light-novel" || x.Category == "manga") &&
+                x.Category == "light-novel" &&
+                x.Provider == "anilist")
+            .Select(x => x.ExternalId)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        var mangaIds = items
+            .Where(x =>
+                x.Category == "manga" &&
                 x.Provider == "anilist")
             .Select(x => x.ExternalId)
             .Distinct(StringComparer.Ordinal)
@@ -298,15 +307,15 @@ public sealed class DiscoveryCoordinator(
             }
         }
 
-        var readingMatches = new Dictionary<string, Guid>(StringComparer.Ordinal);
-        if (readingIds.Length > 0)
+        var novelMatches = new Dictionary<string, Guid>(StringComparer.Ordinal);
+        if (novelIds.Length > 0)
         {
             var rows = await db.NovelWorks
                 .AsNoTracking()
                 .Where(x =>
                     x.MetadataProvider == NovelAniListProvider.ProviderKey &&
                     x.MetadataExternalId != null &&
-                    readingIds.Contains(x.MetadataExternalId))
+                    novelIds.Contains(x.MetadataExternalId))
                 .Select(x => new
                 {
                     ExternalId = x.MetadataExternalId!,
@@ -316,9 +325,16 @@ public sealed class DiscoveryCoordinator(
 
             foreach (var row in rows)
             {
-                readingMatches.TryAdd(row.ExternalId, row.Id);
+                novelMatches.TryAdd(row.ExternalId, row.Id);
             }
         }
+
+        IReadOnlyDictionary<string, Guid> mangaMatches =
+            mangaIds.Length == 0
+                ? new Dictionary<string, Guid>(StringComparer.Ordinal)
+                : await new MangaRepository(db).GetAniListMatchesAsync(
+                    mangaIds,
+                    cancellationToken);
 
         return items
             .Select(item =>
@@ -333,13 +349,23 @@ public sealed class DiscoveryCoordinator(
                     };
                 }
 
-                if ((item.Category == "light-novel" || item.Category == "manga") &&
-                    readingMatches.TryGetValue(item.ExternalId, out var workId))
+                if (item.Category == "light-novel" &&
+                    novelMatches.TryGetValue(item.ExternalId, out var workId))
                 {
                     return item with
                     {
                         IsLocal = true,
                         LocalUrl = $"/Novels/Work/{workId}"
+                    };
+                }
+
+                if (item.Category == "manga" &&
+                    mangaMatches.TryGetValue(item.ExternalId, out var seriesId))
+                {
+                    return item with
+                    {
+                        IsLocal = true,
+                        LocalUrl = $"/Manga/Series/{seriesId}"
                     };
                 }
 
@@ -393,7 +419,9 @@ public sealed class DiscoveryCoordinator(
             row.Genres,
             false,
             null,
-            $"https://anilist.co/manga/{row.ExternalId}",
+            !row.IsNovel && isOwner
+                ? BuildMangaImportUrl(row.ExternalId, row.PreferredTitle)
+                : $"https://anilist.co/manga/{row.ExternalId}",
             isOwner && row.IsNovel);
 
     private static DiscoveryItem MapBook(BookCatalogItem row) =>
@@ -453,9 +481,20 @@ public sealed class DiscoveryCoordinator(
             null,
             category == "anime"
                 ? $"https://anilist.co/anime/{row.MediaId}"
-                : $"https://anilist.co/manga/{row.MediaId}",
+                : category == "manga" && isOwner
+                    ? BuildMangaImportUrl(row.MediaId.ToString(), row.Title)
+                    : $"https://anilist.co/manga/{row.MediaId}",
             isOwner && category == "light-novel");
     }
+
+    public static void InvalidateCache() =>
+        Cache.Clear();
+
+    public static string BuildMangaImportUrl(
+        string externalId,
+        string title) =>
+        $"/Discover/MangaImport?anilistId={Uri.EscapeDataString(externalId)}" +
+        $"&title={Uri.EscapeDataString(title)}";
 
     private static async Task<IReadOnlyList<DiscoveryItem>> CaptureAsync(
         Func<Task<IReadOnlyList<DiscoveryItem>>> action,

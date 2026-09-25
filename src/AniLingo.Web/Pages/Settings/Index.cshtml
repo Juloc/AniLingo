@@ -1,32 +1,41 @@
 @page
+@using AniLingo.Web.Features.Localization
 @model AniLingo.Web.Pages.Settings.IndexModel
 @{
-    ViewData["Title"] = "Settings";
+    var ui = ViewData["UiTextBundle"] as UiTextBundle ?? UiTextBundle.English;
+    ViewData["Title"] = ui["settings.title"];
 }
 
 <header class="page-header">
     <div>
         <span class="eyebrow">Personal</span>
-        <h1>Settings</h1>
-        <p>Your learning and account integrations.</p>
+        <h1>@ui["settings.title"]</h1>
+        <p>@ui["settings.subtitle"]</p>
     </div>
 </header>
 
 <div class="settings-grid">
     <section class="panel">
         <div class="panel-heading">
-            <h2>Learning</h2>
+            <h2>@ui["settings.language.title"]</h2>
             <span>Personal</span>
         </div>
-        <p class="muted">
-            Adjust your desired retention, review batch size and daily new words.
-        </p>
-        <a class="button" asp-page="/Settings/Learning">Manage learning</a>
+        <p class="muted">@ui["settings.language.description"]</p>
+        <a class="button" asp-page="/Settings/Language">@ui["settings.language.manage"]</a>
     </section>
 
     <section class="panel">
-        <div class="panel-heading"><h2>AniList</h2><span>Personal</span></div>
-        <p class="muted">Connect your own AniList account and sync only your progress.</p>
-        <a class="button" asp-page="/Settings/AniList">Manage AniList</a>
+        <div class="panel-heading">
+            <h2>@ui["settings.learning.title"]</h2>
+            <span>Personal</span>
+        </div>
+        <p class="muted">@ui["settings.learning.description"]</p>
+        <a class="button" asp-page="/Settings/Learning">@ui["settings.learning.manage"]</a>
+    </section>
+
+    <section class="panel">
+        <div class="panel-heading"><h2>@ui["settings.anilist.title"]</h2><span>Personal</span></div>
+        <p class="muted">@ui["settings.anilist.description"]</p>
+        <a class="button" asp-page="/Settings/AniList">@ui["settings.anilist.manage"]</a>
     </section>
 </div>

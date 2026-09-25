@@ -2,6 +2,7 @@ using AniLingo.Web.Data;
 using AniLingo.Web.Features.Artwork;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Learning;
+using AniLingo.Web.Features.Localization;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
 
@@ -13,17 +14,41 @@ public sealed class IndexModel(AppDbContext db, CurrentAccountContext currentAcc
     public int AnimeCount { get; private set; }
     public int EpisodeCount { get; private set; }
     public IReadOnlyList<HomeEpisode> RecentEpisodes { get; private set; } = [];
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
+    public bool ShowLearningHomeWidget { get; private set; }
+    public bool ShowContentMetrics { get; private set; }
 
     public async Task OnGetAsync(CancellationToken cancellationToken)
     {
+        Ui = await new UiTranslationCatalogStore(db).LoadProfileBundleAsync(
+            currentAccount.ProfileId,
+            cancellationToken);
+
+        var configuration = new LearningConfigurationStore(db);
+        var profileLearning = await configuration.ResolveProfileAsync(
+            currentAccount.ProfileId,
+            cancellationToken);
+        var animeLearning = await configuration.ResolveAsync(
+            currentAccount.ProfileId,
+            new LearningScopeContext(LearningMediaType.Anime),
+            cancellationToken);
+
+        ShowLearningHomeWidget =
+            profileLearning.IsEnabled(LearningCapability.HomeWidget);
+        ShowContentMetrics =
+            animeLearning.IsEnabled(LearningCapability.ContentMetrics);
+
         var now = DateTime.UtcNow;
 
-        DueReviews = await db.UserTerms.AsNoTracking().CountAsync(
-            x => x.ProfileId == currentAccount.ProfileId
-                && x.State == UserTermState.Learning
-                && x.NextReviewAt != null
-                && x.NextReviewAt <= now,
-            cancellationToken);
+        if (ShowLearningHomeWidget)
+        {
+            DueReviews = await db.UserTerms.AsNoTracking().CountAsync(
+                x => x.ProfileId == currentAccount.ProfileId
+                    && x.State == UserTermState.Learning
+                    && x.NextReviewAt != null
+                    && x.NextReviewAt <= now,
+                cancellationToken);
+        }
 
         AnimeCount = await db.Anime.AsNoTracking().CountAsync(cancellationToken);
         EpisodeCount = await db.Episodes.AsNoTracking().CountAsync(cancellationToken);

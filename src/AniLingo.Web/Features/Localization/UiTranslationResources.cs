@@ -1,0 +1,170 @@
+namespace AniLingo.Web.Features.Localization;
+
+public static class UiTranslationResources
+{
+    public static IReadOnlyList<UiMessageDefinition> All { get; } =
+    [
+        M("nav.home", "Home", "Shell", "Navigation", "Primary navigation entry that opens the AniLingo home dashboard.", "short navigation label", 18),
+        M("nav.discover", "Discover", "Shell", "Navigation", "Primary navigation entry for searching and browsing media.", "short navigation label", 18),
+        M("nav.library", "Library", "Shell", "Navigation", "Primary navigation entry for the user's anime/media library.", "short navigation label", 18),
+        M("nav.reading", "Reading", "Shell", "Navigation", "Primary navigation entry grouping novels and manga reading.", "short navigation label", 18),
+        M("nav.learn", "Learning", "Shell", "Navigation", "Primary navigation entry for the optional learning hub.", "short navigation label", 18),
+        M("nav.settings", "Settings", "Shell", "Navigation", "Primary navigation entry for personal application settings.", "short navigation label", 18),
+        M("nav.admin", "Admin", "Shell", "Navigation", "Owner-only navigation entry for server administration.", "short navigation label", 18),
+
+        M("common.save", "Save", "Common", "Button", "Commit the user's current edits or settings.", "concise action", 18),
+        M("common.cancel", "Cancel", "Common", "Button", "Abandon the current edit/action without saving it.", "concise action", 18),
+        M("common.search", "Search", "Common", "Button", "Start a search using the current query.", "concise action", 18),
+        M("common.back", "Back", "Common", "Button", "Navigate back to the previous application surface.", "concise action", 18),
+
+        M("home.continueWatching", "Continue watching", "Home", "Heading", "Heading for media episodes the user has started and can resume.", "friendly concise heading", 32),
+        M("home.continueReading", "Continue reading", "Home", "Heading", "Heading for books, novels or manga the user has started and can resume.", "friendly concise heading", 32),
+
+        M("home.eyebrow", "Japanese through your media", "Home", "Eyebrow", "Short label above the home dashboard hero. It describes optional Japanese/language tooling without making learning mandatory.", "compact product copy", 36),
+        M("home.title", "Continue where you left off", "Home", "Heading", "Main home dashboard heading focused on resuming media and reading.", "friendly product heading", 42),
+        M("home.subtitle", "Watch, read and pick up language tools when you want them.", "Home", "Body", "Home hero description emphasizing that language/learning tools are optional.", "friendly concise product copy", 80),
+        M("home.reviewButton", "Review {count} due", "Home", "Button", "Optional learning shortcut showing the number of currently due reviews.", "concise learning action", 30,
+            new Dictionary<string, string> { ["count"] = "Number of due review cards." }),
+        M("home.metric.due", "Due reviews", "Home", "Metric label", "Label for the number of spaced-repetition reviews due now.", "compact metric label", 22),
+        M("home.metric.ready", "Ready now", "Home", "Metric caption", "Caption indicating review items are ready now.", "compact status", 20),
+        M("home.metric.anime", "Anime", "Home", "Metric label", "Label for anime count in the media library.", "compact metric label", 18),
+        M("home.metric.inLibrary", "In your library", "Home", "Metric caption", "Caption for media count stored in the user's library.", "compact status", 24),
+        M("home.metric.episodes", "Episodes", "Home", "Metric label", "Label for discovered episode count.", "compact metric label", 18),
+        M("home.metric.discovered", "Discovered on NAS", "Home", "Metric caption", "Caption explaining that episode files were discovered on configured network/local storage.", "compact status", 28, null, ["NAS"]),
+        M("home.library.eyebrow", "Library", "Home", "Eyebrow", "Short label above the recently discovered library section.", "compact section label", 18),
+        M("home.library.recent", "Recently discovered", "Home", "Heading", "Heading for recently discovered media items.", "concise section heading", 32),
+        M("home.library.view", "View library", "Home", "Link", "Link opening the full media library.", "concise navigation action", 24),
+        M("home.empty.title", "No episodes yet", "Home", "Heading", "Empty-state heading when no anime episodes have been discovered.", "clear empty-state heading", 28),
+        M("home.empty.body", "Add a media root in Settings and start a scan.", "Home", "Body", "Empty-state instruction for configuring a media library.", "clear instruction", 70),
+        M("home.empty.settings", "Open settings", "Home", "Button", "Open Settings from the empty home library state.", "concise action", 24),
+
+        M("learn.hub.eyebrow", "Optional learning", "Learning", "Eyebrow", "Short label above the Learning hub emphasizing that study is optional.", "compact section label", 24),
+        M("learn.hub.subtitle", "Vocabulary, reviews and language practice live here when you want them.", "Learning", "Body", "Learning hub description that keeps study separate from normal watching and reading.", "neutral concise copy", 90),
+        M("learn.hub.off.title", "Learning is off", "Learning", "Heading", "Shown when the current profile has no Learning capabilities enabled at any scope.", "neutral status", 32),
+        M("learn.hub.off.body", "AniLingo will stay focused on watching and reading. You can enable only language tools or a full study setup whenever you want.", "Learning", "Body", "Explains the Off mode without pressuring the user to enable Learning.", "neutral helpful copy", 140),
+        M("learn.hub.settings", "Learning settings", "Learning", "Button", "Open personal Learning mode and capability settings.", "concise navigation action", 28),
+        M("learn.hub.metric.due", "Due", "Learning", "Metric label", "Number of spaced-repetition reviews due now.", "compact metric label", 14),
+        M("learn.hub.metric.dueHint", "Reviews ready now", "Learning", "Metric caption", "Caption for reviews currently ready.", "compact status", 24),
+        M("learn.hub.metric.saved", "Saved", "Learning", "Metric label", "Vocabulary saved for later but not necessarily in active SRS.", "compact metric label", 14),
+        M("learn.hub.metric.savedHint", "Not forced into reviews", "Learning", "Metric caption", "Explains saved vocabulary is separate from active reviews.", "compact status", 28),
+        M("learn.hub.metric.learning", "Learning", "Learning", "Metric label", "Vocabulary currently in active learning/review state.", "compact metric label", 16),
+        M("learn.hub.metric.learningHint", "Active vocabulary", "Learning", "Metric caption", "Caption for vocabulary actively being learned.", "compact status", 24),
+        M("learn.hub.reviews.title", "Reviews", "Learning", "Heading", "Learning hub module for scheduled spaced-repetition reviews.", "clear module label", 22),
+        M("learn.hub.reviews.body", "Review only the cards that are actually scheduled. Opening Learning no longer starts a review automatically.", "Learning", "Body", "Description of the dedicated review module.", "neutral helpful copy", 120),
+        M("learn.hub.vocabulary.title", "Vocabulary", "Learning", "Heading", "Learning hub module for saved, learning, known and ignored vocabulary.", "clear module label", 22),
+        M("learn.hub.vocabulary.body", "Save words without committing to SRS, then decide what should become active learning.", "Learning", "Body", "Description of vocabulary-state separation.", "neutral helpful copy", 110),
+        M("learn.hub.sentences.title", "Sentences", "Learning", "Heading", "Learning hub module for sentence practice from consumed content.", "clear module label", 22),
+        M("learn.sentences.title", "Sentence practice", "Learning", "Heading", "Page title for practicing contextual sentences from consumed media.", "clear feature heading", 30),
+        M("learn.sentences.subtitle", "Practice real context separately from Kana. Sentences prefer vocabulary you saved or actively learn.", "Learning", "Body", "Explains contextual sentence-practice behavior.", "neutral helpful copy", 120),
+        M("learn.sentences.empty.title", "No sentence practice ready", "Learning", "Heading", "Empty-state title when no suitable source sentences are available.", "neutral empty state", 38),
+        M("learn.sentences.empty.body", "Japanese subtitle or transcript text will appear here when suitable context is available.", "Learning", "Body", "Empty-state explanation for sentence practice.", "neutral helpful copy", 110),
+        M("learn.sentences.openScene", "Open scene", "Learning", "Link", "Open the source anime episode at the sentence timestamp.", "concise navigation action", 20),
+        M("learn.sentences.showAnswer", "Show answer", "Learning", "Button", "Reveal the original sentence for a cloze exercise.", "concise practice action", 22),
+        M("learn.sentences.audioNormal", "Normal", "Learning", "Button", "Play text-to-speech at normal speed.", "short audio label", 14),
+        M("learn.sentences.audioSlow", "Slow", "Learning", "Button", "Play text-to-speech more slowly.", "short audio label", 14),
+        M("learn.sentences.tapWord", "Tap a word for reading and meaning.", "Learning", "Hint", "Instruction beneath interactive sentence tokens.", "short helpful hint", 48),
+        M("learn.hub.sentences.body", "Practice context from your media separately from writing-system drills.", "Learning", "Body", "Description of sentence practice module.", "neutral helpful copy", 100),
+        M("learn.hub.kana.title", "Kana", "Learning", "Heading", "Japanese writing-system trainer module.", "short module label", 16),
+        M("learn.hub.kana.body", "Hiragana and Katakana practice only. Sentence practice has its own module.", "Learning", "Body", "Clarifies Kana module scope.", "neutral helpful copy", 100),
+        M("learn.hub.progress.title", "Progress", "Learning", "Heading", "Learning progress and review statistics module.", "clear module label", 22),
+        M("learn.progress.title", "Learning progress", "Learning", "Heading", "Page title for learning activity and statistics.", "clear feature heading", 30),
+        M("learn.progress.subtitle", "Progress stays inside Learning instead of competing with Watch and Read in the main navigation.", "Learning", "Body", "Explains where learning statistics belong in the product.", "neutral helpful copy", 110),
+        M("learn.progress.known", "Known", "Learning", "Metric label", "Count of vocabulary marked known.", "compact metric label", 16),
+        M("learn.progress.knownHint", "Vocabulary terms", "Learning", "Metric caption", "Caption for known vocabulary count.", "compact status", 22),
+        M("learn.progress.learning", "Learning", "Learning", "Metric label", "Count of vocabulary in active learning.", "compact metric label", 16),
+        M("learn.progress.dueHint", "{count} due now", "Learning", "Metric caption", "Caption for active learning count that includes reviews due now.", "compact status", 24, new Dictionary<string, string> { ["count"] = "Number of review cards due now." }),
+        M("learn.progress.prepared", "Prepared", "Learning", "Metric label", "Occurrence-weighted vocabulary coverage metric.", "compact metric label", 18),
+        M("learn.progress.preparedHint", "Library vocabulary coverage", "Learning", "Metric caption", "Clarifies prepared percentage is vocabulary occurrence coverage.", "compact status", 32),
+        M("learn.progress.activity", "Review activity", "Learning", "Heading", "Heading for review history statistics.", "clear section heading", 28),
+        M("learn.progress.totalReviews", "Total reviews", "Learning", "Label", "Total number of review events.", "short data label", 22),
+        M("learn.progress.last24h", "Last 24 hours", "Learning", "Label", "Review count during the last 24 hours.", "short data label", 22),
+        M("learn.progress.last7d", "Last 7 days", "Learning", "Label", "Review count during the last seven days.", "short data label", 22),
+        M("learn.progress.preparedOccurrences", "Prepared occurrences", "Learning", "Label", "Prepared vocabulary occurrences divided by total occurrences.", "short data label", 30),
+        M("learn.progress.coverageNote", "Prepared coverage counts known and active-learning vocabulary occurrences. It is not a direct estimate of dialogue comprehension.", "Learning", "Body", "Caveat explaining the prepared vocabulary metric.", "neutral explanatory copy", 145),
+        M("learn.hub.progress.body", "See learning activity and vocabulary progress without putting it in the main navigation.", "Learning", "Body", "Description of nested Learning progress module.", "neutral helpful copy", 110),
+        M("learn.hub.scoped.title", "Learning is enabled only for selected content", "Learning", "Heading", "Shown when lower content scopes enable Learning while the profile-level modules stay off.", "clear status heading", 52),
+        M("learn.hub.scoped.body", "Your global Learning area stays quiet. Open the book or series where you enabled language tools or study.", "Learning", "Body", "Explains scoped Learning without surfacing irrelevant global modules.", "neutral helpful copy", 120),
+        M("learn.eyebrow", "Review", "Learning", "Eyebrow", "Short label above the spaced-repetition review screen.", "compact section label", 18),
+        M("learn.title", "Learning", "Learning", "Heading", "Heading for the optional learning/review area.", "clear feature heading", 24),
+        M("learn.dueNow", "{count} due now.", "Learning", "Status", "Shows how many review cards are due in the current session.", "compact status", 26,
+            new Dictionary<string, string> { ["count"] = "Number of due review cards." }),
+        M("learn.empty.title", "Nothing due", "Learning", "Heading", "Empty-state heading when there are no review cards due.", "friendly concise status", 24),
+        M("learn.empty.body", "Saved learning items will appear here when they are due.", "Learning", "Body", "Explains the empty review queue without pressuring the user to study.", "neutral helpful copy", 72),
+        M("learn.openLibrary", "Open library", "Learning", "Button", "Navigate from Learning to the media library.", "concise navigation action", 24),
+        M("learn.showAnswer", "Show answer", "Learning", "Button", "Reveal the answer/back side of the current review card.", "concise review action", 24),
+        M("learn.noMeaning", "No local dictionary meaning available.", "Learning", "Status", "Shown when the local dictionary has no meaning for the current item.", "neutral diagnostic", 54),
+        M("learn.animeContext", "Anime context", "Learning", "Label", "Label for the source anime sentence attached to a review item.", "compact context label", 24),
+        M("learn.explainAi", "Explain with AI", "Learning", "Button", "Request an optional AI explanation for the current source sentence.", "concise optional action", 24, null, ["AI"]),
+        M("learn.rating.again", "Again", "Learning", "Button", "FSRS review rating meaning the user did not recall the answer.", "very short review rating", 14),
+        M("learn.rating.hard", "Hard", "Learning", "Button", "FSRS review rating meaning recall was difficult.", "very short review rating", 14),
+        M("learn.rating.good", "Good", "Learning", "Button", "FSRS review rating meaning normal successful recall.", "very short review rating", 14),
+        M("learn.rating.easy", "Easy", "Learning", "Button", "FSRS review rating meaning effortless recall.", "very short review rating", 14),
+
+        M("settings.language.title", "Interface language", "Localization", "Heading", "Personal setting for choosing the AniLingo UI language.", "clear settings heading", 32),
+        M("settings.language.description", "Choose the language AniLingo uses for menus and interface text. This does not change content or learning languages.", "Localization", "Body", "Explains that UI language is independent from learning/content languages.", "clear settings copy", 120),
+        M("settings.language.save", "Use this language", "Localization", "Button", "Save the selected UI locale for the current profile.", "concise settings action", 28),
+
+        M("player.play", "Play", "Player", "Button", "Start or resume media playback.", "concise media action", 16),
+        M("player.pause", "Pause", "Player", "Button", "Pause media playback at the current position.", "concise media action", 16),
+        M("player.repeatLine", "Repeat line", "Player", "Button", "Replay the subtitle or dialogue cue currently visible in the media player.", "concise media action", 24),
+        M("player.learnThisLine", "Learn this line", "Player", "Button", "Open optional language or learning tools for the currently visible subtitle sentence.", "concise learning action", 28),
+
+        M("learn.vocabulary.title", "Vocabulary", "Learning", "Heading", "Page title for managing personal vocabulary states.", "clear feature heading", 26),
+        M("learn.vocabulary.subtitle", "Saved does not mean scheduled. Decide which words you want to keep, learn, mark known, suspend or ignore.", "Learning", "Body", "Explains that vocabulary collection is separate from SRS commitment.", "neutral helpful copy", 130),
+        M("learn.vocabulary.search", "Search vocabulary", "Learning", "Label", "Label for searching the user vocabulary list.", "clear form label", 26),
+        M("learn.vocabulary.searchPlaceholder", "Word, reading or meaning", "Learning", "Placeholder", "Search field placeholder for vocabulary text.", "short search hint", 32),
+        M("learn.vocabulary.state", "State", "Learning", "Label", "Vocabulary lifecycle state filter/column label.", "short data label", 16),
+        M("learn.vocabulary.term", "Term", "Learning", "Label", "Vocabulary word/term column label.", "short data label", 16),
+        M("learn.vocabulary.language", "Language", "Learning", "Label", "Language-code column label for vocabulary items.", "short data label", 18),
+        M("learn.vocabulary.empty.title", "No vocabulary here", "Learning", "Heading", "Empty-state title when the selected vocabulary filter has no items.", "neutral empty state", 30),
+        M("learn.vocabulary.empty.body", "Save a word from language tools, or change the filter.", "Learning", "Body", "Empty-state guidance for the vocabulary list.", "neutral helpful copy", 70),
+        M("learn.vocabulary.startLearning", "Start learning", "Learning", "Button", "Move a saved/ignored/suspended word into the active SRS learning queue.", "concise learning action", 24),
+        M("learn.vocabulary.suspend", "Suspend", "Learning", "Button", "Temporarily stop scheduled reviews for this vocabulary item without deleting it.", "concise learning action", 18),
+        M("learning.saveWord", "Save word", "Learning", "Button", "Save the selected word to the user's vocabulary without necessarily starting SRS reviews.", "concise action", 24),
+        M("learning.markKnown", "I know this", "Learning", "Button", "Mark the selected vocabulary item as already known by the user.", "natural first-person action", 24),
+        M("learning.ignoreWord", "Ignore", "Learning", "Button", "Exclude the selected vocabulary item from learning suggestions.", "concise action", 18),
+        M("learning.reviewDue", "{count} reviews due", "Learning", "Status", "Shows how many spaced-repetition reviews are currently due.", "compact status", 32,
+            new Dictionary<string, string> { ["count"] = "Number of currently due review cards." }),
+        M("learning.languageTools", "Language tools", "Learning", "Heading", "Label for optional lookup, reading, translation and explanation tools that do not require active study.", "clear feature label", 28),
+
+        M("reader.continueReading", "Continue reading", "Reading", "Button", "Resume the current book, novel or manga at the saved reading position.", "concise action", 28),
+
+        M("admin.languages.title", "UI languages", "Localization", "Heading", "Owner administration page for application-interface languages and translations.", "administrative heading", 32),
+        M("admin.languages.add", "Add language", "Localization", "Button", "Add a new BCP-47 application locale to the translation catalog.", "concise admin action", 24),
+        M("admin.languages.generateMissing", "Generate missing", "Localization", "Button", "Use the configured AI provider to create all currently missing translations for the selected UI locale.", "concise admin action", 28),
+        M("admin.languages.regenerateOutdated", "Regenerate outdated", "Localization", "Button", "Use AI to regenerate translations whose source text or translation context changed.", "concise admin action", 32),
+        M("admin.languages.markReviewed", "Mark reviewed", "Localization", "Button", "Confirm that a generated translation has been checked by a human.", "concise admin action", 24)
+    ];
+
+    private static readonly IReadOnlyDictionary<string, UiMessageDefinition> ByKeyMap =
+        All.ToDictionary(x => x.Key, StringComparer.Ordinal);
+
+    public static bool TryGet(string key, out UiMessageDefinition message) =>
+        ByKeyMap.TryGetValue(key, out message!);
+
+    public static UiMessageDefinition Get(string key) =>
+        TryGet(key, out var message)
+            ? message
+            : throw new KeyNotFoundException($"Unknown UI translation key '{key}'.");
+
+    private static UiMessageDefinition M(
+        string key,
+        string defaultText,
+        string feature,
+        string surface,
+        string description,
+        string tone,
+        int? maxLength = null,
+        IReadOnlyDictionary<string, string>? placeholders = null,
+        IReadOnlyList<string>? doNotTranslate = null) =>
+        new(
+            key,
+            defaultText,
+            feature,
+            surface,
+            description,
+            tone,
+            maxLength,
+            placeholders,
+            doNotTranslate);
+}

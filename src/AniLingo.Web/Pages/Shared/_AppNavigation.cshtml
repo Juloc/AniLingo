@@ -1,5 +1,18 @@
+@using AniLingo.Web.Data
+@using AniLingo.Web.Features.Localization
+@using AniLingo.Web.Features.Learning
+@inject AppDbContext LearningNavigationDb
 @{
+    var ui = ViewData["UiTextBundle"] as UiTextBundle ?? UiTextBundle.English;
     var path = Context.Request.Path;
+    var profileId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+    var learningVisible = false;
+    if (!string.IsNullOrWhiteSpace(profileId))
+    {
+        learningVisible = await new LearningConfigurationStore(LearningNavigationDb)
+            .HasAnyLearningEnabledAsync(profileId, Context.RequestAborted);
+    }
+
     var isReading =
         path.StartsWithSegments("/Reading")
         || path.StartsWithSegments("/Novels")
@@ -13,33 +26,33 @@
 
     <nav class="nav-list" aria-label="Primary">
         <a class="nav-item @(path == "/" ? "active" : "")" href="/">
-            <span class="nav-glyph">H</span><span>Home</span>
+            <span class="nav-glyph">H</span><span>@ui["nav.home"]</span>
         </a>
         <a class="nav-item @(path.StartsWithSegments("/Discover") ? "active" : "")" href="/Discover">
-            <span class="nav-glyph">D</span><span>Discover</span>
+            <span class="nav-glyph">D</span><span>@ui["nav.discover"]</span>
         </a>
         <a class="nav-item @(path.StartsWithSegments("/Library") ? "active" : "")" href="/Library">
-            <span class="nav-glyph">L</span><span>Library</span>
+            <span class="nav-glyph">L</span><span>@ui["nav.library"]</span>
         </a>
         <a class="nav-item @(isReading ? "active" : "")" href="/Reading">
-            <span class="nav-glyph">R</span><span>Reading</span>
+            <span class="nav-glyph">R</span><span>@ui["nav.reading"]</span>
         </a>
         <a class="nav-item @(path.StartsWithSegments("/Books") ? "active" : "")" href="/Books">
-            <span class="nav-glyph">B</span><span>Books</span>
+            <span class="nav-glyph">B</span><span>@ui["nav.books"]</span>
         </a>
-        <a class="nav-item @(path.StartsWithSegments("/Learn") ? "active" : "")" href="/Learn">
-            <span class="nav-glyph">V</span><span>Learn</span>
-        </a>
-        <a class="nav-item @(path.StartsWithSegments("/Statistics") ? "active" : "")" href="/Statistics">
-            <span class="nav-glyph">P</span><span>Progress</span>
-        </a>
+        @if (learningVisible)
+        {
+            <a class="nav-item @(path.StartsWithSegments("/Learn") || path.StartsWithSegments("/Statistics") ? "active" : "")" href="/Learn">
+                <span class="nav-glyph">V</span><span>@ui["nav.learn"]</span>
+            </a>
+        }
         <a class="nav-item @(path.StartsWithSegments("/Settings") ? "active" : "")" href="/Settings">
-            <span class="nav-glyph">S</span><span>Settings</span>
+            <span class="nav-glyph">S</span><span>@ui["nav.settings"]</span>
         </a>
         @if (User.IsInRole(AniLingo.Web.Features.Auth.AccountRoles.Owner))
         {
             <a class="nav-item @(path.StartsWithSegments("/Admin") ? "active" : "")" href="/Admin">
-                <span class="nav-glyph">A</span><span>Admin</span>
+                <span class="nav-glyph">A</span><span>@ui["nav.admin"]</span>
             </a>
         }
     </nav>
@@ -47,25 +60,28 @@
     <div class="sidebar-footer">
         <span class="sidebar-user">@User.Identity?.Name</span>
         <form method="post" asp-page="/Account/Logout" data-offline-logout>
-            <button class="sidebar-logout" type="submit">Sign out</button>
+            <button class="sidebar-logout" type="submit">@ui["nav.signOut"]</button>
         </form>
         <span>v0.1</span>
     </div>
 </aside>
 
 <nav class="mobile-nav" aria-label="Primary mobile">
-    <a class="@(path == "/" ? "active" : "")" href="/">Home</a>
-    <a class="@(path.StartsWithSegments("/Discover") ? "active" : "")" href="/Discover">Discover</a>
-    <a class="@(path.StartsWithSegments("/Library") ? "active" : "")" href="/Library">Library</a>
-    <a class="@(isReading ? "active" : "")" href="/Reading">Reading</a>
-    <a class="@(path.StartsWithSegments("/Learn") ? "active" : "")" href="/Learn">Learn</a>
-    <a class="@(path.StartsWithSegments("/Statistics") ? "active" : "")" href="/Statistics">Progress</a>
-    <a class="@(path.StartsWithSegments("/Settings") ? "active" : "")" href="/Settings">Settings</a>
+    <a class="@(path == "/" ? "active" : "")" href="/">@ui["nav.home"]</a>
+    <a class="@(path.StartsWithSegments("/Discover") ? "active" : "")" href="/Discover">@ui["nav.discover"]</a>
+    <a class="@(path.StartsWithSegments("/Library") ? "active" : "")" href="/Library">@ui["nav.library"]</a>
+    <a class="@(isReading ? "active" : "")" href="/Reading">@ui["nav.reading"]</a>
+    @if (learningVisible)
+    {
+        <a class="@(path.StartsWithSegments("/Learn") || path.StartsWithSegments("/Statistics") ? "active" : "")"
+           href="/Learn">@ui["nav.learn"]</a>
+    }
+    <a class="@(path.StartsWithSegments("/Settings") ? "active" : "")" href="/Settings">@ui["nav.settings"]</a>
     @if (User.IsInRole(AniLingo.Web.Features.Auth.AccountRoles.Owner))
     {
-        <a class="@(path.StartsWithSegments("/Admin") ? "active" : "")" href="/Admin">Admin</a>
+        <a class="@(path.StartsWithSegments("/Admin") ? "active" : "")" href="/Admin">@ui["nav.admin"]</a>
     }
     <form method="post" asp-page="/Account/Logout" data-offline-logout>
-        <button type="submit">Sign out</button>
+        <button type="submit">@ui["nav.signOut"]</button>
     </form>
 </nav>

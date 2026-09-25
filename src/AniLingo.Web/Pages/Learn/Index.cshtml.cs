@@ -1,86 +1,83 @@
-using AniLingo.Web.Features.Ai;
+using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Learning;
-using Microsoft.AspNetCore.Mvc;
+using AniLingo.Web.Features.Localization;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.EntityFrameworkCore;
 
 namespace AniLingo.Web.Pages.Learn;
 
 public sealed class IndexModel(
-    LearningService learningService,
-    AiSentenceExplanationService aiExplanationService,
+    AppDbContext db,
     CurrentAccountContext currentAccount) : PageModel
 {
-    public IReadOnlyList<ReviewSessionCard> Session { get; private set; } = [];
-    public ReviewSessionCard? Current => Session.FirstOrDefault();
-    public IReadOnlyList<string> LocalHints { get; private set; } = [];
-    public AiSentenceExplanation? AiExplanation { get; private set; }
-    public string ProfileId => currentAccount.ProfileId;
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
+    public LearningMode Mode { get; private set; } = LearningMode.Off;
+    public bool LearningEnabled { get; private set; }
+
+    public int DueReviews { get; private set; }
+    public int LearningTerms { get; private set; }
+    public int SavedTerms { get; private set; }
+    public int KnownTerms { get; private set; }
+    public int IgnoredTerms { get; private set; }
+
+    public bool ShowReviews { get; private set; }
+    public bool ShowVocabulary { get; private set; }
+    public bool ShowSentences { get; private set; }
+    public bool ShowKana { get; private set; }
+    public bool ShowProgress { get; private set; }
 
     public async Task OnGetAsync(CancellationToken cancellationToken)
     {
-        Session = await learningService.GetReviewSessionAsync(cancellationToken);
-
-        if (Current?.Context is not { } context)
-        {
-            return;
-        }
-
-        LocalHints = aiExplanationService.PrepareLocal(context.Sentence).LocalHints;
-        AiExplanation = await aiExplanationService.GetCachedAsync(
-            context.Sentence,
+        Ui = await new UiTranslationCatalogStore(db).LoadProfileBundleAsync(
+            currentAccount.ProfileId,
             cancellationToken);
-    }
 
-    public async Task<IActionResult> OnPostExplainAsync(
-        Guid termId,
-        CancellationToken cancellationToken)
-    {
-        var context = await learningService.GetReviewContextAsync(termId, cancellationToken);
-        if (context is null)
-        {
-            TempData["Status"] = "No anime sentence is available for this term.";
-            return RedirectToPage();
-        }
+        var configuration = new LearningConfigurationStore(db);
+        var resolved = await configuration.ResolveProfileAsync(
+            currentAccount.ProfileId,
+            cancellationToken);
+        Mode = resolved.Mode;
+        LearningEnabled = await configuration.HasAnyLearningEnabledAsync(
+            currentAccount.ProfileId,
+            cancellationToken);
 
-        try
-        {
-            await aiExplanationService.ExplainAsync(
-                context.Sentence,
+        var stateCounts = await db.UserTerms
+            .AsNoTracking()
+            .Where(x => x.ProfileId == currentAccount.ProfileId)
+            .GroupBy(x => x.State)
+            .Select(group => new { State = group.Key, Count = group.Count() })
+            .ToDictionaryAsync(x => x.State, x => x.Count, cancellationToken);
+
+        LearningTerms = stateCounts.GetValueOrDefault(UserTermState.Learning);
+        SavedTerms = stateCounts.GetValueOrDefault(UserTermState.Saved);
+        KnownTerms = stateCounts.GetValueOrDefault(UserTermState.Known);
+        IgnoredTerms = stateCounts.GetValueOrDefault(UserTermState.Ignored);
+
+        DueReviews = await db.UserTerms
+            .AsNoTracking()
+            .CountAsync(
+                x => x.ProfileId == currentAccount.ProfileId
+                    && x.State == UserTermState.Learning
+                    && x.NextReviewAt != null
+                    && x.NextReviewAt <= DateTime.UtcNow,
                 cancellationToken);
-            TempData["Status"] = "AI explanation ready.";
-        }
-        catch (InvalidOperationException exception)
-        {
-            TempData["Status"] = exception.Message;
-        }
 
-        return RedirectToPage();
-    }
+        var hasVocabularyState =
+            LearningTerms + SavedTerms + KnownTerms + IgnoredTerms > 0;
 
-    public async Task<IActionResult> OnPostReviewAsync(
-        Guid termId,
-        ReviewRating rating,
-        CancellationToken cancellationToken)
-    {
-        await learningService.ReviewAsync(termId, rating, cancellationToken);
-        return RedirectToPage();
-    }
-
-    public async Task<IActionResult> OnPostSyncOfflineReviewsAsync(
-        [FromBody] OfflineReviewSyncRequest request,
-        CancellationToken cancellationToken)
-    {
-        if (request.Events is null)
-        {
-            return BadRequest();
-        }
-
-        var result = await learningService.SyncOfflineReviewsAsync(
-            request.Events,
-            DateTime.UtcNow,
-            cancellationToken);
-
-        return new JsonResult(result);
+        ShowReviews =
+            resolved.IsEnabled(LearningCapability.Reviews)
+            || LearningTerms > 0;
+        ShowVocabulary =
+            resolved.IsEnabled(LearningCapability.Vocabulary)
+            || hasVocabularyState;
+        ShowSentences =
+            resolved.IsEnabled(LearningCapability.SentencePractice);
+        ShowKana =
+            resolved.IsEnabled(LearningCapability.ScriptTrainer);
+        ShowProgress =
+            resolved.IsEnabled(LearningCapability.Progress)
+            || hasVocabularyState;
     }
 }

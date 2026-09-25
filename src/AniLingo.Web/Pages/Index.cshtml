@@ -1,39 +1,59 @@
 @page
 @model IndexModel
 @{
-    ViewData["Title"] = "Home";
+    ViewData["Title"] = Model.Ui["nav.home"];
 }
 
 <header class="page-header hero-header">
     <div>
-        <span class="eyebrow">Japanese through your anime</span>
-        <h1>Continue where you left off</h1>
-        <p>Scan your NAS, prepare vocabulary, then watch.</p>\n        <p><a class="text-link" href="/Kana">Noch kein Kana? Aussprache und Sätze üben →</a></p>
+        <span class="eyebrow">@Model.Ui["home.eyebrow"]</span>
+        <h1>@Model.Ui["home.title"]</h1>
+        <p>@Model.Ui["home.subtitle"]</p>
     </div>
-    <a class="button button-primary" href="/Learn">Review @Model.DueReviews due</a>
+    @if (Model.ShowLearningHomeWidget && Model.DueReviews > 0)
+    {
+        <a class="button" href="/Learn">
+            @Model.Ui.Format("home.reviewButton", ("count", Model.DueReviews))
+        </a>
+    }
 </header>
 
 <section class="metric-grid">
-    <partial name="_MetricCard" model='new MetricCardModel("Due reviews", Model.DueReviews.ToString(), "Ready now")' />
-    <partial name="_MetricCard" model='new MetricCardModel("Anime", Model.AnimeCount.ToString(), "In your library")' />
-    <partial name="_MetricCard" model='new MetricCardModel("Episodes", Model.EpisodeCount.ToString(), "Discovered on NAS")' />
+    @if (Model.ShowLearningHomeWidget)
+    {
+        <partial name="_MetricCard"
+                 model='new MetricCardModel(
+                     Model.Ui["home.metric.due"],
+                     Model.DueReviews.ToString(),
+                     Model.Ui["home.metric.ready"])' />
+    }
+    <partial name="_MetricCard"
+             model='new MetricCardModel(
+                 Model.Ui["home.metric.anime"],
+                 Model.AnimeCount.ToString(),
+                 Model.Ui["home.metric.inLibrary"])' />
+    <partial name="_MetricCard"
+             model='new MetricCardModel(
+                 Model.Ui["home.metric.episodes"],
+                 Model.EpisodeCount.ToString(),
+                 Model.Ui["home.metric.discovered"])' />
 </section>
 
 <section class="section">
     <div class="section-heading">
         <div>
-            <span class="eyebrow">Library</span>
-            <h2>Recently discovered</h2>
+            <span class="eyebrow">@Model.Ui["home.library.eyebrow"]</span>
+            <h2>@Model.Ui["home.library.recent"]</h2>
         </div>
-        <a class="text-link" href="/Library">View library</a>
+        <a class="text-link" href="/Library">@Model.Ui["home.library.view"]</a>
     </div>
 
     @if (Model.RecentEpisodes.Count == 0)
     {
         <div class="empty-state">
-            <h3>No episodes yet</h3>
-            <p>Add a NAS root in Settings and start a scan.</p>
-            <a class="button" href="/Settings">Open settings</a>
+            <h3>@Model.Ui["home.empty.title"]</h3>
+            <p>@Model.Ui["home.empty.body"]</p>
+            <a class="button" href="/Settings">@Model.Ui["home.empty.settings"]</a>
         </div>
     }
     else
@@ -45,8 +65,12 @@
                     episode.AnimeTitle,
                     $"S{episode.SeasonNumber:00} · Episode {episode.Number}",
                     $"/Library/Episode/{episode.Id}",
-                    episode.PreparationPercent,
-                    episode.TotalOccurrences == 0 ? "No JP subs" : $"{episode.PreparationPercent}% prepared",
+                    Model.ShowContentMetrics ? episode.PreparationPercent : null,
+                    Model.ShowContentMetrics
+                        ? (episode.TotalOccurrences == 0
+                            ? "No Japanese learning text"
+                            : $"{episode.PreparationPercent}% prepared")
+                        : null,
                     episode.CoverImageUrl)' />
             }
         </div>
