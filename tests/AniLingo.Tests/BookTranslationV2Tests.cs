@@ -353,6 +353,60 @@ public sealed class BookTranslationV2Tests
     }
 
     [TestMethod]
+    public async Task DifferentQualityModesDoNotShareFinalChapterCache()
+    {
+        var databasePath = TempDatabasePath();
+        var memoryPath = TempDirectory();
+
+        try
+        {
+            await using var db = await CreateDatabaseAsync(databasePath);
+            var (_, chapter) = await SeedBookAsync(db);
+            using var client = CreateClient();
+
+            var efficient = new RecordingTranslator(
+                AiTranslationMode.Efficient,
+                "provider-a");
+            var efficientService = NewService(
+                db,
+                client,
+                efficient,
+                memoryPath);
+
+            await efficientService.TranslateChapterAsync(
+                chapter.Id,
+                "id",
+                CancellationToken.None);
+
+            var maximum = new RecordingTranslator(
+                AiTranslationMode.Maximum,
+                "provider-b");
+            var maximumService = NewService(
+                db,
+                client,
+                maximum,
+                memoryPath);
+
+            var result = await maximumService.TranslateChapterAsync(
+                chapter.Id,
+                "id",
+                CancellationToken.None);
+
+            Assert.AreEqual("FINAL-ID", result.Text);
+            CollectionAssert.Contains(maximum.Events, "translate");
+            CollectionAssert.Contains(maximum.Events, "edit");
+            CollectionAssert.Contains(maximum.Events, "qa");
+            Assert.AreEqual(
+                2,
+                await db.NovelTranslations.CountAsync());
+        }
+        finally
+        {
+            Cleanup(databasePath, memoryPath);
+        }
+    }
+
+    [TestMethod]
     public async Task FailedQaDoesNotPersistPartialNovelTranslation()
     {
         var databasePath = TempDatabasePath();
