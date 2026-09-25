@@ -176,7 +176,7 @@
         inset -18px 0 30px -34px rgba(0,0,0,.45);
 }
 
-@keyframes reader-turn-curl-next {
+@keyframes reader-page-curl-next {
     0% { transform: perspective(1400px) rotateY(0); filter: brightness(1); }
     48% {
         transform: perspective(1400px)
@@ -186,7 +186,7 @@
     100% { transform: perspective(1400px) rotateY(0); filter: brightness(1); }
 }
 
-@keyframes reader-turn-curl-prev {
+@keyframes reader-page-curl-prev {
     0% { transform: perspective(1400px) rotateY(0); filter: brightness(1); }
     48% {
         transform: perspective(1400px)
