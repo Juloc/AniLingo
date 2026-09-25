@@ -424,9 +424,22 @@ public sealed partial class BookCatalogService(
             cancellationToken);
     }
 
-    public async Task<Guid> ImportUploadedEpubAsync(
+    public Task<Guid> ImportUploadedEpubAsync(
         Stream stream,
         string fileName,
+        CancellationToken cancellationToken) =>
+        ImportEpubStreamAsync(
+            stream,
+            fileName,
+            "upload",
+            "upload://" + Uri.EscapeDataString(fileName),
+            cancellationToken);
+
+    private async Task<Guid> ImportEpubStreamAsync(
+        Stream stream,
+        string fileName,
+        string sourceKind,
+        string sourceUrl,
         CancellationToken cancellationToken)
     {
         using var copy = await CopyToMemoryBoundedAsync(
@@ -460,7 +473,7 @@ public sealed partial class BookCatalogService(
         return await ImportParsedBookAsync(
             parsed,
             sourceKey: sourceKey,
-            sourceUrl: "upload://" + Uri.EscapeDataString(fileName),
+            sourceUrl: sourceUrl,
             metadataProvider: null,
             metadataExternalId: null,
             coverImageUrl: null,
@@ -468,7 +481,7 @@ public sealed partial class BookCatalogService(
             fallbackDescription: null,
             fallbackSubjects: [],
             fileName: fileName,
-            sourceKind: "upload",
+            sourceKind: sourceKind,
             contentHash: contentHash,
             sizeBytes: bytes.LongLength,
             cancellationToken);
@@ -1094,9 +1107,12 @@ public sealed partial class BookCatalogService(
                     bufferSize: 81920,
                     useAsync: true);
 
-                imported.Add(await ImportUploadedEpubAsync(
+                var fileName = Path.GetFileName(path);
+                imported.Add(await ImportEpubStreamAsync(
                     stream,
-                    Path.GetFileName(path),
+                    fileName,
+                    "inbox",
+                    "inbox://" + Uri.EscapeDataString(fileName),
                     cancellationToken));
             }
             catch (IOException)
