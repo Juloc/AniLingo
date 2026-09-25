@@ -11,6 +11,12 @@ public static class UiTranslationResources
         M("nav.learn", "Learning", "Shell", "Navigation", "Primary navigation entry for the optional learning hub.", "short navigation label", 18),
         M("nav.settings", "Settings", "Shell", "Navigation", "Primary navigation entry for personal application settings.", "short navigation label", 18),
         M("nav.admin", "Admin", "Shell", "Navigation", "Owner-only navigation entry for server administration.", "short navigation label", 18),
+        M("theme.label", "Theme", "Shell", "Appearance", "Compact label for the global app appearance control.", "short control label", 18),
+        M("theme.system", "System", "Shell", "Appearance", "Theme mode that follows the operating system or browser preference.", "short option label", 18),
+        M("theme.light", "Light", "Shell", "Appearance", "Light global application theme.", "short option label", 18),
+        M("theme.dark", "Dark", "Shell", "Appearance", "Dark global application theme.", "short option label", 18),
+        M("theme.switchAria", "Theme: {mode}. Activate to switch appearance.", "Shell", "Accessibility", "Accessible label for the three-state theme cycle button.", "concise accessible instruction", 72, new Dictionary<string, string> { ["mode"] = "Current theme mode label." }),
+        M("shell.version", "Version", "Shell", "Build", "Owner-only label shown before the exact running application version.", "short metadata label", 18),
 
         M("common.save", "Save", "Common", "Button", "Commit the user's current edits or settings.", "concise action", 18),
         M("common.cancel", "Cancel", "Common", "Button", "Abandon the current edit/action without saving it.", "concise action", 18),

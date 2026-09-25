@@ -3,6 +3,7 @@ using System.Data.Common;
 using System.Globalization;
 using System.Text.Json;
 using AniLingo.Web.Data;
+using AniLingo.Web.Features.Appearance;
 using Microsoft.EntityFrameworkCore;
 
 namespace AniLingo.Web.Features.Localization;
@@ -688,6 +689,96 @@ public sealed class UiTranslationCatalogStore(AppDbContext db)
                 """;
             Add(command, "$profileId", profileId);
             Add(command, "$locale", metadata.Locale);
+            Add(command, "$updatedAt", DateTime.UtcNow);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        finally
+        {
+            if (openedHere)
+            {
+                await connection.CloseAsync();
+            }
+        }
+    }
+
+    public async Task<string> GetProfileThemeAsync(
+        string profileId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(profileId))
+        {
+            return AppTheme.System;
+        }
+
+        var connection = db.Database.GetDbConnection();
+        var openedHere = connection.State != ConnectionState.Open;
+        if (openedHere)
+        {
+            await connection.OpenAsync(cancellationToken);
+        }
+
+        try
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText =
+                """
+                SELECT "ThemeMode"
+                FROM "UiProfileThemes"
+                WHERE "ProfileId" = $profileId
+                LIMIT 1;
+                """;
+            Add(command, "$profileId", profileId);
+
+            var value = await command.ExecuteScalarAsync(cancellationToken);
+            return AppTheme.NormalizeOrSystem(
+                value is null or DBNull ? null : Convert.ToString(value, CultureInfo.InvariantCulture));
+        }
+        finally
+        {
+            if (openedHere)
+            {
+                await connection.CloseAsync();
+            }
+        }
+    }
+
+    public async Task SetProfileThemeAsync(
+        string profileId,
+        string theme,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(profileId))
+        {
+            throw new ArgumentException("Profile ID is required.", nameof(profileId));
+        }
+
+        if (!AppTheme.TryNormalize(theme, out var normalized))
+        {
+            throw new ArgumentException("Theme must be system, light or dark.", nameof(theme));
+        }
+
+        var connection = db.Database.GetDbConnection();
+        var openedHere = connection.State != ConnectionState.Open;
+        if (openedHere)
+        {
+            await connection.OpenAsync(cancellationToken);
+        }
+
+        try
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText =
+                """
+                INSERT INTO "UiProfileThemes" (
+                    "ProfileId", "ThemeMode", "UpdatedAt")
+                VALUES (
+                    $profileId, $theme, $updatedAt)
+                ON CONFLICT("ProfileId") DO UPDATE SET
+                    "ThemeMode" = excluded."ThemeMode",
+                    "UpdatedAt" = excluded."UpdatedAt";
+                """;
+            Add(command, "$profileId", profileId);
+            Add(command, "$theme", normalized);
             Add(command, "$updatedAt", DateTime.UtcNow);
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
