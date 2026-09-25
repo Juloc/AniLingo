@@ -1,0 +1,132 @@
+@page "/Books/ForYou"
+@model AniLingo.Web.Pages.Books.ForYouModel
+@{
+    ViewData["Title"] = "For you · Books";
+    var result = Model.Recommendations;
+    var shelfNumber = 0;
+}
+@section Head {
+    <link rel="stylesheet" href="~/css/books.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/book-recommendations.css" asp-append-version="true" />
+}
+
+<a class="books-back" href="/Books?lang=@Model.TargetLanguage">← Books</a>
+
+<header class="books-header book-foryou-header">
+    <div>
+        <h1>For you</h1>
+        <p>
+            Suggestions from this profile's reading and the local library.
+            Catalog searches only send book authors and subjects.
+        </p>
+    </div>
+</header>
+
+@if (result.HasProviderFailures)
+{
+    <div class="books-message" role="status">
+        Some book catalogs did not respond, so a few suggestions may be missing.
+    </div>
+}
+
+@if (result.ContinueReading.Count > 0)
+{
+    <section class="book-shelf" aria-labelledby="book-shelf-continue">
+        <div class="book-shelf-heading">
+            <h2 id="book-shelf-continue">Continue reading</h2>
+            <p>Books you started on this profile.</p>
+        </div>
+        <div class="book-shelf-row">
+            @foreach (var book in result.ContinueReading)
+            {
+                <a class="book-card book-shelf-card"
+                   href="/Books/Library/@book.WorkId?lang=@Model.TargetLanguage">
+                    <div class="book-cover">
+                        @if (!string.IsNullOrWhiteSpace(book.CoverImageUrl))
+                        {
+                            <img src="@book.CoverImageUrl"
+                                 alt=""
+                                 loading="lazy"
+                                 referrerpolicy="no-referrer" />
+                        }
+                        else
+                        {
+                            <span>B</span>
+                        }
+                    </div>
+                    <div class="book-card-copy">
+                        <strong>@book.Title</strong>
+                        @if (!string.IsNullOrWhiteSpace(book.Author))
+                        {
+                            <span>@book.Author</span>
+                        }
+                        @if (book.Progress is { ChapterCount: > 0 } progress)
+                        {
+                            <small>Chapter @(progress.ChapterIndex + 1) of @progress.ChapterCount</small>
+                            <div class="book-card-progress">
+                                <span style="width:@((progress.ChapterIndex * 1000 + progress.PositionPermille) / (progress.ChapterCount * 10))%"></span>
+                            </div>
+                        }
+                    </div>
+                </a>
+            }
+        </div>
+    </section>
+}
+
+@foreach (var shelf in result.Shelves)
+{
+    shelfNumber++;
+    var headingId = $"book-shelf-{shelfNumber}";
+
+    <section class="book-shelf" aria-labelledby="@headingId">
+        <div class="book-shelf-heading">
+            <h2 id="@headingId">@shelf.Title</h2>
+            <p>@shelf.Explanation</p>
+        </div>
+        <div class="book-shelf-row">
+            @foreach (var item in shelf.Items)
+            {
+                var book = item.Book;
+                <a class="book-card book-shelf-card" href="/Books/@book.Id">
+                    <div class="book-cover">
+                        @if (!string.IsNullOrWhiteSpace(book.CoverImageUrl))
+                        {
+                            <img src="@book.CoverImageUrl"
+                                 alt=""
+                                 loading="lazy"
+                                 referrerpolicy="no-referrer" />
+                        }
+                        else
+                        {
+                            <span>B</span>
+                        }
+                    </div>
+                    <div class="book-card-copy">
+                        <strong>@book.Title</strong>
+                        @if (!string.IsNullOrWhiteSpace(book.Author))
+                        {
+                            <span>@book.Author</span>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(item.Reason))
+                        {
+                            <small class="book-shelf-reason">@item.Reason</small>
+                        }
+                        <small>@book.SourceName</small>
+                    </div>
+                </a>
+            }
+        </div>
+    </section>
+}
+
+@if (result.ContinueReading.Count == 0 && result.Shelves.Count == 0)
+{
+    <div class="books-empty book-foryou-empty">
+        <p>No suggestions right now.</p>
+        <span>
+            <a href="/Books?lang=@Model.TargetLanguage">Search the Books catalog</a>
+            or start reading a library book, then come back here.
+        </span>
+    </div>
+}
