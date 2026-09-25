@@ -138,7 +138,9 @@ public sealed record AniListReadingProgressPreview(
     int RequestedProgress,
     int? RemoteProgress,
     string? RemoteStatus,
-    int? AniListChapterCount)
+    int? AniListChapterCount,
+    int? RequestedVolumeProgress = null,
+    int? RemoteVolumeProgress = null)
 {
     public static AniListReadingProgressPreview Blocked(
         string message,
@@ -146,7 +148,9 @@ public sealed record AniListReadingProgressPreview(
         string? mediaTitle = null,
         int? remoteProgress = null,
         string? remoteStatus = null,
-        int? aniListChapterCount = null) =>
+        int? aniListChapterCount = null,
+        int? requestedVolumeProgress = null,
+        int? remoteVolumeProgress = null) =>
         new(
             false,
             false,
