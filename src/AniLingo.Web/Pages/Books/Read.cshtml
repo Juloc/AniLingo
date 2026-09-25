@@ -74,16 +74,22 @@
         </button>
 
         <div class="book-reader-view-switch" role="group" aria-label="Reading text">
-            @if (hasAlternate)
+            @if (!sourceIsTarget)
             {
-                <button type="button" data-book-view="translated">
+                <button type="button"
+                        data-book-view="translated"
+                        disabled="@(!hasAlternate)">
                     @AniLingo.Web.Features.Books.BookLanguageCatalog.GetName(Model.Reader.TargetLanguage)
                 </button>
             }
             <button type="button" data-book-view="original">Original</button>
-            @if (hasAlternate)
+            @if (!sourceIsTarget)
             {
-                <button type="button" data-book-view="both">Both</button>
+                <button type="button"
+                        data-book-view="both"
+                        disabled="@(!hasAlternate)">
+                    Both
+                </button>
             }
         </div>
 
