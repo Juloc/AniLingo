@@ -447,13 +447,19 @@ public sealed class SonarrArtworkImportService(
             if (poster is not null)
             {
                 posterIdentity = SonarrArtworkCache.GetImageIdentity(poster);
-                var cacheExists =
-                    AnimeArtworkStore.FindPath(local.Id, AnimeArtworkKind.Poster) is not null;
+                await AnimeArtworkStore.EnsureOptimizedAsync(
+                    local.Id,
+                    AnimeArtworkKind.Poster,
+                    cancellationToken);
+                var cacheReady =
+                    AnimeArtworkStore.IsOptimizedDerivative(
+                        local.Id,
+                        AnimeArtworkKind.Poster);
 
                 if (SonarrArtworkCache.ShouldDownload(
                         previous?.PosterIdentity,
                         posterIdentity,
-                        cacheExists))
+                        cacheReady))
                 {
                     if (await TryImportImageAsync(
                             client,
@@ -483,13 +489,19 @@ public sealed class SonarrArtworkImportService(
             if (fanart is not null)
             {
                 fanartIdentity = SonarrArtworkCache.GetImageIdentity(fanart);
-                var cacheExists =
-                    AnimeArtworkStore.FindPath(local.Id, AnimeArtworkKind.Fanart) is not null;
+                await AnimeArtworkStore.EnsureOptimizedAsync(
+                    local.Id,
+                    AnimeArtworkKind.Fanart,
+                    cancellationToken);
+                var cacheReady =
+                    AnimeArtworkStore.IsOptimizedDerivative(
+                        local.Id,
+                        AnimeArtworkKind.Fanart);
 
                 if (SonarrArtworkCache.ShouldDownload(
                         previous?.FanartIdentity,
                         fanartIdentity,
-                        cacheExists))
+                        cacheReady))
                 {
                     if (await TryImportImageAsync(
                             client,
