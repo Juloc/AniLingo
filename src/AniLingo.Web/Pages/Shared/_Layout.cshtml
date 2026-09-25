@@ -1,5 +1,6 @@
 @using AniLingo.Web.Data
 @using AniLingo.Web.Features.Auth
+@using AniLingo.Web.Features.Appearance
 @using AniLingo.Web.Features.Localization
 @inject AppDbContext LocalizationDb
 @{
@@ -8,22 +9,28 @@
         ? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
         : null;
     var ui = UiTextBundle.English;
+    var appTheme = AppTheme.System;
     if (isAuthenticated && !string.IsNullOrWhiteSpace(profileId))
     {
         var localizationStore = new UiTranslationCatalogStore(LocalizationDb);
         ui = await localizationStore.LoadProfileBundleAsync(
             profileId,
             Context.RequestAborted);
+        appTheme = await localizationStore.GetProfileThemeAsync(
+            profileId,
+            Context.RequestAborted);
     }
 
     ViewData["UiTextBundle"] = ui;
+    ViewData["AppThemeMode"] = appTheme;
+    ViewData["AppBuildVersion"] = AppBuildInfo.Version;
 }
 <!DOCTYPE html>
-<html lang="@ui.Locale" dir="@ui.Direction">
+<html lang="@ui.Locale" dir="@ui.Direction" data-app-theme="@appTheme">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#0b0d11" />
+    <meta name="theme-color" content="#090b0f" data-app-theme-color />
     <meta name="application-name" content="AniLingo" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -34,6 +41,7 @@
     <link rel="icon" href="~/icons/anilingo.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" sizes="180x180" href="~/icons/apple-touch-icon.png" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <script src="~/js/app-theme.js" asp-append-version="true" defer></script>
     <script src="~/js/pwa.js" asp-append-version="true" defer></script>
     @await RenderSectionAsync("Head", required: false)
 </head>
