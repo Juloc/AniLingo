@@ -417,12 +417,29 @@ public sealed partial class BookCatalogService(
             fallbackAuthor: catalog.Author,
             fallbackDescription: catalog.Summary,
             fallbackSubjects: catalog.Subjects,
+            fileName: catalog.Title + ".epub",
+            sourceKind: "gutenberg",
+            contentHash: HashBytes(bytes),
+            sizeBytes: bytes.LongLength,
             cancellationToken);
     }
 
-    public async Task<Guid> ImportUploadedEpubAsync(
+    public Task<Guid> ImportUploadedEpubAsync(
         Stream stream,
         string fileName,
+        CancellationToken cancellationToken) =>
+        ImportEpubStreamAsync(
+            stream,
+            fileName,
+            "upload",
+            "upload://" + Uri.EscapeDataString(fileName),
+            cancellationToken);
+
+    private async Task<Guid> ImportEpubStreamAsync(
+        Stream stream,
+        string fileName,
+        string sourceKind,
+        string sourceUrl,
         CancellationToken cancellationToken)
     {
         using var copy = await CopyToMemoryBoundedAsync(
@@ -435,6 +452,8 @@ public sealed partial class BookCatalogService(
         var parsed = EpubBookParser.Parse(
             copy,
             fileName);
+        var bytes = copy.ToArray();
+        var contentHash = HashBytes(bytes);
         var sourceKey =
             "upload-" + BuildParsedBookIdentity(parsed);
 
@@ -454,13 +473,17 @@ public sealed partial class BookCatalogService(
         return await ImportParsedBookAsync(
             parsed,
             sourceKey: sourceKey,
-            sourceUrl: "upload://" + Uri.EscapeDataString(fileName),
+            sourceUrl: sourceUrl,
             metadataProvider: null,
             metadataExternalId: null,
             coverImageUrl: null,
             fallbackAuthor: null,
             fallbackDescription: null,
             fallbackSubjects: [],
+            fileName: fileName,
+            sourceKind: sourceKind,
+            contentHash: contentHash,
+            sizeBytes: bytes.LongLength,
             cancellationToken);
     }
 
@@ -527,6 +550,10 @@ public sealed partial class BookCatalogService(
             fallbackAuthor: null,
             fallbackDescription: null,
             fallbackSubjects: [],
+            fileName: fileName,
+            sourceKind: "remote",
+            contentHash: HashBytes(bytes),
+            sizeBytes: bytes.LongLength,
             cancellationToken);
     }
 
@@ -1080,9 +1107,12 @@ public sealed partial class BookCatalogService(
                     bufferSize: 81920,
                     useAsync: true);
 
-                imported.Add(await ImportUploadedEpubAsync(
+                var fileName = Path.GetFileName(path);
+                imported.Add(await ImportEpubStreamAsync(
                     stream,
-                    Path.GetFileName(path),
+                    fileName,
+                    "inbox",
+                    "inbox://" + Uri.EscapeDataString(fileName),
                     cancellationToken));
             }
             catch (IOException)
@@ -1359,7 +1389,13 @@ public sealed partial class BookCatalogService(
         string? fallbackAuthor,
         string? fallbackDescription,
         IReadOnlyList<string> fallbackSubjects,
-        CancellationToken cancellationToken)
+        string fileName,
+        string sourceKind,
+        string contentHash,
+        long sizeBytes,
+        CancellationToken cancellationToken,
+        string fileFormat = "EPUB",
+        string fileMediaType = "application/epub+zip")
     {
         sourceKey = CleanSourceKey(sourceKey);
 
@@ -1473,7 +1509,166 @@ public sealed partial class BookCatalogService(
         }
 
         await db.SaveChangesAsync(cancellationToken);
+
+        await UpsertEditionAndFileAsync(
+            work,
+            parsed,
+            sourceKey,
+            sourceUrl,
+            metadataProvider,
+            metadataExternalId,
+            fileName,
+            sourceKind,
+            contentHash,
+            sizeBytes,
+            fileFormat,
+            fileMediaType,
+            cancellationToken);
+
         return work.Id;
+    }
+
+    private async Task UpsertEditionAndFileAsync(
+        NovelWork work,
+        ParsedEpubBook parsed,
+        string sourceKey,
+        string sourceUrl,
+        string? metadataProvider,
+        string? metadataExternalId,
+        string fileName,
+        string sourceKind,
+        string contentHash,
+        long sizeBytes,
+        string fileFormat,
+        string fileMediaType,
+        CancellationToken cancellationToken)
+    {
+        var editionKey = BuildEditionKey(
+            parsed,
+            metadataProvider,
+            metadataExternalId,
+            sourceKey);
+
+        var edition = await db.BookEditions
+            .SingleOrDefaultAsync(
+                x => x.WorkId == work.Id
+                    && x.EditionKey == editionKey,
+                cancellationToken);
+
+        if (edition is null)
+        {
+            await db.BookEditions
+                .Where(x => x.WorkId == work.Id && x.IsPrimary)
+                .ExecuteUpdateAsync(
+                    setters => setters.SetProperty(
+                        x => x.IsPrimary,
+                        false),
+                    cancellationToken);
+
+            edition = new BookEdition
+            {
+                WorkId = work.Id,
+                EditionKey = editionKey,
+                CreatedAt = DateTime.UtcNow
+            };
+            db.BookEditions.Add(edition);
+        }
+
+        edition.Language = NormalizeSourceLanguage(parsed.Language);
+        edition.Isbn10 = TruncateNullable(parsed.Isbn10, 10);
+        edition.Isbn13 = TruncateNullable(parsed.Isbn13, 13);
+        edition.Publisher = TruncateNullable(parsed.Publisher, 300);
+        edition.PublishedDate = TruncateNullable(parsed.PublishedDate, 80);
+        edition.Title = TruncateNullable(parsed.Title, 500);
+        edition.Author = TruncateNullable(parsed.Author ?? work.Author, 300);
+        edition.SourceProvider = TruncateNullable(metadataProvider, 80);
+        edition.SourceExternalId = TruncateNullable(metadataExternalId, 200);
+        edition.IsPrimary = true;
+        edition.UpdatedAt = DateTime.UtcNow;
+
+        var fileKey = "sha256-" + contentHash[..Math.Min(48, contentHash.Length)]
+            .ToLowerInvariant();
+
+        var file = await db.BookFiles
+            .SingleOrDefaultAsync(
+                x => x.EditionId == edition.Id
+                    && x.FileKey == fileKey,
+                cancellationToken);
+
+        if (file is null)
+        {
+            await db.BookFiles
+                .Where(x => x.EditionId == edition.Id && x.IsPrimary)
+                .ExecuteUpdateAsync(
+                    setters => setters.SetProperty(
+                        x => x.IsPrimary,
+                        false),
+                    cancellationToken);
+
+            file = new BookFile
+            {
+                EditionId = edition.Id,
+                FileKey = fileKey,
+                ImportedAt = DateTime.UtcNow
+            };
+            db.BookFiles.Add(file);
+        }
+
+        file.FileName = Truncate(
+            string.IsNullOrWhiteSpace(fileName)
+                ? "book.epub"
+                : Path.GetFileName(fileName),
+            500);
+        file.Format = Truncate(
+            string.IsNullOrWhiteSpace(fileFormat)
+                ? "EPUB"
+                : fileFormat,
+            32);
+        file.MediaType = Truncate(
+            string.IsNullOrWhiteSpace(fileMediaType)
+                ? "application/octet-stream"
+                : fileMediaType,
+            120);
+        file.SourceKind = Truncate(
+            string.IsNullOrWhiteSpace(sourceKind)
+                ? "unknown"
+                : sourceKind,
+            80);
+        file.SourceUrl = TruncateNullable(sourceUrl, 2048);
+        file.ContentHash = Truncate(contentHash, 64);
+        file.SizeBytes = Math.Max(0, sizeBytes);
+        file.IsPrimary = true;
+
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    private static string BuildEditionKey(
+        ParsedEpubBook parsed,
+        string? metadataProvider,
+        string? metadataExternalId,
+        string sourceKey)
+    {
+        if (!string.IsNullOrWhiteSpace(parsed.Isbn13))
+        {
+            return "isbn13-" + parsed.Isbn13;
+        }
+
+        if (!string.IsNullOrWhiteSpace(parsed.Isbn10))
+        {
+            return "isbn10-" + parsed.Isbn10;
+        }
+
+        if (!string.IsNullOrWhiteSpace(metadataProvider)
+            && !string.IsNullOrWhiteSpace(metadataExternalId))
+        {
+            return CleanSourceKey(
+                metadataProvider + "-" + metadataExternalId);
+        }
+
+        return CleanSourceKey(
+            NormalizeSourceLanguage(parsed.Language)
+            + "-"
+            + sourceKey);
     }
 
     private async Task<IReadOnlyList<BookCatalogItem>> SearchOpenLibraryAsync(
@@ -2749,6 +2944,10 @@ public sealed partial class BookCatalogService(
         Convert.ToHexString(
             SHA256.HashData(
                 Encoding.UTF8.GetBytes(value)));
+
+    private static string HashBytes(byte[] value) =>
+        Convert.ToHexString(
+            SHA256.HashData(value));
 
     private static string Head(
         string value,
