@@ -253,6 +253,12 @@ builder.Services.AddHostedService<SabnzbdOperationMonitorService>();
 builder.Services.AddSingleton<SonarrConnectionStore>();
 builder.Services.AddScoped<SonarrArtworkImportService>();
 builder.Services.AddScoped<SonarrArtworkSyncService>();
+builder.Services.AddSingleton(_ =>
+    new AniLingo.Web.Features.Acquisition.Ownership.AcquisitionOwnershipStore("/data"));
+builder.Services.AddSingleton<ISonarrObserverClient, SonarrObserverClient>();
+builder.Services.AddSingleton<ISonarrSeriesMonitoringClient, SonarrSeriesMonitoringClient>();
+builder.Services.AddSingleton<SonarrObservationService>();
+builder.Services.AddSingleton<SonarrMigrationService>();
 
 builder.Services.AddSingleton<MediaMappingReviewStore>();
 builder.Services.AddSingleton<ReadingSegmentMappingStore>();
