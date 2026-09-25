@@ -10,7 +10,8 @@ namespace AniLingo.Web.Infrastructure.Ai;
 
 public sealed class OpenAiCompatibleProvider(
     HttpClient httpClient,
-    AiProfileSettings settings)
+    AiProfileSettings settings,
+    Action<AiUsageMeasurement>? usageSink = null)
     : IAiProvider, IAiSentenceExplainer, INovelTranslator, IBookTranslator, INovelMappingSuggester
 {
     private static readonly JsonSerializerOptions JsonOptions =
@@ -53,6 +54,7 @@ public sealed class OpenAiCompatibleProvider(
         try
         {
             var reply = await CompleteAsync(
+                "provider-test",
                 "You are a connectivity check. Follow the user instruction exactly.",
                 "Reply with exactly OK.",
                 cancellationToken);
@@ -90,6 +92,7 @@ public sealed class OpenAiCompatibleProvider(
         CancellationToken cancellationToken)
     {
         var json = await CompleteAsync(
+            "sentence-explanation",
             "Explain Japanese sentences for a language learner. Return JSON only with keys translation, grammar, colloquial. grammar and colloquial are arrays of short strings.",
             $"Sentence:\n{request.Sentence}",
             cancellationToken);
@@ -113,6 +116,7 @@ public sealed class OpenAiCompatibleProvider(
         string targetLanguage,
         CancellationToken cancellationToken) =>
         CompleteAsync(
+            "novel-translation",
             "You are a professional literary translator. Translate only the supplied Japanese prose. Preserve paragraph breaks, dialogue, names, tone and meaning. Do not summarize, censor, explain or omit content. Return only the translation.",
             $"Target language: {targetLanguage}\n\nSOURCE TEXT:\n{japaneseText}",
             cancellationToken);
@@ -124,6 +128,7 @@ public sealed class OpenAiCompatibleProvider(
         string context,
         CancellationToken cancellationToken) =>
         CompleteAsync(
+            "book-translation",
             "You are a professional literary translator and line editor. Produce publication-quality prose in the target language in one pass. Preserve meaning, narrative voice, emotional tone, pacing, dialogue intent, paragraph structure, names and factual details. Context is reference material only. Return only the translated source text.",
             $"Source language: {sourceLanguage}\nTarget language: {targetLanguage}\n\nCONTEXT:\n{context}\n\nSOURCE TEXT:\n{sourceText}",
             cancellationToken);
@@ -133,6 +138,7 @@ public sealed class OpenAiCompatibleProvider(
         CancellationToken cancellationToken)
     {
         var json = await CompleteAsync(
+            "book-analysis",
             "Analyze a book for translation consistency. Return JSON only with keys narrativePerspective, overallStyle, register, audience, themes, entities, terms. entities use sourceName,targetName,type,description,pronouns,relationships,voiceNotes. terms use source,target,category,notes,locked.",
             $"Title: {request.Title}\nAuthor: {request.Author}\nDescription: {request.Description}\nGenres: {string.Join(", ", request.Genres)}\nSource language: {request.SourceLanguage}\nTarget language: {request.TargetLanguage}\n\nSOURCE SAMPLE:\n{request.SourceSample}",
             cancellationToken);
@@ -144,6 +150,7 @@ public sealed class OpenAiCompatibleProvider(
         BookLiteraryEditRequest request,
         CancellationToken cancellationToken) =>
         CompleteAsync(
+            "book-edit",
             "Act as a literary translation editor. Improve the draft for accuracy, natural style, continuity and character voice without adding, removing or summarizing content. Return only the edited translation.",
             $"Source language: {request.SourceLanguage}\nTarget language: {request.TargetLanguage}\n\nCONTEXT:\n{request.Context}\n\nSOURCE:\n{request.SourceText}\n\nDRAFT:\n{request.DraftTranslation}",
             cancellationToken);
@@ -153,6 +160,7 @@ public sealed class OpenAiCompatibleProvider(
         CancellationToken cancellationToken)
     {
         var json = await CompleteAsync(
+            "book-qa",
             "Review a literary translation against its source. Return JSON only with keys accepted (boolean), correctedTranslation (string or null), issues (array). If accepted is false, correctedTranslation must contain the complete corrected translation.",
             $"Source language: {request.SourceLanguage}\nTarget language: {request.TargetLanguage}\n\nCONTEXT:\n{request.Context}\n\nSOURCE:\n{request.SourceText}\n\nTRANSLATION:\n{request.EditedTranslation}",
             cancellationToken);
@@ -165,6 +173,7 @@ public sealed class OpenAiCompatibleProvider(
         CancellationToken cancellationToken)
     {
         var json = await CompleteAsync(
+            "book-memory",
             "Extract only durable translation-memory facts needed for later chapters. Return JSON only with keys chapterSummary, continuityNotes, entities, terms. Keep it compact. entities use sourceName,targetName,type,description,pronouns,relationships,voiceNotes. terms use source,target,category,notes,locked.",
             $"Chapter {request.ChapterNumber}: {request.ChapterTitle}\nSource language: {request.SourceLanguage}\nTarget language: {request.TargetLanguage}\n\nEXISTING CONTEXT:\n{request.ExistingContext}\n\nSOURCE SAMPLE:\n{request.SourceText}\n\nTRANSLATION SAMPLE:\n{request.FinalTranslation}",
             cancellationToken);
@@ -184,6 +193,7 @@ public sealed class OpenAiCompatibleProvider(
             request.Episodes.Select(x => $"S{x.SeasonNumber}E{x.Number}: {x.Title}"));
 
         var json = await CompleteAsync(
+            "novel-mapping",
             "Map novel chapter ranges to anime episode ranges from titles and ordering. Return JSON only as an object with a suggestions array. Each suggestion has chapterStart, chapterEnd, seasonNumber, episodeStart, episodeEnd, label.",
             $"Novel: {request.NovelTitle}\nCHAPTERS:\n{chapters}\n\nAnime: {request.AnimeTitle}\nEPISODES:\n{episodes}",
             cancellationToken);
@@ -192,6 +202,7 @@ public sealed class OpenAiCompatibleProvider(
     }
 
     private async Task<string> CompleteAsync(
+        string operation,
         string systemPrompt,
         string userPrompt,
         CancellationToken cancellationToken)
@@ -256,6 +267,29 @@ public sealed class OpenAiCompatibleProvider(
                 "The AI provider returned no message content.");
         }
 
+        var inputCharacters = systemPrompt.Length + userPrompt.Length;
+        var exactUsage =
+            payload.Usage?.PromptTokens is int
+            && payload.Usage?.CompletionTokens is int;
+        var inputTokens = payload.Usage?.PromptTokens
+            ?? AiUsageTracker.EstimateTokens(inputCharacters);
+        var outputTokens = payload.Usage?.CompletionTokens
+            ?? AiUsageTracker.EstimateTokens(content.Length);
+
+        usageSink?.Invoke(
+            new AiUsageMeasurement(
+                DateTimeOffset.UtcNow,
+                operation,
+                Id,
+                settings.Model,
+                inputCharacters,
+                content.Length,
+                inputTokens,
+                outputTokens,
+                Estimated: !exactUsage,
+                CacheHit: false,
+                ResumedChunk: false));
+
         return content;
     }
 
@@ -313,7 +347,15 @@ public sealed class OpenAiCompatibleProvider(
 
     private sealed record ChatCompletionResponse(
         [property: JsonPropertyName("choices")]
-        IReadOnlyList<ChatChoice>? Choices);
+        IReadOnlyList<ChatChoice>? Choices,
+        [property: JsonPropertyName("usage")]
+        ChatUsage? Usage);
+
+    private sealed record ChatUsage(
+        [property: JsonPropertyName("prompt_tokens")]
+        int? PromptTokens,
+        [property: JsonPropertyName("completion_tokens")]
+        int? CompletionTokens);
 
     private sealed record ChatChoice(
         [property: JsonPropertyName("message")]
