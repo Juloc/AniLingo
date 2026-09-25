@@ -26,7 +26,7 @@ A German UI can therefore host Japanese → Indonesian and German → Indonesian
 
 `LearningCardReviews` is the new review-history target for directional cards.
 
-`LearningContext` is source-agnostic. It can point a unit at an Anime timestamp, Novel/Book paragraph, Manga page/region or future source without making the scheduler aware of media-specific tables.
+`LearningContext` is source-agnostic. It stores `SourceType`, `SourceKey`, optional `PositionKey`, language and text. It can therefore point a unit at an Anime timestamp, Novel/Book paragraph, Manga page/region or future source without making the scheduler aware of media-specific tables.
 
 ## Practice modes
 
@@ -41,7 +41,9 @@ A course can enable any combination. Direction is never inferred from UI locale.
 
 Course languages are normalized culture/BCP-47 tags such as `ja`, `de`, `id`, `ro`, `de-DE`, `pt-BR` or `zh-Hant`.
 
-Do not add enum-based lists of supported languages to the core model. Specialized language toolkits may advertise enhanced capabilities, but a generic course is not blocked merely because no special toolkit exists.
+Do not add enum-based lists of supported languages to the core model. Specialized language toolkits advertise enhanced capabilities, but a generic course is not blocked merely because no special toolkit exists.
+
+`LearningLanguageToolkitRegistry` returns the specialized Japanese toolkit for `ja` and a generic toolkit for every other valid language tag. Japanese-only behavior such as Kana/script training, readings and tokenization is therefore capability-driven instead of being assumed by the course model.
 
 ## Legacy bridge
 
