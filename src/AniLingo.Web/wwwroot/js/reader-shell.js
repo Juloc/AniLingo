@@ -467,9 +467,10 @@
                 button.classList.toggle("is-active", active);
                 button.setAttribute("aria-selected", active ? "true" : "false");
             });
-            root.querySelectorAll("[data-reader-settings-panel]").forEach(panel => {
-                if (panel.closest("[data-reader-settings-container]") !== settingsContainer &&
-                    panel.closest("[data-reader-settings-form]") !== settingsForm) {
+            root.querySelectorAll(
+                '[data-reader-settings-panel][role="tabpanel"]'
+            ).forEach(panel => {
+                if (panel.closest("[data-reader-settings-form]") !== settingsForm) {
                     return;
                 }
                 panel.hidden = panel.dataset.readerSettingsPanel !== tab;
