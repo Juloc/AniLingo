@@ -150,28 +150,58 @@ public sealed class EpisodeModel(
             return NotFound();
         }
 
-        var extracted = await embeddedSubtitleExtractor.ExtractTextStreamAsync(
-            media.Path,
-            streamIndex,
-            cancellationToken);
-
-        if (extracted is null)
+        try
         {
-            TempData["SubtitleError"] =
-                "This subtitle stream could not be imported as text.";
-            return RedirectToPage(new { id });
+            await operations.RunAsync(
+                new OperationDescriptor(
+                    "episode-subtitle-import",
+                    "Learning",
+                    "Import episode subtitle stream",
+                    $"Stream #{streamIndex}",
+                    currentAccount.ProfileId,
+                    OperationLane.Normal,
+                    Retryable: false),
+                async (operation, token) =>
+                {
+                    await operation.ReportAsync(
+                        10,
+                        "Extracting subtitle stream.",
+                        cancellationToken: token);
+
+                    var extracted = await embeddedSubtitleExtractor.ExtractTextStreamAsync(
+                        media.Path,
+                        streamIndex,
+                        token);
+
+                    if (extracted is null)
+                    {
+                        throw new InvalidOperationException(
+                            "This subtitle stream could not be imported as text.");
+                    }
+
+                    await operation.ReportAsync(
+                        70,
+                        "Importing subtitle as the learning source.",
+                        cancellationToken: token);
+
+                    await subtitleImportService.ImportPreferredContentAsync(
+                        id,
+                        extracted.SourceKey,
+                        extracted.Format,
+                        media.LastWriteTimeUtc,
+                        extracted.Content,
+                        token);
+                },
+                "Episode subtitle imported.",
+                cancellationToken);
+
+            TempData["SubtitleNotice"] =
+                $"Subtitle stream #{streamIndex} is now the Japanese learning source.";
         }
-
-        await subtitleImportService.ImportPreferredContentAsync(
-            id,
-            extracted.SourceKey,
-            extracted.Format,
-            media.LastWriteTimeUtc,
-            extracted.Content,
-            cancellationToken);
-
-        TempData["SubtitleNotice"] =
-            $"Subtitle stream #{streamIndex} is now the Japanese learning source.";
+        catch (InvalidOperationException exception)
+        {
+            TempData["SubtitleError"] = exception.Message;
+        }
         return RedirectToPage(new { id });
     }
 
