@@ -1393,7 +1393,9 @@ public sealed partial class BookCatalogService(
         string sourceKind,
         string contentHash,
         long sizeBytes,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string fileFormat = "EPUB",
+        string fileMediaType = "application/epub+zip")
     {
         sourceKey = CleanSourceKey(sourceKey);
 
@@ -1519,6 +1521,8 @@ public sealed partial class BookCatalogService(
             sourceKind,
             contentHash,
             sizeBytes,
+            fileFormat,
+            fileMediaType,
             cancellationToken);
 
         return work.Id;
@@ -1535,6 +1539,8 @@ public sealed partial class BookCatalogService(
         string sourceKind,
         string contentHash,
         long sizeBytes,
+        string fileFormat,
+        string fileMediaType,
         CancellationToken cancellationToken)
     {
         var editionKey = BuildEditionKey(
@@ -1613,8 +1619,16 @@ public sealed partial class BookCatalogService(
                 ? "book.epub"
                 : Path.GetFileName(fileName),
             500);
-        file.Format = "EPUB";
-        file.MediaType = "application/epub+zip";
+        file.Format = Truncate(
+            string.IsNullOrWhiteSpace(fileFormat)
+                ? "EPUB"
+                : fileFormat,
+            32);
+        file.MediaType = Truncate(
+            string.IsNullOrWhiteSpace(fileMediaType)
+                ? "application/octet-stream"
+                : fileMediaType,
+            120);
         file.SourceKind = Truncate(
             string.IsNullOrWhiteSpace(sourceKind)
                 ? "unknown"
