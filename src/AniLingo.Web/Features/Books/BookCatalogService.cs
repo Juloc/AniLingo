@@ -615,6 +615,11 @@ public sealed partial class BookCatalogService(
 
         if (cached is not null)
         {
+            if (translator is IAiUsageReporter usageReporter)
+            {
+                usageReporter.RecordCacheHit("book-chapter-translation");
+            }
+
             return cached;
         }
 
@@ -627,6 +632,11 @@ public sealed partial class BookCatalogService(
                 cancellationToken);
             if (cached is not null)
             {
+                if (translator is IAiUsageReporter usageReporter)
+                {
+                    usageReporter.RecordCacheHit("book-chapter-translation");
+                }
+
                 return cached;
             }
 
@@ -724,6 +734,12 @@ public sealed partial class BookCatalogService(
 
                 if (!string.IsNullOrWhiteSpace(cachedChunk))
                 {
+                    if (translator is IAiUsageReporter usageReporter)
+                    {
+                        usageReporter.RecordResumedChunk(
+                            "book-translation-chunk");
+                    }
+
                     translatedChunks.Add(cachedChunk);
                     continue;
                 }
