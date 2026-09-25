@@ -968,8 +968,25 @@ public sealed class BookCatalogServiceTests
         IBookTranslator? translator = null,
         IReadOnlyDictionary<string, string?>? configuration = null)
     {
+        var values = new Dictionary<string, string?>(
+            StringComparer.OrdinalIgnoreCase)
+        {
+            ["Books:Translation:MemoryPath"] = Path.Combine(
+                Path.GetTempPath(),
+                "anilingo-book-translation-tests",
+                Guid.NewGuid().ToString("N"))
+        };
+
+        if (configuration is not null)
+        {
+            foreach (var pair in configuration)
+            {
+                values[pair.Key] = pair.Value;
+            }
+        }
+
         var config = new ConfigurationBuilder()
-            .AddInMemoryCollection(configuration)
+            .AddInMemoryCollection(values)
             .Build();
 
         return new BookCatalogService(
