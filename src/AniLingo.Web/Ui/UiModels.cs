@@ -8,4 +8,5 @@ public sealed record MediaCardModel(
     string Href,
     int? ProgressPercent = null,
     string? Badge = null,
-    string? ImageUrl = null);
+    string? ImageUrl = null,
+    string? ProgressLabel = null);

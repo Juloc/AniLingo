@@ -273,6 +273,61 @@ namespace AniLingo.Web.Data.Migrations
                     b.ToTable("EpisodeProgress");
                 });
 
+            modelBuilder.Entity("AniLingo.Web.Features.Progress.EpisodePlaybackHistoryEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("DurationMs")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("EpisodeId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("LastPlayedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("PositionMs")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ProfileId")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("ReachedEnd")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("StartedAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EpisodeId");
+
+                    b.HasIndex("ProfileId", "LastPlayedAt");
+
+                    b.ToTable("EpisodePlaybackHistory");
+                });
+
+            modelBuilder.Entity("AniLingo.Web.Features.Progress.ProfilePlaybackPreferences", b =>
+                {
+                    b.Property<string>("ProfileId")
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("AutoplayNext")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("ProfileId");
+
+                    b.ToTable("ProfilePlaybackPreferences");
+                });
+
             modelBuilder.Entity("AniLingo.Web.Features.Library.Anime", b =>
                 {
                     b.Property<Guid>("Id")
@@ -825,6 +880,15 @@ namespace AniLingo.Web.Data.Migrations
                 });
 
             modelBuilder.Entity("AniLingo.Web.Features.Progress.EpisodeProgress", b =>
+                {
+                    b.HasOne("AniLingo.Web.Features.Library.Episode", null)
+                        .WithMany()
+                        .HasForeignKey("EpisodeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("AniLingo.Web.Features.Progress.EpisodePlaybackHistoryEntry", b =>
                 {
                     b.HasOne("AniLingo.Web.Features.Library.Episode", null)
                         .WithMany()
