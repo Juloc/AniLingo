@@ -142,12 +142,18 @@ public sealed partial class MangaAniListService(
 
         if (!string.IsNullOrWhiteSpace(source.MetadataExternalId))
         {
+            await AutoMapSegmentsAsync(
+                seriesId,
+                source.MetadataExternalId,
+                source.Title,
+                cancellationToken);
+
             return new AutomaticMediaMatchDecision(
                 AutomaticMediaMatchDisposition.None,
                 null,
                 0,
                 0,
-                ["Manga already has an explicit metadata match."]);
+                ["Manga already has an explicit metadata match; reading segments were reconciled."]);
         }
 
         IReadOnlyList<MangaAniListCandidate> candidates;
@@ -295,6 +301,285 @@ public sealed partial class MangaAniListService(
                 "identity",
                 cancellationToken);
         }
+
+        await AutoMapSegmentsAsync(
+            seriesId,
+            candidate.ExternalId,
+            candidate.Title,
+            cancellationToken);
+    }
+
+    private async Task AutoMapSegmentsAsync(
+        Guid seriesId,
+        string externalId,
+        string localTitle,
+        CancellationToken cancellationToken)
+    {
+        LinearRelationSequenceResult<MangaAniListCandidate> sequence;
+        try
+        {
+            sequence = await GetLinearSequenceAsync(
+                externalId,
+                cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception) when (
+            exception is InvalidOperationException or
+            HttpRequestException or
+            JsonException or
+            TaskCanceledException)
+        {
+            if (reviewStore is not null)
+            {
+                await reviewStore.UpsertAsync(
+                    "manga",
+                    seriesId.ToString(),
+                    localTitle,
+                    "reading-segments",
+                    $"Automatic AniList segment reconciliation could not run: {exception.Message}",
+                    [],
+                    cancellationToken);
+            }
+
+            return;
+        }
+
+        if (!sequence.IsUnambiguous)
+        {
+            await segmentMappingsStore.ClearAutomaticAsync(
+                "manga",
+                seriesId.ToString(),
+                cancellationToken);
+            await SaveSegmentReviewAsync(
+                seriesId,
+                localTitle,
+                sequence.Reason,
+                sequence.Entries,
+                cancellationToken);
+            return;
+        }
+
+        var chapters = await repository.GetChaptersAsync(
+            seriesId,
+            cancellationToken);
+
+        var plan = AutomaticReadingSegmentPlanner.Plan(
+            chapters.Select(chapter => new LocalReadingChapter(
+                chapter.Number,
+                chapter.VolumeNumber)).ToArray(),
+            sequence.Entries
+                .Where(candidate => candidate.ChapterCount is > 0)
+                .Select(candidate => new RemoteReadingPart(
+                    "anilist",
+                    candidate.ExternalId,
+                    candidate.Title,
+                    candidate.ChapterCount!.Value,
+                    candidate.VolumeCount))
+                .ToArray(),
+            externalId);
+
+        if (plan.NoMappingRequired)
+        {
+            await segmentMappingsStore.ClearAutomaticAsync(
+                "manga",
+                seriesId.ToString(),
+                cancellationToken);
+
+            if (reviewStore is not null)
+            {
+                await reviewStore.ResolveAsync(
+                    "manga",
+                    seriesId.ToString(),
+                    "reading-segments",
+                    cancellationToken);
+            }
+
+            return;
+        }
+
+        if (!plan.CanApply)
+        {
+            await segmentMappingsStore.ClearAutomaticAsync(
+                "manga",
+                seriesId.ToString(),
+                cancellationToken);
+            await SaveSegmentReviewAsync(
+                seriesId,
+                localTitle,
+                plan.Reason,
+                sequence.Entries,
+                cancellationToken);
+            return;
+        }
+
+        var mappings = plan.Segments
+            .Select(segment => new ReadingMediaSegmentMapping(
+                Guid.NewGuid(),
+                "manga",
+                seriesId.ToString(),
+                segment.LocalChapterStart,
+                segment.LocalChapterEnd,
+                segment.RemoteChapterStart,
+                segment.RemotePart.Provider,
+                segment.RemotePart.ExternalId,
+                segment.RemotePart.Title,
+                segment.RemotePart.ChapterCount,
+                segment.LocalVolumeStart,
+                segment.LocalVolumeEnd,
+                segment.RemoteVolumeStart,
+                DateTimeOffset.UtcNow)
+            {
+                Source = "automatic"
+            })
+            .ToArray();
+
+        var applied = await segmentMappingsStore.ReplaceAutomaticAsync(
+            "manga",
+            seriesId.ToString(),
+            mappings,
+            cancellationToken);
+
+        if (reviewStore is null)
+        {
+            return;
+        }
+
+        if (applied)
+        {
+            await reviewStore.ResolveAsync(
+                "manga",
+                seriesId.ToString(),
+                "reading-segments",
+                cancellationToken);
+        }
+        else
+        {
+            await reviewStore.ResolveAsync(
+                "manga",
+                seriesId.ToString(),
+                "reading-segments",
+                cancellationToken);
+        }
+    }
+
+    private Task SaveSegmentReviewAsync(
+        Guid seriesId,
+        string localTitle,
+        string reason,
+        IReadOnlyList<MangaAniListCandidate> candidates,
+        CancellationToken cancellationToken)
+    {
+        if (reviewStore is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        return reviewStore.UpsertAsync(
+            "manga",
+            seriesId.ToString(),
+            localTitle,
+            "reading-segments",
+            reason,
+            candidates.Select(candidate => new MediaMappingReviewCandidate(
+                "anilist",
+                candidate.ExternalId,
+                candidate.Title,
+                0,
+                ["AniList PREQUEL/SEQUEL structure"],
+                candidate.Format,
+                candidate.StartYear,
+                candidate.ChapterCount)).ToArray(),
+            cancellationToken);
+    }
+
+    public Task<LinearRelationSequenceResult<MangaAniListCandidate>> GetLinearSequenceAsync(
+        string externalId,
+        CancellationToken cancellationToken)
+    {
+        if (!int.TryParse(externalId, out var id) || id <= 0)
+        {
+            return Task.FromResult(
+                new LinearRelationSequenceResult<MangaAniListCandidate>(
+                    [],
+                    false,
+                    "AniList manga ID is invalid."));
+        }
+
+        return LinearRelationSequence.ResolveAsync(
+            id.ToString(),
+            LoadSequenceNodeAsync,
+            cancellationToken);
+    }
+
+    private async Task<LinearRelationNode<MangaAniListCandidate>?> LoadSequenceNodeAsync(
+        string externalId,
+        CancellationToken cancellationToken)
+    {
+        if (!int.TryParse(externalId, out var id) || id <= 0)
+        {
+            return null;
+        }
+
+        using var document = await SendAsync(
+            SequenceQuery,
+            new { id },
+            cancellationToken);
+
+        if (!document.RootElement.TryGetProperty("data", out var data) ||
+            !data.TryGetProperty("Media", out var media) ||
+            media.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        var candidate = Parse(media);
+        if (candidate is null)
+        {
+            return null;
+        }
+
+        var prequels = new List<string>();
+        var sequels = new List<string>();
+
+        if (media.TryGetProperty("relations", out var relations) &&
+            relations.ValueKind == JsonValueKind.Object &&
+            relations.TryGetProperty("edges", out var edges) &&
+            edges.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var edge in edges.EnumerateArray())
+            {
+                var relationType = ReadString(edge, "relationType");
+                if (relationType is not ("PREQUEL" or "SEQUEL") ||
+                    !edge.TryGetProperty("node", out var node) ||
+                    node.ValueKind != JsonValueKind.Object)
+                {
+                    continue;
+                }
+
+                var related = Parse(node);
+                if (related is null)
+                {
+                    continue;
+                }
+
+                if (relationType == "PREQUEL")
+                {
+                    prequels.Add(related.ExternalId);
+                }
+                else
+                {
+                    sequels.Add(related.ExternalId);
+                }
+            }
+        }
+
+        return new LinearRelationNode<MangaAniListCandidate>(
+            candidate,
+            prequels.Distinct(StringComparer.Ordinal).ToArray(),
+            sequels.Distinct(StringComparer.Ordinal).ToArray());
     }
 
     private async Task SaveIdentityReviewAsync(
