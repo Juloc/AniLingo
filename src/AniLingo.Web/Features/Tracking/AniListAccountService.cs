@@ -58,7 +58,8 @@ public sealed record AniListRemoteListEntry(
     JsonNode? AdvancedScores,
     AniListFuzzyDate? StartedAt,
     AniListFuzzyDate? CompletedAt,
-    long? UpdatedAt)
+    long? UpdatedAt,
+    int ProgressVolumes = 0)
 {
     public bool ProtectedFieldsEqual(AniListRemoteListEntry other) =>
         string.Equals(Status, other.Status, StringComparison.Ordinal) &&
@@ -154,7 +155,9 @@ public sealed record AniListReadingProgressPreview(
             requestedProgress,
             remoteProgress,
             remoteStatus,
-            aniListChapterCount);
+            aniListChapterCount,
+            requestedVolumeProgress,
+            remoteVolumeProgress);
 }
 
 public sealed record AniListProgressSyncResult(
@@ -168,7 +171,8 @@ public sealed record AniListProgressBackup(
     string ViewerName,
     int RequestedProgress,
     AniListRemoteListEntry RemoteEntry,
-    string MediaType = "ANIME");
+    string MediaType = "ANIME",
+    int? RequestedVolumeProgress = null);
 
 public sealed class AniListAccountService(
     HttpClient httpClient,
@@ -220,6 +224,7 @@ public sealed class AniListAccountService(
             mediaId
             status
             progress
+            progressVolumes
             score
             repeat
             priority
@@ -300,6 +305,34 @@ public sealed class AniListAccountService(
           }
         }
         """;
+
+    // Reading media may additionally update progressVolumes, but only when an
+    // explicit segment mapping resolves a higher volume. No other list fields
+    // are accepted by this mutation.
+    private const string SaveReadingProgressMutation = """
+        mutation ($id: Int!, $progress: Int!, $progressVolumes: Int!) {
+          SaveMediaListEntry(id: $id, progress: $progress, progressVolumes: $progressVolumes) {
+            id
+            userId
+            mediaId
+            status
+            progress
+            progressVolumes
+            score
+            repeat
+            priority
+            private
+            notes
+            hiddenFromStatusLists
+            customLists
+            advancedScores
+            startedAt { year month day }
+            completedAt { year month day }
+            updatedAt
+          }
+        }
+        """;
+
 
     public static string BuildAuthorizationUrl(int clientId)
     {
