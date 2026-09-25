@@ -91,7 +91,6 @@ public sealed class AiSentenceExplanationService(
         var material = string.Join(
             '\n',
             PromptVersion,
-            explainer.Id,
             prepared.Sentence);
 
         var cacheKey = Convert.ToHexString(
