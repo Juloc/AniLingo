@@ -77,7 +77,7 @@ public sealed class LearningCourseTests
             null,
             CancellationToken.None);
 
-        await Assert.ThrowsExceptionAsync<InvalidOperationException>(
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(
             () => fixture.Store.CreateAsync(
                 "reader",
                 "ro",
@@ -94,7 +94,7 @@ public sealed class LearningCourseTests
         Assert.AreEqual("id", LearningLanguageTag.Normalize("id"));
         Assert.AreEqual("ja", LearningLanguageTag.Normalize("ja"));
 
-        Assert.ThrowsException<ArgumentException>(
+        Assert.ThrowsExactly<ArgumentException>(
             () => LearningLanguageTag.Normalize("not_a_real_language_zzz"));
     }
 
@@ -186,7 +186,7 @@ public sealed class LearningCourseTests
             [new LearningVariantInput("ro", "carte")],
             CancellationToken.None);
 
-        await Assert.ThrowsExceptionAsync<InvalidOperationException>(
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(
             () => fixture.Store.EnsureCourseCardsAsync(
                 "reader",
                 course.Id,
