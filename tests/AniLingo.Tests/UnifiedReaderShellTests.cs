@@ -97,6 +97,9 @@ public sealed class UnifiedReaderShellTests
             shell,
             "[[\"continuous\", \"Scrollen\"], [\"paged\", \"Seiten\"]]");
         StringAssert.Contains(shell, "data-reader-mode-only");
+        StringAssert.Contains(
+            shell,
+            "'[data-reader-settings-panel][role=\"tabpanel\"]'");
         StringAssert.Contains(shell, "addOption(\"type\", \"Alle \" + humanType");
         StringAssert.Contains(shell, "\"Genre: \" + genre");
         StringAssert.Contains(shell, "Mein globaler Standard");
