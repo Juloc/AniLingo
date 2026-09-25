@@ -190,6 +190,8 @@ public sealed class ReaderPersonalizationTests
             root, "src", "AniLingo.Web", "Pages", "Novels", "Read.cshtml"));
         var script = File.ReadAllText(Path.Combine(
             root, "src", "AniLingo.Web", "wwwroot", "js", "reader-personalization.js"));
+        var themeScript = File.ReadAllText(Path.Combine(
+            root, "src", "AniLingo.Web", "wwwroot", "js", "reader-themes.js"));
         var css = File.ReadAllText(Path.Combine(
             root, "src", "AniLingo.Web", "wwwroot", "css", "novels.css"));
 
@@ -206,7 +208,7 @@ public sealed class ReaderPersonalizationTests
         StringAssert.Contains(script, "sendPagedProgress");
         StringAssert.Contains(script, "prefers-reduced-motion");
         StringAssert.Contains(script, "google:");
-        StringAssert.Contains(script, "/api/reader-backgrounds");
+        StringAssert.Contains(themeScript, "/api/reader-themes");
         StringAssert.Contains(script, "backgroundAssetId");
         Assert.IsFalse(script.Contains("canvas", StringComparison.OrdinalIgnoreCase));
 
