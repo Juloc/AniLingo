@@ -629,6 +629,96 @@ public sealed class BookTranslationMemoryStore
             : value[..maxCharacters];
     }
 
+    public static string RenderRelevantContext(
+        BookTranslationBible bible,
+        string sourceText,
+        int maxCharacters = 5000)
+    {
+        var builder = new StringBuilder();
+
+        AppendLine(builder, "BOOK TRANSLATION BIBLE");
+        AppendValue(builder, "Narrative perspective", bible.NarrativePerspective);
+        AppendValue(builder, "Overall style", bible.OverallStyle);
+        AppendValue(builder, "Register", bible.Register);
+        AppendValue(builder, "Audience", bible.Audience);
+
+        if (bible.Themes.Count > 0)
+        {
+            AppendLine(
+                builder,
+                "Themes: " + string.Join(", ", bible.Themes.Take(12)));
+        }
+
+        var relevantEntities = bible.Entities
+            .Where(entity =>
+                sourceText.Contains(
+                    entity.SourceName,
+                    StringComparison.OrdinalIgnoreCase))
+            .Take(24)
+            .ToArray();
+
+        if (relevantEntities.Length > 0)
+        {
+            AppendLine(builder, "Relevant established entities/characters:");
+            foreach (var entity in relevantEntities)
+            {
+                AppendLine(
+                    builder,
+                    $"- {entity.SourceName} → {entity.TargetName} [{entity.Type}]"
+                    + Optional(entity.Pronouns, " pronouns=")
+                    + Optional(entity.Relationships, " relationships=")
+                    + Optional(entity.VoiceNotes, " voice="));
+            }
+        }
+
+        var relevantTerms = bible.Terms
+            .Where(term =>
+                term.Locked
+                || sourceText.Contains(
+                    term.Source,
+                    StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(term => term.Locked)
+            .Take(48)
+            .ToArray();
+
+        if (relevantTerms.Length > 0)
+        {
+            AppendLine(builder, "Relevant established terminology:");
+            foreach (var term in relevantTerms)
+            {
+                AppendLine(
+                    builder,
+                    $"- {term.Source} → {term.Target} [{term.Category}]"
+                    + (term.Locked ? " LOCKED" : "")
+                    + Optional(term.Notes, " notes="));
+            }
+        }
+
+        var recentChapters = bible.Chapters
+            .OrderByDescending(x => x.ChapterNumber)
+            .Take(3)
+            .OrderBy(x => x.ChapterNumber)
+            .ToArray();
+
+        if (recentChapters.Length > 0)
+        {
+            AppendLine(builder, "Recent continuity:");
+            foreach (var chapter in recentChapters)
+            {
+                AppendLine(
+                    builder,
+                    $"- Chapter {chapter.ChapterNumber}: {chapter.ChapterTitle}"
+                    + Optional(chapter.Summary, " summary=")
+                    + Optional(chapter.ContinuityNotes, " continuity="));
+            }
+        }
+
+        var value = builder.ToString().Trim();
+        return value.Length <= maxCharacters
+            ? value
+            : value[..maxCharacters];
+    }
+
     private string GetPath(
         Guid workId,
         string targetLanguage)
