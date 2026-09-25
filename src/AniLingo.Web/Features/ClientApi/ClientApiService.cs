@@ -307,7 +307,7 @@ public sealed class ClientApiService(
             ?? audioTracks.FirstOrDefault();
         var defaultSubtitle = subtitleTracks.FirstOrDefault(x => x.IsDefault);
 
-        var fallbackAvailable = media.Server.IsReady && media.Server.UsesLiveStream;
+        var fallbackAvailable = media.Server.IsReady;
         var storage = media.Storage
             ?? await mediaAvailability.CheckMediaAsync(
                 media.MediaFileId,
@@ -347,10 +347,10 @@ public sealed class ClientApiService(
             defaultSubtitle?.Id,
             new ClientCompatibilityFallback(
                 fallbackAvailable,
-                fallbackAvailable ? "live-fragmented-mp4" : null,
-                false,
+                fallbackAvailable ? "hls" : null,
                 fallbackAvailable,
-                fallbackAvailable ? ClientApiRoutes.Fallback(episodeId) : null));
+                fallbackAvailable,
+                fallbackAvailable ? ClientApiRoutes.Hls(episodeId) : null));
     }
 
     public async Task<ClientCueResponse?> GetCuesAsync(
