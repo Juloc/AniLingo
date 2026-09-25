@@ -14,7 +14,7 @@ public sealed class AniListProgressStateTests
             "Example",
             localProgress: 7,
             remoteProgress: 7,
-            "AniList already has progress 7.",
+            message: "AniList already has progress 7.",
             canSync: false);
 
         Assert.AreEqual(AniListExternalProgressStateKind.Synced, state.Kind);
@@ -31,7 +31,7 @@ public sealed class AniListProgressStateTests
             "Example",
             localProgress: 8,
             remoteProgress: 6,
-            "Ready to increase AniList progress.",
+            message: "Ready to increase AniList progress.",
             canSync: true);
 
         Assert.AreEqual(AniListExternalProgressStateKind.LocalAhead, state.Kind);
@@ -45,7 +45,7 @@ public sealed class AniListProgressStateTests
             "Example",
             localProgress: 5,
             remoteProgress: 9,
-            "AniList already has higher progress.",
+            message: "AniList already has higher progress.",
             canSync: false);
 
         Assert.AreEqual(AniListExternalProgressStateKind.AniListAhead, state.Kind);
@@ -59,7 +59,7 @@ public sealed class AniListProgressStateTests
             "Example Manga",
             localProgress: 20,
             remoteProgress: 20,
-            "Volume progress can advance.",
+            message: "Volume progress can advance.",
             canSync: true,
             localVolumeProgress: 4,
             remoteVolumeProgress: 3);
@@ -68,7 +68,7 @@ public sealed class AniListProgressStateTests
             "Example Manga",
             localProgress: 20,
             remoteProgress: 20,
-            "AniList volume progress is ahead.",
+            message: "AniList volume progress is ahead.",
             canSync: false,
             localVolumeProgress: 3,
             remoteVolumeProgress: 5);
@@ -88,7 +88,7 @@ public sealed class AniListProgressStateTests
             "Example Novel",
             localProgress: 12,
             remoteProgress: null,
-            "Add this entry to AniList first.",
+            message: "Add this entry to AniList first.",
             canSync: false,
             forcedKind: AniListExternalProgressStateKind.NotOnList);
 
@@ -104,7 +104,7 @@ public sealed class AniListProgressStateTests
             "Example",
             localProgress: 8,
             remoteProgress: 8,
-            "The relation chain is ambiguous.",
+            message: "The relation chain is ambiguous.",
             canSync: false,
             forcedKind: AniListExternalProgressStateKind.MappingNeedsReview);
 
