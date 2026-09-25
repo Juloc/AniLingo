@@ -1,3 +1,5 @@
+using AniLingo.Web.Features.Ai;
+
 namespace AniLingo.Web.Features.Books;
 
 public sealed record BookTranslationAnalysisRequest(
@@ -97,6 +99,10 @@ public sealed record BookTranslationMemoryDelta(
 public interface IBookTranslator
 {
     string Id { get; }
+
+    Task<AiTranslationMode> GetTranslationModeAsync(
+        CancellationToken cancellationToken) =>
+        Task.FromResult(AiTranslationMode.Efficient);
 
     Task<string> TranslateLiteraryAsync(
         string sourceText,

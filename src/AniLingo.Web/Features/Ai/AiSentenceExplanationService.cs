@@ -39,6 +39,11 @@ public sealed class AiSentenceExplanationService(
 
         if (cached is not null)
         {
+            if (explainer is IAiUsageReporter usageReporter)
+            {
+                usageReporter.RecordCacheHit("sentence-explanation");
+            }
+
             return FromCache(cached);
         }
 
@@ -51,6 +56,11 @@ public sealed class AiSentenceExplanationService(
 
             if (cached is not null)
             {
+                if (explainer is IAiUsageReporter usageReporter)
+                {
+                    usageReporter.RecordCacheHit("sentence-explanation");
+                }
+
                 return FromCache(cached);
             }
 
@@ -91,7 +101,6 @@ public sealed class AiSentenceExplanationService(
         var material = string.Join(
             '\n',
             PromptVersion,
-            explainer.Id,
             prepared.Sentence);
 
         var cacheKey = Convert.ToHexString(
