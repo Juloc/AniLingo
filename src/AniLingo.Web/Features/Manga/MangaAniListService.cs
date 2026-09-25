@@ -371,12 +371,11 @@ public sealed partial class MangaAniListService(
                 chapter.Number,
                 chapter.VolumeNumber)).ToArray(),
             sequence.Entries
-                .Where(candidate => candidate.ChapterCount is > 0)
                 .Select(candidate => new RemoteReadingPart(
                     "anilist",
                     candidate.ExternalId,
                     candidate.Title,
-                    candidate.ChapterCount!.Value,
+                    candidate.ChapterCount ?? 0,
                     candidate.VolumeCount))
                 .ToArray(),
             externalId);
