@@ -276,7 +276,7 @@ public sealed class TranslationMemoryModel(
             new { id, lang = target });
     }
 
-    private Task<Features.Novels.NovelWork?> GetWorkAsync(
+    private Task<AniLingo.Web.Features.Novels.NovelWork?> GetWorkAsync(
         Guid id,
         CancellationToken cancellationToken) =>
         db.NovelWorks
