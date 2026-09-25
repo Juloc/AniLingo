@@ -1,0 +1,86 @@
+@page
+@model AniLingo.Web.Pages.Admin.OperationsModel
+@{
+    ViewData["Title"] = "Operations";
+}
+
+<header class="page-header">
+    <div>
+        <span class="eyebrow">Admin</span>
+        <h1>Operations</h1>
+        <p>Background work, downloads, queue state and history.</p>
+    </div>
+</header>
+
+<partial name="_AdminNavigation" />
+
+<nav class="operation-tabs" aria-label="Operation views">
+    <a class="@(Model.View == "active" ? "active" : "")" asp-route-view="active">Active</a>
+    <a class="@(Model.View == "queue" ? "active" : "")" asp-route-view="queue">Queue</a>
+    <a class="@(Model.View == "downloads" ? "active" : "")" asp-route-view="downloads">Downloads</a>
+    <a class="@(Model.View == "history" ? "active" : "")" asp-route-view="history">History</a>
+    <a class="@(Model.View == "all" ? "active" : "")" asp-route-view="all">All</a>
+</nav>
+
+<form method="get" class="operation-filter">
+    <input type="hidden" name="view" value="@Model.View" />
+    <input name="search" value="@Model.Search" placeholder="Search operations" />
+    <select name="status">
+        <option value="">All statuses</option>
+        @foreach (var status in Enum.GetNames<AniLingo.Web.Features.Operations.OperationStatus>())
+        {
+            <option value="@status" selected="@(Model.Status == status)">@status</option>
+        }
+    </select>
+    <input name="category" value="@Model.Category" placeholder="Category" />
+    <button class="button" type="submit">Filter</button>
+</form>
+
+<section class="panel">
+    @if (Model.Operations.Count == 0)
+    {
+        <p class="muted">No operations match this view.</p>
+    }
+    else
+    {
+        <div class="operation-list">
+            @foreach (var operation in Model.Operations)
+            {
+                <a class="operation-row operation-row-detailed" asp-page="/Admin/Operation" asp-route-id="@operation.Id">
+                    <div class="operation-copy">
+                        <div class="operation-title-line">
+                            <strong>@operation.Title</strong>
+                            @if (operation.IsDownload)
+                            {
+                                <span class="status-pill">Download</span>
+                            }
+                        </div>
+                        <span>
+                            @operation.Category · @operation.Lane · attempt @operation.Attempt
+                            @if (!string.IsNullOrWhiteSpace(operation.Subject))
+                            {
+                                <text> · @operation.Subject</text>
+                            }
+                        </span>
+                        @if (!string.IsNullOrWhiteSpace(operation.Message))
+                        {
+                            <small>@operation.Message</small>
+                        }
+                        @if (operation.ProgressPercent is { } progress)
+                        {
+                            <div class="operation-progress" aria-label="@progress% complete">
+                                <span style="width:@progress%"></span>
+                            </div>
+                        }
+                    </div>
+                    <div class="operation-row-meta">
+                        <span class="status-pill operation-status-@operation.Status.ToString().ToLowerInvariant()">
+                            @operation.StatusLabel
+                        </span>
+                        <small>@operation.UpdatedAtUtc.ToLocalTime().ToString("g")</small>
+                    </div>
+                </a>
+            }
+        </div>
+    }
+</section>

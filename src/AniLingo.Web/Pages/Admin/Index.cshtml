@@ -1,0 +1,77 @@
+@page
+@model AniLingo.Web.Pages.Admin.IndexModel
+@{
+    ViewData["Title"] = "Admin";
+}
+
+<header class="page-header">
+    <div>
+        <span class="eyebrow">Owner</span>
+        <h1>Admin</h1>
+        <p>Server operations and account administration.</p>
+    </div>
+</header>
+
+<partial name="_AdminNavigation" />
+
+<div class="metric-grid admin-metrics">
+    <a class="metric-card" asp-page="/Admin/Operations" asp-route-view="active">
+        <span class="metric-label">Running</span>
+        <strong class="metric-value">@Model.Summary.Running</strong>
+        <span class="metric-hint">@Model.Summary.Queued queued</span>
+    </a>
+    <a class="metric-card" asp-page="/Admin/Operations" asp-route-view="downloads">
+        <span class="metric-label">Downloads</span>
+        <strong class="metric-value">@Model.Summary.ActiveDownloads</strong>
+        <span class="metric-hint">active</span>
+    </a>
+    <a class="metric-card" asp-page="/Admin/Operations" asp-route-view="history" asp-route-status="Failed">
+        <span class="metric-label">Failed</span>
+        <strong class="metric-value">@Model.Summary.Failed</strong>
+        <span class="metric-hint">@Model.Summary.Interrupted interrupted</span>
+    </a>
+    <a class="metric-card" asp-page="/Admin/Users">
+        <span class="metric-label">Users</span>
+        <strong class="metric-value">@Model.UserCount</strong>
+        <span class="metric-hint">local accounts</span>
+    </a>
+</div>
+
+<div class="settings-grid">
+    <section class="panel">
+        <div class="panel-heading">
+            <h2>Recent operations</h2>
+            <a class="button" asp-page="/Admin/Operations">View all</a>
+        </div>
+
+        @if (Model.Recent.Count == 0)
+        {
+            <p class="muted">No background operations have been recorded yet.</p>
+        }
+        else
+        {
+            <div class="operation-list">
+                @foreach (var operation in Model.Recent)
+                {
+                    <a class="operation-row" asp-page="/Admin/Operation" asp-route-id="@operation.Id">
+                        <div class="operation-copy">
+                            <strong>@operation.Title</strong>
+                            <span>@operation.Category · @operation.StatusLabel · @operation.UpdatedAtUtc.ToLocalTime().ToString("g")</span>
+                        </div>
+                        <span class="status-pill operation-status-@operation.Status.ToString().ToLowerInvariant()">
+                            @operation.StatusLabel
+                        </span>
+                    </a>
+                }
+            </div>
+        }
+    </section>
+
+    <section class="panel">
+        <div class="panel-heading"><h2>Server</h2></div>
+        <p class="muted">
+            Media storage, subtitle sources, Sonarr and server-side AI configuration live here instead of personal Settings.
+        </p>
+        <a class="button button-primary" asp-page="/Admin/System">Open system administration</a>
+    </section>
+</div>
