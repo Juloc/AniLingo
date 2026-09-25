@@ -295,6 +295,7 @@ public sealed class AniListAccountService(
             mediaId
             status
             progress
+            progressVolumes
             score
             repeat
             priority
@@ -1479,7 +1480,8 @@ public sealed class AniListAccountService(
         if (updated.Id != remote.Id ||
             updated.UserId != remote.UserId ||
             updated.MediaId != remote.MediaId ||
-            updated.Progress != requestedProgress)
+            updated.Progress != requestedProgress ||
+            updated.ProgressVolumes != remote.ProgressVolumes)
         {
             logger.LogCritical(
                 "AniList returned an unexpected list entry after progress sync. Entry {EntryId}, media {MediaId}.",
