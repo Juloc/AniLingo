@@ -42,7 +42,52 @@ public sealed record SonarrArtworkMapping(
     int SonarrSeriesId,
     string SonarrTitle,
     string SonarrPath,
-    DateTime UpdatedAt);
+    DateTime UpdatedAt,
+    string? PosterIdentity = null,
+    string? FanartIdentity = null);
+
+public static class SonarrArtworkCache
+{
+    public static string? GetImageIdentity(SonarrImage image)
+    {
+        if (!string.IsNullOrWhiteSpace(image.Url))
+        {
+            return image.Url.Trim();
+        }
+
+        return string.IsNullOrWhiteSpace(image.RemoteUrl)
+            ? null
+            : image.RemoteUrl.Trim();
+    }
+
+    public static bool ShouldDownload(
+        string? previousIdentity,
+        string? currentIdentity,
+        bool cacheExists)
+    {
+        if (!cacheExists)
+        {
+            return true;
+        }
+
+        if (string.IsNullOrWhiteSpace(currentIdentity))
+        {
+            return false;
+        }
+
+        // Existing manifests predate source identities. Adopt the current identity
+        // without rewriting an already valid persistent cache entry.
+        if (string.IsNullOrWhiteSpace(previousIdentity))
+        {
+            return false;
+        }
+
+        return !string.Equals(
+            previousIdentity,
+            currentIdentity,
+            StringComparison.Ordinal);
+    }
+}
 
 public static partial class SonarrSeriesMatcher
 {
@@ -393,34 +438,43 @@ public sealed class SonarrArtworkImportService(
                 continue;
             }
 
-            mappings.Add(new SonarrArtworkMapping(
-                local.Id,
-                series.Id,
-                series.Title,
-                series.Path,
-                DateTime.UtcNow));
+            var previous = previousMappings.FirstOrDefault(
+                x => x.AnimeId == local.Id && x.SonarrSeriesId == series.Id);
 
+            string? posterIdentity = null;
             var poster = series.Images.FirstOrDefault(
                 x => x.CoverType.Equals("poster", StringComparison.OrdinalIgnoreCase));
             if (poster is not null)
             {
-                if (await TryImportImageAsync(
-                        client,
-                        baseUri,
-                        settings.ApiKey,
-                        local.Id,
-                        AnimeArtworkKind.Poster,
-                        poster,
-                        cancellationToken))
+                posterIdentity = SonarrArtworkCache.GetImageIdentity(poster);
+                var cacheExists =
+                    AnimeArtworkStore.FindPath(local.Id, AnimeArtworkKind.Poster) is not null;
+
+                if (SonarrArtworkCache.ShouldDownload(
+                        previous?.PosterIdentity,
+                        posterIdentity,
+                        cacheExists))
                 {
-                    posterCount++;
-                }
-                else
-                {
-                    failedCount++;
+                    if (await TryImportImageAsync(
+                            client,
+                            baseUri,
+                            settings.ApiKey,
+                            local.Id,
+                            AnimeArtworkKind.Poster,
+                            poster,
+                            cancellationToken))
+                    {
+                        posterCount++;
+                    }
+                    else
+                    {
+                        failedCount++;
+                        posterIdentity = previous?.PosterIdentity;
+                    }
                 }
             }
 
+            string? fanartIdentity = null;
             var fanart = series.Images.FirstOrDefault(
                              x => x.CoverType.Equals("fanart", StringComparison.OrdinalIgnoreCase))
                          ?? series.Images.FirstOrDefault(
@@ -428,22 +482,42 @@ public sealed class SonarrArtworkImportService(
 
             if (fanart is not null)
             {
-                if (await TryImportImageAsync(
-                        client,
-                        baseUri,
-                        settings.ApiKey,
-                        local.Id,
-                        AnimeArtworkKind.Fanart,
-                        fanart,
-                        cancellationToken))
+                fanartIdentity = SonarrArtworkCache.GetImageIdentity(fanart);
+                var cacheExists =
+                    AnimeArtworkStore.FindPath(local.Id, AnimeArtworkKind.Fanart) is not null;
+
+                if (SonarrArtworkCache.ShouldDownload(
+                        previous?.FanartIdentity,
+                        fanartIdentity,
+                        cacheExists))
                 {
-                    fanartCount++;
-                }
-                else
-                {
-                    failedCount++;
+                    if (await TryImportImageAsync(
+                            client,
+                            baseUri,
+                            settings.ApiKey,
+                            local.Id,
+                            AnimeArtworkKind.Fanart,
+                            fanart,
+                            cancellationToken))
+                    {
+                        fanartCount++;
+                    }
+                    else
+                    {
+                        failedCount++;
+                        fanartIdentity = previous?.FanartIdentity;
+                    }
                 }
             }
+
+            mappings.Add(new SonarrArtworkMapping(
+                local.Id,
+                series.Id,
+                series.Title,
+                series.Path,
+                DateTime.UtcNow,
+                posterIdentity,
+                fanartIdentity));
         }
 
         await manifestStore.SaveAsync(mappings, cancellationToken);

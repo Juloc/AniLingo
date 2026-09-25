@@ -261,8 +261,8 @@ public sealed class AniListMetadataProvider(
         if (media.TryGetProperty("coverImage", out var coverElement) &&
             coverElement.ValueKind == JsonValueKind.Object)
         {
-            cover = ReadString(coverElement, "extraLarge")
-                ?? ReadString(coverElement, "large");
+            cover = ReadString(coverElement, "large")
+                ?? ReadString(coverElement, "extraLarge");
         }
 
         return new AnimeMetadataCandidate(

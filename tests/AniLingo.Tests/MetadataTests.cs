@@ -85,7 +85,7 @@ public sealed class MetadataTests
         Assert.AreEqual("葬送のフリーレン", result.NativeTitle);
         Assert.AreEqual(28, result.EpisodeCount);
         Assert.AreEqual(24, result.EpisodeDurationMinutes);
-        Assert.AreEqual("https://img.example/frieren-large.jpg", result.CoverImageUrl);
+        Assert.AreEqual("https://img.example/frieren.jpg", result.CoverImageUrl);
     }
 
 

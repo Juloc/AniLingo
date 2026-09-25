@@ -56,6 +56,58 @@ public sealed class SonarrImportTests
         Assert.AreEqual(11, matches[animeId].Id);
     }
 
+
+    [TestMethod]
+    public void ExistingArtworkWithoutLegacyIdentityIsAdoptedWithoutDownload()
+    {
+        Assert.IsFalse(SonarrArtworkCache.ShouldDownload(
+            previousIdentity: null,
+            currentIdentity: "/MediaCover/7/poster-250.jpg?lastWrite=123",
+            cacheExists: true));
+    }
+
+    [TestMethod]
+    public void UnchangedTrackedArtworkDoesNotDownload()
+    {
+        const string identity = "/MediaCover/7/poster-250.jpg?lastWrite=123";
+
+        Assert.IsFalse(SonarrArtworkCache.ShouldDownload(
+            identity,
+            identity,
+            cacheExists: true));
+    }
+
+    [TestMethod]
+    public void ChangedArtworkIdentityDownloadsAgain()
+    {
+        Assert.IsTrue(SonarrArtworkCache.ShouldDownload(
+            "/MediaCover/7/poster-250.jpg?lastWrite=123",
+            "/MediaCover/7/poster-250.jpg?lastWrite=456",
+            cacheExists: true));
+    }
+
+    [TestMethod]
+    public void MissingArtworkCacheDownloadsAgain()
+    {
+        Assert.IsTrue(SonarrArtworkCache.ShouldDownload(
+            "/MediaCover/7/poster-250.jpg?lastWrite=123",
+            "/MediaCover/7/poster-250.jpg?lastWrite=123",
+            cacheExists: false));
+    }
+
+    [TestMethod]
+    public void SonarrImageIdentityPrefersLocalCachedImageUrl()
+    {
+        var image = new SonarrImage(
+            "poster",
+            "/MediaCover/7/poster-250.jpg?lastWrite=123",
+            "https://remote.example/full-resolution.jpg");
+
+        Assert.AreEqual(
+            "/MediaCover/7/poster-250.jpg?lastWrite=123",
+            SonarrArtworkCache.GetImageIdentity(image));
+    }
+
     [TestMethod]
     public void AmbiguousTitleDoesNotGuess()
     {
