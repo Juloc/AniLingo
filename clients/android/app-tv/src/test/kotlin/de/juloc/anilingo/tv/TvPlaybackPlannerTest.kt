@@ -1,0 +1,143 @@
+package de.juloc.anilingo.tv
+
+import de.juloc.anilingo.core.model.ClientCapabilities
+import de.juloc.anilingo.core.model.ClientFeatureFlags
+import de.juloc.anilingo.core.model.CompatibilityFallback
+import de.juloc.anilingo.core.model.MediaAvailability
+import de.juloc.anilingo.core.model.PlaybackOption
+import de.juloc.anilingo.core.model.PlayerBootstrap
+import de.juloc.anilingo.core.model.PlayerEpisode
+import de.juloc.anilingo.core.model.PlayerMedia
+import de.juloc.anilingo.core.player.PlaybackTransport
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
+import org.junit.Test
+
+class TvPlaybackPlannerTest {
+    @Test
+    fun directPlaybackKeepsLocalSeekPosition() {
+        val plan = TvPlaybackPlanner.plan(
+            serverOrigin = "https://anilingo.example",
+            capabilities = capabilities(),
+            bootstrap = bootstrap(),
+            directSupported = true,
+            startPositionMs = 42_500,
+        )
+
+        assertEquals(PlaybackTransport.DIRECT, plan.transport)
+        assertEquals(
+            "https://anilingo.example/api/client/v1/media/media/content",
+            plan.uri,
+        )
+        assertEquals(42_500, plan.startPositionMs)
+    }
+
+    @Test
+    fun fallbackRestartsServerStreamAtSameAbsolutePosition() {
+        val plan = TvPlaybackPlanner.plan(
+            serverOrigin = "https://anilingo.example",
+            capabilities = capabilities(),
+            bootstrap = bootstrap(),
+            directSupported = false,
+            startPositionMs = 42_500,
+        )
+
+        assertEquals(PlaybackTransport.LIVE_MP4_FALLBACK, plan.transport)
+        assertEquals(
+            "https://anilingo.example/api/client/v1/episodes/episode/fallback?mode=server&startSeconds=42.500",
+            plan.uri,
+        )
+        assertEquals(0, plan.startPositionMs)
+    }
+
+    @Test
+    fun externalPlaybackRouteIsRejected() {
+        val bootstrap = bootstrap(
+            directUrl = "https://evil.example/video.mkv",
+        )
+
+        assertThrows(IllegalArgumentException::class.java) {
+            TvPlaybackPlanner.plan(
+                serverOrigin = "https://anilingo.example",
+                capabilities = capabilities(),
+                bootstrap = bootstrap,
+                directSupported = true,
+                startPositionMs = 0,
+            )
+        }
+    }
+
+    private fun capabilities() = ClientCapabilities(
+        apiVersion = 1,
+        minimumSupportedApiVersion = 1,
+        serverVersion = "test",
+        features = ClientFeatureFlags(
+            library = true,
+            nativeSessionAuth = true,
+            nativePlayerBootstrap = true,
+            directPlayback = true,
+            playbackProgress = true,
+            httpRangeRequests = true,
+            mediaTrackMetadata = true,
+            normalizedLearningCues = true,
+            learningStateMutation = true,
+            liveMp4Fallback = true,
+            hlsFallback = false,
+            playbackSessions = false,
+            companionPairing = false,
+            companionControl = false,
+            storageAvailability = true,
+            ownerWakeOnLan = true,
+        ),
+    )
+
+    private fun bootstrap(
+        directUrl: String = "/api/client/v1/media/media/content",
+    ) = PlayerBootstrap(
+        apiVersion = 1,
+        episode = PlayerEpisode(
+            id = "episode",
+            animeId = "anime",
+            animeTitle = "Anime",
+            title = "Episode",
+            seasonNumber = 1,
+            number = 1,
+        ),
+        media = PlayerMedia(
+            mediaFileId = "media",
+            fileName = "episode.mkv",
+            contentType = "video/x-matroska",
+            sizeBytes = 100,
+            durationMs = 120_000,
+            videoCodec = "hevc",
+            pixelFormat = "yuv420p",
+            audioCodec = "aac",
+            directContentUrl = directUrl,
+            supportsRangeRequests = true,
+            device = PlaybackOption("ready", "Direct", false),
+            server = PlaybackOption("ready", "Server", true),
+            availability = MediaAvailability(
+                state = "available",
+                retryable = false,
+                retryAfterMs = 0,
+                canWake = false,
+                rootId = null,
+                availabilityUrl = "/api/client/v1/media/media/availability",
+                wakeUrl = null,
+            ),
+        ),
+        audioTracks = emptyList(),
+        subtitleTracks = emptyList(),
+        learningSubtitles = emptyList(),
+        activeLearningSubtitleTrackId = null,
+        defaultAudioTrackId = null,
+        defaultSubtitleTrackId = null,
+        fallback = CompatibilityFallback(
+            available = true,
+            kind = "live-fragmented-mp4",
+            seekableWithinStream = false,
+            canRestartAtPosition = true,
+            url = "/api/client/v1/episodes/episode/fallback?mode=server",
+        ),
+    )
+}
