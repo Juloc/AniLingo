@@ -248,6 +248,16 @@ public static class AnimeArtworkStore
             }
 
             File.Move(temporaryPath, finalPath, true);
+
+            // Direct saves (for example Sonarr) replace any previously tracked
+            // local source. Local imports write their source identity again
+            // immediately after this method succeeds.
+            var sourceMarkerPath = GetSourceMarkerPath(animeId, kind);
+            if (File.Exists(sourceMarkerPath))
+            {
+                File.Delete(sourceMarkerPath);
+            }
+
             await WriteTextAtomicAsync(
                 GetDerivativeMarkerPath(animeId, kind),
                 DerivativeVersion,
