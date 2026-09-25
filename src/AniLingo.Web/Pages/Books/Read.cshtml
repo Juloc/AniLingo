@@ -31,14 +31,19 @@
 @section Head {
     <link rel="stylesheet" href="~/css/books.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/reader-themes.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/reader-shell.css" asp-append-version="true" />
 }
 @section Scripts {
     <script src="~/js/reader-themes.js" asp-append-version="true"></script>
     <script src="~/js/books-reader.js" asp-append-version="true"></script>
+    <script src="~/js/reader-shell.js" asp-append-version="true"></script>
 }
 
 <div class="book-reader-page"
      data-book-reader
+     data-unified-reader
+     data-reader-content-type="@Model.ReaderDocument.ContentTypeKey"
+     data-reader-layout="@Model.ReaderDocument.LayoutKind.ToString().ToLowerInvariant()"
      data-reader-personalization
      data-view="@defaultView"
      data-target-language="@Model.Reader.TargetLanguage"
@@ -56,7 +61,7 @@
         <span data-book-progress-bar style="width:@(initialProgress / 10)%"></span>
     </div>
 
-    <nav class="book-reader-toolbar" aria-label="Book reader controls">
+    <nav class="book-reader-toolbar" data-reader-chrome data-reader-chrome-primary aria-label="Book reader controls">
         <a class="book-reader-back"
            href="/Books/Library/@Model.Reader.Work.Id?lang=@Model.Reader.TargetLanguage"
            aria-label="Back to book">
@@ -76,7 +81,7 @@
             ☰
         </button>
 
-        <div class="book-reader-view-switch" role="group" aria-label="Reading text">
+        <div class="book-reader-view-switch" data-reader-language-control role="group" aria-label="Reading text">
             @if (!sourceIsTarget)
             {
                 <button type="button"
@@ -113,7 +118,7 @@
             ▶
         </button>
 
-        <details class="book-reader-settings">
+        <details class="book-reader-settings" data-reader-settings-container>
             <summary aria-label="Reader settings" title="Reader settings">Aa</summary>
             <div class="book-reader-settings-panel">
                 <div class="book-settings-heading">
@@ -128,8 +133,10 @@
                       asp-route-id="@Model.Reader.Chapter.Id"
                       data-book-settings-form>
                     <input type="hidden" name="lang" value="@Model.Reader.TargetLanguage" />
-                    <input type="hidden" name="scope" value="book" />
+                    <input type="hidden" name="scope" value="work" />
                     <input type="hidden" name="changedKey" value="" />
+                    <input type="hidden" name="genre" value="" />
+                    <input type="hidden" name="genrePriority" value="500" />
 
                     <label>
                         Reading mode
@@ -474,7 +481,7 @@
         </div>
     }
 
-    <main class="book-reader-content" data-book-reader-content>
+    <main class="book-reader-content" data-book-reader-content data-reader-surface>
         <article class="book-reader-column original"
                  data-book-original
                  data-book-language="original">
@@ -495,7 +502,7 @@
         </article>
     </main>
 
-    <div class="book-page-controls" data-book-page-controls hidden>
+    <div class="book-page-controls" data-book-page-controls data-reader-chrome hidden>
         <button type="button" data-book-page-prev aria-label="Previous page">←</button>
         <output data-book-page-number>1 / 1</output>
         <button type="button" data-book-page-next aria-label="Next page">→</button>
