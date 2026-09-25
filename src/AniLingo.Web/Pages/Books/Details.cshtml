@@ -66,7 +66,11 @@
                           asp-page-handler="Acquire"
                           asp-route-id="@Model.Book.Id">
                         <button class="button button-primary" type="submit">
-                            @(Model.Book.CanAcquire ? "Add EPUB to library" : "Find free edition & add")
+                            @(!string.IsNullOrWhiteSpace(Model.Book.EpubUrl)
+                                ? "Add EPUB to library"
+                                : Model.Book.CanAcquire
+                                    ? "Add to library"
+                                    : "Find free edition & add")
                         </button>
                     </form>
                 }
