@@ -262,11 +262,18 @@ builder.Services.AddHttpClient<AniListAccountService>(client =>
 });
 
 builder.Services.AddSingleton<CodexCliProvider>();
-builder.Services.AddSingleton<IAiProvider>(services => services.GetRequiredService<CodexCliProvider>());
-builder.Services.AddSingleton<IAiSentenceExplainer>(services => services.GetRequiredService<CodexCliProvider>());
-builder.Services.AddSingleton<INovelTranslator>(services => services.GetRequiredService<CodexCliProvider>());
-builder.Services.AddSingleton<IBookTranslator>(services => services.GetRequiredService<CodexCliProvider>());
-builder.Services.AddSingleton<INovelMappingSuggester>(services => services.GetRequiredService<CodexCliProvider>());
+builder.Services.AddSingleton<AiProfileSettingsStore>();
+builder.Services.AddHttpClient("ai-openai-compatible", client =>
+{
+    client.Timeout = TimeSpan.FromMinutes(4);
+    client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
+});
+builder.Services.AddScoped<ProfileAiProviderRouter>();
+builder.Services.AddScoped<IAiProvider>(services => services.GetRequiredService<ProfileAiProviderRouter>());
+builder.Services.AddScoped<IAiSentenceExplainer>(services => services.GetRequiredService<ProfileAiProviderRouter>());
+builder.Services.AddScoped<INovelTranslator>(services => services.GetRequiredService<ProfileAiProviderRouter>());
+builder.Services.AddScoped<IBookTranslator>(services => services.GetRequiredService<ProfileAiProviderRouter>());
+builder.Services.AddScoped<INovelMappingSuggester>(services => services.GetRequiredService<ProfileAiProviderRouter>());
 builder.Services.AddScoped<AiSentenceExplanationService>();
 
 builder.Services.AddSingleton<BackgroundJobQueue>();
