@@ -26,6 +26,7 @@ public sealed class BookTranslationChunkStore
         AiTranslationMode mode,
         int index,
         string sourceChunk,
+        string translationContext,
         CancellationToken cancellationToken)
     {
         var path = GetPath(
@@ -36,7 +37,8 @@ public sealed class BookTranslationChunkStore
             promptVersion,
             mode,
             index,
-            sourceChunk);
+            sourceChunk,
+            translationContext);
 
         if (!File.Exists(path))
         {
@@ -64,6 +66,7 @@ public sealed class BookTranslationChunkStore
         AiTranslationMode mode,
         int index,
         string sourceChunk,
+        string translationContext,
         string translatedChunk,
         CancellationToken cancellationToken)
     {
@@ -77,7 +80,8 @@ public sealed class BookTranslationChunkStore
             promptVersion,
             mode,
             index,
-            sourceChunk);
+            sourceChunk,
+            translationContext);
 
         var directory = Path.GetDirectoryName(path)
             ?? throw new InvalidOperationException(
@@ -128,11 +132,16 @@ public sealed class BookTranslationChunkStore
         int promptVersion,
         AiTranslationMode mode,
         int index,
-        string sourceChunk)
+        string sourceChunk,
+        string translationContext)
     {
+        var cacheMaterial =
+            sourceChunk
+            + "\n---CONTEXT---\n"
+            + translationContext;
         var chunkHash = Convert.ToHexString(
             SHA256.HashData(
-                Encoding.UTF8.GetBytes(sourceChunk)));
+                Encoding.UTF8.GetBytes(cacheMaterial)));
 
         return Path.Combine(
             rootPath,
