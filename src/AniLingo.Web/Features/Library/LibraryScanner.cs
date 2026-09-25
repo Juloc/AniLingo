@@ -274,6 +274,7 @@ public sealed class LibraryScanner(
                 .ToListAsync(cancellationToken);
 
         var subtitleFiles = 0;
+        var sidecarListings = new SubtitleSidecarDirectoryCache();
         foreach (var episodeCandidates in subtitleCandidates.GroupBy(x => x.EpisodeId))
         {
             var episodeId = episodeCandidates.Key;
@@ -284,6 +285,7 @@ public sealed class LibraryScanner(
             var sidecar = await subtitleImport.ImportPreferredSidecarAsync(
                 episodeId,
                 mediaCandidates.Select(x => x.MediaPath).ToArray(),
+                sidecarListings,
                 cancellationToken);
 
             if (sidecar.Status == SubtitleSidecarImportStatus.Imported)

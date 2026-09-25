@@ -140,7 +140,9 @@ public sealed class SubtitleSidecarLocatorTests
             Touch(Path.Combine(season, "Subtitles", "Nested"), "Frieren - S01E01.ja.srt");
             Touch(Path.Combine(season, "Extras"), "Frieren - S01E01.ja.srt");
 
-            var found = SubtitleSidecarLocator.FindJapaneseCandidates([mediaPath])
+            var found = SubtitleSidecarLocator.FindJapaneseCandidates(
+                    [mediaPath],
+                    new SubtitleSidecarDirectoryCache())
                 .Select(x => Path.GetRelativePath(season, x.Path))
                 .ToArray();
 
@@ -161,6 +163,60 @@ public sealed class SubtitleSidecarLocatorTests
                 Directory.Delete(root, recursive: true);
             }
         }
+    }
+
+    [TestMethod]
+    public void ListsEachDirectoryOnceAcrossEpisodesInSameFolder()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"anilingo-sidecar-cache-{Guid.NewGuid():N}");
+        var season = Path.Combine(root, "Frieren", "Season 01");
+        var subs = Path.Combine(season, "Subs");
+
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(subs, "Frieren - S01E02"));
+            var mediaPaths = Enumerable.Range(1, 40)
+                .Select(episode => Path.Combine(season, $"Frieren - S01E{episode:00}.mkv"))
+                .ToArray();
+            foreach (var mediaPath in mediaPaths)
+            {
+                File.WriteAllBytes(mediaPath, [0]);
+                Touch(subs, $"{Path.GetFileNameWithoutExtension(mediaPath)}.ja.srt");
+            }
+
+            Touch(Path.Combine(subs, "Frieren - S01E02"), "Japanese.srt");
+
+            var listings = new SubtitleSidecarDirectoryCache();
+            var found = mediaPaths
+                .Select(mediaPath => SubtitleSidecarLocator.FindJapaneseCandidates([mediaPath], listings))
+                .ToArray();
+
+            // Season files + dirs, Subs files + dirs and the single per-episode folder.
+            Assert.AreEqual(5, listings.Listings);
+            Assert.IsTrue(found.All(candidates => candidates.Count >= 1));
+            Assert.AreEqual(2, found[1].Count);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [TestMethod]
+    public void UnreadableDirectoryIsNotCachedAndKeepsThrowing()
+    {
+        var listings = new SubtitleSidecarDirectoryCache();
+        var missing = Path.Combine(Path.GetTempPath(), $"anilingo-missing-{Guid.NewGuid():N}");
+        var mediaPath = Path.Combine(missing, $"{BaseName}.mkv");
+
+        Assert.ThrowsExactly<DirectoryNotFoundException>(
+            () => SubtitleSidecarLocator.FindJapaneseCandidates([mediaPath], listings));
+        Assert.ThrowsExactly<DirectoryNotFoundException>(
+            () => SubtitleSidecarLocator.FindJapaneseCandidates([mediaPath], listings));
+        Assert.AreEqual(0, listings.Listings);
     }
 
     private static SubtitleSidecarCandidate? Classify(string fileName) =>

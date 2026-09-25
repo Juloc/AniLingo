@@ -53,7 +53,8 @@ public static class SubtitleSidecarLocator
     };
 
     public static IReadOnlyList<SubtitleSidecarCandidate> FindJapaneseCandidates(
-        IEnumerable<string> mediaPaths)
+        IEnumerable<string> mediaPaths,
+        SubtitleSidecarDirectoryCache listings)
     {
         var candidates = new List<SubtitleSidecarCandidate>();
 
@@ -62,7 +63,7 @@ public static class SubtitleSidecarLocator
             var fullPath = Path.GetFullPath(mediaPath);
             var directory = Path.GetDirectoryName(fullPath)!;
             var baseName = Path.GetFileNameWithoutExtension(fullPath);
-            var episodeFiles = Directory.EnumerateFiles(directory).ToArray();
+            var episodeFiles = listings.GetFiles(directory);
 
             // "Show - 01.5.mkv" owns "Show - 01.5.ja.srt"; it must not be offered to "Show - 01.mkv".
             var competingBaseNames = episodeFiles
@@ -78,18 +79,18 @@ public static class SubtitleSidecarLocator
                 competingBaseNames,
                 SubtitleSidecarLocation.EpisodeDirectory);
 
-            foreach (var sidecarDirectory in EnumerateNamedDirectories(directory, SidecarDirectoryNames))
+            foreach (var sidecarDirectory in FindNamedDirectories(listings, directory, SidecarDirectoryNames))
             {
                 AddBaseNameMatches(
                     candidates,
-                    Directory.EnumerateFiles(sidecarDirectory),
+                    listings.GetFiles(sidecarDirectory),
                     baseName,
                     competingBaseNames,
                     SubtitleSidecarLocation.SidecarDirectory);
 
-                foreach (var episodeDirectory in EnumerateNamedDirectories(sidecarDirectory, [baseName]))
+                foreach (var episodeDirectory in FindNamedDirectories(listings, sidecarDirectory, [baseName]))
                 {
-                    foreach (var path in Directory.EnumerateFiles(episodeDirectory))
+                    foreach (var path in listings.GetFiles(episodeDirectory))
                     {
                         var candidate = Classify(
                             path,
@@ -191,10 +192,11 @@ public static class SubtitleSidecarLocator
         }
     }
 
-    private static IEnumerable<string> EnumerateNamedDirectories(
+    private static IEnumerable<string> FindNamedDirectories(
+        SubtitleSidecarDirectoryCache listings,
         string parent,
         IReadOnlyCollection<string> names) =>
-        Directory.EnumerateDirectories(parent)
+        listings.GetDirectories(parent)
             .Where(path => names.Contains(
                 Path.GetFileName(path),
                 StringComparer.OrdinalIgnoreCase))

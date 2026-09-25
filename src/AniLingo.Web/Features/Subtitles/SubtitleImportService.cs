@@ -85,11 +85,12 @@ public sealed class SubtitleImportService
     public async Task<SubtitleSidecarImportResult> ImportPreferredSidecarAsync(
         Guid episodeId,
         IReadOnlyList<string> mediaPaths,
+        SubtitleSidecarDirectoryCache listings,
         CancellationToken cancellationToken)
     {
         try
         {
-            foreach (var candidate in SubtitleSidecarLocator.FindJapaneseCandidates(mediaPaths))
+            foreach (var candidate in SubtitleSidecarLocator.FindJapaneseCandidates(mediaPaths, listings))
             {
                 if (await TryImportSidecarAsync(episodeId, candidate, cancellationToken))
                 {
@@ -783,6 +784,7 @@ public sealed class SubtitleImportService
         var sidecar = await ImportPreferredSidecarAsync(
             media.EpisodeId,
             [media.MediaPath],
+            new SubtitleSidecarDirectoryCache(),
             cancellationToken);
 
         if (sidecar.Status != SubtitleSidecarImportStatus.Imported ||
