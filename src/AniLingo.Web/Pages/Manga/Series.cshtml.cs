@@ -125,7 +125,8 @@ public sealed class SeriesModel(
                     token);
                 var metadata = new MangaAniListService(
                     repository,
-                    httpClientFactory);
+                    httpClientFactory,
+                    mappingReviewStore);
                 await metadata.AutoMatchAsync(
                     imported.SeriesId,
                     token);
