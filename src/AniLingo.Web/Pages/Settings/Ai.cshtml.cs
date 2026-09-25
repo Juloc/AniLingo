@@ -12,11 +12,14 @@ public sealed class AiModel(
     AppDbContext db,
     CurrentAccountContext currentAccount,
     AiProfileSettingsStore settingsStore,
-    ProfileAiProviderRouter providerRouter) : PageModel
+    ProfileAiProviderRouter providerRouter,
+    AiUsageTracker usageTracker) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public bool HasStoredApiKey { get; private set; }
     public bool IsOwner => currentAccount.IsOwner;
+    public AiUsageSnapshot Usage { get; private set; } =
+        new(0, 0, 0, 0, 0, []);
 
     [BindProperty]
     public string ProviderId { get; set; } = AiProviderIds.Server;
@@ -134,5 +137,6 @@ public sealed class AiModel(
         Ui = await catalog.LoadProfileBundleAsync(
             currentAccount.ProfileId,
             cancellationToken);
+        Usage = usageTracker.GetSnapshot(currentAccount.ProfileId);
     }
 }
