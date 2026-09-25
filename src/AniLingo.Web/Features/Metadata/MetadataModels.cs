@@ -52,6 +52,10 @@ public sealed record AutomaticAnimeEpisodeMappingResult(
         new(false, reason, []);
 }
 
+public sealed record AniListAnimeRelation(
+    string RelationType,
+    AnimeMetadataCandidate Candidate);
+
 
 public interface IAnimeMetadataProvider
 {

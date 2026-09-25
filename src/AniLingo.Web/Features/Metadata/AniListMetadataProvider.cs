@@ -96,6 +96,16 @@ public sealed class AniListMetadataProvider(
                 node {
                   id
                   type
+                  title { romaji english native }
+                  description(asHtml: false)
+                  coverImage { extraLarge large }
+                  bannerImage
+                  format
+                  status
+                  season
+                  seasonYear
+                  episodes
+                  duration
                   isAdult
                 }
               }
@@ -299,6 +309,61 @@ public sealed class AniListMetadataProvider(
 
             result.Add(next.Candidate);
             current = next;
+        }
+
+        return result;
+    }
+
+    public async Task<IReadOnlyList<AniListAnimeRelation>> GetRelatedAnimeAsync(
+        string externalId,
+        CancellationToken cancellationToken)
+    {
+        if (!int.TryParse(externalId, out var id) || id <= 0)
+        {
+            return [];
+        }
+
+        var response = await SendAsync(
+            SequenceQuery,
+            new { id },
+            cancellationToken);
+
+        using var document = JsonDocument.Parse(response);
+        if (!document.RootElement.TryGetProperty("data", out var data) ||
+            !data.TryGetProperty("Media", out var media) ||
+            media.ValueKind != JsonValueKind.Object ||
+            !media.TryGetProperty("relations", out var relations) ||
+            relations.ValueKind != JsonValueKind.Object ||
+            !relations.TryGetProperty("edges", out var edges) ||
+            edges.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        var result = new List<AniListAnimeRelation>();
+        foreach (var edge in edges.EnumerateArray())
+        {
+            var relationType = ReadString(edge, "relationType");
+            if (string.IsNullOrWhiteSpace(relationType) ||
+                !edge.TryGetProperty("node", out var node) ||
+                node.ValueKind != JsonValueKind.Object ||
+                !string.Equals(
+                    ReadString(node, "type"),
+                    "ANIME",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var candidate = ParseMedia(node);
+            if (candidate is null)
+            {
+                continue;
+            }
+
+            result.Add(new AniListAnimeRelation(
+                relationType,
+                candidate));
         }
 
         return result;
