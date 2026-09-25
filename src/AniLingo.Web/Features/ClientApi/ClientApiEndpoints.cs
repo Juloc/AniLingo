@@ -1,6 +1,7 @@
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Playback;
+using AniLingo.Web.Features.PlaybackSessions;
 using AniLingo.Web.Features.Progress;
 using AniLingo.Web.Features.Storage;
 using Microsoft.AspNetCore.Authentication;
@@ -497,6 +498,7 @@ public static class ClientApiEndpoints
                 : Results.Ok(result);
         });
 
+        endpoints.MapPlaybackSessionApiV1();
         return endpoints;
     }
 

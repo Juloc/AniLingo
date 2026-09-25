@@ -40,6 +40,7 @@ dependencies {
     implementation(libs.androidx.tv.material)
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.compose.ui.tooling.preview)
+    implementation("com.google.zxing:core:3.5.4")
     debugImplementation(libs.androidx.compose.ui.tooling)
     testImplementation(libs.junit)
 }

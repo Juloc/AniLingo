@@ -23,7 +23,7 @@ public sealed class PlaybackSessionStore
     }
 
     public PlaybackSessionState Create(
-        Guid ownerProfileId,
+        string ownerProfileId,
         Guid episodeId,
         PlaybackSessionUpdate initial)
     {
@@ -57,7 +57,7 @@ public sealed class PlaybackSessionStore
 
     public PlaybackSessionState? Update(
         Guid sessionId,
-        Guid ownerProfileId,
+        string ownerProfileId,
         long expectedRevision,
         PlaybackSessionUpdate update)
     {
@@ -85,7 +85,7 @@ public sealed class PlaybackSessionStore
 
     public PlaybackPairingMaterial? CreatePairing(
         Guid sessionId,
-        Guid ownerProfileId)
+        string ownerProfileId)
     {
         lock (gate)
         {
@@ -257,7 +257,7 @@ public sealed class PlaybackSessionStore
 
     public bool RevokeParticipants(
         Guid sessionId,
-        Guid ownerProfileId)
+        string ownerProfileId)
     {
         lock (gate)
         {
@@ -275,7 +275,7 @@ public sealed class PlaybackSessionStore
 
     public bool End(
         Guid sessionId,
-        Guid ownerProfileId)
+        string ownerProfileId)
     {
         lock (gate)
         {
@@ -400,7 +400,7 @@ public sealed class PlaybackSessionStore
 
     private static PlaybackSessionState ToState(
         Guid sessionId,
-        Guid ownerProfileId,
+        string ownerProfileId,
         Guid episodeId,
         long revision,
         PlaybackSessionUpdate update,
@@ -409,6 +409,8 @@ public sealed class PlaybackSessionStore
             sessionId,
             ownerProfileId,
             episodeId,
+            update.AnimeTitle?.Trim() ?? string.Empty,
+            update.EpisodeTitle?.Trim() ?? string.Empty,
             update.PositionMs,
             update.DurationMs,
             update.IsPlaying,
@@ -417,6 +419,7 @@ public sealed class PlaybackSessionStore
             update.SubtitleTrackId,
             update.CurrentCueId,
             update.CurrentCueText,
+            update.CurrentCueTokens ?? [],
             update.SelectedTermId,
             revision,
             now);

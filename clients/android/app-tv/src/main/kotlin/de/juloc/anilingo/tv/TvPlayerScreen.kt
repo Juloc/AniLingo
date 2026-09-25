@@ -42,6 +42,7 @@ import androidx.tv.material3.Text
 import de.juloc.anilingo.core.model.MediaTrack
 import de.juloc.anilingo.core.model.SubtitleCue
 import de.juloc.anilingo.core.player.AniLingoMedia3Player
+import de.juloc.anilingo.core.session.PlaybackCommand
 import kotlinx.coroutines.delay
 
 @OptIn(UnstableApi::class)
@@ -60,8 +61,13 @@ fun TvPlayerScreen(
     onSeeked: (positionMs: Long, durationMs: Long, isPlaying: Boolean) -> Unit = { _, _, _ -> },
     onPlaybackFailure: (positionMs: Long) -> Unit = {},
     canOpenOnPhone: Boolean = false,
+    remoteCommand: PlaybackCommand? = null,
+    companionVisible: Boolean = false,
+    onCloseCompanion: () -> Unit = {},
+    companionOverlay: (@Composable () -> Unit)? = null,
     onExit: () -> Unit,
     onSetTermState: (termId: String, state: String) -> Unit,
+    onSelectedTermChanged: (String?) -> Unit = {},
     onOpenOnPhone: (cueId: Long?, termId: String?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -125,14 +131,106 @@ fun TvPlayerScreen(
         )
     }
 
+    LaunchedEffect(remoteCommand?.commandId) {
+        val command = remoteCommand ?: return@LaunchedEffect
+        when (command.type) {
+            "playPause" -> apply(TvPlayerInteraction.mediaPlayPause(uiState))
+            "seekBack10" -> apply(
+                TvPlayerTransition(
+                    uiState,
+                    listOf(TvPlayerEffect.SeekBy(-10_000)),
+                ),
+            )
+            "seekForward10" -> apply(
+                TvPlayerTransition(
+                    uiState,
+                    listOf(TvPlayerEffect.SeekBy(10_000)),
+                ),
+            )
+            "seekTo" -> command.payload["positionMs"]
+                ?.toLongOrNull()
+                ?.coerceAtLeast(0)
+                ?.let(player.player::seekTo)
+
+            "selectAudioTrack" -> command.payload["trackId"]
+                ?.let(onSelectAudioTrack)
+
+            "selectSubtitleTrack" -> onSelectSubtitleTrack(
+                command.payload["trackId"]
+                    ?.takeUnless { it.equals("off", ignoreCase = true) },
+            )
+
+            "repeatCurrentCue" -> currentCue?.let { cue ->
+                player.player.seekTo(cue.startMs.toLong())
+                player.player.play()
+            }
+
+            "learnCurrentCue" -> apply(
+                TvPlayerInteraction.learnCurrentLine(
+                    state = uiState,
+                    isPlaying = player.player.isPlaying,
+                    wordCount = currentCue?.tokens?.size ?: 0,
+                ),
+            )
+
+            "openWord" -> {
+                val termId = command.payload["termId"]
+                val index = currentCue?.tokens
+                    ?.indexOfFirst { it.termId == termId }
+                    ?: -1
+                if (index >= 0) {
+                    if (player.player.isPlaying) {
+                        player.player.pause()
+                    }
+                    uiState = uiState.copy(
+                        controlsVisible = false,
+                        learningLayer = TvLearningLayer.WORD,
+                        focusedWordIndex = index,
+                        resumeAfterLearning = false,
+                    )
+                    onSelectedTermChanged(termId)
+                }
+            }
+
+            "markKnown" -> command.payload["termId"]
+                ?.let { onSetTermState(it, "known") }
+
+            "addToLearning" -> command.payload["termId"]
+                ?.let { onSetTermState(it, "learning") }
+
+            "openCompanion" -> {
+                val termId = command.payload["termId"]
+                onSelectedTermChanged(termId)
+                onOpenOnPhone(currentCue?.id, termId)
+            }
+
+            "closeOverlay" -> {
+                if (uiState.learningLayer != TvLearningLayer.CLOSED ||
+                    uiState.controlsVisible
+                ) {
+                    apply(TvPlayerInteraction.back(uiState))
+                }
+            }
+
+            "exitPlayer" -> onExit()
+        }
+    }
+
     BackHandler {
-        apply(TvPlayerInteraction.back(uiState))
+        if (companionVisible) {
+            onCloseCompanion()
+        } else {
+            apply(TvPlayerInteraction.back(uiState))
+        }
     }
 
     Surface(
         modifier = modifier
             .fillMaxSize()
             .onPreviewKeyEvent { event ->
+                if (companionVisible) {
+                    return@onPreviewKeyEvent false
+                }
                 if (event.type != KeyEventType.KeyDown) {
                     return@onPreviewKeyEvent false
                 }
@@ -256,11 +354,17 @@ fun TvPlayerScreen(
                     focusedWordIndex = uiState.focusedWordIndex,
                     onFocusWord = { index ->
                         uiState = uiState.copy(focusedWordIndex = index)
+                        onSelectedTermChanged(
+                            currentCue.tokens.getOrNull(index)?.termId,
+                        )
                     },
                     onOpenWord = { index ->
                         uiState = uiState.copy(
                             learningLayer = TvLearningLayer.WORD,
                             focusedWordIndex = index,
+                        )
+                        onSelectedTermChanged(
+                            currentCue.tokens.getOrNull(index)?.termId,
                         )
                     },
                     onRepeatLine = {
@@ -291,6 +395,12 @@ fun TvPlayerScreen(
                     },
                     modifier = Modifier.align(Alignment.Center),
                 )
+            }
+
+            companionOverlay?.let { overlay ->
+                Box(modifier = Modifier.align(Alignment.Center)) {
+                    overlay()
+                }
             }
         }
     }

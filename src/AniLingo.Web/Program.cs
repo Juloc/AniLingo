@@ -10,6 +10,7 @@ using AniLingo.Web.Features.Metadata;
 using AniLingo.Web.Features.Novels;
 using AniLingo.Web.Features.Operations;
 using AniLingo.Web.Features.Playback;
+using AniLingo.Web.Features.PlaybackSessions;
 using AniLingo.Web.Features.Progress;
 using AniLingo.Web.Features.ReaderThemes;
 using AniLingo.Web.Features.Sonarr;
@@ -36,6 +37,7 @@ Console.WriteLine($"[AniLingo] {DateTimeOffset.UtcNow:O} Process starting.");
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddRazorPages();
+builder.Services.AddSignalR();
 builder.Services.Configure<MediaOptions>(builder.Configuration.GetSection(MediaOptions.SectionName));
 
 var dataProtectionDirectory = new DirectoryInfo("/data/keys");
@@ -271,6 +273,9 @@ builder.Services.AddSingleton<BackgroundJobQueue>();
 builder.Services.AddHostedService<BackgroundJobWorker>();
 builder.Services.AddSingleton<PlaybackJobQueue>();
 builder.Services.AddHostedService<PlaybackJobWorker>();
+builder.Services.AddSingleton<PlaybackSessionStore>();
+builder.Services.AddSingleton<PlaybackSessionConnectionRegistry>();
+builder.Services.AddSingleton<PlaybackSessionCoordinator>();
 
 var app = builder.Build();
 
@@ -286,6 +291,8 @@ app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapClientApiV1();
+app.MapHub<PlaybackSessionHub>(PlaybackSessionHub.Route)
+    .AllowAnonymous();
 app.MapReaderThemeCatalog();
 app.MapRazorPages();
 
