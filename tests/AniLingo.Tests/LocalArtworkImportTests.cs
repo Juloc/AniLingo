@@ -1,4 +1,7 @@
 using AniLingo.Web.Features.Artwork;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Png;
+using SixLabors.ImageSharp.PixelFormats;
 
 namespace AniLingo.Tests;
 
@@ -66,6 +69,89 @@ public sealed class LocalArtworkImportTests
             AnimeArtworkKind.Poster);
 
         Assert.IsNull(result);
+    }
+
+
+    [TestMethod]
+    public async Task PosterDerivativeIsBoundedTo512PixelsWithoutChangingAspectRatio()
+    {
+        await using var source = await CreatePngAsync(1000, 1500);
+        await using var destination = new MemoryStream();
+
+        var saved = await AnimeArtworkStore.CreateOptimizedDerivativeAsync(
+            AnimeArtworkKind.Poster,
+            source,
+            destination,
+            CancellationToken.None);
+
+        Assert.IsTrue(saved);
+        destination.Position = 0;
+        using var result = await Image.LoadAsync(destination);
+        Assert.AreEqual(AnimeArtworkStore.PosterMaxWidth, result.Width);
+        Assert.AreEqual(768, result.Height);
+    }
+
+    [TestMethod]
+    public async Task FanartDerivativeIsBoundedTo1600Pixels()
+    {
+        await using var source = await CreatePngAsync(2000, 1000);
+        await using var destination = new MemoryStream();
+
+        var saved = await AnimeArtworkStore.CreateOptimizedDerivativeAsync(
+            AnimeArtworkKind.Fanart,
+            source,
+            destination,
+            CancellationToken.None);
+
+        Assert.IsTrue(saved);
+        destination.Position = 0;
+        using var result = await Image.LoadAsync(destination);
+        Assert.AreEqual(AnimeArtworkStore.FanartMaxWidth, result.Width);
+        Assert.AreEqual(800, result.Height);
+    }
+
+    [TestMethod]
+    public async Task ArtworkDerivativeNeverUpscalesSmallImages()
+    {
+        await using var source = await CreatePngAsync(300, 450);
+        await using var destination = new MemoryStream();
+
+        var saved = await AnimeArtworkStore.CreateOptimizedDerivativeAsync(
+            AnimeArtworkKind.Poster,
+            source,
+            destination,
+            CancellationToken.None);
+
+        Assert.IsTrue(saved);
+        destination.Position = 0;
+        using var result = await Image.LoadAsync(destination);
+        Assert.AreEqual(300, result.Width);
+        Assert.AreEqual(450, result.Height);
+    }
+
+    [TestMethod]
+    public async Task ArtworkDerivativeRejectsNonImageContent()
+    {
+        await using var source = new MemoryStream("not-an-image"u8.ToArray());
+        await using var destination = new MemoryStream();
+
+        var saved = await AnimeArtworkStore.CreateOptimizedDerivativeAsync(
+            AnimeArtworkKind.Poster,
+            source,
+            destination,
+            CancellationToken.None);
+
+        Assert.IsFalse(saved);
+        Assert.AreEqual(0, destination.Length);
+    }
+
+    private static async Task<MemoryStream> CreatePngAsync(int width, int height)
+    {
+        using var image = new Image<Rgba32>(width, height);
+        var stream = new MemoryStream();
+        await image.SaveAsync(stream, new PngEncoder());
+        stream.Position = 0;
+        return stream;
     }
 
     private sealed class TemporaryDirectory : IDisposable
