@@ -1,5 +1,6 @@
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Books;
+using AniLingo.Web.Features.Operations;
 using AniLingo.Web.Infrastructure;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -69,13 +70,31 @@ public sealed class LibraryModel(
         }
 
         await jobs.QueueAsync(
-            async (services, workerToken) =>
+            new OperationDescriptor(
+                "book-translation",
+                "Translation",
+                "Translate book",
+                detail.Work.MetadataTitle ?? detail.Work.Title,
+                account.ProfileId,
+                OperationLane.Normal,
+                Retryable: true),
+            async (operation, services, workerToken) =>
             {
+                await operation.ReportAsync(
+                    5,
+                    $"Translating book to {BookLanguageCatalog.GetName(targetLanguage)}.",
+                    cancellationToken: workerToken);
+
                 var service = services.GetRequiredService<BookCatalogService>();
                 await service.TranslateBookAsync(
                     id,
                     targetLanguage,
                     workerToken);
+
+                await operation.ReportAsync(
+                    100,
+                    "Book translation completed.",
+                    cancellationToken: workerToken);
             },
             cancellationToken);
 

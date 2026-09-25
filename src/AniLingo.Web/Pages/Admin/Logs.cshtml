@@ -1,0 +1,55 @@
+@page
+@model AniLingo.Web.Pages.Admin.LogsModel
+@{
+    ViewData["Title"] = "Logs";
+}
+
+<header class="page-header">
+    <div>
+        <span class="eyebrow">Admin</span>
+        <h1>Logs</h1>
+        <p>Structured operational events without credentials or raw request data.</p>
+    </div>
+</header>
+
+<partial name="_AdminNavigation" />
+
+<form method="get" class="operation-filter">
+    @if (Model.OperationId is { } operationId)
+    {
+        <input type="hidden" name="operationId" value="@operationId" />
+    }
+    <select name="level">
+        <option value="">All levels</option>
+        @foreach (var level in Enum.GetNames<AniLingo.Web.Features.Operations.OperationLogLevel>())
+        {
+            <option value="@level" selected="@(Model.Level == level)">@level</option>
+        }
+    </select>
+    <input name="module" value="@Model.Module" placeholder="Module" />
+    <input name="search" value="@Model.Search" placeholder="Search logs" />
+    <button class="button" type="submit">Filter</button>
+</form>
+
+<section class="panel">
+    @if (Model.Logs.Count == 0)
+    {
+        <p class="muted">No log entries match this filter.</p>
+    }
+    else
+    {
+        <div class="admin-log-list">
+            @foreach (var entry in Model.Logs)
+            {
+                <a class="admin-log-row admin-log-@entry.Level.ToString().ToLowerInvariant()"
+                   asp-page="/Admin/Operation"
+                   asp-route-id="@entry.OperationId">
+                    <time>@entry.CreatedAtUtc.ToLocalTime().ToString("G")</time>
+                    <span>@entry.Level</span>
+                    <strong>@entry.Module</strong>
+                    <p>@entry.Message</p>
+                </a>
+            }
+        </div>
+    }
+</section>

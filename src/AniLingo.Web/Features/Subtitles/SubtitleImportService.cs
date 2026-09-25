@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Metadata;
+using AniLingo.Web.Features.Operations;
 using AniLingo.Web.Features.Vocabulary;
 using AniLingo.Web.Infrastructure;
 using Microsoft.AspNetCore.DataProtection;
@@ -304,12 +305,30 @@ public sealed class SubtitleImportService
         try
         {
             await RequireJobs().QueueAsync(
-                async (services, jobCancellationToken) =>
+                new OperationDescriptor(
+                    "learning-text-preparation",
+                    "Subtitles",
+                    "Prepare episode learning text",
+                    $"Episode {episodeId:N}",
+                    Lane: OperationLane.Normal,
+                    IsDownload: true,
+                    Retryable: true),
+                async (operation, services, jobCancellationToken) =>
                 {
+                    await operation.ReportAsync(
+                        5,
+                        "Checking subtitle and transcript sources.",
+                        cancellationToken: jobCancellationToken);
+
                     var importer = services.GetRequiredService<SubtitleImportService>();
                     await importer.PrepareLearningTextAsync(
                         episodeId,
                         jobCancellationToken);
+
+                    await operation.ReportAsync(
+                        100,
+                        "Learning text is ready.",
+                        cancellationToken: jobCancellationToken);
                 },
                 cancellationToken);
             return true;
@@ -369,7 +388,15 @@ public sealed class SubtitleImportService
         try
         {
             await RequireJobs().QueueAsync(
-                async (services, jobCancellationToken) =>
+                new OperationDescriptor(
+                    "learning-text-batch",
+                    "Subtitles",
+                    "Prepare missing learning text",
+                    $"{episodeIds.Count} episode(s)",
+                    Lane: OperationLane.Maintenance,
+                    IsDownload: true,
+                    Retryable: true),
+                async (operation, services, jobCancellationToken) =>
                 {
                     try
                     {
@@ -378,13 +405,39 @@ public sealed class SubtitleImportService
                         var pendingIds =
                             await importer.GetMissingEpisodeIdsAsync(jobCancellationToken);
 
-                        foreach (var episodeId in pendingIds)
+                        if (pendingIds.Count == 0)
+                        {
+                            await operation.ReportAsync(
+                                100,
+                                "No missing learning text remains.",
+                                cancellationToken: jobCancellationToken);
+                            return;
+                        }
+
+                        for (var index = 0; index < pendingIds.Count; index++)
                         {
                             jobCancellationToken.ThrowIfCancellationRequested();
+
+                            var episodeId = pendingIds[index];
+                            var percent = Math.Clamp(
+                                (int)Math.Round(index * 100d / pendingIds.Count),
+                                0,
+                                99);
+
+                            await operation.ReportAsync(
+                                percent,
+                                $"Preparing episode {index + 1} of {pendingIds.Count}.",
+                                cancellationToken: jobCancellationToken);
+
                             await importer.PrepareLearningTextAsync(
                                 episodeId,
                                 jobCancellationToken);
                         }
+
+                        await operation.ReportAsync(
+                            100,
+                            $"Prepared {pendingIds.Count} episode(s).",
+                            cancellationToken: jobCancellationToken);
                     }
                     finally
                     {

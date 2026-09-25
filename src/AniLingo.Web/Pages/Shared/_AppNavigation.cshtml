@@ -36,6 +36,12 @@
         <a class="nav-item @(path.StartsWithSegments("/Settings") ? "active" : "")" href="/Settings">
             <span class="nav-glyph">S</span><span>Settings</span>
         </a>
+        @if (User.IsInRole(AniLingo.Web.Features.Auth.AccountRoles.Owner))
+        {
+            <a class="nav-item @(path.StartsWithSegments("/Admin") ? "active" : "")" href="/Admin">
+                <span class="nav-glyph">A</span><span>Admin</span>
+            </a>
+        }
     </nav>
 
     <div class="sidebar-footer">
@@ -55,6 +61,10 @@
     <a class="@(path.StartsWithSegments("/Learn") ? "active" : "")" href="/Learn">Learn</a>
     <a class="@(path.StartsWithSegments("/Statistics") ? "active" : "")" href="/Statistics">Progress</a>
     <a class="@(path.StartsWithSegments("/Settings") ? "active" : "")" href="/Settings">Settings</a>
+    @if (User.IsInRole(AniLingo.Web.Features.Auth.AccountRoles.Owner))
+    {
+        <a class="@(path.StartsWithSegments("/Admin") ? "active" : "")" href="/Admin">Admin</a>
+    }
     <form method="post" asp-page="/Account/Logout" data-offline-logout>
         <button type="submit">Sign out</button>
     </form>

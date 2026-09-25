@@ -1,6 +1,7 @@
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Books;
 using AniLingo.Web.Features.Novels;
+using AniLingo.Web.Features.Operations;
 using AniLingo.Web.Features.ReaderPreferences;
 using AniLingo.Web.Data;
 using AniLingo.Web.Infrastructure;
@@ -168,13 +169,31 @@ public sealed class ReadModel(
         }
 
         await jobs.QueueAsync(
-            async (services, workerToken) =>
+            new OperationDescriptor(
+                "book-chapter-translation",
+                "Translation",
+                "Translate book chapter",
+                $"Target language: {target}",
+                account.ProfileId,
+                OperationLane.Normal,
+                Retryable: true),
+            async (operation, services, workerToken) =>
             {
+                await operation.ReportAsync(
+                    5,
+                    "Translating chapter.",
+                    cancellationToken: workerToken);
+
                 var service = services.GetRequiredService<BookCatalogService>();
                 await service.TranslateChapterAsync(
                     id,
                     target,
                     workerToken);
+
+                await operation.ReportAsync(
+                    100,
+                    "Chapter translation completed.",
+                    cancellationToken: workerToken);
             },
             cancellationToken);
 

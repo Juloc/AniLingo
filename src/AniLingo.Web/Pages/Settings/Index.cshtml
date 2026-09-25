@@ -6,9 +6,9 @@
 
 <header class="page-header">
     <div>
-        <span class="eyebrow">Settings</span>
+        <span class="eyebrow">Personal</span>
         <h1>Settings</h1>
-        <p>Library paths and optional integrations.</p>
+        <p>Your learning and account integrations.</p>
     </div>
 </header>
 
@@ -16,10 +16,10 @@
     <section class="panel">
         <div class="panel-heading">
             <h2>Learning</h2>
-            <span>FSRS</span>
+            <span>Personal</span>
         </div>
         <p class="muted">
-            Adjust your own desired retention, review batch size and daily new words.
+            Adjust your desired retention, review batch size and daily new words.
         </p>
         <a class="button" asp-page="/Settings/Learning">Manage learning</a>
     </section>
@@ -29,150 +29,4 @@
         <p class="muted">Connect your own AniList account and sync only your progress.</p>
         <a class="button" asp-page="/Settings/AniList">Manage AniList</a>
     </section>
-
-    @if (Model.IsOwner)
-    {
-        <section class="panel">
-            <div class="panel-heading">
-                <div>
-                    <span class="eyebrow">Media storage</span>
-                    <h2>Configured roots</h2>
-                </div>
-                <span>@Model.Roots.Count</span>
-            </div>
-
-            <div asp-validation-summary="ModelOnly" class="validation"></div>
-
-            @if (Model.Roots.Count == 0)
-            {
-                <p class="muted">No roots configured.</p>
-            }
-            else
-            {
-                <div class="root-list">
-                    @foreach (var root in Model.Roots)
-                    {
-                        <div class="root-row">
-                            <div class="form-stack" style="flex:1; min-width:0;">
-                                <div>
-                                    <strong>@root.Name</strong>
-                                    <span class="status-pill @root.AvailabilityCss">@root.AvailabilityLabel</span>
-                                </div>
-                                <code>@root.Path</code>
-                                <small>
-                                    Last available:
-                                    @(root.Availability.LastAvailableAtUtc?.ToLocalTime().ToString("g") ?? "not yet in this server session")
-                                    · Last scan:
-                                    @(root.LastScannedAt?.ToLocalTime().ToString("g") ?? "never")
-                                </small>
-
-                                <div style="display:flex; gap:.5rem; flex-wrap:wrap;">
-                                    <form method="post" asp-page-handler="TestRoot">
-                                        <input type="hidden" name="rootId" value="@root.Id" />
-                                        <button class="button" type="submit">Test storage</button>
-                                    </form>
-
-                                    <form method="post" asp-page-handler="Scan">
-                                        <input type="hidden" name="rootId" value="@root.Id" />
-                                        <button class="button" type="submit">Scan library</button>
-                                    </form>
-
-                                    @if (root.WakeOnLanEnabled && root.Availability.WakeConfigured)
-                                    {
-                                        <form method="post" asp-page-handler="WakeRoot">
-                                            <input type="hidden" name="rootId" value="@root.Id" />
-                                            <button class="button button-primary" type="submit">Wake NAS</button>
-                                        </form>
-                                    }
-                                </div>
-
-                                <details>
-                                    <summary>Wake-on-LAN</summary>
-                                    <form method="post" asp-page-handler="ConfigureWake" class="form-stack" style="margin-top:.75rem;">
-                                        <input type="hidden" name="rootId" value="@root.Id" />
-                                        <label>
-                                            <span>
-                                                @if (root.WakeOnLanEnabled)
-                                            {
-                                                <input type="checkbox"
-                                                       name="wakeOnLanEnabled"
-                                                       value="true"
-                                                       checked />
-                                            }
-                                            else
-                                            {
-                                                <input type="checkbox"
-                                                       name="wakeOnLanEnabled"
-                                                       value="true" />
-                                            }
-                                                Enable Wake-on-LAN
-                                            </span>
-                                        </label>
-                                        <label>
-                                            <span>NAS MAC address</span>
-                                            <input name="wakeMacAddress"
-                                                   value="@root.WakeMacAddress"
-                                                   autocomplete="off"
-                                                   placeholder="AA:BB:CC:DD:EE:FF" />
-                                        </label>
-                                        <label>
-                                            <span>Broadcast IPv4 (optional)</span>
-                                            <input name="wakeBroadcastAddress"
-                                                   value="@root.WakeBroadcastAddress"
-                                                   autocomplete="off"
-                                                   placeholder="255.255.255.255" />
-                                        </label>
-                                        <small class="muted">
-                                            Wake is Owner-only. Playing a video never wakes the NAS automatically.
-                                        </small>
-                                        <button class="button" type="submit">Save Wake-on-LAN</button>
-                                    </form>
-                                </details>
-                            </div>
-                        </div>
-                    }
-                </div>
-            }
-        </section>
-
-        <section class="panel">
-            <div class="panel-heading"><h2>Add root</h2></div>
-            <form method="post" asp-page-handler="Add" class="form-stack">
-                <div asp-validation-summary="ModelOnly" class="validation"></div>
-                <label>
-                    <span>Name</span>
-                    <input asp-for="Name" />
-                </label>
-                <label>
-                    <span>Container path</span>
-                    <input asp-for="Path" />
-                </label>
-                <button class="button button-primary" type="submit">Add library root</button>
-            </form>
-        </section>
-
-        <section class="panel">
-            <div class="panel-heading"><h2>Users</h2><span>Local</span></div>
-            <p class="muted">Create, disable and reset local learner accounts.</p>
-            <a class="button" asp-page="/Settings/Users">Manage users</a>
-        </section>
-
-        <section class="panel">
-            <div class="panel-heading"><h2>Subtitles</h2><span>Learning text</span></div>
-            <p class="muted">Check subtitle coverage, configure optional Jimaku lookup and prepare missing transcripts.</p>
-            <a class="button" asp-page="/Settings/Subtitles">Manage subtitles</a>
-        </section>
-
-        <section class="panel">
-            <div class="panel-heading"><h2>Sonarr</h2><span>Optional</span></div>
-            <p class="muted">Configure artwork import from your existing Sonarr library.</p>
-            <a class="button" asp-page="/Settings/Sonarr">Manage Sonarr</a>
-        </section>
-
-        <section class="panel">
-            <div class="panel-heading"><h2>AI</h2><span>Optional</span></div>
-            <p class="muted">Manage Codex for optional cached sentence explanations.</p>
-            <a class="button" asp-page="/Settings/Ai">Manage AI</a>
-        </section>
-    }
 </div>
