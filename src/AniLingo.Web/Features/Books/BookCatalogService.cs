@@ -953,7 +953,6 @@ public sealed partial class BookCatalogService(
                      .Where(x =>
                          chapterSet.Contains(x.Entity.ChapterId)
                          && x.Entity.TargetLanguage == targetLanguage
-                         && x.Entity.ProviderId == translator.Id
                          && x.Entity.PromptVersion == TranslationPromptVersion)
                      .ToArray())
         {
