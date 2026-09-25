@@ -25,7 +25,8 @@ public sealed partial class BookCatalogService
         TimeSpan.FromSeconds(12);
 
     public IReadOnlyList<BookOpdsSourceSettings> GetOpdsSources() =>
-        BookOpdsSettingsStore.Load();
+        BookOpdsSettingsStore.Load(
+            GetOpdsSettingsPath());
 
     public Task<BookOpdsSourceSettings> SaveOpdsSourceAsync(
         string? id,
@@ -44,14 +45,16 @@ public sealed partial class BookCatalogService
             password,
             isEnabled,
             preserveExistingPassword,
-            cancellationToken);
+            cancellationToken,
+            GetOpdsSettingsPath());
 
     public Task RemoveOpdsSourceAsync(
         string id,
         CancellationToken cancellationToken) =>
         BookOpdsSettingsStore.RemoveAsync(
             id,
-            cancellationToken);
+            cancellationToken,
+            GetOpdsSettingsPath());
 
     public async Task<string> TestOpdsSourceAsync(
         string sourceId,
@@ -75,7 +78,8 @@ public sealed partial class BookCatalogService
         string? query,
         CancellationToken cancellationToken)
     {
-        var all = BookOpdsSettingsStore.Load()
+        var all = BookOpdsSettingsStore.Load(
+                GetOpdsSettingsPath())
             .Where(x => x.IsEnabled)
             .ToArray();
 
@@ -1076,13 +1080,24 @@ public sealed partial class BookCatalogService
                 : clean[..120];
     }
 
+    private string GetOpdsSettingsPath()
+    {
+        var configured =
+            configuration["Books:Opds:SettingsPath"]?.Trim();
+
+        return string.IsNullOrWhiteSpace(configured)
+            ? BookOpdsSettingsStore.SettingsPath
+            : Path.GetFullPath(configured);
+    }
+
     private BookOpdsSourceSettings FindOpdsSource(
         string sourceId,
         bool requireEnabled)
     {
         var cleanId = sourceId?.Trim();
 
-        var source = BookOpdsSettingsStore.Load()
+        var source = BookOpdsSettingsStore.Load(
+                GetOpdsSettingsPath())
             .FirstOrDefault(x =>
                 x.Id.Equals(
                     cleanId,
