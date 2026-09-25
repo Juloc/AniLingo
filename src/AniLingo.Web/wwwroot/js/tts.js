@@ -1,0 +1,347 @@
+(() => {
+    "use strict";
+
+    const synth = typeof window !== "undefined" ? window.speechSynthesis : null;
+    const Utterance = typeof window !== "undefined" ? window.SpeechSynthesisUtterance : null;
+
+    const clamp = (value, min, max, fallback) => {
+        const number = Number(value);
+        return Number.isFinite(number) ? Math.min(max, Math.max(min, number)) : fallback;
+    };
+
+    const normalizeLanguage = (value) => {
+        const raw = String(value || "").trim().replaceAll("_", "-");
+        if (!raw) return "und";
+
+        const parts = raw.split("-").filter(Boolean);
+        if (!parts.length || parts.some((part) => !/^[A-Za-z0-9]{1,8}$/.test(part))) {
+            return "und";
+        }
+
+        return parts.map((part, index) => {
+            if (index === 0) return part.toLowerCase();
+            if (/^[A-Za-z]{4}$/.test(part)) {
+                return part[0].toUpperCase() + part.slice(1).toLowerCase();
+            }
+            if (/^[A-Za-z]{2}$/.test(part) || /^\d{3}$/.test(part)) {
+                return part.toUpperCase();
+            }
+            return part.toLowerCase();
+        }).join("-");
+    };
+
+    const baseLanguage = (value) => normalizeLanguage(value).split("-")[0];
+
+    const languageRank = (voiceLanguage, requestedLanguage) => {
+        const voice = normalizeLanguage(voiceLanguage);
+        const requested = normalizeLanguage(requestedLanguage);
+        if (requested === "und") return 0;
+        if (voice.toLowerCase() === requested.toLowerCase()) return 0;
+        return baseLanguage(voice).toLowerCase() === baseLanguage(requested).toLowerCase() ? 1 : 2;
+    };
+
+    const findBreak = (text, start, hardEnd) => {
+        const windowText = text.slice(start, hardEnd);
+        let best = -1;
+
+        const paragraph = windowText.lastIndexOf("\n\n");
+        if (paragraph >= Math.floor(windowText.length * 0.35)) {
+            best = paragraph + 2;
+        }
+
+        if (best < 0) {
+            const sentenceMatches = [...windowText.matchAll(/[.!?。！？]+(?:["'”’」』】）)]*)\s+/gu)];
+            const candidate = sentenceMatches.at(-1);
+            if (candidate && candidate.index >= Math.floor(windowText.length * 0.35)) {
+                best = candidate.index + candidate[0].length;
+            }
+        }
+
+        if (best < 0) {
+            const newline = windowText.lastIndexOf("\n");
+            if (newline >= Math.floor(windowText.length * 0.35)) {
+                best = newline + 1;
+            }
+        }
+
+        if (best < 0) {
+            const whitespace = Math.max(
+                windowText.lastIndexOf(" "),
+                windowText.lastIndexOf("\t")
+            );
+            if (whitespace >= Math.floor(windowText.length * 0.35)) {
+                best = whitespace + 1;
+            }
+        }
+
+        return best > 0 ? start + best : hardEnd;
+    };
+
+    const splitText = (value, maxLength = 900) => {
+        const text = String(value || "");
+        const limit = Math.max(120, Math.min(4000, Math.trunc(maxLength) || 900));
+        const chunks = [];
+        let cursor = 0;
+
+        while (cursor < text.length) {
+            while (cursor < text.length && /\s/u.test(text[cursor])) cursor++;
+            if (cursor >= text.length) break;
+
+            const hardEnd = Math.min(text.length, cursor + limit);
+            let end = hardEnd < text.length ? findBreak(text, cursor, hardEnd) : text.length;
+
+            while (end > cursor && /\s/u.test(text[end - 1])) end--;
+            if (end <= cursor) {
+                end = Math.min(text.length, cursor + limit);
+            }
+
+            const chunkText = text.slice(cursor, end);
+            if (chunkText) {
+                chunks.push({ text: chunkText, start: cursor, end });
+            }
+
+            cursor = Math.max(end, cursor + 1);
+        }
+
+        return chunks;
+    };
+
+    class DeviceSpeechProvider extends EventTarget {
+        constructor() {
+            super();
+            this.id = "device";
+            this.kind = "device";
+            this._session = 0;
+            this._state = "idle";
+        }
+
+        get supported() {
+            return Boolean(synth && Utterance);
+        }
+
+        get state() {
+            return this._state;
+        }
+
+        get capabilities() {
+            return {
+                pauseResume: this.supported &&
+                    typeof synth.pause === "function" &&
+                    typeof synth.resume === "function",
+                boundaryEvents: this.supported,
+                platformDefaultVoice: true,
+                guaranteedOffline: false
+            };
+        }
+
+        async getVoices({ timeoutMs = 1500 } = {}) {
+            if (!this.supported) return [];
+
+            const current = synth.getVoices();
+            if (current.length) return this._mapVoices(current);
+
+            const delay = Math.max(0, Math.min(5000, Number(timeoutMs) || 1500));
+            await new Promise((resolve) => {
+                let settled = false;
+                let timer = null;
+
+                const finish = () => {
+                    if (settled) return;
+                    settled = true;
+                    synth.removeEventListener?.("voiceschanged", finish);
+                    if (timer !== null) window.clearTimeout(timer);
+                    resolve();
+                };
+
+                synth.addEventListener?.("voiceschanged", finish, { once: true });
+                timer = window.setTimeout(finish, delay);
+            });
+
+            return this._mapVoices(synth.getVoices());
+        }
+
+        async speak(options = {}) {
+            if (!this.supported) {
+                throw new Error("Device speech synthesis is not available in this browser.");
+            }
+
+            const text = String(options.text || "").trim();
+            if (!text) {
+                this.stop();
+                return;
+            }
+
+            this.stop();
+            const session = ++this._session;
+            const language = normalizeLanguage(options.language);
+            const voices = await this.getVoices();
+            const voice = this._selectVoice(voices, language, options.voiceId);
+            const chunks = splitText(text, options.maxChunkLength);
+
+            this._setState("speaking", { session, chunkCount: chunks.length });
+
+            try {
+                for (let index = 0; index < chunks.length; index++) {
+                    if (session !== this._session) return;
+                    await this._speakChunk({
+                        chunk: chunks[index],
+                        index,
+                        count: chunks.length,
+                        session,
+                        language,
+                        voice,
+                        rate: clamp(options.rate, 0.5, 2.5, 1),
+                        pitch: clamp(options.pitch, 0.5, 2, 1),
+                        volume: clamp(options.volume, 0, 1, 1)
+                    });
+                }
+
+                if (session === this._session) {
+                    this._setState("idle", { session });
+                    this.dispatchEvent(new CustomEvent("complete", {
+                        detail: { session, textLength: text.length }
+                    }));
+                }
+            } catch (error) {
+                if (session === this._session) {
+                    this._setState("idle", { session });
+                }
+                throw error;
+            }
+        }
+
+        pause() {
+            if (!this.supported || this._state !== "speaking") return false;
+            synth.pause();
+            this._setState("paused", { session: this._session });
+            return true;
+        }
+
+        resume() {
+            if (!this.supported || this._state !== "paused") return false;
+            synth.resume();
+            this._setState("speaking", { session: this._session });
+            return true;
+        }
+
+        stop() {
+            this._session++;
+            if (this.supported) {
+                synth.cancel();
+            }
+            this._setState("idle", { session: this._session });
+        }
+
+        _mapVoices(items) {
+            return items
+                .map((voice) => ({
+                    providerId: this.id,
+                    voiceId: voice.voiceURI || voice.name,
+                    name: voice.name,
+                    language: normalizeLanguage(voice.lang),
+                    isDefault: Boolean(voice.default),
+                    isLocal: Boolean(voice.localService),
+                    native: voice
+                }))
+                .sort((left, right) =>
+                    left.language.localeCompare(right.language) ||
+                    Number(right.isDefault) - Number(left.isDefault) ||
+                    left.name.localeCompare(right.name) ||
+                    left.voiceId.localeCompare(right.voiceId));
+        }
+
+        _selectVoice(voices, language, voiceId) {
+            const requested = String(voiceId || "").trim();
+            if (requested) {
+                const selected = voices.find((voice) =>
+                    voice.voiceId === requested && languageRank(voice.language, language) <= 1);
+                if (selected) return selected;
+            }
+
+            const compatible = voices
+                .filter((voice) => languageRank(voice.language, language) <= 1)
+                .sort((left, right) =>
+                    languageRank(left.language, language) - languageRank(right.language, language) ||
+                    Number(right.isDefault) - Number(left.isDefault) ||
+                    left.name.localeCompare(right.name));
+
+            return compatible[0] || null;
+        }
+
+        _speakChunk({ chunk, index, count, session, language, voice, rate, pitch, volume }) {
+            return new Promise((resolve, reject) => {
+                if (session !== this._session) {
+                    resolve();
+                    return;
+                }
+
+                const utterance = new Utterance(chunk.text);
+                utterance.lang = language === "und" ? "" : language;
+                utterance.rate = rate;
+                utterance.pitch = pitch;
+                utterance.volume = volume;
+                if (voice?.native) utterance.voice = voice.native;
+
+                utterance.onstart = () => {
+                    if (session !== this._session) return;
+                    this.dispatchEvent(new CustomEvent("utterancestart", {
+                        detail: { session, index, count, start: chunk.start, end: chunk.end }
+                    }));
+                };
+
+                utterance.onboundary = (event) => {
+                    if (session !== this._session) return;
+                    const localIndex = Number.isFinite(event.charIndex) ? event.charIndex : 0;
+                    this.dispatchEvent(new CustomEvent("boundary", {
+                        detail: {
+                            session,
+                            index,
+                            count,
+                            name: event.name || null,
+                            charIndex: chunk.start + localIndex,
+                            charLength: Number.isFinite(event.charLength) ? event.charLength : 0
+                        }
+                    }));
+                };
+
+                utterance.onend = () => {
+                    this.dispatchEvent(new CustomEvent("utteranceend", {
+                        detail: { session, index, count, start: chunk.start, end: chunk.end }
+                    }));
+                    resolve();
+                };
+
+                utterance.onerror = (event) => {
+                    if (session !== this._session || event.error === "canceled" || event.error === "interrupted") {
+                        resolve();
+                        return;
+                    }
+
+                    const error = new Error(`Device speech synthesis failed: ${event.error || "unknown"}`);
+                    this.dispatchEvent(new CustomEvent("error", {
+                        detail: { session, index, error: event.error || "unknown" }
+                    }));
+                    reject(error);
+                };
+
+                synth.speak(utterance);
+            });
+        }
+
+        _setState(state, detail) {
+            if (this._state === state && state === "idle") return;
+            this._state = state;
+            this.dispatchEvent(new CustomEvent("statechange", {
+                detail: { state, ...detail }
+            }));
+        }
+    }
+
+    window.AniLingoTts = Object.freeze({
+        DeviceSpeechProvider,
+        createDeviceProvider: () => new DeviceSpeechProvider(),
+        splitText,
+        normalizeLanguage,
+        baseLanguage
+    });
+})();
