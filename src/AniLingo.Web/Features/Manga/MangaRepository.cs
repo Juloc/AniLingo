@@ -127,6 +127,7 @@ public sealed class MangaRepository(AppDbContext db)
                 COALESCE(s."MetadataTitle", s."Title"),
                 s."MetadataExternalId",
                 c."Number",
+                c."VolumeNumber",
                 p."PageIndex",
                 c."PageCount"
             FROM "MangaSeries" s
@@ -147,8 +148,9 @@ public sealed class MangaRepository(AppDbContext db)
                 reader.GetString(1),
                 ReadNullableString(reader, 2),
                 reader.GetDouble(3),
-                reader.GetInt32(4),
-                reader.GetInt32(5)),
+                reader.IsDBNull(4) ? null : reader.GetInt32(4),
+                reader.GetInt32(5),
+                reader.GetInt32(6)),
             cancellationToken)).SingleOrDefault();
     }
 

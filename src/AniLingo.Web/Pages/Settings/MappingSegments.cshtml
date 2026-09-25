@@ -1,0 +1,149 @@
+@page
+@model AniLingo.Web.Pages.Settings.MappingSegmentsModel
+@{
+    ViewData["Title"] = "Reading segment mappings";
+}
+
+<header class="page-header">
+    <div>
+        <a class="back-link" asp-page="/Settings/Index">← Settings</a>
+        <span class="eyebrow">AniList metadata</span>
+        <h1>Reading segment mappings</h1>
+        <p>Map local Manga or Light Novel chapter/volume ranges to separate AniList entries without guessing.</p>
+    </div>
+</header>
+
+@if (TempData["Status"] is string status)
+{
+    <div class="panel">
+        <p>@status</p>
+    </div>
+}
+
+<div class="settings-grid">
+    <section class="panel">
+        <div class="panel-heading">
+            <h2>Add segment</h2>
+            <span>Owner</span>
+        </div>
+
+        <form method="post" asp-page-handler="Add" class="form-stack">
+            <div asp-validation-summary="ModelOnly" class="validation"></div>
+
+            <label>
+                <span>Media type</span>
+                <select asp-for="MediaType">
+                    <option value="manga">Manga</option>
+                    <option value="novel">Light Novel / Novel</option>
+                </select>
+            </label>
+
+            <label>
+                <span>Local work/series ID</span>
+                <input asp-for="LocalId" autocomplete="off" />
+                <span asp-validation-for="LocalId" class="validation"></span>
+            </label>
+
+            <div class="form-grid">
+                <label>
+                    <span>Local chapter start</span>
+                    <input asp-for="LocalChapterStart" type="number" min="0.001" step="0.001" />
+                </label>
+                <label>
+                    <span>Local chapter end</span>
+                    <input asp-for="LocalChapterEnd" type="number" min="0.001" step="0.001" />
+                </label>
+                <label>
+                    <span>AniList chapter start</span>
+                    <input asp-for="RemoteChapterStart" type="number" min="1" />
+                </label>
+            </div>
+
+            <label>
+                <span>AniList media ID</span>
+                <input asp-for="ExternalId" inputmode="numeric" autocomplete="off" />
+                <span asp-validation-for="ExternalId" class="validation"></span>
+            </label>
+
+            <label>
+                <span>AniList title (optional)</span>
+                <input asp-for="PreferredTitle" autocomplete="off" />
+            </label>
+
+            <label>
+                <span>Known AniList chapter count (optional)</span>
+                <input asp-for="RemoteChapterCount" type="number" min="1" />
+            </label>
+
+            <div class="form-grid">
+                <label>
+                    <span>Local volume start (optional)</span>
+                    <input asp-for="LocalVolumeStart" type="number" min="1" />
+                </label>
+                <label>
+                    <span>Local volume end (optional)</span>
+                    <input asp-for="LocalVolumeEnd" type="number" min="1" />
+                </label>
+                <label>
+                    <span>AniList volume start (optional)</span>
+                    <input asp-for="RemoteVolumeStart" type="number" min="1" />
+                </label>
+            </div>
+
+            <p class="muted">
+                If any segment exists for a work, AniLingo uses the segment table as authoritative.
+                Chapters outside configured ranges are blocked from AniList sync.
+            </p>
+
+            <button class="button button-primary" type="submit">Add mapping</button>
+        </form>
+    </section>
+</div>
+
+<section class="panel">
+    <div class="panel-heading">
+        <h2>Configured segments</h2>
+        <span>@Model.Mappings.Count</span>
+    </div>
+
+    @if (Model.Mappings.Count == 0)
+    {
+        <p class="muted">No Manga or Light Novel segment mappings configured.</p>
+    }
+    else
+    {
+        <div class="status-list">
+            @foreach (var mapping in Model.Mappings)
+            {
+                var targetUrl = AniLingo.Web.Pages.Settings.MappingSegmentsModel.TargetUrl(mapping);
+                <div>
+                    <span>
+                        @mapping.MediaType · local @mapping.LocalChapterStart–@mapping.LocalChapterEnd
+                        → AniList @mapping.ExternalId ch. @mapping.RemoteChapterStart
+                    </span>
+                    <strong>@(mapping.PreferredTitle ?? $"AniList {mapping.ExternalId}")</strong>
+
+                    @if (mapping.LocalVolumeStart is not null)
+                    {
+                        <small>
+                            volumes @mapping.LocalVolumeStart–@mapping.LocalVolumeEnd
+                            → @mapping.RemoteVolumeStart
+                        </small>
+                    }
+
+                    <div class="inline-actions">
+                        @if (targetUrl is not null)
+                        {
+                            <a class="button" href="@targetUrl">Open local work</a>
+                        }
+
+                        <form method="post" asp-page-handler="Remove">
+                            <input type="hidden" name="id" value="@mapping.Id" />
+                            <button class="button" type="submit">Remove</button>
+                        </form>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</section>

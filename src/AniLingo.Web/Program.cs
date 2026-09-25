@@ -255,6 +255,7 @@ builder.Services.AddScoped<SonarrArtworkImportService>();
 builder.Services.AddScoped<SonarrArtworkSyncService>();
 
 builder.Services.AddSingleton<MediaMappingReviewStore>();
+builder.Services.AddSingleton<ReadingSegmentMappingStore>();
 builder.Services.AddSingleton<AniListAccountStore>();
 builder.Services.AddHttpClient<AniListAccountService>(client =>
 {

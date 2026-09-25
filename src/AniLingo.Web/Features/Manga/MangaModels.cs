@@ -95,6 +95,7 @@ public sealed record MangaAniListProgressContext(
     string Title,
     string? MetadataExternalId,
     double ChapterNumber,
+    int? VolumeNumber,
     int PageIndex,
     int PageCount);
 
