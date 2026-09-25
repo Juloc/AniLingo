@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -38,8 +39,15 @@ public sealed class BookTranslationMemoryStore
         WriteIndented = true
     };
 
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> Gates =
+        new(StringComparer.Ordinal);
+
     private readonly string rootPath;
-    private readonly SemaphoreSlim gate = new(1, 1);
+
+    private SemaphoreSlim Gate =>
+        Gates.GetOrAdd(
+            rootPath,
+            _ => new SemaphoreSlim(1, 1));
 
     public BookTranslationMemoryStore(string rootPath)
     {
@@ -68,44 +76,16 @@ public sealed class BookTranslationMemoryStore
             workId,
             targetLanguage);
 
-        await gate.WaitAsync(cancellationToken);
+        await Gate.WaitAsync(cancellationToken);
         try
         {
-            if (!File.Exists(path))
-            {
-                return null;
-            }
-
-            var info = new FileInfo(path);
-            if (info.Length <= 0
-                || info.Length > MaxBytes)
-            {
-                return null;
-            }
-
-            await using var stream = new FileStream(
+            return await LoadCoreAsync(
                 path,
-                FileMode.Open,
-                FileAccess.Read,
-                FileShare.Read,
-                81920,
-                useAsync: true);
-
-            return await JsonSerializer.DeserializeAsync<BookTranslationBible>(
-                stream,
-                JsonOptions,
                 cancellationToken);
-        }
-        catch (Exception exception) when (
-            exception is IOException
-                or UnauthorizedAccessException
-                or JsonException)
-        {
-            return null;
         }
         finally
         {
-            gate.Release();
+            Gate.Release();
         }
     }
 
@@ -209,52 +189,329 @@ public sealed class BookTranslationMemoryStore
         BookTranslationBible bible,
         CancellationToken cancellationToken)
     {
-        NormalizeBible(bible);
-
         var path = GetPath(
             bible.WorkId,
             bible.TargetLanguage);
-        var directory = Path.GetDirectoryName(path)
-            ?? throw new InvalidOperationException(
-                "Book translation-memory directory is unavailable.");
 
-        await gate.WaitAsync(cancellationToken);
+        await Gate.WaitAsync(cancellationToken);
         try
         {
-            Directory.CreateDirectory(directory);
-
-            var temporary = path + ".tmp";
-            await using (var stream = new FileStream(
-                temporary,
-                FileMode.Create,
-                FileAccess.Write,
-                FileShare.None,
-                81920,
-                useAsync: true))
-            {
-                await JsonSerializer.SerializeAsync(
-                    stream,
-                    bible,
-                    JsonOptions,
-                    cancellationToken);
-            }
-
-            if (new FileInfo(temporary).Length > MaxBytes)
-            {
-                File.Delete(temporary);
-                throw new InvalidOperationException(
-                    "Book translation memory exceeded the 2 MB safety limit.");
-            }
-
-            File.Move(
-                temporary,
+            await SaveCoreAsync(
+                bible,
                 path,
-                overwrite: true);
+                cancellationToken);
         }
         finally
         {
-            gate.Release();
+            Gate.Release();
         }
+    }
+
+    public Task<BookTranslationBible?> UpdateOverviewAsync(
+        Guid workId,
+        string targetLanguage,
+        string? narrativePerspective,
+        string? overallStyle,
+        string? register,
+        string? audience,
+        CancellationToken cancellationToken) =>
+        MutateAsync(
+            workId,
+            targetLanguage,
+            bible =>
+            {
+                bible.NarrativePerspective =
+                    Clean(narrativePerspective, 800);
+                bible.OverallStyle =
+                    Clean(overallStyle, 1600);
+                bible.Register =
+                    Clean(register, 800);
+                bible.Audience =
+                    Clean(audience, 800);
+            },
+            cancellationToken);
+
+    public Task<BookTranslationBible?> UpsertTermAsync(
+        Guid workId,
+        string targetLanguage,
+        string source,
+        string target,
+        string? category,
+        string? notes,
+        bool locked,
+        CancellationToken cancellationToken) =>
+        MutateAsync(
+            workId,
+            targetLanguage,
+            bible =>
+            {
+                var cleanSource = Clean(source, 240)
+                    ?? throw new InvalidOperationException(
+                        "Source term is required.");
+                var cleanTarget = Clean(target, 240)
+                    ?? throw new InvalidOperationException(
+                        "Target term is required.");
+
+                var value = new BookTranslationTerm(
+                    cleanSource,
+                    cleanTarget,
+                    Clean(category, 120) ?? "term",
+                    Clean(notes, 1000),
+                    locked);
+
+                var index = bible.Terms.FindIndex(x =>
+                    x.Source.Equals(
+                        cleanSource,
+                        StringComparison.OrdinalIgnoreCase));
+
+                if (index >= 0)
+                {
+                    bible.Terms[index] = value;
+                }
+                else if (bible.Terms.Count < 500)
+                {
+                    bible.Terms.Add(value);
+                }
+                else
+                {
+                    throw new InvalidOperationException(
+                        "The Book Bible already contains the maximum number of terms.");
+                }
+            },
+            cancellationToken);
+
+    public Task<BookTranslationBible?> RemoveTermAsync(
+        Guid workId,
+        string targetLanguage,
+        string source,
+        CancellationToken cancellationToken) =>
+        MutateAsync(
+            workId,
+            targetLanguage,
+            bible =>
+            {
+                bible.Terms.RemoveAll(x =>
+                    x.Source.Equals(
+                        source.Trim(),
+                        StringComparison.OrdinalIgnoreCase));
+            },
+            cancellationToken);
+
+    public Task<BookTranslationBible?> UpsertEntityAsync(
+        Guid workId,
+        string targetLanguage,
+        string sourceName,
+        string targetName,
+        string? type,
+        string? description,
+        string? pronouns,
+        string? relationships,
+        string? voiceNotes,
+        CancellationToken cancellationToken) =>
+        MutateAsync(
+            workId,
+            targetLanguage,
+            bible =>
+            {
+                var cleanSource = Clean(sourceName, 240)
+                    ?? throw new InvalidOperationException(
+                        "Source entity name is required.");
+                var cleanTarget = Clean(targetName, 240)
+                    ?? throw new InvalidOperationException(
+                        "Target entity name is required.");
+                var cleanType = Clean(type, 120) ?? "entity";
+
+                var value = new BookTranslationEntity(
+                    cleanSource,
+                    cleanTarget,
+                    cleanType,
+                    Clean(description, 1200),
+                    Clean(pronouns, 300),
+                    Clean(relationships, 1200),
+                    Clean(voiceNotes, 1200));
+
+                var index = bible.Entities.FindIndex(x =>
+                    x.SourceName.Equals(
+                        cleanSource,
+                        StringComparison.OrdinalIgnoreCase)
+                    && x.Type.Equals(
+                        cleanType,
+                        StringComparison.OrdinalIgnoreCase));
+
+                if (index >= 0)
+                {
+                    bible.Entities[index] = value;
+                }
+                else if (bible.Entities.Count < 250)
+                {
+                    bible.Entities.Add(value);
+                }
+                else
+                {
+                    throw new InvalidOperationException(
+                        "The Book Bible already contains the maximum number of entities.");
+                }
+            },
+            cancellationToken);
+
+    public Task<BookTranslationBible?> RemoveEntityAsync(
+        Guid workId,
+        string targetLanguage,
+        string sourceName,
+        string type,
+        CancellationToken cancellationToken) =>
+        MutateAsync(
+            workId,
+            targetLanguage,
+            bible =>
+            {
+                bible.Entities.RemoveAll(x =>
+                    x.SourceName.Equals(
+                        sourceName.Trim(),
+                        StringComparison.OrdinalIgnoreCase)
+                    && x.Type.Equals(
+                        type.Trim(),
+                        StringComparison.OrdinalIgnoreCase));
+            },
+            cancellationToken);
+
+    public async Task ResetAsync(
+        Guid workId,
+        string targetLanguage,
+        CancellationToken cancellationToken)
+    {
+        var path = GetPath(
+            workId,
+            targetLanguage);
+
+        await Gate.WaitAsync(cancellationToken);
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        finally
+        {
+            Gate.Release();
+        }
+    }
+
+    private async Task<BookTranslationBible?> MutateAsync(
+        Guid workId,
+        string targetLanguage,
+        Action<BookTranslationBible> mutation,
+        CancellationToken cancellationToken)
+    {
+        var path = GetPath(
+            workId,
+            targetLanguage);
+
+        await Gate.WaitAsync(cancellationToken);
+        try
+        {
+            var bible = await LoadCoreAsync(
+                path,
+                cancellationToken);
+
+            if (bible is null)
+            {
+                return null;
+            }
+
+            mutation(bible);
+            await SaveCoreAsync(
+                bible,
+                path,
+                cancellationToken);
+            return bible;
+        }
+        finally
+        {
+            Gate.Release();
+        }
+    }
+
+    private static async Task<BookTranslationBible?> LoadCoreAsync(
+        string path,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (!File.Exists(path))
+            {
+                return null;
+            }
+
+            var info = new FileInfo(path);
+            if (info.Length <= 0
+                || info.Length > MaxBytes)
+            {
+                return null;
+            }
+
+            await using var stream = new FileStream(
+                path,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read,
+                81920,
+                useAsync: true);
+
+            return await JsonSerializer.DeserializeAsync<BookTranslationBible>(
+                stream,
+                JsonOptions,
+                cancellationToken);
+        }
+        catch (Exception exception) when (
+            exception is IOException
+                or UnauthorizedAccessException
+                or JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static async Task SaveCoreAsync(
+        BookTranslationBible bible,
+        string path,
+        CancellationToken cancellationToken)
+    {
+        NormalizeBible(bible);
+
+        var directory = Path.GetDirectoryName(path)
+            ?? throw new InvalidOperationException(
+                "Book translation-memory directory is unavailable.");
+        Directory.CreateDirectory(directory);
+
+        var temporary = path + ".tmp";
+        await using (var stream = new FileStream(
+            temporary,
+            FileMode.Create,
+            FileAccess.Write,
+            FileShare.None,
+            81920,
+            useAsync: true))
+        {
+            await JsonSerializer.SerializeAsync(
+                stream,
+                bible,
+                JsonOptions,
+                cancellationToken);
+        }
+
+        if (new FileInfo(temporary).Length > MaxBytes)
+        {
+            File.Delete(temporary);
+            throw new InvalidOperationException(
+                "Book translation memory exceeded the 2 MB safety limit.");
+        }
+
+        File.Move(
+            temporary,
+            path,
+            overwrite: true);
     }
 
     public static string RenderContext(

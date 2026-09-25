@@ -1,0 +1,455 @@
+@page "/Books/TranslationMemory/{id:guid}"
+@model AniLingo.Web.Pages.Books.TranslationMemoryModel
+@{
+    ViewData["Title"] = "Book Bible";
+}
+@section Head {
+    <link rel="stylesheet"
+          href="~/css/book-translation-memory.css"
+          asp-append-version="true" />
+}
+
+<div class="book-bible-page">
+    <a class="book-bible-back"
+       href="/Books/Library/@Model.WorkId?lang=@Model.TargetLanguage">
+        ← Back to book
+    </a>
+
+    <header class="book-bible-header">
+        <div>
+            <span class="book-bible-kicker">Translation memory</span>
+            <h1>@Model.WorkTitle</h1>
+            <p>
+                Book Bible for
+                <strong>@AniLingo.Web.Features.Books.BookLanguageCatalog.GetName(Model.TargetLanguage)</strong>.
+                Locked glossary terms override later AI suggestions.
+            </p>
+        </div>
+    </header>
+
+    @if (TempData["Status"] is string status)
+    {
+        <div class="book-bible-message">@status</div>
+    }
+
+    @if (Model.Bible is null)
+    {
+        <section class="book-bible-empty">
+            <h2>No Book Bible yet</h2>
+            <p>
+                Translate at least one chapter first. AniLingo will analyze the book,
+                create the initial style/entity/terminology memory and then this editor
+                becomes available.
+            </p>
+        </section>
+    }
+    else
+    {
+        <section class="book-bible-section">
+            <div class="book-bible-section-heading">
+                <div>
+                    <h2>Style guide</h2>
+                    <p>Persistent book-wide guidance used by translator, editor and QA.</p>
+                </div>
+                <span>Updated @Model.Bible.UpdatedAt.ToLocalTime().ToString("g")</span>
+            </div>
+
+            <form method="post"
+                  asp-page-handler="Overview"
+                  class="book-bible-form">
+                <input type="hidden" name="id" value="@Model.WorkId" />
+                <input type="hidden" name="lang" value="@Model.TargetLanguage" />
+
+                <label>
+                    Narrative perspective
+                    <textarea name="narrativePerspective"
+                              rows="2"
+                              maxlength="800">@Model.Bible.NarrativePerspective</textarea>
+                </label>
+
+                <label>
+                    Overall style
+                    <textarea name="overallStyle"
+                              rows="4"
+                              maxlength="1600">@Model.Bible.OverallStyle</textarea>
+                </label>
+
+                <div class="book-bible-grid two">
+                    <label>
+                        Register
+                        <textarea name="register"
+                                  rows="3"
+                                  maxlength="800">@Model.Bible.Register</textarea>
+                    </label>
+                    <label>
+                        Audience
+                        <textarea name="audience"
+                                  rows="3"
+                                  maxlength="800">@Model.Bible.Audience</textarea>
+                    </label>
+                </div>
+
+                @if (Model.Bible.Themes.Count > 0)
+                {
+                    <div class="book-bible-tags">
+                        @foreach (var theme in Model.Bible.Themes)
+                        {
+                            <span>@theme</span>
+                        }
+                    </div>
+                }
+
+                <div>
+                    <button class="button button-primary" type="submit">
+                        Save style guide
+                    </button>
+                </div>
+            </form>
+        </section>
+
+        <section class="book-bible-section">
+            <div class="book-bible-section-heading">
+                <div>
+                    <h2>Glossary</h2>
+                    <p>
+                        Stable translations for names, places, titles, magic terms and other recurring vocabulary.
+                    </p>
+                </div>
+                <span>@Model.Bible.Terms.Count terms</span>
+            </div>
+
+            <details class="book-bible-add">
+                <summary>Add glossary term</summary>
+                <form method="post"
+                      asp-page-handler="Term"
+                      class="book-bible-form compact">
+                    <input type="hidden" name="id" value="@Model.WorkId" />
+                    <input type="hidden" name="lang" value="@Model.TargetLanguage" />
+
+                    <div class="book-bible-grid two">
+                        <label>
+                            Source
+                            <input type="text"
+                                   name="source"
+                                   maxlength="240"
+                                   required />
+                        </label>
+                        <label>
+                            Target
+                            <input type="text"
+                                   name="target"
+                                   maxlength="240"
+                                   required />
+                        </label>
+                    </div>
+
+                    <div class="book-bible-grid two">
+                        <label>
+                            Category
+                            <input type="text"
+                                   name="category"
+                                   maxlength="120"
+                                   placeholder="name, place, magic, title…" />
+                        </label>
+                        <label class="book-bible-check">
+                            <input type="checkbox"
+                                   name="locked"
+                                   value="true" />
+                            Lock this translation
+                        </label>
+                    </div>
+
+                    <label>
+                        Notes
+                        <textarea name="notes"
+                                  rows="2"
+                                  maxlength="1000"></textarea>
+                    </label>
+
+                    <div>
+                        <button class="button button-primary" type="submit">Add term</button>
+                    </div>
+                </form>
+            </details>
+
+            <div class="book-bible-list">
+                @foreach (var term in Model.Bible.Terms
+                    .OrderByDescending(x => x.Locked)
+                    .ThenBy(x => x.Source))
+                {
+                    <article class="book-bible-item @(term.Locked ? "locked" : "")">
+                        <form method="post"
+                              asp-page-handler="Term"
+                              class="book-bible-form compact">
+                            <input type="hidden" name="id" value="@Model.WorkId" />
+                            <input type="hidden" name="lang" value="@Model.TargetLanguage" />
+                            <input type="hidden" name="source" value="@term.Source" />
+
+                            <div class="book-bible-item-title">
+                                <strong>@term.Source</strong>
+                                @if (term.Locked)
+                                {
+                                    <span class="book-bible-lock">Locked</span>
+                                }
+                            </div>
+
+                            <div class="book-bible-grid two">
+                                <label>
+                                    Target
+                                    <input type="text"
+                                           name="target"
+                                           maxlength="240"
+                                           value="@term.Target"
+                                           required />
+                                </label>
+                                <label>
+                                    Category
+                                    <input type="text"
+                                           name="category"
+                                           maxlength="120"
+                                           value="@term.Category" />
+                                </label>
+                            </div>
+
+                            <label>
+                                Notes
+                                <textarea name="notes"
+                                          rows="2"
+                                          maxlength="1000">@term.Notes</textarea>
+                            </label>
+
+                            <div class="book-bible-item-actions">
+                                <label class="book-bible-check">
+                                    <input type="checkbox"
+                                           name="locked"
+                                           value="true"
+                                           checked="@term.Locked" />
+                                    Locked
+                                </label>
+                                <button class="button" type="submit">Save</button>
+                            </div>
+                        </form>
+
+                        <form method="post"
+                              asp-page-handler="RemoveTerm"
+                              class="book-bible-remove"
+                              onsubmit="return confirm('Remove this glossary term?');">
+                            <input type="hidden" name="id" value="@Model.WorkId" />
+                            <input type="hidden" name="lang" value="@Model.TargetLanguage" />
+                            <input type="hidden" name="source" value="@term.Source" />
+                            <button type="submit">Remove</button>
+                        </form>
+                    </article>
+                }
+
+                @if (Model.Bible.Terms.Count == 0)
+                {
+                    <p class="book-bible-muted">No glossary terms recorded yet.</p>
+                }
+            </div>
+        </section>
+
+        <section class="book-bible-section">
+            <div class="book-bible-section-heading">
+                <div>
+                    <h2>Characters & entities</h2>
+                    <p>Stable naming, relationships, pronouns and voice notes.</p>
+                </div>
+                <span>@Model.Bible.Entities.Count entities</span>
+            </div>
+
+            <details class="book-bible-add">
+                <summary>Add entity</summary>
+                <form method="post"
+                      asp-page-handler="Entity"
+                      class="book-bible-form compact">
+                    <input type="hidden" name="id" value="@Model.WorkId" />
+                    <input type="hidden" name="lang" value="@Model.TargetLanguage" />
+
+                    <div class="book-bible-grid three">
+                        <label>
+                            Source name
+                            <input type="text"
+                                   name="sourceName"
+                                   maxlength="240"
+                                   required />
+                        </label>
+                        <label>
+                            Target name
+                            <input type="text"
+                                   name="targetName"
+                                   maxlength="240"
+                                   required />
+                        </label>
+                        <label>
+                            Type
+                            <input type="text"
+                                   name="type"
+                                   maxlength="120"
+                                   placeholder="character, place…" />
+                        </label>
+                    </div>
+
+                    <label>
+                        Description
+                        <textarea name="description" rows="2" maxlength="1200"></textarea>
+                    </label>
+
+                    <div class="book-bible-grid two">
+                        <label>
+                            Pronouns / address
+                            <textarea name="pronouns" rows="2" maxlength="300"></textarea>
+                        </label>
+                        <label>
+                            Relationships
+                            <textarea name="relationships" rows="2" maxlength="1200"></textarea>
+                        </label>
+                    </div>
+
+                    <label>
+                        Voice notes
+                        <textarea name="voiceNotes" rows="2" maxlength="1200"></textarea>
+                    </label>
+
+                    <div>
+                        <button class="button button-primary" type="submit">Add entity</button>
+                    </div>
+                </form>
+            </details>
+
+            <div class="book-bible-list">
+                @foreach (var entity in Model.Bible.Entities
+                    .OrderBy(x => x.Type)
+                    .ThenBy(x => x.SourceName))
+                {
+                    <article class="book-bible-item">
+                        <form method="post"
+                              asp-page-handler="Entity"
+                              class="book-bible-form compact">
+                            <input type="hidden" name="id" value="@Model.WorkId" />
+                            <input type="hidden" name="lang" value="@Model.TargetLanguage" />
+                            <input type="hidden" name="sourceName" value="@entity.SourceName" />
+                            <input type="hidden" name="type" value="@entity.Type" />
+
+                            <div class="book-bible-item-title">
+                                <strong>@entity.SourceName</strong>
+                                <span>@entity.Type</span>
+                            </div>
+
+                            <label>
+                                Target name
+                                <input type="text"
+                                       name="targetName"
+                                       maxlength="240"
+                                       value="@entity.TargetName"
+                                       required />
+                            </label>
+
+                            <label>
+                                Description
+                                <textarea name="description"
+                                          rows="2"
+                                          maxlength="1200">@entity.Description</textarea>
+                            </label>
+
+                            <div class="book-bible-grid two">
+                                <label>
+                                    Pronouns / address
+                                    <textarea name="pronouns"
+                                              rows="2"
+                                              maxlength="300">@entity.Pronouns</textarea>
+                                </label>
+                                <label>
+                                    Relationships
+                                    <textarea name="relationships"
+                                              rows="2"
+                                              maxlength="1200">@entity.Relationships</textarea>
+                                </label>
+                            </div>
+
+                            <label>
+                                Voice notes
+                                <textarea name="voiceNotes"
+                                          rows="2"
+                                          maxlength="1200">@entity.VoiceNotes</textarea>
+                            </label>
+
+                            <div class="book-bible-item-actions">
+                                <button class="button" type="submit">Save</button>
+                            </div>
+                        </form>
+
+                        <form method="post"
+                              asp-page-handler="RemoveEntity"
+                              class="book-bible-remove"
+                              onsubmit="return confirm('Remove this entity from translation memory?');">
+                            <input type="hidden" name="id" value="@Model.WorkId" />
+                            <input type="hidden" name="lang" value="@Model.TargetLanguage" />
+                            <input type="hidden" name="sourceName" value="@entity.SourceName" />
+                            <input type="hidden" name="type" value="@entity.Type" />
+                            <button type="submit">Remove</button>
+                        </form>
+                    </article>
+                }
+
+                @if (Model.Bible.Entities.Count == 0)
+                {
+                    <p class="book-bible-muted">No entities recorded yet.</p>
+                }
+            </div>
+        </section>
+
+        <section class="book-bible-section">
+            <div class="book-bible-section-heading">
+                <div>
+                    <h2>Chapter memory</h2>
+                    <p>Read-only summaries and continuity notes produced after completed translations.</p>
+                </div>
+                <span>@Model.Bible.Chapters.Count chapters</span>
+            </div>
+
+            <div class="book-bible-list">
+                @foreach (var chapter in Model.Bible.Chapters
+                    .OrderByDescending(x => x.ChapterNumber))
+                {
+                    <article class="book-bible-chapter">
+                        <div>
+                            <strong>Chapter @chapter.ChapterNumber · @chapter.ChapterTitle</strong>
+                            <span>@chapter.UpdatedAt.ToLocalTime().ToString("g")</span>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(chapter.Summary))
+                        {
+                            <p>@chapter.Summary</p>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(chapter.ContinuityNotes))
+                        {
+                            <small>@chapter.ContinuityNotes</small>
+                        }
+                    </article>
+                }
+
+                @if (Model.Bible.Chapters.Count == 0)
+                {
+                    <p class="book-bible-muted">No completed chapter memory yet.</p>
+                }
+            </div>
+        </section>
+
+        <section class="book-bible-danger">
+            <div>
+                <h2>Reset Book Bible</h2>
+                <p>
+                    Deletes style/entity/glossary/chapter memory for this target language.
+                    Existing translated chapter text, progress and bookmarks stay untouched.
+                </p>
+            </div>
+            <form method="post"
+                  asp-page-handler="Reset"
+                  onsubmit="return confirm('Reset this Book Bible? Existing final translations will remain, but future translations will start with fresh memory.');">
+                <input type="hidden" name="id" value="@Model.WorkId" />
+                <input type="hidden" name="lang" value="@Model.TargetLanguage" />
+                <button class="button book-bible-danger-button" type="submit">Reset memory</button>
+            </form>
+        </section>
+    }
+</div>
