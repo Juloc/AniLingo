@@ -13,16 +13,22 @@ on:
       - "clients/android/**"
       - "design/player/**"
       - ".github/workflows/android.yml"
+  workflow_run:
+    workflows:
+      - "CI"
+    types:
+      - completed
 
 permissions:
   contents: read
 
 concurrency:
-  group: android-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: android-${{ github.workflow }}-${{ github.event.pull_request.number || github.event.workflow_run.id || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_run' }}
 
 jobs:
   build:
+    if: github.event_name != 'workflow_run'
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -76,3 +82,125 @@ jobs:
           path: |
             clients/android/app-mobile/build/outputs/apk/debug/*.apk
             clients/android/app-tv/build/outputs/apk/debug/*.apk
+
+  release:
+    if: >-
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      startsWith(github.event.workflow_run.head_commit.message, 'release:')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v4
+
+      - name: Install Android SDK
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.6.0"
+
+      - name: Resolve release version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          root = ET.parse("src/AniLingo.Web/AniLingo.Web.csproj").getroot()
+          version = root.findtext(".//Version")
+          if not version:
+              raise SystemExit("AniLingo.Web.csproj has no Version.")
+          print(version.strip())
+          PY
+          )"
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "tag=v${VERSION}" >> "${GITHUB_OUTPUT}"
+          gh release view "v${VERSION}" >/dev/null
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Stamp Android package version
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          VERSION_CODE="${GITHUB_RUN_NUMBER}"
+          for file in             clients/android/app-mobile/build.gradle.kts             clients/android/app-tv/build.gradle.kts
+          do
+            sed -i -E "s/versionCode = [0-9]+/versionCode = ${VERSION_CODE}/" "${file}"
+            sed -i -E "s/versionName = \"[^\"]+\"/versionName = \"${VERSION}\"/" "${file}"
+          done
+
+      - name: Build release APKs
+        working-directory: clients/android
+        run: >
+          gradle --no-daemon --stacktrace
+          :app-mobile:assembleRelease
+          :app-tv:assembleRelease
+
+      - name: Sign APKs and generate checksums
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          : "${ANDROID_KEYSTORE_BASE64:?ANDROID_KEYSTORE_BASE64 is required}"
+          : "${ANDROID_KEYSTORE_PASSWORD:?ANDROID_KEYSTORE_PASSWORD is required}"
+          : "${ANDROID_KEY_ALIAS:?ANDROID_KEY_ALIAS is required}"
+          : "${ANDROID_KEY_PASSWORD:?ANDROID_KEY_PASSWORD is required}"
+
+          KEYSTORE="${RUNNER_TEMP}/anilingo-release.jks"
+          printf '%s' "${ANDROID_KEYSTORE_BASE64}" | base64 --decode > "${KEYSTORE}"
+
+          MOBILE_UNSIGNED="$(find clients/android/app-mobile/build/outputs/apk/release -name '*-release-unsigned.apk' -print -quit)"
+          TV_UNSIGNED="$(find clients/android/app-tv/build/outputs/apk/release -name '*-release-unsigned.apk' -print -quit)"
+          test -n "${MOBILE_UNSIGNED}"
+          test -n "${TV_UNSIGNED}"
+
+          mkdir -p dist
+          ZIPALIGN="${ANDROID_HOME}/build-tools/36.0.0/zipalign"
+          APKSIGNER="${ANDROID_HOME}/build-tools/36.0.0/apksigner"
+
+          sign_apk() {
+            local source="$1"
+            local name="$2"
+            local aligned="${RUNNER_TEMP}/${name}-aligned.apk"
+            local target="dist/${name}.apk"
+
+            "${ZIPALIGN}" -f -p 4 "${source}" "${aligned}"
+            "${APKSIGNER}" sign               --ks "${KEYSTORE}"               --ks-key-alias "${ANDROID_KEY_ALIAS}"               --ks-pass env:ANDROID_KEYSTORE_PASSWORD               --key-pass env:ANDROID_KEY_PASSWORD               --out "${target}"               "${aligned}"
+            "${APKSIGNER}" verify --verbose "${target}"
+            sha256sum "${target}" > "${target}.sha256"
+          }
+
+          sign_apk "${MOBILE_UNSIGNED}" "AniLingo-Mobile-${VERSION}"
+          sign_apk "${TV_UNSIGNED}" "AniLingo-TV-${VERSION}"
+
+      - name: Attach Android assets to GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          gh release upload "${RELEASE_TAG}" dist/*.apk dist/*.sha256 --clobber

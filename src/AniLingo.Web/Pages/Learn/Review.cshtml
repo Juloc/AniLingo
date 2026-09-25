@@ -1,0 +1,131 @@
+@page
+@using System.Text.Json
+@using AniLingo.Web.Features.Ai
+@using AniLingo.Web.Features.Learning
+@model AniLingo.Web.Pages.Learn.ReviewModel
+@{
+    ViewData["Title"] = Model.Ui["learn.title"];
+    var current = Model.Current;
+    var context = current?.Context;
+}
+
+<header class="page-header">
+    <div>
+        <span class="eyebrow">@Model.Ui["learn.eyebrow"]</span>
+        <h1>@Model.Ui["learn.title"]</h1>
+        <p>@Model.Ui.Format("learn.dueNow", ("count", Model.Session.Count))</p>
+    </div>
+</header>
+
+@if (current is null)
+{
+    <div class="empty-state centered">
+        <div class="empty-symbol">✓</div>
+        <h3>@Model.Ui["learn.empty.title"]</h3>
+        <p>@Model.Ui["learn.empty.body"]</p>
+        <a class="button" href="/Library">@Model.Ui["learn.openLibrary"]</a>
+    </div>
+}
+else
+{
+    <section class="review-stage"
+             data-review-stage
+             data-profile-id="@Model.ProfileId"
+             data-sync-url="@Url.Page("/Learn/Review", "SyncOfflineReviews")">
+        <div class="review-card">
+            <span class="review-counter">@Model.Ui.Format("learn.dueNow", ("count", Model.Session.Count))</span>
+            <div class="review-term" lang="ja">@current.Canonical</div>
+            <div class="review-reading" lang="ja" hidden="@(string.IsNullOrWhiteSpace(current.Reading) ? "hidden" : null)">
+                @current.Reading
+            </div>
+
+            <details class="review-details" data-review-details>
+                <summary class="button review-reveal" data-review-reveal>@Model.Ui["learn.showAnswer"]</summary>
+
+                <div class="review-answer">
+                    @(string.IsNullOrWhiteSpace(current.Meaning)
+                        ? Model.Ui["learn.noMeaning"]
+                        : current.Meaning)
+                </div>
+
+                <div class="panel review-context"
+                     data-review-context
+                     hidden="@(context is null ? "hidden" : null)">
+                    <span class="eyebrow">@Model.Ui["learn.animeContext"]</span>
+                    <p lang="ja" data-review-sentence>@context?.Sentence</p>
+
+                    <div data-review-enrichment hidden="@(context is null)">
+                        @if (Model.LocalHints.Count > 0)
+                        {
+                            <p class="muted">
+                                Local: @string.Join(" · ", Model.LocalHints)
+                            </p>
+                        }
+
+                        @if (Model.AiExplanation is { } explanation)
+                        {
+                            <div>
+                                <strong>@explanation.Translation</strong>
+
+                                @if (explanation.Grammar.Count > 0)
+                                {
+                                    <p class="muted">Grammar: @string.Join(" · ", explanation.Grammar)</p>
+                                }
+
+                                @if (explanation.Colloquial.Count > 0)
+                                {
+                                    <p class="muted">Speech: @string.Join(" · ", explanation.Colloquial)</p>
+                                }
+                            </div>
+                        }
+                        else if (context is not null)
+                        {
+                            <form method="post" asp-page-handler="Explain">
+                                <input type="hidden" name="termId" value="@current.TermId" />
+                                <button class="button" type="submit">@Model.Ui["learn.explainAi"]</button>
+                            </form>
+                        }
+                    </div>
+
+                    <a class="text-link"
+                       data-review-scene
+                       href="@(context is null ? "#" : $"/Library/Episode/{context.EpisodeId}?at={context.CueStartMs}")">
+                        @if (context is not null)
+                        {
+                            <text>
+                                @context.AnimeTitle · S@(context.SeasonNumber.ToString("00")) E@(context.EpisodeNumber.ToString("00"))
+                                · @context.EpisodeTitle · @context.TimestampLabel
+                            </text>
+                        }
+                    </a>
+                </div>
+
+                <form method="post"
+                      asp-page-handler="Review"
+                      class="review-actions"
+                      data-review-form>
+                    <input type="hidden" name="termId" value="@current.TermId" data-review-term-id />
+                    <button name="rating" value="Again" class="review-button" data-review-rating="Again">
+                        <strong>@Model.Ui["learn.rating.again"]</strong><span>@current.Intervals.GetValueOrDefault(ReviewRating.Again, "—")</span>
+                    </button>
+                    <button name="rating" value="Hard" class="review-button" data-review-rating="Hard">
+                        <strong>@Model.Ui["learn.rating.hard"]</strong><span>@current.Intervals.GetValueOrDefault(ReviewRating.Hard, "—")</span>
+                    </button>
+                    <button name="rating" value="Good" class="review-button primary" data-review-rating="Good">
+                        <strong>@Model.Ui["learn.rating.good"]</strong><span>@current.Intervals.GetValueOrDefault(ReviewRating.Good, "—")</span>
+                    </button>
+                    <button name="rating" value="Easy" class="review-button" data-review-rating="Easy">
+                        <strong>@Model.Ui["learn.rating.easy"]</strong><span>@current.Intervals.GetValueOrDefault(ReviewRating.Easy, "—")</span>
+                    </button>
+                </form>
+            </details>
+        </div>
+
+        <script type="application/json" data-review-session>
+            @Html.Raw(JsonSerializer.Serialize(Model.Session, new JsonSerializerOptions(JsonSerializerDefaults.Web)))
+        </script>
+    </section>
+
+    <script src="~/js/offline-review.js" asp-append-version="true"></script>
+    <script src="~/js/learn-review.js" asp-append-version="true"></script>
+}

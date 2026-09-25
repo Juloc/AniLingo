@@ -7,7 +7,10 @@ namespace AniLingo.Web.Features.Learning;
 public enum UserTermState
 {
     Known = 1,
-    Learning = 2
+    Learning = 2,
+    Saved = 3,
+    Ignored = 4,
+    Suspended = 5
 }
 
 public enum ReviewRating
