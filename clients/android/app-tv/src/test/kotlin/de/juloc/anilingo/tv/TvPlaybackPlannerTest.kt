@@ -51,6 +51,28 @@ class TvPlaybackPlannerTest {
     }
 
     @Test
+    fun hlsFallbackRestartsAtRequestedAbsolutePosition() {
+        val plan = TvPlaybackPlanner.plan(
+            serverOrigin = "https://anilingo.example",
+            capabilities = capabilities(hls = true),
+            bootstrap = bootstrap(
+                fallbackKind = "hls",
+                fallbackUrl = "/api/client/v1/episodes/episode/hls",
+                seekableWithinStream = true,
+            ),
+            directSupported = false,
+            startPositionMs = 42_500,
+        )
+
+        assertEquals(PlaybackTransport.HLS_FALLBACK, plan.transport)
+        assertEquals(
+            "https://anilingo.example/api/client/v1/episodes/episode/hls?startSeconds=42.500",
+            plan.uri,
+        )
+        assertEquals(0, plan.startPositionMs)
+    }
+
+    @Test
     fun externalPlaybackRouteIsRejected() {
         val bootstrap = bootstrap(
             directUrl = "https://evil.example/video.mkv",
@@ -67,7 +89,9 @@ class TvPlaybackPlannerTest {
         }
     }
 
-    private fun capabilities() = ClientCapabilities(
+    private fun capabilities(
+        hls: Boolean = false,
+    ) = ClientCapabilities(
         apiVersion = 1,
         minimumSupportedApiVersion = 1,
         serverVersion = "test",
@@ -82,7 +106,7 @@ class TvPlaybackPlannerTest {
             normalizedLearningCues = true,
             learningStateMutation = true,
             liveMp4Fallback = true,
-            hlsFallback = false,
+            hlsFallback = hls,
             playbackSessions = false,
             companionPairing = false,
             companionControl = false,
@@ -93,6 +117,9 @@ class TvPlaybackPlannerTest {
 
     private fun bootstrap(
         directUrl: String = "/api/client/v1/media/media/content",
+        fallbackKind: String = "live-fragmented-mp4",
+        fallbackUrl: String = "/api/client/v1/episodes/episode/fallback?mode=server",
+        seekableWithinStream: Boolean = false,
     ) = PlayerBootstrap(
         apiVersion = 1,
         episode = PlayerEpisode(
@@ -134,10 +161,10 @@ class TvPlaybackPlannerTest {
         defaultSubtitleTrackId = null,
         fallback = CompatibilityFallback(
             available = true,
-            kind = "live-fragmented-mp4",
-            seekableWithinStream = false,
+            kind = fallbackKind,
+            seekableWithinStream = seekableWithinStream,
             canRestartAtPosition = true,
-            url = "/api/client/v1/episodes/episode/fallback?mode=server",
+            url = fallbackUrl,
         ),
     )
 }

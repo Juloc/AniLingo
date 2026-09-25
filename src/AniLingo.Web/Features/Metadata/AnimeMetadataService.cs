@@ -1,5 +1,6 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Tracking;
+using AniLingo.Web.Features.MediaMapping;
 using Microsoft.EntityFrameworkCore;
 
 namespace AniLingo.Web.Features.Metadata;
@@ -7,7 +8,8 @@ namespace AniLingo.Web.Features.Metadata;
 public sealed class AnimeMetadataService(
     AppDbContext db,
     IEnumerable<IAnimeMetadataProvider> providers,
-    AniListAccountStore aniListStore)
+    AniListAccountStore aniListStore,
+    MediaMappingReviewStore reviewStore)
 {
     public Task<AnimeMetadata?> GetAsync(
         Guid animeId,
@@ -21,6 +23,420 @@ public sealed class AnimeMetadataService(
         Guid animeId,
         CancellationToken cancellationToken) =>
         aniListStore.LoadEpisodeMappingsAsync(animeId, cancellationToken);
+
+    public async Task<AutomaticAnimeEpisodeMappingResult> AutoMapEpisodeRangesAsync(
+        Guid animeId,
+        CancellationToken cancellationToken)
+    {
+        var existingMappings = await aniListStore.LoadEpisodeMappingsAsync(
+            animeId,
+            cancellationToken);
+        if (existingMappings.Count > 0)
+        {
+            return AutomaticAnimeEpisodeMappingResult.Skipped(
+                "Explicit episode mappings already exist; automatic mapping will not replace them.");
+        }
+
+        var localTitle = await db.Anime
+            .AsNoTracking()
+            .Where(x => x.Id == animeId)
+            .Select(x => x.Title)
+            .SingleOrDefaultAsync(cancellationToken)
+            ?? animeId.ToString();
+
+        var metadata = await GetAsync(animeId, cancellationToken);
+        if (metadata is null)
+        {
+            await AutoMatchAsync(animeId, cancellationToken);
+            metadata = await GetAsync(animeId, cancellationToken);
+        }
+
+        if (metadata is null ||
+            !string.Equals(
+                metadata.Provider,
+                AniListMetadataProvider.ProviderKey,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            await reviewStore.UpsertAsync(
+                "anime",
+                animeId.ToString(),
+                localTitle,
+                "episode-ranges",
+                "The local anime does not have a safe AniList metadata match.",
+                [],
+                cancellationToken);
+
+            return AutomaticAnimeEpisodeMappingResult.Skipped(
+                "The local anime does not have a safe AniList metadata match.");
+        }
+
+        var aniListProvider = providers
+            .OfType<AniListMetadataProvider>()
+            .FirstOrDefault();
+        if (aniListProvider is null)
+        {
+            return AutomaticAnimeEpisodeMappingResult.Skipped(
+                "The AniList metadata provider is not available.");
+        }
+
+        var localEpisodes = await db.Episodes
+            .AsNoTracking()
+            .Where(x => x.AnimeId == animeId && x.Number > 0)
+            .OrderBy(x => x.SeasonNumber)
+            .ThenBy(x => x.Number)
+            .Select(x => new LocalEpisodeCoordinate(
+                x.SeasonNumber,
+                x.Number))
+            .ToListAsync(cancellationToken);
+
+        var regularEpisodes = localEpisodes
+            .Where(x => x.SeasonNumber > 0)
+            .ToArray();
+        var specialEpisodes = localEpisodes
+            .Where(x => x.SeasonNumber == 0)
+            .ToArray();
+
+        var plannedRanges = new List<PlannedAnimeEpisodeRange>();
+        var reviewCandidates = new List<MediaMappingReviewCandidate>();
+
+        if (regularEpisodes.Length > 0)
+        {
+            IReadOnlyList<AnimeMetadataCandidate> sequence;
+            try
+            {
+                sequence = await aniListProvider.GetLinearSequenceAsync(
+                    metadata.ExternalId,
+                    cancellationToken);
+            }
+            catch (MetadataProviderException exception)
+            {
+                await reviewStore.UpsertAsync(
+                    "anime",
+                    animeId.ToString(),
+                    localTitle,
+                    "episode-ranges",
+                    exception.Message,
+                    [],
+                    cancellationToken);
+
+                return AutomaticAnimeEpisodeMappingResult.Skipped(
+                    exception.Message);
+            }
+
+            if (sequence.Any(x => x.EpisodeCount is not > 0))
+            {
+                const string reason =
+                    "AniList does not expose reliable episode counts for every related part.";
+                await reviewStore.UpsertAsync(
+                    "anime",
+                    animeId.ToString(),
+                    localTitle,
+                    "episode-ranges",
+                    reason,
+                    sequence.Select(x => new MediaMappingReviewCandidate(
+                        x.Provider,
+                        x.ExternalId,
+                        x.PreferredTitle,
+                        0,
+                        ["related PREQUEL/SEQUEL entry"],
+                        x.Format,
+                        x.SeasonYear,
+                        x.EpisodeCount)).ToArray(),
+                    cancellationToken);
+
+                return AutomaticAnimeEpisodeMappingResult.Skipped(reason);
+            }
+
+            var regularPlan = AnimeSequenceMappingPlanner.Plan(
+                regularEpisodes,
+                sequence.Select(x => new RemoteAnimePart(
+                    x.Provider,
+                    x.ExternalId,
+                    x.PreferredTitle,
+                    x.EpisodeCount!.Value)).ToArray(),
+                metadata.ExternalId);
+
+            if (!regularPlan.CanApply)
+            {
+                await reviewStore.UpsertAsync(
+                    "anime",
+                    animeId.ToString(),
+                    localTitle,
+                    "episode-ranges",
+                    regularPlan.Reason,
+                    sequence.Select(x => new MediaMappingReviewCandidate(
+                        x.Provider,
+                        x.ExternalId,
+                        x.PreferredTitle,
+                        0,
+                        ["related PREQUEL/SEQUEL entry"],
+                        x.Format,
+                        x.SeasonYear,
+                        x.EpisodeCount)).ToArray(),
+                    cancellationToken);
+
+                return AutomaticAnimeEpisodeMappingResult.Skipped(
+                    regularPlan.Reason);
+            }
+
+            plannedRanges.AddRange(regularPlan.Ranges);
+        }
+
+        if (specialEpisodes.Length > 0)
+        {
+            IReadOnlyList<AniListAnimeRelation> related;
+            try
+            {
+                related = await aniListProvider.GetRelatedAnimeAsync(
+                    metadata.ExternalId,
+                    cancellationToken);
+            }
+            catch (MetadataProviderException exception)
+            {
+                await reviewStore.UpsertAsync(
+                    "anime",
+                    animeId.ToString(),
+                    localTitle,
+                    "episode-ranges",
+                    exception.Message,
+                    [],
+                    cancellationToken);
+
+                return AutomaticAnimeEpisodeMappingResult.Skipped(
+                    exception.Message);
+            }
+
+            var specialPlan = AnimeSpecialMappingPlanner.Plan(
+                specialEpisodes,
+                related
+                    .Where(x => x.Candidate.EpisodeCount is > 0)
+                    .Select(x => new RemoteAnimeSpecialPart(
+                        x.Candidate.Provider,
+                        x.Candidate.ExternalId,
+                        x.Candidate.PreferredTitle,
+                        x.Candidate.EpisodeCount!.Value,
+                        x.Candidate.Format ?? "",
+                        x.RelationType))
+                    .ToArray());
+
+            reviewCandidates.AddRange(
+                specialPlan.Candidates.Select(x =>
+                    new MediaMappingReviewCandidate(
+                        x.Provider,
+                        x.ExternalId,
+                        x.Title,
+                        0,
+                        [$"{x.RelationType} {x.Format} with {x.EpisodeCount} episode(s)"],
+                        x.Format,
+                        UnitCount: x.EpisodeCount)));
+
+            if (!specialPlan.CanApply || specialPlan.Range is null)
+            {
+                await reviewStore.UpsertAsync(
+                    "anime",
+                    animeId.ToString(),
+                    localTitle,
+                    "episode-ranges",
+                    specialPlan.Reason,
+                    reviewCandidates,
+                    cancellationToken);
+
+                return AutomaticAnimeEpisodeMappingResult.Skipped(
+                    specialPlan.Reason);
+            }
+
+            plannedRanges.Add(specialPlan.Range);
+        }
+
+        if (plannedRanges.Count == 0)
+        {
+            return AutomaticAnimeEpisodeMappingResult.Skipped(
+                "No local episodes require automatic mapping.");
+        }
+
+        var added = new List<AnimeEpisodeMetadataMapping>();
+        foreach (var range in plannedRanges)
+        {
+            var mapping = new AnimeEpisodeMetadataMapping(
+                Guid.NewGuid(),
+                animeId,
+                range.SeasonNumber,
+                range.LocalEpisodeStart,
+                range.LocalEpisodeEnd,
+                range.RemoteEpisodeStart,
+                range.RemotePart.Provider,
+                range.RemotePart.ExternalId,
+                range.RemotePart.Title,
+                range.RemotePart.EpisodeCount,
+                DateTimeOffset.UtcNow);
+
+            if (!await aniListStore.TryAddEpisodeMappingAsync(
+                    mapping,
+                    cancellationToken))
+            {
+                foreach (var previous in added)
+                {
+                    await aniListStore.RemoveEpisodeMappingAsync(
+                        animeId,
+                        previous.Id,
+                        CancellationToken.None);
+                }
+
+                const string reason =
+                    "An episode mapping changed concurrently; automatic mapping was rolled back.";
+                await reviewStore.UpsertAsync(
+                    "anime",
+                    animeId.ToString(),
+                    localTitle,
+                    "episode-ranges",
+                    reason,
+                    reviewCandidates,
+                    CancellationToken.None);
+
+                return AutomaticAnimeEpisodeMappingResult.Skipped(reason);
+            }
+
+            added.Add(mapping);
+        }
+
+        await reviewStore.ResolveAsync(
+            "anime",
+            animeId.ToString(),
+            "episode-ranges",
+            cancellationToken);
+
+        return new AutomaticAnimeEpisodeMappingResult(
+            true,
+            specialEpisodes.Length > 0
+                ? "Regular episodes and Season 0 specials map uniquely to AniList."
+                : "Local episodes map uniquely to the AniList sequel/part sequence.",
+            added);
+    }
+
+    public async Task<AutomaticMediaMatchDecision> AutoMatchAsync(
+        Guid animeId,
+        CancellationToken cancellationToken)
+    {
+        var existing = await GetAsync(animeId, cancellationToken);
+        if (existing is not null)
+        {
+            return new AutomaticMediaMatchDecision(
+                AutomaticMediaMatchDisposition.None,
+                null,
+                0,
+                0,
+                ["Anime already has an explicit metadata match."]);
+        }
+
+        var local = await db.Anime
+            .AsNoTracking()
+            .Where(x => x.Id == animeId)
+            .Select(x => new
+            {
+                x.Title,
+                EpisodeCount = db.Episodes.Count(episode => episode.AnimeId == x.Id),
+                SeasonCount = db.Episodes
+                    .Where(episode => episode.AnimeId == x.Id)
+                    .Select(episode => episode.SeasonNumber)
+                    .Distinct()
+                    .Count()
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (local is null)
+        {
+            return new AutomaticMediaMatchDecision(
+                AutomaticMediaMatchDisposition.None,
+                null,
+                0,
+                0,
+                ["Local anime was not found."]);
+        }
+
+        var provider = GetProvider(AniListMetadataProvider.ProviderKey);
+        IReadOnlyList<AnimeMetadataCandidate> candidates;
+        try
+        {
+            candidates = await provider.SearchAsync(
+                local.Title,
+                8,
+                cancellationToken);
+        }
+        catch (MetadataProviderException)
+        {
+            return new AutomaticMediaMatchDecision(
+                AutomaticMediaMatchDisposition.None,
+                null,
+                0,
+                0,
+                ["AniList metadata is currently unavailable."]);
+        }
+
+        var decision = AutomaticMediaMatcher.Select(
+            new AutomaticMediaMatchInput(
+                local.Title,
+                UnitCount: local.SeasonCount == 1 && local.EpisodeCount > 0
+                    ? local.EpisodeCount
+                    : null,
+                Format: "ANIME"),
+            candidates.Select(candidate => new AutomaticMediaMatchCandidate(
+                candidate.Provider,
+                candidate.ExternalId,
+                candidate.PreferredTitle,
+                new[]
+                {
+                    candidate.PreferredTitle,
+                    candidate.EnglishTitle ?? "",
+                    candidate.RomajiTitle ?? "",
+                    candidate.NativeTitle ?? ""
+                },
+                candidate.SeasonYear,
+                candidate.EpisodeCount,
+                candidate.Format)));
+
+        if (decision.CanApply && decision.Candidate is not null)
+        {
+            var result = await MatchAsync(
+                animeId,
+                decision.Candidate.Provider,
+                decision.Candidate.ExternalId,
+                cancellationToken);
+
+            if (!result.Success)
+            {
+                var reviewDecision = decision with
+                {
+                    Disposition = AutomaticMediaMatchDisposition.Review,
+                    Evidence = decision.Evidence
+                        .Append(result.Error ?? "Automatic match could not be persisted.")
+                        .ToArray()
+                };
+
+                await SaveIdentityReviewAsync(
+                    animeId,
+                    local.Title,
+                    reviewDecision,
+                    cancellationToken);
+                return reviewDecision;
+            }
+
+            await reviewStore.ResolveAsync(
+                "anime",
+                animeId.ToString(),
+                "identity",
+                cancellationToken);
+        }
+        else if (decision.Candidate is not null)
+        {
+            await SaveIdentityReviewAsync(
+                animeId,
+                local.Title,
+                decision,
+                cancellationToken);
+        }
+
+        return decision;
+    }
 
     public async Task<AnimeMetadataMatchResult> MatchEpisodeRangeAsync(
         Guid animeId,
@@ -270,6 +686,12 @@ public sealed class AnimeMetadataService(
         Apply(metadata, candidate);
         await db.SaveChangesAsync(cancellationToken);
 
+        await reviewStore.ResolveAsync(
+            "anime",
+            animeId.ToString(),
+            "identity",
+            cancellationToken);
+
         return new AnimeMetadataMatchResult(true);
     }
 
@@ -303,6 +725,41 @@ public sealed class AnimeMetadataService(
         db.AnimeMetadata
             .Where(x => x.AnimeId == animeId)
             .ExecuteDeleteAsync(cancellationToken);
+
+    private async Task SaveIdentityReviewAsync(
+        Guid animeId,
+        string localTitle,
+        AutomaticMediaMatchDecision decision,
+        CancellationToken cancellationToken)
+    {
+        if (decision.Candidate is null)
+        {
+            return;
+        }
+
+        var reason = decision.Disposition == AutomaticMediaMatchDisposition.Review
+            ? $"AniList identity needs review: score {decision.Score}, runner-up {decision.RunnerUpScore}."
+            : $"AniList identity confidence is too low for automatic matching: score {decision.Score}.";
+
+        await reviewStore.UpsertAsync(
+            "anime",
+            animeId.ToString(),
+            localTitle,
+            "identity",
+            reason,
+            [
+                new MediaMappingReviewCandidate(
+                    decision.Candidate.Provider,
+                    decision.Candidate.ExternalId,
+                    decision.Candidate.PreferredTitle,
+                    decision.Score,
+                    decision.Evidence,
+                    decision.Candidate.Format,
+                    decision.Candidate.Year,
+                    decision.Candidate.UnitCount)
+            ],
+            cancellationToken);
+    }
 
     private IAnimeMetadataProvider GetProvider(string providerKey) =>
         providers.FirstOrDefault(

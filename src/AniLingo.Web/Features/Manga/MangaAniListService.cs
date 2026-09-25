@@ -2,12 +2,14 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using AniLingo.Web.Features.MediaMapping;
 
 namespace AniLingo.Web.Features.Manga;
 
 public sealed partial class MangaAniListService(
     MangaRepository repository,
-    IHttpClientFactory httpClientFactory)
+    IHttpClientFactory httpClientFactory,
+    MediaMappingReviewStore? reviewStore = null)
 {
     private const string SearchQuery = """
         query ($search: String!, $perPage: Int!) {
@@ -21,6 +23,9 @@ public sealed partial class MangaAniListService(
               coverImage { extraLarge large }
               bannerImage
               status
+              chapters
+              volumes
+              startDate { year }
             }
           }
         }
@@ -37,6 +42,9 @@ public sealed partial class MangaAniListService(
             coverImage { extraLarge large }
             bannerImage
             status
+            chapters
+            volumes
+            startDate { year }
           }
         }
         """;
@@ -71,6 +79,141 @@ public sealed partial class MangaAniListService(
             .ToArray();
     }
 
+    public async Task<AutomaticMediaMatchDecision> AutoMatchAsync(
+        Guid seriesId,
+        CancellationToken cancellationToken)
+    {
+        var source = await repository.GetAutoMatchSourceAsync(
+            seriesId,
+            cancellationToken);
+
+        if (source is null)
+        {
+            return new AutomaticMediaMatchDecision(
+                AutomaticMediaMatchDisposition.None,
+                null,
+                0,
+                0,
+                ["Manga series was not found."]);
+        }
+
+        if (!string.IsNullOrWhiteSpace(source.MetadataExternalId))
+        {
+            return new AutomaticMediaMatchDecision(
+                AutomaticMediaMatchDisposition.None,
+                null,
+                0,
+                0,
+                ["Manga already has an explicit metadata match."]);
+        }
+
+        IReadOnlyList<MangaAniListCandidate> candidates;
+        try
+        {
+            candidates = await SearchAsync(source.Title, cancellationToken);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return new AutomaticMediaMatchDecision(
+                AutomaticMediaMatchDisposition.None,
+                null,
+                0,
+                0,
+                ["AniList metadata request timed out."]);
+        }
+        catch (Exception exception) when (
+            exception is InvalidOperationException or
+            HttpRequestException or
+            JsonException)
+        {
+            return new AutomaticMediaMatchDecision(
+                AutomaticMediaMatchDisposition.None,
+                null,
+                0,
+                0,
+                ["AniList metadata is currently unavailable."]);
+        }
+
+        var decision = AutomaticMediaMatcher.Select(
+            new AutomaticMediaMatchInput(
+                source.Title,
+                Format: "MANGA"),
+            candidates.Select(candidate => new AutomaticMediaMatchCandidate(
+                "anilist",
+                candidate.ExternalId,
+                candidate.Title,
+                new[]
+                {
+                    candidate.Title,
+                    candidate.NativeTitle ?? ""
+                },
+                candidate.StartYear,
+                candidate.ChapterCount,
+                candidate.Format)));
+
+        if (decision.CanApply && decision.Candidate is not null)
+        {
+            try
+            {
+                await MatchAsync(
+                    seriesId,
+                    decision.Candidate.ExternalId,
+                    cancellationToken);
+
+                if (reviewStore is not null)
+                {
+                    await reviewStore.ResolveAsync(
+                        "manga",
+                        seriesId.ToString(),
+                        "identity",
+                        cancellationToken);
+                }
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                var reviewDecision = decision with
+                {
+                    Disposition = AutomaticMediaMatchDisposition.Review,
+                    Evidence = decision.Evidence
+                        .Append("AniList metadata request timed out before the automatic match could be persisted.")
+                        .ToArray()
+                };
+                await SaveIdentityReviewAsync(
+                    source,
+                    reviewDecision,
+                    cancellationToken);
+                return reviewDecision;
+            }
+            catch (Exception exception) when (
+                exception is InvalidOperationException or
+                HttpRequestException or
+                JsonException)
+            {
+                var reviewDecision = decision with
+                {
+                    Disposition = AutomaticMediaMatchDisposition.Review,
+                    Evidence = decision.Evidence
+                        .Append(exception.Message)
+                        .ToArray()
+                };
+                await SaveIdentityReviewAsync(
+                    source,
+                    reviewDecision,
+                    cancellationToken);
+                return reviewDecision;
+            }
+        }
+        else if (decision.Candidate is not null)
+        {
+            await SaveIdentityReviewAsync(
+                source,
+                decision,
+                cancellationToken);
+        }
+
+        return decision;
+    }
+
     public async Task MatchAsync(
         Guid seriesId,
         string externalId,
@@ -99,6 +242,49 @@ public sealed partial class MangaAniListService(
         await repository.UpdateMetadataAsync(
             seriesId,
             candidate,
+            cancellationToken);
+
+        if (reviewStore is not null)
+        {
+            await reviewStore.ResolveAsync(
+                "manga",
+                seriesId.ToString(),
+                "identity",
+                cancellationToken);
+        }
+    }
+
+    private async Task SaveIdentityReviewAsync(
+        MangaAutoMatchSource source,
+        AutomaticMediaMatchDecision decision,
+        CancellationToken cancellationToken)
+    {
+        if (reviewStore is null || decision.Candidate is null)
+        {
+            return;
+        }
+
+        var reason = decision.Disposition == AutomaticMediaMatchDisposition.Review
+            ? $"AniList identity needs review: score {decision.Score}, runner-up {decision.RunnerUpScore}."
+            : $"AniList identity confidence is too low for automatic matching: score {decision.Score}.";
+
+        await reviewStore.UpsertAsync(
+            "manga",
+            source.SeriesId.ToString(),
+            source.Title,
+            "identity",
+            reason,
+            [
+                new MediaMappingReviewCandidate(
+                    decision.Candidate.Provider,
+                    decision.Candidate.ExternalId,
+                    decision.Candidate.PreferredTitle,
+                    decision.Score,
+                    decision.Evidence,
+                    decision.Candidate.Format,
+                    decision.Candidate.Year,
+                    decision.Candidate.UnitCount)
+            ],
             cancellationToken);
     }
 
@@ -179,6 +365,13 @@ public sealed partial class MangaAniListService(
                 ReadString(coverElement, "large"));
         }
 
+        int? startYear = null;
+        if (media.TryGetProperty("startDate", out var startDate) &&
+            startDate.ValueKind == JsonValueKind.Object)
+        {
+            startYear = ReadInt(startDate, "year");
+        }
+
         return new MangaAniListCandidate(
             id.ToString(),
             preferred,
@@ -186,7 +379,11 @@ public sealed partial class MangaAniListService(
             NormalizeDescription(ReadString(media, "description")),
             cover,
             ReadString(media, "bannerImage"),
-            ReadString(media, "status"));
+            ReadString(media, "status"),
+            format,
+            ReadInt(media, "chapters"),
+            ReadInt(media, "volumes"),
+            startYear);
     }
 
     private static string? NormalizeDescription(string? value)
@@ -200,6 +397,14 @@ public sealed partial class MangaAniListService(
         var normalized = Whitespace().Replace(decoded, " ").Trim();
         return normalized.Length == 0 ? null : normalized;
     }
+
+    private static int? ReadInt(JsonElement element, string property) =>
+        element.ValueKind == JsonValueKind.Object &&
+        element.TryGetProperty(property, out var value) &&
+        value.ValueKind == JsonValueKind.Number &&
+        value.TryGetInt32(out var number)
+            ? number
+            : null;
 
     private static string? ReadString(JsonElement element, string property)
     {

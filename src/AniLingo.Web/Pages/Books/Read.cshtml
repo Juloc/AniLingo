@@ -423,6 +423,16 @@
                                 data-book-reset-settings>
                             Reset this book
                         </button>
+                        @if (Model.IsOwner
+                            && !Model.Reader.SourceLanguage.Equals(
+                                Model.Reader.TargetLanguage,
+                                StringComparison.OrdinalIgnoreCase))
+                        {
+                            <a class="button"
+                               href="/Books/TranslationMemory/@Model.Reader.Work.Id?lang=@Model.Reader.TargetLanguage">
+                                Book Bible
+                            </a>
+                        }
                     </div>
                 </form>
 

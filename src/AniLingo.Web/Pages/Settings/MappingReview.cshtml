@@ -1,0 +1,95 @@
+@page
+@model AniLingo.Web.Pages.Settings.MappingReviewModel
+@{
+    ViewData["Title"] = "Mapping review";
+}
+
+<header class="page-header">
+    <div>
+        <a class="back-link" asp-page="/Settings/Index">← Settings</a>
+        <span class="eyebrow">Server metadata</span>
+        <h1>Mapping review</h1>
+        <p>Ambiguous AniList matches stay here until you review or dismiss them.</p>
+    </div>
+</header>
+
+@if (TempData["Status"] is string status)
+{
+    <div class="panel">
+        <p>@status</p>
+    </div>
+}
+
+@if (Model.Tasks.Count == 0)
+{
+    <section class="panel">
+        <div class="panel-heading">
+            <h2>No pending mappings</h2>
+            <span>Clear</span>
+        </div>
+        <p class="muted">
+            AniLingo currently has no ambiguous Anime, Manga or Light Novel mappings waiting for review.
+        </p>
+    </section>
+}
+else
+{
+    <div class="settings-grid">
+        @foreach (var task in Model.Tasks)
+        {
+            var targetUrl = AniLingo.Web.Pages.Settings.MappingReviewModel.TargetUrl(task);
+
+            <section class="panel">
+                <div class="panel-heading">
+                    <h2>@task.LocalTitle</h2>
+                    <span>@task.MediaType · @task.Purpose</span>
+                </div>
+
+                <p>@task.Reason</p>
+
+                @if (task.Candidates.Count > 0)
+                {
+                    <div class="status-list">
+                        @foreach (var candidate in task.Candidates)
+                        {
+                            <div>
+                                <span>
+                                    @candidate.Provider:@candidate.ExternalId
+                                    @if (!string.IsNullOrWhiteSpace(candidate.Format))
+                                    {
+                                        <text> · @candidate.Format</text>
+                                    }
+                                </span>
+                                <strong>@candidate.Title</strong>
+                                @if (candidate.Score > 0)
+                                {
+                                    <small>Confidence score: @candidate.Score</small>
+                                }
+                                @if (candidate.Evidence.Count > 0)
+                                {
+                                    <small>@string.Join(" · ", candidate.Evidence)</small>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+
+                <p class="muted">
+                    Updated @task.UpdatedAt.ToLocalTime().ToString("g")
+                </p>
+
+                <div class="inline-actions">
+                    @if (targetUrl is not null)
+                    {
+                        <a class="button button-primary" href="@targetUrl">Review mapping</a>
+                    }
+
+                    <form method="post" asp-page-handler="Dismiss">
+                        <input type="hidden" name="id" value="@task.Id" />
+                        <button class="button" type="submit">Dismiss</button>
+                    </form>
+                </div>
+            </section>
+        }
+    </div>
+}
