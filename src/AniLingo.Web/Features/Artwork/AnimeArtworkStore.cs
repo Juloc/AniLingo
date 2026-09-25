@@ -1,6 +1,4 @@
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Formats.Webp;
-using SixLabors.ImageSharp.Processing;
+using SkiaSharp;
 
 namespace AniLingo.Web.Features.Artwork;
 
@@ -305,40 +303,58 @@ public static class AnimeArtworkStore
             return false;
         }
 
-        buffered.Position = 0;
+        cancellationToken.ThrowIfCancellationRequested();
+
+        using var bitmap = SKBitmap.Decode(buffered.ToArray());
+        if (bitmap is null || bitmap.Width <= 0 || bitmap.Height <= 0)
+        {
+            return false;
+        }
+
+        var maxWidth = kind == AnimeArtworkKind.Poster
+            ? PosterMaxWidth
+            : FanartMaxWidth;
+
+        SKBitmap outputBitmap = bitmap;
+        SKBitmap? resized = null;
+
+        if (bitmap.Width > maxWidth)
+        {
+            var height = Math.Max(
+                1,
+                (int)Math.Round(bitmap.Height * (maxWidth / (double)bitmap.Width)));
+
+            resized = bitmap.Resize(
+                new SKSizeI(maxWidth, height),
+                new SKSamplingOptions(SKCubicResampler.Mitchell));
+
+            if (resized is null)
+            {
+                return false;
+            }
+
+            outputBitmap = resized;
+        }
 
         try
         {
-            using var image = await Image.LoadAsync(buffered, cancellationToken);
-            image.Mutate(context => context.AutoOrient());
+            cancellationToken.ThrowIfCancellationRequested();
+            using var data = outputBitmap.Encode(
+                SKEncodedImageFormat.Webp,
+                WebpQuality);
 
-            var maxWidth = kind == AnimeArtworkKind.Poster
-                ? PosterMaxWidth
-                : FanartMaxWidth;
-
-            if (image.Width > maxWidth)
+            if (data is null || data.Size == 0)
             {
-                image.Mutate(context => context.Resize(maxWidth, 0));
+                return false;
             }
 
-            await image.SaveAsync(
-                destination,
-                new WebpEncoder { Quality = WebpQuality },
-                cancellationToken);
-
+            var bytes = data.ToArray();
+            await destination.WriteAsync(bytes, cancellationToken);
             return true;
         }
-        catch (UnknownImageFormatException)
+        finally
         {
-            return false;
-        }
-        catch (InvalidImageContentException)
-        {
-            return false;
-        }
-        catch (NotSupportedException)
-        {
-            return false;
+            resized?.Dispose();
         }
     }
 
