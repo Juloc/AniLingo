@@ -98,7 +98,7 @@ public sealed class AnimeMonitoringTests
         }
 
         var last = state.Attempts[key.ToString()];
-        Assert.IsTrue(last.NextRetryAtUtc - last.LastAttemptAtUtc <= TimeSpan.FromHours(6));
+        Assert.IsTrue(last.NextRetryAtUtc!.Value - last.LastAttemptAtUtc!.Value <= TimeSpan.FromHours(6));
         Assert.AreEqual(10, last.FailureCount);
     }
 
@@ -134,6 +134,41 @@ public sealed class AnimeMonitoringTests
             State(DefaultSettings()));
 
         Assert.IsFalse(decision.Grab);
+    }
+
+    [TestMethod]
+    public void AbsoluteNumberedCandidateMatchesMappedLocalEpisode()
+    {
+        var key = new AnimeEpisodeKey("anime", 2, 1, 13);
+        var wanted = new AnimeWantedEpisode(key, AnimeWantedReason.Missing, DateTimeOffset.UtcNow);
+        var candidate = Score("[Group] Anime - 13 WEB-DL 1080p AVC AAC[JA]", 900_000_000);
+
+        var decision = AnimeMonitoringEngine.EvaluateCandidate(
+            Profile,
+            wanted,
+            candidate,
+            null,
+            State(DefaultSettings()));
+
+        Assert.IsTrue(decision.Grab);
+    }
+
+    [TestMethod]
+    public void RefreshWantedPersistsBecameWantedAndHistoryWithoutDuplicates()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var key = new AnimeEpisodeKey("anime", 1, 1);
+        var inventory = new[]
+        {
+            new AnimeEpisodeInventory(key, now.AddHours(-1), false, null)
+        };
+
+        var first = AnimeMonitoringEngine.RefreshWanted(State(DefaultSettings()), inventory, Profile, now);
+        var second = AnimeMonitoringEngine.RefreshWanted(first, inventory, Profile, now.AddMinutes(10));
+
+        Assert.AreEqual(1, second.Wanted.Count);
+        Assert.AreEqual(now, second.Wanted[key.ToString()].BecameWantedAtUtc);
+        Assert.AreEqual(1, second.History.Count(entry => entry.Event == "wanted"));
     }
 
     [TestMethod]
