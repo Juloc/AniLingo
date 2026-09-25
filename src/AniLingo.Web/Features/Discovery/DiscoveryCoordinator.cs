@@ -43,7 +43,7 @@ public sealed class DiscoveryCoordinator(
         var warnings = new List<string>();
         IReadOnlyList<DiscoveryItem> items;
 
-        if (request.Mode == DiscoveryMode.MyList)
+        if (request.RequiresPersonalAniListAccount)
         {
             if (!includeAniList)
             {
