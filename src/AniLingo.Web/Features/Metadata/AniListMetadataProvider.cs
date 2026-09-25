@@ -75,6 +75,35 @@ public sealed class AniListMetadataProvider(
         }
         """;
 
+    private const string SequenceQuery = """
+        query ($id: Int!) {
+          Media(id: $id, type: ANIME) {
+            id
+            title { romaji english native }
+            description(asHtml: false)
+            coverImage { extraLarge large }
+            bannerImage
+            format
+            status
+            season
+            seasonYear
+            episodes
+            duration
+            isAdult
+            relations {
+              edges {
+                relationType
+                node {
+                  id
+                  type
+                  isAdult
+                }
+              }
+            }
+          }
+        }
+        """;
+
     public string Key => ProviderKey;
 
     public async Task<IReadOnlyList<AnimeMetadataCandidate>> SearchAsync(
