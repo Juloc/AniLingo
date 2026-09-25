@@ -48,7 +48,7 @@ class HttpAniLingoClientApi(
     private val originUri = normalizeOrigin(origin)
 
     override suspend fun getCapabilities(): ClientCapabilities =
-        requestJson("GET", ClientApiRoutes.Capabilities).toCapabilities()
+        parseCapabilities(requestJson("GET", ClientApiRoutes.Capabilities))
 
     override suspend fun login(credentials: ClientLogin): ClientAccount =
         requestJson(
@@ -224,13 +224,14 @@ class HttpAniLingoClientApi(
         return resolved.toURL()
     }
 
-    private fun JSONObject.toCapabilities() = ClientCapabilities(
-        apiVersion = getInt("apiVersion"),
-        minimumSupportedApiVersion = getInt("minimumSupportedApiVersion"),
-        serverVersion = getString("serverVersion"),
-        features = getJSONObject("features").let { features ->
+    internal fun parseCapabilities(json: JSONObject) = ClientCapabilities(
+        apiVersion = json.getInt("apiVersion"),
+        minimumSupportedApiVersion = json.getInt("minimumSupportedApiVersion"),
+        serverVersion = json.getString("serverVersion"),
+        features = json.getJSONObject("features").let { features ->
             ClientFeatureFlags(
                 library = features.getBoolean("library"),
+                nativeSessionAuth = features.optBoolean("nativeSessionAuth", false),
                 nativePlayerBootstrap = features.getBoolean("nativePlayerBootstrap"),
                 directPlayback = features.getBoolean("directPlayback"),
                 playbackProgress = features.getBoolean("playbackProgress"),
