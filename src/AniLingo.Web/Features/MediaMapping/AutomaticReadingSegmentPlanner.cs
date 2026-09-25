@@ -89,6 +89,15 @@ public static class LinearRelationSequence
             current = previous;
         }
 
+        if (before.Count >= maximumEntries - 1 &&
+            current.Prequels.Count > 0)
+        {
+            return new LinearRelationSequenceResult<T>(
+                [],
+                false,
+                "AniList reading sequence exceeds the automatic traversal limit.");
+        }
+
         var result = new List<T>(before.Count + 1);
         result.AddRange(before);
         result.Add(root.Candidate);
@@ -144,6 +153,15 @@ public static class LinearRelationSequence
             result.Add(next.Candidate);
             currentId = nextId;
             current = next;
+        }
+
+        if (result.Count >= maximumEntries &&
+            current.Sequels.Count > 0)
+        {
+            return new LinearRelationSequenceResult<T>(
+                [],
+                false,
+                "AniList reading sequence exceeds the automatic traversal limit.");
         }
 
         return new LinearRelationSequenceResult<T>(
