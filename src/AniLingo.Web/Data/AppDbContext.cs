@@ -283,6 +283,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(x => x.PaperStyle).HasMaxLength(32);
             entity.Property(x => x.GenreTheme).HasMaxLength(48);
             entity.Property(x => x.BackgroundAssetId).HasMaxLength(120);
+            entity.Property(x => x.BackgroundMotionMode).HasMaxLength(24);
             entity.Property(x => x.BookmarkStyle).HasMaxLength(24);
             entity.Property(x => x.BookmarkColor).HasMaxLength(16);
             entity.HasOne<NovelWork>().WithMany().HasForeignKey(x => x.WorkId).OnDelete(DeleteBehavior.Cascade);
