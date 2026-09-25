@@ -719,6 +719,107 @@ public sealed partial class BookCatalogService(
         }
     }
 
+    public async Task<int> ClearBookTranslationsAsync(
+        Guid workId,
+        string targetLanguage,
+        CancellationToken cancellationToken)
+    {
+        targetLanguage = BookLanguageCatalog.Normalize(targetLanguage);
+
+        var isBook = await db.NovelWorks
+            .AsNoTracking()
+            .AnyAsync(
+                x => x.Id == workId
+                    && x.SourceProvider == ImportedBookProvider,
+                cancellationToken);
+
+        if (!isBook)
+        {
+            throw new InvalidOperationException(
+                "Imported book was not found.");
+        }
+
+        var chapterIds = await db.NovelChapters
+            .AsNoTracking()
+            .Where(x => x.WorkId == workId)
+            .Select(x => x.Id)
+            .ToListAsync(cancellationToken);
+
+        var deleted = await db.NovelTranslations
+            .Where(x =>
+                chapterIds.Contains(x.ChapterId)
+                && x.TargetLanguage == targetLanguage
+                && x.ProviderId == translator.Id
+                && x.PromptVersion == TranslationPromptVersion)
+            .ExecuteDeleteAsync(cancellationToken);
+
+        // ExecuteDelete bypasses the EF change tracker. Detach matching
+        // cached translations so a later parent delete in this request
+        // cannot try to delete an already-removed row.
+        var chapterSet = chapterIds.ToHashSet();
+        foreach (var entry in db.ChangeTracker
+                     .Entries<NovelTranslation>()
+                     .Where(x =>
+                         chapterSet.Contains(x.Entity.ChapterId)
+                         && x.Entity.TargetLanguage == targetLanguage
+                         && x.Entity.ProviderId == translator.Id
+                         && x.Entity.PromptVersion == TranslationPromptVersion)
+                     .ToArray())
+        {
+            entry.State = EntityState.Detached;
+        }
+
+        return deleted;
+    }
+
+    public async Task DeleteImportedBookAsync(
+        Guid workId,
+        CancellationToken cancellationToken)
+    {
+        var work = await db.NovelWorks
+            .SingleOrDefaultAsync(
+                x => x.Id == workId
+                    && x.SourceProvider == ImportedBookProvider,
+                cancellationToken)
+            ?? throw new InvalidOperationException(
+                "Imported book was not found.");
+
+        db.NovelWorks.Remove(work);
+        await db.SaveChangesAsync(cancellationToken);
+
+        DeleteLocalCoverFiles(workId);
+    }
+
+    private static void DeleteLocalCoverFiles(Guid workId)
+    {
+        var directory = Path.Combine(
+            "/data",
+            "books",
+            "covers");
+
+        if (!Directory.Exists(directory))
+        {
+            return;
+        }
+
+        foreach (var path in Directory.EnumerateFiles(
+                     directory,
+                     workId.ToString("N") + ".*",
+                     SearchOption.TopDirectoryOnly))
+        {
+            try
+            {
+                File.Delete(path);
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
+        }
+    }
+
     public async Task SaveProgressAsync(
         string profileId,
         Guid workId,
