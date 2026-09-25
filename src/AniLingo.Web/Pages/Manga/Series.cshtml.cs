@@ -1,6 +1,7 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Manga;
+using AniLingo.Web.Features.Operations;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
@@ -9,7 +10,8 @@ namespace AniLingo.Web.Pages.Manga;
 public sealed class SeriesModel(
     AppDbContext db,
     CurrentAccountContext account,
-    IHttpClientFactory httpClientFactory) : PageModel
+    IHttpClientFactory httpClientFactory,
+    OperationRunner operations) : PageModel
 {
     public MangaSeriesDetail Series { get; private set; } = null!;
     public MangaProgressItem? Progress { get; private set; }
@@ -57,9 +59,23 @@ public sealed class SeriesModel(
             return Forbid();
         }
 
-        var repository = new MangaRepository(db);
-        var metadata = new MangaAniListService(repository, httpClientFactory);
-        await metadata.MatchAsync(id, externalId, cancellationToken);
+        await operations.RunAsync(
+            new OperationDescriptor(
+                "manga-anilist-match",
+                "Manga",
+                "Match Manga metadata",
+                ProfileId: account.ProfileId,
+                Lane: OperationLane.Normal,
+                Retryable: false),
+            async (_, token) =>
+            {
+                var repository = new MangaRepository(db);
+                var metadata = new MangaAniListService(repository, httpClientFactory);
+                await metadata.MatchAsync(id, externalId, token);
+            },
+            "Manga metadata matched.",
+            cancellationToken);
+
         return RedirectToPage(new { id });
     }
 
@@ -79,9 +95,28 @@ public sealed class SeriesModel(
             return NotFound();
         }
 
-        var importer = new MangaImportService(repository);
-        var result = await importer.ImportAsync(
-            series.SourcePath,
+        var result = await operations.RunAsync(
+            new OperationDescriptor(
+                "manga-refresh",
+                "Manga",
+                "Refresh Manga source",
+                series.Title,
+                account.ProfileId,
+                OperationLane.Normal,
+                Retryable: false),
+            async (operation, token) =>
+            {
+                await operation.ReportAsync(
+                    10,
+                    "Rescanning Manga chapters and pages.",
+                    cancellationToken: token);
+
+                var importer = new MangaImportService(repository);
+                return await importer.ImportAsync(
+                    series.SourcePath,
+                    token);
+            },
+            "Manga source refreshed.",
             cancellationToken);
 
         TempData["Status"] =

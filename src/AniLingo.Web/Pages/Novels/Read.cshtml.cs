@@ -16,7 +16,8 @@ public sealed class ReadModel(
     NovelMappingService mappings,
     BackgroundJobQueue jobs,
     AppDbContext db,
-    CurrentAccountContext account) : PageModel
+    CurrentAccountContext account,
+    OperationRunner operations) : PageModel
 {
     public NovelWork Work { get; private set; } = null!;
     public NovelChapter Chapter { get; private set; } = null!;
@@ -219,10 +220,30 @@ public sealed class ReadModel(
 
         try
         {
-            await novels.EnsureChapterContentAsync(
-                id,
-                forceRefresh: true,
+            await operations.RunAsync(
+                new OperationDescriptor(
+                    "novel-chapter-refresh",
+                    "Novels",
+                    "Refresh novel chapter source",
+                    ProfileId: account.ProfileId,
+                    Lane: OperationLane.Normal,
+                    IsDownload: true,
+                    Retryable: false),
+                async (operation, token) =>
+                {
+                    await operation.ReportAsync(
+                        10,
+                        "Refreshing novel chapter source.",
+                        cancellationToken: token);
+
+                    await novels.EnsureChapterContentAsync(
+                        id,
+                        forceRefresh: true,
+                        token);
+                },
+                "Novel chapter source refreshed.",
                 cancellationToken);
+
             TempData["Status"] = "Japanese source refreshed. A changed source invalidates the old translation automatically.";
         }
         catch (InvalidOperationException exception)

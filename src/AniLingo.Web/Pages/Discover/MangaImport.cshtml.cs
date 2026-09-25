@@ -2,6 +2,7 @@ using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Discovery;
 using AniLingo.Web.Features.Manga;
+using AniLingo.Web.Features.Operations;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
@@ -10,7 +11,8 @@ namespace AniLingo.Web.Pages.Discover;
 public sealed class MangaImportModel(
     AppDbContext db,
     CurrentAccountContext account,
-    IHttpClientFactory httpClientFactory) : PageModel
+    IHttpClientFactory httpClientFactory,
+    OperationRunner operations) : PageModel
 {
     public string AniListId { get; private set; } = "";
     public string Title { get; private set; } = "";
@@ -64,18 +66,43 @@ public sealed class MangaImportModel(
 
         try
         {
-            var upload = new MangaUploadService();
-            var sourcePath = await upload.SaveSeriesAsync(
-                string.IsNullOrWhiteSpace(seriesTitle)
-                    ? normalizedTitle
-                    : seriesTitle,
-                archives ?? [],
-                cancellationToken);
+            return await operations.RunAsync(
+                new OperationDescriptor(
+                    "discover-manga-upload-import",
+                    "Manga",
+                    "Import discovered Manga",
+                    normalizedTitle,
+                    account.ProfileId,
+                    OperationLane.Normal,
+                    Retryable: false),
+                async (operation, token) =>
+                {
+                    await operation.ReportAsync(
+                        5,
+                        "Validating uploaded Manga archives.",
+                        cancellationToken: token);
 
-            return await ImportAndMatchAsync(
-                sourcePath,
-                normalizedId,
-                normalizedTitle,
+                    var upload = new MangaUploadService();
+                    var sourcePath = await upload.SaveSeriesAsync(
+                        string.IsNullOrWhiteSpace(seriesTitle)
+                            ? normalizedTitle
+                            : seriesTitle,
+                        archives ?? [],
+                        token);
+
+                    await operation.ReportAsync(
+                        35,
+                        "Importing Manga chapters and pages.",
+                        cancellationToken: token);
+
+                    return await ImportAndMatchAsync(
+                        sourcePath,
+                        normalizedId,
+                        normalizedTitle,
+                        operation,
+                        token);
+                },
+                "Discovered Manga imported.",
                 cancellationToken);
         }
         catch (Exception exception) when (
@@ -114,10 +141,22 @@ public sealed class MangaImportModel(
 
         try
         {
-            return await ImportAndMatchAsync(
-                sourcePath ?? "",
-                normalizedId,
-                normalizedTitle,
+            return await operations.RunAsync(
+                new OperationDescriptor(
+                    "discover-manga-path-import",
+                    "Manga",
+                    "Import discovered Manga",
+                    normalizedTitle,
+                    account.ProfileId,
+                    OperationLane.Normal,
+                    Retryable: false),
+                (operation, token) => ImportAndMatchAsync(
+                    sourcePath ?? "",
+                    normalizedId,
+                    normalizedTitle,
+                    operation,
+                    token),
+                "Discovered Manga imported.",
                 cancellationToken);
         }
         catch (Exception exception) when (
@@ -138,6 +177,7 @@ public sealed class MangaImportModel(
         string sourcePath,
         string aniListId,
         string title,
+        OperationExecutionContext operation,
         CancellationToken cancellationToken)
     {
         var repository = new MangaRepository(db);
@@ -145,6 +185,11 @@ public sealed class MangaImportModel(
         var result = await importer.ImportAsync(
             sourcePath,
             cancellationToken);
+
+        await operation.ReportAsync(
+            80,
+            "Matching imported Manga metadata.",
+            cancellationToken: cancellationToken);
 
         var metadata = new MangaAniListService(
             repository,
@@ -169,6 +214,12 @@ public sealed class MangaImportModel(
                 or HttpRequestException
                 or TaskCanceledException)
         {
+            await operation.LogAsync(
+                OperationLogLevel.Warning,
+                "MangaMetadata",
+                "Manga import completed, but AniList matching needs attention.",
+                CancellationToken.None);
+
             TempData["Status"] =
                 $"Manga imported, but the AniList match could not be completed: {exception.Message}";
         }
