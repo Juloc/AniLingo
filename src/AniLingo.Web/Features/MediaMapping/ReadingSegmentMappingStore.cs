@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 
 namespace AniLingo.Web.Features.MediaMapping;
@@ -53,9 +54,12 @@ public sealed class ReadingSegmentMappingStore
             WriteIndented = true
         };
 
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> Gates =
+        new(StringComparer.Ordinal);
+
     private readonly ILogger<ReadingSegmentMappingStore> logger;
     private readonly string storePath;
-    private readonly SemaphoreSlim gate = new(1, 1);
+    private readonly SemaphoreSlim gate;
 
     public ReadingSegmentMappingStore(
         ILogger<ReadingSegmentMappingStore> logger)
@@ -76,6 +80,9 @@ public sealed class ReadingSegmentMappingStore
         storePath = Path.Combine(
             directory.FullName,
             "reading-segment-mappings.json");
+        gate = Gates.GetOrAdd(
+            Path.GetFullPath(storePath),
+            _ => new SemaphoreSlim(1, 1));
     }
 
     public async Task<IReadOnlyList<ReadingMediaSegmentMapping>> ListAsync(
