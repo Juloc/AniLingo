@@ -22,6 +22,8 @@ public sealed class ReadModel(
     public IReadOnlyList<BookReaderHighlightItem> CurrentHighlights { get; private set; } = [];
     public int? RequestedPositionPermille { get; private set; }
     public string? RequestedView { get; private set; }
+    public bool IsOwner => account.IsOwner;
+
     public bool HasTranslation =>
         Reader.Translation is not null
         || Reader.SourceLanguage.Equals(
