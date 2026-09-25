@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using AniLingo.Web.Data;
+using AniLingo.Web.Features.Ai;
 using AniLingo.Web.Features.Novels;
 using Microsoft.EntityFrameworkCore;
 
@@ -41,7 +42,7 @@ public sealed partial class BookCatalogService(
     IConfiguration configuration)
 {
     public const string ImportedBookProvider = "book-epub";
-    public const int TranslationPromptVersion = 4;
+    public const int TranslationPromptVersion = 5;
 
     private const int SearchLimit = 24;
     private const int DefaultSampleCharacters = 5500;
@@ -170,7 +171,6 @@ public sealed partial class BookCatalogService(
             .Where(x =>
                 chapterIds.Contains(x.ChapterId)
                 && x.TargetLanguage == targetLanguage
-                && x.ProviderId == translator.Id
                 && x.PromptVersion == TranslationPromptVersion)
             .Select(x => new
             {
@@ -248,7 +248,6 @@ public sealed partial class BookCatalogService(
                 db.NovelTranslations.Any(translation =>
                     translation.ChapterId == chapter.Id
                     && translation.TargetLanguage == targetLanguage
-                    && translation.ProviderId == translator.Id
                     && translation.PromptVersion == TranslationPromptVersion
                     && translation.SourceHash == chapter.SourceHash)))
             .ToListAsync(cancellationToken);
@@ -570,7 +569,6 @@ public sealed partial class BookCatalogService(
                 on translation.ChapterId equals chapter.Id
             where translation.ChapterId == chapterId
                 && translation.TargetLanguage == targetLanguage
-                && translation.ProviderId == translator.Id
                 && translation.PromptVersion == TranslationPromptVersion
                 && translation.SourceHash == chapter.SourceHash
             orderby translation.CreatedAt descending
@@ -632,6 +630,9 @@ public sealed partial class BookCatalogService(
                 return cached;
             }
 
+            var translationMode =
+                await translator.GetTranslationModeAsync(cancellationToken);
+
             var previousChapter = await db.NovelChapters
                 .AsNoTracking()
                 .Where(x =>
@@ -648,7 +649,6 @@ public sealed partial class BookCatalogService(
                     .Where(x =>
                         x.ChapterId == previousChapter.Id
                         && x.TargetLanguage == targetLanguage
-                        && x.ProviderId == translator.Id
                         && x.PromptVersion == TranslationPromptVersion
                         && x.SourceHash == previousChapter.SourceHash)
                     .OrderByDescending(x => x.CreatedAt)
@@ -672,6 +672,11 @@ public sealed partial class BookCatalogService(
                 targetLanguage,
                 async token =>
                 {
+                    if (translationMode != AiTranslationMode.Maximum)
+                    {
+                        return BookTranslationBibleSeed.Empty;
+                    }
+
                     var sample = await BuildBookAnalysisSampleAsync(
                         work.Id,
                         token);
@@ -689,19 +694,15 @@ public sealed partial class BookCatalogService(
                 },
                 cancellationToken);
 
-            var bibleContext =
-                BookTranslationMemoryStore.RenderContext(bible);
-
             var bookContext = BuildTranslationContext(
                 work,
                 chapter,
                 previousChapter?.OriginalText,
                 previousTargetContext,
                 nextContext,
-                targetLanguage)
-                + "\n\n"
-                + bibleContext;
+                targetLanguage);
 
+            var chunkStore = CreateTranslationChunkStore();
             var translatedChunks = new List<string>();
             var chunks = NovelTranslationService.ChunkText(
                 chapter.OriginalText,
@@ -709,21 +710,47 @@ public sealed partial class BookCatalogService(
 
             for (var index = 0; index < chunks.Count; index++)
             {
+                var chunk = chunks[index];
+                var cachedChunk = await chunkStore.TryLoadAsync(
+                    work.Id,
+                    chapter.Id,
+                    targetLanguage,
+                    chapter.SourceHash,
+                    TranslationPromptVersion,
+                    translationMode,
+                    index,
+                    chunk,
+                    cancellationToken);
+
+                if (!string.IsNullOrWhiteSpace(cachedChunk))
+                {
+                    translatedChunks.Add(cachedChunk);
+                    continue;
+                }
+
+                var bibleContext =
+                    BookTranslationMemoryStore.RenderRelevantContext(
+                        bible,
+                        chunk,
+                        4200);
+
                 var localContext = bookContext
                     + "\nCurrent segment: "
                     + (index + 1).ToString(CultureInfo.InvariantCulture)
                     + "/"
-                    + chunks.Count.ToString(CultureInfo.InvariantCulture);
+                    + chunks.Count.ToString(CultureInfo.InvariantCulture)
+                    + "\n\n"
+                    + bibleContext;
 
                 if (translatedChunks.Count > 0)
                 {
                     localContext +=
                         "\nPrevious final translated segment ending:\n"
-                        + Tail(translatedChunks[^1], 1200);
+                        + Tail(translatedChunks[^1], 900);
                 }
 
                 var draft = await translator.TranslateLiteraryAsync(
-                    chunks[index],
+                    chunk,
                     sourceLanguage,
                     targetLanguage,
                     localContext,
@@ -735,56 +762,85 @@ public sealed partial class BookCatalogService(
                         "AI translation returned an empty book segment.");
                 }
 
-                var edited = await translator.EditLiteraryAsync(
-                    new BookLiteraryEditRequest(
-                        chunks[index],
-                        draft.Trim(),
-                        sourceLanguage,
-                        targetLanguage,
-                        localContext),
-                    cancellationToken);
+                var candidate = draft.Trim();
 
-                if (string.IsNullOrWhiteSpace(edited))
+                if (translationMode == AiTranslationMode.Maximum)
                 {
-                    throw new InvalidOperationException(
-                        "Literary editor returned an empty book segment.");
+                    candidate = await translator.EditLiteraryAsync(
+                        new BookLiteraryEditRequest(
+                            chunk,
+                            candidate,
+                            sourceLanguage,
+                            targetLanguage,
+                            localContext),
+                        cancellationToken);
+
+                    if (string.IsNullOrWhiteSpace(candidate))
+                    {
+                        throw new InvalidOperationException(
+                            "Literary editor returned an empty book segment.");
+                    }
+
+                    candidate = candidate.Trim();
                 }
 
-                var review = await translator.ReviewLiteraryAsync(
-                    new BookTranslationQaRequest(
-                        chunks[index],
-                        edited.Trim(),
-                        sourceLanguage,
-                        targetLanguage,
-                        localContext),
-                    cancellationToken);
-
-                var finalSegment = review.Accepted
-                    ? edited.Trim()
-                    : review.CorrectedTranslation?.Trim();
-
-                if (string.IsNullOrWhiteSpace(finalSegment))
+                if (translationMode is AiTranslationMode.Quality
+                    or AiTranslationMode.Maximum)
                 {
-                    throw new InvalidOperationException(
-                        "Translation QA did not return usable final text.");
+                    var review = await translator.ReviewLiteraryAsync(
+                        new BookTranslationQaRequest(
+                            chunk,
+                            candidate,
+                            sourceLanguage,
+                            targetLanguage,
+                            localContext),
+                        cancellationToken);
+
+                    candidate = review.Accepted
+                        ? candidate
+                        : review.CorrectedTranslation?.Trim();
+
+                    if (string.IsNullOrWhiteSpace(candidate))
+                    {
+                        throw new InvalidOperationException(
+                            "Translation QA did not return usable final text.");
+                    }
                 }
 
-                translatedChunks.Add(finalSegment);
+                await chunkStore.SaveAsync(
+                    work.Id,
+                    chapter.Id,
+                    targetLanguage,
+                    chapter.SourceHash,
+                    TranslationPromptVersion,
+                    translationMode,
+                    index,
+                    chunk,
+                    candidate,
+                    cancellationToken);
+
+                translatedChunks.Add(candidate);
             }
 
             var finalText = string.Join(
                 "\n\n",
                 translatedChunks);
 
+            var memoryContext =
+                BookTranslationMemoryStore.RenderRelevantContext(
+                    bible,
+                    chapter.OriginalText,
+                    5000);
+
             var delta = await translator.ExtractTranslationMemoryAsync(
                 new BookTranslationMemoryRequest(
                     chapter.Number,
                     chapter.Title,
-                    chapter.OriginalText,
-                    finalText,
+                    CompactMemorySample(chapter.OriginalText, 6000),
+                    CompactMemorySample(finalText, 6000),
                     sourceLanguage,
                     targetLanguage,
-                    bibleContext),
+                    memoryContext),
                 cancellationToken);
 
             await memoryStore.ApplyChapterDeltaAsync(
@@ -885,7 +941,6 @@ public sealed partial class BookCatalogService(
             .Where(x =>
                 chapterIds.Contains(x.ChapterId)
                 && x.TargetLanguage == targetLanguage
-                && x.ProviderId == translator.Id
                 && x.PromptVersion == TranslationPromptVersion)
             .ExecuteDeleteAsync(cancellationToken);
 
@@ -904,6 +959,11 @@ public sealed partial class BookCatalogService(
         {
             entry.State = EntityState.Detached;
         }
+
+        await CreateTranslationChunkStore().ClearAsync(
+            workId,
+            targetLanguage,
+            cancellationToken);
 
         return deleted;
     }
@@ -2375,6 +2435,17 @@ public sealed partial class BookCatalogService(
                 : configured);
     }
 
+    private BookTranslationChunkStore CreateTranslationChunkStore()
+    {
+        var configured = configuration[
+            "Books:Translation:ChunkCachePath"]?.Trim();
+
+        return new BookTranslationChunkStore(
+            string.IsNullOrWhiteSpace(configured)
+                ? BookTranslationChunkStore.DefaultRoot
+                : configured);
+    }
+
     private async Task<string> BuildBookAnalysisSampleAsync(
         Guid workId,
         CancellationToken cancellationToken)
@@ -2955,6 +3026,21 @@ public sealed partial class BookCatalogService(
         value.Length <= maxLength
             ? value
             : value[..maxLength];
+
+    private static string CompactMemorySample(
+        string value,
+        int maxLength)
+    {
+        if (value.Length <= maxLength)
+        {
+            return value;
+        }
+
+        var half = Math.Max(1, (maxLength - 40) / 2);
+        return value[..half]
+            + "\n\n[… middle omitted …]\n\n"
+            + value[^half..];
+    }
 
     private static string Tail(
         string value,
