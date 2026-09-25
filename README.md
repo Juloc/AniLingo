@@ -86,6 +86,19 @@ Under **Settings → Media storage**, the owner can test each configured root wi
 
 Playback checks the owning storage before codec selection. If storage is temporarily unavailable, the player preserves playback intent/position and retries with bounded backoff for up to about one minute. It resumes automatically when storage returns; after the automatic window it offers **Try again**. An owner also gets an explicit **Wake NAS** action in the player when Wake-on-LAN is configured. A root that is online while one concrete file is absent is reported as a real missing-file condition instead of being retried as a NAS outage.
 
+### Playback continuity
+
+Each signed-in profile has its own playback state on the server; web/PWA, Android and Android TV use the same state through `/api/client/v1`. One canonical owner (`EpisodeProgressService`) holds every fact:
+
+- **Resume position** — players send bounded checkpoints (web: at most one every 15 seconds while playing, plus pause, end, restart and page close). A first start below 30 seconds is treated as accidental and stores nothing. **Restart from beginning** clears the resume position.
+- **Watched** — reaching 95% of the duration (or the end) marks an episode watched and clears its resume position. Watched is sticky: rewatching a watched episode updates the resume position but never flips it back to unwatched. **Mark watched** / **Mark unwatched** on the Episode and Anime pages are the only way to change it manually; both also clear the resume position.
+- **Previous / next** — resolved from local season/episode numbers of episodes with a media file. AniLingo only moves to the directly adjacent number, crosses from the last local episode of season N to S(N+1)E01 (and back), never crosses into or out of specials (season 0), and shows no neighbor when numbering is duplicated or has a local gap.
+- **Continue Watching** (Home) — at most one card per anime, anchored on that anime's most recently updated resumable or watched episode, newest first with the episode id as tie-break. An unfinished anchor resumes that episode; a watched anchor shows the next local episode as **Up next** unless it is already watched. Finished items disappear automatically.
+- **End of episode** — the player shows **Replay**, **Next episode** and **Back to episodes**. **Autoplay next episode** is an optional per-profile preference (default off); when enabled a cancellable 10-second countdown starts the next episode.
+- **Recent playback history** — the last 50 playback sessions of the own profile, shown collapsed on Home and clearable by the user. Clearing history keeps watched state and resume positions. History is never shown to the owner or other users.
+
+AniList sync stays a separate, explicit integration and never becomes the local source of truth.
+
 ### Public URL / Caddy
 
 For Internet access, terminate HTTPS at Caddy (or another trusted reverse proxy) and keep AniLingo itself on the private Docker network. Do not forward port 8097 directly from the router to the Internet. AniLingo accepts `X-Forwarded-For` and `X-Forwarded-Proto` from loopback and private RFC1918/ULA proxy networks, so HTTPS cookies are marked correctly when Caddy terminates TLS.

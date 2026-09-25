@@ -224,3 +224,83 @@
         margin-left: 0;
     }
 }
+
+.episode-flow {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 18px;
+}
+
+.episode-flow-state {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    margin-right: auto;
+}
+
+.player-flow-row {
+    flex-wrap: wrap;
+}
+
+.player-meta > .player-flow-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.player-flow-actions .button,
+.post-play-actions .button {
+    min-height: var(--player-control-size);
+}
+
+.player-flow-actions [hidden] {
+    display: none;
+}
+
+.player-autoplay {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--muted);
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.post-play {
+    position: absolute;
+    inset: 0;
+    z-index: 6;
+    display: grid;
+    place-content: center;
+    justify-items: center;
+    gap: 12px;
+    padding: 16px;
+    background: var(--player-overlay-bg);
+    color: #fff;
+    text-align: center;
+}
+
+.post-play[hidden],
+.post-play-countdown[hidden],
+.post-play-actions [hidden] {
+    display: none;
+}
+
+.post-play > strong {
+    font-size: clamp(18px, 3vw, 26px);
+}
+
+.post-play-countdown {
+    color: var(--player-muted);
+    font-size: 13px;
+}
+
+.post-play-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px;
+}

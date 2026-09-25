@@ -214,6 +214,11 @@ button, input { font: inherit; }
 .section { margin-top: 30px; }
 .section-heading { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 15px; }
 .section-heading h2 { margin: 4px 0 0; font-size: 21px; }
+.playback-history { margin-top: 30px; }
+.playback-history summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; cursor: pointer; }
+.playback-history-list { display: grid; gap: 8px; margin: 12px 0 16px; padding-left: 20px; }
+.playback-history-list li { display: grid; gap: 2px; }
+.playback-history-list li > span { color: var(--muted); font-size: 12px; }
 
 .media-grid {
     display: grid;
@@ -259,6 +264,10 @@ button, input { font: inherit; }
 .episode-main strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .episode-main > span { color: var(--muted); font-size: 12px; }
 .episode-arrow { color: var(--muted); font-size: 26px; }
+.episode-row-shell { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+.episode-row-shell .episode-watched-form { margin: 0; }
+.episode-main > span.episode-watch-state { color: var(--text-secondary); font-weight: 700; }
+.episode-row-shell.is-watched .episode-number { color: var(--success-text); }
 
 .preparation-panel {
     display: flex; align-items: center; justify-content: space-between; gap: 24px;
@@ -424,6 +433,8 @@ button, input { font: inherit; }
     .metric-grid .metric-card:last-child { grid-column: 1 / -1; }
     .episode-row { grid-template-columns: 44px 1fr 18px; padding: 11px; }
     .episode-number { width: 40px; height: 40px; }
+    .episode-row-shell { grid-template-columns: 1fr; }
+    .episode-row-shell .episode-watched-form .button { width: 100%; }
     .review-actions { grid-template-columns: repeat(2, 1fr); }
     .review-card { min-height: 280px; padding: 24px; }
     .root-row { align-items: flex-start; flex-direction: column; }
