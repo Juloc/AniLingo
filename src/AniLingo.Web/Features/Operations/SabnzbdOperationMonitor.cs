@@ -137,7 +137,7 @@ public sealed class SabnzbdOperationsClient(
 
                     var timeLeft = ParseTimeLeft(
                         ReadString(slot, "timeleft"));
-                    var eta = timeLeft is { } remaining
+                    DateTime? eta = timeLeft is { } remaining
                         && remaining > TimeSpan.Zero
                         ? nowUtc.Add(remaining)
                         : null;
