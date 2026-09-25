@@ -441,10 +441,15 @@ public sealed class SabnzbdOperationMonitorService(
                 if (hasActiveJobs)
                 {
                     var snapshot = await client.GetSnapshotAsync(stoppingToken);
-                    await ApplySnapshotAsync(
+                    var completed = await ApplySnapshotAsync(
                         store,
                         operations,
                         snapshot,
+                        stoppingToken);
+
+                    await ImportCompletedBookDownloadsAsync(
+                        scope.ServiceProvider,
+                        completed,
                         stoppingToken);
                 }
             }
@@ -476,12 +481,38 @@ public sealed class SabnzbdOperationMonitorService(
         }
     }
 
-    private static async Task ApplySnapshotAsync(
+    private async Task ImportCompletedBookDownloadsAsync(
+        IServiceProvider services,
+        IReadOnlyList<OperationSnapshot> completed,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await BookInboxImport.ImportAfterDownloadsAsync(
+                services,
+                completed,
+                cancellationToken);
+        }
+        catch (Exception exception) when (
+            exception is InvalidOperationException
+                or IOException
+                or UnauthorizedAccessException)
+        {
+            // The runner already recorded the failed import operation.
+            logger.LogWarning(
+                exception,
+                "Could not import the Books inbox after a completed SABnzbd download.");
+        }
+    }
+
+    private static async Task<IReadOnlyList<OperationSnapshot>> ApplySnapshotAsync(
         OperationStore store,
         IReadOnlyList<OperationSnapshot> operations,
         SabnzbdRemoteSnapshot snapshot,
         CancellationToken cancellationToken)
     {
+        var completed = new List<OperationSnapshot>();
+
         foreach (var operation in operations)
         {
             if (string.IsNullOrWhiteSpace(operation.ExternalId))
@@ -515,6 +546,7 @@ public sealed class SabnzbdOperationMonitorService(
                     operation.Id,
                     "SABnzbd download and post-processing completed.",
                     cancellationToken);
+                completed.Add(operation);
                 continue;
             }
 
@@ -558,6 +590,8 @@ public sealed class SabnzbdOperationMonitorService(
                 remote.EtaUtc,
                 cancellationToken);
         }
+
+        return completed;
     }
 
     private static bool IsCompleted(string status) =>

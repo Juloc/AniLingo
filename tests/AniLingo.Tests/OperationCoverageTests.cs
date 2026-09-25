@@ -243,7 +243,13 @@ public sealed class OperationCoverageTests
             root,
             "src/AniLingo.Web/Pages/Books/Index.cshtml.cs",
             "book-epub-upload-import",
-            "remote-epub-import",
+            "remote-epub-import");
+
+        // The inbox import is shared by the explicit Books action and the
+        // SABnzbd completion path, so its kinds live with the operation.
+        AssertKinds(
+            root,
+            "src/AniLingo.Web/Features/Books/BookInboxImport.cs",
             "book-inbox-import",
             "sabnzbd-download");
     }
