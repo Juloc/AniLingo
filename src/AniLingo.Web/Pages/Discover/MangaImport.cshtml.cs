@@ -160,7 +160,14 @@ public sealed class MangaImportModel(
             TempData["Status"] =
                 $"Imported {result.ChapterCount} chapter(s) / {result.PageCount} page(s) and matched {title} to AniList.";
         }
-        catch (InvalidOperationException exception)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception) when (
+            exception is InvalidOperationException
+                or HttpRequestException
+                or TaskCanceledException)
         {
             TempData["Status"] =
                 $"Manga imported, but the AniList match could not be completed: {exception.Message}";
