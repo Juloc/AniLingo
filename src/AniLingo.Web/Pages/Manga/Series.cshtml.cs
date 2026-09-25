@@ -1,6 +1,7 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Manga;
+using AniLingo.Web.Features.MediaMapping;
 using AniLingo.Web.Features.Operations;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -11,7 +12,8 @@ public sealed class SeriesModel(
     AppDbContext db,
     CurrentAccountContext account,
     IHttpClientFactory httpClientFactory,
-    OperationRunner operations) : PageModel
+    OperationRunner operations,
+    MediaMappingReviewStore mappingReviewStore) : PageModel
 {
     public MangaSeriesDetail Series { get; private set; } = null!;
     public MangaProgressItem? Progress { get; private set; }
@@ -40,7 +42,10 @@ public sealed class SeriesModel(
         Query = q?.Trim() ?? "";
         if (account.IsOwner && Query.Length > 0)
         {
-            var metadata = new MangaAniListService(repository, httpClientFactory);
+            var metadata = new MangaAniListService(
+                    repository,
+                    httpClientFactory,
+                    mappingReviewStore);
             SearchResults = await metadata.SearchAsync(
                 Query,
                 cancellationToken);
@@ -70,7 +75,10 @@ public sealed class SeriesModel(
             async (_, token) =>
             {
                 var repository = new MangaRepository(db);
-                var metadata = new MangaAniListService(repository, httpClientFactory);
+                var metadata = new MangaAniListService(
+                    repository,
+                    httpClientFactory,
+                    mappingReviewStore);
                 await metadata.MatchAsync(id, externalId, token);
             },
             "Manga metadata matched.",
