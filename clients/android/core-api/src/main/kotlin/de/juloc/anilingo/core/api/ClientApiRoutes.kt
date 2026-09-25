@@ -36,6 +36,10 @@ object ClientApiRoutes {
     fun fallback(episodeId: String, startSeconds: Double? = null): String =
         "$Base/episodes/$episodeId/fallback" +
             (startSeconds?.let { "?mode=server&startSeconds=$it" } ?: "")
+
+    fun hls(episodeId: String, startSeconds: Double? = null): String =
+        "$Base/episodes/$episodeId/hls" +
+            (startSeconds?.let { "?startSeconds=$it" } ?: "")
     fun term(termId: String) = "$Base/terms/$termId"
     fun rootAvailability(rootId: String) = "$Base/library-roots/$rootId/availability"
     fun testRoot(rootId: String) = "$Base/library-roots/$rootId/test"

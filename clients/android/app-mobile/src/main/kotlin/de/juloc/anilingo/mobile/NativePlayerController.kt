@@ -164,10 +164,14 @@ class NativePlayerController(
 
         val shouldPlay = player.playWhenReady
         when (currentTransport) {
-            PlaybackTransport.LIVE_MP4_FALLBACK -> {
+            PlaybackTransport.LIVE_MP4_FALLBACK,
+            PlaybackTransport.HLS_FALLBACK,
+            -> {
+                val transport = currentTransport
+                    ?: PlaybackTransport.LIVE_MP4_FALLBACK
                 scope.launch {
                     openTransport(
-                        transport = PlaybackTransport.LIVE_MP4_FALLBACK,
+                        transport = transport,
                         absolutePositionMs = target,
                         shouldPlay = shouldPlay,
                     )
@@ -424,8 +428,10 @@ class NativePlayerController(
         val route = when (transport) {
             PlaybackTransport.DIRECT -> media.directContentUrl
             PlaybackTransport.HLS_FALLBACK ->
-                currentBootstrap.fallback.url
-                    ?: throw IllegalStateException("HLS fallback is not available.")
+                ClientApiRoutes.hls(
+                    episodeId = episodeId,
+                    startSeconds = absolutePositionMs / 1000.0,
+                )
             PlaybackTransport.LIVE_MP4_FALLBACK ->
                 ClientApiRoutes.fallback(
                     episodeId = episodeId,
@@ -434,7 +440,10 @@ class NativePlayerController(
         }
 
         val resolved = origin.resolveSameOrigin(route)
-        sourceOffsetMs = if (transport == PlaybackTransport.LIVE_MP4_FALLBACK) {
+        sourceOffsetMs = if (
+            transport == PlaybackTransport.LIVE_MP4_FALLBACK ||
+            transport == PlaybackTransport.HLS_FALLBACK
+        ) {
             absolutePositionMs
         } else {
             0L
@@ -443,7 +452,10 @@ class NativePlayerController(
 
         mediaPlayer.open(
             uri = Uri.parse(resolved.toString()),
-            startPositionMs = if (transport == PlaybackTransport.LIVE_MP4_FALLBACK) {
+            startPositionMs = if (
+                transport == PlaybackTransport.LIVE_MP4_FALLBACK ||
+                transport == PlaybackTransport.HLS_FALLBACK
+            ) {
                 0L
             } else {
                 absolutePositionMs

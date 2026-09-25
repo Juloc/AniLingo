@@ -37,7 +37,7 @@ public static class ClientApiContract
                 NormalizedLearningCues: true,
                 LearningStateMutation: true,
                 LiveMp4Fallback: true,
-                HlsFallback: false,
+                HlsFallback: true,
                 PlaybackSessions: true,
                 CompanionPairing: true,
                 CompanionControl: true,
@@ -86,6 +86,20 @@ public static class ClientApiRoutes
 
     public static string Fallback(Guid episodeId) =>
         $"{Episode(episodeId)}/fallback";
+
+    public static string Hls(Guid episodeId) =>
+        $"{Episode(episodeId)}/hls";
+
+    public static string HlsPlaylist(
+        Guid episodeId,
+        Guid sessionId) =>
+        $"{Hls(episodeId)}/{sessionId:D}/index.m3u8";
+
+    public static string HlsAsset(
+        Guid episodeId,
+        Guid sessionId,
+        string fileName) =>
+        $"{Hls(episodeId)}/{sessionId:D}/{fileName}";
 
     public static string PlaybackSessions =>
         $"{ClientApiContract.BasePath}/playback-sessions";

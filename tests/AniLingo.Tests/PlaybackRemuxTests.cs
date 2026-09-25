@@ -175,6 +175,37 @@ public sealed class PlaybackRemuxTests
         CollectionAssert.Contains(arguments.ToList(), "pipe:1");
     }
 
+
+    [TestMethod]
+    public void HlsFallbackUsesBoundedFmp4SegmentsAndRestartPosition()
+    {
+        var arguments = HlsPlaybackSessionManager.BuildArguments(
+            "/media/anime/episode.mkv",
+            "/data/playback-cache/hls/session",
+            512.25).ToList();
+
+        var seekIndex = arguments.IndexOf("-ss");
+        var inputIndex = arguments.IndexOf("-i");
+
+        Assert.IsTrue(seekIndex >= 0);
+        Assert.IsTrue(inputIndex > seekIndex);
+        Assert.AreEqual("512.25", arguments[seekIndex + 1]);
+        CollectionAssert.Contains(arguments, "libx264");
+        CollectionAssert.Contains(arguments, "aac");
+        CollectionAssert.Contains(arguments, "fmp4");
+        CollectionAssert.Contains(arguments, "delete_segments+independent_segments");
+        CollectionAssert.Contains(arguments, HlsPlaybackSessionManager.PlaylistSegments.ToString());
+        Assert.IsTrue(
+            arguments.Any(x =>
+                x.Replace('\\', '/')
+                    .EndsWith(
+                        "/data/playback-cache/hls/session/segment-%05d.m4s",
+                        StringComparison.Ordinal)));
+        StringAssert.EndsWith(
+            arguments[^1].Replace('\\', '/'),
+            "/data/playback-cache/hls/session/index.m3u8");
+    }
+
     [TestMethod]
     public void CacheIdentitySeparatesSourceFingerprintAndPreparationKind()
     {

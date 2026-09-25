@@ -299,6 +299,113 @@ public static class ClientApiEndpoints
                 enableRangeProcessing: true);
         });
 
+        group.MapGet("/episodes/{episodeId:guid}/hls", async (
+            Guid episodeId,
+            double? startSeconds,
+            PlaybackService playbackService,
+            MediaAvailabilityService mediaAvailability,
+            CurrentAccountContext currentAccount,
+            CancellationToken cancellationToken) =>
+        {
+            if (startSeconds.HasValue &&
+                (!double.IsFinite(startSeconds.Value) || startSeconds.Value < 0))
+            {
+                return BadRequest(
+                    "invalid_start_position",
+                    "startSeconds must be a finite value greater than or equal to zero.");
+            }
+
+            var availability = await mediaAvailability.CheckEpisodeAsync(
+                episodeId,
+                force: false,
+                cancellationToken);
+
+            if (availability is null)
+            {
+                return NotFound(
+                    "media_not_found",
+                    "This episode does not have a media file.");
+            }
+
+            if (!availability.IsAvailable)
+            {
+                return Results.Json(
+                    ClientApiMappings.ToClientAvailability(
+                        availability,
+                        currentAccount.IsOwner),
+                    statusCode: availability.State == StorageAvailabilityState.FileMissing
+                        ? StatusCodes.Status404NotFound
+                        : StatusCodes.Status503ServiceUnavailable);
+            }
+
+            var stream = await playbackService.GetStreamAsync(
+                episodeId,
+                PlaybackRequestedMode.Server,
+                cancellationToken);
+
+            if (stream is null || !File.Exists(stream.SourcePath))
+            {
+                return NotFound(
+                    "playback_unavailable",
+                    "No source media is available for HLS fallback.");
+            }
+
+            try
+            {
+                var start = NormalizeStart(
+                    startSeconds,
+                    stream.DurationSeconds);
+                var session = await HlsPlaybackSessionManager.Shared.StartAsync(
+                    episodeId,
+                    currentAccount.ProfileId,
+                    stream.SourcePath,
+                    start,
+                    cancellationToken);
+
+                return Results.Redirect(
+                    ClientApiRoutes.HlsPlaylist(
+                        episodeId,
+                        session.SessionId),
+                    permanent: false,
+                    preserveMethod: false);
+            }
+            catch (Exception exception) when (
+                exception is InvalidOperationException or
+                TimeoutException or
+                System.ComponentModel.Win32Exception)
+            {
+                return Results.Json(
+                    new ClientErrorResponse(
+                        "hls_start_failed",
+                        "The server could not start the seekable compatibility stream."),
+                    statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
+        });
+
+        group.MapGet(
+            "/episodes/{episodeId:guid}/hls/{sessionId:guid}/{fileName}",
+            (
+                Guid episodeId,
+                Guid sessionId,
+                string fileName,
+                CurrentAccountContext currentAccount) =>
+            {
+                var asset = HlsPlaybackSessionManager.Shared.GetAsset(
+                    sessionId,
+                    episodeId,
+                    currentAccount.ProfileId,
+                    fileName);
+
+                return asset is null
+                    ? NotFound(
+                        "hls_asset_not_found",
+                        "The HLS playback segment is unavailable or expired.")
+                    : Results.File(
+                        asset.Path,
+                        asset.ContentType,
+                        enableRangeProcessing: asset.EnableRangeProcessing);
+            });
+
         group.MapGet("/episodes/{episodeId:guid}/fallback", async (
             Guid episodeId,
             string? mode,
