@@ -677,6 +677,7 @@ public sealed class AniListAccountService(
 
         int mediaId;
         int requestedProgress;
+        int? requestedVolumeProgress = null;
         int? configuredChapterCount;
         var displayTitle = local.Title;
 
@@ -708,6 +709,7 @@ public sealed class AniListAccountService(
             }
 
             requestedProgress = segment.Progress;
+            requestedVolumeProgress = segment.VolumeProgress;
             configuredChapterCount = segment.RemoteChapterCount;
             displayTitle = segment.PreferredTitle ?? local.Title;
         }
@@ -792,11 +794,76 @@ public sealed class AniListAccountService(
             displayTitle,
             "manga");
 
+        var volumeProgressToWrite =
+            requestedVolumeProgress is > 0 &&
+            requestedVolumeProgress.Value > remote.ProgressVolumes
+                ? requestedVolumeProgress
+                : null;
+
+        var progressToWrite = requestedProgress;
+        if (volumeProgressToWrite is not null && preview.IsNoOp)
+        {
+            if (!string.Equals(
+                    remote.Status,
+                    "CURRENT",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                preview = AniListReadingProgressPreview.Blocked(
+                    $"AniList status is {remote.Status ?? "unknown"}. For safety, AniLingo only writes reading progress while the entry is CURRENT.",
+                    requestedProgress,
+                    displayTitle,
+                    remote.Progress,
+                    remote.Status,
+                    chapterCount,
+                    requestedVolumeProgress,
+                    remote.ProgressVolumes);
+                volumeProgressToWrite = null;
+            }
+            else if (chapterCount is not > 0 ||
+                     remote.Progress >= chapterCount.Value)
+            {
+                preview = AniListReadingProgressPreview.Blocked(
+                    "AniLingo will not update volume progress while the remote chapter state is final or cannot be verified safely.",
+                    requestedProgress,
+                    displayTitle,
+                    remote.Progress,
+                    remote.Status,
+                    chapterCount,
+                    requestedVolumeProgress,
+                    remote.ProgressVolumes);
+                volumeProgressToWrite = null;
+            }
+            else
+            {
+                progressToWrite = remote.Progress;
+                preview = new AniListReadingProgressPreview(
+                    CanSync: true,
+                    IsNoOp: false,
+                    $"Ready to increase AniList volume progress from {remote.ProgressVolumes} to {volumeProgressToWrite.Value} without lowering chapter progress.",
+                    displayTitle,
+                    progressToWrite,
+                    remote.Progress,
+                    remote.Status,
+                    chapterCount,
+                    requestedVolumeProgress,
+                    remote.ProgressVolumes);
+            }
+        }
+        else
+        {
+            preview = preview with
+            {
+                RequestedVolumeProgress = requestedVolumeProgress,
+                RemoteVolumeProgress = remote.ProgressVolumes
+            };
+        }
+
         return new ReadingProgressContext(
             account,
             remote,
-            requestedProgress,
-            preview);
+            progressToWrite,
+            preview,
+            volumeProgressToWrite);
     }
 
     private async Task<ReadingProgressContext> BuildNovelProgressContextAsync(
@@ -1865,7 +1932,8 @@ public sealed class AniListAccountService(
         StoredAniListAccount? Account,
         AniListRemoteListEntry? RemoteEntry,
         int RequestedProgress,
-        AniListReadingProgressPreview Preview)
+        AniListReadingProgressPreview Preview,
+        int? RequestedVolumeProgress = null)
     {
         public static ReadingProgressContext Blocked(
             AniListReadingProgressPreview preview) =>
