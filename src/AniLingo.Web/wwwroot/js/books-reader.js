@@ -263,8 +263,12 @@
 
         if (overrideState) {
             overrideState.textContent = settings.hasBookOverride
-                ? "Book override"
-                : "My defaults";
+                ? "Customized for this book"
+                : settings.hasGenreOverride
+                    ? "Genre default"
+                    : settings.hasTypeOverride
+                        ? "Type default"
+                        : "My default";
         }
     }
 
@@ -334,12 +338,19 @@
         return result;
     }
 
+    function activePreferenceTarget() {
+        return settingsForm?.querySelector('[name="scope"]')?.value || "work";
+    }
+
     function scheduleSettingSave(changedKey) {
-        settings.hasBookOverride = true;
+        const scope = activePreferenceTarget();
+        if (scope === "work" || scope === "book") {
+            settings.hasBookOverride = true;
+        }
         syncSettingControls();
 
         settingsSave = settingsSave
-            .then(() => saveSettings("book", changedKey))
+            .then(() => saveSettings(scope, changedKey))
             .catch((error) => showToast(error.message));
     }
 
@@ -609,6 +620,18 @@
     if (pagePrev) pagePrev.addEventListener("click", () => turnPage(-1));
     if (pageNext) pageNext.addEventListener("click", () => turnPage(1));
 
+    root.addEventListener("anilingo:reader-settings-response", (event) => {
+        if (!event.detail?.settings) return;
+        settings = Object.assign(settings, event.detail.settings);
+        applySettings(false);
+    });
+
+    root.addEventListener("anilingo:reader-page-edge", (event) => {
+        const direction = Number(event.detail?.direction || 0);
+        if (!direction || settings.readingMode !== "paged") return;
+        turnPage(direction);
+    });
+
     for (const column of [original, translated]) {
         if (!column) continue;
         column.addEventListener("scroll", () => {
@@ -638,10 +661,23 @@
 
     const initial = Number(root.dataset.progress || "0");
     if (initial > 0 && settings.readingMode === "continuous") {
+        root.dispatchEvent(new CustomEvent("anilingo:reader-restoring", {
+            detail: { active: true }
+        }));
         requestAnimationFrame(() => {
             const max = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
             window.scrollTo({ top: max * initial / 1000, behavior: "auto" });
+            requestAnimationFrame(() => {
+                root.classList.remove("reader-chrome-hidden");
+                root.dispatchEvent(new CustomEvent("anilingo:reader-restoring", {
+                    detail: { active: false }
+                }));
+            });
         });
+    } else {
+        root.dispatchEvent(new CustomEvent("anilingo:reader-restoring", {
+            detail: { active: false }
+        }));
     }
 
     if (root.dataset.hasTranslation !== "true" && translateForm) {
