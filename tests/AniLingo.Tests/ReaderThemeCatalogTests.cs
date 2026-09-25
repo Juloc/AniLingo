@@ -166,7 +166,7 @@ public sealed class ReaderThemeCatalogTests : IDisposable
         Assert.AreEqual("none", item.Motion.Effect);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("Sci-Fi", "sci-fi")]
     [DataRow("Crime / Detective", "crime-detective")]
     [DataRow("Slice of Life", "slice-of-life")]
