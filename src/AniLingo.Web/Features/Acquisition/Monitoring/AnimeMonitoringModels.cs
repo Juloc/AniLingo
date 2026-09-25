@@ -12,6 +12,7 @@ public enum AnimeSearchTrigger
 {
     SearchOnAdd,
     PeriodicMissing,
+    Rss,
     Manual
 }
 
@@ -23,7 +24,11 @@ public enum AnimeAcquisitionAttemptStatus
     Failed
 }
 
-public sealed record AnimeEpisodeKey(string AnimeKey, int SeasonNumber, int EpisodeNumber)
+public sealed record AnimeEpisodeKey(
+    string AnimeKey,
+    int SeasonNumber,
+    int EpisodeNumber,
+    int? AbsoluteEpisodeNumber = null)
 {
     public override string ToString() => $"{AnimeKey}:S{SeasonNumber:00}E{EpisodeNumber:00}";
 }
@@ -73,6 +78,7 @@ public sealed record AnimeMonitoringHistoryEntry(
 public sealed record AnimeMonitoringState(
     int Version,
     Dictionary<string, AnimeMonitorSettings> Anime,
+    Dictionary<string, AnimeWantedEpisode> Wanted,
     Dictionary<string, AnimeAcquisitionAttempt> Attempts,
     List<AnimeMonitoringHistoryEntry> History)
 {
@@ -80,6 +86,7 @@ public sealed record AnimeMonitoringState(
         new(
             1,
             new Dictionary<string, AnimeMonitorSettings>(StringComparer.OrdinalIgnoreCase),
+            new Dictionary<string, AnimeWantedEpisode>(StringComparer.OrdinalIgnoreCase),
             new Dictionary<string, AnimeAcquisitionAttempt>(StringComparer.OrdinalIgnoreCase),
             []);
 }
