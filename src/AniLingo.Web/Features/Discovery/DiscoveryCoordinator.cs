@@ -39,9 +39,7 @@ public sealed class DiscoveryCoordinator(
             return cached;
         }
 
-        var status = includeAniList
-            ? await aniListAccount.GetStatusAsync(cancellationToken)
-            : AniListAccountStatus.Disconnected;
+        var status = AniListAccountStatus.Disconnected;
         var warnings = new List<string>();
         IReadOnlyList<DiscoveryItem> items;
 
@@ -58,6 +56,7 @@ public sealed class DiscoveryCoordinator(
                     []);
             }
 
+            status = await aniListAccount.GetStatusAsync(cancellationToken);
             if (!status.IsConnected)
             {
                 return new DiscoveryResponse(
