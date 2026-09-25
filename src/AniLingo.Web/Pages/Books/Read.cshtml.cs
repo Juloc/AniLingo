@@ -86,7 +86,7 @@ public sealed class ReadModel(
         int genrePriority,
         bool resetField,
         bool resetScope,
-        [Bind(Prefix = "Settings")] ReaderSettingsInput input,
+        ReaderSettingsInput input,
         CancellationToken cancellationToken)
     {
         var target = BookLanguageCatalog.Normalize(lang);
