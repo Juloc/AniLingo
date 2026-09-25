@@ -4,6 +4,7 @@
 @using AniLingo.Web.Features.ClientApi
 @using AniLingo.Web.Features.Storage
 @using AniLingo.Web.Features.Subtitles
+@using AniLingo.Web.Features.Learning
 @model AniLingo.Web.Pages.Library.EpisodeModel
 @{
     ViewData["Title"] = $"{Model.AnimeTitle} E{Model.EpisodeNumber}";
@@ -18,15 +19,75 @@
         <a class="back-link" href="/Library/Anime/@Model.AnimeId">← @Model.AnimeTitle</a>
         <span class="eyebrow">S@(Model.SeasonNumber.ToString("00")) · E@(Model.EpisodeNumber.ToString("00"))</span>
         <h1>@Model.EpisodeTitle</h1>
-        <p>
-            @Model.Preparation.DistinctTermCount distinct terms ·
-            @Model.Preparation.KnownTermCount known ·
-            @Model.Preparation.LearningTermCount learning ·
-            @Model.Preparation.NewTermCount new ·
-            @Model.Preparation.PreparedPercent% prepared
-        </p>
+        @if (Model.ShowContentMetrics)
+        {
+            <p>
+                @Model.Preparation.DistinctTermCount distinct terms ·
+                @Model.Preparation.KnownTermCount known ·
+                @Model.Preparation.LearningTermCount learning ·
+                @Model.Preparation.NewTermCount new ·
+                @Model.Preparation.PreparedPercent% prepared
+            </p>
+        }
     </div>
+    <a class="button"
+       href="@Url.Page("/Settings/LearningScope", new {
+           mediaType = LearningMediaType.Anime,
+           scope = "content",
+           workKey = Model.AnimeId.ToString(),
+           contentKey = Model.EpisodeId.ToString(),
+           label = $"{Model.AnimeTitle} · E{Model.EpisodeNumber}",
+           returnUrl = $"/Library/Episode/{Model.EpisodeId}"
+       })">
+        Language tools &amp; Learning
+    </a>
 </header>
+
+@{
+    var isWatched = Model.LocalProgress?.IsCompleted == true;
+    var resumeMs = Model.LocalProgress?.ResumePositionMs ?? 0;
+    var resumeLabel = AniLingo.Web.Features.Progress.EpisodeProgressService.FormatPosition(resumeMs);
+}
+<nav class="episode-flow" aria-label="Episode navigation" data-episode-flow>
+    @if (Model.Flow?.Previous is { } previous)
+    {
+        <a class="button"
+           href="@Model.PreviousEpisodeUrl"
+           aria-label="Previous episode: S@(previous.SeasonNumber.ToString("00")) E@(previous.Number.ToString("00"))"
+           data-previous-episode>
+            ← S@(previous.SeasonNumber.ToString("00")) · E@(previous.Number.ToString("00"))
+        </a>
+    }
+    <div class="episode-flow-state">
+        @if (isWatched)
+        {
+            <span class="status-pill status-ok" data-watched-state>Watched</span>
+        }
+        else if (resumeMs > 0)
+        {
+            <span class="status-pill" data-watched-state>Resume at @resumeLabel · @Model.LocalProgress!.Percent%</span>
+        }
+        else
+        {
+            <span class="status-pill" data-watched-state>Unwatched</span>
+        }
+        <form method="post"
+              asp-page-handler="Watched"
+              asp-route-id="@Model.EpisodeId">
+            <input type="hidden" name="watched" value="@(isWatched ? "false" : "true")" />
+            <button class="button" type="submit">@(isWatched ? "Mark unwatched" : "Mark watched")</button>
+        </form>
+    </div>
+    @if (Model.Flow?.Next is { } next)
+    {
+        <a class="button button-primary"
+           href="@Model.NextEpisodeUrl"
+           aria-label="Next episode: S@(next.SeasonNumber.ToString("00")) E@(next.Number.ToString("00"))"
+           data-next-episode>
+            S@(next.SeasonNumber.ToString("00")) · E@(next.Number.ToString("00")) →
+        </a>
+    }
+</nav>
 
 @if (Model.AniListProgress is { } aniList)
     {
@@ -67,7 +128,7 @@
         </section>
 }
 
-@if (Model.IsOwner)
+@if (Model.IsOwner && Model.NeedsLearningSource)
 {
     <section class="panel subtitle-source-panel">
         <div class="panel-heading">
@@ -200,6 +261,9 @@
              data-player-bootstrap-url="@ClientApiRoutes.Player(Model.EpisodeId)"
              data-progress-url="@ClientApiRoutes.Progress(Model.EpisodeId)"
              data-resume-seconds="@Model.ResumePositionSeconds.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)"
+             data-next-url="@(Model.NextEpisodeUrl ?? "")"
+             data-autoplay-next="@((Model.Flow?.AutoplayNext == true).ToString().ToLowerInvariant())"
+             data-playback-preferences-url="@ClientApiRoutes.PlaybackPreferences"
              data-storage-wake-url="@(Model.IsOwner && media.Storage is { WakeConfigured: true } ownerStorage ? ClientApiRoutes.WakeRoot(ownerStorage.RootId) : "")"
              data-media-url="@Url.Page("/Library/Episode", "Media", new { id = Model.EpisodeId })">
         <div class="video-stage player-placeholder" data-video-stage>
@@ -210,6 +274,8 @@
                  aria-live="polite"
                  hidden></div>
 
+            @if (Model.ShowPlayerTools)
+            {
             <aside class="player-learning-sheet"
                    data-word-inspector
                    aria-label="Subtitle learning"
@@ -235,6 +301,21 @@
                     <span class="status-pill" data-state></span>
                 </div>
             </aside>
+            }
+
+            <div class="post-play" data-post-play role="dialog" aria-label="Episode finished" hidden>
+                <strong>Episode finished</strong>
+                <span class="post-play-countdown" data-post-play-countdown aria-live="polite" hidden></span>
+                <div class="post-play-actions">
+                    <button class="button" type="button" data-post-play-replay>↻ Replay</button>
+                    @if (Model.NextEpisodeUrl is { } postPlayNextUrl)
+                    {
+                        <a class="button button-primary" href="@postPlayNextUrl" data-post-play-next>Next episode</a>
+                    }
+                    <a class="button" href="/Library/Anime/@Model.AnimeId" data-post-play-back>Back to episodes</a>
+                    <button class="button" type="button" data-post-play-cancel hidden>Cancel autoplay</button>
+                </div>
+            </div>
 
             <div class="playback-preparation" data-playback-placeholder>
                 <span class="eyebrow">Browser playback</span>
@@ -280,6 +361,25 @@
             <div><span data-playback-duration>--:--</span></div>
         </div>
 
+        <div class="player-meta player-flow-row">
+            <div class="player-flow-actions">
+                <button class="button"
+                        type="button"
+                        data-restart
+                        hidden="@(Model.ResumePositionSeconds <= 0)">↺ Restart from beginning</button>
+                @if (Model.NextEpisodeUrl is { } playerNextUrl)
+                {
+                    <a class="button" href="@playerNextUrl" data-player-next>Next episode →</a>
+                }
+            </div>
+            <label class="player-autoplay">
+                <input type="checkbox"
+                       data-autoplay-toggle
+                       checked="@(Model.Flow?.AutoplayNext == true)" />
+                <span>Autoplay next episode</span>
+            </label>
+        </div>
+
         <div class="player-error" data-player-error hidden></div>
 
         <script type="application/json" data-cue-data>@Html.Raw(JsonSerializer.Serialize(Model.Playback.Cues, new JsonSerializerOptions(JsonSerializerDefaults.Web)))</script>
@@ -288,68 +388,90 @@
     <script src="~/js/episode-player.js" asp-append-version="true"></script>
 }
 
-@if (Model.Terms.Count == 0)
+@if (Model.ShowVocabularyTools
+     || Model.ShowPreparationSuggestions
+     || Model.ShowContentMetrics)
 {
-    <div class="empty-state">
-        <h3>No vocabulary yet</h3>
-        <p>AniLingo will build vocabulary from a Japanese text source. When none is available, it generates a local Japanese audio transcript automatically. Image subtitles such as PGS can still be replaced by the audio transcript without OCR.</p>
-    </div>
-}
-else
-{
-    <section class="preparation-panel">
-        <div class="preparation-copy">
-            <span class="eyebrow">Episode preparation</span>
-            <strong>@Model.Preparation.PreparedPercent% lexical coverage</strong>
-            <span>@Model.Preparation.PreparedOccurrences of @Model.Preparation.TotalOccurrences subtitle term occurrences are known or queued.</span>
-            <div class="progress-track"><span style="width:@Model.Preparation.PreparedPercent%"></span></div>
-            <small>Coverage is occurrence-weighted vocabulary coverage, not estimated dialogue comprehension.</small>
+    @if (Model.Terms.Count == 0)
+    {
+        <div class="empty-state">
+            <h3>No vocabulary yet</h3>
+            <p>AniLingo will build vocabulary from an available text source when this scope uses Learning tools.</p>
         </div>
-
-        @if (Model.Preparation.RecommendedCount > 0)
+    }
+    else
+    {
+        @if (Model.ShowPreparationSuggestions || Model.ShowContentMetrics)
         {
-            <form method="post" asp-page-handler="Prepare" asp-route-id="@Model.EpisodeId">
-                <button class="button button-primary" type="submit">
-                    Prepare to @Model.Preparation.TargetPercent% · @Model.Preparation.RecommendedCount words
-                </button>
-            </form>
-        }
-        else
-        {
-            <span class="status-pill status-ok">@Model.Preparation.TargetPercent% prepared</span>
-        }
-    </section>
-
-    <div class="term-table">
-        <div class="term-table-head">
-            <span>Term</span><span>Seen</span><span>Status</span>
-        </div>
-        @foreach (var term in Model.Terms)
-        {
-            <div class="term-row">
-                <div class="term-word">
-                    <strong lang="ja">@term.Canonical</strong>
-                    @if (!string.IsNullOrWhiteSpace(term.Reading))
-                    {
-                        <span>@term.Reading</span>
-                    }
-                    @if (!string.IsNullOrWhiteSpace(term.Meaning))
-                    {
-                        <small>@term.Meaning</small>
-                    }
+            <section class="preparation-panel">
+                <div class="preparation-copy">
+                    <span class="eyebrow">Episode preparation</span>
+                    <strong>@Model.Preparation.PreparedPercent% lexical coverage</strong>
+                    <span>@Model.Preparation.PreparedOccurrences of @Model.Preparation.TotalOccurrences subtitle term occurrences are known or queued.</span>
+                    <div class="progress-track"><span style="width:@Model.Preparation.PreparedPercent%"></span></div>
+                    <small>Coverage is occurrence-weighted vocabulary coverage, not estimated dialogue comprehension.</small>
                 </div>
-                <span class="occurrence">@term.EpisodeOccurrences×</span>
-                <div class="term-actions">
-                    <form method="post" asp-page-handler="Learning" asp-route-id="@Model.EpisodeId">
-                        <input type="hidden" name="termId" value="@term.TermId" />
-                        <button class="chip @(term.State == UserTermState.Learning ? "selected" : "")" type="submit">Learn</button>
-                    </form>
-                    <form method="post" asp-page-handler="Known" asp-route-id="@Model.EpisodeId">
-                        <input type="hidden" name="termId" value="@term.TermId" />
-                        <button class="chip @(term.State == UserTermState.Known ? "selected" : "")" type="submit">Known</button>
-                    </form>
+
+                @if (Model.ShowPreparationSuggestions)
+                {
+                    @if (Model.Preparation.RecommendedCount > 0)
+                    {
+                        <form method="post"
+                              asp-page-handler="Prepare"
+                              asp-route-id="@Model.EpisodeId">
+                            <button class="button button-primary" type="submit">
+                                Prepare to @Model.Preparation.TargetPercent% · @Model.Preparation.RecommendedCount words
+                            </button>
+                        </form>
+                    }
+                    else
+                    {
+                        <span class="status-pill status-ok">@Model.Preparation.TargetPercent% prepared</span>
+                    }
+                }
+            </section>
+        }
+
+        @if (Model.ShowVocabularyTools)
+        {
+            <div class="term-table">
+                <div class="term-table-head">
+                    <span>Term</span><span>Seen</span><span>Status</span>
                 </div>
+                @foreach (var term in Model.Terms)
+                {
+                    <div class="term-row">
+                        <div class="term-word">
+                            <strong lang="ja">@term.Canonical</strong>
+                            @if (!string.IsNullOrWhiteSpace(term.Reading))
+                            {
+                                <span>@term.Reading</span>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(term.Meaning))
+                            {
+                                <small>@term.Meaning</small>
+                            }
+                        </div>
+                        <span class="occurrence">@term.EpisodeOccurrences×</span>
+                        <div class="term-actions">
+                            <form method="post"
+                                  asp-page-handler="Learning"
+                                  asp-route-id="@Model.EpisodeId">
+                                <input type="hidden" name="termId" value="@term.TermId" />
+                                <button class="chip @(term.State == UserTermState.Learning ? "selected" : "")"
+                                        type="submit">Learn</button>
+                            </form>
+                            <form method="post"
+                                  asp-page-handler="Known"
+                                  asp-route-id="@Model.EpisodeId">
+                                <input type="hidden" name="termId" value="@term.TermId" />
+                                <button class="chip @(term.State == UserTermState.Known ? "selected" : "")"
+                                        type="submit">Known</button>
+                            </form>
+                        </div>
+                    </div>
+                }
             </div>
         }
-    </div>
+    }
 }

@@ -4,6 +4,7 @@ using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Metadata;
 using AniLingo.Web.Features.Operations;
+using AniLingo.Web.Features.Progress;
 using AniLingo.Web.Features.Tracking;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -15,7 +16,8 @@ public sealed class AnimeModel(
     AppDbContext db,
     AnimeMetadataService metadataService,
     CurrentAccountContext currentAccount,
-    OperationRunner operations) : PageModel
+    OperationRunner operations,
+    EpisodeProgressService episodeProgressService) : PageModel
 {
     public Guid AnimeId { get; private set; }
     public string AnimeTitle { get; private set; } = "";
@@ -32,6 +34,7 @@ public sealed class AnimeModel(
     public int SuggestedMappingSeason { get; private set; }
     public int SuggestedMappingEpisodeStart { get; private set; } = 1;
     public bool IsOwner => currentAccount.IsOwner;
+    public bool ShowContentMetrics { get; private set; }
 
     public async Task<IActionResult> OnGetAsync(
         Guid id,
@@ -58,6 +61,15 @@ public sealed class AnimeModel(
             id,
             Metadata?.BannerImageUrl);
         SearchQuery = string.IsNullOrWhiteSpace(q) ? anime.Title : q.Trim();
+
+        var learning = await new LearningConfigurationStore(db).ResolveAsync(
+            currentAccount.ProfileId,
+            new LearningScopeContext(
+                LearningMediaType.Anime,
+                WorkKey: id.ToString()),
+            cancellationToken);
+        ShowContentMetrics =
+            learning.IsEnabled(LearningCapability.ContentMetrics);
 
         if (TempData.TryGetValue("MetadataError", out var metadataError))
         {
@@ -139,7 +151,7 @@ public sealed class AnimeModel(
         var episodeIds = episodeRows.Select(x => x.Id).ToArray();
         List<CoverageRow> coverageRows;
 
-        if (episodeIds.Length == 0)
+        if (!ShowContentMetrics || episodeIds.Length == 0)
         {
             coverageRows = [];
         }
@@ -168,10 +180,15 @@ public sealed class AnimeModel(
                     group.Where(x => x.State is UserTermState.Known or UserTermState.Learning)
                         .Sum(x => x.Occurrences)));
 
+        var progressByEpisode = await episodeProgressService.GetForAnimeAsync(
+            id,
+            cancellationToken);
+
         Episodes = episodeRows
             .Select(episode =>
             {
                 var coverage = coverageByEpisode.GetValueOrDefault(episode.Id, Coverage.Empty);
+                var progress = progressByEpisode.GetValueOrDefault(episode.Id);
 
                 return new EpisodeRow(
                     episode.Id,
@@ -181,11 +198,38 @@ public sealed class AnimeModel(
                     coverage.TotalTerms,
                     coverage.TotalOccurrences,
                     coverage.PreparedOccurrences,
-                    episode.JapaneseSubtitleTracks);
+                    episode.JapaneseSubtitleTracks,
+                    progress?.IsCompleted == true,
+                    progress is { IsCompleted: false, ResumePositionMs: > 0 }
+                        ? progress.Percent
+                        : null);
             })
             .ToArray();
 
         return Page();
+    }
+
+    public async Task<IActionResult> OnPostWatchedAsync(
+        Guid id,
+        Guid episodeId,
+        bool watched,
+        CancellationToken cancellationToken)
+    {
+        var belongsToAnime = await db.Episodes
+            .AsNoTracking()
+            .AnyAsync(x => x.Id == episodeId && x.AnimeId == id, cancellationToken);
+
+        if (!belongsToAnime)
+        {
+            return NotFound();
+        }
+
+        await episodeProgressService.SetWatchedAsync(
+            episodeId,
+            watched,
+            cancellationToken);
+
+        return RedirectToPage(new { id });
     }
 
     public async Task<IActionResult> OnPostMatchMetadataAsync(
@@ -397,7 +441,9 @@ public sealed class AnimeModel(
         int TotalTerms,
         int TotalOccurrences,
         int PreparedOccurrences,
-        int JapaneseSubtitleTracks)
+        int JapaneseSubtitleTracks,
+        bool IsWatched,
+        int? ResumePercent)
     {
         public int PreparationPercent => TotalOccurrences == 0
             ? 0
