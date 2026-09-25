@@ -62,9 +62,10 @@ public sealed class DiscoveryMangaHandoffTests
             "12345",
             "Manga title / 日本語");
 
-        StringAssert.StartsWith(
-            url,
-            "/Discover/MangaImport?anilistId=12345");
+        Assert.IsTrue(
+            url.StartsWith(
+                "/Discover/MangaImport?anilistId=12345",
+                StringComparison.Ordinal));
         StringAssert.Contains(url, "title=Manga%20title%20%2F%20");
     }
 
@@ -112,10 +113,12 @@ public sealed class DiscoveryMangaHandoffTests
         StringAssert.Contains(
             coordinator,
             "new MangaRepository(db).GetAniListMatchesAsync");
-        Assert.IsFalse(
-            coordinator.Contains(
-                "item.Category == \"manga\" || item.Category == \"light-novel\"",
-                StringComparison.Ordinal));
+        StringAssert.Contains(
+            coordinator,
+            "item.Category == \"light-novel\" &&");
+        StringAssert.Contains(
+            coordinator,
+            "item.Category == \"manga\" &&");
     }
 
     [TestMethod]
