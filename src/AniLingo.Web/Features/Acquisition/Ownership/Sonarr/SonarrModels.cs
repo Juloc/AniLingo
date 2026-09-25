@@ -1,3 +1,5 @@
+using AniLingo.Web.Features.Acquisition.Ownership;
+
 namespace AniLingo.Web.Features.Acquisition.Ownership.Sonarr;
 
 public sealed record SonarrSettings(string BaseUrl);
