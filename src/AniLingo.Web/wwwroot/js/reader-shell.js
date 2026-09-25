@@ -298,6 +298,11 @@
             workspace.append(tabs, panels.reading, panels.text, panels.appearance, panels.defaults);
             settingsForm.prepend(workspace);
 
+            const heading = settingsForm.querySelector(".reader-settings-heading");
+            if (heading) {
+                workspace.before(heading);
+            }
+
             const moved = new Set();
             const controls = Array.from(settingsForm.querySelectorAll(
                 "[data-reader-setting],[data-book-setting]"));
@@ -517,7 +522,7 @@
                 });
             addProxy(
                 "Notizen",
-                "[data-reader-notes-toggle],[data-book-drawer-open]");
+                "[data-reader-notes-toggle]");
 
             if (nav.childElementCount) root.append(nav);
         };
