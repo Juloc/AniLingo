@@ -1,42 +1,42 @@
 @page
 @model AniLingo.Web.Pages.Account.LoginModel
 @{
-    ViewData["Title"] = "Sign in";
+    var ui = Model.Ui;
+    ViewData["Title"] = ui["account.login.title"];
 }
 
 <section class="auth-card">
     <div class="auth-brand">
-        <span class="brand-mark">A</span>
-        <span>AniLingo</span>
+        <partial name="_AppBrandMark" />
     </div>
 
-    <span class="eyebrow">Local account</span>
-    <h1>Sign in</h1>
-    <p>Use your AniLingo account to sign in.</p>
+    <span class="eyebrow">@ui["account.login.eyebrow"]</span>
+    <h1>@ui["account.login.title"]</h1>
+    <p>@ui["account.login.description"]</p>
 
     <form method="post" class="form-stack">
         <div asp-validation-summary="ModelOnly" class="validation"></div>
         <input asp-for="ReturnUrl" type="hidden" />
 
         <label asp-for="UserName">
-            User name
+            @ui["account.field.userName"]
             <input asp-for="UserName" autocomplete="username" autofocus />
         </label>
         <span asp-validation-for="UserName" class="validation"></span>
 
         <label asp-for="Password">
-            Password
+            @ui["account.field.password"]
             <input asp-for="Password" type="password" autocomplete="current-password" />
         </label>
         <span asp-validation-for="Password" class="validation"></span>
 
         <label class="checkbox-row">
             <input asp-for="RememberMe" />
-            <span>Keep me signed in</span>
+            <span>@ui["account.login.remember"]</span>
         </label>
 
-        <button class="button button-primary" type="submit">Sign in</button>
+        <button class="button button-primary" type="submit">@ui["account.login.submit"]</button>
     </form>
 
-    <p><a asp-page="/Account/Register">Request an account</a></p>
+    <p><a asp-page="/Account/Register">@ui["account.login.requestAccount"]</a></p>
 </section>
