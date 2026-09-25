@@ -726,7 +726,7 @@ public sealed class AnimeMetadataService(
             .Where(x => x.AnimeId == animeId)
             .ExecuteDeleteAsync(cancellationToken);
 
-    private Task SaveIdentityReviewAsync(
+    private async Task SaveIdentityReviewAsync(
         Guid animeId,
         string localTitle,
         AutomaticMediaMatchDecision decision,
@@ -734,14 +734,14 @@ public sealed class AnimeMetadataService(
     {
         if (decision.Candidate is null)
         {
-            return Task.CompletedTask;
+            return;
         }
 
         var reason = decision.Disposition == AutomaticMediaMatchDisposition.Review
             ? $"AniList identity needs review: score {decision.Score}, runner-up {decision.RunnerUpScore}."
             : $"AniList identity confidence is too low for automatic matching: score {decision.Score}.";
 
-        return reviewStore.UpsertAsync(
+        await reviewStore.UpsertAsync(
             "anime",
             animeId.ToString(),
             localTitle,
