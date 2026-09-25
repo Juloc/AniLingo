@@ -33,7 +33,7 @@
 
         <label>
             <span>@Model.Ui["settings.ai.model"]</span>
-            <input asp-for="ModelName" autocomplete="off" placeholder="gpt-5-mini" />
+            <input asp-for="ModelName" autocomplete="off" placeholder="model-name" />
         </label>
 
         <label>
@@ -74,7 +74,7 @@
         <div class="panel-heading">
             <h2>@Model.Ui["settings.ai.server"]</h2>
         </div>
-        <p class="muted">The Owner manages the shared Codex CLI connection separately.</p>
-        <a class="button" asp-page="/Admin/Ai">Open server AI</a>
+        <p class="muted">@Model.Ui["settings.ai.serverDescription"]</p>
+        <a class="button" asp-page="/Admin/Ai">@Model.Ui["settings.ai.serverManage"]</a>
     </section>
 }
