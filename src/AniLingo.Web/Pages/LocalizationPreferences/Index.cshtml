@@ -1,0 +1,55 @@
+@page "/Settings/Language"
+@model AniLingo.Web.Pages.LocalizationPreferences.IndexModel
+@{
+    ViewData["Title"] = Model.Ui["settings.language.title"];
+}
+
+<header class="page-header">
+    <div>
+        <a class="back-link" href="/Settings">← Settings</a>
+        <span class="eyebrow">Localization</span>
+        <h1>@Model.Ui["settings.language.title"]</h1>
+        <p>@Model.Ui["settings.language.description"]</p>
+    </div>
+</header>
+
+<div asp-validation-summary="ModelOnly" class="validation"></div>
+
+<section class="settings-grid">
+    @foreach (var locale in Model.Locales)
+    {
+        <article class="panel">
+            <div class="panel-heading">
+                <div>
+                    <strong lang="@locale.Locale">@locale.NativeName</strong>
+                    <small>@locale.EnglishName · @locale.Locale · @locale.Direction</small>
+                </div>
+                @if (locale.Locale.Equals(Model.CurrentLocale, StringComparison.OrdinalIgnoreCase))
+                {
+                    <span class="status-pill status-ok">Current</span>
+                }
+                else
+                {
+                    <span class="status-pill">@locale.CoveragePercent%</span>
+                }
+            </div>
+
+            @if (!locale.IsSource)
+            {
+                <p class="muted">
+                    @locale.Ready / @locale.Total resources ready.
+                    Missing text falls back to English.
+                </p>
+            }
+
+            <form method="post">
+                <input type="hidden" name="locale" value="@locale.Locale" />
+                <button class="button @(locale.Locale.Equals(Model.CurrentLocale, StringComparison.OrdinalIgnoreCase) ? "" : "button-primary")"
+                        type="submit"
+                        disabled="@locale.Locale.Equals(Model.CurrentLocale, StringComparison.OrdinalIgnoreCase)">
+                    @Model.Ui["settings.language.save"]
+                </button>
+            </form>
+        </article>
+    }
+</section>

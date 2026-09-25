@@ -4,16 +4,16 @@
 @using AniLingo.Web.Features.Learning
 @model AniLingo.Web.Pages.Learn.IndexModel
 @{
-    ViewData["Title"] = "Learn";
+    ViewData["Title"] = Model.Ui["learn.title"];
     var current = Model.Current;
     var context = current?.Context;
 }
 
 <header class="page-header">
     <div>
-        <span class="eyebrow">Review</span>
-        <h1>Learn</h1>
-        <p>@Model.Session.Count due now.</p>
+        <span class="eyebrow">@Model.Ui["learn.eyebrow"]</span>
+        <h1>@Model.Ui["learn.title"]</h1>
+        <p>@Model.Ui.Format("learn.dueNow", ("count", Model.Session.Count))</p>
     </div>
 </header>
 
@@ -21,9 +21,9 @@
 {
     <div class="empty-state centered">
         <div class="empty-symbol">✓</div>
-        <h3>Nothing due</h3>
-        <p>Add terms from an episode or return later.</p>
-        <a class="button" href="/Library">Open library</a>
+        <h3>@Model.Ui["learn.empty.title"]</h3>
+        <p>@Model.Ui["learn.empty.body"]</p>
+        <a class="button" href="/Library">@Model.Ui["learn.openLibrary"]</a>
     </div>
 }
 else
@@ -33,25 +33,25 @@ else
              data-profile-id="@Model.ProfileId"
              data-sync-url="@Url.Page("/Learn/Index", "SyncOfflineReviews")">
         <div class="review-card">
-            <span class="review-counter">@Model.Session.Count due</span>
+            <span class="review-counter">@Model.Ui.Format("learn.dueNow", ("count", Model.Session.Count))</span>
             <div class="review-term" lang="ja">@current.Canonical</div>
             <div class="review-reading" lang="ja" hidden="@(string.IsNullOrWhiteSpace(current.Reading) ? "hidden" : null)">
                 @current.Reading
             </div>
 
             <details class="review-details" data-review-details>
-                <summary class="button review-reveal" data-review-reveal>Show answer</summary>
+                <summary class="button review-reveal" data-review-reveal>@Model.Ui["learn.showAnswer"]</summary>
 
                 <div class="review-answer">
                     @(string.IsNullOrWhiteSpace(current.Meaning)
-                        ? "No local dictionary meaning available."
+                        ? Model.Ui["learn.noMeaning"]
                         : current.Meaning)
                 </div>
 
                 <div class="panel review-context"
                      data-review-context
                      hidden="@(context is null ? "hidden" : null)">
-                    <span class="eyebrow">Anime context</span>
+                    <span class="eyebrow">@Model.Ui["learn.animeContext"]</span>
                     <p lang="ja" data-review-sentence>@context?.Sentence</p>
 
                     <div data-review-enrichment hidden="@(context is null)">
@@ -82,7 +82,7 @@ else
                         {
                             <form method="post" asp-page-handler="Explain">
                                 <input type="hidden" name="termId" value="@current.TermId" />
-                                <button class="button" type="submit">Explain with AI</button>
+                                <button class="button" type="submit">@Model.Ui["learn.explainAi"]</button>
                             </form>
                         }
                     </div>
@@ -106,16 +106,16 @@ else
                       data-review-form>
                     <input type="hidden" name="termId" value="@current.TermId" data-review-term-id />
                     <button name="rating" value="Again" class="review-button" data-review-rating="Again">
-                        <strong>Again</strong><span>@current.Intervals.GetValueOrDefault(ReviewRating.Again, "—")</span>
+                        <strong>@Model.Ui["learn.rating.again"]</strong><span>@current.Intervals.GetValueOrDefault(ReviewRating.Again, "—")</span>
                     </button>
                     <button name="rating" value="Hard" class="review-button" data-review-rating="Hard">
-                        <strong>Hard</strong><span>@current.Intervals.GetValueOrDefault(ReviewRating.Hard, "—")</span>
+                        <strong>@Model.Ui["learn.rating.hard"]</strong><span>@current.Intervals.GetValueOrDefault(ReviewRating.Hard, "—")</span>
                     </button>
                     <button name="rating" value="Good" class="review-button primary" data-review-rating="Good">
-                        <strong>Good</strong><span>@current.Intervals.GetValueOrDefault(ReviewRating.Good, "—")</span>
+                        <strong>@Model.Ui["learn.rating.good"]</strong><span>@current.Intervals.GetValueOrDefault(ReviewRating.Good, "—")</span>
                     </button>
                     <button name="rating" value="Easy" class="review-button" data-review-rating="Easy">
-                        <strong>Easy</strong><span>@current.Intervals.GetValueOrDefault(ReviewRating.Easy, "—")</span>
+                        <strong>@Model.Ui["learn.rating.easy"]</strong><span>@current.Intervals.GetValueOrDefault(ReviewRating.Easy, "—")</span>
                     </button>
                 </form>
             </details>

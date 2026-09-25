@@ -2,6 +2,7 @@ using AniLingo.Web.Data;
 using AniLingo.Web.Features.Artwork;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Learning;
+using AniLingo.Web.Features.Localization;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
 
@@ -13,9 +14,14 @@ public sealed class IndexModel(AppDbContext db, CurrentAccountContext currentAcc
     public int AnimeCount { get; private set; }
     public int EpisodeCount { get; private set; }
     public IReadOnlyList<HomeEpisode> RecentEpisodes { get; private set; } = [];
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
 
     public async Task OnGetAsync(CancellationToken cancellationToken)
     {
+        Ui = await new UiTranslationCatalogStore(db).LoadProfileBundleAsync(
+            currentAccount.ProfileId,
+            cancellationToken);
+
         var now = DateTime.UtcNow;
 
         DueReviews = await db.UserTerms.AsNoTracking().CountAsync(

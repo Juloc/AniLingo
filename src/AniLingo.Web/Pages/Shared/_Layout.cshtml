@@ -1,11 +1,27 @@
+@using AniLingo.Web.Data
+@using AniLingo.Web.Features.Auth
+@using AniLingo.Web.Features.Localization
+@inject AppDbContext LocalizationDb
+@inject CurrentAccountContext LocalizationAccount
 @{
     var isAuthenticated = User.Identity?.IsAuthenticated == true;
     var profileId = isAuthenticated
         ? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
         : null;
+    var uiLocale = UiTranslationCatalog.SourceLocale;
+    var uiDirection = "ltr";
+    if (isAuthenticated && !string.IsNullOrWhiteSpace(profileId))
+    {
+        var localizationStore = new UiTranslationCatalogStore(LocalizationDb);
+        var locale = await localizationStore.GetProfileLocaleAsync(
+            profileId,
+            Context.RequestAborted);
+        uiLocale = locale.Locale;
+        uiDirection = locale.Direction;
+    }
 }
 <!DOCTYPE html>
-<html lang="en">
+<html lang="@uiLocale" dir="@uiDirection">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
