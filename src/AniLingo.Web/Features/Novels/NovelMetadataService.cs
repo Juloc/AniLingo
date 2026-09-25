@@ -8,7 +8,8 @@ namespace AniLingo.Web.Features.Novels;
 public sealed class NovelMetadataService(
     AppDbContext db,
     IEnumerable<INovelMetadataProvider> providers,
-    MediaMappingReviewStore reviewStore)
+    MediaMappingReviewStore reviewStore,
+    ReadingSegmentMappingStore segmentMappings)
 {
     public async Task<IReadOnlyList<NovelMetadataCandidate>> SearchAsync(
         string providerKey,
@@ -49,12 +50,24 @@ public sealed class NovelMetadataService(
         if (!string.IsNullOrWhiteSpace(work.MetadataProvider) &&
             !string.IsNullOrWhiteSpace(work.MetadataExternalId))
         {
+            if (string.Equals(
+                    work.MetadataProvider,
+                    NovelAniListProvider.ProviderKey,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                await AutoMapSegmentsAsync(
+                    workId,
+                    work.MetadataExternalId,
+                    work.Title,
+                    cancellationToken);
+            }
+
             return new AutomaticMediaMatchDecision(
                 AutomaticMediaMatchDisposition.None,
                 null,
                 0,
                 0,
-                ["Novel already has an explicit metadata match."]);
+                ["Novel already has an explicit metadata match; reading segments were reconciled."]);
         }
 
         var provider = GetProvider(NovelAniListProvider.ProviderKey);
@@ -189,6 +202,203 @@ public sealed class NovelMetadataService(
             "novel",
             workId.ToString(),
             "identity",
+            cancellationToken);
+
+        if (string.Equals(
+                candidate.Provider,
+                NovelAniListProvider.ProviderKey,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            await AutoMapSegmentsAsync(
+                workId,
+                candidate.ExternalId,
+                work.Title,
+                cancellationToken);
+        }
+    }
+
+    private async Task AutoMapSegmentsAsync(
+        Guid workId,
+        string externalId,
+        string localTitle,
+        CancellationToken cancellationToken)
+    {
+        if (await segmentMappings.HasManualMappingsAsync(
+                "novel",
+                workId.ToString(),
+                cancellationToken))
+        {
+            await reviewStore.ResolveAsync(
+                "novel",
+                workId.ToString(),
+                "reading-segments",
+                cancellationToken);
+            return;
+        }
+
+        var aniListProvider = providers
+            .OfType<NovelAniListProvider>()
+            .FirstOrDefault();
+
+        if (aniListProvider is null)
+        {
+            return;
+        }
+
+        LinearRelationSequenceResult<NovelMetadataCandidate> sequence;
+        try
+        {
+            sequence = await aniListProvider.GetLinearSequenceAsync(
+                externalId,
+                cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (NovelMetadataProviderException exception)
+        {
+            await reviewStore.UpsertAsync(
+                "novel",
+                workId.ToString(),
+                localTitle,
+                "reading-segments",
+                $"Automatic AniList segment reconciliation could not run: {exception.Message}",
+                [],
+                cancellationToken);
+            return;
+        }
+
+        if (!sequence.IsUnambiguous)
+        {
+            await segmentMappings.ClearAutomaticAsync(
+                "novel",
+                workId.ToString(),
+                cancellationToken);
+            await SaveSegmentReviewAsync(
+                workId,
+                localTitle,
+                sequence.Reason,
+                sequence.Entries,
+                cancellationToken);
+            return;
+        }
+
+        var chapters = await db.NovelChapters
+            .AsNoTracking()
+            .Where(chapter => chapter.WorkId == workId)
+            .OrderBy(chapter => chapter.Number)
+            .Select(chapter => new LocalReadingChapter(
+                chapter.Number))
+            .ToListAsync(cancellationToken);
+
+        var plan = AutomaticReadingSegmentPlanner.Plan(
+            chapters,
+            sequence.Entries.Select(candidate => new RemoteReadingPart(
+                candidate.Provider,
+                candidate.ExternalId,
+                candidate.PreferredTitle,
+                candidate.ChapterCount ?? 0,
+                candidate.VolumeCount)).ToArray(),
+            externalId);
+
+        if (plan.NoMappingRequired)
+        {
+            await segmentMappings.ClearAutomaticAsync(
+                "novel",
+                workId.ToString(),
+                cancellationToken);
+            await reviewStore.ResolveAsync(
+                "novel",
+                workId.ToString(),
+                "reading-segments",
+                cancellationToken);
+            return;
+        }
+
+        if (!plan.CanApply)
+        {
+            await segmentMappings.ClearAutomaticAsync(
+                "novel",
+                workId.ToString(),
+                cancellationToken);
+            await SaveSegmentReviewAsync(
+                workId,
+                localTitle,
+                plan.Reason,
+                sequence.Entries,
+                cancellationToken);
+            return;
+        }
+
+        var mappings = plan.Segments
+            .Select(segment => new ReadingMediaSegmentMapping(
+                Guid.NewGuid(),
+                "novel",
+                workId.ToString(),
+                segment.LocalChapterStart,
+                segment.LocalChapterEnd,
+                segment.RemoteChapterStart,
+                segment.RemotePart.Provider,
+                segment.RemotePart.ExternalId,
+                segment.RemotePart.Title,
+                segment.RemotePart.ChapterCount,
+                null,
+                null,
+                null,
+                DateTimeOffset.UtcNow)
+            {
+                Source = "automatic"
+            })
+            .ToArray();
+
+        var applied = await segmentMappings.ReplaceAutomaticAsync(
+            "novel",
+            workId.ToString(),
+            mappings,
+            cancellationToken);
+
+        if (applied)
+        {
+            await reviewStore.ResolveAsync(
+                "novel",
+                workId.ToString(),
+                "reading-segments",
+                cancellationToken);
+        }
+        else
+        {
+            // A manual segment set is authoritative and intentionally survives
+            // import refreshes and automatic reconciliation.
+            await reviewStore.ResolveAsync(
+                "novel",
+                workId.ToString(),
+                "reading-segments",
+                cancellationToken);
+        }
+    }
+
+    private async Task SaveSegmentReviewAsync(
+        Guid workId,
+        string localTitle,
+        string reason,
+        IReadOnlyList<NovelMetadataCandidate> candidates,
+        CancellationToken cancellationToken)
+    {
+        await reviewStore.UpsertAsync(
+            "novel",
+            workId.ToString(),
+            localTitle,
+            "reading-segments",
+            reason,
+            candidates.Select(candidate => new MediaMappingReviewCandidate(
+                candidate.Provider,
+                candidate.ExternalId,
+                candidate.PreferredTitle,
+                0,
+                ["AniList PREQUEL/SEQUEL structure"],
+                candidate.Format,
+                UnitCount: candidate.ChapterCount)).ToArray(),
             cancellationToken);
     }
 

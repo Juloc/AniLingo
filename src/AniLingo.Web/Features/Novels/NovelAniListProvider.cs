@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using AniLingo.Web.Features.MediaMapping;
 
 namespace AniLingo.Web.Features.Novels;
 
@@ -109,6 +110,41 @@ public sealed partial class NovelAniListProvider(
             chapters
             volumes
             isAdult
+          }
+        }
+        """;
+
+    private const string SequenceQuery = """
+        query ($id: Int!) {
+          Media(id: $id, type: MANGA) {
+            id
+            title { romaji english native }
+            description(asHtml: false)
+            coverImage { extraLarge large }
+            bannerImage
+            format
+            status
+            chapters
+            volumes
+            isAdult
+            relations {
+              edges {
+                relationType
+                node {
+                  id
+                  type
+                  title { romaji english native }
+                  description(asHtml: false)
+                  coverImage { extraLarge large }
+                  bannerImage
+                  format
+                  status
+                  chapters
+                  volumes
+                  isAdult
+                }
+              }
+            }
           }
         }
         """;
@@ -228,6 +264,94 @@ public sealed partial class NovelAniListProvider(
         }
 
         return ParseMedia(media);
+    }
+
+    public Task<LinearRelationSequenceResult<NovelMetadataCandidate>> GetLinearSequenceAsync(
+        string externalId,
+        CancellationToken cancellationToken)
+    {
+        if (!int.TryParse(externalId, out var id) || id <= 0)
+        {
+            return Task.FromResult(
+                new LinearRelationSequenceResult<NovelMetadataCandidate>(
+                    [],
+                    false,
+                    "AniList novel ID is invalid."));
+        }
+
+        return LinearRelationSequence.ResolveAsync(
+            id.ToString(),
+            LoadSequenceNodeAsync,
+            cancellationToken);
+    }
+
+    private async Task<LinearRelationNode<NovelMetadataCandidate>?> LoadSequenceNodeAsync(
+        string externalId,
+        CancellationToken cancellationToken)
+    {
+        if (!int.TryParse(externalId, out var id) || id <= 0)
+        {
+            return null;
+        }
+
+        var json = await SendAsync(
+            SequenceQuery,
+            new { id },
+            cancellationToken);
+
+        using var document = JsonDocument.Parse(json);
+        if (!document.RootElement.TryGetProperty("data", out var data) ||
+            !data.TryGetProperty("Media", out var media) ||
+            media.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        var candidate = ParseMedia(media);
+        if (candidate is null)
+        {
+            return null;
+        }
+
+        var prequels = new List<string>();
+        var sequels = new List<string>();
+
+        if (media.TryGetProperty("relations", out var relations) &&
+            relations.ValueKind == JsonValueKind.Object &&
+            relations.TryGetProperty("edges", out var edges) &&
+            edges.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var edge in edges.EnumerateArray())
+            {
+                var relationType = ReadString(edge, "relationType");
+                if (relationType is not ("PREQUEL" or "SEQUEL") ||
+                    !edge.TryGetProperty("node", out var node) ||
+                    node.ValueKind != JsonValueKind.Object)
+                {
+                    continue;
+                }
+
+                var related = ParseMedia(node);
+                if (related is null)
+                {
+                    continue;
+                }
+
+                if (relationType == "PREQUEL")
+                {
+                    prequels.Add(related.ExternalId);
+                }
+                else
+                {
+                    sequels.Add(related.ExternalId);
+                }
+            }
+        }
+
+        return new LinearRelationNode<NovelMetadataCandidate>(
+            candidate,
+            prequels.Distinct(StringComparer.Ordinal).ToArray(),
+            sequels.Distinct(StringComparer.Ordinal).ToArray());
     }
 
     private async Task<string> SendAsync(
