@@ -2009,28 +2009,38 @@ public sealed class AniListAccountService(
         AniListRemoteListEntry? RemoteEntry,
         int RequestedProgress,
         AniListReadingProgressPreview Preview,
-        int? RequestedVolumeProgress = null)
+        int? RequestedVolumeProgress = null,
+        AniListExternalProgressStateKind? StateHint = null)
     {
         public static ReadingProgressContext Blocked(
-            AniListReadingProgressPreview preview) =>
+            AniListReadingProgressPreview preview,
+            AniListExternalProgressStateKind stateHint =
+                AniListExternalProgressStateKind.Blocked) =>
             new(
                 null,
                 null,
                 preview.RequestedProgress,
-                preview);
+                preview,
+                preview.RequestedVolumeProgress,
+                stateHint);
     }
 
     private sealed record ProgressContext(
         StoredAniListAccount? Account,
         AniListRemoteListEntry? RemoteEntry,
         int RequestedProgress,
-        AniListProgressPreview Preview)
+        AniListProgressPreview Preview,
+        AniListExternalProgressStateKind? StateHint = null)
     {
-        public static ProgressContext Blocked(AniListProgressPreview preview) =>
+        public static ProgressContext Blocked(
+            AniListProgressPreview preview,
+            AniListExternalProgressStateKind stateHint =
+                AniListExternalProgressStateKind.Blocked) =>
             new(
                 null,
                 null,
                 preview.RequestedProgress,
-                preview);
+                preview,
+                stateHint);
     }
 }
