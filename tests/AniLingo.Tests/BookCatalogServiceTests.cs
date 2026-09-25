@@ -495,6 +495,108 @@ public sealed class BookCatalogServiceTests
     }
 
     [TestMethod]
+    public async Task BookManagementClearsTranslationsAndDeleteCascadesCanonicalState()
+    {
+        var path = TempDatabasePath();
+
+        try
+        {
+            await using var db = await CreateDatabaseAsync(path);
+            using var client = new HttpClient(new DelegateHttpMessageHandler(
+                _ => throw new AssertFailedException("Book management should not use HTTP.")))
+            {
+                BaseAddress = new Uri("https://gutendex.com/")
+            };
+
+            var translator = new FakeBookTranslator();
+            var service = NewService(
+                db,
+                client,
+                translator);
+
+            await using var epub = BuildTestEpub();
+            var workId = await service.ImportUploadedEpubAsync(
+                epub,
+                "managed.epub",
+                CancellationToken.None);
+
+            var chapterId = await db.NovelChapters
+                .Where(x => x.WorkId == workId)
+                .OrderBy(x => x.Number)
+                .Select(x => x.Id)
+                .FirstAsync();
+
+            await service.TranslateChapterAsync(
+                chapterId,
+                "id",
+                CancellationToken.None);
+
+            await service.SaveProgressAsync(
+                "profile-1",
+                workId,
+                chapterId,
+                420,
+                "translation",
+                CancellationToken.None);
+
+            await service.AddBookmarkAsync(
+                "profile-1",
+                workId,
+                chapterId,
+                500,
+                "translation",
+                CancellationToken.None);
+
+            var removedTranslations =
+                await service.ClearBookTranslationsAsync(
+                    workId,
+                    "id",
+                    CancellationToken.None);
+
+            Assert.AreEqual(1, removedTranslations);
+            Assert.AreEqual(
+                0,
+                await db.NovelTranslations.CountAsync());
+            Assert.AreEqual(
+                1,
+                await db.NovelProgress.CountAsync());
+            Assert.AreEqual(
+                1,
+                await db.NovelBookmarks.CountAsync());
+
+            await service.TranslateChapterAsync(
+                chapterId,
+                "id",
+                CancellationToken.None);
+
+            await service.DeleteImportedBookAsync(
+                workId,
+                CancellationToken.None);
+
+            Assert.AreEqual(
+                0,
+                await db.NovelWorks.CountAsync());
+            Assert.AreEqual(
+                0,
+                await db.NovelChapters.CountAsync());
+            Assert.AreEqual(
+                0,
+                await db.NovelTranslations.CountAsync());
+            Assert.AreEqual(
+                0,
+                await db.NovelProgress.CountAsync());
+            Assert.AreEqual(
+                0,
+                await db.NovelBookmarks.CountAsync());
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            File.Delete(path);
+        }
+    }
+
+    [TestMethod]
     public async Task IntegrationSettingsPersistWithoutExposingDefaults()
     {
         var directory = Path.Combine(

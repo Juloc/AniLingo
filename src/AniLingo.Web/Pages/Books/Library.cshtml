@@ -107,6 +107,40 @@
     </div>
 </header>
 
+@if (Model.IsOwner)
+{
+    <details class="book-library-management">
+        <summary>Manage book</summary>
+        <div class="book-library-management-actions">
+            @if (!Model.SourceIsTarget)
+            {
+                <form method="post"
+                      asp-page-handler="Regenerate"
+                      asp-route-id="@Model.Book.Work.Id"
+                      onsubmit="return confirm('Regenerate the @AniLingo.Web.Features.Books.BookLanguageCatalog.GetName(Model.TargetLanguage) translation for this book? Existing cached translation text in this language will be replaced.');">
+                    <input type="hidden" name="lang" value="@Model.TargetLanguage" />
+                    <button class="button" type="submit">
+                        Regenerate @AniLingo.Web.Features.Books.BookLanguageCatalog.GetName(Model.TargetLanguage)
+                    </button>
+                </form>
+            }
+
+            <form method="post"
+                  asp-page-handler="Delete"
+                  asp-route-id="@Model.Book.Work.Id"
+                  onsubmit="return confirm('Remove this book from AniLingo? Reading progress, bookmarks and cached translations for this imported book will be removed. External source/download files will not be deleted.');">
+                <button class="button book-danger-button" type="submit">
+                    Remove from AniLingo
+                </button>
+            </form>
+        </div>
+        <p>
+            Removing a book only deletes AniLingo's imported library state.
+            The original EPUB or download outside AniLingo is left untouched.
+        </p>
+    </details>
+}
+
 <section class="book-chapter-list">
     <div class="books-results-heading">
         <strong>Chapters</strong>
