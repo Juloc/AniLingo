@@ -112,9 +112,16 @@ public sealed class SeriesModel(
                     cancellationToken: token);
 
                 var importer = new MangaImportService(repository);
-                return await importer.ImportAsync(
+                var imported = await importer.ImportAsync(
                     series.SourcePath,
                     token);
+                var metadata = new MangaAniListService(
+                    repository,
+                    httpClientFactory);
+                await metadata.AutoMatchAsync(
+                    imported.SeriesId,
+                    token);
+                return imported;
             },
             "Manga source refreshed.",
             cancellationToken);

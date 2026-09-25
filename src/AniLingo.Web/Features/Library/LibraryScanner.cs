@@ -1,5 +1,6 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Artwork;
+using AniLingo.Web.Features.Metadata;
 using AniLingo.Web.Features.Sonarr;
 using AniLingo.Web.Features.Subtitles;
 using Microsoft.EntityFrameworkCore;
@@ -11,7 +12,8 @@ public sealed class LibraryScanner(
     SubtitleImportService subtitleImport,
     EmbeddedSubtitleExtractor embeddedSubtitleExtractor,
     SonarrArtworkSyncService sonarrArtworkSync,
-    ILogger<LibraryScanner> logger)
+    ILogger<LibraryScanner> logger,
+    AnimeMetadataService? metadataService = null)
 {
     private static readonly HashSet<string> MediaExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -80,6 +82,7 @@ public sealed class LibraryScanner(
         var skipped = 0;
         var subtitleCandidates = new List<SubtitleCandidate>();
         var artworkDirectories = new Dictionary<Guid, string>();
+        var newlyDiscoveredAnimeIds = new HashSet<Guid>();
 
         foreach (var file in candidates)
         {
@@ -97,6 +100,7 @@ public sealed class LibraryScanner(
                 anime = new Anime { Key = descriptor.AnimeKey, Title = descriptor.AnimeTitle };
                 animeByKey.Add(anime.Key, anime);
                 db.Anime.Add(anime);
+                newlyDiscoveredAnimeIds.Add(anime.Id);
             }
 
             var animeDirectory = TryGetAnimeDirectory(rootPath, normalizedPath);
@@ -169,6 +173,48 @@ public sealed class LibraryScanner(
 
         root.LastScannedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(cancellationToken);
+
+        if (metadataService is not null)
+        {
+            foreach (var animeId in newlyDiscoveredAnimeIds)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                try
+                {
+                    var decision = await metadataService.AutoMatchAsync(
+                        animeId,
+                        cancellationToken);
+                    if (decision.CanApply && decision.Candidate is not null)
+                    {
+                        logger.LogInformation(
+                            "Automatically matched anime {AnimeId} to {Provider}:{ExternalId} with score {Score}.",
+                            animeId,
+                            decision.Candidate.Provider,
+                            decision.Candidate.ExternalId,
+                            decision.Score);
+                    }
+
+                    var episodeMapping = await metadataService.AutoMapEpisodeRangesAsync(
+                        animeId,
+                        cancellationToken);
+                    if (episodeMapping.Applied)
+                    {
+                        logger.LogInformation(
+                            "Automatically mapped {RangeCount} AniList episode range(s) for anime {AnimeId}.",
+                            episodeMapping.Mappings.Count,
+                            animeId);
+                    }
+                }
+                catch (Exception exception) when (
+                    exception is MetadataProviderException or InvalidOperationException)
+                {
+                    logger.LogWarning(
+                        exception,
+                        "Automatic metadata matching failed for anime {AnimeId}; the local library scan remains valid.",
+                        animeId);
+                }
+            }
+        }
 
         var removed = staleMediaFiles.Length;
         if (removed > 0)

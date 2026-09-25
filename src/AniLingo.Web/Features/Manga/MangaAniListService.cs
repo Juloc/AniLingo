@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using AniLingo.Web.Features.MediaMapping;
 
 namespace AniLingo.Web.Features.Manga;
 
@@ -21,6 +22,9 @@ public sealed partial class MangaAniListService(
               coverImage { extraLarge large }
               bannerImage
               status
+              chapters
+              volumes
+              startDate { year }
             }
           }
         }
@@ -37,6 +41,9 @@ public sealed partial class MangaAniListService(
             coverImage { extraLarge large }
             bannerImage
             status
+            chapters
+            volumes
+            startDate { year }
           }
         }
         """;
@@ -69,6 +76,115 @@ public sealed partial class MangaAniListService(
             .Where(x => x is not null)
             .Cast<MangaAniListCandidate>()
             .ToArray();
+    }
+
+    public async Task<AutomaticMediaMatchDecision> AutoMatchAsync(
+        Guid seriesId,
+        CancellationToken cancellationToken)
+    {
+        var source = await repository.GetAutoMatchSourceAsync(
+            seriesId,
+            cancellationToken);
+
+        if (source is null)
+        {
+            return new AutomaticMediaMatchDecision(
+                AutomaticMediaMatchDisposition.None,
+                null,
+                0,
+                0,
+                ["Manga series was not found."]);
+        }
+
+        if (!string.IsNullOrWhiteSpace(source.MetadataExternalId))
+        {
+            return new AutomaticMediaMatchDecision(
+                AutomaticMediaMatchDisposition.None,
+                null,
+                0,
+                0,
+                ["Manga already has an explicit metadata match."]);
+        }
+
+        IReadOnlyList<MangaAniListCandidate> candidates;
+        try
+        {
+            candidates = await SearchAsync(source.Title, cancellationToken);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return new AutomaticMediaMatchDecision(
+                AutomaticMediaMatchDisposition.None,
+                null,
+                0,
+                0,
+                ["AniList metadata request timed out."]);
+        }
+        catch (Exception exception) when (
+            exception is InvalidOperationException or
+            HttpRequestException or
+            JsonException)
+        {
+            return new AutomaticMediaMatchDecision(
+                AutomaticMediaMatchDisposition.None,
+                null,
+                0,
+                0,
+                ["AniList metadata is currently unavailable."]);
+        }
+
+        var decision = AutomaticMediaMatcher.Select(
+            new AutomaticMediaMatchInput(
+                source.Title,
+                Format: "MANGA"),
+            candidates.Select(candidate => new AutomaticMediaMatchCandidate(
+                "anilist",
+                candidate.ExternalId,
+                candidate.Title,
+                new[]
+                {
+                    candidate.Title,
+                    candidate.NativeTitle ?? ""
+                },
+                candidate.StartYear,
+                candidate.ChapterCount,
+                candidate.Format)));
+
+        if (decision.CanApply && decision.Candidate is not null)
+        {
+            try
+            {
+                await MatchAsync(
+                    seriesId,
+                    decision.Candidate.ExternalId,
+                    cancellationToken);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                return decision with
+                {
+                    Disposition = AutomaticMediaMatchDisposition.Review,
+                    Evidence = decision.Evidence
+                        .Append("AniList metadata request timed out before the automatic match could be persisted.")
+                        .ToArray()
+                };
+            }
+            catch (Exception exception) when (
+                exception is InvalidOperationException or
+                HttpRequestException or
+                JsonException)
+            {
+                return decision with
+                {
+                    Disposition = AutomaticMediaMatchDisposition.Review,
+                    Evidence = decision.Evidence
+                        .Append(exception.Message)
+                        .ToArray()
+                };
+            }
+        }
+
+        return decision;
     }
 
     public async Task MatchAsync(
@@ -179,6 +295,13 @@ public sealed partial class MangaAniListService(
                 ReadString(coverElement, "large"));
         }
 
+        int? startYear = null;
+        if (media.TryGetProperty("startDate", out var startDate) &&
+            startDate.ValueKind == JsonValueKind.Object)
+        {
+            startYear = ReadInt(startDate, "year");
+        }
+
         return new MangaAniListCandidate(
             id.ToString(),
             preferred,
@@ -186,7 +309,11 @@ public sealed partial class MangaAniListService(
             NormalizeDescription(ReadString(media, "description")),
             cover,
             ReadString(media, "bannerImage"),
-            ReadString(media, "status"));
+            ReadString(media, "status"),
+            format,
+            ReadInt(media, "chapters"),
+            ReadInt(media, "volumes"),
+            startYear);
     }
 
     private static string? NormalizeDescription(string? value)
@@ -200,6 +327,14 @@ public sealed partial class MangaAniListService(
         var normalized = Whitespace().Replace(decoded, " ").Trim();
         return normalized.Length == 0 ? null : normalized;
     }
+
+    private static int? ReadInt(JsonElement element, string property) =>
+        element.ValueKind == JsonValueKind.Object &&
+        element.TryGetProperty(property, out var value) &&
+        value.ValueKind == JsonValueKind.Number &&
+        value.TryGetInt32(out var number)
+            ? number
+            : null;
 
     private static string? ReadString(JsonElement element, string property)
     {

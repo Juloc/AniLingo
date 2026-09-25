@@ -1,5 +1,6 @@
 using System.Text.Json;
 using AniLingo.Web.Data;
+using AniLingo.Web.Features.MediaMapping;
 using Microsoft.EntityFrameworkCore;
 
 namespace AniLingo.Web.Features.Novels;
@@ -16,6 +17,104 @@ public sealed class NovelMetadataService(
     {
         var provider = GetProvider(providerKey);
         return await provider.SearchAsync(query, limit, cancellationToken);
+    }
+
+    public async Task<AutomaticMediaMatchDecision> AutoMatchAsync(
+        Guid workId,
+        CancellationToken cancellationToken)
+    {
+        var work = await db.NovelWorks
+            .AsNoTracking()
+            .Where(x => x.Id == workId)
+            .Select(x => new
+            {
+                x.Title,
+                x.MetadataProvider,
+                x.MetadataExternalId,
+                ChapterCount = db.NovelChapters.Count(chapter => chapter.WorkId == x.Id)
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (work is null)
+        {
+            return new AutomaticMediaMatchDecision(
+                AutomaticMediaMatchDisposition.None,
+                null,
+                0,
+                0,
+                ["Novel work was not found."]);
+        }
+
+        if (!string.IsNullOrWhiteSpace(work.MetadataProvider) &&
+            !string.IsNullOrWhiteSpace(work.MetadataExternalId))
+        {
+            return new AutomaticMediaMatchDecision(
+                AutomaticMediaMatchDisposition.None,
+                null,
+                0,
+                0,
+                ["Novel already has an explicit metadata match."]);
+        }
+
+        var provider = GetProvider(NovelAniListProvider.ProviderKey);
+        IReadOnlyList<NovelMetadataCandidate> candidates;
+        try
+        {
+            candidates = await provider.SearchAsync(
+                work.Title,
+                8,
+                cancellationToken);
+        }
+        catch (NovelMetadataProviderException)
+        {
+            return new AutomaticMediaMatchDecision(
+                AutomaticMediaMatchDisposition.None,
+                null,
+                0,
+                0,
+                ["AniList metadata is currently unavailable."]);
+        }
+
+        var decision = AutomaticMediaMatcher.Select(
+            new AutomaticMediaMatchInput(
+                work.Title,
+                UnitCount: work.ChapterCount > 0 ? work.ChapterCount : null,
+                Format: "LIGHT_NOVEL"),
+            candidates.Select(candidate => new AutomaticMediaMatchCandidate(
+                candidate.Provider,
+                candidate.ExternalId,
+                candidate.PreferredTitle,
+                new[]
+                {
+                    candidate.PreferredTitle,
+                    candidate.NativeTitle ?? ""
+                },
+                UnitCount: candidate.ChapterCount,
+                Format: candidate.Format)));
+
+        if (decision.CanApply && decision.Candidate is not null)
+        {
+            try
+            {
+                await MatchAsync(
+                    workId,
+                    decision.Candidate.Provider,
+                    decision.Candidate.ExternalId,
+                    cancellationToken);
+            }
+            catch (InvalidOperationException exception)
+            {
+                return decision with
+                {
+                    Disposition = AutomaticMediaMatchDisposition.Review,
+                    Evidence = decision.Evidence
+                        .Append(exception.Message)
+                        .ToArray()
+                };
+            }
+        }
+
+        return decision;
     }
 
     public async Task MatchAsync(

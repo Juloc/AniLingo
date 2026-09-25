@@ -79,7 +79,24 @@ public sealed record MangaAniListCandidate(
     string? Description,
     string? CoverImageUrl,
     string? BannerImageUrl,
-    string? Status);
+    string? Status,
+    string? Format = null,
+    int? ChapterCount = null,
+    int? VolumeCount = null,
+    int? StartYear = null);
+
+public sealed record MangaAutoMatchSource(
+    Guid SeriesId,
+    string Title,
+    string? MetadataExternalId);
+
+public sealed record MangaAniListProgressContext(
+    Guid SeriesId,
+    string Title,
+    string? MetadataExternalId,
+    double ChapterNumber,
+    int PageIndex,
+    int PageCount);
 
 public sealed record MangaImportResult(
     Guid SeriesId,

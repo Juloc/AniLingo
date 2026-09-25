@@ -75,6 +75,35 @@ public sealed class AniListMetadataProvider(
         }
         """;
 
+    private const string SequenceQuery = """
+        query ($id: Int!) {
+          Media(id: $id, type: ANIME) {
+            id
+            title { romaji english native }
+            description(asHtml: false)
+            coverImage { extraLarge large }
+            bannerImage
+            format
+            status
+            season
+            seasonYear
+            episodes
+            duration
+            isAdult
+            relations {
+              edges {
+                relationType
+                node {
+                  id
+                  type
+                  isAdult
+                }
+              }
+            }
+          }
+        }
+        """;
+
     public string Key => ProviderKey;
 
     public async Task<IReadOnlyList<AnimeMetadataCandidate>> SearchAsync(
@@ -134,6 +163,145 @@ public sealed class AniListMetadataProvider(
             cancellationToken);
 
         return ParseMediaResponse(response);
+    }
+
+    public async Task<IReadOnlyList<AnimeMetadataCandidate>> GetLinearSequenceAsync(
+        string externalId,
+        CancellationToken cancellationToken)
+    {
+        if (!int.TryParse(externalId, out var rootId) || rootId <= 0)
+        {
+            return [];
+        }
+
+        var cache = new Dictionary<int, SequenceMedia>();
+
+        async Task<SequenceMedia?> LoadAsync(int id)
+        {
+            if (cache.TryGetValue(id, out var cached))
+            {
+                return cached;
+            }
+
+            var response = await SendAsync(
+                SequenceQuery,
+                new { id },
+                cancellationToken);
+
+            using var document = JsonDocument.Parse(response);
+            if (!document.RootElement.TryGetProperty("data", out var data) ||
+                !data.TryGetProperty("Media", out var media) ||
+                media.ValueKind != JsonValueKind.Object)
+            {
+                return null;
+            }
+
+            var candidate = ParseMedia(media);
+            if (candidate is null)
+            {
+                return null;
+            }
+
+            var prequels = new List<int>();
+            var sequels = new List<int>();
+
+            if (media.TryGetProperty("relations", out var relations) &&
+                relations.ValueKind == JsonValueKind.Object &&
+                relations.TryGetProperty("edges", out var edges) &&
+                edges.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var edge in edges.EnumerateArray())
+                {
+                    var relationType = ReadString(edge, "relationType");
+                    if (relationType is not ("PREQUEL" or "SEQUEL") ||
+                        !edge.TryGetProperty("node", out var node) ||
+                        node.ValueKind != JsonValueKind.Object ||
+                        !string.Equals(
+                            ReadString(node, "type"),
+                            "ANIME",
+                            StringComparison.OrdinalIgnoreCase) ||
+                        (node.TryGetProperty("isAdult", out var adult) &&
+                         adult.ValueKind == JsonValueKind.True) ||
+                        !node.TryGetProperty("id", out var idElement) ||
+                        !idElement.TryGetInt32(out var relationId))
+                    {
+                        continue;
+                    }
+
+                    if (relationType == "PREQUEL")
+                    {
+                        prequels.Add(relationId);
+                    }
+                    else
+                    {
+                        sequels.Add(relationId);
+                    }
+                }
+            }
+
+            var loaded = new SequenceMedia(
+                candidate,
+                prequels.Distinct().ToArray(),
+                sequels.Distinct().ToArray());
+            cache[id] = loaded;
+            return loaded;
+        }
+
+        var root = await LoadAsync(rootId);
+        if (root is null)
+        {
+            return [];
+        }
+
+        const int maximumEntries = 12;
+        var before = new List<AnimeMetadataCandidate>();
+        var visited = new HashSet<int> { rootId };
+        var current = root;
+
+        while (before.Count < maximumEntries - 1 &&
+               current.Prequels.Count == 1)
+        {
+            var previousId = current.Prequels[0];
+            if (!visited.Add(previousId))
+            {
+                break;
+            }
+
+            var previous = await LoadAsync(previousId);
+            if (previous is null)
+            {
+                break;
+            }
+
+            before.Insert(0, previous.Candidate);
+            current = previous;
+        }
+
+        var result = new List<AnimeMetadataCandidate>(before.Count + 1);
+        result.AddRange(before);
+        result.Add(root.Candidate);
+
+        current = root;
+        while (result.Count < maximumEntries &&
+               current.Sequels.Count == 1)
+        {
+            var nextId = current.Sequels[0];
+            if (!visited.Add(nextId))
+            {
+                break;
+            }
+
+            var next = await LoadAsync(nextId);
+            if (next is null)
+            {
+                break;
+            }
+
+            result.Add(next.Candidate);
+            current = next;
+        }
+
+        return result;
     }
 
     private async Task<string> SendAsync(
@@ -295,6 +463,11 @@ public sealed class AniListMetadataProvider(
         var text = value.GetString()?.Trim();
         return string.IsNullOrWhiteSpace(text) ? null : text;
     }
+
+    private sealed record SequenceMedia(
+        AnimeMetadataCandidate Candidate,
+        IReadOnlyList<int> Prequels,
+        IReadOnlyList<int> Sequels);
 
     private static int? ReadInt(JsonElement element, string propertyName) =>
         element.ValueKind == JsonValueKind.Object &&

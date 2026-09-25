@@ -10,7 +10,8 @@ namespace AniLingo.Web.Pages.Manga;
 public sealed class IndexModel(
     AppDbContext db,
     CurrentAccountContext account,
-    OperationRunner operations) : PageModel
+    OperationRunner operations,
+    IHttpClientFactory httpClientFactory) : PageModel
 {
     public IReadOnlyList<MangaSeriesItem> Series { get; private set; } = [];
     public IReadOnlyList<MangaSeriesItem> ContinueReading { get; private set; } = [];
@@ -73,9 +74,16 @@ public sealed class IndexModel(
                         cancellationToken: token);
 
                     var importer = new MangaImportService(repository);
-                    return await importer.ImportAsync(
+                    var imported = await importer.ImportAsync(
                         sourcePath,
                         token);
+                    var metadata = new MangaAniListService(
+                        repository,
+                        httpClientFactory);
+                    await metadata.AutoMatchAsync(
+                        imported.SeriesId,
+                        token);
+                    return imported;
                 },
                 "Manga upload imported.",
                 cancellationToken);
@@ -124,9 +132,16 @@ public sealed class IndexModel(
 
                     var repository = new MangaRepository(db);
                     var importer = new MangaImportService(repository);
-                    return await importer.ImportAsync(
+                    var imported = await importer.ImportAsync(
                         sourcePath ?? "",
                         token);
+                    var metadata = new MangaAniListService(
+                        repository,
+                        httpClientFactory);
+                    await metadata.AutoMatchAsync(
+                        imported.SeriesId,
+                        token);
+                    return imported;
                 },
                 "Mounted Manga source imported.",
                 cancellationToken);

@@ -8,7 +8,8 @@ namespace AniLingo.Web.Features.Novels;
 
 public sealed class NovelService(
     AppDbContext db,
-    IEnumerable<INovelSourceProvider> sourceProviders)
+    IEnumerable<INovelSourceProvider> sourceProviders,
+    NovelMetadataService? metadataService = null)
 {
     public async Task<Guid> ImportWorkAsync(
         string sourceUrl,
@@ -67,6 +68,14 @@ public sealed class NovelService(
         }
 
         await db.SaveChangesAsync(cancellationToken);
+
+        if (metadataService is not null)
+        {
+            await metadataService.AutoMatchAsync(
+                work.Id,
+                cancellationToken);
+        }
+
         return work.Id;
     }
 

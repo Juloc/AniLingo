@@ -43,6 +43,16 @@ public sealed record AnimeMetadataMatchResult(
     bool Success,
     string? Error = null);
 
+public sealed record AutomaticAnimeEpisodeMappingResult(
+    bool Applied,
+    string Reason,
+    IReadOnlyList<AnimeEpisodeMetadataMapping> Mappings)
+{
+    public static AutomaticAnimeEpisodeMappingResult Skipped(string reason) =>
+        new(false, reason, []);
+}
+
+
 public interface IAnimeMetadataProvider
 {
     string Key { get; }

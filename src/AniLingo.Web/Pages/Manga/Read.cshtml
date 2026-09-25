@@ -26,6 +26,11 @@
     <script src="~/js/manga-reader.js" asp-append-version="true"></script>
 }
 
+@if (TempData["Status"] is string status)
+{
+    <div class="manga-message">@status</div>
+}
+
 <div class="manga-reader-shell"
      data-manga-reader
      data-profile="@Model.ProfileId"
@@ -46,6 +51,25 @@
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
             </button>
             <span class="manga-reader-location">Ch. @chapter.Number · @chapter.Title</span>
+            @if (Model.AniListProgress is { RemoteProgress: not null } aniList)
+            {
+                <span class="manga-reader-location"
+                      title="@aniList.Message">
+                    AniList @aniList.RemoteProgress / @(aniList.AniListChapterCount?.ToString() ?? "?")
+                </span>
+                @if (aniList.CanSync)
+                {
+                    <form method="post"
+                          asp-page-handler="SyncAniListProgress"
+                          asp-route-id="@chapter.Id">
+                        <button type="submit"
+                                class="manga-icon-button"
+                                title="@aniList.Message">
+                            Sync → @aniList.RequestedProgress
+                        </button>
+                    </form>
+                }
+            }
         </div>
 
         <div class="manga-mode-switch" role="group" aria-label="Page mode">
