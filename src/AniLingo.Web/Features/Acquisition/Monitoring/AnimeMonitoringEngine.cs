@@ -1,3 +1,4 @@
+using AniLingo.Web.Features.Acquisition;
 using AniLingo.Web.Features.Acquisition.Quality;
 
 namespace AniLingo.Web.Features.Acquisition.Monitoring;
@@ -49,6 +50,55 @@ public static class AnimeMonitoringEngine
         }
 
         return wanted;
+    }
+
+    public static AnimeMonitoringState RefreshWanted(
+        AnimeMonitoringState state,
+        IEnumerable<AnimeEpisodeInventory> inventory,
+        AnimeQualityProfile profile,
+        DateTimeOffset now)
+    {
+        var computed = GetWanted(state, inventory, profile, now);
+        var wanted = new Dictionary<string, AnimeWantedEpisode>(StringComparer.OrdinalIgnoreCase);
+        var history = state.History.ToList();
+
+        foreach (var item in computed)
+        {
+            var id = item.Key.ToString();
+            if (state.Wanted.TryGetValue(id, out var existing) && existing.Reason == item.Reason)
+            {
+                wanted[id] = existing;
+                continue;
+            }
+
+            wanted[id] = item;
+            history.Add(new AnimeMonitoringHistoryEntry(
+                now,
+                item.Key,
+                "wanted",
+                item.Reason.ToString()));
+        }
+
+        foreach (var previous in state.Wanted.Values)
+        {
+            if (wanted.ContainsKey(previous.Key.ToString()))
+            {
+                continue;
+            }
+
+            history.Add(new AnimeMonitoringHistoryEntry(
+                now,
+                previous.Key,
+                "wanted-cleared",
+                previous.Reason.ToString()));
+        }
+
+        TrimHistory(history);
+        return state with
+        {
+            Wanted = wanted,
+            History = history
+        };
     }
 
     public static IReadOnlyList<AnimeSearchRequest> PlanSearches(
@@ -292,6 +342,13 @@ public static class AnimeMonitoringEngine
                    key.EpisodeNumber <= end;
         }
 
+        if (key.AbsoluteEpisodeNumber is int absolute &&
+            release.AbsoluteEpisodeStart is int absoluteStart &&
+            release.AbsoluteEpisodeEnd is int absoluteEnd)
+        {
+            return absolute >= absoluteStart && absolute <= absoluteEnd;
+        }
+
         return false;
     }
 
@@ -322,16 +379,21 @@ public static class AnimeMonitoringEngine
         var history = state.History.ToList();
         history.Add(new AnimeMonitoringHistoryEntry(now, key, eventName, reason));
 
-        const int maxHistory = 2_000;
-        if (history.Count > maxHistory)
-        {
-            history.RemoveRange(0, history.Count - maxHistory);
-        }
+        TrimHistory(history);
 
         return state with
         {
             Attempts = attempts,
             History = history
         };
+    private static void TrimHistory(List<AnimeMonitoringHistoryEntry> history)
+    {
+        const int maxHistory = 2_000;
+        if (history.Count > maxHistory)
+        {
+            history.RemoveRange(0, history.Count - maxHistory);
+        }
+    }
+
     }
 }
