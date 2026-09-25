@@ -126,6 +126,22 @@ POST /api/client/v1/library-roots/{rootId}/wake
 
 All endpoints except `/capabilities` use the normal AniLingo authenticated account and therefore the same profile-scoped learning state as the web UI. API authentication failures return JSON `401/403` responses instead of redirects to Razor login pages.
 
+Playback continuity endpoints (additive v1, advertised by `episodeFlow`, `continueWatching` and `playbackHistory`):
+
+```text
+GET    /api/client/v1/episodes/{episodeId}/progress
+PUT    /api/client/v1/episodes/{episodeId}/progress        { positionMs, durationMs, completed }
+PUT    /api/client/v1/episodes/{episodeId}/watched         { watched }
+GET    /api/client/v1/episodes/{episodeId}/flow            previous/next local episode + autoplayNext
+GET    /api/client/v1/continue-watching
+GET    /api/client/v1/me/playback-preferences
+PUT    /api/client/v1/me/playback-preferences              { autoplayNext }
+GET    /api/client/v1/me/playback-history
+DELETE /api/client/v1/me/playback-history
+```
+
+The server is the only durable owner of resume position, watched state, autoplay preference and history; clients must not keep a second durable progress store. Clients should resume from `resumePositionMs` (zero means start from the beginning), send bounded checkpoints (for example every 15 seconds while playing plus pause/stop/end) and use `/flow` instead of computing next/previous episodes locally. The semantics are described in the README section *Playback continuity*.
+
 The first v1 contract deliberately reports not-yet-implemented facilities through capability flags. HLS fallback, playback sessions, pairing and companion control remain `false` until their later delivery slices are merged. Clients must not infer support from route guesses.
 
 Later session/companion endpoints extend the same v1 boundary:

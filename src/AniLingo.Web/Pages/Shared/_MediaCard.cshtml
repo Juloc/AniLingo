@@ -23,7 +23,7 @@
         <span>@Model.Subtitle</span>
         @if (Model.ProgressPercent is int progress)
         {
-            <div class="progress-track" aria-label="@progress% prepared">
+            <div class="progress-track" role="img" aria-label="@(Model.ProgressLabel ?? $"{progress}% prepared")">
                 <span style="width:@progress%"></span>
             </div>
         }

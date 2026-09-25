@@ -1,10 +1,4 @@
-using System.Security.Claims;
-using AniLingo.Web.Data;
-using AniLingo.Web.Features.Auth;
-using AniLingo.Web.Features.Library;
 using AniLingo.Web.Features.Progress;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace AniLingo.Tests;
@@ -13,139 +7,283 @@ namespace AniLingo.Tests;
 public sealed class EpisodeProgressTests
 {
     [TestMethod]
-    public async Task ProgressIsProfileScopedAndCompletionIsMonotonic()
+    public async Task ProgressIsProfileScopedAndWatchedStateIsSticky()
     {
-        var path = TempDatabasePath();
+        await using var fixture = await EpisodeFlowFixture.CreateAsync();
+        var anime = await fixture.AddAnimeAsync("progress-anime");
+        var episode = await fixture.AddEpisodeAsync(anime, 1, 3);
 
-        try
-        {
-            await using var db = await CreateDatabaseAsync(path);
-            var anime = new Anime { Key = "progress-anime", Title = "Progress Anime" };
-            var episode = new Episode
-            {
-                AnimeId = anime.Id,
-                SeasonNumber = 1,
-                Number = 3,
-                Title = "Episode 3"
-            };
-            db.Add(anime);
-            db.Add(episode);
-            await db.SaveChangesAsync();
+        var readerA = fixture.Service("reader-a");
+        var readerB = fixture.Service("reader-b");
 
-            var readerA = new EpisodeProgressService(db, Account("reader-a"));
-            var readerB = new EpisodeProgressService(db, Account("reader-b"));
+        var a = await readerA.UpdateAsync(
+            episode.Id,
+            new EpisodeProgressUpdate(40_000, 200_000, false));
+        var b = await readerB.UpdateAsync(
+            episode.Id,
+            new EpisodeProgressUpdate(120_000, 200_000, false));
 
-            var a = await readerA.UpdateAsync(
-                episode.Id,
-                new EpisodeProgressUpdate(20_000, 100_000, false));
-            var b = await readerB.UpdateAsync(
-                episode.Id,
-                new EpisodeProgressUpdate(60_000, 100_000, false));
+        Assert.IsNotNull(a);
+        Assert.IsNotNull(b);
+        Assert.AreEqual(20, a.Percent);
+        Assert.AreEqual(60, b.Percent);
+        Assert.AreEqual(2, await fixture.Db.EpisodeProgress.CountAsync());
 
-            Assert.IsNotNull(a);
-            Assert.IsNotNull(b);
-            Assert.AreEqual(20, a.Percent);
-            Assert.AreEqual(60, b.Percent);
-            Assert.AreEqual(2, await db.EpisodeProgress.CountAsync());
+        var completed = await readerA.UpdateAsync(
+            episode.Id,
+            new EpisodeProgressUpdate(192_000, 200_000, false));
 
-            var completed = await readerA.UpdateAsync(
-                episode.Id,
-                new EpisodeProgressUpdate(96_000, 100_000, false));
+        Assert.IsNotNull(completed);
+        Assert.IsTrue(completed.IsCompleted);
+        Assert.AreEqual(100, completed.Percent);
+        Assert.AreEqual(0, completed.ResumePositionMs);
 
-            Assert.IsNotNull(completed);
-            Assert.IsTrue(completed.IsCompleted);
-            Assert.AreEqual(100, completed.Percent);
-            Assert.AreEqual(100_000, completed.PositionMs);
+        var rewatch = await readerA.UpdateAsync(
+            episode.Id,
+            new EpisodeProgressUpdate(50_000, 200_000, false));
 
-            var laterPartial = await readerA.UpdateAsync(
-                episode.Id,
-                new EpisodeProgressUpdate(5_000, 100_000, false));
+        Assert.IsNotNull(rewatch);
+        Assert.IsTrue(rewatch.IsCompleted, "Rewatching must not silently flip watched state.");
+        Assert.AreEqual(50_000, rewatch.ResumePositionMs);
 
-            Assert.IsNotNull(laterPartial);
-            Assert.IsTrue(laterPartial.IsCompleted);
-            Assert.AreEqual(100_000, laterPartial.PositionMs);
-
-            var readerBAfter = await readerB.GetAsync(episode.Id);
-            Assert.IsNotNull(readerBAfter);
-            Assert.IsFalse(readerBAfter.IsCompleted);
-            Assert.AreEqual(60_000, readerBAfter.PositionMs);
-        }
-        finally
-        {
-            SqliteConnection.ClearAllPools();
-            File.Delete(path);
-        }
+        var readerBAfter = await readerB.GetAsync(episode.Id);
+        Assert.IsNotNull(readerBAfter);
+        Assert.IsFalse(readerBAfter.IsCompleted);
+        Assert.AreEqual(120_000, readerBAfter.ResumePositionMs);
     }
 
     [TestMethod]
     public async Task ExistingEpisodeWithoutProgressReturnsEmptySnapshot()
     {
-        var path = TempDatabasePath();
+        await using var fixture = await EpisodeFlowFixture.CreateAsync();
+        var anime = await fixture.AddAnimeAsync("empty-progress");
+        var episode = await fixture.AddEpisodeAsync(anime, 1, 1);
 
-        try
+        var service = fixture.Service("reader");
+        var progress = await service.GetAsync(episode.Id);
+
+        Assert.IsNotNull(progress);
+        Assert.AreEqual(0, progress.PositionMs);
+        Assert.AreEqual(0, progress.Percent);
+        Assert.IsNull(progress.UpdatedAt);
+
+        Assert.IsNull(await service.GetAsync(Guid.NewGuid()));
+        Assert.IsNull(await service.UpdateAsync(
+            Guid.NewGuid(),
+            new EpisodeProgressUpdate(60_000, null, false)));
+        Assert.IsNull(await service.SetWatchedAsync(Guid.NewGuid(), true));
+    }
+
+    [TestMethod]
+    public async Task TinyAccidentalStartCreatesNoProgressOrHistory()
+    {
+        await using var fixture = await EpisodeFlowFixture.CreateAsync();
+        var anime = await fixture.AddAnimeAsync("tiny-start");
+        var episode = await fixture.AddEpisodeAsync(anime, 1, 1);
+        var service = fixture.Service("reader");
+
+        var snapshot = await service.UpdateAsync(
+            episode.Id,
+            new EpisodeProgressUpdate(
+                EpisodeProgressService.MinimumResumeMs - 1,
+                1_400_000,
+                false));
+
+        Assert.IsNotNull(snapshot);
+        Assert.IsNull(snapshot.UpdatedAt);
+        Assert.AreEqual(0, snapshot.ResumePositionMs);
+        Assert.AreEqual(0, await fixture.Db.EpisodeProgress.CountAsync());
+        Assert.AreEqual(0, await fixture.Db.EpisodePlaybackHistory.CountAsync());
+        Assert.AreEqual(0, (await service.GetContinueWatchingAsync()).Count);
+    }
+
+    [TestMethod]
+    public async Task CompletionThresholdAndExplicitEndMarkWatchedAndClearResume()
+    {
+        await using var fixture = await EpisodeFlowFixture.CreateAsync();
+        var anime = await fixture.AddAnimeAsync("threshold");
+        var nearEnd = await fixture.AddEpisodeAsync(anime, 1, 1);
+        var ended = await fixture.AddEpisodeAsync(anime, 1, 2);
+        var service = fixture.Service("reader");
+
+        var belowThreshold = await service.UpdateAsync(
+            nearEnd.Id,
+            new EpisodeProgressUpdate(949_000, 1_000_000, false));
+        Assert.IsNotNull(belowThreshold);
+        Assert.IsFalse(belowThreshold.IsCompleted);
+        Assert.AreEqual(949_000, belowThreshold.ResumePositionMs);
+
+        var atThreshold = await service.UpdateAsync(
+            nearEnd.Id,
+            new EpisodeProgressUpdate(950_000, null, false));
+        Assert.IsNotNull(atThreshold);
+        Assert.IsTrue(atThreshold.IsCompleted, "The stored duration applies when a checkpoint omits it.");
+        Assert.AreEqual(0, atThreshold.PositionMs);
+
+        var explicitEnd = await service.UpdateAsync(
+            ended.Id,
+            new EpisodeProgressUpdate(10_000, null, true));
+        Assert.IsNotNull(explicitEnd);
+        Assert.IsTrue(explicitEnd.IsCompleted);
+        Assert.AreEqual(100, explicitEnd.Percent);
+    }
+
+    [TestMethod]
+    public async Task RestartFromBeginningClearsTheResumePosition()
+    {
+        await using var fixture = await EpisodeFlowFixture.CreateAsync();
+        var anime = await fixture.AddAnimeAsync("restart");
+        var episode = await fixture.AddEpisodeAsync(anime, 1, 1);
+        var service = fixture.Service("reader");
+
+        await service.UpdateAsync(
+            episode.Id,
+            new EpisodeProgressUpdate(600_000, 1_400_000, false));
+
+        var restarted = await service.UpdateAsync(
+            episode.Id,
+            new EpisodeProgressUpdate(0, 1_400_000, false));
+
+        Assert.IsNotNull(restarted);
+        Assert.IsFalse(restarted.IsCompleted);
+        Assert.AreEqual(0, restarted.ResumePositionMs);
+
+        var shortlyAfterRestart = await service.UpdateAsync(
+            episode.Id,
+            new EpisodeProgressUpdate(12_000, 1_400_000, false));
+
+        Assert.IsNotNull(shortlyAfterRestart);
+        Assert.AreEqual(
+            0,
+            shortlyAfterRestart.ResumePositionMs,
+            "A few seconds after an explicit restart must not become a resume point.");
+        Assert.AreEqual(0, (await service.GetContinueWatchingAsync()).Count);
+    }
+
+    [TestMethod]
+    public async Task ManualWatchedStateIsExplicitAndClearsResume()
+    {
+        await using var fixture = await EpisodeFlowFixture.CreateAsync();
+        var anime = await fixture.AddAnimeAsync("manual");
+        var partial = await fixture.AddEpisodeAsync(anime, 1, 1);
+        var untouched = await fixture.AddEpisodeAsync(anime, 1, 2);
+        var service = fixture.Service("reader");
+
+        await service.UpdateAsync(
+            partial.Id,
+            new EpisodeProgressUpdate(300_000, 1_400_000, false));
+
+        var watched = await service.SetWatchedAsync(partial.Id, true);
+        Assert.IsNotNull(watched);
+        Assert.IsTrue(watched.IsCompleted);
+        Assert.AreEqual(0, watched.ResumePositionMs);
+
+        var unwatched = await service.SetWatchedAsync(partial.Id, false);
+        Assert.IsNotNull(unwatched);
+        Assert.IsFalse(unwatched.IsCompleted);
+        Assert.AreEqual(0, unwatched.ResumePositionMs);
+
+        var noRow = await service.SetWatchedAsync(untouched.Id, false);
+        Assert.IsNotNull(noRow);
+        Assert.IsFalse(await fixture.Db.EpisodeProgress.AnyAsync(x => x.EpisodeId == untouched.Id));
+
+        await service.SetWatchedAsync(untouched.Id, true);
+        Assert.IsTrue((await service.GetAsync(untouched.Id))!.IsCompleted);
+
+        Assert.AreEqual(
+            1,
+            await fixture.Db.EpisodePlaybackHistory.CountAsync(),
+            "Manual watched actions are state, not playback history.");
+        Assert.IsFalse((await fixture.Service("other").GetAsync(untouched.Id))!.IsCompleted);
+    }
+
+    [TestMethod]
+    public async Task WatchedStateAndResumeSurviveARestart()
+    {
+        await using var fixture = await EpisodeFlowFixture.CreateAsync();
+        var anime = await fixture.AddAnimeAsync("restart-server");
+        var watched = await fixture.AddEpisodeAsync(anime, 1, 1);
+        var partial = await fixture.AddEpisodeAsync(anime, 1, 2);
+
+        await fixture.Service("reader").SetWatchedAsync(watched.Id, true);
+        await fixture.Service("reader").UpdateAsync(
+            partial.Id,
+            new EpisodeProgressUpdate(420_000, 1_400_000, false));
+
+        await fixture.ReopenAsync();
+        var service = fixture.Service("reader");
+
+        Assert.IsTrue((await service.GetAsync(watched.Id))!.IsCompleted);
+        Assert.AreEqual(420_000, (await service.GetAsync(partial.Id))!.ResumePositionMs);
+    }
+
+    [TestMethod]
+    public async Task HistoryMergesSessionsIsBoundedAndClearedPerProfile()
+    {
+        await using var fixture = await EpisodeFlowFixture.CreateAsync();
+        var anime = await fixture.AddAnimeAsync("history");
+        var first = await fixture.AddEpisodeAsync(anime, 1, 1);
+        var second = await fixture.AddEpisodeAsync(anime, 1, 2);
+        var reader = fixture.Service("reader");
+        var other = fixture.Service("other");
+
+        await reader.UpdateAsync(first.Id, new EpisodeProgressUpdate(60_000, 1_400_000, false));
+        await reader.UpdateAsync(first.Id, new EpisodeProgressUpdate(90_000, 1_400_000, false));
+
+        var merged = await reader.GetHistoryAsync();
+        Assert.AreEqual(1, merged.Count, "Checkpoints of one session extend one entry.");
+        Assert.AreEqual(90_000, merged[0].PositionMs);
+
+        var entry = await fixture.Db.EpisodePlaybackHistory.SingleAsync();
+        entry.LastPlayedAt = DateTime.UtcNow - EpisodeProgressService.HistorySessionGap - TimeSpan.FromMinutes(1);
+        await fixture.Db.SaveChangesAsync();
+
+        await reader.UpdateAsync(first.Id, new EpisodeProgressUpdate(120_000, 1_400_000, false));
+        Assert.AreEqual(2, (await reader.GetHistoryAsync()).Count, "A later session starts a new entry.");
+
+        for (var index = 0; index < EpisodeProgressService.HistoryLimit + 5; index++)
         {
-            await using var db = await CreateDatabaseAsync(path);
-            var anime = new Anime { Key = "empty-progress", Title = "Empty" };
-            var episode = new Episode
-            {
-                AnimeId = anime.Id,
-                SeasonNumber = 1,
-                Number = 1,
-                Title = "One"
-            };
-            db.Add(anime);
-            db.Add(episode);
-            await db.SaveChangesAsync();
-
-            var service = new EpisodeProgressService(db, Account("reader"));
-            var progress = await service.GetAsync(episode.Id);
-
-            Assert.IsNotNull(progress);
-            Assert.AreEqual(0, progress.PositionMs);
-            Assert.AreEqual(0, progress.Percent);
-            Assert.IsNull(progress.UpdatedAt);
-
-            Assert.IsNull(await service.GetAsync(Guid.NewGuid()));
+            var episode = index % 2 == 0 ? second : first;
+            await reader.UpdateAsync(
+                episode.Id,
+                new EpisodeProgressUpdate(60_000 + index * 1_000, 1_400_000, false));
         }
-        finally
-        {
-            SqliteConnection.ClearAllPools();
-            File.Delete(path);
-        }
+
+        await other.UpdateAsync(second.Id, new EpisodeProgressUpdate(60_000, 1_400_000, false));
+
+        Assert.AreEqual(
+            EpisodeProgressService.HistoryLimit,
+            await fixture.Db.EpisodePlaybackHistory.CountAsync(x => x.ProfileId == "reader"));
+
+        var history = await reader.GetHistoryAsync();
+        Assert.AreEqual(EpisodeProgressService.HistoryLimit, history.Count);
+        Assert.IsTrue(history.Zip(history.Skip(1)).All(pair => pair.First.LastPlayedAt >= pair.Second.LastPlayedAt));
+        Assert.AreEqual(1, (await other.GetHistoryAsync()).Count);
+
+        await reader.ClearHistoryAsync();
+
+        Assert.AreEqual(0, (await reader.GetHistoryAsync()).Count);
+        Assert.AreEqual(1, (await other.GetHistoryAsync()).Count, "Clearing is limited to the own profile.");
+        Assert.IsNotNull(await reader.GetAsync(first.Id));
+        Assert.IsTrue(
+            (await reader.GetAsync(first.Id))!.ResumePositionMs > 0,
+            "Clearing history keeps resume positions.");
     }
 
-    private static CurrentAccountContext Account(string profileId)
+    [TestMethod]
+    public async Task AutoplayNextDefaultsOffAndIsProfileScoped()
     {
-        var httpContext = new DefaultHttpContext
-        {
-            User = new ClaimsPrincipal(
-                new ClaimsIdentity(
-                [new Claim(ClaimTypes.NameIdentifier, profileId)],
-                "test"))
-        };
+        await using var fixture = await EpisodeFlowFixture.CreateAsync();
+        var reader = fixture.Service("reader");
+        var other = fixture.Service("other");
 
-        return new CurrentAccountContext(
-            new FixedHttpContextAccessor { HttpContext = httpContext });
-    }
+        Assert.IsFalse((await reader.GetPreferencesAsync()).AutoplayNext);
 
-    private sealed class FixedHttpContextAccessor : IHttpContextAccessor
-    {
-        public HttpContext? HttpContext { get; set; }
-    }
+        Assert.IsTrue((await reader.SetAutoplayNextAsync(true)).AutoplayNext);
+        Assert.IsTrue((await reader.GetPreferencesAsync()).AutoplayNext);
+        Assert.IsFalse((await other.GetPreferencesAsync()).AutoplayNext);
 
-    private static string TempDatabasePath() =>
-        Path.Combine(
-            Path.GetTempPath(),
-            $"anilingo-episode-progress-{Guid.NewGuid():N}.db");
-
-    private static async Task<AppDbContext> CreateDatabaseAsync(string path)
-    {
-        var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseSqlite($"Data Source={path};Foreign Keys=True")
-            .Options;
-
-        var db = new AppDbContext(options);
-        await DatabaseMigrationBridge.UpgradeAsync(db);
-        return db;
+        Assert.IsFalse((await reader.SetAutoplayNextAsync(false)).AutoplayNext);
+        Assert.AreEqual(1, await fixture.Db.ProfilePlaybackPreferences.CountAsync());
     }
 }

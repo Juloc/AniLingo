@@ -3,6 +3,8 @@ using AniLingo.Web.Features.Artwork;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Localization;
+using AniLingo.Web.Features.Progress;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
 
@@ -10,19 +12,39 @@ namespace AniLingo.Web.Pages;
 
 public sealed class IndexModel(AppDbContext db, CurrentAccountContext currentAccount) : PageModel
 {
+    private readonly EpisodeProgressService progress = new(db, currentAccount);
+
     public int DueReviews { get; private set; }
     public int AnimeCount { get; private set; }
     public int EpisodeCount { get; private set; }
     public IReadOnlyList<HomeEpisode> RecentEpisodes { get; private set; } = [];
+    public IReadOnlyList<ContinueWatchingItem> ContinueWatching { get; private set; } = [];
+    public IReadOnlyList<PlaybackHistoryItem> PlaybackHistory { get; private set; } = [];
+    public int PlaybackHistoryLimit => EpisodeProgressService.HistoryLimit;
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public bool ShowLearningHomeWidget { get; private set; }
     public bool ShowContentMetrics { get; private set; }
+
+    public async Task<IActionResult> OnPostClearHistoryAsync(CancellationToken cancellationToken)
+    {
+        await progress.ClearHistoryAsync(cancellationToken);
+
+        var ui = await new UiTranslationCatalogStore(db).LoadProfileBundleAsync(
+            currentAccount.ProfileId,
+            cancellationToken);
+        TempData["Status"] = ui["home.history.cleared"];
+        return RedirectToPage();
+    }
 
     public async Task OnGetAsync(CancellationToken cancellationToken)
     {
         Ui = await new UiTranslationCatalogStore(db).LoadProfileBundleAsync(
             currentAccount.ProfileId,
             cancellationToken);
+
+        ContinueWatching = await progress.GetContinueWatchingAsync(
+            cancellationToken: cancellationToken);
+        PlaybackHistory = await progress.GetHistoryAsync(cancellationToken);
 
         var configuration = new LearningConfigurationStore(db);
         var profileLearning = await configuration.ResolveProfileAsync(

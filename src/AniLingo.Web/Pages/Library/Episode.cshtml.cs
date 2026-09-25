@@ -50,10 +50,13 @@ public sealed class EpisodeModel(
     public EpisodePreparationSnapshot Preparation { get; private set; } = EpisodePreparationSnapshot.Empty;
     public EpisodePlaybackSnapshot Playback { get; private set; } = EpisodePlaybackSnapshot.Empty;
     public EpisodeProgressSnapshot? LocalProgress { get; private set; }
+    public EpisodeFlowSnapshot? Flow { get; private set; }
     public double ResumePositionSeconds =>
-        LocalProgress is { IsCompleted: false, PositionMs: >= 5000 } progress
-            ? progress.PositionMs / 1000d
-            : 0;
+        (LocalProgress?.ResumePositionMs ?? 0) / 1000d;
+    public string? NextEpisodeUrl =>
+        Flow?.Next is { } next ? $"/Library/Episode/{next.Id}" : null;
+    public string? PreviousEpisodeUrl =>
+        Flow?.Previous is { } previous ? $"/Library/Episode/{previous.Id}" : null;
     public IReadOnlyList<EpisodePreparationTerm> Terms => Preparation.Terms;
     public IReadOnlyList<EpisodeSubtitleSource> SubtitleSources { get; private set; } = [];
     public ActiveEpisodeSubtitle? ActiveSubtitle { get; private set; }
@@ -129,6 +132,7 @@ public sealed class EpisodeModel(
 
         Playback = await playbackService.GetSnapshotAsync(id, cancellationToken);
         LocalProgress = await episodeProgressService.GetAsync(id, cancellationToken);
+        Flow = await episodeProgressService.GetFlowAsync(id, cancellationToken);
         AniListProgress = await aniListAccountService.GetEpisodeProgressPreviewAsync(
             id,
             cancellationToken);
@@ -369,6 +373,27 @@ public sealed class EpisodeModel(
         {
             return StatusCode(StatusCodes.Status503ServiceUnavailable);
         }
+    }
+
+    public async Task<IActionResult> OnPostWatchedAsync(
+        Guid id,
+        bool watched,
+        CancellationToken cancellationToken)
+    {
+        var progress = await episodeProgressService.SetWatchedAsync(
+            id,
+            watched,
+            cancellationToken);
+
+        if (progress is null)
+        {
+            return NotFound();
+        }
+
+        TempData["Status"] = watched
+            ? "Episode marked as watched."
+            : "Episode marked as unwatched.";
+        return RedirectToPage(new { id });
     }
 
     public async Task<IActionResult> OnPostSyncAniListAsync(

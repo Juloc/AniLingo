@@ -43,13 +43,28 @@
     const storageRetry = root.querySelector("[data-storage-retry]");
     const storageWake = root.querySelector("[data-storage-wake]");
 
+    const nextUrl = root.dataset.nextUrl || "";
+    const preferencesUrl = root.dataset.playbackPreferencesUrl || "";
+    let autoplayNext = root.dataset.autoplayNext === "true";
+    const restartButton = root.querySelector("[data-restart]");
+    const autoplayToggle = root.querySelector("[data-autoplay-toggle]");
+    const postPlay = root.querySelector("[data-post-play]");
+    const postPlayReplay = root.querySelector("[data-post-play-replay]");
+    const postPlayCountdown = root.querySelector("[data-post-play-countdown]");
+    const postPlayCancel = root.querySelector("[data-post-play-cancel]");
+    const autoplayDelaySeconds = 10;
+
     if (!video || !stage || !placeholder || !playbackStatus ||
         !playbackSummary || !playbackBadge || !modeSelect || !overlay || !data ||
-        !timeline || !timelineCurrent || !timelineDuration || !inspector ||
-        !learningKicker || !word || !reading || !meaning || !state ||
-        !replay || !closeLearning) {
+        !timeline || !timelineCurrent || !timelineDuration) {
         return;
     }
+
+    // The learning sheet is only rendered when player learning tools are
+    // enabled for this scope; normal playback must work without it.
+    const learningTools = Boolean(
+        inspector && learningKicker && word && reading && meaning && state &&
+        replay && closeLearning);
 
     let videoCodec = (root.dataset.videoCodec || "").toLowerCase();
     let isHevc = videoCodec === "hevc" || videoCodec === "h265";
@@ -178,15 +193,14 @@
     let lastProgressSentAt = Date.now();
     let lastProgressPositionMs = -1;
 
+    // Bounded checkpoints: at most one regular write per 15 seconds while
+    // playing; pause, end, restart and page close flush immediately.
     const persistProgress = (completed = false, force = false) => {
         if (!progressUrl) {
             return;
         }
 
         const positionMs = Math.max(0, Math.round(absoluteCurrentTime() * 1000));
-        const durationMs = hasKnownDuration
-            ? Math.max(0, Math.round(durationSeconds * 1000))
-            : null;
         const now = Date.now();
 
         if (!force && now - lastProgressSentAt < 15000) {
@@ -197,7 +211,15 @@
             return;
         }
 
-        lastProgressSentAt = now;
+        sendProgress(positionMs, completed, force);
+    };
+
+    const sendProgress = (positionMs, completed, keepalive) => {
+        const durationMs = hasKnownDuration
+            ? Math.max(0, Math.round(durationSeconds * 1000))
+            : null;
+
+        lastProgressSentAt = Date.now();
         lastProgressPositionMs = positionMs;
 
         void fetch(progressUrl, {
@@ -209,7 +231,7 @@
                 durationMs,
                 completed
             }),
-            keepalive: force
+            keepalive
         }).catch(() => {});
     };
 
@@ -660,6 +682,10 @@
     };
 
     const openLearning = (cue, token = null, selectedElement = null) => {
+        if (!learningTools) {
+            return;
+        }
+
         if (inspector.hidden) {
             learningResumeOnClose = !video.paused && !video.ended;
         }
@@ -694,7 +720,7 @@
     };
 
     const closeLearningSheet = (resume = true) => {
-        if (inspector.hidden) {
+        if (!learningTools || inspector.hidden) {
             return;
         }
 
@@ -732,13 +758,13 @@
         }
     });
 
-    replay.addEventListener("click", () =>
+    replay?.addEventListener("click", () =>
         design.dispatch(root, design.actions.repeatCurrentCue));
-    closeLearning.addEventListener("click", () =>
+    closeLearning?.addEventListener("click", () =>
         design.dispatch(root, design.actions.closeOverlay));
 
     root.addEventListener("keydown", event => {
-        if (event.key === "Escape" && !inspector.hidden) {
+        if (event.key === "Escape" && learningTools && !inspector.hidden) {
             event.preventDefault();
             design.dispatch(root, design.actions.closeOverlay);
         }
@@ -789,6 +815,134 @@
         seekToAbsolute(Number(timeline.value));
     });
 
+    let autoplayTimer = null;
+
+    const stopAutoplayCountdown = () => {
+        if (autoplayTimer !== null) {
+            window.clearInterval(autoplayTimer);
+            autoplayTimer = null;
+        }
+
+        if (postPlayCountdown) {
+            postPlayCountdown.hidden = true;
+            postPlayCountdown.textContent = "";
+        }
+
+        if (postPlayCancel) {
+            postPlayCancel.hidden = true;
+        }
+    };
+
+    const hidePostPlay = () => {
+        stopAutoplayCountdown();
+        if (postPlay) {
+            postPlay.hidden = true;
+        }
+    };
+
+    const showPostPlay = () => {
+        if (!postPlay) {
+            return;
+        }
+
+        postPlay.hidden = false;
+        stopAutoplayCountdown();
+
+        const focusTarget = postPlay.querySelector("[data-post-play-next]") || postPlayReplay;
+        focusTarget?.focus();
+
+        if (!autoplayNext || !nextUrl || !postPlayCountdown) {
+            return;
+        }
+
+        let remaining = autoplayDelaySeconds;
+        const render = () => {
+            postPlayCountdown.textContent = `Next episode in ${remaining}s`;
+        };
+
+        postPlayCountdown.hidden = false;
+        if (postPlayCancel) {
+            postPlayCancel.hidden = false;
+        }
+        render();
+
+        autoplayTimer = window.setInterval(() => {
+            remaining -= 1;
+            if (remaining <= 0) {
+                stopAutoplayCountdown();
+                window.location.assign(nextUrl);
+                return;
+            }
+
+            render();
+        }, 1000);
+    };
+
+    postPlayReplay?.addEventListener("click", () => {
+        hidePostPlay();
+        seekToAbsolute(0, true);
+    });
+
+    postPlayCancel?.addEventListener("click", () => {
+        stopAutoplayCountdown();
+        postPlayReplay?.focus();
+    });
+
+    restartButton?.addEventListener("click", () => {
+        hidePostPlay();
+        pendingResumeTime = null;
+        seekToAbsolute(0, true);
+        if (video.paused) {
+            void video.play().catch(() => {});
+        }
+
+        if (progressUrl) {
+            sendProgress(0, false, false);
+        }
+
+        restartButton.hidden = true;
+    });
+
+    autoplayToggle?.addEventListener("change", async () => {
+        const requested = autoplayToggle.checked;
+        if (!preferencesUrl) {
+            autoplayToggle.checked = autoplayNext;
+            return;
+        }
+
+        autoplayToggle.disabled = true;
+        try {
+            const response = await fetch(preferencesUrl, {
+                method: "PUT",
+                credentials: "same-origin",
+                headers: {
+                    "Accept": "application/json",
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({ autoplayNext: requested })
+            });
+
+            if (!response.ok) {
+                throw new Error("Preference update failed.");
+            }
+
+            const preferences = await response.json();
+            autoplayNext = preferences.autoplayNext === true;
+        } catch {
+            if (error) {
+                error.hidden = false;
+                error.textContent = "The autoplay preference could not be saved.";
+            }
+        } finally {
+            autoplayToggle.checked = autoplayNext;
+            autoplayToggle.disabled = false;
+        }
+
+        if (!autoplayNext) {
+            stopAutoplayCountdown();
+        }
+    });
+
     video.addEventListener("timeupdate", () => {
         updateTimeline();
         sync();
@@ -797,7 +951,9 @@
     video.addEventListener("seeked", () => {
         updateTimeline();
         sync();
-        persistProgress(false, true);
+        // While playing the regular throttle applies; a seek while paused is
+        // an explicit position and is flushed like a pause.
+        persistProgress(false, video.paused);
     });
     video.addEventListener("loadedmetadata", () => {
         if (!options[effectiveMode]?.live &&
@@ -820,6 +976,7 @@
     });
     video.addEventListener("play", () => {
         playbackWasRequested = true;
+        hidePostPlay();
     });
 
     video.addEventListener("pause", () => {
@@ -835,6 +992,10 @@
     video.addEventListener("ended", () => {
         persistProgress(true, true);
         playbackWasRequested = false;
+        if (restartButton) {
+            restartButton.hidden = true;
+        }
+        showPostPlay();
     });
 
     video.addEventListener("error", async () => {

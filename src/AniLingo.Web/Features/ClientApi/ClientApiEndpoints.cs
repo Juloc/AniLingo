@@ -171,6 +171,85 @@ public static class ClientApiEndpoints
                 : Results.Ok(ClientApiMappings.ToClientEpisodeProgress(progress));
         });
 
+        group.MapPut("/episodes/{episodeId:guid}/watched", async (
+            Guid episodeId,
+            ClientEpisodeWatchedUpdate update,
+            EpisodeProgressService progressService,
+            CancellationToken cancellationToken) =>
+        {
+            var progress = await progressService.SetWatchedAsync(
+                episodeId,
+                update.Watched,
+                cancellationToken);
+
+            return progress is null
+                ? NotFound("episode_not_found", "The requested episode does not exist.")
+                : Results.Ok(ClientApiMappings.ToClientEpisodeProgress(progress));
+        });
+
+        group.MapGet("/episodes/{episodeId:guid}/flow", async (
+            Guid episodeId,
+            EpisodeProgressService progressService,
+            CancellationToken cancellationToken) =>
+        {
+            var flow = await progressService.GetFlowAsync(
+                episodeId,
+                cancellationToken);
+
+            return flow is null
+                ? NotFound("episode_not_found", "The requested episode does not exist.")
+                : Results.Ok(ClientApiMappings.ToClientEpisodeFlow(flow));
+        });
+
+        group.MapGet("/continue-watching", async (
+            EpisodeProgressService progressService,
+            CancellationToken cancellationToken) =>
+        {
+            var items = await progressService.GetContinueWatchingAsync(
+                cancellationToken: cancellationToken);
+
+            return Results.Ok(new ClientContinueWatchingResponse(
+                items.Select(ClientApiMappings.ToClientContinueWatchingItem).ToArray()));
+        });
+
+        group.MapGet("/me/playback-preferences", async (
+            EpisodeProgressService progressService,
+            CancellationToken cancellationToken) =>
+        {
+            var preferences = await progressService.GetPreferencesAsync(
+                cancellationToken);
+            return Results.Ok(new ClientPlaybackPreferences(preferences.AutoplayNext));
+        });
+
+        group.MapPut("/me/playback-preferences", async (
+            ClientPlaybackPreferences update,
+            EpisodeProgressService progressService,
+            CancellationToken cancellationToken) =>
+        {
+            var preferences = await progressService.SetAutoplayNextAsync(
+                update.AutoplayNext,
+                cancellationToken);
+            return Results.Ok(new ClientPlaybackPreferences(preferences.AutoplayNext));
+        });
+
+        group.MapGet("/me/playback-history", async (
+            EpisodeProgressService progressService,
+            CancellationToken cancellationToken) =>
+        {
+            var items = await progressService.GetHistoryAsync(cancellationToken);
+            return Results.Ok(new ClientPlaybackHistoryResponse(
+                EpisodeProgressService.HistoryLimit,
+                items.Select(ClientApiMappings.ToClientPlaybackHistoryItem).ToArray()));
+        });
+
+        group.MapDelete("/me/playback-history", async (
+            EpisodeProgressService progressService,
+            CancellationToken cancellationToken) =>
+        {
+            await progressService.ClearHistoryAsync(cancellationToken);
+            return Results.NoContent();
+        });
+
         group.MapGet("/episodes/{episodeId:guid}/player", async (
             Guid episodeId,
             ClientApiService service,

@@ -1,4 +1,5 @@
 @page
+@using AniLingo.Web.Features.Progress
 @model IndexModel
 @{
     ViewData["Title"] = Model.Ui["nav.home"];
@@ -39,6 +40,46 @@
                  Model.Ui["home.metric.discovered"])' />
 </section>
 
+@if (Model.ContinueWatching.Count > 0)
+{
+    <section class="section" data-continue-watching>
+        <div class="section-heading">
+            <div>
+                <span class="eyebrow">@Model.Ui["home.continueWatching.eyebrow"]</span>
+                <h2>@Model.Ui["home.continueWatching"]</h2>
+            </div>
+        </div>
+
+        <div class="media-grid">
+            @foreach (var item in Model.ContinueWatching)
+            {
+                var isResumable = item.ResumePositionMs > 0;
+                var episodeLabel = Model.Ui.Format(
+                    "home.continueWatching.episode",
+                    ("season", item.SeasonNumber.ToString("00")),
+                    ("episode", item.EpisodeNumber));
+                var caption = !isResumable
+                    ? null
+                    : item.RemainingMs is { } remainingMs
+                        ? Model.Ui.Format(
+                            "home.continueWatching.remaining",
+                            ("minutes", Math.Max(1, (int)Math.Ceiling(remainingMs / 60000d))))
+                        : Model.Ui["home.continueWatching.resume"];
+                <partial name="_MediaCard" model='new MediaCardModel(
+                    item.AnimeTitle,
+                    caption is null ? episodeLabel : $"{episodeLabel} · {caption}",
+                    $"/Library/Episode/{item.EpisodeId}",
+                    isResumable ? item.Percent : null,
+                    item.Kind == ContinueWatchingKind.UpNext
+                        ? Model.Ui["home.continueWatching.upNext"]
+                        : null,
+                    item.CoverImageUrl,
+                    Model.Ui.Format("home.continueWatching.progressAria", ("percent", item.Percent)))' />
+            }
+        </div>
+    </section>
+}
+
 <section class="section">
     <div class="section-heading">
         <div>
@@ -76,3 +117,42 @@
         </div>
     }
 </section>
+
+@if (Model.PlaybackHistory.Count > 0)
+{
+    <details class="panel playback-history" data-playback-history>
+        <summary>
+            <strong>@Model.Ui["home.history.title"]</strong>
+            <span class="muted">@Model.PlaybackHistory.Count</span>
+        </summary>
+        <p class="muted">@Model.Ui.Format("home.history.description", ("count", Model.PlaybackHistoryLimit))</p>
+
+        <ol class="playback-history-list">
+            @foreach (var entry in Model.PlaybackHistory)
+            {
+                <li>
+                    <a href="/Library/Episode/@entry.EpisodeId">
+                        @entry.AnimeTitle ·
+                        @Model.Ui.Format(
+                            "home.continueWatching.episode",
+                            ("season", entry.SeasonNumber.ToString("00")),
+                            ("episode", entry.EpisodeNumber))
+                    </a>
+                    <span>
+                        <time datetime="@entry.LastPlayedAt.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")">@entry.LastPlayedAt.ToString("yyyy-MM-dd HH:mm") UTC</time>
+                        ·
+                        @(entry.ReachedEnd
+                            ? Model.Ui["home.history.finished"]
+                            : Model.Ui.Format(
+                                "home.history.stoppedAt",
+                                ("time", EpisodeProgressService.FormatPosition(entry.PositionMs))))
+                    </span>
+                </li>
+            }
+        </ol>
+
+        <form method="post" asp-page-handler="ClearHistory">
+            <button class="button" type="submit">@Model.Ui["home.history.clear"]</button>
+        </form>
+    </details>
+}
