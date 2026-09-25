@@ -15,6 +15,22 @@ public static class ReaderPreferenceScopes
 
     public static string Work(Guid workId) => $"work:{workId:N}";
 
+    public static string ResolveTarget(
+        string? target,
+        ReaderContentType contentType,
+        Guid workId,
+        string? genre = null,
+        int genrePriority = DefaultGenrePriority) =>
+        target?.Trim().ToLowerInvariant() switch
+        {
+            "default" or "global" => ReaderPreferenceRules.UserDefaultScope,
+            "type" => Type(contentType),
+            "genre" when !string.IsNullOrWhiteSpace(genre) =>
+                Genre(genre, genrePriority),
+            "book" or "work" or null or "" => Work(workId),
+            _ => throw new InvalidOperationException("Unknown reader preference target.")
+        };
+
     public static bool TryParseGenre(
         string? scopeKey,
         out int priority,
