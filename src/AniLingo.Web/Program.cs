@@ -52,6 +52,7 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<CurrentAccountContext>();
 builder.Services.AddScoped<OwnerAuthService>();
 builder.Services.AddScoped<AdminUserProgressService>();
+builder.Services.AddScoped<OperationRunner>();
 builder.Services.AddSingleton<IPasswordHasher<OwnerAccount>, PasswordHasher<OwnerAccount>>();
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
