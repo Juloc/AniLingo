@@ -1,0 +1,93 @@
+@page "/Companion"
+@model AniLingo.Web.Pages.Companion.IndexModel
+@{
+    ViewData["Title"] = "Companion";
+}
+
+<div class="page-shell companion-shell"
+     data-companion
+     data-pair-url="/api/client/v1/playback-sessions/pair">
+    <section class="panel companion-connect" data-companion-connect>
+        <span class="eyebrow">TV Companion</span>
+        <h1>Connect to AniLingo TV</h1>
+        <p class="muted">
+            Scan the QR code on the TV or enter its 6-digit code.
+            Pairing grants access only to the current playback session.
+        </p>
+
+        <form data-pair-form class="form-stack">
+            <label>
+                <span>Pairing code</span>
+                <input data-pair-code
+                       inputmode="numeric"
+                       autocomplete="one-time-code"
+                       maxlength="6"
+                       pattern="[0-9]{6}"
+                       placeholder="123456" />
+            </label>
+            <button class="button button-primary" type="submit">
+                Connect
+            </button>
+        </form>
+
+        <p class="validation" data-pair-error hidden></p>
+    </section>
+
+    <section class="panel companion-live" data-companion-live hidden>
+        <div class="panel-heading">
+            <div>
+                <span class="eyebrow">Live from TV</span>
+                <h1 data-session-title>Playback session</h1>
+                <p class="muted" data-session-episode></p>
+            </div>
+            <span class="status-pill status-ok" data-session-status>Live</span>
+        </div>
+
+        <div class="companion-sentence">
+            <p lang="ja" data-current-sentence>Waiting for the current subtitle…</p>
+            <div class="companion-tokens" data-current-tokens></div>
+        </div>
+
+        <div class="companion-word" data-selected-word hidden>
+            <span class="eyebrow">Selected word</span>
+            <strong data-word-surface></strong>
+            <span data-word-reading></span>
+            <p data-word-meaning></p>
+            <span class="status-pill" data-word-state></span>
+            <div class="button-row">
+                <button class="button" type="button" data-command="addToLearning">
+                    Learning
+                </button>
+                <button class="button" type="button" data-command="markKnown">
+                    Known
+                </button>
+            </div>
+        </div>
+
+        <div class="companion-controls">
+            <button class="button" type="button" data-command="seekBack10">−10 s</button>
+            <button class="button button-primary" type="button" data-command="playPause">
+                Play / Pause
+            </button>
+            <button class="button" type="button" data-command="seekForward10">+10 s</button>
+            <button class="button" type="button" data-command="repeatCurrentCue">
+                Repeat sentence
+            </button>
+        </div>
+
+        <div class="companion-meta">
+            <span data-position></span>
+            <span data-revision></span>
+        </div>
+
+        <a class="button" data-open-learning href="#">
+            Open episode
+        </a>
+
+        <p class="validation" data-session-error hidden></p>
+    </section>
+</div>
+
+@section Scripts {
+    <script src="~/js/companion.js" asp-append-version="true"></script>
+}
