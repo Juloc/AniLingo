@@ -68,6 +68,70 @@
     </form>
 </section>
 
+<section class="panel">
+    <div class="panel-heading">
+        <h2>@Model.Ui["settings.ai.usageTitle"]</h2>
+    </div>
+
+    <div class="status-list">
+        <div>
+            <span>@Model.Ui["settings.ai.requests"]</span>
+            <strong>@Model.Usage.RequestCount</strong>
+        </div>
+        <div>
+            <span>@Model.Ui["settings.ai.inputTokens"]</span>
+            <strong>@Model.Usage.InputTokens.ToString("N0")</strong>
+        </div>
+        <div>
+            <span>@Model.Ui["settings.ai.outputTokens"]</span>
+            <strong>@Model.Usage.OutputTokens.ToString("N0")</strong>
+        </div>
+        <div>
+            <span>@Model.Ui["settings.ai.cacheHits"]</span>
+            <strong>@Model.Usage.CacheHits</strong>
+        </div>
+        <div>
+            <span>@Model.Ui["settings.ai.resumedChunks"]</span>
+            <strong>@Model.Usage.ResumedChunks</strong>
+        </div>
+    </div>
+
+    <p class="muted">@Model.Ui["settings.ai.usageNote"]</p>
+
+    @if (Model.Usage.Recent.Count > 0)
+    {
+        <h3>@Model.Ui["settings.ai.recentUsage"]</h3>
+        <div class="status-list">
+            @foreach (var item in Model.Usage.Recent.Take(8))
+            {
+                <div>
+                    <span>
+                        @item.Operation
+                        @if (!item.CacheHit && !item.ResumedChunk)
+                        {
+                            <text> · @(item.Estimated ? Model.Ui["settings.ai.estimated"] : Model.Ui["settings.ai.exact"])</text>
+                        }
+                    </span>
+                    <strong>
+                        @if (item.CacheHit)
+                        {
+                            <text>@Model.Ui["settings.ai.cacheHits"]</text>
+                        }
+                        else if (item.ResumedChunk)
+                        {
+                            <text>@Model.Ui["settings.ai.resumedChunks"]</text>
+                        }
+                        else
+                        {
+                            <text>@item.InputTokens.ToString("N0") / @item.OutputTokens.ToString("N0")</text>
+                        }
+                    </strong>
+                </div>
+            }
+        </div>
+    }
+</section>
+
 @if (Model.IsOwner)
 {
     <section class="panel">
