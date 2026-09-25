@@ -57,7 +57,7 @@ public static class BookReaderAnnotationStore
 
         return chapters
             .OrderBy(x => x.Number)
-            .Take(500)
+            .Take(2000)
             .Select(x => new BookReaderChapterNavItem(
                 x.Id,
                 x.Number,
@@ -211,6 +211,23 @@ public static class BookReaderAnnotationStore
         var cleanNote = CleanOptional(
             note,
             2000);
+
+        var overlaps = await db.NovelHighlights
+            .AsNoTracking()
+            .AnyAsync(
+                x => x.ProfileId == profileId
+                    && x.ChapterId == reader.Chapter.Id
+                    && x.Language == normalizedLanguage
+                    && x.ParagraphIndex == paragraphIndex
+                    && x.StartOffset < end
+                    && x.EndOffset > start,
+                cancellationToken);
+
+        if (overlaps)
+        {
+            throw new InvalidOperationException(
+                "That text already overlaps an existing highlight.");
+        }
 
         var highlight = new NovelHighlight
         {
