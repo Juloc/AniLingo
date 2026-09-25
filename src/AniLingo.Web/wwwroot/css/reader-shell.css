@@ -254,7 +254,7 @@
 .reader-settings-tabs {
     position: sticky;
     z-index: 3;
-    top: 0;
+    top: 49px;
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 3px;
@@ -440,7 +440,7 @@
     }
 
     .reader-settings-tabs {
-        top: -.75rem;
+        top: 49px;
         padding-top: .45rem;
     }
 
