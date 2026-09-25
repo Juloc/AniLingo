@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -256,7 +257,7 @@ public static partial class AnimeReleaseParser
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(releaseName);
 
-        var rawTitle = Path.GetFileNameWithoutExtension(releaseName.Trim());
+        var rawTitle = StripKnownExtension(releaseName.Trim());
         var evidence = new List<AnimeReleaseEvidence>();
 
         var leadingGroup = LeadingGroupRegex().Match(rawTitle);
@@ -312,6 +313,8 @@ public static partial class AnimeReleaseParser
                  DateOnly.TryParseExact(
                      $"{airDateMatch.Groups["year"].Value}-{airDateMatch.Groups["month"].Value}-{airDateMatch.Groups["day"].Value}",
                      "yyyy-MM-dd",
+                     CultureInfo.InvariantCulture,
+                     DateTimeStyles.None,
                      out var parsedDate))
         {
             numberingMatch = airDateMatch;
@@ -486,7 +489,7 @@ public static partial class AnimeReleaseParser
     private static string ExtractSeriesTitle(string rawTitle, Match leadingGroup, Match? numberingMatch)
     {
         var titleStart = leadingGroup.Success ? leadingGroup.Index + leadingGroup.Length : 0;
-        var titleEnd = numberingMatch?.Success == true ? numberingMatch.Index : FindTechnicalSuffixStart(rawTitle);
+        var titleEnd = numberingMatch is { Success: true } ? numberingMatch.Index : FindTechnicalSuffixStart(rawTitle);
 
         if (titleEnd < titleStart)
         {
@@ -689,6 +692,24 @@ public static partial class AnimeReleaseParser
         Av1Regex().IsMatch(value) ||
         HevcRegex().IsMatch(value) ||
         AvcRegex().IsMatch(value);
+
+    private static string StripKnownExtension(string value)
+    {
+        var extension = Path.GetExtension(value);
+        if (extension.Equals(".mkv", StringComparison.OrdinalIgnoreCase) ||
+            extension.Equals(".mp4", StringComparison.OrdinalIgnoreCase) ||
+            extension.Equals(".m4v", StringComparison.OrdinalIgnoreCase) ||
+            extension.Equals(".avi", StringComparison.OrdinalIgnoreCase) ||
+            extension.Equals(".ts", StringComparison.OrdinalIgnoreCase) ||
+            extension.Equals(".m2ts", StringComparison.OrdinalIgnoreCase) ||
+            extension.Equals(".nzb", StringComparison.OrdinalIgnoreCase) ||
+            extension.Equals(".torrent", StringComparison.OrdinalIgnoreCase))
+        {
+            return value[..^extension.Length];
+        }
+
+        return value;
+    }
 
     private static string BuildReleaseKey(string rawTitle)
     {
