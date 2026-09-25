@@ -392,6 +392,80 @@ public sealed class AniListAccountService(
         return ParseLibraryResponse(body);
     }
 
+    public async Task<AniListReadingProgressPreview> GetMangaProgressPreviewAsync(
+        Guid seriesId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var context = await BuildMangaProgressContextAsync(
+                seriesId,
+                cancellationToken);
+            return context.Preview;
+        }
+        catch (AniListAccountException exception)
+        {
+            return AniListReadingProgressPreview.Blocked(exception.Message);
+        }
+    }
+
+    public async Task<AniListProgressSyncResult> SyncMangaProgressAsync(
+        Guid seriesId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var context = await BuildMangaProgressContextAsync(
+                seriesId,
+                cancellationToken);
+            if (!context.Preview.CanSync)
+            {
+                return new AniListProgressSyncResult(
+                    Success: context.Preview.IsNoOp,
+                    Changed: false,
+                    context.Preview.Message);
+            }
+
+            var remote = context.RemoteEntry
+                ?? throw new AniListAccountException("AniList list entry is missing.");
+            var account = context.Account
+                ?? throw new AniListAccountException("AniList account context is missing.");
+
+            await store.AppendProgressBackupAsync(
+                new AniListProgressBackup(
+                    currentAccount.ProfileId,
+                    DateTimeOffset.UtcNow,
+                    account.ViewerName,
+                    context.RequestedProgress,
+                    remote,
+                    "MANGA"),
+                cancellationToken);
+
+            var updated = await SaveProgressAsync(
+                account.AccessToken,
+                remote.Id,
+                context.RequestedProgress,
+                cancellationToken);
+
+            ValidateProgressOnlyUpdate(
+                remote,
+                updated,
+                context.RequestedProgress);
+
+            return new AniListProgressSyncResult(
+                Success: true,
+                Changed: true,
+                $"AniList manga chapter progress updated from {remote.Progress} to {updated.Progress}. No other list fields were sent.");
+        }
+        catch (AniListAccountException exception)
+        {
+            return new AniListProgressSyncResult(
+                Success: false,
+                Changed: false,
+                exception.Message);
+        }
+    }
+
     public async Task<AniListReadingProgressPreview> GetNovelProgressPreviewAsync(
         Guid workId,
         CancellationToken cancellationToken)
