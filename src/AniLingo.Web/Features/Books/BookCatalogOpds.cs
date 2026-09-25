@@ -162,6 +162,10 @@ public sealed partial class BookCatalogService
             fallbackAuthor: item.Author,
             fallbackDescription: item.Description,
             fallbackSubjects: [],
+            fileName: SanitizeOpdsFileName(item.Title) + ".epub",
+            sourceKind: "opds",
+            contentHash: HashBytes(bytes),
+            sizeBytes: bytes.LongLength,
             cancellationToken);
     }
 

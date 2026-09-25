@@ -69,6 +69,9 @@ public static partial class EpubBookParser
         var author = MetadataValue(metadata, "creator");
         var description = MetadataValue(metadata, "description");
         var language = MetadataValue(metadata, "language");
+        var publisher = MetadataValue(metadata, "publisher");
+        var publishedDate = MetadataValue(metadata, "date");
+        var (isbn10, isbn13) = ExtractIsbn(metadata);
 
         var subjects = metadata?
             .Descendants()
@@ -202,6 +205,10 @@ public static partial class EpubBookParser
             Clean(author, 300),
             Clean(description, 4000),
             Clean(language, 16),
+            isbn10,
+            isbn13,
+            Clean(publisher, 300),
+            Clean(publishedDate, 80),
             subjects,
             chapters,
             coverBytes,
@@ -542,6 +549,124 @@ public static partial class EpubBookParser
             ?.Value;
 
         return Clean(value, 4000);
+    }
+
+    private static (string? Isbn10, string? Isbn13) ExtractIsbn(
+        XElement? metadata)
+    {
+        var identifiers = metadata?
+            .Descendants()
+            .Where(x => x.Name.LocalName.Equals(
+                "identifier",
+                StringComparison.OrdinalIgnoreCase))
+            .Select(x => NormalizeIsbnCandidate(x.Value))
+            .Where(x => x is not null)
+            .Cast<string>()
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray()
+            ?? [];
+
+        string? isbn10 = null;
+        string? isbn13 = null;
+
+        foreach (var value in identifiers)
+        {
+            if (value.Length == 10
+                && IsValidIsbn10(value))
+            {
+                isbn10 ??= value;
+            }
+            else if (value.Length == 13
+                && IsValidIsbn13(value))
+            {
+                isbn13 ??= value;
+            }
+        }
+
+        return (isbn10, isbn13);
+    }
+
+    private static string? NormalizeIsbnCandidate(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var candidate = Regex.Replace(
+                value.ToUpperInvariant(),
+                @"[^0-9X]",
+                "");
+
+        if (candidate.Length is 10 or 13)
+        {
+            return candidate;
+        }
+
+        var match = Regex.Match(
+            value.ToUpperInvariant(),
+            @"(?:97[89][\s-]*)?(?:\d[\s-]*){8,11}[\dX]");
+
+        if (!match.Success)
+        {
+            return null;
+        }
+
+        candidate = Regex.Replace(
+            match.Value,
+            @"[^0-9X]",
+            "");
+
+        return candidate.Length is 10 or 13
+            ? candidate
+            : null;
+    }
+
+    private static bool IsValidIsbn10(string value)
+    {
+        if (value.Length != 10)
+        {
+            return false;
+        }
+
+        var sum = 0;
+        for (var index = 0; index < 10; index++)
+        {
+            var digit = index == 9
+                && value[index] == 'X'
+                    ? 10
+                    : value[index] - '0';
+
+            if (digit is < 0 or > 10)
+            {
+                return false;
+            }
+
+            sum += (10 - index) * digit;
+        }
+
+        return sum % 11 == 0;
+    }
+
+    private static bool IsValidIsbn13(string value)
+    {
+        if (value.Length != 13
+            || value.Any(x => x is < '0' or > '9'))
+        {
+            return false;
+        }
+
+        var sum = 0;
+        for (var index = 0; index < 12; index++)
+        {
+            var digit = value[index] - '0';
+            sum += index % 2 == 0
+                ? digit
+                : digit * 3;
+        }
+
+        var check = (10 - (sum % 10)) % 10;
+        return check == value[12] - '0';
     }
 
     private static string NormalizeWhitespace(string value) =>
