@@ -74,6 +74,15 @@
 
     <nav class="novel-reader-toolbar" aria-label="Reader controls">
         <div class="novel-toolbar-start">
+            <a class="novel-icon-button"
+               asp-page="/Novels/Work"
+               asp-route-id="@Model.Work.Id"
+               aria-label="Zurück zum Novel"
+               title="Zurück">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M15 18l-6-6 6-6" />
+                </svg>
+            </a>
             <button class="novel-icon-button"
                     type="button"
                     data-reader-chapters-toggle

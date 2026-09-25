@@ -649,11 +649,6 @@
     transition: transform .14s ease, opacity .14s ease;
 }
 
-.novel-reader-toolbar.toolbar-hidden {
-    transform: translateY(calc(-100% - .8rem));
-    opacity: 0;
-    pointer-events: none;
-}
 
 .novel-toolbar-start,
 .novel-toolbar-end {
@@ -1431,7 +1426,7 @@ body:has(.novel-reader-shell) .app-main {
     }
 
     .novel-toolbar-start {
-        min-width: 36px;
+        min-width: 76px;
     }
 
     .novel-toolbar-location {
@@ -1495,11 +1490,29 @@ body:has(.novel-reader-shell) .app-main {
 
 @media (max-width: 560px) {
     .novel-reader-toolbar {
-        grid-template-columns: 32px 112px minmax(0, 1fr);
+        grid-template-columns: auto minmax(0, 1fr);
+        grid-template-areas:
+            "start end"
+            "view view";
+        height: auto;
+        min-height: 82px;
+        row-gap: 3px;
+    }
+
+    .novel-toolbar-start {
+        grid-area: start;
+        min-width: 72px;
     }
 
     .novel-view-switch {
-        width: 112px;
+        grid-area: view;
+        width: 100%;
+    }
+
+    .novel-toolbar-end {
+        grid-area: end;
+        width: auto;
+        justify-self: end;
     }
 
     .novel-toolbar-end .novel-icon-button,
@@ -1568,19 +1581,11 @@ body:has(.novel-reader-shell) .app-main {
     }
 
     .novel-reader-toolbar {
-        grid-template-columns: 36px minmax(138px, 1fr) 108px;
-        height: 46px;
         margin-bottom: .35rem;
     }
 
     .novel-view-switch {
-        width: 100%;
         height: 32px;
-    }
-
-    .novel-toolbar-end {
-        width: 108px;
-        justify-content: end;
     }
 
     .novel-toolbar-end .novel-icon-button,
