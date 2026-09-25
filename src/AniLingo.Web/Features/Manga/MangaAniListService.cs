@@ -111,7 +111,19 @@ public sealed partial class MangaAniListService(
         {
             candidates = await SearchAsync(source.Title, cancellationToken);
         }
-        catch (InvalidOperationException)
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return new AutomaticMediaMatchDecision(
+                AutomaticMediaMatchDisposition.None,
+                null,
+                0,
+                0,
+                ["AniList metadata request timed out."]);
+        }
+        catch (Exception exception) when (
+            exception is InvalidOperationException or
+            HttpRequestException or
+            JsonException)
         {
             return new AutomaticMediaMatchDecision(
                 AutomaticMediaMatchDisposition.None,
@@ -147,7 +159,20 @@ public sealed partial class MangaAniListService(
                     decision.Candidate.ExternalId,
                     cancellationToken);
             }
-            catch (InvalidOperationException exception)
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                return decision with
+                {
+                    Disposition = AutomaticMediaMatchDisposition.Review,
+                    Evidence = decision.Evidence
+                        .Append("AniList metadata request timed out before the automatic match could be persisted.")
+                        .ToArray()
+                };
+            }
+            catch (Exception exception) when (
+                exception is InvalidOperationException or
+                HttpRequestException or
+                JsonException)
             {
                 return decision with
                 {
