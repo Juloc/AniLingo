@@ -87,8 +87,7 @@ jobs:
     if: >-
       github.event_name == 'workflow_run' &&
       github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.head_branch == 'main' &&
-      startsWith(github.event.workflow_run.head_commit.message, 'release:')
+      github.event.workflow_run.head_branch == 'main'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -99,21 +98,38 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
 
+      - name: Detect release commit
+        id: release_commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          SUBJECT="$(git log -1 --pretty=%s)"
+          if [[ "$SUBJECT" == release:* ]]; then
+            echo "is_release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_release=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/setup-java@v5
+        if: steps.release_commit.outputs.is_release == 'true'
         with:
           distribution: temurin
           java-version: "17"
 
       - uses: android-actions/setup-android@v4
+        if: steps.release_commit.outputs.is_release == 'true'
 
       - name: Install Android SDK
+        if: steps.release_commit.outputs.is_release == 'true'
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
 
       - uses: gradle/actions/setup-gradle@v4
+        if: steps.release_commit.outputs.is_release == 'true'
         with:
           gradle-version: "9.6.0"
 
       - name: Resolve release version
+        if: steps.release_commit.outputs.is_release == 'true'
         id: version
         shell: bash
         run: |
@@ -134,6 +150,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Stamp Android package version
+        if: steps.release_commit.outputs.is_release == 'true'
         shell: bash
         env:
           VERSION: ${{ steps.version.outputs.version }}
@@ -147,6 +164,7 @@ jobs:
           done
 
       - name: Build release APKs
+        if: steps.release_commit.outputs.is_release == 'true'
         working-directory: clients/android
         run: >
           gradle --no-daemon --stacktrace
@@ -154,6 +172,7 @@ jobs:
           :app-tv:assembleRelease
 
       - name: Sign APKs and generate checksums
+        if: steps.release_commit.outputs.is_release == 'true'
         shell: bash
         env:
           VERSION: ${{ steps.version.outputs.version }}
@@ -197,6 +216,7 @@ jobs:
           sign_apk "${TV_UNSIGNED}" "AniLingo-TV-${VERSION}"
 
       - name: Attach Android assets to GitHub release
+        if: steps.release_commit.outputs.is_release == 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
