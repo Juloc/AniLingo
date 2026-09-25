@@ -1,3 +1,5 @@
+const AppThemeModes = ['system', 'light', 'dark'];
+
 (() => {
     const root = document.documentElement;
     const themeColor = document.querySelector('meta[data-app-theme-color]');
@@ -72,5 +74,3 @@
 
     updateThemeColor();
 })();
-
-const AppThemeModes = ['system', 'light', 'dark'];
