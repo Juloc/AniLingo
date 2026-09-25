@@ -3,14 +3,20 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using AniLingo.Web.Features.MediaMapping;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace AniLingo.Web.Features.Manga;
 
 public sealed partial class MangaAniListService(
     MangaRepository repository,
     IHttpClientFactory httpClientFactory,
-    MediaMappingReviewStore? reviewStore = null)
+    MediaMappingReviewStore? reviewStore = null,
+    ReadingSegmentMappingStore? segmentMappings = null)
 {
+    private readonly ReadingSegmentMappingStore segmentMappingsStore =
+        segmentMappings ??
+        new ReadingSegmentMappingStore(
+            NullLogger<ReadingSegmentMappingStore>.Instance);
     private const string SearchQuery = """
         query ($search: String!, $perPage: Int!) {
           Page(page: 1, perPage: $perPage) {
@@ -45,6 +51,43 @@ public sealed partial class MangaAniListService(
             chapters
             volumes
             startDate { year }
+          }
+        }
+        """;
+
+    private const string SequenceQuery = """
+        query ($id: Int!) {
+          Media(id: $id, type: MANGA) {
+            id
+            format
+            isAdult
+            title { romaji english native }
+            description(asHtml: false)
+            coverImage { extraLarge large }
+            bannerImage
+            status
+            chapters
+            volumes
+            startDate { year }
+            relations {
+              edges {
+                relationType
+                node {
+                  id
+                  type
+                  format
+                  isAdult
+                  title { romaji english native }
+                  description(asHtml: false)
+                  coverImage { extraLarge large }
+                  bannerImage
+                  status
+                  chapters
+                  volumes
+                  startDate { year }
+                }
+              }
+            }
           }
         }
         """;
