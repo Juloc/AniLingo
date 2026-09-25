@@ -6,6 +6,8 @@ using System.Text.Json.Nodes;
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Metadata;
+using AniLingo.Web.Features.Manga;
+using AniLingo.Web.Features.MediaMapping;
 using Microsoft.EntityFrameworkCore;
 
 namespace AniLingo.Web.Features.Tracking;
@@ -228,6 +230,15 @@ public sealed class AniListAccountService(
             startedAt { year month day }
             completedAt { year month day }
             updatedAt
+          }
+        }
+        """;
+
+    private const string MangaMetadataQuery = """
+        query ($id: Int!) {
+          Media(id: $id, type: MANGA) {
+            id
+            chapters
           }
         }
         """;
