@@ -1,0 +1,93 @@
+@page
+@using AniLingo.Web.Features.Learning
+@model AniLingo.Web.Pages.Settings.LearningScopeModel
+@{
+    ViewData["Title"] = $"Learning · {Model.DisplayLabel}";
+}
+
+<header class="page-header">
+    <div>
+        @if (!string.IsNullOrWhiteSpace(Model.ReturnUrl) && Url.IsLocalUrl(Model.ReturnUrl))
+        {
+            <a class="back-link" href="@Model.ReturnUrl">← @Model.DisplayLabel</a>
+        }
+        else
+        {
+            <a class="back-link" href="/Settings/Learning">← Learning settings</a>
+        }
+        <span class="eyebrow">@Model.MediaType · @Model.Scope</span>
+        <h1>Language tools &amp; Learning</h1>
+        <p>
+            Override Learning only for <strong>@Model.DisplayLabel</strong>.
+            Leave values on <em>Inherit</em> to follow the broader setting.
+        </p>
+    </div>
+    <span class="status-pill">Effective: @Model.Effective.Mode</span>
+</header>
+
+<form method="post" class="form-stack">
+    <input type="hidden" asp-for="MediaType" />
+    <input type="hidden" asp-for="Scope" />
+    <input type="hidden" asp-for="WorkKey" />
+    <input type="hidden" asp-for="ContentKey" />
+    <input type="hidden" asp-for="Label" />
+    <input type="hidden" asp-for="ReturnUrl" />
+
+    <section class="panel">
+        <div class="panel-heading">
+            <div>
+                <span class="eyebrow">Scope override</span>
+                <h2>Mode</h2>
+            </div>
+            <span>@(Model.Current.ModeOverride?.ToString() ?? "Inherit")</span>
+        </div>
+
+        <label>
+            <span>Learning mode</span>
+            <select asp-for="ModeOverride">
+                <option value="inherit">Inherit</option>
+                <option value="Off">Off</option>
+                <option value="LanguageTools">Language tools</option>
+                <option value="Study">Study</option>
+                <option value="Custom">Custom</option>
+            </select>
+            <small class="muted">
+                Off hides Learning for this scope. Language tools keeps lookup/reading help without review obligations.
+            </small>
+        </label>
+    </section>
+
+    <details class="panel">
+        <summary>
+            <strong>Individual capabilities</strong>
+            <span class="muted">Inherit / On / Off</span>
+        </summary>
+
+        <div class="form-stack" style="margin-top:1rem;">
+            @foreach (var capability in Model.Capabilities)
+            {
+                var current = Model.Current.GetOverride(capability);
+                var effective = Model.Effective.IsEnabled(capability);
+                <label>
+                    <span>@Model.CapabilityLabel(capability)</span>
+                    <select name="cap_@capability">
+                        <option value="inherit" selected="@(current is null ? "selected" : null)">
+                            Inherit · currently @(effective ? "On" : "Off")
+                        </option>
+                        <option value="on" selected="@(current == true ? "selected" : null)">On</option>
+                        <option value="off" selected="@(current == false ? "selected" : null)">Off</option>
+                    </select>
+                    <small class="muted">@Model.CapabilityDescription(capability)</small>
+                </label>
+            }
+        </div>
+    </details>
+
+    <div class="inline-actions">
+        <button class="button button-primary" type="submit">Save for this scope</button>
+        @if (!string.IsNullOrWhiteSpace(Model.ReturnUrl) && Url.IsLocalUrl(Model.ReturnUrl))
+        {
+            <a class="button" href="@Model.ReturnUrl">Cancel</a>
+        }
+    </div>
+</form>

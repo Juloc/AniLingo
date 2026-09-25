@@ -1,5 +1,6 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Artwork;
+using AniLingo.Web.Features.Metadata;
 using AniLingo.Web.Features.Sonarr;
 using AniLingo.Web.Features.Subtitles;
 using Microsoft.EntityFrameworkCore;
@@ -11,9 +12,10 @@ public sealed class LibraryScanner(
     SubtitleImportService subtitleImport,
     EmbeddedSubtitleExtractor embeddedSubtitleExtractor,
     SonarrArtworkSyncService sonarrArtworkSync,
-    ILogger<LibraryScanner> logger)
+    ILogger<LibraryScanner> logger,
+    AnimeMetadataService? metadataService = null)
 {
-    private static readonly HashSet<string> MediaExtensions = new(StringComparer.OrdinalIgnoreCase)
+    internal static readonly HashSet<string> MediaExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".mkv", ".mp4", ".m4v", ".webm"
     };
@@ -80,6 +82,7 @@ public sealed class LibraryScanner(
         var skipped = 0;
         var subtitleCandidates = new List<SubtitleCandidate>();
         var artworkDirectories = new Dictionary<Guid, string>();
+        var newlyDiscoveredAnimeIds = new HashSet<Guid>();
 
         foreach (var file in candidates)
         {
@@ -97,6 +100,7 @@ public sealed class LibraryScanner(
                 anime = new Anime { Key = descriptor.AnimeKey, Title = descriptor.AnimeTitle };
                 animeByKey.Add(anime.Key, anime);
                 db.Anime.Add(anime);
+                newlyDiscoveredAnimeIds.Add(anime.Id);
             }
 
             var animeDirectory = TryGetAnimeDirectory(rootPath, normalizedPath);
@@ -170,6 +174,48 @@ public sealed class LibraryScanner(
         root.LastScannedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(cancellationToken);
 
+        if (metadataService is not null)
+        {
+            foreach (var animeId in newlyDiscoveredAnimeIds)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                try
+                {
+                    var decision = await metadataService.AutoMatchAsync(
+                        animeId,
+                        cancellationToken);
+                    if (decision.CanApply && decision.Candidate is not null)
+                    {
+                        logger.LogInformation(
+                            "Automatically matched anime {AnimeId} to {Provider}:{ExternalId} with score {Score}.",
+                            animeId,
+                            decision.Candidate.Provider,
+                            decision.Candidate.ExternalId,
+                            decision.Score);
+                    }
+
+                    var episodeMapping = await metadataService.AutoMapEpisodeRangesAsync(
+                        animeId,
+                        cancellationToken);
+                    if (episodeMapping.Applied)
+                    {
+                        logger.LogInformation(
+                            "Automatically mapped {RangeCount} AniList episode range(s) for anime {AnimeId}.",
+                            episodeMapping.Mappings.Count,
+                            animeId);
+                    }
+                }
+                catch (Exception exception) when (
+                    exception is MetadataProviderException or InvalidOperationException)
+                {
+                    logger.LogWarning(
+                        exception,
+                        "Automatic metadata matching failed for anime {AnimeId}; the local library scan remains valid.",
+                        animeId);
+                }
+            }
+        }
+
         var removed = staleMediaFiles.Length;
         if (removed > 0)
         {
@@ -228,45 +274,64 @@ public sealed class LibraryScanner(
                 .ToListAsync(cancellationToken);
 
         var subtitleFiles = 0;
-        foreach (var candidate in subtitleCandidates)
+        var sidecarListings = new SubtitleSidecarDirectoryCache();
+        foreach (var episodeCandidates in subtitleCandidates.GroupBy(x => x.EpisodeId))
         {
-            var externalSubtitle = FindJapaneseSubtitles(candidate.MediaPath).FirstOrDefault();
-            if (externalSubtitle is not null)
+            var episodeId = episodeCandidates.Key;
+            var mediaCandidates = episodeCandidates
+                .OrderBy(x => x.MediaPath, StringComparer.Ordinal)
+                .ToArray();
+
+            var sidecar = await subtitleImport.ImportPreferredSidecarAsync(
+                episodeId,
+                mediaCandidates.Select(x => x.MediaPath).ToArray(),
+                sidecarListings,
+                cancellationToken);
+
+            if (sidecar.Status == SubtitleSidecarImportStatus.Imported)
             {
-                await subtitleImport.ImportAsync(candidate.EpisodeId, externalSubtitle, cancellationToken);
                 subtitleFiles++;
                 continue;
             }
 
-            var sourcePrefix = EmbeddedSubtitleExtractor.BuildSourcePrefix(candidate.MediaPath);
-            var freshEmbeddedCount = embeddedTracks.Count(x =>
-                x.EpisodeId == candidate.EpisodeId &&
-                x.SourceUpdatedAt == candidate.SourceUpdatedAt &&
-                x.SourceKey.StartsWith(sourcePrefix, StringComparison.Ordinal));
-
-            if (freshEmbeddedCount > 0)
-            {
-                subtitleFiles += freshEmbeddedCount;
-                continue;
-            }
-
-            var embedded = await embeddedSubtitleExtractor.ExtractPreferredJapaneseAsync(
-                candidate.MediaPath,
-                cancellationToken);
-
-            if (embedded is null)
+            if (sidecar.Status == SubtitleSidecarImportStatus.Unavailable)
             {
                 continue;
             }
 
-            await subtitleImport.ImportPreferredContentAsync(
-                candidate.EpisodeId,
-                embedded.SourceKey,
-                embedded.Format,
-                candidate.SourceUpdatedAt,
-                embedded.Content,
-                cancellationToken);
-            subtitleFiles++;
+            foreach (var candidate in mediaCandidates)
+            {
+                var sourcePrefix = EmbeddedSubtitleExtractor.BuildSourcePrefix(candidate.MediaPath);
+                var freshEmbeddedCount = embeddedTracks.Count(x =>
+                    x.EpisodeId == episodeId &&
+                    x.SourceUpdatedAt == candidate.SourceUpdatedAt &&
+                    x.SourceKey.StartsWith(sourcePrefix, StringComparison.Ordinal));
+
+                if (freshEmbeddedCount > 0)
+                {
+                    subtitleFiles += freshEmbeddedCount;
+                    break;
+                }
+
+                var embedded = await embeddedSubtitleExtractor.ExtractPreferredJapaneseAsync(
+                    candidate.MediaPath,
+                    cancellationToken);
+
+                if (embedded is null)
+                {
+                    continue;
+                }
+
+                await subtitleImport.ImportPreferredContentAsync(
+                    episodeId,
+                    embedded.SourceKey,
+                    embedded.Format,
+                    candidate.SourceUpdatedAt,
+                    embedded.Content,
+                    cancellationToken);
+                subtitleFiles++;
+                break;
+            }
         }
 
         logger.LogInformation(
@@ -318,25 +383,5 @@ public sealed class LibraryScanner(
         return directory.StartsWith(normalizedRoot, StringComparison.Ordinal)
             ? directory
             : null;
-    }
-
-    private static IEnumerable<string> FindJapaneseSubtitles(string mediaPath)
-    {
-        var directory = Path.GetDirectoryName(mediaPath)!;
-        var baseName = Path.GetFileNameWithoutExtension(mediaPath);
-        var suffixes = new[]
-        {
-            ".ja.srt", ".jpn.srt", ".japanese.srt",
-            ".ja.ass", ".jpn.ass", ".japanese.ass"
-        };
-
-        foreach (var suffix in suffixes)
-        {
-            var path = Path.Combine(directory, baseName + suffix);
-            if (File.Exists(path))
-            {
-                yield return path;
-            }
-        }
     }
 }

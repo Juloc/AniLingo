@@ -34,8 +34,29 @@
     </section>
 
     <section class="panel">
+        <div class="panel-heading">
+            <h2>@ui["settings.ai.title"]</h2>
+            <span>Personal</span>
+        </div>
+        <p class="muted">@ui["settings.ai.description"]</p>
+        <a class="button" asp-page="/Settings/Ai">@ui["settings.ai.manage"]</a>
+    </section>
+
+    <section class="panel">
         <div class="panel-heading"><h2>@ui["settings.anilist.title"]</h2><span>Personal</span></div>
         <p class="muted">@ui["settings.anilist.description"]</p>
         <a class="button" asp-page="/Settings/AniList">@ui["settings.anilist.manage"]</a>
+    </section>
+
+    <section class="panel">
+        <div class="panel-heading"><h2>Mapping review</h2><span>Owner</span></div>
+        <p class="muted">Review ambiguous automatic AniList mappings instead of letting AniLingo guess.</p>
+        <a class="button" asp-page="/Settings/MappingReview">Review mappings</a>
+    </section>
+
+    <section class="panel">
+        <div class="panel-heading"><h2>Reading segment mappings</h2><span>Owner</span></div>
+        <p class="muted">Map Manga or Light Novel chapter/volume ranges to multiple AniList entries.</p>
+        <a class="button" asp-page="/Settings/MappingSegments">Manage segments</a>
     </section>
 </div>

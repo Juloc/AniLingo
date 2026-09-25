@@ -31,28 +31,6 @@ public sealed class IndexModel(
         Query = q?.Trim() ?? "";
         TargetLanguage = BookLanguageCatalog.Normalize(lang);
 
-        if (account.IsOwner && books.IsInboxConfigured)
-        {
-            try
-            {
-                var imported = await books.ImportInboxAsync(
-                    cancellationToken);
-                if (imported.Count > 0)
-                {
-                    TempData["Status"] =
-                        $"Automatically imported {imported.Count} book(s) from the Books inbox.";
-                }
-            }
-            catch (Exception exception) when (
-                exception is InvalidOperationException
-                    or IOException
-                    or UnauthorizedAccessException)
-            {
-                // The inbox is optional. A missing/offline download mount
-                // must not make the local Books library unavailable.
-            }
-        }
-
         Library = await books.GetLibraryAsync(
             account.ProfileId,
             TargetLanguage,
@@ -206,24 +184,10 @@ public sealed class IndexModel(
 
         try
         {
-            var imported = await operations.RunAsync(
-                new OperationDescriptor(
-                    "book-inbox-import",
-                    "Books",
-                    "Import Books inbox",
-                    ProfileId: account.ProfileId,
-                    Lane: OperationLane.Normal,
-                    Retryable: false),
-                async (operation, token) =>
-                {
-                    await operation.ReportAsync(
-                        10,
-                        "Scanning Books inbox.",
-                        cancellationToken: token);
-
-                    return await books.ImportInboxAsync(token);
-                },
-                "Books inbox scan completed.",
+            var imported = await BookInboxImport.RunAsync(
+                operations,
+                books,
+                account.ProfileId,
                 cancellationToken);
 
             TempData["Status"] = imported.Count == 0
@@ -258,7 +222,7 @@ public sealed class IndexModel(
         var operationStore = new OperationStore(db);
         var operationId = await operationStore.CreateAsync(
             new OperationDescriptor(
-                "sabnzbd-download",
+                BookInboxImport.SabnzbdDownloadKind,
                 "External downloads",
                 "SABnzbd download",
                 effectiveName,
@@ -376,7 +340,7 @@ public sealed class IndexModel(
         var operationStore = new OperationStore(db);
         var operationId = await operationStore.CreateAsync(
             new OperationDescriptor(
-                "sabnzbd-download",
+                BookInboxImport.SabnzbdDownloadKind,
                 "External downloads",
                 "SABnzbd download",
                 nzb.FileName,
