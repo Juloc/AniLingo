@@ -196,16 +196,18 @@ public sealed class ReaderPersonalizationTests
             root, "src", "AniLingo.Web", "wwwroot", "css", "novels.css"));
         var bookPage = File.ReadAllText(Path.Combine(
             root, "src", "AniLingo.Web", "Pages", "Books", "Read.cshtml"));
+        var sharedSettings = File.ReadAllText(Path.Combine(
+            root, "src", "AniLingo.Web", "Pages", "Shared", "_ReaderSettingsPanel.cshtml"));
         var bookScript = File.ReadAllText(Path.Combine(
             root, "src", "AniLingo.Web", "wwwroot", "js", "books-reader.js"));
 
         StringAssert.Contains(page, "data-reader-autoscroll-toggle");
         StringAssert.Contains(page, "data-reader-page-controls");
-        StringAssert.Contains(page, "data-reader-save-defaults");
-        StringAssert.Contains(page, "data-reader-reset-book");
-        StringAssert.Contains(page, "data-bookmark-style-control");
+        StringAssert.Contains(page, "_ReaderSettingsPanel");
         StringAssert.Contains(page, "Kapitel @Model.Chapter.Number");
-        StringAssert.Contains(page, "data-reader-genre-select");
+        StringAssert.Contains(sharedSettings, "data-reader-genre-select");
+        StringAssert.Contains(sharedSettings, "data-reader-background-select");
+        StringAssert.Contains(sharedSettings, "data-setting-key=\"bookmarkStyle\"");
         Assert.IsFalse(page.Contains("<option value=\"horror\">", StringComparison.Ordinal));
 
         StringAssert.Contains(script, "captureLogicalAnchor");
@@ -223,7 +225,7 @@ public sealed class ReaderPersonalizationTests
 
         StringAssert.Contains(bookPage, "data-reader-personalization");
         StringAssert.Contains(bookPage, "reader-themes.css");
-        StringAssert.Contains(bookPage, "data-reader-background-select");
+        StringAssert.Contains(bookPage, "_ReaderSettingsPanel");
         StringAssert.Contains(bookScript, "anilingo:reader-settings");
         StringAssert.Contains(bookScript, "themeParallaxStrength");
 

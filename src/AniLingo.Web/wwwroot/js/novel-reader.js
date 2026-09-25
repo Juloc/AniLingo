@@ -5,11 +5,7 @@
     const profileId = document.body?.dataset.profileId || "unknown";
     const storagePrefix = `anilingo.profile.${profileId}.novel`;
     const storage = {
-        view: `${storagePrefix}.view`,
-        size: `${storagePrefix}.size`,
-        leading: `${storagePrefix}.leading`,
-        width: `${storagePrefix}.width`,
-        theme: `${storagePrefix}.theme`
+        view: `${storagePrefix}.view`
     };
 
     const progressForm = shell.querySelector("[data-progress-form]");
@@ -49,31 +45,12 @@
     let toastTimer = null;
     let pendingSelection = null;
     let lastSentKey = "";
-    let readerTapStart = null;
 
     const normalizeText = value =>
         (value || "").replace(/\s+/g, " ").trim();
 
     const clamp = (value, min, max) =>
         Math.min(max, Math.max(min, value));
-
-    const readerOverlayOpen = () =>
-        (chapterDrawer && !chapterDrawer.hidden) ||
-        (notes && !notes.hidden) ||
-        settingsPanel?.open === true;
-
-    const showReaderChrome = () => {
-        shell.classList.remove("reader-chrome-hidden");
-    };
-
-    const hideReaderChrome = () => {
-        if (!restoreComplete || readerOverlayOpen()) return;
-        shell.classList.add("reader-chrome-hidden");
-    };
-
-    const cancelReaderTap = () => {
-        readerTapStart = null;
-    };
 
     const showToast = message => {
         if (!toast) return;
@@ -135,29 +112,6 @@
         });
     };
 
-    const applyNumber = (name, value, min, max, unit) => {
-        const number = clamp(Number(value), min, max);
-        if (!Number.isFinite(number)) return null;
-        document.documentElement.style.setProperty(name, number + unit);
-        return number;
-    };
-
-    const themes = ["dark", "paper", "light"];
-    const themeLabels = {
-        dark: "Dark",
-        paper: "Paper",
-        light: "Light"
-    };
-
-    const applyTheme = theme => {
-        const next = themes.includes(theme) ? theme : "dark";
-        shell.dataset.theme = next;
-        localStorage.setItem(storage.theme, next);
-        shell.querySelectorAll("[data-reader-theme-label]").forEach(label => {
-            label.textContent = themeLabels[next];
-        });
-    };
-
     const initialAnchorLanguage = shell.dataset.anchorLanguage || "ja";
     const forcedAnchor = shell.dataset.forceAnchor === "true";
     const storedView = localStorage.getItem(storage.view);
@@ -167,16 +121,6 @@
 
     syncLanguageControls();
     applyView(initialView);
-    applyTheme(localStorage.getItem(storage.theme) || "dark");
-
-    const savedSize = localStorage.getItem(storage.size);
-    if (savedSize) applyNumber("--novel-reader-size", savedSize, .9, 1.7, "rem");
-
-    const savedLeading = localStorage.getItem(storage.leading);
-    if (savedLeading) applyNumber("--novel-reader-leading", savedLeading, 1.45, 2.5, "");
-
-    const savedWidth = localStorage.getItem(storage.width);
-    if (savedWidth) applyNumber("--novel-reader-width", savedWidth, 560, 1040, "px");
 
     const paragraphsFor = language =>
         Array.from(shell.querySelectorAll(
@@ -299,6 +243,9 @@
     };
 
     const restorePosition = () => {
+        shell.dispatchEvent(new CustomEvent("anilingo:reader-restoring", {
+            detail: { active: true }
+        }));
         const anchorParagraph = findResumeParagraph();
         const initialOffset = Number(shell.dataset.anchorOffset || 0);
 
@@ -327,6 +274,10 @@
         updateProgressBar();
         setTimeout(() => {
             restoreComplete = true;
+            shell.classList.remove("reader-chrome-hidden");
+            shell.dispatchEvent(new CustomEvent("anilingo:reader-restoring", {
+                detail: { active: false }
+            }));
         }, 50);
     };
 
@@ -1055,45 +1006,6 @@
             return;
         }
 
-        const adjust = event.target.closest("[data-reader-adjust]");
-        if (adjust) {
-            const action = adjust.dataset.readerAdjust;
-            if (action === "size-up" || action === "size-down") {
-                const current =
-                    parseFloat(getComputedStyle(document.documentElement)
-                        .getPropertyValue("--novel-reader-size")) || 1.08;
-                const value = applyNumber(
-                    "--novel-reader-size",
-                    current + (action === "size-up" ? .08 : -.08),
-                    .9,
-                    1.7,
-                    "rem");
-                if (value != null) localStorage.setItem(storage.size, value);
-            } else if (action === "leading") {
-                const current =
-                    parseFloat(getComputedStyle(document.documentElement)
-                        .getPropertyValue("--novel-reader-leading")) || 1.9;
-                const value = current >= 2.35 ? 1.55 : current + .15;
-                applyNumber("--novel-reader-leading", value, 1.45, 2.5, "");
-                localStorage.setItem(storage.leading, value);
-            } else if (action === "width") {
-                const current =
-                    parseFloat(getComputedStyle(document.documentElement)
-                        .getPropertyValue("--novel-reader-width")) || 760;
-                const value = current >= 980 ? 620 : current + 120;
-                applyNumber("--novel-reader-width", value, 560, 1040, "px");
-                localStorage.setItem(storage.width, value);
-            }
-            return;
-        }
-
-        if (event.target.closest("[data-reader-theme]")) {
-            const current = shell.dataset.theme || "dark";
-            const index = themes.indexOf(current);
-            applyTheme(themes[(index + 1) % themes.length]);
-            return;
-        }
-
         if (event.target.closest("[data-reader-focus]")) {
             shell.classList.toggle("reader-focus");
             return;
@@ -1207,59 +1119,20 @@
         setTimeout(captureSelection, 40);
     }, { passive: true });
 
-    readerContent?.addEventListener("pointerdown", event => {
-        if (event.pointerType === "mouse" && event.button !== 0) return;
-        if (event.target.closest(
-            "a, button, input, select, textarea, summary, label, [contenteditable='true'], [role='button']")) {
-            return;
-        }
-
-        readerTapStart = {
-            pointerId: event.pointerId,
-            x: event.clientX,
-            y: event.clientY,
-            startedAt: performance.now(),
-            scrolled: false
-        };
-    }, { passive: true });
-
-    readerContent?.addEventListener("pointerup", event => {
-        const start = readerTapStart;
-        cancelReaderTap();
-
-        if (!start || start.pointerId !== event.pointerId || start.scrolled) return;
-
-        const distance = Math.hypot(
-            event.clientX - start.x,
-            event.clientY - start.y);
-        const elapsed = performance.now() - start.startedAt;
-        if (distance > 12 || elapsed > 650) return;
-
-        const selection = window.getSelection();
-        if (selection && !selection.isCollapsed && normalizeText(selection.toString())) {
-            return;
-        }
-
-        showReaderChrome();
-    }, { passive: true });
-
-    readerContent?.addEventListener("pointercancel", cancelReaderTap, { passive: true });
-
-    const handleReaderScroll = () => {
-        if (readerTapStart) readerTapStart.scrolled = true;
-        hideReaderChrome();
-    };
-
-    readerContent?.addEventListener("scroll", handleReaderScroll, { passive: true });
-
     window.addEventListener("scroll", () => {
         updateProgressBar();
 
         clearTimeout(progressTimer);
         progressTimer = setTimeout(sendProgress, 700);
-
-        handleReaderScroll();
     }, { passive: true });
+
+    shell.addEventListener("anilingo:reader-page-edge", event => {
+        const direction = Number(event.detail?.direction || 0);
+        if (!direction) return;
+        shell.querySelector(
+            direction > 0 ? "[data-reader-page-next]" : "[data-reader-page-prev]"
+        )?.click();
+    });
 
     window.addEventListener("pagehide", sendProgress);
 

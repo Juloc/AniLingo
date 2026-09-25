@@ -2,6 +2,7 @@ using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Books;
 using AniLingo.Web.Features.Novels;
 using AniLingo.Web.Features.Operations;
+using AniLingo.Web.Features.ReaderCore;
 using AniLingo.Web.Features.ReaderPreferences;
 using AniLingo.Web.Data;
 using AniLingo.Web.Infrastructure;
@@ -18,6 +19,7 @@ public sealed class ReadModel(
     AppDbContext db) : PageModel
 {
     public BookReaderChapter Reader { get; private set; } = null!;
+    public ReaderDocumentDescriptor ReaderDocument { get; private set; } = null!;
     public ReaderSettingsSnapshot ReaderSettings { get; private set; } = null!;
     public IReadOnlyList<BookReaderHighlightItem> CurrentHighlights { get; private set; } = [];
     public int? RequestedPositionPermille { get; private set; }
@@ -54,11 +56,18 @@ public sealed class ReadModel(
             ? null
             : Math.Clamp(pos.Value, 0, 1000);
         RequestedView = NormalizeRequestedView(view);
+        ReaderDocument = ReaderDocumentDescriptor.Create(
+            reader.Work.Id,
+            ReaderContentType.Book,
+            reader.Work.MetadataTitle ?? reader.Work.Title,
+            ReaderPreferenceRules.ParseGenres(reader.Work.MetadataGenresJson));
+
         ReaderSettings = await ReaderPreferenceStore.GetAsync(
             db,
             account.ProfileId,
             reader.Work.Id,
             reader.Work.MetadataGenresJson,
+            ReaderContentType.Book,
             cancellationToken);
         CurrentHighlights = await BookReaderAnnotationStore.GetChapterHighlightsAsync(
             db,
@@ -73,7 +82,11 @@ public sealed class ReadModel(
         string? lang,
         string? scope,
         string? changedKey,
-        [Bind(Prefix = "Settings")] ReaderSettingsInput input,
+        string? genre,
+        int genrePriority,
+        bool resetField,
+        bool resetScope,
+        ReaderSettingsInput input,
         CancellationToken cancellationToken)
     {
         var target = BookLanguageCatalog.Normalize(lang);
@@ -88,41 +101,76 @@ public sealed class ReadModel(
             return NotFound();
         }
 
-        if (string.Equals(
+        try
+        {
+            var scopeKey = ReaderPreferenceScopes.ResolveTarget(
                 scope,
-                "default",
-                StringComparison.OrdinalIgnoreCase))
-        {
-            await ReaderPreferenceStore.SaveUserDefaultsAsync(
-                db,
-                account.ProfileId,
-                input,
-                cancellationToken);
-        }
-        else
-        {
-            if (string.IsNullOrWhiteSpace(changedKey))
+                ReaderContentType.Book,
+                reader.Work.Id,
+                genre,
+                genrePriority == 0
+                    ? ReaderPreferenceScopes.DefaultGenrePriority
+                    : genrePriority);
+
+            if (resetScope)
             {
-                return BadRequest("Reader setting key is required.");
+                await ReaderPreferenceStore.ResetScopeAsync(
+                    db,
+                    account.ProfileId,
+                    scopeKey,
+                    cancellationToken);
+            }
+            else if (resetField)
+            {
+                if (string.IsNullOrWhiteSpace(changedKey))
+                {
+                    return BadRequest("Reader setting key is required.");
+                }
+
+                await ReaderPreferenceStore.ResetScopeFieldAsync(
+                    db,
+                    account.ProfileId,
+                    scopeKey,
+                    changedKey,
+                    cancellationToken);
+            }
+            else if (!string.IsNullOrWhiteSpace(changedKey))
+            {
+                await ReaderPreferenceStore.SaveScopeFieldAsync(
+                    db,
+                    account.ProfileId,
+                    scopeKey,
+                    changedKey,
+                    input,
+                    cancellationToken);
+            }
+            else
+            {
+                await ReaderPreferenceStore.SaveScopeAsync(
+                    db,
+                    account.ProfileId,
+                    scopeKey,
+                    scopeKey.StartsWith("work:", StringComparison.OrdinalIgnoreCase)
+                        ? reader.Work.Id
+                        : null,
+                    input,
+                    cancellationToken);
             }
 
-            await ReaderPreferenceStore.SaveBookOverrideAsync(
+            var settings = await ReaderPreferenceStore.GetAsync(
                 db,
                 account.ProfileId,
                 reader.Work.Id,
-                changedKey,
-                input,
+                reader.Work.MetadataGenresJson,
+                ReaderContentType.Book,
                 cancellationToken);
+
+            return new JsonResult(new { settings });
         }
-
-        var settings = await ReaderPreferenceStore.GetAsync(
-            db,
-            account.ProfileId,
-            reader.Work.Id,
-            reader.Work.MetadataGenresJson,
-            cancellationToken);
-
-        return new JsonResult(new { settings });
+        catch (InvalidOperationException exception)
+        {
+            return BadRequest(exception.Message);
+        }
     }
 
     public async Task<IActionResult> OnPostResetReaderSettingsAsync(
@@ -153,6 +201,7 @@ public sealed class ReadModel(
             account.ProfileId,
             reader.Work.Id,
             reader.Work.MetadataGenresJson,
+            ReaderContentType.Book,
             cancellationToken);
 
         return new JsonResult(new { settings });

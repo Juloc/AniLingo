@@ -299,25 +299,27 @@
         return payload?.settings || null;
     };
 
+    const activePreferenceTarget = () =>
+        settingsForm.querySelector('[name="scope"]')?.value || "work";
+
     const scheduleBookSave = changedKey => {
         const snapshot = { ...state };
+        const scope = activePreferenceTarget();
         saveQueue = saveQueue
             .then(async () => {
                 const saved = await postSettings(
-                    "book",
+                    scope,
                     changedKey,
                     snapshot,
                     false);
 
-                state.hasBookOverride = true;
+                if (scope === "work" || scope === "book") {
+                    state.hasBookOverride = true;
+                }
                 if (saved && state[changedKey] === snapshot[changedKey]) {
-                    state[changedKey] = saved[changedKey];
-                    if (changedKey === "genreTheme") {
-                        state.resolvedGenreTheme = saved.resolvedGenreTheme;
-                    }
+                    state = { ...state, ...saved };
                     applySettings();
                 }
-                if (overrideState) overrideState.textContent = "Buch-Override";
             })
             .catch(error => {
                 showToast(error.message);
@@ -427,8 +429,12 @@
 
         if (overrideState) {
             overrideState.textContent = state.hasBookOverride
-                ? "Buch-Override"
-                : "User-Standard";
+                ? "Für dieses Buch angepasst"
+                : state.hasGenreOverride
+                    ? "Genre-Standard"
+                    : state.hasTypeOverride
+                        ? "Typ-Standard"
+                        : "Mein Standard";
         }
     };
 
@@ -1026,6 +1032,18 @@
 
     settingsPanel?.addEventListener("toggle", () => {
         if (settingsPanel.open) stopAutoScroll();
+    });
+
+    shell.addEventListener("anilingo:reader-settings-response", event => {
+        if (!event.detail?.settings) return;
+        state = { ...state, ...event.detail.settings };
+        applySettings();
+    });
+
+    shell.addEventListener("anilingo:reader-page-edge", event => {
+        const direction = Number(event.detail?.direction || 0);
+        if (!direction || state.readingMode !== "paged") return;
+        goToPage(currentPage + direction);
     });
 
     shell.querySelector("[data-reader-page-prev]")?.addEventListener("click", () =>
