@@ -11,6 +11,7 @@ using AniLingo.Web.Features.Novels;
 using AniLingo.Web.Features.Operations;
 using AniLingo.Web.Features.Playback;
 using AniLingo.Web.Features.Progress;
+using AniLingo.Web.Features.ReaderThemes;
 using AniLingo.Web.Features.Sonarr;
 using AniLingo.Web.Features.Statistics;
 using AniLingo.Web.Features.Storage;
@@ -199,6 +200,7 @@ builder.Services.AddScoped<PlaybackPreparationService>();
 builder.Services.AddScoped<PlaybackService>();
 builder.Services.AddScoped<EpisodeProgressService>();
 builder.Services.AddScoped<ClientApiService>();
+builder.Services.AddSingleton<ReaderThemeCatalog>();
 
 builder.Services.AddHttpClient<AniListMetadataProvider>(client =>
 {
@@ -284,6 +286,7 @@ app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapClientApiV1();
+app.MapReaderThemeCatalog();
 app.MapRazorPages();
 
 try

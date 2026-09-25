@@ -1657,3 +1657,34 @@
         padding-inline: 2px;
     }
 }
+
+
+/* Shared reader-theme controls */
+.book-theme-advanced {
+    margin: 2px 0;
+    border-top: 1px solid var(--border);
+    padding-top: 8px;
+}
+
+.book-theme-advanced > summary {
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 12px;
+    user-select: none;
+}
+
+.book-theme-advanced-grid {
+    display: grid;
+    gap: 10px;
+    padding-top: 10px;
+}
+
+.book-theme-advanced-grid label {
+    min-width: 0;
+}
+
+.book-theme-advanced-grid output {
+    margin-inline-start: auto;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+}
