@@ -1,3 +1,4 @@
+using AniLingo.Web.Features.Acquisition.Sabnzbd;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Books;
 using AniLingo.Web.Features.Operations;
@@ -11,7 +12,8 @@ public sealed class IndexModel(
     BookCatalogService books,
     CurrentAccountContext account,
     AppDbContext db,
-    SabnzbdOperationsClient sabnzbdOperations,
+    SabnzbdConnectionResolver sabnzbdSettings,
+    SabnzbdDownloadService sabnzbd,
     OperationRunner operations) : PageModel
 {
     public string Query { get; private set; } = "";
@@ -20,7 +22,7 @@ public sealed class IndexModel(
     public IReadOnlyList<BookLibraryItem> Library { get; private set; } = [];
     public string? Error { get; private set; }
     public bool IsOwner => account.IsOwner;
-    public bool IsSabnzbdConfigured => books.IsSabnzbdConfigured;
+    public bool IsSabnzbdConfigured { get; private set; }
     public bool IsInboxConfigured => books.IsInboxConfigured;
 
     public async Task OnGetAsync(
@@ -30,6 +32,8 @@ public sealed class IndexModel(
     {
         Query = q?.Trim() ?? "";
         TargetLanguage = BookLanguageCatalog.Normalize(lang);
+        IsSabnzbdConfigured = account.IsOwner
+            && (await sabnzbdSettings.ResolveAsync(cancellationToken)).IsConfigured;
 
         Library = await books.GetLibraryAsync(
             account.ProfileId,
@@ -219,103 +223,16 @@ public sealed class IndexModel(
             ? "AniLingo book"
             : displayName.Trim();
 
-        var operationStore = new OperationStore(db);
-        var operationId = await operationStore.CreateAsync(
-            new OperationDescriptor(
-                BookInboxImport.SabnzbdDownloadKind,
-                "External downloads",
-                "SABnzbd download",
-                effectiveName,
-                account.ProfileId,
-                OperationLane.Normal,
-                IsDownload: true,
-                Retryable: false,
-                ExternalProvider: SabnzbdOperationsClient.ProviderId),
-            cancellationToken);
-
-        await operationStore.MarkRunningAsync(operationId, cancellationToken);
-        await operationStore.ReportProgressAsync(
-            operationId,
-            0,
-            "Submitting download to SABnzbd.",
-            cancellationToken: cancellationToken);
-
-        IReadOnlySet<string>? existingIds = null;
         try
         {
-            existingIds = await sabnzbdOperations.CaptureJobIdsAsync(
+            var outcome = await sabnzbd.SubmitUrlAsync(
+                BookSabnzbdSubmission(effectiveName),
+                SabnzbdDownloadService.ParseNzbUrl(nzbUrl),
                 cancellationToken);
+            TempData["Status"] = outcome.Message;
         }
-        catch (Exception exception) when (
-            exception is HttpRequestException
-                or TaskCanceledException
-                or InvalidOperationException)
+        catch (InvalidOperationException exception)
         {
-            await operationStore.AppendLogAsync(
-                operationId,
-                OperationLogLevel.Warning,
-                "SABnzbd",
-                "Live queue access is unavailable; AniLingo will still try to submit the download.",
-                CancellationToken.None);
-        }
-
-        try
-        {
-            var result = await books.QueueSabnzbdUrlAsync(
-                nzbUrl ?? "",
-                effectiveName,
-                cancellationToken);
-
-            if (!result.Accepted)
-            {
-                await operationStore.MarkFailedAsync(
-                    operationId,
-                    result.Message,
-                    CancellationToken.None);
-                TempData["Status"] = result.Message;
-                return RedirectToPage();
-            }
-
-            var externalId = existingIds is null
-                ? null
-                : await sabnzbdOperations.ResolveNewJobIdAsync(
-                    existingIds,
-                    effectiveName,
-                    cancellationToken);
-
-            if (string.IsNullOrWhiteSpace(externalId))
-            {
-                await operationStore.MarkSucceededAsync(
-                    operationId,
-                    "Sent to SABnzbd. Live progress could not be linked; use a full SABnzbd API key to enable queue/history monitoring.",
-                    CancellationToken.None);
-            }
-            else
-            {
-                await operationStore.SetExternalReferenceAsync(
-                    operationId,
-                    SabnzbdOperationsClient.ProviderId,
-                    externalId,
-                    cancellationToken);
-                await operationStore.ReportProgressAsync(
-                    operationId,
-                    0,
-                    "Accepted by SABnzbd; waiting for download progress.",
-                    cancellationToken: cancellationToken);
-            }
-
-            TempData["Status"] =
-                "SABnzbd download submitted. Track it under Admin → Operations → Downloads.";
-        }
-        catch (Exception exception) when (
-            exception is InvalidOperationException
-                or HttpRequestException
-                or TaskCanceledException)
-        {
-            await operationStore.MarkFailedAsync(
-                operationId,
-                $"{exception.GetType().Name}: {exception.Message}",
-                CancellationToken.None);
             TempData["Status"] = exception.Message;
         }
 
@@ -337,108 +254,30 @@ public sealed class IndexModel(
             return RedirectToPage();
         }
 
-        var operationStore = new OperationStore(db);
-        var operationId = await operationStore.CreateAsync(
-            new OperationDescriptor(
-                BookInboxImport.SabnzbdDownloadKind,
-                "External downloads",
-                "SABnzbd download",
-                nzb.FileName,
-                account.ProfileId,
-                OperationLane.Normal,
-                IsDownload: true,
-                Retryable: false,
-                ExternalProvider: SabnzbdOperationsClient.ProviderId),
-            cancellationToken);
-
-        await operationStore.MarkRunningAsync(operationId, cancellationToken);
-        await operationStore.ReportProgressAsync(
-            operationId,
-            0,
-            "Submitting NZB to SABnzbd.",
-            cancellationToken: cancellationToken);
-
-        IReadOnlySet<string>? existingIds = null;
-        try
-        {
-            existingIds = await sabnzbdOperations.CaptureJobIdsAsync(
-                cancellationToken);
-        }
-        catch (Exception exception) when (
-            exception is HttpRequestException
-                or TaskCanceledException
-                or InvalidOperationException)
-        {
-            await operationStore.AppendLogAsync(
-                operationId,
-                OperationLogLevel.Warning,
-                "SABnzbd",
-                "Live queue access is unavailable; AniLingo will still try to submit the NZB.",
-                CancellationToken.None);
-        }
-
         try
         {
             await using var stream = nzb.OpenReadStream();
-            var result = await books.QueueSabnzbdFileAsync(
+            var outcome = await sabnzbd.SubmitFileAsync(
+                BookSabnzbdSubmission(nzb.FileName),
                 stream,
                 nzb.FileName,
                 cancellationToken);
-
-            if (!result.Accepted)
-            {
-                await operationStore.MarkFailedAsync(
-                    operationId,
-                    result.Message,
-                    CancellationToken.None);
-                TempData["Status"] = result.Message;
-                return RedirectToPage();
-            }
-
-            var externalId = existingIds is null
-                ? null
-                : await sabnzbdOperations.ResolveNewJobIdAsync(
-                    existingIds,
-                    nzb.FileName,
-                    cancellationToken);
-
-            if (string.IsNullOrWhiteSpace(externalId))
-            {
-                await operationStore.MarkSucceededAsync(
-                    operationId,
-                    "Sent to SABnzbd. Live progress could not be linked; use a full SABnzbd API key to enable queue/history monitoring.",
-                    CancellationToken.None);
-            }
-            else
-            {
-                await operationStore.SetExternalReferenceAsync(
-                    operationId,
-                    SabnzbdOperationsClient.ProviderId,
-                    externalId,
-                    cancellationToken);
-                await operationStore.ReportProgressAsync(
-                    operationId,
-                    0,
-                    "Accepted by SABnzbd; waiting for download progress.",
-                    cancellationToken: cancellationToken);
-            }
-
-            TempData["Status"] =
-                "SABnzbd download submitted. Track it under Admin → Operations → Downloads.";
+            TempData["Status"] = outcome.Message;
         }
-        catch (Exception exception) when (
-            exception is InvalidOperationException
-                or HttpRequestException
-                or TaskCanceledException)
+        catch (InvalidOperationException exception)
         {
-            await operationStore.MarkFailedAsync(
-                operationId,
-                $"{exception.GetType().Name}: {exception.Message}",
-                CancellationToken.None);
             TempData["Status"] = exception.Message;
         }
 
         return RedirectToPage();
     }
 
+    private SabnzbdSubmission BookSabnzbdSubmission(string name) =>
+        new(
+            BookInboxImport.SabnzbdDownloadKind,
+            "SABnzbd download",
+            name,
+            account.ProfileId,
+            SabnzbdPurpose.Books,
+            JobName: name);
 }

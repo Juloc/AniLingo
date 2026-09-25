@@ -60,7 +60,7 @@
         }
 
         <div class="inline-actions">
-            @if (operation.CanCancel)
+            @if (Model.CanCancel)
             {
                 <form method="post" asp-page-handler="Cancel">
                     <input type="hidden" name="id" value="@operation.Id" />
@@ -103,9 +103,52 @@
                 <div><span>Total</span><strong>@(operation.BytesTotal?.ToString("N0") ?? "unknown")</strong></div>
                 <div><span>Speed</span><strong>@(operation.BytesPerSecond is { } speed ? $"{speed / 1024d:N1} KiB/s" : "—")</strong></div>
                 <div><span>ETA</span><strong>@(operation.EtaUtc?.ToLocalTime().ToString("T") ?? "—")</strong></div>
+                @if (Model.IsSabnzbdJob)
+                {
+                    <div><span>SABnzbd job</span><strong>@operation.ExternalId</strong></div>
+                }
             </div>
         }
     </section>
+
+    @if (Model.Acquisition is { } acquisition && Model.AcquisitionAttempt is { } attempt)
+    {
+        <section class="panel">
+            <div class="panel-heading"><h2>Anime acquisition</h2></div>
+            <div class="status-list">
+                <div><span>Anime</span><strong>@acquisition.AnimeTitle</strong></div>
+                <div><span>Episodes</span><strong>@AniLingo.Web.Features.Acquisition.Sabnzbd.SabnzbdAcquisitionService.FormatEpisodes(acquisition.Episodes)</strong></div>
+                <div><span>Release</span><strong>@attempt.ReleaseTitle</strong></div>
+                <div><span>Attempt</span><strong>@attempt.Number of @acquisition.MaxAttempts</strong></div>
+                <div><span>Untried candidates</span><strong>@acquisition.PendingCandidates.Length</strong></div>
+            </div>
+
+            @if (acquisition.Attempts.Length > 1)
+            {
+                <h3>Attempts</h3>
+                <ul>
+                    @foreach (var other in acquisition.Attempts.OrderBy(item => item.Number))
+                    {
+                        <li>
+                            <a asp-page="/Admin/Operation" asp-route-id="@other.OperationId">#@other.Number</a>
+                            @other.ReleaseTitle
+                        </li>
+                    }
+                </ul>
+            }
+
+            @if (Model.AcquisitionBlocklist.Count > 0)
+            {
+                <h3>Blocklisted releases</h3>
+                <ul>
+                    @foreach (var blocked in Model.AcquisitionBlocklist)
+                    {
+                        <li><strong>@blocked.ReleaseTitle</strong> — @blocked.Reason</li>
+                    }
+                </ul>
+            }
+        </section>
+    }
 </div>
 
 <section class="panel">

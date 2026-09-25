@@ -1,5 +1,3 @@
-using System.Net;
-using System.Text;
 using AniLingo.Web.Features.Acquisition.Sabnzbd;
 using Microsoft.AspNetCore.DataProtection;
 
@@ -11,22 +9,28 @@ public sealed class SabnzbdClientTests
     [TestMethod]
     public async Task SettingsStoreProtectsApiKeyAtRest()
     {
-        var directory = CreateTemporaryDirectory();
+        var directory = SabnzbdTestSupport.CreateTemporaryDirectory();
         try
         {
             var provider = new EphemeralDataProtectionProvider();
             var store = new SabnzbdSettingsStore(provider, directory);
-            await store.SaveAsync(Connection());
+            await store.SaveAsync(
+                new SabnzbdStoredSettings(
+                    "http://sabnzbd:8080/",
+                    "secret-key",
+                    " books ",
+                    "anime"));
 
             var raw = await File.ReadAllTextAsync(
-                Path.Combine(directory.FullName, "sabnzbd.json"));
+                Path.Combine(directory.FullName, SabnzbdSettingsStore.FileName));
 
             Assert.IsFalse(raw.Contains("secret-key", StringComparison.Ordinal));
 
             var loaded = await store.LoadAsync();
-            Assert.IsNotNull(loaded);
             Assert.AreEqual("secret-key", loaded.ApiKey);
-            Assert.AreEqual("anilingo", loaded.Settings.Category);
+            Assert.AreEqual("http://sabnzbd:8080", loaded.BaseUrl);
+            Assert.AreEqual("books", loaded.BooksCategory);
+            Assert.AreEqual("anime", loaded.AnimeCategory);
         }
         finally
         {
@@ -35,76 +39,173 @@ public sealed class SabnzbdClientTests
     }
 
     [TestMethod]
-    public async Task TestUsesVersionModeAndApiKey()
+    public async Task ResolverAppliesCanonicalConfigurationOverridesPerField()
     {
-        HttpRequestMessage? captured = null;
-        var client = new SabnzbdClient(
-            new HttpClient(
-                new StubHandler(request =>
+        var directory = SabnzbdTestSupport.CreateTemporaryDirectory();
+        try
+        {
+            var store = new SabnzbdSettingsStore(new EphemeralDataProtectionProvider(), directory);
+            await store.SaveAsync(
+                new SabnzbdStoredSettings("http://stored:8080", "stored-key", "books", null));
+
+            var resolver = new SabnzbdConnectionResolver(
+                store,
+                SabnzbdTestSupport.Configuration(new Dictionary<string, string?>
                 {
-                    captured = CloneRequest(request);
-                    return JsonResponse("""{"version":"4.5.3"}""");
-                })));
+                    [SabnzbdConfigurationKeys.ApiKey] = "env-key",
+                    [SabnzbdConfigurationKeys.AnimeCategory] = "tv-anime",
+                    // Retired Books-only keys are no longer read.
+                    ["Books:SABnzbd:BaseUrl"] = "http://retired:8080"
+                }));
 
-        var result = await client.TestAsync(
-            Connection(),
-            CancellationToken.None);
+            var resolved = await resolver.ResolveAsync();
 
-        Assert.IsTrue(result.Success);
-        Assert.AreEqual("4.5.3", result.Version);
-        Assert.IsNotNull(captured);
-        StringAssert.Contains(captured.RequestUri!.Query, "mode=version");
-        StringAssert.Contains(captured.RequestUri.Query, "output=json");
-        StringAssert.Contains(captured.RequestUri.Query, "apikey=secret-key");
+            Assert.IsNotNull(resolved.Connection);
+            Assert.AreEqual("http://stored:8080", resolved.Connection.Settings.BaseUrl);
+            Assert.AreEqual("env-key", resolved.Connection.ApiKey);
+            Assert.AreEqual("books", resolved.Connection.Settings.CategoryFor(SabnzbdPurpose.Books));
+            Assert.AreEqual("tv-anime", resolved.Connection.Settings.CategoryFor(SabnzbdPurpose.Anime));
+            Assert.IsTrue(resolved.ApiKeyFromConfiguration);
+            Assert.IsFalse(resolved.BaseUrlFromConfiguration);
+            Assert.AreEqual("stored-key", resolved.Stored.ApiKey);
+        }
+        finally
+        {
+            directory.Delete(recursive: true);
+        }
     }
 
     [TestMethod]
-    public async Task GrabAddsUrlWithConfiguredCategory()
+    public async Task RequestsKeepApiKeyOutOfTheUrl()
     {
-        HttpRequestMessage? captured = null;
+        var handler = new RecordingHandler(
+            """{"version":"4.5.3"}""",
+            """{"queue":{"slots":[]}}""");
+        var client = new SabnzbdClient(new HttpClient(handler));
+
+        var result = await client.TestAsync(
+            SabnzbdTestSupport.Connection(),
+            CancellationToken.None);
+
+        Assert.IsTrue(result.Success);
+        Assert.IsTrue(result.CanMonitor);
+        Assert.AreEqual("4.5.3", result.Version);
+        Assert.AreEqual(2, handler.Requests.Count);
+        foreach (var request in handler.Requests)
+        {
+            Assert.AreEqual(HttpMethod.Post, request.Method);
+            Assert.AreEqual("http://sabnzbd:8080/api", request.Uri);
+            Assert.IsFalse(request.Uri.Contains("secret-key", StringComparison.Ordinal));
+            StringAssert.Contains(request.Body, "apikey=secret-key");
+            StringAssert.Contains(request.Body, "output=json");
+        }
+
+        StringAssert.Contains(handler.Requests[0].Body, "mode=version");
+        StringAssert.Contains(handler.Requests[1].Body, "mode=queue");
+    }
+
+    [TestMethod]
+    public async Task TestReportsNzbOnlyKeyAsUnableToMonitor()
+    {
         var client = new SabnzbdClient(
             new HttpClient(
-                new StubHandler(request =>
-                {
-                    captured = CloneRequest(request);
-                    return JsonResponse(
-                        """{"status":true,"nzo_ids":["SABnzbd_nzo_123"]}""");
-                })));
+                new RecordingHandler(
+                    """{"version":"4.5.3"}""",
+                    """{"status":false,"error":"API Key Incorrect"}""")));
+
+        var result = await client.TestAsync(
+            SabnzbdTestSupport.Connection(),
+            CancellationToken.None);
+
+        Assert.IsFalse(result.Success);
+        Assert.IsFalse(result.CanMonitor);
+        StringAssert.Contains(result.Error, "API Key Incorrect");
+        StringAssert.Contains(result.Error, "full API key");
+    }
+
+    [TestMethod]
+    public async Task GrabAddsUrlWithPurposeCategory()
+    {
+        var handler = new RecordingHandler(
+            """{"status":true,"nzo_ids":["SABnzbd_nzo_123"]}""");
+        var client = new SabnzbdClient(new HttpClient(handler));
+        var connection = SabnzbdTestSupport.Connection();
 
         var result = await client.GrabAsync(
-            Connection(),
+            connection,
             new SabnzbdGrabRequest(
                 new Uri("https://prowlarr.example/download?id=123"),
-                "Anime - 01"),
+                "Anime - 01",
+                connection.Settings.CategoryFor(SabnzbdPurpose.Anime)),
             CancellationToken.None);
 
         Assert.IsTrue(result.Success);
         CollectionAssert.AreEqual(
             new[] { "SABnzbd_nzo_123" },
             result.NzoIds.ToArray());
-        StringAssert.Contains(captured!.RequestUri!.Query, "mode=addurl");
-        StringAssert.Contains(captured.RequestUri.Query, "cat=anilingo");
-        StringAssert.Contains(
-            Uri.UnescapeDataString(captured.RequestUri.Query),
-            "name=https://prowlarr.example/download?id=123");
+        var body = Uri.UnescapeDataString(handler.Requests[0].Body.Replace('+', ' '));
+        StringAssert.Contains(body, "mode=addurl");
+        StringAssert.Contains(body, "cat=anime");
+        StringAssert.Contains(body, "nzbname=Anime - 01");
+        StringAssert.Contains(body, "name=https://prowlarr.example/download?id=123");
     }
 
     [TestMethod]
-    public void QueueParserHandlesStringMetrics()
+    public async Task GrabReportsRejectionMessage()
+    {
+        var client = new SabnzbdClient(
+            new HttpClient(
+                new RecordingHandler("""{"status":false,"error":"Invalid NZB"}""")));
+
+        var result = await client.GrabAsync(
+            SabnzbdTestSupport.Connection(),
+            new SabnzbdGrabRequest(new Uri("https://indexer.example/a.nzb")),
+            CancellationToken.None);
+
+        Assert.IsFalse(result.Success);
+        Assert.AreEqual("Invalid NZB", result.Error);
+    }
+
+    [TestMethod]
+    public async Task AddFileUploadsMultipartNzbWithCategory()
+    {
+        var handler = new RecordingHandler(
+            """{"status":true,"nzo_ids":["SABnzbd_nzo_file"]}""");
+        var client = new SabnzbdClient(new HttpClient(handler));
+        await using var nzb = new MemoryStream("<nzb/>"u8.ToArray());
+
+        var result = await client.AddFileAsync(
+            SabnzbdTestSupport.Connection(),
+            nzb,
+            "book.nzb",
+            "books",
+            CancellationToken.None);
+
+        Assert.IsTrue(result.Success);
+        Assert.AreEqual("SABnzbd_nzo_file", result.NzoIds.Single());
+        StringAssert.Contains(handler.Requests[0].Body, "addfile");
+        StringAssert.Contains(handler.Requests[0].Body, "book.nzb");
+        StringAssert.Contains(handler.Requests[0].Body, "books");
+        Assert.IsFalse(handler.Requests[0].Uri.Contains("secret-key", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void QueueParserHandlesStringMetricsSpeedAndTimeLeft()
     {
         const string json = """
         {
           "queue": {
             "paused": false,
-            "speed": "42.1 M",
+            "kbpersec": "512.5",
             "timeleft": "0:01:20",
             "slots": [
               {
                 "nzo_id": "SABnzbd_nzo_1",
                 "filename": "Anime - 01",
                 "status": "Downloading",
-                "cat": "anilingo",
+                "cat": "anime",
                 "percentage": "52.4",
+                "timeleft": "1:02:03:04",
                 "mb": "1000",
                 "mbleft": "476"
               }
@@ -116,272 +217,125 @@ public sealed class SabnzbdClientTests
         var queue = SabnzbdClient.ParseQueueResponse(json);
 
         Assert.IsFalse(queue.Paused);
+        Assert.AreEqual(512.5 * 1024d, queue.BytesPerSecond);
+        Assert.AreEqual(TimeSpan.FromSeconds(80), queue.TimeLeft);
         Assert.AreEqual(1, queue.Jobs.Count);
         Assert.AreEqual(52.4, queue.Jobs[0].Percentage);
+        Assert.AreEqual(new TimeSpan(1, 2, 3, 4), queue.Jobs[0].TimeLeft);
         Assert.AreEqual(1000L * 1024 * 1024, queue.Jobs[0].SizeBytes);
         Assert.AreEqual(476L * 1024 * 1024, queue.Jobs[0].SizeLeftBytes);
     }
 
     [TestMethod]
-    public void HistoryParserClassifiesPasswordAndUnpackFailures()
+    public void HistoryParserNormalizesOutcomes()
     {
         const string json = """
         {
           "history": {
             "slots": [
-              {
-                "nzo_id": "a",
-                "name": "Passworded",
-                "status": "Failed",
-                "fail_message": "Encrypted archive requires a password"
-              },
-              {
-                "nzo_id": "b",
-                "name": "Broken",
-                "status": "Failed",
-                "fail_message": "Unpack failed"
-              }
+              { "nzo_id": "done", "name": "Finished", "status": "Completed", "bytes": 10485760, "completed": 1790000000 },
+              { "nzo_id": "pp", "name": "Unpacking", "status": "Extracting" },
+              { "nzo_id": "pw", "name": "Passworded", "status": "Failed", "fail_message": "Encrypted archive requires a password" },
+              { "nzo_id": "unpack", "name": "Broken", "status": "Failed", "fail_message": "Unpacking failed, archive requires a newer version" },
+              { "nzo_id": "corrupt", "name": "Corrupt", "status": "Failed", "fail_message": "Repair failed, not enough repair blocks (12 short)" },
+              { "nzo_id": "articles", "name": "Incomplete", "status": "Failed", "fail_message": "Download failed - Out of your server's retention?" },
+              { "nzo_id": "unknown", "name": "Mystery", "status": "Failed" }
             ]
           }
         }
         """;
 
-        var history = SabnzbdClient.ParseHistoryResponse(json);
+        var jobs = SabnzbdClient.ParseHistoryResponse(json).Jobs
+            .ToDictionary(job => job.NzoId);
 
-        Assert.AreEqual(
-            SabnzbdFailureKind.Password,
-            history.Jobs[0].FailureKind);
-        Assert.AreEqual(
-            SabnzbdFailureKind.Unpack,
-            history.Jobs[1].FailureKind);
+        Assert.IsTrue(jobs["done"].IsCompleted);
+        Assert.AreEqual(10L * 1024 * 1024, jobs["done"].SizeBytes);
+        Assert.AreEqual(DateTimeOffset.FromUnixTimeSeconds(1790000000), jobs["done"].CompletedAt);
+
+        Assert.IsFalse(jobs["pp"].IsCompleted);
+        Assert.IsFalse(jobs["pp"].IsFailed);
+
+        Assert.AreEqual(SabnzbdFailureKind.Password, jobs["pw"].FailureKind);
+        Assert.AreEqual(SabnzbdFailureKind.Unpack, jobs["unpack"].FailureKind);
+        Assert.AreEqual(SabnzbdFailureKind.Verification, jobs["corrupt"].FailureKind);
+        Assert.AreEqual(SabnzbdFailureKind.Download, jobs["articles"].FailureKind);
+        Assert.AreEqual(SabnzbdFailureKind.Unknown, jobs["unknown"].FailureKind);
+        Assert.IsTrue(jobs.Values.Where(job => job.NzoId is not ("done" or "pp")).All(job => job.IsFailed));
     }
 
     [TestMethod]
-    public async Task CancelAndRetryUseSABJobId()
+    public void QueueErrorPayloadIsReported()
     {
-        var captured = new List<HttpRequestMessage>();
-        var responses = new Queue<string>(
-        [
-            """{"status":true,"nzo_ids":["job-1"]}""",
-            """{"status":true,"nzo_id":"job-2"}"""
-        ]);
+        var exception = Assert.ThrowsExactly<System.Text.Json.JsonException>(() =>
+            SabnzbdClient.ParseQueueResponse("""{"status":false,"error":"API Key Required"}"""));
 
-        var client = new SabnzbdClient(
-            new HttpClient(
-                new StubHandler(request =>
-                {
-                    captured.Add(CloneRequest(request));
-                    return JsonResponse(responses.Dequeue());
-                })));
+        StringAssert.Contains(exception.Message, "API Key Required");
+    }
+
+    [TestMethod]
+    public async Task CancelRetryAndHistoryDeleteUseSabJobId()
+    {
+        var handler = new RecordingHandler(
+            """{"status":true,"nzo_ids":["job-1"]}""",
+            """{"status":true}""",
+            """{"status":true,"nzo_id":"job-2"}""");
+        var client = new SabnzbdClient(new HttpClient(handler));
 
         var cancelled = await client.CancelAsync(
-            Connection(),
+            SabnzbdTestSupport.Connection(),
+            "job-1",
+            deleteFiles: true,
+            CancellationToken.None);
+        var deleted = await client.DeleteHistoryAsync(
+            SabnzbdTestSupport.Connection(),
             "job-1",
             deleteFiles: true,
             CancellationToken.None);
         var retried = await client.RetryAsync(
-            Connection(),
+            SabnzbdTestSupport.Connection(),
             "job-1",
             CancellationToken.None);
 
         Assert.IsTrue(cancelled.Success);
+        Assert.IsTrue(deleted.Success);
         Assert.IsTrue(retried.Success);
         Assert.AreEqual("job-2", retried.NewNzoId);
-        StringAssert.Contains(captured[0].RequestUri!.Query, "name=delete");
-        StringAssert.Contains(captured[0].RequestUri.Query, "del_files=1");
-        StringAssert.Contains(captured[1].RequestUri!.Query, "mode=retry");
+        StringAssert.Contains(handler.Requests[0].Body, "mode=queue");
+        StringAssert.Contains(handler.Requests[0].Body, "name=delete");
+        StringAssert.Contains(handler.Requests[0].Body, "del_files=1");
+        StringAssert.Contains(handler.Requests[1].Body, "mode=history");
+        StringAssert.Contains(handler.Requests[2].Body, "mode=retry");
+        StringAssert.Contains(handler.Requests[2].Body, "value=job-1");
     }
 
     [TestMethod]
-    public async Task AcquisitionStorePersistsRelationshipWithoutDownloadUrl()
+    public void JobIdsAreValidatedBeforeUse()
     {
-        var directory = CreateTemporaryDirectory();
-        try
-        {
-            var store = new SabnzbdAcquisitionStore(directory);
-            var animeId = Guid.NewGuid();
-            var episodeId = Guid.NewGuid();
-            var now = DateTimeOffset.UtcNow;
+        var client = new SabnzbdClient(new HttpClient(new RecordingHandler()));
 
-            await store.AddAsync(
-                new SabnzbdAcquisitionJob(
-                    Guid.NewGuid(),
-                    "job-1",
-                    animeId,
-                    [episodeId],
-                    "release:abc",
-                    "Anime - 01",
-                    SabnzbdAcquisitionState.Queued,
-                    1,
-                    SabnzbdFailureKind.None,
-                    null,
-                    now,
-                    now));
-
-            var reloaded = new SabnzbdAcquisitionStore(directory);
-            var jobs = await reloaded.LoadAsync();
-
-            Assert.AreEqual(1, jobs.Count);
-            Assert.AreEqual(animeId, jobs[0].AnimeId);
-            Assert.AreEqual(episodeId, jobs[0].EpisodeIds.Single());
-
-            var raw = await File.ReadAllTextAsync(
-                Path.Combine(directory.FullName, "sabnzbd-jobs.json"));
-            Assert.IsFalse(
-                raw.Contains("http://", StringComparison.OrdinalIgnoreCase) ||
-                raw.Contains("https://", StringComparison.OrdinalIgnoreCase));
-        }
-        finally
-        {
-            directory.Delete(recursive: true);
-        }
+        Assert.ThrowsExactly<ArgumentException>(() =>
+            client.CancelAsync(
+                SabnzbdTestSupport.Connection(),
+                "job&apikey=x",
+                deleteFiles: false,
+                CancellationToken.None));
     }
 
-    [TestMethod]
-    public async Task AcquisitionServiceReconcilesFailedHistoryJob()
+    private sealed class RecordingHandler(params string[] responses) : HttpMessageHandler
     {
-        var directory = CreateTemporaryDirectory();
-        try
-        {
-            var store = new SabnzbdAcquisitionStore(directory);
-            var fake = new FakeSabnzbdClient
-            {
-                Queue = new SabnzbdQueueSnapshot(false, null, null, []),
-                History = new SabnzbdHistorySnapshot(
-                [
-                    new SabnzbdHistoryJob(
-                        "job-1",
-                        "Anime - 01",
-                        "Failed",
-                        "anilingo",
-                        null,
-                        "Unpack failed",
-                        SabnzbdFailureKind.Unpack,
-                        DateTimeOffset.UtcNow)
-                ])
-            };
-            var service = new SabnzbdAcquisitionService(fake, store);
-            var now = DateTimeOffset.UtcNow;
+        private readonly Queue<string> pending = new(responses);
 
-            await store.AddAsync(
-                new SabnzbdAcquisitionJob(
-                    Guid.NewGuid(),
-                    "job-1",
-                    Guid.NewGuid(),
-                    [Guid.NewGuid()],
-                    "release:abc",
-                    "Anime - 01",
-                    SabnzbdAcquisitionState.Downloading,
-                    1,
-                    SabnzbdFailureKind.None,
-                    null,
-                    now,
-                    now));
+        public List<(HttpMethod Method, string Uri, string Body)> Requests { get; } = [];
 
-            var jobs = await service.ReconcileAsync(
-                Connection(),
-                CancellationToken.None);
-
-            Assert.AreEqual(SabnzbdAcquisitionState.Failed, jobs.Single().State);
-            Assert.AreEqual(SabnzbdFailureKind.Unpack, jobs.Single().FailureKind);
-        }
-        finally
-        {
-            directory.Delete(recursive: true);
-        }
-    }
-
-    private static SabnzbdConnection Connection() =>
-        new(
-            SabnzbdSettings.CreateDefault("http://sabnzbd:8080"),
-            "secret-key");
-
-    private static DirectoryInfo CreateTemporaryDirectory()
-    {
-        var path = Path.Combine(
-            Path.GetTempPath(),
-            $"anilingo-sab-{Guid.NewGuid():N}");
-        return Directory.CreateDirectory(path);
-    }
-
-    private static HttpResponseMessage JsonResponse(string json) =>
-        new(HttpStatusCode.OK)
-        {
-            Content = new StringContent(
-                json,
-                Encoding.UTF8,
-                "application/json")
-        };
-
-    private static HttpRequestMessage CloneRequest(HttpRequestMessage request) =>
-        new(
-            request.Method,
-            request.RequestUri);
-
-    private sealed class StubHandler(
-        Func<HttpRequestMessage, HttpResponseMessage> responder)
-        : HttpMessageHandler
-    {
-        protected override Task<HttpResponseMessage> SendAsync(
+        protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
-            CancellationToken cancellationToken) =>
-            Task.FromResult(responder(request));
-    }
-
-    private sealed class FakeSabnzbdClient : ISabnzbdClient
-    {
-        public SabnzbdQueueSnapshot Queue { get; set; } =
-            new(false, null, null, []);
-
-        public SabnzbdHistorySnapshot History { get; set; } =
-            new([]);
-
-        public Task<SabnzbdConnectionTestResult> TestAsync(
-            SabnzbdConnection connection,
-            CancellationToken cancellationToken) =>
-            Task.FromResult(new SabnzbdConnectionTestResult(true, "test"));
-
-        public Task<SabnzbdGrabResult> GrabAsync(
-            SabnzbdConnection connection,
-            SabnzbdGrabRequest grab,
-            CancellationToken cancellationToken) =>
-            Task.FromResult(
-                new SabnzbdGrabResult(true, ["job-new"]));
-
-        public Task<SabnzbdQueueSnapshot> GetQueueAsync(
-            SabnzbdConnection connection,
-            CancellationToken cancellationToken) =>
-            Task.FromResult(Queue);
-
-        public Task<SabnzbdHistorySnapshot> GetHistoryAsync(
-            SabnzbdConnection connection,
-            IReadOnlyCollection<string>? nzoIds,
-            CancellationToken cancellationToken) =>
-            Task.FromResult(History);
-
-        public Task<SabnzbdActionResult> CancelAsync(
-            SabnzbdConnection connection,
-            string nzoId,
-            bool deleteFiles,
-            CancellationToken cancellationToken) =>
-            Task.FromResult(new SabnzbdActionResult(true));
-
-        public Task<SabnzbdActionResult> RetryAsync(
-            SabnzbdConnection connection,
-            string nzoId,
-            CancellationToken cancellationToken) =>
-            Task.FromResult(new SabnzbdActionResult(true, "job-retry"));
-
-        public Task<SabnzbdActionResult> PauseAsync(
-            SabnzbdConnection connection,
-            string nzoId,
-            CancellationToken cancellationToken) =>
-            Task.FromResult(new SabnzbdActionResult(true));
-
-        public Task<SabnzbdActionResult> ResumeAsync(
-            SabnzbdConnection connection,
-            string nzoId,
-            CancellationToken cancellationToken) =>
-            Task.FromResult(new SabnzbdActionResult(true));
+            CancellationToken cancellationToken)
+        {
+            var body = request.Content is null
+                ? ""
+                : await request.Content.ReadAsStringAsync(cancellationToken);
+            Requests.Add((request.Method, request.RequestUri!.ToString(), body));
+            return SabnzbdTestSupport.JsonResponse(pending.Dequeue());
+        }
     }
 }

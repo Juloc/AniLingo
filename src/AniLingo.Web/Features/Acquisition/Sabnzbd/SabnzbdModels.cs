@@ -2,18 +2,44 @@ using System.Text.Json.Serialization;
 
 namespace AniLingo.Web.Features.Acquisition.Sabnzbd;
 
+/// <summary>
+/// What a SABnzbd job is for. Each purpose has its own configurable
+/// SABnzbd category so completed files land where the owner expects.
+/// </summary>
+public enum SabnzbdPurpose
+{
+    Books,
+    Anime
+}
+
+/// <summary>
+/// The one persisted SABnzbd configuration. Every field is optional on its
+/// own because configuration keys may supply the rest (see
+/// <see cref="SabnzbdConnectionResolver"/>).
+/// </summary>
+public sealed record SabnzbdStoredSettings(
+    string? BaseUrl,
+    [property: JsonIgnore] string? ApiKey,
+    string? BooksCategory,
+    string? AnimeCategory)
+{
+    public static SabnzbdStoredSettings Empty { get; } =
+        new(null, null, null, null);
+}
+
+/// <summary>Effective, validated connection settings.</summary>
 public sealed record SabnzbdSettings(
     string BaseUrl,
-    string Category,
-    int QueuePageSize,
-    int HistoryPageSize)
+    string? BooksCategory = null,
+    string? AnimeCategory = null)
 {
-    public static SabnzbdSettings CreateDefault(string baseUrl) =>
-        new(
-            baseUrl,
-            Category: "anilingo",
-            QueuePageSize: 200,
-            HistoryPageSize: 200);
+    public string? CategoryFor(SabnzbdPurpose purpose) =>
+        purpose switch
+        {
+            SabnzbdPurpose.Books => BooksCategory,
+            SabnzbdPurpose.Anime => AnimeCategory,
+            _ => null
+        };
 }
 
 public sealed record SabnzbdConnection(
@@ -23,7 +49,8 @@ public sealed record SabnzbdConnection(
 public sealed record SabnzbdConnectionTestResult(
     bool Success,
     string? Version = null,
-    string? Error = null);
+    string? Error = null,
+    bool CanMonitor = false);
 
 public sealed record SabnzbdGrabRequest(
     Uri NzbUrl,
@@ -53,7 +80,7 @@ public sealed record SabnzbdQueueJob(
     string? Status,
     string? Category,
     double? Percentage,
-    string? TimeLeft,
+    TimeSpan? TimeLeft,
     long? SizeBytes,
     long? SizeLeftBytes);
 
@@ -65,12 +92,22 @@ public sealed record SabnzbdHistoryJob(
     string? StoragePath,
     string? FailureMessage,
     SabnzbdFailureKind FailureKind,
-    DateTimeOffset? CompletedAt);
+    DateTimeOffset? CompletedAt,
+    long? SizeBytes = null)
+{
+    public bool IsCompleted =>
+        FailureKind == SabnzbdFailureKind.None
+        && string.Equals(Status, "Completed", StringComparison.OrdinalIgnoreCase);
+
+    public bool IsFailed =>
+        FailureKind != SabnzbdFailureKind.None
+        || string.Equals(Status, "Failed", StringComparison.OrdinalIgnoreCase);
+}
 
 public sealed record SabnzbdQueueSnapshot(
     bool Paused,
-    string? Speed,
-    string? TimeLeft,
+    double? BytesPerSecond,
+    TimeSpan? TimeLeft,
     IReadOnlyList<SabnzbdQueueJob> Jobs);
 
 public sealed record SabnzbdHistorySnapshot(
@@ -83,3 +120,25 @@ public sealed record SabnzbdActionResult(
 
 public sealed class SabnzbdException(string message, Exception? innerException = null)
     : Exception(message, innerException);
+
+public static class SabnzbdFailureDescriptions
+{
+    public static string Describe(
+        SabnzbdFailureKind kind,
+        string? message)
+    {
+        var reason = kind switch
+        {
+            SabnzbdFailureKind.Password => "release is password-protected",
+            SabnzbdFailureKind.Unpack => "extraction failed",
+            SabnzbdFailureKind.Verification => "release is corrupt and could not be repaired",
+            SabnzbdFailureKind.Download => "download is incomplete (missing articles)",
+            SabnzbdFailureKind.Script => "post-processing script failed",
+            _ => "download failed"
+        };
+
+        return string.IsNullOrWhiteSpace(message)
+            ? $"SABnzbd: {reason}."
+            : $"SABnzbd: {reason} — {message.Trim()}";
+    }
+}

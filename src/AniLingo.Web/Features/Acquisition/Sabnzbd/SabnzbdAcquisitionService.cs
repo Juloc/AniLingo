@@ -1,181 +1,343 @@
+using AniLingo.Web.Data;
+using AniLingo.Web.Features.Acquisition.Monitoring;
+using AniLingo.Web.Features.Acquisition.Prowlarr;
+using AniLingo.Web.Features.Acquisition.Quality;
+using AniLingo.Web.Features.Operations;
+
 namespace AniLingo.Web.Features.Acquisition.Sabnzbd;
 
+public sealed record SabnzbdAnimeAcquisitionRequest(
+    string AnimeKey,
+    string AnimeTitle,
+    IReadOnlyList<AnimeEpisodeKey> Episodes,
+    string? ProfileId,
+    IReadOnlyList<SabnzbdAnimeReleaseCandidate> AcceptedCandidates,
+    int MaxAttempts = SabnzbdAcquisitionService.DefaultMaxAttempts);
+
+public sealed record SabnzbdAcquisitionResult(
+    Guid AcquisitionId,
+    Guid? OperationId,
+    bool Submitted,
+    string Message);
+
+/// <summary>
+/// Sends accepted anime releases to SABnzbd and, when a download fails,
+/// blocklists that release and grabs the next accepted candidate within a
+/// bounded number of attempts. Job state lives on the canonical Operation
+/// of each attempt; this service only keeps the acquisition relation.
+/// </summary>
 public sealed class SabnzbdAcquisitionService(
-    ISabnzbdClient client,
-    SabnzbdAcquisitionStore store)
+    SabnzbdDownloadService downloads,
+    SabnzbdAcquisitionStore store,
+    AppDbContext db)
 {
-    public async Task<SabnzbdAcquisitionJob> GrabAsync(
-        SabnzbdConnection connection,
-        Guid animeId,
-        IReadOnlyCollection<Guid> episodeIds,
-        string releaseIdentity,
-        string releaseTitle,
-        Uri nzbUrl,
-        CancellationToken cancellationToken)
+    public const string OperationKind = "anime-sabnzbd-download";
+    public const int DefaultMaxAttempts = 3;
+    public const int MaxAllowedAttempts = 10;
+
+    /// <summary>
+    /// Selects accepted usenet releases from a Prowlarr search, best first,
+    /// using the canonical quality scorer.
+    /// </summary>
+    public static IReadOnlyList<SabnzbdAnimeReleaseCandidate> SelectAcceptedCandidates(
+        IReadOnlyList<ProwlarrReleaseCandidate> releases,
+        AnimeQualityProfile profile)
     {
-        if (animeId == Guid.Empty)
-        {
-            throw new ArgumentException("Anime ID is required.", nameof(animeId));
-        }
+        ArgumentNullException.ThrowIfNull(releases);
+        ArgumentNullException.ThrowIfNull(profile);
 
-        if (episodeIds.Any(id => id == Guid.Empty))
-        {
-            throw new ArgumentException(
-                "Episode IDs must not contain empty values.",
-                nameof(episodeIds));
-        }
+        var byIdentity = releases
+            .Where(release =>
+                release.InternalDownloadUri is not null
+                && string.Equals(release.Protocol, "usenet", StringComparison.OrdinalIgnoreCase))
+            .GroupBy(release => release.Identity, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
 
-        ArgumentException.ThrowIfNullOrWhiteSpace(releaseIdentity);
-        ArgumentException.ThrowIfNullOrWhiteSpace(releaseTitle);
-
-        var result = await client.GrabAsync(
-            connection,
-            new SabnzbdGrabRequest(
-                nzbUrl,
-                NzbName: releaseTitle,
-                Category: connection.Settings.Category),
-            cancellationToken);
-
-        if (!result.Success || result.NzoIds.Count == 0)
-        {
-            throw new SabnzbdException(
-                result.Error ?? "SABnzbd did not accept the release.");
-        }
-
-        if (result.NzoIds.Count != 1)
-        {
-            throw new SabnzbdException(
-                "SABnzbd returned multiple job IDs for one acquisition request.");
-        }
-
-        var now = DateTimeOffset.UtcNow;
-        var job = new SabnzbdAcquisitionJob(
-            Guid.NewGuid(),
-            result.NzoIds[0],
-            animeId,
-            episodeIds.Distinct().ToArray(),
-            releaseIdentity.Trim(),
-            releaseTitle.Trim(),
-            SabnzbdAcquisitionState.Queued,
-            Attempt: 1,
-            SabnzbdFailureKind.None,
-            FailureMessage: null,
-            CreatedAt: now,
-            UpdatedAt: now);
-
-        return await store.AddAsync(job, cancellationToken);
+        return AnimeReleaseScorer
+            .Rank(
+                profile,
+                byIdentity.Values.Select(release =>
+                    new AnimeReleaseCandidate(
+                        release.ParsedRelease,
+                        release.SizeBytes,
+                        release.Indexer,
+                        release.Identity)))
+            .Where(result => result.Accepted && result.Candidate.SourceId is not null)
+            .Select(result => byIdentity[result.Candidate.SourceId!])
+            .Select(release => new SabnzbdAnimeReleaseCandidate(
+                release.Identity,
+                release.Title,
+                release.InternalDownloadUri!))
+            .ToArray();
     }
 
-    public async Task<IReadOnlyList<SabnzbdAcquisitionJob>> ReconcileAsync(
-        SabnzbdConnection connection,
+    public async Task<SabnzbdAcquisitionResult> StartAsync(
+        SabnzbdAnimeAcquisitionRequest request,
         CancellationToken cancellationToken)
     {
-        var tracked = await store.LoadAsync(cancellationToken);
-        if (tracked.Count == 0)
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.AnimeKey);
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.AnimeTitle);
+        ArgumentNullException.ThrowIfNull(request.Episodes);
+        ArgumentNullException.ThrowIfNull(request.AcceptedCandidates);
+
+        if (request.MaxAttempts is < 1 or > MaxAllowedAttempts)
         {
-            return tracked;
+            throw new ArgumentOutOfRangeException(
+                nameof(request),
+                $"Max attempts must be between 1 and {MaxAllowedAttempts}.");
         }
 
-        var queue = await client.GetQueueAsync(connection, cancellationToken);
-        var queueById = queue.Jobs.ToDictionary(
-            job => job.NzoId,
-            StringComparer.OrdinalIgnoreCase);
-
-        var activeIds = tracked
-            .Where(job =>
-                job.State is SabnzbdAcquisitionState.Queued
-                    or SabnzbdAcquisitionState.Downloading
-                    or SabnzbdAcquisitionState.Processing)
-            .Select(job => job.NzoId)
+        var candidates = request.AcceptedCandidates
+            .Where(candidate =>
+                !string.IsNullOrWhiteSpace(candidate.ReleaseIdentity)
+                && !string.IsNullOrWhiteSpace(candidate.ReleaseTitle))
+            .DistinctBy(candidate => candidate.ReleaseIdentity, StringComparer.OrdinalIgnoreCase)
+            .Select(candidate => new SabnzbdPendingCandidate(
+                candidate.ReleaseIdentity.Trim(),
+                candidate.ReleaseTitle.Trim(),
+                store.ProtectUrl(candidate.NzbUrl)))
             .ToArray();
 
-        var history = activeIds.Length == 0
-            ? new SabnzbdHistorySnapshot([])
-            : await client.GetHistoryAsync(
-                connection,
-                activeIds,
-                cancellationToken);
+        var now = DateTimeOffset.UtcNow;
+        var acquisition = new SabnzbdAcquisition(
+            Guid.NewGuid(),
+            request.AnimeKey.Trim(),
+            request.AnimeTitle.Trim(),
+            request.Episodes.Distinct().ToArray(),
+            request.ProfileId,
+            request.MaxAttempts,
+            [],
+            candidates,
+            now,
+            now);
 
-        var historyById = history.Jobs.ToDictionary(
-            job => job.NzoId,
-            StringComparer.OrdinalIgnoreCase);
-
-        foreach (var job in tracked)
-        {
-            if (queueById.TryGetValue(job.NzoId, out var queueJob))
-            {
-                var state = MapQueueState(queueJob.Status);
-                await store.UpdateStateAsync(
-                    job.NzoId,
-                    state,
-                    cancellationToken: cancellationToken);
-                continue;
-            }
-
-            if (!historyById.TryGetValue(job.NzoId, out var historyJob))
-            {
-                continue;
-            }
-
-            var completed = historyJob.FailureKind == SabnzbdFailureKind.None &&
-                            IsCompleted(historyJob.Status);
-
-            await store.UpdateStateAsync(
-                job.NzoId,
-                completed
-                    ? SabnzbdAcquisitionState.Completed
-                    : SabnzbdAcquisitionState.Failed,
-                historyJob.FailureKind,
-                historyJob.FailureMessage,
-                cancellationToken: cancellationToken);
-        }
-
-        return await store.LoadAsync(cancellationToken);
+        await store.UpdateAsync(state => state.Acquisitions.Add(acquisition), cancellationToken);
+        return await AdvanceAsync(acquisition.Id, previousOperationId: null, cancellationToken);
     }
 
-    public async Task<SabnzbdAcquisitionJob?> RetryAsync(
-        SabnzbdConnection connection,
-        string nzoId,
+    /// <summary>
+    /// Called when the Operation of an attempt failed: blocklists that
+    /// release and tries the next accepted candidate.
+    /// </summary>
+    public async Task<SabnzbdAcquisitionResult?> HandleFailedAsync(
+        Guid operationId,
+        SabnzbdFailureKind failureKind,
+        string reason,
         CancellationToken cancellationToken)
     {
-        var result = await client.RetryAsync(
-            connection,
-            nzoId,
+        var relation = await store.FindByOperationAsync(operationId, cancellationToken);
+        if (relation is not { } found
+            || found.Acquisition.LatestAttempt?.OperationId != operationId)
+        {
+            return null;
+        }
+
+        await store.BlockAsync(
+            new SabnzbdBlockedRelease(
+                found.Attempt.ReleaseIdentity,
+                found.Attempt.ReleaseTitle,
+                found.Acquisition.AnimeKey,
+                failureKind,
+                reason,
+                operationId,
+                DateTimeOffset.UtcNow),
             cancellationToken);
 
-        if (!result.Success || string.IsNullOrWhiteSpace(result.NewNzoId))
-        {
-            throw new SabnzbdException(
-                result.Error ?? "SABnzbd retry did not return a new job ID.");
-        }
-
-        return await store.UpdateStateAsync(
-            nzoId,
-            SabnzbdAcquisitionState.Queued,
-            SabnzbdFailureKind.None,
-            failureMessage: null,
-            replacementNzoId: result.NewNzoId,
-            cancellationToken: cancellationToken);
+        return await AdvanceAsync(found.Acquisition.Id, operationId, cancellationToken);
     }
 
-    private static SabnzbdAcquisitionState MapQueueState(string? status)
+    /// <summary>
+    /// Restart recovery: any acquisition whose latest attempt failed but was
+    /// not advanced (for example because the process stopped in between)
+    /// is blocklisted and advanced now. Idempotent.
+    /// </summary>
+    public async Task<int> RecoverAsync(CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(status))
+        var operations = new OperationStore(db);
+        var state = await store.LoadAsync(cancellationToken);
+        var advanced = 0;
+
+        foreach (var acquisition in state.Acquisitions)
         {
-            return SabnzbdAcquisitionState.Downloading;
+            var latest = acquisition.LatestAttempt;
+            if (latest is null || !CanAdvance(acquisition, state))
+            {
+                continue;
+            }
+
+            var operation = await operations.GetAsync(latest.OperationId, cancellationToken);
+            if (operation?.Status != OperationStatus.Failed)
+            {
+                continue;
+            }
+
+            var result = await HandleFailedAsync(
+                operation.Id,
+                SabnzbdFailureKind.Unknown,
+                operation.Error ?? "SABnzbd download failed.",
+                cancellationToken);
+            if (result?.Submitted == true)
+            {
+                advanced++;
+            }
         }
 
-        var normalized = status.Trim().ToLowerInvariant();
-        return normalized.Contains("queue", StringComparison.Ordinal) ||
-               normalized.Contains("pause", StringComparison.Ordinal)
-            ? SabnzbdAcquisitionState.Queued
-            : normalized.Contains("unpack", StringComparison.Ordinal) ||
-              normalized.Contains("verify", StringComparison.Ordinal) ||
-              normalized.Contains("repair", StringComparison.Ordinal)
-                ? SabnzbdAcquisitionState.Processing
-                : SabnzbdAcquisitionState.Downloading;
+        return advanced;
     }
 
-    private static bool IsCompleted(string? status) =>
-        status?.Equals("Completed", StringComparison.OrdinalIgnoreCase) == true;
+    private async Task<SabnzbdAcquisitionResult> AdvanceAsync(
+        Guid acquisitionId,
+        Guid? previousOperationId,
+        CancellationToken cancellationToken)
+    {
+        var operations = new OperationStore(db);
+        var lastOperationId = previousOperationId;
+        string? lastError = null;
+
+        while (true)
+        {
+            var state = await store.LoadAsync(cancellationToken);
+            var acquisition = state.Acquisitions.Single(item => item.Id == acquisitionId);
+
+            if (!CanAdvance(acquisition, state))
+            {
+                var message = acquisition.Attempts.Length >= acquisition.MaxAttempts
+                    ? $"Stopped after {acquisition.Attempts.Length} of {acquisition.MaxAttempts} attempts; no release was downloaded."
+                    : "No further accepted release is available that is not blocklisted.";
+                if (lastOperationId is { } exhaustedOperation)
+                {
+                    await operations.AppendLogAsync(
+                        exhaustedOperation,
+                        OperationLogLevel.Warning,
+                        "Acquisition",
+                        message,
+                        CancellationToken.None);
+                }
+
+                return new SabnzbdAcquisitionResult(
+                    acquisition.Id,
+                    lastOperationId,
+                    false,
+                    lastError is null ? message : $"{lastError} {message}");
+            }
+
+            // Take the next candidate that is not blocklisted and persist
+            // that it was consumed before submitting it.
+            SabnzbdPendingCandidate? next = null;
+            await store.UpdateAsync(
+                current =>
+                {
+                    var index = current.Acquisitions.FindIndex(item => item.Id == acquisitionId);
+                    var item = current.Acquisitions[index];
+                    var remaining = item.PendingCandidates
+                        .SkipWhile(candidate => current.IsBlocked(candidate.ReleaseIdentity))
+                        .ToArray();
+                    next = remaining.FirstOrDefault();
+                    current.Acquisitions[index] = item with
+                    {
+                        PendingCandidates = remaining.Skip(1).ToArray(),
+                        UpdatedAtUtc = DateTimeOffset.UtcNow
+                    };
+                },
+                cancellationToken);
+
+            if (next is null)
+            {
+                continue;
+            }
+
+            var attemptNumber = acquisition.Attempts.Length + 1;
+            var outcome = await downloads.SubmitUrlAsync(
+                new SabnzbdSubmission(
+                    OperationKind,
+                    $"Anime download · attempt {attemptNumber} of {acquisition.MaxAttempts}",
+                    $"{acquisition.AnimeTitle} · {FormatEpisodes(acquisition.Episodes)} · {next.ReleaseTitle}",
+                    acquisition.ProfileId,
+                    SabnzbdPurpose.Anime,
+                    JobName: next.ReleaseTitle),
+                store.UnprotectUrl(next.ProtectedNzbUrl),
+                cancellationToken);
+
+            await store.UpdateAsync(
+                current =>
+                {
+                    var index = current.Acquisitions.FindIndex(item => item.Id == acquisitionId);
+                    var item = current.Acquisitions[index];
+                    current.Acquisitions[index] = item with
+                    {
+                        Attempts =
+                        [
+                            .. item.Attempts,
+                            new SabnzbdAcquisitionAttempt(
+                                attemptNumber,
+                                outcome.OperationId,
+                                next.ReleaseIdentity,
+                                next.ReleaseTitle,
+                                DateTimeOffset.UtcNow)
+                        ],
+                        UpdatedAtUtc = DateTimeOffset.UtcNow
+                    };
+                },
+                cancellationToken);
+
+            if (lastOperationId is { } replaced)
+            {
+                await operations.AppendLogAsync(
+                    replaced,
+                    OperationLogLevel.Information,
+                    "Acquisition",
+                    $"Blocklisted this release and sent the next accepted release (attempt {attemptNumber} of {acquisition.MaxAttempts}): {next.ReleaseTitle}.",
+                    CancellationToken.None);
+            }
+
+            if (outcome.Accepted)
+            {
+                return new SabnzbdAcquisitionResult(
+                    acquisition.Id,
+                    outcome.OperationId,
+                    true,
+                    outcome.Message);
+            }
+
+            // SABnzbd rejected the submission itself; treat it like a failed
+            // download of that release and continue with the next one.
+            await store.BlockAsync(
+                new SabnzbdBlockedRelease(
+                    next.ReleaseIdentity,
+                    next.ReleaseTitle,
+                    acquisition.AnimeKey,
+                    SabnzbdFailureKind.Unknown,
+                    outcome.Message,
+                    outcome.OperationId,
+                    DateTimeOffset.UtcNow),
+                cancellationToken);
+            lastOperationId = outcome.OperationId;
+            lastError = outcome.Message;
+        }
+    }
+
+    private static bool CanAdvance(
+        SabnzbdAcquisition acquisition,
+        SabnzbdAcquisitionStoreState state) =>
+        acquisition.Attempts.Length < acquisition.MaxAttempts
+        && acquisition.PendingCandidates.Any(candidate => !state.IsBlocked(candidate.ReleaseIdentity));
+
+    public static string FormatEpisodes(IReadOnlyList<AnimeEpisodeKey> episodes)
+    {
+        if (episodes.Count == 0)
+        {
+            return "whole series";
+        }
+
+        var labels = episodes
+            .OrderBy(episode => episode.SeasonNumber)
+            .ThenBy(episode => episode.EpisodeNumber)
+            .Select(episode => $"S{episode.SeasonNumber:00}E{episode.EpisodeNumber:00}")
+            .ToArray();
+
+        return labels.Length <= 3
+            ? string.Join(", ", labels)
+            : $"{string.Join(", ", labels.Take(3))} +{labels.Length - 3}";
+    }
 }

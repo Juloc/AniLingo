@@ -1,53 +1,132 @@
 using System.Text.Json;
+using AniLingo.Web.Features.Acquisition.Monitoring;
+using Microsoft.AspNetCore.DataProtection;
 
 namespace AniLingo.Web.Features.Acquisition.Sabnzbd;
 
-public enum SabnzbdAcquisitionState
-{
-    Queued,
-    Downloading,
-    Processing,
-    Completed,
-    Failed,
-    Cancelled
-}
-
-public sealed record SabnzbdAcquisitionJob(
-    Guid Id,
-    string NzoId,
-    Guid AnimeId,
-    Guid[] EpisodeIds,
+/// <summary>
+/// One accepted release that may be sent to SABnzbd for an acquisition.
+/// </summary>
+public sealed record SabnzbdAnimeReleaseCandidate(
     string ReleaseIdentity,
     string ReleaseTitle,
-    SabnzbdAcquisitionState State,
-    int Attempt,
+    Uri NzbUrl);
+
+/// <summary>
+/// One release submitted for an acquisition. Its lifecycle (queued,
+/// progress, completed, failed, cancelled) lives only on the referenced
+/// canonical Operation.
+/// </summary>
+public sealed record SabnzbdAcquisitionAttempt(
+    int Number,
+    Guid OperationId,
+    string ReleaseIdentity,
+    string ReleaseTitle,
+    DateTimeOffset StartedAtUtc);
+
+/// <summary>
+/// An accepted release that has not been tried yet. The NZB URL can carry
+/// indexer credentials, so it is only persisted in protected form.
+/// </summary>
+public sealed record SabnzbdPendingCandidate(
+    string ReleaseIdentity,
+    string ReleaseTitle,
+    string ProtectedNzbUrl);
+
+/// <summary>
+/// Durable relation between an anime acquisition request and the
+/// Operations that carry each SABnzbd attempt.
+/// </summary>
+public sealed record SabnzbdAcquisition(
+    Guid Id,
+    string AnimeKey,
+    string AnimeTitle,
+    AnimeEpisodeKey[] Episodes,
+    string? ProfileId,
+    int MaxAttempts,
+    SabnzbdAcquisitionAttempt[] Attempts,
+    SabnzbdPendingCandidate[] PendingCandidates,
+    DateTimeOffset CreatedAtUtc,
+    DateTimeOffset UpdatedAtUtc)
+{
+    public SabnzbdAcquisitionAttempt? LatestAttempt =>
+        Attempts.Length == 0
+            ? null
+            : Attempts.MaxBy(attempt => attempt.Number);
+}
+
+/// <summary>A release identity that failed and must not be grabbed again.</summary>
+public sealed record SabnzbdBlockedRelease(
+    string ReleaseIdentity,
+    string ReleaseTitle,
+    string AnimeKey,
     SabnzbdFailureKind FailureKind,
-    string? FailureMessage,
-    DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt);
+    string Reason,
+    Guid? OperationId,
+    DateTimeOffset BlockedAtUtc);
+
+public sealed record SabnzbdAcquisitionStoreState(
+    int Version,
+    List<SabnzbdAcquisition> Acquisitions,
+    List<SabnzbdBlockedRelease> Blocklist)
+{
+    public static SabnzbdAcquisitionStoreState Empty() =>
+        new(1, [], []);
+
+    public bool IsBlocked(string releaseIdentity) =>
+        Blocklist.Any(entry =>
+            entry.ReleaseIdentity.Equals(
+                releaseIdentity,
+                StringComparison.OrdinalIgnoreCase));
+
+    public (SabnzbdAcquisition Acquisition, SabnzbdAcquisitionAttempt Attempt)? FindByOperation(
+        Guid operationId)
+    {
+        foreach (var acquisition in Acquisitions)
+        {
+            var attempt = acquisition.Attempts.FirstOrDefault(
+                candidate => candidate.OperationId == operationId);
+            if (attempt is not null)
+            {
+                return (acquisition, attempt);
+            }
+        }
+
+        return null;
+    }
+}
 
 public sealed class SabnzbdAcquisitionStore
 {
-    private const string FileName = "sabnzbd-jobs.json";
+    public const string FileName = "sabnzbd-acquisitions.json";
 
     private static readonly JsonSerializerOptions JsonOptions =
         new(JsonSerializerDefaults.Web) { WriteIndented = true };
 
+    private readonly IDataProtector protector;
     private readonly SemaphoreSlim gate = new(1, 1);
     private readonly string storePath;
 
-    public SabnzbdAcquisitionStore()
-        : this(new DirectoryInfo("/data/acquisition"))
+    public SabnzbdAcquisitionStore(IDataProtectionProvider dataProtectionProvider)
+        : this(
+            dataProtectionProvider,
+            new DirectoryInfo("/data/acquisition"))
     {
     }
 
-    public SabnzbdAcquisitionStore(DirectoryInfo directory)
+    public SabnzbdAcquisitionStore(
+        IDataProtectionProvider dataProtectionProvider,
+        DirectoryInfo directory)
     {
+        ArgumentNullException.ThrowIfNull(dataProtectionProvider);
         ArgumentNullException.ThrowIfNull(directory);
+
+        protector = dataProtectionProvider.CreateProtector(
+            "AniLingo.Acquisition.Sabnzbd.CandidateUrl.v1");
         storePath = Path.Combine(directory.FullName, FileName);
     }
 
-    public async Task<IReadOnlyList<SabnzbdAcquisitionJob>> LoadAsync(
+    public async Task<SabnzbdAcquisitionStoreState> LoadAsync(
         CancellationToken cancellationToken = default)
     {
         await gate.WaitAsync(cancellationToken);
@@ -61,27 +140,24 @@ public sealed class SabnzbdAcquisitionStore
         }
     }
 
-    public async Task<SabnzbdAcquisitionJob> AddAsync(
-        SabnzbdAcquisitionJob job,
+    public async Task<SabnzbdAcquisitionStoreState> UpdateAsync(
+        Action<SabnzbdAcquisitionStoreState> update,
         CancellationToken cancellationToken = default)
     {
-        Validate(job);
+        ArgumentNullException.ThrowIfNull(update);
 
         await gate.WaitAsync(cancellationToken);
         try
         {
-            var jobs = await ReadUnsafeAsync(cancellationToken);
-            if (jobs.Any(existing =>
-                    existing.Id == job.Id ||
-                    existing.NzoId.Equals(job.NzoId, StringComparison.OrdinalIgnoreCase)))
+            var state = await ReadUnsafeAsync(cancellationToken);
+            update(state);
+            foreach (var acquisition in state.Acquisitions)
             {
-                throw new InvalidOperationException(
-                    "SABnzbd acquisition job already exists.");
+                Validate(acquisition);
             }
 
-            jobs.Add(job);
-            await WriteUnsafeAsync(jobs, cancellationToken);
-            return job;
+            await WriteUnsafeAsync(state, cancellationToken);
+            return state;
         }
         finally
         {
@@ -89,79 +165,75 @@ public sealed class SabnzbdAcquisitionStore
         }
     }
 
-    public async Task<SabnzbdAcquisitionJob?> UpdateStateAsync(
-        string nzoId,
-        SabnzbdAcquisitionState state,
-        SabnzbdFailureKind failureKind = SabnzbdFailureKind.None,
-        string? failureMessage = null,
-        string? replacementNzoId = null,
+    public async Task<SabnzbdAcquisition?> GetAsync(
+        Guid acquisitionId,
+        CancellationToken cancellationToken = default) =>
+        (await LoadAsync(cancellationToken)).Acquisitions
+            .FirstOrDefault(acquisition => acquisition.Id == acquisitionId);
+
+    public async Task<(SabnzbdAcquisition Acquisition, SabnzbdAcquisitionAttempt Attempt)?> FindByOperationAsync(
+        Guid operationId,
+        CancellationToken cancellationToken = default) =>
+        (await LoadAsync(cancellationToken)).FindByOperation(operationId);
+
+    public Task BlockAsync(
+        SabnzbdBlockedRelease release,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(nzoId))
-        {
-            return null;
-        }
+        ArgumentNullException.ThrowIfNull(release);
+        ArgumentException.ThrowIfNullOrWhiteSpace(release.ReleaseIdentity);
 
-        await gate.WaitAsync(cancellationToken);
-        try
-        {
-            var jobs = await ReadUnsafeAsync(cancellationToken);
-            var index = jobs.FindIndex(job =>
-                job.NzoId.Equals(nzoId.Trim(), StringComparison.OrdinalIgnoreCase));
-
-            if (index < 0)
+        return UpdateAsync(
+            state =>
             {
-                return null;
-            }
-
-            var current = jobs[index];
-            var next = current with
-            {
-                NzoId = string.IsNullOrWhiteSpace(replacementNzoId)
-                    ? current.NzoId
-                    : replacementNzoId.Trim(),
-                State = state,
-                FailureKind = failureKind,
-                FailureMessage = failureMessage,
-                Attempt = string.IsNullOrWhiteSpace(replacementNzoId)
-                    ? current.Attempt
-                    : current.Attempt + 1,
-                UpdatedAt = DateTimeOffset.UtcNow
-            };
-
-            Validate(next);
-            jobs[index] = next;
-            await WriteUnsafeAsync(jobs, cancellationToken);
-            return next;
-        }
-        finally
-        {
-            gate.Release();
-        }
+                if (!state.IsBlocked(release.ReleaseIdentity))
+                {
+                    state.Blocklist.Add(release);
+                }
+            },
+            cancellationToken);
     }
 
-    private async Task<List<SabnzbdAcquisitionJob>> ReadUnsafeAsync(
+    public Task UnblockAsync(
+        string releaseIdentity,
+        CancellationToken cancellationToken = default) =>
+        UpdateAsync(
+            state => state.Blocklist.RemoveAll(entry =>
+                entry.ReleaseIdentity.Equals(
+                    releaseIdentity,
+                    StringComparison.OrdinalIgnoreCase)),
+            cancellationToken);
+
+    public string ProtectUrl(Uri nzbUrl)
+    {
+        ArgumentNullException.ThrowIfNull(nzbUrl);
+        return protector.Protect(nzbUrl.AbsoluteUri);
+    }
+
+    public Uri UnprotectUrl(string protectedNzbUrl) =>
+        new(protector.Unprotect(protectedNzbUrl), UriKind.Absolute);
+
+    private async Task<SabnzbdAcquisitionStoreState> ReadUnsafeAsync(
         CancellationToken cancellationToken)
     {
         if (!File.Exists(storePath))
         {
-            return [];
+            return SabnzbdAcquisitionStoreState.Empty();
         }
 
         try
         {
             var json = await File.ReadAllTextAsync(storePath, cancellationToken);
-            var jobs = JsonSerializer.Deserialize<List<SabnzbdAcquisitionJob>>(
+            var state = JsonSerializer.Deserialize<SabnzbdAcquisitionStoreState>(
                     json,
                     JsonOptions)
-                ?? [];
+                ?? SabnzbdAcquisitionStoreState.Empty();
 
-            foreach (var job in jobs)
+            return state with
             {
-                Validate(job);
-            }
-
-            return jobs;
+                Acquisitions = state.Acquisitions ?? [],
+                Blocklist = state.Blocklist ?? []
+            };
         }
         catch (JsonException exception)
         {
@@ -172,7 +244,7 @@ public sealed class SabnzbdAcquisitionStore
     }
 
     private async Task WriteUnsafeAsync(
-        IReadOnlyCollection<SabnzbdAcquisitionJob> jobs,
+        SabnzbdAcquisitionStoreState state,
         CancellationToken cancellationToken)
     {
         var directory = Path.GetDirectoryName(storePath)
@@ -183,10 +255,9 @@ public sealed class SabnzbdAcquisitionStore
         var temporaryPath = $"{storePath}.tmp-{Guid.NewGuid():N}";
         try
         {
-            var json = JsonSerializer.Serialize(jobs, JsonOptions);
             await File.WriteAllTextAsync(
                 temporaryPath,
-                json,
+                JsonSerializer.Serialize(state, JsonOptions),
                 cancellationToken);
             File.Move(temporaryPath, storePath, overwrite: true);
         }
@@ -208,21 +279,24 @@ public sealed class SabnzbdAcquisitionStore
         }
     }
 
-    private static void Validate(SabnzbdAcquisitionJob job)
+    private static void Validate(SabnzbdAcquisition acquisition)
     {
-        ArgumentNullException.ThrowIfNull(job);
-
-        if (job.Id == Guid.Empty ||
-            job.AnimeId == Guid.Empty ||
-            string.IsNullOrWhiteSpace(job.NzoId) ||
-            string.IsNullOrWhiteSpace(job.ReleaseIdentity) ||
-            string.IsNullOrWhiteSpace(job.ReleaseTitle) ||
-            job.Attempt < 1 ||
-            job.EpisodeIds is null ||
-            job.EpisodeIds.Any(id => id == Guid.Empty))
+        if (acquisition.Id == Guid.Empty
+            || string.IsNullOrWhiteSpace(acquisition.AnimeKey)
+            || string.IsNullOrWhiteSpace(acquisition.AnimeTitle)
+            || acquisition.Episodes is null
+            || acquisition.MaxAttempts < 1
+            || acquisition.Attempts is null
+            || acquisition.PendingCandidates is null
+            || acquisition.Attempts.Any(attempt =>
+                attempt.OperationId == Guid.Empty
+                || string.IsNullOrWhiteSpace(attempt.ReleaseIdentity))
+            || acquisition.PendingCandidates.Any(candidate =>
+                string.IsNullOrWhiteSpace(candidate.ReleaseIdentity)
+                || string.IsNullOrWhiteSpace(candidate.ProtectedNzbUrl)))
         {
             throw new InvalidDataException(
-                "SABnzbd acquisition job contains invalid required fields.");
+                "SABnzbd acquisition contains invalid required fields.");
         }
     }
 }

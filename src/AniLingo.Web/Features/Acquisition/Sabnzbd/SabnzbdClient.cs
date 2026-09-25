@@ -15,6 +15,13 @@ public interface ISabnzbdClient
         SabnzbdGrabRequest grab,
         CancellationToken cancellationToken);
 
+    Task<SabnzbdGrabResult> AddFileAsync(
+        SabnzbdConnection connection,
+        Stream nzb,
+        string fileName,
+        string? category,
+        CancellationToken cancellationToken);
+
     Task<SabnzbdQueueSnapshot> GetQueueAsync(
         SabnzbdConnection connection,
         CancellationToken cancellationToken);
@@ -25,6 +32,12 @@ public interface ISabnzbdClient
         CancellationToken cancellationToken);
 
     Task<SabnzbdActionResult> CancelAsync(
+        SabnzbdConnection connection,
+        string nzoId,
+        bool deleteFiles,
+        CancellationToken cancellationToken);
+
+    Task<SabnzbdActionResult> DeleteHistoryAsync(
         SabnzbdConnection connection,
         string nzoId,
         bool deleteFiles,
@@ -46,47 +59,81 @@ public interface ISabnzbdClient
         CancellationToken cancellationToken);
 }
 
+/// <summary>
+/// The one SABnzbd API client. Every request is a POST so the API key stays
+/// in the request body and never appears in URLs or access logs.
+/// </summary>
 public sealed class SabnzbdClient(HttpClient httpClient) : ISabnzbdClient
 {
+    /// <summary>External provider id used on canonical Operations.</summary>
+    public const string ProviderId = "sabnzbd";
+
+    private const int PageSize = 200;
+
     public async Task<SabnzbdConnectionTestResult> TestAsync(
         SabnzbdConnection connection,
         CancellationToken cancellationToken)
     {
         try
         {
-            using var response = await SendAsync(
+            using var versionResponse = await SendAsync(
                 connection,
-                [
-                    Pair("mode", "version")
-                ],
+                [Pair("mode", "version")],
                 cancellationToken);
 
-            if (!response.IsSuccessStatusCode)
+            if (!versionResponse.IsSuccessStatusCode)
             {
                 return new SabnzbdConnectionTestResult(
                     false,
-                    Error: DescribeStatus(response.StatusCode));
+                    Error: DescribeStatus(versionResponse.StatusCode));
             }
 
-            var body = await response.Content.ReadAsStringAsync(cancellationToken);
-            using var document = JsonDocument.Parse(body);
-            var version = ReadString(document.RootElement, "version");
+            var versionBody = await versionResponse.Content.ReadAsStringAsync(cancellationToken);
+            string? version;
+            using (var document = JsonDocument.Parse(versionBody))
+            {
+                version = ReadString(document.RootElement, "version");
+            }
 
-            return new SabnzbdConnectionTestResult(
-                !string.IsNullOrWhiteSpace(version),
-                version,
-                string.IsNullOrWhiteSpace(version)
-                    ? "SABnzbd returned no version."
-                    : null);
+            if (string.IsNullOrWhiteSpace(version))
+            {
+                return new SabnzbdConnectionTestResult(
+                    false,
+                    Error: "SABnzbd returned no version.");
+            }
+
+            // The version endpoint does not check the API key. Reading the
+            // queue proves the key is valid and allows live monitoring.
+            using var queueResponse = await SendAsync(
+                connection,
+                [
+                    Pair("mode", "queue"),
+                    Pair("start", "0"),
+                    Pair("limit", "1")
+                ],
+                cancellationToken);
+            var queueBody = await queueResponse.Content.ReadAsStringAsync(cancellationToken);
+            var queueError = queueResponse.IsSuccessStatusCode
+                ? ReadApiError(queueBody)
+                : DescribeStatus(queueResponse.StatusCode);
+
+            return queueError is null
+                ? new SabnzbdConnectionTestResult(true, version, CanMonitor: true)
+                : new SabnzbdConnectionTestResult(
+                    false,
+                    version,
+                    $"SABnzbd {version} is reachable but rejected the API key for queue access ({queueError}). "
+                    + "Use the full API key, not the NZB key, so AniLingo can track progress.");
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             throw;
         }
         catch (Exception exception) when (
-            exception is HttpRequestException or
-            JsonException or
-            UriFormatException)
+            exception is HttpRequestException
+                or JsonException
+                or UriFormatException
+                or TaskCanceledException)
         {
             return new SabnzbdConnectionTestResult(
                 false,
@@ -101,29 +148,22 @@ public sealed class SabnzbdClient(HttpClient httpClient) : ISabnzbdClient
     {
         ArgumentNullException.ThrowIfNull(grab);
 
-        if (!grab.NzbUrl.IsAbsoluteUri ||
-            (grab.NzbUrl.Scheme != Uri.UriSchemeHttp &&
-             grab.NzbUrl.Scheme != Uri.UriSchemeHttps))
+        if (!grab.NzbUrl.IsAbsoluteUri
+            || (grab.NzbUrl.Scheme != Uri.UriSchemeHttp
+                && grab.NzbUrl.Scheme != Uri.UriSchemeHttps))
         {
             throw new ArgumentException(
                 "NZB URL must be an absolute HTTP(S) URL.",
                 nameof(grab));
         }
 
-        var settings = SabnzbdSettingsStore.NormalizeAndValidate(connection.Settings);
         var parameters = new List<KeyValuePair<string, string?>>
         {
             Pair("mode", "addurl"),
             Pair("name", grab.NzbUrl.ToString()),
-            Pair("cat", string.IsNullOrWhiteSpace(grab.Category)
-                ? settings.Category
-                : grab.Category!.Trim())
+            Pair("cat", CleanOrNull(grab.Category)),
+            Pair("nzbname", CleanOrNull(grab.NzbName))
         };
-
-        if (!string.IsNullOrWhiteSpace(grab.NzbName))
-        {
-            parameters.Add(Pair("nzbname", grab.NzbName!.Trim()));
-        }
 
         if (grab.Priority is int priority)
         {
@@ -133,52 +173,53 @@ public sealed class SabnzbdClient(HttpClient httpClient) : ISabnzbdClient
         }
 
         using var response = await SendAsync(
-            connection with { Settings = settings },
+            connection,
             parameters,
             cancellationToken);
 
-        var body = await response.Content.ReadAsStringAsync(cancellationToken);
-        if (!response.IsSuccessStatusCode)
+        return await ReadGrabResultAsync(response, cancellationToken);
+    }
+
+    public async Task<SabnzbdGrabResult> AddFileAsync(
+        SabnzbdConnection connection,
+        Stream nzb,
+        string fileName,
+        string? category,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(nzb);
+        ArgumentException.ThrowIfNullOrWhiteSpace(fileName);
+
+        using var content = new MultipartFormDataContent();
+        content.Add(new StringContent("addfile"), "mode");
+        content.Add(new StringContent(RequireApiKey(connection)), "apikey");
+        content.Add(new StringContent("json"), "output");
+        if (CleanOrNull(category) is { } cat)
         {
-            return new SabnzbdGrabResult(
-                false,
-                [],
-                $"SABnzbd returned HTTP {(int)response.StatusCode}.");
+            content.Add(new StringContent(cat), "cat");
         }
 
-        try
-        {
-            using var document = JsonDocument.Parse(body);
-            var root = document.RootElement;
-            var success = ReadBool(root, "status") ?? false;
-            var ids = ReadStringArray(root, "nzo_ids");
+        var file = new StreamContent(nzb);
+        content.Add(file, "name", Path.GetFileName(fileName));
 
-            return new SabnzbdGrabResult(
-                success && ids.Count > 0,
-                ids,
-                success && ids.Count > 0
-                    ? null
-                    : ReadString(root, "error") ?? "SABnzbd did not return a job ID.");
-        }
-        catch (JsonException exception)
-        {
-            throw new SabnzbdException(
-                "SABnzbd returned invalid add-url JSON.",
-                exception);
-        }
+        using var response = await httpClient.PostAsync(
+            ApiUri(connection),
+            content,
+            cancellationToken);
+
+        return await ReadGrabResultAsync(response, cancellationToken);
     }
 
     public async Task<SabnzbdQueueSnapshot> GetQueueAsync(
         SabnzbdConnection connection,
         CancellationToken cancellationToken)
     {
-        var settings = SabnzbdSettingsStore.NormalizeAndValidate(connection.Settings);
         using var response = await SendAsync(
-            connection with { Settings = settings },
+            connection,
             [
                 Pair("mode", "queue"),
                 Pair("start", "0"),
-                Pair("limit", settings.QueuePageSize.ToString(CultureInfo.InvariantCulture))
+                Pair("limit", PageSize.ToString(CultureInfo.InvariantCulture))
             ],
             cancellationToken);
 
@@ -191,12 +232,11 @@ public sealed class SabnzbdClient(HttpClient httpClient) : ISabnzbdClient
         IReadOnlyCollection<string>? nzoIds,
         CancellationToken cancellationToken)
     {
-        var settings = SabnzbdSettingsStore.NormalizeAndValidate(connection.Settings);
         var parameters = new List<KeyValuePair<string, string?>>
         {
             Pair("mode", "history"),
             Pair("start", "0"),
-            Pair("limit", settings.HistoryPageSize.ToString(CultureInfo.InvariantCulture))
+            Pair("limit", PageSize.ToString(CultureInfo.InvariantCulture))
         };
 
         if (nzoIds is { Count: > 0 })
@@ -208,11 +248,11 @@ public sealed class SabnzbdClient(HttpClient httpClient) : ISabnzbdClient
                         ',',
                         nzoIds
                             .Where(id => !string.IsNullOrWhiteSpace(id))
-                            .Select(id => id.Trim()))));
+                            .Select(ValidateNzoId))));
         }
 
         using var response = await SendAsync(
-            connection with { Settings = settings },
+            connection,
             parameters,
             cancellationToken);
 
@@ -229,6 +269,21 @@ public sealed class SabnzbdClient(HttpClient httpClient) : ISabnzbdClient
             connection,
             [
                 Pair("mode", "queue"),
+                Pair("name", "delete"),
+                Pair("value", ValidateNzoId(nzoId)),
+                Pair("del_files", deleteFiles ? "1" : "0")
+            ],
+            cancellationToken);
+
+    public Task<SabnzbdActionResult> DeleteHistoryAsync(
+        SabnzbdConnection connection,
+        string nzoId,
+        bool deleteFiles,
+        CancellationToken cancellationToken) =>
+        ExecuteActionAsync(
+            connection,
+            [
+                Pair("mode", "history"),
                 Pair("name", "delete"),
                 Pair("value", ValidateNzoId(nzoId)),
                 Pair("del_files", deleteFiles ? "1" : "0")
@@ -277,15 +332,16 @@ public sealed class SabnzbdClient(HttpClient httpClient) : ISabnzbdClient
     public static SabnzbdQueueSnapshot ParseQueueResponse(string json)
     {
         using var document = JsonDocument.Parse(json);
-        if (!document.RootElement.TryGetProperty("queue", out var queue) ||
-            queue.ValueKind != JsonValueKind.Object)
+        if (!document.RootElement.TryGetProperty("queue", out var queue)
+            || queue.ValueKind != JsonValueKind.Object)
         {
-            throw new JsonException("SABnzbd queue payload is missing.");
+            throw new JsonException(
+                ReadApiError(document.RootElement) ?? "SABnzbd queue payload is missing.");
         }
 
         var jobs = new List<SabnzbdQueueJob>();
-        if (queue.TryGetProperty("slots", out var slots) &&
-            slots.ValueKind == JsonValueKind.Array)
+        if (queue.TryGetProperty("slots", out var slots)
+            && slots.ValueKind == JsonValueKind.Array)
         {
             foreach (var slot in slots.EnumerateArray())
             {
@@ -300,6 +356,7 @@ public sealed class SabnzbdClient(HttpClient httpClient) : ISabnzbdClient
                     continue;
                 }
 
+                var percentage = ReadDouble(slot, "percentage");
                 jobs.Add(
                     new SabnzbdQueueJob(
                         id,
@@ -309,34 +366,36 @@ public sealed class SabnzbdClient(HttpClient httpClient) : ISabnzbdClient
                         ReadString(slot, "status"),
                         ReadString(slot, "cat")
                             ?? ReadString(slot, "category"),
-                        ReadDouble(slot, "percentage"),
-                        ReadString(slot, "timeleft"),
-                        ReadBytes(slot, "bytes")
-                            ?? ParseMegabytes(ReadString(slot, "mb")),
-                        ReadBytes(slot, "bytesleft")
-                            ?? ParseMegabytes(ReadString(slot, "mbleft"))));
+                        percentage is null ? null : Math.Clamp(percentage.Value, 0, 100),
+                        ParseTimeLeft(ReadString(slot, "timeleft")),
+                        ReadLong(slot, "bytes")
+                            ?? MegabytesToBytes(ReadDouble(slot, "mb")),
+                        ReadLong(slot, "bytesleft")
+                            ?? MegabytesToBytes(ReadDouble(slot, "mbleft"))));
             }
         }
 
+        var kbPerSecond = ReadDouble(queue, "kbpersec");
         return new SabnzbdQueueSnapshot(
             ReadBool(queue, "paused") ?? false,
-            ReadString(queue, "speed"),
-            ReadString(queue, "timeleft"),
+            kbPerSecond is >= 0 ? kbPerSecond.Value * 1024d : null,
+            ParseTimeLeft(ReadString(queue, "timeleft")),
             jobs);
     }
 
     public static SabnzbdHistorySnapshot ParseHistoryResponse(string json)
     {
         using var document = JsonDocument.Parse(json);
-        if (!document.RootElement.TryGetProperty("history", out var history) ||
-            history.ValueKind != JsonValueKind.Object)
+        if (!document.RootElement.TryGetProperty("history", out var history)
+            || history.ValueKind != JsonValueKind.Object)
         {
-            throw new JsonException("SABnzbd history payload is missing.");
+            throw new JsonException(
+                ReadApiError(document.RootElement) ?? "SABnzbd history payload is missing.");
         }
 
         var jobs = new List<SabnzbdHistoryJob>();
-        if (history.TryGetProperty("slots", out var slots) &&
-            slots.ValueKind == JsonValueKind.Array)
+        if (history.TryGetProperty("slots", out var slots)
+            && slots.ValueKind == JsonValueKind.Array)
         {
             foreach (var slot in slots.EnumerateArray())
             {
@@ -351,6 +410,7 @@ public sealed class SabnzbdClient(HttpClient httpClient) : ISabnzbdClient
                     continue;
                 }
 
+                var status = ReadString(slot, "status");
                 var failureMessage =
                     ReadString(slot, "fail_message")
                     ?? ReadString(slot, "error");
@@ -359,74 +419,107 @@ public sealed class SabnzbdClient(HttpClient httpClient) : ISabnzbdClient
                     new SabnzbdHistoryJob(
                         id,
                         ReadString(slot, "name")
+                            ?? ReadString(slot, "nzb_name")
                             ?? ReadString(slot, "filename")
                             ?? id,
-                        ReadString(slot, "status"),
+                        status,
                         ReadString(slot, "category")
                             ?? ReadString(slot, "cat"),
                         ReadString(slot, "storage"),
                         failureMessage,
-                        ClassifyFailure(
-                            ReadString(slot, "status"),
-                            failureMessage),
+                        ClassifyFailure(status, failureMessage),
                         ReadUnixDateTimeOffset(slot, "completed")
-                            ?? ReadDateTimeOffset(slot, "completed_at")));
+                            ?? ReadDateTimeOffset(slot, "completed_at"),
+                        ReadLong(slot, "bytes")));
             }
         }
 
         return new SabnzbdHistorySnapshot(jobs);
     }
 
+    /// <summary>
+    /// Classifies a SABnzbd history outcome. A <c>Failed</c> status, or a
+    /// failure message on a job that did not complete, counts as a failure;
+    /// post-processing states such as Verifying, Repairing or Extracting
+    /// without a failure message are still in progress.
+    /// </summary>
     public static SabnzbdFailureKind ClassifyFailure(
         string? status,
         string? failureMessage)
     {
-        var combined = $"{status} {failureMessage}".ToLowerInvariant();
-
-        if (!combined.Contains("fail", StringComparison.Ordinal) &&
-            !combined.Contains("error", StringComparison.Ordinal) &&
-            !combined.Contains("password", StringComparison.Ordinal) &&
-            !combined.Contains("unpack", StringComparison.Ordinal) &&
-            !combined.Contains("verify", StringComparison.Ordinal) &&
-            !combined.Contains("repair", StringComparison.Ordinal) &&
-            !combined.Contains("script", StringComparison.Ordinal))
+        var normalizedStatus = status?.Trim();
+        if (string.Equals(normalizedStatus, "Completed", StringComparison.OrdinalIgnoreCase))
         {
             return SabnzbdFailureKind.None;
         }
 
-        if (combined.Contains("password", StringComparison.Ordinal) ||
-            combined.Contains("encrypted", StringComparison.Ordinal))
+        var failed = string.Equals(normalizedStatus, "Failed", StringComparison.OrdinalIgnoreCase);
+        if (!failed && string.IsNullOrWhiteSpace(failureMessage))
+        {
+            return SabnzbdFailureKind.None;
+        }
+
+        var text = (failureMessage ?? "").ToLowerInvariant();
+
+        if (ContainsAny(text, "password", "encrypted"))
         {
             return SabnzbdFailureKind.Password;
         }
 
-        if (combined.Contains("unpack", StringComparison.Ordinal) ||
-            combined.Contains("rar", StringComparison.Ordinal) ||
-            combined.Contains("7zip", StringComparison.Ordinal))
+        if (ContainsAny(text, "unpack", "extract", "unrar", "rar ", "7zip", "7-zip"))
         {
             return SabnzbdFailureKind.Unpack;
         }
 
-        if (combined.Contains("verify", StringComparison.Ordinal) ||
-            combined.Contains("repair", StringComparison.Ordinal) ||
-            combined.Contains("par2", StringComparison.Ordinal))
+        if (ContainsAny(text, "verif", "repair", "par2", "corrupt", "crc"))
         {
             return SabnzbdFailureKind.Verification;
         }
 
-        if (combined.Contains("script", StringComparison.Ordinal))
+        if (ContainsAny(text, "script"))
         {
             return SabnzbdFailureKind.Script;
         }
 
-        if (combined.Contains("download", StringComparison.Ordinal) ||
-            combined.Contains("article", StringComparison.Ordinal))
+        if (ContainsAny(text, "article", "incomplete", "missing", "not enough", "download failed", "aborted"))
         {
             return SabnzbdFailureKind.Download;
         }
 
         return SabnzbdFailureKind.Unknown;
     }
+
+    public static TimeSpan? ParseTimeLeft(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var parts = value.Trim().Split(':');
+        var numbers = new int[parts.Length];
+        for (var index = 0; index < parts.Length; index++)
+        {
+            if (!int.TryParse(
+                    parts[index],
+                    NumberStyles.None,
+                    CultureInfo.InvariantCulture,
+                    out numbers[index]))
+            {
+                return null;
+            }
+        }
+
+        return numbers.Length switch
+        {
+            3 => new TimeSpan(numbers[0], numbers[1], numbers[2]),
+            4 => new TimeSpan(numbers[0], numbers[1], numbers[2], numbers[3]),
+            _ => null
+        };
+    }
+
+    private static bool ContainsAny(string text, params string[] needles) =>
+        needles.Any(needle => text.Contains(needle, StringComparison.Ordinal));
 
     private async Task<SabnzbdActionResult> ExecuteActionAsync(
         SabnzbdConnection connection,
@@ -444,7 +537,7 @@ public sealed class SabnzbdClient(HttpClient httpClient) : ISabnzbdClient
         {
             return new SabnzbdActionResult(
                 false,
-                Error: $"SABnzbd returned HTTP {(int)response.StatusCode}.");
+                Error: DescribeStatus(response.StatusCode));
         }
 
         try
@@ -454,6 +547,7 @@ public sealed class SabnzbdClient(HttpClient httpClient) : ISabnzbdClient
             var success = ReadBool(root, "status") ?? false;
             var newNzoId = readNewNzoId
                 ? ReadString(root, "nzo_id")
+                    ?? ReadStringArray(root, "nzo_ids").FirstOrDefault()
                 : null;
 
             return new SabnzbdActionResult(
@@ -471,14 +565,73 @@ public sealed class SabnzbdClient(HttpClient httpClient) : ISabnzbdClient
         }
     }
 
+    private static async Task<SabnzbdGrabResult> ReadGrabResultAsync(
+        HttpResponseMessage response,
+        CancellationToken cancellationToken)
+    {
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            return new SabnzbdGrabResult(
+                false,
+                [],
+                DescribeStatus(response.StatusCode));
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            var root = document.RootElement;
+            var success = ReadBool(root, "status") ?? false;
+            var ids = ReadStringArray(root, "nzo_ids");
+
+            return new SabnzbdGrabResult(
+                success,
+                ids,
+                success
+                    ? null
+                    : ReadString(root, "error") ?? "SABnzbd rejected the request.");
+        }
+        catch (JsonException exception)
+        {
+            throw new SabnzbdException(
+                "SABnzbd returned invalid add JSON.",
+                exception);
+        }
+    }
+
     private async Task<HttpResponseMessage> SendAsync(
         SabnzbdConnection connection,
         IReadOnlyList<KeyValuePair<string, string?>> parameters,
         CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(connection);
+        var fields = parameters
+            .Where(pair => pair.Value is not null)
+            .Select(pair => new KeyValuePair<string, string>(pair.Key, pair.Value!))
+            .Append(new KeyValuePair<string, string>("output", "json"))
+            .Append(new KeyValuePair<string, string>("apikey", RequireApiKey(connection)));
 
-        var settings = SabnzbdSettingsStore.NormalizeAndValidate(connection.Settings);
+        using var content = new FormUrlEncodedContent(fields);
+        return await httpClient.PostAsync(
+            ApiUri(connection),
+            content,
+            cancellationToken);
+    }
+
+    private static Uri ApiUri(SabnzbdConnection connection)
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+        var baseUrl = SabnzbdSettingsStore.NormalizeBaseUrl(connection.Settings.BaseUrl)
+            ?? throw new ArgumentException(
+                "SABnzbd URL is required.",
+                nameof(connection));
+
+        return new Uri($"{baseUrl}/api", UriKind.Absolute);
+    }
+
+    private static string RequireApiKey(SabnzbdConnection connection)
+    {
+        ArgumentNullException.ThrowIfNull(connection);
         if (string.IsNullOrWhiteSpace(connection.ApiKey))
         {
             throw new ArgumentException(
@@ -486,36 +639,7 @@ public sealed class SabnzbdClient(HttpClient httpClient) : ISabnzbdClient
                 nameof(connection));
         }
 
-        var all = new List<KeyValuePair<string, string?>>(parameters)
-        {
-            Pair("output", "json"),
-            Pair("apikey", connection.ApiKey.Trim())
-        };
-
-        var query = string.Join(
-            "&",
-            all
-                .Where(pair => pair.Value is not null)
-                .Select(pair =>
-                    $"{Uri.EscapeDataString(pair.Key)}={Uri.EscapeDataString(pair.Value!)}"));
-
-        var uri = new Uri(
-            $"{settings.BaseUrl}/api?{query}",
-            UriKind.Absolute);
-
-        var request = new HttpRequestMessage(HttpMethod.Get, uri);
-
-        try
-        {
-            return await httpClient.SendAsync(
-                request,
-                HttpCompletionOption.ResponseHeadersRead,
-                cancellationToken);
-        }
-        finally
-        {
-            request.Dispose();
-        }
+        return connection.ApiKey.Trim();
     }
 
     private static async Task<string> RequireBodyAsync(
@@ -527,20 +651,44 @@ public sealed class SabnzbdClient(HttpClient httpClient) : ISabnzbdClient
         if (!response.IsSuccessStatusCode)
         {
             throw new SabnzbdException(
-                $"SABnzbd {operation} failed with HTTP {(int)response.StatusCode}.");
+                $"SABnzbd {operation} failed: {DescribeStatus(response.StatusCode)}");
+        }
+
+        if (ReadApiError(body) is { } error)
+        {
+            throw new SabnzbdException($"SABnzbd {operation} failed: {error}");
         }
 
         return body;
     }
 
+    private static string? ReadApiError(string body)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            return ReadApiError(document.RootElement);
+        }
+        catch (JsonException)
+        {
+            return "SABnzbd returned an invalid response.";
+        }
+    }
+
+    private static string? ReadApiError(JsonElement root) =>
+        root.ValueKind == JsonValueKind.Object
+        && ReadBool(root, "status") == false
+            ? ReadString(root, "error") ?? "SABnzbd rejected the request."
+            : null;
+
     private static string ValidateNzoId(string nzoId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(nzoId);
         var normalized = nzoId.Trim();
-        if (normalized.Length > 200 ||
-            normalized.Any(character =>
-                !(char.IsAsciiLetterOrDigit(character) ||
-                  character is '_' or '-' or '.')))
+        if (normalized.Length > 200
+            || normalized.Any(character =>
+                !(char.IsAsciiLetterOrDigit(character)
+                  || character is '_' or '-' or '.')))
         {
             throw new ArgumentException(
                 "Invalid SABnzbd job ID.",
@@ -548,6 +696,12 @@ public sealed class SabnzbdClient(HttpClient httpClient) : ISabnzbdClient
         }
 
         return normalized;
+    }
+
+    private static string? CleanOrNull(string? value)
+    {
+        var clean = value?.Trim();
+        return string.IsNullOrWhiteSpace(clean) ? null : clean;
     }
 
     private static KeyValuePair<string, string?> Pair(
@@ -561,14 +715,15 @@ public sealed class SabnzbdClient(HttpClient httpClient) : ISabnzbdClient
             HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden =>
                 "SABnzbd rejected the API key.",
             HttpStatusCode.NotFound =>
-                "SABnzbd API endpoint was not found. Check the Base URL.",
+                "SABnzbd API endpoint was not found. Check the URL.",
             _ =>
                 $"SABnzbd returned HTTP {(int)statusCode}."
         };
 
     private static string? ReadString(JsonElement element, string propertyName)
     {
-        if (!element.TryGetProperty(propertyName, out var value))
+        if (element.ValueKind != JsonValueKind.Object
+            || !element.TryGetProperty(propertyName, out var value))
         {
             return null;
         }
@@ -586,7 +741,8 @@ public sealed class SabnzbdClient(HttpClient httpClient) : ISabnzbdClient
 
     private static bool? ReadBool(JsonElement element, string propertyName)
     {
-        if (!element.TryGetProperty(propertyName, out var value))
+        if (element.ValueKind != JsonValueKind.Object
+            || !element.TryGetProperty(propertyName, out var value))
         {
             return null;
         }
@@ -613,11 +769,12 @@ public sealed class SabnzbdClient(HttpClient httpClient) : ISabnzbdClient
             NumberStyles.Float,
             CultureInfo.InvariantCulture,
             out var value)
+            && double.IsFinite(value)
             ? value
             : null;
     }
 
-    private static long? ReadBytes(JsonElement element, string propertyName)
+    private static long? ReadLong(JsonElement element, string propertyName)
     {
         var raw = ReadString(element, propertyName);
         return long.TryParse(
@@ -629,26 +786,26 @@ public sealed class SabnzbdClient(HttpClient httpClient) : ISabnzbdClient
             : null;
     }
 
-    private static long? ParseMegabytes(string? value)
+    private static long? MegabytesToBytes(double? megabytes)
     {
-        if (!double.TryParse(
-                value,
-                NumberStyles.Float,
-                CultureInfo.InvariantCulture,
-                out var megabytes))
+        if (megabytes is null || megabytes.Value < 0)
         {
             return null;
         }
 
-        return checked((long)Math.Round(megabytes * 1024d * 1024d));
+        var bytes = megabytes.Value * 1024d * 1024d;
+        return bytes >= long.MaxValue
+            ? long.MaxValue
+            : (long)Math.Round(bytes);
     }
 
     private static IReadOnlyList<string> ReadStringArray(
         JsonElement element,
         string propertyName)
     {
-        if (!element.TryGetProperty(propertyName, out var array) ||
-            array.ValueKind != JsonValueKind.Array)
+        if (element.ValueKind != JsonValueKind.Object
+            || !element.TryGetProperty(propertyName, out var array)
+            || array.ValueKind != JsonValueKind.Array)
         {
             return [];
         }
@@ -667,7 +824,8 @@ public sealed class SabnzbdClient(HttpClient httpClient) : ISabnzbdClient
         string propertyName)
     {
         var raw = ReadString(element, propertyName);
-        if (!long.TryParse(raw, out var seconds) || seconds <= 0)
+        if (!long.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var seconds)
+            || seconds <= 0)
         {
             return null;
         }

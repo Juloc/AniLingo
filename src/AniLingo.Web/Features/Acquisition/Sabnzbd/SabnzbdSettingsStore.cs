@@ -3,9 +3,16 @@ using Microsoft.AspNetCore.DataProtection;
 
 namespace AniLingo.Web.Features.Acquisition.Sabnzbd;
 
+/// <summary>
+/// The canonical persisted SABnzbd configuration shared by Books and Anime.
+/// The API key is protected at rest with ASP.NET Core Data Protection.
+/// </summary>
 public sealed class SabnzbdSettingsStore
 {
-    private const string FileName = "sabnzbd.json";
+    public const string FileName = "sabnzbd.json";
+
+    private const int MaxCategoryLength = 80;
+    private const int MaxApiKeyLength = 512;
 
     private static readonly JsonSerializerOptions JsonOptions =
         new(JsonSerializerDefaults.Web) { WriteIndented = true };
@@ -33,7 +40,11 @@ public sealed class SabnzbdSettingsStore
         storePath = Path.Combine(directory.FullName, FileName);
     }
 
-    public async Task<SabnzbdConnection?> LoadAsync(
+    public string StorePath => storePath;
+
+    public bool Exists => File.Exists(storePath);
+
+    public async Task<SabnzbdStoredSettings> LoadAsync(
         CancellationToken cancellationToken = default)
     {
         await gate.WaitAsync(cancellationToken);
@@ -41,35 +52,16 @@ public sealed class SabnzbdSettingsStore
         {
             if (!File.Exists(storePath))
             {
-                return null;
+                return SabnzbdStoredSettings.Empty;
             }
 
+            PersistedSabnzbdSettings? persisted;
             try
             {
                 var json = await File.ReadAllTextAsync(storePath, cancellationToken);
-                var persisted = JsonSerializer.Deserialize<PersistedSabnzbdSettings>(
+                persisted = JsonSerializer.Deserialize<PersistedSabnzbdSettings>(
                     json,
                     JsonOptions);
-
-                if (persisted is null)
-                {
-                    return null;
-                }
-
-                var settings = NormalizeAndValidate(
-                    new SabnzbdSettings(
-                        persisted.BaseUrl,
-                        persisted.Category,
-                        persisted.QueuePageSize,
-                        persisted.HistoryPageSize));
-
-                var apiKey = protector.Unprotect(persisted.ProtectedApiKey);
-                if (string.IsNullOrWhiteSpace(apiKey))
-                {
-                    throw new InvalidDataException("Stored SABnzbd API key is empty.");
-                }
-
-                return new SabnzbdConnection(settings, apiKey);
             }
             catch (JsonException exception)
             {
@@ -77,6 +69,22 @@ public sealed class SabnzbdSettingsStore
                     "SABnzbd settings contain invalid JSON.",
                     exception);
             }
+
+            if (persisted is null)
+            {
+                return SabnzbdStoredSettings.Empty;
+            }
+
+            var apiKey = string.IsNullOrWhiteSpace(persisted.ProtectedApiKey)
+                ? null
+                : protector.Unprotect(persisted.ProtectedApiKey);
+
+            return Normalize(
+                new SabnzbdStoredSettings(
+                    persisted.BaseUrl,
+                    apiKey,
+                    persisted.BooksCategory,
+                    persisted.AnimeCategory));
         }
         finally
         {
@@ -85,18 +93,10 @@ public sealed class SabnzbdSettingsStore
     }
 
     public async Task SaveAsync(
-        SabnzbdConnection connection,
+        SabnzbdStoredSettings settings,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(connection);
-        var settings = NormalizeAndValidate(connection.Settings);
-
-        if (string.IsNullOrWhiteSpace(connection.ApiKey))
-        {
-            throw new ArgumentException(
-                "SABnzbd API key is required.",
-                nameof(connection));
-        }
+        var normalized = Normalize(settings);
 
         await gate.WaitAsync(cancellationToken);
         try
@@ -107,19 +107,19 @@ public sealed class SabnzbdSettingsStore
             Directory.CreateDirectory(directory);
 
             var persisted = new PersistedSabnzbdSettings(
-                settings.BaseUrl,
-                settings.Category,
-                settings.QueuePageSize,
-                settings.HistoryPageSize,
-                protector.Protect(connection.ApiKey.Trim()));
+                normalized.BaseUrl,
+                normalized.ApiKey is null
+                    ? null
+                    : protector.Protect(normalized.ApiKey),
+                normalized.BooksCategory,
+                normalized.AnimeCategory);
 
             var temporaryPath = $"{storePath}.tmp-{Guid.NewGuid():N}";
             try
             {
-                var json = JsonSerializer.Serialize(persisted, JsonOptions);
                 await File.WriteAllTextAsync(
                     temporaryPath,
-                    json,
+                    JsonSerializer.Serialize(persisted, JsonOptions),
                     cancellationToken);
                 SetPrivateFileMode(temporaryPath);
                 File.Move(temporaryPath, storePath, overwrite: true);
@@ -135,56 +135,62 @@ public sealed class SabnzbdSettingsStore
         }
     }
 
-    public async Task DeleteAsync(CancellationToken cancellationToken = default)
-    {
-        await gate.WaitAsync(cancellationToken);
-        try
-        {
-            TryDelete(storePath);
-        }
-        finally
-        {
-            gate.Release();
-        }
-    }
-
-    public static SabnzbdSettings NormalizeAndValidate(SabnzbdSettings settings)
+    /// <summary>
+    /// Trims and validates stored settings. Blank values become null.
+    /// </summary>
+    public static SabnzbdStoredSettings Normalize(SabnzbdStoredSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
 
-        if (!Uri.TryCreate(settings.BaseUrl?.Trim(), UriKind.Absolute, out var uri) ||
-            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps) ||
-            string.IsNullOrWhiteSpace(uri.Host) ||
-            !string.IsNullOrEmpty(uri.UserInfo) ||
-            !string.IsNullOrEmpty(uri.Query) ||
-            !string.IsNullOrEmpty(uri.Fragment))
+        return new SabnzbdStoredSettings(
+            NormalizeBaseUrl(settings.BaseUrl),
+            Clean(settings.ApiKey, MaxApiKeyLength, "API key"),
+            Clean(settings.BooksCategory, MaxCategoryLength, "Books category"),
+            Clean(settings.AnimeCategory, MaxCategoryLength, "Anime category"));
+    }
+
+    public static string? NormalizeBaseUrl(string? baseUrl)
+    {
+        var clean = baseUrl?.Trim();
+        if (string.IsNullOrWhiteSpace(clean))
+        {
+            return null;
+        }
+
+        if (!Uri.TryCreate(clean, UriKind.Absolute, out var uri)
+            || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)
+            || string.IsNullOrWhiteSpace(uri.Host)
+            || !string.IsNullOrEmpty(uri.UserInfo)
+            || !string.IsNullOrEmpty(uri.Query)
+            || !string.IsNullOrEmpty(uri.Fragment))
         {
             throw new ArgumentException(
-                "SABnzbd Base URL must be an absolute HTTP(S) URL without credentials, query or fragment.",
-                nameof(settings));
+                "SABnzbd URL must be an absolute HTTP(S) URL without credentials, query or fragment.",
+                nameof(baseUrl));
         }
 
-        var category = settings.Category?.Trim();
-        if (string.IsNullOrWhiteSpace(category) || category.Length > 80)
+        return uri.GetLeftPart(UriPartial.Path).TrimEnd('/');
+    }
+
+    private static string? Clean(
+        string? value,
+        int maxLength,
+        string label)
+    {
+        var clean = value?.Trim();
+        if (string.IsNullOrWhiteSpace(clean))
+        {
+            return null;
+        }
+
+        if (clean.Length > maxLength)
         {
             throw new ArgumentException(
-                "SABnzbd category must contain between 1 and 80 characters.",
-                nameof(settings));
+                $"SABnzbd {label} must not exceed {maxLength} characters.",
+                nameof(value));
         }
 
-        if (settings.QueuePageSize is < 1 or > 1000 ||
-            settings.HistoryPageSize is < 1 or > 1000)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(settings),
-                "SABnzbd queue/history page sizes must be between 1 and 1000.");
-        }
-
-        return settings with
-        {
-            BaseUrl = uri.GetLeftPart(UriPartial.Path).TrimEnd('/'),
-            Category = category
-        };
+        return clean;
     }
 
     private static void SetPrivateFileMode(string path)
@@ -215,9 +221,8 @@ public sealed class SabnzbdSettingsStore
     }
 
     private sealed record PersistedSabnzbdSettings(
-        string BaseUrl,
-        string Category,
-        int QueuePageSize,
-        int HistoryPageSize,
-        string ProtectedApiKey);
+        string? BaseUrl,
+        string? ProtectedApiKey,
+        string? BooksCategory,
+        string? AnimeCategory);
 }

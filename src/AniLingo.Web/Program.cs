@@ -1,4 +1,5 @@
 using AniLingo.Web.Data;
+using AniLingo.Web.Features.Acquisition.Sabnzbd;
 using AniLingo.Web.Features.Admin;
 using AniLingo.Web.Features.Ai;
 using AniLingo.Web.Features.Auth;
@@ -244,10 +245,15 @@ builder.Services.AddHttpClient<BookCatalogService>(client =>
     client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
 });
 
-builder.Services.AddHttpClient<SabnzbdOperationsClient>(client =>
+builder.Services.AddSingleton<SabnzbdSettingsStore>();
+builder.Services.AddSingleton<SabnzbdConnectionResolver>();
+builder.Services.AddSingleton<SabnzbdAcquisitionStore>();
+builder.Services.AddHttpClient<ISabnzbdClient, SabnzbdClient>(client =>
 {
     client.Timeout = TimeSpan.FromSeconds(15);
 });
+builder.Services.AddScoped<SabnzbdDownloadService>();
+builder.Services.AddScoped<SabnzbdAcquisitionService>();
 builder.Services.AddHostedService<SabnzbdOperationMonitorService>();
 
 builder.Services.AddSingleton<SonarrConnectionStore>();
@@ -311,6 +317,9 @@ try
 {
     Console.WriteLine($"[AniLingo] {DateTimeOffset.UtcNow:O} Initializing persistent database.");
     await InitializeDatabaseAsync(
+        app.Services,
+        message => Console.WriteLine($"[AniLingo] {DateTimeOffset.UtcNow:O} {message}"));
+    await SabnzbdSettingsMigration.RunAtStartupAsync(
         app.Services,
         message => Console.WriteLine($"[AniLingo] {DateTimeOffset.UtcNow:O} {message}"));
     Console.WriteLine($"[AniLingo] {DateTimeOffset.UtcNow:O} Database ready. Starting web server.");
