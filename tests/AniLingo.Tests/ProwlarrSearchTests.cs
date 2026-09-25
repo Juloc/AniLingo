@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using AniLingo.Web.Features.Acquisition;
 using AniLingo.Web.Features.Acquisition.Prowlarr;
 using Microsoft.AspNetCore.DataProtection;
 
