@@ -1,0 +1,85 @@
+package de.juloc.anilingo.tv
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class TvProgressPolicyTest {
+    @Test
+    fun heartbeatIsThrottledToFiveSeconds() {
+        val policy = TvProgressPolicy()
+
+        val first = policy.evaluate(
+            TvProgressEvent.HEARTBEAT,
+            nowMs = 1_000,
+            positionMs = 10_000,
+            durationMs = 100_000,
+        )
+        val tooSoon = policy.evaluate(
+            TvProgressEvent.HEARTBEAT,
+            nowMs = 5_000,
+            positionMs = 14_000,
+            durationMs = 100_000,
+        )
+        val due = policy.evaluate(
+            TvProgressEvent.HEARTBEAT,
+            nowMs = 6_000,
+            positionMs = 15_000,
+            durationMs = 100_000,
+        )
+
+        assertEquals(10_000, first?.positionMs)
+        assertNull(tooSoon)
+        assertEquals(15_000, due?.positionMs)
+    }
+
+    @Test
+    fun pauseSeekBackgroundAndClosePersistImmediately() {
+        for (event in listOf(
+            TvProgressEvent.PAUSE,
+            TvProgressEvent.SEEK,
+            TvProgressEvent.BACKGROUND,
+            TvProgressEvent.CLOSE,
+        )) {
+            val policy = TvProgressPolicy()
+            policy.evaluate(
+                TvProgressEvent.HEARTBEAT,
+                nowMs = 1_000,
+                positionMs = 10_000,
+                durationMs = 100_000,
+            )
+
+            val write = policy.evaluate(
+                event,
+                nowMs = 1_100,
+                positionMs = 11_000,
+                durationMs = 100_000,
+            )
+
+            assertEquals(11_000, write?.positionMs)
+        }
+    }
+
+    @Test
+    fun completedUsesNearEndThreshold() {
+        val policy = TvProgressPolicy()
+
+        val incomplete = policy.evaluate(
+            TvProgressEvent.HEARTBEAT,
+            nowMs = 1_000,
+            positionMs = 94_000,
+            durationMs = 100_000,
+        )
+        val complete = policy.evaluate(
+            TvProgressEvent.CLOSE,
+            nowMs = 1_100,
+            positionMs = 95_000,
+            durationMs = 100_000,
+        )
+
+        assertFalse(incomplete!!.completed)
+        assertTrue(complete!!.completed)
+    }
+}
