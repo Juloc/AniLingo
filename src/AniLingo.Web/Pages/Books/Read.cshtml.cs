@@ -381,12 +381,7 @@ public sealed class ReadModel(
             reader.Work.Id,
             reader.Chapter.Id,
             positionPermille,
-            string.Equals(
-                anchorLanguage,
-                "original",
-                StringComparison.OrdinalIgnoreCase)
-                ? "original"
-                : reader.TargetLanguage,
+            reader.TargetLanguage,
             cancellationToken);
 
         return new OkResult();
@@ -415,7 +410,12 @@ public sealed class ReadModel(
             reader.Work.Id,
             reader.Chapter.Id,
             positionPermille,
-            reader.TargetLanguage,
+            string.Equals(
+                anchorLanguage,
+                "original",
+                StringComparison.OrdinalIgnoreCase)
+                ? "original"
+                : reader.TargetLanguage,
             cancellationToken);
 
         return new JsonResult(new
