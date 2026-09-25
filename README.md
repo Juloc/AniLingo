@@ -99,6 +99,16 @@ Runtime paths are fixed and intentionally simple:
 - `/data` stores the SQLite database, protected integration settings, Codex authentication state, the persistent Whisper model and generated transcription cache.
 - `/media/anime` is the optional conventional read-only anime library mount; AniLingo also starts without it.
 
+The container runs as the non-root `app` user (UID/GID `1654:1654`) and needs no privileged mode or extra Linux capabilities. Only `/data` and `/tmp` are written; media files must be readable (not writable) by UID `1654`, for example world-readable or via a matching `group_add` group. A new named volume is prepared with the right ownership automatically. **Upgrading from an image that still ran as root:** the existing `/data` volume is owned by root, and AniLingo refuses to start with an explicit message until ownership is handed over once:
+
+```bash
+docker compose stop anilingo
+docker run --rm --user 0:0 --entrypoint chown -v <anilingo-data>:/data ghcr.io/juloc/anilingo:latest -R 1654:1654 /data
+docker compose up -d
+```
+
+Replace `<anilingo-data>` with the actual volume name (Compose usually prefixes it with the project name, see `docker volume ls`) or host path. Details are in [docs/ADMIN_OPERATIONS.md](docs/ADMIN_OPERATIONS.md#non-root-container-runtime-and-data-ownership).
+
 For an existing Docker stack, replace `default` with that stack's network if needed. No connection string, database password, media environment variable or second service is required.
 
 ## AniList metadata

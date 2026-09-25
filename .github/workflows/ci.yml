@@ -13,21 +13,32 @@ on:
       - "docs/ANDROID_CLIENTS.md"
       - ".github/workflows/android.yml"
 
+# Least privilege by default. Only the publish and github-release jobs, which run
+# exclusively for pushes to main, receive write scopes.
 permissions:
-  contents: write
-  packages: write
+  contents: read
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
       - run: dotnet restore AniLingo.sln
       - run: dotnet build AniLingo.sln --no-restore --configuration Release
       - run: dotnet test AniLingo.sln --no-build --configuration Release
+      - name: Resolve application version
+        id: version
+        run: |
+          VERSION="$(dotnet msbuild src/AniLingo.Web/AniLingo.Web.csproj -nologo -getProperty:Version)"
+          test -n "${VERSION}"
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
       - name: Validate single-container Compose
         run: |
           test "$(docker compose config --services)" = "anilingo"
@@ -40,8 +51,9 @@ jobs:
           docker run -d --name anilingo-no-nas -p 127.0.0.1:18097:8080 ghcr.io/juloc/anilingo:${{ github.sha }}
           trap 'docker rm -f anilingo-no-nas >/dev/null 2>&1 || true' EXIT
 
-          for attempt in {1..30}; do
+          for _ in {1..30}; do
             if curl -fsS http://127.0.0.1:18097/Account/Setup >/dev/null; then
+              test "$(docker exec anilingo-no-nas id -u)" != "0"
               exit 0
             fi
             sleep 1
@@ -49,28 +61,67 @@ jobs:
 
           docker logs anilingo-no-nas
           exit 1
-      - name: Log in to GHCR
+      - name: Export Docker image for publishing
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-      - name: Publish Docker image
+        run: docker save -o "${RUNNER_TEMP}/anilingo-image.tar" "ghcr.io/juloc/anilingo:${GITHUB_SHA}"
+      - name: Upload Docker image for publishing
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: |
-          docker tag ghcr.io/juloc/anilingo:${{ github.sha }} ghcr.io/juloc/anilingo:latest
-          docker push ghcr.io/juloc/anilingo:${{ github.sha }}
-          docker push ghcr.io/juloc/anilingo:latest
+        uses: actions/upload-artifact@v4
+        with:
+          name: anilingo-image
+          path: ${{ runner.temp }}/anilingo-image.tar
+          if-no-files-found: error
+          retention-days: 1
 
-          if [ "${{ startsWith(github.event.head_commit.message, 'release:') }}" = "true" ]; then
-            VERSION="$(dotnet msbuild src/AniLingo.Web/AniLingo.Web.csproj -nologo -getProperty:Version)"
-            docker tag ghcr.io/juloc/anilingo:${{ github.sha }} "ghcr.io/juloc/anilingo:${VERSION}"
-            docker push "ghcr.io/juloc/anilingo:${VERSION}"
+  publish:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/juloc/anilingo
+      VERSION: ${{ needs.build.outputs.version }}
+      IS_RELEASE: ${{ startsWith(github.event.head_commit.message, 'release:') }}
+    steps:
+      - name: Download tested Docker image
+        uses: actions/download-artifact@v4
+        with:
+          name: anilingo-image
+          path: ${{ runner.temp }}
+      - name: Load tested Docker image
+        run: docker load -i "${RUNNER_TEMP}/anilingo-image.tar"
+      - name: Log in to GHCR
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "${GHCR_TOKEN}" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
+      - name: Publish Docker image
+        run: |
+          docker tag "${IMAGE}:${GITHUB_SHA}" "${IMAGE}:latest"
+          docker push "${IMAGE}:${GITHUB_SHA}"
+          docker push "${IMAGE}:latest"
+
+          if [ "${IS_RELEASE}" = "true" ]; then
+            test -n "${VERSION}"
+            docker tag "${IMAGE}:${GITHUB_SHA}" "${IMAGE}:${VERSION}"
+            docker push "${IMAGE}:${VERSION}"
           fi
 
+  github-release:
+    needs: [build, publish]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'release:')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
       - name: Create GitHub prerelease
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'release:')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.build.outputs.version }}
         run: |
-          VERSION="$(dotnet msbuild src/AniLingo.Web/AniLingo.Web.csproj -nologo -getProperty:Version)"
+          test -n "${VERSION}"
           gh release create "v${VERSION}" \
             --target "${GITHUB_SHA}" \
             --title "AniLingo ${VERSION}" \
