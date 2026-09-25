@@ -32,7 +32,7 @@ public sealed class ReadingSegmentMappingTests
             Assert.AreEqual(1, stored.Count);
             Assert.AreEqual(first.Id, stored[0].Id);
 
-            await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+            await Assert.ThrowsExceptionAsync<InvalidOperationException>(
                 () => reloaded.AddAsync(
                     Mapping(
                         localId,
@@ -109,7 +109,8 @@ public sealed class ReadingSegmentMappingTests
                     localStart: 13,
                     localEnd: 24,
                     externalId: "300",
-                    remoteStart: 1));
+                    remoteStart: 1,
+                    mediaType: "novel"));
 
             var resolved = await store.ResolveAsync(
                 "novel",
@@ -145,7 +146,8 @@ public sealed class ReadingSegmentMappingTests
                     localStart: 13,
                     localEnd: 24,
                     externalId: "400",
-                    remoteStart: 1));
+                    remoteStart: 1,
+                    mediaType: "novel"));
 
             var resolved = await store.ResolveAsync(
                 "novel",
@@ -283,13 +285,14 @@ public sealed class ReadingSegmentMappingTests
         double localEnd,
         string externalId,
         int remoteStart,
+        string mediaType = "manga",
         int? remoteChapterCount = null,
         int? localVolumeStart = null,
         int? localVolumeEnd = null,
         int? remoteVolumeStart = null) =>
         new(
             Guid.NewGuid(),
-            "manga",
+            mediaType,
             localId,
             localStart,
             localEnd,
