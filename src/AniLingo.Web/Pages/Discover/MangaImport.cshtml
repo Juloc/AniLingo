@@ -1,0 +1,113 @@
+@page "/Discover/MangaImport"
+@model AniLingo.Web.Pages.Discover.MangaImportModel
+@{
+    ViewData["Title"] = $"Add {Model.Title}";
+}
+
+@section Head {
+    <link rel="stylesheet" href="~/css/discover.css" asp-append-version="true" />
+}
+
+<div class="discover-manga-import">
+    <a class="discover-import-back" href="/Discover?category=manga">← Back to Discover</a>
+
+    <header class="discover-manga-import-header">
+        <div>
+            <span class="eyebrow">Manga import</span>
+            <h1>@Model.Title</h1>
+            <p>
+                Import your CBZ/ZIP files or a mounted Manga folder. AniLingo will keep
+                the files in the canonical Manga library and attach the selected AniList metadata.
+            </p>
+        </div>
+
+        <a class="button"
+           href="@Model.AniListUrl"
+           target="_blank"
+           rel="noopener noreferrer">
+            Open AniList
+        </a>
+    </header>
+
+    @if (TempData["Status"] is string status)
+    {
+        <div class="discover-warning">@status</div>
+    }
+
+    <div class="discover-manga-import-grid">
+        <section class="discover-manga-import-card">
+            <div>
+                <span class="eyebrow">Recommended</span>
+                <h2>Upload CBZ / ZIP</h2>
+                <p>
+                    Best when the files are on your phone or computer.
+                    Multiple chapter archives become one Manga series.
+                </p>
+            </div>
+
+            <form method="post"
+                  asp-page-handler="Upload"
+                  enctype="multipart/form-data"
+                  class="discover-manga-import-form">
+                <input type="hidden" name="anilistId" value="@Model.AniListId" />
+                <input type="hidden" name="title" value="@Model.Title" />
+
+                <label>
+                    <span>Series name</span>
+                    <input type="text"
+                           name="seriesTitle"
+                           value="@Model.Title"
+                           maxlength="200" />
+                </label>
+
+                <label>
+                    <span>CBZ / ZIP chapters</span>
+                    <input type="file"
+                           name="archives"
+                           accept=".cbz,.zip,application/zip"
+                           multiple
+                           required />
+                </label>
+
+                <button class="button button-primary" type="submit">
+                    Upload, import & match
+                </button>
+            </form>
+        </section>
+
+        <section class="discover-manga-import-card">
+            <div>
+                <span class="eyebrow">Server storage</span>
+                <h2>Import mounted path</h2>
+                <p>
+                    Use a CBZ/ZIP file or Manga directory already mounted into the AniLingo container.
+                </p>
+            </div>
+
+            <form method="post"
+                  asp-page-handler="ImportPath"
+                  class="discover-manga-import-form">
+                <input type="hidden" name="anilistId" value="@Model.AniListId" />
+                <input type="hidden" name="title" value="@Model.Title" />
+
+                <label>
+                    <span>Source path</span>
+                    <input type="text"
+                           name="sourcePath"
+                           required
+                           autocomplete="off"
+                           placeholder="/media/manga/@Model.Title" />
+                </label>
+
+                <button class="button button-primary" type="submit">
+                    Import & match
+                </button>
+            </form>
+        </section>
+    </div>
+
+    <p class="discover-manga-import-note">
+        AniLingo imports local/self-hosted Manga files only. The AniList result supplies metadata;
+        it is not used as a download source.
+    </p>
+</div>
