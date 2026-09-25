@@ -231,7 +231,9 @@ public sealed class ProwlarrClient(HttpClient httpClient) : IProwlarrClient
             return null;
         }
 
-        if (Uri.TryCreate(value, UriKind.Absolute, out var absolute))
+        if (Uri.TryCreate(value, UriKind.Absolute, out var absolute) &&
+            (absolute.Scheme == Uri.UriSchemeHttp ||
+             absolute.Scheme == Uri.UriSchemeHttps))
         {
             return absolute;
         }
@@ -239,7 +241,9 @@ public sealed class ProwlarrClient(HttpClient httpClient) : IProwlarrClient
         if (!Uri.TryCreate(
                 $"{baseUrl.TrimEnd('/')}/{value.TrimStart('/')}",
                 UriKind.Absolute,
-                out var relativeResolved))
+                out var relativeResolved) ||
+            (relativeResolved.Scheme != Uri.UriSchemeHttp &&
+             relativeResolved.Scheme != Uri.UriSchemeHttps))
         {
             return null;
         }
