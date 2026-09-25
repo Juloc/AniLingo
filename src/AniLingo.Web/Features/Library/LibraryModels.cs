@@ -51,4 +51,7 @@ public sealed class MediaOptions
 public sealed record ScanResult(int Discovered, int Updated, int Skipped, int SubtitleFiles)
 {
     public int Removed { get; init; }
+
+    // NFO files that were present but rejected (malformed, oversized, unreadable or unsupported).
+    public int MetadataWarnings { get; init; }
 }

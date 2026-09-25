@@ -1,0 +1,378 @@
+using AniLingo.Web.Data;
+using AniLingo.Web.Features.Library;
+using AniLingo.Web.Features.MediaMapping;
+using AniLingo.Web.Features.Metadata;
+using AniLingo.Web.Features.Sonarr;
+using AniLingo.Web.Features.Subtitles;
+using AniLingo.Web.Features.Tracking;
+using AniLingo.Web.Features.Vocabulary;
+using AniLingo.Web.Infrastructure;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
+
+namespace AniLingo.Tests;
+
+[TestClass]
+public sealed class NfoLibraryScanTests
+{
+    private const string ShowNfo =
+        """
+        <?xml version="1.0" encoding="utf-8" standalone="yes"?>
+        <tvshow>
+          <title>Frieren: Beyond Journey's End</title>
+          <originaltitle>葬送のフリーレン</originaltitle>
+          <uniqueid type="anilist">154587</uniqueid>
+          <uniqueid type="tvdb" default="true">424536</uniqueid>
+        </tvshow>
+        """;
+
+    [TestMethod]
+    public async Task ShowAndEpisodeNfoTitlesAreAppliedIdempotentlyWithoutWritingToTheLibrary()
+    {
+        await using var fixture = await NfoScanFixture.CreateAsync();
+        var episodePath = fixture.AddMedia("Sousou no Frieren", "Season 01", "Sousou no Frieren - S01E01.mkv");
+        fixture.AddMedia("Sousou no Frieren", "Season 01", "Sousou no Frieren - S01E02.mkv");
+        fixture.WriteNfo(Path.Combine("Sousou no Frieren", "tvshow.nfo"), ShowNfo);
+        fixture.WriteNfo(
+            Path.ChangeExtension(episodePath, ".nfo"),
+            "<episodedetails><title>The Journey's End</title><season>1</season><episode>1</episode></episodedetails>");
+        var libraryBefore = fixture.SnapshotLibrary();
+
+        var first = await fixture.Scanner.ScanAsync(fixture.Root.Id, CancellationToken.None);
+        var second = await fixture.Scanner.ScanAsync(fixture.Root.Id, CancellationToken.None);
+
+        Assert.AreEqual(2, first.Discovered);
+        Assert.AreEqual(0, first.MetadataWarnings);
+        Assert.AreEqual(0, second.Discovered);
+        Assert.AreEqual(0, second.Updated);
+        var anime = await fixture.Db.Anime.AsNoTracking().SingleAsync();
+        Assert.AreEqual("sousou no frieren", anime.Key);
+        Assert.AreEqual("Frieren: Beyond Journey's End", anime.Title);
+        var titles = await fixture.Db.Episodes.AsNoTracking()
+            .OrderBy(x => x.Number)
+            .Select(x => x.Title)
+            .ToArrayAsync();
+        CollectionAssert.AreEqual(new[] { "The Journey's End", "Episode 2" }, titles);
+        CollectionAssert.AreEqual(libraryBefore, fixture.SnapshotLibrary());
+    }
+
+    [TestMethod]
+    public async Task ShowNfoAniListIdMatchesNewAnimeWithoutTitleSearch()
+    {
+        await using var fixture = await NfoScanFixture.CreateAsync();
+        fixture.AddMedia("Sousou no Frieren", "Season 01", "Sousou no Frieren - S01E01.mkv");
+        fixture.WriteNfo(Path.Combine("Sousou no Frieren", "tvshow.nfo"), ShowNfo);
+        fixture.Provider.Add("154587", "Frieren: Beyond Journey's End");
+
+        await fixture.Scanner.ScanAsync(fixture.Root.Id, CancellationToken.None);
+
+        var metadata = await fixture.Db.AnimeMetadata.AsNoTracking().SingleAsync();
+        Assert.AreEqual(AniListMetadataProvider.ProviderKey, metadata.Provider);
+        Assert.AreEqual("154587", metadata.ExternalId);
+        Assert.AreEqual(0, fixture.Provider.Searches.Count);
+    }
+
+    [TestMethod]
+    public async Task UnknownShowNfoAniListIdFallsThroughToAutomaticTitleMatching()
+    {
+        await using var fixture = await NfoScanFixture.CreateAsync();
+        fixture.AddMedia("Sousou no Frieren", "Season 01", "Sousou no Frieren - S01E01.mkv");
+        fixture.WriteNfo(Path.Combine("Sousou no Frieren", "tvshow.nfo"), ShowNfo);
+
+        await fixture.Scanner.ScanAsync(fixture.Root.Id, CancellationToken.None);
+
+        CollectionAssert.AreEqual(new[] { "154587" }, fixture.Provider.Requested);
+        Assert.IsNotEmpty(fixture.Provider.Searches);
+        Assert.IsTrue(fixture.Provider.Searches.All(query => query == "Frieren: Beyond Journey's End"));
+        Assert.AreEqual(0, await fixture.Db.AnimeMetadata.CountAsync());
+    }
+
+    [TestMethod]
+    public async Task ShowNfoAniListIdNeverReplacesAnExistingMatch()
+    {
+        await using var fixture = await NfoScanFixture.CreateAsync();
+        var anime = new Anime { Key = "sousou no frieren", Title = "Sousou no Frieren" };
+        fixture.Db.Anime.Add(anime);
+        fixture.Db.AnimeMetadata.Add(new AnimeMetadata
+        {
+            AnimeId = anime.Id,
+            Provider = AniListMetadataProvider.ProviderKey,
+            ExternalId = "111",
+            PreferredTitle = "Manually chosen entry"
+        });
+        await fixture.Db.SaveChangesAsync();
+        fixture.AddMedia("Sousou no Frieren", "Season 01", "Sousou no Frieren - S01E01.mkv");
+        fixture.WriteNfo(
+            Path.Combine("Sousou no Frieren", "tvshow.nfo"),
+            "<tvshow><title>Frieren</title><uniqueid type=\"anilist\">222</uniqueid></tvshow>");
+        fixture.Provider.Add("222", "Other entry");
+
+        await fixture.Scanner.ScanAsync(fixture.Root.Id, CancellationToken.None);
+
+        var metadata = await fixture.Db.AnimeMetadata.AsNoTracking().SingleAsync();
+        Assert.AreEqual("111", metadata.ExternalId);
+        Assert.AreEqual("Manually chosen entry", metadata.PreferredTitle);
+        Assert.AreEqual(0, fixture.Provider.Requested.Count);
+        Assert.AreEqual(0, fixture.Provider.Searches.Count);
+        Assert.AreEqual("Frieren", (await fixture.Db.Anime.AsNoTracking().SingleAsync()).Title);
+    }
+
+    [TestMethod]
+    public async Task MalformedNfoIsIsolatedAsWarningAndKeepsLastKnownTitles()
+    {
+        await using var fixture = await NfoScanFixture.CreateAsync();
+        var episodePath = fixture.AddMedia("Sousou no Frieren", "Season 01", "Sousou no Frieren - S01E01.mkv");
+        fixture.AddMedia("Sousou no Frieren", "Season 01", "Sousou no Frieren - S01E02.mkv");
+        var showNfo = fixture.WriteNfo(Path.Combine("Sousou no Frieren", "tvshow.nfo"), ShowNfo);
+        var episodeNfo = fixture.WriteNfo(
+            Path.ChangeExtension(episodePath, ".nfo"),
+            "<episodedetails><title>The Journey's End</title></episodedetails>");
+        await fixture.Scanner.ScanAsync(fixture.Root.Id, CancellationToken.None);
+
+        File.WriteAllText(showNfo, "<tvshow><title>Broken</tvshow>");
+        File.WriteAllText(
+            episodeNfo,
+            "<!DOCTYPE x [<!ENTITY e SYSTEM \"file:///etc/passwd\">]><episodedetails><title>&e;</title></episodedetails>");
+        var rescan = await fixture.Scanner.ScanAsync(fixture.Root.Id, CancellationToken.None);
+
+        Assert.AreEqual(2, rescan.MetadataWarnings);
+        Assert.AreEqual(0, rescan.Updated);
+        Assert.AreEqual(2, await fixture.Db.MediaFiles.CountAsync());
+        Assert.AreEqual("Frieren: Beyond Journey's End", (await fixture.Db.Anime.AsNoTracking().SingleAsync()).Title);
+        Assert.AreEqual(
+            "The Journey's End",
+            await fixture.Db.Episodes.AsNoTracking().Where(x => x.Number == 1).Select(x => x.Title).SingleAsync());
+    }
+
+    [TestMethod]
+    public async Task MalformedNfoOnFirstScanFallsBackToFileNameTitles()
+    {
+        await using var fixture = await NfoScanFixture.CreateAsync();
+        var episodePath = fixture.AddMedia("Sousou no Frieren", "Season 01", "Sousou no Frieren - S01E01.mkv");
+        fixture.WriteNfo(Path.Combine("Sousou no Frieren", "tvshow.nfo"), new string('<', 64));
+        fixture.WriteNfo(Path.ChangeExtension(episodePath, ".nfo"), "<movie><title>Film</title></movie>");
+
+        var result = await fixture.Scanner.ScanAsync(fixture.Root.Id, CancellationToken.None);
+
+        Assert.AreEqual(1, result.Discovered);
+        Assert.AreEqual(2, result.MetadataWarnings);
+        Assert.AreEqual("Sousou no Frieren", (await fixture.Db.Anime.AsNoTracking().SingleAsync()).Title);
+        Assert.AreEqual("Episode 1", (await fixture.Db.Episodes.AsNoTracking().SingleAsync()).Title);
+        Assert.IsNotEmpty(fixture.Provider.Searches);
+        Assert.IsTrue(fixture.Provider.Searches.All(query => query == "Sousou no Frieren"));
+    }
+
+    [TestMethod]
+    public async Task EpisodeNfoWithDifferentNumberingNeverRenamesTheFileNameEpisode()
+    {
+        await using var fixture = await NfoScanFixture.CreateAsync();
+        var episodePath = fixture.AddMedia("Sousou no Frieren", "Season 01", "Sousou no Frieren - S01E13.mkv");
+        fixture.WriteNfo(
+            Path.ChangeExtension(episodePath, ".nfo"),
+            "<episodedetails><title>Season Two Opener</title><season>2</season><episode>1</episode></episodedetails>");
+
+        var result = await fixture.Scanner.ScanAsync(fixture.Root.Id, CancellationToken.None);
+
+        var episode = await fixture.Db.Episodes.AsNoTracking().SingleAsync();
+        Assert.AreEqual(0, result.MetadataWarnings);
+        Assert.AreEqual(1, episode.SeasonNumber);
+        Assert.AreEqual(13, episode.Number);
+        Assert.AreEqual("Episode 13", episode.Title);
+    }
+
+    [TestMethod]
+    public async Task MultiEpisodeNfoTitlesTheMatchingEpisodeOnly()
+    {
+        await using var fixture = await NfoScanFixture.CreateAsync();
+        var episodePath = fixture.AddMedia("Sousou no Frieren", "Season 01", "Sousou no Frieren - S01E02.mkv");
+        fixture.WriteNfo(
+            Path.ChangeExtension(episodePath, ".nfo"),
+            """
+            <episodedetails><title>Part A</title><season>1</season><episode>1</episode></episodedetails>
+            <episodedetails><title>Part B</title><season>1</season><episode>2</episode></episodedetails>
+            """);
+
+        await fixture.Scanner.ScanAsync(fixture.Root.Id, CancellationToken.None);
+
+        Assert.AreEqual("Part B", (await fixture.Db.Episodes.AsNoTracking().SingleAsync()).Title);
+    }
+
+    private sealed class NfoScanFixture : IAsyncDisposable
+    {
+        private NfoScanFixture(
+            string tempRoot,
+            AppDbContext db,
+            LibraryRoot root,
+            LibraryScanner scanner,
+            FakeAniListProvider provider)
+        {
+            TempRoot = tempRoot;
+            Db = db;
+            Root = root;
+            Scanner = scanner;
+            Provider = provider;
+        }
+
+        public string TempRoot { get; }
+        public AppDbContext Db { get; }
+        public LibraryRoot Root { get; }
+        public LibraryScanner Scanner { get; }
+        public FakeAniListProvider Provider { get; }
+
+        public static async Task<NfoScanFixture> CreateAsync()
+        {
+            var tempRoot = Path.Combine(
+                Path.GetTempPath(),
+                $"anilingo-nfo-scan-{Guid.NewGuid():N}");
+            var libraryPath = Path.Combine(tempRoot, "anime");
+            var dictionaryPath = Path.Combine(tempRoot, "dictionary");
+            var integrationPath = Path.Combine(tempRoot, "integrations");
+
+            Directory.CreateDirectory(libraryPath);
+            Directory.CreateDirectory(dictionaryPath);
+            Directory.CreateDirectory(integrationPath);
+            await File.WriteAllTextAsync(Path.Combine(dictionaryPath, "jmdict-ger.tsv"), "");
+            await File.WriteAllTextAsync(Path.Combine(dictionaryPath, "jmdict-eng-common.tsv"), "");
+
+            var options = new DbContextOptionsBuilder<AppDbContext>()
+                .UseSqlite($"Data Source={Path.Combine(tempRoot, "anilingo.db")};Foreign Keys=True")
+                .Options;
+
+            var db = new AppDbContext(options);
+            await DatabaseMigrationBridge.UpgradeAsync(db);
+
+            var root = new LibraryRoot
+            {
+                Name = "Anime",
+                Path = libraryPath
+            };
+            db.LibraryRoots.Add(root);
+            await db.SaveChangesAsync();
+
+            var dataProtection = DataProtectionProvider.Create(
+                new DirectoryInfo(Path.Combine(tempRoot, "keys")));
+            var vocabulary = new VocabularyService(
+                db,
+                new JapaneseTermExtractor(new EmptyMorphology()),
+                new JapaneseDictionary(dictionaryPath));
+            var sonarrSync = new SonarrArtworkSyncService(
+                new SonarrConnectionStore(dataProtection),
+                new SonarrArtworkImportService(
+                    db,
+                    new TestHttpClientFactory(),
+                    NullLogger<SonarrArtworkImportService>.Instance),
+                NullLogger<SonarrArtworkSyncService>.Instance);
+            var provider = new FakeAniListProvider();
+            var metadata = new AnimeMetadataService(
+                db,
+                [provider],
+                new AniListAccountStore(
+                    dataProtection,
+                    NullLogger<AniListAccountStore>.Instance,
+                    new DirectoryInfo(integrationPath)),
+                new MediaMappingReviewStore(
+                    NullLogger<MediaMappingReviewStore>.Instance,
+                    new DirectoryInfo(integrationPath)));
+            var scanner = new LibraryScanner(
+                db,
+                new SubtitleImportService(db, vocabulary),
+                new EmbeddedSubtitleExtractor(
+                    new MediaProcessRunner(NullLogger<MediaProcessRunner>.Instance),
+                    NullLogger<EmbeddedSubtitleExtractor>.Instance),
+                sonarrSync,
+                NullLogger<LibraryScanner>.Instance,
+                metadata);
+
+            return new NfoScanFixture(tempRoot, db, root, scanner, provider);
+        }
+
+        public string AddMedia(params string[] relativeParts)
+        {
+            var path = Path.Combine([Root.Path, .. relativeParts]);
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllBytes(path, [0]);
+            return path;
+        }
+
+        public string WriteNfo(string relativeOrFullPath, string content)
+        {
+            var path = Path.Combine(Root.Path, relativeOrFullPath);
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, content);
+            return path;
+        }
+
+        public string[] SnapshotLibrary() =>
+            Directory.EnumerateFileSystemEntries(Root.Path, "*", SearchOption.AllDirectories)
+                .Order(StringComparer.Ordinal)
+                .Select(path => $"{path}|{File.GetLastWriteTimeUtc(path):O}")
+                .ToArray();
+
+        public async ValueTask DisposeAsync()
+        {
+            await Db.DisposeAsync();
+            SqliteConnection.ClearAllPools();
+
+            if (Directory.Exists(TempRoot))
+            {
+                Directory.Delete(TempRoot, recursive: true);
+            }
+        }
+    }
+
+    private sealed class FakeAniListProvider : IAnimeMetadataProvider
+    {
+        private readonly Dictionary<string, AnimeMetadataCandidate> entries = new(StringComparer.Ordinal);
+
+        public string Key => AniListMetadataProvider.ProviderKey;
+        public List<string> Requested { get; } = [];
+        public List<string> Searches { get; } = [];
+
+        public void Add(string externalId, string title) =>
+            entries[externalId] = new AnimeMetadataCandidate(
+                AniListMetadataProvider.ProviderKey,
+                externalId,
+                title,
+                null,
+                title,
+                null,
+                null,
+                null,
+                null,
+                "TV",
+                "FINISHED",
+                "FALL",
+                2023,
+                28,
+                24);
+
+        public Task<IReadOnlyList<AnimeMetadataCandidate>> SearchAsync(
+            string query,
+            int limit,
+            CancellationToken cancellationToken)
+        {
+            Searches.Add(query);
+            return Task.FromResult<IReadOnlyList<AnimeMetadataCandidate>>([]);
+        }
+
+        public Task<AnimeMetadataCandidate?> GetAsync(
+            string externalId,
+            CancellationToken cancellationToken)
+        {
+            Requested.Add(externalId);
+            return Task.FromResult(entries.GetValueOrDefault(externalId));
+        }
+    }
+
+    private sealed class TestHttpClientFactory : IHttpClientFactory
+    {
+        public HttpClient CreateClient(string name) => new();
+    }
+
+    private sealed class EmptyMorphology : IJapaneseMorphology
+    {
+        public IReadOnlyList<JapaneseMorphToken> Analyze(string text) => [];
+    }
+}
