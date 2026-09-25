@@ -465,7 +465,7 @@ public sealed partial class MangaAniListService(
         }
     }
 
-    private Task SaveSegmentReviewAsync(
+    private async Task SaveSegmentReviewAsync(
         Guid seriesId,
         string localTitle,
         string reason,
@@ -474,10 +474,10 @@ public sealed partial class MangaAniListService(
     {
         if (reviewStore is null)
         {
-            return Task.CompletedTask;
+            return;
         }
 
-        return reviewStore.UpsertAsync(
+        await reviewStore.UpsertAsync(
             "manga",
             seriesId.ToString(),
             localTitle,
