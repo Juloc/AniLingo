@@ -26,9 +26,9 @@ public sealed class ClientApiTests
         Assert.IsTrue(capabilities.Features.NormalizedLearningCues);
         Assert.IsTrue(capabilities.Features.LiveMp4Fallback);
         Assert.IsFalse(capabilities.Features.HlsFallback);
-        Assert.IsFalse(capabilities.Features.PlaybackSessions);
-        Assert.IsFalse(capabilities.Features.CompanionPairing);
-        Assert.IsFalse(capabilities.Features.CompanionControl);
+        Assert.IsTrue(capabilities.Features.PlaybackSessions);
+        Assert.IsTrue(capabilities.Features.CompanionPairing);
+        Assert.IsTrue(capabilities.Features.CompanionControl);
         Assert.IsTrue(capabilities.Features.StorageAvailability);
         Assert.IsTrue(capabilities.Features.OwnerWakeOnLan);
     }
@@ -215,5 +215,11 @@ public sealed class ClientApiTests
                 .StartsWith("/api/client/v1/", StringComparison.Ordinal));
         Assert.AreEqual("/api/client/v1/session/login", ClientApiRoutes.Login);
         Assert.AreEqual("/api/client/v1/session/logout", ClientApiRoutes.Logout);
+        Assert.AreEqual(
+            "/api/client/v1/playback-sessions",
+            ClientApiRoutes.PlaybackSessions);
+        Assert.AreEqual(
+            "/hubs/playback-session",
+            ClientApiRoutes.PlaybackHub);
     }
 }

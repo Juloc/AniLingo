@@ -38,9 +38,9 @@ public static class ClientApiContract
                 LearningStateMutation: true,
                 LiveMp4Fallback: true,
                 HlsFallback: false,
-                PlaybackSessions: false,
-                CompanionPairing: false,
-                CompanionControl: false,
+                PlaybackSessions: true,
+                CompanionPairing: true,
+                CompanionControl: true,
                 StorageAvailability: true,
                 OwnerWakeOnLan: true));
     }
@@ -86,6 +86,33 @@ public static class ClientApiRoutes
 
     public static string Fallback(Guid episodeId) =>
         $"{Episode(episodeId)}/fallback";
+
+    public static string PlaybackSessions =>
+        $"{ClientApiContract.BasePath}/playback-sessions";
+
+    public static string PlaybackSession(Guid sessionId) =>
+        $"{PlaybackSessions}/{sessionId:D}";
+
+    public static string PlaybackSessionState(Guid sessionId) =>
+        $"{PlaybackSession(sessionId)}/state";
+
+    public static string PlaybackPairing(Guid sessionId) =>
+        $"{PlaybackSession(sessionId)}/pairing";
+
+    public static string PlaybackPair =>
+        $"{PlaybackSessions}/pair";
+
+    public static string PlaybackParticipantState(Guid sessionId) =>
+        $"{PlaybackSession(sessionId)}/participant-state";
+
+    public static string PlaybackCommands(Guid sessionId) =>
+        $"{PlaybackSession(sessionId)}/commands";
+
+    public static string PlaybackRevoke(Guid sessionId) =>
+        $"{PlaybackSession(sessionId)}/revoke";
+
+    public static string PlaybackHub =>
+        "/hubs/playback-session";
 }
 
 public sealed record ClientCapabilitiesResponse(

@@ -19,4 +19,6 @@ android {
 
 dependencies {
     api(project(":core-model"))
+    implementation("com.microsoft.signalr:signalr:10.0.12")
+    testImplementation(libs.junit)
 }
