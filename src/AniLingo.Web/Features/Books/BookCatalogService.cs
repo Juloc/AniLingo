@@ -430,10 +430,13 @@ public sealed partial class BookCatalogService(
             MaxEpubBytes,
             cancellationToken);
 
-        var hash = Convert.ToHexString(
-            SHA256.HashData(copy.ToArray()));
+        copy.Position = 0;
+
+        var parsed = EpubBookParser.Parse(
+            copy,
+            fileName);
         var sourceKey =
-            "upload-" + hash[..48].ToLowerInvariant();
+            "upload-" + BuildParsedBookIdentity(parsed);
 
         var existingId = await db.NovelWorks
             .AsNoTracking()
@@ -447,12 +450,6 @@ public sealed partial class BookCatalogService(
         {
             return existing;
         }
-
-        copy.Position = 0;
-
-        var parsed = EpubBookParser.Parse(
-            copy,
-            fileName);
 
         return await ImportParsedBookAsync(
             parsed,
@@ -488,24 +485,6 @@ public sealed partial class BookCatalogService(
             initialUri,
             cancellationToken);
 
-        var hash = Convert.ToHexString(
-            SHA256.HashData(bytes));
-        var sourceKey =
-            "remote-" + hash[..48].ToLowerInvariant();
-
-        var existingId = await db.NovelWorks
-            .AsNoTracking()
-            .Where(x =>
-                x.SourceProvider == ImportedBookProvider
-                && x.SourceKey == sourceKey)
-            .Select(x => (Guid?)x.Id)
-            .SingleOrDefaultAsync(cancellationToken);
-
-        if (existingId is Guid existing)
-        {
-            return existing;
-        }
-
         using var stream = new MemoryStream(
             bytes,
             writable: false);
@@ -522,6 +501,21 @@ public sealed partial class BookCatalogService(
         var parsed = EpubBookParser.Parse(
             stream,
             fileName);
+        var sourceKey =
+            "remote-" + BuildParsedBookIdentity(parsed);
+
+        var existingId = await db.NovelWorks
+            .AsNoTracking()
+            .Where(x =>
+                x.SourceProvider == ImportedBookProvider
+                && x.SourceKey == sourceKey)
+            .Select(x => (Guid?)x.Id)
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (existingId is Guid existing)
+        {
+            return existing;
+        }
 
         return await ImportParsedBookAsync(
             parsed,
@@ -2585,6 +2579,30 @@ public sealed partial class BookCatalogService(
             || uri.Host.EndsWith(
                 ".gutenberg.org",
                 StringComparison.OrdinalIgnoreCase));
+
+    private static string BuildParsedBookIdentity(
+        ParsedEpubBook book)
+    {
+        var canonical = new StringBuilder();
+        canonical.Append(book.Title.Trim())
+            .Append('\n')
+            .Append(book.Author?.Trim() ?? "")
+            .Append('\n')
+            .Append(book.Language?.Trim().ToLowerInvariant() ?? "");
+
+        foreach (var chapter in book.Chapters.OrderBy(x => x.Number))
+        {
+            canonical.Append('\n')
+                .Append(chapter.Number)
+                .Append('|')
+                .Append(chapter.Title.Trim())
+                .Append('|')
+                .Append(Hash(chapter.Text));
+        }
+
+        var digest = Hash(canonical.ToString());
+        return digest[..48].ToLowerInvariant();
+    }
 
     private static string Hash(string value) =>
         Convert.ToHexString(

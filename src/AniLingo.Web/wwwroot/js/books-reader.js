@@ -590,3 +590,706 @@
         pollTimer = window.setTimeout(pollTranslation, 2500);
     }
 })();
+
+
+(() => {
+    const root = document.querySelector("[data-book-reader]");
+    if (!root || root.dataset.navigationAnnotationsReady === "true") return;
+    root.dataset.navigationAnnotationsReady = "true";
+
+    const drawer = root.querySelector("[data-book-drawer]");
+    const openDrawerButton = root.querySelector("[data-book-drawer-open]");
+    const closeDrawerButton = root.querySelector("[data-book-drawer-close]");
+    const chapterList = root.querySelector("[data-book-chapter-list]");
+    const bookmarkList = root.querySelector("[data-book-bookmark-list]");
+    const highlightList = root.querySelector("[data-book-highlight-list]");
+    const chapterSearch = root.querySelector("[data-book-chapter-search]");
+    const selectionToolbar = root.querySelector("[data-book-selection-toolbar]");
+    const highlightButton = root.querySelector("[data-book-highlight-button]");
+    const highlightForm = root.querySelector("[data-book-highlight-form]");
+    const bookmarkForm = root.querySelector("[data-book-bookmark-form]");
+    const bookmarkButton = root.querySelector("[data-bookmark-button]");
+    const highlightsJson = root.querySelector("[data-book-highlights-json]");
+    const original = root.querySelector("[data-book-original]");
+    const translated = root.querySelector("[data-book-translated]");
+    const targetLanguage = root.dataset.targetLanguage || "id";
+    const currentChapterId = (root.dataset.chapterId || "").toLowerCase();
+
+    let currentHighlights = [];
+    let allAnnotations = null;
+    let chaptersLoaded = false;
+    let annotationLoading = null;
+    let chapterTimer = 0;
+    let selectionState = null;
+
+    if (highlightsJson) {
+        try {
+            currentHighlights = JSON.parse(highlightsJson.textContent || "[]") || [];
+        } catch {
+            currentHighlights = [];
+        }
+    }
+
+    function prop(value, name) {
+        if (!value) return undefined;
+        return value[name] ?? value[name.charAt(0).toUpperCase() + name.slice(1)];
+    }
+
+    function antiforgeryToken() {
+        return root.querySelector('input[name="__RequestVerificationToken"]')?.value || "";
+    }
+
+    function handlerUrl(handler, extra) {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("pos");
+        url.searchParams.delete("view");
+        url.searchParams.set("handler", handler);
+        url.searchParams.set("lang", targetLanguage);
+
+        for (const [key, value] of Object.entries(extra || {})) {
+            if (value == null || value === "") {
+                url.searchParams.delete(key);
+            } else {
+                url.searchParams.set(key, String(value));
+            }
+        }
+
+        return url;
+    }
+
+    async function getJson(handler, extra) {
+        const response = await fetch(handlerUrl(handler, extra), {
+            method: "GET",
+            credentials: "same-origin",
+            headers: { "X-Requested-With": "fetch" }
+        });
+
+        if (!response.ok) {
+            throw new Error((await response.text()) || "Could not load reader data.");
+        }
+
+        return response.json();
+    }
+
+    async function postHandler(handler, values) {
+        const data = new FormData();
+        const token = antiforgeryToken();
+        if (token) data.set("__RequestVerificationToken", token);
+        data.set("lang", targetLanguage);
+
+        for (const [key, value] of Object.entries(values || {})) {
+            if (value != null) data.set(key, String(value));
+        }
+
+        const response = await fetch(handlerUrl(handler), {
+            method: "POST",
+            body: data,
+            credentials: "same-origin",
+            headers: { "X-Requested-With": "fetch" }
+        });
+
+        if (!response.ok) {
+            throw new Error((await response.text()) || "Reader action failed.");
+        }
+
+        const type = response.headers.get("content-type") || "";
+        return type.includes("application/json")
+            ? response.json()
+            : null;
+    }
+
+    function showToast(message) {
+        const toast = root.querySelector("[data-book-toast]");
+        if (!toast) return;
+        toast.textContent = message;
+        toast.hidden = false;
+        window.clearTimeout(showToast.timer);
+        showToast.timer = window.setTimeout(() => {
+            toast.hidden = true;
+        }, 2200);
+    }
+
+    function readerUrl(chapterId, positionPermille, requestedView) {
+        const url = new URL("/Books/Read/" + chapterId, window.location.origin);
+        url.searchParams.set("lang", targetLanguage);
+
+        if (Number.isFinite(Number(positionPermille))) {
+            url.searchParams.set(
+                "pos",
+                String(Math.max(0, Math.min(1000, Math.round(Number(positionPermille)))))
+            );
+        }
+
+        const view = requestedView || root.dataset.view;
+        if (view === "original" || view === "translated" || view === "both") {
+            url.searchParams.set("view", view);
+        }
+
+        return url.toString();
+    }
+
+    function elementButton(label, className) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = label;
+        if (className) button.className = className;
+        return button;
+    }
+
+    function emptyMessage(text) {
+        const value = document.createElement("span");
+        value.className = "books-muted";
+        value.textContent = text;
+        return value;
+    }
+
+    async function loadChapters(query) {
+        if (!chapterList) return;
+
+        chapterList.replaceChildren(emptyMessage("Loading chapters…"));
+
+        try {
+            const result = await getJson("Chapters", { q: query || "" });
+            const chapters = prop(result, "chapters") || [];
+
+            chapterList.replaceChildren();
+
+            if (chapters.length === 0) {
+                chapterList.append(emptyMessage("No chapters found."));
+                chaptersLoaded = true;
+                return;
+            }
+
+            for (const chapter of chapters) {
+                const id = String(prop(chapter, "id") || "");
+                const number = prop(chapter, "number");
+                const title = prop(chapter, "title") || ("Chapter " + number);
+
+                const link = document.createElement("a");
+                link.className = "book-drawer-row";
+                if (id.toLowerCase() === currentChapterId) {
+                    link.classList.add("current");
+                    link.setAttribute("aria-current", "page");
+                }
+                link.href = readerUrl(id, null, root.dataset.view);
+
+                const index = document.createElement("span");
+                index.className = "book-drawer-row-index";
+                index.textContent = String(number);
+
+                const name = document.createElement("strong");
+                name.textContent = title;
+
+                link.append(index, name);
+                chapterList.append(link);
+            }
+
+            chaptersLoaded = true;
+        } catch (error) {
+            chapterList.replaceChildren(
+                emptyMessage(error.message || "Could not load chapters.")
+            );
+        }
+    }
+
+    async function ensureAnnotations() {
+        if (allAnnotations) return allAnnotations;
+        if (annotationLoading) return annotationLoading;
+
+        annotationLoading = getJson("Annotations")
+            .then((value) => {
+                allAnnotations = value || {};
+                renderBookmarks();
+                renderHighlightsList();
+                const totalBookmarks = (prop(allAnnotations, "bookmarks") || []).length;
+                const count = bookmarkButton?.querySelector("[data-bookmark-count]");
+                if (count) count.textContent = String(totalBookmarks);
+                return allAnnotations;
+            })
+            .finally(() => {
+                annotationLoading = null;
+            });
+
+        return annotationLoading;
+    }
+
+    function renderBookmarks() {
+        if (!bookmarkList || !allAnnotations) return;
+
+        const bookmarks = prop(allAnnotations, "bookmarks") || [];
+        bookmarkList.replaceChildren();
+
+        if (bookmarks.length === 0) {
+            bookmarkList.append(emptyMessage("No bookmarks yet."));
+            return;
+        }
+
+        for (const bookmark of bookmarks) {
+            const row = document.createElement("div");
+            row.className = "book-drawer-annotation-row";
+
+            const jump = document.createElement("a");
+            jump.className = "book-drawer-annotation-main";
+            const language = prop(bookmark, "language");
+            jump.href = readerUrl(
+                prop(bookmark, "chapterId"),
+                prop(bookmark, "positionPermille"),
+                language === "original" ? "original" : "translated"
+            );
+
+            const title = document.createElement("strong");
+            title.textContent =
+                "Chapter " + prop(bookmark, "chapterNumber") + " · "
+                + (prop(bookmark, "chapterTitle") || "");
+
+            const meta = document.createElement("span");
+            meta.textContent =
+                Math.round(Number(prop(bookmark, "positionPermille") || 0) / 10)
+                + "% · "
+                + (language === "original"
+                    ? "Original"
+                    : language || targetLanguage);
+
+            jump.append(title, meta);
+
+            const remove = elementButton("Delete", "book-drawer-delete");
+            remove.addEventListener("click", async () => {
+                remove.disabled = true;
+                try {
+                    await postHandler("RemoveBookmark", {
+                        bookmarkId: prop(bookmark, "id")
+                    });
+
+                    const items = prop(allAnnotations, "bookmarks") || [];
+                    allAnnotations.bookmarks = items.filter(
+                        (item) => prop(item, "id") !== prop(bookmark, "id")
+                    );
+                    renderBookmarks();
+
+                    const count = bookmarkButton?.querySelector("[data-bookmark-count]");
+                    if (count) {
+                        count.textContent = String(allAnnotations.bookmarks.length);
+                    }
+                    showToast("Bookmark removed.");
+                } catch (error) {
+                    remove.disabled = false;
+                    showToast(error.message || "Could not remove bookmark.");
+                }
+            });
+
+            row.append(jump, remove);
+            bookmarkList.append(row);
+        }
+    }
+
+    function renderHighlightsList() {
+        if (!highlightList || !allAnnotations) return;
+
+        const highlights = prop(allAnnotations, "highlights") || [];
+        highlightList.replaceChildren();
+
+        if (highlights.length === 0) {
+            highlightList.append(emptyMessage("No highlights yet."));
+            return;
+        }
+
+        for (const highlight of highlights) {
+            const row = document.createElement("div");
+            row.className = "book-drawer-annotation-row";
+
+            const jump = document.createElement("a");
+            jump.className = "book-drawer-annotation-main";
+            const language = prop(highlight, "language");
+            const paragraphIndex = Number(prop(highlight, "paragraphIndex") || 0);
+            jump.href = readerUrl(
+                prop(highlight, "chapterId"),
+                Math.max(0, Math.min(1000, paragraphIndex * 8)),
+                language === "original" ? "original" : "translated"
+            );
+
+            const title = document.createElement("strong");
+            title.textContent =
+                "Chapter " + prop(highlight, "chapterNumber") + " · "
+                + (prop(highlight, "chapterTitle") || "");
+
+            const quote = document.createElement("span");
+            quote.className = "book-drawer-highlight-quote";
+            quote.textContent = "“" + (prop(highlight, "text") || "") + "”";
+
+            jump.append(title, quote);
+
+            const remove = elementButton("Delete", "book-drawer-delete");
+            remove.addEventListener("click", async () => {
+                remove.disabled = true;
+                try {
+                    const id = prop(highlight, "id");
+                    await postHandler("RemoveHighlight", {
+                        highlightId: id
+                    });
+
+                    const items = prop(allAnnotations, "highlights") || [];
+                    allAnnotations.highlights = items.filter(
+                        (item) => prop(item, "id") !== id
+                    );
+                    currentHighlights = currentHighlights.filter(
+                        (item) => prop(item, "id") !== id
+                    );
+                    renderHighlightsList();
+                    applyHighlights();
+                    showToast("Highlight removed.");
+                } catch (error) {
+                    remove.disabled = false;
+                    showToast(error.message || "Could not remove highlight.");
+                }
+            });
+
+            row.append(jump, remove);
+            highlightList.append(row);
+        }
+    }
+
+    function setDrawerTab(name) {
+        root.querySelectorAll("[data-book-drawer-tab]").forEach((button) => {
+            button.classList.toggle(
+                "active",
+                button.dataset.bookDrawerTab === name
+            );
+        });
+
+        root.querySelectorAll("[data-book-drawer-panel]").forEach((panel) => {
+            panel.hidden = panel.dataset.bookDrawerPanel !== name;
+        });
+
+        if (name === "chapters") {
+            if (!chaptersLoaded) loadChapters("");
+        } else {
+            ensureAnnotations().catch((error) => {
+                const target = name === "bookmarks" ? bookmarkList : highlightList;
+                if (target) {
+                    target.replaceChildren(
+                        emptyMessage(error.message || "Could not load annotations.")
+                    );
+                }
+            });
+        }
+    }
+
+    function openDrawer(tab) {
+        if (!drawer) return;
+
+        setDrawerTab(tab || "chapters");
+
+        if (typeof drawer.showModal === "function") {
+            if (!drawer.open) drawer.showModal();
+        } else {
+            drawer.setAttribute("open", "");
+        }
+    }
+
+    function closeDrawer() {
+        if (!drawer) return;
+        if (typeof drawer.close === "function" && drawer.open) {
+            drawer.close();
+        } else {
+            drawer.removeAttribute("open");
+        }
+    }
+
+    function paragraphForNode(node) {
+        const element = node?.nodeType === Node.ELEMENT_NODE
+            ? node
+            : node?.parentElement;
+        return element?.closest?.("p[data-book-paragraph]") || null;
+    }
+
+    function offsetWithin(paragraph, node, offset) {
+        const range = document.createRange();
+        range.selectNodeContents(paragraph);
+        range.setEnd(node, offset);
+        return range.toString().length;
+    }
+
+    function hideSelectionToolbar() {
+        selectionState = null;
+        if (selectionToolbar) selectionToolbar.hidden = true;
+    }
+
+    function inspectSelection() {
+        if (!selectionToolbar) return;
+
+        const selection = window.getSelection();
+        if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
+            hideSelectionToolbar();
+            return;
+        }
+
+        const range = selection.getRangeAt(0);
+        const startParagraph = paragraphForNode(range.startContainer);
+        const endParagraph = paragraphForNode(range.endContainer);
+
+        if (!startParagraph || startParagraph !== endParagraph) {
+            hideSelectionToolbar();
+            return;
+        }
+
+        const column = startParagraph.closest("[data-book-language]");
+        if (!column || !root.contains(column)) {
+            hideSelectionToolbar();
+            return;
+        }
+
+        const start = offsetWithin(
+            startParagraph,
+            range.startContainer,
+            range.startOffset
+        );
+        const end = offsetWithin(
+            startParagraph,
+            range.endContainer,
+            range.endOffset
+        );
+
+        if (end <= start) {
+            hideSelectionToolbar();
+            return;
+        }
+
+        selectionState = {
+            language: column.dataset.bookLanguage || "original",
+            paragraphIndex: Number(startParagraph.dataset.bookParagraph || "0"),
+            startOffset: start,
+            endOffset: end
+        };
+
+        const rect = range.getBoundingClientRect();
+        const width = selectionToolbar.offsetWidth || 96;
+        const left = Math.max(
+            8,
+            Math.min(
+                window.innerWidth - width - 8,
+                rect.left + rect.width / 2 - width / 2
+            )
+        );
+        const top = Math.max(8, rect.top - 44);
+
+        selectionToolbar.style.left = left + "px";
+        selectionToolbar.style.top = top + "px";
+        selectionToolbar.hidden = false;
+    }
+
+    function rangesFor(language, paragraphIndex) {
+        return currentHighlights
+            .filter((item) =>
+                String(prop(item, "language") || "") === language
+                && Number(prop(item, "paragraphIndex")) === paragraphIndex
+            )
+            .map((item) => ({
+                id: prop(item, "id"),
+                start: Number(prop(item, "startOffset") || 0),
+                end: Number(prop(item, "endOffset") || 0),
+                note: prop(item, "note")
+            }))
+            .sort((a, b) => a.start - b.start);
+    }
+
+    function renderParagraphHighlights(paragraph, language, paragraphIndex) {
+        const text = paragraph.textContent || "";
+        const ranges = rangesFor(language, paragraphIndex);
+
+        if (ranges.length === 0) {
+            if (paragraph.querySelector("mark[data-book-highlight]")) {
+                paragraph.textContent = text;
+            }
+            return;
+        }
+
+        const fragment = document.createDocumentFragment();
+        let cursor = 0;
+
+        for (const item of ranges) {
+            const start = Math.max(cursor, Math.min(text.length, item.start));
+            const end = Math.max(start, Math.min(text.length, item.end));
+            if (end <= start) continue;
+
+            if (start > cursor) {
+                fragment.append(document.createTextNode(text.slice(cursor, start)));
+            }
+
+            const mark = document.createElement("mark");
+            mark.dataset.bookHighlight = String(item.id || "");
+            mark.textContent = text.slice(start, end);
+            if (item.note) mark.title = item.note;
+            fragment.append(mark);
+            cursor = end;
+        }
+
+        if (cursor < text.length) {
+            fragment.append(document.createTextNode(text.slice(cursor)));
+        }
+
+        paragraph.replaceChildren(fragment);
+    }
+
+    function ensureParagraphMetadata(column) {
+        if (!column) return;
+        column.querySelectorAll("p").forEach((paragraph, index) => {
+            paragraph.dataset.bookParagraph = String(index);
+        });
+    }
+
+    function applyHighlights() {
+        ensureParagraphMetadata(original);
+        ensureParagraphMetadata(translated);
+
+        for (const column of [original, translated]) {
+            if (!column) continue;
+            const language = column.dataset.bookLanguage || "original";
+            column.querySelectorAll("p[data-book-paragraph]").forEach((paragraph) => {
+                renderParagraphHighlights(
+                    paragraph,
+                    language,
+                    Number(paragraph.dataset.bookParagraph || "0")
+                );
+            });
+        }
+    }
+
+    async function createHighlight() {
+        if (!selectionState || !highlightForm) return;
+
+        const data = new FormData(highlightForm);
+        data.set("anchorLanguage", selectionState.language);
+        data.set("paragraphIndex", String(selectionState.paragraphIndex));
+        data.set("startOffset", String(selectionState.startOffset));
+        data.set("endOffset", String(selectionState.endOffset));
+        data.set("note", "");
+
+        const response = await fetch(highlightForm.action, {
+            method: "POST",
+            body: data,
+            credentials: "same-origin",
+            headers: { "X-Requested-With": "fetch" }
+        });
+
+        if (!response.ok) {
+            throw new Error((await response.text()) || "Could not create highlight.");
+        }
+
+        const item = await response.json();
+        currentHighlights.push(item);
+
+        if (allAnnotations) {
+            const existing = prop(allAnnotations, "highlights") || [];
+            allAnnotations.highlights = existing.concat([item]);
+            renderHighlightsList();
+        }
+
+        window.getSelection()?.removeAllRanges();
+        hideSelectionToolbar();
+        applyHighlights();
+        showToast("Highlight saved.");
+    }
+
+    if (openDrawerButton) {
+        openDrawerButton.addEventListener("click", () => openDrawer("chapters"));
+    }
+
+    if (closeDrawerButton) {
+        closeDrawerButton.addEventListener("click", closeDrawer);
+    }
+
+    if (drawer) {
+        drawer.addEventListener("click", (event) => {
+            if (event.target === drawer) closeDrawer();
+        });
+    }
+
+    root.querySelectorAll("[data-book-drawer-tab]").forEach((button) => {
+        button.addEventListener("click", () => {
+            setDrawerTab(button.dataset.bookDrawerTab || "chapters");
+        });
+    });
+
+    if (chapterSearch) {
+        chapterSearch.addEventListener("input", () => {
+            window.clearTimeout(chapterTimer);
+            chapterTimer = window.setTimeout(() => {
+                loadChapters(chapterSearch.value || "");
+            }, 180);
+        });
+    }
+
+    if (bookmarkButton && bookmarkForm) {
+        bookmarkButton.addEventListener("click", () => {
+            const anchor = bookmarkForm.querySelector('[name="anchorLanguage"]');
+            if (anchor) {
+                anchor.value = root.dataset.view === "original"
+                    ? "original"
+                    : targetLanguage;
+            }
+        }, true);
+    }
+
+    document.addEventListener("selectionchange", () => {
+        window.clearTimeout(inspectSelection.timer);
+        inspectSelection.timer = window.setTimeout(inspectSelection, 40);
+    });
+
+    if (highlightButton) {
+        highlightButton.addEventListener("click", async () => {
+            highlightButton.disabled = true;
+            try {
+                await createHighlight();
+            } catch (error) {
+                showToast(error.message || "Could not create highlight.");
+            } finally {
+                highlightButton.disabled = false;
+            }
+        });
+    }
+
+    document.addEventListener("keydown", (event) => {
+        if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) {
+            return;
+        }
+
+        const target = event.target;
+        if (target instanceof HTMLElement
+            && (target.matches("input, textarea, select")
+                || target.isContentEditable)) {
+            return;
+        }
+
+        if (event.key.toLowerCase() === "b" && bookmarkButton) {
+            event.preventDefault();
+            bookmarkButton.click();
+        }
+
+        if (event.key.toLowerCase() === "n" && drawer) {
+            event.preventDefault();
+            if (drawer.open) {
+                closeDrawer();
+            } else {
+                openDrawer("chapters");
+            }
+        }
+    });
+
+    const translatedObserver = translated
+        ? new MutationObserver(() => {
+            ensureParagraphMetadata(translated);
+            applyHighlights();
+        })
+        : null;
+
+    if (translated && translatedObserver) {
+        translatedObserver.observe(translated, {
+            childList: true,
+            subtree: false
+        });
+    }
+
+    ensureParagraphMetadata(original);
+    ensureParagraphMetadata(translated);
+    applyHighlights();
+})();
