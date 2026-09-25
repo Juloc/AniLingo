@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Net;
 using System.Text.RegularExpressions;
 
 namespace AniLingo.Web.Features.Subtitles;
@@ -8,8 +9,14 @@ public static partial class SubtitleParser
     [GeneratedRegex(@"(?<h>\d{1,2}):(?<m>\d{2}):(?<s>\d{2})[,.](?<ms>\d{2,3})", RegexOptions.CultureInvariant)]
     private static partial Regex TimestampRegex();
 
+    [GeneratedRegex(@"^(?:(?<h>\d{1,3}):)?(?<m>\d{2}):(?<s>\d{2})\.(?<ms>\d{3})$", RegexOptions.CultureInvariant)]
+    private static partial Regex VttTimestampRegex();
+
     [GeneratedRegex(@"\{[^}]*\}|<[^>]+>", RegexOptions.CultureInvariant)]
     private static partial Regex FormattingRegex();
+
+    [GeneratedRegex(@"<rt[^>]*>.*?</rt>|<rp[^>]*>.*?</rp>", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
+    private static partial Regex RubyAnnotationRegex();
 
     public static IReadOnlyList<SubtitleCueData> Parse(string path, string content) =>
         ParseFormat(Path.GetExtension(path), content);
@@ -19,6 +26,7 @@ public static partial class SubtitleParser
         {
             "srt" => ParseSrt(content),
             "ass" or "ssa" => ParseAss(content),
+            "vtt" => ParseVtt(content),
             _ => throw new NotSupportedException($"Unsupported subtitle format: {format}")
         };
 
@@ -113,6 +121,65 @@ public static partial class SubtitleParser
         }
 
         return result;
+    }
+
+    public static IReadOnlyList<SubtitleCueData> ParseVtt(string content)
+    {
+        var normalized = content.Replace("\r\n", "\n").Replace('\r', '\n');
+        var blocks = Regex.Split(normalized.Trim(), @"\n{2,}");
+        var result = new List<SubtitleCueData>(blocks.Length);
+
+        foreach (var block in blocks)
+        {
+            // Header, NOTE, STYLE and REGION blocks never contain a cue timing line.
+            var lines = block.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            var timingIndex = Array.FindIndex(lines, line => line.Contains("-->", StringComparison.Ordinal));
+            if (timingIndex < 0)
+            {
+                continue;
+            }
+
+            var timing = lines[timingIndex].Split("-->", StringSplitOptions.TrimEntries);
+            var end = timing.Length == 2
+                ? timing[1].Split(' ', '\t')[0]
+                : "";
+            if (timing.Length != 2 ||
+                !TryParseVttTimestamp(timing[0], out var startMs) ||
+                !TryParseVttTimestamp(end, out var endMs))
+            {
+                continue;
+            }
+
+            var text = string.Join(" ", lines.Skip(timingIndex + 1));
+            text = WebUtility.HtmlDecode(CleanText(RubyAnnotationRegex().Replace(text, "")));
+            text = Regex.Replace(text, @"\s+", " ").Trim();
+            if (text.Length > 0)
+            {
+                result.Add(new SubtitleCueData(startMs, endMs, text));
+            }
+        }
+
+        return result;
+    }
+
+    private static bool TryParseVttTimestamp(string value, out int milliseconds)
+    {
+        milliseconds = 0;
+        var match = VttTimestampRegex().Match(value);
+        if (!match.Success)
+        {
+            return false;
+        }
+
+        var hours = match.Groups["h"].Success
+            ? int.Parse(match.Groups["h"].Value, CultureInfo.InvariantCulture)
+            : 0;
+        var minutes = int.Parse(match.Groups["m"].Value, CultureInfo.InvariantCulture);
+        var seconds = int.Parse(match.Groups["s"].Value, CultureInfo.InvariantCulture);
+        var ms = int.Parse(match.Groups["ms"].Value, CultureInfo.InvariantCulture);
+
+        milliseconds = (((hours * 60) + minutes) * 60 + seconds) * 1000 + ms;
+        return true;
     }
 
     private static bool TryParseTimestamp(string value, out int milliseconds)
