@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace AniLingo.Web.Data.Migrations;
 
 [DbContext(typeof(AppDbContext))]
-[Migration("20260925130000_AddUniversalLearningCourses")]
+[Migration("20260925203500_AddUniversalLearningCourses")]
 public sealed class AddUniversalLearningCourses : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)

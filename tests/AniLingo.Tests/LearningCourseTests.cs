@@ -14,7 +14,7 @@ namespace AniLingo.Tests;
 public sealed class LearningCourseTests
 {
     private const string MigrationId =
-        "20260925130000_AddUniversalLearningCourses";
+        "20260925203500_AddUniversalLearningCourses";
 
     [TestMethod]
     public async Task ArbitraryLanguagePairsAreIndependentCourses()
