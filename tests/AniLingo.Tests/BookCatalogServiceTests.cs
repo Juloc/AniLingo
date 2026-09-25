@@ -91,6 +91,13 @@ public sealed class BookCatalogServiceTests
                           ]
                         }
                         """),
+                    "id.wikisource.org" => JsonResponse("""
+                        {
+                          "query": {
+                            "search": []
+                          }
+                        }
+                        """),
                     _ => throw new AssertFailedException(
                         $"Unexpected request: {request.RequestUri}")
                 };
@@ -127,6 +134,225 @@ public sealed class BookCatalogServiceTests
             SqliteConnection.ClearAllPools();
             File.Delete(path);
         }
+    }
+
+    [TestMethod]
+    public void BookLanguageCatalogAcceptsFlexibleTagsAndModernIndonesian()
+    {
+        Assert.AreEqual(
+            "id-modern",
+            BookLanguageCatalog.Normalize("ID_MODERN"));
+        Assert.AreEqual(
+            "Modern Indonesian",
+            BookLanguageCatalog.GetName("id-modern"));
+        Assert.AreEqual(
+            "sv-se",
+            BookLanguageCatalog.Normalize("sv-SE"));
+        Assert.AreEqual(
+            "id",
+            BookLanguageCatalog.Normalize("not a language tag"));
+    }
+
+    [TestMethod]
+    public async Task IndonesianWikisourceCanBeSearchedImportedAndReadLocally()
+    {
+        var path = TempDatabasePath();
+
+        try
+        {
+            await using var db = await CreateDatabaseAsync(path);
+
+            using var client = new HttpClient(new DelegateHttpMessageHandler(request =>
+            {
+                var uri = request.RequestUri
+                    ?? throw new AssertFailedException("Request URI was missing.");
+
+                if (uri.Host == "openlibrary.org")
+                {
+                    return JsonResponse("""{"docs":[]}""");
+                }
+
+                if (uri.Host == "www.googleapis.com")
+                {
+                    return JsonResponse("""{"items":[]}""");
+                }
+
+                if (uri.Host != "id.wikisource.org")
+                {
+                    throw new AssertFailedException(
+                        $"Unexpected request: {uri}");
+                }
+
+                var query = Uri.UnescapeDataString(uri.Query);
+
+                if (query.Contains(
+                    "list=search",
+                    StringComparison.Ordinal))
+                {
+                    return JsonResponse("""
+                        {
+                          "query": {
+                            "search": [
+                              {
+                                "pageid": 42,
+                                "title": "Sitti Nurbaya",
+                                "snippet": "<span>Novel Indonesia klasik</span>"
+                              }
+                            ]
+                          }
+                        }
+                        """);
+                }
+
+                if (query.Contains(
+                    "pageids=42",
+                    StringComparison.Ordinal))
+                {
+                    return JsonResponse("""
+                        {
+                          "query": {
+                            "pages": [
+                              {
+                                "pageid": 42,
+                                "title": "Sitti Nurbaya",
+                                "fullurl": "https://id.wikisource.org/wiki/Sitti_Nurbaya"
+                              }
+                            ]
+                          }
+                        }
+                        """);
+                }
+
+                if (query.Contains(
+                    "pageid=42",
+                    StringComparison.Ordinal))
+                {
+                    return JsonResponse("""
+                        {
+                          "parse": {
+                            "title": "Sitti Nurbaya",
+                            "displaytitle": "Sitti Nurbaya",
+                            "text": "<p>Daftar bab</p>",
+                            "links": [
+                              {"ns": 0, "title": "Sitti Nurbaya/Bab 1"},
+                              {"ns": 0, "title": "Sitti Nurbaya/Bab 2"}
+                            ]
+                          }
+                        }
+                        """);
+                }
+
+                if (query.Contains(
+                    "page=Sitti Nurbaya/Bab 1",
+                    StringComparison.Ordinal))
+                {
+                    return JsonResponse("""
+                        {
+                          "parse": {
+                            "title": "Sitti Nurbaya/Bab 1",
+                            "displaytitle": "I. Pulang dari Sekolah",
+                            "text": "<p>Kira-kira pukul satu siang, kelihatan dua orang anak muda.</p><p>Sitti Nurbaya pulang dari sekolah.</p>",
+                            "links": []
+                          }
+                        }
+                        """);
+                }
+
+                if (query.Contains(
+                    "page=Sitti Nurbaya/Bab 2",
+                    StringComparison.Ordinal))
+                {
+                    return JsonResponse("""
+                        {
+                          "parse": {
+                            "title": "Sitti Nurbaya/Bab 2",
+                            "displaytitle": "II. Sutan Mahmud",
+                            "text": "<p>Pada senja hari, Sutan Mahmud pulang ke rumah.</p>",
+                            "links": []
+                          }
+                        }
+                        """);
+                }
+
+                throw new AssertFailedException(
+                    $"Unexpected Wikisource request: {uri}");
+            }))
+            {
+                BaseAddress = new Uri("https://gutendex.com/")
+            };
+
+            var service = NewService(db, client);
+            var results = await service.SearchAsync(
+                "Sitti Nurbaya",
+                CancellationToken.None);
+
+            var source = results.Single(x =>
+                x.Id == "wsid-42");
+            Assert.IsTrue(source.CanAcquire);
+            Assert.AreEqual(
+                "Indonesian Wikisource",
+                source.SourceName);
+
+            var workId = await service.AcquireCatalogBookAsync(
+                source.Id,
+                CancellationToken.None);
+
+            var work = await db.NovelWorks
+                .AsNoTracking()
+                .SingleAsync(x => x.Id == workId);
+            Assert.AreEqual(
+                "wikisource-id",
+                work.MetadataProvider);
+            Assert.AreEqual(
+                "EPUB:id",
+                work.Format);
+
+            var chapters = await db.NovelChapters
+                .AsNoTracking()
+                .Where(x => x.WorkId == workId)
+                .OrderBy(x => x.Number)
+                .ToArrayAsync();
+
+            Assert.AreEqual(2, chapters.Length);
+            Assert.AreEqual(
+                "I. Pulang dari Sekolah",
+                chapters[0].Title);
+            StringAssert.Contains(
+                chapters[0].OriginalText,
+                "Sitti Nurbaya pulang dari sekolah.");
+
+            var reader = await service.GetReaderChapterAsync(
+                chapters[0].Id,
+                "profile-1",
+                "id",
+                CancellationToken.None);
+
+            Assert.IsNotNull(reader);
+            Assert.AreEqual(
+                "id",
+                reader.SourceLanguage);
+            Assert.IsNull(reader.Translation);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            File.Delete(path);
+        }
+    }
+
+    [TestMethod]
+    public void WikisourceHtmlExtractionPreservesParagraphsAndDropsEditMarkup()
+    {
+        var text = BookCatalogService.ExtractWikisourceText(
+            """
+            <div><p>Paragraf satu.</p>
+            <span class="mw-editsection">sunting</span>
+            <p>Paragraf <em>dua</em> &amp; selesai.</p></div>
+            """);
+
+        Assert.AreEqual(
+            "Paragraf satu.\n\nParagraf dua & selesai.",
+            text);
     }
 
     [TestMethod]

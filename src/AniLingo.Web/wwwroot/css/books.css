@@ -284,7 +284,8 @@
 
 .books-inline-form input,
 .books-stack-form input,
-.book-language-row select {
+.book-language-row select,
+.book-language-row input[type="text"] {
     min-width: 0;
     width: 100%;
 }
@@ -1100,6 +1101,36 @@
     .book-library-management-actions,
     .book-library-management-actions form,
     .book-library-management-actions .button {
+        width: 100%;
+    }
+}
+
+
+.book-language-form {
+    display: grid;
+    grid-template-columns: minmax(180px, 280px) auto;
+    gap: 8px 10px;
+    align-items: end;
+}
+
+.book-language-form small {
+    grid-column: 1 / -1;
+    color: var(--muted);
+    line-height: 1.4;
+}
+
+.book-language-form code {
+    font-size: .92em;
+}
+
+@media (max-width: 640px) {
+    .book-language-form {
+        grid-template-columns: 1fr;
+        width: 100%;
+    }
+
+    .book-language-form .button,
+    .book-language-form label {
         width: 100%;
     }
 }

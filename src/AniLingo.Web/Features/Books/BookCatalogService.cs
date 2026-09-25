@@ -27,7 +27,11 @@ public sealed record BookCatalogItem(
     string? TextSourceName)
 {
     public bool CanPreview => !string.IsNullOrWhiteSpace(TextUrl);
-    public bool CanAcquire => !string.IsNullOrWhiteSpace(EpubUrl);
+    public bool CanAcquire =>
+        !string.IsNullOrWhiteSpace(EpubUrl)
+        || Id.StartsWith(
+            "wsid-",
+            StringComparison.OrdinalIgnoreCase);
 }
 
 public sealed partial class BookCatalogService(
@@ -64,10 +68,19 @@ public sealed partial class BookCatalogService(
         var googleTask = CaptureCatalogAsync(
             token => SearchGoogleBooksAsync(normalizedQuery, token),
             cancellationToken);
+        var wikisourceTask = CaptureCatalogAsync(
+            token => SearchIndonesianWikisourceAsync(
+                normalizedQuery,
+                token),
+            cancellationToken);
 
-        await Task.WhenAll(openLibraryTask, googleTask);
+        await Task.WhenAll(
+            openLibraryTask,
+            googleTask,
+            wikisourceTask);
 
         var merged = MergeCatalogResults(
+            wikisourceTask.Result,
             openLibraryTask.Result,
             googleTask.Result);
 
@@ -106,6 +119,13 @@ public sealed partial class BookCatalogService(
         {
             return await GetGoogleBooksAsync(
                 googleId,
+                cancellationToken);
+        }
+
+        if (TryParseWikisourceId(id, out var wikisourcePageId))
+        {
+            return await GetIndonesianWikisourceAsync(
+                wikisourcePageId,
                 cancellationToken);
         }
 
@@ -339,6 +359,15 @@ public sealed partial class BookCatalogService(
         string catalogId,
         CancellationToken cancellationToken)
     {
+        if (TryParseWikisourceId(
+                catalogId,
+                out var wikisourcePageId))
+        {
+            return await ImportIndonesianWikisourceAsync(
+                wikisourcePageId,
+                cancellationToken);
+        }
+
         var catalog = await GetAsync(
             catalogId,
             cancellationToken)
@@ -2094,6 +2123,14 @@ public sealed partial class BookCatalogService(
 
         builder.AppendLine(
             $"Chapter {chapter.Number}: {chapter.Title}");
+
+        if (targetLanguage.Equals(
+                "id-modern",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            builder.AppendLine(
+                "Target variant: Modern Indonesian. Use current Indonesian spelling and natural contemporary wording where the source is archaic, while preserving meaning, historical setting, names, relationships, tone, dialogue voice and literary atmosphere.");
+        }
 
         if (!string.IsNullOrWhiteSpace(previousSource))
         {
