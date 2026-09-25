@@ -3,6 +3,7 @@ using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Kana;
 using AniLingo.Web.Features.Learning;
+using AniLingo.Web.Features.Vocabulary;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
@@ -165,7 +166,7 @@ public sealed class IndexModel(
 
         foreach (var entry in missing)
         {
-            db.Terms.Add(new Features.Vocabulary.Term
+            db.Terms.Add(new Term
             {
                 Id = KanaCatalog.IdFor(entry),
                 Language = KanaCatalog.Language,
