@@ -103,7 +103,7 @@ public static class AnimeSpecialMappingPlanner
             LocalEpisodeStart: ordered[0].EpisodeNumber,
             LocalEpisodeEnd: ordered[^1].EpisodeNumber,
             RemoteEpisodeStart: 1,
-            new RemoteAnimePart(
+            RemotePart: new RemoteAnimePart(
                 candidate.Provider,
                 candidate.ExternalId,
                 candidate.Title,
