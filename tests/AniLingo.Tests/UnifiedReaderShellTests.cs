@@ -34,7 +34,7 @@ public sealed class UnifiedReaderShellTests
             "<select name=\"ReadingMode\"",
             StringComparison.Ordinal));
         Assert.IsFalse(book.Contains(
-            "Settings.ReadingMode",
+            "<select name=\"ReadingMode\"",
             StringComparison.Ordinal));
     }
 
