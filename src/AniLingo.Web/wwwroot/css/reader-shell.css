@@ -291,6 +291,12 @@
     display: none !important;
 }
 
+/* Mode-only rows are toggled with the hidden attribute; feature styles
+   that give labels a grid layout must not make them visible again. */
+.reader-settings-panel [hidden] {
+    display: none !important;
+}
+
 .reader-settings-tab-panel > label,
 .reader-settings-tab-panel > .novel-google-font,
 .reader-settings-tab-panel > details {
