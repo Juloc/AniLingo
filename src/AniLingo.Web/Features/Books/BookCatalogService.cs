@@ -739,17 +739,37 @@ public sealed partial class BookCatalogService(
                 "Imported book was not found.");
         }
 
-        var chapterIds = db.NovelChapters
+        var chapterIds = await db.NovelChapters
+            .AsNoTracking()
             .Where(x => x.WorkId == workId)
-            .Select(x => x.Id);
+            .Select(x => x.Id)
+            .ToListAsync(cancellationToken);
 
-        return await db.NovelTranslations
+        var deleted = await db.NovelTranslations
             .Where(x =>
                 chapterIds.Contains(x.ChapterId)
                 && x.TargetLanguage == targetLanguage
                 && x.ProviderId == translator.Id
                 && x.PromptVersion == TranslationPromptVersion)
             .ExecuteDeleteAsync(cancellationToken);
+
+        // ExecuteDelete bypasses the EF change tracker. Detach matching
+        // cached translations so a later parent delete in this request
+        // cannot try to delete an already-removed row.
+        var chapterSet = chapterIds.ToHashSet();
+        foreach (var entry in db.ChangeTracker
+                     .Entries<NovelTranslation>()
+                     .Where(x =>
+                         chapterSet.Contains(x.Entity.ChapterId)
+                         && x.Entity.TargetLanguage == targetLanguage
+                         && x.Entity.ProviderId == translator.Id
+                         && x.Entity.PromptVersion == TranslationPromptVersion)
+                     .ToArray())
+        {
+            entry.State = EntityState.Detached;
+        }
+
+        return deleted;
     }
 
     public async Task DeleteImportedBookAsync(
