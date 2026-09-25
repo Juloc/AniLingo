@@ -22,6 +22,23 @@ public sealed class AniListProgressTests
     }
 
     [TestMethod]
+    public void ReadingProgressMutationContainsOnlyIntendedProgressFields()
+    {
+        var variables = AniListAccountService.BuildReadingProgressMutationVariables(
+            listEntryId: 123,
+            progress: 18,
+            progressVolumes: 2);
+
+        Assert.AreEqual(3, variables.Count);
+        Assert.AreEqual(123, variables["id"]);
+        Assert.AreEqual(18, variables["progress"]);
+        Assert.AreEqual(2, variables["progressVolumes"]);
+        CollectionAssert.AreEquivalent(
+            new[] { "id", "progress", "progressVolumes" },
+            variables.Keys.ToArray());
+    }
+
+    [TestMethod]
     public void AlreadyHigherRemoteProgressIsNoOpAndNeverMovesBackward()
     {
         var preview = AniListAccountService.EvaluateRemoteProgressSafety(
@@ -84,9 +101,15 @@ public sealed class AniListProgressTests
     {
         var before = Remote(status: "CURRENT", progress: 3);
         var progressOnly = before with { Progress = 4 };
+        var readingProgressOnly = before with
+        {
+            Progress = 4,
+            ProgressVolumes = 2
+        };
         var scoreChanged = before with { Progress = 4, Score = 8.5 };
 
         Assert.IsTrue(before.ProtectedFieldsEqual(progressOnly));
+        Assert.IsTrue(before.ProtectedFieldsEqual(readingProgressOnly));
         Assert.IsFalse(before.ProtectedFieldsEqual(scoreChanged));
     }
 
@@ -102,6 +125,7 @@ public sealed class AniListProgressTests
               "mediaId": 999,
               "status": "CURRENT",
               "progress": 4,
+              "progressVolumes": 2,
               "score": 7.5,
               "repeat": 1,
               "priority": 2,
@@ -126,6 +150,7 @@ public sealed class AniListProgressTests
         Assert.AreEqual(999, entry.MediaId);
         Assert.AreEqual("CURRENT", entry.Status);
         Assert.AreEqual(4, entry.Progress);
+        Assert.AreEqual(2, entry.ProgressVolumes);
         Assert.AreEqual(7.5, entry.Score);
         Assert.AreEqual("keep me", entry.Notes);
         Assert.IsTrue(entry.Private);

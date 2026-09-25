@@ -58,7 +58,8 @@ public sealed record AniListRemoteListEntry(
     JsonNode? AdvancedScores,
     AniListFuzzyDate? StartedAt,
     AniListFuzzyDate? CompletedAt,
-    long? UpdatedAt)
+    long? UpdatedAt,
+    int ProgressVolumes = 0)
 {
     public bool ProtectedFieldsEqual(AniListRemoteListEntry other) =>
         string.Equals(Status, other.Status, StringComparison.Ordinal) &&
@@ -137,7 +138,9 @@ public sealed record AniListReadingProgressPreview(
     int RequestedProgress,
     int? RemoteProgress,
     string? RemoteStatus,
-    int? AniListChapterCount)
+    int? AniListChapterCount,
+    int? RequestedVolumeProgress = null,
+    int? RemoteVolumeProgress = null)
 {
     public static AniListReadingProgressPreview Blocked(
         string message,
@@ -145,7 +148,9 @@ public sealed record AniListReadingProgressPreview(
         string? mediaTitle = null,
         int? remoteProgress = null,
         string? remoteStatus = null,
-        int? aniListChapterCount = null) =>
+        int? aniListChapterCount = null,
+        int? requestedVolumeProgress = null,
+        int? remoteVolumeProgress = null) =>
         new(
             false,
             false,
@@ -154,7 +159,9 @@ public sealed record AniListReadingProgressPreview(
             requestedProgress,
             remoteProgress,
             remoteStatus,
-            aniListChapterCount);
+            aniListChapterCount,
+            requestedVolumeProgress,
+            remoteVolumeProgress);
 }
 
 public sealed record AniListProgressSyncResult(
@@ -168,13 +175,15 @@ public sealed record AniListProgressBackup(
     string ViewerName,
     int RequestedProgress,
     AniListRemoteListEntry RemoteEntry,
-    string MediaType = "ANIME");
+    string MediaType = "ANIME",
+    int? RequestedVolumeProgress = null);
 
 public sealed class AniListAccountService(
     HttpClient httpClient,
     AniListAccountStore store,
     AppDbContext db,
     AnimeMetadataService metadataService,
+    ReadingSegmentMappingStore segmentMappings,
     CurrentAccountContext currentAccount,
     ILogger<AniListAccountService> logger)
 {
@@ -219,6 +228,7 @@ public sealed class AniListAccountService(
             mediaId
             status
             progress
+            progressVolumes
             score
             repeat
             priority
@@ -285,6 +295,7 @@ public sealed class AniListAccountService(
             mediaId
             status
             progress
+            progressVolumes
             score
             repeat
             priority
@@ -299,6 +310,34 @@ public sealed class AniListAccountService(
           }
         }
         """;
+
+    // Reading media may additionally update progressVolumes, but only when an
+    // explicit segment mapping resolves a higher volume. No other list fields
+    // are accepted by this mutation.
+    private const string SaveReadingProgressMutation = """
+        mutation ($id: Int!, $progress: Int!, $progressVolumes: Int!) {
+          SaveMediaListEntry(id: $id, progress: $progress, progressVolumes: $progressVolumes) {
+            id
+            userId
+            mediaId
+            status
+            progress
+            progressVolumes
+            score
+            repeat
+            priority
+            private
+            notes
+            hiddenFromStatusLists
+            customLists
+            advancedScores
+            startedAt { year month day }
+            completedAt { year month day }
+            updatedAt
+          }
+        }
+        """;
+
 
     public static string BuildAuthorizationUrl(int clientId)
     {
@@ -438,24 +477,46 @@ public sealed class AniListAccountService(
                     account.ViewerName,
                     context.RequestedProgress,
                     remote,
-                    "MANGA"),
+                    "MANGA",
+                    context.RequestedVolumeProgress),
                 cancellationToken);
 
-            var updated = await SaveProgressAsync(
-                account.AccessToken,
-                remote.Id,
-                context.RequestedProgress,
-                cancellationToken);
+            AniListRemoteListEntry updated;
+            if (context.RequestedVolumeProgress is int requestedVolumeProgress)
+            {
+                updated = await SaveReadingProgressAsync(
+                    account.AccessToken,
+                    remote.Id,
+                    context.RequestedProgress,
+                    requestedVolumeProgress,
+                    cancellationToken);
 
-            ValidateProgressOnlyUpdate(
-                remote,
-                updated,
-                context.RequestedProgress);
+                ValidateReadingProgressUpdate(
+                    remote,
+                    updated,
+                    context.RequestedProgress,
+                    requestedVolumeProgress);
+            }
+            else
+            {
+                updated = await SaveProgressAsync(
+                    account.AccessToken,
+                    remote.Id,
+                    context.RequestedProgress,
+                    cancellationToken);
+
+                ValidateProgressOnlyUpdate(
+                    remote,
+                    updated,
+                    context.RequestedProgress);
+            }
 
             return new AniListProgressSyncResult(
                 Success: true,
                 Changed: true,
-                $"AniList manga chapter progress updated from {remote.Progress} to {updated.Progress}. No other list fields were sent.");
+                context.RequestedVolumeProgress is int
+                    ? $"AniList manga progress updated: chapters {remote.Progress} → {updated.Progress}, volumes {remote.ProgressVolumes} → {updated.ProgressVolumes}. No other list fields were sent."
+                    : $"AniList manga chapter progress updated from {remote.Progress} to {updated.Progress}. No other list fields were sent.");
         }
         catch (AniListAccountException exception)
         {
@@ -512,24 +573,46 @@ public sealed class AniListAccountService(
                     account.ViewerName,
                     context.RequestedProgress,
                     remote,
-                    "MANGA"),
+                    "MANGA",
+                    context.RequestedVolumeProgress),
                 cancellationToken);
 
-            var updated = await SaveProgressAsync(
-                account.AccessToken,
-                remote.Id,
-                context.RequestedProgress,
-                cancellationToken);
+            AniListRemoteListEntry updated;
+            if (context.RequestedVolumeProgress is int requestedVolumeProgress)
+            {
+                updated = await SaveReadingProgressAsync(
+                    account.AccessToken,
+                    remote.Id,
+                    context.RequestedProgress,
+                    requestedVolumeProgress,
+                    cancellationToken);
 
-            ValidateProgressOnlyUpdate(
-                remote,
-                updated,
-                context.RequestedProgress);
+                ValidateReadingProgressUpdate(
+                    remote,
+                    updated,
+                    context.RequestedProgress,
+                    requestedVolumeProgress);
+            }
+            else
+            {
+                updated = await SaveProgressAsync(
+                    account.AccessToken,
+                    remote.Id,
+                    context.RequestedProgress,
+                    cancellationToken);
+
+                ValidateProgressOnlyUpdate(
+                    remote,
+                    updated,
+                    context.RequestedProgress);
+            }
 
             return new AniListProgressSyncResult(
                 Success: true,
                 Changed: true,
-                $"AniList chapter progress updated from {remote.Progress} to {updated.Progress}. No other list fields were sent.");
+                context.RequestedVolumeProgress is int
+                    ? $"AniList reading progress updated: chapters {remote.Progress} → {updated.Progress}, volumes {remote.ProgressVolumes} → {updated.ProgressVolumes}. No other list fields were sent."
+                    : $"AniList chapter progress updated from {remote.Progress} to {updated.Progress}. No other list fields were sent.");
         }
         catch (AniListAccountException exception)
         {
@@ -628,27 +711,80 @@ public sealed class AniListAccountService(
                     "Read part of the manga in AniLingo before syncing progress."));
         }
 
-        if (!int.TryParse(local.MetadataExternalId, out var mediaId) ||
-            mediaId <= 0)
-        {
-            return ReadingProgressContext.Blocked(
-                AniListReadingProgressPreview.Blocked(
-                    "Match this manga to AniList before syncing progress.",
-                    mediaTitle: local.Title));
-        }
-
-        var resolved = AutomaticMediaMatcher.ResolveReadingProgress(
+        var segment = await segmentMappings.ResolveAsync(
+            "manga",
+            seriesId.ToString(),
             local.ChapterNumber,
+            local.VolumeNumber,
             local.PageIndex,
-            Math.Max(0, local.PageCount - 1));
+            Math.Max(0, local.PageCount - 1),
+            cancellationToken);
 
-        if (!resolved.CanSync)
+        int mediaId;
+        int requestedProgress;
+        int? requestedVolumeProgress = null;
+        int? configuredChapterCount;
+        var displayTitle = local.Title;
+
+        if (segment is not null)
         {
-            return ReadingProgressContext.Blocked(
-                AniListReadingProgressPreview.Blocked(
-                    resolved.Reason ?? "The local manga progress cannot be mapped safely.",
-                    resolved.Progress,
-                    local.Title));
+            if (!segment.CanSync)
+            {
+                return ReadingProgressContext.Blocked(
+                    AniListReadingProgressPreview.Blocked(
+                        segment.Reason ?? "The current manga segment cannot be mapped safely.",
+                        segment.Progress,
+                        segment.PreferredTitle ?? local.Title,
+                        aniListChapterCount: segment.RemoteChapterCount));
+            }
+
+            if (!string.Equals(
+                    segment.Provider,
+                    "anilist",
+                    StringComparison.OrdinalIgnoreCase) ||
+                !int.TryParse(segment.ExternalId, out mediaId) ||
+                mediaId <= 0)
+            {
+                return ReadingProgressContext.Blocked(
+                    AniListReadingProgressPreview.Blocked(
+                        "The active manga segment does not point to a valid AniList media entry.",
+                        segment.Progress,
+                        segment.PreferredTitle ?? local.Title,
+                        aniListChapterCount: segment.RemoteChapterCount));
+            }
+
+            requestedProgress = segment.Progress;
+            requestedVolumeProgress = segment.VolumeProgress;
+            configuredChapterCount = segment.RemoteChapterCount;
+            displayTitle = segment.PreferredTitle ?? local.Title;
+        }
+        else
+        {
+            if (!int.TryParse(local.MetadataExternalId, out mediaId) ||
+                mediaId <= 0)
+            {
+                return ReadingProgressContext.Blocked(
+                    AniListReadingProgressPreview.Blocked(
+                        "Match this manga to AniList before syncing progress.",
+                        mediaTitle: local.Title));
+            }
+
+            var resolved = AutomaticMediaMatcher.ResolveReadingProgress(
+                local.ChapterNumber,
+                local.PageIndex,
+                Math.Max(0, local.PageCount - 1));
+
+            if (!resolved.CanSync)
+            {
+                return ReadingProgressContext.Blocked(
+                    AniListReadingProgressPreview.Blocked(
+                        resolved.Reason ?? "The local manga progress cannot be mapped safely.",
+                        resolved.Progress,
+                        local.Title));
+            }
+
+            requestedProgress = resolved.Progress;
+            configuredChapterCount = null;
         }
 
         var account = await store.LoadAsync(
@@ -659,8 +795,9 @@ public sealed class AniListAccountService(
             return ReadingProgressContext.Blocked(
                 AniListReadingProgressPreview.Blocked(
                     "Connect your AniList account in Settings before syncing progress.",
-                    resolved.Progress,
-                    local.Title));
+                    requestedProgress,
+                    displayTitle,
+                    aniListChapterCount: configuredChapterCount));
         }
 
         if (account.TokenExpiresAt is not null &&
@@ -669,8 +806,9 @@ public sealed class AniListAccountService(
             return ReadingProgressContext.Blocked(
                 AniListReadingProgressPreview.Blocked(
                     "Your AniList connection has expired. Reconnect it in Settings.",
-                    resolved.Progress,
-                    local.Title));
+                    requestedProgress,
+                    displayTitle,
+                    aniListChapterCount: configuredChapterCount));
         }
 
         var remote = await FetchMangaListEntryAsync(
@@ -681,27 +819,96 @@ public sealed class AniListAccountService(
         {
             return ReadingProgressContext.Blocked(
                 AniListReadingProgressPreview.Blocked(
-                    "This manga is not on your AniList list. Add it in AniList first.",
-                    resolved.Progress,
-                    local.Title));
+                    "The mapped manga entry is not on your AniList list. Add it in AniList first.",
+                    requestedProgress,
+                    displayTitle,
+                    aniListChapterCount: configuredChapterCount));
         }
 
-        var chapterCount = await FetchMangaChapterCountAsync(
-            account,
-            mediaId,
-            cancellationToken);
+        var chapterCount =
+            await FetchMangaChapterCountAsync(
+                account,
+                mediaId,
+                cancellationToken)
+            ?? configuredChapterCount;
+
         var preview = EvaluateRemoteChapterProgressSafety(
             remote,
-            resolved.Progress,
+            requestedProgress,
             chapterCount,
-            local.Title,
+            displayTitle,
             "manga");
+
+        var volumeProgressToWrite =
+            requestedVolumeProgress is > 0 &&
+            requestedVolumeProgress.Value > remote.ProgressVolumes
+                ? requestedVolumeProgress
+                : null;
+
+        var progressToWrite = requestedProgress;
+        if (volumeProgressToWrite is not null && preview.IsNoOp)
+        {
+            if (!string.Equals(
+                    remote.Status,
+                    "CURRENT",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                preview = AniListReadingProgressPreview.Blocked(
+                    $"AniList status is {remote.Status ?? "unknown"}. For safety, AniLingo only writes reading progress while the entry is CURRENT.",
+                    requestedProgress,
+                    displayTitle,
+                    remote.Progress,
+                    remote.Status,
+                    chapterCount,
+                    requestedVolumeProgress,
+                    remote.ProgressVolumes);
+                volumeProgressToWrite = null;
+            }
+            else if (chapterCount is not > 0 ||
+                     remote.Progress >= chapterCount.Value)
+            {
+                preview = AniListReadingProgressPreview.Blocked(
+                    "AniLingo will not update volume progress while the remote chapter state is final or cannot be verified safely.",
+                    requestedProgress,
+                    displayTitle,
+                    remote.Progress,
+                    remote.Status,
+                    chapterCount,
+                    requestedVolumeProgress,
+                    remote.ProgressVolumes);
+                volumeProgressToWrite = null;
+            }
+            else
+            {
+                progressToWrite = remote.Progress;
+                preview = new AniListReadingProgressPreview(
+                    CanSync: true,
+                    IsNoOp: false,
+                    $"Ready to increase AniList volume progress from {remote.ProgressVolumes} to {volumeProgressToWrite.Value} without lowering chapter progress.",
+                    displayTitle,
+                    progressToWrite,
+                    remote.Progress,
+                    remote.Status,
+                    chapterCount,
+                    requestedVolumeProgress,
+                    remote.ProgressVolumes);
+            }
+        }
+        else
+        {
+            preview = preview with
+            {
+                RequestedVolumeProgress = requestedVolumeProgress,
+                RemoteVolumeProgress = remote.ProgressVolumes
+            };
+        }
 
         return new ReadingProgressContext(
             account,
             remote,
-            resolved.Progress,
-            preview);
+            progressToWrite,
+            preview,
+            volumeProgressToWrite);
     }
 
     private async Task<ReadingProgressContext> BuildNovelProgressContextAsync(
@@ -723,20 +930,6 @@ public sealed class AniListAccountService(
         if (work is null)
         {
             throw new AniListAccountException("Novel work was not found.");
-        }
-
-        if (!string.Equals(
-                work.MetadataProvider,
-                "anilist",
-                StringComparison.OrdinalIgnoreCase) ||
-            !int.TryParse(work.MetadataExternalId, out var mediaId) ||
-            mediaId <= 0)
-        {
-            return ReadingProgressContext.Blocked(
-                AniListReadingProgressPreview.Blocked(
-                    "Match this light novel to AniList before syncing progress.",
-                    mediaTitle: work.Title,
-                    aniListChapterCount: work.MetadataChapterCount));
         }
 
         var localProgress = await db.NovelProgress
@@ -772,18 +965,84 @@ public sealed class AniListAccountService(
                     aniListChapterCount: work.MetadataChapterCount));
         }
 
-        var requestedProgress = localProgress.PositionPermille >= 950
-            ? chapterNumber.Value
-            : Math.Max(0, chapterNumber.Value - 1);
+        var segment = await segmentMappings.ResolveAsync(
+            "novel",
+            workId.ToString(),
+            chapterNumber.Value,
+            localVolumeNumber: null,
+            localProgress.PositionPermille,
+            completedThreshold: 950,
+            cancellationToken);
 
-        if (requestedProgress <= 0)
+        int mediaId;
+        int requestedProgress;
+        int? configuredChapterCount;
+        var displayTitle = work.Title;
+
+        if (segment is not null)
         {
-            return ReadingProgressContext.Blocked(
-                AniListReadingProgressPreview.Blocked(
-                    "Finish the first chapter before syncing AniList chapter progress.",
-                    requestedProgress,
-                    work.Title,
-                    aniListChapterCount: work.MetadataChapterCount));
+            if (!segment.CanSync)
+            {
+                return ReadingProgressContext.Blocked(
+                    AniListReadingProgressPreview.Blocked(
+                        segment.Reason ?? "The current light-novel segment cannot be mapped safely.",
+                        segment.Progress,
+                        segment.PreferredTitle ?? work.Title,
+                        aniListChapterCount: segment.RemoteChapterCount));
+            }
+
+            if (!string.Equals(
+                    segment.Provider,
+                    "anilist",
+                    StringComparison.OrdinalIgnoreCase) ||
+                !int.TryParse(segment.ExternalId, out mediaId) ||
+                mediaId <= 0)
+            {
+                return ReadingProgressContext.Blocked(
+                    AniListReadingProgressPreview.Blocked(
+                        "The active light-novel segment does not point to a valid AniList media entry.",
+                        segment.Progress,
+                        segment.PreferredTitle ?? work.Title,
+                        aniListChapterCount: segment.RemoteChapterCount));
+            }
+
+            requestedProgress = segment.Progress;
+            configuredChapterCount = segment.RemoteChapterCount;
+            displayTitle = segment.PreferredTitle ?? work.Title;
+        }
+        else
+        {
+            if (!string.Equals(
+                    work.MetadataProvider,
+                    "anilist",
+                    StringComparison.OrdinalIgnoreCase) ||
+                !int.TryParse(work.MetadataExternalId, out mediaId) ||
+                mediaId <= 0)
+            {
+                return ReadingProgressContext.Blocked(
+                    AniListReadingProgressPreview.Blocked(
+                        "Match this light novel to AniList before syncing progress.",
+                        mediaTitle: work.Title,
+                        aniListChapterCount: work.MetadataChapterCount));
+            }
+
+            var resolved = AutomaticMediaMatcher.ResolveReadingProgress(
+                chapterNumber.Value,
+                localProgress.PositionPermille,
+                completedThreshold: 950);
+
+            if (!resolved.CanSync)
+            {
+                return ReadingProgressContext.Blocked(
+                    AniListReadingProgressPreview.Blocked(
+                        resolved.Reason ?? "The local light-novel progress cannot be mapped safely.",
+                        resolved.Progress,
+                        work.Title,
+                        aniListChapterCount: work.MetadataChapterCount));
+            }
+
+            requestedProgress = resolved.Progress;
+            configuredChapterCount = work.MetadataChapterCount;
         }
 
         var account = await store.LoadAsync(
@@ -795,8 +1054,8 @@ public sealed class AniListAccountService(
                 AniListReadingProgressPreview.Blocked(
                     "Connect your AniList account in Settings before syncing progress.",
                     requestedProgress,
-                    work.Title,
-                    aniListChapterCount: work.MetadataChapterCount));
+                    displayTitle,
+                    aniListChapterCount: configuredChapterCount));
         }
 
         if (account.TokenExpiresAt is not null &&
@@ -806,8 +1065,8 @@ public sealed class AniListAccountService(
                 AniListReadingProgressPreview.Blocked(
                     "Your AniList connection has expired. Reconnect it in Settings.",
                     requestedProgress,
-                    work.Title,
-                    aniListChapterCount: work.MetadataChapterCount));
+                    displayTitle,
+                    aniListChapterCount: configuredChapterCount));
         }
 
         var remote = await FetchMangaListEntryAsync(
@@ -818,17 +1077,24 @@ public sealed class AniListAccountService(
         {
             return ReadingProgressContext.Blocked(
                 AniListReadingProgressPreview.Blocked(
-                    "This light novel is not on your AniList list. Add it in AniList first.",
+                    "The mapped light novel is not on your AniList list. Add it in AniList first.",
                     requestedProgress,
-                    work.Title,
-                    aniListChapterCount: work.MetadataChapterCount));
+                    displayTitle,
+                    aniListChapterCount: configuredChapterCount));
         }
+
+        var chapterCount =
+            await FetchMangaChapterCountAsync(
+                account,
+                mediaId,
+                cancellationToken)
+            ?? configuredChapterCount;
 
         var preview = EvaluateRemoteChapterProgressSafety(
             remote,
             requestedProgress,
-            work.MetadataChapterCount,
-            work.Title);
+            chapterCount,
+            displayTitle);
 
         return new ReadingProgressContext(
             account,
@@ -1184,6 +1450,28 @@ public sealed class AniListAccountService(
                 "AniList returned no list entry after saving progress.");
     }
 
+    private async Task<AniListRemoteListEntry> SaveReadingProgressAsync(
+        string accessToken,
+        int listEntryId,
+        int progress,
+        int progressVolumes,
+        CancellationToken cancellationToken)
+    {
+        var body = await SendAuthenticatedAsync(
+            accessToken,
+            SaveReadingProgressMutation,
+            BuildReadingProgressMutationVariables(
+                listEntryId,
+                progress,
+                progressVolumes),
+            "saving reading progress",
+            cancellationToken);
+
+        return ParseListEntryResponse(body, "SaveMediaListEntry")
+            ?? throw new AniListAccountException(
+                "AniList returned no list entry after saving reading progress.");
+    }
+
     private void ValidateProgressOnlyUpdate(
         AniListRemoteListEntry remote,
         AniListRemoteListEntry updated,
@@ -1192,7 +1480,8 @@ public sealed class AniListAccountService(
         if (updated.Id != remote.Id ||
             updated.UserId != remote.UserId ||
             updated.MediaId != remote.MediaId ||
-            updated.Progress != requestedProgress)
+            updated.Progress != requestedProgress ||
+            updated.ProgressVolumes != remote.ProgressVolumes)
         {
             logger.LogCritical(
                 "AniList returned an unexpected list entry after progress sync. Entry {EntryId}, media {MediaId}.",
@@ -1209,6 +1498,36 @@ public sealed class AniListAccountService(
                 remote.Id);
             throw new AniListAccountException(
                 "AniList changed fields outside progress unexpectedly. Sync stopped and a pre-write backup was saved.");
+        }
+    }
+
+    private void ValidateReadingProgressUpdate(
+        AniListRemoteListEntry remote,
+        AniListRemoteListEntry updated,
+        int requestedProgress,
+        int requestedVolumeProgress)
+    {
+        if (updated.Id != remote.Id ||
+            updated.UserId != remote.UserId ||
+            updated.MediaId != remote.MediaId ||
+            updated.Progress != requestedProgress ||
+            updated.ProgressVolumes != requestedVolumeProgress)
+        {
+            logger.LogCritical(
+                "AniList returned an unexpected reading list entry after chapter/volume sync. Entry {EntryId}, media {MediaId}.",
+                remote.Id,
+                remote.MediaId);
+            throw new AniListAccountException(
+                "AniList returned an unexpected reading-progress response. No further sync was attempted.");
+        }
+
+        if (!remote.ProtectedFieldsEqual(updated))
+        {
+            logger.LogCritical(
+                "AniList protected list fields changed unexpectedly while updating chapter/volume progress for entry {EntryId}. A pre-write backup was saved under /data/integrations.",
+                remote.Id);
+            throw new AniListAccountException(
+                "AniList changed fields outside chapter/volume progress unexpectedly. Sync stopped and a pre-write backup was saved.");
         }
     }
 
@@ -1230,6 +1549,34 @@ public sealed class AniListAccountService(
         {
             ["id"] = listEntryId,
             ["progress"] = progress
+        };
+    }
+
+    public static IReadOnlyDictionary<string, int> BuildReadingProgressMutationVariables(
+        int listEntryId,
+        int progress,
+        int progressVolumes)
+    {
+        if (listEntryId <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(listEntryId));
+        }
+
+        if (progress < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(progress));
+        }
+
+        if (progressVolumes < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(progressVolumes));
+        }
+
+        return new Dictionary<string, int>(StringComparer.Ordinal)
+        {
+            ["id"] = listEntryId,
+            ["progress"] = progress,
+            ["progressVolumes"] = progressVolumes
         };
     }
 
@@ -1457,7 +1804,8 @@ public sealed class AniListAccountService(
             ReadJsonNode(entry, "advancedScores"),
             ReadFuzzyDate(entry, "startedAt"),
             ReadFuzzyDate(entry, "completedAt"),
-            ReadLong(entry, "updatedAt"));
+            ReadLong(entry, "updatedAt"),
+            ReadInt(entry, "progressVolumes") ?? 0);
     }
 
     public static DateTimeOffset? TryReadTokenExpiry(string accessToken)
@@ -1630,7 +1978,8 @@ public sealed class AniListAccountService(
         StoredAniListAccount? Account,
         AniListRemoteListEntry? RemoteEntry,
         int RequestedProgress,
-        AniListReadingProgressPreview Preview)
+        AniListReadingProgressPreview Preview,
+        int? RequestedVolumeProgress = null)
     {
         public static ReadingProgressContext Blocked(
             AniListReadingProgressPreview preview) =>
