@@ -315,6 +315,23 @@ public sealed partial class MangaAniListService(
         string localTitle,
         CancellationToken cancellationToken)
     {
+        if (await segmentMappingsStore.HasManualMappingsAsync(
+                "manga",
+                seriesId.ToString(),
+                cancellationToken))
+        {
+            if (reviewStore is not null)
+            {
+                await reviewStore.ResolveAsync(
+                    "manga",
+                    seriesId.ToString(),
+                    "reading-segments",
+                    cancellationToken);
+            }
+
+            return;
+        }
+
         LinearRelationSequenceResult<MangaAniListCandidate> sequence;
         try
         {
