@@ -30,8 +30,21 @@ public sealed class AcquisitionOwnershipStore
             try
             {
                 var json = await File.ReadAllTextAsync(_path, cancellationToken);
-                return JsonSerializer.Deserialize<AcquisitionOwnershipState>(json, JsonOptions)
-                       ?? AcquisitionOwnershipState.Empty();
+                var state = JsonSerializer.Deserialize<AcquisitionOwnershipState>(json, JsonOptions)
+                            ?? AcquisitionOwnershipState.Empty();
+
+                return state with
+                {
+                    Anime = new Dictionary<string, AnimeManagementAssignment>(
+                        state.Anime,
+                        StringComparer.OrdinalIgnoreCase),
+                    Jobs = new Dictionary<string, AcquisitionOwnership>(
+                        state.Jobs,
+                        StringComparer.OrdinalIgnoreCase),
+                    Paths = new Dictionary<string, ManagedMediaPath>(
+                        state.Paths,
+                        StringComparer.OrdinalIgnoreCase)
+                };
             }
             catch (JsonException ex)
             {
