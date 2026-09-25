@@ -71,6 +71,17 @@
     display: none !important;
 }
 
+/* Mode-specific actions live in Reading settings, not permanently in chrome. */
+[data-unified-reader] [data-reader-autoscroll-toggle],
+[data-unified-reader] [data-book-autoscroll] {
+    display: none !important;
+}
+
+/* The unified Defaults tab replaces old duplicate save/reset action groups. */
+.reader-legacy-settings-actions {
+    display: none !important;
+}
+
 /* Settings surface */
 [data-reader-settings-container] {
     position: relative;
