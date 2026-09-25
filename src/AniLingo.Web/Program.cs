@@ -263,6 +263,7 @@ builder.Services.AddHttpClient<AniListAccountService>(client =>
 
 builder.Services.AddSingleton<CodexCliProvider>();
 builder.Services.AddSingleton<AiProfileSettingsStore>();
+builder.Services.AddSingleton<AiUsageTracker>();
 builder.Services.AddHttpClient("ai-openai-compatible", client =>
 {
     client.Timeout = TimeSpan.FromMinutes(4);
