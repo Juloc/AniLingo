@@ -1061,7 +1061,8 @@ public sealed class AniListAccountService(
                     "Your AniList connection has expired. Reconnect it in Settings.",
                     requestedProgress,
                     displayTitle,
-                    aniListChapterCount: configuredChapterCount),
+                    aniListChapterCount: configuredChapterCount,
+                    requestedVolumeProgress: requestedVolumeProgress),
                 AniListExternalProgressStateKind.NotConnected);
         }
 
