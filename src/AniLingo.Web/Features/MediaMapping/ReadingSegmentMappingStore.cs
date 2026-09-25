@@ -119,6 +119,23 @@ public sealed class ReadingSegmentMappingStore
         }
     }
 
+    public async Task<bool> HasManualMappingsAsync(
+        string mediaType,
+        string localId,
+        CancellationToken cancellationToken = default)
+    {
+        var mappings = await ListAsync(
+            mediaType,
+            localId,
+            cancellationToken);
+
+        return mappings.Any(x =>
+            !string.Equals(
+                x.Source,
+                "automatic",
+                StringComparison.OrdinalIgnoreCase));
+    }
+
     public async Task<ReadingMediaSegmentMapping> AddAsync(
         ReadingMediaSegmentMapping mapping,
         CancellationToken cancellationToken = default)
