@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text.RegularExpressions;
 using AniLingo.Web.Features.Novels;
 
 namespace AniLingo.Web.Features.Books;
@@ -8,6 +10,7 @@ public static class BookLanguageCatalog
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["id"] = "Indonesian",
+            ["id-modern"] = "Modern Indonesian",
             ["de"] = "German",
             ["en"] = "English",
             ["fr"] = "French",
@@ -28,18 +31,62 @@ public static class BookLanguageCatalog
 
     public static string Normalize(string? language, string fallback = "id")
     {
-        var value = language?.Trim().ToLowerInvariant();
-        return value is not null && Names.ContainsKey(value)
-            ? value
-            : fallback;
+        var value = language?
+            .Trim()
+            .Replace('_', '-')
+            .ToLowerInvariant();
+
+        if (IsSupportedTag(value))
+        {
+            return value!;
+        }
+
+        var normalizedFallback = fallback
+            .Trim()
+            .Replace('_', '-')
+            .ToLowerInvariant();
+
+        return IsSupportedTag(normalizedFallback)
+            ? normalizedFallback
+            : "id";
     }
 
     public static string GetName(string? language)
     {
         var normalized = Normalize(language);
-        return Names.TryGetValue(normalized, out var name)
-            ? name
-            : normalized;
+
+        if (Names.TryGetValue(normalized, out var name))
+        {
+            return name;
+        }
+
+        try
+        {
+            return CultureInfo.GetCultureInfo(normalized).EnglishName;
+        }
+        catch (CultureNotFoundException)
+        {
+            return normalized;
+        }
+    }
+
+    private static bool IsSupportedTag(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)
+            || value.Length > 35)
+        {
+            return false;
+        }
+
+        if (Names.ContainsKey(value))
+        {
+            return true;
+        }
+
+        return Regex.IsMatch(
+            value,
+            @"^[a-z]{2,3}(?:-[a-z0-9]{2,8}){0,3}$",
+            RegexOptions.CultureInvariant);
     }
 }
 

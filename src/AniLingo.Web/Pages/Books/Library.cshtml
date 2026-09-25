@@ -53,19 +53,28 @@
         }
 
         <div class="book-language-row">
-            <form method="get">
+            <form method="get" class="book-language-form">
                 <label>
                     Reading language
-                    <select name="lang" onchange="this.form.submit()">
-                        @foreach (var language in AniLingo.Web.Features.Books.BookLanguageCatalog.Supported)
-                        {
-                            <option value="@language.Key"
-                                    selected="@(language.Key == Model.TargetLanguage)">
-                                @language.Value
-                            </option>
-                        }
-                    </select>
+                    <input type="text"
+                           name="lang"
+                           value="@Model.TargetLanguage"
+                           list="book-language-options"
+                           maxlength="35"
+                           spellcheck="false"
+                           autocapitalize="none"
+                           aria-describedby="book-language-help" />
                 </label>
+                <datalist id="book-language-options">
+                    @foreach (var language in AniLingo.Web.Features.Books.BookLanguageCatalog.Supported)
+                    {
+                        <option value="@language.Key">@language.Value</option>
+                    }
+                </datalist>
+                <button class="button" type="submit">Use language</button>
+                <small id="book-language-help">
+                    Choose a suggestion or enter a language tag such as <code>ro</code>, <code>sv</code> or <code>id-modern</code>.
+                </small>
             </form>
 
             @if (!Model.SourceIsTarget)
