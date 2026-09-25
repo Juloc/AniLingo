@@ -121,7 +121,7 @@ public sealed class SpeechPreferenceResolverTests
         Assert.AreEqual("de-DE", result.Language);
         Assert.AreEqual(2.5, result.Rate);
         Assert.AreEqual(.5, result.Pitch);
-        Assert.AreEqual(1, result.Volume);
+        Assert.AreEqual(1d, result.Volume);
     }
 
     private static SpeechProviderDescriptor[] Providers(bool offlineAvailable = true) =>
