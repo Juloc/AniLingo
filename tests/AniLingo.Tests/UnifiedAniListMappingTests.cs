@@ -175,6 +175,88 @@ public sealed class UnifiedAniListMappingTests
     }
 
     [TestMethod]
+    public void UniqueRelatedOvaMapsSeasonZero()
+    {
+        var plan = AnimeSpecialMappingPlanner.Plan(
+            [
+                new LocalEpisodeCoordinate(0, 1),
+                new LocalEpisodeCoordinate(0, 2)
+            ],
+            [
+                new RemoteAnimeSpecialPart(
+                    "anilist",
+                    "401",
+                    "Example OVA",
+                    2,
+                    "OVA",
+                    "SIDE_STORY"),
+                new RemoteAnimeSpecialPart(
+                    "anilist",
+                    "402",
+                    "Example Movie",
+                    1,
+                    "MOVIE",
+                    "SIDE_STORY")
+            ]);
+
+        Assert.IsTrue(plan.CanApply);
+        Assert.IsNotNull(plan.Range);
+        Assert.AreEqual(0, plan.Range.SeasonNumber);
+        Assert.AreEqual(1, plan.Range.LocalEpisodeStart);
+        Assert.AreEqual(2, plan.Range.LocalEpisodeEnd);
+        Assert.AreEqual("401", plan.Range.RemotePart.ExternalId);
+    }
+
+    [TestMethod]
+    public void MultipleMatchingSpecialEntriesRequireReview()
+    {
+        var plan = AnimeSpecialMappingPlanner.Plan(
+            [new LocalEpisodeCoordinate(0, 1)],
+            [
+                new RemoteAnimeSpecialPart(
+                    "anilist",
+                    "501",
+                    "Special A",
+                    1,
+                    "SPECIAL",
+                    "SIDE_STORY"),
+                new RemoteAnimeSpecialPart(
+                    "anilist",
+                    "502",
+                    "Special B",
+                    1,
+                    "OVA",
+                    "OTHER")
+            ]);
+
+        Assert.IsFalse(plan.CanApply);
+        Assert.AreEqual(2, plan.Candidates.Count);
+        StringAssert.Contains(plan.Reason, "Multiple");
+    }
+
+    [TestMethod]
+    public void SpecialMappingRejectsSeasonZeroGaps()
+    {
+        var plan = AnimeSpecialMappingPlanner.Plan(
+            [
+                new LocalEpisodeCoordinate(0, 1),
+                new LocalEpisodeCoordinate(0, 3)
+            ],
+            [
+                new RemoteAnimeSpecialPart(
+                    "anilist",
+                    "601",
+                    "Special",
+                    2,
+                    "SPECIAL",
+                    "SIDE_STORY")
+            ]);
+
+        Assert.IsFalse(plan.CanApply);
+        StringAssert.Contains(plan.Reason, "gaps");
+    }
+
+    [TestMethod]
     public void ReadingProgressUsesLastCompletedIntegerChapter()
     {
         var unfinished = AutomaticMediaMatcher.ResolveReadingProgress(

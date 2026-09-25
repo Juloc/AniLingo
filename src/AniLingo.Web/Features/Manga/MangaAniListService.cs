@@ -8,7 +8,8 @@ namespace AniLingo.Web.Features.Manga;
 
 public sealed partial class MangaAniListService(
     MangaRepository repository,
-    IHttpClientFactory httpClientFactory)
+    IHttpClientFactory httpClientFactory,
+    MediaMappingReviewStore? reviewStore = null)
 {
     private const string SearchQuery = """
         query ($search: String!, $perPage: Int!) {
@@ -158,30 +159,56 @@ public sealed partial class MangaAniListService(
                     seriesId,
                     decision.Candidate.ExternalId,
                     cancellationToken);
+
+                if (reviewStore is not null)
+                {
+                    await reviewStore.ResolveAsync(
+                        "manga",
+                        seriesId.ToString(),
+                        "identity",
+                        cancellationToken);
+                }
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
-                return decision with
+                var reviewDecision = decision with
                 {
                     Disposition = AutomaticMediaMatchDisposition.Review,
                     Evidence = decision.Evidence
                         .Append("AniList metadata request timed out before the automatic match could be persisted.")
                         .ToArray()
                 };
+                await SaveIdentityReviewAsync(
+                    source,
+                    reviewDecision,
+                    cancellationToken);
+                return reviewDecision;
             }
             catch (Exception exception) when (
                 exception is InvalidOperationException or
                 HttpRequestException or
                 JsonException)
             {
-                return decision with
+                var reviewDecision = decision with
                 {
                     Disposition = AutomaticMediaMatchDisposition.Review,
                     Evidence = decision.Evidence
                         .Append(exception.Message)
                         .ToArray()
                 };
+                await SaveIdentityReviewAsync(
+                    source,
+                    reviewDecision,
+                    cancellationToken);
+                return reviewDecision;
             }
+        }
+        else if (decision.Candidate is not null)
+        {
+            await SaveIdentityReviewAsync(
+                source,
+                decision,
+                cancellationToken);
         }
 
         return decision;
@@ -215,6 +242,49 @@ public sealed partial class MangaAniListService(
         await repository.UpdateMetadataAsync(
             seriesId,
             candidate,
+            cancellationToken);
+
+        if (reviewStore is not null)
+        {
+            await reviewStore.ResolveAsync(
+                "manga",
+                seriesId.ToString(),
+                "identity",
+                cancellationToken);
+        }
+    }
+
+    private async Task SaveIdentityReviewAsync(
+        MangaAutoMatchSource source,
+        AutomaticMediaMatchDecision decision,
+        CancellationToken cancellationToken)
+    {
+        if (reviewStore is null || decision.Candidate is null)
+        {
+            return;
+        }
+
+        var reason = decision.Disposition == AutomaticMediaMatchDisposition.Review
+            ? $"AniList identity needs review: score {decision.Score}, runner-up {decision.RunnerUpScore}."
+            : $"AniList identity confidence is too low for automatic matching: score {decision.Score}.";
+
+        await reviewStore.UpsertAsync(
+            "manga",
+            source.SeriesId.ToString(),
+            source.Title,
+            "identity",
+            reason,
+            [
+                new MediaMappingReviewCandidate(
+                    decision.Candidate.Provider,
+                    decision.Candidate.ExternalId,
+                    decision.Candidate.PreferredTitle,
+                    decision.Score,
+                    decision.Evidence,
+                    decision.Candidate.Format,
+                    decision.Candidate.Year,
+                    decision.Candidate.UnitCount)
+            ],
             cancellationToken);
     }
 

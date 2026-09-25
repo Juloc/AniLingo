@@ -7,7 +7,8 @@ namespace AniLingo.Web.Features.Novels;
 
 public sealed class NovelMetadataService(
     AppDbContext db,
-    IEnumerable<INovelMetadataProvider> providers)
+    IEnumerable<INovelMetadataProvider> providers,
+    MediaMappingReviewStore reviewStore)
 {
     public async Task<IReadOnlyList<NovelMetadataCandidate>> SearchAsync(
         string providerKey,
@@ -101,17 +102,38 @@ public sealed class NovelMetadataService(
                     decision.Candidate.Provider,
                     decision.Candidate.ExternalId,
                     cancellationToken);
+
+                await reviewStore.ResolveAsync(
+                    "novel",
+                    workId.ToString(),
+                    "identity",
+                    cancellationToken);
             }
             catch (InvalidOperationException exception)
             {
-                return decision with
+                var reviewDecision = decision with
                 {
                     Disposition = AutomaticMediaMatchDisposition.Review,
                     Evidence = decision.Evidence
                         .Append(exception.Message)
                         .ToArray()
                 };
+
+                await SaveIdentityReviewAsync(
+                    workId,
+                    work.Title,
+                    reviewDecision,
+                    cancellationToken);
+                return reviewDecision;
             }
+        }
+        else if (decision.Candidate is not null)
+        {
+            await SaveIdentityReviewAsync(
+                workId,
+                work.Title,
+                decision,
+                cancellationToken);
         }
 
         return decision;
@@ -162,6 +184,12 @@ public sealed class NovelMetadataService(
         work.UpdatedAt = DateTime.UtcNow;
 
         await db.SaveChangesAsync(cancellationToken);
+
+        await reviewStore.ResolveAsync(
+            "novel",
+            workId.ToString(),
+            "identity",
+            cancellationToken);
     }
 
     public async Task RemoveAsync(
@@ -190,6 +218,41 @@ public sealed class NovelMetadataService(
         work.MetadataGenresJson = null;
         work.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task SaveIdentityReviewAsync(
+        Guid workId,
+        string localTitle,
+        AutomaticMediaMatchDecision decision,
+        CancellationToken cancellationToken)
+    {
+        if (decision.Candidate is null)
+        {
+            return;
+        }
+
+        var reason = decision.Disposition == AutomaticMediaMatchDisposition.Review
+            ? $"AniList identity needs review: score {decision.Score}, runner-up {decision.RunnerUpScore}."
+            : $"AniList identity confidence is too low for automatic matching: score {decision.Score}.";
+
+        await reviewStore.UpsertAsync(
+            "novel",
+            workId.ToString(),
+            localTitle,
+            "identity",
+            reason,
+            [
+                new MediaMappingReviewCandidate(
+                    decision.Candidate.Provider,
+                    decision.Candidate.ExternalId,
+                    decision.Candidate.PreferredTitle,
+                    decision.Score,
+                    decision.Evidence,
+                    decision.Candidate.Format,
+                    decision.Candidate.Year,
+                    decision.Candidate.UnitCount)
+            ],
+            cancellationToken);
     }
 
     private INovelMetadataProvider GetProvider(string providerKey) =>

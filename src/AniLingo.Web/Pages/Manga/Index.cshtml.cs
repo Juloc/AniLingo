@@ -1,6 +1,7 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Manga;
+using AniLingo.Web.Features.MediaMapping;
 using AniLingo.Web.Features.Operations;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -11,7 +12,8 @@ public sealed class IndexModel(
     AppDbContext db,
     CurrentAccountContext account,
     OperationRunner operations,
-    IHttpClientFactory httpClientFactory) : PageModel
+    IHttpClientFactory httpClientFactory,
+    MediaMappingReviewStore mappingReviewStore) : PageModel
 {
     public IReadOnlyList<MangaSeriesItem> Series { get; private set; } = [];
     public IReadOnlyList<MangaSeriesItem> ContinueReading { get; private set; } = [];
@@ -79,7 +81,8 @@ public sealed class IndexModel(
                         token);
                     var metadata = new MangaAniListService(
                         repository,
-                        httpClientFactory);
+                        httpClientFactory,
+                        mappingReviewStore);
                     await metadata.AutoMatchAsync(
                         imported.SeriesId,
                         token);
@@ -137,7 +140,8 @@ public sealed class IndexModel(
                         token);
                     var metadata = new MangaAniListService(
                         repository,
-                        httpClientFactory);
+                        httpClientFactory,
+                        mappingReviewStore);
                     await metadata.AutoMatchAsync(
                         imported.SeriesId,
                         token);
