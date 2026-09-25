@@ -329,13 +329,12 @@ public sealed class DiscoveryCoordinator(
             }
         }
 
-        var mangaMatches = mangaIds.Length == 0
-            ? new Dictionary<string, Guid>(StringComparer.Ordinal)
-            : new Dictionary<string, Guid>(
-                await new MangaRepository(db).GetAniListMatchesAsync(
+        IReadOnlyDictionary<string, Guid> mangaMatches =
+            mangaIds.Length == 0
+                ? new Dictionary<string, Guid>(StringComparer.Ordinal)
+                : await new MangaRepository(db).GetAniListMatchesAsync(
                     mangaIds,
-                    cancellationToken),
-                StringComparer.Ordinal);
+                    cancellationToken);
 
         return items
             .Select(item =>
@@ -491,7 +490,7 @@ public sealed class DiscoveryCoordinator(
     public static void InvalidateCache() =>
         Cache.Clear();
 
-    internal static string BuildMangaImportUrl(
+    public static string BuildMangaImportUrl(
         string externalId,
         string title) =>
         $"/Discover/MangaImport?anilistId={Uri.EscapeDataString(externalId)}" +
