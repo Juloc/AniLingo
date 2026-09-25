@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 
 namespace AniLingo.Web.Pages.Discover;
 
+[MangaUploadRequestLimits("Upload")]
 public sealed class MangaImportModel(
     AppDbContext db,
     CurrentAccountContext account,
@@ -41,8 +42,6 @@ public sealed class MangaImportModel(
         return Page();
     }
 
-    [RequestSizeLimit(4L * 1024 * 1024 * 1024)]
-    [RequestFormLimits(MultipartBodyLengthLimit = 4L * 1024 * 1024 * 1024)]
     public async Task<IActionResult> OnPostUploadAsync(
         string? anilistId,
         string? title,
