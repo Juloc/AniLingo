@@ -3,6 +3,7 @@ using AniLingo.Web.Features.Artwork;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Metadata;
+using AniLingo.Web.Features.Operations;
 using AniLingo.Web.Features.Tracking;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -13,7 +14,8 @@ namespace AniLingo.Web.Pages.Library;
 public sealed class AnimeModel(
     AppDbContext db,
     AnimeMetadataService metadataService,
-    CurrentAccountContext currentAccount) : PageModel
+    CurrentAccountContext currentAccount,
+    OperationRunner operations) : PageModel
 {
     public Guid AnimeId { get; private set; }
     public string AnimeTitle { get; private set; } = "";
@@ -200,18 +202,33 @@ public sealed class AnimeModel(
 
         try
         {
-            var result = await metadataService.MatchAsync(
-                id,
-                provider,
-                externalId,
-                cancellationToken);
+            await operations.RunAsync(
+                new OperationDescriptor(
+                    "anime-metadata-match",
+                    "Anime",
+                    "Match anime metadata",
+                    ProfileId: currentAccount.ProfileId,
+                    Lane: OperationLane.Normal,
+                    Retryable: false),
+                async (_, token) =>
+                {
+                    var result = await metadataService.MatchAsync(
+                        id,
+                        provider,
+                        externalId,
+                        token);
 
-            if (!result.Success)
-            {
-                TempData["MetadataError"] = result.Error;
-            }
+                    if (!result.Success)
+                    {
+                        throw new InvalidOperationException(
+                            result.Error ?? "Anime metadata could not be matched.");
+                    }
+                },
+                "Anime metadata matched.",
+                cancellationToken);
         }
-        catch (MetadataProviderException exception)
+        catch (Exception exception) when (
+            exception is MetadataProviderException or InvalidOperationException)
         {
             TempData["MetadataError"] = exception.Message;
         }
@@ -236,22 +253,37 @@ public sealed class AnimeModel(
 
         try
         {
-            var result = await metadataService.MatchEpisodeRangeAsync(
-                id,
-                seasonNumber,
-                localEpisodeStart,
-                localEpisodeEnd,
-                remoteEpisodeStart,
-                provider,
-                externalId,
-                cancellationToken);
+            await operations.RunAsync(
+                new OperationDescriptor(
+                    "anime-episode-range-match",
+                    "Anime",
+                    "Match anime episode range",
+                    ProfileId: currentAccount.ProfileId,
+                    Lane: OperationLane.Normal,
+                    Retryable: false),
+                async (_, token) =>
+                {
+                    var result = await metadataService.MatchEpisodeRangeAsync(
+                        id,
+                        seasonNumber,
+                        localEpisodeStart,
+                        localEpisodeEnd,
+                        remoteEpisodeStart,
+                        provider,
+                        externalId,
+                        token);
 
-            if (!result.Success)
-            {
-                TempData["MetadataError"] = result.Error;
-            }
+                    if (!result.Success)
+                    {
+                        throw new InvalidOperationException(
+                            result.Error ?? "Episode range could not be matched.");
+                    }
+                },
+                "Anime episode range matched.",
+                cancellationToken);
         }
-        catch (MetadataProviderException exception)
+        catch (Exception exception) when (
+            exception is MetadataProviderException or InvalidOperationException)
         {
             TempData["MetadataError"] = exception.Message;
         }
@@ -298,12 +330,27 @@ public sealed class AnimeModel(
 
         try
         {
-            if (!await metadataService.RefreshAsync(id, cancellationToken))
-            {
-                TempData["MetadataError"] = "Metadata could not be refreshed.";
-            }
+            await operations.RunAsync(
+                new OperationDescriptor(
+                    "anime-metadata-refresh",
+                    "Anime",
+                    "Refresh anime metadata",
+                    ProfileId: currentAccount.ProfileId,
+                    Lane: OperationLane.Normal,
+                    Retryable: false),
+                async (_, token) =>
+                {
+                    if (!await metadataService.RefreshAsync(id, token))
+                    {
+                        throw new InvalidOperationException(
+                            "Metadata could not be refreshed.");
+                    }
+                },
+                "Anime metadata refreshed.",
+                cancellationToken);
         }
-        catch (MetadataProviderException exception)
+        catch (Exception exception) when (
+            exception is MetadataProviderException or InvalidOperationException)
         {
             TempData["MetadataError"] = exception.Message;
         }

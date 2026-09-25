@@ -1,6 +1,7 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Manga;
+using AniLingo.Web.Features.Operations;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
@@ -8,7 +9,8 @@ namespace AniLingo.Web.Pages.Manga;
 
 public sealed class IndexModel(
     AppDbContext db,
-    CurrentAccountContext account) : PageModel
+    CurrentAccountContext account,
+    OperationRunner operations) : PageModel
 {
     public IReadOnlyList<MangaSeriesItem> Series { get; private set; } = [];
     public IReadOnlyList<MangaSeriesItem> ContinueReading { get; private set; } = [];
@@ -42,15 +44,40 @@ public sealed class IndexModel(
 
         try
         {
-            var repository = new MangaRepository(db);
-            var upload = new MangaUploadService();
-            var sourcePath = await upload.SaveSeriesAsync(
-                seriesTitle,
-                archives ?? [],
-                cancellationToken);
-            var importer = new MangaImportService(repository);
-            var result = await importer.ImportAsync(
-                sourcePath,
+            var result = await operations.RunAsync(
+                new OperationDescriptor(
+                    "manga-upload-import",
+                    "Manga",
+                    "Import uploaded Manga",
+                    string.IsNullOrWhiteSpace(seriesTitle) ? null : seriesTitle.Trim(),
+                    account.ProfileId,
+                    OperationLane.Normal,
+                    Retryable: false),
+                async (operation, token) =>
+                {
+                    await operation.ReportAsync(
+                        5,
+                        "Validating uploaded Manga archives.",
+                        cancellationToken: token);
+
+                    var repository = new MangaRepository(db);
+                    var upload = new MangaUploadService();
+                    var sourcePath = await upload.SaveSeriesAsync(
+                        seriesTitle,
+                        archives ?? [],
+                        token);
+
+                    await operation.ReportAsync(
+                        35,
+                        "Importing Manga chapters and pages.",
+                        cancellationToken: token);
+
+                    var importer = new MangaImportService(repository);
+                    return await importer.ImportAsync(
+                        sourcePath,
+                        token);
+                },
+                "Manga upload imported.",
                 cancellationToken);
 
             TempData["Status"] =
@@ -80,10 +107,28 @@ public sealed class IndexModel(
 
         try
         {
-            var repository = new MangaRepository(db);
-            var importer = new MangaImportService(repository);
-            var result = await importer.ImportAsync(
-                sourcePath ?? "",
+            var result = await operations.RunAsync(
+                new OperationDescriptor(
+                    "manga-path-import",
+                    "Manga",
+                    "Import mounted Manga source",
+                    ProfileId: account.ProfileId,
+                    Lane: OperationLane.Normal,
+                    Retryable: false),
+                async (operation, token) =>
+                {
+                    await operation.ReportAsync(
+                        10,
+                        "Scanning mounted Manga source.",
+                        cancellationToken: token);
+
+                    var repository = new MangaRepository(db);
+                    var importer = new MangaImportService(repository);
+                    return await importer.ImportAsync(
+                        sourcePath ?? "",
+                        token);
+                },
+                "Mounted Manga source imported.",
                 cancellationToken);
 
             TempData["Status"] =

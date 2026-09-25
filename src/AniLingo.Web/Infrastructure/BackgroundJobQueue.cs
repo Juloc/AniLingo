@@ -5,49 +5,6 @@ using AniLingo.Web.Features.Operations;
 
 namespace AniLingo.Web.Infrastructure;
 
-public sealed class OperationExecutionContext(
-    Guid operationId,
-    IServiceProvider services)
-{
-    public Guid OperationId { get; } = operationId;
-
-    public Task ReportAsync(
-        int? percent,
-        string? message = null,
-        long? bytesCompleted = null,
-        long? bytesTotal = null,
-        double? bytesPerSecond = null,
-        DateTime? etaUtc = null,
-        CancellationToken cancellationToken = default)
-    {
-        var db = services.GetRequiredService<AppDbContext>();
-        return new OperationStore(db).ReportProgressAsync(
-            OperationId,
-            percent,
-            message,
-            bytesCompleted,
-            bytesTotal,
-            bytesPerSecond,
-            etaUtc,
-            cancellationToken);
-    }
-
-    public Task LogAsync(
-        OperationLogLevel level,
-        string module,
-        string message,
-        CancellationToken cancellationToken = default)
-    {
-        var db = services.GetRequiredService<AppDbContext>();
-        return new OperationStore(db).AppendLogAsync(
-            OperationId,
-            level,
-            module,
-            message,
-            cancellationToken);
-    }
-}
-
 internal sealed record QueuedBackgroundWork(Guid OperationId);
 
 internal sealed class RuntimeBackgroundWork(

@@ -11,7 +11,8 @@ public sealed class IndexModel(
     BookCatalogService books,
     CurrentAccountContext account,
     AppDbContext db,
-    SabnzbdOperationsClient sabnzbdOperations) : PageModel
+    SabnzbdOperationsClient sabnzbdOperations,
+    OperationRunner operations) : PageModel
 {
     public string Query { get; private set; } = "";
     public string TargetLanguage { get; private set; } = "id";
@@ -107,10 +108,29 @@ public sealed class IndexModel(
 
         try
         {
-            await using var stream = epub.OpenReadStream();
-            var workId = await books.ImportUploadedEpubAsync(
-                stream,
-                epub.FileName,
+            var workId = await operations.RunAsync(
+                new OperationDescriptor(
+                    "book-epub-upload-import",
+                    "Books",
+                    "Import uploaded EPUB",
+                    epub.FileName,
+                    account.ProfileId,
+                    OperationLane.Normal,
+                    Retryable: false),
+                async (operation, token) =>
+                {
+                    await operation.ReportAsync(
+                        10,
+                        "Parsing uploaded EPUB.",
+                        cancellationToken: token);
+
+                    await using var stream = epub.OpenReadStream();
+                    return await books.ImportUploadedEpubAsync(
+                        stream,
+                        epub.FileName,
+                        token);
+                },
+                "Uploaded EPUB imported.",
                 cancellationToken);
 
             return RedirectToPage(
@@ -186,8 +206,26 @@ public sealed class IndexModel(
 
         try
         {
-            var imported = await books.ImportInboxAsync(
+            var imported = await operations.RunAsync(
+                new OperationDescriptor(
+                    "book-inbox-import",
+                    "Books",
+                    "Import Books inbox",
+                    ProfileId: account.ProfileId,
+                    Lane: OperationLane.Normal,
+                    Retryable: false),
+                async (operation, token) =>
+                {
+                    await operation.ReportAsync(
+                        10,
+                        "Scanning Books inbox.",
+                        cancellationToken: token);
+
+                    return await books.ImportInboxAsync(token);
+                },
+                "Books inbox scan completed.",
                 cancellationToken);
+
             TempData["Status"] = imported.Count == 0
                 ? "No EPUB files were found in the Books inbox."
                 : $"Books inbox imported {imported.Count} book(s).";

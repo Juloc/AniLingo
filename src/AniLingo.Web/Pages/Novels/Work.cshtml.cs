@@ -15,7 +15,8 @@ public sealed class WorkModel(
     NovelMappingService mappings,
     AniListAccountService aniListAccount,
     BackgroundJobQueue jobs,
-    CurrentAccountContext account) : PageModel
+    CurrentAccountContext account,
+    OperationRunner operations) : PageModel
 {
     public NovelWorkDetail? Detail { get; private set; }
     public IReadOnlyList<NovelMetadataCandidate> SearchResults { get; private set; } = [];
@@ -81,9 +82,20 @@ public sealed class WorkModel(
         Guid id,
         CancellationToken cancellationToken)
     {
-        var result = await aniListAccount.SyncNovelProgressAsync(
-            id,
+        var result = await operations.RunAsync(
+            new OperationDescriptor(
+                "anilist-novel-progress-sync",
+                "AniList",
+                "Sync novel progress",
+                ProfileId: account.ProfileId,
+                Lane: OperationLane.Normal,
+                Retryable: false),
+            (_, token) => aniListAccount.SyncNovelProgressAsync(
+                id,
+                token),
+            "Novel progress sync completed.",
             cancellationToken);
+
         TempData["Status"] = result.Message;
         return RedirectToPage(new { id });
     }
@@ -99,7 +111,19 @@ public sealed class WorkModel(
 
         try
         {
-            await novels.RefreshWorkAsync(id, cancellationToken);
+            await operations.RunAsync(
+                new OperationDescriptor(
+                    "novel-refresh",
+                    "Novels",
+                    "Refresh novel table of contents",
+                    ProfileId: account.ProfileId,
+                    Lane: OperationLane.Normal,
+                    IsDownload: true,
+                    Retryable: false),
+                (_, token) => novels.RefreshWorkAsync(id, token),
+                "Novel table of contents refreshed.",
+                cancellationToken);
+
             TempData["Status"] = "Table of contents refreshed.";
         }
         catch (InvalidOperationException exception)
@@ -194,7 +218,22 @@ public sealed class WorkModel(
 
         try
         {
-            await metadata.MatchAsync(id, provider, externalId, cancellationToken);
+            await operations.RunAsync(
+                new OperationDescriptor(
+                    "novel-anilist-match",
+                    "Novels",
+                    "Match novel metadata",
+                    ProfileId: account.ProfileId,
+                    Lane: OperationLane.Normal,
+                    Retryable: false),
+                (_, token) => metadata.MatchAsync(
+                    id,
+                    provider,
+                    externalId,
+                    token),
+                "Novel metadata matched.",
+                cancellationToken);
+
             TempData["Status"] = "AniList novel matched.";
         }
         catch (Exception exception) when (

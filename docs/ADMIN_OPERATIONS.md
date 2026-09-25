@@ -59,15 +59,23 @@ Retry is available while the current process still owns the original retryable l
 
 Downloads are ordinary operations with `IsDownload = true` and optional byte/progress fields. This allows one Downloads view without a parallel download database.
 
-Initial tracked network/import work includes:
+Tracked network/import work includes:
 
-- Japanese subtitle/transcript preparation
+- Japanese subtitle/transcript preparation and explicit embedded-subtitle extraction
+- episode learning preparation
 - batch learning-text preparation
-- novel chapter downloads
-- remote novel imports
-- remote EPUB imports
+- novel source imports, table-of-contents/chapter refreshes, chapter downloads and AI chapter translation
+- manual AniList episode/novel progress sync
+- anime metadata match, episode-range match and refresh
+- Manga CBZ/ZIP upload, mounted-path import, source refresh and AniList metadata match
+- Discover handoffs for novel and Manga imports
+- local EPUB upload, Books inbox import and remote EPUB import
 - SABnzbd downloads, including live queue/post-processing state when a full SABnzbd API key allows queue/history access
 - Sonarr artwork downloads
+
+Synchronous request-bound work uses the shared `OperationRunner`, which writes the same `Operations` / `OperationLogs` lifecycle as queued jobs. Long work that can safely outlive the HTTP request continues to use `BackgroundJobQueue`.
+
+Playback remux/transcode is currently streamed live by the media response path rather than pre-generated as a durable background preparation job. It is therefore not recorded as a separate completed operation. If a future UI adds explicit cached playback preparation, that producer must use the existing playback/operation lane instead of creating another task store.
 
 Other job producers should use the same operation descriptor rather than adding their own history table.
 

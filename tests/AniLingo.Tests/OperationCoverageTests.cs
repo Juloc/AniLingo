@@ -183,6 +183,107 @@ public sealed class OperationCoverageTests
         }
     }
 
+    [TestMethod]
+    public void LongRunningPageActionsUseCanonicalOperations()
+    {
+        var root = FindRepositoryRoot();
+
+        AssertKinds(
+            root,
+            "src/AniLingo.Web/Pages/Manga/Index.cshtml.cs",
+            "manga-upload-import",
+            "manga-path-import");
+
+        AssertKinds(
+            root,
+            "src/AniLingo.Web/Pages/Manga/Series.cshtml.cs",
+            "manga-anilist-match",
+            "manga-refresh");
+
+        AssertKinds(
+            root,
+            "src/AniLingo.Web/Pages/Discover/Index.cshtml.cs",
+            "discover-novel-import");
+
+        AssertKinds(
+            root,
+            "src/AniLingo.Web/Pages/Discover/MangaImport.cshtml.cs",
+            "discover-manga-upload-import",
+            "discover-manga-path-import");
+
+        AssertKinds(
+            root,
+            "src/AniLingo.Web/Pages/Novels/Work.cshtml.cs",
+            "anilist-novel-progress-sync",
+            "novel-refresh",
+            "novel-chapter-download",
+            "novel-anilist-match");
+
+        AssertKinds(
+            root,
+            "src/AniLingo.Web/Pages/Novels/Read.cshtml.cs",
+            "novel-chapter-translation",
+            "novel-chapter-refresh");
+
+        AssertKinds(
+            root,
+            "src/AniLingo.Web/Pages/Library/Anime.cshtml.cs",
+            "anime-metadata-match",
+            "anime-episode-range-match",
+            "anime-metadata-refresh");
+
+        AssertKinds(
+            root,
+            "src/AniLingo.Web/Pages/Library/Episode.cshtml.cs",
+            "episode-subtitle-import",
+            "anilist-episode-progress-sync",
+            "episode-learning-preparation");
+
+        AssertKinds(
+            root,
+            "src/AniLingo.Web/Pages/Books/Index.cshtml.cs",
+            "book-epub-upload-import",
+            "remote-epub-import",
+            "book-inbox-import",
+            "sabnzbd-download");
+    }
+
+    private static void AssertKinds(
+        string root,
+        string relativePath,
+        params string[] kinds)
+    {
+        var source = File.ReadAllText(Path.Combine(
+            root,
+            relativePath.Replace('/', Path.DirectorySeparatorChar)));
+
+        foreach (var kind in kinds)
+        {
+            StringAssert.Contains(
+                source,
+                $"\"{kind}\"",
+                $"Expected {relativePath} to register operation kind {kind}.");
+        }
+    }
+
+    private static string FindRepositoryRoot()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+
+        while (directory is not null)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, "AniLingo.sln")))
+            {
+                return directory.FullName;
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new DirectoryNotFoundException(
+            "Could not locate AniLingo repository root.");
+    }
+
     private static string TempDatabasePath() =>
         Path.Combine(
             Path.GetTempPath(),

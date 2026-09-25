@@ -4,6 +4,7 @@ using AniLingo.Web.Features.Books;
 using AniLingo.Web.Features.Discovery;
 using AniLingo.Web.Features.Metadata;
 using AniLingo.Web.Features.Novels;
+using AniLingo.Web.Features.Operations;
 using AniLingo.Web.Features.Tracking;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -18,7 +19,8 @@ public sealed class IndexModel(
     AppDbContext db,
     NovelService novels,
     NovelMetadataService novelMetadata,
-    CurrentAccountContext account) : PageModel
+    CurrentAccountContext account,
+    OperationRunner operations) : PageModel
 {
     public bool IsOwner => account.IsOwner;
 
@@ -71,38 +73,72 @@ public sealed class IndexModel(
 
         try
         {
-            var workId = await novels.ImportWorkAsync(
-                sourceUrl,
+            var result = await operations.RunAsync(
+                new OperationDescriptor(
+                    "discover-novel-import",
+                    "Novels",
+                    "Import discovered novel",
+                    string.IsNullOrWhiteSpace(metadataExternalId)
+                        ? null
+                        : $"AniList {metadataExternalId.Trim()}",
+                    account.ProfileId,
+                    OperationLane.Normal,
+                    IsDownload: true,
+                    Retryable: false),
+                async (operation, token) =>
+                {
+                    await operation.ReportAsync(
+                        10,
+                        "Importing novel source.",
+                        cancellationToken: token);
+
+                    var workId = await novels.ImportWorkAsync(
+                        sourceUrl,
+                        token);
+
+                    if (!string.IsNullOrWhiteSpace(metadataProvider) &&
+                        !string.IsNullOrWhiteSpace(metadataExternalId))
+                    {
+                        try
+                        {
+                            await operation.ReportAsync(
+                                80,
+                                "Matching imported novel metadata.",
+                                cancellationToken: token);
+
+                            await novelMetadata.MatchAsync(
+                                workId,
+                                metadataProvider,
+                                metadataExternalId,
+                                token);
+
+                            return (WorkId: workId, Status: "Novel imported and matched to AniList.");
+                        }
+                        catch (Exception exception) when (
+                            exception is InvalidOperationException or
+                            NovelMetadataProviderException)
+                        {
+                            await operation.LogAsync(
+                                OperationLogLevel.Warning,
+                                "NovelMetadata",
+                                "Novel import completed, but metadata matching needs attention.",
+                                CancellationToken.None);
+
+                            return (
+                                WorkId: workId,
+                                Status: $"Novel imported. Metadata match needs attention: {exception.Message}");
+                        }
+                    }
+
+                    return (
+                        WorkId: workId,
+                        Status: "Novel imported. Chapter text is loaded on demand.");
+                },
+                "Discovered novel imported.",
                 cancellationToken);
 
-            if (!string.IsNullOrWhiteSpace(metadataProvider) &&
-                !string.IsNullOrWhiteSpace(metadataExternalId))
-            {
-                try
-                {
-                    await novelMetadata.MatchAsync(
-                        workId,
-                        metadataProvider,
-                        metadataExternalId,
-                        cancellationToken);
-                    TempData["Status"] =
-                        "Novel imported and matched to AniList.";
-                }
-                catch (Exception exception) when (
-                    exception is InvalidOperationException or
-                    NovelMetadataProviderException)
-                {
-                    TempData["Status"] =
-                        $"Novel imported. Metadata match needs attention: {exception.Message}";
-                }
-            }
-            else
-            {
-                TempData["Status"] =
-                    "Novel imported. Chapter text is loaded on demand.";
-            }
-
-            return RedirectToPage("/Novels/Work", new { id = workId });
+            TempData["Status"] = result.Status;
+            return RedirectToPage("/Novels/Work", new { id = result.WorkId });
         }
         catch (InvalidOperationException exception)
         {
