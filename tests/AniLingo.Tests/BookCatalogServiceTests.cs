@@ -556,6 +556,9 @@ public sealed class BookCatalogServiceTests
         Assert.AreEqual("Test Book", book.Title);
         Assert.AreEqual("Test Author", book.Author);
         Assert.AreEqual("en", book.Language);
+        Assert.AreEqual("9780306406157", book.Isbn13);
+        Assert.AreEqual("Test Publisher", book.Publisher);
+        Assert.AreEqual("2026-09-25", book.PublishedDate);
         Assert.AreEqual(2, book.Chapters.Count);
         Assert.AreEqual("Chapter One", book.Chapters[0].Title);
         StringAssert.Contains(book.Chapters[0].Text, "Hello world.");
@@ -600,6 +603,23 @@ public sealed class BookCatalogServiceTests
             Assert.AreEqual("Test Book", work.Title);
             Assert.AreEqual("Test Author", work.Author);
             Assert.AreEqual("EPUB:en", work.Format);
+
+            var edition = await db.BookEditions.SingleAsync();
+            Assert.AreEqual(work.Id, edition.WorkId);
+            Assert.AreEqual("en", edition.Language);
+            Assert.AreEqual("9780306406157", edition.Isbn13);
+            Assert.AreEqual("Test Publisher", edition.Publisher);
+            Assert.AreEqual("2026-09-25", edition.PublishedDate);
+            Assert.IsTrue(edition.IsPrimary);
+
+            var file = await db.BookFiles.SingleAsync();
+            Assert.AreEqual(edition.Id, file.EditionId);
+            Assert.AreEqual("test.epub", file.FileName);
+            Assert.AreEqual("EPUB", file.Format);
+            Assert.AreEqual("upload", file.SourceKind);
+            Assert.IsTrue(file.ContentHash.Length == 64);
+            Assert.IsTrue(file.SizeBytes > 0);
+            Assert.IsTrue(file.IsPrimary);
         }
         finally
         {
@@ -968,8 +988,25 @@ public sealed class BookCatalogServiceTests
         IBookTranslator? translator = null,
         IReadOnlyDictionary<string, string?>? configuration = null)
     {
+        var values = new Dictionary<string, string?>(
+            StringComparer.OrdinalIgnoreCase)
+        {
+            ["Books:Translation:MemoryPath"] = Path.Combine(
+                Path.GetTempPath(),
+                "anilingo-book-translation-tests",
+                Guid.NewGuid().ToString("N"))
+        };
+
+        if (configuration is not null)
+        {
+            foreach (var pair in configuration)
+            {
+                values[pair.Key] = pair.Value;
+            }
+        }
+
         var config = new ConfigurationBuilder()
-            .AddInMemoryCollection(configuration)
+            .AddInMemoryCollection(values)
             .Build();
 
         return new BookCatalogService(
@@ -1012,6 +1049,9 @@ public sealed class BookCatalogServiceTests
                     <dc:creator>Test Author</dc:creator>
                     <dc:language>en</dc:language>
                     <dc:description>A test story.</dc:description>
+                    <dc:identifier>urn:isbn:978-0-306-40615-7</dc:identifier>
+                    <dc:publisher>Test Publisher</dc:publisher>
+                    <dc:date>2026-09-25</dc:date>
                     <dc:subject>Fantasy</dc:subject>
                   </metadata>
                   <manifest>

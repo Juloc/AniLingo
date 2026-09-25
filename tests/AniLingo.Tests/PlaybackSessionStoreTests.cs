@@ -9,7 +9,7 @@ public sealed class PlaybackSessionStoreTests
     public void PairingTokenIsSingleUseAndSessionCanHaveMultipleParticipants()
     {
         var store = new PlaybackSessionStore();
-        var owner = Guid.NewGuid();
+        var owner = "owner";
         var state = store.Create(owner, Guid.NewGuid(), Initial());
         var firstPairing = store.CreatePairing(state.SessionId, owner)!;
 
@@ -37,7 +37,7 @@ public sealed class PlaybackSessionStoreTests
         var time = new TestTimeProvider(
             new DateTimeOffset(2026, 9, 25, 10, 0, 0, TimeSpan.Zero));
         var store = new PlaybackSessionStore(time);
-        var owner = Guid.NewGuid();
+        var owner = "owner";
         var state = store.Create(owner, Guid.NewGuid(), Initial());
         var pairing = store.CreatePairing(state.SessionId, owner)!;
 
@@ -80,7 +80,7 @@ public sealed class PlaybackSessionStoreTests
     public void StateRevisionMustMatchAndIncrementsMonotonically()
     {
         var store = new PlaybackSessionStore();
-        var owner = Guid.NewGuid();
+        var owner = "owner";
         var state = store.Create(owner, Guid.NewGuid(), Initial());
 
         var updated = store.Update(
@@ -105,7 +105,7 @@ public sealed class PlaybackSessionStoreTests
     public void CommandsRejectUnauthorizedDuplicateAndStaleRequests()
     {
         var store = new PlaybackSessionStore();
-        var owner = Guid.NewGuid();
+        var owner = "owner";
         var state = store.Create(owner, Guid.NewGuid(), Initial());
         var pairing = store.CreatePairing(state.SessionId, owner)!;
         var participant = store.PairWithToken(pairing.Token).Grant!;
@@ -164,7 +164,7 @@ public sealed class PlaybackSessionStoreTests
     public void RevokingParticipantsImmediatelyInvalidatesAccess()
     {
         var store = new PlaybackSessionStore();
-        var owner = Guid.NewGuid();
+        var owner = "owner";
         var state = store.Create(owner, Guid.NewGuid(), Initial());
         var pairing = store.CreatePairing(state.SessionId, owner)!;
         var participant = store.PairWithToken(pairing.Token).Grant!;
@@ -179,7 +179,7 @@ public sealed class PlaybackSessionStoreTests
     public void EndingSessionRemovesEphemeralState()
     {
         var store = new PlaybackSessionStore();
-        var owner = Guid.NewGuid();
+        var owner = "owner";
         var state = store.Create(owner, Guid.NewGuid(), Initial());
 
         Assert.IsTrue(store.End(state.SessionId, owner));
@@ -190,6 +190,8 @@ public sealed class PlaybackSessionStoreTests
         long positionMs = 0,
         bool isPlaying = false) =>
         new(
+            "Anime",
+            "Episode 1",
             positionMs,
             60000,
             isPlaying,
@@ -198,6 +200,7 @@ public sealed class PlaybackSessionStoreTests
             "subtitle:jpn",
             12,
             "日本語です。",
+            [],
             null);
 
     private sealed class TestTimeProvider(DateTimeOffset now)

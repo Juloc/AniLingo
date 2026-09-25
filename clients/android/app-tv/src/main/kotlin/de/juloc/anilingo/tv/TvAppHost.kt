@@ -25,9 +25,16 @@ import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import de.juloc.anilingo.core.player.AniLingoMedia3Player
 import de.juloc.anilingo.core.player.PlaybackTransport
+import de.juloc.anilingo.core.session.PlaybackCommand
+import de.juloc.anilingo.core.session.PlaybackPairing
+import de.juloc.anilingo.core.session.PlaybackSessionToken
+import de.juloc.anilingo.core.session.PlaybackSessionUpdate
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.media3.common.util.UnstableApi
+import java.net.URI
 
 @OptIn(UnstableApi::class)
 @Composable
@@ -51,6 +58,14 @@ fun TvAppHost(
     var selectedAudioTrackId by remember { mutableStateOf<String?>(null) }
     var selectedSubtitleTrackId by remember { mutableStateOf<String?>(null) }
     var cueRefreshRunning by remember { mutableStateOf(false) }
+    var companionRuntime by remember { mutableStateOf<TvCompanionRuntime?>(null) }
+    var companionPairing by remember { mutableStateOf<PlaybackPairing?>(null) }
+    var companionBusy by remember { mutableStateOf(false) }
+    var remoteCommand by remember { mutableStateOf<PlaybackCommand?>(null) }
+    var companionSelectedTermId by remember { mutableStateOf<String?>(null) }
+    var lastCompanionPushAt by remember { mutableLongStateOf(0L) }
+    var lastCompanionCueId by remember { mutableStateOf<Long?>(null) }
+    var lastCompanionPlaying by remember { mutableStateOf<Boolean?>(null) }
 
     val playerRoute = snapshot.navigation.route as? TvRoute.Player
     val episodeBundle = snapshot.episode
@@ -64,7 +79,88 @@ fun TvAppHost(
         }
     }
 
+    fun currentCompanionUpdate(): PlaybackSessionUpdate? {
+        val bundle = snapshot.episode ?: return null
+        val cue = TvCueTimeline.currentCue(
+            bundle.cues,
+            currentPositionMs,
+        )
+        val selectedTermId = companionSelectedTermId?.takeIf { selected ->
+            cue?.tokens?.any { it.termId == selected } == true
+        }
+
+        return PlaybackSessionUpdate(
+            animeTitle = bundle.bootstrap.episode.animeTitle,
+            episodeTitle = bundle.bootstrap.episode.title,
+            positionMs = currentPositionMs.coerceAtLeast(0),
+            durationMs = currentDurationMs.takeIf { it > 0 },
+            isPlaying = player.player.isPlaying,
+            playbackRate = player.player.playbackParameters.speed.toDouble(),
+            audioTrackId = selectedAudioTrackId,
+            subtitleTrackId = selectedSubtitleTrackId,
+            currentCueId = cue?.id,
+            currentCueText = cue?.text,
+            currentCueTokens = cue?.tokens?.map { token ->
+                PlaybackSessionToken(
+                    surface = token.surface,
+                    termId = token.termId,
+                    canonical = token.canonical,
+                    reading = token.reading,
+                    meaning = token.meaning,
+                    state = token.state,
+                )
+            }.orEmpty(),
+            selectedTermId = selectedTermId,
+        )
+    }
+
+    fun endCompanionSession() {
+        val runtime = companionRuntime ?: return
+        companionRuntime = null
+        companionPairing = null
+        companionSelectedTermId = null
+        remoteCommand = null
+        lastCompanionPushAt = 0
+        lastCompanionCueId = null
+        lastCompanionPlaying = null
+
+        scope.launch(Dispatchers.IO) {
+            runCatching { runtime.end() }
+        }
+    }
+
+    fun pushCompanionState(force: Boolean = false) {
+        val runtime = companionRuntime ?: return
+        val update = currentCompanionUpdate() ?: return
+        val cueId = update.currentCueId
+        val playing = update.isPlaying
+        val now = SystemClock.elapsedRealtime()
+        val importantChange =
+            cueId != lastCompanionCueId ||
+                playing != lastCompanionPlaying
+
+        if (!force &&
+            !importantChange &&
+            now - lastCompanionPushAt < 1_000
+        ) {
+            return
+        }
+
+        lastCompanionPushAt = now
+        lastCompanionCueId = cueId
+        lastCompanionPlaying = playing
+
+        scope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    runtime.update(update)
+                }
+            }
+        }
+    }
+
     fun resetPlaybackRuntime() {
+        endCompanionSession()
         player.player.stop()
         openedEpisodeId = null
         currentTransport = null
@@ -108,6 +204,7 @@ fun TvAppHost(
         scope.launch {
             snapshot = controller.refreshCueWindow(positionMs)
             cueRefreshRunning = false
+            pushCompanionState(force = true)
         }
     }
 
@@ -136,6 +233,59 @@ fun TvAppHost(
             forceFallback = false
             openedEpisodeId = null
             currentTransport = null
+        }
+
+        val supportsCompanion =
+            snapshot.capabilities?.features?.playbackSessions == true &&
+                snapshot.capabilities?.features?.companionPairing == true &&
+                snapshot.capabilities?.features?.companionControl == true
+        val origin = settings.origin
+        val initial = currentCompanionUpdate()
+
+        if (supportsCompanion &&
+            origin != null &&
+            initial != null
+        ) {
+            endCompanionSession()
+            val runtime = TvCompanionRuntime(
+                serverOrigin = origin,
+                requestHeaders = cookies::requestHeaders,
+            )
+
+            val started = runCatching {
+                withContext(Dispatchers.IO) {
+                    runtime.start(
+                        episodeId = episodeId,
+                        initial = initial,
+                        onState = { },
+                        onCommand = { command ->
+                            scope.launch {
+                                remoteCommand = command
+                            }
+                        },
+                        onEnded = {
+                            scope.launch {
+                                companionRuntime = null
+                                companionPairing = null
+                                remoteCommand = null
+                            }
+                        },
+                    )
+                }
+            }
+
+            if (started.isSuccess) {
+                companionRuntime = runtime
+                lastCompanionPushAt = SystemClock.elapsedRealtime()
+                lastCompanionCueId = started.getOrNull()?.currentCueId
+                lastCompanionPlaying = started.getOrNull()?.isPlaying
+            } else {
+                runCatching {
+                    withContext(Dispatchers.IO) {
+                        runtime.close()
+                    }
+                }
+            }
         }
     }
 
@@ -372,6 +522,7 @@ fun TvAppHost(
                                     )
                                 ) {
                                     selectedAudioTrackId = id
+                                    pushCompanionState(force = true)
                                 }
                             }
                     },
@@ -386,6 +537,7 @@ fun TvAppHost(
                             )
                         ) {
                             selectedSubtitleTrackId = id
+                            pushCompanionState(force = true)
                         }
                     },
                     onPositionChanged = { position, duration, isPlaying ->
@@ -403,6 +555,7 @@ fun TvAppHost(
                             durationMs = duration,
                         )
                         refreshCueWindowIfNeeded(position)
+                        pushCompanionState()
                     },
                     onSeeked = { position, duration, isPlaying ->
                         currentPositionMs = position
@@ -415,6 +568,7 @@ fun TvAppHost(
                             duration,
                         )
                         refreshCueWindowIfNeeded(position)
+                        pushCompanionState(force = true)
                     },
                     onPlaybackFailure = { position ->
                         resumePositionMs = position
@@ -442,15 +596,86 @@ fun TvAppHost(
                         }
                     },
                     canOpenOnPhone =
-                        snapshot.capabilities?.features?.companionControl == true &&
+                        companionRuntime != null &&
+                            snapshot.capabilities?.features?.companionControl == true &&
                             snapshot.capabilities?.features?.playbackSessions == true,
+                    remoteCommand = remoteCommand,
+                    companionVisible = companionPairing != null,
+                    onCloseCompanion = {
+                        companionPairing = null
+                    },
+                    companionOverlay = companionPairing?.let { pairing ->
+                        {
+                            val origin = settings.origin.orEmpty()
+                            val base = URI(origin.trimEnd('/') + "/")
+                            val companionUrl = base
+                                .resolve(pairing.companionUrl.removePrefix("/"))
+                                .toString()
+
+                            TvCompanionPairingOverlay(
+                                pairing = pairing,
+                                companionUrl = companionUrl,
+                                busy = companionBusy,
+                                onNewCode = {
+                                    val runtime = companionRuntime
+                                    if (runtime != null) {
+                                        scope.launch {
+                                            companionBusy = true
+                                            companionPairing = runCatching {
+                                                withContext(Dispatchers.IO) {
+                                                    runtime.createPairing()
+                                                }
+                                            }.getOrNull()
+                                            companionBusy = false
+                                        }
+                                    }
+                                },
+                                onRevoke = {
+                                    val runtime = companionRuntime
+                                    if (runtime != null) {
+                                        scope.launch {
+                                            companionBusy = true
+                                            runCatching {
+                                                withContext(Dispatchers.IO) {
+                                                    runtime.revoke()
+                                                }
+                                            }
+                                            companionPairing = null
+                                            companionBusy = false
+                                        }
+                                    }
+                                },
+                                onClose = {
+                                    companionPairing = null
+                                },
+                            )
+                        }
+                    },
                     onSetTermState = { termId, state ->
                         scope.launch {
                             snapshot = controller.setTermState(termId, state)
+                            pushCompanionState(force = true)
                         }
                     },
-                    onOpenOnPhone = { _, _ ->
-                        // Companion is intentionally hidden until server capability is enabled.
+                    onSelectedTermChanged = { termId ->
+                        companionSelectedTermId = termId
+                        pushCompanionState(force = true)
+                    },
+                    onOpenOnPhone = { _, termId ->
+                        companionSelectedTermId = termId
+                        pushCompanionState(force = true)
+                        val runtime = companionRuntime
+                        if (runtime != null) {
+                            scope.launch {
+                                companionBusy = true
+                                companionPairing = runCatching {
+                                    withContext(Dispatchers.IO) {
+                                        runtime.createPairing()
+                                    }
+                                }.getOrNull()
+                                companionBusy = false
+                            }
+                        }
                     },
                     onExit = {
                         val write = progressPolicy.evaluate(

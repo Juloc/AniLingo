@@ -6,11 +6,14 @@ using AniLingo.Web.Features.Books;
 using AniLingo.Web.Features.ClientApi;
 using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Library;
+using AniLingo.Web.Features.MediaMapping;
 using AniLingo.Web.Features.Metadata;
 using AniLingo.Web.Features.Novels;
 using AniLingo.Web.Features.Operations;
 using AniLingo.Web.Features.Playback;
+using AniLingo.Web.Features.PlaybackSessions;
 using AniLingo.Web.Features.Progress;
+using AniLingo.Web.Features.ReaderThemes;
 using AniLingo.Web.Features.Sonarr;
 using AniLingo.Web.Features.Statistics;
 using AniLingo.Web.Features.Storage;
@@ -35,6 +38,7 @@ Console.WriteLine($"[AniLingo] {DateTimeOffset.UtcNow:O} Process starting.");
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddRazorPages();
+builder.Services.AddSignalR();
 builder.Services.Configure<MediaOptions>(builder.Configuration.GetSection(MediaOptions.SectionName));
 
 var dataProtectionDirectory = new DirectoryInfo("/data/keys");
@@ -199,6 +203,7 @@ builder.Services.AddScoped<PlaybackPreparationService>();
 builder.Services.AddScoped<PlaybackService>();
 builder.Services.AddScoped<EpisodeProgressService>();
 builder.Services.AddScoped<ClientApiService>();
+builder.Services.AddSingleton<ReaderThemeCatalog>();
 
 builder.Services.AddHttpClient<AniListMetadataProvider>(client =>
 {
@@ -249,6 +254,8 @@ builder.Services.AddSingleton<SonarrConnectionStore>();
 builder.Services.AddScoped<SonarrArtworkImportService>();
 builder.Services.AddScoped<SonarrArtworkSyncService>();
 
+builder.Services.AddSingleton<MediaMappingReviewStore>();
+builder.Services.AddSingleton<ReadingSegmentMappingStore>();
 builder.Services.AddSingleton<AniListAccountStore>();
 builder.Services.AddHttpClient<AniListAccountService>(client =>
 {
@@ -258,17 +265,28 @@ builder.Services.AddHttpClient<AniListAccountService>(client =>
 });
 
 builder.Services.AddSingleton<CodexCliProvider>();
-builder.Services.AddSingleton<IAiProvider>(services => services.GetRequiredService<CodexCliProvider>());
-builder.Services.AddSingleton<IAiSentenceExplainer>(services => services.GetRequiredService<CodexCliProvider>());
-builder.Services.AddSingleton<INovelTranslator>(services => services.GetRequiredService<CodexCliProvider>());
-builder.Services.AddSingleton<IBookTranslator>(services => services.GetRequiredService<CodexCliProvider>());
-builder.Services.AddSingleton<INovelMappingSuggester>(services => services.GetRequiredService<CodexCliProvider>());
+builder.Services.AddSingleton<AiProfileSettingsStore>();
+builder.Services.AddSingleton<AiUsageTracker>();
+builder.Services.AddHttpClient("ai-openai-compatible", client =>
+{
+    client.Timeout = TimeSpan.FromMinutes(4);
+    client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
+});
+builder.Services.AddScoped<ProfileAiProviderRouter>();
+builder.Services.AddScoped<IAiProvider>(services => services.GetRequiredService<ProfileAiProviderRouter>());
+builder.Services.AddScoped<IAiSentenceExplainer>(services => services.GetRequiredService<ProfileAiProviderRouter>());
+builder.Services.AddScoped<INovelTranslator>(services => services.GetRequiredService<ProfileAiProviderRouter>());
+builder.Services.AddScoped<IBookTranslator>(services => services.GetRequiredService<ProfileAiProviderRouter>());
+builder.Services.AddScoped<INovelMappingSuggester>(services => services.GetRequiredService<ProfileAiProviderRouter>());
 builder.Services.AddScoped<AiSentenceExplanationService>();
 
 builder.Services.AddSingleton<BackgroundJobQueue>();
 builder.Services.AddHostedService<BackgroundJobWorker>();
 builder.Services.AddSingleton<PlaybackJobQueue>();
 builder.Services.AddHostedService<PlaybackJobWorker>();
+builder.Services.AddSingleton<PlaybackSessionStore>();
+builder.Services.AddSingleton<PlaybackSessionConnectionRegistry>();
+builder.Services.AddSingleton<PlaybackSessionCoordinator>();
 
 var app = builder.Build();
 
@@ -284,6 +302,9 @@ app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapClientApiV1();
+app.MapHub<PlaybackSessionHub>(PlaybackSessionHub.Route)
+    .AllowAnonymous();
+app.MapReaderThemeCatalog();
 app.MapRazorPages();
 
 try

@@ -1,6 +1,7 @@
 using AniLingo.Web.Features.Ai;
 using AniLingo.Web.Features.ReaderPreferences;
 using AniLingo.Web.Features.Auth;
+using AniLingo.Web.Features.Books;
 using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Library;
 using AniLingo.Web.Features.Metadata;
@@ -30,6 +31,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<OwnerAccount> OwnerAccounts => Set<OwnerAccount>();
     public DbSet<EpisodeProgress> EpisodeProgress => Set<EpisodeProgress>();
     public DbSet<NovelWork> NovelWorks => Set<NovelWork>();
+    public DbSet<BookEdition> BookEditions => Set<BookEdition>();
+    public DbSet<BookFile> BookFiles => Set<BookFile>();
     public DbSet<NovelChapter> NovelChapters => Set<NovelChapter>();
     public DbSet<NovelTranslation> NovelTranslations => Set<NovelTranslation>();
     public DbSet<NovelProgress> NovelProgress => Set<NovelProgress>();
@@ -204,6 +207,49 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasIndex(x => new { x.MetadataProvider, x.MetadataExternalId }).IsUnique();
         });
 
+        modelBuilder.Entity<BookEdition>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.EditionKey).HasMaxLength(120);
+            entity.Property(x => x.Language).HasMaxLength(16);
+            entity.Property(x => x.Isbn10).HasMaxLength(10);
+            entity.Property(x => x.Isbn13).HasMaxLength(13);
+            entity.Property(x => x.Publisher).HasMaxLength(300);
+            entity.Property(x => x.PublishedDate).HasMaxLength(80);
+            entity.Property(x => x.Title).HasMaxLength(500);
+            entity.Property(x => x.Author).HasMaxLength(300);
+            entity.Property(x => x.SourceProvider).HasMaxLength(80);
+            entity.Property(x => x.SourceExternalId).HasMaxLength(200);
+            entity.HasOne<NovelWork>()
+                .WithMany()
+                .HasForeignKey(x => x.WorkId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(x => new { x.WorkId, x.EditionKey }).IsUnique();
+            entity.HasIndex(x => new { x.WorkId, x.IsPrimary });
+            entity.HasIndex(x => x.Isbn13);
+            entity.HasIndex(x => x.Isbn10);
+        });
+
+        modelBuilder.Entity<BookFile>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.FileKey).HasMaxLength(120);
+            entity.Property(x => x.FileName).HasMaxLength(500);
+            entity.Property(x => x.Format).HasMaxLength(32);
+            entity.Property(x => x.MediaType).HasMaxLength(120);
+            entity.Property(x => x.SourceKind).HasMaxLength(80);
+            entity.Property(x => x.SourceUrl).HasMaxLength(2048);
+            entity.Property(x => x.ContentHash).HasMaxLength(64);
+            entity.Property(x => x.StoragePath).HasMaxLength(2048);
+            entity.HasOne<BookEdition>()
+                .WithMany()
+                .HasForeignKey(x => x.EditionId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(x => new { x.EditionId, x.FileKey }).IsUnique();
+            entity.HasIndex(x => new { x.EditionId, x.IsPrimary });
+            entity.HasIndex(x => x.ContentHash);
+        });
+
         modelBuilder.Entity<NovelChapter>(entity =>
         {
             entity.HasKey(x => x.Id);
@@ -283,6 +329,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(x => x.PaperStyle).HasMaxLength(32);
             entity.Property(x => x.GenreTheme).HasMaxLength(48);
             entity.Property(x => x.BackgroundAssetId).HasMaxLength(120);
+            entity.Property(x => x.BackgroundMotionMode).HasMaxLength(24);
             entity.Property(x => x.BookmarkStyle).HasMaxLength(24);
             entity.Property(x => x.BookmarkColor).HasMaxLength(16);
             entity.HasOne<NovelWork>().WithMany().HasForeignKey(x => x.WorkId).OnDelete(DeleteBehavior.Cascade);

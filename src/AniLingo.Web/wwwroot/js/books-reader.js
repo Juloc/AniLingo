@@ -50,6 +50,17 @@
         genreTheme: "auto",
         backgroundAssetId: "auto",
         backgroundIntensity: 0.055,
+        backgroundMotionMode: "auto",
+        themeEffectStrength: 1,
+        themeBrightness: 1,
+        themeContrast: 1,
+        themeSaturation: 1,
+        themeBlurPx: 0,
+        themeVignetteStrength: 1,
+        themeGrainStrength: 1,
+        themeTextBackdropStrength: 1,
+        themeParallaxStrength: 1,
+        themeTintStrength: 1,
         bookmarkStyle: "fabric",
         bookmarkColor: "#b04455",
         hasBookOverride: false
@@ -213,6 +224,21 @@
         if (key === "lineHeight") return Number(value).toFixed(2);
         if (key === "paragraphSpacingEm") return Number(value).toFixed(1) + " em";
         if (key === "textWidthPx") return Math.round(Number(value)) + " px";
+        if (key === "backgroundIntensity") return Math.round(Number(value) * 100) + "%";
+        if (key === "themeBlurPx") return Number(value).toFixed(1) + " px";
+        if ([
+            "themeEffectStrength",
+            "themeBrightness",
+            "themeContrast",
+            "themeSaturation",
+            "themeVignetteStrength",
+            "themeGrainStrength",
+            "themeTextBackdropStrength",
+            "themeParallaxStrength",
+            "themeTintStrength"
+        ].includes(key)) {
+            return Math.round(Number(value) * 100) + "%";
+        }
         return String(value == null ? "" : value);
     }
 
@@ -260,6 +286,17 @@
             genreTheme: "Settings.GenreTheme",
             backgroundAssetId: "Settings.BackgroundAssetId",
             backgroundIntensity: "Settings.BackgroundIntensity",
+            backgroundMotionMode: "Settings.BackgroundMotionMode",
+            themeEffectStrength: "Settings.ThemeEffectStrength",
+            themeBrightness: "Settings.ThemeBrightness",
+            themeContrast: "Settings.ThemeContrast",
+            themeSaturation: "Settings.ThemeSaturation",
+            themeBlurPx: "Settings.ThemeBlurPx",
+            themeVignetteStrength: "Settings.ThemeVignetteStrength",
+            themeGrainStrength: "Settings.ThemeGrainStrength",
+            themeTextBackdropStrength: "Settings.ThemeTextBackdropStrength",
+            themeParallaxStrength: "Settings.ThemeParallaxStrength",
+            themeTintStrength: "Settings.ThemeTintStrength",
             bookmarkStyle: "Settings.BookmarkStyle",
             bookmarkColor: "Settings.BookmarkColor"
         };
@@ -325,6 +362,10 @@
         }
 
         syncSettingControls();
+
+        root.dispatchEvent(new CustomEvent("anilingo:reader-settings", {
+            detail: { settings }
+        }));
 
         if (settings.readingMode !== "continuous") {
             stopAutoScroll();
@@ -501,7 +542,24 @@
                 const key = control.dataset.bookSetting;
                 let value = control.type === "checkbox" ? control.checked : control.value;
 
-                if (["autoScrollSpeed", "fontSizeRem", "lineHeight", "paragraphSpacingEm", "textWidthPx"].includes(key)) {
+                if ([
+                    "autoScrollSpeed",
+                    "fontSizeRem",
+                    "lineHeight",
+                    "paragraphSpacingEm",
+                    "textWidthPx",
+                    "backgroundIntensity",
+                    "themeEffectStrength",
+                    "themeBrightness",
+                    "themeContrast",
+                    "themeSaturation",
+                    "themeBlurPx",
+                    "themeVignetteStrength",
+                    "themeGrainStrength",
+                    "themeTextBackdropStrength",
+                    "themeParallaxStrength",
+                    "themeTintStrength"
+                ].includes(key)) {
                     value = Number(value);
                 }
 

@@ -1,5 +1,6 @@
 using System.Text;
 using AniLingo.Web.Data;
+using AniLingo.Web.Features.Ai;
 using Microsoft.EntityFrameworkCore;
 
 namespace AniLingo.Web.Features.Novels;
@@ -59,7 +60,6 @@ public sealed class NovelTranslationService(
                 on translation.ChapterId equals chapter.Id
             where translation.ChapterId == chapterId &&
                 translation.TargetLanguage == targetLanguage &&
-                translation.ProviderId == translator.Id &&
                 translation.PromptVersion == PromptVersion &&
                 translation.SourceHash == chapter.SourceHash
             orderby translation.CreatedAt descending
@@ -84,6 +84,11 @@ public sealed class NovelTranslationService(
 
         if (cached is not null)
         {
+            if (translator is IAiUsageReporter usageReporter)
+            {
+                usageReporter.RecordCacheHit("novel-chapter-translation");
+            }
+
             return cached;
         }
 
@@ -98,6 +103,11 @@ public sealed class NovelTranslationService(
 
             if (cached is not null)
             {
+                if (translator is IAiUsageReporter usageReporter)
+                {
+                    usageReporter.RecordCacheHit("novel-chapter-translation");
+                }
+
                 return cached;
             }
 
@@ -188,8 +198,7 @@ public sealed class NovelTranslationService(
 
             if (builder.Length > 0)
             {
-                builder.AppendLine();
-                builder.AppendLine();
+                builder.Append("\n\n");
             }
 
             builder.Append(remaining);
@@ -212,7 +221,6 @@ public sealed class NovelTranslationService(
             .AsNoTracking()
             .Where(x => x.ChapterId == chapterId &&
                 x.TargetLanguage == targetLanguage &&
-                x.ProviderId == translator.Id &&
                 x.PromptVersion == PromptVersion &&
                 x.SourceHash == sourceHash)
             .OrderByDescending(x => x.CreatedAt)

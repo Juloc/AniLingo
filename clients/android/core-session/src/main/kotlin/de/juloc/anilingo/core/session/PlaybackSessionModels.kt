@@ -1,44 +1,79 @@
 package de.juloc.anilingo.core.session
 
+data class PlaybackSessionToken(
+    val surface: String,
+    val termId: String?,
+    val canonical: String?,
+    val reading: String?,
+    val meaning: String?,
+    val state: String,
+)
+
 data class PlaybackSessionSnapshot(
     val sessionId: String,
     val episodeId: String,
+    val animeTitle: String,
+    val episodeTitle: String,
     val positionMs: Long,
-    val durationMs: Long,
+    val durationMs: Long?,
     val isPlaying: Boolean,
-    val playbackRate: Float,
+    val playbackRate: Double,
     val audioTrackId: String?,
     val subtitleTrackId: String?,
-    val currentCueId: String?,
+    val currentCueId: Long?,
     val currentCueText: String?,
+    val currentCueTokens: List<PlaybackSessionToken>,
     val selectedTermId: String?,
     val revision: Long,
     val updatedAtUtc: String,
-    val controllerClientId: String?,
+)
+
+data class PlaybackSessionUpdate(
+    val animeTitle: String,
+    val episodeTitle: String,
+    val positionMs: Long,
+    val durationMs: Long?,
+    val isPlaying: Boolean,
+    val playbackRate: Double = 1.0,
+    val audioTrackId: String?,
+    val subtitleTrackId: String?,
+    val currentCueId: Long?,
+    val currentCueText: String?,
+    val currentCueTokens: List<PlaybackSessionToken>,
+    val selectedTermId: String?,
+)
+
+data class PlaybackSessionOwner(
+    val state: PlaybackSessionSnapshot,
+    val hubUrl: String,
+)
+
+data class PlaybackPairing(
+    val sessionId: String,
+    val code: String,
+    val token: String,
+    val companionUrl: String,
+    val expiresAtUtc: String,
+)
+
+data class PlaybackParticipant(
+    val sessionId: String,
+    val accessToken: String,
+    val state: PlaybackSessionSnapshot,
+    val hubUrl: String,
 )
 
 data class PlaybackCommand(
     val commandId: String,
     val sessionId: String,
     val expectedRevision: Long,
-    val type: PlaybackCommandType,
+    val type: String,
     val payload: Map<String, String> = emptyMap(),
     val sentAtUtc: String,
 )
 
-enum class PlaybackCommandType {
-    PLAY_PAUSE,
-    SEEK_BACK_10,
-    SEEK_FORWARD_10,
-    SEEK_TO,
-    SELECT_AUDIO_TRACK,
-    SELECT_SUBTITLE_TRACK,
-    REPEAT_CURRENT_CUE,
-    LEARN_CURRENT_CUE,
-    OPEN_WORD,
-    MARK_KNOWN,
-    ADD_TO_LEARNING,
-    OPEN_COMPANION,
-    CLOSE_OVERLAY,
-    EXIT_PLAYER,
-}
+data class PlaybackCommandResponse(
+    val acceptance: String,
+    val state: PlaybackSessionSnapshot?,
+    val command: PlaybackCommand?,
+)

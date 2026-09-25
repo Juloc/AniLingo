@@ -115,6 +115,17 @@ namespace AniLingo.Web.Data.Migrations
                     b.Property<double?>("AutoScrollSpeed").HasColumnType("REAL");
                     b.Property<double?>("BackgroundIntensity").HasColumnType("REAL");
                     b.Property<string>("BackgroundAssetId").HasMaxLength(120).HasColumnType("TEXT");
+                    b.Property<string>("BackgroundMotionMode").HasMaxLength(24).HasColumnType("TEXT");
+                    b.Property<double?>("ThemeEffectStrength").HasColumnType("REAL");
+                    b.Property<double?>("ThemeBrightness").HasColumnType("REAL");
+                    b.Property<double?>("ThemeContrast").HasColumnType("REAL");
+                    b.Property<double?>("ThemeSaturation").HasColumnType("REAL");
+                    b.Property<double?>("ThemeBlurPx").HasColumnType("REAL");
+                    b.Property<double?>("ThemeVignetteStrength").HasColumnType("REAL");
+                    b.Property<double?>("ThemeGrainStrength").HasColumnType("REAL");
+                    b.Property<double?>("ThemeTextBackdropStrength").HasColumnType("REAL");
+                    b.Property<double?>("ThemeParallaxStrength").HasColumnType("REAL");
+                    b.Property<double?>("ThemeTintStrength").HasColumnType("REAL");
                     b.Property<string>("BookmarkColor").HasMaxLength(16).HasColumnType("TEXT");
                     b.Property<string>("BookmarkStyle").HasMaxLength(24).HasColumnType("TEXT");
                     b.Property<string>("ChapterStyle").HasMaxLength(32).HasColumnType("TEXT");
@@ -719,6 +730,53 @@ namespace AniLingo.Web.Data.Migrations
                     b.ToTable("NovelTranslations");
                 });
 
+            modelBuilder.Entity("AniLingo.Web.Features.Books.BookEdition", b =>
+                {
+                    b.Property<Guid>("Id").ValueGeneratedOnAdd().HasColumnType("TEXT");
+                    b.Property<string>("Author").HasMaxLength(300).HasColumnType("TEXT");
+                    b.Property<DateTime>("CreatedAt").HasColumnType("TEXT");
+                    b.Property<string>("EditionKey").IsRequired().HasMaxLength(120).HasColumnType("TEXT");
+                    b.Property<bool>("IsPrimary").HasColumnType("INTEGER");
+                    b.Property<string>("Isbn10").HasMaxLength(10).HasColumnType("TEXT");
+                    b.Property<string>("Isbn13").HasMaxLength(13).HasColumnType("TEXT");
+                    b.Property<string>("Language").IsRequired().HasMaxLength(16).HasColumnType("TEXT");
+                    b.Property<string>("PublishedDate").HasMaxLength(80).HasColumnType("TEXT");
+                    b.Property<string>("Publisher").HasMaxLength(300).HasColumnType("TEXT");
+                    b.Property<string>("SourceExternalId").HasMaxLength(200).HasColumnType("TEXT");
+                    b.Property<string>("SourceProvider").HasMaxLength(80).HasColumnType("TEXT");
+                    b.Property<string>("Title").HasMaxLength(500).HasColumnType("TEXT");
+                    b.Property<DateTime>("UpdatedAt").HasColumnType("TEXT");
+                    b.Property<Guid>("WorkId").HasColumnType("TEXT");
+                    b.HasKey("Id");
+                    b.HasIndex("Isbn10");
+                    b.HasIndex("Isbn13");
+                    b.HasIndex("WorkId", "EditionKey").IsUnique();
+                    b.HasIndex("WorkId", "IsPrimary");
+                    b.ToTable("BookEditions");
+                });
+
+            modelBuilder.Entity("AniLingo.Web.Features.Books.BookFile", b =>
+                {
+                    b.Property<Guid>("Id").ValueGeneratedOnAdd().HasColumnType("TEXT");
+                    b.Property<string>("ContentHash").IsRequired().HasMaxLength(64).HasColumnType("TEXT");
+                    b.Property<Guid>("EditionId").HasColumnType("TEXT");
+                    b.Property<string>("FileKey").IsRequired().HasMaxLength(120).HasColumnType("TEXT");
+                    b.Property<string>("FileName").IsRequired().HasMaxLength(500).HasColumnType("TEXT");
+                    b.Property<string>("Format").IsRequired().HasMaxLength(32).HasColumnType("TEXT");
+                    b.Property<DateTime>("ImportedAt").HasColumnType("TEXT");
+                    b.Property<bool>("IsPrimary").HasColumnType("INTEGER");
+                    b.Property<string>("MediaType").IsRequired().HasMaxLength(120).HasColumnType("TEXT");
+                    b.Property<long>("SizeBytes").HasColumnType("INTEGER");
+                    b.Property<string>("SourceKind").IsRequired().HasMaxLength(80).HasColumnType("TEXT");
+                    b.Property<string>("SourceUrl").HasMaxLength(2048).HasColumnType("TEXT");
+                    b.Property<string>("StoragePath").HasMaxLength(2048).HasColumnType("TEXT");
+                    b.HasKey("Id");
+                    b.HasIndex("ContentHash");
+                    b.HasIndex("EditionId", "FileKey").IsUnique();
+                    b.HasIndex("EditionId", "IsPrimary");
+                    b.ToTable("BookFiles");
+                });
+
             modelBuilder.Entity("AniLingo.Web.Features.Novels.NovelWork", b =>
                 {
                     b.Property<Guid>("Id").ValueGeneratedOnAdd().HasColumnType("TEXT");
@@ -854,6 +912,24 @@ namespace AniLingo.Web.Data.Migrations
                     b.HasOne("AniLingo.Web.Features.Novels.NovelWork", null)
                         .WithMany()
                         .HasForeignKey("WorkId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("AniLingo.Web.Features.Books.BookEdition", b =>
+                {
+                    b.HasOne("AniLingo.Web.Features.Novels.NovelWork", null)
+                        .WithMany()
+                        .HasForeignKey("WorkId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("AniLingo.Web.Features.Books.BookFile", b =>
+                {
+                    b.HasOne("AniLingo.Web.Features.Books.BookEdition", null)
+                        .WithMany()
+                        .HasForeignKey("EditionId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

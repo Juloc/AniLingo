@@ -38,6 +38,18 @@ class PlaybackSelectorTest {
     }
 
     @Test
+    fun hlsIsPreferredWhenServerAdvertisesSeekableHlsFallback() {
+        assertEquals(
+            PlaybackTransport.HLS_FALLBACK,
+            PlaybackSelector.select(
+                capabilities(hls = true, liveMp4 = true),
+                bootstrap(fallbackKind = "hls"),
+                DevicePlaybackSupport(directContainerAndCodecSupported = false),
+            ),
+        )
+    }
+
+    @Test
     fun storageFailureNeverFallsThroughToCodecFallback() {
         val exception = assertThrows(StorageUnavailableException::class.java) {
             PlaybackSelector.select(
@@ -79,6 +91,7 @@ class PlaybackSelectorTest {
 
     private fun bootstrap(
         storageState: String = "available",
+        fallbackKind: String = "live-fragmented-mp4",
     ) = PlayerBootstrap(
         apiVersion = 1,
         episode = PlayerEpisode(
@@ -120,7 +133,7 @@ class PlaybackSelectorTest {
         defaultSubtitleTrackId = null,
         fallback = CompatibilityFallback(
             available = true,
-            kind = "live-fragmented-mp4",
+            kind = fallbackKind,
             seekableWithinStream = false,
             canRestartAtPosition = true,
             url = "/fallback",
