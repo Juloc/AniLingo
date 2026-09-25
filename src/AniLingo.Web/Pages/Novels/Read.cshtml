@@ -39,11 +39,13 @@
 @section Head {
     <link rel="stylesheet" href="~/css/novels.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/reader-themes.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/reader-shell.css" asp-append-version="true" />
 }
 @section Scripts {
     <script src="~/js/novel-reader.js" asp-append-version="true"></script>
     <script src="~/js/reader-themes.js" asp-append-version="true"></script>
     <script src="~/js/reader-personalization.js" asp-append-version="true"></script>
+    <script src="~/js/reader-shell.js" asp-append-version="true"></script>
 }
 
 <div class="novel-reading-progress" aria-hidden="true">
@@ -55,6 +57,9 @@
 
 <div class="novel-reader-shell"
      data-novel-reader
+     data-unified-reader
+     data-reader-content-type="@Model.ReaderDocument.ContentTypeKey"
+     data-reader-layout="@Model.ReaderDocument.LayoutKind.ToString().ToLowerInvariant()"
      data-work-id="@Model.Work.Id"
      data-chapter-id="@Model.Chapter.Id"
      data-view="@initialLanguage"
@@ -74,7 +79,7 @@
      data-genre-artwork="@Model.ReaderSettings.GenreArtworkEnabled.ToString().ToLowerInvariant()"
      data-two-page="@Model.ReaderSettings.TwoPageSpread.ToString().ToLowerInvariant()">
 
-    <nav class="novel-reader-toolbar" aria-label="Reader controls">
+    <nav class="novel-reader-toolbar" data-reader-chrome data-reader-chrome-primary aria-label="Reader controls">
         <div class="novel-toolbar-start">
             <a class="novel-icon-button"
                asp-page="/Novels/Work"
@@ -99,7 +104,7 @@
             </div>
         </div>
 
-        <div class="novel-view-switch" role="group" aria-label="Lesesprache">
+        <div class="novel-view-switch" data-reader-language-control role="group" aria-label="Lesesprache">
             <button type="button" data-reader-view="ja" aria-label="Japanisch">JP</button>
             <button type="button"
                     data-reader-view="de"
@@ -172,13 +177,18 @@
                 </svg>
             </button>
 
-            <details class="novel-reader-settings" data-reader-settings-panel>
+            <details class="novel-reader-settings"
+                     data-reader-settings-panel
+                     data-reader-settings-container>
                 <summary class="novel-icon-button" aria-label="Leseeinstellungen" title="Leseeinstellungen">Aa</summary>
                 <form class="novel-settings-popover"
                       method="post"
                       asp-page-handler="ReaderSettings"
                       asp-route-id="@Model.Chapter.Id"
                       data-reader-settings-form>
+                    <input type="hidden" name="scope" value="work" />
+                    <input type="hidden" name="genre" value="" />
+                    <input type="hidden" name="genrePriority" value="500" />
                     <div class="novel-settings-heading">
                         <strong>Leseeinstellungen</strong>
                         <span data-reader-override-state>
@@ -473,7 +483,7 @@
         }
     </div>
 
-    <main class="novel-reader-content" data-reader-content>
+    <main class="novel-reader-content" data-reader-content data-reader-surface>
         <header class="novel-reader-title novel-reader-page-title">
             <span class="novel-chapter-label">Kapitel @Model.Chapter.Number</span>
             <h1>@Model.Chapter.Title</h1>
@@ -505,6 +515,7 @@
 
     <nav class="novel-page-controls"
          data-reader-page-controls
+         data-reader-chrome
          hidden
          aria-label="Seitennavigation">
         <button type="button" class="novel-page-button" data-reader-page-prev aria-label="Vorherige Seite">←</button>
