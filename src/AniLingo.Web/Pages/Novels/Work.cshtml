@@ -68,6 +68,17 @@
                 <a class="button button-primary novel-primary-action" href="/Novels/Read/@firstChapter.Id">Start reading</a>
             }
 
+            <a class="button"
+               href="@Url.Page("/Settings/LearningScope", new {
+                   mediaType = AniLingo.Web.Features.Learning.LearningMediaType.Novel,
+                   scope = "work",
+                   workKey = work.Id.ToString(),
+                   label = work.MetadataTitle ?? work.Title,
+                   returnUrl = $"/Novels/Work/{work.Id}"
+               })">
+                Language tools &amp; Learning
+            </a>
+
             <a class="novel-source-link" href="@work.SourceUrl" target="_blank" rel="noreferrer">
                 Source ↗
             </a>

@@ -63,6 +63,25 @@ public sealed class EpisodeModel(
     public string? SubtitleNotice => TempData["SubtitleNotice"] as string;
     public string? SubtitleError => TempData["SubtitleError"] as string;
     public bool IsOwner => currentAccount.IsOwner;
+    public LearningResolvedSettings LearningSettings { get; private set; } =
+        new(
+            LearningMode.Off,
+            LearningConfigurationDefaults.For(LearningMode.Off));
+    public bool ShowContentMetrics =>
+        LearningSettings.IsEnabled(LearningCapability.ContentMetrics);
+    public bool ShowPreparationSuggestions =>
+        LearningSettings.IsEnabled(LearningCapability.PreparationSuggestions);
+    public bool ShowVocabularyTools =>
+        LearningSettings.IsEnabled(LearningCapability.Vocabulary);
+    public bool ShowPlayerTools =>
+        LearningSettings.IsEnabled(LearningCapability.PlayerTools);
+    public bool NeedsLearningSource =>
+        ShowContentMetrics
+        || ShowPreparationSuggestions
+        || ShowVocabularyTools
+        || ShowPlayerTools
+        || LearningSettings.IsEnabled(LearningCapability.LanguageLookup)
+        || LearningSettings.IsEnabled(LearningCapability.SentencePractice);
 
     public async Task<IActionResult> OnGetAsync(Guid id, CancellationToken cancellationToken)
     {
@@ -92,14 +111,29 @@ public sealed class EpisodeModel(
         EpisodeTitle = header.Title;
         SeasonNumber = header.SeasonNumber;
         EpisodeNumber = header.Number;
-        Preparation = await preparationService.GetAsync(id, header.AnimeId, cancellationToken);
+        LearningSettings = await new LearningConfigurationStore(db).ResolveAsync(
+            currentAccount.ProfileId,
+            new LearningScopeContext(
+                LearningMediaType.Anime,
+                WorkKey: header.AnimeId.ToString(),
+                ContentKey: id.ToString()),
+            cancellationToken);
+
+        if (NeedsLearningSource)
+        {
+            Preparation = await preparationService.GetAsync(
+                id,
+                header.AnimeId,
+                cancellationToken);
+        }
+
         Playback = await playbackService.GetSnapshotAsync(id, cancellationToken);
         LocalProgress = await episodeProgressService.GetAsync(id, cancellationToken);
         AniListProgress = await aniListAccountService.GetEpisodeProgressPreviewAsync(
             id,
             cancellationToken);
 
-        if (IsOwner)
+        if (IsOwner && NeedsLearningSource)
         {
             await LoadSubtitleSourcesAsync(
                 id,
@@ -110,6 +144,7 @@ public sealed class EpisodeModel(
         }
 
         if (IsOwner &&
+            NeedsLearningSource &&
             ActiveSubtitle is null &&
             Playback.Media is { Storage.IsAvailable: true } media)
         {
@@ -358,15 +393,43 @@ public sealed class EpisodeModel(
         return RedirectToPage(new { id });
     }
 
-    public async Task<IActionResult> OnPostKnownAsync(Guid id, Guid termId, CancellationToken cancellationToken)
+    public async Task<IActionResult> OnPostKnownAsync(
+        Guid id,
+        Guid termId,
+        CancellationToken cancellationToken)
     {
-        await learningService.SetStateAsync(termId, UserTermState.Known, cancellationToken);
+        if (!await IsCapabilityEnabledAsync(
+                id,
+                LearningCapability.Vocabulary,
+                cancellationToken))
+        {
+            return Forbid();
+        }
+
+        await learningService.SetStateAsync(
+            termId,
+            UserTermState.Known,
+            cancellationToken);
         return RedirectToPage(new { id });
     }
 
-    public async Task<IActionResult> OnPostLearningAsync(Guid id, Guid termId, CancellationToken cancellationToken)
+    public async Task<IActionResult> OnPostLearningAsync(
+        Guid id,
+        Guid termId,
+        CancellationToken cancellationToken)
     {
-        await learningService.SetStateAsync(termId, UserTermState.Learning, cancellationToken);
+        if (!await IsCapabilityEnabledAsync(
+                id,
+                LearningCapability.Vocabulary,
+                cancellationToken))
+        {
+            return Forbid();
+        }
+
+        await learningService.SetStateAsync(
+            termId,
+            UserTermState.Learning,
+            cancellationToken);
         return RedirectToPage(new { id });
     }
 
@@ -396,8 +459,18 @@ public sealed class EpisodeModel(
         return requestedStart.Value;
     }
 
-    public async Task<IActionResult> OnPostPrepareAsync(Guid id, CancellationToken cancellationToken)
+    public async Task<IActionResult> OnPostPrepareAsync(
+        Guid id,
+        CancellationToken cancellationToken)
     {
+        if (!await IsCapabilityEnabledAsync(
+                id,
+                LearningCapability.PreparationSuggestions,
+                cancellationToken))
+        {
+            return Forbid();
+        }
+
         var preparedCount = await operations.RunAsync(
             new OperationDescriptor(
                 "episode-learning-preparation",
@@ -426,5 +499,32 @@ public sealed class EpisodeModel(
         }
 
         return RedirectToPage("/Learn/Index");
+    }
+
+    private async Task<bool> IsCapabilityEnabledAsync(
+        Guid episodeId,
+        LearningCapability capability,
+        CancellationToken cancellationToken)
+    {
+        var animeId = await db.Episodes
+            .AsNoTracking()
+            .Where(x => x.Id == episodeId)
+            .Select(x => (Guid?)x.AnimeId)
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (animeId is null)
+        {
+            return false;
+        }
+
+        var resolved = await new LearningConfigurationStore(db).ResolveAsync(
+            currentAccount.ProfileId,
+            new LearningScopeContext(
+                LearningMediaType.Anime,
+                WorkKey: animeId.Value.ToString(),
+                ContentKey: episodeId.ToString()),
+            cancellationToken);
+
+        return resolved.IsEnabled(capability);
     }
 }

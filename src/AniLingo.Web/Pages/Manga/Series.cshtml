@@ -60,6 +60,17 @@
             {
                 <a class="button button-primary" href="/Manga/Read/@first.Id">Start reading</a>
             }
+
+            <a class="button"
+               href="@Url.Page("/Settings/LearningScope", new {
+                   mediaType = AniLingo.Web.Features.Learning.LearningMediaType.Manga,
+                   scope = "work",
+                   workKey = series.Id.ToString(),
+                   label = series.Title,
+                   returnUrl = $"/Manga/Series/{series.Id}"
+               })">
+                Language tools &amp; Learning
+            </a>
         </div>
     </div>
 </header>

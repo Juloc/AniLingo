@@ -32,6 +32,7 @@ public sealed class AnimeModel(
     public int SuggestedMappingSeason { get; private set; }
     public int SuggestedMappingEpisodeStart { get; private set; } = 1;
     public bool IsOwner => currentAccount.IsOwner;
+    public bool ShowContentMetrics { get; private set; }
 
     public async Task<IActionResult> OnGetAsync(
         Guid id,
@@ -58,6 +59,15 @@ public sealed class AnimeModel(
             id,
             Metadata?.BannerImageUrl);
         SearchQuery = string.IsNullOrWhiteSpace(q) ? anime.Title : q.Trim();
+
+        var learning = await new LearningConfigurationStore(db).ResolveAsync(
+            currentAccount.ProfileId,
+            new LearningScopeContext(
+                LearningMediaType.Anime,
+                WorkKey: id.ToString()),
+            cancellationToken);
+        ShowContentMetrics =
+            learning.IsEnabled(LearningCapability.ContentMetrics);
 
         if (TempData.TryGetValue("MetadataError", out var metadataError))
         {
@@ -139,7 +149,7 @@ public sealed class AnimeModel(
         var episodeIds = episodeRows.Select(x => x.Id).ToArray();
         List<CoverageRow> coverageRows;
 
-        if (episodeIds.Length == 0)
+        if (!ShowContentMetrics || episodeIds.Length == 0)
         {
             coverageRows = [];
         }
