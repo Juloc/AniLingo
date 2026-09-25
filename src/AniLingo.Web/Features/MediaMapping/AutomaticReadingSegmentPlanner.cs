@@ -156,6 +156,12 @@ public sealed record AutomaticReadingSegmentPlan(
     string Reason,
     IReadOnlyList<PlannedReadingSegment> Segments)
 {
+    public bool NoMappingRequired =>
+        !CanApply &&
+        Reason.StartsWith(
+            "The primary AniList match already uses",
+            StringComparison.Ordinal);
+
     public static AutomaticReadingSegmentPlan Blocked(string reason) =>
         new(false, reason, []);
 }
