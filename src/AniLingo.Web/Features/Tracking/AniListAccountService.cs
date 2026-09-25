@@ -173,7 +173,8 @@ public enum AniListExternalProgressStateKind
     MappingNeedsReview,
     NotConnected,
     NoLocalProgress,
-    Blocked
+    Blocked,
+    RemoteUnavailable
 }
 
 public sealed record AniListExternalProgressState(
@@ -184,7 +185,9 @@ public sealed record AniListExternalProgressState(
     int? RemoteProgress,
     int? LocalVolumeProgress = null,
     int? RemoteVolumeProgress = null,
-    bool CanSync = false)
+    bool CanSync = false,
+    int? MediaId = null,
+    string? RemoteStatus = null)
 {
     public bool IsSynced => Kind == AniListExternalProgressStateKind.Synced;
     public bool NeedsAttention =>
@@ -207,7 +210,7 @@ public sealed record AniListProgressBackup(
     string MediaType = "ANIME",
     int? RequestedVolumeProgress = null);
 
-public sealed class AniListAccountService(
+public sealed partial class AniListAccountService(
     HttpClient httpClient,
     AniListAccountStore store,
     AppDbContext db,
@@ -595,7 +598,9 @@ public sealed class AniListAccountService(
         bool canSync,
         int? localVolumeProgress = null,
         int? remoteVolumeProgress = null,
-        AniListExternalProgressStateKind? forcedKind = null)
+        AniListExternalProgressStateKind? forcedKind = null,
+        int? mediaId = null,
+        string? remoteStatus = null)
     {
         var kind = forcedKind ??
             ResolveComparableState(
@@ -616,7 +621,9 @@ public sealed class AniListAccountService(
             remoteProgress,
             localVolumeProgress,
             remoteVolumeProgress,
-            canSync);
+            canSync,
+            mediaId,
+            remoteStatus);
     }
 
     private static AniListExternalProgressStateKind ResolveComparableState(
@@ -661,13 +668,17 @@ public sealed class AniListAccountService(
         ReadingProgressContext context) =>
         ClassifyProgressState(
             context.Preview.MediaTitle,
-            context.Preview.RequestedProgress,
+            // A volume-only write keeps the remote chapter count as the value to
+            // send; the state must still compare the real local chapter progress.
+            context.LocalProgress ?? context.Preview.RequestedProgress,
             context.Preview.RemoteProgress,
             context.Preview.Message,
             context.Preview.CanSync,
             context.Preview.RequestedVolumeProgress,
             context.Preview.RemoteVolumeProgress,
-            context.StateHint);
+            context.StateHint,
+            context.RemoteEntry?.MediaId ?? context.MediaId,
+            context.Preview.RemoteStatus);
 
     private static AniListExternalProgressState ToExternalProgressState(
         ProgressContext context) =>
@@ -677,7 +688,9 @@ public sealed class AniListAccountService(
             context.Preview.RemoteProgress,
             context.Preview.Message,
             context.Preview.CanSync,
-            forcedKind: context.StateHint);
+            forcedKind: context.StateHint,
+            mediaId: context.RemoteEntry?.MediaId ?? context.MediaId,
+            remoteStatus: context.Preview.RemoteStatus);
 
     public async Task<AniListReadingProgressPreview> GetMangaProgressPreviewAsync(
         Guid seriesId,
@@ -871,21 +884,6 @@ public sealed class AniListAccountService(
         }
     }
 
-    public async Task<AniListProgressPreview> GetEpisodeProgressPreviewAsync(
-        Guid episodeId,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            var context = await BuildProgressContextAsync(episodeId, cancellationToken);
-            return context.Preview;
-        }
-        catch (AniListAccountException exception)
-        {
-            return AniListProgressPreview.Blocked(exception.Message);
-        }
-    }
-
     public async Task<AniListProgressSyncResult> SyncEpisodeProgressAsync(
         Guid episodeId,
         CancellationToken cancellationToken)
@@ -1050,7 +1048,8 @@ public sealed class AniListAccountService(
                     displayTitle,
                     aniListChapterCount: configuredChapterCount,
                     requestedVolumeProgress: requestedVolumeProgress),
-                AniListExternalProgressStateKind.NotConnected);
+                AniListExternalProgressStateKind.NotConnected,
+                mediaId);
         }
 
         if (account.TokenExpiresAt is not null &&
@@ -1063,13 +1062,39 @@ public sealed class AniListAccountService(
                     displayTitle,
                     aniListChapterCount: configuredChapterCount,
                     requestedVolumeProgress: requestedVolumeProgress),
-                AniListExternalProgressStateKind.NotConnected);
+                AniListExternalProgressStateKind.NotConnected,
+                mediaId);
         }
 
-        var remote = await FetchMangaListEntryAsync(
-            account,
-            mediaId,
-            cancellationToken);
+        AniListRemoteListEntry? remote;
+        int? chapterCount;
+        try
+        {
+            remote = await FetchMangaListEntryAsync(
+                account,
+                mediaId,
+                cancellationToken);
+            chapterCount = remote is null
+                ? null
+                : await FetchMangaChapterCountAsync(
+                    account,
+                    mediaId,
+                    cancellationToken)
+                  ?? configuredChapterCount;
+        }
+        catch (AniListAccountException exception)
+        {
+            return ReadingProgressContext.Blocked(
+                AniListReadingProgressPreview.Blocked(
+                    exception.Message,
+                    requestedProgress,
+                    displayTitle,
+                    aniListChapterCount: configuredChapterCount,
+                    requestedVolumeProgress: requestedVolumeProgress),
+                AniListExternalProgressStateKind.RemoteUnavailable,
+                mediaId);
+        }
+
         if (remote is null)
         {
             return ReadingProgressContext.Blocked(
@@ -1079,15 +1104,9 @@ public sealed class AniListAccountService(
                     displayTitle,
                     aniListChapterCount: configuredChapterCount,
                     requestedVolumeProgress: requestedVolumeProgress),
-                AniListExternalProgressStateKind.NotOnList);
+                AniListExternalProgressStateKind.NotOnList,
+                mediaId);
         }
-
-        var chapterCount =
-            await FetchMangaChapterCountAsync(
-                account,
-                mediaId,
-                cancellationToken)
-            ?? configuredChapterCount;
 
         var preview = EvaluateRemoteChapterProgressSafety(
             remote,
@@ -1165,7 +1184,8 @@ public sealed class AniListAccountService(
             remote,
             progressToWrite,
             preview,
-            volumeProgressToWrite);
+            volumeProgressToWrite,
+            LocalProgress: requestedProgress);
     }
 
     private async Task<ReadingProgressContext> BuildNovelProgressContextAsync(
@@ -1316,7 +1336,8 @@ public sealed class AniListAccountService(
                     requestedProgress,
                     displayTitle,
                     aniListChapterCount: configuredChapterCount),
-                AniListExternalProgressStateKind.NotConnected);
+                AniListExternalProgressStateKind.NotConnected,
+                mediaId);
         }
 
         if (account.TokenExpiresAt is not null &&
@@ -1328,13 +1349,38 @@ public sealed class AniListAccountService(
                     requestedProgress,
                     displayTitle,
                     aniListChapterCount: configuredChapterCount),
-                AniListExternalProgressStateKind.NotConnected);
+                AniListExternalProgressStateKind.NotConnected,
+                mediaId);
         }
 
-        var remote = await FetchMangaListEntryAsync(
-            account,
-            mediaId,
-            cancellationToken);
+        AniListRemoteListEntry? remote;
+        int? chapterCount;
+        try
+        {
+            remote = await FetchMangaListEntryAsync(
+                account,
+                mediaId,
+                cancellationToken);
+            chapterCount = remote is null
+                ? null
+                : await FetchMangaChapterCountAsync(
+                    account,
+                    mediaId,
+                    cancellationToken)
+                  ?? configuredChapterCount;
+        }
+        catch (AniListAccountException exception)
+        {
+            return ReadingProgressContext.Blocked(
+                AniListReadingProgressPreview.Blocked(
+                    exception.Message,
+                    requestedProgress,
+                    displayTitle,
+                    aniListChapterCount: configuredChapterCount),
+                AniListExternalProgressStateKind.RemoteUnavailable,
+                mediaId);
+        }
+
         if (remote is null)
         {
             return ReadingProgressContext.Blocked(
@@ -1343,15 +1389,9 @@ public sealed class AniListAccountService(
                     requestedProgress,
                     displayTitle,
                     aniListChapterCount: configuredChapterCount),
-                AniListExternalProgressStateKind.NotOnList);
+                AniListExternalProgressStateKind.NotOnList,
+                mediaId);
         }
-
-        var chapterCount =
-            await FetchMangaChapterCountAsync(
-                account,
-                mediaId,
-                cancellationToken)
-            ?? configuredChapterCount;
 
         var preview = EvaluateRemoteChapterProgressSafety(
             remote,
@@ -1438,7 +1478,8 @@ public sealed class AniListAccountService(
                     resolved.RemoteEpisodeNumber,
                     resolved.PreferredTitle,
                     aniListEpisodeCount: resolved.EpisodeCount),
-                AniListExternalProgressStateKind.MappingNeedsReview);
+                AniListExternalProgressStateKind.MappingNeedsReview,
+                mediaId);
         }
 
         var account = await store.LoadAsync(
@@ -1452,7 +1493,8 @@ public sealed class AniListAccountService(
                     resolved.RemoteEpisodeNumber,
                     resolved.PreferredTitle,
                     aniListEpisodeCount: resolved.EpisodeCount),
-                AniListExternalProgressStateKind.NotConnected);
+                AniListExternalProgressStateKind.NotConnected,
+                mediaId);
         }
 
         if (account.TokenExpiresAt is not null &&
@@ -1464,13 +1506,29 @@ public sealed class AniListAccountService(
                     resolved.RemoteEpisodeNumber,
                     resolved.PreferredTitle,
                     aniListEpisodeCount: resolved.EpisodeCount),
-                AniListExternalProgressStateKind.NotConnected);
+                AniListExternalProgressStateKind.NotConnected,
+                mediaId);
         }
 
-        var remote = await FetchListEntryAsync(
-            account,
-            mediaId,
-            cancellationToken);
+        AniListRemoteListEntry? remote;
+        try
+        {
+            remote = await FetchListEntryAsync(
+                account,
+                mediaId,
+                cancellationToken);
+        }
+        catch (AniListAccountException exception)
+        {
+            return ProgressContext.Blocked(
+                AniListProgressPreview.Blocked(
+                    exception.Message,
+                    resolved.RemoteEpisodeNumber,
+                    resolved.PreferredTitle,
+                    aniListEpisodeCount: resolved.EpisodeCount),
+                AniListExternalProgressStateKind.RemoteUnavailable,
+                mediaId);
+        }
 
         if (remote is null)
         {
@@ -1480,7 +1538,8 @@ public sealed class AniListAccountService(
                     resolved.RemoteEpisodeNumber,
                     resolved.PreferredTitle,
                     aniListEpisodeCount: resolved.EpisodeCount),
-                AniListExternalProgressStateKind.NotOnList);
+                AniListExternalProgressStateKind.NotOnList,
+                mediaId);
         }
 
         var remoteSafety = EvaluateRemoteProgressSafety(
@@ -1639,43 +1698,27 @@ public sealed class AniListAccountService(
         return ParseViewerResponse(body);
     }
 
-    private async Task<AniListRemoteListEntry?> FetchListEntryAsync(
+    private Task<AniListRemoteListEntry?> FetchListEntryAsync(
         StoredAniListAccount account,
         int mediaId,
-        CancellationToken cancellationToken)
-    {
-        var body = await SendAuthenticatedAsync(
-            account.AccessToken,
+        CancellationToken cancellationToken) =>
+        FetchListEntryResponseAsync(
+            account,
             MediaListQuery,
-            new
-            {
-                userId = account.ViewerId,
-                mediaId
-            },
+            mediaId,
             "reading list progress",
             cancellationToken);
 
-        return ParseListEntryResponse(body, "MediaList");
-    }
-
-    private async Task<AniListRemoteListEntry?> FetchMangaListEntryAsync(
+    private Task<AniListRemoteListEntry?> FetchMangaListEntryAsync(
         StoredAniListAccount account,
         int mediaId,
-        CancellationToken cancellationToken)
-    {
-        var body = await SendAuthenticatedAsync(
-            account.AccessToken,
+        CancellationToken cancellationToken) =>
+        FetchListEntryResponseAsync(
+            account,
             MangaListQuery,
-            new
-            {
-                userId = account.ViewerId,
-                mediaId
-            },
+            mediaId,
             "reading manga/novel progress",
             cancellationToken);
-
-        return ParseListEntryResponse(body, "MediaList");
-    }
 
     private async Task<int?> FetchMangaChapterCountAsync(
         StoredAniListAccount account,
@@ -1853,6 +1896,83 @@ public sealed class AniListAccountService(
         string query,
         object variables,
         string operation,
+        CancellationToken cancellationToken) =>
+        (await SendAuthenticatedCoreAsync(
+            accessToken,
+            query,
+            variables,
+            operation,
+            missingListEntryIsNull: false,
+            cancellationToken))!;
+
+    // AniList answers a MediaList lookup for media that is not on the viewer's
+    // list with HTTP 404 and a GraphQL "Not Found" error. That is the canonical
+    // "not on list" answer, not an outage.
+    private async Task<AniListRemoteListEntry?> FetchListEntryResponseAsync(
+        StoredAniListAccount account,
+        string query,
+        int mediaId,
+        string operation,
+        CancellationToken cancellationToken)
+    {
+        var body = await SendAuthenticatedCoreAsync(
+            account.AccessToken,
+            query,
+            new
+            {
+                userId = account.ViewerId,
+                mediaId
+            },
+            operation,
+            missingListEntryIsNull: true,
+            cancellationToken);
+
+        return body is null
+            ? null
+            : ParseListEntryResponse(body, "MediaList");
+    }
+
+    public static bool IsMissingListEntryResponse(
+        System.Net.HttpStatusCode statusCode,
+        string body)
+    {
+        if (statusCode != System.Net.HttpStatusCode.NotFound)
+        {
+            return false;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            if (!document.RootElement.TryGetProperty("errors", out var errors) ||
+                errors.ValueKind != JsonValueKind.Array)
+            {
+                return false;
+            }
+
+            foreach (var error in errors.EnumerateArray())
+            {
+                if (error.ValueKind == JsonValueKind.Object &&
+                    ReadInt(error, "status") == 404)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private async Task<string?> SendAuthenticatedCoreAsync(
+        string accessToken,
+        string query,
+        object variables,
+        string operation,
+        bool missingListEntryIsNull,
         CancellationToken cancellationToken)
     {
         try
@@ -1874,6 +1994,12 @@ public sealed class AniListAccountService(
 
             if (!response.IsSuccessStatusCode)
             {
+                if (missingListEntryIsNull &&
+                    IsMissingListEntryResponse(response.StatusCode, body))
+                {
+                    return null;
+                }
+
                 throw new AniListAccountException(
                     $"AniList returned HTTP {(int)response.StatusCode} while {operation}.");
             }
@@ -2248,19 +2374,23 @@ public sealed class AniListAccountService(
         int RequestedProgress,
         AniListReadingProgressPreview Preview,
         int? RequestedVolumeProgress = null,
-        AniListExternalProgressStateKind? StateHint = null)
+        AniListExternalProgressStateKind? StateHint = null,
+        int? MediaId = null,
+        int? LocalProgress = null)
     {
         public static ReadingProgressContext Blocked(
             AniListReadingProgressPreview preview,
             AniListExternalProgressStateKind stateHint =
-                AniListExternalProgressStateKind.Blocked) =>
+                AniListExternalProgressStateKind.Blocked,
+            int? mediaId = null) =>
             new(
                 null,
                 null,
                 preview.RequestedProgress,
                 preview,
                 preview.RequestedVolumeProgress,
-                stateHint);
+                stateHint,
+                mediaId);
     }
 
     private sealed record ProgressContext(
@@ -2268,17 +2398,20 @@ public sealed class AniListAccountService(
         AniListRemoteListEntry? RemoteEntry,
         int RequestedProgress,
         AniListProgressPreview Preview,
-        AniListExternalProgressStateKind? StateHint = null)
+        AniListExternalProgressStateKind? StateHint = null,
+        int? MediaId = null)
     {
         public static ProgressContext Blocked(
             AniListProgressPreview preview,
             AniListExternalProgressStateKind stateHint =
-                AniListExternalProgressStateKind.Blocked) =>
+                AniListExternalProgressStateKind.Blocked,
+            int? mediaId = null) =>
             new(
                 null,
                 null,
                 preview.RequestedProgress,
                 preview,
-                stateHint);
+                stateHint,
+                mediaId);
     }
 }
