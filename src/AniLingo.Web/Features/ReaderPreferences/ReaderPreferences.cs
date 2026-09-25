@@ -693,6 +693,35 @@ public static class ReaderPreferenceStore
         await db.SaveChangesAsync(cancellationToken);
     }
 
+    public static async Task ResetScopeFieldAsync(
+        AppDbContext db,
+        string profileId,
+        string scopeKey,
+        string changedKey,
+        CancellationToken cancellationToken)
+    {
+        ValidateScope(scopeKey);
+        var preference = await db.ReaderPreferences
+            .SingleOrDefaultAsync(
+                x => x.ProfileId == profileId && x.ScopeKey == scopeKey,
+                cancellationToken);
+
+        if (preference is null)
+        {
+            return;
+        }
+
+        ClearField(preference, changedKey);
+        preference.UpdatedAt = DateTime.UtcNow;
+
+        if (IsEmpty(preference))
+        {
+            db.ReaderPreferences.Remove(preference);
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
     public static Task ResetBookAsync(
         AppDbContext db,
         string profileId,
@@ -935,6 +964,77 @@ public static class ReaderPreferenceStore
                 throw new InvalidOperationException("Unknown reader setting.");
         }
     }
+
+    private static void ClearField(
+        ReaderPreference preference,
+        string changedKey)
+    {
+        switch (changedKey.Trim())
+        {
+            case "readingMode": preference.ReadingMode = null; break;
+            case "pageTransition": preference.PageTransition = null; break;
+            case "twoPageSpread": preference.TwoPageSpread = null; break;
+            case "autoScrollSpeed": preference.AutoScrollSpeed = null; break;
+            case "fontFamily": preference.FontFamily = null; break;
+            case "fontSizeRem": preference.FontSizeRem = null; break;
+            case "lineHeight": preference.LineHeight = null; break;
+            case "paragraphSpacingEm": preference.ParagraphSpacingEm = null; break;
+            case "textWidthPx": preference.TextWidthPx = null; break;
+            case "textAlignment": preference.TextAlignment = null; break;
+            case "chapterStyle": preference.ChapterStyle = null; break;
+            case "paperStyle": preference.PaperStyle = null; break;
+            case "genreArtworkEnabled": preference.GenreArtworkEnabled = null; break;
+            case "genreTheme": preference.GenreTheme = null; break;
+            case "backgroundAssetId": preference.BackgroundAssetId = null; break;
+            case "backgroundIntensity": preference.BackgroundIntensity = null; break;
+            case "backgroundMotionMode": preference.BackgroundMotionMode = null; break;
+            case "themeEffectStrength": preference.ThemeEffectStrength = null; break;
+            case "themeBrightness": preference.ThemeBrightness = null; break;
+            case "themeContrast": preference.ThemeContrast = null; break;
+            case "themeSaturation": preference.ThemeSaturation = null; break;
+            case "themeBlurPx": preference.ThemeBlurPx = null; break;
+            case "themeVignetteStrength": preference.ThemeVignetteStrength = null; break;
+            case "themeGrainStrength": preference.ThemeGrainStrength = null; break;
+            case "themeTextBackdropStrength": preference.ThemeTextBackdropStrength = null; break;
+            case "themeParallaxStrength": preference.ThemeParallaxStrength = null; break;
+            case "themeTintStrength": preference.ThemeTintStrength = null; break;
+            case "bookmarkStyle": preference.BookmarkStyle = null; break;
+            case "bookmarkColor": preference.BookmarkColor = null; break;
+            default:
+                throw new InvalidOperationException("Unknown reader setting.");
+        }
+    }
+
+    private static bool IsEmpty(ReaderPreference preference) =>
+        preference.ReadingMode is null &&
+        preference.PageTransition is null &&
+        preference.TwoPageSpread is null &&
+        preference.AutoScrollSpeed is null &&
+        preference.FontFamily is null &&
+        preference.FontSizeRem is null &&
+        preference.LineHeight is null &&
+        preference.ParagraphSpacingEm is null &&
+        preference.TextWidthPx is null &&
+        preference.TextAlignment is null &&
+        preference.ChapterStyle is null &&
+        preference.PaperStyle is null &&
+        preference.GenreArtworkEnabled is null &&
+        preference.GenreTheme is null &&
+        preference.BackgroundAssetId is null &&
+        preference.BackgroundIntensity is null &&
+        preference.BackgroundMotionMode is null &&
+        preference.ThemeEffectStrength is null &&
+        preference.ThemeBrightness is null &&
+        preference.ThemeContrast is null &&
+        preference.ThemeSaturation is null &&
+        preference.ThemeBlurPx is null &&
+        preference.ThemeVignetteStrength is null &&
+        preference.ThemeGrainStrength is null &&
+        preference.ThemeTextBackdropStrength is null &&
+        preference.ThemeParallaxStrength is null &&
+        preference.ThemeTintStrength is null &&
+        preference.BookmarkStyle is null &&
+        preference.BookmarkColor is null;
 
     private static async Task<ReaderPreference> FindOrCreateAsync(
         AppDbContext db,
