@@ -12,17 +12,19 @@ public sealed class AddUiProfileTheme : Migration
     protected override void Up(MigrationBuilder migrationBuilder)
     {
         migrationBuilder.Sql("""
-            ALTER TABLE "UiProfileLocales"
-            ADD COLUMN "ThemeMode" TEXT NOT NULL DEFAULT 'system'
-            CHECK ("ThemeMode" IN ('system', 'light', 'dark'));
+            CREATE TABLE "UiProfileThemes" (
+                "ProfileId" TEXT NOT NULL CONSTRAINT "PK_UiProfileThemes" PRIMARY KEY,
+                "ThemeMode" TEXT NOT NULL DEFAULT 'system'
+                    CHECK ("ThemeMode" IN ('system', 'light', 'dark')),
+                "UpdatedAt" TEXT NOT NULL
+            );
             """);
     }
 
     protected override void Down(MigrationBuilder migrationBuilder)
     {
         migrationBuilder.Sql("""
-            ALTER TABLE "UiProfileLocales"
-            DROP COLUMN "ThemeMode";
+            DROP TABLE "UiProfileThemes";
             """);
     }
 }
