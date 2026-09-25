@@ -155,7 +155,7 @@ public sealed class SabnzbdAcquisitionService(
             SabnzbdFailureKind.None,
             failureMessage: null,
             replacementNzoId: result.NewNzoId,
-            cancellationToken);
+            cancellationToken: cancellationToken);
     }
 
     private static SabnzbdAcquisitionState MapQueueState(string? status)
