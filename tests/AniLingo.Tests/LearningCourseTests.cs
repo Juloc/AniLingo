@@ -95,7 +95,7 @@ public sealed class LearningCourseTests
         Assert.AreEqual("ja", LearningLanguageTag.Normalize("ja"));
 
         Assert.ThrowsExactly<ArgumentException>(
-            () => LearningLanguageTag.Normalize("not_a_real_language_zzz"));
+            () => LearningLanguageTag.Normalize("de--DE"));
     }
 
     [TestMethod]
@@ -314,7 +314,7 @@ public sealed class LearningCourseTests
 
         await fixture.Db.SaveChangesAsync();
 
-        await fixture.Db.GetService<IMigrator>().MigrateAsync();
+        await DatabaseMigrationBridge.UpgradeAsync(fixture.Db);
 
         var courses = await fixture.Store.ListAsync(
             "legacy-reader",
@@ -337,7 +337,8 @@ public sealed class LearningCourseTests
         Assert.AreEqual(LearningCardMode.Recognition, card.Mode);
         Assert.AreEqual(LearningCardState.Learning, card.State);
         Assert.AreEqual(7, card.IntervalDays);
-        Assert.AreEqual(userTerm.Id.ToString(), card.LegacyUserTermId);
+        Assert.IsNotNull(card.LegacyUserTermId);
+        Assert.AreEqual(userTerm.Id, Guid.Parse(card.LegacyUserTermId));
         Assert.IsNotNull(card.NextReviewAt);
 
         var reviewCount = await ScalarLongAsync(
