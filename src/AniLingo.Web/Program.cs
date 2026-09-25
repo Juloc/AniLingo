@@ -8,6 +8,7 @@ using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Library;
 using AniLingo.Web.Features.Metadata;
 using AniLingo.Web.Features.Novels;
+using AniLingo.Web.Features.Operations;
 using AniLingo.Web.Features.Playback;
 using AniLingo.Web.Features.Progress;
 using AniLingo.Web.Features.Sonarr;
@@ -236,6 +237,12 @@ builder.Services.AddHttpClient<BookCatalogService>(client =>
     client.DefaultRequestHeaders.UserAgent.ParseAdd("AniLingo/0.1 (+https://github.com/Juloc/AniLingo)");
     client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
 });
+
+builder.Services.AddHttpClient<SabnzbdOperationsClient>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(15);
+});
+builder.Services.AddHostedService<SabnzbdOperationMonitorService>();
 
 builder.Services.AddSingleton<SonarrConnectionStore>();
 builder.Services.AddScoped<SonarrArtworkImportService>();

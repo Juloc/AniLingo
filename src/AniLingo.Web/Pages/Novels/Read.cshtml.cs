@@ -1,6 +1,7 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Novels;
+using AniLingo.Web.Features.Operations;
 using AniLingo.Web.Features.ReaderPreferences;
 using AniLingo.Web.Infrastructure;
 using Microsoft.AspNetCore.Mvc;
@@ -148,11 +149,32 @@ public sealed class ReadModel(
             return RedirectToPage(new { id });
         }
 
+        var work = result.Value.Work;
+        var chapter = result.Value.Chapter;
+
         await jobs.QueueAsync(
-            async (services, workerToken) =>
+            new OperationDescriptor(
+                "novel-chapter-translation",
+                "Translation",
+                "Translate novel chapter",
+                $"{work.MetadataTitle ?? work.Title} · Chapter {chapter.Number}",
+                account.ProfileId,
+                OperationLane.Normal,
+                Retryable: true),
+            async (operation, services, workerToken) =>
             {
+                await operation.ReportAsync(
+                    5,
+                    "Translating chapter to German.",
+                    cancellationToken: workerToken);
+
                 var service = services.GetRequiredService<NovelTranslationService>();
                 await service.TranslateChapterAsync(id, "de", workerToken);
+
+                await operation.ReportAsync(
+                    100,
+                    "German chapter translation completed.",
+                    cancellationToken: workerToken);
             },
             cancellationToken);
 
