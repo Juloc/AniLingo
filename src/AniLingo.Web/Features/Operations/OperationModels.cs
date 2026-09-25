@@ -33,7 +33,9 @@ public sealed record OperationDescriptor(
     OperationLane Lane = OperationLane.Normal,
     bool IsDownload = false,
     bool Retryable = true,
-    long? BytesTotal = null)
+    long? BytesTotal = null,
+    string? ExternalProvider = null,
+    string? ExternalId = null)
 {
     public static OperationDescriptor Background(string title = "Background task") =>
         new("background", "Task", title, Retryable: true);
@@ -66,6 +68,8 @@ public sealed record OperationSnapshot(
     DateTime? EtaUtc,
     int Attempt,
     bool Retryable,
+    string? ExternalProvider,
+    string? ExternalId,
     DateTime CreatedAtUtc,
     DateTime? StartedAtUtc,
     DateTime? FinishedAtUtc,
@@ -74,7 +78,8 @@ public sealed record OperationSnapshot(
     public bool IsActive =>
         Status is OperationStatus.Queued or OperationStatus.Running;
 
-    public bool CanCancel => IsActive;
+    public bool CanCancel =>
+        IsActive && string.IsNullOrWhiteSpace(ExternalProvider);
 
     public string StatusLabel => Status switch
     {
