@@ -1,0 +1,35 @@
+using AniLingo.Web.Data;
+using AniLingo.Web.Features.Auth;
+using AniLingo.Web.Features.Learning;
+using AniLingo.Web.Features.Localization;
+using AniLingo.Web.Features.Vocabulary;
+using Microsoft.AspNetCore.Mvc.RazorPages;
+
+namespace AniLingo.Web.Pages.Learn;
+
+public sealed class SentencesModel(
+    AppDbContext db,
+    CurrentAccountContext currentAccount,
+    IJapaneseMorphology morphology,
+    JapaneseDictionary dictionary) : PageModel
+{
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
+    public IReadOnlyList<SentencePracticeItem> Sentences { get; private set; } = [];
+
+    public async Task OnGetAsync(CancellationToken cancellationToken)
+    {
+        Ui = await new UiTranslationCatalogStore(db).LoadProfileBundleAsync(
+            currentAccount.ProfileId,
+            cancellationToken);
+
+        var service = new SentencePracticeService(
+            db,
+            currentAccount.ProfileId,
+            morphology,
+            dictionary);
+
+        Sentences = await service.LoadAsync(
+            12,
+            cancellationToken);
+    }
+}

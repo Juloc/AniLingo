@@ -1,7 +1,18 @@
+@using AniLingo.Web.Data
 @using AniLingo.Web.Features.Localization
+@using AniLingo.Web.Features.Learning
+@inject AppDbContext LearningNavigationDb
 @{
     var ui = ViewData["UiTextBundle"] as UiTextBundle ?? UiTextBundle.English;
     var path = Context.Request.Path;
+    var profileId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+    var learningVisible = false;
+    if (!string.IsNullOrWhiteSpace(profileId))
+    {
+        learningVisible = await new LearningConfigurationStore(LearningNavigationDb)
+            .HasAnyLearningEnabledAsync(profileId, Context.RequestAborted);
+    }
+
     var isReading =
         path.StartsWithSegments("/Reading")
         || path.StartsWithSegments("/Novels")
@@ -29,12 +40,12 @@
         <a class="nav-item @(path.StartsWithSegments("/Books") ? "active" : "")" href="/Books">
             <span class="nav-glyph">B</span><span>@ui["nav.books"]</span>
         </a>
-        <a class="nav-item @(path.StartsWithSegments("/Learn") ? "active" : "")" href="/Learn">
-            <span class="nav-glyph">V</span><span>@ui["nav.learn"]</span>
-        </a>
-        <a class="nav-item @(path.StartsWithSegments("/Statistics") ? "active" : "")" href="/Statistics">
-            <span class="nav-glyph">P</span><span>@ui["nav.progress"]</span>
-        </a>
+        @if (learningVisible)
+        {
+            <a class="nav-item @(path.StartsWithSegments("/Learn") || path.StartsWithSegments("/Statistics") ? "active" : "")" href="/Learn">
+                <span class="nav-glyph">V</span><span>@ui["nav.learn"]</span>
+            </a>
+        }
         <a class="nav-item @(path.StartsWithSegments("/Settings") ? "active" : "")" href="/Settings">
             <span class="nav-glyph">S</span><span>@ui["nav.settings"]</span>
         </a>
@@ -60,8 +71,11 @@
     <a class="@(path.StartsWithSegments("/Discover") ? "active" : "")" href="/Discover">@ui["nav.discover"]</a>
     <a class="@(path.StartsWithSegments("/Library") ? "active" : "")" href="/Library">@ui["nav.library"]</a>
     <a class="@(isReading ? "active" : "")" href="/Reading">@ui["nav.reading"]</a>
-    <a class="@(path.StartsWithSegments("/Learn") ? "active" : "")" href="/Learn">@ui["nav.learn"]</a>
-    <a class="@(path.StartsWithSegments("/Statistics") ? "active" : "")" href="/Statistics">@ui["nav.progress"]</a>
+    @if (learningVisible)
+    {
+        <a class="@(path.StartsWithSegments("/Learn") || path.StartsWithSegments("/Statistics") ? "active" : "")"
+           href="/Learn">@ui["nav.learn"]</a>
+    }
     <a class="@(path.StartsWithSegments("/Settings") ? "active" : "")" href="/Settings">@ui["nav.settings"]</a>
     @if (User.IsInRole(AniLingo.Web.Features.Auth.AccountRoles.Owner))
     {

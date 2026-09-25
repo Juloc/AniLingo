@@ -1,0 +1,120 @@
+@page
+@using AniLingo.Web.Features.Learning
+@model AniLingo.Web.Pages.Learn.VocabularyModel
+@{
+    ViewData["Title"] = Model.Ui["learn.vocabulary.title"];
+}
+
+<header class="page-header">
+    <div>
+        <a class="back-link" href="/Learn">← @Model.Ui["learn.title"]</a>
+        <span class="eyebrow">@Model.Ui["learn.hub.vocabulary.title"]</span>
+        <h1>@Model.Ui["learn.vocabulary.title"]</h1>
+        <p>@Model.Ui["learn.vocabulary.subtitle"]</p>
+    </div>
+</header>
+
+<section class="panel">
+    <form method="get" class="form-stack">
+        <label>
+            <span>@Model.Ui["learn.vocabulary.search"]</span>
+            <input name="search"
+                   value="@Model.Search"
+                   placeholder="@Model.Ui["learn.vocabulary.searchPlaceholder"]" />
+        </label>
+        <label>
+            <span>@Model.Ui["learn.vocabulary.state"]</span>
+            <select name="state">
+                <option value="all" selected="@(Model.StateFilter == "all" ? "selected" : null)">All</option>
+                @foreach (var state in Enum.GetValues<UserTermState>())
+                {
+                    var key = state.ToString().ToLowerInvariant();
+                    <option value="@key"
+                            selected="@(Model.StateFilter == key ? "selected" : null)">
+                        @state
+                    </option>
+                }
+            </select>
+        </label>
+        <button class="button" type="submit">@Model.Ui["common.search"]</button>
+    </form>
+</section>
+
+@if (Model.Items.Count == 0)
+{
+    <div class="empty-state">
+        <h3>@Model.Ui["learn.vocabulary.empty.title"]</h3>
+        <p>@Model.Ui["learn.vocabulary.empty.body"]</p>
+    </div>
+}
+else
+{
+    <div class="term-table">
+        <div class="term-table-head">
+            <span>@Model.Ui["learn.vocabulary.term"]</span>
+            <span>@Model.Ui["learn.vocabulary.language"]</span>
+            <span>@Model.Ui["learn.vocabulary.state"]</span>
+        </div>
+
+        @foreach (var item in Model.Items)
+        {
+            <div class="term-row">
+                <div class="term-word">
+                    <strong lang="@item.Language">@item.Canonical</strong>
+                    @if (!string.IsNullOrWhiteSpace(item.Reading))
+                    {
+                        <span>@item.Reading</span>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(item.Meaning))
+                    {
+                        <small>@item.Meaning</small>
+                    }
+                </div>
+
+                <span class="occurrence">@item.Language</span>
+
+                <div class="term-actions">
+                    <span class="status-pill @(item.Due ? "status-warning" : "")">
+                        @item.State@(item.Due ? " · due" : "")
+                    </span>
+
+                    @if (item.State != UserTermState.Saved)
+                    {
+                        <form method="post" asp-page-handler="Save">
+                            <input type="hidden" name="termId" value="@item.TermId" />
+                            <button class="chip" type="submit">@Model.Ui["learning.saveWord"]</button>
+                        </form>
+                    }
+                    @if (item.State != UserTermState.Learning)
+                    {
+                        <form method="post" asp-page-handler="Learn">
+                            <input type="hidden" name="termId" value="@item.TermId" />
+                            <button class="chip" type="submit">@Model.Ui["learn.vocabulary.startLearning"]</button>
+                        </form>
+                    }
+                    @if (item.State != UserTermState.Known)
+                    {
+                        <form method="post" asp-page-handler="Known">
+                            <input type="hidden" name="termId" value="@item.TermId" />
+                            <button class="chip" type="submit">@Model.Ui["learning.markKnown"]</button>
+                        </form>
+                    }
+                    @if (item.State == UserTermState.Learning)
+                    {
+                        <form method="post" asp-page-handler="Suspend">
+                            <input type="hidden" name="termId" value="@item.TermId" />
+                            <button class="chip" type="submit">@Model.Ui["learn.vocabulary.suspend"]</button>
+                        </form>
+                    }
+                    @if (item.State != UserTermState.Ignored)
+                    {
+                        <form method="post" asp-page-handler="Ignore">
+                            <input type="hidden" name="termId" value="@item.TermId" />
+                            <button class="chip" type="submit">@Model.Ui["learning.ignoreWord"]</button>
+                        </form>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+}

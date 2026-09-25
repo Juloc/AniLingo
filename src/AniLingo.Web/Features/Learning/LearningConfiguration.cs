@@ -414,6 +414,31 @@ public sealed class LearningConfigurationStore(AppDbContext db)
         }
     }
 
+    public async Task<LearningResolvedSettings> ResolveProfileAsync(
+        string profileId,
+        CancellationToken cancellationToken)
+    {
+        ValidateProfile(profileId);
+        var profile = await GetScopeAsync(
+            profileId,
+            LearningScopeRef.Profile,
+            cancellationToken);
+
+        var mode = profile.ModeOverride ?? LearningMode.Off;
+        var resolved = LearningConfigurationDefaults.For(mode)
+            .ToDictionary(x => x.Key, x => x.Value);
+
+        foreach (var capability in Enum.GetValues<LearningCapability>())
+        {
+            if (profile.GetOverride(capability) is { } value)
+            {
+                resolved[capability] = value;
+            }
+        }
+
+        return new LearningResolvedSettings(mode, resolved);
+    }
+
     public async Task<LearningResolvedSettings> ResolveAsync(
         string profileId,
         LearningScopeContext context,

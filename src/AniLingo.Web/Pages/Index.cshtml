@@ -10,16 +10,33 @@
         <h1>@Model.Ui["home.title"]</h1>
         <p>@Model.Ui["home.subtitle"]</p>
     </div>
-    @if (Model.DueReviews > 0)
+    @if (Model.ShowLearningHomeWidget && Model.DueReviews > 0)
     {
-        <a class="button" href="/Learn">@Model.Ui.Format("home.reviewButton", ("count", Model.DueReviews))</a>
+        <a class="button" href="/Learn">
+            @Model.Ui.Format("home.reviewButton", ("count", Model.DueReviews))
+        </a>
     }
 </header>
 
 <section class="metric-grid">
-    <partial name="_MetricCard" model='new MetricCardModel(Model.Ui["home.metric.due"], Model.DueReviews.ToString(), Model.Ui["home.metric.ready"])' />
-    <partial name="_MetricCard" model='new MetricCardModel(Model.Ui["home.metric.anime"], Model.AnimeCount.ToString(), Model.Ui["home.metric.inLibrary"])' />
-    <partial name="_MetricCard" model='new MetricCardModel(Model.Ui["home.metric.episodes"], Model.EpisodeCount.ToString(), Model.Ui["home.metric.discovered"])' />
+    @if (Model.ShowLearningHomeWidget)
+    {
+        <partial name="_MetricCard"
+                 model='new MetricCardModel(
+                     Model.Ui["home.metric.due"],
+                     Model.DueReviews.ToString(),
+                     Model.Ui["home.metric.ready"])' />
+    }
+    <partial name="_MetricCard"
+             model='new MetricCardModel(
+                 Model.Ui["home.metric.anime"],
+                 Model.AnimeCount.ToString(),
+                 Model.Ui["home.metric.inLibrary"])' />
+    <partial name="_MetricCard"
+             model='new MetricCardModel(
+                 Model.Ui["home.metric.episodes"],
+                 Model.EpisodeCount.ToString(),
+                 Model.Ui["home.metric.discovered"])' />
 </section>
 
 <section class="section">
@@ -48,8 +65,12 @@
                     episode.AnimeTitle,
                     $"S{episode.SeasonNumber:00} · Episode {episode.Number}",
                     $"/Library/Episode/{episode.Id}",
-                    episode.PreparationPercent,
-                    episode.TotalOccurrences == 0 ? "No JP subs" : $"{episode.PreparationPercent}% prepared",
+                    Model.ShowContentMetrics ? episode.PreparationPercent : null,
+                    Model.ShowContentMetrics
+                        ? (episode.TotalOccurrences == 0
+                            ? "No Japanese learning text"
+                            : $"{episode.PreparationPercent}% prepared")
+                        : null,
                     episode.CoverImageUrl)' />
             }
         </div>

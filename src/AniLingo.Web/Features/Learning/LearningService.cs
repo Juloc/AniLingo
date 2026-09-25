@@ -36,7 +36,10 @@ public sealed class LearningService
         this.profileId = profileId;
     }
     private LearningPreferencesSnapshot? preferencesCache;
-    public async Task SetStateAsync(Guid termId, UserTermState state, CancellationToken cancellationToken)
+    public async Task SetStateAsync(
+        Guid termId,
+        UserTermState state,
+        CancellationToken cancellationToken)
     {
         var item = await db.UserTerms.SingleOrDefaultAsync(
             x => x.ProfileId == profileId && x.TermId == termId,
@@ -56,30 +59,59 @@ public sealed class LearningService
             db.UserTerms.Add(item);
         }
 
-        if (state == UserTermState.Known)
-        {
-            item.State = UserTermState.Known;
-            item.NextReviewAt = null;
-            item.UpdatedAt = now;
-            await db.SaveChangesAsync(cancellationToken);
-            return;
-        }
-
-        item.State = UserTermState.Learning;
+        item.State = state;
         item.UpdatedAt = now;
 
-        if (item.LearningStartedAt is null)
+        switch (state)
         {
-            item.NextReviewAt = null;
-            item.QueuePosition ??= await GetNextQueuePositionAsync(cancellationToken);
-        }
-        else
-        {
-            item.NextReviewAt ??= now;
-        }
+            case UserTermState.Known:
+            case UserTermState.Saved:
+            case UserTermState.Ignored:
+            case UserTermState.Suspended:
+                item.NextReviewAt = null;
 
-        await db.SaveChangesAsync(cancellationToken);
+                if (state is UserTermState.Saved or UserTermState.Ignored)
+                {
+                    item.LearningStartedAt = null;
+                    item.QueuePosition = null;
+                }
+
+                await db.SaveChangesAsync(cancellationToken);
+                return;
+
+            case UserTermState.Learning:
+                if (item.LearningStartedAt is null)
+                {
+                    item.NextReviewAt = null;
+                    item.QueuePosition ??= await GetNextQueuePositionAsync(cancellationToken);
+                }
+                else
+                {
+                    item.NextReviewAt ??= now;
+                }
+
+                await db.SaveChangesAsync(cancellationToken);
+                return;
+
+            default:
+                throw new ArgumentOutOfRangeException(nameof(state), state, null);
+        }
     }
+
+    public Task SaveForLaterAsync(
+        Guid termId,
+        CancellationToken cancellationToken) =>
+        SetStateAsync(termId, UserTermState.Saved, cancellationToken);
+
+    public Task IgnoreAsync(
+        Guid termId,
+        CancellationToken cancellationToken) =>
+        SetStateAsync(termId, UserTermState.Ignored, cancellationToken);
+
+    public Task SuspendAsync(
+        Guid termId,
+        CancellationToken cancellationToken) =>
+        SetStateAsync(termId, UserTermState.Suspended, cancellationToken);
 
     public async Task AddToLearningAsync(
         IReadOnlyCollection<Guid> termIds,
