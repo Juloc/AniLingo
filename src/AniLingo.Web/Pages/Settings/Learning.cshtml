@@ -95,7 +95,7 @@
                             var current = settings.GetOverride(option.Capability);
                             <label>
                                 <span>@option.Label</span>
-                                <select name="media_@mediaType_@option.Capability"
+                                <select name="@($"media_{mediaType}_{option.Capability}")"
                                         asp-items='Model.OverrideOptions(current, "Inherit")'></select>
                                 <small class="muted">@option.Description</small>
                             </label>
