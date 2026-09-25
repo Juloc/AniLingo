@@ -117,6 +117,10 @@ Open **Discover** for one fast search surface across AniList anime, light novels
 
 Episode pages can explicitly sync watched progress for the currently signed-in AniLingo profile's connected AniList account. AniLingo reloads that profile's remote entry immediately before each write, never lowers progress, and sends only the list-entry `id` plus `progress`. It does not send score, notes, repeat count, priority, privacy, custom-list membership, dates or list status. Sync is blocked for ambiguous multi-season local groupings, non-`CURRENT` entries and the final episode to avoid completion-status/date side effects. A pre-write snapshot containing the local profile ID is appended under `/data/integrations` before every mutation; if that backup cannot be written, AniList is not modified.
 
+### Books For You
+
+**Books → For you** (`/Books/ForYou`) shows Continue reading plus “Because you read …”, “More by …”, similar-subject and popular free-book shelves. Recommendations are deterministic and content-based: seeds are the current profile's most recent meaningful reads, then recently imported library books; same author scores strongest, shared stored subjects add to the score, duplicates and books already in the local library are suppressed, and each book appears on only one shelf. Only the current profile's reading state is used; there is no household profiling and nothing is persisted. The normal `/Books` page stays local-only — catalog searches (a bounded handful per visit, with timeouts) run only when For you is opened, and a failing provider just removes its shelf.
+
 ## Web / Light Novels
 
 Open **Novels** to import a supported Japanese web novel. The first source provider is **Shōsetsuka ni Narō / ncode.syosetu.com**. AniLingo stores the work and chapter index in the existing SQLite database; Japanese chapter text is fetched and cached when a chapter is opened. **Cache all Japanese text** can queue the remaining chapters through the existing in-process background worker.
