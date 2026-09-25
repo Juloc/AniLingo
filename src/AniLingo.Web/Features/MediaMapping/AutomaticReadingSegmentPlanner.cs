@@ -72,6 +72,18 @@ public static class LinearRelationSequence
                     "A related AniList prequel could not be loaded.");
             }
 
+            if (previous.Sequels.Count != 1 ||
+                !string.Equals(
+                    previous.Sequels[0],
+                    currentId,
+                    StringComparison.Ordinal))
+            {
+                return new LinearRelationSequenceResult<T>(
+                    [],
+                    false,
+                    "AniList prequel relations branch or do not point back to the current entry.");
+            }
+
             before.Insert(0, previous.Candidate);
             currentId = previousId;
             current = previous;
@@ -115,6 +127,18 @@ public static class LinearRelationSequence
                     [],
                     false,
                     "A related AniList sequel could not be loaded.");
+            }
+
+            if (next.Prequels.Count != 1 ||
+                !string.Equals(
+                    next.Prequels[0],
+                    currentId,
+                    StringComparison.Ordinal))
+            {
+                return new LinearRelationSequenceResult<T>(
+                    [],
+                    false,
+                    "AniList sequel relations branch or do not point back to the current entry.");
             }
 
             result.Add(next.Candidate);
