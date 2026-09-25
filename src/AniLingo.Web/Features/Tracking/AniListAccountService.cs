@@ -164,6 +164,35 @@ public sealed record AniListReadingProgressPreview(
             remoteVolumeProgress);
 }
 
+public enum AniListExternalProgressStateKind
+{
+    Synced,
+    LocalAhead,
+    AniListAhead,
+    NotOnList,
+    MappingNeedsReview,
+    NotConnected,
+    NoLocalProgress,
+    Blocked
+}
+
+public sealed record AniListExternalProgressState(
+    AniListExternalProgressStateKind Kind,
+    string Message,
+    string? MediaTitle,
+    int LocalProgress,
+    int? RemoteProgress,
+    int? LocalVolumeProgress = null,
+    int? RemoteVolumeProgress = null,
+    bool CanSync = false)
+{
+    public bool IsSynced => Kind == AniListExternalProgressStateKind.Synced;
+    public bool NeedsAttention =>
+        Kind is AniListExternalProgressStateKind.MappingNeedsReview
+            or AniListExternalProgressStateKind.NotOnList
+            or AniListExternalProgressStateKind.Blocked;
+}
+
 public sealed record AniListProgressSyncResult(
     bool Success,
     bool Changed,
@@ -184,6 +213,7 @@ public sealed class AniListAccountService(
     AppDbContext db,
     AnimeMetadataService metadataService,
     ReadingSegmentMappingStore segmentMappings,
+    MediaMappingReviewStore mappingReviewStore,
     CurrentAccountContext currentAccount,
     ILogger<AniListAccountService> logger)
 {
