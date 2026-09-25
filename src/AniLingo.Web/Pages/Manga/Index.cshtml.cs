@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 
 namespace AniLingo.Web.Pages.Manga;
 
+[MangaUploadRequestLimits("Upload")]
 public sealed class IndexModel(
     AppDbContext db,
     CurrentAccountContext account,
@@ -33,8 +34,6 @@ public sealed class IndexModel(
     }
 
 
-    [RequestSizeLimit(4L * 1024 * 1024 * 1024)]
-    [RequestFormLimits(MultipartBodyLengthLimit = 4L * 1024 * 1024 * 1024)]
     public async Task<IActionResult> OnPostUploadAsync(
         string? seriesTitle,
         IFormFile[]? archives,
