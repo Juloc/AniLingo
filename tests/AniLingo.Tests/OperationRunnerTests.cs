@@ -81,7 +81,11 @@ public sealed class OperationRunnerTests
                         "Tests",
                         "Failing operation",
                         Retryable: false),
-                    (_, _) => throw new InvalidOperationException("Expected failure."),
+                    async (_, _) =>
+                    {
+                        await Task.Yield();
+                        throw new InvalidOperationException("Expected failure.");
+                    },
                     cancellationToken: CancellationToken.None));
 
             var rows = await new OperationStore(db).ListAsync(
