@@ -228,8 +228,7 @@ public sealed class OpenAiCompatibleProvider(
                 {
                     new { role = "system", content = systemPrompt },
                     new { role = "user", content = userPrompt }
-                },
-                temperature = 0.2
+                }
             });
 
         using var response = await httpClient.SendAsync(
