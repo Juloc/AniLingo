@@ -96,6 +96,62 @@ public sealed class MangaRepository(AppDbContext db)
         return result;
     }
 
+    public async Task<MangaAutoMatchSource?> GetAutoMatchSourceAsync(
+        Guid seriesId,
+        CancellationToken cancellationToken)
+    {
+        return (await QueryAsync(
+            """
+            SELECT "Id", "Title", "MetadataExternalId"
+            FROM "MangaSeries"
+            WHERE "Id" = @seriesId
+            LIMIT 1;
+            """,
+            command => AddParameter(command, "@seriesId", seriesId.ToString()),
+            reader => new MangaAutoMatchSource(
+                ReadGuid(reader, 0),
+                reader.GetString(1),
+                ReadNullableString(reader, 2)),
+            cancellationToken)).SingleOrDefault();
+    }
+
+    public async Task<MangaAniListProgressContext?> GetAniListProgressContextAsync(
+        string profileId,
+        Guid seriesId,
+        CancellationToken cancellationToken)
+    {
+        return (await QueryAsync(
+            """
+            SELECT
+                s."Id",
+                COALESCE(s."MetadataTitle", s."Title"),
+                s."MetadataExternalId",
+                c."Number",
+                p."PageIndex",
+                c."PageCount"
+            FROM "MangaSeries" s
+            JOIN "MangaProgress" p
+                ON p."SeriesId" = s."Id" AND p."ProfileId" = @profileId
+            JOIN "MangaChapters" c
+                ON c."Id" = p."ChapterId" AND c."SeriesId" = s."Id"
+            WHERE s."Id" = @seriesId
+            LIMIT 1;
+            """,
+            command =>
+            {
+                AddParameter(command, "@profileId", profileId);
+                AddParameter(command, "@seriesId", seriesId.ToString());
+            },
+            reader => new MangaAniListProgressContext(
+                ReadGuid(reader, 0),
+                reader.GetString(1),
+                ReadNullableString(reader, 2),
+                reader.GetDouble(3),
+                reader.GetInt32(4),
+                reader.GetInt32(5)),
+            cancellationToken)).SingleOrDefault();
+    }
+
     public async Task<MangaSeriesDetail?> GetSeriesAsync(
         Guid seriesId,
         CancellationToken cancellationToken)
