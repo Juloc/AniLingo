@@ -271,10 +271,20 @@
 <div class="episode-list">
     @foreach (var episode in Model.Episodes)
     {
+        var episodeCode = $"S{episode.SeasonNumber:00}E{episode.Number:00}";
+        <div class="episode-row-shell @(episode.IsWatched ? "is-watched" : "")">
         <a class="episode-row" href="/Library/Episode/@episode.Id">
             <div class="episode-number">E@(episode.Number.ToString("00"))</div>
             <div class="episode-main">
                 <strong>S@(episode.SeasonNumber.ToString("00")) · @episode.Title</strong>
+                @if (episode.IsWatched)
+                {
+                    <span class="episode-watch-state">✓ Watched</span>
+                }
+                else if (episode.ResumePercent is int resumePercent)
+                {
+                    <span class="episode-watch-state">In progress · @resumePercent% watched</span>
+                }
                 <span>
                     @if (episode.JapaneseSubtitleTracks == 0)
                     {
@@ -296,5 +306,18 @@
             </div>
             <span class="episode-arrow">›</span>
         </a>
+        <form method="post"
+              class="episode-watched-form"
+              asp-page-handler="Watched"
+              asp-route-id="@Model.AnimeId">
+            <input type="hidden" name="episodeId" value="@episode.Id" />
+            <input type="hidden" name="watched" value="@(episode.IsWatched ? "false" : "true")" />
+            <button class="button"
+                    type="submit"
+                    aria-label="@(episode.IsWatched ? $"Mark {episodeCode} unwatched" : $"Mark {episodeCode} watched")">
+                @(episode.IsWatched ? "Mark unwatched" : "Mark watched")
+            </button>
+        </form>
+        </div>
     }
 </div>
