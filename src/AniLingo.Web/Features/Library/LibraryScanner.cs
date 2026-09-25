@@ -193,6 +193,17 @@ public sealed class LibraryScanner(
                             decision.Candidate.ExternalId,
                             decision.Score);
                     }
+
+                    var episodeMapping = await metadataService.AutoMapEpisodeRangesAsync(
+                        animeId,
+                        cancellationToken);
+                    if (episodeMapping.Applied)
+                    {
+                        logger.LogInformation(
+                            "Automatically mapped {RangeCount} AniList episode range(s) for anime {AnimeId}.",
+                            episodeMapping.Mappings.Count,
+                            animeId);
+                    }
                 }
                 catch (Exception exception) when (
                     exception is MetadataProviderException or InvalidOperationException)
