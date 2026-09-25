@@ -476,24 +476,46 @@ public sealed class AniListAccountService(
                     account.ViewerName,
                     context.RequestedProgress,
                     remote,
-                    "MANGA"),
+                    "MANGA",
+                    context.RequestedVolumeProgress),
                 cancellationToken);
 
-            var updated = await SaveProgressAsync(
-                account.AccessToken,
-                remote.Id,
-                context.RequestedProgress,
-                cancellationToken);
+            AniListRemoteListEntry updated;
+            if (context.RequestedVolumeProgress is int requestedVolumeProgress)
+            {
+                updated = await SaveReadingProgressAsync(
+                    account.AccessToken,
+                    remote.Id,
+                    context.RequestedProgress,
+                    requestedVolumeProgress,
+                    cancellationToken);
 
-            ValidateProgressOnlyUpdate(
-                remote,
-                updated,
-                context.RequestedProgress);
+                ValidateReadingProgressUpdate(
+                    remote,
+                    updated,
+                    context.RequestedProgress,
+                    requestedVolumeProgress);
+            }
+            else
+            {
+                updated = await SaveProgressAsync(
+                    account.AccessToken,
+                    remote.Id,
+                    context.RequestedProgress,
+                    cancellationToken);
+
+                ValidateProgressOnlyUpdate(
+                    remote,
+                    updated,
+                    context.RequestedProgress);
+            }
 
             return new AniListProgressSyncResult(
                 Success: true,
                 Changed: true,
-                $"AniList manga chapter progress updated from {remote.Progress} to {updated.Progress}. No other list fields were sent.");
+                context.RequestedVolumeProgress is int
+                    ? $"AniList manga progress updated: chapters {remote.Progress} → {updated.Progress}, volumes {remote.ProgressVolumes} → {updated.ProgressVolumes}. No other list fields were sent."
+                    : $"AniList manga chapter progress updated from {remote.Progress} to {updated.Progress}. No other list fields were sent.");
         }
         catch (AniListAccountException exception)
         {
@@ -550,24 +572,46 @@ public sealed class AniListAccountService(
                     account.ViewerName,
                     context.RequestedProgress,
                     remote,
-                    "MANGA"),
+                    "MANGA",
+                    context.RequestedVolumeProgress),
                 cancellationToken);
 
-            var updated = await SaveProgressAsync(
-                account.AccessToken,
-                remote.Id,
-                context.RequestedProgress,
-                cancellationToken);
+            AniListRemoteListEntry updated;
+            if (context.RequestedVolumeProgress is int requestedVolumeProgress)
+            {
+                updated = await SaveReadingProgressAsync(
+                    account.AccessToken,
+                    remote.Id,
+                    context.RequestedProgress,
+                    requestedVolumeProgress,
+                    cancellationToken);
 
-            ValidateProgressOnlyUpdate(
-                remote,
-                updated,
-                context.RequestedProgress);
+                ValidateReadingProgressUpdate(
+                    remote,
+                    updated,
+                    context.RequestedProgress,
+                    requestedVolumeProgress);
+            }
+            else
+            {
+                updated = await SaveProgressAsync(
+                    account.AccessToken,
+                    remote.Id,
+                    context.RequestedProgress,
+                    cancellationToken);
+
+                ValidateProgressOnlyUpdate(
+                    remote,
+                    updated,
+                    context.RequestedProgress);
+            }
 
             return new AniListProgressSyncResult(
                 Success: true,
                 Changed: true,
-                $"AniList chapter progress updated from {remote.Progress} to {updated.Progress}. No other list fields were sent.");
+                context.RequestedVolumeProgress is int
+                    ? $"AniList reading progress updated: chapters {remote.Progress} → {updated.Progress}, volumes {remote.ProgressVolumes} → {updated.ProgressVolumes}. No other list fields were sent."
+                    : $"AniList chapter progress updated from {remote.Progress} to {updated.Progress}. No other list fields were sent.");
         }
         catch (AniListAccountException exception)
         {
