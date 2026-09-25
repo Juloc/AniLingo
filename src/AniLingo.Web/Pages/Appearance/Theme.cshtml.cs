@@ -13,7 +13,7 @@ public sealed class ThemeModel(AppDbContext db) : PageModel
 {
     public async Task<IActionResult> OnPostAsync(string? theme)
     {
-        var profileId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var profileId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (string.IsNullOrWhiteSpace(profileId))
         {
             return Unauthorized();
