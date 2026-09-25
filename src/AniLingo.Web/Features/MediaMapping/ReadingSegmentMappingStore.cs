@@ -18,6 +18,8 @@ public sealed record ReadingMediaSegmentMapping(
     int? RemoteVolumeStart,
     DateTimeOffset UpdatedAt)
 {
+    public string Source { get; init; } = "manual";
+
     public bool ContainsChapter(double chapterNumber) =>
         chapterNumber >= LocalChapterStart &&
         chapterNumber <= LocalChapterEnd;
@@ -162,6 +164,119 @@ public sealed class ReadingSegmentMappingStore
             mappings.Add(normalized);
             await WriteUnsafeAsync(mappings, cancellationToken);
             return normalized;
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    public async Task<bool> ReplaceAutomaticAsync(
+        string mediaType,
+        string localId,
+        IReadOnlyList<ReadingMediaSegmentMapping> plannedMappings,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedMediaType = NormalizeMediaType(mediaType);
+        var normalizedLocalId = localId.Trim();
+
+        if (plannedMappings.Count == 0)
+        {
+            throw new InvalidOperationException(
+                "At least one automatic reading segment is required.");
+        }
+
+        foreach (var mapping in plannedMappings)
+        {
+            Validate(mapping);
+
+            if (!string.Equals(
+                    NormalizeMediaType(mapping.MediaType),
+                    normalizedMediaType,
+                    StringComparison.Ordinal) ||
+                !string.Equals(
+                    mapping.LocalId.Trim(),
+                    normalizedLocalId,
+                    StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException(
+                    "All automatic segments must target the same local work.");
+            }
+        }
+
+        var ordered = plannedMappings
+            .OrderBy(x => x.LocalChapterStart)
+            .ToArray();
+
+        for (var index = 1; index < ordered.Length; index++)
+        {
+            if (ordered[index].LocalChapterStart <=
+                ordered[index - 1].LocalChapterEnd)
+            {
+                throw new InvalidOperationException(
+                    "Automatic reading segments must not overlap.");
+            }
+        }
+
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            var mappings = await ReadUnsafeAsync(cancellationToken);
+            var existing = mappings
+                .Where(x =>
+                    string.Equals(
+                        x.MediaType,
+                        normalizedMediaType,
+                        StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(
+                        x.LocalId,
+                        normalizedLocalId,
+                        StringComparison.Ordinal))
+                .ToArray();
+
+            if (existing.Any(x =>
+                    !string.Equals(
+                        x.Source,
+                        "automatic",
+                        StringComparison.OrdinalIgnoreCase)))
+            {
+                return false;
+            }
+
+            mappings.RemoveAll(x =>
+                string.Equals(
+                    x.MediaType,
+                    normalizedMediaType,
+                    StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(
+                    x.LocalId,
+                    normalizedLocalId,
+                    StringComparison.Ordinal) &&
+                string.Equals(
+                    x.Source,
+                    "automatic",
+                    StringComparison.OrdinalIgnoreCase));
+
+            var now = DateTimeOffset.UtcNow;
+            foreach (var mapping in ordered)
+            {
+                mappings.Add(mapping with
+                {
+                    Id = mapping.Id == Guid.Empty
+                        ? Guid.NewGuid()
+                        : mapping.Id,
+                    MediaType = normalizedMediaType,
+                    LocalId = normalizedLocalId,
+                    Provider = mapping.Provider.Trim().ToLowerInvariant(),
+                    ExternalId = mapping.ExternalId.Trim(),
+                    PreferredTitle = NormalizeOptional(mapping.PreferredTitle),
+                    UpdatedAt = now,
+                    Source = "automatic"
+                });
+            }
+
+            await WriteUnsafeAsync(mappings, cancellationToken);
+            return true;
         }
         finally
         {
