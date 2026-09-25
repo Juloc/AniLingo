@@ -488,17 +488,16 @@ public sealed class PlaybackService
         var termRows = await (
             from episodeTerm in db.EpisodeTerms.AsNoTracking()
             join term in db.Terms.AsNoTracking() on episodeTerm.TermId equals term.Id
-            join userTermValue in db.UserTerms.AsNoTracking()
-                    .Where(x => x.ProfileId == profileId)
-                on term.Id equals userTermValue.TermId into userTerms
-            from userTerm in userTerms.DefaultIfEmpty()
+            join stateValue in LearningQueries.TermStates(db, profileId)
+                on term.Id equals stateValue.TermId into states
+            from state in states.DefaultIfEmpty()
             where episodeTerm.EpisodeId == episodeId
             select new PlaybackTermInfo(
                 term.Id,
                 term.Canonical,
                 term.Reading,
                 term.Meaning,
-                userTerm == null ? null : userTerm.State))
+                state == null ? null : state.State))
             .ToListAsync(cancellationToken);
 
         var terms = termRows.ToDictionary(x => x.Canonical, StringComparer.Ordinal);

@@ -3,6 +3,7 @@ using AniLingo.Web.Features.ReaderPreferences;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Books;
 using AniLingo.Web.Features.Learning;
+using AniLingo.Web.Features.Learning.Courses;
 using AniLingo.Web.Features.Library;
 using AniLingo.Web.Features.Metadata;
 using AniLingo.Web.Features.Novels;
@@ -24,8 +25,12 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<SubtitleCue> SubtitleCues => Set<SubtitleCue>();
     public DbSet<Term> Terms => Set<Term>();
     public DbSet<EpisodeTerm> EpisodeTerms => Set<EpisodeTerm>();
-    public DbSet<UserTerm> UserTerms => Set<UserTerm>();
-    public DbSet<Review> Reviews => Set<Review>();
+    public DbSet<LearningUnit> LearningUnits => Set<LearningUnit>();
+    public DbSet<LearningVariant> LearningVariants => Set<LearningVariant>();
+    public DbSet<LearningCourse> LearningCourses => Set<LearningCourse>();
+    public DbSet<LearningCard> LearningCards => Set<LearningCard>();
+    public DbSet<LearningCardReview> LearningCardReviews => Set<LearningCardReview>();
+    public DbSet<LearningContext> LearningContexts => Set<LearningContext>();
     public DbSet<LearningPreferences> LearningPreferences => Set<LearningPreferences>();
     public DbSet<AiSentenceExplanationCache> AiSentenceExplanationCache => Set<AiSentenceExplanationCache>();
     public DbSet<OwnerAccount> OwnerAccounts => Set<OwnerAccount>();
@@ -154,24 +159,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasIndex(x => new { x.ProfileId, x.UpdatedAt });
         });
 
-        modelBuilder.Entity<UserTerm>(entity =>
-        {
-            entity.HasKey(x => x.Id);
-            entity.Property(x => x.ProfileId).HasMaxLength(80);
-            entity.HasOne<Term>().WithMany().HasForeignKey(x => x.TermId).OnDelete(DeleteBehavior.Cascade);
-            entity.HasIndex(x => new { x.ProfileId, x.TermId }).IsUnique();
-            entity.HasIndex(x => new { x.ProfileId, x.State, x.NextReviewAt });
-            entity.HasIndex(x => new { x.LearningStartedAt, x.QueuePosition });
-        });
-
-        modelBuilder.Entity<Review>(entity =>
-        {
-            entity.HasKey(x => x.Id);
-            entity.Property(x => x.ProfileId).HasMaxLength(80);
-            entity.HasOne<Term>().WithMany().HasForeignKey(x => x.TermId).OnDelete(DeleteBehavior.Cascade);
-            entity.HasIndex(x => new { x.ProfileId, x.ReviewedAt });
-            entity.HasIndex(x => new { x.ProfileId, x.ClientEventId }).IsUnique();
-        });
+        LearningCourseModelConfiguration.Configure(modelBuilder);
 
         modelBuilder.Entity<LearningPreferences>(entity =>
         {

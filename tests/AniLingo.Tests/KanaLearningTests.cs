@@ -1,4 +1,10 @@
+using AniLingo.Web.Data;
 using AniLingo.Web.Features.Kana;
+using AniLingo.Web.Features.Learning;
+using AniLingo.Web.Features.Learning.Courses;
+using AniLingo.Web.Features.Vocabulary;
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
 
 namespace AniLingo.Tests;
 
@@ -66,5 +72,63 @@ public sealed class KanaLearningTests
         Assert.IsTrue(KanaPractice.IsSuitableSentence("今日は学校に行く。"));
         Assert.IsFalse(KanaPractice.IsSuitableSentence("hello world"));
         Assert.IsFalse(KanaPractice.IsSuitableSentence("あ\nい"));
+    }
+
+    [TestMethod]
+    public async Task KanaPracticeUsesAScriptCourseSeparateFromWords()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"anilingo-kana-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+
+        try
+        {
+            var options = new DbContextOptionsBuilder<AppDbContext>()
+                .UseSqlite($"Data Source={Path.Combine(directory, "anilingo.db")};Foreign Keys=True")
+                .Options;
+            await using var db = new AppDbContext(options);
+            await DatabaseMigrationBridge.UpgradeAsync(db);
+
+            var learning = LearningTestData.Service(db, "reader");
+            var kana = new KanaLearningService(db, learning);
+            Assert.IsNull(await kana.FindCourseAsync(CancellationToken.None));
+
+            var courseId = await kana.PrepareAsync(CancellationToken.None);
+            Assert.AreEqual(courseId, await kana.PrepareAsync(CancellationToken.None));
+
+            var course = await db.LearningCourses.AsNoTracking().SingleAsync();
+            Assert.AreEqual(KanaCatalog.PromptLanguage, course.SourceLanguage);
+            Assert.AreEqual(KanaCatalog.AnswerLanguage, course.TargetLanguage);
+            Assert.IsFalse(course.IsPrimary);
+            Assert.AreEqual(KanaCatalog.All.Count, await db.LearningUnits.CountAsync(x => x.Kind == LearningUnitKind.Script));
+
+            var a = KanaCatalog.IdFor(KanaCatalog.All[0]);
+            var previous = await kana.AnswerAsync(courseId, a, correct: true, CancellationToken.None);
+            Assert.IsNull(previous);
+
+            var card = (await kana.LoadCardsAsync(courseId, [a], CancellationToken.None))[a];
+            Assert.AreEqual(UserTermState.Learning, card.State);
+            Assert.AreEqual(ReviewRating.Good, (await db.LearningCardReviews.SingleAsync()).Rating);
+
+            await learning.SetUnitStateAsync(courseId, a, UserTermState.Known, CancellationToken.None);
+            Assert.AreEqual(
+                UserTermState.Known,
+                await kana.AnswerAsync(courseId, a, correct: false, CancellationToken.None));
+            Assert.AreEqual(1, await db.LearningCardReviews.CountAsync());
+
+            // A Japanese catalog word never lands in the Kana course.
+            var term = new Term { Language = "ja", Canonical = "猫", Meaning = "Katze" };
+            db.Terms.Add(term);
+            await db.SaveChangesAsync();
+            await learning.SetStateAsync(term.Id, UserTermState.Learning, CancellationToken.None);
+
+            var wordCourse = await db.LearningCourses.AsNoTracking().SingleAsync(x => x.Id != courseId);
+            Assert.AreEqual("de", wordCourse.TargetLanguage);
+            Assert.IsTrue(wordCourse.IsPrimary);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            Directory.Delete(directory, recursive: true);
+        }
     }
 }

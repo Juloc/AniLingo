@@ -1,107 +1,57 @@
-using System.Data;
-using System.Data.Common;
-using System.Globalization;
 using AniLingo.Web.Data;
+using AniLingo.Web.Features.Vocabulary;
 using Microsoft.EntityFrameworkCore;
 
 namespace AniLingo.Web.Features.Learning.Courses;
 
+/// <summary>
+/// Owns Learning courses, language-neutral units/variants, context anchors and
+/// the existence of directional cards. Card state changes and FSRS scheduling
+/// go through <see cref="LearningService"/>.
+/// </summary>
 public sealed class LearningCourseStore(AppDbContext db)
 {
+    public const int NameMaxLength = 120;
+
+    public Task<LearningCourseSnapshot> CreateAsync(
+        string profileId,
+        string sourceLanguage,
+        string targetLanguage,
+        string? name,
+        LearningCourseOptions? options,
+        CancellationToken cancellationToken) =>
+        CreateAsync(
+            profileId,
+            sourceLanguage,
+            targetLanguage,
+            name,
+            options,
+            primaryWhenFirstForSource: true,
+            cancellationToken);
+
+    /// <param name="primaryWhenFirstForSource">
+    /// False for auxiliary courses such as a script trainer that must never
+    /// receive catalog words implicitly.
+    /// </param>
     public async Task<LearningCourseSnapshot> CreateAsync(
         string profileId,
         string sourceLanguage,
         string targetLanguage,
         string? name,
         LearningCourseOptions? options,
+        bool primaryWhenFirstForSource,
         CancellationToken cancellationToken)
     {
-        ValidateProfile(profileId);
+        var course = await AddCourseAsync(
+            profileId,
+            sourceLanguage,
+            targetLanguage,
+            name,
+            options ?? new LearningCourseOptions(),
+            primaryWhenFirstForSource,
+            cancellationToken);
 
-        var source = LearningLanguageTag.Normalize(sourceLanguage);
-        var target = LearningLanguageTag.Normalize(targetLanguage);
-
-        if (source.Equals(target, StringComparison.OrdinalIgnoreCase))
-        {
-            throw new ArgumentException(
-                "Source and target languages must be different.");
-        }
-
-        options ??= new LearningCourseOptions();
-
-        var course = new LearningCourseSnapshot(
-            Guid.NewGuid().ToString("N"),
-            profileId.Trim(),
-            string.IsNullOrWhiteSpace(name)
-                ? $"{source} → {target}"
-                : name.Trim(),
-            source,
-            target,
-            true,
-            options,
-            DateTime.UtcNow,
-            DateTime.UtcNow);
-
-        var connection = db.Database.GetDbConnection();
-        var openedHere = connection.State != ConnectionState.Open;
-        if (openedHere)
-        {
-            await connection.OpenAsync(cancellationToken);
-        }
-
-        try
-        {
-            await using var command = connection.CreateCommand();
-            command.CommandText =
-                """
-                INSERT INTO "LearningCourses" (
-                    "Id", "ProfileId", "Name", "SourceLanguage", "TargetLanguage",
-                    "IsEnabled", "RecognitionEnabled", "ProductionEnabled",
-                    "ListeningEnabled", "WritingEnabled", "SentencePracticeEnabled",
-                    "CreatedAt", "UpdatedAt")
-                VALUES (
-                    $id, $profileId, $name, $sourceLanguage, $targetLanguage,
-                    1, $recognition, $production,
-                    $listening, $writing, $sentences,
-                    $createdAt, $updatedAt);
-                """;
-
-            Add(command, "$id", course.Id);
-            Add(command, "$profileId", course.ProfileId);
-            Add(command, "$name", course.Name);
-            Add(command, "$sourceLanguage", course.SourceLanguage);
-            Add(command, "$targetLanguage", course.TargetLanguage);
-            Add(command, "$recognition", options.RecognitionEnabled ? 1 : 0);
-            Add(command, "$production", options.ProductionEnabled ? 1 : 0);
-            Add(command, "$listening", options.ListeningEnabled ? 1 : 0);
-            Add(command, "$writing", options.WritingEnabled ? 1 : 0);
-            Add(command, "$sentences", options.SentencePracticeEnabled ? 1 : 0);
-            Add(command, "$createdAt", course.CreatedAt);
-            Add(command, "$updatedAt", course.UpdatedAt);
-
-            try
-            {
-                await command.ExecuteNonQueryAsync(cancellationToken);
-            }
-            catch (Exception exception) when (
-                exception.Message.Contains(
-                    "UNIQUE constraint failed",
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                throw new InvalidOperationException(
-                    $"A {source} → {target} learning course already exists for this profile.",
-                    exception);
-            }
-
-            return course;
-        }
-        finally
-        {
-            if (openedHere)
-            {
-                await connection.CloseAsync();
-            }
-        }
+        return LearningCourseSnapshot.From(course);
     }
 
     public async Task<IReadOnlyList<LearningCourseSnapshot>> ListAsync(
@@ -109,159 +59,132 @@ public sealed class LearningCourseStore(AppDbContext db)
         CancellationToken cancellationToken)
     {
         ValidateProfile(profileId);
+        var id = profileId.Trim();
 
-        var connection = db.Database.GetDbConnection();
-        var openedHere = connection.State != ConnectionState.Open;
-        if (openedHere)
-        {
-            await connection.OpenAsync(cancellationToken);
-        }
+        var courses = await db.LearningCourses
+            .AsNoTracking()
+            .Where(x => x.ProfileId == id)
+            .OrderBy(x => x.SourceLanguage)
+            .ThenByDescending(x => x.IsPrimary)
+            .ThenBy(x => x.CreatedAt)
+            .ToListAsync(cancellationToken);
 
-        try
-        {
-            await using var command = connection.CreateCommand();
-            command.CommandText =
-                """
-                SELECT
-                    "Id", "ProfileId", "Name", "SourceLanguage", "TargetLanguage",
-                    "IsEnabled", "RecognitionEnabled", "ProductionEnabled",
-                    "ListeningEnabled", "WritingEnabled", "SentencePracticeEnabled",
-                    "CreatedAt", "UpdatedAt"
-                FROM "LearningCourses"
-                WHERE "ProfileId" = $profileId
-                ORDER BY "IsEnabled" DESC, "CreatedAt", "Name";
-                """;
-            Add(command, "$profileId", profileId.Trim());
-
-            var result = new List<LearningCourseSnapshot>();
-            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-            while (await reader.ReadAsync(cancellationToken))
-            {
-                result.Add(ReadCourse(reader));
-            }
-
-            return result;
-        }
-        finally
-        {
-            if (openedHere)
-            {
-                await connection.CloseAsync();
-            }
-        }
+        return courses.Select(LearningCourseSnapshot.From).ToArray();
     }
 
     public async Task<LearningCourseSnapshot?> GetAsync(
         string profileId,
-        string courseId,
+        Guid courseId,
         CancellationToken cancellationToken)
     {
         ValidateProfile(profileId);
+        var id = profileId.Trim();
 
-        var connection = db.Database.GetDbConnection();
-        var openedHere = connection.State != ConnectionState.Open;
-        if (openedHere)
-        {
-            await connection.OpenAsync(cancellationToken);
-        }
+        var course = await db.LearningCourses
+            .AsNoTracking()
+            .SingleOrDefaultAsync(
+                x => x.ProfileId == id && x.Id == courseId,
+                cancellationToken);
 
-        try
-        {
-            await using var command = connection.CreateCommand();
-            command.CommandText =
-                """
-                SELECT
-                    "Id", "ProfileId", "Name", "SourceLanguage", "TargetLanguage",
-                    "IsEnabled", "RecognitionEnabled", "ProductionEnabled",
-                    "ListeningEnabled", "WritingEnabled", "SentencePracticeEnabled",
-                    "CreatedAt", "UpdatedAt"
-                FROM "LearningCourses"
-                WHERE "ProfileId" = $profileId
-                  AND "Id" = $courseId
-                LIMIT 1;
-                """;
-            Add(command, "$profileId", profileId.Trim());
-            Add(command, "$courseId", courseId);
-
-            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-            return await reader.ReadAsync(cancellationToken)
-                ? ReadCourse(reader)
-                : null;
-        }
-        finally
-        {
-            if (openedHere)
-            {
-                await connection.CloseAsync();
-            }
-        }
+        return course is null ? null : LearningCourseSnapshot.From(course);
     }
 
+    /// <summary>
+    /// Updates course settings. Enabling a practice mode creates the missing
+    /// directional cards for every unit already in the course; disabling a mode
+    /// keeps its cards and their review history but stops scheduling them.
+    /// </summary>
     public async Task UpdateAsync(
         string profileId,
-        string courseId,
+        Guid courseId,
         string? name,
         bool isEnabled,
         LearningCourseOptions options,
         CancellationToken cancellationToken)
     {
-        ValidateProfile(profileId);
+        var course = await FindOwnedAsync(profileId, courseId, cancellationToken)
+            ?? throw new KeyNotFoundException(
+                "Learning course was not found for this profile.");
 
-        var connection = db.Database.GetDbConnection();
-        var openedHere = connection.State != ConnectionState.Open;
-        if (openedHere)
+        if (!string.IsNullOrWhiteSpace(name))
         {
-            await connection.OpenAsync(cancellationToken);
+            course.Name = CleanName(name);
         }
 
-        try
-        {
-            await using var command = connection.CreateCommand();
-            command.CommandText =
-                """
-                UPDATE "LearningCourses"
-                SET "Name" = CASE
-                        WHEN $name IS NULL OR trim($name) = '' THEN "Name"
-                        ELSE trim($name)
-                    END,
-                    "IsEnabled" = $isEnabled,
-                    "RecognitionEnabled" = $recognition,
-                    "ProductionEnabled" = $production,
-                    "ListeningEnabled" = $listening,
-                    "WritingEnabled" = $writing,
-                    "SentencePracticeEnabled" = $sentences,
-                    "UpdatedAt" = $updatedAt
-                WHERE "ProfileId" = $profileId
-                  AND "Id" = $courseId;
-                """;
+        course.IsEnabled = isEnabled;
+        course.RecognitionEnabled = options.RecognitionEnabled;
+        course.ProductionEnabled = options.ProductionEnabled;
+        course.ListeningEnabled = options.ListeningEnabled;
+        course.WritingEnabled = options.WritingEnabled;
+        course.SentencePracticeEnabled = options.SentencePracticeEnabled;
+        course.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(cancellationToken);
 
-            Add(command, "$name", name);
-            Add(command, "$isEnabled", isEnabled ? 1 : 0);
-            Add(command, "$recognition", options.RecognitionEnabled ? 1 : 0);
-            Add(command, "$production", options.ProductionEnabled ? 1 : 0);
-            Add(command, "$listening", options.ListeningEnabled ? 1 : 0);
-            Add(command, "$writing", options.WritingEnabled ? 1 : 0);
-            Add(command, "$sentences", options.SentencePracticeEnabled ? 1 : 0);
-            Add(command, "$updatedAt", DateTime.UtcNow);
-            Add(command, "$profileId", profileId.Trim());
-            Add(command, "$courseId", courseId);
+        var unitIds = await db.LearningCards
+            .AsNoTracking()
+            .Where(x => x.CourseId == course.Id)
+            .Select(x => x.UnitId)
+            .Distinct()
+            .ToListAsync(cancellationToken);
 
-            if (await command.ExecuteNonQueryAsync(cancellationToken) == 0)
-            {
-                throw new KeyNotFoundException(
-                    "Learning course was not found for this profile.");
-            }
-        }
-        finally
+        if (unitIds.Count > 0)
         {
-            if (openedHere)
-            {
-                await connection.CloseAsync();
-            }
+            await EnsureCardsAsync(course, unitIds, cancellationToken);
         }
     }
 
+    /// <summary>
+    /// Makes the course the one that receives catalog words from content in
+    /// its source language.
+    /// </summary>
+    public async Task SetPrimaryAsync(
+        string profileId,
+        Guid courseId,
+        CancellationToken cancellationToken)
+    {
+        var course = await FindOwnedAsync(profileId, courseId, cancellationToken)
+            ?? throw new KeyNotFoundException(
+                "Learning course was not found for this profile.");
+
+        if (course.IsPrimary)
+        {
+            return;
+        }
+
+        await using var transaction =
+            await db.Database.BeginTransactionAsync(cancellationToken);
+
+        var previous = await db.LearningCourses
+            .Where(x =>
+                x.ProfileId == course.ProfileId
+                && x.SourceLanguage == course.SourceLanguage
+                && x.IsPrimary)
+            .ToListAsync(cancellationToken);
+
+        var now = DateTime.UtcNow;
+        foreach (var item in previous)
+        {
+            item.IsPrimary = false;
+            item.UpdatedAt = now;
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
+
+        course.IsPrimary = true;
+        course.UpdatedAt = now;
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    public Task<LearningUnitCreateResult> CreateUnitAsync(
+        LearningUnitKind kind,
+        IReadOnlyList<LearningVariantInput> variants,
+        CancellationToken cancellationToken) =>
+        CreateUnitAsync(Guid.NewGuid(), kind, variants, cancellationToken);
+
+    /// <param name="unitId">Stable ID for catalog-defined units such as Kana.</param>
     public async Task<LearningUnitCreateResult> CreateUnitAsync(
+        Guid unitId,
         LearningUnitKind kind,
         IReadOnlyList<LearningVariantInput> variants,
         CancellationToken cancellationToken)
@@ -273,627 +196,538 @@ public sealed class LearningCourseStore(AppDbContext db)
                 nameof(variants));
         }
 
-        var normalized = variants
-            .Select(variant =>
-            {
-                var language = LearningLanguageTag.Normalize(variant.LanguageTag);
-                var text = variant.Text?.Trim();
-                if (string.IsNullOrWhiteSpace(text))
-                {
-                    throw new ArgumentException(
-                        "Learning variant text is required.",
-                        nameof(variants));
-                }
-
-                return variant with
-                {
-                    LanguageTag = language,
-                    Text = text,
-                    Reading = string.IsNullOrWhiteSpace(variant.Reading)
-                        ? null
-                        : variant.Reading.Trim(),
-                    Role = string.IsNullOrWhiteSpace(variant.Role)
-                        ? "Primary"
-                        : variant.Role.Trim(),
-                    SourceKind = string.IsNullOrWhiteSpace(variant.SourceKind)
-                        ? "Manual"
-                        : variant.SourceKind.Trim()
-                };
-            })
-            .ToArray();
-
-        var duplicate = normalized
-            .GroupBy(
-                x => (x.LanguageTag, x.Text),
-                EqualityComparer<(string, string)>.Default)
-            .FirstOrDefault(x => x.Count() > 1);
-        if (duplicate is not null)
+        var normalized = variants.Select(NormalizeVariant).ToArray();
+        if (normalized
+            .GroupBy(x => (x.LanguageTag, x.Text))
+            .Any(x => x.Count() > 1))
         {
             throw new ArgumentException(
                 "Duplicate language/text variants are not allowed.",
                 nameof(variants));
         }
 
-        var unitId = Guid.NewGuid().ToString("N");
-        var createdAt = DateTime.UtcNow;
-
-        var connection = db.Database.GetDbConnection();
-        var openedHere = connection.State != ConnectionState.Open;
-        if (openedHere)
+        var now = DateTime.UtcNow;
+        var unit = new LearningUnit
         {
-            await connection.OpenAsync(cancellationToken);
+            Id = unitId,
+            Kind = kind,
+            CreatedAt = now
+        };
+
+        var rows = normalized
+            .Select(variant => new LearningVariant
+            {
+                UnitId = unit.Id,
+                LanguageTag = variant.LanguageTag,
+                Text = variant.Text,
+                Reading = variant.Reading,
+                Role = variant.Role,
+                SourceKind = variant.SourceKind,
+                CreatedAt = now
+            })
+            .ToArray();
+
+        db.LearningUnits.Add(unit);
+        db.LearningVariants.AddRange(rows);
+        await db.SaveChangesAsync(cancellationToken);
+
+        return new LearningUnitCreateResult(
+            new LearningUnitSnapshot(unit.Id, unit.Kind, unit.TermId, unit.CreatedAt),
+            rows.Select(LearningVariantSnapshot.From).ToArray());
+    }
+
+    /// <summary>
+    /// Returns the unit that represents a catalog term, creating it on first
+    /// use. The term's text becomes the source-language variant and its
+    /// dictionary meaning a <see cref="Term.MeaningLanguage"/> variant.
+    /// </summary>
+    public async Task<LearningUnit> EnsureTermUnitAsync(
+        Term term,
+        CancellationToken cancellationToken)
+    {
+        var language = LearningLanguageTag.Normalize(term.Language);
+        var unit = await db.LearningUnits
+            .SingleOrDefaultAsync(x => x.TermId == term.Id, cancellationToken);
+
+        var variants = new List<LearningVariant>();
+        if (unit is null)
+        {
+            unit = new LearningUnit
+            {
+                Kind = LearningUnitKind.Word,
+                TermId = term.Id
+            };
+            db.LearningUnits.Add(unit);
+        }
+        else
+        {
+            variants = await db.LearningVariants
+                .Where(x => x.UnitId == unit.Id)
+                .ToListAsync(cancellationToken);
         }
 
-        try
+        var canonical = term.Canonical.Trim();
+        var source = variants.FirstOrDefault(x =>
+            x.LanguageTag == language && x.Text == canonical);
+        var reading = string.IsNullOrWhiteSpace(term.Reading)
+            ? null
+            : term.Reading.Trim();
+
+        if (source is null)
         {
-            await using var transaction =
-                await connection.BeginTransactionAsync(cancellationToken);
-
-            await using (var unitCommand = connection.CreateCommand())
+            db.LearningVariants.Add(new LearningVariant
             {
-                unitCommand.Transaction = transaction;
-                unitCommand.CommandText =
-                    """
-                    INSERT INTO "LearningUnits" (
-                        "Id", "Kind", "LegacyTermId", "CreatedAt")
-                    VALUES (
-                        $id, $kind, NULL, $createdAt);
-                    """;
-                Add(unitCommand, "$id", unitId);
-                Add(unitCommand, "$kind", kind.ToString());
-                Add(unitCommand, "$createdAt", createdAt);
-                await unitCommand.ExecuteNonQueryAsync(cancellationToken);
-            }
-
-            var snapshots = new List<LearningVariantSnapshot>(normalized.Length);
-            foreach (var variant in normalized)
-            {
-                var variantId = Guid.NewGuid().ToString("N");
-
-                await using var variantCommand = connection.CreateCommand();
-                variantCommand.Transaction = transaction;
-                variantCommand.CommandText =
-                    """
-                    INSERT INTO "LearningVariants" (
-                        "Id", "UnitId", "LanguageTag", "Text", "Reading",
-                        "Role", "SourceKind", "CreatedAt")
-                    VALUES (
-                        $id, $unitId, $languageTag, $text, $reading,
-                        $role, $sourceKind, $createdAt);
-                    """;
-                Add(variantCommand, "$id", variantId);
-                Add(variantCommand, "$unitId", unitId);
-                Add(variantCommand, "$languageTag", variant.LanguageTag);
-                Add(variantCommand, "$text", variant.Text);
-                Add(variantCommand, "$reading", variant.Reading);
-                Add(variantCommand, "$role", variant.Role);
-                Add(variantCommand, "$sourceKind", variant.SourceKind);
-                Add(variantCommand, "$createdAt", createdAt);
-                await variantCommand.ExecuteNonQueryAsync(cancellationToken);
-
-                snapshots.Add(new LearningVariantSnapshot(
-                    variantId,
-                    unitId,
-                    variant.LanguageTag,
-                    variant.Text,
-                    variant.Reading,
-                    variant.Role,
-                    variant.SourceKind));
-            }
-
-            await transaction.CommitAsync(cancellationToken);
-
-            return new LearningUnitCreateResult(
-                new LearningUnitSnapshot(
-                    unitId,
-                    kind,
-                    null,
-                    createdAt),
-                snapshots);
+                UnitId = unit.Id,
+                LanguageTag = language,
+                Text = canonical,
+                Reading = reading,
+                Role = LearningVariantRole.Primary,
+                SourceKind = LearningVariantSource.Term
+            });
         }
-        finally
+        else if (source.Reading is null && reading is not null)
         {
-            if (openedHere)
-            {
-                await connection.CloseAsync();
-            }
+            source.Reading = reading;
         }
+
+        var meaning = term.Meaning?.Trim();
+        if (!string.IsNullOrEmpty(meaning)
+            && language != Term.MeaningLanguage
+            && !variants.Any(x =>
+                x.LanguageTag == Term.MeaningLanguage && x.Text == meaning))
+        {
+            db.LearningVariants.Add(new LearningVariant
+            {
+                UnitId = unit.Id,
+                LanguageTag = Term.MeaningLanguage,
+                Text = meaning,
+                Role = LearningVariantRole.Meaning,
+                SourceKind = LearningVariantSource.Dictionary
+            });
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
+        return unit;
+    }
+
+    /// <summary>
+    /// Resolves the primary course that receives catalog words of a content
+    /// language. A profile without one gets a Recognition course towards the
+    /// catalog meaning language, matching the bundled dictionary.
+    /// </summary>
+    public async Task<LearningCourse> ResolvePrimaryCourseAsync(
+        string profileId,
+        string languageTag,
+        CancellationToken cancellationToken)
+    {
+        ValidateProfile(profileId);
+        var id = profileId.Trim();
+        var source = LearningLanguageTag.Normalize(languageTag);
+
+        var primary = await db.LearningCourses
+            .SingleOrDefaultAsync(
+                x => x.ProfileId == id && x.SourceLanguage == source && x.IsPrimary,
+                cancellationToken);
+        if (primary is not null)
+        {
+            return primary;
+        }
+
+        if (source == Term.MeaningLanguage)
+        {
+            throw new InvalidOperationException(
+                $"Create a Learning course for {source} content in Learning settings first.");
+        }
+
+        var existing = await db.LearningCourses
+            .SingleOrDefaultAsync(
+                x => x.ProfileId == id
+                    && x.SourceLanguage == source
+                    && x.TargetLanguage == Term.MeaningLanguage,
+                cancellationToken);
+        if (existing is null)
+        {
+            return await AddCourseAsync(
+                id,
+                source,
+                Term.MeaningLanguage,
+                null,
+                new LearningCourseOptions(),
+                primaryWhenFirstForSource: true,
+                cancellationToken);
+        }
+
+        existing.IsPrimary = true;
+        existing.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(cancellationToken);
+        return existing;
     }
 
     public async Task<IReadOnlyList<LearningCardSnapshot>> EnsureCourseCardsAsync(
         string profileId,
-        string courseId,
-        string unitId,
-        LearningCardState initialState,
+        Guid courseId,
+        Guid unitId,
         CancellationToken cancellationToken)
     {
-        ValidateProfile(profileId);
-
-        var course = await GetAsync(
-            profileId,
-            courseId,
-            cancellationToken)
+        var course = await FindOwnedAsync(profileId, courseId, cancellationToken)
             ?? throw new KeyNotFoundException(
                 "Learning course was not found for this profile.");
 
-        var connection = db.Database.GetDbConnection();
-        var openedHere = connection.State != ConnectionState.Open;
-        if (openedHere)
+        var cards = await EnsureCardsAsync(course, [unitId], cancellationToken);
+        return cards
+            .OrderBy(x => x.Mode)
+            .Select(LearningCardSnapshot.From)
+            .ToArray();
+    }
+
+    /// <summary>
+    /// Creates the missing directional cards of the given units in a course and
+    /// returns all of their cards (tracked). Recognition always exists as the
+    /// unit's anchor card; Production, Listening and Writing exist only while the
+    /// course enables them, and Production/Writing additionally need a
+    /// target-language variant to prompt with. New non-anchor cards inherit the
+    /// anchor's state; Known/Learning anchors queue them as new learning.
+    /// </summary>
+    internal async Task<IReadOnlyList<LearningCard>> EnsureCardsAsync(
+        LearningCourse course,
+        IReadOnlyCollection<Guid> unitIds,
+        CancellationToken cancellationToken)
+    {
+        var cards = await db.LearningCards
+            .Where(x => x.CourseId == course.Id && unitIds.Contains(x.UnitId))
+            .ToListAsync(cancellationToken);
+
+        var languages = (await db.LearningVariants
+                .AsNoTracking()
+                .Where(x =>
+                    unitIds.Contains(x.UnitId)
+                    && (x.LanguageTag == course.SourceLanguage
+                        || x.LanguageTag == course.TargetLanguage))
+                .Select(x => new { x.UnitId, x.LanguageTag })
+                .Distinct()
+                .ToListAsync(cancellationToken))
+            .ToLookup(x => x.UnitId, x => x.LanguageTag);
+
+        var now = DateTime.UtcNow;
+        long? queuePosition = null;
+        var created = new List<LearningCard>();
+
+        foreach (var unitId in unitIds)
         {
-            await connection.OpenAsync(cancellationToken);
-        }
-
-        try
-        {
-            var languages = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-            await using (var variantCommand = connection.CreateCommand())
-            {
-                variantCommand.CommandText =
-                    """
-                    SELECT DISTINCT "LanguageTag"
-                    FROM "LearningVariants"
-                    WHERE "UnitId" = $unitId;
-                    """;
-                Add(variantCommand, "$unitId", unitId);
-
-                await using var reader =
-                    await variantCommand.ExecuteReaderAsync(cancellationToken);
-                while (await reader.ReadAsync(cancellationToken))
-                {
-                    languages.Add(reader.GetString(0));
-                }
-            }
-
-            if (!languages.Contains(course.SourceLanguage)
-                || !languages.Contains(course.TargetLanguage))
+            var unitLanguages = languages[unitId].ToHashSet(StringComparer.Ordinal);
+            if (!unitLanguages.Contains(course.SourceLanguage))
             {
                 throw new InvalidOperationException(
-                    "The learning unit needs variants for both course languages before cards can be created.");
+                    $"The learning unit needs a {course.SourceLanguage} variant before it can join the {course.Name} course.");
             }
 
-            var requested = new List<(LearningCardMode Mode, string Prompt, string Answer)>();
-            if (course.Options.RecognitionEnabled)
+            var hasTarget = unitLanguages.Contains(course.TargetLanguage);
+            var unitCards = cards.Where(x => x.UnitId == unitId).ToList();
+            var anchor = unitCards.FirstOrDefault(x => x.Mode == LearningCardMode.Recognition);
+
+            foreach (var mode in Enum.GetValues<LearningCardMode>())
             {
-                requested.Add((
-                    LearningCardMode.Recognition,
-                    course.SourceLanguage,
-                    course.TargetLanguage));
-            }
+                if (unitCards.Any(x => x.Mode == mode) || !Applies(course, mode, hasTarget))
+                {
+                    continue;
+                }
 
-            if (course.Options.ProductionEnabled)
-            {
-                requested.Add((
-                    LearningCardMode.Production,
-                    course.TargetLanguage,
-                    course.SourceLanguage));
-            }
+                var promptIsSource = mode is LearningCardMode.Recognition or LearningCardMode.Listening;
+                var card = new LearningCard
+                {
+                    ProfileId = course.ProfileId,
+                    CourseId = course.Id,
+                    UnitId = unitId,
+                    Mode = mode,
+                    PromptLanguage = promptIsSource ? course.SourceLanguage : course.TargetLanguage,
+                    AnswerLanguage = promptIsSource ? course.TargetLanguage : course.SourceLanguage,
+                    State = UserTermState.Saved,
+                    CreatedAt = now,
+                    UpdatedAt = now
+                };
 
-            if (course.Options.ListeningEnabled)
-            {
-                requested.Add((
-                    LearningCardMode.Listening,
-                    course.SourceLanguage,
-                    course.TargetLanguage));
-            }
+                if (anchor is not null && anchor.State != UserTermState.Saved)
+                {
+                    queuePosition ??= await CurrentMaxQueuePositionAsync(
+                        course.ProfileId,
+                        cancellationToken);
+                    var position = queuePosition.Value;
 
-            if (course.Options.WritingEnabled)
-            {
-                requested.Add((
-                    LearningCardMode.Writing,
-                    course.TargetLanguage,
-                    course.SourceLanguage));
-            }
+                    if (anchor.State is UserTermState.Known or UserTermState.Learning)
+                    {
+                        LearningCardTransitions.Queue(card, now, ref position);
+                    }
+                    else
+                    {
+                        LearningCardTransitions.Apply(card, anchor.State, now, ref position);
+                    }
 
-            var now = DateTime.UtcNow;
-            foreach (var requestedCard in requested)
-            {
-                await using var command = connection.CreateCommand();
-                command.CommandText =
-                    """
-                    INSERT OR IGNORE INTO "LearningCards" (
-                        "Id", "ProfileId", "CourseId", "UnitId",
-                        "PromptLanguage", "AnswerLanguage", "Mode", "State",
-                        "IntervalDays", "NextReviewAt", "LearningStartedAt",
-                        "QueuePosition", "LegacyUserTermId", "CreatedAt", "UpdatedAt")
-                    VALUES (
-                        $id, $profileId, $courseId, $unitId,
-                        $promptLanguage, $answerLanguage, $mode, $state,
-                        0, NULL, NULL,
-                        NULL, NULL, $createdAt, $updatedAt);
-                    """;
-                Add(command, "$id", Guid.NewGuid().ToString("N"));
-                Add(command, "$profileId", profileId.Trim());
-                Add(command, "$courseId", courseId);
-                Add(command, "$unitId", unitId);
-                Add(command, "$promptLanguage", requestedCard.Prompt);
-                Add(command, "$answerLanguage", requestedCard.Answer);
-                Add(command, "$mode", requestedCard.Mode.ToString());
-                Add(command, "$state", initialState.ToString());
-                Add(command, "$createdAt", now);
-                Add(command, "$updatedAt", now);
-                await command.ExecuteNonQueryAsync(cancellationToken);
-            }
-        }
-        finally
-        {
-            if (openedHere)
-            {
-                await connection.CloseAsync();
+                    queuePosition = position;
+                }
+
+                unitCards.Add(card);
+                created.Add(card);
+                anchor ??= card;
             }
         }
 
-        return await ListCardsForUnitAsync(
-            profileId,
-            courseId,
-            unitId,
-            cancellationToken);
-    }
-
-    public async Task<LearningContextAnchor> AddContextAsync(
-        string unitId,
-        LearningContextInput input,
-        CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrWhiteSpace(unitId))
+        if (created.Count > 0)
         {
-            throw new ArgumentException(
-                "Learning unit ID is required.",
-                nameof(unitId));
+            db.LearningCards.AddRange(created);
+            await db.SaveChangesAsync(cancellationToken);
+            cards.AddRange(created);
         }
 
-        if (string.IsNullOrWhiteSpace(input.SourceType))
-        {
-            throw new ArgumentException(
-                "Context source type is required.",
-                nameof(input));
-        }
-
-        if (string.IsNullOrWhiteSpace(input.SourceKey))
-        {
-            throw new ArgumentException(
-                "Context source key is required.",
-                nameof(input));
-        }
-
-        if (string.IsNullOrWhiteSpace(input.Text))
-        {
-            throw new ArgumentException(
-                "Context text is required.",
-                nameof(input));
-        }
-
-        var language = LearningLanguageTag.Normalize(input.LanguageTag);
-        var createdAt = DateTime.UtcNow;
-        var anchor = new LearningContextAnchor(
-            Guid.NewGuid().ToString("N"),
-            unitId,
-            input.SourceType.Trim(),
-            input.SourceKey.Trim(),
-            string.IsNullOrWhiteSpace(input.PositionKey)
-                ? null
-                : input.PositionKey.Trim(),
-            language,
-            input.Text.Trim(),
-            createdAt);
-
-        var connection = db.Database.GetDbConnection();
-        var openedHere = connection.State != ConnectionState.Open;
-        if (openedHere)
-        {
-            await connection.OpenAsync(cancellationToken);
-        }
-
-        try
-        {
-            await using var command = connection.CreateCommand();
-            command.CommandText =
-                """
-                INSERT INTO "LearningContexts" (
-                    "Id", "UnitId", "SourceType", "SourceKey",
-                    "PositionKey", "LanguageTag", "Text", "CreatedAt")
-                VALUES (
-                    $id, $unitId, $sourceType, $sourceKey,
-                    $positionKey, $languageTag, $text, $createdAt);
-                """;
-            Add(command, "$id", anchor.Id);
-            Add(command, "$unitId", anchor.UnitId);
-            Add(command, "$sourceType", anchor.SourceType);
-            Add(command, "$sourceKey", anchor.SourceKey);
-            Add(command, "$positionKey", anchor.PositionKey);
-            Add(command, "$languageTag", anchor.LanguageTag);
-            Add(command, "$text", anchor.Text);
-            Add(command, "$createdAt", anchor.CreatedAt);
-            await command.ExecuteNonQueryAsync(cancellationToken);
-
-            return anchor;
-        }
-        finally
-        {
-            if (openedHere)
-            {
-                await connection.CloseAsync();
-            }
-        }
-    }
-
-    public async Task<IReadOnlyList<LearningContextAnchor>> ListContextsAsync(
-        string unitId,
-        CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrWhiteSpace(unitId))
-        {
-            throw new ArgumentException(
-                "Learning unit ID is required.",
-                nameof(unitId));
-        }
-
-        var connection = db.Database.GetDbConnection();
-        var openedHere = connection.State != ConnectionState.Open;
-        if (openedHere)
-        {
-            await connection.OpenAsync(cancellationToken);
-        }
-
-        try
-        {
-            await using var command = connection.CreateCommand();
-            command.CommandText =
-                """
-                SELECT
-                    "Id", "UnitId", "SourceType", "SourceKey",
-                    "PositionKey", "LanguageTag", "Text", "CreatedAt"
-                FROM "LearningContexts"
-                WHERE "UnitId" = $unitId
-                ORDER BY "CreatedAt", "Id";
-                """;
-            Add(command, "$unitId", unitId);
-
-            var result = new List<LearningContextAnchor>();
-            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-            while (await reader.ReadAsync(cancellationToken))
-            {
-                result.Add(new LearningContextAnchor(
-                    reader.GetString(0),
-                    reader.GetString(1),
-                    reader.GetString(2),
-                    reader.GetString(3),
-                    reader.IsDBNull(4) ? null : reader.GetString(4),
-                    reader.GetString(5),
-                    reader.GetString(6),
-                    ParseDate(reader.GetString(7))));
-            }
-
-            return result;
-        }
-        finally
-        {
-            if (openedHere)
-            {
-                await connection.CloseAsync();
-            }
-        }
-    }
-
-    public async Task<IReadOnlyList<LearningVariantSnapshot>> ListVariantsAsync(
-        string unitId,
-        CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrWhiteSpace(unitId))
-        {
-            throw new ArgumentException(
-                "Learning unit ID is required.",
-                nameof(unitId));
-        }
-
-        var connection = db.Database.GetDbConnection();
-        var openedHere = connection.State != ConnectionState.Open;
-        if (openedHere)
-        {
-            await connection.OpenAsync(cancellationToken);
-        }
-
-        try
-        {
-            await using var command = connection.CreateCommand();
-            command.CommandText =
-                """
-                SELECT
-                    "Id", "UnitId", "LanguageTag", "Text", "Reading",
-                    "Role", "SourceKind"
-                FROM "LearningVariants"
-                WHERE "UnitId" = $unitId
-                ORDER BY "LanguageTag", "Role", "Text";
-                """;
-            Add(command, "$unitId", unitId);
-
-            var result = new List<LearningVariantSnapshot>();
-            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-            while (await reader.ReadAsync(cancellationToken))
-            {
-                result.Add(new LearningVariantSnapshot(
-                    reader.GetString(0),
-                    reader.GetString(1),
-                    reader.GetString(2),
-                    reader.GetString(3),
-                    reader.IsDBNull(4) ? null : reader.GetString(4),
-                    reader.GetString(5),
-                    reader.GetString(6)));
-            }
-
-            return result;
-        }
-        finally
-        {
-            if (openedHere)
-            {
-                await connection.CloseAsync();
-            }
-        }
-    }
-
-    private async Task<IReadOnlyList<LearningCardSnapshot>> ListCardsForUnitAsync(
-        string profileId,
-        string courseId,
-        string unitId,
-        CancellationToken cancellationToken)
-    {
-        var connection = db.Database.GetDbConnection();
-        var openedHere = connection.State != ConnectionState.Open;
-        if (openedHere)
-        {
-            await connection.OpenAsync(cancellationToken);
-        }
-
-        try
-        {
-            await using var command = connection.CreateCommand();
-            command.CommandText =
-                """
-                SELECT
-                    "Id", "ProfileId", "CourseId", "UnitId",
-                    "PromptLanguage", "AnswerLanguage", "Mode", "State",
-                    "IntervalDays", "NextReviewAt", "LegacyUserTermId"
-                FROM "LearningCards"
-                WHERE "ProfileId" = $profileId
-                  AND "CourseId" = $courseId
-                  AND "UnitId" = $unitId
-                ORDER BY "Mode", "Id";
-                """;
-            Add(command, "$profileId", profileId.Trim());
-            Add(command, "$courseId", courseId);
-            Add(command, "$unitId", unitId);
-
-            var result = new List<LearningCardSnapshot>();
-            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-            while (await reader.ReadAsync(cancellationToken))
-            {
-                result.Add(ReadCard(reader));
-            }
-
-            return result;
-        }
-        finally
-        {
-            if (openedHere)
-            {
-                await connection.CloseAsync();
-            }
-        }
+        return cards;
     }
 
     public async Task<IReadOnlyList<LearningCardSnapshot>> ListCardsAsync(
         string profileId,
-        string courseId,
+        Guid courseId,
         CancellationToken cancellationToken)
     {
         ValidateProfile(profileId);
+        var id = profileId.Trim();
 
-        var connection = db.Database.GetDbConnection();
-        var openedHere = connection.State != ConnectionState.Open;
-        if (openedHere)
-        {
-            await connection.OpenAsync(cancellationToken);
-        }
+        var cards = await db.LearningCards
+            .AsNoTracking()
+            .Where(x => x.ProfileId == id && x.CourseId == courseId)
+            .OrderBy(x => x.CreatedAt)
+            .ThenBy(x => x.Mode)
+            .ToListAsync(cancellationToken);
 
-        try
-        {
-            await using var command = connection.CreateCommand();
-            command.CommandText =
-                """
-                SELECT
-                    "Id", "ProfileId", "CourseId", "UnitId",
-                    "PromptLanguage", "AnswerLanguage", "Mode", "State",
-                    "IntervalDays", "NextReviewAt", "LegacyUserTermId"
-                FROM "LearningCards"
-                WHERE "ProfileId" = $profileId
-                  AND "CourseId" = $courseId
-                ORDER BY "UpdatedAt", "Id";
-                """;
-            Add(command, "$profileId", profileId.Trim());
-            Add(command, "$courseId", courseId);
-
-            var result = new List<LearningCardSnapshot>();
-            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-            while (await reader.ReadAsync(cancellationToken))
-            {
-                result.Add(ReadCard(reader));
-            }
-
-            return result;
-        }
-        finally
-        {
-            if (openedHere)
-            {
-                await connection.CloseAsync();
-            }
-        }
+        return cards.Select(LearningCardSnapshot.From).ToArray();
     }
 
-    private static LearningCardSnapshot ReadCard(DbDataReader reader) =>
-        new(
-            reader.GetString(0),
-            reader.GetString(1),
-            reader.GetString(2),
-            reader.GetString(3),
-            reader.GetString(4),
-            reader.GetString(5),
-            Enum.Parse<LearningCardMode>(
-                reader.GetString(6),
-                ignoreCase: true),
-            Enum.Parse<LearningCardState>(
-                reader.GetString(7),
-                ignoreCase: true),
-            reader.GetInt32(8),
-            reader.IsDBNull(9)
-                ? null
-                : ParseDate(reader.GetString(9)),
-            reader.IsDBNull(10)
-                ? null
-                : reader.GetString(10));
+    public async Task<IReadOnlyList<LearningVariantSnapshot>> ListVariantsAsync(
+        Guid unitId,
+        CancellationToken cancellationToken)
+    {
+        var variants = await db.LearningVariants
+            .AsNoTracking()
+            .Where(x => x.UnitId == unitId)
+            .OrderBy(x => x.LanguageTag)
+            .ThenBy(x => x.CreatedAt)
+            .ToListAsync(cancellationToken);
 
-    private static LearningCourseSnapshot ReadCourse(DbDataReader reader) =>
-        new(
-            reader.GetString(0),
-            reader.GetString(1),
-            reader.GetString(2),
-            reader.GetString(3),
-            reader.GetString(4),
-            reader.GetInt32(5) != 0,
-            new LearningCourseOptions(
-                reader.GetInt32(6) != 0,
-                reader.GetInt32(7) != 0,
-                reader.GetInt32(8) != 0,
-                reader.GetInt32(9) != 0,
-                reader.GetInt32(10) != 0),
-            ParseDate(reader.GetString(11)),
-            ParseDate(reader.GetString(12)));
+        return variants.Select(LearningVariantSnapshot.From).ToArray();
+    }
 
-    private static DateTime ParseDate(string value) =>
-        DateTime.Parse(
-            value,
-            CultureInfo.InvariantCulture,
-            DateTimeStyles.RoundtripKind | DateTimeStyles.AllowWhiteSpaces);
+    public async Task<LearningContextAnchor> AddContextAsync(
+        Guid unitId,
+        LearningContextInput input,
+        CancellationToken cancellationToken)
+    {
+        var sourceType = Required(input.SourceType, nameof(input.SourceType), 32);
+        var sourceKey = Required(input.SourceKey, nameof(input.SourceKey), 200);
+        var text = Required(input.Text, nameof(input.Text), 2000);
+        var positionKey = string.IsNullOrWhiteSpace(input.PositionKey)
+            ? null
+            : input.PositionKey.Trim();
+
+        if (positionKey?.Length > 200)
+        {
+            throw new ArgumentException(
+                "Learning context position is too long.",
+                nameof(input));
+        }
+
+        if (!await db.LearningUnits.AnyAsync(x => x.Id == unitId, cancellationToken))
+        {
+            throw new KeyNotFoundException("Learning unit was not found.");
+        }
+
+        var context = new LearningContext
+        {
+            UnitId = unitId,
+            SourceType = sourceType.ToLowerInvariant(),
+            SourceKey = sourceKey,
+            PositionKey = positionKey,
+            LanguageTag = LearningLanguageTag.Normalize(input.LanguageTag),
+            Text = text
+        };
+
+        db.LearningContexts.Add(context);
+        await db.SaveChangesAsync(cancellationToken);
+        return ToAnchor(context);
+    }
+
+    public async Task<IReadOnlyList<LearningContextAnchor>> ListContextsAsync(
+        Guid unitId,
+        CancellationToken cancellationToken)
+    {
+        var contexts = await db.LearningContexts
+            .AsNoTracking()
+            .Where(x => x.UnitId == unitId)
+            .OrderBy(x => x.CreatedAt)
+            .ToListAsync(cancellationToken);
+
+        return contexts.Select(ToAnchor).ToArray();
+    }
+
+    internal async Task<long> CurrentMaxQueuePositionAsync(
+        string profileId,
+        CancellationToken cancellationToken) =>
+        await db.LearningCards
+            .Where(x => x.ProfileId == profileId)
+            .MaxAsync(x => (long?)x.QueuePosition, cancellationToken)
+        ?? 0;
+
+    internal Task<LearningCourse?> FindOwnedAsync(
+        string profileId,
+        Guid courseId,
+        CancellationToken cancellationToken)
+    {
+        ValidateProfile(profileId);
+        var id = profileId.Trim();
+
+        return db.LearningCourses.SingleOrDefaultAsync(
+            x => x.ProfileId == id && x.Id == courseId,
+            cancellationToken);
+    }
+
+    private async Task<LearningCourse> AddCourseAsync(
+        string profileId,
+        string sourceLanguage,
+        string targetLanguage,
+        string? name,
+        LearningCourseOptions options,
+        bool primaryWhenFirstForSource,
+        CancellationToken cancellationToken)
+    {
+        ValidateProfile(profileId);
+        var id = profileId.Trim();
+        var source = LearningLanguageTag.Normalize(sourceLanguage);
+        var target = LearningLanguageTag.Normalize(targetLanguage);
+
+        if (source.Equals(target, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException(
+                "Source and target languages must be different.");
+        }
+
+        if (await db.LearningCourses.AnyAsync(
+                x => x.ProfileId == id
+                    && x.SourceLanguage == source
+                    && x.TargetLanguage == target,
+                cancellationToken))
+        {
+            throw new InvalidOperationException(
+                $"A {source} → {target} learning course already exists for this profile.");
+        }
+
+        var isPrimary = primaryWhenFirstForSource
+            && !await db.LearningCourses.AnyAsync(
+                x => x.ProfileId == id && x.SourceLanguage == source && x.IsPrimary,
+                cancellationToken);
+
+        var now = DateTime.UtcNow;
+        var course = new LearningCourse
+        {
+            ProfileId = id,
+            Name = string.IsNullOrWhiteSpace(name) ? $"{source} → {target}" : CleanName(name),
+            SourceLanguage = source,
+            TargetLanguage = target,
+            IsEnabled = true,
+            IsPrimary = isPrimary,
+            RecognitionEnabled = options.RecognitionEnabled,
+            ProductionEnabled = options.ProductionEnabled,
+            ListeningEnabled = options.ListeningEnabled,
+            WritingEnabled = options.WritingEnabled,
+            SentencePracticeEnabled = options.SentencePracticeEnabled,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+
+        db.LearningCourses.Add(course);
+        await db.SaveChangesAsync(cancellationToken);
+        return course;
+    }
+
+    private static bool Applies(
+        LearningCourse course,
+        LearningCardMode mode,
+        bool hasTargetVariant) =>
+        mode switch
+        {
+            LearningCardMode.Recognition => true,
+            LearningCardMode.Listening => course.ListeningEnabled,
+            LearningCardMode.Production => course.ProductionEnabled && hasTargetVariant,
+            LearningCardMode.Writing => course.WritingEnabled && hasTargetVariant,
+            _ => false
+        };
+
+    private static LearningVariantInput NormalizeVariant(LearningVariantInput variant)
+    {
+        var text = variant.Text?.Trim();
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            throw new ArgumentException("Learning variant text is required.");
+        }
+
+        return variant with
+        {
+            LanguageTag = LearningLanguageTag.Normalize(variant.LanguageTag),
+            Text = text,
+            Reading = string.IsNullOrWhiteSpace(variant.Reading)
+                ? null
+                : variant.Reading.Trim(),
+            Role = string.IsNullOrWhiteSpace(variant.Role)
+                ? LearningVariantRole.Primary
+                : variant.Role.Trim(),
+            SourceKind = string.IsNullOrWhiteSpace(variant.SourceKind)
+                ? LearningVariantSource.Manual
+                : variant.SourceKind.Trim()
+        };
+    }
+
+    private static string CleanName(string name)
+    {
+        var cleaned = name.Trim();
+        if (cleaned.Length > NameMaxLength)
+        {
+            throw new ArgumentException(
+                $"Course names can have at most {NameMaxLength} characters.",
+                nameof(name));
+        }
+
+        return cleaned;
+    }
+
+    private static string Required(string? value, string name, int maxLength)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            throw new ArgumentException($"{name} is required.", name);
+        }
+
+        var trimmed = value.Trim();
+        if (trimmed.Length > maxLength)
+        {
+            throw new ArgumentException($"{name} is too long.", name);
+        }
+
+        return trimmed;
+    }
+
+    private static LearningContextAnchor ToAnchor(LearningContext context) =>
+        new(
+            context.Id,
+            context.UnitId,
+            context.SourceType,
+            context.SourceKey,
+            context.PositionKey,
+            context.LanguageTag,
+            context.Text,
+            context.CreatedAt);
 
     private static void ValidateProfile(string profileId)
     {
         if (string.IsNullOrWhiteSpace(profileId))
         {
             throw new ArgumentException(
-                "Profile ID is required.",
+                "A profile ID is required.",
                 nameof(profileId));
         }
-    }
-
-    private static void Add(
-        DbCommand command,
-        string name,
-        object? value)
-    {
-        var parameter = command.CreateParameter();
-        parameter.ParameterName = name;
-        parameter.Value = value ?? DBNull.Value;
-        command.Parameters.Add(parameter);
     }
 }

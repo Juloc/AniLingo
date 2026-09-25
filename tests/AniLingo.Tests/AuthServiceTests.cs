@@ -1,5 +1,6 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
+using AniLingo.Web.Features.Learning;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -265,26 +266,26 @@ public sealed class AuthServiceTests
             var migrator = db.Database.GetService<IMigrator>();
             await migrator.MigrateAsync("20260923071000_AddOwnerAccount");
 
-            var termId = Guid.NewGuid();
-            var userTermId = Guid.NewGuid();
+            var termId = Guid.NewGuid().ToString().ToUpperInvariant();
+            var userTermId = Guid.NewGuid().ToString().ToUpperInvariant();
             var now = DateTime.UtcNow.ToString("O");
 
-            await db.Database.ExecuteSqlRawAsync(
+            await db.Database.ExecuteSqlAsync(
                 $"""
                 INSERT INTO OwnerAccounts
                     (Id, UserName, NormalizedUserName, PasswordHash, CreatedAt)
                 VALUES
-                    ('owner', 'Julian', 'JULIAN', 'hash', '{now}');
+                    ('owner', 'Julian', 'JULIAN', 'hash', {now});
 
                 INSERT INTO Terms
                     (Id, Language, Canonical, Reading, Meaning)
                 VALUES
-                    ('{termId}', 'ja', '猫', 'ねこ', 'Katze');
+                    ({termId}, 'ja', '猫', 'ねこ', 'Katze');
 
                 INSERT INTO UserTerms
                     (Id, ProfileId, TermId, State, IntervalDays, NextReviewAt, LearningStartedAt, QueuePosition, UpdatedAt)
                 VALUES
-                    ('{userTermId}', 'default', '{termId}', 1, 0, NULL, NULL, NULL, '{now}');
+                    ({userTermId}, 'default', {termId}, 1, 0, NULL, NULL, NULL, {now});
 
                 INSERT INTO LearningPreferences
                     (ProfileId, DesiredRetention, ReviewBatchSize, NewWordsPerDay)
@@ -294,8 +295,13 @@ public sealed class AuthServiceTests
 
             await DatabaseMigrationBridge.UpgradeAsync(db);
 
-            var migratedTerm = await db.UserTerms.AsNoTracking().SingleAsync();
-            Assert.AreEqual(OwnerAccount.SingletonId, migratedTerm.ProfileId);
+            var migratedCard = await db.LearningCards.AsNoTracking().SingleAsync();
+            Assert.AreEqual(OwnerAccount.SingletonId, migratedCard.ProfileId);
+            Assert.AreEqual(Guid.Parse(userTermId), migratedCard.Id);
+            Assert.AreEqual(UserTermState.Known, migratedCard.State);
+
+            var migratedCourse = await db.LearningCourses.AsNoTracking().SingleAsync();
+            Assert.AreEqual(OwnerAccount.SingletonId, migratedCourse.ProfileId);
 
             var preferences = await db.LearningPreferences.AsNoTracking().SingleAsync();
             Assert.AreEqual(OwnerAccount.SingletonId, preferences.ProfileId);

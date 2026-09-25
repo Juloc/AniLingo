@@ -17,75 +17,125 @@ public enum LearningCardMode
     Writing = 4
 }
 
-public enum LearningCardState
-{
-    Saved = 1,
-    Learning = 2,
-    Known = 3,
-    Ignored = 4,
-    Suspended = 5
-}
-
 public sealed record LearningCourseOptions(
     bool RecognitionEnabled = true,
     bool ProductionEnabled = false,
     bool ListeningEnabled = false,
     bool WritingEnabled = false,
-    bool SentencePracticeEnabled = true);
+    bool SentencePracticeEnabled = true)
+{
+    public bool IsModeEnabled(LearningCardMode mode) =>
+        mode switch
+        {
+            LearningCardMode.Recognition => RecognitionEnabled,
+            LearningCardMode.Production => ProductionEnabled,
+            LearningCardMode.Listening => ListeningEnabled,
+            LearningCardMode.Writing => WritingEnabled,
+            _ => false
+        };
+}
 
 public sealed record LearningCourseSnapshot(
-    string Id,
+    Guid Id,
     string ProfileId,
     string Name,
     string SourceLanguage,
     string TargetLanguage,
     bool IsEnabled,
+    bool IsPrimary,
     LearningCourseOptions Options,
     DateTime CreatedAt,
-    DateTime UpdatedAt);
+    DateTime UpdatedAt)
+{
+    public static LearningCourseSnapshot From(LearningCourse course) =>
+        new(
+            course.Id,
+            course.ProfileId,
+            course.Name,
+            course.SourceLanguage,
+            course.TargetLanguage,
+            course.IsEnabled,
+            course.IsPrimary,
+            new LearningCourseOptions(
+                course.RecognitionEnabled,
+                course.ProductionEnabled,
+                course.ListeningEnabled,
+                course.WritingEnabled,
+                course.SentencePracticeEnabled),
+            course.CreatedAt,
+            course.UpdatedAt);
+}
 
 public sealed record LearningUnitSnapshot(
-    string Id,
+    Guid Id,
     LearningUnitKind Kind,
-    string? LegacyTermId,
+    Guid? TermId,
     DateTime CreatedAt);
 
 public sealed record LearningVariantSnapshot(
-    string Id,
-    string UnitId,
+    Guid Id,
+    Guid UnitId,
     string LanguageTag,
     string Text,
     string? Reading,
     string Role,
-    string SourceKind);
+    string SourceKind)
+{
+    public static LearningVariantSnapshot From(LearningVariant variant) =>
+        new(
+            variant.Id,
+            variant.UnitId,
+            variant.LanguageTag,
+            variant.Text,
+            variant.Reading,
+            variant.Role,
+            variant.SourceKind);
+}
 
 public sealed record LearningVariantInput(
     string LanguageTag,
     string Text,
     string? Reading = null,
-    string Role = "Primary",
-    string SourceKind = "Manual");
+    string Role = LearningVariantRole.Primary,
+    string SourceKind = LearningVariantSource.Manual);
 
 public sealed record LearningUnitCreateResult(
     LearningUnitSnapshot Unit,
     IReadOnlyList<LearningVariantSnapshot> Variants);
 
 public sealed record LearningCardSnapshot(
-    string Id,
+    Guid Id,
     string ProfileId,
-    string CourseId,
-    string UnitId,
+    Guid CourseId,
+    Guid UnitId,
     string PromptLanguage,
     string AnswerLanguage,
     LearningCardMode Mode,
-    LearningCardState State,
+    UserTermState State,
     int IntervalDays,
     DateTime? NextReviewAt,
-    string? LegacyUserTermId);
+    DateTime? LearningStartedAt,
+    long? QueuePosition)
+{
+    public static LearningCardSnapshot From(LearningCard card) =>
+        new(
+            card.Id,
+            card.ProfileId,
+            card.CourseId,
+            card.UnitId,
+            card.PromptLanguage,
+            card.AnswerLanguage,
+            card.Mode,
+            card.State,
+            card.IntervalDays,
+            card.NextReviewAt,
+            card.LearningStartedAt,
+            card.QueuePosition);
+}
 
 public sealed record LearningContextAnchor(
-    string Id,
-    string UnitId,
+    Guid Id,
+    Guid UnitId,
     string SourceType,
     string SourceKey,
     string? PositionKey,
@@ -129,6 +179,25 @@ public static class LearningLanguageTag
                 $"'{languageTag}' is not a supported BCP-47 language tag on this server.",
                 nameof(languageTag),
                 exception);
+        }
+    }
+
+    public static bool TryNormalize(string? languageTag, out string normalized)
+    {
+        normalized = "";
+        if (string.IsNullOrWhiteSpace(languageTag))
+        {
+            return false;
+        }
+
+        try
+        {
+            normalized = Normalize(languageTag);
+            return true;
+        }
+        catch (ArgumentException)
+        {
+            return false;
         }
     }
 }

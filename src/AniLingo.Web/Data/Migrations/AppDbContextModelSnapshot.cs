@@ -151,11 +151,81 @@ namespace AniLingo.Web.Data.Migrations
                     b.ToTable("ReaderPreferences");
                 });
 
-            modelBuilder.Entity("AniLingo.Web.Features.Learning.Review", b =>
+            modelBuilder.Entity("AniLingo.Web.Features.Learning.Courses.LearningCard", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AnswerLanguage")
+                        .IsRequired()
+                        .HasMaxLength(35)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("CourseId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("IntervalDays")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("LearningStartedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Mode")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("NextReviewAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ProfileId")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PromptLanguage")
+                        .IsRequired()
+                        .HasMaxLength(35)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("QueuePosition")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("UnitId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UnitId");
+
+                    b.HasIndex("CourseId", "UnitId", "Mode")
+                        .IsUnique();
+
+                    b.HasIndex("ProfileId", "State", "NextReviewAt");
+
+                    b.ToTable("LearningCards");
+                });
+
+            modelBuilder.Entity("AniLingo.Web.Features.Learning.Courses.LearningCardReview", b =>
                 {
                     b.Property<long>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("CardId")
+                        .HasColumnType("TEXT");
 
                     b.Property<Guid?>("ClientEventId")
                         .HasColumnType("TEXT");
@@ -174,66 +244,199 @@ namespace AniLingo.Web.Data.Migrations
                     b.Property<DateTime>("ReviewedAt")
                         .HasColumnType("TEXT");
 
-                    b.Property<Guid>("TermId")
-                        .HasColumnType("TEXT");
-
                     b.HasKey("Id");
 
-                    b.HasIndex("TermId");
-
-                    b.HasIndex("ProfileId", "ReviewedAt");
+                    b.HasIndex("CardId", "ReviewedAt");
 
                     b.HasIndex("ProfileId", "ClientEventId")
                         .IsUnique();
 
-                    b.ToTable("Reviews");
+                    b.HasIndex("ProfileId", "ReviewedAt");
+
+                    b.ToTable("LearningCardReviews");
                 });
 
-            modelBuilder.Entity("AniLingo.Web.Features.Learning.UserTerm", b =>
+            modelBuilder.Entity("AniLingo.Web.Features.Learning.Courses.LearningContext", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
-                    b.Property<int>("IntervalDays")
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LanguageTag")
+                        .IsRequired()
+                        .HasMaxLength(35)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PositionKey")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SourceKey")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SourceType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("UnitId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UnitId");
+
+                    b.HasIndex("SourceType", "SourceKey");
+
+                    b.ToTable("LearningContexts");
+                });
+
+            modelBuilder.Entity("AniLingo.Web.Features.Learning.Courses.LearningCourse", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsEnabled")
                         .HasColumnType("INTEGER");
 
-                    b.Property<DateTime?>("LearningStartedAt")
+                    b.Property<bool>("IsPrimary")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("ListeningEnabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
                         .HasColumnType("TEXT");
 
-                    b.Property<DateTime?>("NextReviewAt")
-                        .HasColumnType("TEXT");
+                    b.Property<bool>("ProductionEnabled")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("ProfileId")
                         .IsRequired()
                         .HasMaxLength(80)
                         .HasColumnType("TEXT");
 
-                    b.Property<long?>("QueuePosition")
+                    b.Property<bool>("RecognitionEnabled")
                         .HasColumnType("INTEGER");
 
-                    b.Property<int>("State")
+                    b.Property<bool>("SentencePracticeEnabled")
                         .HasColumnType("INTEGER");
 
-                    b.Property<Guid>("TermId")
+                    b.Property<string>("SourceLanguage")
+                        .IsRequired()
+                        .HasMaxLength(35)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TargetLanguage")
+                        .IsRequired()
+                        .HasMaxLength(35)
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("WritingEnabled")
+                        .HasColumnType("INTEGER");
+
                     b.HasKey("Id");
 
-                    b.HasIndex("TermId");
+                    b.HasIndex("ProfileId", "SourceLanguage")
+                        .IsUnique()
+                        .HasFilter("\"IsPrimary\" = 1");
 
-                    b.HasIndex("ProfileId", "TermId")
+                    b.HasIndex("ProfileId", "SourceLanguage", "TargetLanguage")
                         .IsUnique();
 
-                    b.HasIndex("ProfileId", "State", "NextReviewAt");
-
-                    b.HasIndex("LearningStartedAt", "QueuePosition");
-
-                    b.ToTable("UserTerms");
+                    b.ToTable("LearningCourses");
                 });
+
+            modelBuilder.Entity("AniLingo.Web.Features.Learning.Courses.LearningUnit", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("TermId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TermId")
+                        .IsUnique();
+
+                    b.ToTable("LearningUnits");
+                });
+
+            modelBuilder.Entity("AniLingo.Web.Features.Learning.Courses.LearningVariant", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LanguageTag")
+                        .IsRequired()
+                        .HasMaxLength(35)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Reading")
+                        .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SourceKind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("UnitId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LanguageTag", "Text");
+
+                    b.HasIndex("UnitId", "LanguageTag", "Text")
+                        .IsUnique();
+
+                    b.ToTable("LearningVariants");
+                });
+
 
             modelBuilder.Entity("AniLingo.Web.Features.Progress.EpisodeProgress", b =>
                 {
@@ -806,20 +1009,52 @@ namespace AniLingo.Web.Data.Migrations
                     b.ToTable("NovelWorks");
                 });
 
-            modelBuilder.Entity("AniLingo.Web.Features.Learning.Review", b =>
+            modelBuilder.Entity("AniLingo.Web.Features.Learning.Courses.LearningCard", b =>
                 {
-                    b.HasOne("AniLingo.Web.Features.Vocabulary.Term", null)
+                    b.HasOne("AniLingo.Web.Features.Learning.Courses.LearningCourse", null)
                         .WithMany()
-                        .HasForeignKey("TermId")
+                        .HasForeignKey("CourseId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("AniLingo.Web.Features.Learning.Courses.LearningUnit", null)
+                        .WithMany()
+                        .HasForeignKey("UnitId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("AniLingo.Web.Features.Learning.UserTerm", b =>
+            modelBuilder.Entity("AniLingo.Web.Features.Learning.Courses.LearningCardReview", b =>
+                {
+                    b.HasOne("AniLingo.Web.Features.Learning.Courses.LearningCard", null)
+                        .WithMany()
+                        .HasForeignKey("CardId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("AniLingo.Web.Features.Learning.Courses.LearningContext", b =>
+                {
+                    b.HasOne("AniLingo.Web.Features.Learning.Courses.LearningUnit", null)
+                        .WithMany()
+                        .HasForeignKey("UnitId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("AniLingo.Web.Features.Learning.Courses.LearningUnit", b =>
                 {
                     b.HasOne("AniLingo.Web.Features.Vocabulary.Term", null)
                         .WithMany()
                         .HasForeignKey("TermId")
+                        .OnDelete(DeleteBehavior.SetNull);
+                });
+
+            modelBuilder.Entity("AniLingo.Web.Features.Learning.Courses.LearningVariant", b =>
+                {
+                    b.HasOne("AniLingo.Web.Features.Learning.Courses.LearningUnit", null)
+                        .WithMany()
+                        .HasForeignKey("UnitId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
