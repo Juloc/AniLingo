@@ -13,6 +13,8 @@ public sealed class OperationStore(AppDbContext db)
     private const int MaxMessageLength = 2000;
     private const int MaxErrorLength = 3000;
     private const int MaxModuleLength = 120;
+    private const int MaxExternalProviderLength = 80;
+    private const int MaxExternalIdLength = 240;
 
     public async Task<Guid> CreateAsync(
         OperationDescriptor descriptor,
@@ -33,11 +35,13 @@ public sealed class OperationStore(AppDbContext db)
                         Id, Kind, Category, Lane, Status, ProfileId, Title, Subject,
                         ProgressPercent, Message, Error, IsDownload, BytesTotal,
                         BytesCompleted, BytesPerSecond, EtaUtc, Attempt, Retryable,
+                        ExternalProvider, ExternalId,
                         CreatedAtUtc, StartedAtUtc, FinishedAtUtc, UpdatedAtUtc)
                     VALUES (
                         @id, @kind, @category, @lane, @status, @profileId, @title, @subject,
                         NULL, NULL, NULL, @isDownload, @bytesTotal,
                         NULL, NULL, NULL, 1, @retryable,
+                        @externalProvider, @externalId,
                         @createdAt, NULL, NULL, @updatedAt);
                     """;
                 Add(command, "@id", id.ToString("D"));
@@ -51,6 +55,8 @@ public sealed class OperationStore(AppDbContext db)
                 Add(command, "@isDownload", descriptor.IsDownload ? 1 : 0);
                 Add(command, "@bytesTotal", descriptor.BytesTotal);
                 Add(command, "@retryable", descriptor.Retryable ? 1 : 0);
+                Add(command, "@externalProvider", Trim(descriptor.ExternalProvider, MaxExternalProviderLength));
+                Add(command, "@externalId", Trim(descriptor.ExternalId, MaxExternalIdLength));
                 Add(command, "@createdAt", Format(now));
                 Add(command, "@updatedAt", Format(now));
                 await command.ExecuteNonQueryAsync(cancellationToken);
@@ -79,6 +85,7 @@ public sealed class OperationStore(AppDbContext db)
                     SELECT Id, Kind, Category, Lane, Status, ProfileId, Title, Subject,
                            ProgressPercent, Message, Error, IsDownload, BytesTotal,
                            BytesCompleted, BytesPerSecond, EtaUtc, Attempt, Retryable,
+                           ExternalProvider, ExternalId,
                            CreatedAtUtc, StartedAtUtc, FinishedAtUtc, UpdatedAtUtc
                     FROM Operations
                     WHERE Id = @id
@@ -150,6 +157,7 @@ public sealed class OperationStore(AppDbContext db)
                     SELECT Id, Kind, Category, Lane, Status, ProfileId, Title, Subject,
                            ProgressPercent, Message, Error, IsDownload, BytesTotal,
                            BytesCompleted, BytesPerSecond, EtaUtc, Attempt, Retryable,
+                           ExternalProvider, ExternalId,
                            CreatedAtUtc, StartedAtUtc, FinishedAtUtc, UpdatedAtUtc
                     FROM Operations
                     {where}
@@ -371,7 +379,8 @@ public sealed class OperationStore(AppDbContext db)
                         FinishedAtUtc = @now,
                         UpdatedAtUtc = @now
                     WHERE Lane = @lane
-                      AND Status IN (@queued, @running);
+                      AND Status IN (@queued, @running)
+                      AND (ExternalProvider IS NULL OR ExternalId IS NULL);
                     """;
                 Add(command, "@interrupted", (int)OperationStatus.Interrupted);
                 Add(command, "@now", Format(now));
@@ -379,6 +388,69 @@ public sealed class OperationStore(AppDbContext db)
                 Add(command, "@queued", (int)OperationStatus.Queued);
                 Add(command, "@running", (int)OperationStatus.Running);
                 return await command.ExecuteNonQueryAsync(cancellationToken);
+            },
+            cancellationToken);
+    }
+
+    public Task SetExternalReferenceAsync(
+        Guid id,
+        string provider,
+        string externalId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(provider);
+        ArgumentException.ThrowIfNullOrWhiteSpace(externalId);
+
+        return UpdateAsync(
+            id,
+            """
+            ExternalProvider = @provider,
+            ExternalId = @externalId,
+            UpdatedAtUtc = @now
+            """,
+            [
+                ("@provider", Trim(provider, MaxExternalProviderLength)),
+                ("@externalId", Trim(externalId, MaxExternalIdLength)),
+                ("@now", Format(DateTime.UtcNow))
+            ],
+            cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<OperationSnapshot>> ListActiveExternalAsync(
+        string provider,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(provider);
+
+        return await WithConnectionAsync(
+            async connection =>
+            {
+                await using var command = connection.CreateCommand();
+                command.CommandText =
+                    """
+                    SELECT Id, Kind, Category, Lane, Status, ProfileId, Title, Subject,
+                           ProgressPercent, Message, Error, IsDownload, BytesTotal,
+                           BytesCompleted, BytesPerSecond, EtaUtc, Attempt, Retryable,
+                           ExternalProvider, ExternalId,
+                           CreatedAtUtc, StartedAtUtc, FinishedAtUtc, UpdatedAtUtc
+                    FROM Operations
+                    WHERE ExternalProvider = @provider
+                      AND ExternalId IS NOT NULL
+                      AND Status IN (@queued, @running)
+                    ORDER BY UpdatedAtUtc;
+                    """;
+                Add(command, "@provider", provider.Trim());
+                Add(command, "@queued", (int)OperationStatus.Queued);
+                Add(command, "@running", (int)OperationStatus.Running);
+
+                var result = new List<OperationSnapshot>();
+                await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    result.Add(ReadOperation(reader));
+                }
+
+                return (IReadOnlyList<OperationSnapshot>)result;
             },
             cancellationToken);
     }
@@ -642,10 +714,12 @@ public sealed class OperationStore(AppDbContext db)
             ReadNullableDate(reader, 15),
             Convert.ToInt32(reader.GetValue(16), CultureInfo.InvariantCulture),
             Convert.ToInt32(reader.GetValue(17), CultureInfo.InvariantCulture) != 0,
-            ParseDate(reader.GetString(18)),
-            ReadNullableDate(reader, 19),
-            ReadNullableDate(reader, 20),
-            ParseDate(reader.GetString(21)));
+            ReadNullableString(reader, 18),
+            ReadNullableString(reader, 19),
+            ParseDate(reader.GetString(20)),
+            ReadNullableDate(reader, 21),
+            ReadNullableDate(reader, 22),
+            ParseDate(reader.GetString(23)));
 
     private static int ReadCount(DbDataReader reader, int ordinal) =>
         reader.IsDBNull(ordinal)
