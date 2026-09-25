@@ -1,4 +1,3 @@
-using System.Text;
 using System.Text.Json;
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
@@ -14,21 +13,21 @@ namespace AniLingo.Web.Pages.Kana;
 public sealed class IndexModel(
     AppDbContext db,
     LearningService learningService,
-    CurrentAccountContext currentAccount,
-    IJapaneseMorphology morphology,
-    JapaneseDictionary dictionary) : PageModel
+    CurrentAccountContext currentAccount) : PageModel
 {
     public KanaScript SelectedScript { get; private set; } = KanaScript.Hiragana;
     public int Stage { get; private set; } = 1;
     public string StageTitle => KanaCatalog.StageTitle(SelectedScript, Stage);
     public IReadOnlyList<KanaCardView> Cards { get; private set; } = [];
-    public IReadOnlyList<SentencePracticeView> Sentences { get; private set; } = [];
     public int LearningCount { get; private set; }
     public int KnownCount { get; private set; }
     public int DueCount { get; private set; }
     public string CatalogJson { get; private set; } = "[]";
 
-    public async Task OnGetAsync(string? script, int stage = 1, CancellationToken cancellationToken = default)
+    public async Task OnGetAsync(
+        string? script,
+        int stage = 1,
+        CancellationToken cancellationToken = default)
     {
         SelectedScript = KanaCatalog.ParseScript(script);
         Stage = Math.Clamp(stage, 1, KanaCatalog.MaxStage);
@@ -36,7 +35,6 @@ public sealed class IndexModel(
         await EnsureKanaTermsAsync(cancellationToken);
         Cards = await LoadCardsAsync(SelectedScript, Stage, cancellationToken);
         await LoadSummaryAsync(cancellationToken);
-        Sentences = await LoadSentencePracticeAsync(cancellationToken);
 
         CatalogJson = JsonSerializer.Serialize(
             Cards.Select(card => new
@@ -66,8 +64,12 @@ public sealed class IndexModel(
             .ToArray();
 
         await learningService.AddToLearningAsync(termIds, cancellationToken);
-        TempData["Status"] = "Kana-Gruppe zum Lernen hinzugefügt.";
-        return RedirectToPage(new { script = selectedScript == KanaScript.Hiragana ? "hiragana" : "katakana", stage = selectedStage });
+        TempData["Status"] = "Kana group added to active learning.";
+        return RedirectToPage(new
+        {
+            script = selectedScript == KanaScript.Hiragana ? "hiragana" : "katakana",
+            stage = selectedStage
+        });
     }
 
     public async Task<IActionResult> OnPostKnownAsync(
@@ -83,12 +85,18 @@ public sealed class IndexModel(
         }
 
         await EnsureKanaTermsAsync(cancellationToken);
-        await learningService.SetStateAsync(termId, UserTermState.Known, cancellationToken);
-        TempData["Status"] = entry.Symbol + " als sicher markiert.";
+        await learningService.SetStateAsync(
+            termId,
+            UserTermState.Known,
+            cancellationToken);
+
+        TempData["Status"] = entry.Symbol + " marked as known.";
 
         return RedirectToPage(new
         {
-            script = KanaCatalog.ParseScript(script) == KanaScript.Hiragana ? "hiragana" : "katakana",
+            script = KanaCatalog.ParseScript(script) == KanaScript.Hiragana
+                ? "hiragana"
+                : "katakana",
             stage = Math.Clamp(stage, 1, KanaCatalog.MaxStage)
         });
     }
@@ -110,13 +118,18 @@ public sealed class IndexModel(
 
         var existingState = await db.UserTerms
             .AsNoTracking()
-            .Where(x => x.ProfileId == currentAccount.ProfileId && x.TermId == termId)
+            .Where(x =>
+                x.ProfileId == currentAccount.ProfileId
+                && x.TermId == termId)
             .Select(x => (UserTermState?)x.State)
             .SingleOrDefaultAsync(cancellationToken);
 
         if (existingState != UserTermState.Known)
         {
-            await learningService.SetStateAsync(termId, UserTermState.Learning, cancellationToken);
+            await learningService.SetStateAsync(
+                termId,
+                UserTermState.Learning,
+                cancellationToken);
             await learningService.ReviewAsync(
                 termId,
                 correct ? ReviewRating.Good : ReviewRating.Again,
@@ -127,11 +140,14 @@ public sealed class IndexModel(
         {
             correct,
             expected = KanaPractice.Expected(entry, practiceMode),
-            state = existingState == UserTermState.Known ? "known" : "learning"
+            state = existingState == UserTermState.Known
+                ? "known"
+                : "learning"
         });
     }
 
-    private async Task EnsureKanaTermsAsync(CancellationToken cancellationToken)
+    private async Task EnsureKanaTermsAsync(
+        CancellationToken cancellationToken)
     {
         var existing = await db.Terms
             .Where(x => x.Language == KanaCatalog.Language)
@@ -156,7 +172,12 @@ public sealed class IndexModel(
                 Language = KanaCatalog.Language,
                 Canonical = entry.Symbol,
                 Reading = entry.Romaji,
-                Meaning = (entry.Script == KanaScript.Hiragana ? "Hiragana" : "Katakana") + " · " + entry.Group
+                Meaning =
+                    (entry.Script == KanaScript.Hiragana
+                        ? "Hiragana"
+                        : "Katakana")
+                    + " · "
+                    + entry.Group
             });
         }
 
@@ -170,9 +191,12 @@ public sealed class IndexModel(
     {
         var entries = KanaCatalog.ForStage(script, stage);
         var ids = entries.Select(KanaCatalog.IdFor).ToArray();
+
         var progress = await db.UserTerms
             .AsNoTracking()
-            .Where(x => x.ProfileId == currentAccount.ProfileId && ids.Contains(x.TermId))
+            .Where(x =>
+                x.ProfileId == currentAccount.ProfileId
+                && ids.Contains(x.TermId))
             .ToDictionaryAsync(x => x.TermId, cancellationToken);
 
         var now = DateTime.UtcNow;
@@ -187,7 +211,12 @@ public sealed class IndexModel(
                     UserTermState.Learning => "learning",
                     _ => "new"
                 };
-                var due = item is { State: UserTermState.Learning, NextReviewAt: not null }
+                var due =
+                    item is
+                    {
+                        State: UserTermState.Learning,
+                        NextReviewAt: not null
+                    }
                     && item.NextReviewAt <= now;
 
                 return new KanaCardView(
@@ -203,13 +232,17 @@ public sealed class IndexModel(
             .ToArray();
     }
 
-    private async Task LoadSummaryAsync(CancellationToken cancellationToken)
+    private async Task LoadSummaryAsync(
+        CancellationToken cancellationToken)
     {
         var ids = KanaCatalog.All.Select(KanaCatalog.IdFor).ToArray();
         var now = DateTime.UtcNow;
+
         var rows = await db.UserTerms
             .AsNoTracking()
-            .Where(x => x.ProfileId == currentAccount.ProfileId && ids.Contains(x.TermId))
+            .Where(x =>
+                x.ProfileId == currentAccount.ProfileId
+                && ids.Contains(x.TermId))
             .Select(x => new { x.State, x.NextReviewAt })
             .ToListAsync(cancellationToken);
 
@@ -220,177 +253,6 @@ public sealed class IndexModel(
             && x.NextReviewAt != null
             && x.NextReviewAt <= now);
     }
-
-    private async Task<IReadOnlyList<SentencePracticeView>> LoadSentencePracticeAsync(
-        CancellationToken cancellationToken)
-    {
-        var rows = await (
-            from userTerm in db.UserTerms.AsNoTracking()
-            join term in db.Terms.AsNoTracking() on userTerm.TermId equals term.Id
-            join episodeTerm in db.EpisodeTerms.AsNoTracking() on term.Id equals episodeTerm.TermId
-            join episode in db.Episodes.AsNoTracking() on episodeTerm.EpisodeId equals episode.Id
-            join anime in db.Anime.AsNoTracking() on episode.AnimeId equals anime.Id
-            join track in db.SubtitleTracks.AsNoTracking() on episode.Id equals track.EpisodeId
-            join cue in db.SubtitleCues.AsNoTracking() on track.Id equals cue.SubtitleTrackId
-            where userTerm.ProfileId == currentAccount.ProfileId
-                && term.Language == "ja"
-                && track.Language == "ja"
-                && cue.StartMs == episodeTerm.FirstCueStartMs
-            orderby userTerm.State == UserTermState.Learning ? 0 : 1,
-                episodeTerm.Occurrences descending,
-                track.ImportedAt descending
-            select new SentenceRow(
-                episode.Id,
-                anime.Title,
-                episode.SeasonNumber,
-                episode.Number,
-                episode.Title,
-                cue.StartMs,
-                cue.Text,
-                term.Canonical,
-                term.Reading,
-                term.Meaning))
-            .Take(80)
-            .ToListAsync(cancellationToken);
-
-        var result = BuildSentenceViews(rows, 6);
-        if (result.Count > 0)
-        {
-            return result;
-        }
-
-        var fallbackRows = await (
-            from track in db.SubtitleTracks.AsNoTracking()
-            join cue in db.SubtitleCues.AsNoTracking() on track.Id equals cue.SubtitleTrackId
-            join episode in db.Episodes.AsNoTracking() on track.EpisodeId equals episode.Id
-            join anime in db.Anime.AsNoTracking() on episode.AnimeId equals anime.Id
-            where track.Language == "ja"
-                && cue.Text.Length >= 2
-                && cue.Text.Length <= 90
-            orderby cue.Text.Length,
-                track.ImportedAt descending,
-                anime.Title,
-                episode.Number
-            select new SentenceRow(
-                episode.Id,
-                anime.Title,
-                episode.SeasonNumber,
-                episode.Number,
-                episode.Title,
-                cue.StartMs,
-                cue.Text,
-                null,
-                null,
-                null))
-            .Take(100)
-            .ToListAsync(cancellationToken);
-
-        return BuildSentenceViews(fallbackRows, 6);
-    }
-
-    private IReadOnlyList<SentencePracticeView> BuildSentenceViews(
-        IReadOnlyList<SentenceRow> rows,
-        int limit)
-    {
-        var result = new List<SentencePracticeView>();
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-
-        foreach (var row in rows)
-        {
-            if (!KanaPractice.IsSuitableSentence(row.Text))
-            {
-                continue;
-            }
-
-            var key = row.EpisodeId + ":" + row.CueStartMs + ":" + row.Text;
-            if (!seen.Add(key))
-            {
-                continue;
-            }
-
-            var analyzed = morphology.Analyze(row.Text);
-            var tokens = analyzed
-                .Select(token =>
-                {
-                    var reading = token.Reading is "*" or ""
-                        ? token.Surface
-                        : JapaneseTermExtractor.ToHiragana(token.Reading);
-                    var dictionaryEntry = KanaPractice.IsJapaneseCharacter(token.Surface.FirstOrDefault())
-                        ? dictionary.Find(token.Canonical)
-                        : null;
-                    return new SentenceTokenView(
-                        token.Surface,
-                        token.Canonical,
-                        reading,
-                        dictionaryEntry?.Meaning,
-                        token.Surface.Any(KanaPractice.IsJapaneseCharacter),
-                        string.Equals(token.Canonical, row.TargetCanonical, StringComparison.Ordinal));
-                })
-                .ToArray();
-
-            var cloze = BuildCloze(analyzed, row.TargetCanonical);
-            result.Add(new SentencePracticeView(
-                row.EpisodeId,
-                row.AnimeTitle,
-                row.SeasonNumber,
-                row.EpisodeNumber,
-                row.EpisodeTitle,
-                row.CueStartMs,
-                row.Text.Trim(),
-                cloze,
-                row.TargetCanonical,
-                row.TargetReading,
-                row.TargetMeaning,
-                tokens));
-
-            if (result.Count >= limit)
-            {
-                break;
-            }
-        }
-
-        return result;
-    }
-
-    private static string? BuildCloze(
-        IReadOnlyList<JapaneseMorphToken> tokens,
-        string? targetCanonical)
-    {
-        if (string.IsNullOrWhiteSpace(targetCanonical))
-        {
-            return null;
-        }
-
-        var builder = new StringBuilder();
-        var replaced = false;
-
-        foreach (var token in tokens)
-        {
-            if (!replaced && string.Equals(token.Canonical, targetCanonical, StringComparison.Ordinal))
-            {
-                builder.Append("＿＿");
-                replaced = true;
-            }
-            else
-            {
-                builder.Append(token.Surface);
-            }
-        }
-
-        return replaced ? builder.ToString() : null;
-    }
-
-    private sealed record SentenceRow(
-        Guid EpisodeId,
-        string AnimeTitle,
-        int SeasonNumber,
-        int EpisodeNumber,
-        string EpisodeTitle,
-        int CueStartMs,
-        string Text,
-        string? TargetCanonical,
-        string? TargetReading,
-        string? TargetMeaning);
 }
 
 public sealed record KanaCardView(
@@ -402,37 +264,3 @@ public sealed record KanaCardView(
     string ScriptKey,
     string State,
     bool Due);
-
-public sealed record SentenceTokenView(
-    string Surface,
-    string Canonical,
-    string Reading,
-    string? Meaning,
-    bool Interactive,
-    bool IsTarget);
-
-public sealed record SentencePracticeView(
-    Guid EpisodeId,
-    string AnimeTitle,
-    int SeasonNumber,
-    int EpisodeNumber,
-    string EpisodeTitle,
-    int CueStartMs,
-    string Text,
-    string? Cloze,
-    string? TargetCanonical,
-    string? TargetReading,
-    string? TargetMeaning,
-    IReadOnlyList<SentenceTokenView> Tokens)
-{
-    public string TimestampLabel
-    {
-        get
-        {
-            var time = TimeSpan.FromMilliseconds(Math.Max(0, CueStartMs));
-            return time.TotalHours >= 1
-                ? ((int)time.TotalHours) + ":" + time.Minutes.ToString("00") + ":" + time.Seconds.ToString("00")
-                : ((int)time.TotalMinutes) + ":" + time.Seconds.ToString("00");
-        }
-    }
-}
