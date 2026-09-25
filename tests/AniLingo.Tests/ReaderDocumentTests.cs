@@ -5,7 +5,7 @@ namespace AniLingo.Tests;
 [TestClass]
 public sealed class ReaderDocumentTests
 {
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("NOVEL", "narou", ReaderContentType.LightNovel)]
     [DataRow("LIGHT_NOVEL", "narou", ReaderContentType.LightNovel)]
     [DataRow(null, "narou", ReaderContentType.WebNovel)]
