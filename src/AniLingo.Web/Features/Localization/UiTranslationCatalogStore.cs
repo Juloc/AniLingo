@@ -723,7 +723,7 @@ public sealed class UiTranslationCatalogStore(AppDbContext db)
             command.CommandText =
                 """
                 SELECT "ThemeMode"
-                FROM "UiProfileLocales"
+                FROM "UiProfileThemes"
                 WHERE "ProfileId" = $profileId
                 LIMIT 1;
                 """;
@@ -769,16 +769,15 @@ public sealed class UiTranslationCatalogStore(AppDbContext db)
             await using var command = connection.CreateCommand();
             command.CommandText =
                 """
-                INSERT INTO "UiProfileLocales" (
-                    "ProfileId", "Locale", "ThemeMode", "UpdatedAt")
+                INSERT INTO "UiProfileThemes" (
+                    "ProfileId", "ThemeMode", "UpdatedAt")
                 VALUES (
-                    $profileId, $sourceLocale, $theme, $updatedAt)
+                    $profileId, $theme, $updatedAt)
                 ON CONFLICT("ProfileId") DO UPDATE SET
                     "ThemeMode" = excluded."ThemeMode",
                     "UpdatedAt" = excluded."UpdatedAt";
                 """;
             Add(command, "$profileId", profileId);
-            Add(command, "$sourceLocale", UiTranslationCatalog.SourceLocale);
             Add(command, "$theme", normalized);
             Add(command, "$updatedAt", DateTime.UtcNow);
             await command.ExecuteNonQueryAsync(cancellationToken);
