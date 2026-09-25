@@ -353,6 +353,10 @@
             actions.append(createLink(item.localUrl, "Open", true));
         } else if (item.category === "book") {
             actions.append(createLink(item.detailsUrl, "Book details", true));
+        } else if (
+            item.category === "manga" &&
+            item.detailsUrl?.startsWith("/Discover/MangaImport")) {
+            actions.append(createLink(item.detailsUrl, "Add manga", true));
         } else {
             actions.append(createLink(item.detailsUrl, "AniList", false));
         }
