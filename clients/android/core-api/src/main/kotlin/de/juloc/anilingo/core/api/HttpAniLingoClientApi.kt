@@ -48,7 +48,7 @@ class HttpAniLingoClientApi(
     private val originUri = normalizeOrigin(origin)
 
     override suspend fun getCapabilities(): ClientCapabilities =
-        parseCapabilities(requestJson("GET", ClientApiRoutes.Capabilities))
+        requestJson("GET", ClientApiRoutes.Capabilities).toCapabilities()
 
     override suspend fun login(credentials: ClientLogin): ClientAccount =
         requestJson(
@@ -224,29 +224,18 @@ class HttpAniLingoClientApi(
         return resolved.toURL()
     }
 
-    internal fun parseCapabilities(json: JSONObject) = ClientCapabilities(
-        apiVersion = json.getInt("apiVersion"),
-        minimumSupportedApiVersion = json.getInt("minimumSupportedApiVersion"),
-        serverVersion = json.getString("serverVersion"),
-        features = json.getJSONObject("features").let { features ->
-            ClientFeatureFlags(
-                library = features.getBoolean("library"),
-                nativeSessionAuth = features.optBoolean("nativeSessionAuth", false),
-                nativePlayerBootstrap = features.getBoolean("nativePlayerBootstrap"),
-                directPlayback = features.getBoolean("directPlayback"),
-                playbackProgress = features.getBoolean("playbackProgress"),
-                httpRangeRequests = features.getBoolean("httpRangeRequests"),
-                mediaTrackMetadata = features.getBoolean("mediaTrackMetadata"),
-                normalizedLearningCues = features.getBoolean("normalizedLearningCues"),
-                learningStateMutation = features.getBoolean("learningStateMutation"),
-                liveMp4Fallback = features.getBoolean("liveMp4Fallback"),
-                hlsFallback = features.getBoolean("hlsFallback"),
-                playbackSessions = features.getBoolean("playbackSessions"),
-                companionPairing = features.getBoolean("companionPairing"),
-                companionControl = features.getBoolean("companionControl"),
-                storageAvailability = features.getBoolean("storageAvailability"),
-                ownerWakeOnLan = features.getBoolean("ownerWakeOnLan"),
-            )
+    private fun JSONObject.toCapabilities() = ClientCapabilities(
+        apiVersion = getInt("apiVersion"),
+        minimumSupportedApiVersion = getInt("minimumSupportedApiVersion"),
+        serverVersion = getString("serverVersion"),
+        features = getJSONObject("features").let { features ->
+            ClientFeatureFlagParser.parse { name ->
+                if (name == "nativeSessionAuth") {
+                    features.optBoolean(name, false)
+                } else {
+                    features.getBoolean(name)
+                }
+            }
         },
     )
 
@@ -520,4 +509,26 @@ class HttpAniLingoClientApi(
                 80
             }
     }
+}
+
+
+internal object ClientFeatureFlagParser {
+    fun parse(readBoolean: (String) -> Boolean) = ClientFeatureFlags(
+        library = readBoolean("library"),
+        nativeSessionAuth = readBoolean("nativeSessionAuth"),
+        nativePlayerBootstrap = readBoolean("nativePlayerBootstrap"),
+        directPlayback = readBoolean("directPlayback"),
+        playbackProgress = readBoolean("playbackProgress"),
+        httpRangeRequests = readBoolean("httpRangeRequests"),
+        mediaTrackMetadata = readBoolean("mediaTrackMetadata"),
+        normalizedLearningCues = readBoolean("normalizedLearningCues"),
+        learningStateMutation = readBoolean("learningStateMutation"),
+        liveMp4Fallback = readBoolean("liveMp4Fallback"),
+        hlsFallback = readBoolean("hlsFallback"),
+        playbackSessions = readBoolean("playbackSessions"),
+        companionPairing = readBoolean("companionPairing"),
+        companionControl = readBoolean("companionControl"),
+        storageAvailability = readBoolean("storageAvailability"),
+        ownerWakeOnLan = readBoolean("ownerWakeOnLan"),
+    )
 }
