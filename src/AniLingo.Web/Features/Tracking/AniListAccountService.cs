@@ -781,7 +781,8 @@ public sealed class AniListAccountService(
                         "The active manga segment does not point to a valid AniList media entry.",
                         segment.Progress,
                         segment.PreferredTitle ?? local.Title,
-                        aniListChapterCount: segment.RemoteChapterCount));
+                        aniListChapterCount: segment.RemoteChapterCount),
+                    AniListExternalProgressStateKind.MappingNeedsReview);
             }
 
             requestedProgress = segment.Progress;
@@ -797,7 +798,8 @@ public sealed class AniListAccountService(
                 return ReadingProgressContext.Blocked(
                     AniListReadingProgressPreview.Blocked(
                         "Match this manga to AniList before syncing progress.",
-                        mediaTitle: local.Title));
+                        mediaTitle: local.Title),
+                    AniListExternalProgressStateKind.MappingNeedsReview);
             }
 
             var resolved = AutomaticMediaMatcher.ResolveReadingProgress(
@@ -1038,7 +1040,8 @@ public sealed class AniListAccountService(
                         "The active light-novel segment does not point to a valid AniList media entry.",
                         segment.Progress,
                         segment.PreferredTitle ?? work.Title,
-                        aniListChapterCount: segment.RemoteChapterCount));
+                        aniListChapterCount: segment.RemoteChapterCount),
+                    AniListExternalProgressStateKind.MappingNeedsReview);
             }
 
             requestedProgress = segment.Progress;
@@ -1058,7 +1061,8 @@ public sealed class AniListAccountService(
                     AniListReadingProgressPreview.Blocked(
                         "Match this light novel to AniList before syncing progress.",
                         mediaTitle: work.Title,
-                        aniListChapterCount: work.MetadataChapterCount));
+                        aniListChapterCount: work.MetadataChapterCount),
+                    AniListExternalProgressStateKind.MappingNeedsReview);
             }
 
             var resolved = AutomaticMediaMatcher.ResolveReadingProgress(
@@ -1200,7 +1204,8 @@ public sealed class AniListAccountService(
                 AniListProgressPreview.Blocked(
                     $"No AniList episode mapping exists for S{episode.SeasonNumber:00}E{episode.Number:00}. Add a range mapping on the anime page before syncing progress.",
                     episode.Number,
-                    episode.AnimeTitle));
+                    episode.AnimeTitle),
+                AniListExternalProgressStateKind.MappingNeedsReview);
         }
 
         if (resolved.EpisodeCount is > 0 &&
@@ -1211,7 +1216,8 @@ public sealed class AniListAccountService(
                     $"Mapped AniList episode {resolved.RemoteEpisodeNumber} is above the known episode count ({resolved.EpisodeCount}). Sync blocked.",
                     resolved.RemoteEpisodeNumber,
                     resolved.PreferredTitle,
-                    aniListEpisodeCount: resolved.EpisodeCount));
+                    aniListEpisodeCount: resolved.EpisodeCount),
+                AniListExternalProgressStateKind.MappingNeedsReview);
         }
 
         var account = await store.LoadAsync(
