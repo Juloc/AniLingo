@@ -30,6 +30,17 @@ public sealed class ReaderPreference
     public string? GenreTheme { get; set; }
     public string? BackgroundAssetId { get; set; }
     public double? BackgroundIntensity { get; set; }
+    public string? BackgroundMotionMode { get; set; }
+    public double? ThemeEffectStrength { get; set; }
+    public double? ThemeBrightness { get; set; }
+    public double? ThemeContrast { get; set; }
+    public double? ThemeSaturation { get; set; }
+    public double? ThemeBlurPx { get; set; }
+    public double? ThemeVignetteStrength { get; set; }
+    public double? ThemeGrainStrength { get; set; }
+    public double? ThemeTextBackdropStrength { get; set; }
+    public double? ThemeParallaxStrength { get; set; }
+    public double? ThemeTintStrength { get; set; }
 
     public string? BookmarkStyle { get; set; }
     public string? BookmarkColor { get; set; }
@@ -57,6 +68,17 @@ public sealed class ReaderSettingsInput
     public string? GenreTheme { get; set; }
     public string? BackgroundAssetId { get; set; }
     public double BackgroundIntensity { get; set; }
+    public string? BackgroundMotionMode { get; set; } = "auto";
+    public double ThemeEffectStrength { get; set; } = 1;
+    public double ThemeBrightness { get; set; } = 1;
+    public double ThemeContrast { get; set; } = 1;
+    public double ThemeSaturation { get; set; } = 1;
+    public double ThemeBlurPx { get; set; }
+    public double ThemeVignetteStrength { get; set; } = 1;
+    public double ThemeGrainStrength { get; set; } = 1;
+    public double ThemeTextBackdropStrength { get; set; } = 1;
+    public double ThemeParallaxStrength { get; set; } = 1;
+    public double ThemeTintStrength { get; set; } = 1;
 
     public string? BookmarkStyle { get; set; }
     public string? BookmarkColor { get; set; }
@@ -81,6 +103,17 @@ public sealed record ReaderSettingsSnapshot(
     IReadOnlyList<string> SourceGenres,
     string BackgroundAssetId,
     double BackgroundIntensity,
+    string BackgroundMotionMode,
+    double ThemeEffectStrength,
+    double ThemeBrightness,
+    double ThemeContrast,
+    double ThemeSaturation,
+    double ThemeBlurPx,
+    double ThemeVignetteStrength,
+    double ThemeGrainStrength,
+    double ThemeTextBackdropStrength,
+    double ThemeParallaxStrength,
+    double ThemeTintStrength,
     string BookmarkStyle,
     string BookmarkColor,
     bool HasBookOverride);
@@ -104,6 +137,11 @@ public static partial class ReaderPreferenceRules
         new(StringComparer.OrdinalIgnoreCase)
         {
             "white", "cream", "sepia", "old-paper", "midnight", "oled"
+        };
+    private static readonly HashSet<string> BackgroundMotionModes =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            "auto", "static", "parallax"
         };
     private static readonly HashSet<string> BookmarkStyles =
         new(StringComparer.OrdinalIgnoreCase)
@@ -131,6 +169,9 @@ public static partial class ReaderPreferenceRules
 
     public static string NormalizePaperStyle(string? value) =>
         NormalizeChoice(value, PaperStyles, "midnight");
+
+    public static string NormalizeBackgroundMotionMode(string? value) =>
+        NormalizeChoice(value, BackgroundMotionModes, "auto");
 
     public static string NormalizeGenreTheme(string? value)
     {
@@ -213,6 +254,36 @@ public static partial class ReaderPreferenceRules
 
     public static double NormalizeBackgroundIntensity(double value) =>
         Math.Round(Math.Clamp(value, 0, .12), 3);
+
+    public static double NormalizeThemeEffectStrength(double value) =>
+        Math.Round(Math.Clamp(value, 0, 2), 2);
+
+    public static double NormalizeThemeBrightness(double value) =>
+        Math.Round(Math.Clamp(value, .65, 1.35), 2);
+
+    public static double NormalizeThemeContrast(double value) =>
+        Math.Round(Math.Clamp(value, .7, 1.3), 2);
+
+    public static double NormalizeThemeSaturation(double value) =>
+        Math.Round(Math.Clamp(value, 0, 1.5), 2);
+
+    public static double NormalizeThemeBlurPx(double value) =>
+        Math.Round(Math.Clamp(value, 0, 8), 1);
+
+    public static double NormalizeThemeVignetteStrength(double value) =>
+        Math.Round(Math.Clamp(value, 0, 2), 2);
+
+    public static double NormalizeThemeGrainStrength(double value) =>
+        Math.Round(Math.Clamp(value, 0, 2), 2);
+
+    public static double NormalizeThemeTextBackdropStrength(double value) =>
+        Math.Round(Math.Clamp(value, 0, 2), 2);
+
+    public static double NormalizeThemeParallaxStrength(double value) =>
+        Math.Round(Math.Clamp(value, 0, 2), 2);
+
+    public static double NormalizeThemeTintStrength(double value) =>
+        Math.Round(Math.Clamp(value, 0, 2), 2);
 
     public static IReadOnlyList<string> ParseGenres(string? json)
     {
@@ -323,6 +394,28 @@ public static class ReaderPreferenceStore
                 First(book?.BackgroundAssetId, user?.BackgroundAssetId, "auto")),
             BackgroundIntensity: ReaderPreferenceRules.NormalizeBackgroundIntensity(
                 book?.BackgroundIntensity ?? user?.BackgroundIntensity ?? .055),
+            BackgroundMotionMode: ReaderPreferenceRules.NormalizeBackgroundMotionMode(
+                First(book?.BackgroundMotionMode, user?.BackgroundMotionMode, "auto")),
+            ThemeEffectStrength: ReaderPreferenceRules.NormalizeThemeEffectStrength(
+                book?.ThemeEffectStrength ?? user?.ThemeEffectStrength ?? 1),
+            ThemeBrightness: ReaderPreferenceRules.NormalizeThemeBrightness(
+                book?.ThemeBrightness ?? user?.ThemeBrightness ?? 1),
+            ThemeContrast: ReaderPreferenceRules.NormalizeThemeContrast(
+                book?.ThemeContrast ?? user?.ThemeContrast ?? 1),
+            ThemeSaturation: ReaderPreferenceRules.NormalizeThemeSaturation(
+                book?.ThemeSaturation ?? user?.ThemeSaturation ?? 1),
+            ThemeBlurPx: ReaderPreferenceRules.NormalizeThemeBlurPx(
+                book?.ThemeBlurPx ?? user?.ThemeBlurPx ?? 0),
+            ThemeVignetteStrength: ReaderPreferenceRules.NormalizeThemeVignetteStrength(
+                book?.ThemeVignetteStrength ?? user?.ThemeVignetteStrength ?? 1),
+            ThemeGrainStrength: ReaderPreferenceRules.NormalizeThemeGrainStrength(
+                book?.ThemeGrainStrength ?? user?.ThemeGrainStrength ?? 1),
+            ThemeTextBackdropStrength: ReaderPreferenceRules.NormalizeThemeTextBackdropStrength(
+                book?.ThemeTextBackdropStrength ?? user?.ThemeTextBackdropStrength ?? 1),
+            ThemeParallaxStrength: ReaderPreferenceRules.NormalizeThemeParallaxStrength(
+                book?.ThemeParallaxStrength ?? user?.ThemeParallaxStrength ?? 1),
+            ThemeTintStrength: ReaderPreferenceRules.NormalizeThemeTintStrength(
+                book?.ThemeTintStrength ?? user?.ThemeTintStrength ?? 1),
             BookmarkStyle: ReaderPreferenceRules.NormalizeBookmarkStyle(
                 First(book?.BookmarkStyle, user?.BookmarkStyle, "fabric")),
             BookmarkColor: ReaderPreferenceRules.NormalizeBookmarkColor(
@@ -373,6 +466,28 @@ public static class ReaderPreferenceStore
             ReaderPreferenceRules.NormalizeBackgroundAssetId(input.BackgroundAssetId);
         preference.BackgroundIntensity =
             ReaderPreferenceRules.NormalizeBackgroundIntensity(input.BackgroundIntensity);
+        preference.BackgroundMotionMode =
+            ReaderPreferenceRules.NormalizeBackgroundMotionMode(input.BackgroundMotionMode);
+        preference.ThemeEffectStrength =
+            ReaderPreferenceRules.NormalizeThemeEffectStrength(input.ThemeEffectStrength);
+        preference.ThemeBrightness =
+            ReaderPreferenceRules.NormalizeThemeBrightness(input.ThemeBrightness);
+        preference.ThemeContrast =
+            ReaderPreferenceRules.NormalizeThemeContrast(input.ThemeContrast);
+        preference.ThemeSaturation =
+            ReaderPreferenceRules.NormalizeThemeSaturation(input.ThemeSaturation);
+        preference.ThemeBlurPx =
+            ReaderPreferenceRules.NormalizeThemeBlurPx(input.ThemeBlurPx);
+        preference.ThemeVignetteStrength =
+            ReaderPreferenceRules.NormalizeThemeVignetteStrength(input.ThemeVignetteStrength);
+        preference.ThemeGrainStrength =
+            ReaderPreferenceRules.NormalizeThemeGrainStrength(input.ThemeGrainStrength);
+        preference.ThemeTextBackdropStrength =
+            ReaderPreferenceRules.NormalizeThemeTextBackdropStrength(input.ThemeTextBackdropStrength);
+        preference.ThemeParallaxStrength =
+            ReaderPreferenceRules.NormalizeThemeParallaxStrength(input.ThemeParallaxStrength);
+        preference.ThemeTintStrength =
+            ReaderPreferenceRules.NormalizeThemeTintStrength(input.ThemeTintStrength);
         preference.BookmarkStyle =
             ReaderPreferenceRules.NormalizeBookmarkStyle(input.BookmarkStyle);
         preference.BookmarkColor =
@@ -460,6 +575,50 @@ public static class ReaderPreferenceStore
             case "backgroundIntensity":
                 preference.BackgroundIntensity =
                     ReaderPreferenceRules.NormalizeBackgroundIntensity(input.BackgroundIntensity);
+                break;
+            case "backgroundMotionMode":
+                preference.BackgroundMotionMode =
+                    ReaderPreferenceRules.NormalizeBackgroundMotionMode(input.BackgroundMotionMode);
+                break;
+            case "themeEffectStrength":
+                preference.ThemeEffectStrength =
+                    ReaderPreferenceRules.NormalizeThemeEffectStrength(input.ThemeEffectStrength);
+                break;
+            case "themeBrightness":
+                preference.ThemeBrightness =
+                    ReaderPreferenceRules.NormalizeThemeBrightness(input.ThemeBrightness);
+                break;
+            case "themeContrast":
+                preference.ThemeContrast =
+                    ReaderPreferenceRules.NormalizeThemeContrast(input.ThemeContrast);
+                break;
+            case "themeSaturation":
+                preference.ThemeSaturation =
+                    ReaderPreferenceRules.NormalizeThemeSaturation(input.ThemeSaturation);
+                break;
+            case "themeBlurPx":
+                preference.ThemeBlurPx =
+                    ReaderPreferenceRules.NormalizeThemeBlurPx(input.ThemeBlurPx);
+                break;
+            case "themeVignetteStrength":
+                preference.ThemeVignetteStrength =
+                    ReaderPreferenceRules.NormalizeThemeVignetteStrength(input.ThemeVignetteStrength);
+                break;
+            case "themeGrainStrength":
+                preference.ThemeGrainStrength =
+                    ReaderPreferenceRules.NormalizeThemeGrainStrength(input.ThemeGrainStrength);
+                break;
+            case "themeTextBackdropStrength":
+                preference.ThemeTextBackdropStrength =
+                    ReaderPreferenceRules.NormalizeThemeTextBackdropStrength(input.ThemeTextBackdropStrength);
+                break;
+            case "themeParallaxStrength":
+                preference.ThemeParallaxStrength =
+                    ReaderPreferenceRules.NormalizeThemeParallaxStrength(input.ThemeParallaxStrength);
+                break;
+            case "themeTintStrength":
+                preference.ThemeTintStrength =
+                    ReaderPreferenceRules.NormalizeThemeTintStrength(input.ThemeTintStrength);
                 break;
             case "bookmarkStyle":
                 preference.BookmarkStyle =

@@ -115,6 +115,17 @@ namespace AniLingo.Web.Data.Migrations
                     b.Property<double?>("AutoScrollSpeed").HasColumnType("REAL");
                     b.Property<double?>("BackgroundIntensity").HasColumnType("REAL");
                     b.Property<string>("BackgroundAssetId").HasMaxLength(120).HasColumnType("TEXT");
+                    b.Property<string>("BackgroundMotionMode").HasMaxLength(24).HasColumnType("TEXT");
+                    b.Property<double?>("ThemeEffectStrength").HasColumnType("REAL");
+                    b.Property<double?>("ThemeBrightness").HasColumnType("REAL");
+                    b.Property<double?>("ThemeContrast").HasColumnType("REAL");
+                    b.Property<double?>("ThemeSaturation").HasColumnType("REAL");
+                    b.Property<double?>("ThemeBlurPx").HasColumnType("REAL");
+                    b.Property<double?>("ThemeVignetteStrength").HasColumnType("REAL");
+                    b.Property<double?>("ThemeGrainStrength").HasColumnType("REAL");
+                    b.Property<double?>("ThemeTextBackdropStrength").HasColumnType("REAL");
+                    b.Property<double?>("ThemeParallaxStrength").HasColumnType("REAL");
+                    b.Property<double?>("ThemeTintStrength").HasColumnType("REAL");
                     b.Property<string>("BookmarkColor").HasMaxLength(16).HasColumnType("TEXT");
                     b.Property<string>("BookmarkStyle").HasMaxLength(24).HasColumnType("TEXT");
                     b.Property<string>("ChapterStyle").HasMaxLength(32).HasColumnType("TEXT");

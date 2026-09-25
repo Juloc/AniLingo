@@ -190,8 +190,14 @@ public sealed class ReaderPersonalizationTests
             root, "src", "AniLingo.Web", "Pages", "Novels", "Read.cshtml"));
         var script = File.ReadAllText(Path.Combine(
             root, "src", "AniLingo.Web", "wwwroot", "js", "reader-personalization.js"));
+        var themeScript = File.ReadAllText(Path.Combine(
+            root, "src", "AniLingo.Web", "wwwroot", "js", "reader-themes.js"));
         var css = File.ReadAllText(Path.Combine(
             root, "src", "AniLingo.Web", "wwwroot", "css", "novels.css"));
+        var bookPage = File.ReadAllText(Path.Combine(
+            root, "src", "AniLingo.Web", "Pages", "Books", "Read.cshtml"));
+        var bookScript = File.ReadAllText(Path.Combine(
+            root, "src", "AniLingo.Web", "wwwroot", "js", "books-reader.js"));
 
         StringAssert.Contains(page, "data-reader-autoscroll-toggle");
         StringAssert.Contains(page, "data-reader-page-controls");
@@ -206,9 +212,20 @@ public sealed class ReaderPersonalizationTests
         StringAssert.Contains(script, "sendPagedProgress");
         StringAssert.Contains(script, "prefers-reduced-motion");
         StringAssert.Contains(script, "google:");
-        StringAssert.Contains(script, "/api/reader-backgrounds");
+        StringAssert.Contains(themeScript, "/api/reader-themes");
         StringAssert.Contains(script, "backgroundAssetId");
+        Assert.IsFalse(script.Contains("/api/reader-backgrounds", StringComparison.Ordinal));
         Assert.IsFalse(script.Contains("canvas", StringComparison.OrdinalIgnoreCase));
+
+        StringAssert.Contains(themeScript, "anilingo:reader-settings");
+        StringAssert.Contains(themeScript, "prefers-reduced-motion");
+        StringAssert.Contains(themeScript, "parallaxStrength");
+
+        StringAssert.Contains(bookPage, "data-reader-personalization");
+        StringAssert.Contains(bookPage, "reader-themes.css");
+        StringAssert.Contains(bookPage, "data-reader-background-select");
+        StringAssert.Contains(bookScript, "anilingo:reader-settings");
+        StringAssert.Contains(bookScript, "themeParallaxStrength");
 
         StringAssert.Contains(css, "[data-reading-mode=\"paged\"]");
         StringAssert.Contains(css, "[data-paper-style=\"oled\"]");
