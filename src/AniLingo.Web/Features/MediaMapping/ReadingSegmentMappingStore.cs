@@ -284,6 +284,45 @@ public sealed class ReadingSegmentMappingStore
         }
     }
 
+    public async Task<int> ClearAutomaticAsync(
+        string mediaType,
+        string localId,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedMediaType = NormalizeMediaType(mediaType);
+        var normalizedLocalId = localId.Trim();
+
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            var mappings = await ReadUnsafeAsync(cancellationToken);
+            var removed = mappings.RemoveAll(x =>
+                string.Equals(
+                    x.MediaType,
+                    normalizedMediaType,
+                    StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(
+                    x.LocalId,
+                    normalizedLocalId,
+                    StringComparison.Ordinal) &&
+                string.Equals(
+                    x.Source,
+                    "automatic",
+                    StringComparison.OrdinalIgnoreCase));
+
+            if (removed > 0)
+            {
+                await WriteUnsafeAsync(mappings, cancellationToken);
+            }
+
+            return removed;
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
     public async Task<bool> RemoveAsync(
         Guid id,
         CancellationToken cancellationToken = default)
