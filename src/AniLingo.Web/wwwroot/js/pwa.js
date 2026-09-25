@@ -7,6 +7,18 @@
   let reloadForServiceWorker = false;
   let didReloadForServiceWorker = false;
 
+  // Localized shell text is rendered by the server from the UI catalog
+  // (pwa.* keys), so this script never keeps its own copy of UI strings.
+  const shellText = (() => {
+    try {
+      return JSON.parse(
+        document.getElementById("app-shell-text")?.textContent || "{}");
+    } catch {
+      return {};
+    }
+  })();
+  const shellLabel = key => shellText[key] || key;
+
   const isStandalone = () =>
     window.matchMedia?.("(display-mode: standalone)")?.matches === true
     || window.navigator.standalone === true;
@@ -179,9 +191,9 @@
 
     showNotice({
       id: "pwa-install-notice",
-      message: "Install AniLingo for a standalone app window and faster access.",
-      primaryLabel: "Install",
-      secondaryLabel: "Not now",
+      message: shellLabel("pwa.install.prompt"),
+      primaryLabel: shellLabel("pwa.install.action"),
+      secondaryLabel: shellLabel("pwa.install.dismiss"),
       onSecondary: () => dismissInstall(),
       onPrimary: async () => {
         const prompt = deferredInstallPrompt;
@@ -213,10 +225,10 @@
       showNotice({
         id: "pwa-install-notice",
         message: appleMobile
-          ? "Install AniLingo on iPhone/iPad: open Share, then choose Add to Home Screen."
-          : "Install AniLingo on Mac: in Safari, choose File, then Add to Dock.",
-        primaryLabel: "Got it",
-        secondaryLabel: "Not now",
+          ? shellLabel("pwa.install.appleMobile")
+          : shellLabel("pwa.install.appleDesktop"),
+        primaryLabel: shellLabel("pwa.install.acknowledge"),
+        secondaryLabel: shellLabel("pwa.install.dismiss"),
         onSecondary: () => dismissInstall(),
         onPrimary: async () => {
           dismissInstall();
@@ -233,9 +245,9 @@
 
     showNotice({
       id: "pwa-update-notice",
-      message: "A new AniLingo version is ready.",
-      primaryLabel: "Update",
-      secondaryLabel: "Later",
+      message: shellLabel("pwa.update.ready"),
+      primaryLabel: shellLabel("pwa.update.action"),
+      secondaryLabel: shellLabel("pwa.update.later"),
       onPrimary: async () => {
         reloadForServiceWorker = true;
         worker.postMessage({ type: "SKIP_WAITING" });
@@ -358,7 +370,7 @@
 
     try {
       if (await copyText(payload.url)) {
-        showToast("Link copied.");
+        showToast(shellLabel("pwa.linkCopied"));
         return true;
       }
     } catch {
@@ -558,7 +570,7 @@
         video.webkitSetPresentationMode(mode);
       }
     } catch {
-      showToast("Picture-in-Picture is not available for this video.");
+      showToast(shellLabel("pwa.player.pictureInPictureUnavailable"));
     }
   };
 
@@ -582,7 +594,7 @@
         video.webkitEnterFullscreen();
       }
     } catch {
-      showToast("Fullscreen is not available here.");
+      showToast(shellLabel("pwa.player.fullscreenUnavailable"));
     }
   };
 
@@ -603,12 +615,12 @@
 
     const actions = document.createElement("div");
     actions.className = "pwa-player-actions";
-    actions.setAttribute("aria-label", "Player window actions");
+    actions.setAttribute("aria-label", shellLabel("pwa.player.actionsAria"));
 
     if (supportsPictureInPicture(video)) {
       const pictureInPicture = createPlayerAction(
-        "Picture-in-Picture",
-        "PiP",
+        shellLabel("pwa.player.pictureInPicture"),
+        shellLabel("pwa.player.pictureInPictureShort"),
         () => void togglePictureInPicture(video));
       pictureInPicture.disabled = video.readyState < 1;
       video.addEventListener("loadedmetadata", () => {
@@ -619,14 +631,14 @@
 
     if (supportsFullscreen(stage, video)) {
       actions.appendChild(createPlayerAction(
-        "Toggle fullscreen",
+        shellLabel("pwa.player.fullscreen"),
         "⛶",
         () => void enterFullscreen(stage, video)));
     }
 
     if (navigator.share || navigator.clipboard?.writeText) {
       actions.appendChild(createPlayerAction(
-        "Share episode",
+        shellLabel("pwa.player.share"),
         "↗",
         () => void shareCurrentPage({
           title: document.querySelector(".page-header h1")?.textContent?.trim()
@@ -658,9 +670,33 @@
   });
 
   window.addEventListener("offline", () =>
-    showToast("Offline. Cached app resources remain available."));
+    showToast(shellLabel("pwa.offline")));
   window.addEventListener("online", () =>
-    showToast("Back online."));
+    showToast(shellLabel("pwa.online")));
+
+  // The mobile More menu is a native <details> element; this only adds the
+  // expected dismissal behavior (outside tap and Escape).
+  const openNavigationMenus = () =>
+    document.querySelectorAll("details[data-nav-more][open]");
+
+  document.addEventListener("click", event => {
+    openNavigationMenus().forEach(menu => {
+      if (!menu.contains(event.target)) {
+        menu.open = false;
+      }
+    });
+  });
+
+  document.addEventListener("keydown", event => {
+    if (event.key !== "Escape") {
+      return;
+    }
+
+    openNavigationMenus().forEach(menu => {
+      menu.open = false;
+      menu.querySelector("summary")?.focus();
+    });
+  });
 
   document.addEventListener("submit", event => {
     if (event.target instanceof HTMLFormElement

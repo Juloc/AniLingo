@@ -1,5 +1,7 @@
 using System.ComponentModel.DataAnnotations;
+using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
+using AniLingo.Web.Features.Localization;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
@@ -13,12 +15,12 @@ public sealed class SetupModel(OwnerAuthService ownerAuth) : PageModel
 {
     [BindProperty]
     [Required]
-    [StringLength(80, MinimumLength = 1)]
+    [StringLength(AccountForm.MaxUserNameLength, MinimumLength = 1)]
     public string UserName { get; set; } = "owner";
 
     [BindProperty]
     [Required]
-    [MinLength(12)]
+    [MinLength(AccountForm.MinPasswordLength)]
     [DataType(DataType.Password)]
     public string Password { get; set; } = string.Empty;
 
@@ -31,7 +33,11 @@ public sealed class SetupModel(OwnerAuthService ownerAuth) : PageModel
     [BindProperty(SupportsGet = true)]
     public string ReturnUrl { get; set; } = "/";
 
-    public async Task<IActionResult> OnGetAsync(CancellationToken cancellationToken)
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
+
+    public async Task<IActionResult> OnGetAsync(
+        [FromServices] AppDbContext db,
+        CancellationToken cancellationToken)
     {
         ReturnUrl = SafeReturnUrl();
 
@@ -40,10 +46,13 @@ public sealed class SetupModel(OwnerAuthService ownerAuth) : PageModel
             return RedirectToPage("/Account/Login", new { returnUrl = ReturnUrl });
         }
 
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         return Page();
     }
 
-    public async Task<IActionResult> OnPostAsync(CancellationToken cancellationToken)
+    public async Task<IActionResult> OnPostAsync(
+        [FromServices] AppDbContext db,
+        CancellationToken cancellationToken)
     {
         ReturnUrl = SafeReturnUrl();
 
@@ -52,8 +61,15 @@ public sealed class SetupModel(OwnerAuthService ownerAuth) : PageModel
             return RedirectToPage("/Account/Login", new { returnUrl = ReturnUrl });
         }
 
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         if (!ModelState.IsValid)
         {
+            AccountForm.LocalizeFieldErrors(ModelState, new Dictionary<string, string>
+            {
+                [nameof(UserName)] = AccountForm.UserNameMessage(Ui),
+                [nameof(Password)] = AccountForm.NewPasswordMessage(Ui),
+                [nameof(ConfirmPassword)] = Ui["account.validation.confirmPassword"]
+            });
             return Page();
         }
 
@@ -68,7 +84,7 @@ public sealed class SetupModel(OwnerAuthService ownerAuth) : PageModel
         }
         catch (ArgumentException exception)
         {
-            ModelState.AddModelError(string.Empty, exception.Message);
+            AccountForm.AddCreationError(ModelState, Ui, exception);
             return Page();
         }
 
@@ -76,7 +92,7 @@ public sealed class SetupModel(OwnerAuthService ownerAuth) : PageModel
             CookieAuthenticationDefaults.AuthenticationScheme,
             OwnerAuthService.CreatePrincipal(owner));
 
-        TempData["Status"] = "Owner account created.";
+        TempData["Status"] = Ui["account.setup.created"];
         return LocalRedirect(ReturnUrl);
     }
 

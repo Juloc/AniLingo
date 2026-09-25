@@ -1,5 +1,7 @@
 using System.ComponentModel.DataAnnotations;
+using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
+using AniLingo.Web.Features.Localization;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
@@ -15,7 +17,7 @@ public sealed class LoginModel(OwnerAuthService ownerAuth) : PageModel
 {
     [BindProperty]
     [Required]
-    [StringLength(80)]
+    [StringLength(AccountForm.MaxUserNameLength)]
     public string UserName { get; set; } = string.Empty;
 
     [BindProperty]
@@ -29,7 +31,11 @@ public sealed class LoginModel(OwnerAuthService ownerAuth) : PageModel
     [BindProperty(SupportsGet = true)]
     public string ReturnUrl { get; set; } = "/";
 
-    public async Task<IActionResult> OnGetAsync(CancellationToken cancellationToken)
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
+
+    public async Task<IActionResult> OnGetAsync(
+        [FromServices] AppDbContext db,
+        CancellationToken cancellationToken)
     {
         ReturnUrl = SafeReturnUrl();
 
@@ -43,10 +49,13 @@ public sealed class LoginModel(OwnerAuthService ownerAuth) : PageModel
             return RedirectToPage("/Account/Setup", new { returnUrl = ReturnUrl });
         }
 
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         return Page();
     }
 
-    public async Task<IActionResult> OnPostAsync(CancellationToken cancellationToken)
+    public async Task<IActionResult> OnPostAsync(
+        [FromServices] AppDbContext db,
+        CancellationToken cancellationToken)
     {
         ReturnUrl = SafeReturnUrl();
 
@@ -55,15 +64,21 @@ public sealed class LoginModel(OwnerAuthService ownerAuth) : PageModel
             return RedirectToPage("/Account/Setup", new { returnUrl = ReturnUrl });
         }
 
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         if (!ModelState.IsValid)
         {
+            AccountForm.LocalizeFieldErrors(ModelState, new Dictionary<string, string>
+            {
+                [nameof(UserName)] = AccountForm.UserNameMessage(Ui),
+                [nameof(Password)] = Ui["account.validation.password"]
+            });
             return Page();
         }
 
         var owner = await ownerAuth.ValidateCredentialsAsync(UserName, Password, cancellationToken);
         if (owner is null)
         {
-            ModelState.AddModelError(string.Empty, "Invalid user name or password.");
+            ModelState.AddModelError(string.Empty, Ui["account.login.invalid"]);
             return Page();
         }
 

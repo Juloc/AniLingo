@@ -1,6 +1,6 @@
 # AniLingo
 
-Current prerelease: **0.1.0-alpha.25**.
+AniLingo is in prerelease. The canonical version is the `<Version>` property in `src/AniLingo.Web/AniLingo.Web.csproj`; published builds are listed under [GitHub Releases](https://github.com/Juloc/AniLingo/releases), and the running build shows its exact version to the Owner in the app sidebar.
 
 AniLingo is a Docker-first Japanese learning companion for an existing anime library. It scans media from a read-only NAS mount, imports nearby Japanese subtitles, builds episode vocabulary, and lets you mark terms as known or review them before watching.
 

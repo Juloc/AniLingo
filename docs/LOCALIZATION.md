@@ -95,4 +95,28 @@ The Owner registers and generates application locales at /Admin/Languages. Each 
 
 The profile choice is stored in UiProfileLocales. Runtime UI reads use UiTranslationCatalogStore.LoadProfileBundleAsync: persisted exact-locale values override parent-locale values, which override the English source resource. Runtime reads never invoke the AI generator.
 
-The shared layout applies the resolved BCP-47 lang and text direction. Home and Learning are the first migrated surfaces; remaining hardcoded fixed UI text must move incrementally to the same catalog rather than creating page-specific localization systems.
+UiRequestLocalization.GetBundleAsync resolves the bundle once per request and caches it in HttpContext.Items, so a page model and the shared layout share the same result:
+
+- signed-in requests use the profile locale;
+- anonymous requests (setup, sign-in, registration) negotiate the browser Accept-Language header in q-value order against the Owner-enabled locales, matching the exact tag first and then its parent culture (de-DE → de), and otherwise use English. These responses send Vary: Accept-Language.
+
+Page models that render catalog text in their own view call GetBundleAsync in the handler (a view renders before the layout, so ViewData["UiTextBundle"] is not yet set while the page body renders).
+
+The shared layout applies the resolved BCP-47 lang and text direction. Shell CSS uses logical properties (inline start/end) so RTL locales do not need a separate layout.
+
+PWA runtime text (install and update notices, connectivity toasts, player window actions) lives under pwa.* keys. The layout serializes exactly that subset into a JSON script element that pwa.js reads; JavaScript never keeps its own copy of UI strings. The web manifest is a static, install-time file and stays in the English source language.
+
+Migrated surfaces: shared navigation and layout, setup/sign-in/registration, the Settings index, Home and Learning. Remaining hardcoded fixed UI text must move incrementally to the same catalog rather than creating page-specific localization systems. Tests fail when a literal catalog key used in source is missing from UiTranslationResources.
+
+## Shipping additional locales
+
+AniLingo ships only the English source resources. German (de), Indonesian (id) or any other locale is not seeded into the database, because shipped values would be a second translation source next to the Owner-managed catalog and would bypass the Generated/Reviewed/Manual lifecycle.
+
+To offer a locale, the Owner:
+
+1. opens /Admin/Languages and adds the locale tag, for example de or id;
+2. runs Generate missing (the configured AI provider receives each key with its full context metadata);
+3. checks the result and uses Mark reviewed, or edits entries manually where wording must differ;
+4. after an upgrade that changes source text or context, runs Regenerate outdated.
+
+Once enabled, the locale is selectable at /Settings/Language and is used automatically for anonymous pages when the browser prefers it.

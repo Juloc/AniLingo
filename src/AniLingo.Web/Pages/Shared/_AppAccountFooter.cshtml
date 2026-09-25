@@ -1,0 +1,22 @@
+@using AniLingo.Web.Features.Appearance
+@using AniLingo.Web.Features.Localization
+@{
+    var ui = ViewData["UiTextBundle"] as UiTextBundle ?? UiTextBundle.English;
+    var appVersion = ViewData["AppBuildVersion"] as string ?? AppBuildInfo.Version;
+    var isOwner = User.IsInRole(AniLingo.Web.Features.Auth.AccountRoles.Owner);
+}
+@* Shared by the desktop sidebar footer and the mobile More menu. *@
+<partial name="_AppThemeControl" />
+<div class="sidebar-account">
+    <span class="sidebar-user">@User.Identity?.Name</span>
+    <form method="post" asp-page="/Account/Logout" data-offline-logout>
+        <button class="sidebar-logout" type="submit">
+            <partial name="_AppIcon" model="@("signOut")" />
+            <span>@ui["nav.signOut"]</span>
+        </button>
+    </form>
+</div>
+@if (isOwner)
+{
+    <span class="sidebar-version" title="@appVersion">@ui["shell.version"] @appVersion</span>
+}

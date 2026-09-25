@@ -1,4 +1,6 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
+using AniLingo.Web.Features.Localization;
 
 namespace AniLingo.Tests;
 
@@ -77,8 +79,14 @@ public sealed class PwaManifestTests
             Path.Combine(webRoot, "js", "pwa.js"));
 
         StringAssert.Contains(pwaRuntime, "beforeinstallprompt");
-        StringAssert.Contains(pwaRuntime, "Add to Home Screen");
-        StringAssert.Contains(pwaRuntime, "Add to Dock");
+        StringAssert.Contains(pwaRuntime, "shellLabel(\"pwa.install.appleMobile\")");
+        StringAssert.Contains(pwaRuntime, "shellLabel(\"pwa.install.appleDesktop\")");
+        StringAssert.Contains(
+            UiTranslationResources.Get("pwa.install.appleMobile").DefaultText,
+            "Add to Home Screen");
+        StringAssert.Contains(
+            UiTranslationResources.Get("pwa.install.appleDesktop").DefaultText,
+            "Add to Dock");
         StringAssert.Contains(pwaRuntime, "apple-mobile-web-app-capable");
         StringAssert.Contains(pwaRuntime, "viewport-fit=cover");
         StringAssert.Contains(pwaRuntime, "mediaSession");
@@ -89,6 +97,46 @@ public sealed class PwaManifestTests
         StringAssert.Contains(pwaRuntime, "url.searchParams.has(\"v\")");
         StringAssert.Contains(pwaRuntime, "CACHE_CURRENT_ASSETS");
         StringAssert.Contains(pwaRuntime, "updateViaCache: \"none\"");
+    }
+
+    [TestMethod]
+    public void PwaRuntimeLabelsComeFromTheUiCatalog()
+    {
+        var repoRoot = FindRepositoryRoot();
+        var webRoot = Path.Combine(repoRoot, "src", "AniLingo.Web", "wwwroot");
+        var pwaRuntime = File.ReadAllText(Path.Combine(webRoot, "js", "pwa.js"));
+        var layout = File.ReadAllText(Path.Combine(
+            repoRoot, "src", "AniLingo.Web", "Pages", "Shared", "_Layout.cshtml"));
+
+        // The layout serializes exactly the pwa.* catalog subset for the runtime.
+        StringAssert.Contains(layout, "id=\"app-shell-text\"");
+        StringAssert.Contains(layout, "ui.WithPrefix(\"pwa.\")");
+
+        var keys = Regex.Matches(pwaRuntime, @"shellLabel\(""(?<key>[^""]+)""\)")
+            .Select(x => x.Groups["key"].Value)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.IsTrue(keys.Length >= 10);
+        foreach (var key in keys)
+        {
+            Assert.IsTrue(key.StartsWith("pwa.", StringComparison.Ordinal), key);
+            Assert.IsTrue(UiTranslationResources.TryGet(key, out _), $"Missing catalog key {key}.");
+        }
+
+        foreach (var literal in new[]
+                 {
+                     "\"Install\"",
+                     "\"Not now\"",
+                     "\"A new AniLingo version is ready.\"",
+                     "\"Back online.\"",
+                     "\"Link copied.\""
+                 })
+        {
+            Assert.IsFalse(
+                pwaRuntime.Contains(literal, StringComparison.Ordinal),
+                $"pwa.js still hard-codes {literal}.");
+        }
     }
 
     private static string FindRepositoryRoot()

@@ -1,41 +1,41 @@
 @page
 @model AniLingo.Web.Pages.Account.SetupModel
 @{
-    ViewData["Title"] = "Create owner account";
+    var ui = Model.Ui;
+    ViewData["Title"] = ui["account.setup.title"];
 }
 
 <section class="auth-card">
     <div class="auth-brand">
-        <span class="brand-mark">A</span>
-        <span>AniLingo</span>
+        <partial name="_AppBrandMark" />
     </div>
 
-    <span class="eyebrow">First-time setup</span>
-    <h1>Create owner account</h1>
-    <p>Create the owner account for this AniLingo instance. Additional users can request access afterward and require owner approval.</p>
+    <span class="eyebrow">@ui["account.setup.eyebrow"]</span>
+    <h1>@ui["account.setup.title"]</h1>
+    <p>@ui["account.setup.description"]</p>
 
     <form method="post" class="form-stack">
         <div asp-validation-summary="ModelOnly" class="validation"></div>
         <input asp-for="ReturnUrl" type="hidden" />
 
         <label asp-for="UserName">
-            User name
+            @ui["account.field.userName"]
             <input asp-for="UserName" autocomplete="username" autofocus />
         </label>
         <span asp-validation-for="UserName" class="validation"></span>
 
         <label asp-for="Password">
-            Password
+            @ui["account.field.password"]
             <input asp-for="Password" type="password" autocomplete="new-password" />
         </label>
         <span asp-validation-for="Password" class="validation"></span>
 
         <label asp-for="ConfirmPassword">
-            Confirm password
+            @ui["account.field.confirmPassword"]
             <input asp-for="ConfirmPassword" type="password" autocomplete="new-password" />
         </label>
         <span asp-validation-for="ConfirmPassword" class="validation"></span>
 
-        <button class="button button-primary" type="submit">Create owner account</button>
+        <button class="button button-primary" type="submit">@ui["account.setup.submit"]</button>
     </form>
 </section>
