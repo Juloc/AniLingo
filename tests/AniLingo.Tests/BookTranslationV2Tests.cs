@@ -1,4 +1,5 @@
 using AniLingo.Web.Data;
+using AniLingo.Web.Features.Ai;
 using AniLingo.Web.Features.Books;
 using AniLingo.Web.Features.Novels;
 using Microsoft.Data.Sqlite;
@@ -105,6 +106,13 @@ public sealed class BookTranslationV2Tests
             StringAssert.Contains(context, "Alice → Alice");
             StringAssert.Contains(context, "Mana Core → Inti Mana");
             StringAssert.Contains(context, "Alice arrives at the academy.");
+
+            var relevant = BookTranslationMemoryStore.RenderRelevantContext(
+                reloaded,
+                "Alice checks the Mana Core.",
+                5000);
+            StringAssert.Contains(relevant, "Alice → Alice");
+            StringAssert.Contains(relevant, "Mana Core → Inti Mana");
         }
         finally
         {
@@ -113,7 +121,7 @@ public sealed class BookTranslationV2Tests
     }
 
     [TestMethod]
-    public async Task TranslationPipelineRunsTranslatorEditorQaThenMemoryAndCachesFinalText()
+    public async Task EfficientModeUsesOneTranslationCallPerChunkPlusMemory()
     {
         var databasePath = TempDatabasePath();
         var memoryPath = TempDirectory();
@@ -123,11 +131,9 @@ public sealed class BookTranslationV2Tests
             await using var db = await CreateDatabaseAsync(databasePath);
             var (work, chapter) = await SeedBookAsync(db);
 
-            var translator = new RecordingTranslator();
-            using var client = new HttpClient
-            {
-                BaseAddress = new Uri("https://gutendex.com/")
-            };
+            var translator = new RecordingTranslator(
+                AiTranslationMode.Efficient);
+            using var client = CreateClient();
             var service = NewService(
                 db,
                 client,
@@ -144,20 +150,9 @@ public sealed class BookTranslationV2Tests
                 CancellationToken.None);
 
             Assert.AreEqual(first.Id, second.Id);
-            Assert.AreEqual("FINAL-ID", first.Text);
-            Assert.AreEqual(
-                BookCatalogService.TranslationPromptVersion,
-                first.PromptVersion);
-
+            Assert.AreEqual("DRAFT-ID", first.Text);
             CollectionAssert.AreEqual(
-                new[]
-                {
-                    "analyze",
-                    "translate",
-                    "edit",
-                    "qa",
-                    "memory"
-                },
+                new[] { "translate", "memory" },
                 translator.Events);
 
             var bible = await new BookTranslationMemoryStore(memoryPath)
@@ -171,15 +166,189 @@ public sealed class BookTranslationV2Tests
             Assert.AreEqual(
                 "The heroine opens the gate.",
                 bible.Chapters[0].Summary);
-            Assert.AreEqual(
-                "Gerbang Perak",
-                bible.Terms.Single(x => x.Source == "Silver Gate").Target);
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
-            File.Delete(databasePath);
-            DeleteDirectory(memoryPath);
+            Cleanup(databasePath, memoryPath);
+        }
+    }
+
+    [TestMethod]
+    public async Task QualityModeAddsOneQaPassButNoSeparateEditor()
+    {
+        var databasePath = TempDatabasePath();
+        var memoryPath = TempDirectory();
+
+        try
+        {
+            await using var db = await CreateDatabaseAsync(databasePath);
+            var (_, chapter) = await SeedBookAsync(db);
+
+            var translator = new RecordingTranslator(
+                AiTranslationMode.Quality);
+            using var client = CreateClient();
+            var service = NewService(
+                db,
+                client,
+                translator,
+                memoryPath);
+
+            var translation = await service.TranslateChapterAsync(
+                chapter.Id,
+                "id",
+                CancellationToken.None);
+
+            Assert.AreEqual("FINAL-ID", translation.Text);
+            CollectionAssert.AreEqual(
+                new[] { "translate", "qa", "memory" },
+                translator.Events);
+        }
+        finally
+        {
+            Cleanup(databasePath, memoryPath);
+        }
+    }
+
+    [TestMethod]
+    public async Task MaximumModeKeepsAnalyzeTranslateEditQaMemoryPipeline()
+    {
+        var databasePath = TempDatabasePath();
+        var memoryPath = TempDirectory();
+
+        try
+        {
+            await using var db = await CreateDatabaseAsync(databasePath);
+            var (_, chapter) = await SeedBookAsync(db);
+
+            var translator = new RecordingTranslator(
+                AiTranslationMode.Maximum);
+            using var client = CreateClient();
+            var service = NewService(
+                db,
+                client,
+                translator,
+                memoryPath);
+
+            var translation = await service.TranslateChapterAsync(
+                chapter.Id,
+                "id",
+                CancellationToken.None);
+
+            Assert.AreEqual("FINAL-ID", translation.Text);
+            CollectionAssert.AreEqual(
+                new[]
+                {
+                    "analyze",
+                    "translate",
+                    "edit",
+                    "qa",
+                    "memory"
+                },
+                translator.Events);
+        }
+        finally
+        {
+            Cleanup(databasePath, memoryPath);
+        }
+    }
+
+    [TestMethod]
+    public async Task FailedLaterChunkResumesWithoutRetranslatingCompletedChunk()
+    {
+        var databasePath = TempDatabasePath();
+        var memoryPath = TempDirectory();
+
+        try
+        {
+            await using var db = await CreateDatabaseAsync(databasePath);
+            var (_, chapter) = await SeedBookAsync(db);
+            chapter.OriginalText =
+                new string('A', 5200)
+                + "!"
+                + new string('B', 1000);
+            chapter.SourceHash = "resume-source-hash";
+            await db.SaveChangesAsync();
+
+            var translator = new ResumeTranslator();
+            using var client = CreateClient();
+            var service = NewService(
+                db,
+                client,
+                translator,
+                memoryPath);
+
+            await AssertThrowsAsync<InvalidOperationException>(
+                () => service.TranslateChapterAsync(
+                    chapter.Id,
+                    "id",
+                    CancellationToken.None));
+
+            Assert.AreEqual(0, await db.NovelTranslations.CountAsync());
+            Assert.AreEqual(1, translator.FirstChunkCalls);
+            Assert.AreEqual(1, translator.SecondChunkCalls);
+
+            var completed = await service.TranslateChapterAsync(
+                chapter.Id,
+                "id",
+                CancellationToken.None);
+
+            Assert.AreEqual(1, translator.FirstChunkCalls);
+            Assert.AreEqual(2, translator.SecondChunkCalls);
+            StringAssert.Contains(completed.Text, "FIRST-CACHED");
+            StringAssert.Contains(completed.Text, "SECOND-COMPLETE");
+        }
+        finally
+        {
+            Cleanup(databasePath, memoryPath);
+        }
+    }
+
+    [TestMethod]
+    public async Task CompletedTranslationCacheSurvivesProviderSwitch()
+    {
+        var databasePath = TempDatabasePath();
+        var memoryPath = TempDirectory();
+
+        try
+        {
+            await using var db = await CreateDatabaseAsync(databasePath);
+            var (_, chapter) = await SeedBookAsync(db);
+            using var client = CreateClient();
+
+            var firstProvider = new RecordingTranslator(
+                AiTranslationMode.Efficient,
+                "provider-a");
+            var firstService = NewService(
+                db,
+                client,
+                firstProvider,
+                memoryPath);
+
+            var first = await firstService.TranslateChapterAsync(
+                chapter.Id,
+                "id",
+                CancellationToken.None);
+
+            var secondProvider = new RecordingTranslator(
+                AiTranslationMode.Efficient,
+                "provider-b");
+            var secondService = NewService(
+                db,
+                client,
+                secondProvider,
+                memoryPath);
+
+            var second = await secondService.TranslateChapterAsync(
+                chapter.Id,
+                "id",
+                CancellationToken.None);
+
+            Assert.AreEqual(first.Id, second.Id);
+            Assert.AreEqual(0, secondProvider.Events.Count);
+        }
+        finally
+        {
+            Cleanup(databasePath, memoryPath);
         }
     }
 
@@ -195,10 +364,7 @@ public sealed class BookTranslationV2Tests
             var (_, chapter) = await SeedBookAsync(db);
 
             var translator = new InvalidQaTranslator();
-            using var client = new HttpClient
-            {
-                BaseAddress = new Uri("https://gutendex.com/")
-            };
+            using var client = CreateClient();
             var service = NewService(
                 db,
                 client,
@@ -217,9 +383,7 @@ public sealed class BookTranslationV2Tests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
-            File.Delete(databasePath);
-            DeleteDirectory(memoryPath);
+            Cleanup(databasePath, memoryPath);
         }
     }
 
@@ -233,7 +397,9 @@ public sealed class BookTranslationV2Tests
             .AddInMemoryCollection(
                 new Dictionary<string, string?>
                 {
-                    ["Books:Translation:MemoryPath"] = memoryPath
+                    ["Books:Translation:MemoryPath"] = memoryPath,
+                    ["Books:Translation:ChunkCachePath"] =
+                        Path.Combine(memoryPath, "chunks")
                 })
             .Build();
 
@@ -243,6 +409,12 @@ public sealed class BookTranslationV2Tests
             translator,
             config);
     }
+
+    private static HttpClient CreateClient() =>
+        new()
+        {
+            BaseAddress = new Uri("https://gutendex.com/")
+        };
 
     private static async Task<(NovelWork Work, NovelChapter Chapter)> SeedBookAsync(
         AppDbContext db)
@@ -320,6 +492,15 @@ public sealed class BookTranslationV2Tests
         return path;
     }
 
+    private static void Cleanup(
+        string databasePath,
+        string memoryPath)
+    {
+        SqliteConnection.ClearAllPools();
+        File.Delete(databasePath);
+        DeleteDirectory(memoryPath);
+    }
+
     private static void DeleteDirectory(string path)
     {
         if (Directory.Exists(path))
@@ -330,10 +511,16 @@ public sealed class BookTranslationV2Tests
         }
     }
 
-    private sealed class RecordingTranslator : IBookTranslator
+    private sealed class RecordingTranslator(
+        AiTranslationMode mode,
+        string id = "recording-v2") : IBookTranslator
     {
-        public string Id => "recording-v2";
+        public string Id => id;
         public List<string> Events { get; } = [];
+
+        public Task<AiTranslationMode> GetTranslationModeAsync(
+            CancellationToken cancellationToken) =>
+            Task.FromResult(mode);
 
         public Task<BookTranslationBibleSeed> AnalyzeBookAsync(
             BookTranslationAnalysisRequest request,
@@ -371,9 +558,14 @@ public sealed class BookTranslationV2Tests
             StringAssert.Contains(
                 context,
                 "BOOK TRANSLATION BIBLE");
-            StringAssert.Contains(
-                context,
-                "Alice → Alice");
+
+            if (mode == AiTranslationMode.Maximum)
+            {
+                StringAssert.Contains(
+                    context,
+                    "Alice → Alice");
+            }
+
             return Task.FromResult("DRAFT-ID");
         }
 
@@ -391,7 +583,13 @@ public sealed class BookTranslationV2Tests
             CancellationToken cancellationToken)
         {
             Events.Add("qa");
-            Assert.AreEqual("EDITED-ID", request.EditedTranslation);
+
+            Assert.AreEqual(
+                mode == AiTranslationMode.Maximum
+                    ? "EDITED-ID"
+                    : "DRAFT-ID",
+                request.EditedTranslation);
+
             return Task.FromResult(
                 new BookTranslationQualityReview(
                     false,
@@ -404,7 +602,12 @@ public sealed class BookTranslationV2Tests
             CancellationToken cancellationToken)
         {
             Events.Add("memory");
-            Assert.AreEqual("FINAL-ID", request.FinalTranslation);
+            Assert.AreEqual(
+                mode == AiTranslationMode.Efficient
+                    ? "DRAFT-ID"
+                    : "FINAL-ID",
+                request.FinalTranslation);
+
             return Task.FromResult(
                 new BookTranslationMemoryDelta(
                     "The heroine opens the gate.",
@@ -420,9 +623,54 @@ public sealed class BookTranslationV2Tests
         }
     }
 
+    private sealed class ResumeTranslator : IBookTranslator
+    {
+        private bool failedSecondChunk;
+
+        public string Id => "resume";
+        public int FirstChunkCalls { get; private set; }
+        public int SecondChunkCalls { get; private set; }
+
+        public Task<AiTranslationMode> GetTranslationModeAsync(
+            CancellationToken cancellationToken) =>
+            Task.FromResult(AiTranslationMode.Efficient);
+
+        public Task<string> TranslateLiteraryAsync(
+            string sourceText,
+            string sourceLanguage,
+            string targetLanguage,
+            string context,
+            CancellationToken cancellationToken)
+        {
+            if (sourceText.StartsWith('A'))
+            {
+                FirstChunkCalls++;
+                return Task.FromResult("FIRST-CACHED");
+            }
+
+            SecondChunkCalls++;
+            if (!failedSecondChunk)
+            {
+                failedSecondChunk = true;
+                throw new InvalidOperationException("Synthetic second-chunk failure.");
+            }
+
+            return Task.FromResult("SECOND-COMPLETE");
+        }
+
+        public Task<BookTranslationMemoryDelta> ExtractTranslationMemoryAsync(
+            BookTranslationMemoryRequest request,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(BookTranslationMemoryDelta.Empty);
+    }
+
     private sealed class InvalidQaTranslator : IBookTranslator
     {
         public string Id => "invalid-qa";
+
+        public Task<AiTranslationMode> GetTranslationModeAsync(
+            CancellationToken cancellationToken) =>
+            Task.FromResult(AiTranslationMode.Quality);
 
         public Task<string> TranslateLiteraryAsync(
             string sourceText,
@@ -431,11 +679,6 @@ public sealed class BookTranslationV2Tests
             string context,
             CancellationToken cancellationToken) =>
             Task.FromResult("draft");
-
-        public Task<string> EditLiteraryAsync(
-            BookLiteraryEditRequest request,
-            CancellationToken cancellationToken) =>
-            Task.FromResult("edited");
 
         public Task<BookTranslationQualityReview> ReviewLiteraryAsync(
             BookTranslationQaRequest request,
