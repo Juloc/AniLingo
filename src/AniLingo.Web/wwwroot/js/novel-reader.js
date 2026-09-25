@@ -38,6 +38,8 @@
     const chapterDataElement = shell.querySelector("[data-chapter-data]");
     const translateForm = shell.querySelector("[data-translate-form]");
     const translationSlot = shell.querySelector("[data-translation-slot]");
+    const readerContent = shell.querySelector("[data-reader-content]");
+    const settingsPanel = shell.querySelector("[data-reader-settings-panel]");
     let hasTranslation = shell.dataset.hasTranslation === "true";
     const chapterBookmarks = new Map();
 
@@ -47,12 +49,31 @@
     let toastTimer = null;
     let pendingSelection = null;
     let lastSentKey = "";
+    let readerTapStart = null;
 
     const normalizeText = value =>
         (value || "").replace(/\s+/g, " ").trim();
 
     const clamp = (value, min, max) =>
         Math.min(max, Math.max(min, value));
+
+    const readerOverlayOpen = () =>
+        (chapterDrawer && !chapterDrawer.hidden) ||
+        (notes && !notes.hidden) ||
+        settingsPanel?.open === true;
+
+    const showReaderChrome = () => {
+        shell.classList.remove("reader-chrome-hidden");
+    };
+
+    const hideReaderChrome = () => {
+        if (!restoreComplete || readerOverlayOpen()) return;
+        shell.classList.add("reader-chrome-hidden");
+    };
+
+    const cancelReaderTap = () => {
+        readerTapStart = null;
+    };
 
     const showToast = message => {
         if (!toast) return;
@@ -1186,12 +1207,58 @@
         setTimeout(captureSelection, 40);
     }, { passive: true });
 
+    readerContent?.addEventListener("pointerdown", event => {
+        if (event.pointerType === "mouse" && event.button !== 0) return;
+        if (event.target.closest(
+            "a, button, input, select, textarea, summary, label, [contenteditable='true'], [role='button']")) {
+            return;
+        }
+
+        readerTapStart = {
+            pointerId: event.pointerId,
+            x: event.clientX,
+            y: event.clientY,
+            startedAt: performance.now(),
+            scrolled: false
+        };
+    }, { passive: true });
+
+    readerContent?.addEventListener("pointerup", event => {
+        const start = readerTapStart;
+        cancelReaderTap();
+
+        if (!start || start.pointerId !== event.pointerId || start.scrolled) return;
+
+        const distance = Math.hypot(
+            event.clientX - start.x,
+            event.clientY - start.y);
+        const elapsed = performance.now() - start.startedAt;
+        if (distance > 12 || elapsed > 650) return;
+
+        const selection = window.getSelection();
+        if (selection && !selection.isCollapsed && normalizeText(selection.toString())) {
+            return;
+        }
+
+        showReaderChrome();
+    }, { passive: true });
+
+    readerContent?.addEventListener("pointercancel", cancelReaderTap, { passive: true });
+
+    const handleReaderScroll = () => {
+        if (readerTapStart) readerTapStart.scrolled = true;
+        hideReaderChrome();
+    };
+
+    readerContent?.addEventListener("scroll", handleReaderScroll, { passive: true });
+
     window.addEventListener("scroll", () => {
         updateProgressBar();
 
         clearTimeout(progressTimer);
         progressTimer = setTimeout(sendProgress, 700);
 
+        handleReaderScroll();
     }, { passive: true });
 
     window.addEventListener("pagehide", sendProgress);

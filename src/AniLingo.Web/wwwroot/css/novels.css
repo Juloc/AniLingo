@@ -649,6 +649,25 @@
     transition: transform .14s ease, opacity .14s ease;
 }
 
+.novel-reader-shell.reader-chrome-hidden .novel-reader-toolbar {
+    transform: translateY(calc(-100% - .9rem));
+    opacity: 0;
+    pointer-events: none;
+}
+
+.novel-reader-progress-rail,
+.novel-page-controls,
+.novel-page-bookmarks {
+    transition: opacity .14s ease;
+}
+
+.novel-reader-shell.reader-chrome-hidden .novel-reader-progress-rail,
+.novel-reader-shell.reader-chrome-hidden .novel-page-controls,
+.novel-reader-shell.reader-chrome-hidden .novel-page-bookmarks {
+    opacity: 0;
+    pointer-events: none;
+}
+
 
 .novel-toolbar-start,
 .novel-toolbar-end {
