@@ -20,6 +20,8 @@ public sealed class ReadModel(
     public BookReaderChapter Reader { get; private set; } = null!;
     public ReaderSettingsSnapshot ReaderSettings { get; private set; } = null!;
     public IReadOnlyList<BookReaderHighlightItem> CurrentHighlights { get; private set; } = [];
+    public int? RequestedPositionPermille { get; private set; }
+    public string? RequestedView { get; private set; }
     public bool HasTranslation =>
         Reader.Translation is not null
         || Reader.SourceLanguage.Equals(
@@ -29,6 +31,8 @@ public sealed class ReadModel(
     public async Task<IActionResult> OnGetAsync(
         Guid id,
         string? lang,
+        int? pos,
+        string? view,
         CancellationToken cancellationToken)
     {
         var target = BookLanguageCatalog.Normalize(lang);
@@ -44,6 +48,10 @@ public sealed class ReadModel(
         }
 
         Reader = reader;
+        RequestedPositionPermille = pos is null
+            ? null
+            : Math.Clamp(pos.Value, 0, 1000);
+        RequestedView = NormalizeRequestedView(view);
         ReaderSettings = await ReaderPreferenceStore.GetAsync(
             db,
             account.ProfileId,
@@ -436,5 +444,13 @@ public sealed class ReadModel(
             cancellationToken);
 
         return new OkResult();
+    }
+
+    private static string? NormalizeRequestedView(string? value)
+    {
+        var normalized = value?.Trim().ToLowerInvariant();
+        return normalized is "original" or "translated" or "both"
+            ? normalized
+            : null;
     }
 }
