@@ -31,7 +31,7 @@ public sealed class UnifiedReaderShellTests
         StringAssert.Contains(shared, "data-reader-genre-select");
 
         Assert.IsFalse(novel.Contains(
-            "<select name="ReadingMode"",
+            "<select name=\"ReadingMode\"",
             StringComparison.Ordinal));
         Assert.IsFalse(book.Contains(
             "Settings.ReadingMode",
@@ -49,7 +49,9 @@ public sealed class UnifiedReaderShellTests
         var book = File.ReadAllText(Path.Combine(
             root, "src", "AniLingo.Web", "wwwroot", "js", "books-reader.js"));
 
-        StringAssert.Contains(shell, "root.classList.remove("reader-chrome-hidden")");
+        StringAssert.Contains(
+            shell,
+            "root.classList.remove(\"reader-chrome-hidden\")");
         StringAssert.Contains(shell, "accumulatedScroll > 64");
         StringAssert.Contains(shell, "event.clientY <= 24");
         StringAssert.Contains(shell, "toggleChrome()");
@@ -87,14 +89,16 @@ public sealed class UnifiedReaderShellTests
         var css = File.ReadAllText(Path.Combine(
             root, "src", "AniLingo.Web", "wwwroot", "css", "reader-shell.css"));
 
-        StringAssert.Contains(shell, "["reading", "Lesen"]");
-        StringAssert.Contains(shell, "["text", "Text"]");
-        StringAssert.Contains(shell, "["appearance", "Aussehen"]");
-        StringAssert.Contains(shell, "["defaults", "Defaults"]");
-        StringAssert.Contains(shell, "[["continuous", "Scrollen"], ["paged", "Seiten"]]");
+        StringAssert.Contains(shell, "[\"reading\", \"Lesen\"]");
+        StringAssert.Contains(shell, "[\"text\", \"Text\"]");
+        StringAssert.Contains(shell, "[\"appearance\", \"Aussehen\"]");
+        StringAssert.Contains(shell, "[\"defaults\", \"Defaults\"]");
+        StringAssert.Contains(
+            shell,
+            "[[\"continuous\", \"Scrollen\"], [\"paged\", \"Seiten\"]]");
         StringAssert.Contains(shell, "data-reader-mode-only");
-        StringAssert.Contains(shell, "Alle " + humanType");
-        StringAssert.Contains(shell, "Genre: " + genre");
+        StringAssert.Contains(shell, "addOption(\"type\", \"Alle \" + humanType");
+        StringAssert.Contains(shell, "\"Genre: \" + genre");
         StringAssert.Contains(shell, "Mein globaler Standard");
 
         StringAssert.Contains(css, "width: min(410px");
