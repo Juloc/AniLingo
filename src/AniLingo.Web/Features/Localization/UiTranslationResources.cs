@@ -127,6 +127,8 @@ public static class UiTranslationResources
         M("settings.ai.save", "Save AI settings", "AI", "Button", "Save the current profile's AI provider configuration.", "concise settings action", 28, null, ["AI"]),
         M("settings.ai.test", "Test provider", "AI", "Button", "Run a small request to verify the configured personal AI provider.", "concise settings action", 24, null, ["AI"]),
         M("settings.ai.reset", "Use defaults", "AI", "Button", "Reset personal AI settings to the server provider and Efficient mode.", "concise settings action", 24, null, ["AI"]),
+        M("settings.ai.serverDescription", "The Owner manages the shared server AI connection separately.", "AI", "Body", "Owner-only note linking personal AI settings to server AI administration.", "clear settings copy", 90, null, ["AI"]),
+        M("settings.ai.serverManage", "Open server AI", "AI", "Button", "Owner-only action opening server AI administration.", "concise settings action", 24, null, ["AI"]),
 
         M("player.play", "Play", "Player", "Button", "Start or resume media playback.", "concise media action", 16),
         M("player.pause", "Pause", "Player", "Button", "Pause media playback at the current position.", "concise media action", 16),
