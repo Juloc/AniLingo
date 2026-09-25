@@ -1,6 +1,6 @@
 using AniLingo.Web.Data;
-using AniLingo.Web.Features.Subtitles;
 using AniLingo.Web.Features.Operations;
+using AniLingo.Web.Features.Subtitles;
 using Microsoft.EntityFrameworkCore;
 
 namespace AniLingo.Web.Features.Library;
@@ -14,7 +14,7 @@ public sealed class LibraryStartupScanService(
         // Ensure host startup is never held up by NAS enumeration.
         await Task.Yield();
 
-        (Guid Id, string Name)[] roots;
+        StartupRoot[] roots;
         await using (var scope = scopeFactory.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -22,9 +22,7 @@ public sealed class LibraryStartupScanService(
                 .AsNoTracking()
                 .Where(x => x.IsEnabled)
                 .OrderBy(x => x.CreatedAt)
-                .Select(x => new { x.Id, x.Name })
-                .AsAsyncEnumerable()
-                .Select(x => (x.Id, x.Name))
+                .Select(x => new StartupRoot(x.Id, x.Name))
                 .ToArrayAsync(stoppingToken);
         }
 
@@ -89,6 +87,7 @@ public sealed class LibraryStartupScanService(
                         operationId,
                         "Interrupted because AniLingo is stopping.");
                 }
+
                 break;
             }
             catch (DirectoryNotFoundException exception)
@@ -152,7 +151,7 @@ public sealed class LibraryStartupScanService(
                 exception,
                 "Startup library reconciliation completed, but learning-text preparation could not be queued.");
         }
-    
+    }
 
     private async Task TryMarkFailedAsync(Guid operationId, string message)
     {
@@ -197,5 +196,7 @@ public sealed class LibraryStartupScanService(
                 "Could not persist interrupted state for startup operation {OperationId}.",
                 operationId);
         }
-    }}
+    }
+
+    private sealed record StartupRoot(Guid Id, string Name);
 }
