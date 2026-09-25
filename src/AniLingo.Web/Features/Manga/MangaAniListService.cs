@@ -41,6 +41,9 @@ public sealed partial class MangaAniListService(
             coverImage { extraLarge large }
             bannerImage
             status
+            chapters
+            volumes
+            startDate { year }
           }
         }
         """;
