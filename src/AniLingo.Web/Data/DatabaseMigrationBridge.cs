@@ -103,6 +103,7 @@ public static class DatabaseMigrationBridge
         }
 
         await MigrateLegacyLearningProfileAsync(db, cancellationToken, log);
+        await MigrateLegacyLearningCoursesAsync(db, cancellationToken, log);
 
         log?.Invoke("Database migrations are complete.");
     }
@@ -210,6 +211,280 @@ public static class DatabaseMigrationBridge
             }
         }
     }
+
+    private static async Task MigrateLegacyLearningCoursesAsync(
+        AppDbContext db,
+        CancellationToken cancellationToken,
+        Action<string>? log)
+    {
+        var connection = db.Database.GetDbConnection();
+        var openedHere = connection.State != ConnectionState.Open;
+
+        if (openedHere)
+        {
+            await connection.OpenAsync(cancellationToken);
+        }
+
+        try
+        {
+            var tables = await ReadTablesAsync(connection, cancellationToken);
+            if (!tables.Contains("LearningUnits")
+                || !tables.Contains("LearningVariants")
+                || !tables.Contains("LearningCourses")
+                || !tables.Contains("LearningCards")
+                || !tables.Contains("LearningCardReviews"))
+            {
+                return;
+            }
+
+            var termColumns = await ReadColumnsAsync(
+                connection,
+                "Terms",
+                cancellationToken);
+
+            if (!HasColumns(
+                    termColumns,
+                    "Id",
+                    "Language",
+                    "Canonical"))
+            {
+                log?.Invoke(
+                    "Skipped legacy Learning-course copy because this Epoch2 Terms table predates language/text columns.");
+                return;
+            }
+
+            var readingExpression = termColumns.Contains("Reading")
+                ? "\"Reading\""
+                : "NULL";
+            var meaningAvailable = termColumns.Contains("Meaning");
+
+            var migrated = 0;
+
+            migrated += await ExecuteAsync(
+                connection,
+                """
+                INSERT OR IGNORE INTO "LearningUnits" (
+                    "Id", "Kind", "LegacyTermId", "CreatedAt")
+                SELECT
+                    'legacy-term:' || "Id",
+                    'Word',
+                    "Id",
+                    CURRENT_TIMESTAMP
+                FROM "Terms";
+                """,
+                cancellationToken);
+
+            migrated += await ExecuteAsync(
+                connection,
+                $"""
+                INSERT OR IGNORE INTO "LearningVariants" (
+                    "Id", "UnitId", "LanguageTag", "Text", "Reading",
+                    "Role", "SourceKind", "CreatedAt")
+                SELECT
+                    'legacy-source:' || "Id",
+                    'legacy-term:' || "Id",
+                    "Language",
+                    "Canonical",
+                    {readingExpression},
+                    'Primary',
+                    'LegacyTerm',
+                    CURRENT_TIMESTAMP
+                FROM "Terms"
+                WHERE "Language" IS NOT NULL
+                  AND trim("Language") <> ''
+                  AND "Canonical" IS NOT NULL
+                  AND trim("Canonical") <> '';
+                """,
+                cancellationToken);
+
+            if (meaningAvailable)
+            {
+                migrated += await ExecuteAsync(
+                    connection,
+                    """
+                    INSERT OR IGNORE INTO "LearningVariants" (
+                        "Id", "UnitId", "LanguageTag", "Text", "Reading",
+                        "Role", "SourceKind", "CreatedAt")
+                    SELECT
+                        'legacy-meaning:' || "Id",
+                        'legacy-term:' || "Id",
+                        'de',
+                        "Meaning",
+                        NULL,
+                        'Meaning',
+                        'LegacyMeaning',
+                        CURRENT_TIMESTAMP
+                    FROM "Terms"
+                    WHERE "Meaning" IS NOT NULL
+                      AND trim("Meaning") <> '';
+                    """,
+                    cancellationToken);
+            }
+
+            var userTermColumns = await ReadColumnsAsync(
+                connection,
+                "UserTerms",
+                cancellationToken);
+
+            var canCopyCards =
+                meaningAvailable
+                && HasColumns(
+                    userTermColumns,
+                    "Id",
+                    "ProfileId",
+                    "TermId",
+                    "State",
+                    "IntervalDays",
+                    "NextReviewAt",
+                    "UpdatedAt");
+
+            if (canCopyCards)
+            {
+                migrated += await ExecuteAsync(
+                    connection,
+                    """
+                    INSERT OR IGNORE INTO "LearningCourses" (
+                        "Id", "ProfileId", "Name", "SourceLanguage", "TargetLanguage",
+                        "IsEnabled", "RecognitionEnabled", "ProductionEnabled",
+                        "ListeningEnabled", "WritingEnabled", "SentencePracticeEnabled",
+                        "CreatedAt", "UpdatedAt")
+                    SELECT DISTINCT
+                        'legacy-course:' || u."ProfileId" || ':' || t."Language" || ':de',
+                        u."ProfileId",
+                        'Imported ' || t."Language" || ' → de',
+                        t."Language",
+                        'de',
+                        1,
+                        1,
+                        0,
+                        0,
+                        0,
+                        1,
+                        CURRENT_TIMESTAMP,
+                        CURRENT_TIMESTAMP
+                    FROM "UserTerms" u
+                    INNER JOIN "Terms" t ON t."Id" = u."TermId"
+                    WHERE t."Language" IS NOT NULL
+                      AND trim(t."Language") <> ''
+                      AND t."Language" <> 'de'
+                      AND t."Meaning" IS NOT NULL
+                      AND trim(t."Meaning") <> '';
+                    """,
+                    cancellationToken);
+
+                var startedExpression = userTermColumns.Contains("LearningStartedAt")
+                    ? "u.\"LearningStartedAt\""
+                    : "NULL";
+                var queueExpression = userTermColumns.Contains("QueuePosition")
+                    ? "u.\"QueuePosition\""
+                    : "NULL";
+
+                migrated += await ExecuteAsync(
+                    connection,
+                    $"""
+                    INSERT OR IGNORE INTO "LearningCards" (
+                        "Id", "ProfileId", "CourseId", "UnitId",
+                        "PromptLanguage", "AnswerLanguage", "Mode", "State",
+                        "IntervalDays", "NextReviewAt", "LearningStartedAt",
+                        "QueuePosition", "LegacyUserTermId", "CreatedAt", "UpdatedAt")
+                    SELECT
+                        'legacy-card:' || u."Id",
+                        u."ProfileId",
+                        'legacy-course:' || u."ProfileId" || ':' || t."Language" || ':de',
+                        'legacy-term:' || t."Id",
+                        t."Language",
+                        'de',
+                        'Recognition',
+                        CASE u."State"
+                            WHEN 1 THEN 'Known'
+                            WHEN 2 THEN 'Learning'
+                            WHEN 3 THEN 'Saved'
+                            WHEN 4 THEN 'Ignored'
+                            WHEN 5 THEN 'Suspended'
+                            ELSE 'Saved'
+                        END,
+                        u."IntervalDays",
+                        u."NextReviewAt",
+                        {startedExpression},
+                        {queueExpression},
+                        u."Id",
+                        u."UpdatedAt",
+                        u."UpdatedAt"
+                    FROM "UserTerms" u
+                    INNER JOIN "Terms" t ON t."Id" = u."TermId"
+                    WHERE t."Language" IS NOT NULL
+                      AND trim(t."Language") <> ''
+                      AND t."Language" <> 'de'
+                      AND t."Meaning" IS NOT NULL
+                      AND trim(t."Meaning") <> '';
+                    """,
+                    cancellationToken);
+
+                var reviewColumns = await ReadColumnsAsync(
+                    connection,
+                    "Reviews",
+                    cancellationToken);
+
+                if (HasColumns(
+                        reviewColumns,
+                        "Id",
+                        "ProfileId",
+                        "TermId",
+                        "Rating",
+                        "ReviewedAt",
+                        "NextReviewAt"))
+                {
+                    var eventExpression = reviewColumns.Contains("ClientEventId")
+                        ? "r.\"ClientEventId\""
+                        : "NULL";
+
+                    migrated += await ExecuteAsync(
+                        connection,
+                        $"""
+                        INSERT OR IGNORE INTO "LearningCardReviews" (
+                            "CardId", "Rating", "ClientEventId",
+                            "ReviewedAt", "NextReviewAt", "LegacyReviewId")
+                        SELECT
+                            'legacy-card:' || u."Id",
+                            r."Rating",
+                            {eventExpression},
+                            r."ReviewedAt",
+                            r."NextReviewAt",
+                            r."Id"
+                        FROM "Reviews" r
+                        INNER JOIN "UserTerms" u
+                            ON u."ProfileId" = r."ProfileId"
+                           AND u."TermId" = r."TermId"
+                        INNER JOIN "Terms" t ON t."Id" = r."TermId"
+                        WHERE t."Language" IS NOT NULL
+                          AND trim(t."Language") <> ''
+                          AND t."Language" <> 'de'
+                          AND t."Meaning" IS NOT NULL
+                          AND trim(t."Meaning") <> '';
+                        """,
+                        cancellationToken);
+                }
+            }
+
+            if (migrated > 0)
+            {
+                log?.Invoke(
+                    $"Bridged {migrated} legacy Learning-course row(s) into the multilingual model.");
+            }
+        }
+        finally
+        {
+            if (openedHere)
+            {
+                await connection.CloseAsync();
+            }
+        }
+    }
+
+    private static bool HasColumns(
+        HashSet<string> actual,
+        params string[] required) =>
+        required.All(actual.Contains);
 
     private static async Task<HashSet<string>> ReadColumnsAsync(
         System.Data.Common.DbConnection connection,
