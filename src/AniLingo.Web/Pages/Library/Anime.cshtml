@@ -1,4 +1,5 @@
 @page "/Library/Anime/{id:guid}"
+@using AniLingo.Web.Features.Learning
 @model AniLingo.Web.Pages.Library.AnimeModel
 @{
     ViewData["Title"] = Model.AnimeTitle;
@@ -62,6 +63,19 @@
                 {
                     <p class="anime-description">@metadata.Description</p>
                 }
+
+                <div class="inline-actions">
+                    <a class="button"
+                       href="@Url.Page("/Settings/LearningScope", new {
+                           mediaType = LearningMediaType.Anime,
+                           scope = "work",
+                           workKey = Model.AnimeId.ToString(),
+                           label = Model.AnimeTitle,
+                           returnUrl = $"/Library/Anime/{Model.AnimeId}"
+                       })">
+                        Language tools &amp; Learning
+                    </a>
+                </div>
 
                 @if (Model.IsOwner)
                 {
@@ -266,12 +280,19 @@
                     {
                         <text>No Japanese subtitle imported</text>
                     }
-                    else
+                    else if (Model.ShowContentMetrics)
                     {
                         <text>@episode.TotalTerms vocabulary candidates · @episode.PreparationPercent% prepared</text>
                     }
+                    else
+                    {
+                        <text>@episode.JapaneseSubtitleTracks Japanese subtitle track@(episode.JapaneseSubtitleTracks == 1 ? "" : "s")</text>
+                    }
                 </span>
-                <div class="progress-track"><span style="width:@episode.PreparationPercent%"></span></div>
+                @if (Model.ShowContentMetrics)
+                {
+                    <div class="progress-track"><span style="width:@episode.PreparationPercent%"></span></div>
+                }
             </div>
             <span class="episode-arrow">›</span>
         </a>
