@@ -613,7 +613,7 @@ public sealed class BookTranslationV2Tests
                 context,
                 "BOOK TRANSLATION BIBLE");
 
-            if (mode == AiTranslationMode.Maximum)
+            if (Events.Contains("analyze"))
             {
                 StringAssert.Contains(
                     context,
