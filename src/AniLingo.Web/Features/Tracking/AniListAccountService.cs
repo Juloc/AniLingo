@@ -1338,6 +1338,28 @@ public sealed class AniListAccountService(
                 "AniList returned no list entry after saving progress.");
     }
 
+    private async Task<AniListRemoteListEntry> SaveReadingProgressAsync(
+        string accessToken,
+        int listEntryId,
+        int progress,
+        int progressVolumes,
+        CancellationToken cancellationToken)
+    {
+        var body = await SendAuthenticatedAsync(
+            accessToken,
+            SaveReadingProgressMutation,
+            BuildReadingProgressMutationVariables(
+                listEntryId,
+                progress,
+                progressVolumes),
+            "saving reading progress",
+            cancellationToken);
+
+        return ParseListEntryResponse(body, "SaveMediaListEntry")
+            ?? throw new AniListAccountException(
+                "AniList returned no list entry after saving reading progress.");
+    }
+
     private void ValidateProgressOnlyUpdate(
         AniListRemoteListEntry remote,
         AniListRemoteListEntry updated,
@@ -1366,6 +1388,36 @@ public sealed class AniListAccountService(
         }
     }
 
+    private void ValidateReadingProgressUpdate(
+        AniListRemoteListEntry remote,
+        AniListRemoteListEntry updated,
+        int requestedProgress,
+        int requestedVolumeProgress)
+    {
+        if (updated.Id != remote.Id ||
+            updated.UserId != remote.UserId ||
+            updated.MediaId != remote.MediaId ||
+            updated.Progress != requestedProgress ||
+            updated.ProgressVolumes != requestedVolumeProgress)
+        {
+            logger.LogCritical(
+                "AniList returned an unexpected reading list entry after chapter/volume sync. Entry {EntryId}, media {MediaId}.",
+                remote.Id,
+                remote.MediaId);
+            throw new AniListAccountException(
+                "AniList returned an unexpected reading-progress response. No further sync was attempted.");
+        }
+
+        if (!remote.ProtectedFieldsEqual(updated))
+        {
+            logger.LogCritical(
+                "AniList protected list fields changed unexpectedly while updating chapter/volume progress for entry {EntryId}. A pre-write backup was saved under /data/integrations.",
+                remote.Id);
+            throw new AniListAccountException(
+                "AniList changed fields outside chapter/volume progress unexpectedly. Sync stopped and a pre-write backup was saved.");
+        }
+    }
+
     public static IReadOnlyDictionary<string, int> BuildProgressMutationVariables(
         int listEntryId,
         int progress)
@@ -1384,6 +1436,34 @@ public sealed class AniListAccountService(
         {
             ["id"] = listEntryId,
             ["progress"] = progress
+        };
+    }
+
+    public static IReadOnlyDictionary<string, int> BuildReadingProgressMutationVariables(
+        int listEntryId,
+        int progress,
+        int progressVolumes)
+    {
+        if (listEntryId <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(listEntryId));
+        }
+
+        if (progress < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(progress));
+        }
+
+        if (progressVolumes < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(progressVolumes));
+        }
+
+        return new Dictionary<string, int>(StringComparer.Ordinal)
+        {
+            ["id"] = listEntryId,
+            ["progress"] = progress,
+            ["progressVolumes"] = progressVolumes
         };
     }
 
@@ -1611,7 +1691,8 @@ public sealed class AniListAccountService(
             ReadJsonNode(entry, "advancedScores"),
             ReadFuzzyDate(entry, "startedAt"),
             ReadFuzzyDate(entry, "completedAt"),
-            ReadLong(entry, "updatedAt"));
+            ReadLong(entry, "updatedAt"),
+            ReadInt(entry, "progressVolumes") ?? 0);
     }
 
     public static DateTimeOffset? TryReadTokenExpiry(string accessToken)
