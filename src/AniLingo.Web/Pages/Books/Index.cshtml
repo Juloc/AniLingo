@@ -13,7 +13,10 @@
         <p>Search, import, translate and read books in AniLingo.</p>
         @if (Model.IsOwner)
         {
-            <a class="books-settings-link" href="/Books/Integrations">Acquisition settings</a>
+            <div class="books-owner-links">
+                <a class="books-settings-link" href="/Books/Sources">Book sources</a>
+                <a class="books-settings-link" href="/Books/Integrations">Acquisition settings</a>
+            </div>
         }
     </div>
     <form method="get" action="/Books" class="books-search" role="search">

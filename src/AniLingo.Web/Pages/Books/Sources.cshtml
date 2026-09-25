@@ -1,0 +1,186 @@
+@page "/Books/Sources"
+@model AniLingo.Web.Pages.Books.SourcesModel
+@{
+    ViewData["Title"] = "Book sources";
+}
+@section Head {
+    <link rel="stylesheet" href="~/css/books.css" asp-append-version="true" />
+}
+
+<a class="books-back" href="/Books">← Books</a>
+
+<header class="books-settings-header">
+    <h1>Book sources</h1>
+    <p>Add OPDS catalogs you are allowed to use, search them, and import EPUBs directly into AniLingo.</p>
+</header>
+
+@if (TempData["Status"] is string status)
+{
+    <div class="books-message">@status</div>
+}
+
+<section class="book-source-builtins">
+    <div>
+        <strong>Built in</strong>
+        <span>Project Gutenberg · Indonesian Wikisource · Open Library · Google Books metadata</span>
+    </div>
+</section>
+
+<div class="book-source-layout">
+    <section class="book-source-panel">
+        <h2>OPDS catalogs</h2>
+
+        @if (Model.Sources.Count == 0)
+        {
+            <p class="books-muted">No custom OPDS sources configured.</p>
+        }
+        else
+        {
+            <div class="book-source-list">
+                @foreach (var source in Model.Sources)
+                {
+                    <article class="book-source-row">
+                        <div>
+                            <strong>@source.Name</strong>
+                            <span>@source.Url</span>
+                            <small>
+                                @(source.IsEnabled ? "Enabled" : "Disabled")
+                                @if (source.HasCredentials)
+                                {
+                                    <text> · Basic Auth configured</text>
+                                }
+                            </small>
+                        </div>
+                        <div class="book-source-actions">
+                            <form method="post" asp-page-handler="Test">
+                                <input type="hidden" name="sourceId" value="@source.Id" />
+                                <button class="button" type="submit">Test</button>
+                            </form>
+                            <form method="post" asp-page-handler="Toggle">
+                                <input type="hidden" name="sourceId" value="@source.Id" />
+                                <input type="hidden" name="enabled" value="@(!source.IsEnabled ? "true" : "false")" />
+                                <button class="button" type="submit">
+                                    @(source.IsEnabled ? "Disable" : "Enable")
+                                </button>
+                            </form>
+                            <form method="post"
+                                  asp-page-handler="Remove"
+                                  onsubmit="return confirm('Remove this OPDS source from AniLingo? Imported books stay in your library.');">
+                                <input type="hidden" name="sourceId" value="@source.Id" />
+                                <button class="button book-danger-button" type="submit">Remove</button>
+                            </form>
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+
+        <details class="book-source-add">
+            <summary>Add OPDS source</summary>
+            <form method="post" asp-page-handler="Save" class="books-stack-form">
+                <label>
+                    Name
+                    <input type="text"
+                           name="name"
+                           maxlength="120"
+                           placeholder="Standard Ebooks"
+                           required />
+                </label>
+                <label>
+                    OPDS feed URL
+                    <input type="url"
+                           name="url"
+                           placeholder="https://example.org/opds"
+                           required />
+                </label>
+                <label>
+                    Username <small>optional</small>
+                    <input type="text"
+                           name="username"
+                           autocomplete="username"
+                           maxlength="256" />
+                </label>
+                <label>
+                    Password <small>optional; stored under AniLingo /data</small>
+                    <input type="password"
+                           name="password"
+                           autocomplete="new-password"
+                           maxlength="512" />
+                </label>
+                <button class="button button-primary" type="submit">Add source</button>
+            </form>
+        </details>
+    </section>
+
+    <section class="book-source-panel">
+        <h2>Search catalogs</h2>
+        <form method="get" class="book-source-search">
+            <input type="hidden" name="search" value="true" />
+            <select name="source">
+                <option value="">All enabled OPDS sources</option>
+                @foreach (var source in Model.Sources.Where(x => x.IsEnabled))
+                {
+                    <option value="@source.Id"
+                            selected="@(source.Id == Model.SelectedSourceId)">
+                        @source.Name
+                    </option>
+                }
+            </select>
+            <input type="search"
+                   name="q"
+                   value="@Model.Query"
+                   placeholder="Title or author; leave empty to browse" />
+            <button class="button button-primary" type="submit">Search</button>
+        </form>
+
+        @if (Model.Results.Count > 0)
+        {
+            <div class="book-opds-results">
+                @foreach (var book in Model.Results)
+                {
+                    <article class="book-opds-card">
+                        @if (!string.IsNullOrWhiteSpace(book.CoverImageUrl))
+                        {
+                            <img src="@book.CoverImageUrl"
+                                 alt=""
+                                 loading="lazy"
+                                 referrerpolicy="no-referrer" />
+                        }
+                        <div>
+                            <small>@book.SourceName</small>
+                            <strong>@book.Title</strong>
+                            @if (!string.IsNullOrWhiteSpace(book.Author))
+                            {
+                                <span>@book.Author</span>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(book.Language))
+                            {
+                                <small>Language: @book.Language</small>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(book.Description))
+                            {
+                                <p>@book.Description</p>
+                            }
+                            <form method="post" asp-page-handler="Import">
+                                <input type="hidden" name="sourceId" value="@book.SourceId" />
+                                <input type="hidden" name="bookKey" value="@book.Key" />
+                                <input type="hidden" name="q" value="@Model.Query" />
+                                <button class="button button-primary" type="submit">Import EPUB</button>
+                            </form>
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+        else if (Request.Query["search"] == "true")
+        {
+            <div class="books-empty">No EPUB results found in the selected OPDS source(s).</div>
+        }
+        else
+        {
+            <p class="books-muted">
+                Search all enabled sources, or select one source and leave the query empty to browse its current acquisition feed.
+            </p>
+        }
+    </section>
+</div>
