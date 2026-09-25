@@ -70,7 +70,7 @@ public sealed record MediaSegmentMapping(
 
 public static partial class AutomaticMediaMatcher
 {
-    public const int AutoApplyScore = 85;
+    public const int AutoApplyScore = 80;
     public const int MinimumAutoLead = 10;
     public const int ReviewScore = 55;
 
