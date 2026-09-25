@@ -22,6 +22,27 @@ public sealed class DiscoveryTests
     }
 
     [TestMethod]
+    public void PublicDiscoveryDoesNotRequirePersonalAniListAccount()
+    {
+        var trending = DiscoveryRequest.Parse(null, "anime", "trending");
+        var top = DiscoveryRequest.Parse(null, "manga", "top");
+        var search = DiscoveryRequest.Parse("Frieren", "anime", "my-list");
+
+        Assert.IsFalse(trending.RequiresPersonalAniListAccount);
+        Assert.IsFalse(top.RequiresPersonalAniListAccount);
+        Assert.IsFalse(search.RequiresPersonalAniListAccount);
+        Assert.AreEqual(DiscoveryMode.Search, search.Mode);
+    }
+
+    [TestMethod]
+    public void MyAniListRequiresPersonalAniListAccount()
+    {
+        var request = DiscoveryRequest.Parse(null, "all", "my-list");
+
+        Assert.IsTrue(request.RequiresPersonalAniListAccount);
+    }
+
+    [TestMethod]
     public void PersonalDiscoveryCacheKeyIsProfileScoped()
     {
         var request = DiscoveryRequest.Parse(

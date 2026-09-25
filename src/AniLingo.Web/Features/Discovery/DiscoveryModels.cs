@@ -39,6 +39,9 @@ public sealed record DiscoveryRequest(
             normalizedMode);
     }
 
+    public bool RequiresPersonalAniListAccount =>
+        Mode == DiscoveryMode.MyList;
+
     public string CacheKey(string profileId) =>
         string.Join(
             '|',
