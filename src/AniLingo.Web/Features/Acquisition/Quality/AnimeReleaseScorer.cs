@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using AniLingo.Web.Features.Acquisition;
 
 namespace AniLingo.Web.Features.Acquisition.Quality;
 
@@ -33,18 +34,26 @@ public static class AnimeReleaseScorer
             rejections.Add($"Quality '{qualityKey}' is not allowed.");
         }
 
-        if (profile.MinimumSizeBytes is long minimumSize &&
-            candidate.SizeBytes is long actualSize &&
-            actualSize < minimumSize)
+        if ((profile.MinimumSizeBytes is not null || profile.MaximumSizeBytes is not null) &&
+            candidate.SizeBytes is null)
         {
-            rejections.Add($"Size {actualSize} B is below minimum {minimumSize} B.");
+            rejections.Add("Size is unknown but this profile has size limits.");
         }
-
-        if (profile.MaximumSizeBytes is long maximumSize &&
-            candidate.SizeBytes is long actualMaximumSize &&
-            actualMaximumSize > maximumSize)
+        else
         {
-            rejections.Add($"Size {actualMaximumSize} B is above maximum {maximumSize} B.");
+            if (profile.MinimumSizeBytes is long minimumSize &&
+                candidate.SizeBytes is long actualSize &&
+                actualSize < minimumSize)
+            {
+                rejections.Add($"Size {actualSize} B is below minimum {minimumSize} B.");
+            }
+
+            if (profile.MaximumSizeBytes is long maximumSize &&
+                candidate.SizeBytes is long actualMaximumSize &&
+                actualMaximumSize > maximumSize)
+            {
+                rejections.Add($"Size {actualMaximumSize} B is above maximum {maximumSize} B.");
+            }
         }
 
         foreach (var required in profile.MustContain)
