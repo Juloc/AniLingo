@@ -188,8 +188,7 @@ public sealed class NovelTranslationService(
 
             if (builder.Length > 0)
             {
-                builder.AppendLine();
-                builder.AppendLine();
+                builder.Append("\n\n");
             }
 
             builder.Append(remaining);
