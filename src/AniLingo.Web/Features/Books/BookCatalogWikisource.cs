@@ -176,6 +176,10 @@ public sealed partial class BookCatalogService
             null,
             "Imported from Indonesian Wikisource.",
             "id",
+            null,
+            null,
+            null,
+            null,
             ["Indonesian literature", "Wikisource"],
             chapters,
             null,
@@ -200,7 +204,17 @@ public sealed partial class BookCatalogService
                 "Imported from Indonesian Wikisource.",
             fallbackSubjects:
                 ["Indonesian literature", "Wikisource"],
-            cancellationToken);
+            fileName: page.Title.Trim() + ".html",
+            sourceKind: "wikisource",
+            contentHash: Hash(
+                string.Join(
+                    "\n\n",
+                    chapters.Select(x => x.Text))),
+            sizeBytes: chapters.Sum(x =>
+                (long)System.Text.Encoding.UTF8.GetByteCount(x.Text)),
+            cancellationToken: cancellationToken,
+            fileFormat: "WEB",
+            fileMediaType: "text/html");
     }
 
     private async Task<WikisourceLoadedChapter> LoadWikisourceChapterAsync(
