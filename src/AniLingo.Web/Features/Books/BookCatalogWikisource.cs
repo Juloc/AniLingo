@@ -394,7 +394,7 @@ public sealed partial class BookCatalogService
             : title;
     }
 
-    internal static string ExtractWikisourceText(
+    public static string ExtractWikisourceText(
         string? html)
     {
         if (string.IsNullOrWhiteSpace(html))
