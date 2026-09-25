@@ -2488,10 +2488,17 @@ public sealed partial class BookCatalogService(
         var configured = configuration[
             "Books:Translation:ChunkCachePath"]?.Trim();
 
-        return new BookTranslationChunkStore(
-            string.IsNullOrWhiteSpace(configured)
+        if (string.IsNullOrWhiteSpace(configured))
+        {
+            var memoryPath = configuration[
+                "Books:Translation:MemoryPath"]?.Trim();
+
+            configured = string.IsNullOrWhiteSpace(memoryPath)
                 ? BookTranslationChunkStore.DefaultRoot
-                : configured);
+                : Path.Combine(memoryPath, "chunks");
+        }
+
+        return new BookTranslationChunkStore(configured);
     }
 
     private async Task<string> BuildBookAnalysisSampleAsync(
