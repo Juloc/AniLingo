@@ -9,8 +9,16 @@
         ? Array.Empty<string>()
         : Model.Reader.TranslatedParagraphs;
     var hasAlternate = translatedParagraphs.Count > 0;
-    var defaultView = hasAlternate ? "translated" : "original";
-    var initialProgress = Model.Reader.Progress?.PositionPermille ?? 0;
+    var defaultView = Model.RequestedView switch
+    {
+        "original" => "original",
+        "translated" when hasAlternate => "translated",
+        "both" when hasAlternate => "both",
+        _ => hasAlternate ? "translated" : "original"
+    };
+    var initialProgress = Model.RequestedPositionPermille
+        ?? Model.Reader.Progress?.PositionPermille
+        ?? 0;
     var jsonOptions = new System.Text.Json.JsonSerializerOptions(
         System.Text.Json.JsonSerializerDefaults.Web);
     var settingsJson = System.Text.Json.JsonSerializer.Serialize(
