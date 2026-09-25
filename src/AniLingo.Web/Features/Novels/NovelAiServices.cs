@@ -59,7 +59,6 @@ public sealed class NovelTranslationService(
                 on translation.ChapterId equals chapter.Id
             where translation.ChapterId == chapterId &&
                 translation.TargetLanguage == targetLanguage &&
-                translation.ProviderId == translator.Id &&
                 translation.PromptVersion == PromptVersion &&
                 translation.SourceHash == chapter.SourceHash
             orderby translation.CreatedAt descending
@@ -211,7 +210,6 @@ public sealed class NovelTranslationService(
             .AsNoTracking()
             .Where(x => x.ChapterId == chapterId &&
                 x.TargetLanguage == targetLanguage &&
-                x.ProviderId == translator.Id &&
                 x.PromptVersion == PromptVersion &&
                 x.SourceHash == sourceHash)
             .OrderByDescending(x => x.CreatedAt)
