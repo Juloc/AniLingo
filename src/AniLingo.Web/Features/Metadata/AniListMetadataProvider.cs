@@ -277,11 +277,9 @@ public sealed class AniListMetadataProvider(
             current = previous;
         }
 
-        var result = new List<AnimeMetadataCandidate>(before.Count + 1)
-        {
-            .. before,
-            root.Candidate
-        };
+        var result = new List<AnimeMetadataCandidate>(before.Count + 1);
+        result.AddRange(before);
+        result.Add(root.Candidate);
 
         current = root;
         while (result.Count < maximumEntries &&
