@@ -101,6 +101,80 @@ public sealed class UnifiedAniListMappingTests
     }
 
     [TestMethod]
+    public void AnimeSequenceSplitsOneLocalSeasonAcrossAniListParts()
+    {
+        var local = Enumerable.Range(1, 24)
+            .Select(number => new LocalEpisodeCoordinate(1, number))
+            .ToArray();
+        var remote = new[]
+        {
+            new RemoteAnimePart("anilist", "100", "Part 1", 12),
+            new RemoteAnimePart("anilist", "101", "Part 2", 12)
+        };
+
+        var plan = AnimeSequenceMappingPlanner.Plan(
+            local,
+            remote,
+            anchorExternalId: "100");
+
+        Assert.IsTrue(plan.CanApply);
+        Assert.AreEqual(2, plan.Ranges.Count);
+        Assert.AreEqual(1, plan.Ranges[0].LocalEpisodeStart);
+        Assert.AreEqual(12, plan.Ranges[0].LocalEpisodeEnd);
+        Assert.AreEqual("100", plan.Ranges[0].RemotePart.ExternalId);
+        Assert.AreEqual(13, plan.Ranges[1].LocalEpisodeStart);
+        Assert.AreEqual(24, plan.Ranges[1].LocalEpisodeEnd);
+        Assert.AreEqual(1, plan.Ranges[1].RemoteEpisodeStart);
+        Assert.AreEqual("101", plan.Ranges[1].RemotePart.ExternalId);
+    }
+
+    [TestMethod]
+    public void AnimeSequenceCanCrossLocalSeasonBoundaryInsideOneAniListEntry()
+    {
+        var local = Enumerable.Range(1, 6)
+            .Select(number => new LocalEpisodeCoordinate(1, number))
+            .Concat(Enumerable.Range(1, 6)
+                .Select(number => new LocalEpisodeCoordinate(2, number)))
+            .ToArray();
+        var remote = new[]
+        {
+            new RemoteAnimePart("anilist", "200", "Combined Part", 12)
+        };
+
+        var plan = AnimeSequenceMappingPlanner.Plan(
+            local,
+            remote,
+            anchorExternalId: "200");
+
+        Assert.IsTrue(plan.CanApply);
+        Assert.AreEqual(2, plan.Ranges.Count);
+        Assert.AreEqual(1, plan.Ranges[0].RemoteEpisodeStart);
+        Assert.AreEqual(7, plan.Ranges[1].RemoteEpisodeStart);
+    }
+
+    [TestMethod]
+    public void AnimeSequenceRejectsAmbiguousWindowAroundAnchor()
+    {
+        var local = Enumerable.Range(1, 24)
+            .Select(number => new LocalEpisodeCoordinate(1, number))
+            .ToArray();
+        var remote = new[]
+        {
+            new RemoteAnimePart("anilist", "300", "Previous", 12),
+            new RemoteAnimePart("anilist", "301", "Anchor", 12),
+            new RemoteAnimePart("anilist", "302", "Next", 12)
+        };
+
+        var plan = AnimeSequenceMappingPlanner.Plan(
+            local,
+            remote,
+            anchorExternalId: "301");
+
+        Assert.IsFalse(plan.CanApply);
+        StringAssert.Contains(plan.Reason, "More than one");
+    }
+
+    [TestMethod]
     public void ReadingProgressUsesLastCompletedIntegerChapter()
     {
         var unfinished = AutomaticMediaMatcher.ResolveReadingProgress(
