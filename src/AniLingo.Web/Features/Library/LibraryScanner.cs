@@ -15,7 +15,7 @@ public sealed class LibraryScanner(
     ILogger<LibraryScanner> logger,
     AnimeMetadataService? metadataService = null)
 {
-    private static readonly HashSet<string> MediaExtensions = new(StringComparer.OrdinalIgnoreCase)
+    internal static readonly HashSet<string> MediaExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".mkv", ".mp4", ".m4v", ".webm"
     };
@@ -34,14 +34,24 @@ public sealed class LibraryScanner(
             throw new DirectoryNotFoundException($"Library root does not exist: {rootPath}");
         }
 
-        List<FileInfo> candidates;
+        var candidates = new List<FileInfo>();
+        var nfoFiles = new NfoFileIndex();
         try
         {
-            candidates = Directory
-                .EnumerateFiles(rootPath, "*", SearchOption.AllDirectories)
-                .Where(path => MediaExtensions.Contains(Path.GetExtension(path)))
-                .Select(path => new FileInfo(path))
-                .ToList();
+            foreach (var path in Directory.EnumerateFiles(rootPath, "*", SearchOption.AllDirectories))
+            {
+                if (MediaExtensions.Contains(Path.GetExtension(path)))
+                {
+                    candidates.Add(new FileInfo(path));
+                }
+                else if (NfoFileIndex.IsNfo(path))
+                {
+                    nfoFiles.Add(path);
+                }
+            }
+
+            // Ordinal order makes the "first file wins" rules (series folder, NFO title) deterministic.
+            candidates.Sort((left, right) => string.CompareOrdinal(left.FullName, right.FullName));
         }
         catch (IOException exception)
         {
@@ -83,6 +93,9 @@ public sealed class LibraryScanner(
         var subtitleCandidates = new List<SubtitleCandidate>();
         var artworkDirectories = new Dictionary<Guid, string>();
         var newlyDiscoveredAnimeIds = new HashSet<Guid>();
+        var nfoAniListIds = new Dictionary<Guid, string>();
+        var nfoTitledEpisodes = new HashSet<(Guid AnimeId, int SeasonNumber, int EpisodeNumber)>();
+        var metadataWarnings = 0;
 
         foreach (var file in candidates)
         {
@@ -104,12 +117,47 @@ public sealed class LibraryScanner(
             }
 
             var animeDirectory = TryGetAnimeDirectory(rootPath, normalizedPath);
-            if (animeDirectory is not null)
+            if (animeDirectory is not null &&
+                artworkDirectories.TryAdd(anime.Id, animeDirectory) &&
+                nfoFiles.FindShow(animeDirectory) is { } showNfoPath)
             {
-                artworkDirectories.TryAdd(anime.Id, animeDirectory);
+                var show = NfoReader.ReadShow(showNfoPath);
+                if (show.Value is null)
+                {
+                    metadataWarnings++;
+                    LogRejectedNfo(showNfoPath, show.Warning);
+                }
+                else
+                {
+                    if (show.Value.Title is { } showTitle &&
+                        !string.Equals(anime.Title, showTitle, StringComparison.Ordinal))
+                    {
+                        anime.Title = showTitle;
+                        if (!newlyDiscoveredAnimeIds.Contains(anime.Id))
+                        {
+                            updated++;
+                        }
+                    }
+
+                    if (show.Value.ProviderIds.AniList is { } aniListId)
+                    {
+                        nfoAniListIds[anime.Id] = aniListId;
+                    }
+                }
             }
 
             var episodeKey = (anime.Id, descriptor.SeasonNumber, descriptor.EpisodeNumber);
+            var episodeTitle = ResolveEpisodeTitle(
+                nfoFiles.FindEpisode(normalizedPath),
+                descriptor,
+                nfoTitledEpisodes.Contains(episodeKey),
+                ref metadataWarnings,
+                out var titleFromNfo);
+            if (titleFromNfo)
+            {
+                nfoTitledEpisodes.Add(episodeKey);
+            }
+
             if (!episodeByKey.TryGetValue(episodeKey, out var episode))
             {
                 episode = new Episode
@@ -117,17 +165,18 @@ public sealed class LibraryScanner(
                     AnimeId = anime.Id,
                     SeasonNumber = descriptor.SeasonNumber,
                     Number = descriptor.EpisodeNumber,
-                    Title = descriptor.EpisodeTitle
+                    Title = episodeTitle ?? descriptor.EpisodeTitle
                 };
                 episodeByKey.Add(episodeKey, episode);
                 db.Episodes.Add(episode);
             }
-            else if (!string.Equals(
+            else if (episodeTitle is not null &&
+                     !string.Equals(
                          episode.Title,
-                         descriptor.EpisodeTitle,
+                         episodeTitle,
                          StringComparison.Ordinal))
             {
-                episode.Title = descriptor.EpisodeTitle;
+                episode.Title = episodeTitle;
                 updated++;
             }
 
@@ -181,6 +230,15 @@ public sealed class LibraryScanner(
                 cancellationToken.ThrowIfCancellationRequested();
                 try
                 {
+                    if (nfoAniListIds.TryGetValue(animeId, out var aniListId))
+                    {
+                        await MatchNfoAniListIdAsync(
+                            metadataService,
+                            animeId,
+                            aniListId,
+                            cancellationToken);
+                    }
+
                     var decision = await metadataService.AutoMatchAsync(
                         animeId,
                         cancellationToken);
@@ -274,49 +332,68 @@ public sealed class LibraryScanner(
                 .ToListAsync(cancellationToken);
 
         var subtitleFiles = 0;
-        foreach (var candidate in subtitleCandidates)
+        var sidecarListings = new SubtitleSidecarDirectoryCache();
+        foreach (var episodeCandidates in subtitleCandidates.GroupBy(x => x.EpisodeId))
         {
-            var externalSubtitle = FindJapaneseSubtitles(candidate.MediaPath).FirstOrDefault();
-            if (externalSubtitle is not null)
+            var episodeId = episodeCandidates.Key;
+            var mediaCandidates = episodeCandidates
+                .OrderBy(x => x.MediaPath, StringComparer.Ordinal)
+                .ToArray();
+
+            var sidecar = await subtitleImport.ImportPreferredSidecarAsync(
+                episodeId,
+                mediaCandidates.Select(x => x.MediaPath).ToArray(),
+                sidecarListings,
+                cancellationToken);
+
+            if (sidecar.Status == SubtitleSidecarImportStatus.Imported)
             {
-                await subtitleImport.ImportAsync(candidate.EpisodeId, externalSubtitle, cancellationToken);
                 subtitleFiles++;
                 continue;
             }
 
-            var sourcePrefix = EmbeddedSubtitleExtractor.BuildSourcePrefix(candidate.MediaPath);
-            var freshEmbeddedCount = embeddedTracks.Count(x =>
-                x.EpisodeId == candidate.EpisodeId &&
-                x.SourceUpdatedAt == candidate.SourceUpdatedAt &&
-                x.SourceKey.StartsWith(sourcePrefix, StringComparison.Ordinal));
-
-            if (freshEmbeddedCount > 0)
-            {
-                subtitleFiles += freshEmbeddedCount;
-                continue;
-            }
-
-            var embedded = await embeddedSubtitleExtractor.ExtractPreferredJapaneseAsync(
-                candidate.MediaPath,
-                cancellationToken);
-
-            if (embedded is null)
+            if (sidecar.Status == SubtitleSidecarImportStatus.Unavailable)
             {
                 continue;
             }
 
-            await subtitleImport.ImportPreferredContentAsync(
-                candidate.EpisodeId,
-                embedded.SourceKey,
-                embedded.Format,
-                candidate.SourceUpdatedAt,
-                embedded.Content,
-                cancellationToken);
-            subtitleFiles++;
+            foreach (var candidate in mediaCandidates)
+            {
+                var sourcePrefix = EmbeddedSubtitleExtractor.BuildSourcePrefix(candidate.MediaPath);
+                var freshEmbeddedCount = embeddedTracks.Count(x =>
+                    x.EpisodeId == episodeId &&
+                    x.SourceUpdatedAt == candidate.SourceUpdatedAt &&
+                    x.SourceKey.StartsWith(sourcePrefix, StringComparison.Ordinal));
+
+                if (freshEmbeddedCount > 0)
+                {
+                    subtitleFiles += freshEmbeddedCount;
+                    break;
+                }
+
+                var embedded = await embeddedSubtitleExtractor.ExtractPreferredJapaneseAsync(
+                    candidate.MediaPath,
+                    cancellationToken);
+
+                if (embedded is null)
+                {
+                    continue;
+                }
+
+                await subtitleImport.ImportPreferredContentAsync(
+                    episodeId,
+                    embedded.SourceKey,
+                    embedded.Format,
+                    candidate.SourceUpdatedAt,
+                    embedded.Content,
+                    cancellationToken);
+                subtitleFiles++;
+                break;
+            }
         }
 
         logger.LogInformation(
-            "Library reconciliation completed for {Root}: {Discovered} new, {Updated} updated, {Removed} removed, {Skipped} skipped, {Subtitles} subtitle files, {ArtworkImported} local artwork imported, {ArtworkUnchanged} unchanged.",
+            "Library reconciliation completed for {Root}: {Discovered} new, {Updated} updated, {Removed} removed, {Skipped} skipped, {Subtitles} subtitle files, {ArtworkImported} local artwork imported, {ArtworkUnchanged} unchanged, {MetadataWarnings} NFO files ignored.",
             root.Path,
             discovered,
             updated,
@@ -324,13 +401,104 @@ public sealed class LibraryScanner(
             skipped,
             subtitleFiles,
             localArtworkImported,
-            localArtworkUnchanged);
+            localArtworkUnchanged,
+            metadataWarnings);
 
         return new ScanResult(discovered, updated, skipped, subtitleFiles)
         {
-            Removed = removed
+            Removed = removed,
+            MetadataWarnings = metadataWarnings
         };
     }
+
+    // Precedence: an episode NFO whose numbers agree with the file name > the file-name title.
+    // The first agreeing NFO (ordinal media path order) wins when several files share an episode.
+    // A rejected NFO returns null so the current title is kept instead of flapping on a bad read.
+    private string? ResolveEpisodeTitle(
+        string? nfoPath,
+        MediaDescriptor descriptor,
+        bool alreadyTitledFromNfo,
+        ref int metadataWarnings,
+        out bool titleFromNfo)
+    {
+        titleFromNfo = false;
+        if (alreadyTitledFromNfo)
+        {
+            return null;
+        }
+
+        if (nfoPath is null)
+        {
+            return descriptor.EpisodeTitle;
+        }
+
+        var nfo = NfoReader.ReadEpisodes(nfoPath);
+        if (nfo.Value is null)
+        {
+            metadataWarnings++;
+            LogRejectedNfo(nfoPath, nfo.Warning);
+            return null;
+        }
+
+        var entry = nfo.Value.FirstOrDefault(x =>
+            x.Describes(descriptor.SeasonNumber, descriptor.EpisodeNumber));
+        if (entry is null)
+        {
+            logger.LogDebug(
+                "Episode NFO {Path} describes different season/episode numbers than its media file name; the file name stays authoritative.",
+                nfoPath);
+            return descriptor.EpisodeTitle;
+        }
+
+        if (entry.Title is null)
+        {
+            return descriptor.EpisodeTitle;
+        }
+
+        titleFromNfo = true;
+        return entry.Title;
+    }
+
+    // An AniList ID from tvshow.nfo replaces the fuzzy title search for a newly discovered anime.
+    // It never replaces an existing match; a rejected ID falls through to automatic title matching.
+    private async Task MatchNfoAniListIdAsync(
+        AnimeMetadataService metadata,
+        Guid animeId,
+        string aniListId,
+        CancellationToken cancellationToken)
+    {
+        if (await metadata.GetAsync(animeId, cancellationToken) is not null)
+        {
+            return;
+        }
+
+        var result = await metadata.MatchAsync(
+            animeId,
+            AniListMetadataProvider.ProviderKey,
+            aniListId,
+            cancellationToken);
+        if (result.Success)
+        {
+            logger.LogInformation(
+                "Matched anime {AnimeId} to {Provider}:{ExternalId} from its local tvshow.nfo.",
+                animeId,
+                AniListMetadataProvider.ProviderKey,
+                aniListId);
+            return;
+        }
+
+        logger.LogWarning(
+            "The AniList ID {ExternalId} from the local tvshow.nfo of anime {AnimeId} was not applied: {Error} Automatic title matching continues.",
+            aniListId,
+            animeId,
+            result.Error);
+    }
+
+    private void LogRejectedNfo(string path, string? reason) =>
+        logger.LogWarning(
+            "Ignored local NFO metadata {Path}: {Reason} The library scan continues without it.",
+            path,
+            reason);
 
     private sealed record SubtitleCandidate(
         Guid EpisodeId,
@@ -364,25 +532,5 @@ public sealed class LibraryScanner(
         return directory.StartsWith(normalizedRoot, StringComparison.Ordinal)
             ? directory
             : null;
-    }
-
-    private static IEnumerable<string> FindJapaneseSubtitles(string mediaPath)
-    {
-        var directory = Path.GetDirectoryName(mediaPath)!;
-        var baseName = Path.GetFileNameWithoutExtension(mediaPath);
-        var suffixes = new[]
-        {
-            ".ja.srt", ".jpn.srt", ".japanese.srt",
-            ".ja.ass", ".jpn.ass", ".japanese.ass"
-        };
-
-        foreach (var suffix in suffixes)
-        {
-            var path = Path.Combine(directory, baseName + suffix);
-            if (File.Exists(path))
-            {
-                yield return path;
-            }
-        }
     }
 }

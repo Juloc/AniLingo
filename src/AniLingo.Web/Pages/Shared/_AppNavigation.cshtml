@@ -1,11 +1,9 @@
 @using AniLingo.Web.Data
 @using AniLingo.Web.Features.Localization
-@using AniLingo.Web.Features.Appearance
 @using AniLingo.Web.Features.Learning
 @inject AppDbContext LearningNavigationDb
 @{
     var ui = ViewData["UiTextBundle"] as UiTextBundle ?? UiTextBundle.English;
-    var path = Context.Request.Path;
     var profileId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
     var learningVisible = false;
     if (!string.IsNullOrWhiteSpace(profileId))
@@ -14,103 +12,60 @@
             .HasAnyLearningEnabledAsync(profileId, Context.RequestAborted);
     }
 
-    var isReading =
-        path.StartsWithSegments("/Reading")
-        || path.StartsWithSegments("/Novels")
-        || path.StartsWithSegments("/Manga");
-    var appTheme = AppTheme.NormalizeOrSystem(ViewData["AppThemeMode"] as string);
-    var currentThemeLabel = ui["theme." + appTheme];
-    var themeAria = ui.Format("theme.switchAria", ("mode", currentThemeLabel));
-    var appVersion = ViewData["AppBuildVersion"] as string ?? AppBuildInfo.Version;
-    var isOwner = User.IsInRole(AniLingo.Web.Features.Auth.AccountRoles.Owner);
+    var nav = UiShellNavigation.Build(
+        Context.Request.Path,
+        learningVisible,
+        User.IsInRole(AniLingo.Web.Features.Auth.AccountRoles.Owner));
 }
 <aside class="sidebar">
     <a class="brand" href="/">
-        <span class="brand-mark">A</span>
-        <span>AniLingo</span>
+        <partial name="_AppBrandMark" />
     </a>
 
-    <nav class="nav-list" aria-label="Primary">
-        <a class="nav-item @(path == "/" ? "active" : "")" href="/">
-            <span class="nav-glyph">H</span><span>@ui["nav.home"]</span>
-        </a>
-        <a class="nav-item @(path.StartsWithSegments("/Discover") ? "active" : "")" href="/Discover">
-            <span class="nav-glyph">D</span><span>@ui["nav.discover"]</span>
-        </a>
-        <a class="nav-item @(path.StartsWithSegments("/Library") ? "active" : "")" href="/Library">
-            <span class="nav-glyph">L</span><span>@ui["nav.library"]</span>
-        </a>
-        <a class="nav-item @(isReading ? "active" : "")" href="/Reading">
-            <span class="nav-glyph">R</span><span>@ui["nav.reading"]</span>
-        </a>
-        <a class="nav-item @(path.StartsWithSegments("/Books") ? "active" : "")" href="/Books">
-            <span class="nav-glyph">B</span><span>@ui["nav.books"]</span>
-        </a>
-        @if (learningVisible)
+    <nav class="nav-list" aria-label="@ui["nav.primaryAria"]">
+        @foreach (var item in nav.Primary)
         {
-            <a class="nav-item @(path.StartsWithSegments("/Learn") || path.StartsWithSegments("/Statistics") ? "active" : "")" href="/Learn">
-                <span class="nav-glyph">V</span><span>@ui["nav.learn"]</span>
-            </a>
+            <partial name="_AppNavLink" model="item" />
         }
-        <a class="nav-item @(path.StartsWithSegments("/Settings") ? "active" : "")" href="/Settings">
-            <span class="nav-glyph">S</span><span>@ui["nav.settings"]</span>
-        </a>
-        @if (isOwner)
+    </nav>
+
+    <nav class="nav-list nav-list-secondary" aria-label="@ui["nav.secondaryAria"]">
+        @foreach (var item in nav.Secondary)
         {
-            <a class="nav-item @(path.StartsWithSegments("/Admin") ? "active" : "")" href="/Admin">
-                <span class="nav-glyph">A</span><span>@ui["nav.admin"]</span>
-            </a>
+            <partial name="_AppNavLink" model="item" />
         }
     </nav>
 
     <div class="sidebar-footer">
-        <span class="sidebar-user">@User.Identity?.Name</span>
-        <form method="post" asp-page="/Account/Logout" data-offline-logout>
-            <button class="sidebar-logout" type="submit">@ui["nav.signOut"]</button>
-        </form>
-        <form method="post" asp-page="/Appearance/Theme" class="theme-cycle-form" data-theme-form>
-            <input type="hidden" name="theme" value="@appTheme" data-theme-input />
-            <button class="theme-cycle-button"
-                    type="button"
-                    data-theme-cycle
-                    data-theme-mode="@appTheme"
-                    data-label-system="@ui["theme.system"]"
-                    data-label-light="@ui["theme.light"]"
-                    data-label-dark="@ui["theme.dark"]"
-                    data-aria-template="@ui["theme.switchAria"]"
-                    aria-label="@themeAria">
-                <span class="theme-cycle-copy">
-                    <span>@ui["theme.label"]</span>
-                    <strong data-theme-current>@currentThemeLabel</strong>
-                </span>
-                <span class="theme-state-dots" aria-hidden="true">
-                    <i></i><i></i><i></i>
-                </span>
-            </button>
-        </form>
-        @if (isOwner)
-        {
-            <span class="sidebar-version" title="@appVersion">@ui["shell.version"] @appVersion</span>
-        }
+        <partial name="_AppAccountFooter" />
     </div>
 </aside>
 
-<nav class="mobile-nav" aria-label="Primary mobile">
-    <a class="@(path == "/" ? "active" : "")" href="/">@ui["nav.home"]</a>
-    <a class="@(path.StartsWithSegments("/Discover") ? "active" : "")" href="/Discover">@ui["nav.discover"]</a>
-    <a class="@(path.StartsWithSegments("/Library") ? "active" : "")" href="/Library">@ui["nav.library"]</a>
-    <a class="@(isReading ? "active" : "")" href="/Reading">@ui["nav.reading"]</a>
-    @if (learningVisible)
+<nav class="mobile-nav" aria-label="@ui["nav.primaryAria"]">
+    @foreach (var item in nav.MobilePrimary)
     {
-        <a class="@(path.StartsWithSegments("/Learn") || path.StartsWithSegments("/Statistics") ? "active" : "")"
-           href="/Learn">@ui["nav.learn"]</a>
+        <a class="mobile-nav-item @(item.IsActive ? "active" : "")"
+           href="@item.Href"
+           aria-current="@(item.IsActive ? "page" : null)">
+            <partial name="_AppIcon" model="item.Icon" />
+            <span class="mobile-nav-label">@ui[item.LabelKey]</span>
+        </a>
     }
-    <a class="@(path.StartsWithSegments("/Settings") ? "active" : "")" href="/Settings">@ui["nav.settings"]</a>
-    @if (isOwner)
-    {
-        <a class="@(path.StartsWithSegments("/Admin") ? "active" : "")" href="/Admin">@ui["nav.admin"]</a>
-    }
-    <form method="post" asp-page="/Account/Logout" data-offline-logout>
-        <button type="submit">@ui["nav.signOut"]</button>
-    </form>
+    <details class="mobile-more" data-nav-more>
+        <summary class="mobile-nav-item @(nav.MoreIsActive ? "active" : "")">
+            <partial name="_AppIcon" model="@("more")" />
+            <span class="mobile-nav-label">@ui["nav.more"]</span>
+        </summary>
+        <div class="mobile-more-sheet">
+            <div class="mobile-more-links">
+                @foreach (var item in nav.MobileMore)
+                {
+                    <partial name="_AppNavLink" model="item" />
+                }
+            </div>
+            <div class="mobile-more-footer">
+                <partial name="_AppAccountFooter" />
+            </div>
+        </div>
+    </details>
 </nav>

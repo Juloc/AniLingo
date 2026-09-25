@@ -796,8 +796,58 @@ public sealed class UiTranslationCatalogStore(AppDbContext db)
         CancellationToken cancellationToken)
     {
         var locale = await GetProfileLocaleAsync(profileId, cancellationToken);
+        return await LoadLocaleBundleAsync(locale, cancellationToken);
+    }
+
+    public async Task<UiTextBundle> LoadLocaleBundleAsync(
+        UiLocaleMetadata locale,
+        CancellationToken cancellationToken)
+    {
         var values = await LoadBundleAsync(locale.Locale, cancellationToken);
         return new UiTextBundle(locale.Locale, locale.Direction, values);
+    }
+
+    public async Task<IReadOnlyList<UiLocaleMetadata>> ListEnabledLocalesAsync(
+        CancellationToken cancellationToken)
+    {
+        var connection = db.Database.GetDbConnection();
+        var openedHere = connection.State != ConnectionState.Open;
+        if (openedHere)
+        {
+            await connection.OpenAsync(cancellationToken);
+        }
+
+        try
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText =
+                """
+                SELECT "Locale", "EnglishName", "NativeName", "Direction"
+                FROM "UiLocales"
+                WHERE "IsEnabled" = 1
+                ORDER BY "IsSource" DESC, "Locale";
+                """;
+
+            var result = new List<UiLocaleMetadata>();
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                result.Add(new UiLocaleMetadata(
+                    reader.GetString(0),
+                    reader.GetString(1),
+                    reader.GetString(2),
+                    reader.GetString(3)));
+            }
+
+            return result;
+        }
+        finally
+        {
+            if (openedHere)
+            {
+                await connection.CloseAsync();
+            }
+        }
     }
 
     private static async Task EnsureSourceLocaleAsync(
