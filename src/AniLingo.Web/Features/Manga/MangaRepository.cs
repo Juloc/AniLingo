@@ -51,6 +51,51 @@ public sealed class MangaRepository(AppDbContext db)
             cancellationToken);
     }
 
+    public async Task<IReadOnlyDictionary<string, Guid>> GetAniListMatchesAsync(
+        IReadOnlyCollection<string> externalIds,
+        CancellationToken cancellationToken)
+    {
+        if (externalIds.Count == 0)
+        {
+            return new Dictionary<string, Guid>(StringComparer.Ordinal);
+        }
+
+        var wanted = externalIds
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .ToHashSet(StringComparer.Ordinal);
+
+        if (wanted.Count == 0)
+        {
+            return new Dictionary<string, Guid>(StringComparer.Ordinal);
+        }
+
+        var rows = await QueryAsync(
+            """
+            SELECT "Id", "MetadataExternalId"
+            FROM "MangaSeries"
+            WHERE "MetadataProvider" = @provider
+              AND "MetadataExternalId" IS NOT NULL;
+            """,
+            command => AddParameter(command, "@provider", "anilist"),
+            reader => new
+            {
+                Id = ReadGuid(reader, 0),
+                ExternalId = reader.GetString(1)
+            },
+            cancellationToken);
+
+        var result = new Dictionary<string, Guid>(StringComparer.Ordinal);
+        foreach (var row in rows)
+        {
+            if (wanted.Contains(row.ExternalId))
+            {
+                result.TryAdd(row.ExternalId, row.Id);
+            }
+        }
+
+        return result;
+    }
+
     public async Task<MangaSeriesDetail?> GetSeriesAsync(
         Guid seriesId,
         CancellationToken cancellationToken)
