@@ -1030,7 +1030,8 @@ public sealed class AniListAccountService(
         AniListRemoteListEntry remote,
         int requestedProgress,
         int? aniListChapterCount,
-        string? mediaTitle)
+        string? mediaTitle,
+        string mediaKind = "light novel")
     {
         if (remote.Progress >= requestedProgress)
         {
@@ -1048,7 +1049,7 @@ public sealed class AniListAccountService(
         if (aniListChapterCount is not > 0)
         {
             return AniListReadingProgressPreview.Blocked(
-                "AniList does not expose a reliable chapter count for this light novel, so AniLingo cannot safely assume the local chapter numbering matches.",
+                $"AniList does not expose a reliable chapter count for this {mediaKind}, so AniLingo cannot safely assume the local chapter numbering matches.",
                 requestedProgress,
                 mediaTitle,
                 remote.Progress,
@@ -1136,10 +1137,33 @@ public sealed class AniListAccountService(
                 userId = account.ViewerId,
                 mediaId
             },
-            "reading light-novel progress",
+            "reading manga/novel progress",
             cancellationToken);
 
         return ParseListEntryResponse(body, "MediaList");
+    }
+
+    private async Task<int?> FetchMangaChapterCountAsync(
+        StoredAniListAccount account,
+        int mediaId,
+        CancellationToken cancellationToken)
+    {
+        var body = await SendAuthenticatedAsync(
+            account.AccessToken,
+            MangaMetadataQuery,
+            new { id = mediaId },
+            "reading manga metadata",
+            cancellationToken);
+
+        using var document = JsonDocument.Parse(body);
+        if (!document.RootElement.TryGetProperty("data", out var data) ||
+            !data.TryGetProperty("Media", out var media) ||
+            media.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        return ReadInt(media, "chapters");
     }
 
     private async Task<AniListRemoteListEntry> SaveProgressAsync(
