@@ -1,5 +1,6 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Artwork;
+using AniLingo.Web.Features.MediaSegments;
 using AniLingo.Web.Features.Metadata;
 using AniLingo.Web.Features.Sonarr;
 using AniLingo.Web.Features.Subtitles;
@@ -14,7 +15,8 @@ public sealed class LibraryScanner(
     MediaInventoryService mediaInventory,
     SonarrArtworkSyncService sonarrArtworkSync,
     ILogger<LibraryScanner> logger,
-    AnimeMetadataService? metadataService = null)
+    AnimeMetadataService? metadataService = null,
+    MediaSegmentSidecarImporter? segmentSidecars = null)
 {
     internal static readonly HashSet<string> MediaExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -381,6 +383,11 @@ public sealed class LibraryScanner(
         if (relativeFolder is null || newlyDiscoveredAnimeIds.Count > 0)
         {
             await sonarrArtworkSync.SyncIfConfiguredAsync(cancellationToken);
+        }
+
+        if (segmentSidecars is not null)
+        {
+            await segmentSidecars.ReconcileRootAsync(rootId, cancellationToken);
         }
 
         var localArtworkImported = 0;

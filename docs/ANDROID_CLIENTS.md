@@ -208,6 +208,7 @@ A client with an incompatible API version stops with a clear **server/app update
 - selected/default audio/subtitle preferences
 - cue endpoint for the active learning subtitle
 - active playback-session information when applicable
+- canonical skip-segment markers and the seek-preview (trickplay) descriptor, see [MEDIA_SEGMENTS.md](MEDIA_SEGMENTS.md#client-descriptor)
 
 Never expose host filesystem paths to clients.
 

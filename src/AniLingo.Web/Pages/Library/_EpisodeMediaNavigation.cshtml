@@ -1,0 +1,21 @@
+@model AniLingo.Web.Features.MediaSegments.EpisodeMediaNavigationView
+@using System.Text.Json
+@using AniLingo.Web.Features.ClientApi
+@* Canonical skip markers and seek-preview descriptor for the web player, in the
+   same client-neutral shape as the native player bootstrap. *@
+@if (Model.Navigation is { } navigation)
+{
+    var descriptor = new
+    {
+        Segments = ClientApiMappings.ToClientSegments(navigation.Segments),
+        Trickplay = ClientApiMappings.ToClientTrickplay(Model.EpisodeId, navigation.Trickplay)
+    };
+    <script type="application/json" data-media-navigation>@Html.Raw(JsonSerializer.Serialize(descriptor, new JsonSerializerOptions(JsonSerializerDefaults.Web)))</script>
+    <script src="~/js/player-segments.js" asp-append-version="true"></script>
+}
+@if (Model.CanEdit)
+{
+    <p class="player-segments-edit">
+        <a href="@Url.Page("/Library/EpisodeSegments", new { id = Model.EpisodeId })">Edit skip segments and seek previews</a>
+    </p>
+}
