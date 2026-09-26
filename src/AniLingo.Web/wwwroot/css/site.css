@@ -234,6 +234,9 @@ button, input { font: inherit; }
 .metric-hint { margin-top: 3px; color: var(--muted); font-size: 12px; }
 
 .section { margin-top: 30px; }
+.section-first { margin-top: 0; margin-bottom: 34px; }
+.metric-card-link { display: block; color: inherit; text-decoration: none; transition: border-color .16s ease; }
+.metric-card-link:hover { border-color: rgba(231,169,27,.45); }
 .section-heading { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 15px; }
 .section-heading h2 { margin: 4px 0 0; font-size: 21px; }
 .playback-history { margin-top: 30px; }
@@ -490,7 +493,7 @@ button, input { font: inherit; }
 @media (max-width: 520px) {
     .media-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 11px; }
     .metric-grid { grid-template-columns: 1fr 1fr; }
-    .metric-grid .metric-card:last-child { grid-column: 1 / -1; }
+    .metric-grid .metric-card:last-child:nth-child(odd) { grid-column: 1 / -1; }
     .episode-row { grid-template-columns: 44px 1fr 18px; padding: 11px; }
     .episode-number { width: 40px; height: 40px; }
     .episode-row-shell { grid-template-columns: 1fr; }

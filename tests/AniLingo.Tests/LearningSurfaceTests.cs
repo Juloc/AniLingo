@@ -97,7 +97,13 @@ public sealed class LearningSurfaceTests
                 LearningCapability.HomeWidget,
                 true,
                 CancellationToken.None);
-            var home = new AniLingo.Web.Pages.IndexModel(db, account);
+            await configuration.SetCapabilityOverrideAsync(
+                Profile,
+                LearningScopeRef.ForMedia(LearningMediaType.Anime),
+                LearningCapability.ContentMetrics,
+                true,
+                CancellationToken.None);
+            var home =new AniLingo.Web.Pages.IndexModel(db, account);
             await home.OnGetAsync(CancellationToken.None);
             Assert.AreEqual(1, home.DueReviews);
             Assert.AreEqual(9, home.RecentEpisodes.Single().PreparedOccurrences);

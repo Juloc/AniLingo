@@ -2,6 +2,8 @@ using System.Text.Json;
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Kana;
 using AniLingo.Web.Features.Learning;
+using AniLingo.Web.Features.Localization;
+using AniLingo.Web.Pages.Learn;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
@@ -15,6 +17,8 @@ public sealed class IndexModel(
 {
     private readonly KanaLearningService kana = new(db, learningService);
 
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
+
     public KanaScript SelectedScript { get; private set; } = KanaScript.Hiragana;
     public int Stage { get; private set; } = 1;
     public string StageTitle => KanaCatalog.StageTitle(SelectedScript, Stage);
@@ -24,11 +28,20 @@ public sealed class IndexModel(
     public int DueCount { get; private set; }
     public string CatalogJson { get; private set; } = "[]";
 
-    public async Task OnGetAsync(
+    public async Task<IActionResult> OnGetAsync(
         string? script,
         int stage = 1,
         CancellationToken cancellationToken = default)
     {
+        if (!await ScriptTrainerEnabledAsync(cancellationToken))
+        {
+            return LearningModuleGate.RedirectToHub();
+        }
+
+        Ui = await new UiTranslationCatalogStore(db).LoadProfileBundleAsync(
+            learningService.ProfileId,
+            cancellationToken);
+
         SelectedScript = KanaCatalog.ParseScript(script);
         Stage = Math.Clamp(stage, 1, KanaCatalog.MaxStage);
 
@@ -48,6 +61,7 @@ public sealed class IndexModel(
                 state = card.State
             }),
             new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        return Page();
     }
 
     public async Task<IActionResult> OnPostStartGroupAsync(
@@ -55,6 +69,11 @@ public sealed class IndexModel(
         int stage,
         CancellationToken cancellationToken)
     {
+        if (!await ScriptTrainerEnabledAsync(cancellationToken))
+        {
+            return Forbid();
+        }
+
         var selectedScript = KanaCatalog.ParseScript(script);
         var selectedStage = Math.Clamp(stage, 1, KanaCatalog.MaxStage);
         var courseId = await kana.PrepareAsync(cancellationToken);
@@ -64,7 +83,7 @@ public sealed class IndexModel(
             .ToArray();
 
         await learningService.AddUnitsToLearningAsync(courseId, unitIds, cancellationToken);
-        TempData["Status"] = "Kana group added to active learning.";
+        TempData["Status"] = (await LoadUiAsync(cancellationToken))["learn.kana.groupStarted"];
         return RedirectToPage(new
         {
             script = selectedScript == KanaScript.Hiragana ? "hiragana" : "katakana",
@@ -78,6 +97,11 @@ public sealed class IndexModel(
         int stage,
         CancellationToken cancellationToken)
     {
+        if (!await ScriptTrainerEnabledAsync(cancellationToken))
+        {
+            return Forbid();
+        }
+
         var entry = KanaCatalog.Find(termId);
         if (entry is null)
         {
@@ -91,7 +115,9 @@ public sealed class IndexModel(
             UserTermState.Known,
             cancellationToken);
 
-        TempData["Status"] = entry.Symbol + " marked as known.";
+        TempData["Status"] = (await LoadUiAsync(cancellationToken)).Format(
+            "learn.kana.markedKnown",
+            ("symbol", entry.Symbol));
 
         return RedirectToPage(new
         {
@@ -108,6 +134,11 @@ public sealed class IndexModel(
         string? answer,
         CancellationToken cancellationToken)
     {
+        if (!await ScriptTrainerEnabledAsync(cancellationToken))
+        {
+            return Forbid();
+        }
+
         var entry = KanaCatalog.Find(termId);
         if (entry is null || !KanaPractice.TryParseMode(mode, out var practiceMode))
         {
@@ -127,6 +158,21 @@ public sealed class IndexModel(
                 : "learning"
         });
     }
+
+    private async Task<bool> ScriptTrainerEnabledAsync(
+        CancellationToken cancellationToken)
+    {
+        var resolved = await LearningModuleGate.ResolveAsync(
+            db,
+            learningService.ProfileId,
+            cancellationToken);
+        return resolved.Kana;
+    }
+
+    private Task<UiTextBundle> LoadUiAsync(CancellationToken cancellationToken) =>
+        new UiTranslationCatalogStore(db).LoadProfileBundleAsync(
+            learningService.ProfileId,
+            cancellationToken);
 
     private async Task<IReadOnlyList<KanaCardView>> LoadCardsAsync(
         Guid? courseId,

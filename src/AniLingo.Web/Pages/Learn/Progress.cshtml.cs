@@ -1,7 +1,9 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
+using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Localization;
 using AniLingo.Web.Features.Statistics;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
 namespace AniLingo.Web.Pages.Learn;
@@ -16,8 +18,17 @@ public sealed class ProgressModel(
 
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
 
-    public async Task OnGetAsync(CancellationToken cancellationToken)
+    public async Task<IActionResult> OnGetAsync(CancellationToken cancellationToken)
     {
+        var resolved = await LearningModuleGate.ResolveAsync(
+            db,
+            currentAccount.ProfileId,
+            cancellationToken);
+        if (!resolved.Progress)
+        {
+            return LearningModuleGate.RedirectToHub();
+        }
+
         Ui = await new UiTranslationCatalogStore(db).LoadProfileBundleAsync(
             currentAccount.ProfileId,
             cancellationToken);
@@ -26,5 +37,6 @@ public sealed class ProgressModel(
             currentAccount.ProfileId,
             DateTime.UtcNow,
             cancellationToken);
+        return Page();
     }
 }
