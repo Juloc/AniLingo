@@ -1,4 +1,7 @@
 using AniLingo.Web.Data;
+using AniLingo.Web.Features.Acquisition.DownloadClients;
+using AniLingo.Web.Features.Acquisition.Health;
+using AniLingo.Web.Features.Acquisition.Indexers;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Library;
 using AniLingo.Web.Features.Operations;
@@ -50,9 +53,16 @@ public sealed class SystemModel(
     LibraryScanCoordinator scans,
     CurrentAccountContext account,
     LibraryRootAvailabilityService availability,
-    WakeOnLanService wakeOnLan) : PageModel
+    WakeOnLanService wakeOnLan,
+    IndexerStore indexerStore,
+    DownloadClientStore downloadClientStore,
+    AcquisitionHealthStore acquisitionHealth) : PageModel
 {
     public IReadOnlyList<AdminLibraryRootRow> Roots { get; private set; } = [];
+    public int TotalIndexers { get; private set; }
+    public int HealthyIndexers { get; private set; }
+    public int TotalDownloadClients { get; private set; }
+    public int HealthyDownloadClients { get; private set; }
 
     [BindProperty]
     public string Name { get; set; } = "Anime";
@@ -300,5 +310,27 @@ public sealed class SystemModel(
         }
 
         Roots = rows;
+
+        var indexers = await indexerStore.LoadAllAsync(cancellationToken);
+        TotalIndexers = indexers.Count;
+        HealthyIndexers = 0;
+        foreach (var indexer in indexers)
+        {
+            if (await acquisitionHealth.IsHealthyAsync(AcquisitionHealthKind.Indexer, indexer.Id, cancellationToken))
+            {
+                HealthyIndexers++;
+            }
+        }
+
+        var downloadClients = await downloadClientStore.LoadAllAsync(cancellationToken);
+        TotalDownloadClients = downloadClients.Count;
+        HealthyDownloadClients = 0;
+        foreach (var client in downloadClients)
+        {
+            if (await acquisitionHealth.IsHealthyAsync(AcquisitionHealthKind.DownloadClient, client.Id, cancellationToken))
+            {
+                HealthyDownloadClients++;
+            }
+        }
     }
 }

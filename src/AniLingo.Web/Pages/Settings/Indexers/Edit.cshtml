@@ -1,0 +1,52 @@
+@page "{id:guid?}"
+@model AniLingo.Web.Pages.Settings.Indexers.EditModel
+@{
+    ViewData["Title"] = Model.IsNew ? "Add indexer" : "Edit indexer";
+}
+
+<h1>@(Model.IsNew ? "Add indexer" : "Edit indexer")</h1>
+
+@if (Model.Error is not null)
+{
+    <p class="metadata-error">@Model.Error</p>
+}
+
+<form method="post">
+    <div class="field">
+        <label asp-for="Name"></label>
+        <input asp-for="Name" required />
+    </div>
+    <div class="field">
+        <label asp-for="Type"></label>
+        <select asp-for="Type" asp-items="Html.GetEnumSelectList<AniLingo.Web.Features.Acquisition.Indexers.IndexerType>()"></select>
+    </div>
+    <div class="field">
+        <label asp-for="BaseUrl">Base URL</label>
+        <input asp-for="BaseUrl" required placeholder="https://indexer.example" />
+    </div>
+    <div class="field">
+        <label asp-for="ApiKey">API key @(Model.IsNew ? "" : "(leave blank to keep the current key)")</label>
+        <input asp-for="ApiKey" type="password" autocomplete="new-password" />
+    </div>
+    <div class="field">
+        <label asp-for="Categories">Categories (comma separated)</label>
+        <input asp-for="Categories" placeholder="5000, 5070" />
+    </div>
+    <div class="field">
+        <label asp-for="IndexerIds">Indexer IDs (Prowlarr only, optional)</label>
+        <input asp-for="IndexerIds" />
+    </div>
+    <div class="field">
+        <label asp-for="SearchLimit"></label>
+        <input asp-for="SearchLimit" type="number" min="1" max="1000" />
+    </div>
+    <div class="field">
+        <label asp-for="Priority">Priority (lower searched and preferred first)</label>
+        <input asp-for="Priority" type="number" min="1" />
+    </div>
+    <div class="field">
+        <label><input asp-for="Enabled" type="checkbox" /> Enabled</label>
+    </div>
+    <button type="submit">Save</button>
+    <a asp-page="/Settings/Indexers/Index">Cancel</a>
+</form>
