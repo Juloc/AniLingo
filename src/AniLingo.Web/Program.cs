@@ -272,6 +272,8 @@ builder.Services.AddScoped<OfflineLibraryQueries>();
 builder.Services.AddScoped<OfflineLibraryProgressReconciler>();
 builder.Services.AddScoped<OfflineLibraryBookmarkReconciler>();
 builder.Services.AddScoped<ClientApiOfflineLibraryService>();
+builder.Services.AddScoped<AniLingo.Web.Features.Speech.TtsPreferencesService>();
+builder.Services.AddSingleton(_ => new AniLingo.Web.Features.Speech.SpeechModelManifestStore("/data"));
 builder.Services.AddSingleton<ReaderThemeCatalog>();
 
 builder.Services.AddHttpClient<AniListMetadataProvider>(client =>

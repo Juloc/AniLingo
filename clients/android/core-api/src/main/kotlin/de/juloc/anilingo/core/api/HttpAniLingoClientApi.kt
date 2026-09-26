@@ -27,9 +27,14 @@ import de.juloc.anilingo.core.model.PlayerEpisode
 import de.juloc.anilingo.core.model.PlayerMedia
 import de.juloc.anilingo.core.model.RootAvailability
 import de.juloc.anilingo.core.model.Season
+import de.juloc.anilingo.core.model.SpeechModel
+import de.juloc.anilingo.core.model.SpeechModelFileDescriptor
+import de.juloc.anilingo.core.model.SpeechModelsResponse
 import de.juloc.anilingo.core.model.SubtitleCue
 import de.juloc.anilingo.core.model.TermDetail
 import de.juloc.anilingo.core.model.TermStateResult
+import de.juloc.anilingo.core.model.TtsPreferences
+import de.juloc.anilingo.core.model.TtsPreferencesUpdate
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
@@ -164,6 +169,26 @@ class HttpAniLingoClientApi(
     override suspend fun wakeRoot(rootId: String): RootAvailability =
         requestJson("POST", ClientApiRoutes.wakeRoot(rootId)).toRootAvailability()
 
+    override suspend fun getTtsPreferences(): TtsPreferences =
+        requestJson("GET", ClientApiRoutes.TtsPreferences).toTtsPreferences()
+
+    override suspend fun updateTtsPreferences(update: TtsPreferencesUpdate): TtsPreferences =
+        requestJson(
+            method = "PUT",
+            route = ClientApiRoutes.TtsPreferences,
+            body = JSONObject().apply {
+                put("providerId", update.providerId ?: JSONObject.NULL)
+                put("rate", (update.rate as Any?) ?: JSONObject.NULL)
+                put("pitch", (update.pitch as Any?) ?: JSONObject.NULL)
+                put("volume", (update.volume as Any?) ?: JSONObject.NULL)
+                put("voiceLanguage", update.voiceLanguage ?: JSONObject.NULL)
+                put("voiceId", update.voiceId ?: JSONObject.NULL)
+            },
+        ).toTtsPreferences()
+
+    override suspend fun getSpeechModels(): SpeechModelsResponse =
+        requestJson("GET", ClientApiRoutes.SpeechModels).toSpeechModelsResponse()
+
     private fun requestJson(
         method: String,
         route: String,
@@ -252,7 +277,7 @@ class HttpAniLingoClientApi(
         serverVersion = getString("serverVersion"),
         features = getJSONObject("features").let { features ->
             ClientFeatureFlagParser.parse { name ->
-                if (name == "nativeSessionAuth" || name == "offlineDownloads") {
+                if (name == "nativeSessionAuth" || name == "offlineDownloads" || name == "ttsPreferences") {
                     features.optBoolean(name, false)
                 } else {
                     features.getBoolean(name)
@@ -431,6 +456,47 @@ class HttpAniLingoClientApi(
         diagnosticCode = stringOrNull("diagnosticCode"),
     )
 
+    private fun JSONObject.toTtsPreferences(): TtsPreferences {
+        val voiceIdsJson = optJSONObject("voiceIds")
+        val voiceIds = buildMap {
+            voiceIdsJson?.keys()?.forEach { key -> put(key, voiceIdsJson.getString(key)) }
+        }
+
+        return TtsPreferences(
+            providerId = getString("providerId"),
+            voiceIds = voiceIds,
+            rate = getDouble("rate"),
+            pitch = getDouble("pitch"),
+            volume = getDouble("volume"),
+        )
+    }
+
+    private fun JSONObject.toSpeechModelsResponse() = SpeechModelsResponse(
+        models = getJSONArray("models").mapObjects { it.toSpeechModel() },
+    )
+
+    private fun JSONObject.toSpeechModel() = SpeechModel(
+        providerId = getString("providerId"),
+        modelId = getString("modelId"),
+        version = getString("version"),
+        languages = getJSONArray("languages").let { array ->
+            (0 until array.length()).map { index -> array.getString(index) }
+        },
+        voices = getJSONArray("voices").let { array ->
+            (0 until array.length()).map { index -> array.getString(index) }
+        },
+        files = getJSONArray("files").mapObjects { file ->
+            SpeechModelFileDescriptor(
+                name = file.getString("name"),
+                url = file.getString("url"),
+                sizeBytes = file.getLong("sizeBytes"),
+                sha256 = file.getString("sha256"),
+            )
+        },
+        totalSizeBytes = getLong("totalSizeBytes"),
+        minimumCompatibleVersion = getString("minimumCompatibleVersion"),
+    )
+
     private fun JSONObject.toCueResponse() = CueResponse(
         trackId = stringOrNull("trackId"),
         fromMs = intOrNull("fromMs"),
@@ -553,5 +619,6 @@ internal object ClientFeatureFlagParser {
         storageAvailability = readBoolean("storageAvailability"),
         ownerWakeOnLan = readBoolean("ownerWakeOnLan"),
         offlineDownloads = readBoolean("offlineDownloads"),
+        ttsPreferences = readBoolean("ttsPreferences"),
     )
 }
