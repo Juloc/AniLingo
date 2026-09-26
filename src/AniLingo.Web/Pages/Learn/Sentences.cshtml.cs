@@ -23,7 +23,7 @@ public sealed class SentencesModel(
             db,
             currentAccount.ProfileId,
             cancellationToken);
-        if (!resolved.IsEnabled(LearningCapability.SentencePractice))
+        if (!resolved.Sentences)
         {
             return LearningModuleGate.RedirectToHub();
         }

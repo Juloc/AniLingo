@@ -17,6 +17,7 @@
 .learn-module-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .learn-module-heading h2 { margin: 0; font-size: 17px; }
 .learn-module p { margin: 0; font-size: 13px; }
+.learn-module-hint { border-style: dashed; }
 
 .learn-lifecycle { margin-bottom: 16px; }
 .learn-lifecycle-steps {
@@ -27,10 +28,12 @@
 .learn-lifecycle-steps li + li::before { content: "→"; color: var(--muted); font-size: 12px; }
 .learn-lifecycle p { margin: 0; font-size: 12px; }
 
-.learn-filter { display: grid; grid-template-columns: minmax(0, 1fr) 180px auto; gap: 12px; align-items: end; }
+.learn-filter { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
+.learn-filter > label { flex: 0 1 180px; min-width: 0; }
+.learn-filter > label:first-child { flex: 1 1 240px; }
 .learn-vocabulary .term-actions { flex-wrap: wrap; }
 
 @media (max-width: 720px) {
     .learn-modules { grid-template-columns: 1fr; }
-    .learn-filter { grid-template-columns: 1fr; }
+    .learn-filter > label, .learn-filter > label:first-child { flex: 1 1 100%; }
 }

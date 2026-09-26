@@ -58,7 +58,7 @@ else
         </section>
     }
 
-    @if (Model.ShowAnyModule)
+    @if (Model.ShowAnyModule || Model.ScriptTrainerNeedsCourse)
     {
         <nav class="learn-modules" aria-label="@Model.Ui["learn.hub.modulesAria"]">
             @if (Model.ShowReviews)
@@ -117,6 +117,17 @@ else
                         <h2>@Model.Ui["learn.hub.progress.title"]</h2>
                     </div>
                     <p class="muted">@Model.Ui["learn.hub.progress.body"]</p>
+                </a>
+            }
+
+            @if (Model.ScriptTrainerNeedsCourse)
+            {
+                <a class="learn-module learn-module-hint" href="/Settings/LearningCourses" data-learn-kana-needs-course>
+                    <div class="learn-module-heading">
+                        <h2>@Model.Ui["learn.hub.kana.title"]</h2>
+                        <span class="status-pill">@Model.Ui["learn.hub.kana.badge"]</span>
+                    </div>
+                    <p class="muted">@Model.Ui["learn.hub.kana.needsCourse"]</p>
                 </a>
             }
         </nav>

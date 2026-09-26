@@ -32,9 +32,7 @@ public sealed class IndexModel(
     public bool ShowKana { get; private set; }
     public bool ShowProgress { get; private set; }
 
-    public bool ShowAnyModule =>
-        ShowReviews || ShowVocabulary || ShowSentences || ShowKana || ShowProgress;
-
+    public bool ShowAnyModule { get; private set; }
     public bool ShowMetrics => ShowReviews || ShowVocabulary;
 
     /// <summary>
@@ -43,46 +41,39 @@ public sealed class IndexModel(
     /// </summary>
     public bool LanguageToolsOnly { get; private set; }
 
+    /// <summary>
+    /// The writing-system trainer is enabled, but no enabled course studies a
+    /// language that has one (Kana needs a Japanese course).
+    /// </summary>
+    public bool ScriptTrainerNeedsCourse { get; private set; }
+
     public async Task OnGetAsync(CancellationToken cancellationToken)
     {
         Ui = await new UiTranslationCatalogStore(db).LoadProfileBundleAsync(
             currentAccount.ProfileId,
             cancellationToken);
 
-        var configuration = new LearningConfigurationStore(db);
-        var resolved = await configuration.ResolveProfileAsync(
+        var modules = await new LearningModuleResolver(db).ResolveAsync(
             currentAccount.ProfileId,
             cancellationToken);
-        Mode = resolved.Mode;
-        LearningEnabled = await configuration.HasAnyLearningEnabledAsync(
+        Mode = modules.Settings.Mode;
+        LearningEnabled = await new LearningConfigurationStore(db).HasAnyLearningEnabledAsync(
             currentAccount.ProfileId,
             cancellationToken);
 
-        // Module visibility comes only from the canonical resolver. Historic
-        // vocabulary rows never re-surface a module the profile switched off.
-        ShowReviews = resolved.IsEnabled(LearningCapability.Reviews);
-        ShowVocabulary = resolved.IsEnabled(LearningCapability.Vocabulary);
-        ShowSentences = resolved.IsEnabled(LearningCapability.SentencePractice);
-        // ScriptTrainer is the canonical switch; the Kana module additionally
-        // assumes the profile studies Japanese until the universal course
-        // toolkit (#252) exposes a per-language writing-system trainer.
-        ShowKana = resolved.IsEnabled(LearningCapability.ScriptTrainer);
-        ShowProgress = resolved.IsEnabled(LearningCapability.Progress);
-
-        LanguageToolsOnly =
-            !ShowAnyModule
-            && (resolved.IsEnabled(LearningCapability.LanguageLookup)
-                || resolved.IsEnabled(LearningCapability.ReadingAids)
-                || resolved.IsEnabled(LearningCapability.Translation)
-                || resolved.IsEnabled(LearningCapability.AiExplanations)
-                || resolved.IsEnabled(LearningCapability.PlayerTools)
-                || resolved.IsEnabled(LearningCapability.ReaderTools));
+        ShowReviews = modules.Reviews;
+        ShowVocabulary = modules.Vocabulary;
+        ShowSentences = modules.Sentences;
+        ShowKana = modules.Kana;
+        ShowProgress = modules.Progress;
+        ShowAnyModule = modules.AnyModule;
+        LanguageToolsOnly = modules.LanguageToolsOnly;
+        ScriptTrainerNeedsCourse = modules.ScriptTrainerNeedsCourse;
 
         if (ShowVocabulary)
         {
-            var stateCounts = await db.UserTerms
+            var stateCounts = await LearningQueries.WordCards(db, currentAccount.ProfileId)
                 .AsNoTracking()
-                .Where(x => x.ProfileId == currentAccount.ProfileId)
                 .GroupBy(x => x.State)
                 .Select(group => new { State = group.Key, Count = group.Count() })
                 .ToDictionaryAsync(x => x.State, x => x.Count, cancellationToken);
@@ -95,14 +86,9 @@ public sealed class IndexModel(
 
         if (ShowReviews)
         {
-            DueReviews = await db.UserTerms
-                .AsNoTracking()
-                .CountAsync(
-                    x => x.ProfileId == currentAccount.ProfileId
-                        && x.State == UserTermState.Learning
-                        && x.NextReviewAt != null
-                        && x.NextReviewAt <= DateTime.UtcNow,
-                    cancellationToken);
+            DueReviews = await LearningQueries
+                .DueCards(db, currentAccount.ProfileId, DateTime.UtcNow)
+                .CountAsync(cancellationToken);
         }
     }
 }

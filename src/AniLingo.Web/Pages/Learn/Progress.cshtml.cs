@@ -24,7 +24,7 @@ public sealed class ProgressModel(
             db,
             currentAccount.ProfileId,
             cancellationToken);
-        if (!resolved.IsEnabled(LearningCapability.Progress))
+        if (!resolved.Progress)
         {
             return LearningModuleGate.RedirectToHub();
         }

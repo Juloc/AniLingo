@@ -24,8 +24,9 @@ public sealed class IndexModel(AppDbContext db, CurrentAccountContext currentAcc
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
 
     /// <summary>
-    /// Resolved HomeWidget capability at profile scope. Off by default in every
-    /// mode, including Study; the user opts in through Learning settings.
+    /// Due-review widget: resolved HomeWidget and Reviews capabilities at profile
+    /// scope. HomeWidget is off by default in every mode, including Study; the
+    /// user opts in through Learning settings.
     /// </summary>
     public bool ShowLearningHomeWidget { get; private set; }
 
@@ -66,7 +67,8 @@ public sealed class IndexModel(AppDbContext db, CurrentAccountContext currentAcc
             cancellationToken);
 
         ShowLearningHomeWidget =
-            profileLearning.IsEnabled(LearningCapability.HomeWidget);
+            profileLearning.IsEnabled(LearningCapability.HomeWidget)
+            && profileLearning.IsEnabled(LearningCapability.Reviews);
         ShowContentMetrics =
             animeLearning.IsEnabled(LearningCapability.ContentMetrics);
 
@@ -74,12 +76,9 @@ public sealed class IndexModel(AppDbContext db, CurrentAccountContext currentAcc
 
         if (ShowLearningHomeWidget)
         {
-            DueReviews = await db.UserTerms.AsNoTracking().CountAsync(
-                x => x.ProfileId == currentAccount.ProfileId
-                    && x.State == UserTermState.Learning
-                    && x.NextReviewAt != null
-                    && x.NextReviewAt <= now,
-                cancellationToken);
+            DueReviews = await LearningQueries
+                .DueCards(db, currentAccount.ProfileId, now)
+                .CountAsync(cancellationToken);
         }
 
         AnimeCount = await db.Anime.AsNoTracking().CountAsync(cancellationToken);
@@ -150,12 +149,11 @@ public sealed class IndexModel(AppDbContext db, CurrentAccountContext currentAcc
 
         var prepared = await (
             from episodeTerm in db.EpisodeTerms.AsNoTracking()
-            join userTerm in db.UserTerms.AsNoTracking()
+            join state in LearningQueries.TermStates(db, currentAccount.ProfileId)
                     .Where(x =>
-                        x.ProfileId == currentAccount.ProfileId
-                        && (x.State == UserTermState.Known
-                            || x.State == UserTermState.Learning))
-                on episodeTerm.TermId equals userTerm.TermId
+                        x.State == UserTermState.Known
+                        || x.State == UserTermState.Learning)
+                on episodeTerm.TermId equals state.TermId
             where episodeIds.Contains(episodeTerm.EpisodeId)
             group episodeTerm by episodeTerm.EpisodeId
             into episodeGroup

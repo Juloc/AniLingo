@@ -1,23 +1,24 @@
 using System.Text.Json;
 using AniLingo.Web.Data;
-using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Kana;
 using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Localization;
-using AniLingo.Web.Features.Vocabulary;
 using AniLingo.Web.Pages.Learn;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
-using Microsoft.EntityFrameworkCore;
 
 namespace AniLingo.Web.Pages.Kana;
 
+// The page and kana.js keep the historical "termId" field name; the value is the
+// stable Kana unit ID (KanaCatalog.IdFor).
 public sealed class IndexModel(
     AppDbContext db,
-    LearningService learningService,
-    CurrentAccountContext currentAccount) : PageModel
+    LearningService learningService) : PageModel
 {
+    private readonly KanaLearningService kana = new(db, learningService);
+
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
+
     public KanaScript SelectedScript { get; private set; } = KanaScript.Hiragana;
     public int Stage { get; private set; } = 1;
     public string StageTitle => KanaCatalog.StageTitle(SelectedScript, Stage);
@@ -38,15 +39,15 @@ public sealed class IndexModel(
         }
 
         Ui = await new UiTranslationCatalogStore(db).LoadProfileBundleAsync(
-            currentAccount.ProfileId,
+            learningService.ProfileId,
             cancellationToken);
 
         SelectedScript = KanaCatalog.ParseScript(script);
         Stage = Math.Clamp(stage, 1, KanaCatalog.MaxStage);
 
-        await EnsureKanaTermsAsync(cancellationToken);
-        Cards = await LoadCardsAsync(SelectedScript, Stage, cancellationToken);
-        await LoadSummaryAsync(cancellationToken);
+        var courseId = await kana.FindCourseAsync(cancellationToken);
+        Cards = await LoadCardsAsync(courseId, SelectedScript, Stage, cancellationToken);
+        await LoadSummaryAsync(courseId, cancellationToken);
 
         CatalogJson = JsonSerializer.Serialize(
             Cards.Select(card => new
@@ -75,13 +76,13 @@ public sealed class IndexModel(
 
         var selectedScript = KanaCatalog.ParseScript(script);
         var selectedStage = Math.Clamp(stage, 1, KanaCatalog.MaxStage);
-        await EnsureKanaTermsAsync(cancellationToken);
+        var courseId = await kana.PrepareAsync(cancellationToken);
 
-        var termIds = KanaCatalog.ForStage(selectedScript, selectedStage)
+        var unitIds = KanaCatalog.ForStage(selectedScript, selectedStage)
             .Select(KanaCatalog.IdFor)
             .ToArray();
 
-        await learningService.AddToLearningAsync(termIds, cancellationToken);
+        await learningService.AddUnitsToLearningAsync(courseId, unitIds, cancellationToken);
         TempData["Status"] = (await LoadUiAsync(cancellationToken))["learn.kana.groupStarted"];
         return RedirectToPage(new
         {
@@ -107,8 +108,9 @@ public sealed class IndexModel(
             return BadRequest();
         }
 
-        await EnsureKanaTermsAsync(cancellationToken);
-        await learningService.SetStateAsync(
+        var courseId = await kana.PrepareAsync(cancellationToken);
+        await learningService.SetUnitStateAsync(
+            courseId,
             termId,
             UserTermState.Known,
             cancellationToken);
@@ -143,34 +145,15 @@ public sealed class IndexModel(
             return BadRequest();
         }
 
-        await EnsureKanaTermsAsync(cancellationToken);
+        var courseId = await kana.PrepareAsync(cancellationToken);
         var correct = KanaPractice.IsCorrect(entry, practiceMode, answer);
-
-        var existingState = await db.UserTerms
-            .AsNoTracking()
-            .Where(x =>
-                x.ProfileId == currentAccount.ProfileId
-                && x.TermId == termId)
-            .Select(x => (UserTermState?)x.State)
-            .SingleOrDefaultAsync(cancellationToken);
-
-        if (existingState != UserTermState.Known)
-        {
-            await learningService.SetStateAsync(
-                termId,
-                UserTermState.Learning,
-                cancellationToken);
-            await learningService.ReviewAsync(
-                termId,
-                correct ? ReviewRating.Good : ReviewRating.Again,
-                cancellationToken);
-        }
+        var previous = await kana.AnswerAsync(courseId, termId, correct, cancellationToken);
 
         return new JsonResult(new
         {
             correct,
             expected = KanaPractice.Expected(entry, practiceMode),
-            state = existingState == UserTermState.Known
+            state = previous == UserTermState.Known
                 ? "known"
                 : "learning"
         });
@@ -181,68 +164,25 @@ public sealed class IndexModel(
     {
         var resolved = await LearningModuleGate.ResolveAsync(
             db,
-            currentAccount.ProfileId,
+            learningService.ProfileId,
             cancellationToken);
-        return resolved.IsEnabled(LearningCapability.ScriptTrainer);
+        return resolved.Kana;
     }
 
     private Task<UiTextBundle> LoadUiAsync(CancellationToken cancellationToken) =>
         new UiTranslationCatalogStore(db).LoadProfileBundleAsync(
-            currentAccount.ProfileId,
+            learningService.ProfileId,
             cancellationToken);
 
-    private async Task EnsureKanaTermsAsync(
-        CancellationToken cancellationToken)
-    {
-        var existing = await db.Terms
-            .Where(x => x.Language == KanaCatalog.Language)
-            .Select(x => x.Canonical)
-            .ToListAsync(cancellationToken);
-
-        var existingSet = existing.ToHashSet(StringComparer.Ordinal);
-        var missing = KanaCatalog.All
-            .Where(entry => !existingSet.Contains(entry.Symbol))
-            .ToArray();
-
-        if (missing.Length == 0)
-        {
-            return;
-        }
-
-        foreach (var entry in missing)
-        {
-            db.Terms.Add(new Term
-            {
-                Id = KanaCatalog.IdFor(entry),
-                Language = KanaCatalog.Language,
-                Canonical = entry.Symbol,
-                Reading = entry.Romaji,
-                Meaning =
-                    (entry.Script == KanaScript.Hiragana
-                        ? "Hiragana"
-                        : "Katakana")
-                    + " · "
-                    + entry.Group
-            });
-        }
-
-        await db.SaveChangesAsync(cancellationToken);
-    }
-
     private async Task<IReadOnlyList<KanaCardView>> LoadCardsAsync(
+        Guid? courseId,
         KanaScript script,
         int stage,
         CancellationToken cancellationToken)
     {
         var entries = KanaCatalog.ForStage(script, stage);
         var ids = entries.Select(KanaCatalog.IdFor).ToArray();
-
-        var progress = await db.UserTerms
-            .AsNoTracking()
-            .Where(x =>
-                x.ProfileId == currentAccount.ProfileId
-                && ids.Contains(x.TermId))
-            .ToDictionaryAsync(x => x.TermId, cancellationToken);
+        var progress = await kana.LoadCardsAsync(courseId, ids, cancellationToken);
 
         var now = DateTime.UtcNow;
         return entries
@@ -278,18 +218,12 @@ public sealed class IndexModel(
     }
 
     private async Task LoadSummaryAsync(
+        Guid? courseId,
         CancellationToken cancellationToken)
     {
         var ids = KanaCatalog.All.Select(KanaCatalog.IdFor).ToArray();
         var now = DateTime.UtcNow;
-
-        var rows = await db.UserTerms
-            .AsNoTracking()
-            .Where(x =>
-                x.ProfileId == currentAccount.ProfileId
-                && ids.Contains(x.TermId))
-            .Select(x => new { x.State, x.NextReviewAt })
-            .ToListAsync(cancellationToken);
+        var rows = (await kana.LoadCardsAsync(courseId, ids, cancellationToken)).Values;
 
         LearningCount = rows.Count(x => x.State == UserTermState.Learning);
         KnownCount = rows.Count(x => x.State == UserTermState.Known);

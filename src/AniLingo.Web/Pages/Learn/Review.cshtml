@@ -1,12 +1,18 @@
 @page
 @using System.Text.Json
+@using System.Text.Json.Serialization
 @using AniLingo.Web.Features.Ai
 @using AniLingo.Web.Features.Learning
+@using AniLingo.Web.Features.Learning.Courses
 @model AniLingo.Web.Pages.Learn.ReviewModel
 @{
     ViewData["Title"] = Model.Ui["learn.title"];
     var current = Model.Current;
     var context = current?.Context;
+    var jsonOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+    jsonOptions.Converters.Add(new JsonStringEnumConverter());
+    var isListening = current?.Mode == LearningCardMode.Listening;
+    var isWriting = current?.Mode == LearningCardMode.Writing;
 }
 
 <header class="page-header">
@@ -32,28 +38,67 @@ else
     <section class="review-stage"
              data-review-stage
              data-profile-id="@Model.ProfileId"
-             data-sync-url="@Url.Page("/Learn/Review", "SyncOfflineReviews")">
+             data-sync-url="@Url.Page("/Learn/Review", "SyncOfflineReviews")"
+             data-due-template="@Model.Ui.Format("learn.dueNow", ("count", "{count}"))"
+             data-no-answer="@Model.Ui["learn.noMeaning"]"
+             data-mode-labels="@JsonSerializer.Serialize(Model.ModeLabels)">
         <div class="review-card">
             <span class="review-counter">@Model.Ui.Format("learn.dueNow", ("count", Model.Session.Count))</span>
-            <div class="review-term" lang="ja">@current.Canonical</div>
-            <div class="review-reading" lang="ja" hidden="@(string.IsNullOrWhiteSpace(current.Reading) ? "hidden" : null)">
-                @current.Reading
-            </div>
+            <span class="status-pill" data-review-mode>@Model.ModeLabel(current.Mode)</span>
+
+            <button class="button"
+                    type="button"
+                    data-review-listen
+                    hidden="@(isListening ? null : "hidden")">
+                @Model.Ui["learn.listen"]
+            </button>
+
+            <div class="review-term"
+                 lang="@current.PromptLanguage"
+                 data-review-prompt
+                 hidden="@(isListening ? "hidden" : null)">@current.Prompt</div>
+            <div class="review-reading"
+                 lang="@current.PromptLanguage"
+                 data-review-prompt-reading
+                 hidden="@(isListening || string.IsNullOrWhiteSpace(current.PromptReading) ? "hidden" : null)">@current.PromptReading</div>
+
+            <label class="review-write"
+                   data-review-write
+                   hidden="@(isWriting ? null : "hidden")">
+                <span>@Model.Ui["learn.writeAnswer"]</span>
+                <input type="text"
+                       lang="@current.AnswerLanguage"
+                       autocomplete="off"
+                       autocapitalize="off"
+                       spellcheck="false"
+                       data-review-write-input />
+            </label>
 
             <details class="review-details" data-review-details>
                 <summary class="button review-reveal" data-review-reveal>@Model.Ui["learn.showAnswer"]</summary>
 
-                <div class="review-answer">
-                    @(string.IsNullOrWhiteSpace(current.Meaning)
-                        ? Model.Ui["learn.noMeaning"]
-                        : current.Meaning)
+                <div class="review-reading"
+                     lang="@current.PromptLanguage"
+                     data-review-heard
+                     hidden="@(isListening ? null : "hidden")">
+                    @current.Prompt@(string.IsNullOrWhiteSpace(current.PromptReading) ? "" : " · " + current.PromptReading)
                 </div>
+
+                <div class="review-answer" lang="@current.AnswerLanguage" data-review-answer>
+                    @(string.IsNullOrWhiteSpace(current.Answer)
+                        ? Model.Ui["learn.noMeaning"]
+                        : current.Answer)
+                </div>
+                <div class="review-reading"
+                     lang="@current.AnswerLanguage"
+                     data-review-answer-reading
+                     hidden="@(string.IsNullOrWhiteSpace(current.AnswerReading) ? "hidden" : null)">@current.AnswerReading</div>
 
                 <div class="panel review-context"
                      data-review-context
                      hidden="@(context is null ? "hidden" : null)">
                     <span class="eyebrow">@Model.Ui["learn.animeContext"]</span>
-                    <p lang="ja" data-review-sentence>@context?.Sentence</p>
+                    <p lang="@current.PromptLanguage" data-review-sentence>@context?.Sentence</p>
 
                     <div data-review-enrichment hidden="@(context is null)">
                         @if (Model.LocalHints.Count > 0)
@@ -79,10 +124,10 @@ else
                                 }
                             </div>
                         }
-                        else if (context is not null)
+                        else if (context is not null && current.TermId is { } termId)
                         {
                             <form method="post" asp-page-handler="Explain">
-                                <input type="hidden" name="termId" value="@current.TermId" />
+                                <input type="hidden" name="termId" value="@termId" />
                                 <button class="button" type="submit">@Model.Ui["learn.explainAi"]</button>
                             </form>
                         }
@@ -105,7 +150,7 @@ else
                       asp-page-handler="Review"
                       class="review-actions"
                       data-review-form>
-                    <input type="hidden" name="termId" value="@current.TermId" data-review-term-id />
+                    <input type="hidden" name="cardId" value="@current.CardId" data-review-card-id />
                     <button name="rating" value="Again" class="review-button" data-review-rating="Again">
                         <strong>@Model.Ui["learn.rating.again"]</strong><span>@current.Intervals.GetValueOrDefault(ReviewRating.Again, "—")</span>
                     </button>
@@ -123,10 +168,11 @@ else
         </div>
 
         <script type="application/json" data-review-session>
-            @Html.Raw(JsonSerializer.Serialize(Model.Session, new JsonSerializerOptions(JsonSerializerDefaults.Web)))
+            @Html.Raw(JsonSerializer.Serialize(Model.Session, jsonOptions))
         </script>
     </section>
 
+    <script src="~/js/tts.js" asp-append-version="true"></script>
     <script src="~/js/offline-review.js" asp-append-version="true"></script>
     <script src="~/js/learn-review.js" asp-append-version="true"></script>
 }

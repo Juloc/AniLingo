@@ -149,7 +149,7 @@ public sealed class ReaderPersonalizationTests
             db.Add(chapter);
             await db.SaveChangesAsync();
 
-            var service = new NovelService(db, Array.Empty<INovelSourceProvider>());
+            var service = new NovelAnnotationService(db);
             var bookmark = await service.AddBookmarkAsync(
                 "reader-a",
                 chapter.Id,

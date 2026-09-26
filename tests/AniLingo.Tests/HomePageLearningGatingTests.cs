@@ -86,6 +86,28 @@ public sealed class HomePageLearningGatingTests
     }
 
     [TestMethod]
+    public async Task HomeWidgetWithoutReviewsShowsNoDuePrompt()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SeedEpisodeWithDueVocabularyAsync();
+        await fixture.SetModeAsync(LearningMode.Custom);
+        await new LearningConfigurationStore(fixture.Db).SetCapabilityOverrideAsync(
+            Profile,
+            LearningScopeRef.Profile,
+            LearningCapability.HomeWidget,
+            true,
+            CancellationToken.None);
+
+        var home = fixture.Home();
+        await home.OnGetAsync(CancellationToken.None);
+
+        Assert.IsFalse(
+            home.ShowLearningHomeWidget,
+            "The due-review widget needs both HomeWidget and Reviews.");
+        Assert.AreEqual(0, home.DueReviews);
+    }
+
+    [TestMethod]
     public async Task LanguageToolsShowsNoLearningWidgets()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -211,17 +233,14 @@ public sealed class HomePageLearningGatingTests
                 known,
                 unknown,
                 new EpisodeTerm { EpisodeId = episode.Id, TermId = known.Id, Occurrences = 2 },
-                new EpisodeTerm { EpisodeId = episode.Id, TermId = unknown.Id, Occurrences = 1 },
-                new UserTerm
-                {
-                    ProfileId = Profile,
-                    TermId = known.Id,
-                    State = UserTermState.Learning,
-                    LearningStartedAt = DateTime.UtcNow.AddDays(-1),
-                    NextReviewAt = DateTime.UtcNow.AddHours(-1),
-                    UpdatedAt = DateTime.UtcNow
-                });
-            await Db.SaveChangesAsync();
+                new EpisodeTerm { EpisodeId = episode.Id, TermId = unknown.Id, Occurrences = 1 });
+            await LearningTestData.SeedTermCardAsync(
+                Db,
+                Profile,
+                known,
+                UserTermState.Learning,
+                nextReviewAt: DateTime.UtcNow.AddHours(-1),
+                learningStartedAt: DateTime.UtcNow.AddDays(-1));
         }
 
         public async ValueTask DisposeAsync()

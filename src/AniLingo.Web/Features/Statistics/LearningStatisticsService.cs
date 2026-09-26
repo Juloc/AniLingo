@@ -35,9 +35,8 @@ public sealed class LearningStatisticsService(AppDbContext db)
         var last24Hours = nowUtc.AddHours(-24);
         var last7Days = nowUtc.AddDays(-7);
 
-        var stateCounts = await db.UserTerms
+        var stateCounts = await LearningQueries.WordCards(db, profileId)
             .AsNoTracking()
-            .Where(x => x.ProfileId == profileId)
             .GroupBy(x => x.State)
             .Select(group => new
             {
@@ -55,16 +54,11 @@ public sealed class LearningStatisticsService(AppDbContext db)
             .Select(x => x.Count)
             .SingleOrDefault();
 
-        var dueReviews = await db.UserTerms
-            .AsNoTracking()
-            .CountAsync(
-                x => x.ProfileId == profileId
-                    && x.State == UserTermState.Learning
-                    && x.NextReviewAt != null
-                    && x.NextReviewAt <= nowUtc,
-                cancellationToken);
+        var dueReviews = await LearningQueries
+            .DueCards(db, profileId, nowUtc)
+            .CountAsync(cancellationToken);
 
-        var reviewStats = await db.Reviews
+        var reviewStats = await db.LearningCardReviews
             .AsNoTracking()
             .Where(x => x.ProfileId == profileId)
             .GroupBy(_ => 1)
@@ -83,12 +77,11 @@ public sealed class LearningStatisticsService(AppDbContext db)
 
         var preparedOccurrences = await (
             from episodeTerm in db.EpisodeTerms.AsNoTracking()
-            join userTerm in db.UserTerms.AsNoTracking()
+            join state in LearningQueries.TermStates(db, profileId)
                     .Where(x =>
-                        x.ProfileId == profileId
-                        && (x.State == UserTermState.Known
-                            || x.State == UserTermState.Learning))
-                on episodeTerm.TermId equals userTerm.TermId
+                        x.State == UserTermState.Known
+                        || x.State == UserTermState.Learning)
+                on episodeTerm.TermId equals state.TermId
             select (int?)episodeTerm.Occurrences)
             .SumAsync(cancellationToken)
             ?? 0;
