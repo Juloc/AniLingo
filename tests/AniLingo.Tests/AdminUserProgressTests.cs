@@ -93,29 +93,20 @@ public sealed class AdminUserProgressTests
             var knownTerm = new Term { Canonical = "猫" };
             var learningTerm = new Term { Canonical = "犬" };
             db.AddRange(knownTerm, learningTerm);
-            db.UserTerms.AddRange(
-                new UserTerm
-                {
-                    ProfileId = "reader",
-                    TermId = knownTerm.Id,
-                    State = UserTermState.Known,
-                    UpdatedAt = now.AddMinutes(-3)
-                },
-                new UserTerm
-                {
-                    ProfileId = "reader",
-                    TermId = learningTerm.Id,
-                    State = UserTermState.Learning,
-                    UpdatedAt = now.AddMinutes(-3)
-                });
-            db.Reviews.Add(new Review
-            {
-                ProfileId = "reader",
-                TermId = learningTerm.Id,
-                Rating = ReviewRating.Good,
-                ReviewedAt = now.AddMinutes(-1),
-                NextReviewAt = now.AddDays(1)
-            });
+            await LearningTestData.SeedTermCardAsync(
+                db,
+                "reader",
+                knownTerm,
+                UserTermState.Known,
+                updatedAt: now.AddMinutes(-3));
+            var learningCard = await LearningTestData.SeedTermCardAsync(
+                db,
+                "reader",
+                learningTerm,
+                UserTermState.Learning,
+                updatedAt: now.AddMinutes(-3));
+            db.LearningCardReviews.Add(
+                LearningTestData.Review("reader", learningCard.Id, now.AddMinutes(-1)));
 
             await db.SaveChangesAsync();
 
