@@ -116,3 +116,66 @@ supply the shared descriptor and render the same Reader settings/shell.
 
 Further extraction must move common reflow text rendering/navigation behind a
 ReaderCore adapter contract rather than creating another reader UI.
+
+## Novel adapter
+
+The Novel adapter keeps the canonical `NovelWorks`, `NovelChapters`,
+`NovelTranslations`, `NovelProgress`, `NovelBookmarks` and `NovelHighlights`
+tables (shared with Books). Application services are split by responsibility;
+Razor PageModels orchestrate them:
+
+| Responsibility | Owner |
+| --- | --- |
+| Source/import commands, the only code that calls `INovelSourceProvider` | `NovelImportService` |
+| Bounded library, work detail and reader projections, chapter navigation | `NovelCatalogQueries` |
+| Per-profile reading progress and resume anchors | `NovelProgressService` |
+| Profile-scoped bookmarks and highlights | `NovelAnnotationService` |
+| Chapter download, AI translation and AI episode mapping jobs (Operations queue) | `NovelJobs` |
+| AI translation cache, AniList metadata, episode mappings | `NovelTranslationService`, `NovelMetadataService`, `NovelMappingService` |
+
+Anchors and annotations resolve against the paragraph layout the reader
+renders: Japanese source text, or the current German translation (same prompt
+version and source hash).
+
+### Bounded reader load
+
+`/Novels/Read/{chapterId}` loads a constant number of queries regardless of
+work size: one chapter projection (text, current translation, adjacent
+chapter ids), reader preferences, the chapter's anime mappings, progress, the
+current chapter's bookmarks/highlights and aggregate counts of notes in other
+chapters. It does not embed the chapter index or work-wide notes.
+
+- Chapter drawer: `?handler=Chapters` returns at most 100 chapters around the
+  current chapter, pages with `after`/`before` (chapter number) and searches by
+  number or title in the database.
+- Notes panel: the current chapter's notes render with the page; notes from
+  other chapters load on demand with `?handler=WorkNotes&kind=bookmarks|highlights&offset=n`
+  in pages of 40.
+- Library counts (chapters, cached text, current German translations) are
+  database aggregates.
+
+### Chapters without cached text
+
+A reader GET never contacts the source provider. When a chapter's text is not
+cached, the page shows a preparation state. Its action (`PrepareChapter`)
+queues a `novel-chapter-download` operation and redirects back to the same
+reader URL (including `bookmark`/`highlight` jump targets) with the operation
+id; the page polls `ChapterStatus` and opens the reader once the text exists.
+
+### Highlights
+
+Overlapping highlights are valid. An exact duplicate range returns the existing
+highlight. The client renders each paragraph as flat segments split at every
+highlight boundary; overlapping segments carry all highlight ids and a depth
+for stronger tinting, so no highlight is dropped by nested DOM ranges.
+
+### Front-end modules
+
+`novel-reader.js` is the single bootstrap: it owns the shared reader context,
+language view state and the restore lifecycle, then starts
+`novel-position.js`, `novel-annotations.js`, `novel-chapter-drawer.js` and
+`novel-translation.js`, which only register factories. Chrome, settings and
+paged mode stay in `reader-shell.js` and `reader-personalization.js`.
+Styles: `novels.css` (reader surface), `novel-reader-panels.css` (drawer,
+notes, highlights, selection) and `novel-library.css` (library, work detail,
+chapter preparation).

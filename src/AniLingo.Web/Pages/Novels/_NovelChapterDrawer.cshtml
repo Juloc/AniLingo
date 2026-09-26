@@ -1,0 +1,63 @@
+@model AniLingo.Web.Pages.Novels.ReadModel
+@* Chapter navigation is loaded on demand in bounded windows (see ReadModel.OnGetChaptersAsync);
+   the reader response never embeds the work's full chapter index. *@
+<div class="novel-drawer-backdrop"
+     data-chapter-drawer-backdrop
+     hidden></div>
+<aside class="novel-chapter-drawer"
+       id="novel-chapter-drawer"
+       data-chapter-drawer
+       tabindex="-1"
+       hidden
+       aria-label="Kapitel">
+    <header class="novel-drawer-header">
+        <strong>@Model.Chapter.WorkTitle</strong>
+        <button class="novel-icon-button"
+                type="button"
+                data-chapter-drawer-close
+                aria-label="Kapitel schließen">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+        </button>
+    </header>
+
+    <div class="novel-drawer-current">
+        @if (Model.Chapter.PreviousChapterId is Guid drawerPrevious)
+        {
+            <a href="/Novels/Read/@drawerPrevious" aria-label="Vorheriges Kapitel">←</a>
+        }
+        else
+        {
+            <span aria-hidden="true"></span>
+        }
+
+        <strong>@Model.Chapter.Number. @Model.Chapter.Title</strong>
+
+        @if (Model.Chapter.NextChapterId is Guid drawerNext)
+        {
+            <a href="/Novels/Read/@drawerNext" aria-label="Nächstes Kapitel">→</a>
+        }
+        else
+        {
+            <span aria-hidden="true"></span>
+        }
+    </div>
+
+    <label class="novel-chapter-search">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="11" cy="11" r="6" />
+            <path d="m16 16 4 4" />
+        </svg>
+        <input type="search"
+               data-chapter-filter
+               placeholder="Kapitel suchen"
+               aria-label="Kapitel nach Nummer oder Titel suchen"
+               autocomplete="off" />
+    </label>
+
+    <div class="novel-drawer-list" data-chapter-list-scroll>
+        <button type="button" class="novel-drawer-more" data-chapter-load-before hidden>Frühere Kapitel laden</button>
+        <nav data-chapter-list aria-label="Kapitelliste"></nav>
+        <button type="button" class="novel-drawer-more" data-chapter-load-after hidden>Weitere Kapitel laden</button>
+        <p class="novel-drawer-status" data-chapter-status role="status" aria-live="polite"></p>
+    </div>
+</aside>

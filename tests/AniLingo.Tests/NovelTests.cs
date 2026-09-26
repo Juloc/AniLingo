@@ -138,7 +138,7 @@ public sealed class NovelTests
         {
             await using var db = await CreateDatabaseAsync(path);
             var provider = new FakeNovelSourceProvider();
-            var service = new NovelService(db, [provider]);
+            var service = new NovelImportService(db, [provider]);
 
             var first = await service.ImportWorkAsync(
                 "https://example.invalid/work",
@@ -188,8 +188,8 @@ public sealed class NovelTests
 
             var source = new FakeNovelSourceProvider();
             var translator = new FakeNovelTranslator();
-            var novelService = new NovelService(db, [source]);
-            var service = new NovelTranslationService(db, novelService, translator);
+            var imports = new NovelImportService(db, [source]);
+            var service = new NovelTranslationService(db, imports, translator);
 
             var first = await service.TranslateChapterAsync(
                 chapter.Id,
@@ -334,11 +334,10 @@ public sealed class NovelTests
             db.Add(chapter);
             await db.SaveChangesAsync();
 
-            var service = new NovelService(db, [new FakeNovelSourceProvider()]);
+            var service = new NovelProgressService(db);
 
             await service.SaveProgressAsync(
                 "reader-a",
-                work.Id,
                 chapter.Id,
                 420,
                 "ja",
@@ -348,7 +347,6 @@ public sealed class NovelTests
 
             await service.SaveProgressAsync(
                 "reader-b",
-                work.Id,
                 chapter.Id,
                 120,
                 "ja",
@@ -369,7 +367,7 @@ public sealed class NovelTests
             Assert.AreEqual(4, progress.AnchorOffset);
             Assert.AreEqual("二番目の段落です。", progress.AnchorText);
 
-            var library = await service.GetWorksAsync(
+            var library = await new NovelCatalogQueries(db).GetLibraryAsync(
                 "reader-a",
                 CancellationToken.None);
 
@@ -413,7 +411,7 @@ public sealed class NovelTests
             db.Add(chapter);
             await db.SaveChangesAsync();
 
-            var service = new NovelService(db, [new FakeNovelSourceProvider()]);
+            var service = new NovelAnnotationService(db);
 
             var bookmark = await service.AddBookmarkAsync(
                 "reader-a",
@@ -422,6 +420,8 @@ public sealed class NovelTests
                 "ja",
                 0,
                 3,
+                null,
+                null,
                 null,
                 CancellationToken.None);
 
@@ -435,27 +435,24 @@ public sealed class NovelTests
                 "Remember this",
                 CancellationToken.None);
 
-            Assert.AreEqual(
-                1,
-                (await service.GetBookmarksAsync(
-                    "reader-a",
-                    work.Id,
-                    CancellationToken.None)).Count);
-            Assert.AreEqual(
-                0,
-                (await service.GetBookmarksAsync(
-                    "reader-b",
-                    work.Id,
-                    CancellationToken.None)).Count);
-
-            var highlights = await service.GetHighlightsAsync(
+            var readerA = await service.GetChapterAnnotationsAsync(
                 "reader-a",
                 work.Id,
+                chapter.Id,
+                CancellationToken.None);
+            var readerB = await service.GetChapterAnnotationsAsync(
+                "reader-b",
+                work.Id,
+                chapter.Id,
                 CancellationToken.None);
 
-            Assert.AreEqual(1, highlights.Count);
-            Assert.AreEqual("これは", highlights[0].Text);
-            Assert.AreEqual("Remember this", highlights[0].Note);
+            Assert.AreEqual(1, readerA.Bookmarks.Count);
+            Assert.AreEqual(0, readerB.Bookmarks.Count);
+            Assert.AreEqual(0, readerB.Highlights.Count);
+
+            Assert.AreEqual(1, readerA.Highlights.Count);
+            Assert.AreEqual("これは", readerA.Highlights[0].Text);
+            Assert.AreEqual("Remember this", readerA.Highlights[0].Note);
 
             await service.RemoveBookmarkAsync(
                 "reader-b",

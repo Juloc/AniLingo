@@ -62,6 +62,8 @@ public sealed record ScanResult(int Discovered, int Updated, int Skipped, int Su
     // NFO files that were present but rejected (malformed, oversized, unreadable or unsupported).
     public int MetadataWarnings { get; init; }
 
+    public MediaInventoryReconciliation MediaInventory { get; init; } = new(0, 0, 0, 0);
+
     // Media files enumerated in the scanned scope.
     public int MediaFiles { get; init; }
 
@@ -90,7 +92,10 @@ public enum LibraryScanPhase
     Metadata = 3,
     Artwork = 4,
     Subtitles = 5,
-    Completed = 6
+    Completed = 6,
+
+    // Technical media analysis (MediaInventoryService); runs between artwork and subtitles.
+    Analyzing = 7
 }
 
 public sealed record LibraryScanProgress(LibraryScanPhase Phase, int Processed, int Total);

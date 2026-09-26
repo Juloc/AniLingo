@@ -33,7 +33,9 @@ public sealed record LibraryScanCounters(
     int Subtitles,
     int Artwork,
     int Metadata,
-    int Errors);
+    int Errors,
+    int MediaAnalyzed = 0,
+    int MediaAnalysisFailed = 0);
 
 // The structured document persisted in Operations.Details for every library scan run.
 // It is the one place that carries the root, scope, trigger, phase and counters of a run.
@@ -383,7 +385,9 @@ public sealed class LibraryScanCoordinator(
 
         await reporter.CompleteAsync(result, cancellationToken);
 
-        if (request.Folder is null)
+        // New or changed media (for example a fresh download seen by the watcher) need their
+        // learning text prepared; the preparation batch itself is idempotent and guarded.
+        if (request.Folder is null || result.Discovered > 0 || result.Updated > 0)
         {
             var subtitles = services.GetRequiredService<SubtitleImportService>();
             await subtitles.QueueAllMissingAsync(cancellationToken);
@@ -403,6 +407,7 @@ public sealed class LibraryScanCoordinator(
         LibraryScanPhase.Reconciling => "Reconciling media",
         LibraryScanPhase.Metadata => "Matching metadata",
         LibraryScanPhase.Artwork => "Importing artwork",
+        LibraryScanPhase.Analyzing => "Analysing media",
         LibraryScanPhase.Subtitles => "Importing subtitles",
         LibraryScanPhase.Completed => "Completed",
         _ => phase.ToString()
@@ -535,7 +540,9 @@ public sealed class LibraryScanCoordinator(
                 result.SubtitleFiles,
                 result.ArtworkImported,
                 result.MetadataWarnings,
-                result.Errors);
+                result.Errors,
+                result.MediaInventory.Analyzed,
+                result.MediaInventory.Failed);
 
             details = details with
             {
@@ -565,7 +572,8 @@ public sealed class LibraryScanCoordinator(
                 LibraryScanPhase.Enumerating => 2,
                 LibraryScanPhase.Reconciling => Span(5, 60, progress.Processed, progress.Total),
                 LibraryScanPhase.Metadata => Span(60, 70, progress.Processed, progress.Total),
-                LibraryScanPhase.Artwork => Span(70, 80, progress.Processed, progress.Total),
+                LibraryScanPhase.Artwork => Span(70, 78, progress.Processed, progress.Total),
+                LibraryScanPhase.Analyzing => 79,
                 LibraryScanPhase.Subtitles => Span(80, 98, progress.Processed, progress.Total),
                 _ => 100
             };

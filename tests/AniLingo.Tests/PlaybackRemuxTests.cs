@@ -1,3 +1,4 @@
+using AniLingo.Web.Features.Library;
 using AniLingo.Web.Features.Playback;
 
 namespace AniLingo.Tests;
@@ -18,7 +19,7 @@ public sealed class PlaybackRemuxTests
         }
         """;
 
-        var probe = PlaybackMediaProbe.Parse(json);
+        var probe = PlaybackProbeResult.From(MediaProbeParser.Parse(json));
 
         Assert.AreEqual("h264", probe.VideoCodec);
         Assert.AreEqual("yuv420p", probe.PixelFormat);
@@ -39,7 +40,7 @@ public sealed class PlaybackRemuxTests
         }
         """;
 
-        var probe = PlaybackMediaProbe.Parse(json);
+        var probe = PlaybackProbeResult.From(MediaProbeParser.Parse(json));
 
         Assert.IsNotNull(probe.DurationSeconds);
         Assert.AreEqual(1440.25, probe.DurationSeconds.Value, 0.001);

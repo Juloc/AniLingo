@@ -64,12 +64,9 @@ public sealed class IndexModel(AppDbContext db, CurrentAccountContext currentAcc
 
         if (ShowLearningHomeWidget)
         {
-            DueReviews = await db.UserTerms.AsNoTracking().CountAsync(
-                x => x.ProfileId == currentAccount.ProfileId
-                    && x.State == UserTermState.Learning
-                    && x.NextReviewAt != null
-                    && x.NextReviewAt <= now,
-                cancellationToken);
+            DueReviews = await LearningQueries
+                .DueCards(db, currentAccount.ProfileId, now)
+                .CountAsync(cancellationToken);
         }
 
         AnimeCount = await db.Anime.AsNoTracking().CountAsync(cancellationToken);
@@ -87,12 +84,11 @@ public sealed class IndexModel(AppDbContext db, CurrentAccountContext currentAcc
 
         var preparedTotals =
             from episodeTerm in db.EpisodeTerms.AsNoTracking()
-            join userTerm in db.UserTerms.AsNoTracking()
+            join state in LearningQueries.TermStates(db, currentAccount.ProfileId)
                     .Where(x =>
-                        x.ProfileId == currentAccount.ProfileId
-                        && (x.State == UserTermState.Known
-                            || x.State == UserTermState.Learning))
-                on episodeTerm.TermId equals userTerm.TermId
+                        x.State == UserTermState.Known
+                        || x.State == UserTermState.Learning)
+                on episodeTerm.TermId equals state.TermId
             group episodeTerm by episodeTerm.EpisodeId
             into episodeGroup
             select new

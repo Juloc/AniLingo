@@ -1,3 +1,4 @@
+using AniLingo.Web.Features.Learning.Courses;
 using FsrsSharp.Configuration;
 using FsrsSharp.Core;
 using FsrsSharp.Models;
@@ -50,35 +51,9 @@ public sealed record LearningPreferencesSnapshot(
             LearningPreferences.DefaultNewWordsPerDay);
 }
 
-public sealed class UserTerm
-{
-    public Guid Id { get; set; } = Guid.NewGuid();
-    public string ProfileId { get; set; } = LearningProfile.DefaultId;
-    public Guid TermId { get; set; }
-    public UserTermState State { get; set; }
-    public int IntervalDays { get; set; }
-    public DateTime? NextReviewAt { get; set; }
-    public DateTime? LearningStartedAt { get; set; }
-    public long? QueuePosition { get; set; }
-    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
-}
-
-public sealed class Review
-{
-    public long Id { get; set; }
-    public string ProfileId { get; set; } = LearningProfile.DefaultId;
-    public Guid TermId { get; set; }
-    public ReviewRating Rating { get; set; }
-    public Guid? ClientEventId { get; set; }
-    public DateTime ReviewedAt { get; set; } = DateTime.UtcNow;
-    public DateTime NextReviewAt { get; set; }
-}
-
 public sealed record ReviewHistoryItem(ReviewRating Rating, DateTimeOffset ReviewedAt);
 
 public sealed record ReviewSchedule(DateTimeOffset NextReviewAt, int IntervalDays);
-
-public sealed record ReviewOption(ReviewRating Rating, DateTimeOffset NextReviewAt, string IntervalLabel);
 
 public interface IReviewScheduler
 {
@@ -180,11 +155,22 @@ public sealed class FsrsReviewScheduler : IReviewScheduler
     }
 }
 
+/// <summary>
+/// One due directional card. Prompt and answer come from the unit variants in
+/// the card's prompt/answer languages; the mode decides how the prompt is
+/// presented (read, heard or written).
+/// </summary>
 public sealed record DueReviewItem(
-    Guid TermId,
-    string Canonical,
-    string? Reading,
-    string? Meaning,
+    Guid CardId,
+    Guid UnitId,
+    Guid? TermId,
+    LearningCardMode Mode,
+    string PromptLanguage,
+    string AnswerLanguage,
+    string Prompt,
+    string? PromptReading,
+    string? Answer,
+    string? AnswerReading,
     int IntervalDays);
 
 
@@ -210,11 +196,17 @@ public sealed record ReviewAnimeContext(
 }
 
 
+/// <summary>
+/// Offline rating. <see cref="CardId"/> addresses one directional card.
+/// A term-only event addresses the word's Recognition card in the primary
+/// course for the term's language.
+/// </summary>
 public sealed record OfflineReviewEvent(
     Guid EventId,
-    Guid TermId,
+    Guid? TermId,
     ReviewRating Rating,
-    DateTime ReviewedAtUtc);
+    DateTime ReviewedAtUtc,
+    Guid? CardId = null);
 
 public sealed record OfflineReviewSyncRequest(
     IReadOnlyList<OfflineReviewEvent> Events);
@@ -225,10 +217,15 @@ public sealed record OfflineReviewSyncResult(
     IReadOnlyList<Guid> Rejected);
 
 public sealed record ReviewSessionCard(
-    Guid TermId,
-    string Canonical,
-    string? Reading,
-    string? Meaning,
+    Guid CardId,
+    Guid? TermId,
+    LearningCardMode Mode,
+    string PromptLanguage,
+    string AnswerLanguage,
+    string Prompt,
+    string? PromptReading,
+    string? Answer,
+    string? AnswerReading,
     int IntervalDays,
     IReadOnlyDictionary<ReviewRating, string> Intervals,
     ReviewAnimeContext? Context);
