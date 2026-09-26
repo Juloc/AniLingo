@@ -223,8 +223,23 @@ builder.Services.AddSingleton<PlaybackPreparationTracker>();
 builder.Services.AddScoped<PlaybackPreparationService>();
 builder.Services.AddScoped<PlaybackService>();
 builder.Services.Configure<MediaSegmentOptions>(builder.Configuration.GetSection(MediaSegmentOptions.SectionName));
-builder.Services.AddSingleton<IMediaSegmentDetector, NoOpMediaSegmentDetector>();
+// Single canonical opt-in: cross-episode audio fingerprint detection is CPU heavy (it decodes and
+// hashes several minutes of audio per episode), so it stays off unless explicitly enabled.
+var fingerprintDetectionEnabled = builder.Configuration
+    .GetSection(MediaSegmentOptions.SectionName)
+    .GetValue<bool>(nameof(MediaSegmentOptions.FingerprintDetectionEnabled));
+builder.Services.AddSingleton<IAudioWindowDecoder, FfmpegAudioWindowDecoder>();
+if (fingerprintDetectionEnabled)
+{
+    builder.Services.AddSingleton<IMediaSegmentDetector, AudioFingerprintMediaSegmentDetector>();
+}
+else
+{
+    builder.Services.AddSingleton<IMediaSegmentDetector, NoOpMediaSegmentDetector>();
+}
+
 builder.Services.AddSingleton<TrickplayGenerator>();
+builder.Services.AddSingleton<SeasonSegmentDetectionQueue>();
 builder.Services.AddScoped<MediaSegmentService>();
 builder.Services.AddScoped<MediaSegmentSidecarImporter>();
 builder.Services.AddScoped<EpisodeProgressService>();
