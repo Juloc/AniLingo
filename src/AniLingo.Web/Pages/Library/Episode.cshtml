@@ -481,6 +481,7 @@
     </section>
     <script src="~/js/player-design.js" asp-append-version="true"></script>
     <script src="~/js/episode-player.js" asp-append-version="true"></script>
+    <partial name="_EpisodeMediaNavigation" model="new AniLingo.Web.Features.MediaSegments.EpisodeMediaNavigationView(Model.EpisodeId, Model.Playback.Navigation, Model.IsOwner)" />
 }
 
 @if (Model.ShowVocabularyTools
