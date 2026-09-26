@@ -24,6 +24,8 @@
     <!-- design/player is the single source for web and Android player design inputs. -->
     <EmbeddedResource Include="..\..\design\player\player-tokens.json" LogicalName="AniLingo.Design.Player.player-tokens.json" Link="Design\player-tokens.json" />
     <EmbeddedResource Include="..\..\design\player\player-icons.json" LogicalName="AniLingo.Design.Player.player-icons.json" Link="Design\player-icons.json" />
+    <!-- Bundled default TTS model manifest; owners override it at {dataRoot}/speech/tts-model-manifest.json. -->
+    <EmbeddedResource Include="Features\Speech\tts-model-manifest.json" LogicalName="AniLingo.Speech.tts-model-manifest.json" />
   </ItemGroup>
 
 </Project>

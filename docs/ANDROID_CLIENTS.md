@@ -65,7 +65,9 @@ clients/android/
 ├── core-model/
 ├── core-player/
 ├── core-session/
-└── core-design/
+├── core-design/
+├── core-tts/
+└── core-tts-sherpa/        (optional, see docs/TTS.md)
 ```
 
 Modules:
@@ -77,6 +79,8 @@ Modules:
 - `core-player`: Media3/ExoPlayer integration, direct/fallback selection, audio tracks, playback state.
 - `core-session`: playback-session/pairing/companion protocol.
 - `core-design`: generated player theme values and reusable native player controls.
+- `core-tts`: provider-neutral TTS contract, resolver, system (`TextToSpeech`) provider and offline-neural model manager (docs/TTS.md).
+- `core-tts-sherpa`: optional sherpa-onnx offline-neural binding; excluded from the build unless `-PanilingoNeuralTtsEnabled=true` because it needs a manually downloaded AAR (docs/TTS.md).
 
 Application IDs:
 
@@ -158,6 +162,15 @@ Bounded offline playback endpoints (additive v1, advertised by `offlineDownloads
 GET  /api/client/v1/episodes/{episodeId}/offline-download   download descriptor
 GET  /api/client/v1/offline/media/{mediaFileId}/content      original bytes, HTTP range + strong ETag
 POST /api/client/v1/offline/progress                         { items: [{ episodeId, positionMs, durationMs, completed }] }
+```
+
+Offline Book/Novel library endpoints (additive v1, advertised by `offlineLibrary`; see §8.3 and [OFFLINE_LIBRARY.md](OFFLINE_LIBRARY.md)):
+
+```text
+GET  /api/client/v1/offline-library/works/{workId}/manifest      versioned manifest, per-chapter hash
+GET  /api/client/v1/offline-library/chapters/{chapterId}         chapter payload (text/blocks/translations)
+GET  /api/client/v1/offline-library/assets/{volumeId}/{asset}    content-addressed cover/illustration bytes
+POST /api/client/v1/offline-library/sync                         batched progress + bookmark reconciliation
 ```
 
 The first v1 contract deliberately reports not-yet-implemented facilities through capability flags. HLS fallback, playback sessions, pairing and companion control remain `false` until their later delivery slices are merged. Clients must not infer support from route guesses.
@@ -448,6 +461,52 @@ Phone implementation (`app-mobile`, package `mobile.offline`; TV is out of scope
 - Files live in app-private `noBackupFilesDir/offline/<owner>/<episode>/`. Downloads belong to one account on one server: logging out locks them (hidden, not playable, transfers paused) until the same account signs in again; signing in as another account or changing the server deletes them. The account is re-checked via `/me` whenever the server is reachable and after WebView page loads.
 - A ready download is played from the local file with Media3, also while online (the server bootstrap and fresh cues are used when reachable). Offline, the player uses the stored descriptor for titles, audio/subtitle selection and the learning overlay; word details come from the stored cue tokens, and learning-state changes wait until the server is reachable.
 - The client keeps only a local copy of the canonical progress plus a sync queue (one entry per episode, completion sticky). Checkpoints that cannot be delivered (offline playback or a lost connection) are queued and replayed by a network-constrained WorkManager job, which first confirms via `/me` that the same account is signed in. Every server outcome removes the queued entry; a successful live checkpoint supersedes a queued partial one.
+
+### 8.3 Offline Book/Novel library (phone, #221)
+
+Bounded offline reading of the user's own Book/Novel library, on the same
+canonical `/api/client/v1/offline-library/**` contract the PWA download
+manager already uses (part 1, PR #359; full contract in
+[OFFLINE_LIBRARY.md](OFFLINE_LIBRARY.md)), advertised by the `offlineLibrary`
+capability. Implementation lives in `app-mobile`, package
+`mobile.offline.library` — deliberately separate from `mobile.offline` (§8.2)
+so the two download engines stay independently reviewable, even though the
+library engine reuses `mobile.offline`'s account boundary and download state
+machine directly (both are generic, not anime-specific).
+
+- A native **"Save offline"** action appears over the WebView while browsing
+  a book/novel detail page (`/Novels/Work/{id}` or `/Books/Library/{id}`),
+  detected by URL path exactly like the episode Play route — no JS bridge.
+  An **Offline books** screen (reachable next to Downloads: notification,
+  launcher shortcut, *Server unavailable* screen) shows per-book aggregate
+  status and per-chapter state with pause/resume/retry/remove.
+- Manifest/chapter differential download: only a chapter whose hash changed
+  (or that is new) is (re)downloaded; a chapter is written to a temporary
+  file, read back and byte-compared, then atomically renamed into place
+  before being marked ready — a truncated/corrupted write or a version race
+  (the fetched payload's hash no longer matches what the manifest asked for)
+  is never presented as available offline. Cover/volume-cover assets are
+  best-effort, never gating availability.
+- Downloads are WorkManager jobs, one per chapter (a chapter is bounded-size
+  text, so unlike episode media there is no sub-file Range/resume — the job
+  itself, with WorkManager's own retry/backoff, is the resumable unit,
+  matching the PWA queue's granularity).
+- Storage: app-private `noBackupFilesDir/library/<owner>/**`, a JSON
+  snapshot (`AtomicFile`, no Room — this app has no Room/reflection
+  serialization dependency anywhere) mirroring the shape of §8.2's own
+  store. Account/server isolation reuses the exact same owner-key scheme.
+- WebView local interception: `shouldInterceptRequest` answers a same-origin
+  `GET` matching the manifest/chapter/asset path shape from local storage
+  when available, otherwise falls through to the network — "local source
+  first" per the issue's `Reader -> BookRepository` model, without a second
+  rendering path or a JS bridge. Its practical effect depends on the reader
+  itself fetching through this contract client-side, which is a separate,
+  not-yet-landed slice (see OFFLINE_LIBRARY.md's Part 2 TODO).
+- Reading-position and bookmark sync-queue plumbing
+  (`LibraryDownloads.recordProgress`/`recordBookmark`, drained by a
+  WorkManager job against `POST /offline-library/sync`) is implemented and
+  tested; like the PWA side, it currently has no reader call site (same
+  follow-up slice).
 
 ## 9. Android TV interaction
 

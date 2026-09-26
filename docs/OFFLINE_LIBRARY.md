@@ -11,13 +11,22 @@ reuses one server model instead of separate PWA/Android business logic
 (matching the bounded offline playback design of #225/PR #341).
 
 Status: **part 1 delivered** (server contract, sync endpoint, PWA download
-manager foundation, Settings → Offline page). **Part 2A delivered** (this
-section): the PWA reader repository seam, offline-first Novel progress/
-bookmark sync, the "Save offline" action on the Novel work page, the Library
-"Offline" filter, a compact global download indicator and JS-catalog
-localization of `offline-library-ui.js`. Remaining work — a cold-start
-offline page shell, Books' progress/bookmark sync, Android, Manga — is
-tracked in [Part 2 TODO](#part-2-todo) below.
+manager foundation, Settings → Offline page). **Part 2 delivered
+incrementally, per client:**
+
+- **2A — PWA** (this section): the reader ↔ offline library bridge,
+  offline-first Novel progress/bookmark sync, in-page offline chapter
+  navigation, the "Save offline" action on the Novel work page, the Library
+  "Offline" filter, a compact global download indicator and JS-catalog
+  localization of `offline-library-ui.js`.
+- **Android**: native download engine (`LibraryStore`/`LibraryDownloads`/
+  WorkManager jobs), WebView request interception and native entry points;
+  see [Android implementation](#android-implementation).
+
+Both clients' reader-side wiring is real but still narrower than the
+issue's full `Reader -> BookRepository` shape for a genuinely cold,
+from-scratch offline page load — see the note at the end of the Android
+section and [Part 2 TODO](#part-2-todo) below for what remains on each.
 
 ## Part 2A: reader repository, offline-first sync, discoverability (PWA)
 
@@ -403,6 +412,103 @@ that default under last-writer-wins.
   eligible-item selection with backoff, Wi-Fi-only eligibility, namespacing
   and storage formatting.
 
+## Android implementation
+
+`clients/android/app-mobile`, package `de.juloc.anilingo.mobile.offline.library`
+(kept separate from `mobile.offline`, the #341 bounded-offline-playback
+package, so the two features stay independently reviewable). Consumes the
+contract above through new `AniLingoLibraryApi`/`OfflineLibraryJson`
+(`core-api`) and `ClientOfflineLibrary*`/`OfflineLibrary*Event`/`Result`
+models (`core-model`), gated by the `offlineLibrary` capability flag.
+
+- **`LibraryStore`** — app-private persistence (books, chapters, settings,
+  progress/bookmark sync queues), a sibling of `OfflineStore` (#341): the
+  same `AtomicFile` + hand-written `org.json` codec, **not Room** — there is
+  no Room/reflection-serialization dependency anywhere in this app, and
+  introducing one for this feature alone was rejected as the higher-risk,
+  higher-friction option (see the file's KDoc for the trade-off). Chapters
+  and assets are stored keyed by their own globally-unique id/name
+  (`<owner>/chapters/<chapterId>.json`, `<owner>/assets/<asset>`), not
+  nested under a book folder, so a request path (`/chapters/{id}`,
+  `/assets/{volumeId}/{asset}`) resolves to a local file directly.
+- **`LibraryManifestDiff`** — pure differential diff (unit tested): a
+  chapter is downloaded only if new or its hash changed; unchanged chapters,
+  whatever their local download state, are left alone; deselected or
+  manifest-dropped chapters are queued for local removal.
+- **`LibraryContentIo.writeVerified`** — atomic finalization: writes to
+  `<file>.part`, reads the bytes back and byte-compares before an atomic
+  `renameTo`, exactly the "write, then read back and compare" rule the PWA
+  engine uses. A chapter is additionally rejected (retried later, not marked
+  verified) if the fetched payload's `hash` no longer matches the manifest
+  hash it was requested for (the version-race case `docs` calls out above).
+- **`LibraryDownloads`** — the manager: `enqueueBook` (manifest fetch + diff
+  + per-chapter WorkManager scheduling, whole-book or `chapterIds`
+  selection), pause/resume/retry/remove per chapter, remove per book,
+  Wi-Fi-only setting, storage usage. Reuses `OfflineAccountPolicy`,
+  `OfflineAccount`, `OfflineOwner` and `DownloadStateMachine` from `#341`
+  directly (unmodified) since none of them are anime-specific — the account
+  boundary (logout locks, account/server switch purges) and the
+  queued/downloading/paused/ready/failed state machine are exactly the same
+  shape for a chapter as for an episode. Cover/volume-cover assets are
+  downloaded best-effort inline (not a tracked WorkManager job): they never
+  gate "available offline" and a missed one is simply retried on the next
+  book refresh.
+- **`LibraryChapterDownloadWorker`** / **`LibrarySyncWorker`** — WorkManager
+  jobs mirroring `OfflineDownloadWorker`/`OfflineProgressSyncWorker`. A
+  chapter is one atomic download unit (not sub-file HTTP Range/resume like
+  episode media): chapters are bounded-size text, so the *job* itself is the
+  resumable unit via WorkManager's own retry/backoff — the same granularity
+  the PWA queue already uses. `LibrarySyncWorker` re-checks `/me` before
+  draining the queue, exactly like the offline-playback progress worker.
+- **WebView local interception** (`AniLingoWebShell.shouldInterceptRequest`,
+  `LibraryRequestInterception`): a same-origin `GET` matching the
+  offline-library manifest/chapter/asset path shape is answered from local
+  storage when available ("local source first"), otherwise falls through to
+  the network. This is the option (a) the issue asks for — the same web
+  reader would render offline content without a second rendering path — but
+  its effect today is limited: `/Novels/Read`/`/Books/Read` do not yet fetch
+  chapter content through `/api/client/v1/offline-library/**` client-side
+  (that is exactly the still-open "Reader repository abstraction" item
+  below), so this interception is currently exercised only if/when that
+  reader-side wiring lands. No `addJavascriptInterface`/JS bridge is added;
+  same-origin enforcement and the fixed, regex-validated path allowlist are
+  the only things that make this safe to expose.
+- **Entry points**: a floating native "Save offline" action
+  (`LibrarySaveOfflineOverlay`) appears over the WebView while browsing a
+  book/novel detail page (`/Novels/Work/{id}` or `/Books/Library/{id}`,
+  detected by URL path — the same technique `WebNavigationPolicy` already
+  uses for the episode Play route, not a JS bridge), and an "Offline books"
+  management screen (`LibraryDownloadsScreen`) is reachable next to the
+  existing Downloads screen (notification, launcher shortcut, *Server
+  unavailable* screen).
+- **Sync queue**: `LibraryProgressQueue`/`LibraryBookmarkQueue` are local
+  queue-bookkeeping only (record/acknowledge/batch, one pending entry per
+  work/bookmark id) — the server's forward-only and last-writer-wins rules
+  are the actual conflict resolution; the client always adopts whatever the
+  server answers with. `recordProgress`/`recordBookmark` and the queue are
+  fully implemented and tested, but (like the PWA side) have no reader call
+  site yet in this PR — wiring them up is the same reader-integration slice
+  as item 2 below, now shared across both clients.
+
+**Relationship to the PWA's 2A reader bridge above:** the two clients solve
+"local source first" differently today. The PWA's
+`offline-library-repository.js` reads its own IndexedDB/OPFS store directly,
+in-process, from JS running on the already-loaded reader page — it never
+issues a `fetch()` to `/api/client/v1/offline-library/**` when serving local
+content, so Android's WebView-level interception of that same path (above)
+has nothing to intercept from a PWA reader page and is orthogonal to it.
+Android's interception, in turn, only takes effect if/when the WebView-hosted
+`/Novels/Read`/`/Books/Read` page itself starts *fetching* chapter content
+through that path client-side, which it does not yet do (both readers still
+render chapter content server-side on load). A fully unified "cold, from
+scratch, offline page load" story on both platforms most likely means
+teaching the reader pages to fetch chapter content through
+`/api/client/v1/offline-library/**` explicitly (letting Android's existing
+WebView interception and a PWA service-worker equivalent both answer it
+locally), rather than each client only patching narrower gaps in-process as
+this PR and 2A currently do. Left for a follow-up rather than block either
+slice on the other.
+
 ## Part 2 TODO
 
 Left after part 2A (above):
@@ -417,33 +523,33 @@ Left after part 2A (above):
    `NovelBookmark.Language`/`NovelProgress.AnchorLanguage`). Once fixed
    server-side, `books-reader.js` can adopt the same
    `offline-library-repository.js` queue calls Novels already use.
-2. **Cold-start offline page load.** Opening a `/Novels/Read/{id}` or
-   `/Books/Read/{id}` URL directly while fully offline (nothing already
-   loaded this session, e.g. from the Library's Offline filter) still falls
-   back to the generic `service-worker.js` `/offline.html` shell rather than
-   rendering the downloaded chapter. Part 2A's in-page offline chapter
+2. **Cold-start offline page load / a fully unified reader repository.**
+   Opening a `/Novels/Read/{id}` or `/Books/Read/{id}` URL directly while
+   fully offline (nothing already loaded this session, e.g. from the
+   Library's Offline filter) still falls back to the generic
+   `service-worker.js` `/offline.html` shell on the PWA rather than
+   rendering the downloaded chapter; Part 2A's in-page offline chapter
    navigation (footer previous/next, while a reader page is already open)
    covers the more common "lost connectivity mid-session" case without this.
-   A full fix needs `service-worker.js` to special-case navigation requests
-   under these two path prefixes and serve a small offline reader shell that
-   boots `offline-library-repository.js` against the requested chapter,
-   reusing its existing `renderNovelBlocksHtml`/`renderBookParagraphsHtml`
-   (not a second rendering path) with an intentionally reduced chrome
-   (no settings/notes panels) until the network returns.
-3. The chapter drawer's list (`novel-chapter-drawer.js`) still requires
+   As noted at the end of the Android section above, a full fix on both
+   platforms most likely means teaching `/Novels/Read`/`/Books/Read` to
+   fetch chapter content through `/api/client/v1/offline-library/**`
+   client-side (so Android's existing WebView interception actually takes
+   effect, and a PWA service-worker fetch handler could answer the same
+   requests from IndexedDB/OPFS) rather than each client only patching
+   narrower gaps in-process as today.
+3. The chapter drawer's list (`novel-chapter-drawer.js`, PWA) still requires
    network to load (`OnGetChaptersAsync`); it could fall back to the local
    manifest's chapter list while offline instead of only showing a retry
    button.
-4. Per-chapter selection UI reusing `enqueueBook`'s `chapterIds` option
-   (whole-book download only so far).
-5. **Android** (`app-mobile`, per `ANDROID_CLIENTS.md`'s architecture): Room
-   entities mirroring the IndexedDB stores above (manifests, queue,
-   verified chapters, bookmarks/progress sync queue), app-private storage
-   for chapter/asset bytes (mirroring OPFS), and WorkManager jobs for
-   persistent, resumable downloads — consuming the exact same
-   `/api/client/v1/offline-library/**` contract and
-   `OfflineLibrarySyncRules` semantics (server-side; Android only needs to
-   replay the same event shapes, not reimplement the conflict rules).
+4. Per-chapter selection UI on both clients, reusing `enqueueBook`'s
+   `chapterIds` option / `LibraryDownloads`'s equivalent (whole-book
+   download only so far).
+5. **Android reader-side wiring.** `LibraryDownloads.recordProgress`/
+   `recordBookmark` and the local sync queues are implemented and tested but
+   have no reader call site yet (mirrors item 1/2's PWA-side gaps before
+   part 2A) — wiring the WebView-hosted reader's progress/bookmark writes to
+   them is the Android equivalent of part 2A's Novel wiring above.
 6. **Manga reuse**: the manifest/chapter/asset/sync contract here is
    already generic over "work → volume → chapter" content; a Manga chapter
    payload would swap `originalText`/`blocks` for an ordered page-image

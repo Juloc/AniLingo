@@ -55,6 +55,7 @@ jobs:
           gradle --no-daemon --stacktrace
           :core-api:testDebugUnitTest
           :core-player:testDebugUnitTest
+          :core-tts:testDebugUnitTest
 
       - name: Lint
         working-directory: clients/android
@@ -67,6 +68,7 @@ jobs:
           :core-player:lintDebug
           :core-session:lintDebug
           :core-design:lintDebug
+          :core-tts:lintDebug
 
       - name: Build debug APKs
         working-directory: clients/android
