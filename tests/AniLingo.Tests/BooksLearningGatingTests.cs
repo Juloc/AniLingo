@@ -8,6 +8,9 @@ using AniLingo.Web.Infrastructure;
 using AniLingo.Web.Pages.Books;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
+using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -271,18 +274,42 @@ public sealed class BooksLearningGatingTests
                 CancellationToken.None);
 
         public ReadModel CreateReadModel(string profileId) =>
-            new(
+            AttachPageContext(new ReadModel(
                 NewBookCatalogService(),
                 TestAccounts.Context(profileId),
                 new BackgroundJobQueue(services.GetRequiredService<IServiceScopeFactory>()),
-                Db);
+                Db));
 
         public LibraryModel CreateLibraryModel(string profileId, bool owner = false) =>
-            new(
+            AttachPageContext(new LibraryModel(
                 Db,
                 NewBookCatalogService(),
                 owner ? OwnerContext(profileId) : TestAccounts.Context(profileId),
-                new BackgroundJobQueue(services.GetRequiredService<IServiceScopeFactory>()));
+                new BackgroundJobQueue(services.GetRequiredService<IServiceScopeFactory>())));
+
+        /// <summary>
+        /// The Ui bundle (localization PR #362) is resolved from
+        /// <see cref="PageModel.HttpContext"/>, so page models built for a
+        /// direct handler call (not through the MVC pipeline) need a bare
+        /// PageContext for that property to be non-null.
+        /// </summary>
+        private static TPage AttachPageContext<TPage>(TPage page)
+            where TPage : PageModel
+        {
+            page.PageContext = new PageContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    RequestServices = new ServiceCollection()
+                        .AddSingleton<IModelMetadataProvider, EmptyModelMetadataProvider>()
+                        .BuildServiceProvider()
+                },
+                ViewData = new ViewDataDictionary<TPage>(
+                    new EmptyModelMetadataProvider(),
+                    new ModelStateDictionary())
+            };
+            return page;
+        }
 
         private static CurrentAccountContext OwnerContext(string profileId)
         {
