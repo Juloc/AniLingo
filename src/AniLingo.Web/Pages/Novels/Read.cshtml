@@ -28,6 +28,8 @@
         <script src="~/js/reader-themes.js" asp-append-version="true"></script>
         <script src="~/js/reader-personalization.js" asp-append-version="true"></script>
         <script src="~/js/reader-shell.js" asp-append-version="true"></script>
+        <script src="~/js/tts.js" asp-append-version="true"></script>
+        <script src="~/js/reader-tts.js" asp-append-version="true"></script>
     }
     else
     {
@@ -204,7 +206,7 @@
     </aside>
 
     <header class="novel-reader-title">
-        <span class="novel-chapter-label">Kapitel @Model.Chapter.Number</span>
+        <span class="novel-chapter-label">@(Model.Chapter.IsEpubVolume ? $"Band {Model.Chapter.VolumeNumber} · " : "")Kapitel @Model.Chapter.Number</span>
         <h1>@Model.Chapter.Title</h1>
         @if (Model.AnimeMappings.Count > 0)
         {
@@ -245,30 +247,60 @@
 
     <main class="novel-reader-content" data-reader-content data-reader-surface>
         <header class="novel-reader-title novel-reader-page-title">
-            <span class="novel-chapter-label">Kapitel @Model.Chapter.Number</span>
+            <span class="novel-chapter-label">@(Model.Chapter.IsEpubVolume ? $"Band {Model.Chapter.VolumeNumber} · " : "")Kapitel @Model.Chapter.Number</span>
             <h1>@Model.Chapter.Title</h1>
         </header>
 
-        @for (var index = 0; index < pairCount; index++)
+        @* Text blocks map 1:1 to plain paragraph indexes; illustrations sit between segments. *@
+        @foreach (var block in Model.JapaneseBlocks)
         {
-            <section class="novel-reader-segment" data-reader-segment="@index">
-                @if (index < Model.JapaneseParagraphs.Count)
+            if (block.IsImage)
+            {
+                if (AniLingo.Web.Features.Novels.NovelVolumeAssetStore.IsAssetName(block.ImageAsset))
                 {
-                    <p class="novel-reader-paragraph ja"
-                       lang="ja"
-                       data-reader-paragraph
-                       data-language="ja"
-                       data-index="@index">@Model.JapaneseParagraphs[index]</p>
+                    <figure class="novel-reader-illustration">
+                        <img src="@AniLingo.Web.Features.Novels.NovelVolumeAssetStore.Url(Model.Chapter.VolumeId, block.ImageAsset!)"
+                             alt="@(block.ImageAlt ?? "")"
+                             loading="lazy"
+                             decoding="async" />
+                    </figure>
                 }
+                continue;
+            }
+
+            var index = block.ParagraphIndex!.Value;
+            var headingClass = block.IsHeading ? " is-heading" : "";
+            var headingLevel = block.IsHeading ? Math.Min(block.HeadingLevel + 1, 6) : (int?)null;
+            <section class="novel-reader-segment" data-reader-segment="@index">
+                <p class="novel-reader-paragraph ja@(headingClass)"
+                   lang="ja"
+                   role="@(block.IsHeading ? "heading" : null)"
+                   aria-level="@headingLevel"
+                   data-reader-paragraph
+                   data-language="ja"
+                   data-index="@index">@AniLingo.Web.Features.Novels.NovelChapterDocument.RenderRuns(block.Runs)</p>
 
                 @if (index < Model.GermanParagraphs.Count)
                 {
-                    <p class="novel-reader-paragraph de"
+                    <p class="novel-reader-paragraph de@(headingClass)"
                        lang="de"
+                       role="@(block.IsHeading ? "heading" : null)"
+                       aria-level="@headingLevel"
                        data-reader-paragraph
                        data-language="de"
                        data-index="@index">@Model.GermanParagraphs[index]</p>
                 }
+            </section>
+        }
+
+        @for (var index = Model.JapaneseParagraphs.Count; index < pairCount; index++)
+        {
+            <section class="novel-reader-segment" data-reader-segment="@index">
+                <p class="novel-reader-paragraph de"
+                   lang="de"
+                   data-reader-paragraph
+                   data-language="de"
+                   data-index="@index">@Model.GermanParagraphs[index]</p>
             </section>
         }
     </main>
@@ -296,7 +328,8 @@
 
         @if (Model.Chapter.NextChapterId is Guid nextFooter)
         {
-            <a href="/Novels/Read/@nextFooter">Nächstes Kapitel →</a>
+            <a href="/Novels/Read/@nextFooter"
+               data-reader-next-chapter="@nextFooter">Nächstes Kapitel →</a>
         }
     </footer>
 

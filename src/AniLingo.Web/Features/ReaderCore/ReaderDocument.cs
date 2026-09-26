@@ -1,3 +1,5 @@
+using AniLingo.Web.Features.Speech;
+
 namespace AniLingo.Web.Features.ReaderCore;
 
 public enum ReaderContentType
@@ -31,7 +33,8 @@ public sealed record ReaderCapabilities(
     bool SupportsPageCurl,
     bool SupportsThemeArtwork,
     bool SupportsZoom,
-    bool SupportsVerticalReading)
+    bool SupportsVerticalReading,
+    bool SupportsTts)
 {
     public static ReaderCapabilities For(
         ReaderContentType contentType,
@@ -57,7 +60,8 @@ public sealed record ReaderCapabilities(
                 SupportsPageCurl: true,
                 SupportsThemeArtwork: true,
                 SupportsZoom: false,
-                SupportsVerticalReading: false),
+                SupportsVerticalReading: false,
+                SupportsTts: true),
             ReaderLayoutKind.ImageSequence => new(
                 SupportsContinuous: true,
                 SupportsPaged: true,
@@ -73,7 +77,8 @@ public sealed record ReaderCapabilities(
                 SupportsPageCurl: true,
                 SupportsThemeArtwork: false,
                 SupportsZoom: true,
-                SupportsVerticalReading: true),
+                SupportsVerticalReading: true,
+                SupportsTts: false),
             _ => new(
                 SupportsContinuous: true,
                 SupportsPaged: true,
@@ -89,7 +94,8 @@ public sealed record ReaderCapabilities(
                 SupportsPageCurl: false,
                 SupportsThemeArtwork: false,
                 SupportsZoom: true,
-                SupportsVerticalReading: true)
+                SupportsVerticalReading: true,
+                SupportsTts: false)
         };
 }
 
@@ -99,7 +105,8 @@ public sealed record ReaderDocumentDescriptor(
     ReaderLayoutKind LayoutKind,
     string Title,
     IReadOnlyList<string> Genres,
-    ReaderCapabilities Capabilities)
+    ReaderCapabilities Capabilities,
+    IReadOnlyList<ReaderDocumentLanguage> Languages)
 {
     public string ContentTypeKey => ReaderContentTypes.ToKey(ContentType);
 
@@ -108,7 +115,8 @@ public sealed record ReaderDocumentDescriptor(
         ReaderContentType contentType,
         string title,
         IReadOnlyList<string>? genres = null,
-        ReaderLayoutKind? layoutKind = null)
+        ReaderLayoutKind? layoutKind = null,
+        IReadOnlyList<ReaderDocumentLanguage>? languages = null)
     {
         var layout = layoutKind ?? ReaderContentTypes.DefaultLayout(contentType);
         return new(
@@ -117,7 +125,42 @@ public sealed record ReaderDocumentDescriptor(
             layout,
             title,
             genres ?? [],
-            ReaderCapabilities.For(contentType, layout));
+            ReaderCapabilities.For(contentType, layout),
+            ReaderDocumentLanguage.Distinct(languages));
+    }
+}
+
+/// <summary>
+/// One text language the document can show (source or translation). Language-bound
+/// Reader features, such as per-language read-aloud voices, use this list instead of
+/// guessing from the page.
+/// </summary>
+public sealed record ReaderDocumentLanguage(string Tag, string Label)
+{
+    public static IReadOnlyList<ReaderDocumentLanguage> Distinct(
+        IReadOnlyList<ReaderDocumentLanguage>? languages)
+    {
+        if (languages is null || languages.Count == 0)
+        {
+            return [];
+        }
+
+        var result = new List<ReaderDocumentLanguage>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var language in languages)
+        {
+            var tag = SpeechPreferenceResolver.NormalizeLanguageTag(language.Tag);
+            if (tag == "und" || !seen.Add(tag))
+            {
+                continue;
+            }
+
+            result.Add(new ReaderDocumentLanguage(
+                tag,
+                string.IsNullOrWhiteSpace(language.Label) ? tag : language.Label.Trim()));
+        }
+
+        return result;
     }
 }
 
@@ -203,7 +246,12 @@ public sealed record ReaderSystemPreset(
     double ThemeParallaxStrength,
     double ThemeTintStrength,
     string BookmarkStyle,
-    string BookmarkColor);
+    string BookmarkColor,
+    string TtsProviderId,
+    double TtsRate,
+    double TtsPitch,
+    double TtsVolume,
+    bool TtsAutoContinueChapters);
 
 public static class ReaderPresetCatalog
 {
@@ -286,5 +334,10 @@ public static class ReaderPresetCatalog
         ThemeParallaxStrength: 1,
         ThemeTintStrength: 1,
         BookmarkStyle: "fabric",
-        BookmarkColor: "#b04455");
+        BookmarkColor: "#b04455",
+        TtsProviderId: "auto",
+        TtsRate: 1,
+        TtsPitch: 1,
+        TtsVolume: 1,
+        TtsAutoContinueChapters: false);
 }

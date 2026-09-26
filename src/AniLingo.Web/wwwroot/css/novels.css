@@ -432,6 +432,56 @@
     background: color-mix(in srgb, var(--reader-accent) 45%, transparent);
 }
 
+/* EPUB content: headings, emphasis, ruby and illustrations. Readings are
+   drawn from data-rt so the paragraph text stays the plain text that anchors
+   and highlights refer to. */
+.novel-reader-paragraph.is-heading {
+    margin-top: .6em;
+    font-size: 1.18em;
+    font-weight: 650;
+    line-height: 1.45;
+}
+
+.novel-reader-paragraph.ja em {
+    font-style: normal;
+    text-emphasis: filled sesame;
+    -webkit-text-emphasis: filled sesame;
+    text-emphasis-position: over right;
+    -webkit-text-emphasis-position: over right;
+}
+
+.novel-reader-paragraph ruby {
+    ruby-position: over;
+}
+
+.novel-reader-paragraph rt {
+    font-size: .5em;
+    line-height: 1;
+    user-select: none;
+}
+
+.novel-reader-paragraph rt::before {
+    content: attr(data-rt);
+}
+
+.novel-reader-illustration {
+    margin: 1.4em 0;
+    text-align: center;
+    break-inside: avoid;
+}
+
+.novel-reader-illustration img {
+    display: block;
+    max-width: 100%;
+    max-height: min(82vh, 1200px);
+    margin: 0 auto;
+    border-radius: 4px;
+}
+
+.novel-reader-shell[data-reading-mode="paged"] .novel-reader-illustration img {
+    max-height: calc(100dvh - 230px);
+}
+
 .novel-reader-footer {
     display: flex;
     justify-content: space-between;

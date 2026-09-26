@@ -67,6 +67,13 @@
             title.className = "novel-drawer-title";
             title.lang = "ja";
             title.textContent = normalizeText(chapter.title);
+            if (chapter.volumeNumber) {
+                const volume = document.createElement("span");
+                volume.className = "novel-drawer-volume";
+                volume.lang = "de";
+                volume.textContent = `Bd. ${chapter.volumeNumber}`;
+                title.prepend(volume);
+            }
 
             const language = document.createElement("span");
             language.className = "novel-drawer-lang";

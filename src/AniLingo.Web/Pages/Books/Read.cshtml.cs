@@ -60,7 +60,12 @@ public sealed class ReadModel(
             reader.Work.Id,
             ReaderContentType.Book,
             reader.Work.MetadataTitle ?? reader.Work.Title,
-            ReaderPreferenceRules.ParseGenres(reader.Work.MetadataGenresJson));
+            ReaderPreferenceRules.ParseGenres(reader.Work.MetadataGenresJson),
+            languages:
+            [
+                new(reader.SourceLanguage, BookLanguageCatalog.GetName(reader.SourceLanguage)),
+                new(reader.TargetLanguage, BookLanguageCatalog.GetName(reader.TargetLanguage))
+            ]);
 
         ReaderSettings = await ReaderPreferenceStore.GetAsync(
             db,

@@ -72,14 +72,17 @@ public sealed class AdminUserProgressTests
                 SourceUrl = "https://example.invalid/admin-novel",
                 Title = "Novel title"
             };
+            var volume = new NovelVolume { WorkId = work.Id, Number = 1, SourceKey = "web" };
             var chapter = new NovelChapter
             {
                 WorkId = work.Id,
+                VolumeId = volume.Id,
                 Number = 12,
                 SourceUrl = "https://example.invalid/admin-novel/12",
                 Title = "Chapter title"
             };
             db.Add(work);
+            db.Add(volume);
             db.Add(chapter);
             db.NovelProgress.Add(new NovelProgress
             {

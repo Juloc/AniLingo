@@ -136,9 +136,11 @@ public sealed class ReaderPersonalizationTests
         {
             await using var db = await CreateDatabaseAsync(path);
             var work = NewWork("bookmarks");
+            var volume = new NovelVolume { WorkId = work.Id, Number = 1, SourceKey = "web" };
             var chapter = new NovelChapter
             {
                 WorkId = work.Id,
+                VolumeId = volume.Id,
                 Number = 1,
                 SourceUrl = "https://example.invalid/bookmarks/1",
                 Title = "Chapter One",
@@ -146,6 +148,7 @@ public sealed class ReaderPersonalizationTests
                 SourceHash = "BOOKMARK-SOURCE"
             };
             db.Add(work);
+            db.Add(volume);
             db.Add(chapter);
             await db.SaveChangesAsync();
 
