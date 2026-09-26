@@ -13,7 +13,9 @@ public sealed record StoredAniListAccount(
     string? ViewerAvatarUrl,
     string AccessToken,
     DateTimeOffset ConnectedAt,
-    DateTimeOffset? TokenExpiresAt);
+    DateTimeOffset? TokenExpiresAt,
+    AniListSyncMode SyncMode = AniListSyncMode.Off,
+    DateTimeOffset? SyncEnabledAt = null);
 
 public sealed class AniListAccountStore
 {
@@ -116,24 +118,11 @@ public sealed class AniListAccountStore
                 account.ViewerAvatarUrl,
                 protector.Protect(account.AccessToken),
                 account.ConnectedAt,
-                account.TokenExpiresAt);
+                account.TokenExpiresAt,
+                account.SyncMode,
+                account.SyncEnabledAt);
 
-            var temporaryPath = $"{storePath}.tmp-{Guid.NewGuid():N}";
-            var json = JsonSerializer.Serialize(persisted, JsonOptions);
-
-            try
-            {
-                await File.WriteAllTextAsync(
-                    temporaryPath,
-                    json,
-                    cancellationToken);
-                SetPrivateFileMode(temporaryPath);
-                File.Move(temporaryPath, storePath, overwrite: true);
-            }
-            finally
-            {
-                TryDelete(temporaryPath);
-            }
+            await WriteAccountUnsafeAsync(storePath, persisted, cancellationToken);
         }
         catch (Exception exception) when (
             exception is IOException or UnauthorizedAccessException)
@@ -144,6 +133,67 @@ public sealed class AniListAccountStore
                 safeProfileId);
             throw new AniListAccountException(
                 "Your AniList connection could not be saved to persistent storage.",
+                exception);
+        }
+        finally
+        {
+            accountGate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Stores the profile's automatic AniList sync mode next to its connection.
+    /// Turning sync on records when it was enabled: automatic sync only
+    /// considers local progress made after that moment. Returns false when the
+    /// profile has no AniList connection.
+    /// </summary>
+    public async Task<bool> UpdateSyncModeAsync(
+        string profileId,
+        AniListSyncMode mode,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var safeProfileId = ValidateProfileId(profileId);
+
+        await accountGate.WaitAsync(cancellationToken);
+        try
+        {
+            MigrateLegacyOwnerAccountUnsafe(safeProfileId);
+            var storePath = GetAccountPath(safeProfileId);
+            if (!File.Exists(storePath))
+            {
+                return false;
+            }
+
+            var persisted = JsonSerializer.Deserialize<PersistedAniListAccount>(
+                await File.ReadAllTextAsync(storePath, cancellationToken),
+                JsonOptions);
+            if (persisted is null)
+            {
+                return false;
+            }
+
+            var enabledAt = mode == AniListSyncMode.Off
+                ? null
+                : persisted.SyncMode == AniListSyncMode.Off || persisted.SyncEnabledAt is null
+                    ? now
+                    : persisted.SyncEnabledAt;
+
+            await WriteAccountUnsafeAsync(
+                storePath,
+                persisted with { SyncMode = mode, SyncEnabledAt = enabledAt },
+                cancellationToken);
+            return true;
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or JsonException)
+        {
+            logger.LogError(
+                exception,
+                "Could not save the AniList sync mode for profile {ProfileId}.",
+                safeProfileId);
+            throw new AniListAccountException(
+                "The AniList sync setting could not be saved to persistent storage.",
                 exception);
         }
         finally
@@ -322,7 +372,9 @@ public sealed class AniListAccountStore
                 persisted.ViewerAvatarUrl,
                 protector.Unprotect(persisted.ProtectedAccessToken),
                 persisted.ConnectedAt,
-                persisted.TokenExpiresAt);
+                persisted.TokenExpiresAt,
+                persisted.SyncMode,
+                persisted.SyncEnabledAt);
         }
         catch (Exception exception) when (
             exception is JsonException or
@@ -377,10 +429,34 @@ public sealed class AniListAccountStore
         }
     }
 
+    private async Task WriteAccountUnsafeAsync(
+        string storePath,
+        PersistedAniListAccount persisted,
+        CancellationToken cancellationToken)
+    {
+        Directory.CreateDirectory(accountDirectory);
+        var temporaryPath = $"{storePath}.tmp-{Guid.NewGuid():N}";
+        var json = JsonSerializer.Serialize(persisted, JsonOptions);
+
+        try
+        {
+            await File.WriteAllTextAsync(
+                temporaryPath,
+                json,
+                cancellationToken);
+            SetPrivateFileMode(temporaryPath);
+            File.Move(temporaryPath, storePath, overwrite: true);
+        }
+        finally
+        {
+            TryDelete(temporaryPath);
+        }
+    }
+
     private string GetAccountPath(string profileId) =>
         Path.Combine(accountDirectory, $"{profileId}.json");
 
-    private static string ValidateProfileId(string profileId)
+    internal static string ValidateProfileId(string profileId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(profileId);
 
@@ -503,5 +579,7 @@ public sealed class AniListAccountStore
         string? ViewerAvatarUrl,
         string ProtectedAccessToken,
         DateTimeOffset ConnectedAt,
-        DateTimeOffset? TokenExpiresAt);
+        DateTimeOffset? TokenExpiresAt,
+        AniListSyncMode SyncMode = AniListSyncMode.Off,
+        DateTimeOffset? SyncEnabledAt = null);
 }

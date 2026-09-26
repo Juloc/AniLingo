@@ -1,5 +1,6 @@
 @page
 @model AniLingo.Web.Pages.Settings.AniListModel
+@using AniLingo.Web.Features.Tracking
 @{
     ViewData["Title"] = "AniList";
 }
@@ -61,8 +62,7 @@
             </div>
 
             <p class="muted">
-                AniLingo can now sync episode progress from an episode page. Writes are explicit and progress-only:
-                AniLingo never sends score, notes, repeat count, list status, custom lists or dates.
+                AniLingo writes progress only: it never sends score, notes, repeat count, list status, custom lists or dates.
             </p>
 
             <form method="post" asp-page-handler="Disconnect">
@@ -76,6 +76,90 @@
             </p>
         }
     </section>
+
+    @if (Model.Account.IsConnected)
+    {
+        <section class="panel">
+            <div class="panel-heading">
+                <h2>Automatic sync</h2>
+                <span class="status-pill @(Model.Sync.Mode == AniListSyncMode.Off ? "" : "status-ok")">
+                    @AniListModel.SyncModeLabel(Model.Sync.Mode)
+                </span>
+            </div>
+
+            <form method="post" asp-page-handler="SyncMode" class="form-stack">
+                @foreach (var mode in Enum.GetValues<AniListSyncMode>())
+                {
+                    <label>
+                        <span>
+                            <input type="radio"
+                                   name="syncMode"
+                                   value="@mode"
+                                   checked="@(Model.Sync.Mode == mode)" />
+                            <strong>@AniListModel.SyncModeLabel(mode)</strong>
+                        </span>
+                        <small class="muted">@AniListModel.SyncModeDescription(mode)</small>
+                    </label>
+                }
+                <button class="button button-primary" type="submit">Save</button>
+            </form>
+
+            @if (Model.Sync.EnabledAt is DateTimeOffset enabledAt)
+            {
+                <p class="muted">
+                    Applies to progress made since @enabledAt.ToLocalTime().ToString("g").
+                    Use Sync on a detail page for earlier progress.
+                </p>
+            }
+
+            @if (Model.Sync.PausedUntil is DateTimeOffset pausedUntil)
+            {
+                <p class="validation">
+                    AniList is rate limiting requests. Automatic sync resumes after @pausedUntil.ToLocalTime().ToString("t").
+                </p>
+            }
+        </section>
+
+        @if (Model.Sync.Mode != AniListSyncMode.Off || Model.Sync.Activity.Count > 0)
+        {
+            <section class="panel">
+                <div class="panel-heading">
+                    <h2>Recent sync activity</h2>
+                    <span>Only visible to you</span>
+                </div>
+
+                @if (Model.Sync.Activity.Count == 0)
+                {
+                    <p class="muted">Nothing synced automatically yet.</p>
+                }
+                else
+                {
+                    <div class="status-list">
+                        @foreach (var item in Model.Sync.Activity)
+                        {
+                            var (label, css) = AniListModel.SyncStatus(item.Status);
+                            <div>
+                                <span>
+                                    <a href="@AniListModel.LocalWorkUrl(item)">@item.Title</a>
+                                    <br />
+                                    <small>@item.Message</small>
+                                    <br />
+                                    <small>
+                                        @item.LastAttemptAt.ToLocalTime().ToString("g")
+                                        @if (item.NextAttemptAt is DateTimeOffset nextAttemptAt)
+                                        {
+                                            <text> · next try @nextAttemptAt.ToLocalTime().ToString("g")</text>
+                                        }
+                                    </small>
+                                </span>
+                                <strong><span class="status-pill @css">@label</span></strong>
+                            </div>
+                        }
+                    </div>
+                }
+            </section>
+        }
+    }
 
     @if (!Model.Account.IsConnected)
     {
@@ -162,6 +246,11 @@
             Progress can only move upward and only for an existing CURRENT (Watching) list entry with an unambiguous AniList match.
             Multi-season local groupings are blocked rather than guessed. The final episode is intentionally not synced because
             AniList may also change completion status/date. Every write gets a local pre-write snapshot with the local AniLingo profile ID under /data/integrations.
+        </p>
+        <p class="muted">
+            Automatic sync uses exactly the same checks as the Sync button. Works whose AniList mapping is ambiguous or waiting
+            for review are never written, AniList progress that is already ahead is left alone, and failed requests are retried
+            with increasing delays, honoring AniList's rate limit.
         </p>
         <p class="muted">
             AniLingo does not automatically create list entries, change list status, mark entries completed,

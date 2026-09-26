@@ -7,6 +7,7 @@ namespace AniLingo.Web.Pages.Settings;
 
 public sealed class AniListModel(
     AniListAccountService accountService,
+    AniListSyncService syncService,
     CurrentAccountContext currentAccount) : PageModel
 {
     private string ClientIdTempDataKey =>
@@ -22,9 +23,16 @@ public sealed class AniListModel(
 
     public string? AuthorizationUrl { get; private set; }
 
+    public AniListSyncOverview Sync { get; private set; } =
+        new(AniListSyncMode.Off, null, [], null);
+
     public async Task OnGetAsync(CancellationToken cancellationToken)
     {
         Account = await accountService.GetStatusAsync(cancellationToken);
+        if (Account.IsConnected)
+        {
+            Sync = await syncService.GetOverviewAsync(cancellationToken);
+        }
 
         if (TempData.TryGetValue(ClientIdTempDataKey, out var value) &&
             int.TryParse(value?.ToString(), out var clientId) &&
@@ -93,6 +101,60 @@ public sealed class AniListModel(
             return Page();
         }
     }
+
+    public async Task<IActionResult> OnPostSyncModeAsync(
+        AniListSyncMode syncMode,
+        CancellationToken cancellationToken)
+    {
+        if (!Enum.IsDefined(syncMode))
+        {
+            return BadRequest();
+        }
+
+        try
+        {
+            TempData["Status"] = await syncService.SetModeAsync(syncMode, cancellationToken)
+                ? $"Automatic AniList sync: {SyncModeLabel(syncMode)}."
+                : "Connect AniList before choosing automatic sync.";
+        }
+        catch (AniListAccountException exception)
+        {
+            TempData["Status"] = exception.Message;
+        }
+
+        return RedirectToPage();
+    }
+
+    public static string SyncModeLabel(AniListSyncMode mode) => mode switch
+    {
+        AniListSyncMode.OnCompletion => "On completion",
+        AniListSyncMode.Continuous => "Continuous",
+        _ => "Off"
+    };
+
+    public static string SyncModeDescription(AniListSyncMode mode) => mode switch
+    {
+        AniListSyncMode.OnCompletion =>
+            "Update AniList shortly after you finish an episode, chapter or volume.",
+        AniListSyncMode.Continuous =>
+            $"Update AniList with forward progress whenever you pause watching or reading for {AniListSyncReconciler.ContinuousDebounce.TotalMinutes:0} minutes.",
+        _ => "Only update AniList when you press Sync on a detail page."
+    };
+
+    public static (string Label, string CssClass) SyncStatus(AniListSyncItemStatus status) => status switch
+    {
+        AniListSyncItemStatus.Synced => ("Synced", "status-ok"),
+        AniListSyncItemStatus.UpToDate => ("Up to date", "status-ok"),
+        AniListSyncItemStatus.Blocked => ("Blocked", "status-warn"),
+        _ => ("Error", "status-error")
+    };
+
+    public static string LocalWorkUrl(AniListSyncItem item) => item.MediaKind switch
+    {
+        AniListSyncCheckpoints.Anime => $"/Library/Anime/{item.LocalId}",
+        AniListSyncCheckpoints.Manga => $"/Manga/Series/{item.LocalId}",
+        _ => $"/Novels/Work/{item.LocalId}"
+    };
 
     public async Task<IActionResult> OnPostDisconnectAsync(
         CancellationToken cancellationToken)
