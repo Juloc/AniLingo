@@ -735,12 +735,15 @@ public sealed class AniListSyncTests
                 MetadataTitle = title
             };
             Db.Add(work);
+            var volume = new NovelVolume { WorkId = work.Id, Number = 1, SourceKey = "web" };
+            Db.Add(volume);
 
             for (var number = 1; number <= chapters; number++)
             {
                 Db.Add(new NovelChapter
                 {
                     WorkId = work.Id,
+                    VolumeId = volume.Id,
                     Number = number,
                     SourceUrl = $"https://example.invalid/novel/{number}",
                     Title = $"Chapter {number}",
