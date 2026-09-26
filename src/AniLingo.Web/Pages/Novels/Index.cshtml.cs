@@ -8,7 +8,8 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 namespace AniLingo.Web.Pages.Novels;
 
 public sealed class IndexModel(
-    NovelService novels,
+    NovelCatalogQueries catalog,
+    NovelImportService imports,
     CurrentAccountContext account,
     AppDbContext db) : PageModel
 {
@@ -18,7 +19,7 @@ public sealed class IndexModel(
 
     public async Task OnGetAsync(CancellationToken cancellationToken)
     {
-        Works = await novels.GetWorksAsync(account.ProfileId, cancellationToken);
+        Works = await catalog.GetLibraryAsync(account.ProfileId, cancellationToken);
         ContinueReading = Works
             .Where(x => x.HasProgress)
             .OrderByDescending(x => x.LastReadAt)
@@ -51,7 +52,7 @@ public sealed class IndexModel(
 
         try
         {
-            var workId = await novels.ImportWorkAsync(sourceUrl, cancellationToken);
+            var workId = await imports.ImportWorkAsync(sourceUrl, cancellationToken);
             await store.MarkSucceededAsync(
                 operationId,
                 "Novel metadata and chapter index imported.",
