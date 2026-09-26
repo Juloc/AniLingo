@@ -95,6 +95,27 @@ public sealed class LocalFirstPageGetTests
     }
 
     [TestMethod]
+    public async Task MangaSeriesSearchFailureStillRendersLocalPageAsync()
+    {
+        await using var fixture = await LocalFirstFixture.CreateAsync();
+        var (seriesId, _) = await fixture.AddMangaAsync(
+            "Local Manga",
+            aniListId: null,
+            chapters: 1);
+        var page = fixture.Attach(fixture.MangaSeriesPage());
+
+        // An explicit search submit may contact AniList, but its failure must
+        // not turn the local series page into an HTTP 500.
+        var result = await page.OnGetAsync(seriesId, "Local Manga", CancellationToken.None);
+
+        Assert.IsInstanceOfType<PageResult>(result);
+        Assert.AreEqual(1, fixture.Guard.Requests.Count);
+        Assert.AreEqual(0, page.SearchResults.Count);
+        Assert.IsNotNull(page.SearchError);
+        Assert.IsNotNull(page.ExternalProgress);
+    }
+
+    [TestMethod]
     public async Task MangaLibraryGetRendersWithoutExternalCallsAsync()
     {
         await using var fixture = await LocalFirstFixture.CreateAsync();
