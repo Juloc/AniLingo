@@ -95,6 +95,7 @@
                 <p>@Model.Episodes.Count episodes discovered.</p>
             }
             @if (Model.IsOwner) { <a class="button" href="/Library/Rename/@Model.AnimeId">Rename files</a> }
+            @if (Model.IsOwner) { <a class="button" href="/Library/AnimeRepair/@Model.AnimeId">Repair</a> }
         </div>
     </div>
 </section>

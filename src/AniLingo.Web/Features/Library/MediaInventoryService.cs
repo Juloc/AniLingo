@@ -25,6 +25,10 @@ public sealed class MediaInventoryService(
 
     public const int DiagnosticMaxLength = 500;
 
+    // Never equal to CurrentProbeVersion (or any version AniLingo has ever shipped), so an
+    // invalidated analysis is always evaluated as stale.
+    private const int InvalidatedProbeVersion = -1;
+
     // A deferred (Pending) analysis is not retried sooner, so a missing or hanging ffprobe is not
     // re-run by every consumer of the same file within one scan or page load.
     public static readonly TimeSpan PendingRetryDelay = TimeSpan.FromMinutes(5);
@@ -93,6 +97,28 @@ public sealed class MediaInventoryService(
         Guid libraryRootId,
         CancellationToken cancellationToken) =>
         ReconcileAsync(libraryRootId, null, cancellationToken);
+
+    // Forces the given media files to be re-probed on their next EnsureAnalyzedAsync/ReconcileAsync
+    // call: an invalidated ProbeVersion makes Evaluate() see them as stale, so the existing
+    // analysis path re-runs ffprobe without a second probe path. Used by the per-anime
+    // "re-analyse media" repair action, which never invents its own probing.
+    public async Task<int> InvalidateAsync(
+        IReadOnlyCollection<Guid> mediaFileIds,
+        CancellationToken cancellationToken)
+    {
+        if (mediaFileIds.Count == 0)
+        {
+            return 0;
+        }
+
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        return await db.MediaAnalyses
+            .Where(x => mediaFileIds.Contains(x.MediaFileId))
+            .ExecuteUpdateAsync(
+                update => update.SetProperty(x => x.ProbeVersion, InvalidatedProbeVersion),
+                cancellationToken);
+    }
 
     // A partial library scan passes the full-path prefix of its folder (ending in a directory
     // separator) so only the media it reconciled are brought up to date.
