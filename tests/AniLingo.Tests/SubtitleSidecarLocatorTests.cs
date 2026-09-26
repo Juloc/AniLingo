@@ -18,24 +18,24 @@ public sealed class SubtitleSidecarLocatorTests
         var signs = Classify("Frieren - S01E01.jpn.signs.ssa");
 
         Assert.IsNotNull(forced);
-        Assert.IsTrue(forced.IsJapaneseTagged);
+        Assert.IsTrue(forced.IsTargetLanguageTagged);
         Assert.IsTrue(forced.IsForced);
         Assert.AreEqual("ass", forced.Format);
 
         Assert.IsNotNull(standard);
-        Assert.IsTrue(standard.IsJapaneseTagged);
+        Assert.IsTrue(standard.IsTargetLanguageTagged);
         Assert.IsTrue(standard.IsDefault);
         Assert.IsFalse(standard.IsForced);
 
         Assert.IsNotNull(bracketed);
-        Assert.IsTrue(bracketed.IsJapaneseTagged);
+        Assert.IsTrue(bracketed.IsTargetLanguageTagged);
 
         Assert.IsNotNull(sdh);
-        Assert.IsTrue(sdh.IsJapaneseTagged);
+        Assert.IsTrue(sdh.IsTargetLanguageTagged);
         Assert.IsTrue(sdh.IsHearingImpaired);
 
         Assert.IsNotNull(regional);
-        Assert.IsTrue(regional.IsJapaneseTagged);
+        Assert.IsTrue(regional.IsTargetLanguageTagged);
         Assert.AreEqual("vtt", regional.Format);
 
         Assert.IsNotNull(signs);
@@ -50,9 +50,9 @@ public sealed class SubtitleSidecarLocatorTests
         var releaseGroup = Classify("Frieren - S01E01.SubsPlease.ass");
 
         Assert.IsNotNull(untagged);
-        Assert.IsFalse(untagged.IsJapaneseTagged);
+        Assert.IsFalse(untagged.IsTargetLanguageTagged);
         Assert.IsNotNull(releaseGroup);
-        Assert.IsFalse(releaseGroup.IsJapaneseTagged);
+        Assert.IsFalse(releaseGroup.IsTargetLanguageTagged);
     }
 
     [TestMethod]
@@ -74,18 +74,21 @@ public sealed class SubtitleSidecarLocatorTests
         var japanese = SubtitleSidecarLocator.Classify(
             Path.Combine("Subs", BaseName, "3_Japanese.srt"),
             BaseName,
-            SubtitleSidecarLocation.EpisodeSidecarDirectory);
+            SubtitleSidecarLocation.EpisodeSidecarDirectory,
+            "ja");
         var english = SubtitleSidecarLocator.Classify(
             Path.Combine("Subs", BaseName, "2_English.srt"),
             BaseName,
-            SubtitleSidecarLocation.EpisodeSidecarDirectory);
+            SubtitleSidecarLocation.EpisodeSidecarDirectory,
+            "ja");
         var unrelatedInSharedDirectory = SubtitleSidecarLocator.Classify(
             Path.Combine("Subs", "3_Japanese.srt"),
             BaseName,
-            SubtitleSidecarLocation.SidecarDirectory);
+            SubtitleSidecarLocation.SidecarDirectory,
+            "ja");
 
         Assert.IsNotNull(japanese);
-        Assert.IsTrue(japanese.IsJapaneseTagged);
+        Assert.IsTrue(japanese.IsTargetLanguageTagged);
         Assert.IsNull(english);
         Assert.IsNull(unrelatedInSharedDirectory);
     }
@@ -140,9 +143,10 @@ public sealed class SubtitleSidecarLocatorTests
             Touch(Path.Combine(season, "Subtitles", "Nested"), "Frieren - S01E01.ja.srt");
             Touch(Path.Combine(season, "Extras"), "Frieren - S01E01.ja.srt");
 
-            var found = SubtitleSidecarLocator.FindJapaneseCandidates(
+            var found = SubtitleSidecarLocator.FindCandidates(
                     [mediaPath],
-                    new SubtitleSidecarDirectoryCache())
+                    new SubtitleSidecarDirectoryCache(),
+                    "ja")
                 .Select(x => Path.GetRelativePath(season, x.Path))
                 .ToArray();
 
@@ -188,7 +192,7 @@ public sealed class SubtitleSidecarLocatorTests
 
             var listings = new SubtitleSidecarDirectoryCache();
             var found = mediaPaths
-                .Select(mediaPath => SubtitleSidecarLocator.FindJapaneseCandidates([mediaPath], listings))
+                .Select(mediaPath => SubtitleSidecarLocator.FindCandidates([mediaPath], listings, "ja"))
                 .ToArray();
 
             // Season files + dirs, Subs files + dirs and the single per-episode folder.
@@ -213,9 +217,9 @@ public sealed class SubtitleSidecarLocatorTests
         var mediaPath = Path.Combine(missing, $"{BaseName}.mkv");
 
         Assert.ThrowsExactly<DirectoryNotFoundException>(
-            () => SubtitleSidecarLocator.FindJapaneseCandidates([mediaPath], listings));
+            () => SubtitleSidecarLocator.FindCandidates([mediaPath], listings, "ja"));
         Assert.ThrowsExactly<DirectoryNotFoundException>(
-            () => SubtitleSidecarLocator.FindJapaneseCandidates([mediaPath], listings));
+            () => SubtitleSidecarLocator.FindCandidates([mediaPath], listings, "ja"));
         Assert.AreEqual(0, listings.Listings);
     }
 
@@ -223,7 +227,8 @@ public sealed class SubtitleSidecarLocatorTests
         SubtitleSidecarLocator.Classify(
             Path.Combine(Path.GetTempPath(), fileName),
             BaseName,
-            SubtitleSidecarLocation.EpisodeDirectory);
+            SubtitleSidecarLocation.EpisodeDirectory,
+            "ja");
 
     private static SubtitleSidecarCandidate Candidate(
         string fileName,

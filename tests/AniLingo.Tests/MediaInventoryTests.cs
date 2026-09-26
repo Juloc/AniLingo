@@ -338,7 +338,7 @@ public sealed class MediaInventoryTests
             fixture.Inventory,
             NullLogger<EmbeddedSubtitleExtractor>.Instance);
 
-        Assert.IsNull(await extractor.ExtractPreferredJapaneseAsync(media.Path, CancellationToken.None));
+        Assert.IsNull(await extractor.ExtractPreferredTextAsync(media.Path, "ja", CancellationToken.None));
         Assert.IsNull(await extractor.ExtractTextStreamAsync(media.Path, 1, CancellationToken.None));
         Assert.AreEqual(1, fixture.Runner.Calls.Count, "Both calls share one inventory analysis.");
     }

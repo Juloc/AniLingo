@@ -1,5 +1,7 @@
+using System.Globalization;
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
+using AniLingo.Web.Features.Learning.Courses;
 using AniLingo.Web.Features.Localization;
 using AniLingo.Web.Features.Subtitles;
 using Microsoft.AspNetCore.Authorization;
@@ -17,6 +19,9 @@ public sealed class SubtitlesModel(
 
     public LearningTextCoverageSnapshot Coverage { get; private set; } =
         new(0, 0, 0, 0, 0, 0);
+
+    public string ContentLanguageName { get; private set; } =
+        LanguageName(LearningContentLanguageResolver.DefaultLanguage);
 
     public JimakuConnectionStatus Jimaku { get; private set; } =
         new(false);
@@ -116,10 +121,25 @@ public sealed class SubtitlesModel(
     private async Task LoadAsync(CancellationToken cancellationToken)
     {
         Coverage = await subtitleImportService.GetCoverageAsync(cancellationToken);
+        ContentLanguageName = LanguageName(
+            await new LearningContentLanguageResolver(db)
+                .ResolveTargetLanguageAsync(cancellationToken));
         Jimaku = await subtitleImportService.GetJimakuConnectionStatusAsync(
             cancellationToken);
         MissingEpisodes = await subtitleImportService.GetMissingEpisodesAsync(
             200,
             cancellationToken);
+    }
+
+    private static string LanguageName(string languageTag)
+    {
+        try
+        {
+            return CultureInfo.GetCultureInfo(languageTag).NativeName;
+        }
+        catch (CultureNotFoundException)
+        {
+            return languageTag;
+        }
     }
 }

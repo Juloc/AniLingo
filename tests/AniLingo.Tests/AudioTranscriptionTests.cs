@@ -20,8 +20,9 @@ public sealed class AudioTranscriptionTests
 
         Assert.AreEqual(
             2,
-            EmbeddedSubtitleExtractor.SelectPreferredJapaneseAudioStreamIndex(
-                MediaProbeParser.Parse(json).AudioStreams));
+            EmbeddedSubtitleExtractor.SelectPreferredAudioStreamIndex(
+                MediaProbeParser.Parse(json).AudioStreams,
+                "ja"));
     }
 
     [TestMethod]
@@ -38,8 +39,9 @@ public sealed class AudioTranscriptionTests
 
         Assert.AreEqual(
             3,
-            EmbeddedSubtitleExtractor.SelectPreferredJapaneseAudioStreamIndex(
-                MediaProbeParser.Parse(json).AudioStreams));
+            EmbeddedSubtitleExtractor.SelectPreferredAudioStreamIndex(
+                MediaProbeParser.Parse(json).AudioStreams,
+                "ja"));
     }
 
     [TestMethod]

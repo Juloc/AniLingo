@@ -44,8 +44,9 @@ public sealed class EmbeddedSubtitleExtractorTests
         }
         """;
 
-        var stream = EmbeddedSubtitleExtractor.SelectPreferredJapaneseTextStream(
-            MediaProbeParser.Parse(probeJson).SubtitleStreams);
+        var stream = EmbeddedSubtitleExtractor.SelectPreferredTextStream(
+            MediaProbeParser.Parse(probeJson).SubtitleStreams,
+            "ja");
 
         Assert.IsNotNull(stream);
         Assert.AreEqual(4, stream.Index);
@@ -76,8 +77,9 @@ public sealed class EmbeddedSubtitleExtractorTests
         }
         """;
 
-        var stream = EmbeddedSubtitleExtractor.SelectPreferredJapaneseTextStream(
-            MediaProbeParser.Parse(probeJson).SubtitleStreams);
+        var stream = EmbeddedSubtitleExtractor.SelectPreferredTextStream(
+            MediaProbeParser.Parse(probeJson).SubtitleStreams,
+            "ja");
 
         Assert.IsNotNull(stream);
         Assert.AreEqual(7, stream.Index);

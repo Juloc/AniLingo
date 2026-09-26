@@ -76,8 +76,15 @@ public static class LearningTextFallbackPolicy
         LearningTextFallbackStage.Whisper
     ];
 
-    public static IReadOnlyList<LearningTextFallbackStage> Build(bool jimakuConfigured) =>
-        jimakuConfigured ? WithJimaku : WithoutJimaku;
+    /// <param name="jimakuConfigured">An API key is saved for Jimaku.</param>
+    /// <param name="jimakuEligibleForLanguage">
+    /// The resolved content language can use Jimaku. Jimaku only indexes Japanese
+    /// fansub releases, so this is false whenever the target language is not Japanese.
+    /// </param>
+    public static IReadOnlyList<LearningTextFallbackStage> Build(
+        bool jimakuConfigured,
+        bool jimakuEligibleForLanguage) =>
+        jimakuConfigured && jimakuEligibleForLanguage ? WithJimaku : WithoutJimaku;
 }
 
 public static class JimakuSubtitleMatcher

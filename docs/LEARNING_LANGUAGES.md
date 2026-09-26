@@ -99,3 +99,36 @@ Mapping:
 Data of the pre-account `default` profile is moved to the owner once the owner account exists; owner data wins where both profiles hold the same course pair and card.
 
 After the conversion there is no runtime read or write path to the legacy tables.
+
+## Subtitle acquisition follows the content language
+
+Issue #231's remaining part (noted in PR #354) was that subtitle *acquisition* - `SubtitleImportService`, `SubtitleSidecarLocator`, embedded-track selection and Jimaku - stayed hardcoded to Japanese even though Learning courses already support arbitrary BCP-47 pairs. It now resolves and follows the same content language everywhere, defaulting to Japanese only when nothing is configured.
+
+### One resolver, reused everywhere
+
+`LearningContentLanguageResolver` (`Features/Learning/Courses/LearningContentLanguageResolver.cs`) is the single place that answers "what language is this content in". Media files, episodes and subtitle tracks are shared across every profile (they are not partitioned per profile), so acquisition needs one answer even when profiles disagree:
+
+1. Consider every enabled, *primary* `LearningCourse` across every profile - a primary course is the one its profile designated to receive catalog words from content in that source language, so its `SourceLanguage` is the language that profile is acquiring subtitles to learn from.
+2. Group by `SourceLanguage`; the language used by the most such courses wins.
+3. Ties break on the language whose oldest matching course was created first, then on ordinal string comparison of the tag, so the result is fully deterministic.
+4. With no enabled primary course anywhere, the canonical default is Japanese.
+
+`SubtitleImportService` resolves the target language once per operation (import, queue, coverage, missing-episode listing) and threads it through sidecar lookup, embedded-track selection and the track's stored `Language`; nothing downstream re-implements its own "which language" check.
+
+### BCP-47 alias table
+
+`SubtitleLanguageAliases` (`Features/Subtitles/SubtitleLanguageAliases.cs`) maps a BCP-47 tag to the extra tokens that name it in file names and embedded-track language tags - ISO 639-1/639-2 codes and common English/native names (`ja` → `jp`/`jpn`/`japanese`/`日本語`, `de` → `deu`/`ger`/`german`/`deutsch`, `id` → `ind`/`indonesian`, `en` → `eng`/`english`, `ro` → `ron`/`rum`/`romanian`, plus entries for the other languages the sidecar locator already recognized). Extend it by adding an entry; a language without one still matches its bare tag alone. `NameTokensFor` exposes the subset safe to look for as a free-form substring of a stream title (short ISO codes are excluded - they collide with ordinary words; full names and non-ASCII scripts are kept regardless of length).
+
+`SubtitleSidecarLocator.Classify`/`FindCandidates` and `EmbeddedSubtitleExtractor.MatchesLanguage`/`SelectPreferredTextStream`/`ExtractPreferredTextAsync` all take a `targetLanguageTag` and call into this table instead of keeping their own Japanese/English/... token lists or a parallel Japanese-named overload; every call site, including the Japanese path, passes `"ja"` explicitly.
+
+### Untagged sidecar files
+
+Japanese keeps its long-standing kana heuristic (`SubtitleImportService.ContainsJapaneseDialogue`): an untagged file is trusted when at least a third of its cues contain kana, alongside explicitly `ja`-tagged files. No equivalent content heuristic exists for other languages, so for every other target language an untagged file is only offered as a candidate when no file tagged for that target language was found for the same episode, and never when the file is explicitly tagged for a *different* known language (`SubtitleLanguageAliases.IsTaggedAsOtherLanguage`) - this never guesses a language by script.
+
+### Embedded tracks
+
+`EmbeddedSubtitleExtractor.SelectPreferredTextStream`/`MatchesLanguage` prefer a track whose language tag (or, absent one, title) matches the target language over an untagged/other-language one, then a full dialogue track over forced/signs-only, the default track, and finally stream order - the same preference Japanese always used, generalized to any target language via the alias table. `SelectPreferredAudioStreamIndex` (used only by the Whisper fallback) is parameterized the same way, but `TranscribeJapaneseAudioAsync` always calls it with `"ja"`: the bundled Whisper model and its `-l ja` invocation are not generalized, so that stage is skipped (see below) once the resolved content language is not Japanese, rather than mis-transcribing other-language audio as Japanese.
+
+### Jimaku and Whisper stay Japanese-only, by design
+
+Jimaku indexes Japanese fansub releases; it is not generalized to other languages. `LearningTextFallbackPolicy.Build(jimakuConfigured, jimakuEligibleForLanguage)` excludes the Jimaku stage whenever the resolved content language is not Japanese, even if an API key is configured, and `SubtitleImportService.PrepareLearningTextAsync` skips the Whisper stage the same way and logs the reason once per attempt. Local subtitles and embedded tracks are unaffected and are tried for every language.

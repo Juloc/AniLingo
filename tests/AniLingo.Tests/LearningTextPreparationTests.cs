@@ -16,7 +16,9 @@ public sealed class LearningTextPreparationTests
                 LearningTextFallbackStage.Jimaku,
                 LearningTextFallbackStage.Whisper
             },
-            LearningTextFallbackPolicy.Build(jimakuConfigured: true).ToArray());
+            LearningTextFallbackPolicy.Build(
+                jimakuConfigured: true,
+                jimakuEligibleForLanguage: true).ToArray());
     }
 
     [TestMethod]
@@ -29,7 +31,24 @@ public sealed class LearningTextPreparationTests
                 LearningTextFallbackStage.EmbeddedSubtitle,
                 LearningTextFallbackStage.Whisper
             },
-            LearningTextFallbackPolicy.Build(jimakuConfigured: false).ToArray());
+            LearningTextFallbackPolicy.Build(
+                jimakuConfigured: false,
+                jimakuEligibleForLanguage: true).ToArray());
+    }
+
+    [TestMethod]
+    public void FallbackPolicySkipsJimakuWhenConfiguredButNotEligibleForTheLanguage()
+    {
+        CollectionAssert.AreEqual(
+            new[]
+            {
+                LearningTextFallbackStage.LocalSubtitle,
+                LearningTextFallbackStage.EmbeddedSubtitle,
+                LearningTextFallbackStage.Whisper
+            },
+            LearningTextFallbackPolicy.Build(
+                jimakuConfigured: true,
+                jimakuEligibleForLanguage: false).ToArray());
     }
 
     [TestMethod]
