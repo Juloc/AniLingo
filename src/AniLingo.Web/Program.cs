@@ -225,6 +225,7 @@ builder.Services.AddHttpClient<AniListMetadataProvider>(client =>
 builder.Services.AddScoped<IAnimeMetadataProvider>(
     services => services.GetRequiredService<AniListMetadataProvider>());
 builder.Services.AddScoped<AnimeMetadataService>();
+builder.Services.AddScoped<AnimeRepairService>();
 
 builder.Services.AddHttpClient<NcodeNovelSourceProvider>(client =>
 {
