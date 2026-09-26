@@ -1,4 +1,6 @@
+using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
+using AniLingo.Web.Features.Localization;
 using AniLingo.Web.Features.Tracking;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -8,10 +10,14 @@ namespace AniLingo.Web.Pages.Settings;
 public sealed class AniListModel(
     AniListAccountService accountService,
     AniListSyncService syncService,
-    CurrentAccountContext currentAccount) : PageModel
+    CurrentAccountContext currentAccount,
+    AppDbContext db) : PageModel
 {
     private string ClientIdTempDataKey =>
         $"AniListClientId:{currentAccount.ProfileId}";
+
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
+
     [BindProperty]
     public int ClientId { get; set; }
 
@@ -28,6 +34,8 @@ public sealed class AniListModel(
 
     public async Task OnGetAsync(CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         Account = await accountService.GetStatusAsync(cancellationToken);
         if (Account.IsConnected)
         {
@@ -44,13 +52,15 @@ public sealed class AniListModel(
         }
     }
 
-    public IActionResult OnPostPrepare()
+    public async Task<IActionResult> OnPostPrepareAsync(CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         if (ClientId <= 0)
         {
             ModelState.AddModelError(
                 nameof(ClientId),
-                "Enter the client ID from your AniList developer application.");
+                Ui["settings.anilist.validation.clientIdRequired"]);
             return Page();
         }
 
@@ -61,14 +71,20 @@ public sealed class AniListModel(
     public async Task<IActionResult> OnPostConnectAsync(
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         if (ClientId <= 0)
         {
-            ModelState.AddModelError(nameof(ClientId), "Enter a valid AniList client ID.");
+            ModelState.AddModelError(
+                nameof(ClientId),
+                Ui["settings.anilist.validation.clientIdInvalid"]);
         }
 
         if (string.IsNullOrWhiteSpace(AccessToken))
         {
-            ModelState.AddModelError(nameof(AccessToken), "Paste the AniList access token.");
+            ModelState.AddModelError(
+                nameof(AccessToken),
+                Ui["settings.anilist.validation.accessTokenRequired"]);
         }
 
         if (!ModelState.IsValid)
@@ -90,7 +106,7 @@ public sealed class AniListModel(
                 cancellationToken);
 
             TempData.Remove(ClientIdTempDataKey);
-            TempData["Status"] = "AniList connected.";
+            TempData["Status"] = Ui["settings.anilist.status.connected"];
             return RedirectToPage();
         }
         catch (AniListAccountException exception)
@@ -106,6 +122,8 @@ public sealed class AniListModel(
         AniListSyncMode syncMode,
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         if (!Enum.IsDefined(syncMode))
         {
             return BadRequest();
@@ -114,8 +132,8 @@ public sealed class AniListModel(
         try
         {
             TempData["Status"] = await syncService.SetModeAsync(syncMode, cancellationToken)
-                ? $"Automatic AniList sync: {SyncModeLabel(syncMode)}."
-                : "Connect AniList before choosing automatic sync.";
+                ? Ui.Format("settings.anilist.status.syncModeSet", ("mode", SyncModeLabel(syncMode)))
+                : Ui["settings.anilist.status.connectFirst"];
         }
         catch (AniListAccountException exception)
         {
@@ -125,28 +143,30 @@ public sealed class AniListModel(
         return RedirectToPage();
     }
 
-    public static string SyncModeLabel(AniListSyncMode mode) => mode switch
+    public string SyncModeLabel(AniListSyncMode mode) => mode switch
     {
-        AniListSyncMode.OnCompletion => "On completion",
-        AniListSyncMode.Continuous => "Continuous",
-        _ => "Off"
+        AniListSyncMode.OnCompletion => Ui["settings.anilist.syncMode.onCompletion"],
+        AniListSyncMode.Continuous => Ui["settings.anilist.syncMode.continuous"],
+        _ => Ui["settings.anilist.syncMode.off"]
     };
 
-    public static string SyncModeDescription(AniListSyncMode mode) => mode switch
+    public string SyncModeDescription(AniListSyncMode mode) => mode switch
     {
         AniListSyncMode.OnCompletion =>
-            "Update AniList shortly after you finish an episode, chapter or volume.",
+            Ui["settings.anilist.syncMode.onCompletion.description"],
         AniListSyncMode.Continuous =>
-            $"Update AniList with forward progress whenever you pause watching or reading for {AniListSyncReconciler.ContinuousDebounce.TotalMinutes:0} minutes.",
-        _ => "Only update AniList when you press Sync on a detail page."
+            Ui.Format(
+                "settings.anilist.syncMode.continuous.description",
+                ("minutes", $"{AniListSyncReconciler.ContinuousDebounce.TotalMinutes:0}")),
+        _ => Ui["settings.anilist.syncMode.off.description"]
     };
 
-    public static (string Label, string CssClass) SyncStatus(AniListSyncItemStatus status) => status switch
+    public (string Label, string CssClass) SyncStatus(AniListSyncItemStatus status) => status switch
     {
-        AniListSyncItemStatus.Synced => ("Synced", "status-ok"),
-        AniListSyncItemStatus.UpToDate => ("Up to date", "status-ok"),
-        AniListSyncItemStatus.Blocked => ("Blocked", "status-warn"),
-        _ => ("Error", "status-error")
+        AniListSyncItemStatus.Synced => (Ui["settings.anilist.syncStatus.synced"], "status-ok"),
+        AniListSyncItemStatus.UpToDate => (Ui["settings.anilist.syncStatus.upToDate"], "status-ok"),
+        AniListSyncItemStatus.Blocked => (Ui["settings.anilist.syncStatus.blocked"], "status-warn"),
+        _ => (Ui["settings.anilist.syncStatus.error"], "status-error")
     };
 
     public static string LocalWorkUrl(AniListSyncItem item) => item.MediaKind switch
@@ -159,9 +179,11 @@ public sealed class AniListModel(
     public async Task<IActionResult> OnPostDisconnectAsync(
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         await accountService.DisconnectAsync(cancellationToken);
         TempData.Remove(ClientIdTempDataKey);
-        TempData["Status"] = "AniList disconnected.";
+        TempData["Status"] = Ui["settings.anilist.status.disconnected"];
         return RedirectToPage();
     }
 }

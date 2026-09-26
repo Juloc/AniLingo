@@ -4,6 +4,7 @@ using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Learning.Courses;
+using AniLingo.Web.Features.Localization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
@@ -16,6 +17,7 @@ public sealed class LearningCoursesModel(
 {
     private LearningCourseStore Store { get; } = new(db);
 
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public IReadOnlyList<LearningCourseSnapshot> Courses { get; private set; } = [];
     public IReadOnlyDictionary<Guid, int> WordCounts { get; private set; } =
         new Dictionary<Guid, int>();
@@ -30,6 +32,8 @@ public sealed class LearningCoursesModel(
 
     public async Task<IActionResult> OnPostCreateAsync(CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         if (ModelState.IsValid)
         {
             try
@@ -47,7 +51,7 @@ public sealed class LearningCoursesModel(
                         NewCourse.SentencePractice),
                     cancellationToken);
 
-                TempData["Status"] = $"{course.Name} created.";
+                TempData["Status"] = Ui.Format("settings.learningCourses.created", ("name", course.Name));
                 return RedirectToPage();
             }
             catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
@@ -71,6 +75,8 @@ public sealed class LearningCoursesModel(
         bool sentencePractice,
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         try
         {
             await Store.UpdateAsync(
@@ -96,7 +102,7 @@ public sealed class LearningCoursesModel(
             return RedirectToPage();
         }
 
-        TempData["Status"] = "Course saved.";
+        TempData["Status"] = Ui["settings.learningCourses.saved"];
         return RedirectToPage();
     }
 
@@ -104,6 +110,8 @@ public sealed class LearningCoursesModel(
         Guid courseId,
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         try
         {
             await Store.SetPrimaryAsync(currentAccount.ProfileId, courseId, cancellationToken);
@@ -113,7 +121,7 @@ public sealed class LearningCoursesModel(
             return NotFound();
         }
 
-        TempData["Status"] = "Primary course changed.";
+        TempData["Status"] = Ui["settings.learningCourses.primaryChanged"];
         return RedirectToPage();
     }
 
@@ -131,6 +139,8 @@ public sealed class LearningCoursesModel(
 
     private async Task LoadAsync(CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         Courses = await Store.ListAsync(currentAccount.ProfileId, cancellationToken);
         WordCounts = await LearningQueries.WordCards(db, currentAccount.ProfileId)
             .GroupBy(x => x.CourseId)

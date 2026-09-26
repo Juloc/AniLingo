@@ -1,6 +1,7 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Acquisition.Ownership;
 using AniLingo.Web.Features.Auth;
+using AniLingo.Web.Features.Localization;
 using AniLingo.Web.Features.Sonarr;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -34,6 +35,7 @@ public sealed class SonarrMigrationModel(
     [BindProperty(SupportsGet = true)]
     public bool Refresh { get; set; }
 
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public SonarrObservedState Sonarr { get; private set; } = SonarrObservedState.NotConfigured;
     public IReadOnlyList<SonarrMigrationRow> Rows { get; private set; } = [];
     public IReadOnlyList<OwnershipConflict> Conflicts { get; private set; } = [];
@@ -43,6 +45,8 @@ public sealed class SonarrMigrationModel(
 
     public async Task OnGetAsync(CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         var snapshot = await observationService.GetSnapshotAsync(Refresh, cancellationToken);
         Sonarr = snapshot.Sonarr;
         Conflicts = SonarrParallelSafety.DetectConflicts(snapshot.State, snapshot.Sonarr);
@@ -105,11 +109,13 @@ public sealed class SonarrMigrationModel(
         bool applySonarrMonitoring,
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         if (string.IsNullOrWhiteSpace(animeKey) ||
             !Enum.IsDefined(migrationAction) ||
             !await db.Anime.AsNoTracking().AnyAsync(anime => anime.Key == animeKey, cancellationToken))
         {
-            TempData["SonarrMigrationError"] = "Unknown anime or migration action.";
+            TempData["SonarrMigrationError"] = Ui["settings.sonarrMigration.unknownAction"];
             return RedirectToPage(new { Q });
         }
 
@@ -126,7 +132,13 @@ public sealed class SonarrMigrationModel(
         return RedirectToPage(new { Q });
     }
 
-    public static string DescribeMode(AnimeManagementMode mode) => SonarrMigration.Describe(mode);
+    public string DescribeMode(AnimeManagementMode mode) => mode switch
+    {
+        AnimeManagementMode.ReadOnlyCoexistence => Ui["settings.sonarrMigration.mode.readOnlyCoexistence"],
+        AnimeManagementMode.ParallelAcquisition => Ui["settings.sonarrMigration.mode.parallelAcquisition"],
+        AnimeManagementMode.AniLingoManaged => Ui["settings.sonarrMigration.mode.aniLingoManaged"],
+        _ => mode.ToString()
+    };
 
     private static async Task<IReadOnlyDictionary<Guid, SonarrSeriesItem>> SuggestSeriesAsync(
         IReadOnlyList<SonarrLocalAnime> localAnime,

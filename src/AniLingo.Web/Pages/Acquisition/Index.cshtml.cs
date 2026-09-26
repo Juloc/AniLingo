@@ -6,6 +6,7 @@ using AniLingo.Web.Features.Acquisition.Monitoring;
 using AniLingo.Web.Features.Acquisition.Pipeline;
 using AniLingo.Web.Features.Acquisition.Prowlarr;
 using AniLingo.Web.Features.Auth;
+using AniLingo.Web.Features.Localization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -27,6 +28,8 @@ public sealed class IndexModel(
     AcquisitionHistoryService history,
     AppDbContext db) : PageModel
 {
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
+
     [BindProperty(SupportsGet = true)]
     public string? Search { get; set; }
 
@@ -52,6 +55,8 @@ public sealed class IndexModel(
 
     public async Task OnGetAsync(CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         ProwlarrConfigured = await pipeline.IsProwlarrConfiguredAsync(cancellationToken);
         SabnzbdConfigured = (await downloadClients.LoadAllAsync(cancellationToken))
             .Any(entry => entry.Enabled && entry.Type == DownloadClientType.Sabnzbd);
@@ -76,7 +81,7 @@ public sealed class IndexModel(
                 cancellationToken);
             if (SearchResult is null)
             {
-                ConfigurationError = "The anime to search no longer exists.";
+                ConfigurationError = Ui["acquisition.error.animeNoLongerExists"];
             }
         }
     }
@@ -86,34 +91,44 @@ public sealed class IndexModel(
         int intervalMinutes,
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         if (intervalMinutes is < AnimeMonitoringSchedule.MinimumIntervalMinutes or > AnimeMonitoringSchedule.MaximumIntervalMinutes)
         {
-            TempData["AcquisitionError"] =
-                $"The interval must be between {AnimeMonitoringSchedule.MinimumIntervalMinutes} and {AnimeMonitoringSchedule.MaximumIntervalMinutes} minutes.";
+            TempData["AcquisitionError"] = Ui.Format(
+                "acquisition.error.intervalRange",
+                ("min", AnimeMonitoringSchedule.MinimumIntervalMinutes),
+                ("max", AnimeMonitoringSchedule.MaximumIntervalMinutes));
             return RedirectToPage();
         }
 
         await pipeline.UpdateScheduleAsync(enabled, intervalMinutes, cancellationToken);
         TempData["AcquisitionNotice"] = enabled
-            ? $"Automatic search runs every {intervalMinutes} minutes."
-            : "Automatic search is off; searches run only when requested.";
+            ? Ui.Format("acquisition.status.scheduleOn", ("minutes", intervalMinutes))
+            : Ui["acquisition.status.scheduleOff"];
         return RedirectToPage();
     }
 
-    public IActionResult OnPostRunNow()
+    public async Task<IActionResult> OnPostRunNowAsync(CancellationToken cancellationToken)
     {
-        SetQueued(scheduler.RequestRun(), "Search for all monitored anime queued. Decisions appear below as they are made.");
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+        SetQueued(scheduler.RequestRun(), Ui["acquisition.status.runAllQueued"]);
         return RedirectToPage();
     }
 
-    public IActionResult OnPostSearchAnime(string animeKey, string? returnUrl)
+    public async Task<IActionResult> OnPostSearchAnimeAsync(
+        string animeKey,
+        string? returnUrl,
+        CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         if (string.IsNullOrWhiteSpace(animeKey))
         {
             return BadRequest();
         }
 
-        SetQueued(scheduler.RequestRun(animeKey.Trim()), "Search queued. Decisions appear on the acquisition overview.");
+        SetQueued(scheduler.RequestRun(animeKey.Trim()), Ui["acquisition.status.searchQueued"]);
         return RedirectBack(returnUrl);
     }
 
@@ -125,7 +140,7 @@ public sealed class IndexModel(
         }
         else
         {
-            TempData["AcquisitionError"] = "Too many searches are already queued; try again when they finished.";
+            TempData["AcquisitionError"] = Ui["acquisition.error.tooManyQueued"];
         }
     }
 
@@ -140,9 +155,11 @@ public sealed class IndexModel(
         string? returnUrl,
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         if (!TryParseIds(indexerIds, out var ids))
         {
-            TempData["AcquisitionError"] = "Indexer IDs must be positive numbers separated by commas.";
+            TempData["AcquisitionError"] = Ui["acquisition.error.indexerIdsFormat"];
             return RedirectBack(returnUrl);
         }
 
@@ -165,8 +182,8 @@ public sealed class IndexModel(
             var queued = update.StartedMonitoring && searchOnAdd &&
                          scheduler.RequestRun(update.AnimeKey, AnimeSearchTrigger.SearchOnAdd);
             TempData["AcquisitionNotice"] = queued
-                ? "Acquisition settings saved; wanted episodes are being searched."
-                : "Acquisition settings saved.";
+                ? Ui["acquisition.status.settingsSavedSearching"]
+                : Ui["acquisition.status.settingsSaved"];
         }
         catch (Exception exception) when (
             exception is ArgumentException or InvalidDataException or IOException or UnauthorizedAccessException)

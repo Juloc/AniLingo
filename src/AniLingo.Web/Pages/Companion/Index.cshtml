@@ -1,23 +1,23 @@
 @page "/Companion"
 @model AniLingo.Web.Pages.Companion.IndexModel
 @{
-    ViewData["Title"] = "Companion";
+    var ui = Model.Ui;
+    ViewData["Title"] = ui["companion.pageTitle"];
 }
 
 <div class="page-shell companion-shell"
      data-companion
      data-pair-url="/api/client/v1/playback-sessions/pair">
     <section class="panel companion-connect" data-companion-connect>
-        <span class="eyebrow">TV Companion</span>
-        <h1>Connect to AniLingo TV</h1>
+        <span class="eyebrow">@ui["companion.eyebrow.connect"]</span>
+        <h1>@ui["companion.title"]</h1>
         <p class="muted">
-            Scan the QR code on the TV or enter its 6-digit code.
-            Pairing grants access only to the current playback session.
+            @ui["companion.description"]
         </p>
 
         <form data-pair-form class="form-stack">
             <label>
-                <span>Pairing code</span>
+                <span>@ui["companion.pairingCodeLabel"]</span>
                 <input data-pair-code
                        inputmode="numeric"
                        autocomplete="one-time-code"
@@ -26,7 +26,7 @@
                        placeholder="123456" />
             </label>
             <button class="button button-primary" type="submit">
-                Connect
+                @ui["companion.connect"]
             </button>
         </form>
 
@@ -36,42 +36,42 @@
     <section class="panel companion-live" data-companion-live hidden>
         <div class="panel-heading">
             <div>
-                <span class="eyebrow">Live from TV</span>
-                <h1 data-session-title>Playback session</h1>
+                <span class="eyebrow">@ui["companion.eyebrow.live"]</span>
+                <h1 data-session-title>@ui["companion.sessionTitle"]</h1>
                 <p class="muted" data-session-episode></p>
             </div>
-            <span class="status-pill status-ok" data-session-status>Live</span>
+            <span class="status-pill status-ok" data-session-status>@ui["companion.live"]</span>
         </div>
 
         <div class="companion-sentence">
-            <p lang="ja" data-current-sentence>Waiting for the current subtitle…</p>
+            <p lang="ja" data-current-sentence>@ui["companion.waitingSubtitle"]</p>
             <div class="companion-tokens" data-current-tokens></div>
         </div>
 
         <div class="companion-word" data-selected-word hidden>
-            <span class="eyebrow">Selected word</span>
+            <span class="eyebrow">@ui["companion.selectedWordEyebrow"]</span>
             <strong data-word-surface></strong>
             <span data-word-reading></span>
             <p data-word-meaning></p>
             <span class="status-pill" data-word-state></span>
             <div class="button-row">
                 <button class="button" type="button" data-command="addToLearning">
-                    Learning
+                    @ui["companion.addToLearning"]
                 </button>
                 <button class="button" type="button" data-command="markKnown">
-                    Known
+                    @ui["companion.markKnown"]
                 </button>
             </div>
         </div>
 
         <div class="companion-controls">
-            <button class="button" type="button" data-command="seekBack10">−10 s</button>
+            <button class="button" type="button" data-command="seekBack10">@ui["companion.seekBack10"]</button>
             <button class="button button-primary" type="button" data-command="playPause">
-                Play / Pause
+                @ui["companion.playPause"]
             </button>
-            <button class="button" type="button" data-command="seekForward10">+10 s</button>
+            <button class="button" type="button" data-command="seekForward10">@ui["companion.seekForward10"]</button>
             <button class="button" type="button" data-command="repeatCurrentCue">
-                Repeat sentence
+                @ui["companion.repeatSentence"]
             </button>
         </div>
 
@@ -81,7 +81,7 @@
         </div>
 
         <a class="button" data-open-learning href="#">
-            Open episode
+            @ui["companion.openEpisode"]
         </a>
 
         <p class="validation" data-session-error hidden></p>
