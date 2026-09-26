@@ -138,6 +138,10 @@ Episode pages can explicitly sync watched progress for the currently signed-in A
 
 Books and Anime share one SABnzbd connection, configured by the owner under **Settings → SABnzbd** (`/Settings/Sabnzbd`) with a separate category for each. Every SABnzbd job appears under **Admin → Operations → Downloads** with progress, ETA, a clear failure reason (incomplete, corrupt, password-protected or failed extraction) and cancel/retry. When the anime acquisition service sends a release and it fails, that release is blocklisted and the next accepted release is tried within a bounded number of attempts. Supported configuration keys and the one-time move of older Books SABnzbd settings are described in [docs/ADMIN_OPERATIONS.md](docs/ADMIN_OPERATIONS.md#sabnzbd).
 
+### Anime naming
+
+Folder and file names use Sonarr-compatible templates (series, season, specials, standard, daily and anime episode formats, multi-episode styles, illegal-character and colon replacement, release/quality/provider-ID tokens). The owner edits naming profiles under `/Settings/Naming` (presets include the Sonarr default and the current Sonarr-with-media-info scheme) and picks a default, per-library or per-anime profile. Existing files are only renamed from an anime's **Rename files** page after a preview; Sonarr-owned files, read-only libraries, conflicts and cross-filesystem moves are refused, failed renames roll back, and episode identity and progress are kept. Details: [docs/ANIME_NAMING.md](docs/ANIME_NAMING.md).
+
 ## Web / Light Novels
 
 Open **Novels** to import a supported Japanese web novel. The first source provider is **Shōsetsuka ni Narō / ncode.syosetu.com**. AniLingo stores the work and chapter index in the existing SQLite database; Japanese chapter text is fetched and cached when a chapter is opened. **Cache all Japanese text** can queue the remaining chapters through the existing in-process background worker.

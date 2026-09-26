@@ -70,5 +70,5 @@ When both managers act on the same release, download or path, AniLingo surfaces 
 
 - Grab: `AnimeMonitoringEngine.EvaluateCandidate(..., ownership)` consults `SonarrParallelSafety.CanGrab`.
 - Import: `CompletedDownloadImportPlanner.Plan(..., ownership)` consults `SonarrParallelSafety.CanImport` and `CanMutateLibraryPath` for replaced files.
-- Rename: the naming/rename executor must call `SonarrParallelSafety.CanRename` before moving a library file.
+- Rename: `AnimeRenameService` calls `SonarrParallelSafety.CanRename` for every file, sidecar and series-folder move before anything is moved (see [ANIME_NAMING.md](ANIME_NAMING.md)).
 - Executors obtain the snapshot from `SonarrObservationService.GetSnapshotAsync`.
