@@ -1,0 +1,182 @@
+@page "/Library/AnimeRepair/{id:guid}"
+@model AniLingo.Web.Pages.Library.AnimeRepairModel
+@{
+    ViewData["Title"] = $"Repair · {Model.AnimeTitle}";
+}
+
+<header class="page-header">
+    <div>
+        <a class="back-link" href="/Library/Anime/@Model.AnimeId">&larr; @Model.AnimeTitle</a>
+        <span class="eyebrow">Library &middot; Repair</span>
+        <h1>Repair this anime</h1>
+        <p>Rescan, refresh or re-match just this anime, without touching the rest of the library.</p>
+    </div>
+</header>
+
+@if (!string.IsNullOrWhiteSpace(Model.Status))
+{
+    <p class="metadata-error" style="color:inherit">@Model.Status</p>
+}
+@if (!string.IsNullOrWhiteSpace(Model.Error))
+{
+    <p class="metadata-error">@Model.Error</p>
+}
+@if (Model.OperationId is Guid operationId)
+{
+    <p><a href="/Admin/Operation/@operationId">View operation log</a></p>
+}
+
+<section class="panel">
+    <div class="panel-heading">
+        <h2>Folder</h2>
+    </div>
+    @if (Model.Folder is { } folder)
+    {
+        <p><code>@folder.RootName / @folder.Folder</code></p>
+        @if (Model.ActiveScans.Count > 0)
+        {
+            <p class="metadata-error">A library scan for this root is already queued or running; Rescan folder will report that instead of starting a second one.</p>
+        }
+    }
+    else
+    {
+        <p class="muted">No media files are known for this anime yet, so a folder-scoped scan cannot be targeted. Run a full library scan first.</p>
+    }
+</section>
+
+<div class="settings-grid">
+    <section class="panel">
+        <div class="panel-heading">
+            <h2>Rescan folder</h2>
+            <span>Filesystem scan, scoped to this anime</span>
+        </div>
+        <p class="muted">Reconciles this anime's folder exactly like a full library scan: adds, updates and removes media files, and refreshes subtitles, NFO and artwork as part of that pass.</p>
+        <form method="post" asp-page-handler="Rescan" asp-route-id="@Model.AnimeId">
+            <button class="button button-primary" type="submit" @(Model.Folder is null ? "disabled" : "")>Rescan folder</button>
+        </form>
+    </section>
+
+    <section class="panel">
+        <div class="panel-heading">
+            <h2>Refresh subtitles/NFO/artwork</h2>
+            <span>Local files only, no filesystem scan</span>
+        </div>
+        <p class="muted">Re-imports sidecar subtitles, re-reads local NFO titles and re-imports local poster/fanart for this anime's already known episodes, without adding, removing or re-enumerating media files.</p>
+        <form method="post" asp-page-handler="RefreshLocal" asp-route-id="@Model.AnimeId">
+            <button class="button" type="submit" @(Model.Folder is null ? "disabled" : "")>Refresh subtitles/NFO/artwork</button>
+        </form>
+    </section>
+
+    <section class="panel">
+        <div class="panel-heading">
+            <h2>Re-analyse media</h2>
+            <span>Forces a fresh ffprobe pass</span>
+        </div>
+        <p class="muted">Forces every media file of this anime to be re-probed, even if its size and modified time have not changed. Use this after replacing a file in place or when technical info looks wrong.</p>
+        <form method="post" asp-page-handler="Reanalyze" asp-route-id="@Model.AnimeId">
+            <button class="button" type="submit" @(Model.Folder is null ? "disabled" : "")>Re-analyse media</button>
+        </form>
+    </section>
+
+    @if (Model.Metadata is { } metadata)
+    {
+        <section class="panel">
+            <div class="panel-heading">
+                <h2>Refresh metadata</h2>
+                <span>@metadata.Provider &middot; ID @metadata.ExternalId</span>
+            </div>
+            <p class="muted">Re-fetches the matched AniList entry's title, description and artwork. Distinct from a filesystem scan: it never touches media files.</p>
+            <form method="post" asp-page-handler="RefreshMetadata" asp-route-id="@Model.AnimeId">
+                <button class="button" type="submit">Refresh metadata</button>
+            </form>
+        </section>
+    }
+</div>
+
+<section class="panel metadata-panel" id="identify-match">
+    <div class="panel-heading">
+        <h2>Identify / Fix Match</h2>
+        @if (Model.Metadata is { } current)
+        {
+            <span>Currently matched: @current.Provider &middot; ID @current.ExternalId</span>
+        }
+        else
+        {
+            <span>Not matched yet</span>
+        }
+    </div>
+
+    <form method="get" class="metadata-search">
+        <input type="search"
+               name="q"
+               value="@Model.SearchQuery"
+               aria-label="Anime title"
+               placeholder="Search AniList" />
+        <button class="button button-primary" type="submit">Search AniList</button>
+    </form>
+
+    @if (Model.Candidates.Count > 0)
+    {
+        <div class="metadata-results">
+            @foreach (var result in Model.Candidates)
+            {
+                var candidate = result.Candidate;
+                var isCurrentMatch =
+                    Model.Metadata?.Provider == candidate.Provider &&
+                    Model.Metadata?.ExternalId == candidate.ExternalId;
+                <article class="metadata-result">
+                    <div class="metadata-result-poster">
+                        @if (!string.IsNullOrWhiteSpace(candidate.CoverImageUrl))
+                        {
+                            <img src="@candidate.CoverImageUrl" alt="" loading="lazy" referrerpolicy="no-referrer" />
+                        }
+                        else
+                        {
+                            <span>@candidate.PreferredTitle[..1]</span>
+                        }
+                    </div>
+                    <div class="metadata-result-copy">
+                        <strong>@candidate.PreferredTitle</strong>
+                        @if (!string.IsNullOrWhiteSpace(candidate.NativeTitle))
+                        {
+                            <span lang="ja">@candidate.NativeTitle</span>
+                        }
+                        <small>
+                            @candidate.Provider &middot; ID @candidate.ExternalId &middot; score @result.Score
+                            @if (candidate.SeasonYear is int year)
+                            {
+                                <text> &middot; @year</text>
+                            }
+                            @if (candidate.EpisodeCount is int count)
+                            {
+                                <text> &middot; @count eps</text>
+                            }
+                        </small>
+                        @if (result.Evidence.Count > 0)
+                        {
+                            <ul class="muted">
+                                @foreach (var reason in result.Evidence)
+                                {
+                                    <li>@reason</li>
+                                }
+                            </ul>
+                        }
+                    </div>
+                    <div>
+                        <form method="post" asp-page-handler="Match" asp-route-id="@Model.AnimeId">
+                            <input type="hidden" name="provider" value="@candidate.Provider" />
+                            <input type="hidden" name="externalId" value="@candidate.ExternalId" />
+                            <button class="button @(isCurrentMatch ? "" : "button-primary")" type="submit" @(isCurrentMatch ? "disabled" : "")>
+                                @(isCurrentMatch ? "Matched" : "Confirm match")
+                            </button>
+                        </form>
+                    </div>
+                </article>
+            }
+        </div>
+    }
+    else if (!string.IsNullOrWhiteSpace(Model.SearchQuery))
+    {
+        <p class="muted">No AniList candidates found for “@Model.SearchQuery”.</p>
+    }
+</section>
