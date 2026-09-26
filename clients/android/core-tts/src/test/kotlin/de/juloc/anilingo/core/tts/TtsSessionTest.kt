@@ -23,6 +23,7 @@ private class FakeProvider : TtsProvider {
         speakCalls.add(item.key)
         pendingListener = listener
         pendingKey = item.key
+        listener.onStart(item.key)
     }
 
     /** Test hook: simulate the engine finishing the current utterance. */

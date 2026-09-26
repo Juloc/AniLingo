@@ -128,7 +128,9 @@ class TtsModelManager(
                 version = json.getString("version"),
                 languages = (0 until (languagesJson?.length() ?: 0))
                     .mapNotNull { index -> languagesJson?.optString(index, null) },
-                storageBytes = directorySize(dir),
+                // The declared total from the verified manifest, not a directory scan: a
+                // directory scan would also count the marker file's own bytes.
+                storageBytes = json.optLong("totalSizeBytes", 0L),
             )
         } catch (_: JSONException) {
             null
@@ -144,9 +146,6 @@ class TtsModelManager(
             .put("totalSizeBytes", entry.totalSizeBytes)
         File(dir, MarkerFileName).writeText(json.toString())
     }
-
-    private fun directorySize(dir: File): Long =
-        dir.walkTopDown().filter { it.isFile }.sumOf { it.length() }
 
     private fun sha256Of(file: File): String {
         val digest = MessageDigest.getInstance("SHA-256")
