@@ -2,16 +2,17 @@
 @model AniLingo.Web.Pages.Settings.AcquisitionModel
 @using AniLingo.Web.Features.Acquisition.Import
 @{
-    ViewData["Title"] = "Acquisition settings";
+    var ui = Model.Ui;
+    ViewData["Title"] = ui["settings.acquisition.title"];
 }
 
 <header class="page-header">
     <div>
-        <span class="eyebrow">Settings · Server</span>
-        <h1>Import, path mapping &amp; policy</h1>
-        <p>Import mode and remote path mapping (also used to match Sonarr paths), library roots, tags, delay profiles, tag-scoped indexer restrictions, AniList auto-monitor and settings backup.</p>
+        <span class="eyebrow">@ui["settings.acquisition.eyebrow"]</span>
+        <h1>@ui["settings.acquisition.heading"]</h1>
+        <p>@ui["settings.acquisition.pageDescription"]</p>
     </div>
-    <a class="button" asp-page="/Acquisition/Index">Anime acquisition</a>
+    <a class="button" asp-page="/Acquisition/Index">@ui["settings.acquisition.animeAcquisitionLink"]</a>
 </header>
 
 @if (!string.IsNullOrWhiteSpace(Model.Notice))
@@ -25,48 +26,45 @@
 
 <div class="settings-grid">
     <section class="panel">
-        <div class="panel-heading"><h2>Import mode</h2></div>
+        <div class="panel-heading"><h2>@ui["settings.acquisition.importModeHeading"]</h2></div>
         <p class="muted">
-            Hardlink keeps the download seeding while the library sees the file, using no extra disk space, but only
-            works when the completed-download folder and the library root are on the same filesystem. Plain Hardlink
-            fails the import with a clear reason on a different filesystem; "Hardlink or copy" is the explicit choice
-            to fall back to a copy then.
+            @ui["settings.acquisition.importModeDescription"]
         </p>
         <form method="post" asp-page-handler="ImportMode" class="form-stack">
             <label>
-                <span>Default import mode</span>
+                <span>@ui["settings.acquisition.defaultImportModeLabel"]</span>
                 <select name="defaultImportMode">
                     @foreach (var mode in Enum.GetValues<AnimeImportMode>())
                     {
-                        <option value="@mode" selected="@(Model.ImportSettings.DefaultImportMode == mode)">@mode</option>
+                        <option value="@mode" selected="@(Model.ImportSettings.DefaultImportMode == mode)">@Model.ImportModeLabel(mode)</option>
                     }
                 </select>
             </label>
-            <button class="button" type="submit">Save default</button>
+            <button class="button" type="submit">@ui["settings.acquisition.saveDefault"]</button>
         </form>
 
         @if (Model.Roots.Count > 0)
         {
             <table>
-                <thead><tr><th>Library root</th><th>Import mode override</th><th></th></tr></thead>
+                <thead><tr><th>@ui["settings.acquisition.libraryRootColumn"]</th><th>@ui["settings.acquisition.importModeOverrideColumn"]</th><th></th></tr></thead>
                 <tbody>
                     @foreach (var root in Model.Roots)
                     {
                         <tr>
                             <td>@root.Name</td>
-                            <td>@(Model.ImportSettings.RootImportModes.TryGetValue(root.Id, out var mode) ? mode.ToString() : "Uses default")</td>
+                            <td>@(Model.ImportSettings.RootImportModes.TryGetValue(root.Id, out var mode) ? Model.ImportModeLabel(mode) : ui["settings.acquisition.usesDefault"])</td>
                             <td>
                                 <form method="post" asp-page-handler="ImportMode" class="acquisition-inline-form">
                                     <input type="hidden" name="defaultImportMode" value="@Model.ImportSettings.DefaultImportMode" />
                                     <input type="hidden" name="rootId" value="@root.Id" />
                                     <select name="rootImportMode">
-                                        <option value="">Uses default</option>
+                                        <option value="">@ui["settings.acquisition.usesDefault"]</option>
                                         @foreach (var mode in Enum.GetValues<AnimeImportMode>())
                                         {
-                                            <option value="@mode" selected="@(Model.ImportSettings.RootImportModes.TryGetValue(root.Id, out var current) && current == mode)">@mode</option>
+                                            <option value="@mode" selected="@(Model.ImportSettings.RootImportModes.TryGetValue(root.Id, out var current) && current == mode)">@Model.ImportModeLabel(mode)</option>
                                         }
                                     </select>
-                                    <button class="button" type="submit">Set</button>
+                                    <button class="button" type="submit">@ui["settings.acquisition.set"]</button>
                                 </form>
                             </td>
                         </tr>
@@ -77,16 +75,14 @@
     </section>
 
     <section class="panel">
-        <div class="panel-heading"><h2>Remote path mapping</h2></div>
+        <div class="panel-heading"><h2>@ui["settings.acquisition.remotePathMappingHeading"]</h2></div>
         <p class="muted">
-            Maps a path prefix as reported by the download client (or by Sonarr) to the path AniLingo sees under its
-            own mounts. Applied to every completed-download path and to Sonarr's series/episode/queue paths, so
-            Sonarr ↔ AniLingo path matching keeps working even when the two containers mount storage differently.
+            @ui["settings.acquisition.remotePathMappingDescription"]
         </p>
         @if (Model.ImportSettings.RemotePathMappings.Count > 0)
         {
             <table>
-                <thead><tr><th>Remote prefix</th><th>Local prefix</th><th></th></tr></thead>
+                <thead><tr><th>@ui["settings.acquisition.remotePrefixColumn"]</th><th>@ui["settings.acquisition.localPrefixColumn"]</th><th></th></tr></thead>
                 <tbody>
                     @foreach (var mapping in Model.ImportSettings.RemotePathMappings)
                     {
@@ -96,7 +92,7 @@
                             <td>
                                 <form method="post" asp-page-handler="RemovePathMapping">
                                     <input type="hidden" name="remotePrefix" value="@mapping.RemotePrefix" />
-                                    <button class="button" type="submit">Remove</button>
+                                    <button class="button" type="submit">@ui["settings.acquisition.remove"]</button>
                                 </form>
                             </td>
                         </tr>
@@ -105,14 +101,14 @@
             </table>
         }
         <form method="post" asp-page-handler="AddPathMapping" class="acquisition-inline-form">
-            <label><span>Remote prefix</span><input type="text" name="remotePrefix" placeholder="/downloads" required /></label>
-            <label><span>Local prefix</span><input type="text" name="localPrefix" placeholder="/data/downloads" required /></label>
-            <button class="button" type="submit">Add mapping</button>
+            <label><span>@ui["settings.acquisition.remotePrefixLabel"]</span><input type="text" name="remotePrefix" placeholder="/downloads" required /></label>
+            <label><span>@ui["settings.acquisition.localPrefixLabel"]</span><input type="text" name="localPrefix" placeholder="/data/downloads" required /></label>
+            <button class="button" type="submit">@ui["settings.acquisition.addMapping"]</button>
         </form>
     </section>
 
     <section class="panel">
-        <div class="panel-heading"><h2>Tags</h2></div>
+        <div class="panel-heading"><h2>@ui["settings.acquisition.tagsHeading"]</h2></div>
         @if (Model.Policy.Tags.Count > 0)
         {
             <ul class="acquisition-history-list">
@@ -122,38 +118,38 @@
                         @tag.Name
                         <form method="post" asp-page-handler="RemoveTag" style="display:inline">
                             <input type="hidden" name="tagId" value="@tag.Id" />
-                            <button class="button" type="submit">Remove</button>
+                            <button class="button" type="submit">@ui["settings.acquisition.remove"]</button>
                         </form>
                     </li>
                 }
             </ul>
         }
         <form method="post" asp-page-handler="AddTag" class="acquisition-inline-form">
-            <label><span>New tag</span><input type="text" name="name" placeholder="fast-track" required /></label>
-            <button class="button" type="submit">Add tag</button>
+            <label><span>@ui["settings.acquisition.newTagLabel"]</span><input type="text" name="name" placeholder="fast-track" required /></label>
+            <button class="button" type="submit">@ui["settings.acquisition.addTag"]</button>
         </form>
     </section>
 
     <section class="panel">
-        <div class="panel-heading"><h2>Delay profiles</h2></div>
-        <p class="muted">Waits N minutes after an episode becomes wanted before grabbing a release that does not yet meet the quality profile's upgrade cutoff, so a preferred release has a chance to appear first.</p>
+        <div class="panel-heading"><h2>@ui["settings.acquisition.delayProfilesHeading"]</h2></div>
+        <p class="muted">@ui["settings.acquisition.delayProfilesDescription"]</p>
         @if (Model.Policy.DelayProfiles.Count > 0)
         {
             <table>
-                <thead><tr><th>Name</th><th>Delay</th><th>Quality profile</th><th>Tags</th><th>Default</th><th></th></tr></thead>
+                <thead><tr><th>@ui["settings.acquisition.nameColumn"]</th><th>@ui["settings.acquisition.delayColumn"]</th><th>@ui["settings.acquisition.qualityProfileColumn"]</th><th>@ui["settings.acquisition.tagsColumn"]</th><th>@ui["settings.acquisition.defaultColumn"]</th><th></th></tr></thead>
                 <tbody>
                     @foreach (var profile in Model.Policy.DelayProfiles)
                     {
                         <tr>
                             <td>@profile.Name</td>
-                            <td>@profile.DelayMinutes min</td>
-                            <td>@(profile.QualityProfileId ?? "Any")</td>
+                            <td>@ui.Format("settings.acquisition.delayMinutes", ("minutes", profile.DelayMinutes))</td>
+                            <td>@(profile.QualityProfileId ?? ui["settings.acquisition.any"])</td>
                             <td>@string.Join(", ", profile.TagIds)</td>
-                            <td>@(profile.IsDefault ? "Yes" : "")</td>
+                            <td>@(profile.IsDefault ? ui["settings.acquisition.yes"] : "")</td>
                             <td>
                                 <form method="post" asp-page-handler="RemoveDelayProfile">
                                     <input type="hidden" name="profileId" value="@profile.Id" />
-                                    <button class="button" type="submit">Remove</button>
+                                    <button class="button" type="submit">@ui["settings.acquisition.remove"]</button>
                                 </form>
                             </td>
                         </tr>
@@ -162,11 +158,11 @@
             </table>
         }
         <form method="post" asp-page-handler="AddDelayProfile" class="acquisition-inline-form">
-            <label><span>Name</span><input type="text" name="name" required /></label>
-            <label><span>Delay (minutes)</span><input type="number" name="delayMinutes" min="0" value="60" required /></label>
-            <label><span>Quality profile ID</span><input type="text" name="qualityProfileId" placeholder="Any" /></label>
+            <label><span>@ui["settings.acquisition.nameColumn"]</span><input type="text" name="name" required /></label>
+            <label><span>@ui["settings.acquisition.delayMinutesLabel"]</span><input type="number" name="delayMinutes" min="0" value="60" required /></label>
+            <label><span>@ui["settings.acquisition.qualityProfileIdLabel"]</span><input type="text" name="qualityProfileId" placeholder="@ui["settings.acquisition.any"]" /></label>
             <label>
-                <span>Tags</span>
+                <span>@ui["settings.acquisition.tagsColumn"]</span>
                 <select name="tagIds" multiple>
                     @foreach (var tag in Model.Policy.Tags)
                     {
@@ -174,18 +170,18 @@
                     }
                 </select>
             </label>
-            <label class="acquisition-check"><input type="checkbox" name="isDefault" value="true" /><span>Default (applies with no more specific match)</span></label>
-            <button class="button" type="submit">Add profile</button>
+            <label class="acquisition-check"><input type="checkbox" name="isDefault" value="true" /><span>@ui["settings.acquisition.defaultCheckboxLabel"]</span></label>
+            <button class="button" type="submit">@ui["settings.acquisition.addProfile"]</button>
         </form>
     </section>
 
     <section class="panel">
-        <div class="panel-heading"><h2>Tag-scoped indexer restrictions</h2></div>
-        <p class="muted">Restricts anime carrying any of the selected tags to searching only the checked indexers (a whole Prowlarr connection, or a direct Newznab/Torznab connection). Narrows which indexers are searched at all; never widens it. If a restriction ends up with no enabled indexer allowed, no indexer is searched for that anime — it is never silently searched unrestricted.</p>
+        <div class="panel-heading"><h2>@ui["settings.acquisition.indexerRestrictionsHeading"]</h2></div>
+        <p class="muted">@ui["settings.acquisition.indexerRestrictionsDescription"]</p>
         @if (Model.Policy.IndexerRestrictions.Count > 0)
         {
             <table>
-                <thead><tr><th>Name</th><th>Tags</th><th>Allowed indexers</th><th></th></tr></thead>
+                <thead><tr><th>@ui["settings.acquisition.nameColumn"]</th><th>@ui["settings.acquisition.tagsColumn"]</th><th>@ui["settings.acquisition.allowedIndexersColumn"]</th><th></th></tr></thead>
                 <tbody>
                     @foreach (var restriction in Model.Policy.IndexerRestrictions)
                     {
@@ -196,7 +192,7 @@
                             <td>
                                 <form method="post" asp-page-handler="RemoveIndexerRestriction">
                                     <input type="hidden" name="restrictionId" value="@restriction.Id" />
-                                    <button class="button" type="submit">Remove</button>
+                                    <button class="button" type="submit">@ui["settings.acquisition.remove"]</button>
                                 </form>
                             </td>
                         </tr>
@@ -205,9 +201,9 @@
             </table>
         }
         <form method="post" asp-page-handler="AddIndexerRestriction" class="acquisition-inline-form">
-            <label><span>Name</span><input type="text" name="name" required /></label>
+            <label><span>@ui["settings.acquisition.nameColumn"]</span><input type="text" name="name" required /></label>
             <label>
-                <span>Tags</span>
+                <span>@ui["settings.acquisition.tagsColumn"]</span>
                 <select name="tagIds" multiple required>
                     @foreach (var tag in Model.Policy.Tags)
                     {
@@ -216,7 +212,7 @@
                 </select>
             </label>
             <label>
-                <span>Allowed indexers</span>
+                <span>@ui["settings.acquisition.allowedIndexersColumn"]</span>
                 <select name="allowedIndexerEntryIds" multiple required>
                     @foreach (var entry in Model.IndexerEntries)
                     {
@@ -224,52 +220,49 @@
                     }
                 </select>
             </label>
-            <button class="button" type="submit">Add restriction</button>
+            <button class="button" type="submit">@ui["settings.acquisition.addRestriction"]</button>
         </form>
     </section>
 
     <section class="panel">
-        <div class="panel-heading"><h2>AniList list auto-monitor</h2></div>
-        <p class="muted">When on, every full acquisition run monitors anime on your AniList Current/Planning lists that already exist locally. Never adds a show that is not local yet, and never touches an anime Sonarr manages.</p>
+        <div class="panel-heading"><h2>@ui["settings.acquisition.autoMonitorHeading"]</h2></div>
+        <p class="muted">@ui["settings.acquisition.autoMonitorDescription"]</p>
         <form method="post" asp-page-handler="AniListAutoMonitor" class="acquisition-inline-form">
             <label class="acquisition-check">
                 <input type="checkbox" name="enabled" value="true" checked="@Model.AniListAutoMonitorEnabled" />
-                <span>Auto-monitor from my AniList Current/Planning lists</span>
+                <span>@ui["settings.acquisition.autoMonitorCheckbox"]</span>
             </label>
-            <button class="button" type="submit">Save</button>
+            <button class="button" type="submit">@ui["common.save"]</button>
         </form>
     </section>
 
     <section class="panel">
-        <div class="panel-heading"><h2>Backup &amp; restore</h2></div>
+        <div class="panel-heading"><h2>@ui["settings.acquisition.backupHeading"]</h2></div>
         <p class="muted">
-            Exports one JSON bundle of every canonical acquisition settings store. Prowlarr and SABnzbd API keys are
-            included encrypted with this installation's Data Protection keys (not in plain text); restoring on a
-            different installation keeps everything else but may require re-entering those two API keys if they
-            cannot be decrypted there.
+            @ui["settings.acquisition.backupDescription"]
         </p>
         <form method="post" asp-page-handler="ExportBackup">
-            <button class="button" type="submit">Export backup</button>
+            <button class="button" type="submit">@ui["settings.acquisition.exportBackup"]</button>
         </form>
 
         <form method="post" asp-page-handler="PreviewRestore" enctype="multipart/form-data" class="acquisition-inline-form">
-            <label><span>Backup file</span><input type="file" name="backupFile" accept="application/json" required /></label>
-            <button class="button" type="submit">Preview restore</button>
+            <label><span>@ui["settings.acquisition.backupFileLabel"]</span><input type="file" name="backupFile" accept="application/json" required /></label>
+            <button class="button" type="submit">@ui["settings.acquisition.previewRestore"]</button>
         </form>
 
         @if (Model.RestorePreview is { } preview)
         {
             <table>
-                <thead><tr><th>File</th><th>Exists now</th><th>Secret</th><th>Valid JSON</th><th>Would change</th></tr></thead>
+                <thead><tr><th>@ui["settings.acquisition.fileColumn"]</th><th>@ui["settings.acquisition.existsNowColumn"]</th><th>@ui["settings.acquisition.secretColumn"]</th><th>@ui["settings.acquisition.validJsonColumn"]</th><th>@ui["settings.acquisition.wouldChangeColumn"]</th></tr></thead>
                 <tbody>
                     @foreach (var file in preview.Files)
                     {
                         <tr>
                             <td>@file.FileName</td>
-                            <td>@(file.ExistedBefore ? "Yes" : "No (new)")</td>
-                            <td>@(file.ContainsEncryptedSecret ? "Yes" : "")</td>
-                            <td>@(file.IsValidJson ? "Yes" : "Invalid")</td>
-                            <td>@(file.WouldChange ? "Yes" : "No")</td>
+                            <td>@(file.ExistedBefore ? ui["settings.acquisition.yes"] : ui["settings.acquisition.noNew"])</td>
+                            <td>@(file.ContainsEncryptedSecret ? ui["settings.acquisition.yes"] : "")</td>
+                            <td>@(file.IsValidJson ? ui["settings.acquisition.yes"] : ui["settings.acquisition.invalid"])</td>
+                            <td>@(file.WouldChange ? ui["settings.acquisition.yes"] : ui["settings.acquisition.no"])</td>
                         </tr>
                     }
                 </tbody>
@@ -287,7 +280,7 @@
             {
                 <form method="post" asp-page-handler="ApplyRestore">
                     <input type="hidden" name="pendingRestoreJson" value="@Model.PendingRestoreJson" />
-                    <button class="button button-primary" type="submit">Apply restore</button>
+                    <button class="button button-primary" type="submit">@ui["settings.acquisition.applyRestore"]</button>
                 </form>
             }
         }

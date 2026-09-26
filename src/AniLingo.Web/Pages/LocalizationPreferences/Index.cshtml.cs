@@ -32,7 +32,10 @@ public sealed class IndexModel(
                 currentAccount.ProfileId,
                 locale,
                 cancellationToken);
-            TempData["Status"] = "Interface language updated.";
+            Ui = await store.LoadProfileBundleAsync(
+                currentAccount.ProfileId,
+                cancellationToken);
+            TempData["Status"] = Ui["settings.language.updated"];
             return RedirectToPage();
         }
         catch (Exception exception) when (

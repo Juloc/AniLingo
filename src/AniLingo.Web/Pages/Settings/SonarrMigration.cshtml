@@ -2,7 +2,8 @@
 @using AniLingo.Web.Features.Acquisition.Ownership
 @model AniLingo.Web.Pages.Settings.SonarrMigrationModel
 @{
-    ViewData["Title"] = "Sonarr migration";
+    var ui = Model.Ui;
+    ViewData["Title"] = ui["settings.sonarrMigration.title"];
     var statusClass = Model.Sonarr.Status switch
     {
         SonarrObservationStatus.Observed => "status-pill status-ok",
@@ -11,20 +12,20 @@
     };
     var statusText = Model.Sonarr.Status switch
     {
-        SonarrObservationStatus.Observed => $"Observed {Model.Sonarr.ObservedAtUtc:u}",
-        SonarrObservationStatus.Unavailable => "Sonarr unavailable",
-        _ => "Sonarr not configured"
+        SonarrObservationStatus.Observed => ui.Format("settings.sonarrMigration.status.observed", ("time", Model.Sonarr.ObservedAtUtc?.ToString("u"))),
+        SonarrObservationStatus.Unavailable => ui["settings.sonarrMigration.status.unavailable"],
+        _ => ui["settings.sonarrMigration.status.notConfigured"]
     };
 }
 
 <header class="page-header">
     <div>
-        <a class="back-link" href="/Settings">&larr; Settings</a>
-        <span class="eyebrow">Settings &middot; Acquisition</span>
-        <h1>Sonarr migration</h1>
+        <a class="back-link" href="/Settings">@ui["common.backToSettings"]</a>
+        <span class="eyebrow">@ui["settings.naming.eyebrow"]</span>
+        <h1>@ui["settings.sonarrMigration.title"]</h1>
         <p>
-            Decide per anime whether Sonarr keeps managing it or AniLingo takes over.
-            AniLingo only reads Sonarr; the optional monitoring change is the single Sonarr update it makes, and only when you tick it.
+            @ui["settings.sonarrMigration.pageDescription1"]
+            @ui["settings.sonarrMigration.pageDescription2"]
         </p>
     </div>
     <span class="@statusClass">@statusText</span>
@@ -42,42 +43,42 @@
 <div class="settings-grid">
     <section class="panel">
         <div class="panel-heading">
-            <h2>Sonarr observation</h2>
-            <span>@Model.Sonarr.Series.Count series &middot; @Model.Sonarr.Queue.Count queued</span>
+            <h2>@ui["settings.sonarrMigration.observationHeading"]</h2>
+            <span>@ui.Format("settings.sonarrMigration.seriesQueueSummary", ("series", Model.Sonarr.Series.Count), ("queued", Model.Sonarr.Queue.Count))</span>
         </div>
         @if (Model.Sonarr.Status == SonarrObservationStatus.NotConfigured)
         {
             <p class="muted">
-                Configure the Sonarr connection under <a href="/Admin/Sonarr">Admin &rarr; Sonarr</a>.
-                Without Sonarr, AniLingo only enforces the per-anime management mode.
+                @ui["settings.sonarrMigration.observation.notConfiguredBody"]
+                <a href="/Admin/Sonarr">@ui["settings.sonarrMigration.observation.openAdminSonarr"]</a>
             </p>
         }
         else if (Model.Sonarr.Status == SonarrObservationStatus.Unavailable)
         {
             <p class="metadata-error">
                 @Model.Sonarr.StatusDetail
-                AniLingo pauses grabs, imports and renames for Sonarr-linked anime until Sonarr can be observed again.
+                @ui["settings.sonarrMigration.observation.unavailableSuffix"]
             </p>
         }
         else
         {
             <p class="muted">
-                Series, episode files, queue and recent history are read from Sonarr's v3 API to recognise Sonarr-owned releases, downloads and paths.
+                @ui["settings.sonarrMigration.observation.observedBody"]
             </p>
         }
         <div class="inline-actions">
-            <a class="button" href="?refresh=true@(string.IsNullOrWhiteSpace(Model.Q) ? "" : "&q=" + Uri.EscapeDataString(Model.Q))">Refresh from Sonarr</a>
+            <a class="button" href="?refresh=true@(string.IsNullOrWhiteSpace(Model.Q) ? "" : "&q=" + Uri.EscapeDataString(Model.Q))">@ui["settings.sonarrMigration.refresh"]</a>
         </div>
     </section>
 
     <section class="panel">
         <div class="panel-heading">
-            <h2>Conflicts</h2>
+            <h2>@ui["settings.sonarrMigration.conflictsHeading"]</h2>
             <span class="@(Model.Conflicts.Count == 0 ? "status-pill status-ok" : "status-pill status-warning")">@Model.Conflicts.Count</span>
         </div>
         @if (Model.Conflicts.Count == 0)
         {
-            <p class="muted">No conflicting AniLingo/Sonarr actions detected.</p>
+            <p class="muted">@ui["settings.sonarrMigration.conflicts.none"]</p>
         }
         else
         {
@@ -92,30 +93,30 @@
 
     <section class="panel">
         <div class="panel-heading">
-            <h2>Safe rollout</h2>
-            <span>Title by title</span>
+            <h2>@ui["settings.sonarrMigration.safeRolloutHeading"]</h2>
+            <span>@ui["settings.sonarrMigration.titleByTitle"]</span>
         </div>
         <ol class="muted">
-            <li><strong>Keep Sonarr</strong> is the default: AniLingo never grabs, imports or renames the anime.</li>
-            <li><strong>Parallel</strong> lets AniLingo acquire, but it only touches files its own jobs created and skips anything Sonarr is downloading.</li>
-            <li><strong>Hand over</strong> once Sonarr's queue for the series is empty. Tick the monitoring option to unmonitor the series in Sonarr; otherwise AniLingo keeps grabs and renames blocked until you do it yourself.</li>
-            <li><strong>Revert</strong> returns the anime to Sonarr (finish or cancel AniLingo jobs first). With the monitoring option it re-enables exactly the monitoring AniLingo turned off.</li>
+            <li><strong>@ui["settings.sonarrMigration.rollout.keepSonarr.term"]</strong> @ui["settings.sonarrMigration.rollout.keepSonarr.description"]</li>
+            <li><strong>@ui["settings.sonarrMigration.rollout.parallel.term"]</strong> @ui["settings.sonarrMigration.rollout.parallel.description"]</li>
+            <li><strong>@ui["settings.sonarrMigration.rollout.handOver.term"]</strong> @ui["settings.sonarrMigration.rollout.handOver.description"]</li>
+            <li><strong>@ui["settings.sonarrMigration.rollout.revert.term"]</strong> @ui["settings.sonarrMigration.rollout.revert.description"]</li>
         </ol>
     </section>
 </div>
 
 <section class="panel">
     <div class="panel-heading">
-        <h2>Anime</h2>
+        <h2>@ui["settings.sonarrMigration.animeHeading"]</h2>
         <form method="get" class="inline-actions">
-            <input name="q" value="@Model.Q" placeholder="Filter anime" />
-            <button class="button" type="submit">Filter</button>
+            <input name="q" value="@Model.Q" placeholder="@ui["settings.sonarrMigration.filterPlaceholder"]" />
+            <button class="button" type="submit">@ui["settings.sonarrMigration.filter"]</button>
         </form>
     </div>
 
     @if (Model.Rows.Count == 0)
     {
-        <p class="muted">No anime found.</p>
+        <p class="muted">@ui["settings.sonarrMigration.noAnimeFound"]</p>
     }
 
     @foreach (var row in Model.Rows)
@@ -127,24 +128,24 @@
                     <span class="muted">@row.AnimeKey</span>
                 </div>
                 <span class="@(row.Mode == AnimeManagementMode.AniLingoManaged ? "status-pill status-ok" : row.Mode == AnimeManagementMode.ParallelAcquisition ? "status-pill status-warning" : "status-pill")">
-                    @AniLingo.Web.Pages.Settings.SonarrMigrationModel.DescribeMode(row.Mode)@(row.HasExplicitDecision ? "" : " (default)")
+                    @(row.HasExplicitDecision ? Model.DescribeMode(row.Mode) : ui.Format("settings.sonarrMigration.modeWithDefault", ("mode", Model.DescribeMode(row.Mode))))
                 </span>
             </div>
 
             <p class="muted">
                 @if (row.SeriesId is null)
                 {
-                    <span>Not found in Sonarr.</span>
+                    <span>@ui["settings.sonarrMigration.notFoundInSonarr"]</span>
                 }
                 else
                 {
                     <span>
-                        Sonarr series: <strong>@(row.SeriesTitle ?? $"#{row.SeriesId}")</strong>@(row.SeriesSuggested ? " (suggested match)" : "")
-                        &middot; @(row.Series is null ? "not observed" : row.Series.Monitored ? "monitored in Sonarr" : "unmonitored in Sonarr")
-                        &middot; @row.ActiveSonarrDownloads active Sonarr download(s)
+                        @ui["settings.sonarrMigration.seriesLabel"] <strong>@(row.SeriesTitle ?? $"#{row.SeriesId}")</strong>@(row.SeriesSuggested ? " " + ui["settings.sonarrMigration.suggestedMatch"] : "")
+                        &middot; @(row.Series is null ? ui["settings.sonarrMigration.notObserved"] : row.Series.Monitored ? ui["settings.sonarrMigration.monitoredInSonarr"] : ui["settings.sonarrMigration.unmonitoredInSonarr"])
+                        &middot; @ui.Format("settings.sonarrMigration.activeDownloads", ("count", row.ActiveSonarrDownloads))
                         @if (row.SonarrUnmonitoredByAniLingo)
                         {
-                            <span>&middot; unmonitored by AniLingo</span>
+                            <span>&middot; @ui["settings.sonarrMigration.unmonitoredByAniLingo"]</span>
                         }
                     </span>
                 }
@@ -162,13 +163,13 @@
                 {
                     <label class="checkbox-row">
                         <input type="checkbox" name="applySonarrMonitoring" value="true" />
-                        <span>Also update Sonarr monitoring</span>
+                        <span>@ui["settings.sonarrMigration.alsoUpdateMonitoring"]</span>
                     </label>
                 }
-                <button class="button" type="submit" name="migrationAction" value="@AnimeMigrationAction.KeepSonarr">Keep Sonarr</button>
-                <button class="button" type="submit" name="migrationAction" value="@AnimeMigrationAction.StartParallel">Parallel</button>
-                <button class="button button-primary" type="submit" name="migrationAction" value="@AnimeMigrationAction.HandOverToAniLingo">Hand over to AniLingo</button>
-                <button class="button" type="submit" name="migrationAction" value="@AnimeMigrationAction.Revert">Revert</button>
+                <button class="button" type="submit" name="migrationAction" value="@AnimeMigrationAction.KeepSonarr">@ui["settings.sonarrMigration.rollout.keepSonarr.term"]</button>
+                <button class="button" type="submit" name="migrationAction" value="@AnimeMigrationAction.StartParallel">@ui["settings.sonarrMigration.rollout.parallel.term"]</button>
+                <button class="button button-primary" type="submit" name="migrationAction" value="@AnimeMigrationAction.HandOverToAniLingo">@ui["settings.sonarrMigration.handOverToAniLingoButton"]</button>
+                <button class="button" type="submit" name="migrationAction" value="@AnimeMigrationAction.Revert">@ui["settings.sonarrMigration.rollout.revert.term"]</button>
             </form>
         </article>
     }
@@ -178,8 +179,8 @@
 {
     <section class="panel">
         <div class="panel-heading">
-            <h2>Migration log</h2>
-            <span>Latest @Model.RecentEvents.Count</span>
+            <h2>@ui["settings.sonarrMigration.migrationLogHeading"]</h2>
+            <span>@ui.Format("settings.sonarrMigration.latestCount", ("count", Model.RecentEvents.Count))</span>
         </div>
         <ul>
             @foreach (var entry in Model.RecentEvents)

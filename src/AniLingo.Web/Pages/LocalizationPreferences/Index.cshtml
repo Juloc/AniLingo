@@ -1,15 +1,16 @@
 @page "/Settings/Language"
 @model AniLingo.Web.Pages.LocalizationPreferences.IndexModel
 @{
-    ViewData["Title"] = Model.Ui["settings.language.title"];
+    var ui = Model.Ui;
+    ViewData["Title"] = ui["settings.language.title"];
 }
 
 <header class="page-header">
     <div>
-        <a class="back-link" href="/Settings">← Settings</a>
-        <span class="eyebrow">Localization</span>
-        <h1>@Model.Ui["settings.language.title"]</h1>
-        <p>@Model.Ui["settings.language.description"]</p>
+        <a class="back-link" href="/Settings">@ui["common.backToSettings"]</a>
+        <span class="eyebrow">@ui["settings.language.eyebrow"]</span>
+        <h1>@ui["settings.language.title"]</h1>
+        <p>@ui["settings.language.description"]</p>
     </div>
 </header>
 
@@ -26,7 +27,7 @@
                 </div>
                 @if (locale.Locale.Equals(Model.CurrentLocale, StringComparison.OrdinalIgnoreCase))
                 {
-                    <span class="status-pill status-ok">Current</span>
+                    <span class="status-pill status-ok">@ui["settings.language.current"]</span>
                 }
                 else
                 {
@@ -37,8 +38,7 @@
             @if (!locale.IsSource)
             {
                 <p class="muted">
-                    @locale.Ready / @locale.Total resources ready.
-                    Missing text falls back to English.
+                    @ui.Format("settings.language.resourcesReady", ("ready", locale.Ready), ("total", locale.Total))
                 </p>
             }
 
@@ -47,7 +47,7 @@
                 <button class="button @(locale.Locale.Equals(Model.CurrentLocale, StringComparison.OrdinalIgnoreCase) ? "" : "button-primary")"
                         type="submit"
                         disabled="@locale.Locale.Equals(Model.CurrentLocale, StringComparison.OrdinalIgnoreCase)">
-                    @Model.Ui["settings.language.save"]
+                    @ui["settings.language.save"]
                 </button>
             </form>
         </article>
