@@ -204,7 +204,7 @@
     </aside>
 
     <header class="novel-reader-title">
-        <span class="novel-chapter-label">@Model.ChapterLabel</span>
+        <span class="novel-chapter-label">@(Model.Chapter.IsEpubVolume ? $"Band {Model.Chapter.VolumeNumber} · " : "")Kapitel @Model.Chapter.Number</span>
         <h1>@Model.Chapter.Title</h1>
         @if (Model.AnimeMappings.Count > 0)
         {
@@ -245,7 +245,7 @@
 
     <main class="novel-reader-content" data-reader-content data-reader-surface>
         <header class="novel-reader-title novel-reader-page-title">
-            <span class="novel-chapter-label">@Model.ChapterLabel</span>
+            <span class="novel-chapter-label">@(Model.Chapter.IsEpubVolume ? $"Band {Model.Chapter.VolumeNumber} · " : "")Kapitel @Model.Chapter.Number</span>
             <h1>@Model.Chapter.Title</h1>
         </header>
 
