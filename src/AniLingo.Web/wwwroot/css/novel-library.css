@@ -218,6 +218,28 @@
     margin-top: .35rem;
 }
 
+.novel-library-filter {
+    display: inline-flex;
+    gap: 4px;
+    margin-bottom: .85rem;
+    padding: 3px;
+    border-radius: 999px;
+    background: var(--surface-2);
+}
+.novel-library-filter button {
+    padding: 5px 14px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    cursor: pointer;
+}
+.novel-library-filter button.active {
+    background: var(--surface);
+    color: var(--text);
+}
+
 .novel-library-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));

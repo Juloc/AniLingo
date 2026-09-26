@@ -11,12 +11,130 @@ reuses one server model instead of separate PWA/Android business logic
 (matching the bounded offline playback design of #225/PR #341).
 
 Status: **part 1 delivered** (server contract, sync endpoint, PWA download
-manager foundation, Settings → Offline page) and **Android delivered**
-(native download engine, WebView interception; see
-[Android implementation](#android-implementation)). The reader repository
-abstraction (`Reader -> BookRepository`) so `/Novels/Read`/`/Books/Read`
-themselves serve local content is still future work; see
-[Part 2](#part-2-todo) below.
+manager foundation, Settings → Offline page). **Part 2 delivered
+incrementally, per client:**
+
+- **2A — PWA** (this section): the reader ↔ offline library bridge,
+  offline-first Novel progress/bookmark sync, in-page offline chapter
+  navigation, the "Save offline" action on the Novel work page, the Library
+  "Offline" filter, a compact global download indicator and JS-catalog
+  localization of `offline-library-ui.js`.
+- **Android**: native download engine (`LibraryStore`/`LibraryDownloads`/
+  WorkManager jobs), WebView request interception and native entry points;
+  see [Android implementation](#android-implementation).
+
+Both clients' reader-side wiring is real but still narrower than the
+issue's full `Reader -> BookRepository` shape for a genuinely cold,
+from-scratch offline page load — see the note at the end of the Android
+section and [Part 2 TODO](#part-2-todo) below for what remains on each.
+
+## Part 2A: reader repository, offline-first sync, discoverability (PWA)
+
+### Reader ↔ offline library bridge (`offline-library-repository.js`)
+
+`Reader -> BookRepository -> {local source first, server source when
+required}` (the issue's target shape) is implemented once, in
+`wwwroot/js/offline-library-repository.js`, shared by the Novel reader
+(`novel-position.js`/`novel-annotations.js`/`novel-reader.js`) and the Books
+reader (`books-reader.js`) — there is no per-reader offline logic.
+
+**Chapter content is served local-first whenever a verified local copy
+exists — online or offline, not "only when offline".** A chapter is only
+ever marked verified when its hash matches the manifest's *current* server
+hash (the same finalization rule `offline-library.js`'s `isBookComplete`
+already enforces), so the local copy and what the server would render are
+guaranteed identical; the initial server-rendered page therefore never needs
+to re-render already-correct content from the local copy. What was actually
+missing, and what this slice adds: **in-page offline chapter navigation**.
+While the browser is offline, following the previous/next chapter footer
+link to a chapter that *has* been downloaded renders it locally (through
+`renderNovelBlocksHtml`/`renderBookParagraphsHtml`, the same block/paragraph
+→ HTML mapping the server itself uses, so there is exactly one place that
+turns chapter content into reader markup) instead of a failing full-page
+navigation. Following a link to a chapter that has *not* been downloaded
+shows a clear inline notice instead of the browser's own broken/offline
+error page. Online, none of this engages: the existing full-page navigation
+is unchanged and remains the only online code path.
+
+This is deliberately narrow: only the always-present footer previous/next
+links are covered (the chapter drawer's list itself still needs network to
+load; see [Part 2 TODO](#part-2-todo)), and a fresh, cold-start navigation to
+a Read URL while fully offline (nothing already loaded this session) still
+falls back to the generic `offline.html` shell — see below.
+
+### Progress and bookmarks: one canonical, offline-first write path (Novels)
+
+Novel reading progress and bookmark add/remove/rename now always go through
+`manager.queueSyncEvent`/`drainSyncQueue` (`offline-library-repository.js`'s
+`forWork(workId).queueProgress`/`queueBookmarkUpsert`/`queueBookmarkRemove`)
+— **online and offline alike, not two different code paths.** The local
+queue write always succeeds immediately (bookmarks are optimistic: the
+bookmark id is client-generated, per the sync contract's explicit support
+for client-supplied ids, so the UI updates without waiting on the network),
+then an opportunistic `drainSyncQueue()` is attempted whenever
+`navigator.onLine` is true. `Pages/Novels/Read.cshtml.cs`'s own
+`Progress`/`Bookmark`/`RemoveBookmark`/`BookmarkLabel` POST handlers are no
+longer called by the reader; they are left in place (harmless, unused by
+this client) rather than removed, to avoid widening this slice's
+server-side surface for a client-only change. Renaming a bookmark that
+belongs to a *different* chapter (from the "other chapters"/search list,
+which itself requires network to have loaded) still uses the existing
+targeted endpoint, since only the current chapter's bookmarks carry every
+field needed to safely rebuild a full offline upsert event.
+
+Highlights are **not** part of the offline sync contract (PR #359 only
+covers progress and bookmarks) and intentionally keep using their existing
+online-only endpoints unchanged.
+
+### Books' progress/bookmarks: intentionally *not* wired to the queue yet
+
+Books' progress and bookmark writes still use their existing endpoints
+unchanged (online-only, exactly as before this slice) — **not** an
+oversight. Investigating the wiring surfaced a real part-1 contract gap:
+`OfflineLibrarySyncRules`'s bookmark upsert and the progress reconciler both
+call `NovelReadingLanguage.Normalize`, which hard-normalizes *any* language
+other than `"de"` to `"ja"` (`Features/Novels/NovelChapterText.cs`). That is
+correct for Novels (strictly bilingual, ja/de) but wrong for Books, whose
+`TargetLanguage` is an arbitrary BCP-47-ish code (`BookLanguageCatalog`,
+defaulting to `"id"`). Routing a Book's progress/bookmark writes through the
+shared `/sync` endpoint as it stands today would silently rewrite
+`NovelProgress.AnchorLanguage`/`NovelBookmark.Language` to `"ja"` for every
+book not read in German — a real data-correctness regression, not merely a
+missing feature. Fixing it requires a small server-side change (teach the
+reconciler to skip Novel-specific ja/de anchor-text resolution for
+Book-typed works and pass the raw target language straight through — both
+`NovelProgress.AnchorLanguage` and `NovelBookmark.Language` are already
+free-form strings, so no schema change is needed) that is out of scope for
+this PWA-only slice; see [Part 2 TODO](#part-2-todo). Books' in-page offline
+chapter *navigation* (above) has no such issue — it never touches
+`Language`/`AnchorLanguage` — and is implemented for both readers.
+
+### Discoverability: Save-offline action, Library filter, download indicator
+
+- The reusable `_OfflineLibraryAction` partial ("Save offline") is now also
+  included on the Novel work page (`Pages/Novels/Work.cshtml`), alongside its
+  existing placement on the Books library detail page.
+- A client-side-only **Library "Offline" filter** (`data-offline-library-filter`
+  / `data-library-filter-option`) on `Pages/Books/Index.cshtml` and
+  `Pages/Novels/Index.cshtml` shows/hides already-rendered cards using
+  `manager.listBooks()`; it never asks the server what is downloaded, since
+  that is profile-and-device-local browser state the server never sees.
+- A compact **global download indicator** (`data-offline-download-indicator`,
+  `Pages/Shared/_AppAccountFooter.cshtml`, rendered on every authenticated
+  page) shows a small "N downloading" label via `manager.onChange`, hidden
+  entirely when nothing is in progress.
+
+### Localization
+
+`offline-library-ui.js`'s previously plain-English strings (state labels,
+button text, Settings → Offline copy, the new indicator/filter strings) now
+read from the UI catalog (`offlineLibrary.*` keys, `UiTranslationResources.cs`)
+through a JSON script element (`#offline-library-text`, rendered once by
+`_Layout.cshtml`), the same pattern `pwa.js`'s `shellText`/`#app-shell-text`
+already uses for `pwa.*` keys. The four `offline-library-*.js` scripts
+themselves also moved from being duplicated on `_OfflineLibraryAction.cshtml`
+and `Settings/Offline.cshtml` to one global, authenticated-only inclusion in
+`_Layout.cshtml` (needed anyway for the indicator to work on every page).
 
 ## Why a separate contract from bounded offline playback (#225)
 
@@ -372,36 +490,66 @@ models (`core-model`), gated by the `offlineLibrary` capability flag.
   site yet in this PR — wiring them up is the same reader-integration slice
   as item 2 below, now shared across both clients.
 
+**Relationship to the PWA's 2A reader bridge above:** the two clients solve
+"local source first" differently today. The PWA's
+`offline-library-repository.js` reads its own IndexedDB/OPFS store directly,
+in-process, from JS running on the already-loaded reader page — it never
+issues a `fetch()` to `/api/client/v1/offline-library/**` when serving local
+content, so Android's WebView-level interception of that same path (above)
+has nothing to intercept from a PWA reader page and is orthogonal to it.
+Android's interception, in turn, only takes effect if/when the WebView-hosted
+`/Novels/Read`/`/Books/Read` page itself starts *fetching* chapter content
+through that path client-side, which it does not yet do (both readers still
+render chapter content server-side on load). A fully unified "cold, from
+scratch, offline page load" story on both platforms most likely means
+teaching the reader pages to fetch chapter content through
+`/api/client/v1/offline-library/**` explicitly (letting Android's existing
+WebView interception and a PWA service-worker equivalent both answer it
+locally), rather than each client only patching narrower gaps in-process as
+this PR and 2A currently do. Left for a follow-up rather than block either
+slice on the other.
+
 ## Part 2 TODO
 
-Left for the reader-integration slice (explicitly out of scope here because
-another agent was editing the Novel reader concurrently):
+Left after part 2A (above):
 
-1. **Reader repository abstraction.** Introduce the
-   `Reader → BookRepository → {local source first, server source when
-   required}` seam the issue describes, so `/Novels/Read` and `/Books/Read`
-   can serve a downloaded chapter/progress/bookmarks from
-   `offline-library-storage.js` (PWA) or the local store above (Android)
-   while offline, with **no separate offline/online rendering path** in the
-   reader itself. This is what makes both clients' local-first interception
-   actually take effect for real page loads.
-2. Wire the reader's existing progress/bookmark writes to
-   `manager.queueSyncEvent(...)` (PWA) / `LibraryDownloads.recordProgress`
-   /`recordBookmark` (Android) first (offline-first: local write always
-   succeeds, then queued), and drain the queue on reconnect/interval. The
-   sync endpoint, conflict rules and both clients' local queues already
-   exist and are tested; only the reader-side call sites are missing.
-3. Place the `_OfflineLibraryAction` partial (and, once selection UI
-   exists, per-chapter selection reusing `enqueueBook`'s `chapterIds`
-   option) on `Pages/Novels/**` detail pages — explicitly not touched here.
-4. Library "Offline" filter/view and a compact global download-queue
-   indicator (issue's UX section); the manager already exposes
-   `listBooks()`/`onChange(...)` for this.
-5. Fuller localization of the JS-rendered strings in
-   `offline-library-ui.js` through the same catalog mechanism `pwa.js` uses
-   (`shellText`/`app-shell-text`) — left as plain English source strings for
-   part 1, consistent with the rest of the codebase's untranslated JS
-   surfaces, but not yet wired to `UiTranslationResources.cs`.
+1. **Books' progress/bookmark offline sync.** Teach
+   `OfflineLibrarySyncRules`'s bookmark upsert and the progress reconciler
+   (`Features/OfflineLibrary/OfflineLibrarySync.cs`) to skip
+   `NovelReadingLanguage.Normalize`/ja-de-only anchor-text resolution for
+   Book-typed works and pass the raw `TargetLanguage` straight through
+   instead (see "Books' progress/bookmarks" above for why routing them
+   through today's `/sync` endpoint as-is would corrupt
+   `NovelBookmark.Language`/`NovelProgress.AnchorLanguage`). Once fixed
+   server-side, `books-reader.js` can adopt the same
+   `offline-library-repository.js` queue calls Novels already use.
+2. **Cold-start offline page load / a fully unified reader repository.**
+   Opening a `/Novels/Read/{id}` or `/Books/Read/{id}` URL directly while
+   fully offline (nothing already loaded this session, e.g. from the
+   Library's Offline filter) still falls back to the generic
+   `service-worker.js` `/offline.html` shell on the PWA rather than
+   rendering the downloaded chapter; Part 2A's in-page offline chapter
+   navigation (footer previous/next, while a reader page is already open)
+   covers the more common "lost connectivity mid-session" case without this.
+   As noted at the end of the Android section above, a full fix on both
+   platforms most likely means teaching `/Novels/Read`/`/Books/Read` to
+   fetch chapter content through `/api/client/v1/offline-library/**`
+   client-side (so Android's existing WebView interception actually takes
+   effect, and a PWA service-worker fetch handler could answer the same
+   requests from IndexedDB/OPFS) rather than each client only patching
+   narrower gaps in-process as today.
+3. The chapter drawer's list (`novel-chapter-drawer.js`, PWA) still requires
+   network to load (`OnGetChaptersAsync`); it could fall back to the local
+   manifest's chapter list while offline instead of only showing a retry
+   button.
+4. Per-chapter selection UI on both clients, reusing `enqueueBook`'s
+   `chapterIds` option / `LibraryDownloads`'s equivalent (whole-book
+   download only so far).
+5. **Android reader-side wiring.** `LibraryDownloads.recordProgress`/
+   `recordBookmark` and the local sync queues are implemented and tested but
+   have no reader call site yet (mirrors item 1/2's PWA-side gaps before
+   part 2A) — wiring the WebView-hosted reader's progress/bookmark writes to
+   them is the Android equivalent of part 2A's Novel wiring above.
 6. **Manga reuse**: the manifest/chapter/asset/sync contract here is
    already generic over "work → volume → chapter" content; a Manga chapter
    payload would swap `originalText`/`blocks` for an ordered page-image
