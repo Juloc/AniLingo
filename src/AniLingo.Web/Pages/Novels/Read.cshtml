@@ -43,7 +43,7 @@
     return;
 }
 @{
-    var hasTranslation = Model.Chapter.HasTranslation;
+    var hasTranslation = Model.TranslationEnabled && Model.Chapter.HasTranslation;
     var anchor = Model.InitialAnchor;
     var currentBookmarks = Model.Annotations.Bookmarks;
     var currentHighlights = Model.Annotations.Highlights;
@@ -256,28 +256,31 @@
         }
     </header>
 
-    <div class="novel-translation-slot" data-translation-slot>
-        @if (hasTranslation)
-        {
-            <span class="novel-translation-state ready">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4 10-10" /></svg>
-                Deutsch bereit
-            </span>
-        }
-        else
-        {
-            <span class="novel-translation-state">Deutsch noch nicht vorbereitet</span>
-            @if (Model.IsOwner)
+    @if (Model.TranslationEnabled)
+    {
+        <div class="novel-translation-slot" data-translation-slot>
+            @if (hasTranslation)
             {
-                <form method="post"
-                      asp-page-handler="Translate"
-                      asp-route-id="@Model.Chapter.Id"
-                      data-translate-form>
-                    <button class="novel-text-action" type="submit">Übersetzen</button>
-                </form>
+                <span class="novel-translation-state ready">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4 10-10" /></svg>
+                    Deutsch bereit
+                </span>
             }
-        }
-    </div>
+            else
+            {
+                <span class="novel-translation-state">Deutsch noch nicht vorbereitet</span>
+                @if (Model.IsOwner)
+                {
+                    <form method="post"
+                          asp-page-handler="Translate"
+                          asp-route-id="@Model.Chapter.Id"
+                          data-translate-form>
+                        <button class="novel-text-action" type="submit">Übersetzen</button>
+                    </form>
+                }
+            }
+        </div>
+    }
 
     <main class="novel-reader-content" data-reader-content data-reader-surface>
         <header class="novel-reader-title novel-reader-page-title">

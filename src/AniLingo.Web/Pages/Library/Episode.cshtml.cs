@@ -80,8 +80,18 @@ public sealed class EpisodeModel(
     /// <summary>Learn queues spaced repetition, so it also needs Reviews for this episode.</summary>
     public bool ShowLearnAction =>
         ShowVocabularyTools && LearningSettings.IsEnabled(LearningCapability.Reviews);
+    /// <summary>
+    /// The player's own learning sheet (the shared inspector's fallback when it
+    /// did not render) needs PlayerTools and at least one of
+    /// Lookup/ReadingAids/AiExplanations, mirroring the shared inspector's own
+    /// "show at all" rule, so a Custom scope that enables PlayerTools alone
+    /// never surfaces word meanings or readings the profile did not opt into.
+    /// </summary>
     public bool ShowPlayerTools =>
-        LearningSettings.IsEnabled(LearningCapability.PlayerTools);
+        LearningSettings.IsEnabled(LearningCapability.PlayerTools)
+        && (LearningSettings.IsEnabled(LearningCapability.LanguageLookup)
+            || LearningSettings.IsEnabled(LearningCapability.ReadingAids)
+            || LearningSettings.IsEnabled(LearningCapability.AiExplanations));
     public bool NeedsLearningSource =>
         ShowContentMetrics
         || ShowPreparationSuggestions

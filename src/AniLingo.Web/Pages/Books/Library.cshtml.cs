@@ -1,6 +1,7 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Books;
+using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Localization;
 using AniLingo.Web.Features.Operations;
 using AniLingo.Web.Infrastructure;
@@ -11,16 +12,25 @@ using Microsoft.Extensions.DependencyInjection;
 namespace AniLingo.Web.Pages.Books;
 
 public sealed class LibraryModel(
+    AppDbContext db,
     BookCatalogService books,
     CurrentAccountContext account,
-    BackgroundJobQueue jobs,
-    AppDbContext db) : PageModel
+    BackgroundJobQueue jobs) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public BookLibraryDetail Book { get; private set; } = null!;
     public string TargetLanguage { get; private set; } = "id";
     public bool SourceIsTarget { get; private set; }
     public bool IsOwner => account.IsOwner;
+
+    /// <summary>
+    /// Whole-book translation state (the per-chapter "Translated" badge, the
+    /// translated-count summary and the Translate/Regenerate actions), gated
+    /// the same way as the Book reader's own translation UI: through
+    /// <see cref="LearningModuleResolver.ResolveTranslationEnabledAsync"/> for
+    /// this work's Book scope, not by whether a translation is cached.
+    /// </summary>
+    public bool TranslationEnabled { get; private set; }
 
     public async Task<IActionResult> OnGetAsync(
         Guid id,
@@ -45,6 +55,7 @@ public sealed class LibraryModel(
             .Equals(
                 TargetLanguage,
                 StringComparison.OrdinalIgnoreCase);
+        TranslationEnabled = await ResolveTranslationEnabledAsync(id, cancellationToken);
         return Page();
     }
 
@@ -54,6 +65,12 @@ public sealed class LibraryModel(
         CancellationToken cancellationToken)
     {
         var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
+        if (!await ResolveTranslationEnabledAsync(id, cancellationToken))
+        {
+            return Forbid();
+        }
+
         var targetLanguage = BookLanguageCatalog.Normalize(lang);
 
         var detail = await books.GetLibraryBookAsync(
@@ -120,6 +137,11 @@ public sealed class LibraryModel(
         var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
 
         if (!account.IsOwner)
+        {
+            return Forbid();
+        }
+
+        if (!await ResolveTranslationEnabledAsync(id, cancellationToken))
         {
             return Forbid();
         }
@@ -211,4 +233,19 @@ public sealed class LibraryModel(
 
         return "en";
     }
+
+    /// <summary>
+    /// Resolves the Translation capability for this book's Book/work scope.
+    /// Shared with the Book reader through
+    /// <see cref="LearningModuleResolver.ResolveTranslationEnabledAsync"/>.
+    /// </summary>
+    private Task<bool> ResolveTranslationEnabledAsync(
+        Guid workId,
+        CancellationToken cancellationToken) =>
+        new LearningModuleResolver(db).ResolveTranslationEnabledAsync(
+            account.ProfileId,
+            LearningMediaType.Book,
+            workId.ToString(),
+            contentKey: null,
+            cancellationToken);
 }

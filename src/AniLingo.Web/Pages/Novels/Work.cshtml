@@ -374,7 +374,7 @@
                             }
                         </div>
                         <div class="novel-chapter-badges">
-                            @if (chapter.HasTranslation)
+                            @if (Model.TranslationEnabled && chapter.HasTranslation)
                             {
                                 <span>DE</span>
                             }
