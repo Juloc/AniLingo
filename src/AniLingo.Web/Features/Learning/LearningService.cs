@@ -1,15 +1,24 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
+using AniLingo.Web.Features.Learning.Courses;
 using Microsoft.EntityFrameworkCore;
 
 namespace AniLingo.Web.Features.Learning;
 
+/// <summary>
+/// Profile-bound owner of Learning card state and FSRS scheduling. Catalog
+/// words (subtitle Terms) are addressed through the unit linked to the term in
+/// the profile's primary course for the term language; every other operation
+/// addresses directional cards directly.
+/// </summary>
 public sealed class LearningService
 {
     private readonly AppDbContext db;
     private readonly IReviewScheduler scheduler;
+    private readonly LearningCourseStore courses;
     private readonly string profileId;
     private static readonly SemaphoreSlim OfflineSyncGate = new(1, 1);
+    private LearningPreferencesSnapshot? preferencesCache;
 
     public LearningService(
         AppDbContext db,
@@ -34,68 +43,31 @@ public sealed class LearningService
         this.db = db;
         this.scheduler = scheduler;
         this.profileId = profileId;
+        courses = new LearningCourseStore(db);
     }
-    private LearningPreferencesSnapshot? preferencesCache;
+
+    public string ProfileId => profileId;
+
+    /// <summary>
+    /// Sets the state of a catalog word: every card of its unit in the primary
+    /// course for the term language, creating unit, course and cards on first use.
+    /// </summary>
     public async Task SetStateAsync(
         Guid termId,
         UserTermState state,
         CancellationToken cancellationToken)
     {
-        var item = await db.UserTerms.SingleOrDefaultAsync(
-            x => x.ProfileId == profileId && x.TermId == termId,
+        var term = await db.Terms
+            .AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == termId, cancellationToken)
+            ?? throw new KeyNotFoundException("The term does not exist.");
+
+        var course = await courses.ResolvePrimaryCourseAsync(
+            profileId,
+            term.Language,
             cancellationToken);
-
-        var now = DateTime.UtcNow;
-
-        if (item is null)
-        {
-            item = new UserTerm
-            {
-                ProfileId = profileId,
-                TermId = termId,
-                State = state,
-                UpdatedAt = now
-            };
-            db.UserTerms.Add(item);
-        }
-
-        item.State = state;
-        item.UpdatedAt = now;
-
-        switch (state)
-        {
-            case UserTermState.Known:
-            case UserTermState.Saved:
-            case UserTermState.Ignored:
-            case UserTermState.Suspended:
-                item.NextReviewAt = null;
-
-                if (state is UserTermState.Saved or UserTermState.Ignored)
-                {
-                    item.LearningStartedAt = null;
-                    item.QueuePosition = null;
-                }
-
-                await db.SaveChangesAsync(cancellationToken);
-                return;
-
-            case UserTermState.Learning:
-                if (item.LearningStartedAt is null)
-                {
-                    item.NextReviewAt = null;
-                    item.QueuePosition ??= await GetNextQueuePositionAsync(cancellationToken);
-                }
-                else
-                {
-                    item.NextReviewAt ??= now;
-                }
-
-                await db.SaveChangesAsync(cancellationToken);
-                return;
-
-            default:
-                throw new ArgumentOutOfRangeException(nameof(state), state, null);
-        }
+        var unit = await courses.EnsureTermUnitAsync(term, cancellationToken);
+        await SetUnitStateAsync(course, unit.Id, state, cancellationToken);
     }
 
     public Task SaveForLaterAsync(
@@ -113,69 +85,86 @@ public sealed class LearningService
         CancellationToken cancellationToken) =>
         SetStateAsync(termId, UserTermState.Suspended, cancellationToken);
 
+    /// <summary>
+    /// Queues catalog words for learning in the given order. Cards that are
+    /// already Known or Learning keep their state.
+    /// </summary>
     public async Task AddToLearningAsync(
         IReadOnlyCollection<Guid> termIds,
         CancellationToken cancellationToken)
     {
-        var seen = new HashSet<Guid>();
-        var ids = termIds.Where(seen.Add).ToArray();
+        var ids = termIds.Distinct().ToArray();
         if (ids.Length == 0)
         {
             return;
         }
 
-        var existing = await db.UserTerms
-            .Where(x => x.ProfileId == profileId && ids.Contains(x.TermId))
-            .ToDictionaryAsync(x => x.TermId, cancellationToken);
+        var terms = await db.Terms
+            .AsNoTracking()
+            .Where(x => ids.Contains(x.Id))
+            .ToDictionaryAsync(x => x.Id, cancellationToken);
 
-        var nextQueuePosition = await GetCurrentMaxQueuePositionAsync(cancellationToken);
-        var now = DateTime.UtcNow;
+        var coursesByLanguage = new Dictionary<string, LearningCourse>(StringComparer.Ordinal);
+        var targets = new List<(LearningCourse Course, Guid UnitId)>(ids.Length);
 
-        foreach (var termId in ids)
+        foreach (var id in ids)
         {
-            if (existing.TryGetValue(termId, out var item))
+            if (!terms.TryGetValue(id, out var term))
             {
-                if (item.State is UserTermState.Known or UserTermState.Learning)
-                {
-                    continue;
-                }
-
-                item.State = UserTermState.Learning;
-                item.NextReviewAt = null;
-                item.LearningStartedAt = null;
-                item.QueuePosition = ++nextQueuePosition;
-                item.UpdatedAt = now;
-                continue;
+                throw new KeyNotFoundException("The term does not exist.");
             }
 
-            db.UserTerms.Add(new UserTerm
+            if (!coursesByLanguage.TryGetValue(term.Language, out var course))
             {
-                ProfileId = profileId,
-                TermId = termId,
-                State = UserTermState.Learning,
-                NextReviewAt = null,
-                LearningStartedAt = null,
-                QueuePosition = ++nextQueuePosition,
-                UpdatedAt = now
-            });
+                course = await courses.ResolvePrimaryCourseAsync(
+                    profileId,
+                    term.Language,
+                    cancellationToken);
+                coursesByLanguage[term.Language] = course;
+            }
+
+            var unit = await courses.EnsureTermUnitAsync(term, cancellationToken);
+            targets.Add((course, unit.Id));
         }
 
-        await db.SaveChangesAsync(cancellationToken);
+        await QueueAsync(targets, cancellationToken);
+    }
+
+    /// <summary>Sets the state of every card of a unit in one of the profile's courses.</summary>
+    public async Task SetUnitStateAsync(
+        Guid courseId,
+        Guid unitId,
+        UserTermState state,
+        CancellationToken cancellationToken)
+    {
+        var course = await courses.FindOwnedAsync(profileId, courseId, cancellationToken)
+            ?? throw new KeyNotFoundException("Learning course was not found for this profile.");
+
+        await SetUnitStateAsync(course, unitId, state, cancellationToken);
+    }
+
+    public async Task AddUnitsToLearningAsync(
+        Guid courseId,
+        IReadOnlyCollection<Guid> unitIds,
+        CancellationToken cancellationToken)
+    {
+        var course = await courses.FindOwnedAsync(profileId, courseId, cancellationToken)
+            ?? throw new KeyNotFoundException("Learning course was not found for this profile.");
+
+        await QueueAsync(
+            unitIds.Distinct().Select(unitId => (course, unitId)).ToArray(),
+            cancellationToken);
     }
 
     public async Task<List<DueReviewItem>> GetDueAsync(CancellationToken cancellationToken)
     {
         var preferences = await GetPreferencesAsync(cancellationToken);
         var now = DateTime.UtcNow;
+        var scheduled = LearningQueries.ScheduledCards(db, profileId);
 
-        var dueStartedCount = await db.UserTerms
-            .AsNoTracking()
-            .CountAsync(
-                x => x.ProfileId == profileId
-                    && x.State == UserTermState.Learning
-                    && x.NextReviewAt != null
-                    && x.NextReviewAt <= now,
-                cancellationToken);
+        var dueStartedCount = await LearningQueries
+            .DueCards(db, profileId, now)
+            .CountAsync(cancellationToken);
 
         var batchSlotsForNew = Math.Max(
             0,
@@ -183,37 +172,33 @@ public sealed class LearningService
 
         var dayStart = now.Date;
         var dayEnd = dayStart.AddDays(1);
-        var startedToday = await db.UserTerms
-            .AsNoTracking()
-            .CountAsync(
-                x => x.ProfileId == profileId
-                    && x.LearningStartedAt != null
-                    && x.LearningStartedAt >= dayStart
-                    && x.LearningStartedAt < dayEnd,
-                cancellationToken);
+        var startedToday = await scheduled.CountAsync(
+            x => x.LearningStartedAt != null
+                && x.LearningStartedAt >= dayStart
+                && x.LearningStartedAt < dayEnd,
+            cancellationToken);
 
         var dailySlotsForNew = Math.Max(0, preferences.NewWordsPerDay - startedToday);
         var activateCount = Math.Min(batchSlotsForNew, dailySlotsForNew);
 
         if (activateCount > 0)
         {
-            var queued = await db.UserTerms
+            var queued = await scheduled
                 .Where(x =>
-                    x.ProfileId == profileId
-                    && x.State == UserTermState.Learning
+                    x.State == UserTermState.Learning
                     && x.LearningStartedAt == null
                     && x.NextReviewAt == null)
                 .OrderBy(x => x.QueuePosition ?? long.MaxValue)
                 .ThenBy(x => x.UpdatedAt)
-                .ThenBy(x => x.TermId)
+                .ThenBy(x => x.Id)
                 .Take(activateCount)
                 .ToListAsync(cancellationToken);
 
-            foreach (var item in queued)
+            foreach (var card in queued)
             {
-                item.LearningStartedAt = now;
-                item.NextReviewAt = now;
-                item.UpdatedAt = now;
+                card.LearningStartedAt = now;
+                card.NextReviewAt = now;
+                card.UpdatedAt = now;
             }
 
             if (queued.Count > 0)
@@ -222,17 +207,16 @@ public sealed class LearningService
             }
         }
 
-        return await (
-            from userTerm in db.UserTerms.AsNoTracking()
-            join term in db.Terms.AsNoTracking() on userTerm.TermId equals term.Id
-            where userTerm.ProfileId == profileId
-                && userTerm.State == UserTermState.Learning
-                && userTerm.NextReviewAt != null
-                && userTerm.NextReviewAt <= now
-            orderby userTerm.NextReviewAt, userTerm.QueuePosition, term.Canonical
-            select new DueReviewItem(term.Id, term.Canonical, term.Reading, term.Meaning, userTerm.IntervalDays))
+        var due = await LearningQueries
+            .DueCards(db, profileId, now)
+            .AsNoTracking()
+            .OrderBy(x => x.NextReviewAt)
+            .ThenBy(x => x.QueuePosition)
+            .ThenBy(x => x.Id)
             .Take(preferences.ReviewBatchSize)
             .ToListAsync(cancellationToken);
+
+        return await DescribeAsync(due, cancellationToken);
     }
 
     public async Task<IReadOnlyList<ReviewSessionCard>> GetReviewSessionAsync(
@@ -246,136 +230,57 @@ public sealed class LearningService
 
         var now = DateTimeOffset.UtcNow;
         var preferences = await GetPreferencesAsync(cancellationToken);
-        var termIds = due.Select(x => x.TermId).ToArray();
+        var cardIds = due.Select(x => x.CardId).ToArray();
 
-        var reviewRows = await db.Reviews
+        var reviewRows = await db.LearningCardReviews
             .AsNoTracking()
-            .Where(x => x.ProfileId == profileId && termIds.Contains(x.TermId))
-            .OrderBy(x => x.TermId)
+            .Where(x => cardIds.Contains(x.CardId))
+            .OrderBy(x => x.CardId)
             .ThenBy(x => x.ReviewedAt)
-            .Select(x => new { x.TermId, x.Rating, x.ReviewedAt })
+            .Select(x => new { x.CardId, x.Rating, x.ReviewedAt })
             .ToListAsync(cancellationToken);
 
         var histories = reviewRows
-            .GroupBy(x => x.TermId)
+            .GroupBy(x => x.CardId)
             .ToDictionary(
                 group => group.Key,
                 group => (IReadOnlyList<ReviewHistoryItem>)group
-                    .Select(x => new ReviewHistoryItem(
-                        x.Rating,
-                        new DateTimeOffset(DateTime.SpecifyKind(
-                            x.ReviewedAt,
-                            DateTimeKind.Utc))))
+                    .Select(x => new ReviewHistoryItem(x.Rating, AsUtcOffset(x.ReviewedAt)))
                     .ToArray());
 
-        var contextCandidates = await (
-            from episodeTerm in db.EpisodeTerms.AsNoTracking()
-            join episode in db.Episodes.AsNoTracking()
-                on episodeTerm.EpisodeId equals episode.Id
-            join anime in db.Anime.AsNoTracking()
-                on episode.AnimeId equals anime.Id
-            where termIds.Contains(episodeTerm.TermId)
-            orderby episodeTerm.TermId,
-                episodeTerm.Occurrences descending,
-                anime.Title,
-                episode.SeasonNumber,
-                episode.Number,
-                episode.Id
-            select new ReviewContextCandidate(
-                episodeTerm.TermId,
-                episode.Id,
-                anime.Title,
-                episode.SeasonNumber,
-                episode.Number,
-                episode.Title,
-                episodeTerm.FirstCueStartMs))
-            .ToListAsync(cancellationToken);
-
-        var selectedContexts = contextCandidates
-            .GroupBy(x => x.TermId)
-            .ToDictionary(x => x.Key, x => x.First());
-
-        var episodeIds = selectedContexts.Values
-            .Select(x => x.EpisodeId)
-            .Distinct()
-            .ToArray();
-
-        var trackRows = episodeIds.Length == 0
-            ? []
-            : await db.SubtitleTracks
-                .AsNoTracking()
-                .Where(x => episodeIds.Contains(x.EpisodeId) && x.Language == "ja")
-                .OrderByDescending(x => x.ImportedAt)
-                .ThenBy(x => x.Id)
-                .Select(x => new ReviewTrackCandidate(x.EpisodeId, x.Id))
-                .ToListAsync(cancellationToken);
-
-        var trackByEpisode = trackRows
-            .GroupBy(x => x.EpisodeId)
-            .ToDictionary(x => x.Key, x => x.First().TrackId);
-
-        var selectedTrackIds = trackByEpisode.Values.Distinct().ToArray();
-        var selectedStarts = selectedContexts.Values
-            .Select(x => x.CueStartMs)
-            .Distinct()
-            .ToArray();
-
-        var cueRows = selectedTrackIds.Length == 0
-            ? []
-            : await db.SubtitleCues
-                .AsNoTracking()
-                .Where(x =>
-                    selectedTrackIds.Contains(x.SubtitleTrackId)
-                    && selectedStarts.Contains(x.StartMs))
-                .Select(x => new ReviewCueCandidate(
-                    x.SubtitleTrackId,
-                    x.StartMs,
-                    x.Text))
-                .ToListAsync(cancellationToken);
-
-        var cueByKey = cueRows
-            .GroupBy(x => (x.TrackId, x.StartMs))
-            .ToDictionary(x => x.Key, x => x.First().Text);
+        var contexts = await LoadTermContextsAsync(
+            due.Where(x => x.TermId is not null).Select(x => x.TermId!.Value).Distinct().ToArray(),
+            cancellationToken);
 
         return due
             .Select(item =>
             {
                 var history = histories.GetValueOrDefault(
-                    item.TermId,
+                    item.CardId,
                     Array.Empty<ReviewHistoryItem>());
                 var schedules = scheduler.Preview(
-                    item.TermId,
+                    item.CardId,
                     now,
                     history,
                     preferences.DesiredRetention);
-                var intervals = schedules.ToDictionary(
-                    x => x.Key,
-                    x => FormatInterval(now, x.Value.NextReviewAt));
-
-                ReviewAnimeContext? context = null;
-                if (selectedContexts.TryGetValue(item.TermId, out var selected)
-                    && trackByEpisode.TryGetValue(selected.EpisodeId, out var trackId)
-                    && cueByKey.TryGetValue((trackId, selected.CueStartMs), out var sentence)
-                    && !string.IsNullOrWhiteSpace(sentence))
-                {
-                    context = new ReviewAnimeContext(
-                        selected.EpisodeId,
-                        selected.AnimeTitle,
-                        selected.SeasonNumber,
-                        selected.EpisodeNumber,
-                        selected.EpisodeTitle,
-                        selected.CueStartMs,
-                        sentence);
-                }
 
                 return new ReviewSessionCard(
+                    item.CardId,
                     item.TermId,
-                    item.Canonical,
-                    item.Reading,
-                    item.Meaning,
+                    item.Mode,
+                    item.PromptLanguage,
+                    item.AnswerLanguage,
+                    item.Prompt,
+                    item.PromptReading,
+                    item.Answer,
+                    item.AnswerReading,
                     item.IntervalDays,
-                    intervals,
-                    context);
+                    schedules.ToDictionary(
+                        x => x.Key,
+                        x => FormatInterval(now, x.Value.NextReviewAt)),
+                    item.TermId is { } termId
+                        ? contexts.GetValueOrDefault(termId)
+                        : null);
             })
             .ToArray();
     }
@@ -453,119 +358,49 @@ public sealed class LearningService
             newWordsPerDay);
     }
 
+    /// <summary>
+    /// Anime sentence for a catalog term: the exact first cue of the episode
+    /// where the term occurs most often, from a subtitle track in the term language.
+    /// </summary>
     public async Task<ReviewAnimeContext?> GetReviewContextAsync(
         Guid termId,
         CancellationToken cancellationToken)
     {
-        var source = await (
-            from episodeTerm in db.EpisodeTerms.AsNoTracking()
-            join episode in db.Episodes.AsNoTracking() on episodeTerm.EpisodeId equals episode.Id
-            join anime in db.Anime.AsNoTracking() on episode.AnimeId equals anime.Id
-            where episodeTerm.TermId == termId
-            orderby episodeTerm.Occurrences descending,
-                anime.Title,
-                episode.SeasonNumber,
-                episode.Number,
-                episode.Id
-            select new
-            {
-                episode.Id,
-                AnimeTitle = anime.Title,
-                episode.SeasonNumber,
-                EpisodeNumber = episode.Number,
-                EpisodeTitle = episode.Title,
-                episodeTerm.FirstCueStartMs
-            })
-            .FirstOrDefaultAsync(cancellationToken);
-
-        if (source is null)
-        {
-            return null;
-        }
-
-        var trackId = await db.SubtitleTracks
-            .AsNoTracking()
-            .Where(x => x.EpisodeId == source.Id && x.Language == "ja")
-            .OrderByDescending(x => x.ImportedAt)
-            .ThenBy(x => x.Id)
-            .Select(x => (Guid?)x.Id)
-            .FirstOrDefaultAsync(cancellationToken);
-
-        if (trackId is null)
-        {
-            return null;
-        }
-
-        var sentence = await db.SubtitleCues
-            .AsNoTracking()
-            .Where(x =>
-                x.SubtitleTrackId == trackId.Value &&
-                x.StartMs == source.FirstCueStartMs)
-            .Select(x => x.Text)
-            .FirstOrDefaultAsync(cancellationToken);
-
-        if (string.IsNullOrWhiteSpace(sentence))
-        {
-            return null;
-        }
-
-        return new ReviewAnimeContext(
-            source.Id,
-            source.AnimeTitle,
-            source.SeasonNumber,
-            source.EpisodeNumber,
-            source.EpisodeTitle,
-            source.FirstCueStartMs,
-            sentence);
+        var contexts = await LoadTermContextsAsync([termId], cancellationToken);
+        return contexts.GetValueOrDefault(termId);
     }
 
-    public async Task<IReadOnlyList<ReviewOption>> GetReviewOptionsAsync(
-        Guid termId,
+    public async Task ReviewAsync(
+        Guid cardId,
+        ReviewRating rating,
         CancellationToken cancellationToken)
     {
-        var now = DateTimeOffset.UtcNow;
-        var history = await GetHistoryAsync(termId, cancellationToken);
-        var preferences = await GetPreferencesAsync(cancellationToken);
-        var schedules = scheduler.Preview(
-            termId,
-            now,
-            history,
-            preferences.DesiredRetention);
-
-        return Enum.GetValues<ReviewRating>()
-            .Select(rating => new ReviewOption(
-                rating,
-                schedules[rating].NextReviewAt,
-                FormatInterval(now, schedules[rating].NextReviewAt)))
-            .ToArray();
-    }
-
-    public async Task ReviewAsync(Guid termId, ReviewRating rating, CancellationToken cancellationToken)
-    {
-        var userTerm = await db.UserTerms.SingleAsync(
-            x => x.ProfileId == profileId
-                && x.TermId == termId
+        var card = await db.LearningCards.SingleOrDefaultAsync(
+            x => x.Id == cardId
+                && x.ProfileId == profileId
                 && x.State == UserTermState.Learning,
-            cancellationToken);
+            cancellationToken)
+            ?? throw new InvalidOperationException(
+                "The card is not in active learning for this profile.");
 
-        var history = await GetHistoryAsync(termId, cancellationToken);
+        var history = await GetHistoryAsync(cardId, cancellationToken);
         var preferences = await GetPreferencesAsync(cancellationToken);
         var now = DateTimeOffset.UtcNow;
         var schedule = scheduler.Schedule(
-            termId,
+            cardId,
             now,
             history,
             rating,
             preferences.DesiredRetention);
 
-        userTerm.IntervalDays = schedule.IntervalDays;
-        userTerm.NextReviewAt = schedule.NextReviewAt.UtcDateTime;
-        userTerm.UpdatedAt = now.UtcDateTime;
+        card.IntervalDays = schedule.IntervalDays;
+        card.NextReviewAt = schedule.NextReviewAt.UtcDateTime;
+        card.UpdatedAt = now.UtcDateTime;
 
-        db.Reviews.Add(new Review
+        db.LearningCardReviews.Add(new LearningCardReview
         {
             ProfileId = profileId,
-            TermId = termId,
+            CardId = cardId,
             Rating = rating,
             ReviewedAt = now.UtcDateTime,
             NextReviewAt = schedule.NextReviewAt.UtcDateTime
@@ -603,9 +438,11 @@ public sealed class LearningService
             foreach (var item in batch)
             {
                 var reviewedAt = NormalizeUtc(item.ReviewedAtUtc);
+                var addressesCard = item.CardId is { } cardId && cardId != Guid.Empty;
+                var addressesTerm = item.TermId is { } termId && termId != Guid.Empty;
 
                 if (item.EventId == Guid.Empty
-                    || item.TermId == Guid.Empty
+                    || (!addressesCard && !addressesTerm)
                     || !Enum.IsDefined(item.Rating)
                     || reviewedAt > nowUtc
                     || !seenEventIds.Add(item.EventId))
@@ -614,19 +451,20 @@ public sealed class LearningService
                     continue;
                 }
 
-                candidates.Add(item with { ReviewedAtUtc = reviewedAt });
+                candidates.Add(item with
+                {
+                    ReviewedAtUtc = reviewedAt,
+                    CardId = addressesCard ? item.CardId : null
+                });
             }
 
             if (candidates.Count == 0)
             {
-                return new OfflineReviewSyncResult(
-                    accepted.Distinct().ToArray(),
-                    alreadyApplied.Distinct().ToArray(),
-                    rejected.Distinct().ToArray());
+                return Result(accepted, alreadyApplied, rejected);
             }
 
             var eventIds = candidates.Select(x => x.EventId).ToArray();
-            var existingEventIds = await db.Reviews
+            var existingEventIds = await db.LearningCardReviews
                 .AsNoTracking()
                 .Where(x =>
                     x.ProfileId == profileId
@@ -642,40 +480,64 @@ public sealed class LearningService
                 .Where(x => !existingSet.Contains(x.EventId))
                 .ToArray();
 
-            var termIds = remaining.Select(x => x.TermId).Distinct().ToArray();
-            var ownedTerms = termIds.Length == 0
+            var requestedCardIds = remaining
+                .Where(x => x.CardId is not null)
+                .Select(x => x.CardId!.Value)
+                .Distinct()
+                .ToArray();
+            var activeCards = requestedCardIds.Length == 0
                 ? new HashSet<Guid>()
-                : (await db.UserTerms
+                : (await db.LearningCards
                     .AsNoTracking()
                     .Where(x =>
                         x.ProfileId == profileId
                         && x.State == UserTermState.Learning
-                        && termIds.Contains(x.TermId))
-                    .Select(x => x.TermId)
+                        && requestedCardIds.Contains(x.Id))
+                    .Select(x => x.Id)
                     .ToListAsync(cancellationToken))
                     .ToHashSet();
 
-            var toApply = remaining
-                .Where(x =>
-                {
-                    if (ownedTerms.Contains(x.TermId))
-                    {
-                        return true;
-                    }
-
-                    rejected.Add(x.EventId);
-                    return false;
-                })
-                .OrderBy(x => x.ReviewedAtUtc)
-                .ThenBy(x => x.EventId)
+            var requestedTermIds = remaining
+                .Where(x => x.CardId is null)
+                .Select(x => x.TermId!.Value)
+                .Distinct()
                 .ToArray();
+            var termCards = requestedTermIds.Length == 0
+                ? new Dictionary<Guid, Guid>()
+                : await LearningQueries.TermStates(db, profileId)
+                    .Where(x =>
+                        x.State == UserTermState.Learning
+                        && requestedTermIds.Contains(x.TermId))
+                    .ToDictionaryAsync(x => x.TermId, x => x.CardId, cancellationToken);
 
-            foreach (var item in toApply)
+            var toApply = new List<(OfflineReviewEvent Event, Guid CardId)>();
+            foreach (var item in remaining)
             {
-                db.Reviews.Add(new Review
+                if (item.CardId is { } requestedCardId)
+                {
+                    if (activeCards.Contains(requestedCardId))
+                    {
+                        toApply.Add((item, requestedCardId));
+                        continue;
+                    }
+                }
+                else if (termCards.TryGetValue(item.TermId!.Value, out var termCardId))
+                {
+                    toApply.Add((item, termCardId));
+                    continue;
+                }
+
+                rejected.Add(item.EventId);
+            }
+
+            foreach (var (item, cardId) in toApply
+                         .OrderBy(x => x.Event.ReviewedAtUtc)
+                         .ThenBy(x => x.Event.EventId))
+            {
+                db.LearningCardReviews.Add(new LearningCardReview
                 {
                     ProfileId = profileId,
-                    TermId = item.TermId,
+                    CardId = cardId,
                     Rating = item.Rating,
                     ClientEventId = item.EventId,
                     ReviewedAt = item.ReviewedAtUtc,
@@ -684,15 +546,15 @@ public sealed class LearningService
                 accepted.Add(item.EventId);
             }
 
-            if (toApply.Length > 0)
+            if (toApply.Count > 0)
             {
                 await db.SaveChangesAsync(cancellationToken);
 
                 var preferences = await GetPreferencesAsync(cancellationToken);
-                foreach (var termId in toApply.Select(x => x.TermId).Distinct())
+                foreach (var cardId in toApply.Select(x => x.CardId).Distinct())
                 {
-                    await RebuildTermScheduleAsync(
-                        termId,
+                    await RebuildCardScheduleAsync(
+                        cardId,
                         preferences.DesiredRetention,
                         cancellationToken);
                 }
@@ -700,10 +562,7 @@ public sealed class LearningService
                 await db.SaveChangesAsync(cancellationToken);
             }
 
-            return new OfflineReviewSyncResult(
-                accepted.Distinct().ToArray(),
-                alreadyApplied.Distinct().ToArray(),
-                rejected.Distinct().ToArray());
+            return Result(accepted, alreadyApplied, rejected);
         }
         finally
         {
@@ -711,20 +570,228 @@ public sealed class LearningService
         }
     }
 
-    private async Task RebuildTermScheduleAsync(
-        Guid termId,
+    private async Task SetUnitStateAsync(
+        LearningCourse course,
+        Guid unitId,
+        UserTermState state,
+        CancellationToken cancellationToken)
+    {
+        var cards = await courses.EnsureCardsAsync(course, [unitId], cancellationToken);
+        var queuePosition = await courses.CurrentMaxQueuePositionAsync(profileId, cancellationToken);
+        var now = DateTime.UtcNow;
+
+        foreach (var card in cards.OrderBy(x => x.Mode))
+        {
+            LearningCardTransitions.Apply(card, state, now, ref queuePosition);
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task QueueAsync(
+        IReadOnlyList<(LearningCourse Course, Guid UnitId)> targets,
+        CancellationToken cancellationToken)
+    {
+        if (targets.Count == 0)
+        {
+            return;
+        }
+
+        var cards = new List<LearningCard>();
+        foreach (var group in targets.GroupBy(x => x.Course.Id))
+        {
+            cards.AddRange(await courses.EnsureCardsAsync(
+                group.First().Course,
+                group.Select(x => x.UnitId).Distinct().ToArray(),
+                cancellationToken));
+        }
+
+        var cardsByTarget = cards.ToLookup(x => (x.CourseId, x.UnitId));
+        var queuePosition = await courses.CurrentMaxQueuePositionAsync(profileId, cancellationToken);
+        var now = DateTime.UtcNow;
+
+        foreach (var (course, unitId) in targets)
+        {
+            foreach (var card in cardsByTarget[(course.Id, unitId)].OrderBy(x => x.Mode))
+            {
+                LearningCardTransitions.Queue(card, now, ref queuePosition);
+            }
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task<List<DueReviewItem>> DescribeAsync(
+        IReadOnlyList<LearningCard> cards,
+        CancellationToken cancellationToken)
+    {
+        if (cards.Count == 0)
+        {
+            return [];
+        }
+
+        var unitIds = cards.Select(x => x.UnitId).Distinct().ToArray();
+        var termIds = await db.LearningUnits
+            .AsNoTracking()
+            .Where(x => unitIds.Contains(x.Id))
+            .ToDictionaryAsync(x => x.Id, x => x.TermId, cancellationToken);
+        var variants = (await db.LearningVariants
+                .AsNoTracking()
+                .Where(x => unitIds.Contains(x.UnitId))
+                .ToListAsync(cancellationToken))
+            .ToLookup(x => x.UnitId);
+
+        return cards
+            .Select(card =>
+            {
+                var prompt = PickVariant(variants[card.UnitId], card.PromptLanguage);
+                var answer = PickVariant(variants[card.UnitId], card.AnswerLanguage);
+
+                return new DueReviewItem(
+                    card.Id,
+                    card.UnitId,
+                    termIds.GetValueOrDefault(card.UnitId),
+                    card.Mode,
+                    card.PromptLanguage,
+                    card.AnswerLanguage,
+                    prompt?.Text ?? "",
+                    prompt?.Reading,
+                    answer?.Text,
+                    answer?.Reading,
+                    card.IntervalDays);
+            })
+            .ToList();
+    }
+
+    private static LearningVariant? PickVariant(
+        IEnumerable<LearningVariant> variants,
+        string languageTag) =>
+        variants
+            .Where(x => x.LanguageTag == languageTag)
+            .OrderBy(x => x.Role == LearningVariantRole.Primary ? 0 : 1)
+            .ThenBy(x => x.CreatedAt)
+            .ThenBy(x => x.Text, StringComparer.Ordinal)
+            .FirstOrDefault();
+
+    private async Task<Dictionary<Guid, ReviewAnimeContext>> LoadTermContextsAsync(
+        IReadOnlyCollection<Guid> termIds,
+        CancellationToken cancellationToken)
+    {
+        var result = new Dictionary<Guid, ReviewAnimeContext>();
+        if (termIds.Count == 0)
+        {
+            return result;
+        }
+
+        var termLanguages = await db.Terms
+            .AsNoTracking()
+            .Where(x => termIds.Contains(x.Id))
+            .ToDictionaryAsync(x => x.Id, x => x.Language, cancellationToken);
+
+        var contextCandidates = await (
+            from episodeTerm in db.EpisodeTerms.AsNoTracking()
+            join episode in db.Episodes.AsNoTracking()
+                on episodeTerm.EpisodeId equals episode.Id
+            join anime in db.Anime.AsNoTracking()
+                on episode.AnimeId equals anime.Id
+            where termIds.Contains(episodeTerm.TermId)
+            orderby episodeTerm.TermId,
+                episodeTerm.Occurrences descending,
+                anime.Title,
+                episode.SeasonNumber,
+                episode.Number,
+                episode.Id
+            select new ReviewContextCandidate(
+                episodeTerm.TermId,
+                episode.Id,
+                anime.Title,
+                episode.SeasonNumber,
+                episode.Number,
+                episode.Title,
+                episodeTerm.FirstCueStartMs))
+            .ToListAsync(cancellationToken);
+
+        var selectedContexts = contextCandidates
+            .GroupBy(x => x.TermId)
+            .ToDictionary(x => x.Key, x => x.First());
+
+        var episodeIds = selectedContexts.Values
+            .Select(x => x.EpisodeId)
+            .Distinct()
+            .ToArray();
+        var languages = termLanguages.Values.Distinct().ToArray();
+
+        var trackRows = episodeIds.Length == 0
+            ? []
+            : await db.SubtitleTracks
+                .AsNoTracking()
+                .Where(x => episodeIds.Contains(x.EpisodeId) && languages.Contains(x.Language))
+                .OrderByDescending(x => x.ImportedAt)
+                .ThenBy(x => x.Id)
+                .Select(x => new ReviewTrackCandidate(x.EpisodeId, x.Language, x.Id))
+                .ToListAsync(cancellationToken);
+
+        var trackByEpisode = trackRows
+            .GroupBy(x => (x.EpisodeId, x.Language))
+            .ToDictionary(x => x.Key, x => x.First().TrackId);
+
+        var selectedTrackIds = trackByEpisode.Values.Distinct().ToArray();
+        var selectedStarts = selectedContexts.Values
+            .Select(x => x.CueStartMs)
+            .Distinct()
+            .ToArray();
+
+        var cueRows = selectedTrackIds.Length == 0
+            ? []
+            : await db.SubtitleCues
+                .AsNoTracking()
+                .Where(x =>
+                    selectedTrackIds.Contains(x.SubtitleTrackId)
+                    && selectedStarts.Contains(x.StartMs))
+                .Select(x => new ReviewCueCandidate(
+                    x.SubtitleTrackId,
+                    x.StartMs,
+                    x.Text))
+                .ToListAsync(cancellationToken);
+
+        var cueByKey = cueRows
+            .GroupBy(x => (x.TrackId, x.StartMs))
+            .ToDictionary(x => x.Key, x => x.First().Text);
+
+        foreach (var (termId, selected) in selectedContexts)
+        {
+            if (termLanguages.TryGetValue(termId, out var language)
+                && trackByEpisode.TryGetValue((selected.EpisodeId, language), out var trackId)
+                && cueByKey.TryGetValue((trackId, selected.CueStartMs), out var sentence)
+                && !string.IsNullOrWhiteSpace(sentence))
+            {
+                result[termId] = new ReviewAnimeContext(
+                    selected.EpisodeId,
+                    selected.AnimeTitle,
+                    selected.SeasonNumber,
+                    selected.EpisodeNumber,
+                    selected.EpisodeTitle,
+                    selected.CueStartMs,
+                    sentence);
+            }
+        }
+
+        return result;
+    }
+
+    private async Task RebuildCardScheduleAsync(
+        Guid cardId,
         double desiredRetention,
         CancellationToken cancellationToken)
     {
-        var userTerm = await db.UserTerms
-            .SingleAsync(
-                x => x.ProfileId == profileId
-                    && x.TermId == termId
-                    && x.State == UserTermState.Learning,
-                cancellationToken);
+        var card = await db.LearningCards.SingleAsync(
+            x => x.Id == cardId
+                && x.ProfileId == profileId
+                && x.State == UserTermState.Learning,
+            cancellationToken);
 
-        var reviews = await db.Reviews
-            .Where(x => x.ProfileId == profileId && x.TermId == termId)
+        var reviews = await db.LearningCardReviews
+            .Where(x => x.CardId == cardId)
             .OrderBy(x => x.ReviewedAt)
             .ThenBy(x => x.Id)
             .ToListAsync(cancellationToken);
@@ -734,10 +801,9 @@ public sealed class LearningService
 
         foreach (var review in reviews)
         {
-            var reviewedAt = new DateTimeOffset(
-                DateTime.SpecifyKind(review.ReviewedAt, DateTimeKind.Utc));
+            var reviewedAt = AsUtcOffset(review.ReviewedAt);
             var schedule = scheduler.Schedule(
-                termId,
+                cardId,
                 reviewedAt,
                 history,
                 review.Rating,
@@ -753,10 +819,38 @@ public sealed class LearningService
             return;
         }
 
-        userTerm.IntervalDays = finalSchedule.IntervalDays;
-        userTerm.NextReviewAt = finalSchedule.NextReviewAt.UtcDateTime;
-        userTerm.UpdatedAt = DateTime.UtcNow;
+        card.IntervalDays = finalSchedule.IntervalDays;
+        card.NextReviewAt = finalSchedule.NextReviewAt.UtcDateTime;
+        card.UpdatedAt = DateTime.UtcNow;
     }
+
+    private async Task<IReadOnlyList<ReviewHistoryItem>> GetHistoryAsync(
+        Guid cardId,
+        CancellationToken cancellationToken)
+    {
+        var rows = await db.LearningCardReviews
+            .AsNoTracking()
+            .Where(x => x.CardId == cardId)
+            .OrderBy(x => x.ReviewedAt)
+            .Select(x => new { x.Rating, x.ReviewedAt })
+            .ToListAsync(cancellationToken);
+
+        return rows
+            .Select(x => new ReviewHistoryItem(x.Rating, AsUtcOffset(x.ReviewedAt)))
+            .ToArray();
+    }
+
+    private static OfflineReviewSyncResult Result(
+        List<Guid> accepted,
+        List<Guid> alreadyApplied,
+        List<Guid> rejected) =>
+        new(
+            accepted.Distinct().ToArray(),
+            alreadyApplied.Distinct().ToArray(),
+            rejected.Distinct().ToArray());
+
+    private static DateTimeOffset AsUtcOffset(DateTime value) =>
+        new(DateTime.SpecifyKind(value, DateTimeKind.Utc));
 
     private static DateTime NormalizeUtc(DateTime value) =>
         value.Kind switch
@@ -765,33 +859,6 @@ public sealed class LearningService
             DateTimeKind.Local => value.ToUniversalTime(),
             _ => DateTime.SpecifyKind(value, DateTimeKind.Utc)
         };
-
-    private async Task<long> GetNextQueuePositionAsync(CancellationToken cancellationToken) =>
-        (await GetCurrentMaxQueuePositionAsync(cancellationToken)) + 1;
-
-    private async Task<long> GetCurrentMaxQueuePositionAsync(CancellationToken cancellationToken) =>
-        await db.UserTerms
-            .Where(x => x.ProfileId == profileId)
-            .MaxAsync(x => (long?)x.QueuePosition, cancellationToken)
-        ?? 0;
-
-    private async Task<IReadOnlyList<ReviewHistoryItem>> GetHistoryAsync(
-        Guid termId,
-        CancellationToken cancellationToken)
-    {
-        var rows = await db.Reviews
-            .AsNoTracking()
-            .Where(x => x.ProfileId == profileId && x.TermId == termId)
-            .OrderBy(x => x.ReviewedAt)
-            .Select(x => new { x.Rating, x.ReviewedAt })
-            .ToListAsync(cancellationToken);
-
-        return rows
-            .Select(x => new ReviewHistoryItem(
-                x.Rating,
-                new DateTimeOffset(DateTime.SpecifyKind(x.ReviewedAt, DateTimeKind.Utc))))
-            .ToArray();
-    }
 
     private static string FormatInterval(DateTimeOffset now, DateTimeOffset due)
     {
@@ -824,6 +891,7 @@ public sealed class LearningService
 
         return $"{interval.TotalDays / 365.25:0.#}y";
     }
+
     private sealed record ReviewContextCandidate(
         Guid TermId,
         Guid EpisodeId,
@@ -833,7 +901,6 @@ public sealed class LearningService
         string EpisodeTitle,
         int CueStartMs);
 
-    private sealed record ReviewTrackCandidate(Guid EpisodeId, Guid TrackId);
+    private sealed record ReviewTrackCandidate(Guid EpisodeId, string Language, Guid TrackId);
     private sealed record ReviewCueCandidate(Guid TrackId, int StartMs, string Text);
-
 }

@@ -1,0 +1,103 @@
+@model AniLingo.Web.Pages.Novels.ReadModel
+@* Notes panel: the current chapter's annotations render with the page; notes from other
+   chapters load on demand in bounded pages (ReadModel.OnGetWorkNotesAsync). *@
+@{
+    var annotations = Model.Annotations;
+    var settings = Model.ReaderSettings;
+}
+<aside class="novel-reader-notes"
+       id="novel-reader-notes"
+       data-reader-notes
+       tabindex="-1"
+       hidden
+       aria-label="Lesezeichen und Markierungen">
+    <div class="novel-notes-header">
+        <strong>Lesezeichen & Markierungen</strong>
+        <button class="novel-icon-button" type="button" data-reader-notes-close aria-label="Schließen">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+        </button>
+    </div>
+
+    <section aria-labelledby="novel-notes-bookmarks-heading">
+        <h3 id="novel-notes-bookmarks-heading">Lesezeichen</h3>
+        <p class="novel-notes-empty @(annotations.Bookmarks.Count == 0 ? "" : "is-hidden")" data-empty-bookmarks>Keine Lesezeichen in diesem Kapitel.</p>
+        <div class="novel-note-list" data-bookmark-list>
+            @foreach (var bookmark in annotations.Bookmarks.OrderByDescending(x => x.CreatedAt))
+            {
+                <article class="novel-note-card"
+                         data-bookmark-card
+                         data-bookmark-id="@bookmark.Id"
+                         data-bookmark-chapter-id="@bookmark.ChapterId"
+                         data-bookmark-style="@(bookmark.Style ?? settings.BookmarkStyle)"
+                         data-bookmark-color="@(bookmark.Color ?? settings.BookmarkColor)">
+                    <a href="/Novels/Read/@bookmark.ChapterId?bookmark=@bookmark.Id"
+                       data-local-bookmark-id="@bookmark.Id">
+                        <strong>@(bookmark.Label ?? $"Lesezeichen · {bookmark.PositionPermille / 10}%")</strong>
+                        @if (!string.IsNullOrWhiteSpace(bookmark.AnchorText))
+                        {
+                            <span>@bookmark.AnchorText</span>
+                        }
+                    </a>
+                    <button class="novel-note-remove"
+                            type="button"
+                            data-remove-bookmark-button
+                            data-bookmark-id="@bookmark.Id"
+                            aria-label="Lesezeichen entfernen">Entfernen</button>
+                </article>
+            }
+        </div>
+        @if (annotations.OtherChapterBookmarkCount > 0)
+        {
+            <div class="novel-other-notes" data-other-notes="bookmarks">
+                <button type="button"
+                        class="novel-other-notes-toggle"
+                        data-other-notes-toggle="bookmarks"
+                        aria-expanded="false">
+                    Andere Kapitel · <span data-other-notes-count="bookmarks">@annotations.OtherChapterBookmarkCount</span>
+                </button>
+                <div class="novel-note-list" data-other-note-list="bookmarks" hidden></div>
+                <button type="button" class="novel-drawer-more" data-other-notes-more="bookmarks" hidden>Weitere laden</button>
+            </div>
+        }
+    </section>
+
+    <section aria-labelledby="novel-notes-highlights-heading">
+        <h3 id="novel-notes-highlights-heading">Markierungen</h3>
+        <p class="novel-notes-empty @(annotations.Highlights.Count == 0 ? "" : "is-hidden")" data-empty-highlights>Text auswählen, um ihn zu markieren.</p>
+        <div class="novel-note-list" data-highlight-list>
+            @foreach (var highlight in annotations.Highlights.OrderByDescending(x => x.CreatedAt))
+            {
+                <article class="novel-note-card" data-highlight-card data-highlight-id="@highlight.Id">
+                    <a href="/Novels/Read/@highlight.ChapterId?highlight=@highlight.Id"
+                       data-local-highlight-id="@highlight.Id">
+                        <strong>@highlight.Text</strong>
+                        @if (!string.IsNullOrWhiteSpace(highlight.Note))
+                        {
+                            <span>@highlight.Note</span>
+                        }
+                    </a>
+                    <button class="novel-note-remove"
+                            type="button"
+                            data-remove-highlight-button
+                            data-highlight-id="@highlight.Id"
+                            aria-label="Markierung entfernen">Entfernen</button>
+                </article>
+            }
+        </div>
+        @if (annotations.OtherChapterHighlightCount > 0)
+        {
+            <div class="novel-other-notes" data-other-notes="highlights">
+                <button type="button"
+                        class="novel-other-notes-toggle"
+                        data-other-notes-toggle="highlights"
+                        aria-expanded="false">
+                    Andere Kapitel · <span data-other-notes-count="highlights">@annotations.OtherChapterHighlightCount</span>
+                </button>
+                <div class="novel-note-list" data-other-note-list="highlights" hidden></div>
+                <button type="button" class="novel-drawer-more" data-other-notes-more="highlights" hidden>Weitere laden</button>
+            </div>
+        }
+    </section>
+
+    <p class="novel-notes-status" data-other-notes-status role="status" aria-live="polite"></p>
+</aside>

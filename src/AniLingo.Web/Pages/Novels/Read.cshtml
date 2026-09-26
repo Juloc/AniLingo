@@ -2,58 +2,58 @@
 @model AniLingo.Web.Pages.Novels.ReadModel
 @{
     ViewData["Title"] = $"{Model.Chapter.Number}. {Model.Chapter.Title}";
-    var hasTranslation = Model.Translation is not null;
-    var initialBookmark = Model.JumpBookmark;
-    var initialLanguage = initialBookmark?.Language
-        ?? Model.Progress?.AnchorLanguage
-        ?? (hasTranslation ? "de" : "ja");
-    var initialParagraph = initialBookmark?.ParagraphIndex
-        ?? Model.Progress?.AnchorParagraphIndex;
-    var initialOffset = initialBookmark?.CharacterOffset
-        ?? Model.Progress?.AnchorOffset
-        ?? 0;
-    var initialPermille = initialBookmark?.PositionPermille
-        ?? Model.Progress?.PositionPermille
-        ?? 0;
-    var initialAnchorText = initialBookmark?.AnchorText
-        ?? Model.Progress?.AnchorText;
-    var currentBookmarks = Model.Bookmarks
-        .Where(x => x.ChapterId == Model.Chapter.Id)
-        .ToArray();
-    var currentHighlights = Model.Highlights
-        .Where(x => x.ChapterId == Model.Chapter.Id)
-        .ToArray();
-    var noteCount = Model.Bookmarks.Count + Model.Highlights.Count;
+}
+@section Head {
+    @if (Model.Chapter.HasContent)
+    {
+        <link rel="stylesheet" href="~/css/novels.css" asp-append-version="true" />
+        <link rel="stylesheet" href="~/css/novel-reader-panels.css" asp-append-version="true" />
+        <link rel="stylesheet" href="~/css/reader-themes.css" asp-append-version="true" />
+        <link rel="stylesheet" href="~/css/reader-shell.css" asp-append-version="true" />
+    }
+    else
+    {
+        <link rel="stylesheet" href="~/css/novel-library.css" asp-append-version="true" />
+    }
+}
+@section Scripts {
+    @if (Model.Chapter.HasContent)
+    {
+        @* Novel modules register themselves; novel-reader.js is the single bootstrap. *@
+        <script src="~/js/novel-position.js" asp-append-version="true"></script>
+        <script src="~/js/novel-annotations.js" asp-append-version="true"></script>
+        <script src="~/js/novel-chapter-drawer.js" asp-append-version="true"></script>
+        <script src="~/js/novel-translation.js" asp-append-version="true"></script>
+        <script src="~/js/novel-reader.js" asp-append-version="true"></script>
+        <script src="~/js/reader-themes.js" asp-append-version="true"></script>
+        <script src="~/js/reader-personalization.js" asp-append-version="true"></script>
+        <script src="~/js/reader-shell.js" asp-append-version="true"></script>
+    }
+    else
+    {
+        <script src="~/js/novel-chapter-preparation.js" asp-append-version="true"></script>
+    }
+}
+@if (!Model.Chapter.HasContent)
+{
+    <partial name="_NovelChapterPreparation" model="Model" />
+    return;
+}
+@{
+    var hasTranslation = Model.Chapter.HasTranslation;
+    var anchor = Model.InitialAnchor;
+    var currentBookmarks = Model.Annotations.Bookmarks;
+    var currentHighlights = Model.Annotations.Highlights;
+    var noteCount = currentBookmarks.Count + currentHighlights.Count;
     var pairCount = Math.Max(Model.JapaneseParagraphs.Count, Model.GermanParagraphs.Count);
-    var chapterDataJson = System.Text.Json.JsonSerializer.Serialize(
-        Model.Chapters.Select(chapter => new
-        {
-            id = chapter.Id,
-            number = chapter.Number,
-            title = chapter.Title,
-            hasTranslation = chapter.HasTranslation,
-            isCurrent = chapter.Id == Model.Chapter.Id,
-            isEarlier = chapter.Number < Model.Chapter.Number
-        }));
     var readerSettingsPanel = new AniLingo.Web.Features.ReaderCore.ReaderSettingsPanelModel(
         Model.Chapter.Id,
         Model.ReaderDocument,
         Model.ReaderSettings);
 }
-@section Head {
-    <link rel="stylesheet" href="~/css/novels.css" asp-append-version="true" />
-    <link rel="stylesheet" href="~/css/reader-themes.css" asp-append-version="true" />
-    <link rel="stylesheet" href="~/css/reader-shell.css" asp-append-version="true" />
-}
-@section Scripts {
-    <script src="~/js/novel-reader.js" asp-append-version="true"></script>
-    <script src="~/js/reader-themes.js" asp-append-version="true"></script>
-    <script src="~/js/reader-personalization.js" asp-append-version="true"></script>
-    <script src="~/js/reader-shell.js" asp-append-version="true"></script>
-}
 
 <div class="novel-reading-progress" aria-hidden="true">
-    <span data-reading-progress style="width:@(initialPermille / 10)%"></span>
+    <span data-reading-progress style="width:@(anchor.PositionPermille / 10)%"></span>
     <div class="novel-mobile-bookmark-track"
          data-bookmark-track
          data-orientation="horizontal"></div>
@@ -64,16 +64,20 @@
      data-unified-reader
      data-reader-content-type="@Model.ReaderDocument.ContentTypeKey"
      data-reader-layout="@Model.ReaderDocument.LayoutKind.ToString().ToLowerInvariant()"
-     data-work-id="@Model.Work.Id"
+     data-work-id="@Model.Chapter.WorkId"
      data-chapter-id="@Model.Chapter.Id"
-     data-view="@initialLanguage"
+     data-chapter-number="@Model.Chapter.Number"
+     data-chapters-url="@Url.Page("/Novels/Read", "Chapters", new { id = Model.Chapter.Id })"
+     data-work-notes-url="@Url.Page("/Novels/Read", "WorkNotes", new { id = Model.Chapter.Id })"
+     data-translation-status-url="@Url.Page("/Novels/Read", "TranslationStatus", new { id = Model.Chapter.Id })"
+     data-view="@anchor.Language"
      data-has-translation="@hasTranslation.ToString().ToLowerInvariant()"
-     data-progress-permille="@initialPermille"
-     data-anchor-language="@initialLanguage"
-     data-anchor-paragraph="@initialParagraph"
-     data-anchor-offset="@initialOffset"
-     data-anchor-text="@initialAnchorText"
-     data-force-anchor="@((initialBookmark is not null).ToString().ToLowerInvariant())"
+     data-progress-permille="@anchor.PositionPermille"
+     data-anchor-language="@anchor.Language"
+     data-anchor-paragraph="@anchor.ParagraphIndex"
+     data-anchor-offset="@anchor.Offset"
+     data-anchor-text="@anchor.AnchorText"
+     data-force-anchor="@anchor.Forced.ToString().ToLowerInvariant()"
      data-reader-personalization
      data-reading-mode="@Model.ReaderSettings.ReadingMode"
      data-page-transition="@Model.ReaderSettings.PageTransition"
@@ -87,7 +91,7 @@
         <div class="novel-toolbar-start">
             <a class="novel-icon-button"
                asp-page="/Novels/Work"
-               asp-route-id="@Model.Work.Id"
+               asp-route-id="@Model.Chapter.WorkId"
                aria-label="Zurück zum Novel"
                title="Zurück">
                 <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -97,6 +101,8 @@
             <button class="novel-icon-button"
                     type="button"
                     data-reader-chapters-toggle
+                    aria-controls="novel-chapter-drawer"
+                    aria-expanded="false"
                     aria-label="Kapitel öffnen"
                     title="Kapitel">
                 <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -121,7 +127,7 @@
         </div>
 
         <div class="novel-toolbar-end">
-            <button class="novel-icon-button @(currentBookmarks.Length > 0 ? "has-bookmarks" : "")"
+            <button class="novel-icon-button @(currentBookmarks.Count > 0 ? "has-bookmarks" : "")"
                     type="button"
                     data-reader-bookmark
                     aria-label="Lesezeichen setzen"
@@ -131,12 +137,14 @@
                 </svg>
                 <span class="novel-bookmark-button-count"
                       data-current-bookmark-count
-                      hidden="@(currentBookmarks.Length == 0)">@currentBookmarks.Length</span>
+                      hidden="@(currentBookmarks.Count == 0)">@currentBookmarks.Count</span>
             </button>
 
             <button class="novel-icon-button"
                     type="button"
                     data-reader-notes-toggle
+                    aria-controls="novel-reader-notes"
+                    aria-expanded="false"
                     aria-label="Lesezeichen und Markierungen"
                     title="Lesezeichen und Markierungen">
                 <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -189,10 +197,10 @@
         <div class="novel-reader-progress-track">
             <span class="novel-reader-progress-fill"
                   data-reader-rail-fill
-                  style="height:@(initialPermille / 10)%"></span>
+                  style="height:@(anchor.PositionPermille / 10)%"></span>
             <div data-bookmark-track data-orientation="vertical"></div>
         </div>
-        <output data-reader-percent>@(initialPermille / 10)%</output>
+        <output data-reader-percent>@(anchor.PositionPermille / 10)%</output>
     </aside>
 
     <header class="novel-reader-title">
@@ -277,7 +285,7 @@
     <div class="novel-page-bookmarks" data-page-bookmarks aria-label="Lesezeichen auf dieser Seite"></div>
 
     <footer class="novel-reader-footer">
-        @if (Model.PreviousChapterId is Guid previousFooter)
+        @if (Model.Chapter.PreviousChapterId is Guid previousFooter)
         {
             <a href="/Novels/Read/@previousFooter">← Vorheriges Kapitel</a>
         }
@@ -286,145 +294,14 @@
             <span></span>
         }
 
-        @if (Model.NextChapterId is Guid nextFooter)
+        @if (Model.Chapter.NextChapterId is Guid nextFooter)
         {
             <a href="/Novels/Read/@nextFooter">Nächstes Kapitel →</a>
         }
     </footer>
 
-    <div class="novel-drawer-backdrop"
-         data-chapter-drawer-backdrop
-         hidden></div>
-    <aside class="novel-chapter-drawer"
-           data-chapter-drawer
-           hidden
-           aria-label="Kapitel">
-        <header class="novel-drawer-header">
-            <strong>@(Model.Work.MetadataTitle ?? Model.Work.Title)</strong>
-            <button class="novel-icon-button"
-                    type="button"
-                    data-chapter-drawer-close
-                    aria-label="Kapitel schließen">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
-            </button>
-        </header>
-
-        <div class="novel-drawer-current">
-            @if (Model.PreviousChapterId is Guid drawerPrevious)
-            {
-                <a href="/Novels/Read/@drawerPrevious" aria-label="Vorheriges Kapitel">←</a>
-            }
-            else
-            {
-                <span aria-hidden="true"></span>
-            }
-
-            <strong>@Model.Chapter.Number. @Model.Chapter.Title</strong>
-
-            @if (Model.NextChapterId is Guid drawerNext)
-            {
-                <a href="/Novels/Read/@drawerNext" aria-label="Nächstes Kapitel">→</a>
-            }
-            else
-            {
-                <span aria-hidden="true"></span>
-            }
-        </div>
-
-        <label class="novel-chapter-search">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-                <circle cx="11" cy="11" r="6" />
-                <path d="m16 16 4 4" />
-            </svg>
-            <input type="search"
-                   data-chapter-filter
-                   placeholder="Kapitel suchen"
-                   autocomplete="off" />
-        </label>
-
-        <nav class="novel-drawer-list" data-chapter-list></nav>
-        <script type="application/json" data-chapter-data>@Html.Raw(chapterDataJson)</script>
-    </aside>
-
-    <aside class="novel-reader-notes" data-reader-notes hidden aria-label="Lesezeichen und Markierungen">
-        <div class="novel-notes-header">
-            <strong>Lesezeichen & Markierungen</strong>
-            <button class="novel-icon-button" type="button" data-reader-notes-close aria-label="Schließen">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
-            </button>
-        </div>
-
-        <section>
-            <h3>Lesezeichen</h3>
-            <p class="novel-muted @(Model.Bookmarks.Count == 0 ? "" : "is-hidden")" data-empty-bookmarks>Noch keine Lesezeichen.</p>
-            <div class="novel-note-list" data-bookmark-list>
-                @foreach (var bookmark in Model.Bookmarks.OrderByDescending(x => x.CreatedAt))
-                {
-                    <article class="novel-note-card"
-                             data-bookmark-card
-                             data-bookmark-id="@bookmark.Id"
-                             data-bookmark-chapter-id="@bookmark.ChapterId"
-                             data-bookmark-style="@(bookmark.Style ?? Model.ReaderSettings.BookmarkStyle)"
-                             data-bookmark-color="@(bookmark.Color ?? Model.ReaderSettings.BookmarkColor)">
-                        <a href="/Novels/Read/@bookmark.ChapterId?bookmark=@bookmark.Id">
-                            <strong>@(bookmark.Label ?? $"Lesezeichen · {bookmark.PositionPermille / 10}%")</strong>
-                            @if (!string.IsNullOrWhiteSpace(bookmark.AnchorText))
-                            {
-                                <span>@bookmark.AnchorText</span>
-                            }
-                        </a>
-                        <div class="novel-bookmark-appearance">
-                            <select data-bookmark-style-control
-                                    aria-label="Lesezeichen-Stil">
-                                <option value="fabric">Stoff</option>
-                                <option value="paper">Papier</option>
-                                <option value="leather">Leder</option>
-                                <option value="cord">Schnur</option>
-                                <option value="minimal">Minimal</option>
-                            </select>
-                            <input type="color"
-                                   data-bookmark-color-control
-                                   aria-label="Lesezeichen-Farbe"
-                                   value="@(bookmark.Color ?? Model.ReaderSettings.BookmarkColor)" />
-                        </div>
-                        <form method="post"
-                              asp-page-handler="RemoveBookmark"
-                              asp-route-id="@Model.Chapter.Id"
-                              data-remove-bookmark-form>
-                            <input type="hidden" name="bookmarkId" value="@bookmark.Id" />
-                            <button class="novel-note-remove" type="submit">Entfernen</button>
-                        </form>
-                    </article>
-                }
-            </div>
-        </section>
-
-        <section>
-            <h3>Markierungen</h3>
-            <p class="novel-muted @(Model.Highlights.Count == 0 ? "" : "is-hidden")" data-empty-highlights>Text auswählen, um ihn zu markieren.</p>
-            <div class="novel-note-list" data-highlight-list>
-                @foreach (var highlight in Model.Highlights.OrderByDescending(x => x.CreatedAt))
-                {
-                    <article class="novel-note-card" data-highlight-card data-highlight-id="@highlight.Id">
-                        <a href="/Novels/Read/@highlight.ChapterId">
-                            <strong>@highlight.Text</strong>
-                            @if (!string.IsNullOrWhiteSpace(highlight.Note))
-                            {
-                                <span>@highlight.Note</span>
-                            }
-                        </a>
-                        <form method="post"
-                              asp-page-handler="RemoveHighlight"
-                              asp-route-id="@Model.Chapter.Id"
-                              data-remove-highlight-form>
-                            <input type="hidden" name="highlightId" value="@highlight.Id" />
-                            <button class="novel-note-remove" type="submit">Entfernen</button>
-                        </form>
-                    </article>
-                }
-            </div>
-        </section>
-    </aside>
+    <partial name="_NovelChapterDrawer" model="Model" />
+    <partial name="_NovelReaderNotes" model="Model" />
 
     <div class="novel-selection-menu" data-selection-menu hidden>
         <button type="button" data-save-highlight>Markieren</button>
@@ -462,10 +339,10 @@
           asp-route-id="@Model.Chapter.Id"
           data-progress-form
           hidden>
-        <input type="hidden" name="positionPermille" value="@initialPermille" />
-        <input type="hidden" name="anchorLanguage" value="@initialLanguage" />
-        <input type="hidden" name="anchorParagraphIndex" value="@initialParagraph" />
-        <input type="hidden" name="anchorOffset" value="@initialOffset" />
+        <input type="hidden" name="positionPermille" value="@anchor.PositionPermille" />
+        <input type="hidden" name="anchorLanguage" value="@anchor.Language" />
+        <input type="hidden" name="anchorParagraphIndex" value="@anchor.ParagraphIndex" />
+        <input type="hidden" name="anchorOffset" value="@anchor.Offset" />
     </form>
 
     <form method="post"
@@ -473,10 +350,10 @@
           asp-route-id="@Model.Chapter.Id"
           data-bookmark-form
           hidden>
-        <input type="hidden" name="positionPermille" value="@initialPermille" />
-        <input type="hidden" name="language" value="@initialLanguage" />
-        <input type="hidden" name="paragraphIndex" value="@initialParagraph" />
-        <input type="hidden" name="characterOffset" value="@initialOffset" />
+        <input type="hidden" name="positionPermille" value="@anchor.PositionPermille" />
+        <input type="hidden" name="language" value="@anchor.Language" />
+        <input type="hidden" name="paragraphIndex" value="@anchor.ParagraphIndex" />
+        <input type="hidden" name="characterOffset" value="@anchor.Offset" />
         <input type="hidden" name="label" value="" />
         <input type="hidden" name="style" value="@Model.ReaderSettings.BookmarkStyle" />
         <input type="hidden" name="color" value="@Model.ReaderSettings.BookmarkColor" />

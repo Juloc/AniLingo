@@ -1,3 +1,4 @@
+using AniLingo.Web.Features.Library;
 using AniLingo.Web.Features.Subtitles;
 
 namespace AniLingo.Tests;
@@ -13,24 +14,28 @@ public sealed class EmbeddedSubtitleExtractorTests
           "streams": [
             {
               "index": 2,
+              "codec_type": "subtitle",
               "codec_name": "hdmv_pgs_subtitle",
               "tags": { "language": "jpn", "title": "Full PGS" },
               "disposition": { "default": 1, "forced": 0 }
             },
             {
               "index": 3,
+              "codec_type": "subtitle",
               "codec_name": "ass",
               "tags": { "language": "jpn", "title": "Signs & Songs" },
               "disposition": { "default": 0, "forced": 0 }
             },
             {
               "index": 4,
+              "codec_type": "subtitle",
               "codec_name": "ass",
               "tags": { "language": "jpn", "title": "Full Subtitles" },
               "disposition": { "default": 1, "forced": 0 }
             },
             {
               "index": 5,
+              "codec_type": "subtitle",
               "codec_name": "ass",
               "tags": { "language": "eng", "title": "English" },
               "disposition": { "default": 0, "forced": 0 }
@@ -39,7 +44,8 @@ public sealed class EmbeddedSubtitleExtractorTests
         }
         """;
 
-        var stream = EmbeddedSubtitleExtractor.SelectPreferredJapaneseTextStream(probeJson);
+        var stream = EmbeddedSubtitleExtractor.SelectPreferredJapaneseTextStream(
+            MediaProbeParser.Parse(probeJson).SubtitleStreams);
 
         Assert.IsNotNull(stream);
         Assert.AreEqual(4, stream.Index);
@@ -54,12 +60,14 @@ public sealed class EmbeddedSubtitleExtractorTests
           "streams": [
             {
               "index": 7,
+              "codec_type": "subtitle",
               "codec_name": "subrip",
               "tags": { "language": "und", "title": "日本語" },
               "disposition": { "default": 0, "forced": 0 }
             },
             {
               "index": 8,
+              "codec_type": "subtitle",
               "codec_name": "subrip",
               "tags": { "language": "eng", "title": "Japanese" },
               "disposition": { "default": 1, "forced": 0 }
@@ -68,7 +76,8 @@ public sealed class EmbeddedSubtitleExtractorTests
         }
         """;
 
-        var stream = EmbeddedSubtitleExtractor.SelectPreferredJapaneseTextStream(probeJson);
+        var stream = EmbeddedSubtitleExtractor.SelectPreferredJapaneseTextStream(
+            MediaProbeParser.Parse(probeJson).SubtitleStreams);
 
         Assert.IsNotNull(stream);
         Assert.AreEqual(7, stream.Index);
@@ -82,18 +91,21 @@ public sealed class EmbeddedSubtitleExtractorTests
           "streams": [
             {
               "index": 2,
+              "codec_type": "subtitle",
               "codec_name": "hdmv_pgs_subtitle",
               "tags": { "language": "jpn", "title": "Japanese PGS" },
               "disposition": { "default": 1, "forced": 0 }
             },
             {
               "index": 3,
+              "codec_type": "subtitle",
               "codec_name": "ass",
               "tags": { "language": "und", "title": "Full Dialogue" },
               "disposition": { "default": 0, "forced": 0 }
             },
             {
               "index": 4,
+              "codec_type": "subtitle",
               "codec_name": "subrip",
               "tags": { "language": "eng", "title": "English" },
               "disposition": { "default": 0, "forced": 1 }
@@ -102,7 +114,7 @@ public sealed class EmbeddedSubtitleExtractorTests
         }
         """;
 
-        var streams = EmbeddedSubtitleExtractor.ParseStreams(probeJson);
+        var streams = MediaProbeParser.Parse(probeJson).SubtitleStreams;
 
         Assert.AreEqual(3, streams.Count);
 

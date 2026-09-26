@@ -43,7 +43,7 @@ public interface INovelMappingSuggester
 
 public sealed class NovelTranslationService(
     AppDbContext db,
-    NovelService novelService,
+    NovelImportService imports,
     INovelTranslator translator)
 {
     public const int PromptVersion = 1;
@@ -71,7 +71,7 @@ public sealed class NovelTranslationService(
         string targetLanguage,
         CancellationToken cancellationToken)
     {
-        var chapter = await novelService.EnsureChapterContentAsync(
+        var chapter = await imports.DownloadChapterContentAsync(
             chapterId,
             forceRefresh: false,
             cancellationToken);
