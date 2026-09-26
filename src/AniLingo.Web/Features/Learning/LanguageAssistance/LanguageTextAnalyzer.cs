@@ -19,16 +19,24 @@ public sealed record LanguageTextToken(
 }
 
 /// <summary>
-/// Splits content text into words through the language toolkit. The Japanese
-/// toolkit uses the morphological analyzer and the bundled dictionary for
-/// dictionary forms, readings and meanings; every other language uses Unicode
-/// word boundaries without readings or dictionary meanings.
+/// Splits content text into words through the language toolkit. Dispatch and
+/// dictionary access are gated by toolkit capability rather than a language
+/// tag check: the Japanese toolkit supports <see cref="LearningLanguageCapability.Readings"/>
+/// and uses the morphological analyzer and the bundled dictionary for
+/// dictionary forms, readings and meanings; every other language's toolkit
+/// does not support readings and uses Unicode word boundaries without readings
+/// or dictionary meanings.
 /// </summary>
-public sealed partial class LanguageTextAnalyzer(
-    IJapaneseMorphology morphology,
-    JapaneseDictionary dictionary)
+public sealed partial class LanguageTextAnalyzer
 {
-    private static readonly LearningLanguageToolkitRegistry Toolkits = new();
+    private readonly IJapaneseMorphology morphology;
+    private readonly LearningLanguageToolkitRegistry toolkits;
+
+    public LanguageTextAnalyzer(IJapaneseMorphology morphology, JapaneseDictionary dictionary)
+    {
+        this.morphology = morphology;
+        toolkits = new LearningLanguageToolkitRegistry(new JapaneseTermExtractor(morphology), dictionary);
+    }
 
     public IReadOnlyList<LanguageTextToken> Analyze(string text, string languageTag)
     {
@@ -37,23 +45,29 @@ public sealed partial class LanguageTextAnalyzer(
             return [];
         }
 
-        return IsJapanese(languageTag)
-            ? AnalyzeJapanese(text)
+        var toolkit = toolkits.Get(languageTag);
+        return toolkit.Supports(LearningLanguageCapability.Readings)
+            ? AnalyzeJapanese(text, toolkit)
             : AnalyzeGeneric(text);
     }
 
     /// <summary>Reading and meaning of a dictionary form, when the toolkit has a dictionary.</summary>
     public (string? Reading, string? Meaning) LookUp(string canonical, string languageTag)
     {
-        if (!IsJapanese(languageTag))
+        var toolkit = toolkits.Get(languageTag);
+
+        if (toolkit.Dictionary is { } dictionary)
         {
-            return (null, null);
+            var entry = dictionary.Find(canonical);
+            if (entry is not null)
+            {
+                return (NullIfSame(entry.Reading, canonical), entry.Meaning);
+            }
         }
 
-        var entry = dictionary.Find(canonical);
-        if (entry is not null)
+        if (!toolkit.Supports(LearningLanguageCapability.Readings))
         {
-            return (NullIfSame(entry.Reading, canonical), entry.Meaning);
+            return (null, null);
         }
 
         var analyzed = morphology.Analyze(canonical);
@@ -66,10 +80,7 @@ public sealed partial class LanguageTextAnalyzer(
         return (JapaneseScript.Contains(reading) ? NullIfSame(reading, canonical) : null, null);
     }
 
-    public static bool IsJapanese(string languageTag) =>
-        Toolkits.Get(languageTag) is JapaneseLearningLanguageToolkit;
-
-    private IReadOnlyList<LanguageTextToken> AnalyzeJapanese(string text)
+    private IReadOnlyList<LanguageTextToken> AnalyzeJapanese(string text, ILearningLanguageToolkit toolkit)
     {
         var normalized = text.Normalize(NormalizationForm.FormKC);
         var analyzed = morphology.Analyze(normalized);
@@ -94,7 +105,7 @@ public sealed partial class LanguageTextAnalyzer(
                 tokens.Add(LanguageTextToken.Plain(normalized[cursor..index]));
             }
 
-            tokens.Add(DescribeJapanese(token));
+            tokens.Add(DescribeJapanese(token, toolkit));
             cursor = index + token.Surface.Length;
         }
 
@@ -106,7 +117,7 @@ public sealed partial class LanguageTextAnalyzer(
         return tokens;
     }
 
-    private LanguageTextToken DescribeJapanese(JapaneseMorphToken token)
+    private static LanguageTextToken DescribeJapanese(JapaneseMorphToken token, ILearningLanguageToolkit toolkit)
     {
         if (!JapaneseScript.Contains(token.Surface) || token.PartOfSpeech == "記号")
         {
@@ -119,7 +130,7 @@ public sealed partial class LanguageTextAnalyzer(
             canonical = token.Surface;
         }
 
-        var entry = dictionary.Find(canonical);
+        var entry = toolkit.Dictionary?.Find(canonical);
         var reading = entry?.Reading;
         if (string.IsNullOrWhiteSpace(reading) && canonical == token.Surface)
         {

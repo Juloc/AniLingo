@@ -26,6 +26,7 @@ Owner-only administration:
 - `/Settings/Naming` — anime naming profiles, default and per-library selection (linked from Admin → Sonarr); per-anime selection and the rename preview live on `/Library/Rename/{animeId}` (see [ANIME_NAMING.md](ANIME_NAMING.md))
 - `/Settings/Indexers` — the canonical indexer list (Prowlarr, direct Newznab/Torznab) for anime acquisition, with priority, enable/disable, test and health (linked from Admin → System)
 - `/Acquisition` — anime acquisition overview: schedule, wanted episodes, downloads, imports that need a decision, interactive search and recent decisions (linked from Admin → System and each anime page; see [ANIME_ACQUISITION.md](ANIME_ACQUISITION.md))
+- `/Library/AnimeRepair/{animeId}` — per-anime repair tools (linked from each anime page)
 
 Legacy owner routes under `/Settings` redirect to their `/Admin` counterparts.
 
@@ -113,6 +114,16 @@ Restart and retry: an abandoned running scan becomes `Interrupted` through the n
 A folder scan run reconciles each of its folders through `LibraryScanner.ScanFolderAsync` one after another and records the summed counters. `ScanFolderAsync` runs the same reconciliation code as a full scan, restricted to media below that folder: media, episodes, NFO metadata, local artwork, media inventory analysis and subtitles of the folder end up exactly as a full scan would leave them, while media elsewhere in the root are untouched and `LastScannedAt` (the anchor of the periodic schedule) only moves on full scans. The library-wide Sonarr artwork sync runs only when the folder scan discovered a new anime, and learning-text preparation is queued when it added or changed media. A vanished folder reconciles as deletion of its media unless the whole root is empty, which is treated like the full-scan mass-deletion guard (an unmounted NAS).
 
 Each root has one **Periodic reconciliation** interval (`LibraryRoots.ReconciliationIntervalMinutes`, default 30, `0` turns it off, edited on `/Admin/System`). A full scan of the root is queued when the last completed full scan and the last periodic attempt are both older than the interval. An unavailable root is skipped without creating an operation and is not retried before the next interval, so an offline NAS does not fill the history.
+
+## Per-anime repair tools
+
+`/Library/AnimeRepair/{animeId}` (owner-only) lets one problematic anime be repaired without a full library scan or direct database edits. It reuses the same canonical services every other path uses; it does not add a second scanner, prober or matcher:
+
+- **Rescan folder** resolves the anime's own folder from its already-known media files and queues it through `LibraryScanCoordinator` as a folder-scoped `Manual` request (`AnimeRepairService.RescanFolderAsync`) — the same entry point and per-root guard the watcher and `/Admin/Scans` use. Operation kind `library-scan`.
+- **Refresh subtitles/NFO/artwork** re-imports sidecar subtitles (`SubtitleImportService`), re-reads local NFO titles (`NfoReader`) and re-imports local poster/fanart (`LocalAnimeArtworkImporter`) for the anime's already-known episodes, without adding, changing or removing `MediaFiles` rows. This keeps it distinct from a filesystem rescan. Operation kind `anime-repair-refresh-local`.
+- **Re-analyse media** forces every media file of the anime to be re-probed by invalidating its `MediaAnalysis` rows (`MediaInventoryService.InvalidateAsync`) and bringing each back up to date through the existing `EnsureAnalyzedAsync` path — no second probe path. Operation kind `anime-repair-reanalyze-media`.
+- **Identify / Fix Match** searches AniList (`AnimeMetadataService.SearchAsync`) and scores every candidate individually through the same matcher automatic matching uses (`AutomaticMediaMatcher.Select`), showing the score and evidence behind each candidate plus its provider/ID. A match is only ever applied when the owner explicitly confirms a candidate (`AnimeMetadataService.MatchAsync`, kind `anime-metadata-match`); nothing here overwrites an existing match automatically.
+- **Refresh metadata** re-fetches the currently matched AniList entry (`AnimeMetadataService.RefreshAsync`, kind `anime-metadata-refresh`) — the same handler the anime page's "Refresh metadata" button uses. It never touches media files, keeping metadata refresh distinct from the filesystem scan.
 
 ## Local-first page loads
 

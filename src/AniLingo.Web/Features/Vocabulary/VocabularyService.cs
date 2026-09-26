@@ -1,46 +1,40 @@
 using AniLingo.Web.Data;
+using AniLingo.Web.Features.Learning.Courses;
 using Microsoft.EntityFrameworkCore;
 
 namespace AniLingo.Web.Features.Vocabulary;
 
-public sealed class VocabularyService(
-    AppDbContext db,
-    JapaneseTermExtractor extractor,
-    JapaneseDictionary dictionary)
+/// <summary>
+/// Builds the per-episode subtitle word catalog. Term extraction and
+/// dictionary enrichment are resolved per subtitle track through the language
+/// toolkit registry, so an episode's learning text is prepared in whichever
+/// language its track actually carries rather than an assumed one; today that
+/// is Japanese for every track the subtitle pipeline imports, which stays the
+/// canonical default when nothing else is configured.
+/// </summary>
+public sealed class VocabularyService
 {
+    private readonly AppDbContext db;
+    private readonly LearningLanguageToolkitRegistry toolkits;
+
+    public VocabularyService(
+        AppDbContext db,
+        JapaneseTermExtractor extractor,
+        JapaneseDictionary dictionary)
+    {
+        this.db = db;
+        toolkits = new LearningLanguageToolkitRegistry(extractor, dictionary);
+    }
+
     public async Task RebuildEpisodeAsync(Guid episodeId, CancellationToken cancellationToken)
     {
         var cues = await (
             from cue in db.SubtitleCues.AsNoTracking()
             join track in db.SubtitleTracks.AsNoTracking() on cue.SubtitleTrackId equals track.Id
-            where track.EpisodeId == episodeId && track.Language == "ja"
+            where track.EpisodeId == episodeId
             orderby cue.StartMs
-            select new { cue.Text, cue.StartMs })
+            select new { track.Language, cue.Text, cue.StartMs })
             .ToListAsync(cancellationToken);
-
-        var aggregate = new Dictionary<string, TermAggregate>(StringComparer.Ordinal);
-
-        foreach (var cue in cues)
-        {
-            foreach (var candidate in extractor.Extract(cue.Text))
-            {
-                if (aggregate.TryGetValue(candidate.Canonical, out var current))
-                {
-                    aggregate[candidate.Canonical] = current with
-                    {
-                        Count = current.Count + 1,
-                        Reading = PreferReading(current.Reading, candidate.Reading)
-                    };
-                }
-                else
-                {
-                    aggregate[candidate.Canonical] = new TermAggregate(
-                        Count: 1,
-                        FirstMs: cue.StartMs,
-                        Reading: candidate.Reading);
-                }
-            }
-        }
 
         foreach (var entry in db.ChangeTracker
                      .Entries<EpisodeTerm>()
@@ -54,59 +48,108 @@ public sealed class VocabularyService(
             .Where(x => x.EpisodeId == episodeId)
             .ExecuteDeleteAsync(cancellationToken);
 
-        if (aggregate.Count == 0)
+        if (cues.Count == 0)
         {
             return;
         }
 
-        var canonicalTerms = aggregate.Keys.ToArray();
-        var terms = await db.Terms
-            .Where(x => x.Language == "ja" && canonicalTerms.Contains(x.Canonical))
-            .ToDictionaryAsync(x => x.Canonical, StringComparer.Ordinal, cancellationToken);
+        var episodeTerms = new List<EpisodeTerm>();
 
-        foreach (var canonical in canonicalTerms)
+        foreach (var track in cues.GroupBy(x => x.Language, StringComparer.Ordinal))
         {
-            var analyzed = aggregate[canonical];
-            var dictionaryEntry = dictionary.Find(canonical);
-            var reading = PreferReading(analyzed.Reading, dictionaryEntry?.Reading);
-            var meaning = dictionaryEntry?.Meaning;
-
-            if (!terms.TryGetValue(canonical, out var term))
+            var language = track.Key;
+            var toolkit = toolkits.Get(language);
+            if (toolkit.TermExtractor is not { } extractor)
             {
-                term = new Term
-                {
-                    Language = "ja",
-                    Canonical = canonical,
-                    Reading = NullIfEmpty(reading),
-                    Meaning = NullIfEmpty(meaning)
-                };
-
-                terms.Add(canonical, term);
-                db.Terms.Add(term);
+                // The toolkit for this track's language has no term extractor;
+                // never fake extraction for it.
                 continue;
             }
 
-            if (string.IsNullOrWhiteSpace(term.Reading) && !string.IsNullOrWhiteSpace(reading))
+            var aggregate = new Dictionary<string, TermAggregate>(StringComparer.Ordinal);
+
+            foreach (var cue in track)
             {
-                term.Reading = reading;
+                foreach (var candidate in extractor.Extract(cue.Text))
+                {
+                    if (aggregate.TryGetValue(candidate.Canonical, out var current))
+                    {
+                        aggregate[candidate.Canonical] = current with
+                        {
+                            Count = current.Count + 1,
+                            Reading = PreferReading(current.Reading, candidate.Reading)
+                        };
+                    }
+                    else
+                    {
+                        aggregate[candidate.Canonical] = new TermAggregate(
+                            Count: 1,
+                            FirstMs: cue.StartMs,
+                            Reading: candidate.Reading);
+                    }
+                }
             }
 
-            if (string.IsNullOrWhiteSpace(term.Meaning) && !string.IsNullOrWhiteSpace(meaning))
+            if (aggregate.Count == 0)
             {
-                term.Meaning = meaning;
+                continue;
             }
+
+            var canonicalTerms = aggregate.Keys.ToArray();
+            var terms = await db.Terms
+                .Where(x => x.Language == language && canonicalTerms.Contains(x.Canonical))
+                .ToDictionaryAsync(x => x.Canonical, StringComparer.Ordinal, cancellationToken);
+
+            foreach (var canonical in canonicalTerms)
+            {
+                var analyzed = aggregate[canonical];
+                var dictionaryEntry = toolkit.Dictionary?.Find(canonical);
+                var reading = PreferReading(analyzed.Reading, dictionaryEntry?.Reading);
+                var meaning = dictionaryEntry?.Meaning;
+
+                if (!terms.TryGetValue(canonical, out var term))
+                {
+                    term = new Term
+                    {
+                        Language = language,
+                        Canonical = canonical,
+                        Reading = NullIfEmpty(reading),
+                        Meaning = NullIfEmpty(meaning)
+                    };
+
+                    terms.Add(canonical, term);
+                    db.Terms.Add(term);
+                    continue;
+                }
+
+                if (string.IsNullOrWhiteSpace(term.Reading) && !string.IsNullOrWhiteSpace(reading))
+                {
+                    term.Reading = reading;
+                }
+
+                if (string.IsNullOrWhiteSpace(term.Meaning) && !string.IsNullOrWhiteSpace(meaning))
+                {
+                    term.Meaning = meaning;
+                }
+            }
+
+            await db.SaveChangesAsync(cancellationToken);
+
+            episodeTerms.AddRange(aggregate.Select(item => new EpisodeTerm
+            {
+                EpisodeId = episodeId,
+                TermId = terms[item.Key].Id,
+                Occurrences = item.Value.Count,
+                FirstCueStartMs = item.Value.FirstMs
+            }));
         }
 
-        await db.SaveChangesAsync(cancellationToken);
-
-        db.EpisodeTerms.AddRange(aggregate.Select(item => new EpisodeTerm
+        if (episodeTerms.Count == 0)
         {
-            EpisodeId = episodeId,
-            TermId = terms[item.Key].Id,
-            Occurrences = item.Value.Count,
-            FirstCueStartMs = item.Value.FirstMs
-        }));
+            return;
+        }
 
+        db.EpisodeTerms.AddRange(episodeTerms);
         await db.SaveChangesAsync(cancellationToken);
     }
 
