@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace AniLingo.Web.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260926135216_AddAcquisitionHistory")]
+    [Migration("20260926150000_AddAcquisitionHistory")]
     partial class AddAcquisitionHistory
     {
         /// <inheritdoc />

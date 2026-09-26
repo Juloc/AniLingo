@@ -33,7 +33,9 @@ public sealed class SonarrPathMappingTests
                 queue: [new SonarrObservedQueueItem(101, 1, "Frieren - S01E02", "release-key", "nzo1", "/tv/downloads/Frieren.S01E02", "downloading", "downloading", null)],
                 history: [new SonarrObservedHistoryEvent(9001, 1, SonarrHistoryEventKind.Imported, "downloadFolderImported", DateTimeOffset.UtcNow, "Frieren - S01E01", null, "nzo0", "/tv/downloads/Frieren.S01E01", "/tv/anime/Frieren/Season 01/Frieren - S01E01.mkv", null)]);
 
-            var connectionStore = new SonarrConnectionStore(new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider());
+            var connectionStore = new SonarrConnectionStore(
+                new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider(),
+                new DirectoryInfo(Path.Combine(root, "sonarr-import")));
             await connectionStore.SaveAsync(new SonarrConnectionSettings("http://sonarr:8989", "key"), CancellationToken.None);
 
             // Link "frieren" to Sonarr series 1 in a non-read-only mode so episode files are fetched.
