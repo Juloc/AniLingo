@@ -71,6 +71,7 @@ public static class LearningCourseModelConfiguration
         modelBuilder.Entity<LearningContext>(entity =>
         {
             entity.HasKey(x => x.Id);
+            entity.Property(x => x.ProfileId).HasMaxLength(80);
             entity.Property(x => x.SourceType).HasMaxLength(32);
             entity.Property(x => x.SourceKey).HasMaxLength(200);
             entity.Property(x => x.PositionKey).HasMaxLength(200);
@@ -78,7 +79,9 @@ public static class LearningCourseModelConfiguration
             entity.Property(x => x.Text).HasMaxLength(2000);
             entity.HasOne<LearningUnit>().WithMany().HasForeignKey(x => x.UnitId).OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(x => x.UnitId);
-            entity.HasIndex(x => new { x.SourceType, x.SourceKey });
+            entity.HasIndex(x => new { x.ProfileId, x.SourceType, x.SourceKey });
+            entity.HasIndex(x => new { x.ProfileId, x.UnitId, x.SourceType, x.SourceKey, x.PositionKey })
+                .IsUnique();
         });
     }
 }

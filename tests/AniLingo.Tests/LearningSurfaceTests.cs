@@ -128,12 +128,18 @@ public sealed class LearningSurfaceTests
             Assert.AreEqual("猫", vocabulary.Items.Single().Text);
 
             // Sentence practice prefers studied words from the primary course.
-            var sentences = await new SentencePracticeService(
+            var sentences = await new AniLingo.Web.Features.Learning.Sentences.SentencePracticeService(
                     db,
+                    new AniLingo.Web.Features.Learning.LanguageAssistance.LanguageTextAnalyzer(
+                        new SurfaceMorphology(),
+                        new JapaneseDictionary(directory)),
+                    new AniLingo.Web.Features.Ai.AiSentenceExplanationService(db, null!))
+                .LoadAsync(
                     Profile,
-                    new SurfaceMorphology(),
-                    new JapaneseDictionary(directory))
-                .LoadAsync(5, CancellationToken.None);
+                    AniLingo.Web.Features.Learning.Sentences.SentencePracticeMode.Cloze,
+                    5,
+                    withCachedExplanations: false,
+                    CancellationToken.None);
             Assert.AreEqual("猫", sentences.Single().TargetCanonical);
 
             // Course settings list the course with its word count.

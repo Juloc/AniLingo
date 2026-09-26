@@ -67,6 +67,26 @@ public sealed class LearningModuleResolver(AppDbContext db)
             Progress: settings.IsEnabled(LearningCapability.Progress));
     }
 
+    /// <summary>
+    /// Language assistance for one scope: the Learning Hub (no scope, profile
+    /// settings) or a content scope resolved through the full profile → media
+    /// type → work → content hierarchy. <paramref name="surface"/> names the
+    /// player/reader that hosts the inspector so PlayerTools/ReaderTools apply.
+    /// </summary>
+    public async Task<LanguageAssistance.LanguageAssistanceAvailability> ResolveAssistanceAsync(
+        string profileId,
+        LearningScopeContext? scope,
+        LanguageAssistance.LanguageSourceType? surface,
+        CancellationToken cancellationToken)
+    {
+        var store = new LearningConfigurationStore(db);
+        var settings = scope is null
+            ? await store.ResolveProfileAsync(profileId, cancellationToken)
+            : await store.ResolveAsync(profileId, scope, cancellationToken);
+
+        return LanguageAssistance.LanguageAssistanceAvailability.From(settings, surface);
+    }
+
     /// <summary>The Kana trainer is the writing-system trainer of the Japanese toolkit.</summary>
     public const string KanaLanguageTag = "ja";
 

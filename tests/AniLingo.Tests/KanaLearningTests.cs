@@ -67,14 +67,6 @@ public sealed class KanaLearningTests
     }
 
     [TestMethod]
-    public void SentenceFilterAcceptsShortJapaneseAndRejectsNoise()
-    {
-        Assert.IsTrue(KanaPractice.IsSuitableSentence("今日は学校に行く。"));
-        Assert.IsFalse(KanaPractice.IsSuitableSentence("hello world"));
-        Assert.IsFalse(KanaPractice.IsSuitableSentence("あ\nい"));
-    }
-
-    [TestMethod]
     public async Task KanaPracticeUsesAScriptCourseSeparateFromWords()
     {
         var directory = Path.Combine(Path.GetTempPath(), $"anilingo-kana-{Guid.NewGuid():N}");

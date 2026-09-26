@@ -513,12 +513,21 @@ public sealed class LearningCourseStore(AppDbContext db)
         return variants.Select(LearningVariantSnapshot.From).ToArray();
     }
 
+    /// <summary>
+    /// Records where a profile met a unit. A profile keeps at most one anchor per
+    /// unit, source and position: recording the same place again returns the
+    /// existing anchor unchanged.
+    /// </summary>
     public async Task<LearningContextAnchor> AddContextAsync(
+        string profileId,
         Guid unitId,
         LearningContextInput input,
         CancellationToken cancellationToken)
     {
-        var sourceType = Required(input.SourceType, nameof(input.SourceType), 32);
+        ValidateProfile(profileId);
+        var profile = profileId.Trim();
+        var sourceType = Required(input.SourceType, nameof(input.SourceType), 32)
+            .ToLowerInvariant();
         var sourceKey = Required(input.SourceKey, nameof(input.SourceKey), 200);
         var text = Required(input.Text, nameof(input.Text), 2000);
         var positionKey = string.IsNullOrWhiteSpace(input.PositionKey)
@@ -537,10 +546,23 @@ public sealed class LearningCourseStore(AppDbContext db)
             throw new KeyNotFoundException("Learning unit was not found.");
         }
 
+        var existing = await FindContextAsync(
+            profile,
+            unitId,
+            sourceType,
+            sourceKey,
+            positionKey,
+            cancellationToken);
+        if (existing is not null)
+        {
+            return ToAnchor(existing);
+        }
+
         var context = new LearningContext
         {
+            ProfileId = profile,
             UnitId = unitId,
-            SourceType = sourceType.ToLowerInvariant(),
+            SourceType = sourceType,
             SourceKey = sourceKey,
             PositionKey = positionKey,
             LanguageTag = LearningLanguageTag.Normalize(input.LanguageTag),
@@ -548,22 +570,65 @@ public sealed class LearningCourseStore(AppDbContext db)
         };
 
         db.LearningContexts.Add(context);
-        await db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            // A concurrent request recorded the same anchor first.
+            db.Entry(context).State = EntityState.Detached;
+            existing = await FindContextAsync(
+                profile,
+                unitId,
+                sourceType,
+                sourceKey,
+                positionKey,
+                cancellationToken);
+            if (existing is null)
+            {
+                throw;
+            }
+
+            return ToAnchor(existing);
+        }
+
         return ToAnchor(context);
     }
 
     public async Task<IReadOnlyList<LearningContextAnchor>> ListContextsAsync(
+        string profileId,
         Guid unitId,
         CancellationToken cancellationToken)
     {
+        ValidateProfile(profileId);
+        var profile = profileId.Trim();
+
         var contexts = await db.LearningContexts
             .AsNoTracking()
-            .Where(x => x.UnitId == unitId)
+            .Where(x => x.ProfileId == profile && x.UnitId == unitId)
             .OrderBy(x => x.CreatedAt)
             .ToListAsync(cancellationToken);
 
         return contexts.Select(ToAnchor).ToArray();
     }
+
+    private Task<LearningContext?> FindContextAsync(
+        string profileId,
+        Guid unitId,
+        string sourceType,
+        string sourceKey,
+        string? positionKey,
+        CancellationToken cancellationToken) =>
+        db.LearningContexts
+            .AsNoTracking()
+            .FirstOrDefaultAsync(
+                x => x.ProfileId == profileId
+                    && x.UnitId == unitId
+                    && x.SourceType == sourceType
+                    && x.SourceKey == sourceKey
+                    && x.PositionKey == positionKey,
+                cancellationToken);
 
     internal async Task<long> CurrentMaxQueuePositionAsync(
         string profileId,

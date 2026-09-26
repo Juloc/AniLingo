@@ -80,7 +80,58 @@ States are Untracked → Saved → Learning → Known, plus Ignored and Suspende
 - Learning enqueues the word; it only becomes due when `GetDueAsync` activates it within the "new words per day" and batch limits.
 - Known, Ignored and Suspended clear the next review. Ignored also leaves the queue; Suspended keeps its history so Resume continues where it stopped.
 
-Untracked words become Saved from the player, readers or episode pages; the Vocabulary page lists tracked word cards per course. It offers Start learning, Suspend and Resume only when the Reviews capability resolves on, and refuses those transitions server-side otherwise. FSRS retention, batch size and the daily new-word limit stay under the Advanced section of `/Settings/Learning`.
+Untracked words become Saved from the player, readers or episode pages (the Episode page offers Learn only when Reviews resolves on for the episode and refuses it server-side otherwise); the Vocabulary page lists tracked word cards per course. It offers Start learning, Suspend and Resume only when the Reviews capability resolves on, and refuses those transitions server-side otherwise. FSRS retention, batch size and the daily new-word limit stay under the Advanced section of `/Settings/Learning`.
+
+## Language inspector
+
+The Anime player, the readers (Novels, Books, later Manga/OCR) and Learning modules share one word/sentence inspector instead of page-specific learning panels. It consists of:
+
+- `LanguageInspectorService` (Features/Learning/LanguageAssistance) behind `POST /api/language-inspector/{inspect|state|explain}` (signed-in profile, antiforgery header `RequestVerificationToken`);
+- the partial `Pages/Shared/_LanguageInspector.cshtml`, rendered by a host with one line, e.g. `<partial name="_LanguageInspector" model="LanguageInspectorHost.ForBookChapter(workId, chapterId, language)" />`;
+- `wwwroot/js/language-inspector.js`, which exposes `window.AniLingoLanguageInspector`.
+
+Every call resolves the capabilities of the inspected source through `LearningModuleResolver.ResolveAssistanceAsync` (profile → media type → work → content). The server derives the work from the content, so the client cannot choose a scope.
+
+| Inspector feature | Capability |
+| --- | --- |
+| Inspector at all | LanguageLookup, ReadingAids or AiExplanations; the host surface additionally needs PlayerTools (Anime) or ReaderTools (readers) |
+| Dictionary form and meaning | LanguageLookup |
+| Reading | ReadingAids |
+| Sentence explanation | AiExplanations, Japanese text (the explainer contract in Features/Ai is Japanese-only); generated once, then served from `AiSentenceExplanationCache` |
+| Save, Known, Ignore and the word's state | Vocabulary |
+| Learn (queue for reviews) | Vocabulary and Reviews |
+
+Language Tools therefore show readings, meanings and explanations without ever creating cards. Save/Learn/Known/Ignore go through `LearningService.SetStateAsync` and `LearningCardTransitions`. A word saved from any source joins the lexical `Terms` catalog (dictionary reading/meaning for Japanese), so subtitles, readers and Vocabulary see the same card state. Japanese uses the morphological analyzer and bundled dictionary; other languages use Unicode word boundaries without readings or dictionary meanings.
+
+### Script contract
+
+```js
+const inspector = window.AniLingoLanguageInspector; // undefined when the page did not render the partial
+inspector?.available;                               // false when the scope has no language tools
+inspector?.open(text, context);                     // Promise<inspection | null>
+inspector?.close();
+inspector?.isOpen();
+inspector?.bindSelection(surfaceElementOrSelector, { paragraphAttribute });
+inspector?.speak(text, language, rate);
+inspector?.addEventListener("open" | "close" | "statechange", handler);
+```
+
+`context` fields: `language`, `sourceType` (`anime`, `novel`, `book`, `manga`), `contentKey` (episode or chapter ID), `sentence`, and the position `cueStartMs` (anime), `paragraph` (novel/book) or `page` + `region` (manga). Missing fields fall back to the page context of the partial. Elements with `data-language-inspect="text"` inside a `data-language-context` element (carrying the same fields as `data-*` attributes) open the inspector declaratively; `data-language-speak` buttons play on-device TTS.
+
+### Source contexts
+
+Saving or learning a word from a source records one personal `LearningContext` per profile, unit, source and position (unique index; recording the same place again is a no-op):
+
+| Source | SourceType | SourceKey | PositionKey |
+| --- | --- | --- | --- |
+| Anime | `anime` | `episode:{episodeId}` | `cue:{startMs}` |
+| Novel | `novel` | `chapter:{chapterId}` | `paragraph:{index}` |
+| Book | `book` | `chapter:{chapterId}` | `paragraph:{index}` |
+| Manga | `manga` | `chapter:{chapterId}` | `page:{page}` or `page:{page}#region:{region}` |
+
+## Sentence practice
+
+Sentence practice (`/Learn/Sentences`, Features/Learning/Sentences) is its own module, independent of Kana. It prefers, in this order: sentences the profile recorded as contexts for Saved/Learning words (any source), anime subtitle sentences of Saved/Learning words from watched episodes, then unwatched episodes, then Known words; without tracked words it falls back to short subtitle sentences from watched episodes first. Modes: Cloze (the studied word is blanked), Comprehension (full sentence, reveal meaning and explanation) and Listening (anime sentences only: listen, then reveal). Page rendering never calls the AI provider; cached explanations are shown when AiExplanations is on. Words in practice sentences open the shared inspector.
 
 ## Home
 

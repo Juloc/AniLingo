@@ -551,7 +551,7 @@
                         <div class="term-actions">
                             <form method="post"
                                   asp-page-handler="Learning"
-                                  asp-route-id="@Model.EpisodeId">
+                                  asp-route-id="@Model.EpisodeId" hidden="@(!Model.ShowLearnAction)">
                                 <input type="hidden" name="termId" value="@term.TermId" />
                                 <button class="chip @(term.State == UserTermState.Learning ? "selected" : "")"
                                         type="submit">Learn</button>

@@ -261,7 +261,7 @@ public sealed class LearningHubGatingTests
         AssertHubRedirect(await fixture.Vocabulary().OnGetAsync(null, null, null, CancellationToken.None));
         AssertHubRedirect(await fixture.Review().OnGetAsync(CancellationToken.None));
         AssertHubRedirect(await fixture.Progress().OnGetAsync(CancellationToken.None));
-        AssertHubRedirect(await fixture.Sentences().OnGetAsync(CancellationToken.None));
+        AssertHubRedirect(await fixture.Sentences().OnGetAsync(null, CancellationToken.None));
         AssertHubRedirect(await fixture.Kana().OnGetAsync(null, 1, CancellationToken.None));
 
         Assert.AreEqual(
@@ -280,7 +280,7 @@ public sealed class LearningHubGatingTests
         AssertHubRedirect(await fixture.Vocabulary().OnGetAsync(null, null, null, CancellationToken.None));
         AssertHubRedirect(await fixture.Review().OnGetAsync(CancellationToken.None));
         AssertHubRedirect(await fixture.Progress().OnGetAsync(CancellationToken.None));
-        AssertHubRedirect(await fixture.Sentences().OnGetAsync(CancellationToken.None));
+        AssertHubRedirect(await fixture.Sentences().OnGetAsync(null, CancellationToken.None));
         AssertHubRedirect(await fixture.Kana().OnGetAsync(null, 1, CancellationToken.None));
 
         Assert.IsInstanceOfType<ForbidResult>(
@@ -304,7 +304,7 @@ public sealed class LearningHubGatingTests
             await fixture.Vocabulary().OnGetAsync(null, null, null, CancellationToken.None));
         Assert.IsInstanceOfType<PageResult>(await fixture.Review().OnGetAsync(CancellationToken.None));
         Assert.IsInstanceOfType<PageResult>(await fixture.Progress().OnGetAsync(CancellationToken.None));
-        Assert.IsInstanceOfType<PageResult>(await fixture.Sentences().OnGetAsync(CancellationToken.None));
+        Assert.IsInstanceOfType<PageResult>(await fixture.Sentences().OnGetAsync(null, CancellationToken.None));
         Assert.IsInstanceOfType<PageResult>(await fixture.Kana().OnGetAsync(null, 1, CancellationToken.None));
     }
 
@@ -457,7 +457,13 @@ public sealed class LearningHubGatingTests
             new(Db, new LearningStatisticsService(Db), Account);
 
         public SentencesModel Sentences() =>
-            new(Db, Account, new EmptyMorphology(), new JapaneseDictionary(directory));
+            new(
+                Db,
+                Account,
+                new AniLingo.Web.Features.Learning.LanguageAssistance.LanguageTextAnalyzer(
+                    new EmptyMorphology(),
+                    new JapaneseDictionary(directory)),
+                new AiSentenceExplanationService(Db, new StubExplainer()));
 
         public KanaIndexModel Kana() => WithTempData(new KanaIndexModel(Db, Learning));
 

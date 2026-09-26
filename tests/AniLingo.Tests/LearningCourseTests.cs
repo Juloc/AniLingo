@@ -236,6 +236,7 @@ public sealed class LearningCourseTests
             CancellationToken.None);
 
         await fixture.Store.AddContextAsync(
+            "context-owner",
             unit.Unit.Id,
             new LearningContextInput(
                 "anime",
@@ -246,6 +247,7 @@ public sealed class LearningCourseTests
             CancellationToken.None);
 
         await fixture.Store.AddContextAsync(
+            "context-owner",
             unit.Unit.Id,
             new LearningContextInput(
                 "book",
@@ -256,6 +258,7 @@ public sealed class LearningCourseTests
             CancellationToken.None);
 
         await fixture.Store.AddContextAsync(
+            "context-owner",
             unit.Unit.Id,
             new LearningContextInput(
                 "manga",
@@ -266,6 +269,7 @@ public sealed class LearningCourseTests
             CancellationToken.None);
 
         var contexts = await fixture.Store.ListContextsAsync(
+            "context-owner",
             unit.Unit.Id,
             CancellationToken.None);
 

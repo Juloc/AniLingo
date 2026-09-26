@@ -83,10 +83,15 @@ public sealed class LearningCardReview
     public DateTime NextReviewAt { get; set; }
 }
 
-/// <summary>Source-agnostic anchor of a unit in watched or read content.</summary>
+/// <summary>
+/// Source-agnostic anchor of a unit in content a profile watched or read. The
+/// anchor is personal: it records where this profile met the unit, at most once
+/// per unit, source and position.
+/// </summary>
 public sealed class LearningContext
 {
     public Guid Id { get; set; } = Guid.NewGuid();
+    public string ProfileId { get; set; } = LearningProfile.DefaultId;
     public Guid UnitId { get; set; }
     public string SourceType { get; set; } = "";
     public string SourceKey { get; set; } = "";
