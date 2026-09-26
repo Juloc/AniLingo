@@ -1,4 +1,5 @@
 using AniLingo.Web.Data;
+using AniLingo.Web.Features.Acquisition.Api;
 using AniLingo.Web.Features.Acquisition.AniListAutoMonitor;
 using AniLingo.Web.Features.Acquisition.Backup;
 using AniLingo.Web.Features.Acquisition.DownloadClients;
@@ -38,6 +39,7 @@ using AniLingo.Web.Features.Tracking;
 using AniLingo.Web.Features.Vocabulary;
 using AniLingo.Web.Infrastructure;
 using AniLingo.Web.Infrastructure.Ai;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
@@ -123,7 +125,8 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         };
         options.Events.OnRedirectToLogin = async context =>
         {
-            if (ClientApiRoutes.IsClientApi(context.Request.Path))
+            if (ClientApiRoutes.IsClientApi(context.Request.Path) ||
+                AcquisitionApiRoutes.IsAcquisitionApi(context.Request.Path))
             {
                 context.Response.StatusCode = StatusCodes.Status401Unauthorized;
                 await context.Response.WriteAsJsonAsync(
@@ -138,7 +141,8 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         };
         options.Events.OnRedirectToAccessDenied = async context =>
         {
-            if (ClientApiRoutes.IsClientApi(context.Request.Path))
+            if (ClientApiRoutes.IsClientApi(context.Request.Path) ||
+                AcquisitionApiRoutes.IsAcquisitionApi(context.Request.Path))
             {
                 context.Response.StatusCode = StatusCodes.Status403Forbidden;
                 await context.Response.WriteAsJsonAsync(
@@ -151,7 +155,10 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
 
             context.Response.Redirect(context.RedirectUri);
         };
-    });
+    })
+    .AddScheme<AuthenticationSchemeOptions, AcquisitionApiKeyAuthenticationHandler>(
+        AcquisitionApiKeyAuthenticationHandler.SchemeName,
+        _ => { });
 builder.Services.AddAuthorization(options =>
 {
     options.FallbackPolicy = new AuthorizationPolicyBuilder()
@@ -181,6 +188,21 @@ builder.Services.AddRateLimiter(options =>
             {
                 AutoReplenishment = true,
                 PermitLimit = 6,
+                Window = TimeSpan.FromMinutes(1),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0
+            }));
+    // Scoped by API key id when the request authenticated with one, otherwise by IP (a cookie
+    // owner session sharing the browser's normal traffic does not need its own partition).
+    options.AddPolicy("acquisitionApi", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier)
+                ?? httpContext.Connection.RemoteIpAddress?.ToString()
+                ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                AutoReplenishment = true,
+                PermitLimit = 60,
                 Window = TimeSpan.FromMinutes(1),
                 QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
                 QueueLimit = 0
@@ -361,6 +383,9 @@ builder.Services.AddScoped<AnimeImportExecutor>();
 builder.Services.AddSingleton<AnimeAcquisitionScheduler>();
 builder.Services.AddHostedService(services => services.GetRequiredService<AnimeAcquisitionScheduler>());
 
+builder.Services.AddScoped<AcquisitionApiKeyService>();
+builder.Services.AddScoped<AcquisitionApiService>();
+
 builder.Services.AddSingleton<SonarrConnectionStore>();
 builder.Services.AddScoped<SonarrArtworkImportService>();
 builder.Services.AddScoped<SonarrArtworkSyncService>();
@@ -428,6 +453,7 @@ app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapClientApiV1();
+app.MapAcquisitionApiV1();
 app.MapClientApiOfflineV1();
 app.MapClientApiOfflineLibraryV1();
 app.MapHub<PlaybackSessionHub>(PlaybackSessionHub.Route)
