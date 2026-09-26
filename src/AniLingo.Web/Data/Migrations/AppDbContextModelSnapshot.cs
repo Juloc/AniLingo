@@ -131,6 +131,7 @@ namespace AniLingo.Web.Data.Migrations
                     b.Property<string>("ChapterStyle").HasMaxLength(32).HasColumnType("TEXT");
                     b.Property<string>("FontFamily").HasMaxLength(100).HasColumnType("TEXT");
                     b.Property<double?>("FontSizeRem").HasColumnType("REAL");
+                    b.Property<bool?>("FuriganaEnabled").HasColumnType("INTEGER");
                     b.Property<bool?>("GenreArtworkEnabled").HasColumnType("INTEGER");
                     b.Property<string>("GenreTheme").HasMaxLength(48).HasColumnType("TEXT");
                     b.Property<double?>("LineHeight").HasColumnType("REAL");

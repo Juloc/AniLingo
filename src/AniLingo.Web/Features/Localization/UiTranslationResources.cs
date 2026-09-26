@@ -259,6 +259,8 @@ public static class UiTranslationResources
         M("learn.showAnswer", "Show answer", "Learning", "Button", "Reveal the answer/back side of the current review card.", "concise review action", 24),
         M("learn.noMeaning", "No local dictionary meaning available.", "Learning", "Status", "Shown when the local dictionary has no meaning for the current item.", "neutral diagnostic", 54),
         M("learn.animeContext", "Anime context", "Learning", "Label", "Label for the source anime sentence attached to a review item.", "compact context label", 24),
+        M("learn.readingContext", "Reading context", "Learning", "Label", "Label for the source novel chapter/paragraph attached to a review item saved while reading.", "compact context label", 24),
+        M("learn.backToChapter", "Back to chapter", "Learning", "Button", "Link that returns from a review item to the exact chapter/paragraph it was saved from.", "concise navigation action", 28),
         M("learn.explainAi", "Explain with AI", "Learning", "Button", "Request an optional AI explanation for the current source sentence.", "concise optional action", 24, null, ["AI"]),
         M("learn.mode.recognition", "Recognition", "Learning", "Label", "Practice mode of a review card: read the course source-language word and recall its target-language meaning.", "short mode label", 18),
         M("learn.mode.production", "Production", "Learning", "Label", "Practice mode of a review card: see the target-language meaning and recall the source-language word.", "short mode label", 18),
