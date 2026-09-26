@@ -77,8 +77,10 @@ public sealed class NewznabIndexerTests
     }
 
     [TestMethod]
-    public void ParsesTorznabMagnetResultsWithSeedersAndLeechers()
+    public void ParsesResultsWithSeedersAndLeechersAlwaysAsUsenet()
     {
+        // AniLingo is usenet-only: every Newznab result carries the usenet protocol regardless of
+        // the attributes an indexer happens to return.
         const string magnet = "magnet:?xt=urn:btih:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA&dn=test";
         var xml = $"""
         <?xml version="1.0" encoding="UTF-8"?>
@@ -96,10 +98,10 @@ public sealed class NewznabIndexerTests
         </rss>
         """;
 
-        var releases = NewznabIndexer.ParseSearchResponse(Entry(IndexerType.Torznab), "Anime 01", xml);
+        var releases = NewznabIndexer.ParseSearchResponse(Entry(IndexerType.Newznab), "Anime 01", xml);
 
         var release = releases.Single();
-        Assert.AreEqual("torrent", release.Protocol);
+        Assert.AreEqual("usenet", release.Protocol);
         Assert.AreEqual(magnet, release.InternalMagnetUri);
         Assert.IsNull(release.InternalDownloadUri);
         Assert.AreEqual(50, release.Seeders);

@@ -8,9 +8,7 @@ public sealed record DownloadSubmissionSpec(
     string Title,
     string? Subject,
     string? ProfileId,
-    DownloadProtocol Protocol,
     Uri? Url,
-    string? MagnetUri,
     string? Name,
     bool IsBooks = false,
     Stream? File = null,
@@ -25,13 +23,13 @@ public sealed record DownloadSubmissionOutcome(
 
 /// <summary>
 /// The one path that sends a release to a download client for Books and
-/// Anime: picks the highest-priority enabled, healthy client that supports
-/// the release protocol, and fails over to the next client of that protocol
+/// Anime: picks the highest-priority enabled, healthy client (several
+/// SABnzbd connections can be configured), and fails over to the next one
 /// on submission failure. Operations remain the single status store; the
 /// external reference is the chosen client's entry ID plus its own job ID.
 /// </summary>
 public sealed class DownloadClientSubmissionService(
-    IReadOnlyDictionary<DownloadClientType, IDownloadClient> clients,
+    IDownloadClient client,
     DownloadClientSelector selector,
     AppDbContext db,
     ILogger<DownloadClientSubmissionService> logger)
@@ -64,11 +62,10 @@ public sealed class DownloadClientSubmissionService(
         await store.ReportProgressAsync(
             operationId, 0, "Selecting a download client.", cancellationToken: cancellationToken);
 
-        var candidates = await selector.SelectAsync(spec.Protocol, cancellationToken);
+        var candidates = await selector.SelectAsync(cancellationToken);
         if (candidates.Count == 0)
         {
-            var protocolName = spec.Protocol == DownloadProtocol.Usenet ? "usenet" : "torrent";
-            var noClient = $"No enabled, healthy {protocolName} download client is configured.";
+            const string noClient = "No enabled, healthy download client is configured.";
             await store.MarkFailedAsync(operationId, noClient, CancellationToken.None);
             return new DownloadSubmissionOutcome(false, operationId, null, null, noClient);
         }
@@ -76,11 +73,6 @@ public sealed class DownloadClientSubmissionService(
         string? lastError = null;
         foreach (var entry in candidates)
         {
-            if (!clients.TryGetValue(entry.Type, out var client))
-            {
-                continue;
-            }
-
             if (spec.File is { CanSeek: true })
             {
                 spec.File.Position = 0;
@@ -91,8 +83,7 @@ public sealed class DownloadClientSubmissionService(
             {
                 result = await client.SubmitAsync(
                     entry,
-                    new DownloadClientSubmitRequest(
-                        spec.Protocol, spec.Url, spec.MagnetUri, spec.Name, spec.IsBooks, spec.File, spec.FileName),
+                    new DownloadClientSubmitRequest(spec.Url, spec.Name, spec.IsBooks, spec.File, spec.FileName),
                     cancellationToken);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)

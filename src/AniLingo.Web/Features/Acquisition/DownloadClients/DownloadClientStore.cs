@@ -4,9 +4,10 @@ using Microsoft.AspNetCore.DataProtection;
 namespace AniLingo.Web.Features.Acquisition.DownloadClients;
 
 /// <summary>
-/// The one canonical download client list. SABnzbd and qBittorrent
-/// connections are all entries here; there is no other download client
-/// configuration path. Each entry's secret is protected at rest.
+/// The one canonical download client list. SABnzbd connections are all
+/// entries here; there is no other download client configuration path.
+/// AniLingo is usenet-only, so no entry is ever a torrent client. Each
+/// entry's secret is protected at rest.
 /// </summary>
 public sealed class DownloadClientStore
 {
@@ -180,10 +181,8 @@ public sealed class DownloadClientStore
                     item.Priority,
                     new DownloadClientSettings(
                         item.BaseUrl,
-                        item.Username,
                         item.BooksCategory,
-                        item.AnimeCategory,
-                        item.SavePath),
+                        item.AnimeCategory),
                     secret));
         }
 
@@ -206,10 +205,8 @@ public sealed class DownloadClientStore
                 entry.Enabled,
                 entry.Priority,
                 entry.Settings.BaseUrl,
-                entry.Settings.Username,
                 entry.Settings.BooksCategory,
                 entry.Settings.AnimeCategory,
-                entry.Settings.SavePath,
                 entry.Secret is null ? null : protector.Protect(entry.Secret)))
             .ToArray();
 
@@ -261,9 +258,7 @@ public sealed class DownloadClientStore
         bool Enabled,
         int Priority,
         string BaseUrl,
-        string? Username,
         string? BooksCategory,
         string? AnimeCategory,
-        string? SavePath,
         string? ProtectedSecret);
 }

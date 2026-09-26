@@ -9,10 +9,6 @@ namespace AniLingo.Web.Features.Acquisition.DownloadClients;
 /// </summary>
 public sealed class SabnzbdDownloadClient(ISabnzbdClient client) : IDownloadClient
 {
-    public DownloadClientType Type => DownloadClientType.Sabnzbd;
-
-    public DownloadProtocol Protocol => DownloadProtocol.Usenet;
-
     public string ProviderId => SabnzbdClient.ProviderId;
 
     public async Task<DownloadClientTestResult> TestAsync(

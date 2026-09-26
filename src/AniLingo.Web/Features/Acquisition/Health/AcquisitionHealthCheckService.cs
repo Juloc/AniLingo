@@ -62,7 +62,7 @@ public sealed class AcquisitionHealthCheckService(
         var indexerStore = services.GetRequiredService<IndexerStore>();
         var indexers = services.GetRequiredService<IReadOnlyDictionary<IndexerType, IIndexer>>();
         var clientStore = services.GetRequiredService<DownloadClientStore>();
-        var clients = services.GetRequiredService<IReadOnlyDictionary<DownloadClientType, IDownloadClient>>();
+        var client = services.GetRequiredService<IDownloadClient>();
         var health = services.GetRequiredService<AcquisitionHealthStore>();
 
         foreach (var entry in (await indexerStore.LoadAllAsync(cancellationToken)).Where(entry => entry.Enabled))
@@ -77,11 +77,6 @@ public sealed class AcquisitionHealthCheckService(
 
         foreach (var entry in (await clientStore.LoadAllAsync(cancellationToken)).Where(entry => entry.Enabled))
         {
-            if (!clients.TryGetValue(entry.Type, out var client))
-            {
-                continue;
-            }
-
             await CheckDownloadClientAsync(client, entry, health, cancellationToken);
         }
     }

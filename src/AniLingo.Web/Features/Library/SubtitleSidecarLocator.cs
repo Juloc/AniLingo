@@ -1,3 +1,5 @@
+using AniLingo.Web.Features.Subtitles;
+
 namespace AniLingo.Web.Features.Library;
 
 public enum SubtitleSidecarLocation
@@ -10,7 +12,7 @@ public enum SubtitleSidecarLocation
 public sealed record SubtitleSidecarCandidate(
     string Path,
     string Format,
-    bool IsJapaneseTagged,
+    bool IsTargetLanguageTagged,
     bool IsForced,
     bool IsHearingImpaired,
     bool IsDefault,
@@ -20,27 +22,14 @@ public sealed record SubtitleSidecarCandidate(
 // per-episode folder inside them; unrelated folders are never scanned recursively.
 public static class SubtitleSidecarLocator
 {
+    private const string JapaneseLanguageTag = "ja";
+
     private static readonly string[] SidecarDirectoryNames = ["Subs", "Subtitles"];
 
     // SRT stays ahead of ASS/SSA because typeset ASS events often pollute learning text.
     private static readonly string[] FormatPreference = ["srt", "ass", "ssa", "vtt"];
 
     private static readonly char[] TokenSeparators = ['.', ' ', '_', '-', '+', '[', ']', '(', ')'];
-
-    private static readonly HashSet<string> JapaneseTokens = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "ja", "jp", "jpn", "japanese", "日本語"
-    };
-
-    private static readonly HashSet<string> OtherLanguageTokens = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "en", "eng", "english", "de", "deu", "ger", "german", "fr", "fra", "fre", "french",
-        "es", "spa", "spanish", "it", "ita", "italian", "pt", "por", "portuguese",
-        "ru", "rus", "russian", "zh", "chi", "zho", "chinese", "chs", "cht",
-        "ko", "kor", "korean", "ar", "ara", "arabic", "nl", "dut", "nld", "dutch",
-        "pl", "pol", "polish", "tr", "tur", "turkish", "vi", "vie", "vietnamese",
-        "th", "tha", "thai", "id", "ind", "indonesian", "ms", "may", "msa", "malay"
-    };
 
     private static readonly HashSet<string> ForcedTokens = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -52,9 +41,10 @@ public static class SubtitleSidecarLocator
         "sdh", "cc", "hi"
     };
 
-    public static IReadOnlyList<SubtitleSidecarCandidate> FindJapaneseCandidates(
+    public static IReadOnlyList<SubtitleSidecarCandidate> FindCandidates(
         IEnumerable<string> mediaPaths,
-        SubtitleSidecarDirectoryCache listings)
+        SubtitleSidecarDirectoryCache listings,
+        string targetLanguageTag)
     {
         var candidates = new List<SubtitleSidecarCandidate>();
 
@@ -77,7 +67,8 @@ public static class SubtitleSidecarLocator
                 episodeFiles,
                 baseName,
                 competingBaseNames,
-                SubtitleSidecarLocation.EpisodeDirectory);
+                SubtitleSidecarLocation.EpisodeDirectory,
+                targetLanguageTag);
 
             foreach (var sidecarDirectory in FindNamedDirectories(listings, directory, SidecarDirectoryNames))
             {
@@ -86,7 +77,8 @@ public static class SubtitleSidecarLocator
                     listings.GetFiles(sidecarDirectory),
                     baseName,
                     competingBaseNames,
-                    SubtitleSidecarLocation.SidecarDirectory);
+                    SubtitleSidecarLocation.SidecarDirectory,
+                    targetLanguageTag);
 
                 foreach (var episodeDirectory in FindNamedDirectories(listings, sidecarDirectory, [baseName]))
                 {
@@ -95,7 +87,8 @@ public static class SubtitleSidecarLocator
                         var candidate = Classify(
                             path,
                             baseName,
-                            SubtitleSidecarLocation.EpisodeSidecarDirectory);
+                            SubtitleSidecarLocation.EpisodeSidecarDirectory,
+                            targetLanguageTag);
                         if (candidate is not null)
                         {
                             candidates.Add(candidate);
@@ -105,15 +98,29 @@ public static class SubtitleSidecarLocator
             }
         }
 
-        return Order(candidates);
+        var ordered = Order(candidates);
+
+        // Japanese keeps its long-standing kana content heuristic for untagged files
+        // (applied by the caller against cue text), so untagged files stay candidates
+        // regardless of whether a tagged file also exists. Every other language has no
+        // such content heuristic, so an untagged file is only trusted when nothing
+        // explicitly tagged for the target language was found.
+        if (!targetLanguageTag.Equals(JapaneseLanguageTag, StringComparison.OrdinalIgnoreCase) &&
+            ordered.Any(x => x.IsTargetLanguageTagged))
+        {
+            return [.. ordered.Where(x => x.IsTargetLanguageTagged)];
+        }
+
+        return ordered;
     }
 
     // Outside a per-episode sidecar folder the file name must start with the media base name.
-    // Explicitly tagged non-Japanese files are not candidates.
+    // Files explicitly tagged for a different known language are never candidates.
     public static SubtitleSidecarCandidate? Classify(
         string subtitlePath,
         string mediaBaseName,
-        SubtitleSidecarLocation location)
+        SubtitleSidecarLocation location,
+        string targetLanguageTag)
     {
         var fileName = Path.GetFileName(subtitlePath);
         var format = Path.GetExtension(fileName).TrimStart('.').ToLowerInvariant();
@@ -138,8 +145,8 @@ public static class SubtitleSidecarLocator
         }
 
         var tokens = tokenText.Split(TokenSeparators, StringSplitOptions.RemoveEmptyEntries);
-        var japanese = tokens.Any(JapaneseTokens.Contains);
-        if (!japanese && tokens.Any(OtherLanguageTokens.Contains))
+        var isTargetLanguage = SubtitleLanguageAliases.HasToken(tokens, targetLanguageTag);
+        if (!isTargetLanguage && SubtitleLanguageAliases.IsTaggedAsOtherLanguage(tokens, targetLanguageTag))
         {
             return null;
         }
@@ -147,20 +154,21 @@ public static class SubtitleSidecarLocator
         return new SubtitleSidecarCandidate(
             Path.GetFullPath(subtitlePath),
             format,
-            japanese,
+            isTargetLanguage,
             tokens.Any(ForcedTokens.Contains),
             tokens.Any(HearingImpairedTokens.Contains),
             tokens.Any(token => token.Equals("default", StringComparison.OrdinalIgnoreCase)),
             location);
     }
 
-    // Explicit Japanese tags win over untagged files and full subtitles over forced/signs-only
-    // files; then plain before SDH, default-flagged, nearest location, format and ordinal path.
+    // Explicit target-language tags win over untagged files and full subtitles over
+    // forced/signs-only files; then plain before SDH, default-flagged, nearest location,
+    // format and ordinal path.
     public static IReadOnlyList<SubtitleSidecarCandidate> Order(
         IEnumerable<SubtitleSidecarCandidate> candidates) =>
         candidates
             .DistinctBy(x => x.Path, StringComparer.Ordinal)
-            .OrderByDescending(x => x.IsJapaneseTagged)
+            .OrderByDescending(x => x.IsTargetLanguageTagged)
             .ThenBy(x => x.IsForced)
             .ThenBy(x => x.IsHearingImpaired)
             .ThenByDescending(x => x.IsDefault)
@@ -174,7 +182,8 @@ public static class SubtitleSidecarLocator
         IEnumerable<string> paths,
         string baseName,
         IReadOnlyCollection<string> competingBaseNames,
-        SubtitleSidecarLocation location)
+        SubtitleSidecarLocation location,
+        string targetLanguageTag)
     {
         foreach (var path in paths)
         {
@@ -184,7 +193,7 @@ public static class SubtitleSidecarLocator
                 continue;
             }
 
-            var candidate = Classify(path, baseName, location);
+            var candidate = Classify(path, baseName, location, targetLanguageTag);
             if (candidate is not null)
             {
                 candidates.Add(candidate);

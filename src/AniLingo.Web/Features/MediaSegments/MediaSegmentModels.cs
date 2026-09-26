@@ -49,6 +49,25 @@ public sealed class MediaSegmentOptions
 
     // A skip action is offered only when the resolved marker reaches this confidence.
     public double SkipConfidenceThreshold { get; set; } = 0.8;
+
+    // Single canonical opt-in for cross-episode audio fingerprint OP/ED detection. Off by
+    // default: the analysis decodes and hashes several minutes of audio per episode and is
+    // CPU heavy, so an owner turns it on deliberately rather than it running unattended.
+    public bool FingerprintDetectionEnabled { get; set; }
+}
+
+// Per-episode bookkeeping for the automatic detector, independent of whether it produced any
+// markers. Lets a season detection run skip episodes whose media identity and detector version
+// are unchanged even when the previous run found nothing to mark (a plain "detector rows exist"
+// check cannot distinguish "not yet analysed" from "analysed, nothing found").
+public sealed class EpisodeSegmentDetectionState
+{
+    public Guid EpisodeId { get; set; }
+    public string Method { get; set; } = "";
+    public string Version { get; set; } = "";
+    public string MediaIdentity { get; set; } = "";
+    public DateTime RunAt { get; set; } = DateTime.UtcNow;
+    public int SegmentsFound { get; set; }
 }
 
 public sealed record ResolvedMediaSegment(

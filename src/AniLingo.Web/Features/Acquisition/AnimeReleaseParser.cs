@@ -702,8 +702,7 @@ public static partial class AnimeReleaseParser
             extension.Equals(".avi", StringComparison.OrdinalIgnoreCase) ||
             extension.Equals(".ts", StringComparison.OrdinalIgnoreCase) ||
             extension.Equals(".m2ts", StringComparison.OrdinalIgnoreCase) ||
-            extension.Equals(".nzb", StringComparison.OrdinalIgnoreCase) ||
-            extension.Equals(".torrent", StringComparison.OrdinalIgnoreCase))
+            extension.Equals(".nzb", StringComparison.OrdinalIgnoreCase))
         {
             return value[..^extension.Length];
         }
