@@ -13,6 +13,11 @@ public sealed class IndexModel(
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public LearningMode Mode { get; private set; } = LearningMode.Off;
+
+    /// <summary>
+    /// True when any scope of the profile enables Learning, even if the
+    /// profile-level modules below stay hidden.
+    /// </summary>
     public bool LearningEnabled { get; private set; }
 
     public int DueReviews { get; private set; }
@@ -26,6 +31,17 @@ public sealed class IndexModel(
     public bool ShowSentences { get; private set; }
     public bool ShowKana { get; private set; }
     public bool ShowProgress { get; private set; }
+
+    public bool ShowAnyModule =>
+        ShowReviews || ShowVocabulary || ShowSentences || ShowKana || ShowProgress;
+
+    public bool ShowMetrics => ShowReviews || ShowVocabulary;
+
+    /// <summary>
+    /// Language tools are on for the profile but no study module is; the hub
+    /// explains that instead of showing empty modules.
+    /// </summary>
+    public bool LanguageToolsOnly { get; private set; }
 
     public async Task OnGetAsync(CancellationToken cancellationToken)
     {
@@ -42,42 +58,51 @@ public sealed class IndexModel(
             currentAccount.ProfileId,
             cancellationToken);
 
-        var stateCounts = await db.UserTerms
-            .AsNoTracking()
-            .Where(x => x.ProfileId == currentAccount.ProfileId)
-            .GroupBy(x => x.State)
-            .Select(group => new { State = group.Key, Count = group.Count() })
-            .ToDictionaryAsync(x => x.State, x => x.Count, cancellationToken);
+        // Module visibility comes only from the canonical resolver. Historic
+        // vocabulary rows never re-surface a module the profile switched off.
+        ShowReviews = resolved.IsEnabled(LearningCapability.Reviews);
+        ShowVocabulary = resolved.IsEnabled(LearningCapability.Vocabulary);
+        ShowSentences = resolved.IsEnabled(LearningCapability.SentencePractice);
+        // ScriptTrainer is the canonical switch; the Kana module additionally
+        // assumes the profile studies Japanese until the universal course
+        // toolkit (#252) exposes a per-language writing-system trainer.
+        ShowKana = resolved.IsEnabled(LearningCapability.ScriptTrainer);
+        ShowProgress = resolved.IsEnabled(LearningCapability.Progress);
 
-        LearningTerms = stateCounts.GetValueOrDefault(UserTermState.Learning);
-        SavedTerms = stateCounts.GetValueOrDefault(UserTermState.Saved);
-        KnownTerms = stateCounts.GetValueOrDefault(UserTermState.Known);
-        IgnoredTerms = stateCounts.GetValueOrDefault(UserTermState.Ignored);
+        LanguageToolsOnly =
+            !ShowAnyModule
+            && (resolved.IsEnabled(LearningCapability.LanguageLookup)
+                || resolved.IsEnabled(LearningCapability.ReadingAids)
+                || resolved.IsEnabled(LearningCapability.Translation)
+                || resolved.IsEnabled(LearningCapability.AiExplanations)
+                || resolved.IsEnabled(LearningCapability.PlayerTools)
+                || resolved.IsEnabled(LearningCapability.ReaderTools));
 
-        DueReviews = await db.UserTerms
-            .AsNoTracking()
-            .CountAsync(
-                x => x.ProfileId == currentAccount.ProfileId
-                    && x.State == UserTermState.Learning
-                    && x.NextReviewAt != null
-                    && x.NextReviewAt <= DateTime.UtcNow,
-                cancellationToken);
+        if (ShowVocabulary)
+        {
+            var stateCounts = await db.UserTerms
+                .AsNoTracking()
+                .Where(x => x.ProfileId == currentAccount.ProfileId)
+                .GroupBy(x => x.State)
+                .Select(group => new { State = group.Key, Count = group.Count() })
+                .ToDictionaryAsync(x => x.State, x => x.Count, cancellationToken);
 
-        var hasVocabularyState =
-            LearningTerms + SavedTerms + KnownTerms + IgnoredTerms > 0;
+            LearningTerms = stateCounts.GetValueOrDefault(UserTermState.Learning);
+            SavedTerms = stateCounts.GetValueOrDefault(UserTermState.Saved);
+            KnownTerms = stateCounts.GetValueOrDefault(UserTermState.Known);
+            IgnoredTerms = stateCounts.GetValueOrDefault(UserTermState.Ignored);
+        }
 
-        ShowReviews =
-            resolved.IsEnabled(LearningCapability.Reviews)
-            || LearningTerms > 0;
-        ShowVocabulary =
-            resolved.IsEnabled(LearningCapability.Vocabulary)
-            || hasVocabularyState;
-        ShowSentences =
-            resolved.IsEnabled(LearningCapability.SentencePractice);
-        ShowKana =
-            resolved.IsEnabled(LearningCapability.ScriptTrainer);
-        ShowProgress =
-            resolved.IsEnabled(LearningCapability.Progress)
-            || hasVocabularyState;
+        if (ShowReviews)
+        {
+            DueReviews = await db.UserTerms
+                .AsNoTracking()
+                .CountAsync(
+                    x => x.ProfileId == currentAccount.ProfileId
+                        && x.State == UserTermState.Learning
+                        && x.NextReviewAt != null
+                        && x.NextReviewAt <= DateTime.UtcNow,
+                    cancellationToken);
+        }
     }
 }

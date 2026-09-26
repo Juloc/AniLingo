@@ -5,6 +5,10 @@
     ViewData["Title"] = Model.Ui["learn.vocabulary.title"];
 }
 
+@section Head {
+    <link rel="stylesheet" href="~/css/learn.css" asp-append-version="true" />
+}
+
 <header class="page-header">
     <div>
         <a class="back-link" href="/Learn">← @Model.Ui["learn.title"]</a>
@@ -14,8 +18,25 @@
     </div>
 </header>
 
+<section class="panel learn-lifecycle" aria-label="@Model.Ui["learn.vocabulary.lifecycle.aria"]">
+    <ol class="learn-lifecycle-steps">
+        <li><span class="status-pill">@Model.Ui["learn.vocabulary.state.untracked"]</span></li>
+        <li><span class="status-pill">@Model.Ui["learn.vocabulary.state.saved"]</span></li>
+        @if (Model.ShowReviewActions)
+        {
+            <li><span class="status-pill status-warn">@Model.Ui["learn.vocabulary.state.learning"]</span></li>
+        }
+        <li><span class="status-pill status-ok">@Model.Ui["learn.vocabulary.state.known"]</span></li>
+    </ol>
+    <p class="muted">
+        @(Model.ShowReviewActions
+            ? Model.Ui["learn.vocabulary.lifecycle.body"]
+            : Model.Ui["learn.vocabulary.lifecycle.noReviews"])
+    </p>
+</section>
+
 <section class="panel">
-    <form method="get" class="form-stack">
+    <form method="get" class="form-stack learn-filter">
         <label>
             <span>@Model.Ui["learn.vocabulary.search"]</span>
             <input name="search"
@@ -25,13 +46,21 @@
         <label>
             <span>@Model.Ui["learn.vocabulary.state"]</span>
             <select name="state">
-                <option value="all" selected="@(Model.StateFilter == "all" ? "selected" : null)">All</option>
+                <option value="all" selected="@(Model.StateFilter == "all" ? "selected" : null)">
+                    @Model.Ui["learn.vocabulary.filter.all"]
+                </option>
                 @foreach (var state in Enum.GetValues<UserTermState>())
                 {
+                    if (!Model.ShowReviewActions
+                        && state is UserTermState.Learning or UserTermState.Suspended)
+                    {
+                        continue;
+                    }
+
                     var key = state.ToString().ToLowerInvariant();
                     <option value="@key"
                             selected="@(Model.StateFilter == key ? "selected" : null)">
-                        @state
+                        @Model.Ui[VocabularyModel.StateKey(state)]
                     </option>
                 }
             </select>
@@ -49,7 +78,7 @@
 }
 else
 {
-    <div class="term-table">
+    <div class="term-table learn-vocabulary">
         <div class="term-table-head">
             <span>@Model.Ui["learn.vocabulary.term"]</span>
             <span>@Model.Ui["learn.vocabulary.language"]</span>
@@ -58,6 +87,11 @@ else
 
         @foreach (var item in Model.Items)
         {
+            var pillClass = item.Due
+                ? "status-warn"
+                : item.State == UserTermState.Known
+                    ? "status-ok"
+                    : "";
             <div class="term-row">
                 <div class="term-word">
                     <strong lang="@item.Language">@item.Canonical</strong>
@@ -74,8 +108,8 @@ else
                 <span class="occurrence">@item.Language</span>
 
                 <div class="term-actions">
-                    <span class="status-pill @(item.Due ? "status-warning" : "")">
-                        @item.State@(item.Due ? " · due" : "")
+                    <span class="status-pill @pillClass">
+                        @Model.Ui[VocabularyModel.StateKey(item.State)]@(item.Due ? " · " + Model.Ui["learn.vocabulary.due"] : "")
                     </span>
 
                     @if (item.State != UserTermState.Saved)
@@ -85,11 +119,15 @@ else
                             <button class="chip" type="submit">@Model.Ui["learning.saveWord"]</button>
                         </form>
                     }
-                    @if (item.State != UserTermState.Learning)
+                    @if (Model.ShowReviewActions && item.State != UserTermState.Learning)
                     {
                         <form method="post" asp-page-handler="Learn">
                             <input type="hidden" name="termId" value="@item.TermId" />
-                            <button class="chip" type="submit">@Model.Ui["learn.vocabulary.startLearning"]</button>
+                            <button class="chip" type="submit">
+                                @(item.State == UserTermState.Suspended
+                                    ? Model.Ui["learn.vocabulary.resume"]
+                                    : Model.Ui["learn.vocabulary.startLearning"])
+                            </button>
                         </form>
                     }
                     @if (item.State != UserTermState.Known)
@@ -99,7 +137,7 @@ else
                             <button class="chip" type="submit">@Model.Ui["learning.markKnown"]</button>
                         </form>
                     }
-                    @if (item.State == UserTermState.Learning)
+                    @if (Model.ShowReviewActions && item.State == UserTermState.Learning)
                     {
                         <form method="post" asp-page-handler="Suspend">
                             <input type="hidden" name="termId" value="@item.TermId" />

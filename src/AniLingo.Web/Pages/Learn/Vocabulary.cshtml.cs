@@ -18,11 +18,28 @@ public sealed class VocabularyModel(
     public string? Search { get; private set; }
     public string StateFilter { get; private set; } = "all";
 
-    public async Task OnGetAsync(
+    /// <summary>
+    /// Spaced repetition resolved on for the profile. Without it words can be
+    /// saved, marked known or ignored, but never enter the review queue.
+    /// </summary>
+    public bool ShowReviewActions { get; private set; }
+
+    public async Task<IActionResult> OnGetAsync(
         string? search,
         string? state,
         CancellationToken cancellationToken)
     {
+        var resolved = await LearningModuleGate.ResolveAsync(
+            db,
+            currentAccount.ProfileId,
+            cancellationToken);
+        if (!resolved.IsEnabled(LearningCapability.Vocabulary))
+        {
+            return LearningModuleGate.RedirectToHub();
+        }
+
+        ShowReviewActions = resolved.IsEnabled(LearningCapability.Reviews);
+
         Ui = await new UiTranslationCatalogStore(db).LoadProfileBundleAsync(
             currentAccount.ProfileId,
             cancellationToken);
@@ -62,6 +79,7 @@ public sealed class VocabularyModel(
         }
 
         var now = DateTime.UtcNow;
+        var showDue = ShowReviewActions;
         Items = await query
             .OrderBy(x =>
                 x.State == UserTermState.Learning ? 0 :
@@ -78,8 +96,10 @@ public sealed class VocabularyModel(
                 x.Reading,
                 x.Meaning,
                 x.State,
-                x.NextReviewAt != null && x.NextReviewAt <= now))
+                showDue && x.NextReviewAt != null && x.NextReviewAt <= now))
             .ToListAsync(cancellationToken);
+
+        return Page();
     }
 
     public Task<IActionResult> OnPostSaveAsync(
@@ -107,15 +127,44 @@ public sealed class VocabularyModel(
         CancellationToken cancellationToken) =>
         ChangeAsync(termId, UserTermState.Suspended, cancellationToken);
 
+    public static string StateKey(UserTermState state) =>
+        state switch
+        {
+            UserTermState.Known => "learn.vocabulary.state.known",
+            UserTermState.Learning => "learn.vocabulary.state.learning",
+            UserTermState.Saved => "learn.vocabulary.state.saved",
+            UserTermState.Ignored => "learn.vocabulary.state.ignored",
+            UserTermState.Suspended => "learn.vocabulary.state.suspended",
+            _ => throw new ArgumentOutOfRangeException(nameof(state), state, null)
+        };
+
     private async Task<IActionResult> ChangeAsync(
         Guid termId,
         UserTermState state,
         CancellationToken cancellationToken)
     {
-        var exists = await db.Terms
+        var resolved = await LearningModuleGate.ResolveAsync(
+            db,
+            currentAccount.ProfileId,
+            cancellationToken);
+        if (!resolved.IsEnabled(LearningCapability.Vocabulary))
+        {
+            return Forbid();
+        }
+
+        // Learning and Suspended are review-queue states; they need SRS.
+        if (state is UserTermState.Learning or UserTermState.Suspended
+            && !resolved.IsEnabled(LearningCapability.Reviews))
+        {
+            return Forbid();
+        }
+
+        var canonical = await db.Terms
             .AsNoTracking()
-            .AnyAsync(x => x.Id == termId, cancellationToken);
-        if (!exists)
+            .Where(x => x.Id == termId)
+            .Select(x => x.Canonical)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (canonical is null)
         {
             return NotFound();
         }
@@ -125,7 +174,13 @@ public sealed class VocabularyModel(
             state,
             cancellationToken);
 
-        TempData["Status"] = $"Vocabulary item moved to {state}.";
+        var ui = await new UiTranslationCatalogStore(db).LoadProfileBundleAsync(
+            currentAccount.ProfileId,
+            cancellationToken);
+        TempData["Status"] = ui.Format(
+            "learn.vocabulary.moved",
+            ("term", canonical),
+            ("state", ui[StateKey(state)]));
         return RedirectToPage();
     }
 

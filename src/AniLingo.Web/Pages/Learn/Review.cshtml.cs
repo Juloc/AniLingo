@@ -21,8 +21,13 @@ public sealed class ReviewModel(
     public string ProfileId => currentAccount.ProfileId;
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
 
-    public async Task OnGetAsync(CancellationToken cancellationToken)
+    public async Task<IActionResult> OnGetAsync(CancellationToken cancellationToken)
     {
+        if (!await ReviewsEnabledAsync(cancellationToken))
+        {
+            return LearningModuleGate.RedirectToHub();
+        }
+
         Ui = await new UiTranslationCatalogStore(db).LoadProfileBundleAsync(
             currentAccount.ProfileId,
             cancellationToken);
@@ -30,19 +35,25 @@ public sealed class ReviewModel(
 
         if (Current?.Context is not { } context)
         {
-            return;
+            return Page();
         }
 
         LocalHints = aiExplanationService.PrepareLocal(context.Sentence).LocalHints;
         AiExplanation = await aiExplanationService.GetCachedAsync(
             context.Sentence,
             cancellationToken);
+        return Page();
     }
 
     public async Task<IActionResult> OnPostExplainAsync(
         Guid termId,
         CancellationToken cancellationToken)
     {
+        if (!await ReviewsEnabledAsync(cancellationToken))
+        {
+            return Forbid();
+        }
+
         var context = await learningService.GetReviewContextAsync(termId, cancellationToken);
         if (context is null)
         {
@@ -70,6 +81,11 @@ public sealed class ReviewModel(
         ReviewRating rating,
         CancellationToken cancellationToken)
     {
+        if (!await ReviewsEnabledAsync(cancellationToken))
+        {
+            return Forbid();
+        }
+
         await learningService.ReviewAsync(termId, rating, cancellationToken);
         return RedirectToPage();
     }
@@ -78,6 +94,11 @@ public sealed class ReviewModel(
         [FromBody] OfflineReviewSyncRequest request,
         CancellationToken cancellationToken)
     {
+        if (!await ReviewsEnabledAsync(cancellationToken))
+        {
+            return Forbid();
+        }
+
         if (request.Events is null)
         {
             return BadRequest();
@@ -89,5 +110,14 @@ public sealed class ReviewModel(
             cancellationToken);
 
         return new JsonResult(result);
+    }
+
+    private async Task<bool> ReviewsEnabledAsync(CancellationToken cancellationToken)
+    {
+        var resolved = await LearningModuleGate.ResolveAsync(
+            db,
+            currentAccount.ProfileId,
+            cancellationToken);
+        return resolved.IsEnabled(LearningCapability.Reviews);
     }
 }
