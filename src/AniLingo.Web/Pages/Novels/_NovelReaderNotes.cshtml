@@ -13,12 +13,49 @@
        aria-label="Lesezeichen und Markierungen">
     <div class="novel-notes-header">
         <strong>Lesezeichen & Markierungen</strong>
+        <div class="novel-notes-nav">
+            <button class="novel-icon-button"
+                    type="button"
+                    data-bookmark-nav="prev"
+                    aria-label="Vorheriges Lesezeichen"
+                    title="Vorheriges Lesezeichen (Taste [)">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg>
+            </button>
+            <button class="novel-icon-button"
+                    type="button"
+                    data-bookmark-nav="next"
+                    aria-label="Nächstes Lesezeichen"
+                    title="Nächstes Lesezeichen (Taste ])">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
+            </button>
+        </div>
         <button class="novel-icon-button" type="button" data-reader-notes-close aria-label="Schließen">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
         </button>
     </div>
 
-    <section aria-labelledby="novel-notes-bookmarks-heading">
+    <div class="novel-notes-tabs" role="tablist" aria-label="Notizen filtern">
+        <button type="button" role="tab" aria-selected="true" data-notes-tab="current">Aktuelles Kapitel</button>
+        <button type="button" role="tab" aria-selected="false" data-notes-tab="all">Alle Kapitel</button>
+        <button type="button" role="tab" aria-selected="false" data-notes-tab="bookmarks">Lesezeichen</button>
+        <button type="button" role="tab" aria-selected="false" data-notes-tab="highlights">Markierungen</button>
+    </div>
+
+    <div class="novel-notes-search">
+        <input type="search"
+               data-notes-search
+               placeholder="Notizen durchsuchen …"
+               aria-label="Notizen durchsuchen" />
+    </div>
+
+    <section data-notes-search-section hidden aria-labelledby="novel-notes-search-heading">
+        <h3 id="novel-notes-search-heading">Suchergebnisse</h3>
+        <p class="novel-notes-status" data-search-status role="status" aria-live="polite"></p>
+        <div class="novel-note-list" data-search-list></div>
+        <button type="button" class="novel-drawer-more" data-search-more hidden>Weitere laden</button>
+    </section>
+
+    <section data-notes-section="bookmarks" aria-labelledby="novel-notes-bookmarks-heading">
         <h3 id="novel-notes-bookmarks-heading">Lesezeichen</h3>
         <p class="novel-notes-empty @(annotations.Bookmarks.Count == 0 ? "" : "is-hidden")" data-empty-bookmarks>Keine Lesezeichen in diesem Kapitel.</p>
         <div class="novel-note-list" data-bookmark-list>
@@ -29,20 +66,32 @@
                          data-bookmark-id="@bookmark.Id"
                          data-bookmark-chapter-id="@bookmark.ChapterId"
                          data-bookmark-style="@(bookmark.Style ?? settings.BookmarkStyle)"
-                         data-bookmark-color="@(bookmark.Color ?? settings.BookmarkColor)">
+                         data-bookmark-color="@(bookmark.Color ?? settings.BookmarkColor)"
+                         data-note-kind="bookmarks"
+                         data-note-id="@bookmark.Id"
+                         data-bookmark-label="@bookmark.Label"
+                         data-position-permille="@bookmark.PositionPermille">
                     <a href="/Novels/Read/@bookmark.ChapterId?bookmark=@bookmark.Id"
                        data-local-bookmark-id="@bookmark.Id">
+                        <small class="novel-note-chapter">@(Model.Chapter.IsEpubVolume ? $"Band {Model.Chapter.VolumeNumber} · " : "")Kapitel @Model.Chapter.Number · @Model.Chapter.Title</small>
                         <strong>@(bookmark.Label ?? $"Lesezeichen · {bookmark.PositionPermille / 10}%")</strong>
                         @if (!string.IsNullOrWhiteSpace(bookmark.AnchorText))
                         {
                             <span>@bookmark.AnchorText</span>
                         }
                     </a>
-                    <button class="novel-note-remove"
-                            type="button"
-                            data-remove-bookmark-button
-                            data-bookmark-id="@bookmark.Id"
-                            aria-label="Lesezeichen entfernen">Entfernen</button>
+                    <div class="novel-note-actions">
+                        <button class="novel-note-edit"
+                                type="button"
+                                data-edit-bookmark-button
+                                data-bookmark-id="@bookmark.Id"
+                                aria-label="Lesezeichen umbenennen">Bearbeiten</button>
+                        <button class="novel-note-remove"
+                                type="button"
+                                data-remove-bookmark-button
+                                data-bookmark-id="@bookmark.Id"
+                                aria-label="Lesezeichen entfernen">Entfernen</button>
+                    </div>
                 </article>
             }
         </div>
@@ -61,26 +110,39 @@
         }
     </section>
 
-    <section aria-labelledby="novel-notes-highlights-heading">
+    <section data-notes-section="highlights" aria-labelledby="novel-notes-highlights-heading">
         <h3 id="novel-notes-highlights-heading">Markierungen</h3>
         <p class="novel-notes-empty @(annotations.Highlights.Count == 0 ? "" : "is-hidden")" data-empty-highlights>Text auswählen, um ihn zu markieren.</p>
         <div class="novel-note-list" data-highlight-list>
             @foreach (var highlight in annotations.Highlights.OrderByDescending(x => x.CreatedAt))
             {
-                <article class="novel-note-card" data-highlight-card data-highlight-id="@highlight.Id">
+                <article class="novel-note-card"
+                         data-highlight-card
+                         data-highlight-id="@highlight.Id"
+                         data-note-kind="highlights"
+                         data-note-id="@highlight.Id"
+                         data-highlight-note="@highlight.Note">
                     <a href="/Novels/Read/@highlight.ChapterId?highlight=@highlight.Id"
                        data-local-highlight-id="@highlight.Id">
+                        <small class="novel-note-chapter">@(Model.Chapter.IsEpubVolume ? $"Band {Model.Chapter.VolumeNumber} · " : "")Kapitel @Model.Chapter.Number · @Model.Chapter.Title</small>
                         <strong>@highlight.Text</strong>
                         @if (!string.IsNullOrWhiteSpace(highlight.Note))
                         {
                             <span>@highlight.Note</span>
                         }
                     </a>
-                    <button class="novel-note-remove"
-                            type="button"
-                            data-remove-highlight-button
-                            data-highlight-id="@highlight.Id"
-                            aria-label="Markierung entfernen">Entfernen</button>
+                    <div class="novel-note-actions">
+                        <button class="novel-note-edit"
+                                type="button"
+                                data-edit-highlight-button
+                                data-highlight-id="@highlight.Id"
+                                aria-label="Notiz bearbeiten">Bearbeiten</button>
+                        <button class="novel-note-remove"
+                                type="button"
+                                data-remove-highlight-button
+                                data-highlight-id="@highlight.Id"
+                                aria-label="Markierung entfernen">Entfernen</button>
+                    </div>
                 </article>
             }
         </div>

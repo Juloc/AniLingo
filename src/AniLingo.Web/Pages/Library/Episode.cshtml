@@ -5,6 +5,7 @@
 @using AniLingo.Web.Features.Storage
 @using AniLingo.Web.Features.Subtitles
 @using AniLingo.Web.Features.Learning
+@using AniLingo.Web.Features.Learning.LanguageAssistance
 @using AniLingo.Web.Features.Tracking
 @model AniLingo.Web.Pages.Library.EpisodeModel
 @{
@@ -479,6 +480,7 @@
 
         <script type="application/json" data-cue-data>@Html.Raw(JsonSerializer.Serialize(Model.Playback.Cues, new JsonSerializerOptions(JsonSerializerDefaults.Web)))</script>
     </section>
+    <partial name="_LanguageInspector" model='LanguageInspectorHost.ForAnimeEpisode(Model.AnimeId, Model.EpisodeId, "ja")' />
     <script src="~/js/player-design.js" asp-append-version="true"></script>
     <script src="~/js/episode-player.js" asp-append-version="true"></script>
     <partial name="_EpisodeMediaNavigation" model="new AniLingo.Web.Features.MediaSegments.EpisodeMediaNavigationView(Model.EpisodeId, Model.Playback.Navigation, Model.IsOwner)" />

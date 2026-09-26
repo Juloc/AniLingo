@@ -250,21 +250,38 @@ public sealed class SentencePracticeService(
             .ToArray();
     }
 
-    /// <summary>Short Japanese subtitle sentences when the profile tracks no word yet.</summary>
+    /// <summary>
+    /// Short subtitle sentences when the profile tracks no word yet, in the
+    /// content languages of the profile's enabled courses. A profile without
+    /// any enabled course falls back to Japanese, the existing canonical
+    /// default rather than a language check on the content itself.
+    /// </summary>
     private async Task<IReadOnlyList<Candidate>> LoadFallbackCandidatesAsync(
         string profileId,
         int limit,
         CancellationToken cancellationToken)
     {
+        var languages = await db.LearningCourses
+            .AsNoTracking()
+            .Where(x => x.ProfileId == profileId && x.IsEnabled)
+            .Select(x => x.SourceLanguage)
+            .Distinct()
+            .ToArrayAsync(cancellationToken);
+
+        if (languages.Length == 0)
+        {
+            languages = [JapaneseLanguage];
+        }
+
         var rows = await (
             from track in db.SubtitleTracks.AsNoTracking()
             join cue in db.SubtitleCues.AsNoTracking() on track.Id equals cue.SubtitleTrackId
             join episode in db.Episodes.AsNoTracking() on track.EpisodeId equals episode.Id
             join anime in db.Anime.AsNoTracking() on episode.AnimeId equals anime.Id
             let consumed = db.EpisodeProgress.Any(x => x.ProfileId == profileId && x.EpisodeId == episode.Id)
-            where track.Language == JapaneseLanguage
+            where languages.Contains(track.Language)
                 && cue.Text.Length >= 2
-                && cue.Text.Length <= 90
+                && cue.Text.Length <= SentencePracticeText.MaxLength
             orderby consumed ? 0 : 1,
                 cue.Text.Length,
                 track.ImportedAt descending,
@@ -277,7 +294,8 @@ public sealed class SentencePracticeService(
                 episode.SeasonNumber,
                 episode.Number,
                 cue.StartMs,
-                cue.Text
+                cue.Text,
+                track.Language
             })
             .Take(Math.Max(100, limit * 12))
             .ToListAsync(cancellationToken);
@@ -285,7 +303,7 @@ public sealed class SentencePracticeService(
         return rows
             .Select(row => new Candidate(
                 AnimeSource(row.EpisodeId, row.AnimeTitle, row.SeasonNumber, row.Number, row.StartMs),
-                JapaneseLanguage,
+                row.Language,
                 row.Text,
                 null,
                 null,
@@ -355,7 +373,7 @@ public sealed class SentencePracticeService(
             return null;
         }
 
-        var japanese = LanguageTextAnalyzer.IsJapanese(language);
+        var japanese = LearningLanguageToolkitRegistry.Supports(language, LearningLanguageCapability.Readings);
         var comparison = japanese
             ? StringComparison.Ordinal
             : StringComparison.CurrentCultureIgnoreCase;
@@ -518,7 +536,7 @@ public static class SentencePracticeText
             return false;
         }
 
-        return LanguageTextAnalyzer.IsJapanese(language)
+        return LearningLanguageToolkitRegistry.Supports(language, LearningLanguageCapability.Readings)
             ? trimmed.Length <= MaxJapaneseLength && JapaneseScript.Contains(trimmed)
             : trimmed.Length <= MaxLength && trimmed.Any(char.IsLetter);
     }

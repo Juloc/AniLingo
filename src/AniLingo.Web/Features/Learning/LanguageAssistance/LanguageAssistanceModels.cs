@@ -369,12 +369,15 @@ public sealed record LanguageInspectorHost(
 }
 
 /// <summary>
-/// The AI sentence explainer (Features/Ai) is prompted for Japanese sentences
-/// only; other languages get lookup and vocabulary actions without it.
+/// The AI sentence explainer (Features/Ai) is prompted only for languages whose
+/// toolkit supports readings (Japanese today); other languages get lookup and
+/// vocabulary actions without it. Gated by toolkit capability rather than a
+/// language tag check so the explainer follows whichever toolkit actually
+/// backs the language instead of a duplicated "is this Japanese" test.
 /// </summary>
 public static class SentenceExplanationSupport
 {
     public static bool Supports(string languageTag) =>
         LearningLanguageTag.TryNormalize(languageTag, out var normalized)
-        && normalized.Equals("ja", StringComparison.OrdinalIgnoreCase);
+        && LearningLanguageToolkitRegistry.Supports(normalized, LearningLanguageCapability.Readings);
 }

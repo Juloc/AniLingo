@@ -93,6 +93,61 @@
     border-bottom: 1px solid var(--reader-border);
 }
 
+.novel-notes-header > strong {
+    margin-right: auto;
+}
+
+.novel-notes-nav {
+    display: flex;
+    gap: .15rem;
+}
+
+.novel-notes-tabs {
+    display: flex;
+    gap: .3rem;
+    overflow-x: auto;
+    padding: .6rem .85rem 0;
+}
+
+.novel-notes-tabs button {
+    flex: 0 0 auto;
+    padding: .35rem .65rem;
+    border: 1px solid var(--reader-border);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--reader-muted);
+    font: inherit;
+    font-size: .74rem;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.novel-notes-tabs button[aria-selected="true"] {
+    border-color: var(--reader-accent);
+    color: var(--reader-text);
+    background: color-mix(in srgb, var(--reader-accent) 12%, transparent);
+}
+
+.novel-notes-search {
+    padding: .55rem .85rem 0;
+}
+
+.novel-notes-search input {
+    width: 100%;
+    height: 38px;
+    padding: 0 .65rem;
+    border: 1px solid var(--reader-border);
+    border-radius: 7px;
+    background: transparent;
+    color: var(--reader-text);
+    font: inherit;
+}
+
+.novel-notes-search input:focus-visible {
+    outline: 2px solid var(--reader-accent);
+    outline-offset: -1px;
+}
+
 .novel-drawer-header > strong,
 .novel-notes-header > strong {
     min-width: 0;
@@ -387,11 +442,66 @@
     font-size: .72rem;
 }
 
-.novel-note-remove {
+.novel-note-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: .3rem;
+}
+
+.novel-note-remove,
+.novel-note-edit {
     padding: .15rem 0;
     background: transparent;
     color: var(--reader-muted);
     font-size: .68rem;
+}
+
+.novel-note-edit:hover,
+.novel-note-remove:hover {
+    color: var(--reader-text);
+}
+
+.novel-jump-context {
+    display: flex;
+    align-items: flex-start;
+    gap: .5rem;
+    margin: 0 auto .9rem;
+    max-width: var(--novel-reader-width);
+    padding: .55rem .7rem;
+    border: 1px solid var(--reader-border);
+    border-left: 3px solid var(--reader-accent);
+    border-radius: 8px;
+    background: var(--reader-surface);
+    color: var(--reader-muted);
+    font-size: .8rem;
+}
+
+.novel-jump-context span {
+    flex: 1;
+    min-width: 0;
+}
+
+.novel-jump-context button {
+    flex: 0 0 auto;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: 0;
+    display: grid;
+    place-items: center;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+}
+
+.novel-jump-context svg {
+    width: 14px;
+    height: 14px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
 }
 
 .novel-selection-menu {
@@ -467,9 +577,28 @@
 }
 
 @media (max-width: 560px) {
-    .novel-chapter-drawer,
-    .novel-reader-notes {
+    .novel-chapter-drawer {
         width: min(92vw, 370px);
+    }
+
+    /* Mobile bookmark sheet: the notes drawer becomes a bottom sheet instead
+       of a right-side panel, so it never competes with the reading column's
+       width and stays reachable with a thumb. */
+    .novel-reader-notes {
+        top: auto;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        width: 100%;
+        height: min(82vh, 640px);
+        border-left: 0;
+        border-top: 1px solid var(--reader-border);
+        border-radius: 16px 16px 0 0;
+    }
+
+    .novel-jump-context {
+        margin-left: .5rem;
+        margin-right: .5rem;
     }
 }
 
