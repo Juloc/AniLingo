@@ -1,19 +1,10 @@
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json;
+using AniLingo.Web.Features.Library;
 using AniLingo.Web.Infrastructure;
 
 namespace AniLingo.Web.Features.Subtitles;
-
-public sealed record EmbeddedSubtitleStream(
-    int Index,
-    string Codec,
-    string? Language,
-    string? Title,
-    bool IsDefault,
-    bool IsForced,
-    bool IsText);
 
 public sealed record EmbeddedSubtitleContent(
     string SourceKey,
@@ -33,8 +24,11 @@ public sealed record AudioTranscriptionState(
     AudioTranscriptionStatus Status,
     string? Message = null);
 
+// Stream metadata comes from the canonical media inventory; this class only runs ffmpeg extraction
+// and Whisper transcription for a stream the inventory selected.
 public sealed class EmbeddedSubtitleExtractor(
     MediaProcessRunner processRunner,
+    MediaInventoryService mediaInventory,
     ILogger<EmbeddedSubtitleExtractor> logger)
 {
     public const string SourcePrefix = "embedded:";
@@ -51,98 +45,21 @@ public sealed class EmbeddedSubtitleExtractor(
     private static readonly TimeSpan LongProcessTimeout = TimeSpan.FromHours(2);
     private static readonly TimeSpan DownloadTimeout = TimeSpan.FromMinutes(30);
 
-    private static readonly HashSet<string> TextCodecs = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "ass",
-        "ssa",
-        "subrip",
-        "srt",
-        "webvtt",
-        "mov_text",
-        "text"
-    };
-
-    private readonly ConcurrentDictionary<string, ProbeCacheEntry> probeCache =
-        new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, AudioTranscriptionState> transcriptionStates =
         new(StringComparer.Ordinal);
     private readonly SemaphoreSlim transcriptionGate = new(1, 1);
-
-    public async Task<IReadOnlyList<EmbeddedSubtitleStream>> ProbeStreamsAsync(
-        string mediaPath,
-        CancellationToken cancellationToken)
-    {
-        var fullPath = Path.GetFullPath(mediaPath);
-        var info = new FileInfo(fullPath);
-        if (!info.Exists)
-        {
-            return [];
-        }
-
-        if (probeCache.TryGetValue(fullPath, out var cached) &&
-            cached.SizeBytes == info.Length &&
-            cached.LastWriteTimeUtc == info.LastWriteTimeUtc)
-        {
-            return cached.Streams;
-        }
-
-        var probe = await processRunner.RunAsync(
-            "ffprobe",
-            [
-                "-v", "error",
-                "-select_streams", "s",
-                "-show_entries", "stream=index,codec_name:stream_tags=language,title:stream_disposition=default,forced",
-                "-of", "json",
-                fullPath
-            ],
-            ProcessTimeout,
-            cancellationToken);
-
-        if (probe is null || probe.ExitCode != 0)
-        {
-            if (probe is not null)
-            {
-                logger.LogWarning(
-                    "ffprobe failed for {MediaPath}: {Error}",
-                    fullPath,
-                    probe.ErrorSummary);
-            }
-
-            return [];
-        }
-
-        try
-        {
-            var streams = ParseStreams(probe.Output);
-            probeCache[fullPath] = new ProbeCacheEntry(
-                info.Length,
-                info.LastWriteTimeUtc,
-                streams);
-            return streams;
-        }
-        catch (JsonException exception)
-        {
-            logger.LogWarning(
-                exception,
-                "ffprobe returned invalid subtitle JSON for {MediaPath}.",
-                fullPath);
-            return [];
-        }
-    }
 
     public async Task<EmbeddedSubtitleContent?> ExtractPreferredJapaneseAsync(
         string mediaPath,
         CancellationToken cancellationToken)
     {
-        var streams = await ProbeStreamsAsync(mediaPath, cancellationToken);
-        var stream = SelectPreferredJapaneseTextStream(streams);
+        var fullPath = Path.GetFullPath(mediaPath);
+        var technical = await ReadTechnicalInfoAsync(fullPath, cancellationToken);
+        var stream = SelectPreferredJapaneseTextStream(technical?.SubtitleStreams ?? []);
 
         return stream is null
             ? null
-            : await ExtractTextStreamAsync(
-                Path.GetFullPath(mediaPath),
-                stream,
-                cancellationToken);
+            : await ExtractTextStreamAsync(fullPath, stream, cancellationToken);
     }
 
     public async Task<EmbeddedSubtitleContent?> ExtractTextStreamAsync(
@@ -151,17 +68,23 @@ public sealed class EmbeddedSubtitleExtractor(
         CancellationToken cancellationToken)
     {
         var fullPath = Path.GetFullPath(mediaPath);
-        var streams = await ProbeStreamsAsync(fullPath, cancellationToken);
-        var stream = streams.SingleOrDefault(x => x.Index == streamIndex && x.IsText);
+        var technical = await ReadTechnicalInfoAsync(fullPath, cancellationToken);
+        var stream = technical?.SubtitleStreams
+            .SingleOrDefault(x => x.Index == streamIndex && x.IsText);
 
         return stream is null
             ? null
             : await ExtractTextStreamAsync(fullPath, stream, cancellationToken);
     }
 
+    private async Task<MediaTechnicalInfo?> ReadTechnicalInfoAsync(
+        string fullPath,
+        CancellationToken cancellationToken) =>
+        (await mediaInventory.EnsureAnalyzedAsync(fullPath, cancellationToken))?.Technical;
+
     private async Task<EmbeddedSubtitleContent?> ExtractTextStreamAsync(
         string fullPath,
-        EmbeddedSubtitleStream stream,
+        MediaStreamInfo stream,
         CancellationToken cancellationToken)
     {
         var extraction = await processRunner.RunAsync(
@@ -298,9 +221,9 @@ public sealed class EmbeddedSubtitleExtractor(
                 return null;
             }
 
-            var audioStreamIndex = await ProbePreferredJapaneseAudioStreamIndexAsync(
-                fullPath,
-                cancellationToken);
+            var technical = await ReadTechnicalInfoAsync(fullPath, cancellationToken);
+            var audioStreamIndex = SelectPreferredJapaneseAudioStreamIndex(
+                technical?.AudioStreams ?? []);
             if (audioStreamIndex is null)
             {
                 MarkAudioTranscriptionFailed(fullPath, "No audio stream was found.");
@@ -430,42 +353,13 @@ public sealed class EmbeddedSubtitleExtractor(
             .ToLowerInvariant();
     }
 
-    public static int? SelectPreferredJapaneseAudioStreamIndex(string probeJson)
+    // Prefers a Japanese-tagged audio stream and otherwise uses the first audio stream.
+    public static int? SelectPreferredJapaneseAudioStreamIndex(
+        IEnumerable<MediaStreamInfo> audioStreams)
     {
-        using var document = JsonDocument.Parse(probeJson);
-        if (!document.RootElement.TryGetProperty("streams", out var streams) ||
-            streams.ValueKind != JsonValueKind.Array)
-        {
-            return null;
-        }
-
-        int? first = null;
-        foreach (var stream in streams.EnumerateArray())
-        {
-            if (!stream.TryGetProperty("index", out var indexElement) ||
-                !indexElement.TryGetInt32(out var index))
-            {
-                continue;
-            }
-
-            first ??= index;
-
-            string? language = null;
-            string? title = null;
-            if (stream.TryGetProperty("tags", out var tags) &&
-                tags.ValueKind == JsonValueKind.Object)
-            {
-                language = ReadString(tags, "language");
-                title = ReadString(tags, "title");
-            }
-
-            if (IsJapanese(language, title))
-            {
-                return index;
-            }
-        }
-
-        return first;
+        var ordered = audioStreams.OrderBy(x => x.Index).ToArray();
+        return (ordered.FirstOrDefault(x => IsJapanese(x.Language, x.Title)) ?? ordered.FirstOrDefault())
+            ?.Index;
     }
 
     public static bool IsJapanese(string? language, string? title)
@@ -482,41 +376,6 @@ public sealed class EmbeddedSubtitleExtractor(
 
         return title?.Contains("japanese", StringComparison.OrdinalIgnoreCase) == true
             || title?.Contains("日本語", StringComparison.Ordinal) == true;
-    }
-
-    private async Task<int?> ProbePreferredJapaneseAudioStreamIndexAsync(
-        string fullPath,
-        CancellationToken cancellationToken)
-    {
-        var probe = await processRunner.RunAsync(
-            "ffprobe",
-            [
-                "-v", "error",
-                "-select_streams", "a",
-                "-show_entries", "stream=index:stream_tags=language,title",
-                "-of", "json",
-                fullPath
-            ],
-            ProcessTimeout,
-            cancellationToken);
-
-        if (probe is null || probe.ExitCode != 0)
-        {
-            return null;
-        }
-
-        try
-        {
-            return SelectPreferredJapaneseAudioStreamIndex(probe.Output);
-        }
-        catch (JsonException exception)
-        {
-            logger.LogWarning(
-                exception,
-                "ffprobe returned invalid audio JSON for {MediaPath}.",
-                fullPath);
-            return null;
-        }
     }
 
     private async Task<bool> EnsureWhisperModelAsync(CancellationToken cancellationToken)
@@ -583,70 +442,9 @@ public sealed class EmbeddedSubtitleExtractor(
         }
     }
 
-    public static IReadOnlyList<EmbeddedSubtitleStream> ParseStreams(string probeJson)
-    {
-        using var document = JsonDocument.Parse(probeJson);
-
-        if (!document.RootElement.TryGetProperty("streams", out var streams) ||
-            streams.ValueKind != JsonValueKind.Array)
-        {
-            return [];
-        }
-
-        var result = new List<EmbeddedSubtitleStream>();
-
-        foreach (var item in streams.EnumerateArray())
-        {
-            if (!item.TryGetProperty("index", out var indexElement) ||
-                !indexElement.TryGetInt32(out var index))
-            {
-                continue;
-            }
-
-            var codec = ReadString(item, "codec_name");
-            if (string.IsNullOrWhiteSpace(codec))
-            {
-                continue;
-            }
-
-            string? language = null;
-            string? title = null;
-
-            if (item.TryGetProperty("tags", out var tags) && tags.ValueKind == JsonValueKind.Object)
-            {
-                language = ReadString(tags, "language");
-                title = ReadString(tags, "title");
-            }
-
-            var isDefault = false;
-            var isForced = false;
-
-            if (item.TryGetProperty("disposition", out var disposition) &&
-                disposition.ValueKind == JsonValueKind.Object)
-            {
-                isDefault = ReadFlag(disposition, "default");
-                isForced = ReadFlag(disposition, "forced");
-            }
-
-            result.Add(new EmbeddedSubtitleStream(
-                index,
-                codec,
-                language,
-                title,
-                isDefault,
-                isForced,
-                TextCodecs.Contains(codec)));
-        }
-
-        return result;
-    }
-
-    public static EmbeddedSubtitleStream? SelectPreferredJapaneseTextStream(string probeJson) =>
-        SelectPreferredJapaneseTextStream(ParseStreams(probeJson));
-
-    private static EmbeddedSubtitleStream? SelectPreferredJapaneseTextStream(
-        IEnumerable<EmbeddedSubtitleStream> streams) =>
-        streams
+    public static MediaStreamInfo? SelectPreferredJapaneseTextStream(
+        IEnumerable<MediaStreamInfo> subtitleStreams) =>
+        subtitleStreams
             .Where(x => x.IsText && IsJapanese(x.Language, x.Title))
             .OrderBy(x => x.IsForced)
             .ThenBy(x => LooksLikeSignsOrSongs(x.Title))
@@ -672,20 +470,4 @@ public sealed class EmbeddedSubtitleExtractor(
             || title.Contains("karaoke", StringComparison.OrdinalIgnoreCase)
             || title.Contains("forced", StringComparison.OrdinalIgnoreCase);
     }
-
-    private static string? ReadString(JsonElement element, string propertyName) =>
-        element.TryGetProperty(propertyName, out var value) && value.ValueKind == JsonValueKind.String
-            ? value.GetString()
-            : null;
-
-    private static bool ReadFlag(JsonElement element, string propertyName) =>
-        element.TryGetProperty(propertyName, out var value) &&
-        value.ValueKind == JsonValueKind.Number &&
-        value.TryGetInt32(out var flag) &&
-        flag != 0;
-
-    private sealed record ProbeCacheEntry(
-        long SizeBytes,
-        DateTime LastWriteTimeUtc,
-        IReadOnlyList<EmbeddedSubtitleStream> Streams);
 }

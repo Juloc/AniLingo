@@ -11,6 +11,7 @@ public sealed class LibraryScanner(
     AppDbContext db,
     SubtitleImportService subtitleImport,
     EmbeddedSubtitleExtractor embeddedSubtitleExtractor,
+    MediaInventoryService mediaInventory,
     SonarrArtworkSyncService sonarrArtworkSync,
     ILogger<LibraryScanner> logger,
     AnimeMetadataService? metadataService = null)
@@ -313,6 +314,11 @@ public sealed class LibraryScanner(
             localArtworkUnchanged += artwork.UnchangedCount;
         }
 
+        // Runs ffprobe only for new/changed files or after a probe version bump; invalid media is
+        // recorded as a diagnostic on its analysis instead of failing the root. Embedded subtitle
+        // selection below reads this inventory.
+        var inventory = await mediaInventory.ReconcileAsync(rootId, cancellationToken);
+
         var episodeIds = subtitleCandidates
             .Select(x => x.EpisodeId)
             .Distinct()
@@ -393,7 +399,7 @@ public sealed class LibraryScanner(
         }
 
         logger.LogInformation(
-            "Library reconciliation completed for {Root}: {Discovered} new, {Updated} updated, {Removed} removed, {Skipped} skipped, {Subtitles} subtitle files, {ArtworkImported} local artwork imported, {ArtworkUnchanged} unchanged, {MetadataWarnings} NFO files ignored.",
+            "Library reconciliation completed for {Root}: {Discovered} new, {Updated} updated, {Removed} removed, {Skipped} skipped, {Subtitles} subtitle files, {ArtworkImported} local artwork imported, {ArtworkUnchanged} unchanged, {MetadataWarnings} NFO files ignored, {MediaAnalyzed} media analysed, {MediaAnalysisFailed} media analyses failed, {MediaAnalysisDeferred} deferred, {MediaAnalysisUnchanged} unchanged.",
             root.Path,
             discovered,
             updated,
@@ -402,12 +408,17 @@ public sealed class LibraryScanner(
             subtitleFiles,
             localArtworkImported,
             localArtworkUnchanged,
-            metadataWarnings);
+            metadataWarnings,
+            inventory.Analyzed,
+            inventory.Failed,
+            inventory.Deferred,
+            inventory.Unchanged);
 
         return new ScanResult(discovered, updated, skipped, subtitleFiles)
         {
             Removed = removed,
-            MetadataWarnings = metadataWarnings
+            MetadataWarnings = metadataWarnings,
+            MediaInventory = inventory
         };
     }
 

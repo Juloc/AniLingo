@@ -1,6 +1,7 @@
 using System.Text.Json;
 using AniLingo.Web.Features.ClientApi;
 using AniLingo.Web.Features.Learning;
+using AniLingo.Web.Features.Library;
 using AniLingo.Web.Features.Playback;
 using AniLingo.Web.Features.Storage;
 using Microsoft.AspNetCore.Http;
@@ -142,7 +143,7 @@ public sealed class ClientApiTests
         }
         """;
 
-        var result = PlaybackMediaProbe.Parse(json);
+        var result = PlaybackProbeResult.From(MediaProbeParser.Parse(json));
 
         Assert.AreEqual("hevc", result.VideoCodec);
         Assert.AreEqual("yuv420p", result.PixelFormat);

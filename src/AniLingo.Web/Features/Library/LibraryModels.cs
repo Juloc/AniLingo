@@ -54,4 +54,6 @@ public sealed record ScanResult(int Discovered, int Updated, int Skipped, int Su
 
     // NFO files that were present but rejected (malformed, oversized, unreadable or unsupported).
     public int MetadataWarnings { get; init; }
+
+    public MediaInventoryReconciliation MediaInventory { get; init; } = new(0, 0, 0, 0);
 }

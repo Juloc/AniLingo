@@ -1,3 +1,4 @@
+using AniLingo.Web.Features.Library;
 using AniLingo.Web.Features.Subtitles;
 
 namespace AniLingo.Tests;
@@ -11,15 +12,16 @@ public sealed class AudioTranscriptionTests
         const string json = """
         {
           "streams": [
-            { "index": 1, "tags": { "language": "eng", "title": "English" } },
-            { "index": 2, "tags": { "language": "jpn", "title": "Japanese" } }
+            { "index": 1, "codec_type": "audio", "tags": { "language": "eng", "title": "English" } },
+            { "index": 2, "codec_type": "audio", "tags": { "language": "jpn", "title": "Japanese" } }
           ]
         }
         """;
 
         Assert.AreEqual(
             2,
-            EmbeddedSubtitleExtractor.SelectPreferredJapaneseAudioStreamIndex(json));
+            EmbeddedSubtitleExtractor.SelectPreferredJapaneseAudioStreamIndex(
+                MediaProbeParser.Parse(json).AudioStreams));
     }
 
     [TestMethod]
@@ -28,15 +30,16 @@ public sealed class AudioTranscriptionTests
         const string json = """
         {
           "streams": [
-            { "index": 3 },
-            { "index": 4, "tags": { "language": "eng" } }
+            { "index": 3, "codec_type": "audio" },
+            { "index": 4, "codec_type": "audio", "tags": { "language": "eng" } }
           ]
         }
         """;
 
         Assert.AreEqual(
             3,
-            EmbeddedSubtitleExtractor.SelectPreferredJapaneseAudioStreamIndex(json));
+            EmbeddedSubtitleExtractor.SelectPreferredJapaneseAudioStreamIndex(
+                MediaProbeParser.Parse(json).AudioStreams));
     }
 
     [TestMethod]

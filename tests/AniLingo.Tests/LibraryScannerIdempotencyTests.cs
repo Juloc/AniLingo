@@ -88,8 +88,10 @@ public sealed class LibraryScannerIdempotencyTests
             var subtitleImport = new SubtitleImportService(db, vocabulary);
             var processRunner = new MediaProcessRunner(
                 NullLogger<MediaProcessRunner>.Instance);
+            var inventory = MediaInventoryTestSupport.Create(options);
             var embedded = new EmbeddedSubtitleExtractor(
                 processRunner,
+                inventory,
                 NullLogger<EmbeddedSubtitleExtractor>.Instance);
             var sonarrStore = new SonarrConnectionStore(
                 DataProtectionProvider.Create(
@@ -106,6 +108,7 @@ public sealed class LibraryScannerIdempotencyTests
                 db,
                 subtitleImport,
                 embedded,
+                inventory,
                 sonarrSync,
                 NullLogger<LibraryScanner>.Instance);
 
