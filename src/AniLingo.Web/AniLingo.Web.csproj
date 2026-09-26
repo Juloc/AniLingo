@@ -20,4 +20,10 @@
     <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="4.152.1" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- design/player is the single source for web and Android player design inputs. -->
+    <EmbeddedResource Include="..\..\design\player\player-tokens.json" LogicalName="AniLingo.Design.Player.player-tokens.json" Link="Design\player-tokens.json" />
+    <EmbeddedResource Include="..\..\design\player\player-icons.json" LogicalName="AniLingo.Design.Player.player-icons.json" Link="Design\player-icons.json" />
+  </ItemGroup>
+
 </Project>

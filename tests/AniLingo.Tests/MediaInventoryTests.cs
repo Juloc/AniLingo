@@ -302,7 +302,7 @@ public sealed class MediaInventoryTests
         var snapshot = await playback.GetMediaAsync(media.EpisodeId, CancellationToken.None);
         var stream = await playback.GetStreamAsync(
             media.EpisodeId,
-            PlaybackRequestedMode.Device,
+            new PlaybackStreamRequest(PlaybackRequestedMode.Device),
             CancellationToken.None);
 
         Assert.AreEqual(0, fixture.Runner.Calls.Count, "Playback must not run a second probe.");

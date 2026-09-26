@@ -113,7 +113,9 @@ GET  /api/client/v1/episodes/{episodeId}/player
 GET  /api/client/v1/episodes/{episodeId}/cues?trackId={trackId}&fromMs={fromMs}&toMs={toMs}
 GET  /api/client/v1/media/{mediaFileId}/availability
 GET  /api/client/v1/media/{mediaFileId}/content
-GET  /api/client/v1/episodes/{episodeId}/fallback?mode={device|server}&startSeconds={seconds}
+GET  /api/client/v1/episodes/{episodeId}/subtitle-tracks/{trackId}/cues
+GET  /api/client/v1/episodes/{episodeId}/fallback?mode={device|server}&startSeconds={seconds}&audioTrackId={trackId}&quality={cap}
+GET  /api/client/v1/episodes/{episodeId}/hls?startSeconds={seconds}&audioTrackId={trackId}&quality={cap}
 GET  /api/client/v1/terms/{termId}
 PUT  /api/client/v1/terms/{termId}/state
 
@@ -135,12 +137,20 @@ PUT    /api/client/v1/episodes/{episodeId}/watched         { watched }
 GET    /api/client/v1/episodes/{episodeId}/flow            previous/next local episode + autoplayNext
 GET    /api/client/v1/continue-watching
 GET    /api/client/v1/me/playback-preferences
-PUT    /api/client/v1/me/playback-preferences              { autoplayNext }
+PUT    /api/client/v1/me/playback-preferences              { autoplayNext?, preferredAudioLanguage?, preferredSubtitleLanguage?, defaultPlaybackSpeed? }
 GET    /api/client/v1/me/playback-history
 DELETE /api/client/v1/me/playback-history
 ```
 
 The server is the only durable owner of resume position, watched state, autoplay preference and history; clients must not keep a second durable progress store. Clients should resume from `resumePositionMs` (zero means start from the beginning), send bounded checkpoints (for example every 15 seconds while playing plus pause/stop/end) and use `/flow` instead of computing next/previous episodes locally. The semantics are described in the README section *Playback continuity*.
+
+Player controls and preferences (additive v1, advertised by `playbackPreferences` and `embeddedSubtitleCues`):
+
+- `/me/playback-preferences` is the one profile-scoped store for autoplay, preferred audio language, preferred subtitle language (`off` allowed) and default speed. `PUT` is a partial update: omitted/null fields keep their value, an empty language clears it, invalid values return `400` (`invalid_playback_speed`, `invalid_audio_language`, `invalid_subtitle_language`). Older clients that send only `{ autoplayNext }` keep working.
+- `/episodes/{id}/player` adds `defaults` (server-resolved `audioTrackId`, `subtitleMode` = `off|learning|embedded`, `subtitleTrackId`, `playbackSpeed`, `preferences`) and `controls` (`playbackSpeeds`, `qualityCaps`). Clients start with these values instead of re-deciding them; later changes are session-only unless the user saves them as defaults.
+- Track ids are the canonical `stream:{index}`. `audioTrackId` on `/hls` and `/fallback` keeps the selected audio across a fallback restart; `/subtitle-tracks/{trackId}/cues` returns plain cues of an embedded text subtitle so a playback subtitle survives fallbacks that drop container subtitles. The interactive learning subtitle stays the separate `/cues` model.
+- `quality` (`auto`, `1080p`, `720p`, `low`) is a device-local cap. The server applies it only to a stream it must encode anyway or when the media inventory proves the source is taller; direct play and Device-mode remuxes are never converted because of it.
+- Playback mode, quality cap and decoder capability are device-local; do not store them on the server. The ownership table is in the README section *Player controls*.
 
 Bounded offline playback endpoints (additive v1, advertised by `offlineDownloads`; see §8.2):
 

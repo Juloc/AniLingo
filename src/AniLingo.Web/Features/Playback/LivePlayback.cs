@@ -5,10 +5,18 @@ namespace AniLingo.Web.Features.Playback;
 
 public static class LivePlaybackCommand
 {
+    /// <summary>
+    /// Builds the ffmpeg command for one live fragmented-MP4 stream.
+    /// <paramref name="audioStreamIndex"/> selects a specific audio stream by
+    /// its ffprobe index instead of the first audio stream; the quality cap
+    /// only affects an H.264 encode the plan already requires.
+    /// </summary>
     public static IReadOnlyList<string> BuildArguments(
         string sourcePath,
         PlaybackPreparationPlan plan,
-        double startSeconds = 0)
+        double startSeconds = 0,
+        int? audioStreamIndex = null,
+        PlaybackQualityCap qualityCap = PlaybackQualityCap.Auto)
     {
         if (!plan.CanPrepare || plan.Kind is null)
         {
@@ -18,6 +26,11 @@ public static class LivePlaybackCommand
         if (!double.IsFinite(startSeconds) || startSeconds < 0)
         {
             throw new ArgumentOutOfRangeException(nameof(startSeconds));
+        }
+
+        if (audioStreamIndex is < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(audioStreamIndex));
         }
 
         var arguments = new List<string>
@@ -58,18 +71,20 @@ public static class LivePlaybackCommand
                 "-crf", "22",
                 "-pix_fmt", "yuv420p"
             ]);
+            arguments.AddRange(PlaybackQuality.EncodeArguments(qualityCap));
         }
 
+        var audioMap = AudioMap(audioStreamIndex);
         switch (plan.AudioMode)
         {
             case PlaybackAudioMode.Copy:
-                arguments.AddRange(["-map", "0:a:0?", "-c:a", "copy"]);
+                arguments.AddRange(["-map", audioMap, "-c:a", "copy"]);
                 break;
             case PlaybackAudioMode.Aac:
                 arguments.AddRange([
-                    "-map", "0:a:0?",
+                    "-map", audioMap,
                     "-c:a", "aac",
-                    "-b:a", "192k"
+                    "-b:a", PlaybackQuality.AudioBitrate(qualityCap)
                 ]);
                 break;
         }
@@ -85,6 +100,12 @@ public static class LivePlaybackCommand
 
         return arguments;
     }
+
+    /// <summary>ffmpeg map selector: a concrete stream index, or the first audio stream when present.</summary>
+    public static string AudioMap(int? audioStreamIndex) =>
+        audioStreamIndex is { } index
+            ? $"0:{index.ToString(CultureInfo.InvariantCulture)}"
+            : "0:a:0?";
 }
 
 public sealed class LivePlaybackStream : Stream
@@ -104,7 +125,9 @@ public sealed class LivePlaybackStream : Stream
     public static LivePlaybackStream Start(
         string sourcePath,
         PlaybackPreparationPlan plan,
-        double startSeconds = 0)
+        double startSeconds = 0,
+        int? audioStreamIndex = null,
+        PlaybackQualityCap qualityCap = PlaybackQualityCap.Auto)
     {
         var process = new Process
         {
@@ -121,7 +144,9 @@ public sealed class LivePlaybackStream : Stream
         foreach (var argument in LivePlaybackCommand.BuildArguments(
                      sourcePath,
                      plan,
-                     startSeconds))
+                     startSeconds,
+                     audioStreamIndex,
+                     qualityCap))
         {
             process.StartInfo.ArgumentList.Add(argument);
         }

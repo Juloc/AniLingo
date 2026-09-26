@@ -27,6 +27,44 @@
     const cueText = cue =>
         (cue?.tokens || []).map(token => token.surface || "").join("");
 
+    // Cue lookup always runs on the media clock (milliseconds of media time),
+    // never on wall-clock time, so playback speed cannot shift subtitle timing.
+    // `cues` must be sorted by startMs.
+    const cueIndexAt = (cues, timeMs) => {
+        let low = 0;
+        let high = cues.length - 1;
+        let candidate = -1;
+
+        while (low <= high) {
+            const middle = Math.floor((low + high) / 2);
+            if (cues[middle].startMs <= timeMs) {
+                candidate = middle;
+                low = middle + 1;
+            } else {
+                high = middle - 1;
+            }
+        }
+
+        return candidate >= 0 && timeMs <= cues[candidate].endMs ? candidate : -1;
+    };
+
+    // Plain playback subtitles may overlap (for example signs plus dialogue).
+    const activeCuesAt = (cues, timeMs) =>
+        cues.filter(cue => cue.startMs <= timeMs && timeMs <= cue.endMs);
+
+    // Start of the line to repeat: the active cue, otherwise the latest cue
+    // that already started; null when no line has started yet.
+    const lineStartAt = (cues, timeMs) => {
+        let start = null;
+        for (const cue of cues) {
+            if (cue.startMs > timeMs) {
+                break;
+            }
+            start = cue.startMs;
+        }
+        return start;
+    };
+
     const containsJapanese = value =>
         [...(value || "")].some(character => {
             const code = character.codePointAt(0);
@@ -115,6 +153,9 @@
         actions,
         dispatch,
         cueText,
+        cueIndexAt,
+        activeCuesAt,
+        lineStartAt,
         isClickableToken,
         renderCue
     });

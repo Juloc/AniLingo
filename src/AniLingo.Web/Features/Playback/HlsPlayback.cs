@@ -10,7 +10,9 @@ public sealed record HlsPlaybackSession(
     Guid EpisodeId,
     string ProfileId,
     double StartSeconds,
-    DateTimeOffset CreatedAtUtc);
+    DateTimeOffset CreatedAtUtc,
+    int? AudioStreamIndex = null,
+    PlaybackQualityCap QualityCap = PlaybackQualityCap.Auto);
 
 public sealed record HlsPlaybackAsset(
     string Path,
@@ -44,7 +46,9 @@ public sealed class HlsPlaybackSessionManager : IDisposable
         string profileId,
         string sourcePath,
         double startSeconds,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        int? audioStreamIndex = null,
+        PlaybackQualityCap qualityCap = PlaybackQualityCap.Auto)
     {
         if (string.IsNullOrWhiteSpace(profileId))
         {
@@ -78,7 +82,9 @@ public sealed class HlsPlaybackSessionManager : IDisposable
             var process = StartProcess(
                 sourcePath,
                 directory,
-                startSeconds);
+                startSeconds,
+                audioStreamIndex,
+                qualityCap);
 
             entry = new Entry(
                 sessionId,
@@ -106,7 +112,9 @@ public sealed class HlsPlaybackSessionManager : IDisposable
             entry.EpisodeId,
             entry.ProfileId,
             entry.StartSeconds,
-            entry.CreatedAtUtc);
+            entry.CreatedAtUtc,
+            audioStreamIndex,
+            qualityCap);
     }
 
     public HlsPlaybackAsset? GetAsset(
@@ -166,14 +174,26 @@ public sealed class HlsPlaybackSessionManager : IDisposable
         }
     }
 
+    /// <summary>
+    /// HLS fallback always encodes H.264, so the quality cap always applies
+    /// here; <paramref name="audioStreamIndex"/> keeps the caller's audio
+    /// track selection across the fallback restart.
+    /// </summary>
     public static IReadOnlyList<string> BuildArguments(
         string sourcePath,
         string directory,
-        double startSeconds)
+        double startSeconds,
+        int? audioStreamIndex = null,
+        PlaybackQualityCap qualityCap = PlaybackQualityCap.Auto)
     {
         if (!double.IsFinite(startSeconds) || startSeconds < 0)
         {
             throw new ArgumentOutOfRangeException(nameof(startSeconds));
+        }
+
+        if (audioStreamIndex is < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(audioStreamIndex));
         }
 
         var playlistPath = Path.Combine(directory, "index.m3u8");
@@ -198,16 +218,19 @@ public sealed class HlsPlaybackSessionManager : IDisposable
         arguments.AddRange([
             "-i", Path.GetFullPath(sourcePath),
             "-map", "0:v:0",
-            "-map", "0:a:0?",
+            "-map", LivePlaybackCommand.AudioMap(audioStreamIndex),
             "-sn",
             "-dn",
             "-c:v", "libx264",
             "-preset", "veryfast",
             "-crf", "22",
-            "-pix_fmt", "yuv420p",
+            "-pix_fmt", "yuv420p"
+        ]);
+        arguments.AddRange(PlaybackQuality.EncodeArguments(qualityCap));
+        arguments.AddRange([
             "-force_key_frames", $"expr:gte(t,n_forced*{SegmentSeconds})",
             "-c:a", "aac",
-            "-b:a", "192k",
+            "-b:a", PlaybackQuality.AudioBitrate(qualityCap),
             "-max_muxing_queue_size", "2048",
             "-avoid_negative_ts", "make_zero",
             "-f", "hls",
@@ -240,7 +263,9 @@ public sealed class HlsPlaybackSessionManager : IDisposable
     private Process StartProcess(
         string sourcePath,
         string directory,
-        double startSeconds)
+        double startSeconds,
+        int? audioStreamIndex,
+        PlaybackQualityCap qualityCap)
     {
         var process = new Process
         {
@@ -258,7 +283,9 @@ public sealed class HlsPlaybackSessionManager : IDisposable
         foreach (var argument in BuildArguments(
                      sourcePath,
                      directory,
-                     startSeconds))
+                     startSeconds,
+                     audioStreamIndex,
+                     qualityCap))
         {
             process.StartInfo.ArgumentList.Add(argument);
         }

@@ -67,6 +67,7 @@ WORKDIR /src
 COPY src/AniLingo.Web/AniLingo.Web.csproj src/AniLingo.Web/
 RUN dotnet restore src/AniLingo.Web/AniLingo.Web.csproj
 
+COPY design/player/ design/player/
 COPY src/AniLingo.Web/ src/AniLingo.Web/
 RUN dotnet publish src/AniLingo.Web/AniLingo.Web.csproj -c Release --no-restore -o /app/publish
 

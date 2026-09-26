@@ -529,6 +529,19 @@ namespace AniLingo.Web.Data.Migrations
                     b.Property<bool>("AutoplayNext")
                         .HasColumnType("INTEGER");
 
+                    b.Property<double>("DefaultPlaybackSpeed")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("REAL")
+                        .HasDefaultValue(1.0);
+
+                    b.Property<string>("PreferredAudioLanguage")
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PreferredSubtitleLanguage")
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("TEXT");
 

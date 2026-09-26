@@ -218,18 +218,40 @@ public static class ClientApiEndpoints
         {
             var preferences = await progressService.GetPreferencesAsync(
                 cancellationToken);
-            return Results.Ok(new ClientPlaybackPreferences(preferences.AutoplayNext));
+            return Results.Ok(ClientApiMappings.ToClientPreferences(preferences));
         });
 
         group.MapPut("/me/playback-preferences", async (
-            ClientPlaybackPreferences update,
+            ClientPlaybackPreferencesUpdate update,
             EpisodeProgressService progressService,
             CancellationToken cancellationToken) =>
         {
-            var preferences = await progressService.SetAutoplayNextAsync(
-                update.AutoplayNext,
-                cancellationToken);
-            return Results.Ok(new ClientPlaybackPreferences(preferences.AutoplayNext));
+            try
+            {
+                var preferences = await progressService.UpdatePreferencesAsync(
+                    new PlaybackPreferencesUpdate(
+                        update.AutoplayNext,
+                        update.PreferredAudioLanguage,
+                        update.PreferredSubtitleLanguage,
+                        update.DefaultPlaybackSpeed),
+                    cancellationToken);
+                return Results.Ok(ClientApiMappings.ToClientPreferences(preferences));
+            }
+            catch (ArgumentOutOfRangeException exception)
+            {
+                return exception.ParamName switch
+                {
+                    "speed" => BadRequest(
+                        "invalid_playback_speed",
+                        $"defaultPlaybackSpeed must be one of {PlaybackPreferenceRules.SpeedList}."),
+                    "audioLanguage" => BadRequest(
+                        "invalid_audio_language",
+                        "preferredAudioLanguage must be an ISO 639 language tag or empty."),
+                    _ => BadRequest(
+                        "invalid_subtitle_language",
+                        "preferredSubtitleLanguage must be an ISO 639 language tag, off, or empty.")
+                };
+            }
         });
 
         group.MapGet("/me/playback-history", async (
@@ -311,6 +333,31 @@ public static class ClientApiEndpoints
             return Results.Ok(cues);
         });
 
+        group.MapGet("/episodes/{episodeId:guid}/subtitle-tracks/{trackId}/cues", async (
+            Guid episodeId,
+            string trackId,
+            PlaybackService playbackService,
+            CancellationToken cancellationToken) =>
+        {
+            if (!PlaybackTrackIds.TryParse(trackId, out _))
+            {
+                return BadRequest(
+                    "invalid_track_id",
+                    "trackId must be a canonical stream:{index} track id.");
+            }
+
+            var cues = await playbackService.GetEmbeddedSubtitleCuesAsync(
+                episodeId,
+                trackId,
+                cancellationToken);
+
+            return cues is null
+                ? NotFound(
+                    "subtitle_track_not_found",
+                    "The requested embedded text subtitle stream is unavailable.")
+                : Results.Ok(ClientApiMappings.ToClientEmbeddedSubtitleCues(cues));
+        });
+
         group.MapGet("/media/{mediaFileId:guid}/availability", async (
             Guid mediaFileId,
             bool fresh,
@@ -381,6 +428,8 @@ public static class ClientApiEndpoints
         group.MapGet("/episodes/{episodeId:guid}/hls", async (
             Guid episodeId,
             double? startSeconds,
+            string? audioTrackId,
+            string? quality,
             PlaybackService playbackService,
             MediaAvailabilityService mediaAvailability,
             CurrentAccountContext currentAccount,
@@ -392,6 +441,13 @@ public static class ClientApiEndpoints
                 return BadRequest(
                     "invalid_start_position",
                     "startSeconds must be a finite value greater than or equal to zero.");
+            }
+
+            if (!PlaybackQuality.TryParse(quality, out var qualityCap))
+            {
+                return BadRequest(
+                    "invalid_quality_cap",
+                    $"quality must be one of {string.Join(", ", PlaybackQuality.Names)}.");
             }
 
             var availability = await mediaAvailability.CheckEpisodeAsync(
@@ -419,14 +475,17 @@ public static class ClientApiEndpoints
 
             var stream = await playbackService.GetStreamAsync(
                 episodeId,
-                PlaybackRequestedMode.Server,
+                new PlaybackStreamRequest(
+                    PlaybackRequestedMode.Server,
+                    NormalizeTrackId(audioTrackId),
+                    qualityCap),
                 cancellationToken);
 
             if (stream is null || !File.Exists(stream.SourcePath))
             {
                 return NotFound(
                     "playback_unavailable",
-                    "No source media is available for HLS fallback.");
+                    "No source media is available for HLS fallback with the requested audio track.");
             }
 
             try
@@ -439,7 +498,9 @@ public static class ClientApiEndpoints
                     currentAccount.ProfileId,
                     stream.SourcePath,
                     start,
-                    cancellationToken);
+                    cancellationToken,
+                    stream.AudioStreamIndex,
+                    stream.QualityCap);
 
                 return Results.Redirect(
                     ClientApiRoutes.HlsPlaylist(
@@ -489,6 +550,8 @@ public static class ClientApiEndpoints
             Guid episodeId,
             string? mode,
             double? startSeconds,
+            string? audioTrackId,
+            string? quality,
             PlaybackService playbackService,
             MediaAvailabilityService mediaAvailability,
             CurrentAccountContext currentAccount,
@@ -500,6 +563,13 @@ public static class ClientApiEndpoints
                 return BadRequest(
                     "invalid_start_position",
                     "startSeconds must be a finite value greater than or equal to zero.");
+            }
+
+            if (!PlaybackQuality.TryParse(quality, out var qualityCap))
+            {
+                return BadRequest(
+                    "invalid_quality_cap",
+                    $"quality must be one of {string.Join(", ", PlaybackQuality.Names)}.");
             }
 
             var requestedMode = string.Equals(
@@ -534,14 +604,17 @@ public static class ClientApiEndpoints
 
             var stream = await playbackService.GetStreamAsync(
                 episodeId,
-                requestedMode,
+                new PlaybackStreamRequest(
+                    requestedMode,
+                    NormalizeTrackId(audioTrackId),
+                    qualityCap),
                 cancellationToken);
 
             if (stream is null || !File.Exists(stream.SourcePath))
             {
                 return NotFound(
                     "playback_unavailable",
-                    "No compatible playback stream is available for this episode.");
+                    "No compatible playback stream is available for this episode and audio track.");
             }
 
             if (!stream.IsLive)
@@ -561,7 +634,9 @@ public static class ClientApiEndpoints
                 var live = LivePlaybackStream.Start(
                     stream.SourcePath,
                     stream.LivePlan!,
-                    start);
+                    start,
+                    stream.AudioStreamIndex,
+                    stream.QualityCap);
 
                 return Results.File(
                     live,
@@ -693,6 +768,9 @@ public static class ClientApiEndpoints
 
     private static IResult BadRequest(string code, string message) =>
         Results.BadRequest(new ClientErrorResponse(code, message));
+
+    private static string? NormalizeTrackId(string? trackId) =>
+        string.IsNullOrWhiteSpace(trackId) ? null : trackId.Trim();
 
     private static double NormalizeStart(
         double? requested,

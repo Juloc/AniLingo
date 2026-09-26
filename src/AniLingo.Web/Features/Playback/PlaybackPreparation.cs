@@ -107,7 +107,8 @@ public sealed record PlaybackProbeResult(
     string? PixelFormat,
     string? AudioCodec,
     double? DurationSeconds = null,
-    IReadOnlyList<PlaybackMediaTrack>? Tracks = null)
+    IReadOnlyList<PlaybackMediaTrack>? Tracks = null,
+    int? VideoHeight = null)
 {
     public static PlaybackProbeResult From(MediaTechnicalInfo technical) =>
         new(
@@ -127,7 +128,8 @@ public sealed record PlaybackProbeResult(
                     stream.IsDefault,
                     stream.IsForced,
                     stream.IsText))
-            ]);
+            ],
+            technical.Video?.Height);
 }
 
 public enum PlaybackAudioMode
