@@ -33,6 +33,7 @@ public sealed class NovelMetadataService(
                 x.Title,
                 x.MetadataProvider,
                 x.MetadataExternalId,
+                x.SourceProvider,
                 ChapterCount = db.NovelChapters.Count(chapter => chapter.WorkId == x.Id)
             })
             .SingleOrDefaultAsync(cancellationToken);
@@ -92,7 +93,11 @@ public sealed class NovelMetadataService(
         var decision = AutomaticMediaMatcher.Select(
             new AutomaticMediaMatchInput(
                 work.Title,
-                UnitCount: work.ChapterCount > 0 ? work.ChapterCount : null,
+                // EPUB volume chapters do not follow AniList chapter numbering.
+                UnitCount: work.ChapterCount > 0 &&
+                    work.SourceProvider != NovelEpubImportService.Provider
+                        ? work.ChapterCount
+                        : null,
                 Format: "LIGHT_NOVEL"),
             candidates.Select(candidate => new AutomaticMediaMatchCandidate(
                 candidate.Provider,
@@ -284,12 +289,17 @@ public sealed class NovelMetadataService(
             return;
         }
 
-        var chapters = await db.NovelChapters
-            .AsNoTracking()
-            .Where(chapter => chapter.WorkId == workId)
-            .OrderBy(chapter => chapter.Number)
-            .Select(chapter => new LocalReadingChapter(
-                chapter.Number))
+        // Only EPUB volumes are published volumes; the implicit volume of a
+        // web novel or book must not be mapped to AniList volume progress.
+        var chapters = await (
+            from chapter in db.NovelChapters.AsNoTracking()
+            join volume in db.NovelVolumes.AsNoTracking()
+                on chapter.VolumeId equals volume.Id
+            where chapter.WorkId == workId
+            orderby chapter.Number
+            select new LocalReadingChapter(
+                chapter.Number,
+                volume.Kind == NovelVolumeKinds.Epub ? (int?)volume.Number : null))
             .ToListAsync(cancellationToken);
 
         var plan = AutomaticReadingSegmentPlanner.Plan(
@@ -343,9 +353,9 @@ public sealed class NovelMetadataService(
                 segment.RemotePart.ExternalId,
                 segment.RemotePart.Title,
                 segment.RemotePart.ChapterCount,
-                null,
-                null,
-                null,
+                segment.LocalVolumeStart,
+                segment.LocalVolumeEnd,
+                segment.RemoteVolumeStart,
                 DateTimeOffset.UtcNow)
             {
                 Source = "automatic"

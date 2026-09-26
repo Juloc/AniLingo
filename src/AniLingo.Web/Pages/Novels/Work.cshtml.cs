@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 
 namespace AniLingo.Web.Pages.Novels;
 
+[NovelEpubUploadRequestLimits("UploadVolume")]
 public sealed class WorkModel(
     NovelCatalogQueries catalog,
     NovelImportService imports,
@@ -15,6 +16,7 @@ public sealed class WorkModel(
     NovelMappingService mappings,
     AniListAccountService aniListAccount,
     NovelJobs jobs,
+    NovelEpubImportService epubImports,
     CurrentAccountContext account,
     OperationRunner operations) : PageModel
 {
@@ -145,6 +147,54 @@ public sealed class WorkModel(
                 cancellationToken);
 
             TempData["Status"] = "Table of contents refreshed.";
+        }
+        catch (InvalidOperationException exception)
+        {
+            TempData["Status"] = exception.Message;
+        }
+
+        return RedirectToPage(new { id });
+    }
+
+    public async Task<IActionResult> OnPostUploadVolumeAsync(
+        Guid id,
+        List<IFormFile>? epubs,
+        CancellationToken cancellationToken)
+    {
+        if (!account.IsOwner)
+        {
+            return Forbid();
+        }
+
+        var outcomes = await NovelEpubUploads.ImportAsync(
+            epubImports,
+            operations,
+            account.ProfileId,
+            epubs,
+            targetWorkId: id,
+            cancellationToken);
+
+        TempData["Status"] = outcomes is null
+            ? $"Choose one to {NovelEpubUploadRequestLimitsAttribute.MaximumFiles} EPUB files."
+            : NovelEpubImportOutcome.Summarize(outcomes);
+
+        return RedirectToPage(new { id });
+    }
+
+    public async Task<IActionResult> OnPostRemoveVolumeAsync(
+        Guid id,
+        Guid volumeId,
+        CancellationToken cancellationToken)
+    {
+        if (!account.IsOwner)
+        {
+            return Forbid();
+        }
+
+        try
+        {
+            await epubImports.RemoveVolumeAsync(id, volumeId, cancellationToken);
+            TempData["Status"] = "Volume removed.";
         }
         catch (InvalidOperationException exception)
         {

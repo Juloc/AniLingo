@@ -37,6 +37,8 @@ public sealed class ReadModel(
     public NovelReaderChapter Chapter { get; private set; } = null!;
     public IReadOnlyList<string> JapaneseParagraphs { get; private set; } = [];
     public IReadOnlyList<string> GermanParagraphs { get; private set; } = [];
+    /// <summary>Japanese content blocks: paragraphs, headings and illustrations.</summary>
+    public IReadOnlyList<NovelReaderBlock> JapaneseBlocks { get; private set; } = [];
     public IReadOnlyList<NovelAnimeMapping> AnimeMappings { get; private set; } = [];
     public NovelChapterAnnotations Annotations { get; private set; } =
         new([], [], 0, 0);
@@ -92,6 +94,9 @@ public sealed class ReadModel(
 
         JapaneseParagraphs = NovelTextLayout.SplitParagraphs(chapter.OriginalText);
         GermanParagraphs = NovelTextLayout.SplitParagraphs(chapter.TranslationText);
+        JapaneseBlocks = NovelChapterDocument.BuildReaderBlocks(
+            chapter.OriginalText,
+            chapter.ContentJson);
 
         AnimeMappings = await mappings.GetForChapterAsync(
             chapter.WorkId,

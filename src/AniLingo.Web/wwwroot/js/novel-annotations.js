@@ -94,9 +94,58 @@
 
         // ---- highlights ----------------------------------------------------
 
+        // Paragraphs may carry inline markup (EPUB emphasis and ruby, whose
+        // readings are CSS-drawn so textContent stays the plain paragraph).
+        // Highlights wrap text nodes of a pristine copy of that markup.
+        const pristineParagraphs = new WeakMap();
+
+        const pristineCopy = paragraph => {
+            const saved = pristineParagraphs.get(paragraph);
+            if (saved && saved.textContent === paragraph.textContent) {
+                return saved.cloneNode(true);
+            }
+            // First render, or the text was replaced (e.g. a new translation).
+            const copy = paragraph.cloneNode(true);
+            copy.querySelectorAll("mark.novel-highlight").forEach(mark => mark.replaceWith(...mark.childNodes));
+            copy.normalize();
+            pristineParagraphs.set(paragraph, copy);
+            return copy.cloneNode(true);
+        };
+
+        const wrapSegments = (root, segments) => {
+            const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+            const nodes = [];
+            let offset = 0;
+            while (walker.nextNode()) {
+                const node = walker.currentNode;
+                nodes.push({ node, start: offset, end: offset + node.data.length });
+                offset += node.data.length;
+            }
+
+            for (const { node, start, end } of nodes) {
+                const overlapping = segments
+                    .filter(segment => segment.ids.length > 0 && segment.start < end && segment.end > start)
+                    .sort((a, b) => b.start - a.start);
+                let head = node;
+                for (const segment of overlapping) {
+                    const from = Math.max(segment.start, start) - start;
+                    const to = Math.min(segment.end, end) - start;
+                    if (to < head.data.length) head.splitText(to);
+                    const middle = from > 0 ? head.splitText(from) : head;
+                    const mark = document.createElement("mark");
+                    mark.className = "novel-highlight";
+                    mark.dataset.highlightIds = segment.ids.join(" ");
+                    mark.dataset.highlightDepth = String(Math.min(segment.ids.length, 3));
+                    middle.parentNode.insertBefore(mark, middle);
+                    mark.append(middle);
+                }
+            }
+        };
+
         const renderParagraph = paragraph => {
             if (!paragraph) return;
-            const text = paragraph.textContent || "";
+            const content = pristineCopy(paragraph);
+            const text = content.textContent || "";
             const language = paragraph.dataset.language || "ja";
             const index = Number(paragraph.dataset.index);
             const items = Array.from(highlights.values())
@@ -104,25 +153,12 @@
             const segments = buildHighlightSegments(text.length, items);
 
             if (segments.length === 0) {
-                if (paragraph.querySelector("mark")) paragraph.textContent = text;
+                if (paragraph.querySelector("mark")) paragraph.replaceChildren(...content.childNodes);
                 return;
             }
 
-            const fragment = document.createDocumentFragment();
-            for (const segment of segments) {
-                const value = text.slice(segment.start, segment.end);
-                if (segment.ids.length === 0) {
-                    fragment.append(document.createTextNode(value));
-                    continue;
-                }
-                const mark = document.createElement("mark");
-                mark.className = "novel-highlight";
-                mark.dataset.highlightIds = segment.ids.join(" ");
-                mark.dataset.highlightDepth = String(Math.min(segment.ids.length, 3));
-                mark.textContent = value;
-                fragment.append(mark);
-            }
-            paragraph.replaceChildren(fragment);
+            wrapSegments(content, segments);
+            paragraph.replaceChildren(...content.childNodes);
         };
 
         const renderHighlightsFor = (language, index) =>
