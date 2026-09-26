@@ -1,16 +1,12 @@
 @page
 @model AniLingo.Web.Pages.Settings.ApiKeys.IndexModel
 @{
-    ViewData["Title"] = "API keys";
+    var ui = Model.Ui;
+    ViewData["Title"] = ui["settings.apiKeys.title"];
 }
 
-<h1>API keys</h1>
-<p class="muted">
-    Keys for the acquisition automation API (<code>/api/acquisition/v1</code>): monitoring, wanted
-    episodes, search-now, operations/history, manual imports and a health summary. Send a key in
-    the <code>X-Api-Key</code> header; it authenticates as the owner, scoped to that API only. See
-    the acquisition documentation for the full endpoint list and examples.
-</p>
+<h1>@ui["settings.apiKeys.heading"]</h1>
+<p class="muted">@ui["settings.apiKeys.description"]</p>
 
 @if (Model.Notice is not null)
 {
@@ -31,20 +27,20 @@
 
 <form method="post" asp-page-handler="Create">
     <label>
-        Name
+        @ui["settings.apiKeys.nameLabel"]
         <input type="text" name="name" placeholder="e.g. Sonarr-style automation script" maxlength="120" required />
     </label>
-    <button type="submit">Create key</button>
+    <button type="submit">@ui["settings.apiKeys.create"]</button>
 </form>
 
 <table class="data-table">
     <thead>
         <tr>
-            <th>Name</th>
-            <th>Key prefix</th>
-            <th>Created</th>
-            <th>Last used</th>
-            <th>Status</th>
+            <th>@ui["settings.apiKeys.nameColumn"]</th>
+            <th>@ui["settings.apiKeys.prefixColumn"]</th>
+            <th>@ui["settings.apiKeys.createdColumn"]</th>
+            <th>@ui["settings.apiKeys.lastUsedColumn"]</th>
+            <th>@ui["settings.apiKeys.statusColumn"]</th>
             <th></th>
         </tr>
     </thead>
@@ -55,22 +51,22 @@
                 <td>@key.Name</td>
                 <td><code>@key.KeyPrefix…</code></td>
                 <td>@key.CreatedAtUtc.ToString("u")</td>
-                <td>@(key.LastUsedAtUtc?.ToString("u") ?? "Never")</td>
+                <td>@(key.LastUsedAtUtc?.ToString("u") ?? ui["settings.apiKeys.never"])</td>
                 <td>
                     @if (key.IsActive)
                     {
-                        <span class="status-pill status-ok">Active</span>
+                        <span class="status-pill status-ok">@ui["settings.apiKeys.active"]</span>
                     }
                     else
                     {
-                        <span class="status-pill status-warn">Revoked @key.RevokedAtUtc?.ToString("u")</span>
+                        <span class="status-pill status-warn">@ui.Format("settings.apiKeys.revoked", ("date", key.RevokedAtUtc?.ToString("u") ?? ""))</span>
                     }
                 </td>
                 <td>
                     @if (key.IsActive)
                     {
                         <form method="post" asp-page-handler="Revoke" asp-route-id="@key.Id" style="display:inline">
-                            <button type="submit">Revoke</button>
+                            <button type="submit">@ui["settings.apiKeys.revoke"]</button>
                         </form>
                     }
                 </td>
@@ -78,7 +74,7 @@
         }
         @if (Model.Keys.Count == 0)
         {
-            <tr><td colspan="6" class="muted">No API key created yet.</td></tr>
+            <tr><td colspan="6" class="muted">@ui["settings.apiKeys.empty"]</td></tr>
         }
     </tbody>
 </table>

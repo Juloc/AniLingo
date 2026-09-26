@@ -1,5 +1,7 @@
+using AniLingo.Web.Data;
 using AniLingo.Web.Features.Acquisition.Api;
 using AniLingo.Web.Features.Auth;
+using AniLingo.Web.Features.Localization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -13,8 +15,9 @@ namespace AniLingo.Web.Pages.Settings.ApiKeys;
 /// persisted, so a reload of this page never shows it again.
 /// </summary>
 [Authorize(Roles = AccountRoles.Owner)]
-public sealed class IndexModel(AcquisitionApiKeyService keys) : PageModel
+public sealed class IndexModel(AcquisitionApiKeyService keys, AppDbContext db) : PageModel
 {
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public IReadOnlyList<AcquisitionApiKey> Keys { get; private set; } = [];
 
     public string? CreatedKeyName => TempData["ApiKeyCreatedName"] as string;
@@ -24,30 +27,33 @@ public sealed class IndexModel(AcquisitionApiKeyService keys) : PageModel
 
     public async Task OnGetAsync(CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         Keys = await keys.ListAsync(cancellationToken);
     }
 
     public async Task<IActionResult> OnPostCreateAsync(string name, CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         if (string.IsNullOrWhiteSpace(name))
         {
-            TempData["ApiKeyError"] = "Enter a name for the new key.";
+            TempData["ApiKeyError"] = Ui["settings.apiKeys.nameRequired"];
             return RedirectToPage();
         }
 
         var (key, rawKey) = await keys.CreateAsync(name.Trim(), cancellationToken);
         TempData["ApiKeyCreatedName"] = key.Name;
         TempData["ApiKeyCreatedRaw"] = rawKey;
-        TempData["ApiKeyNotice"] = $"Key '{key.Name}' created. Copy it now; it will not be shown again.";
+        TempData["ApiKeyNotice"] = Ui.Format("settings.apiKeys.createdNotice", ("name", key.Name));
         return RedirectToPage();
     }
 
     public async Task<IActionResult> OnPostRevokeAsync(Guid id, CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         var revoked = await keys.RevokeAsync(id, cancellationToken);
         TempData[revoked ? "ApiKeyNotice" : "ApiKeyError"] = revoked
-            ? "Key revoked; it can no longer authenticate."
-            : "That key was already revoked or does not exist.";
+            ? Ui["settings.apiKeys.revokedNotice"]
+            : Ui["settings.apiKeys.revokeUnknown"];
         return RedirectToPage();
     }
 }
