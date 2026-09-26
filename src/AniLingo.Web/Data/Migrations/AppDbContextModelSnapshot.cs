@@ -274,6 +274,11 @@ namespace AniLingo.Web.Data.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("ProfileId")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("SourceKey")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -296,7 +301,10 @@ namespace AniLingo.Web.Data.Migrations
 
                     b.HasIndex("UnitId");
 
-                    b.HasIndex("SourceType", "SourceKey");
+                    b.HasIndex("ProfileId", "SourceType", "SourceKey");
+
+                    b.HasIndex("ProfileId", "UnitId", "SourceType", "SourceKey", "PositionKey")
+                        .IsUnique();
 
                     b.ToTable("LearningContexts");
                 });
