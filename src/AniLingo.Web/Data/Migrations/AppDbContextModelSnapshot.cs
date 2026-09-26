@@ -633,6 +633,114 @@ namespace AniLingo.Web.Data.Migrations
                     b.ToTable("LibraryRoots");
                 });
 
+            modelBuilder.Entity("AniLingo.Web.Features.Library.MediaAnalysis", b =>
+                {
+                    b.Property<Guid>("MediaFileId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("AnalyzedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("BitDepth")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Container")
+                        .HasMaxLength(120)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Diagnostic")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<double?>("DurationSeconds")
+                        .HasColumnType("REAL");
+
+                    b.Property<string>("DynamicRange")
+                        .HasMaxLength(24)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("Height")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("PixelFormat")
+                        .HasMaxLength(40)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ProbeVersion")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("SourceFingerprint")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("SourceLastWriteTimeUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("SourceSizeBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("VideoCodec")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("VideoProfile")
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("Width")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("MediaFileId");
+
+                    b.HasIndex("Status", "ProbeVersion");
+
+                    b.ToTable("MediaAnalyses");
+                });
+
+            modelBuilder.Entity("AniLingo.Web.Features.Library.MediaAnalysisStream", b =>
+                {
+                    b.Property<Guid>("MediaFileId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("StreamIndex")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ChannelLayout")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("Channels")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Codec")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsForced")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Language")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Title")
+                        .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("MediaFileId", "StreamIndex");
+
+                    b.ToTable("MediaAnalysisStreams");
+                });
+
             modelBuilder.Entity("AniLingo.Web.Features.Library.MediaFile", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1137,6 +1245,24 @@ namespace AniLingo.Web.Data.Migrations
                     b.HasOne("AniLingo.Web.Features.Library.Anime", null)
                         .WithMany()
                         .HasForeignKey("AnimeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("AniLingo.Web.Features.Library.MediaAnalysis", b =>
+                {
+                    b.HasOne("AniLingo.Web.Features.Library.MediaFile", null)
+                        .WithOne()
+                        .HasForeignKey("AniLingo.Web.Features.Library.MediaAnalysis", "MediaFileId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("AniLingo.Web.Features.Library.MediaAnalysisStream", b =>
+                {
+                    b.HasOne("AniLingo.Web.Features.Library.MediaAnalysis", null)
+                        .WithMany()
+                        .HasForeignKey("MediaFileId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

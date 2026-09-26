@@ -2,6 +2,7 @@ using System.Text;
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Learning;
+using AniLingo.Web.Features.Library;
 using AniLingo.Web.Features.Storage;
 using AniLingo.Web.Features.Vocabulary;
 using AniLingo.Web.Infrastructure;
@@ -196,38 +197,38 @@ public sealed class PlaybackService
 {
     private readonly AppDbContext db;
     private readonly PlaybackCueProjector projector;
-    private readonly PlaybackMediaProbe mediaProbe;
+    private readonly MediaInventoryService mediaInventory;
     private readonly MediaAvailabilityService? mediaAvailability;
     private readonly string profileId;
 
     public PlaybackService(
         AppDbContext db,
         PlaybackCueProjector projector,
-        PlaybackMediaProbe mediaProbe,
+        MediaInventoryService mediaInventory,
         MediaAvailabilityService mediaAvailability,
         CurrentAccountContext currentAccount)
-        : this(db, projector, mediaProbe, mediaAvailability, currentAccount.ProfileId)
+        : this(db, projector, mediaInventory, mediaAvailability, currentAccount.ProfileId)
     {
     }
 
     public PlaybackService(
         AppDbContext db,
         PlaybackCueProjector projector,
-        PlaybackMediaProbe mediaProbe)
-        : this(db, projector, mediaProbe, null, LearningProfile.DefaultId)
+        MediaInventoryService mediaInventory)
+        : this(db, projector, mediaInventory, null, LearningProfile.DefaultId)
     {
     }
 
     private PlaybackService(
         AppDbContext db,
         PlaybackCueProjector projector,
-        PlaybackMediaProbe mediaProbe,
+        MediaInventoryService mediaInventory,
         MediaAvailabilityService? mediaAvailability,
         string profileId)
     {
         this.db = db;
         this.projector = projector;
-        this.mediaProbe = mediaProbe;
+        this.mediaInventory = mediaInventory;
         this.mediaAvailability = mediaAvailability;
         this.profileId = profileId;
     }
@@ -266,7 +267,7 @@ public sealed class PlaybackService
                 Storage: availability);
         }
 
-        var probe = await mediaProbe.ProbeAsync(row.Path, cancellationToken);
+        var probe = await ReadTechnicalInfoAsync(row.Id, cancellationToken);
         if (probe is null)
         {
             availability = await CheckAvailabilityAsync(
@@ -380,7 +381,7 @@ public sealed class PlaybackService
             return null;
         }
 
-        var probe = await mediaProbe.ProbeAsync(row.Path, cancellationToken);
+        var probe = await ReadTechnicalInfoAsync(row.Id, cancellationToken);
         if (probe is null || !File.Exists(row.Path))
         {
             _ = await CheckAvailabilityAsync(
@@ -566,6 +567,13 @@ public sealed class PlaybackService
                 mediaFileId,
                 force,
                 cancellationToken);
+
+    private async Task<PlaybackProbeResult?> ReadTechnicalInfoAsync(
+        Guid mediaFileId,
+        CancellationToken cancellationToken) =>
+        (await mediaInventory.EnsureAnalyzedAsync(mediaFileId, cancellationToken))?.Technical is { } technical
+            ? PlaybackProbeResult.From(technical)
+            : null;
 
     private static PlaybackOption BuildOption(
         MediaRow row,

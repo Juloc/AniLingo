@@ -20,6 +20,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<Anime> Anime => Set<Anime>();
     public DbSet<Episode> Episodes => Set<Episode>();
     public DbSet<MediaFile> MediaFiles => Set<MediaFile>();
+    public DbSet<MediaAnalysis> MediaAnalyses => Set<MediaAnalysis>();
+    public DbSet<MediaAnalysisStream> MediaAnalysisStreams => Set<MediaAnalysisStream>();
     public DbSet<AnimeMetadata> AnimeMetadata => Set<AnimeMetadata>();
     public DbSet<SubtitleTrack> SubtitleTracks => Set<SubtitleTrack>();
     public DbSet<SubtitleCue> SubtitleCues => Set<SubtitleCue>();
@@ -114,6 +116,32 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasOne<Episode>().WithMany().HasForeignKey(x => x.EpisodeId).OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(x => x.Path).IsUnique();
             entity.HasIndex(x => new { x.LibraryRootId, x.EpisodeId });
+        });
+
+        modelBuilder.Entity<MediaAnalysis>(entity =>
+        {
+            entity.HasKey(x => x.MediaFileId);
+            entity.Property(x => x.Status).HasConversion<int>();
+            entity.Property(x => x.SourceFingerprint).HasMaxLength(64);
+            entity.Property(x => x.Diagnostic).HasMaxLength(MediaInventoryService.DiagnosticMaxLength);
+            entity.Property(x => x.Container).HasMaxLength(120);
+            entity.Property(x => x.VideoCodec).HasMaxLength(64);
+            entity.Property(x => x.VideoProfile).HasMaxLength(80);
+            entity.Property(x => x.PixelFormat).HasMaxLength(40);
+            entity.Property(x => x.DynamicRange).HasMaxLength(24);
+            entity.HasOne<MediaFile>().WithOne().HasForeignKey<MediaAnalysis>(x => x.MediaFileId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(x => new { x.Status, x.ProbeVersion });
+        });
+
+        modelBuilder.Entity<MediaAnalysisStream>(entity =>
+        {
+            entity.HasKey(x => new { x.MediaFileId, x.StreamIndex });
+            entity.Property(x => x.Kind).HasConversion<int>();
+            entity.Property(x => x.Codec).HasMaxLength(64);
+            entity.Property(x => x.Language).HasMaxLength(32);
+            entity.Property(x => x.Title).HasMaxLength(300);
+            entity.Property(x => x.ChannelLayout).HasMaxLength(64);
+            entity.HasOne<MediaAnalysis>().WithMany().HasForeignKey(x => x.MediaFileId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<SubtitleTrack>(entity =>
