@@ -238,7 +238,10 @@ public sealed class OfflinePlaybackTests
             Assert.AreEqual(600_000, descriptor.Progress.ResumePositionMs);
             Assert.AreEqual("stream:1", descriptor.DefaultAudioTrackId);
 
-            var json = JsonSerializer.Serialize(descriptor);
+            var json = JsonSerializer.Serialize(descriptor, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            StringAssert.Contains(json, "\"eTag\":", "The Android client parses the camelCase wire name.");
+            StringAssert.Contains(json, "\"fingerprintAlgorithm\":");
+            StringAssert.Contains(json, "\"learningCues\":");
             Assert.IsFalse(json.Contains(Path.GetDirectoryName(path)!.Replace("\\", "\\\\"), StringComparison.OrdinalIgnoreCase));
             Assert.IsFalse(json.Contains(Path.GetFileName(path), StringComparison.OrdinalIgnoreCase));
         }
