@@ -1,0 +1,71 @@
+@model AniLingo.Web.Pages.Novels.ReadModel
+@* Shown instead of the reader when the chapter text is not cached yet. The page itself
+   never contacts the source provider; the action queues a download operation. *@
+@{
+    var chapter = Model.Chapter;
+    var preparation = Model.Preparation;
+    var pending = preparation?.IsActive == true;
+    var failed = preparation is not null && !pending;
+    var returnUrl = Url.Page("/Novels/Read", new
+    {
+        id = chapter.Id,
+        bookmark = Model.ReturnBookmarkId,
+        highlight = Model.ReturnHighlightId
+    });
+}
+<section class="novel-chapter-preparation"
+         data-novel-chapter-preparation
+         data-pending="@pending.ToString().ToLowerInvariant()"
+         data-status-url="@Url.Page("/Novels/Read", "ChapterStatus", new { id = chapter.Id, prepare = preparation?.Id })"
+         data-ready-url="@returnUrl">
+    <a class="back-link" href="/Novels/Work/@chapter.WorkId">← @chapter.WorkTitle</a>
+
+    <header class="novel-preparation-header">
+        <span class="novel-chapter-label">Kapitel @chapter.Number</span>
+        <h1 lang="ja">@chapter.Title</h1>
+    </header>
+
+    <p class="novel-preparation-message" data-preparation-message role="status" aria-live="polite">
+        @if (pending)
+        {
+            <text>Das Kapitel wird heruntergeladen …</text>
+        }
+        else if (failed)
+        {
+            <text>Das Kapitel konnte nicht heruntergeladen werden.</text>
+        }
+        else
+        {
+            <text>Dieses Kapitel ist noch nicht heruntergeladen.</text>
+        }
+    </p>
+
+    <form method="post"
+          asp-page-handler="PrepareChapter"
+          asp-route-id="@chapter.Id"
+          asp-route-bookmark="@Model.ReturnBookmarkId"
+          asp-route-highlight="@Model.ReturnHighlightId"
+          data-preparation-form>
+        <button class="button button-primary"
+                type="submit"
+                data-preparation-action
+                disabled="@pending">
+            @(failed ? "Erneut versuchen" : "Kapitel herunterladen")
+        </button>
+    </form>
+
+    <nav class="novel-preparation-nav" aria-label="Kapitelnavigation">
+        @if (chapter.PreviousChapterId is Guid previous)
+        {
+            <a href="/Novels/Read/@previous">← Vorheriges Kapitel</a>
+        }
+        else
+        {
+            <span></span>
+        }
+        @if (chapter.NextChapterId is Guid next)
+        {
+            <a href="/Novels/Read/@next">Nächstes Kapitel →</a>
+        }
+    </nav>
+</section>

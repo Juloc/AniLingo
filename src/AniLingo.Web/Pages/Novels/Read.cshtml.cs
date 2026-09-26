@@ -4,131 +4,225 @@ using AniLingo.Web.Features.Novels;
 using AniLingo.Web.Features.Operations;
 using AniLingo.Web.Features.ReaderCore;
 using AniLingo.Web.Features.ReaderPreferences;
-using AniLingo.Web.Infrastructure;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace AniLingo.Web.Pages.Novels;
 
+public sealed record NovelReaderAnchor(
+    string Language,
+    int? ParagraphIndex,
+    int Offset,
+    int PositionPermille,
+    string? AnchorText,
+    bool Forced);
+
+/// <summary>
+/// Novel reader page adapter. GET renders only cached content: a chapter
+/// without downloaded text shows a preparation state whose action queues the
+/// download through Operations instead of fetching from the provider inline.
+/// </summary>
 public sealed class ReadModel(
-    NovelService novels,
+    NovelCatalogQueries catalog,
+    NovelAnnotationService annotations,
+    NovelProgressService progress,
+    NovelImportService imports,
     NovelTranslationService translations,
     NovelMappingService mappings,
-    BackgroundJobQueue jobs,
+    NovelJobs jobs,
     AppDbContext db,
     CurrentAccountContext account,
     OperationRunner operations) : PageModel
 {
-    public NovelWork Work { get; private set; } = null!;
-    public NovelChapter Chapter { get; private set; } = null!;
-    public NovelTranslation? Translation { get; private set; }
+    public NovelReaderChapter Chapter { get; private set; } = null!;
     public IReadOnlyList<string> JapaneseParagraphs { get; private set; } = [];
     public IReadOnlyList<string> GermanParagraphs { get; private set; } = [];
     public IReadOnlyList<NovelAnimeMapping> AnimeMappings { get; private set; } = [];
-    public IReadOnlyList<NovelBookmark> Bookmarks { get; private set; } = [];
-    public IReadOnlyList<NovelHighlight> Highlights { get; private set; } = [];
-    public IReadOnlyList<NovelChapterItem> Chapters { get; private set; } = [];
+    public NovelChapterAnnotations Annotations { get; private set; } =
+        new([], [], 0, 0);
     public NovelProgress? Progress { get; private set; }
-    public NovelBookmark? JumpBookmark { get; private set; }
+    public NovelReaderAnchor InitialAnchor { get; private set; } =
+        new(NovelReadingLanguage.Japanese, null, 0, 0, null, false);
     public ReaderDocumentDescriptor ReaderDocument { get; private set; } = null!;
     public ReaderSettingsSnapshot ReaderSettings { get; private set; } = null!;
-    public Guid? PreviousChapterId { get; private set; }
-    public Guid? NextChapterId { get; private set; }
+    public OperationSnapshot? Preparation { get; private set; }
+    public Guid? ReturnBookmarkId { get; private set; }
+    public Guid? ReturnHighlightId { get; private set; }
     public bool IsOwner => account.IsOwner;
 
     public async Task<IActionResult> OnGetAsync(
         Guid id,
         Guid? bookmark,
+        Guid? highlight,
+        Guid? prepare,
         CancellationToken cancellationToken)
     {
-        try
-        {
-            await novels.EnsureChapterContentAsync(
-                id,
-                forceRefresh: false,
-                cancellationToken);
-        }
-        catch (InvalidOperationException exception)
-        {
-            TempData["Status"] = exception.Message;
-            return RedirectToPage("/Novels");
-        }
-
-        var result = await novels.GetChapterAsync(id, cancellationToken);
-        if (result is null)
+        var chapter = await catalog.GetReaderChapterAsync(id, cancellationToken);
+        if (chapter is null)
         {
             return NotFound();
         }
 
-        Work = result.Value.Work;
-        Chapter = result.Value.Chapter;
+        Chapter = chapter;
+        ReturnBookmarkId = bookmark;
+        ReturnHighlightId = highlight;
+
+        if (!chapter.HasContent)
+        {
+            Preparation = await GetPreparationAsync(prepare, cancellationToken);
+            return Page();
+        }
 
         var contentType = ReaderContentTypes.FromNovelMetadata(
-            Work.Format,
-            Work.SourceProvider);
+            chapter.WorkFormat,
+            chapter.SourceProvider);
         ReaderDocument = ReaderDocumentDescriptor.Create(
-            Work.Id,
+            chapter.WorkId,
             contentType,
-            Work.MetadataTitle ?? Work.Title,
-            ReaderPreferenceRules.ParseGenres(Work.MetadataGenresJson));
+            chapter.WorkTitle,
+            ReaderPreferenceRules.ParseGenres(chapter.GenresJson));
 
         ReaderSettings = await ReaderPreferenceStore.GetAsync(
             db,
             account.ProfileId,
-            Work.Id,
-            Work.MetadataGenresJson,
+            chapter.WorkId,
+            chapter.GenresJson,
             contentType,
             cancellationToken);
 
-        var workDetail = await novels.GetWorkAsync(
-            Work.Id,
-            cancellationToken);
-        Chapters = workDetail?.Chapters ?? [];
-
-        Translation = await translations.GetCachedAsync(
-            id,
-            "de",
-            cancellationToken);
-
-        JapaneseParagraphs = NovelTextLayout.SplitParagraphs(Chapter.OriginalText);
-        GermanParagraphs = NovelTextLayout.SplitParagraphs(Translation?.Text);
+        JapaneseParagraphs = NovelTextLayout.SplitParagraphs(chapter.OriginalText);
+        GermanParagraphs = NovelTextLayout.SplitParagraphs(chapter.TranslationText);
 
         AnimeMappings = await mappings.GetForChapterAsync(
-            Work.Id,
-            Chapter.Number,
+            chapter.WorkId,
+            chapter.Number,
             cancellationToken);
 
-        (PreviousChapterId, NextChapterId) =
-            await novels.GetAdjacentChapterIdsAsync(
-                Work.Id,
-                Chapter.Number,
-                cancellationToken);
-
-        var progress = await novels.GetProgressAsync(
+        var workProgress = await progress.GetProgressAsync(
             account.ProfileId,
-            Work.Id,
+            chapter.WorkId,
             cancellationToken);
+        Progress = workProgress?.ChapterId == chapter.Id ? workProgress : null;
 
-        Progress = progress?.ChapterId == Chapter.Id ? progress : null;
-
-        Bookmarks = await novels.GetBookmarksAsync(
+        Annotations = await annotations.GetChapterAnnotationsAsync(
             account.ProfileId,
-            Work.Id,
+            chapter.WorkId,
+            chapter.Id,
             cancellationToken);
 
-        Highlights = await novels.GetHighlightsAsync(
-            account.ProfileId,
-            Work.Id,
-            cancellationToken);
+        InitialAnchor = ResolveInitialAnchor(bookmark, highlight);
+        return Page();
+    }
 
-        if (bookmark is Guid bookmarkId)
+    public async Task<IActionResult> OnGetChaptersAsync(
+        Guid id,
+        string? q,
+        int? after,
+        int? before,
+        CancellationToken cancellationToken)
+    {
+        var context = await catalog.GetChapterContextAsync(id, cancellationToken);
+        if (context is null)
         {
-            JumpBookmark = Bookmarks.FirstOrDefault(
-                x => x.Id == bookmarkId && x.ChapterId == Chapter.Id);
+            return NotFound();
         }
 
-        return Page();
+        var window = await catalog.GetChapterWindowAsync(
+            context.WorkId,
+            context.Number,
+            q,
+            after,
+            before,
+            NovelCatalogQueries.MaxChapterWindow,
+            cancellationToken);
+
+        return new JsonResult(window);
+    }
+
+    public async Task<IActionResult> OnGetWorkNotesAsync(
+        Guid id,
+        string? kind,
+        int offset,
+        CancellationToken cancellationToken)
+    {
+        var noteKind = kind?.Trim().ToLowerInvariant() switch
+        {
+            "bookmarks" => NovelNoteKind.Bookmark,
+            "highlights" => NovelNoteKind.Highlight,
+            _ => (NovelNoteKind?)null
+        };
+
+        if (noteKind is null)
+        {
+            return BadRequest("Unknown note kind.");
+        }
+
+        var context = await catalog.GetChapterContextAsync(id, cancellationToken);
+        if (context is null)
+        {
+            return NotFound();
+        }
+
+        var page = await annotations.GetWorkNotesAsync(
+            account.ProfileId,
+            context.WorkId,
+            context.ChapterId,
+            noteKind.Value,
+            offset,
+            cancellationToken);
+
+        return new JsonResult(new
+        {
+            items = page.Items,
+            nextOffset = page.NextOffset,
+            hasMore = page.HasMore
+        });
+    }
+
+    public async Task<IActionResult> OnPostPrepareChapterAsync(
+        Guid id,
+        Guid? bookmark,
+        Guid? highlight,
+        CancellationToken cancellationToken)
+    {
+        var context = await catalog.GetChapterContextAsync(id, cancellationToken);
+        if (context is null)
+        {
+            return NotFound();
+        }
+
+        Guid? operationId = null;
+        if (!context.HasContent)
+        {
+            operationId = await jobs.QueueChapterDownloadAsync(
+                $"{context.WorkTitle} · Chapter {context.Number}",
+                [context.ChapterId],
+                account.ProfileId,
+                cancellationToken);
+        }
+
+        return RedirectToPage(new { id, bookmark, highlight, prepare = operationId });
+    }
+
+    public async Task<IActionResult> OnGetChapterStatusAsync(
+        Guid id,
+        Guid? prepare,
+        CancellationToken cancellationToken)
+    {
+        if (await catalog.HasContentAsync(id, cancellationToken))
+        {
+            return new JsonResult(new { ready = true });
+        }
+
+        var preparation = await GetPreparationAsync(prepare, cancellationToken);
+        return new JsonResult(new
+        {
+            ready = false,
+            status = preparation?.Status.ToString().ToLowerInvariant(),
+            message = preparation?.Status is OperationStatus.Failed or OperationStatus.Interrupted
+                ? "Das Kapitel konnte nicht heruntergeladen werden."
+                : null
+        });
     }
 
     public async Task<IActionResult> OnPostTranslateAsync(
@@ -140,15 +234,15 @@ public sealed class ReadModel(
             return Forbid();
         }
 
-        var result = await novels.GetChapterAsync(id, cancellationToken);
-        if (result is null)
+        var context = await catalog.GetChapterContextAsync(id, cancellationToken);
+        if (context is null)
         {
             return NotFound();
         }
 
         var cached = await translations.GetCachedAsync(
             id,
-            "de",
+            NovelReadingLanguage.German,
             cancellationToken);
 
         if (cached is not null)
@@ -162,33 +256,10 @@ public sealed class ReadModel(
             return RedirectToPage(new { id });
         }
 
-        var work = result.Value.Work;
-        var chapter = result.Value.Chapter;
-
-        await jobs.QueueAsync(
-            new OperationDescriptor(
-                "novel-chapter-translation",
-                "Translation",
-                "Translate novel chapter",
-                $"{work.MetadataTitle ?? work.Title} · Chapter {chapter.Number}",
-                account.ProfileId,
-                OperationLane.Normal,
-                Retryable: true),
-            async (operation, services, workerToken) =>
-            {
-                await operation.ReportAsync(
-                    5,
-                    "Translating chapter to German.",
-                    cancellationToken: workerToken);
-
-                var service = services.GetRequiredService<NovelTranslationService>();
-                await service.TranslateChapterAsync(id, "de", workerToken);
-
-                await operation.ReportAsync(
-                    100,
-                    "German chapter translation completed.",
-                    cancellationToken: workerToken);
-            },
+        await jobs.QueueTranslationAsync(
+            id,
+            $"{context.WorkTitle} · Chapter {context.Number}",
+            account.ProfileId,
             cancellationToken);
 
         if (IsFetchRequest())
@@ -206,7 +277,7 @@ public sealed class ReadModel(
     {
         var cached = await translations.GetCachedAsync(
             id,
-            "de",
+            NovelReadingLanguage.German,
             cancellationToken);
 
         if (cached is null)
@@ -248,7 +319,7 @@ public sealed class ReadModel(
                         "Refreshing novel chapter source.",
                         cancellationToken: token);
 
-                    await novels.EnsureChapterContentAsync(
+                    await imports.DownloadChapterContentAsync(
                         id,
                         forceRefresh: true,
                         token);
@@ -274,21 +345,21 @@ public sealed class ReadModel(
         int anchorOffset,
         CancellationToken cancellationToken)
     {
-        var result = await novels.GetChapterAsync(id, cancellationToken);
-        if (result is null)
+        try
+        {
+            await progress.SaveProgressAsync(
+                account.ProfileId,
+                id,
+                positionPermille,
+                anchorLanguage,
+                anchorParagraphIndex,
+                anchorOffset,
+                cancellationToken);
+        }
+        catch (InvalidOperationException)
         {
             return NotFound();
         }
-
-        await novels.SaveProgressAsync(
-            account.ProfileId,
-            result.Value.Work.Id,
-            result.Value.Chapter.Id,
-            positionPermille,
-            anchorLanguage ?? "ja",
-            anchorParagraphIndex,
-            anchorOffset,
-            cancellationToken);
 
         return new OkResult();
     }
@@ -306,11 +377,11 @@ public sealed class ReadModel(
     {
         try
         {
-            var bookmark = await novels.AddBookmarkAsync(
+            var bookmark = await annotations.AddBookmarkAsync(
                 account.ProfileId,
                 id,
                 positionPermille,
-                language ?? "ja",
+                language,
                 paragraphIndex,
                 characterOffset,
                 label,
@@ -343,7 +414,7 @@ public sealed class ReadModel(
         Guid bookmarkId,
         CancellationToken cancellationToken)
     {
-        await novels.RemoveBookmarkAsync(
+        await annotations.RemoveBookmarkAsync(
             account.ProfileId,
             bookmarkId,
             cancellationToken);
@@ -364,22 +435,21 @@ public sealed class ReadModel(
         ReaderSettingsInput input,
         CancellationToken cancellationToken)
     {
-        var result = await novels.GetChapterAsync(id, cancellationToken);
-        if (result is null)
+        var context = await catalog.GetChapterContextAsync(id, cancellationToken);
+        if (context is null)
         {
             return NotFound();
         }
 
         try
         {
-            var work = result.Value.Work;
             var contentType = ReaderContentTypes.FromNovelMetadata(
-                work.Format,
-                work.SourceProvider);
+                context.WorkFormat,
+                context.SourceProvider);
             var scopeKey = ReaderPreferenceScopes.ResolveTarget(
                 scope,
                 contentType,
-                work.Id,
+                context.WorkId,
                 genre,
                 genrePriority == 0
                     ? ReaderPreferenceScopes.DefaultGenrePriority
@@ -424,7 +494,7 @@ public sealed class ReadModel(
                     account.ProfileId,
                     scopeKey,
                     scopeKey.StartsWith("work:", StringComparison.OrdinalIgnoreCase)
-                        ? work.Id
+                        ? context.WorkId
                         : null,
                     input,
                     cancellationToken);
@@ -433,8 +503,8 @@ public sealed class ReadModel(
             var settings = await ReaderPreferenceStore.GetAsync(
                 db,
                 account.ProfileId,
-                work.Id,
-                work.MetadataGenresJson,
+                context.WorkId,
+                context.GenresJson,
                 contentType,
                 cancellationToken);
 
@@ -450,8 +520,8 @@ public sealed class ReadModel(
         Guid id,
         CancellationToken cancellationToken)
     {
-        var result = await novels.GetChapterAsync(id, cancellationToken);
-        if (result is null)
+        var context = await catalog.GetChapterContextAsync(id, cancellationToken);
+        if (context is null)
         {
             return NotFound();
         }
@@ -459,17 +529,17 @@ public sealed class ReadModel(
         await ReaderPreferenceStore.ResetBookAsync(
             db,
             account.ProfileId,
-            result.Value.Work.Id,
+            context.WorkId,
             cancellationToken);
 
         var contentType = ReaderContentTypes.FromNovelMetadata(
-            result.Value.Work.Format,
-            result.Value.Work.SourceProvider);
+            context.WorkFormat,
+            context.SourceProvider);
         var settings = await ReaderPreferenceStore.GetAsync(
             db,
             account.ProfileId,
-            result.Value.Work.Id,
-            result.Value.Work.MetadataGenresJson,
+            context.WorkId,
+            context.GenresJson,
             contentType,
             cancellationToken);
 
@@ -483,7 +553,7 @@ public sealed class ReadModel(
         string? color,
         CancellationToken cancellationToken)
     {
-        var bookmark = await novels.UpdateBookmarkAppearanceAsync(
+        var bookmark = await annotations.UpdateBookmarkAppearanceAsync(
             account.ProfileId,
             bookmarkId,
             style,
@@ -514,10 +584,10 @@ public sealed class ReadModel(
     {
         try
         {
-            var highlight = await novels.AddHighlightAsync(
+            var highlight = await annotations.AddHighlightAsync(
                 account.ProfileId,
                 id,
-                language ?? "ja",
+                language,
                 paragraphIndex,
                 startOffset,
                 endOffset,
@@ -547,7 +617,7 @@ public sealed class ReadModel(
         Guid highlightId,
         CancellationToken cancellationToken)
     {
-        await novels.RemoveHighlightAsync(
+        await annotations.RemoveHighlightAsync(
             account.ProfileId,
             highlightId,
             cancellationToken);
@@ -555,6 +625,78 @@ public sealed class ReadModel(
         return IsFetchRequest()
             ? new OkResult()
             : RedirectToPage(new { id });
+    }
+
+    private NovelReaderAnchor ResolveInitialAnchor(Guid? bookmarkId, Guid? highlightId)
+    {
+        var hasTranslation = GermanParagraphs.Count > 0;
+
+        if (bookmarkId is Guid requestedBookmark &&
+            Annotations.Bookmarks.FirstOrDefault(x => x.Id == requestedBookmark) is { } bookmark)
+        {
+            return new NovelReaderAnchor(
+                bookmark.Language,
+                bookmark.ParagraphIndex,
+                bookmark.CharacterOffset,
+                bookmark.PositionPermille,
+                bookmark.AnchorText,
+                Forced: true);
+        }
+
+        if (highlightId is Guid requestedHighlight &&
+            Annotations.Highlights.FirstOrDefault(x => x.Id == requestedHighlight) is { } highlight)
+        {
+            var paragraphs = highlight.Language == NovelReadingLanguage.German
+                ? GermanParagraphs
+                : JapaneseParagraphs;
+            var anchorText = highlight.ParagraphIndex < paragraphs.Count
+                ? NovelTextLayout.CreateAnchorText(paragraphs[highlight.ParagraphIndex])
+                : null;
+
+            return new NovelReaderAnchor(
+                highlight.Language,
+                highlight.ParagraphIndex,
+                highlight.StartOffset,
+                0,
+                anchorText,
+                Forced: true);
+        }
+
+        if (Progress is not null)
+        {
+            return new NovelReaderAnchor(
+                Progress.AnchorLanguage,
+                Progress.AnchorParagraphIndex,
+                Progress.AnchorOffset,
+                Progress.PositionPermille,
+                Progress.AnchorText,
+                Forced: false);
+        }
+
+        return new NovelReaderAnchor(
+            hasTranslation ? NovelReadingLanguage.German : NovelReadingLanguage.Japanese,
+            null,
+            0,
+            0,
+            null,
+            Forced: false);
+    }
+
+    private async Task<OperationSnapshot?> GetPreparationAsync(
+        Guid? operationId,
+        CancellationToken cancellationToken)
+    {
+        if (operationId is not Guid id)
+        {
+            return null;
+        }
+
+        var snapshot = await new OperationStore(db).GetAsync(id, cancellationToken);
+        return snapshot is not null &&
+            snapshot.Kind == NovelJobs.ChapterDownloadKind &&
+            snapshot.ProfileId == account.ProfileId
+                ? snapshot
+                : null;
     }
 
     private bool IsFetchRequest() =>

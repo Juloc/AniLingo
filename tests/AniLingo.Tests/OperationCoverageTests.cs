@@ -135,14 +135,21 @@ public sealed class OperationCoverageTests
             "src/AniLingo.Web/Pages/Novels/Work.cshtml.cs",
             "anilist-novel-progress-sync",
             "novel-refresh",
-            "novel-chapter-download",
             "novel-anilist-match");
 
         AssertKinds(
             root,
             "src/AniLingo.Web/Pages/Novels/Read.cshtml.cs",
-            "novel-chapter-translation",
             "novel-chapter-refresh");
+
+        // Queued Novel jobs (chapter download, translation, episode mapping)
+        // are defined once and used by the Work and Read pages.
+        AssertKinds(
+            root,
+            "src/AniLingo.Web/Features/Novels/NovelJobs.cs",
+            "novel-chapter-download",
+            "novel-chapter-translation",
+            "novel-episode-mapping");
 
         AssertKinds(
             root,

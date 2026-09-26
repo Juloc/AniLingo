@@ -17,7 +17,7 @@ public sealed class IndexModel(
     BookCatalogService books,
     AniListAccountService aniListAccount,
     AppDbContext db,
-    NovelService novels,
+    NovelImportService novels,
     NovelMetadataService novelMetadata,
     CurrentAccountContext account,
     OperationRunner operations) : PageModel

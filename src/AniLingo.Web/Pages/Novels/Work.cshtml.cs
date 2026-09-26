@@ -2,19 +2,19 @@ using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Novels;
 using AniLingo.Web.Features.Operations;
 using AniLingo.Web.Features.Tracking;
-using AniLingo.Web.Infrastructure;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace AniLingo.Web.Pages.Novels;
 
 public sealed class WorkModel(
-    NovelService novels,
+    NovelCatalogQueries catalog,
+    NovelImportService imports,
+    NovelProgressService progress,
     NovelMetadataService metadata,
     NovelMappingService mappings,
     AniListAccountService aniListAccount,
-    BackgroundJobQueue jobs,
+    NovelJobs jobs,
     CurrentAccountContext account,
     OperationRunner operations) : PageModel
 {
@@ -22,8 +22,9 @@ public sealed class WorkModel(
     public IReadOnlyList<NovelMetadataCandidate> SearchResults { get; private set; } = [];
     public IReadOnlyList<NovelAnimeChoice> AnimeChoices { get; private set; } = [];
     public NovelProgress? Progress { get; private set; }
-    public AniListReadingProgressPreview? AniListProgress { get; private set; }
+    public ExternalProgressSummary? ExternalProgress { get; private set; }
     public string SearchQuery { get; private set; } = "";
+    public bool IsSearching { get; private set; }
     public bool IsOwner => account.IsOwner;
 
     public async Task<IActionResult> OnGetAsync(
@@ -31,26 +32,22 @@ public sealed class WorkModel(
         string? q,
         CancellationToken cancellationToken)
     {
-        Detail = await novels.GetWorkAsync(id, cancellationToken);
+        Detail = await catalog.GetWorkDetailAsync(id, cancellationToken);
         if (Detail is null)
         {
             return NotFound();
         }
 
-        Progress = await novels.GetProgressAsync(
+        Progress = await progress.GetProgressAsync(
             account.ProfileId,
             id,
             cancellationToken);
 
-        if (string.Equals(
-                Detail.Work.MetadataProvider,
-                NovelAniListProvider.ProviderKey,
-                StringComparison.OrdinalIgnoreCase))
-        {
-            AniListProgress = await aniListAccount.GetNovelProgressPreviewAsync(
-                id,
-                cancellationToken);
-        }
+        // Local-only: remote AniList progress is loaded after first paint
+        // through OnGetExternalProgressAsync.
+        ExternalProgress = await aniListAccount.GetNovelProgressSummaryAsync(
+            id,
+            cancellationToken);
 
         AnimeChoices = account.IsOwner
             ? await mappings.GetAnimeChoicesAsync(cancellationToken)
@@ -61,6 +58,7 @@ public sealed class WorkModel(
 
         if (account.IsOwner && !string.IsNullOrWhiteSpace(q))
         {
+            IsSearching = true;
             try
             {
                 SearchResults = await metadata.SearchAsync(
@@ -76,6 +74,28 @@ public sealed class WorkModel(
         }
 
         return Page();
+    }
+
+    public async Task<IActionResult> OnGetExternalProgressAsync(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        if (await catalog.GetWorkTitleAsync(id, cancellationToken) is null)
+        {
+            return NotFound();
+        }
+
+        var state = await aniListAccount.GetNovelProgressStateAsync(
+            id,
+            cancellationToken);
+
+        Response.Headers.CacheControl = "no-store";
+        return Partial(
+            "_ExternalProgressState",
+            new ExternalProgressRemoteView(
+                ExternalProgressMediaKind.Novel,
+                state,
+                "SyncAniListProgress"));
     }
 
     public async Task<IActionResult> OnPostSyncAniListProgressAsync(
@@ -120,7 +140,7 @@ public sealed class WorkModel(
                     Lane: OperationLane.Normal,
                     IsDownload: true,
                     Retryable: false),
-                (_, token) => novels.RefreshWorkAsync(id, token),
+                (_, token) => imports.RefreshWorkAsync(id, token),
                 "Novel table of contents refreshed.",
                 cancellationToken);
 
@@ -143,64 +163,28 @@ public sealed class WorkModel(
             return Forbid();
         }
 
-        var detail = await novels.GetWorkAsync(id, cancellationToken);
-        if (detail is null)
+        var title = await catalog.GetWorkTitleAsync(id, cancellationToken);
+        if (title is null)
         {
             return NotFound();
         }
 
-        var chapterIds = detail.Chapters
-            .Where(x => !x.HasContent)
-            .Select(x => x.Id)
-            .ToArray();
-
-        await jobs.QueueAsync(
-            new OperationDescriptor(
-                "novel-chapter-download",
-                "Novels",
-                "Download novel chapters",
-                detail.Work.MetadataTitle ?? detail.Work.Title,
-                account.ProfileId,
-                OperationLane.Normal,
-                IsDownload: true,
-                Retryable: true),
-            async (operation, services, workerToken) =>
-            {
-                var service = services.GetRequiredService<NovelService>();
-
-                if (chapterIds.Length == 0)
-                {
-                    await operation.ReportAsync(
-                        100,
-                        "All chapter text is already cached.",
-                        cancellationToken: workerToken);
-                    return;
-                }
-
-                for (var index = 0; index < chapterIds.Length; index++)
-                {
-                    await operation.ReportAsync(
-                        Math.Clamp((int)Math.Round(index * 100d / chapterIds.Length), 0, 99),
-                        $"Downloading chapter {index + 1} of {chapterIds.Length}.",
-                        cancellationToken: workerToken);
-
-                    await service.EnsureChapterContentAsync(
-                        chapterIds[index],
-                        forceRefresh: false,
-                        workerToken);
-                    await Task.Delay(150, workerToken);
-                }
-
-                await operation.ReportAsync(
-                    100,
-                    $"Downloaded {chapterIds.Length} chapter(s).",
-                    cancellationToken: workerToken);
-            },
+        var chapterIds = await catalog.GetChapterIdsWithoutContentAsync(
+            id,
             cancellationToken);
 
-        TempData["Status"] = chapterIds.Length == 0
+        if (chapterIds.Count > 0)
+        {
+            await jobs.QueueChapterDownloadAsync(
+                title,
+                chapterIds,
+                account.ProfileId,
+                cancellationToken);
+        }
+
+        TempData["Status"] = chapterIds.Count == 0
             ? "All chapter text is already cached."
-            : $"Queued {chapterIds.Length} chapter texts for local caching.";
+            : $"Queued {chapterIds.Count} chapter texts for local caching.";
 
         return RedirectToPage(new { id });
     }
@@ -307,30 +291,17 @@ public sealed class WorkModel(
             return Forbid();
         }
 
-        await jobs.QueueAsync(
-            new OperationDescriptor(
-                "novel-episode-mapping",
-                "AI",
-                "Suggest novel episode mappings",
-                Detail?.Work.MetadataTitle ?? Detail?.Work.Title ?? "Novel",
-                account.ProfileId,
-                OperationLane.Normal,
-                Retryable: true),
-            async (operation, services, workerToken) =>
-            {
-                await operation.ReportAsync(
-                    5,
-                    "Generating mapping suggestions.",
-                    cancellationToken: workerToken);
+        var title = await catalog.GetWorkTitleAsync(id, cancellationToken);
+        if (title is null)
+        {
+            return NotFound();
+        }
 
-                var service = services.GetRequiredService<NovelMappingService>();
-                await service.SuggestAsync(id, animeId, workerToken);
-
-                await operation.ReportAsync(
-                    100,
-                    "Mapping suggestions are ready.",
-                    cancellationToken: workerToken);
-            },
+        await jobs.QueueEpisodeMappingAsync(
+            id,
+            animeId,
+            title,
+            account.ProfileId,
             cancellationToken);
 
         TempData["Status"] = "AI episode matching queued. Refresh this page after it completes.";
