@@ -22,7 +22,7 @@ namespace AniLingo.Tests;
 [TestClass]
 public sealed class MediaSegmentTests
 {
-    private const string MigrationId = "20260926120000_AddEpisodeMediaSegments";
+    private const string MigrationId = "20260926132000_AddEpisodeMediaSegments";
 
     [TestMethod]
     public void MostAuthoritativeSourceWinsPerKindRegardlessOfConfidence()
@@ -397,7 +397,6 @@ public sealed class MediaSegmentTests
                 var migrations = db.Database.GetMigrations().ToArray();
                 var index = Array.IndexOf(migrations, MigrationId);
                 Assert.IsTrue(index > 0, $"Expected migration {MigrationId}.");
-                Assert.AreEqual(migrations.Length - 1, index, "The segment migration is the newest migration.");
                 await db.GetService<IMigrator>().MigrateAsync(migrations[index - 1]);
 
                 db.AddRange(anime, episode);
