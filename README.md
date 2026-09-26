@@ -184,6 +184,8 @@ Playback is **device-first and instant**. Each browser stores its own preference
 
 There is no prepare-playback step. Direct-play files retain HTTP range support; remux/transcode paths emit fragmented MP4 to the browser as ffmpeg produces it, so the whole episode is never encoded before playback starts. The NAS media stays read-only. The current server fallback uses software `libx264`; hardware acceleration can be added later without changing the device-first selection model.
 
+Players show **Skip intro / recap / outro** only for canonical per-episode segment markers above the configured confidence (never automatically), and timeline seek previews once they have been generated in the background into a disposable `/data` cache. Markers come from owner corrections (**Edit skip segments** on the Episode page) or `*.segments.json` / `segments.json` sidecars read during library scans; see [docs/MEDIA_SEGMENTS.md](docs/MEDIA_SEGMENTS.md).
+
 ### Player controls
 
 Below the video the player offers **−10 s / Repeat line / +10 s**, **Speed** (0.5×–2.0×), **Audio** (shown when the file has more than one audio track), **Subtitles** and **Quality**. Tracks are addressed by the stable canonical id `stream:{index}` from the [media inventory](#media-inventory) on every client.

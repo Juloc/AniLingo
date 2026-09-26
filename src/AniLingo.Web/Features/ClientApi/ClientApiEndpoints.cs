@@ -1,5 +1,6 @@
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Learning;
+using AniLingo.Web.Features.MediaSegments;
 using AniLingo.Web.Features.Playback;
 using AniLingo.Web.Features.PlaybackSessions;
 using AniLingo.Web.Features.Progress;
@@ -356,6 +357,52 @@ public static class ClientApiEndpoints
                     "subtitle_track_not_found",
                     "The requested embedded text subtitle stream is unavailable.")
                 : Results.Ok(ClientApiMappings.ToClientEmbeddedSubtitleCues(cues));
+        });
+
+        group.MapGet("/episodes/{episodeId:guid}/segments", async (
+            Guid episodeId,
+            ClientApiService service,
+            CancellationToken cancellationToken) =>
+        {
+            var segments = await service.GetSegmentsAsync(episodeId, cancellationToken);
+            return segments is null
+                ? NotFound("episode_not_found", "The requested episode does not exist.")
+                : Results.Ok(segments);
+        });
+
+        group.MapGet("/episodes/{episodeId:guid}/trickplay", async (
+            Guid episodeId,
+            ClientApiService service,
+            CancellationToken cancellationToken) =>
+        {
+            var trickplay = await service.GetTrickplayAsync(episodeId, cancellationToken);
+            return trickplay is null
+                ? NotFound("episode_not_found", "The requested episode does not exist.")
+                : Results.Ok(trickplay);
+        });
+
+        group.MapGet("/episodes/{episodeId:guid}/trickplay/{fileName}", async (
+            Guid episodeId,
+            string fileName,
+            MediaSegmentService mediaSegments,
+            HttpContext httpContext,
+            CancellationToken cancellationToken) =>
+        {
+            var asset = await mediaSegments.GetTrickplayAssetAsync(
+                episodeId,
+                fileName,
+                cancellationToken);
+
+            if (asset is null)
+            {
+                return NotFound(
+                    "trickplay_asset_not_found",
+                    "The requested seek preview asset is not available.");
+            }
+
+            // Assets are immutable per media identity and generator version.
+            httpContext.Response.Headers.CacheControl = "private, max-age=86400";
+            return Results.File(asset.Path, asset.ContentType);
         });
 
         group.MapGet("/media/{mediaFileId:guid}/availability", async (
