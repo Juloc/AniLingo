@@ -11,7 +11,7 @@ namespace AniLingo.Web.Data.Migrations;
 /// assets live in the disposable /data cache and are not stored here.
 /// </summary>
 [DbContext(typeof(AppDbContext))]
-[Migration("20260926132000_AddEpisodeMediaSegments")]
+[Migration("20260926134000_AddEpisodeMediaSegments")]
 public sealed class AddEpisodeMediaSegments : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)

@@ -24,7 +24,7 @@ namespace AniLingo.Tests;
 [TestClass]
 public sealed class MediaSegmentTests
 {
-    private const string MigrationId = "20260926132000_AddEpisodeMediaSegments";
+    private const string MigrationId = "20260926134000_AddEpisodeMediaSegments";
 
     [TestMethod]
     public void MostAuthoritativeSourceWinsPerKindRegardlessOfConfidence()
