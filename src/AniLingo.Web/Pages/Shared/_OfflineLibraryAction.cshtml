@@ -1,0 +1,20 @@
+@model AniLingo.Web.Features.OfflineLibrary.OfflineLibraryActionViewModel
+@*
+    Reusable "Offline speichern" action (#221 part 1). Include on a book/novel
+    detail page with:
+
+        <partial name="_OfflineLibraryAction" model="new OfflineLibraryActionViewModel(work.Id, title)" />
+
+    Whole-book download only for now; per-chapter selection is part 2 (reader
+    integration), which will extend this same manager
+    (window.AniLingoOfflineLibraryManager) rather than a second component.
+*@
+<div class="offline-library-action" data-offline-save="@Model.WorkId">
+    <button type="button" class="button" data-offline-save-button disabled>Save offline</button>
+    <span class="muted" data-offline-save-status>Checking…</span>
+</div>
+
+<script src="~/js/offline-library.js" asp-append-version="true" defer></script>
+<script src="~/js/offline-library-storage.js" asp-append-version="true" defer></script>
+<script src="~/js/offline-library-manager.js" asp-append-version="true" defer></script>
+<script src="~/js/offline-library-ui.js" asp-append-version="true" defer></script>

@@ -129,6 +129,18 @@ public sealed class NovelBookmark
     public string? Style { get; set; }
     public string? Color { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    /// <summary>
+    /// Last-writer-wins clock for offline sync (Features/OfflineLibrary):
+    /// the client timestamp of the event that most recently created/edited
+    /// this bookmark. Distinct from <see cref="CreatedAt"/>, which never
+    /// changes. Defaults to <see cref="CreatedAt"/> for bookmarks created
+    /// through the normal (online) reader path.
+    /// </summary>
+    public DateTime SyncUpdatedAt { get; set; } = DateTime.UtcNow;
+
+    /// <summary>Client-supplied idempotency key of the last applied offline sync event, if any.</summary>
+    public Guid? ClientEventId { get; set; }
 }
 
 public sealed class NovelHighlight

@@ -1,4 +1,5 @@
 using AniLingo.Web.Data;
+using AniLingo.Web.Features.Acquisition.DownloadClients;
 using AniLingo.Web.Features.Acquisition.Import;
 using AniLingo.Web.Features.Acquisition.Sabnzbd;
 using AniLingo.Web.Features.Books;
@@ -139,7 +140,7 @@ public static class SabnzbdOperationProjector
 /// </summary>
 public sealed class SabnzbdOperationMonitorService(
     IServiceScopeFactory scopeFactory,
-    SabnzbdConnectionResolver connections,
+    DownloadClientStore downloadClients,
     ILogger<SabnzbdOperationMonitorService> logger) : BackgroundService
 {
     private static readonly TimeSpan ActivePollInterval =
@@ -203,15 +204,19 @@ public sealed class SabnzbdOperationMonitorService(
             return false;
         }
 
-        var connection = await connections.GetConnectionAsync(cancellationToken);
-        if (connection is null)
+        var entry = (await downloadClients.LoadAllAsync(cancellationToken))
+            .Where(item => item.Type == DownloadClientType.Sabnzbd && item.Enabled)
+            .OrderBy(item => item.Priority)
+            .FirstOrDefault();
+        if (entry is null)
         {
             logger.LogWarning(
-                "{Count} SABnzbd downloads are active but SABnzbd is not configured.",
+                "{Count} SABnzbd downloads are active but no SABnzbd download client is configured.",
                 operations.Count);
             return true;
         }
 
+        var connection = SabnzbdDownloadClient.ToConnection(entry);
         var client = services.GetRequiredService<ISabnzbdClient>();
         var queue = await client.GetQueueAsync(connection, cancellationToken);
         var history = await client.GetHistoryAsync(

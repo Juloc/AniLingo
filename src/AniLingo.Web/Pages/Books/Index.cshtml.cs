@@ -1,3 +1,4 @@
+using AniLingo.Web.Features.Acquisition.DownloadClients;
 using AniLingo.Web.Features.Acquisition.Sabnzbd;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Books;
@@ -13,7 +14,7 @@ public sealed class IndexModel(
     BookCatalogService books,
     CurrentAccountContext account,
     AppDbContext db,
-    SabnzbdConnectionResolver sabnzbdSettings,
+    DownloadClientStore downloadClients,
     SabnzbdDownloadService sabnzbd,
     OperationRunner operations) : PageModel
 {
@@ -36,7 +37,8 @@ public sealed class IndexModel(
         Query = q?.Trim() ?? "";
         TargetLanguage = BookLanguageCatalog.Normalize(lang);
         IsSabnzbdConfigured = account.IsOwner
-            && (await sabnzbdSettings.ResolveAsync(cancellationToken)).IsConfigured;
+            && (await downloadClients.LoadAllAsync(cancellationToken))
+                .Any(entry => entry.Enabled && entry.Type == DownloadClientType.Sabnzbd);
 
         Library = await books.GetLibraryAsync(
             account.ProfileId,

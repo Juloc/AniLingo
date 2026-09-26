@@ -585,6 +585,59 @@ namespace AniLingo.Web.Data.Migrations
                     b.ToTable("Anime");
                 });
 
+            modelBuilder.Entity("AniLingo.Web.Features.Library.AnimeLocalMetadata", b =>
+                {
+                    b.Property<Guid>("AnimeId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ImdbId")
+                        .HasMaxLength(12)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MyAnimeListId")
+                        .HasMaxLength(10)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("OriginalTitle")
+                        .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Plot")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateOnly?>("Premiered")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("SourceFileLastWriteTimeUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("SourceFileSizeBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("TmdbId")
+                        .HasMaxLength(10)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TvdbId")
+                        .HasMaxLength(10)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("Year")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("AnimeId");
+
+                    b.ToTable("AnimeLocalMetadata");
+                });
+
             modelBuilder.Entity("AniLingo.Web.Features.Library.Episode", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1137,12 +1190,27 @@ namespace AniLingo.Web.Data.Migrations
                     b.Property<int>("PositionPermille").HasColumnType("INTEGER");
                     b.Property<string>("ProfileId").IsRequired().HasMaxLength(80).HasColumnType("TEXT");
                     b.Property<Guid>("WorkId").HasColumnType("TEXT");
+                    b.Property<Guid?>("ClientEventId").HasColumnType("TEXT");
+                    b.Property<DateTime>("SyncUpdatedAt").HasColumnType("TEXT");
                     b.HasKey("Id");
                     b.HasIndex("ChapterId");
                     b.HasIndex("ProfileId", "ChapterId");
                     b.HasIndex("ProfileId", "WorkId", "CreatedAt");
                     b.HasIndex("WorkId");
                     b.ToTable("NovelBookmarks");
+                });
+
+            modelBuilder.Entity("AniLingo.Web.Features.OfflineLibrary.NovelBookmarkTombstone", b =>
+                {
+                    b.Property<Guid>("BookmarkId").HasColumnType("TEXT");
+                    b.Property<DateTime>("DeletedAtUtc").HasColumnType("TEXT");
+                    b.Property<string>("ProfileId").IsRequired().HasMaxLength(80).HasColumnType("TEXT");
+                    b.Property<DateTime>("RecordedAtUtc").HasColumnType("TEXT");
+                    b.Property<Guid>("WorkId").HasColumnType("TEXT");
+                    b.HasKey("BookmarkId");
+                    b.HasIndex("ProfileId", "WorkId");
+                    b.HasIndex("WorkId");
+                    b.ToTable("NovelBookmarkTombstones");
                 });
 
             modelBuilder.Entity("AniLingo.Web.Features.Novels.NovelHighlight", b =>
@@ -1404,6 +1472,15 @@ namespace AniLingo.Web.Data.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("AniLingo.Web.Features.Library.AnimeLocalMetadata", b =>
+                {
+                    b.HasOne("AniLingo.Web.Features.Library.Anime", null)
+                        .WithOne()
+                        .HasForeignKey("AniLingo.Web.Features.Library.AnimeLocalMetadata", "AnimeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("AniLingo.Web.Features.Subtitles.SubtitleCue", b =>
                 {
                     b.HasOne("AniLingo.Web.Features.Subtitles.SubtitleTrack", null)
@@ -1504,6 +1581,15 @@ namespace AniLingo.Web.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("AniLingo.Web.Features.Novels.NovelWork", null)
+                        .WithMany()
+                        .HasForeignKey("WorkId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("AniLingo.Web.Features.OfflineLibrary.NovelBookmarkTombstone", b =>
+                {
                     b.HasOne("AniLingo.Web.Features.Novels.NovelWork", null)
                         .WithMany()
                         .HasForeignKey("WorkId")

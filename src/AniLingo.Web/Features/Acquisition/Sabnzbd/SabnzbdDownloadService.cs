@@ -1,4 +1,5 @@
 using AniLingo.Web.Data;
+using AniLingo.Web.Features.Acquisition.DownloadClients;
 using AniLingo.Web.Features.Operations;
 
 namespace AniLingo.Web.Features.Acquisition.Sabnzbd;
@@ -23,18 +24,21 @@ public sealed record SabnzbdActionOutcome(
     string Message);
 
 /// <summary>
-/// The one path that sends work to SABnzbd for Books and Anime. Each job
-/// is a canonical Operation whose external reference is the SABnzbd
-/// <c>nzo_id</c>; the SABnzbd operation monitor projects
-/// queue/history state onto it.
+/// The one path that sends work to SABnzbd for Books and Anime. Submissions
+/// go through the canonical <see cref="DownloadClientSubmissionService"/>
+/// (the highest-priority enabled, healthy usenet client, with failover),
+/// so SABnzbd here is one download client implementation, not a special
+/// case; Operations remain the single status store and the SABnzbd
+/// operation monitor still projects queue/history onto them.
 /// </summary>
 public sealed class SabnzbdDownloadService(
+    DownloadClientSubmissionService submissions,
+    DownloadClientStore clientStore,
     ISabnzbdClient client,
-    SabnzbdConnectionResolver connections,
     SabnzbdAcquisitionStore acquisitions,
     AppDbContext db)
 {
-    public const string OperationCategory = "External downloads";
+    public const string OperationCategory = DownloadClientSubmissionService.OperationCategory;
 
     public static bool IsSabnzbdOperation(OperationSnapshot operation) =>
         string.Equals(
@@ -55,32 +59,37 @@ public sealed class SabnzbdDownloadService(
         return uri;
     }
 
-    public Task<SabnzbdSubmissionOutcome> SubmitUrlAsync(
+    public async Task<SabnzbdSubmissionOutcome> SubmitUrlAsync(
         SabnzbdSubmission submission,
         Uri nzbUrl,
         CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(submission);
         ArgumentNullException.ThrowIfNull(nzbUrl);
 
-        return SubmitAsync(
-            submission,
-            "Submitting download to SABnzbd.",
-            (connection, token) => client.GrabAsync(
-                connection,
-                new SabnzbdGrabRequest(
-                    nzbUrl,
-                    submission.JobName,
-                    connection.Settings.CategoryFor(submission.Purpose)),
-                token),
+        var outcome = await submissions.SubmitAsync(
+            new DownloadSubmissionSpec(
+                submission.OperationKind,
+                submission.Title,
+                submission.Subject,
+                submission.ProfileId,
+                DownloadProtocol.Usenet,
+                nzbUrl,
+                MagnetUri: null,
+                submission.JobName,
+                IsBooks: submission.Purpose == SabnzbdPurpose.Books),
             cancellationToken);
+
+        return ToSubmissionOutcome(outcome);
     }
 
-    public Task<SabnzbdSubmissionOutcome> SubmitFileAsync(
+    public async Task<SabnzbdSubmissionOutcome> SubmitFileAsync(
         SabnzbdSubmission submission,
         Stream nzb,
         string fileName,
         CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(submission);
         ArgumentNullException.ThrowIfNull(nzb);
         if (string.IsNullOrWhiteSpace(fileName)
             || !fileName.EndsWith(".nzb", StringComparison.OrdinalIgnoreCase))
@@ -89,16 +98,22 @@ public sealed class SabnzbdDownloadService(
                 "Only .nzb files can be sent to SABnzbd.");
         }
 
-        return SubmitAsync(
-            submission,
-            "Submitting NZB to SABnzbd.",
-            (connection, token) => client.AddFileAsync(
-                connection,
-                nzb,
-                fileName,
-                connection.Settings.CategoryFor(submission.Purpose),
-                token),
+        var outcome = await submissions.SubmitAsync(
+            new DownloadSubmissionSpec(
+                submission.OperationKind,
+                submission.Title,
+                submission.Subject,
+                submission.ProfileId,
+                DownloadProtocol.Usenet,
+                Url: null,
+                MagnetUri: null,
+                submission.JobName ?? fileName,
+                IsBooks: submission.Purpose == SabnzbdPurpose.Books,
+                File: nzb,
+                FileName: fileName),
             cancellationToken);
+
+        return ToSubmissionOutcome(outcome);
     }
 
     public async Task<SabnzbdActionOutcome> CancelAsync(
@@ -117,28 +132,23 @@ public sealed class SabnzbdDownloadService(
             return new SabnzbdActionOutcome(false, "This download is no longer active.");
         }
 
-        var connection = await connections.RequireConnectionAsync(cancellationToken);
+        var entry = await RequireSabnzbdEntryAsync(cancellationToken);
         var nzoId = operation.ExternalId!;
 
-        SabnzbdActionResult queue;
-        SabnzbdActionResult history;
+        bool cancelled;
         try
         {
-            // A job is either still queued or already in post-processing
-            // history; deleting from both covers either stage.
-            queue = await client.CancelAsync(connection, nzoId, deleteFiles: true, cancellationToken);
-            history = await client.DeleteHistoryAsync(connection, nzoId, deleteFiles: true, cancellationToken);
+            cancelled = await new SabnzbdDownloadClient(client)
+                .DeleteAsync(entry, nzoId, deleteFiles: true, cancellationToken);
         }
         catch (Exception exception) when (IsTransportFailure(exception))
         {
             return new SabnzbdActionOutcome(false, "SABnzbd could not cancel the download: " + exception.Message);
         }
 
-        if (!queue.Success && !history.Success)
+        if (!cancelled)
         {
-            return new SabnzbdActionOutcome(
-                false,
-                "SABnzbd could not cancel the download: " + (queue.Error ?? history.Error));
+            return new SabnzbdActionOutcome(false, "SABnzbd could not cancel the download.");
         }
 
         await store.MarkCancelledAsync(
@@ -174,7 +184,8 @@ public sealed class SabnzbdDownloadService(
                 "A newer release already replaced this download for the same episodes.");
         }
 
-        var connection = await connections.RequireConnectionAsync(cancellationToken);
+        var entry = await RequireSabnzbdEntryAsync(cancellationToken);
+        var connection = SabnzbdDownloadClient.ToConnection(entry);
 
         SabnzbdActionResult result;
         try
@@ -219,85 +230,25 @@ public sealed class SabnzbdDownloadService(
         return new SabnzbdActionOutcome(true, "Retry queued in SABnzbd.");
     }
 
-    private async Task<SabnzbdSubmissionOutcome> SubmitAsync(
-        SabnzbdSubmission submission,
-        string submittingMessage,
-        Func<SabnzbdConnection, CancellationToken, Task<SabnzbdGrabResult>> submit,
-        CancellationToken cancellationToken)
+    private async Task<DownloadClientEntry> RequireSabnzbdEntryAsync(CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(submission);
-        var connection = await connections.RequireConnectionAsync(cancellationToken);
+        var entry = (await clientStore.LoadAllAsync(cancellationToken))
+            .Where(item => item.Type == DownloadClientType.Sabnzbd && item.Enabled)
+            .OrderBy(item => item.Priority)
+            .FirstOrDefault();
 
-        var store = new OperationStore(db);
-        var operationId = await store.CreateAsync(
-            new OperationDescriptor(
-                submission.OperationKind,
-                OperationCategory,
-                submission.Title,
-                submission.Subject,
-                submission.ProfileId,
-                OperationLane.Normal,
-                IsDownload: true,
-                Retryable: true,
-                ExternalProvider: SabnzbdClient.ProviderId),
-            cancellationToken);
-
-        await store.MarkRunningAsync(operationId, cancellationToken);
-        await store.ReportProgressAsync(
-            operationId,
-            0,
-            submittingMessage,
-            cancellationToken: cancellationToken);
-
-        SabnzbdGrabResult result;
-        try
-        {
-            result = await submit(connection, cancellationToken);
-        }
-        catch (Exception exception) when (IsTransportFailure(exception))
-        {
-            var error = "SABnzbd could not be reached: " + exception.Message;
-            await store.MarkFailedAsync(operationId, error, CancellationToken.None);
-            return new SabnzbdSubmissionOutcome(false, operationId, null, error);
-        }
-
-        if (!result.Success)
-        {
-            var error = result.Error ?? "SABnzbd rejected the request.";
-            await store.MarkFailedAsync(operationId, error, CancellationToken.None);
-            return new SabnzbdSubmissionOutcome(false, operationId, null, error);
-        }
-
-        var nzoId = result.NzoIds.FirstOrDefault();
-        if (string.IsNullOrWhiteSpace(nzoId))
-        {
-            const string untracked =
-                "Sent to SABnzbd, but SABnzbd returned no job ID, so live progress is unavailable.";
-            await store.MarkSucceededAsync(operationId, untracked, CancellationToken.None);
-            return new SabnzbdSubmissionOutcome(true, operationId, null, untracked);
-        }
-
-        await store.SetExternalReferenceAsync(
-            operationId,
-            SabnzbdClient.ProviderId,
-            nzoId,
-            cancellationToken);
-        await store.ReportProgressAsync(
-            operationId,
-            0,
-            "Accepted by SABnzbd; waiting for download progress.",
-            cancellationToken: cancellationToken);
-
-        return new SabnzbdSubmissionOutcome(
-            true,
-            operationId,
-            nzoId,
-            "SABnzbd download submitted. Track it under Admin → Operations → Downloads.");
+        return entry
+            ?? throw new InvalidOperationException(
+                "SABnzbd is not configured. Configure it under Settings → Download Clients.");
     }
+
+    private static SabnzbdSubmissionOutcome ToSubmissionOutcome(DownloadSubmissionOutcome outcome) =>
+        new(outcome.Accepted, outcome.OperationId, outcome.ExternalId, outcome.Message);
 
     private static bool IsTransportFailure(Exception exception) =>
         exception is HttpRequestException
             or TaskCanceledException
             or SabnzbdException
+            or DownloadClientException
             or ArgumentException;
 }

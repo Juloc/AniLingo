@@ -243,6 +243,41 @@ public sealed class NfoReaderTests
     }
 
     [TestMethod]
+    public void SeasonNfoReadsTheAniListUniqueId()
+    {
+        var result = ParseSeason(
+            """
+            <season>
+              <seasonnumber>2</seasonnumber>
+              <uniqueid type="anilist">154595</uniqueid>
+              <uniqueid type="tvdb">424537</uniqueid>
+            </season>
+            """);
+
+        Assert.IsNull(result.Warning);
+        Assert.AreEqual("154595", result.Value!.ProviderIds.AniList);
+        Assert.AreEqual("424537", result.Value.ProviderIds.Tvdb);
+    }
+
+    [TestMethod]
+    public void SeasonNfoWithoutASeasonRootIsRejected()
+    {
+        var result = ParseSeason("<tvshow><title>Show</title></tvshow>");
+
+        Assert.IsNull(result.Value);
+        Assert.IsNotNull(result.Warning);
+    }
+
+    [TestMethod]
+    public void MalformedSeasonNfoIsRejected()
+    {
+        var result = ParseSeason("<season><uniqueid type=\"anilist\">154595</season>");
+
+        Assert.IsNull(result.Value);
+        Assert.IsNotNull(result.Warning);
+    }
+
+    [TestMethod]
     public void OversizedFileIsRejectedBeforeParsing()
     {
         var path = Path.Combine(Path.GetTempPath(), $"anilingo-nfo-{Guid.NewGuid():N}.nfo");
@@ -282,5 +317,11 @@ public sealed class NfoReaderTests
     {
         using var stream = new MemoryStream(Encoding.UTF8.GetBytes(xml));
         return NfoReader.ParseEpisodes(stream);
+    }
+
+    private static NfoReadResult<NfoSeasonMetadata> ParseSeason(string xml)
+    {
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(xml));
+        return NfoReader.ParseSeason(stream);
     }
 }

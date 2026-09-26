@@ -64,7 +64,30 @@
                 {
                     <p class="anime-description">@metadata.Description</p>
                 }
+            }
+            else if (Model.LocalMetadata is { } localMetadata)
+            {
+                @if (!string.Equals(Model.LocalAnimeTitle, Model.AnimeTitle, StringComparison.Ordinal))
+                {
+                    <span class="local-title">@Model.LocalAnimeTitle</span>
+                }
 
+                @* No provider match yet: the local tvshow.nfo year/plot is shown as a fallback only. *@
+                <div class="anime-facts">
+                    @if (localMetadata.Year is int localYear)
+                    {
+                        <span>@localYear</span>
+                    }
+                </div>
+
+                @if (!string.IsNullOrWhiteSpace(localMetadata.Plot))
+                {
+                    <p class="anime-description">@localMetadata.Plot</p>
+                }
+            }
+
+            @if (Model.Metadata is not null)
+            {
                 <div class="inline-actions">
                     <a class="button"
                        href="@Url.Page("/Settings/LearningScope", new {
@@ -95,6 +118,7 @@
                 <p>@Model.Episodes.Count episodes discovered.</p>
             }
             @if (Model.IsOwner) { <a class="button" href="/Library/Rename/@Model.AnimeId">Rename files</a> }
+            @if (Model.IsOwner) { <a class="button" href="/Library/AnimeRepair/@Model.AnimeId">Repair</a> }
         </div>
     </div>
 </section>

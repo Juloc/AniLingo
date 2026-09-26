@@ -2,6 +2,7 @@ using AniLingo.Web.Data;
 using AniLingo.Web.Features.Artwork;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Learning;
+using AniLingo.Web.Features.Library;
 using AniLingo.Web.Features.Metadata;
 using AniLingo.Web.Features.Operations;
 using AniLingo.Web.Features.Progress;
@@ -24,6 +25,7 @@ public sealed class AnimeModel(
     public string AnimeTitle { get; private set; } = "";
     public string LocalAnimeTitle { get; private set; } = "";
     public AnimeMetadata? Metadata { get; private set; }
+    public AnimeLocalMetadata? LocalMetadata { get; private set; }
     public string? CoverImageUrl { get; private set; }
     public string? BannerImageUrl { get; private set; }
     public string SearchQuery { get; private set; } = "";
@@ -56,6 +58,14 @@ public sealed class AnimeModel(
         LocalAnimeTitle = anime.Title;
         Metadata = await metadataService.GetAsync(id, cancellationToken);
         AnimeTitle = Metadata?.PreferredTitle ?? anime.Title;
+
+        // Local NFO plot/year is a display fallback only: it is never shown once provider
+        // metadata exists, matching the manual > provider > NFO > folder precedence.
+        LocalMetadata = Metadata is null
+            ? await db.AnimeLocalMetadata
+                .AsNoTracking()
+                .SingleOrDefaultAsync(x => x.AnimeId == id, cancellationToken)
+            : null;
         CoverImageUrl = AnimeArtworkStore.ResolvePosterUrl(
             id,
             Metadata?.CoverImageUrl);
