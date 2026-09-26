@@ -153,7 +153,12 @@ public sealed class LibraryScanner(
         var artworkDirectories = new Dictionary<Guid, string>();
         var newlyDiscoveredAnimeIds = new HashSet<Guid>();
         var nfoAniListIds = new Dictionary<Guid, string>();
+        var nfoMalIds = new Dictionary<Guid, string>();
+        var nfoSeasonAniListIds = new Dictionary<(Guid AnimeId, int SeasonNumber), string>();
+        var processedSeasons = new HashSet<(Guid AnimeId, int SeasonNumber)>();
         var nfoTitledEpisodes = new HashSet<(Guid AnimeId, int SeasonNumber, int EpisodeNumber)>();
+        var localMetadataByAnimeId = await db.AnimeLocalMetadata
+            .ToDictionaryAsync(x => x.AnimeId, cancellationToken);
         var metadataWarnings = 0;
 
         await ReportAsync(progress, LibraryScanPhase.Reconciling, 0, candidates.Count, cancellationToken);
@@ -184,29 +189,72 @@ public sealed class LibraryScanner(
                 artworkDirectories.TryAdd(anime.Id, animeDirectory) &&
                 nfoFiles.FindShow(animeDirectory) is { } showNfoPath)
             {
-                var show = NfoReader.ReadShow(showNfoPath);
-                if (show.Value is null)
+                var showNfoFile = new FileInfo(showNfoPath);
+                var existingLocalMetadata = localMetadataByAnimeId.GetValueOrDefault(anime.Id);
+
+                // Skip re-parsing a tvshow.nfo whose size and last-write time have not changed
+                // since it was last read; nothing it could tell us has changed either.
+                var showNfoUnchanged = existingLocalMetadata is not null &&
+                    existingLocalMetadata.SourceFileSizeBytes == showNfoFile.Length &&
+                    existingLocalMetadata.SourceFileLastWriteTimeUtc == showNfoFile.LastWriteTimeUtc;
+
+                if (!showNfoUnchanged)
+                {
+                    var show = NfoReader.ReadShow(showNfoPath);
+                    if (show.Value is null)
+                    {
+                        metadataWarnings++;
+                        LogRejectedNfo(showNfoPath, show.Warning);
+                        AddWarning(warnings, ref warningCount, rootPath, showNfoPath, "Ignored NFO");
+                    }
+                    else
+                    {
+                        if (show.Value.Title is { } showTitle &&
+                            !string.Equals(anime.Title, showTitle, StringComparison.Ordinal))
+                        {
+                            anime.Title = showTitle;
+                            if (!newlyDiscoveredAnimeIds.Contains(anime.Id))
+                            {
+                                updated++;
+                            }
+                        }
+
+                        if (show.Value.ProviderIds.AniList is { } aniListId)
+                        {
+                            nfoAniListIds[anime.Id] = aniListId;
+                        }
+                        else if (show.Value.ProviderIds.MyAnimeList is { } malId)
+                        {
+                            nfoMalIds[anime.Id] = malId;
+                        }
+
+                        ApplyLocalMetadata(
+                            db,
+                            localMetadataByAnimeId,
+                            anime.Id,
+                            show.Value,
+                            showNfoFile);
+                    }
+                }
+            }
+
+            // Kodi/Jellyfin season.nfo sits beside the episode files of that season; read it once
+            // per anime/season pair per scan and carry only its AniList ID forward.
+            var seasonKey = (anime.Id, descriptor.SeasonNumber);
+            if (processedSeasons.Add(seasonKey) &&
+                Path.GetDirectoryName(normalizedPath) is { } seasonDirectory &&
+                nfoFiles.FindSeason(seasonDirectory) is { } seasonNfoPath)
+            {
+                var season = NfoReader.ReadSeason(seasonNfoPath);
+                if (season.Value is null)
                 {
                     metadataWarnings++;
-                    LogRejectedNfo(showNfoPath, show.Warning);
-                    AddWarning(warnings, ref warningCount, rootPath, showNfoPath, "Ignored NFO");
+                    LogRejectedNfo(seasonNfoPath, season.Warning);
+                    AddWarning(warnings, ref warningCount, rootPath, seasonNfoPath, "Ignored NFO");
                 }
-                else
+                else if (season.Value.ProviderIds.AniList is { } seasonAniListId)
                 {
-                    if (show.Value.Title is { } showTitle &&
-                        !string.Equals(anime.Title, showTitle, StringComparison.Ordinal))
-                    {
-                        anime.Title = showTitle;
-                        if (!newlyDiscoveredAnimeIds.Contains(anime.Id))
-                        {
-                            updated++;
-                        }
-                    }
-
-                    if (show.Value.ProviderIds.AniList is { } aniListId)
-                    {
-                        nfoAniListIds[anime.Id] = aniListId;
-                    }
+                    nfoSeasonAniListIds[seasonKey] = seasonAniListId;
                 }
             }
 
@@ -306,12 +354,15 @@ public sealed class LibraryScanner(
                 await ReportAsync(progress, LibraryScanPhase.Metadata, matched++, newlyDiscoveredAnimeIds.Count, cancellationToken);
                 try
                 {
-                    if (nfoAniListIds.TryGetValue(animeId, out var aniListId))
+                    var hasAniListId = nfoAniListIds.TryGetValue(animeId, out var aniListId);
+                    var hasMalId = nfoMalIds.TryGetValue(animeId, out var malId);
+                    if (hasAniListId || hasMalId)
                     {
-                        await MatchNfoAniListIdAsync(
+                        await MatchNfoProviderIdAsync(
                             metadataService,
                             animeId,
-                            aniListId,
+                            hasAniListId ? aniListId : null,
+                            hasMalId ? malId : null,
                             cancellationToken);
                     }
 
@@ -347,6 +398,39 @@ public sealed class LibraryScanner(
                         exception,
                         "Automatic metadata matching failed for anime {AnimeId}; the local library scan remains valid.",
                         animeId);
+                }
+            }
+
+            // A season.nfo AniList ID applies to any anime it belongs to, not only newly
+            // discovered ones (a later season can gain its own season.nfo at any time).
+            foreach (var ((seasonAnimeId, seasonNumber), seasonAniListId) in nfoSeasonAniListIds)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                try
+                {
+                    var seasonMatch = await metadataService.MatchSeasonAniListIdAsync(
+                        seasonAnimeId,
+                        seasonNumber,
+                        seasonAniListId,
+                        cancellationToken);
+                    if (seasonMatch.Success)
+                    {
+                        logger.LogInformation(
+                            "Applied the season.nfo AniList ID {ExternalId} to anime {AnimeId} season {SeasonNumber}.",
+                            seasonAniListId,
+                            seasonAnimeId,
+                            seasonNumber);
+                    }
+                }
+                catch (Exception exception) when (
+                    exception is MetadataProviderException or InvalidOperationException)
+                {
+                    errors++;
+                    logger.LogWarning(
+                        exception,
+                        "Automatic season.nfo episode-range mapping failed for anime {AnimeId} season {SeasonNumber}; the local library scan remains valid.",
+                        seasonAnimeId,
+                        seasonNumber);
                 }
             }
         }
@@ -626,39 +710,63 @@ public sealed class LibraryScanner(
         return entry.Title;
     }
 
-    // An AniList ID from tvshow.nfo replaces the fuzzy title search for a newly discovered anime.
-    // It never replaces an existing match; a rejected ID falls through to automatic title matching.
-    private async Task MatchNfoAniListIdAsync(
+    // An AniList or MyAnimeList ID from tvshow.nfo replaces the fuzzy title search for a newly
+    // discovered anime. It never replaces an existing match; a rejected ID falls through to
+    // automatic title matching.
+    private async Task MatchNfoProviderIdAsync(
         AnimeMetadataService metadata,
         Guid animeId,
-        string aniListId,
+        string? aniListId,
+        string? myAnimeListId,
         CancellationToken cancellationToken)
     {
-        if (await metadata.GetAsync(animeId, cancellationToken) is not null)
-        {
-            return;
-        }
-
-        var result = await metadata.MatchAsync(
+        var result = await metadata.MatchNfoProviderIdsAsync(
             animeId,
-            AniListMetadataProvider.ProviderKey,
             aniListId,
+            myAnimeListId,
             cancellationToken);
         if (result.Success)
         {
             logger.LogInformation(
-                "Matched anime {AnimeId} to {Provider}:{ExternalId} from its local tvshow.nfo.",
-                animeId,
-                AniListMetadataProvider.ProviderKey,
-                aniListId);
+                "Matched anime {AnimeId} from its local tvshow.nfo provider ID.",
+                animeId);
             return;
         }
 
         logger.LogWarning(
-            "The AniList ID {ExternalId} from the local tvshow.nfo of anime {AnimeId} was not applied: {Error} Automatic title matching continues.",
-            aniListId,
+            "The provider ID from the local tvshow.nfo of anime {AnimeId} was not applied: {Error} Automatic title matching continues.",
             animeId,
             result.Error);
+    }
+
+    // Persists the plot/overview, original title, year/premiered date and additional provider IDs
+    // a tvshow.nfo carries. This is the one canonical place for that local data: AnimeMetadata
+    // (Features/Metadata) belongs to a matched provider, so NFO facts never masquerade as it.
+    private static void ApplyLocalMetadata(
+        AppDbContext db,
+        Dictionary<Guid, AnimeLocalMetadata> localMetadataByAnimeId,
+        Guid animeId,
+        NfoShowMetadata show,
+        FileInfo showNfoFile)
+    {
+        if (!localMetadataByAnimeId.TryGetValue(animeId, out var local))
+        {
+            local = new AnimeLocalMetadata { AnimeId = animeId };
+            localMetadataByAnimeId.Add(animeId, local);
+            db.AnimeLocalMetadata.Add(local);
+        }
+
+        local.OriginalTitle = show.OriginalTitle;
+        local.Plot = show.Plot;
+        local.Year = show.Year;
+        local.Premiered = show.Premiered;
+        local.MyAnimeListId = show.ProviderIds.MyAnimeList;
+        local.TvdbId = show.ProviderIds.Tvdb;
+        local.TmdbId = show.ProviderIds.Tmdb;
+        local.ImdbId = show.ProviderIds.Imdb;
+        local.SourceFileSizeBytes = showNfoFile.Length;
+        local.SourceFileLastWriteTimeUtc = showNfoFile.LastWriteTimeUtc;
+        local.UpdatedAt = DateTime.UtcNow;
     }
 
     private void LogRejectedNfo(string path, string? reason) =>

@@ -5,6 +5,7 @@ namespace AniLingo.Web.Features.Library;
 public sealed class NfoFileIndex
 {
     public const string ShowFileName = "tvshow.nfo";
+    public const string SeasonFileName = "season.nfo";
 
     private const string Extension = ".nfo";
 
@@ -25,6 +26,11 @@ public sealed class NfoFileIndex
 
     public string? FindShow(string seriesDirectory) =>
         Find(Path.Combine(Path.GetFullPath(seriesDirectory), ShowFileName));
+
+    // Kodi/Jellyfin write season.nfo beside the episodes of that season, whether or not there is
+    // a dedicated "Season NN" folder; the media file's own directory is always the right place.
+    public string? FindSeason(string seasonDirectory) =>
+        Find(Path.Combine(Path.GetFullPath(seasonDirectory), SeasonFileName));
 
     public string? FindEpisode(string mediaPath)
     {
