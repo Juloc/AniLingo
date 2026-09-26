@@ -11,7 +11,7 @@ namespace AniLingo.Web.Data.Migrations;
 /// wrote LearningContexts before this migration, so there are no rows to assign.
 /// </summary>
 [DbContext(typeof(AppDbContext))]
-[Migration("20260926121500_ScopeLearningContextsToProfiles")]
+[Migration("20260926133000_ScopeLearningContextsToProfiles")]
 public sealed class ScopeLearningContextsToProfiles : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)
