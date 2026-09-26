@@ -47,21 +47,22 @@ public sealed class SqliteTimestampTests
             var futureTerm = new Term { Language = "ja", Canonical = "犬" };
 
             db.AddRange(anime, olderEpisode, newerEpisode, dueTerm, futureTerm);
-            db.UserTerms.AddRange(
-                new UserTerm
-                {
-                    TermId = dueTerm.Id,
-                    State = UserTermState.Learning,
-                    NextReviewAt = now.AddMinutes(-1),
-                    UpdatedAt = now.AddMinutes(-2)
-                },
-                new UserTerm
-                {
-                    TermId = futureTerm.Id,
-                    State = UserTermState.Learning,
-                    NextReviewAt = now.AddMinutes(10),
-                    UpdatedAt = now.AddMinutes(-2)
-                });
+            await LearningTestData.SeedTermCardAsync(
+                db,
+                LearningProfile.DefaultId,
+                dueTerm,
+                UserTermState.Learning,
+                nextReviewAt: now.AddMinutes(-1),
+                learningStartedAt: now.AddDays(-1),
+                updatedAt: now.AddMinutes(-2));
+            await LearningTestData.SeedTermCardAsync(
+                db,
+                LearningProfile.DefaultId,
+                futureTerm,
+                UserTermState.Learning,
+                nextReviewAt: now.AddMinutes(10),
+                learningStartedAt: now.AddDays(-1),
+                updatedAt: now.AddMinutes(-2));
             db.SubtitleTracks.AddRange(
                 new SubtitleTrack
                 {
@@ -82,7 +83,7 @@ public sealed class SqliteTimestampTests
 
             await db.SaveChangesAsync();
 
-            var dueCount = await db.UserTerms
+            var dueCount = await db.LearningCards
                 .AsNoTracking()
                 .CountAsync(x =>
                     x.ProfileId == LearningProfile.DefaultId &&
@@ -139,31 +140,36 @@ public sealed class SqliteTimestampTests
 
             var term = new Term { Language = "ja", Canonical = "旧" };
             db.Terms.Add(term);
-            await db.SaveChangesAsync();
+            var card = await LearningTestData.SeedTermCardAsync(
+                db,
+                LearningProfile.DefaultId,
+                term,
+                UserTermState.Learning);
 
+            // Converted alpha rows keep their original offset text verbatim.
             await using (var command = db.Database.GetDbConnection().CreateCommand())
             {
                 await db.Database.OpenConnectionAsync();
                 command.CommandText = """
-                    INSERT INTO UserTerms
-                        (Id, ProfileId, TermId, State, IntervalDays, NextReviewAt, UpdatedAt)
-                    VALUES
-                        ($id, 'default', $termId, 2, 0, '2026-09-21 12:00:00+00:00', '2026-09-21 12:00:00+00:00');
+                    UPDATE LearningCards
+                    SET NextReviewAt = '2026-09-21 12:00:00+00:00',
+                        UpdatedAt = '2026-09-21 12:00:00+00:00'
+                    WHERE Id = $id;
                     """;
-                command.Parameters.Add(new SqliteParameter("$id", Guid.NewGuid()));
-                command.Parameters.Add(new SqliteParameter("$termId", term.Id));
+                command.Parameters.Add(new SqliteParameter("$id", card.Id));
                 await command.ExecuteNonQueryAsync();
                 await db.Database.CloseConnectionAsync();
             }
 
+            db.ChangeTracker.Clear();
             var cutoff = new DateTime(2026, 9, 22, 12, 0, 0, DateTimeKind.Utc);
-            var row = await db.UserTerms
+            var row = await db.LearningCards
                 .AsNoTracking()
-                .SingleAsync(x => x.TermId == term.Id);
+                .SingleAsync(x => x.Id == card.Id);
 
             Assert.AreEqual(DateTimeKind.Utc, row.NextReviewAt!.Value.Kind);
 
-            var due = await db.UserTerms
+            var due = await db.LearningCards
                 .AsNoTracking()
                 .CountAsync(x => x.NextReviewAt != null && x.NextReviewAt <= cutoff);
 

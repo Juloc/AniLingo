@@ -58,14 +58,12 @@ UI modules and content integrations must resolve these capabilities rather than 
 
 ## Migration behavior
 
-Profiles that already contain UserTerms, Reviews or LearningPreferences are seeded to Study during the migration so existing learning progress and behavior are preserved.
+Profiles that already contained legacy UserTerms, Reviews or LearningPreferences were seeded to Study during the Learning v2 settings migration so existing learning progress and behavior are preserved.
 
 Profiles without historic learning state have no profile mode row and resolve to Off. This makes Learning opt-in for new users.
 
-Existing FSRS LearningPreferences and Review history remain canonical for scheduling. Learning v2 scope settings decide visibility/availability; they do not discard scheduling data.
+LearningPreferences (FSRS retention, batch size, new cards per day) and the per-card review history in LearningCardReviews are canonical for scheduling. Learning v2 scope settings decide visibility/availability; they do not discard scheduling data.
 
-## Next slices
+## Learning state
 
-Issue #251 moves Learn, Reviews, Vocabulary, Sentences, Kana and Progress behind this resolver.
-
-Issue #252 replaces Japanese-only Term/Meaning assumptions with universal language courses, variants and directional cards while preserving existing progress.
+Per-profile learning state lives only in directional Learning cards inside Learning courses. See [LEARNING_LANGUAGES.md](LEARNING_LANGUAGES.md) for the course/unit/card model and the one-time conversion of the former Term/UserTerm/Review state.

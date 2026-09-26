@@ -79,17 +79,15 @@ public sealed class LearningPreferencesTests
                 };
 
                 db.Terms.Add(term);
-                db.UserTerms.Add(new UserTerm
-                {
-                    TermId = term.Id,
-                    State = UserTermState.Learning,
-                    LearningStartedAt = now.AddDays(-1),
-                    NextReviewAt = now.AddMinutes(-index - 1),
-                    UpdatedAt = now.AddMinutes(-10)
-                });
+                await LearningTestData.SeedTermCardAsync(
+                    db,
+                    LearningProfile.DefaultId,
+                    term,
+                    UserTermState.Learning,
+                    nextReviewAt: now.AddMinutes(-index - 1),
+                    learningStartedAt: now.AddDays(-1),
+                    updatedAt: now.AddMinutes(-10));
             }
-
-            await db.SaveChangesAsync();
 
             var service = new LearningService(db, new FsrsReviewScheduler());
             await service.SavePreferencesAsync(0.90, 5, 10, CancellationToken.None);
@@ -145,23 +143,26 @@ public sealed class LearningPreferencesTests
             await service.SavePreferencesAsync(0.90, 10, 2, CancellationToken.None);
             await service.AddToLearningAsync(requestedOrder, CancellationToken.None);
 
-            var queuedBefore = await db.UserTerms
-                .AsNoTracking()
-                .OrderBy(x => x.QueuePosition)
+            var queuedBefore = await (
+                    from card in db.LearningCards.AsNoTracking()
+                    join unit in db.LearningUnits.AsNoTracking() on card.UnitId equals unit.Id
+                    orderby card.QueuePosition
+                    select new { unit.TermId, card.NextReviewAt, card.State })
                 .ToListAsync();
 
             Assert.AreEqual(5, queuedBefore.Count);
             Assert.IsTrue(queuedBefore.All(x => x.NextReviewAt is null));
+            Assert.IsTrue(queuedBefore.All(x => x.State == UserTermState.Learning));
             CollectionAssert.AreEqual(
                 requestedOrder,
-                queuedBefore.Select(x => x.TermId).ToArray());
+                queuedBefore.Select(x => x.TermId!.Value).ToArray());
 
             var firstLoad = await service.GetDueAsync(CancellationToken.None);
             CollectionAssert.AreEqual(
                 requestedOrder.Take(2).ToArray(),
                 firstLoad.Select(x => x.TermId).ToArray());
 
-            var startedAfterFirstLoad = await db.UserTerms
+            var startedAfterFirstLoad = await db.LearningCards
                 .AsNoTracking()
                 .CountAsync(x => x.LearningStartedAt != null);
 
@@ -172,7 +173,7 @@ public sealed class LearningPreferencesTests
                 requestedOrder.Take(2).ToArray(),
                 secondLoad.Select(x => x.TermId).ToArray());
 
-            var startedAfterSecondLoad = await db.UserTerms
+            var startedAfterSecondLoad = await db.LearningCards
                 .AsNoTracking()
                 .CountAsync(x => x.LearningStartedAt != null);
 
@@ -222,17 +223,15 @@ public sealed class LearningPreferencesTests
 
             foreach (var term in reviewTerms)
             {
-                db.UserTerms.Add(new UserTerm
-                {
-                    TermId = term.Id,
-                    State = UserTermState.Learning,
-                    LearningStartedAt = now.AddDays(-2),
-                    NextReviewAt = now.AddMinutes(-5),
-                    UpdatedAt = now.AddDays(-1)
-                });
+                await LearningTestData.SeedTermCardAsync(
+                    db,
+                    LearningProfile.DefaultId,
+                    term,
+                    UserTermState.Learning,
+                    nextReviewAt: now.AddMinutes(-5),
+                    learningStartedAt: now.AddDays(-2),
+                    updatedAt: now.AddDays(-1));
             }
-
-            await db.SaveChangesAsync();
 
             var service = new LearningService(db, new FsrsReviewScheduler());
             await service.SavePreferencesAsync(0.90, 5, 10, CancellationToken.None);
@@ -247,12 +246,13 @@ public sealed class LearningPreferencesTests
                 reviewTerms.Select(x => x.Id).ToArray(),
                 due.Select(x => x.TermId).ToArray());
 
-            var newTermIds = newTerms.Select(term => term.Id).ToArray();
-            var startedNew = await db.UserTerms
-                .AsNoTracking()
-                .CountAsync(x =>
-                    newTermIds.Contains(x.TermId)
-                    && x.LearningStartedAt != null);
+            var newTermIds = newTerms.Select(term => (Guid?)term.Id).ToArray();
+            var startedNew = await (
+                    from card in db.LearningCards.AsNoTracking()
+                    join unit in db.LearningUnits.AsNoTracking() on card.UnitId equals unit.Id
+                    where newTermIds.Contains(unit.TermId) && card.LearningStartedAt != null
+                    select card.Id)
+                .CountAsync();
 
             Assert.AreEqual(0, startedNew);
         }

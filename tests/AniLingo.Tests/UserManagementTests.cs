@@ -158,12 +158,13 @@ public sealed class UserManagementTests
             };
 
             db.AddRange(term, anime, episode);
-            db.UserTerms.Add(new UserTerm
-            {
-                ProfileId = user.Id,
-                TermId = term.Id,
-                State = UserTermState.Learning
-            });
+            var card = await LearningTestData.SeedTermCardAsync(
+                db,
+                user.Id,
+                term,
+                UserTermState.Learning);
+            db.LearningCardReviews.Add(
+                LearningTestData.Review(user.Id, card.Id, DateTime.UtcNow.AddMinutes(-1)));
             db.LearningPreferences.Add(new LearningPreferences
             {
                 ProfileId = user.Id
@@ -181,7 +182,10 @@ public sealed class UserManagementTests
 
             Assert.IsNull(await auth.GetAsync(user.Id));
             Assert.IsNotNull(await auth.GetAsync(owner.Id));
-            Assert.AreEqual(0, await db.UserTerms.CountAsync(x => x.ProfileId == user.Id));
+            Assert.AreEqual(0, await db.LearningCards.CountAsync(x => x.ProfileId == user.Id));
+            Assert.AreEqual(0, await db.LearningCourses.CountAsync(x => x.ProfileId == user.Id));
+            Assert.AreEqual(0, await db.LearningCardReviews.CountAsync(x => x.ProfileId == user.Id));
+            Assert.AreEqual(1, await db.LearningUnits.CountAsync(x => x.TermId == term.Id));
             Assert.AreEqual(0, await db.LearningPreferences.CountAsync(x => x.ProfileId == user.Id));
             Assert.AreEqual(0, await db.EpisodeProgress.CountAsync(x => x.ProfileId == user.Id));
             Assert.AreEqual(1, await db.Terms.CountAsync(x => x.Id == term.Id));
