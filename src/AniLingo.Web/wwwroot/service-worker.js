@@ -67,6 +67,11 @@ self.addEventListener("fetch", event => {
   event.respondWith(networkFirstStatic(request));
 });
 
+// App shell only. Offline library content (manifests, chapters, assets under
+// /api/client/v1/offline-library/**) is intentionally never matched here: it
+// lives in IndexedDB/OPFS (wwwroot/js/offline-library-storage.js), a separate
+// storage area this cache's version bumps/cleanup never touch. Do not add
+// offline-library paths to this allowlist (#221).
 function isStaticAsset(pathname) {
   return pathname === "/manifest.webmanifest"
     || pathname.startsWith("/css/")

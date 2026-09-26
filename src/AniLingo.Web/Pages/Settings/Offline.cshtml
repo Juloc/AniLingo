@@ -1,0 +1,40 @@
+@page
+@model AniLingo.Web.Pages.Settings.OfflineModel
+@{
+    var ui = Model.Ui;
+    ViewData["Title"] = ui["settings.offline.title"];
+}
+
+<header class="page-header">
+    <div>
+        <span class="eyebrow">@ui["settings.scope.personal"]</span>
+        <h1>@ui["settings.offline.title"]</h1>
+        <p>@ui["settings.offline.pageDescription"]</p>
+    </div>
+</header>
+
+<div class="settings-grid" data-offline-settings-page>
+    <section class="panel">
+        <div class="panel-heading">
+            <h2>@ui["settings.offline.storageTitle"]</h2>
+        </div>
+        <p data-offline-usage class="muted">…</p>
+        <p data-offline-degraded class="metadata-error" hidden>@ui["settings.offline.degraded"]</p>
+        <label class="offline-wifi-toggle">
+            <input type="checkbox" data-offline-wifi-only />
+            @ui["settings.offline.wifiOnly"]
+        </label>
+    </section>
+
+    <section class="panel">
+        <div class="panel-heading">
+            <h2>@ui["settings.offline.booksTitle"]</h2>
+        </div>
+        <div data-offline-list class="muted">…</div>
+    </section>
+</div>
+
+<script src="~/js/offline-library.js" asp-append-version="true" defer></script>
+<script src="~/js/offline-library-storage.js" asp-append-version="true" defer></script>
+<script src="~/js/offline-library-manager.js" asp-append-version="true" defer></script>
+<script src="~/js/offline-library-ui.js" asp-append-version="true" defer></script>
