@@ -20,8 +20,9 @@ public sealed class AcquisitionBackupTests
         Assert.IsTrue(bundle.Files.ContainsKey("monitoring.json"));
         Assert.IsTrue(bundle.Files.ContainsKey("import-settings.json"));
         Assert.IsTrue(bundle.Files.ContainsKey("acquisition-policy.json"));
-        Assert.IsTrue(bundle.Files.ContainsKey("prowlarr.json"));
-        Assert.IsTrue(bundle.Files.ContainsKey("sabnzbd.json"));
+        Assert.IsTrue(bundle.Files.ContainsKey("indexers.json"));
+        Assert.IsTrue(bundle.Files.ContainsKey("download-clients.json"));
+        Assert.IsFalse(bundle.Files.ContainsKey("health.json"), "Runtime health state is not a setting and is never backed up.");
 
         // Change settings after the export.
         await environment.ImportSettings.UpdateAsync(state => state with { DefaultImportMode = AnimeImportMode.Move });
@@ -92,7 +93,7 @@ public sealed class AcquisitionBackupTests
     }
 
     [TestMethod]
-    public async Task ProwlarrAndSabnzbdBackupsAreFlaggedAsCarryingEncryptedSecrets()
+    public async Task IndexerAndDownloadClientBackupsAreFlaggedAsCarryingEncryptedSecrets()
     {
         await using var environment = await AnimeAcquisitionEnvironment.CreateAsync();
         await environment.SeedFrierenAsync();
@@ -100,11 +101,11 @@ public sealed class AcquisitionBackupTests
         var bundle = await environment.ExportBackupAsync();
         var preview = await environment.PreviewRestoreAsync(bundle);
 
-        Assert.IsTrue(preview.Files.Single(f => f.FileName == "prowlarr.json").ContainsEncryptedSecret);
-        Assert.IsTrue(preview.Files.Single(f => f.FileName == "sabnzbd.json").ContainsEncryptedSecret);
+        Assert.IsTrue(preview.Files.Single(f => f.FileName == "indexers.json").ContainsEncryptedSecret);
+        Assert.IsTrue(preview.Files.Single(f => f.FileName == "download-clients.json").ContainsEncryptedSecret);
         Assert.IsFalse(preview.Files.Single(f => f.FileName == "monitoring.json").ContainsEncryptedSecret);
         // The secret itself is never in plain text in the bundle.
-        StringAssert.Contains(bundle.Files["prowlarr.json"], "protectedApiKey");
-        StringAssert.DoesNotMatch(bundle.Files["prowlarr.json"], new System.Text.RegularExpressions.Regex("prowlarr-key"));
+        StringAssert.Contains(bundle.Files["indexers.json"], "protectedApiKey");
+        StringAssert.DoesNotMatch(bundle.Files["indexers.json"], new System.Text.RegularExpressions.Regex("prowlarr-key"));
     }
 }

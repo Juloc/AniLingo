@@ -1,4 +1,5 @@
 using AniLingo.Web.Data;
+using AniLingo.Web.Features.Acquisition.DownloadClients;
 using AniLingo.Web.Features.Acquisition.History;
 using AniLingo.Web.Features.Acquisition.Monitoring;
 using AniLingo.Web.Features.Acquisition.Naming;
@@ -37,8 +38,8 @@ public sealed class AnimeImportExecutor(
     IHardLinkCreator hardLinkCreator,
     AcquisitionHistoryService history,
     LibraryScanner scanner,
-    ISabnzbdClient sabnzbd,
-    SabnzbdConnectionResolver connections,
+    DownloadClientStore downloadClients,
+    IReadOnlyDictionary<DownloadClientType, IDownloadClient> downloadClientImplementations,
     ILogger<AnimeImportExecutor> logger)
 {
     public const string OperationKind = "anime-import";
@@ -390,24 +391,39 @@ public sealed class AnimeImportExecutor(
             return recovered;
         }
 
-        var connection = await connections.GetConnectionAsync(cancellationToken);
-        if (connection is null)
+        // Grouped by the download client provider that actually accepted each job (recorded on the
+        // Operation as ExternalProvider at submission time) rather than hardcoded to SABnzbd, so a
+        // completed anime download recovered here has its reported path translated through the
+        // remote path mapping (below, in ImportCompletedCoreAsync) no matter which download client
+        // — usenet (SABnzbd) or torrent (qBittorrent) — reported it.
+        var entries = await downloadClients.LoadAllAsync(cancellationToken);
+        foreach (var group in completed.GroupBy(operation => operation.ExternalProvider ?? "", StringComparer.OrdinalIgnoreCase))
         {
-            logger.LogWarning(
-                "{Count} completed anime downloads await import but SABnzbd is not configured.",
-                completed.Length);
-            return recovered;
-        }
+            var entry = entries
+                .Where(item => item.Enabled &&
+                    downloadClientImplementations.TryGetValue(item.Type, out var impl) &&
+                    string.Equals(impl.ProviderId, group.Key, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(item => item.Priority)
+                .FirstOrDefault();
+            if (entry is null || !downloadClientImplementations.TryGetValue(entry.Type, out var client))
+            {
+                logger.LogWarning(
+                    "{Count} completed anime downloads await import but no '{Provider}' download client is configured.",
+                    group.Count(),
+                    group.Key);
+                continue;
+            }
 
-        var history = await sabnzbd.GetHistoryAsync(
-            connection,
-            completed.Select(operation => operation.ExternalId!).ToArray(),
-            cancellationToken);
-        foreach (var operation in completed)
-        {
-            var job = history.Jobs.FirstOrDefault(item => item.NzoId == operation.ExternalId);
-            await ImportCompletedCoreAsync(operation, job?.StoragePath, cancellationToken);
-            recovered++;
+            var statuses = await client.GetStatusAsync(
+                entry,
+                group.Select(operation => operation.ExternalId!).ToArray(),
+                cancellationToken);
+            foreach (var operation in group)
+            {
+                var job = statuses.FirstOrDefault(item => item.ExternalId == operation.ExternalId);
+                await ImportCompletedCoreAsync(operation, job?.StoragePath, cancellationToken);
+                recovered++;
+            }
         }
 
         return recovered;

@@ -20,14 +20,18 @@ public sealed record AnimeDelayProfile(
 
 /// <summary>
 /// Restricts automatic and interactive searches for anime carrying any of TagIds to the given
-/// Prowlarr indexer ids. Multiple restrictions may apply to the same anime; the allowed set is
-/// their intersection (see <see cref="AcquisitionDelayEngine.RestrictedIndexerIds"/>).
+/// canonical indexer entry ids (a whole Prowlarr entry, or a direct Newznab/Torznab entry — the one
+/// id every indexer type shares, from IndexerStore). Multiple restrictions may apply to the same
+/// anime; the allowed set is their intersection (see
+/// <see cref="AcquisitionDelayEngine.RestrictedIndexerEntryIds"/>). When a restriction applies but
+/// none of its allowed entries are currently enabled, searches are never silently widened back to
+/// unrestricted: no indexer is searched that pass.
 /// </summary>
 public sealed record AnimeIndexerRestriction(
     string Id,
     string Name,
     string[] TagIds,
-    int[] AllowedIndexerIds);
+    Guid[] AllowedIndexerEntryIds);
 
 /// <summary>
 /// The one canonical store for tags, delay profiles and indexer restrictions. None of this is

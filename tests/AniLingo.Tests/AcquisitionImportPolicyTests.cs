@@ -201,7 +201,7 @@ public sealed class AcquisitionImportPolicyTests
     }
 
     [TestMethod]
-    public async Task TagScopedIndexerRestrictionNarrowsTheAnimesOwnSelection()
+    public async Task TagScopedIndexerRestrictionAllowsTheEnabledEntryWhileTheAnimesOwnProwlarrSubIndexerSelectionStaysIndependent()
     {
         await using var environment = await AnimeAcquisitionEnvironment.CreateAsync();
         await environment.SeedFrierenAsync();
@@ -211,14 +211,15 @@ public sealed class AcquisitionImportPolicyTests
         await environment.Policy.UpdateAsync(state => state with
         {
             Tags = [new AcquisitionTag("fast-track", "Fast track")],
-            IndexerRestrictions = [new AnimeIndexerRestriction("r1", "Trusted only", ["fast-track"], [2, 3, 4])]
+            IndexerRestrictions = [new AnimeIndexerRestriction("r1", "Trusted only", ["fast-track"], [environment.ProwlarrIndexerEntryId])]
         });
         environment.Prowlarr.Releases.Add(AnimeAcquisitionEnvironment.Release(Best, "g1080"));
 
-        await environment.Scheduler.RunNowAsync(null, AnimeSearchTrigger.PeriodicMissing, CancellationToken.None);
+        var run = await environment.Scheduler.RunNowAsync(null, AnimeSearchTrigger.PeriodicMissing, CancellationToken.None);
 
+        Assert.AreEqual(1, run.Grabs, "The restriction allows the anime's only enabled indexer entry, so the search proceeds normally.");
         var connection = environment.Prowlarr.Connections.Last();
-        CollectionAssert.AreEquivalent(new[] { 2, 3 }, connection.Settings.IndexerIds, "Restriction (2,3,4) intersected with the anime's own (1,2,3) selection.");
+        CollectionAssert.AreEquivalent(new[] { 1, 2, 3 }, connection.Settings.IndexerIds, "The anime's own Prowlarr sub-indexer selection is a separate axis, unaffected by the entry-level restriction.");
     }
 
     [TestMethod]
@@ -232,7 +233,9 @@ public sealed class AcquisitionImportPolicyTests
         await environment.Policy.UpdateAsync(state => state with
         {
             Tags = [new AcquisitionTag("fast-track", "Fast track")],
-            IndexerRestrictions = [new AnimeIndexerRestriction("r1", "Trusted only", ["fast-track"], [7, 8])]
+            // References an indexer entry that is not the one enabled entry (the seeded Prowlarr
+            // connection): zero overlap with what is actually enabled.
+            IndexerRestrictions = [new AnimeIndexerRestriction("r1", "Trusted only", ["fast-track"], [Guid.NewGuid()])]
         });
         // A release exists and would otherwise be grabbed; it must never be found because the
         // restriction leaves no indexer to search at all.
@@ -250,7 +253,7 @@ public sealed class AcquisitionImportPolicyTests
         var history = await environment.HistoryForAnimeAsync(environment.AnimeId);
         var skipped = history.Single(entry => entry.EventKind == AcquisitionHistoryEventKind.Skipped);
         StringAssert.Contains(skipped.Reason, "Trusted only");
-        StringAssert.Contains(skipped.Reason, "no indexer");
+        StringAssert.Contains(skipped.Reason, "no enabled indexer");
         Assert.IsNull(skipped.ReleaseTitle);
     }
 

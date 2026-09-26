@@ -1,8 +1,11 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Acquisition.AniListAutoMonitor;
 using AniLingo.Web.Features.Acquisition.Backup;
+using AniLingo.Web.Features.Acquisition.DownloadClients;
+using AniLingo.Web.Features.Acquisition.Health;
 using AniLingo.Web.Features.Acquisition.History;
 using AniLingo.Web.Features.Acquisition.Import;
+using AniLingo.Web.Features.Acquisition.Indexers;
 using AniLingo.Web.Features.Acquisition.Monitoring;
 using AniLingo.Web.Features.Acquisition.Pipeline;
 using AniLingo.Web.Features.Acquisition.Policy;
@@ -275,6 +278,8 @@ builder.Services.AddHttpClient<BookCatalogService>(client =>
     client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
 });
 
+// Legacy single-connection stores: read once by the one-time settings migration below, then
+// unused. Kept registered only so that migration can resolve them.
 builder.Services.AddSingleton<SabnzbdSettingsStore>();
 builder.Services.AddSingleton<SabnzbdConnectionResolver>();
 builder.Services.AddSingleton<SabnzbdAcquisitionStore>();
@@ -282,16 +287,46 @@ builder.Services.AddHttpClient<ISabnzbdClient, SabnzbdClient>(client =>
 {
     client.Timeout = TimeSpan.FromSeconds(15);
 });
-builder.Services.AddScoped<SabnzbdDownloadService>();
-builder.Services.AddScoped<SabnzbdAcquisitionService>();
-builder.Services.AddHostedService<SabnzbdOperationMonitorService>();
 
 builder.Services.AddSingleton<ProwlarrSettingsStore>();
 builder.Services.AddHttpClient<IProwlarrClient, ProwlarrClient>(client =>
 {
     client.Timeout = TimeSpan.FromSeconds(60);
 });
-builder.Services.AddScoped<ProwlarrAnimeSearchService>();
+
+// Indexers: Prowlarr and direct Newznab/Torznab connections share the one canonical list.
+builder.Services.AddSingleton<IndexerStore>();
+builder.Services.AddHttpClient<NewznabIndexer>(client => client.Timeout = TimeSpan.FromSeconds(60));
+builder.Services.AddHttpClient<TorznabIndexer>(client => client.Timeout = TimeSpan.FromSeconds(60));
+builder.Services.AddSingleton<IReadOnlyDictionary<IndexerType, IIndexer>>(services =>
+    new Dictionary<IndexerType, IIndexer>
+    {
+        [IndexerType.Prowlarr] = new ProwlarrIndexer(services.GetRequiredService<IProwlarrClient>()),
+        [IndexerType.Newznab] = services.GetRequiredService<NewznabIndexer>(),
+        [IndexerType.Torznab] = services.GetRequiredService<TorznabIndexer>()
+    });
+builder.Services.AddScoped<IndexerSearchCoordinator>();
+
+// Download clients: SABnzbd and qBittorrent connections share the one canonical list. The
+// pipeline and Books submission only depend on IDownloadClient, never on a specific client.
+builder.Services.AddSingleton<DownloadClientStore>();
+builder.Services.AddHttpClient<QBittorrentClient>(client => client.Timeout = TimeSpan.FromSeconds(30));
+builder.Services.AddSingleton<IReadOnlyDictionary<DownloadClientType, IDownloadClient>>(services =>
+    new Dictionary<DownloadClientType, IDownloadClient>
+    {
+        [DownloadClientType.Sabnzbd] = new SabnzbdDownloadClient(services.GetRequiredService<ISabnzbdClient>()),
+        [DownloadClientType.QBittorrent] = services.GetRequiredService<QBittorrentClient>()
+    });
+builder.Services.AddScoped<DownloadClientSelector>();
+builder.Services.AddScoped<DownloadClientSubmissionService>();
+
+builder.Services.AddSingleton<AcquisitionHealthStore>();
+builder.Services.AddHostedService<AcquisitionHealthCheckService>();
+
+builder.Services.AddScoped<SabnzbdDownloadService>();
+builder.Services.AddScoped<SabnzbdAcquisitionService>();
+builder.Services.AddHostedService<SabnzbdOperationMonitorService>();
+
 builder.Services.AddSingleton<AnimeQualityProfileStore>();
 builder.Services.AddSingleton(_ => new AnimeMonitoringStore("/data"));
 builder.Services.AddSingleton<AnimeImportStore>();
@@ -389,6 +424,12 @@ try
         app.Services,
         message => Console.WriteLine($"[AniLingo] {DateTimeOffset.UtcNow:O} {message}"));
     await SabnzbdSettingsMigration.RunAtStartupAsync(
+        app.Services,
+        message => Console.WriteLine($"[AniLingo] {DateTimeOffset.UtcNow:O} {message}"));
+    await IndexerSettingsMigration.RunAtStartupAsync(
+        app.Services,
+        message => Console.WriteLine($"[AniLingo] {DateTimeOffset.UtcNow:O} {message}"));
+    await DownloadClientSettingsMigration.RunAtStartupAsync(
         app.Services,
         message => Console.WriteLine($"[AniLingo] {DateTimeOffset.UtcNow:O} {message}"));
     Console.WriteLine($"[AniLingo] {DateTimeOffset.UtcNow:O} Database ready. Starting web server.");

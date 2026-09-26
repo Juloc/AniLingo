@@ -1,23 +1,34 @@
 # Anime acquisition
 
-AniLingo can find, download and import missing anime episodes itself: wanted episode → Prowlarr
-search → release parsing and scoring → ownership check → SABnzbd → Operations tracking → import
-into the library with the naming profile → library reconciliation. Everything runs in-process;
-there is no separate service.
+AniLingo can find, download and import missing anime episodes itself: wanted episode → indexer
+search (Prowlarr and/or direct Newznab/Torznab) → release parsing and scoring → ownership check →
+a download client (SABnzbd or qBittorrent) → Operations tracking → import into the library with
+the naming profile → library reconciliation. Everything runs in-process; there is no separate
+service.
 
 Code: `Features/Acquisition/Pipeline` (inventory, pipeline, scheduler) and
 `Features/Acquisition/Import` (import store, destination, executor). The pipeline only wires the
-existing cores: release parser, quality profiles and scorer (`Quality`), Prowlarr search
-(`Prowlarr`), monitoring engine (`Monitoring`), Sonarr ownership (`Ownership`), SABnzbd
-acquisition (`Sabnzbd`), completed-download planner (`Import`) and naming (`Naming`).
+existing cores: release parser, quality profiles and scorer (`Quality`), indexer search
+(`Indexers`, one `IIndexer` interface with Prowlarr and direct Newznab/Torznab implementations),
+monitoring engine (`Monitoring`), Sonarr ownership (`Ownership`), download client submission
+(`DownloadClients`, one `IDownloadClient` interface with SABnzbd and qBittorrent implementations;
+`Sabnzbd` keeps the anime-specific attempt/blocklist relation and the raw SABnzbd protocol client),
+completed-download planner (`Import`) and naming (`Naming`). Periodic health checks
+(`Features/Acquisition/Health`) test every enabled indexer and download client; an unhealthy entry
+is skipped by the search coordinator/client selector with a logged reason.
 
 ## Setup (owner)
 
-1. **Prowlarr** — `/Settings/Prowlarr`: URL, API key (stored encrypted), Newznab categories,
-   optional indexer IDs. Only usenet results with an NZB link are used.
-2. **SABnzbd** — `/Settings/Sabnzbd` with an Anime category (see
-   [ADMIN_OPERATIONS.md](ADMIN_OPERATIONS.md#sabnzbd)). The completed-job folder must be visible to
-   AniLingo under the path SABnzbd reports.
+1. **Indexers** — `/Settings/Indexers`: add Prowlarr and/or direct Newznab/Torznab connections
+   (URL, API key stored encrypted, categories, priority, enable/disable). The search coordinator
+   queries every enabled, healthy indexer and merges the results; only Prowlarr honors a
+   per-anime indexer-ID restriction.
+2. **Download clients** — `/Settings/DownloadClients`: add SABnzbd (usenet) and/or qBittorrent
+   (torrent) connections (URL, API key/password stored encrypted, categories, save path, priority,
+   enable/disable). The pipeline and Books submissions pick the highest-priority enabled, healthy
+   client that supports a release's protocol and fail over to the next client of that protocol on
+   submission failure. SABnzbd's completed-job folder must be visible to AniLingo under the path
+   SABnzbd reports (see [ADMIN_OPERATIONS.md](ADMIN_OPERATIONS.md#sabnzbd)).
 3. **Management mode** — anime start in read-only Sonarr coexistence, where AniLingo never
    searches, grabs or imports. Choose *Parallel acquisition* or *AniLingo-managed* per anime under
    `/Settings/SonarrMigration` (see [SONARR_MIGRATION.md](SONARR_MIGRATION.md)).
@@ -36,9 +47,11 @@ monitored anime, recent decisions and recent imports.
 | --- | --- |
 | Monitored flag, search-on-add, per-anime indexer IDs, tags, target root, wanted episodes, search attempts/backoff, schedule | `/data/acquisition/monitoring.json` (`AnimeMonitoringStore`) |
 | Quality profile per anime | `/data/acquisition/quality-profiles.json` (`AnimeQualityProfileStore`; the default profile is not stored as an assignment) |
-| Prowlarr connection | `/data/acquisition/prowlarr.json` |
+| Indexer connections (Prowlarr, direct Newznab/Torznab) | `/data/acquisition/indexers.json` (`IndexerStore`) |
+| Download client connections (SABnzbd, qBittorrent) | `/data/acquisition/download-clients.json` (`DownloadClientStore`) |
+| Indexer/download-client health (reachable, auth ok, last error, last check) | `/data/acquisition/health.json` (`AcquisitionHealthStore`) |
 | Acquisition ↔ anime/episodes/attempts, untried candidates, blocklist | `/data/acquisition/sabnzbd-acquisitions.json` |
-| Download status, progress, failure reason | the SABnzbd Operation (`anime-sabnzbd-download`) |
+| Download status, progress, failure reason | the download client's Operation (`anime-sabnzbd-download`) |
 | Import plan, per-file result, manual-import state | `/data/acquisition/imports.json` (`AnimeImportStore`) |
 | Ownership (mode, AniLingo/Sonarr jobs, owned paths) | `/data/acquisition/ownership.json` |
 | Import mode (global/per root), remote path mappings | `/data/acquisition/import-settings.json` (`AnimeImportSettingsStore`) |
@@ -49,8 +62,9 @@ monitored anime, recent decisions and recent imports.
 
 `/Settings/Acquisition` is the one place to edit import mode, remote path mappings, tags, delay
 profiles, indexer restrictions, the current profile's AniList auto-monitor rule, and to export or
-restore a JSON backup of every store above (Prowlarr/SABnzbd API keys travel in that backup
-encrypted with this installation's Data Protection keys, never in plain text).
+restore a JSON backup of every store above except `health.json` (runtime health state, not a
+setting, so it is never part of the backup). Indexer and download client API keys/passwords travel
+in that backup encrypted with this installation's Data Protection keys, never in plain text.
 
 When a rename changes an anime's key (series folder rename), the monitoring and import stores
 are rekeyed together with the ownership and SABnzbd acquisition stores.
@@ -86,8 +100,9 @@ whose quality cannot be parsed is never offered for upgrade.
 
 ## Search, scoring and grab
 
-For each wanted episode the pipeline creates an `anime-search` operation, queries Prowlarr with the
-episode's titles, and evaluates every result:
+For each wanted episode the pipeline creates an `anime-search` operation, queries every enabled,
+healthy indexer entry (Prowlarr and direct Newznab/Torznab, narrowed by any tag-scoped indexer
+restriction) with the episode's titles, and evaluates every result:
 
 1. usenet with an NZB link, otherwise rejected;
 2. the parsed series title must match one of the anime's titles;
@@ -195,8 +210,14 @@ chance to appear first; the most specific matching profile (quality profile + ta
 alone, then an unscoped default) applies, and a release that already meets the cutoff always skips
 the wait. A held-back release is logged as *Delayed* (recent decisions, acquisition history) and
 does not count against the search-failure backoff. A **tag-scoped indexer restriction** narrows
-(never widens) the tagged anime's own Prowlarr indexer selection to an allowed set; several
-applicable restrictions intersect.
+(never widens) which of the canonical indexer entries (`/Settings/Indexers`: a Prowlarr entry as a
+whole, or a direct Newznab/Torznab entry) are searched at all for the tagged anime; several
+applicable restrictions intersect. When a restriction applies but has no overlap with any currently
+enabled entry, the anime is not silently searched with its unrestricted selection: no indexer is
+searched that pass, and a *Skipped* entry with the reason is recorded (recent decisions, acquisition
+history) instead — same as a delayed decision, not a search failure. (Separately, and unaffected by
+this restriction, an anime's own `IndexerIds` only ever narrows within a single Prowlarr entry's own
+sub-indexer aggregation — see Limits.)
 
 ## Richer acquisition history
 
@@ -215,16 +236,28 @@ manages (read-only coexistence).
 ## Backup and restore
 
 `/Settings/Acquisition` exports one JSON bundle of every canonical acquisition store listed above
-and restores it with a dry-run preview (per-file exists/valid-JSON/would-change) before anything is
-written; an invalid or unsupported-version bundle is refused entirely. Prowlarr and SABnzbd API
-keys travel in the bundle already encrypted with this installation's Data Protection keys; restoring
-on a different installation keeps everything else but may require re-entering those two keys if they
+(indexers, download clients, monitoring, import settings, policy, ownership, etc. — but never
+`health.json`, which is runtime state, not a setting) and restores it with a dry-run preview
+(per-file exists/valid-JSON/would-change) before anything is written; an invalid or
+unsupported-version bundle is refused entirely. Indexer and download client API keys/passwords
+travel in the bundle already encrypted with this installation's Data Protection keys; restoring on a
+different installation keeps everything else but may require re-entering those credentials if they
 cannot be decrypted there.
 
 ## Limits
 
-- Only Prowlarr as indexer and SABnzbd as download client; usenet only.
+- The anime pipeline searches every enabled, healthy indexer (Prowlarr and direct
+  Newznab/Torznab) and scores usenet and torrent releases alike, but only grabs and downloads
+  usenet releases through a SABnzbd-compatible client today; torrent releases are shown as
+  rejected ("not a usenet release") until the grab path also submits through a torrent-capable
+  client (qBittorrent). qBittorrent's client (login, add, status, delete) and the
+  priority/failover client selection are implemented and used by Books-style usenet submissions
+  and the download client health checks; wiring the anime grab path to it is a follow-up.
 - No RSS feed polling: wanted episodes are found by the scheduled search.
 - Quality profiles can be assigned per anime; editing profiles has no UI yet.
 - AniList auto-monitor only enables monitoring for anime that already exist locally; it does not add
   a new anime to the library.
+- An anime's own `IndexerIds` selection (set on the anime page) only ever narrows within a single
+  Prowlarr entry's own sub-indexer aggregation; it does not choose which whole indexer entries
+  (Prowlarr/Newznab/Torznab) are searched. Only a tag-scoped indexer restriction operates at that
+  entry level.

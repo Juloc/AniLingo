@@ -3,6 +3,7 @@ using AniLingo.Web.Data;
 using AniLingo.Web.Features.Acquisition.AniListAutoMonitor;
 using AniLingo.Web.Features.Acquisition.Backup;
 using AniLingo.Web.Features.Acquisition.Import;
+using AniLingo.Web.Features.Acquisition.Indexers;
 using AniLingo.Web.Features.Acquisition.Policy;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Library;
@@ -24,6 +25,7 @@ public sealed class AcquisitionModel(
     AcquisitionPolicyStore policyStore,
     AniListAutoMonitorSettingsStore aniListAutoMonitorStore,
     AcquisitionBackupService backupService,
+    IndexerStore indexerStore,
     CurrentAccountContext currentAccount,
     AppDbContext db) : PageModel
 {
@@ -32,6 +34,7 @@ public sealed class AcquisitionModel(
     public AnimeImportSettingsState ImportSettings { get; private set; } = AnimeImportSettingsState.Empty();
     public AcquisitionPolicyState Policy { get; private set; } = AcquisitionPolicyState.Empty();
     public IReadOnlyList<LibraryRoot> Roots { get; private set; } = [];
+    public IReadOnlyList<IndexerEntry> IndexerEntries { get; private set; } = [];
     public bool AniListAutoMonitorEnabled { get; private set; }
     public AcquisitionBackupPreview? RestorePreview { get; private set; }
     public string? PendingRestoreJson { get; private set; }
@@ -194,7 +197,7 @@ public sealed class AcquisitionModel(
     public async Task<IActionResult> OnPostAddIndexerRestrictionAsync(
         string name,
         string[]? tagIds,
-        string allowedIndexerIds,
+        Guid[]? allowedIndexerEntryIds,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(name) || tagIds is not { Length: > 0 })
@@ -203,14 +206,15 @@ public sealed class AcquisitionModel(
             return RedirectToPage();
         }
 
-        var ids = (allowedIndexerIds ?? "")
-            .Split([',', ' ', ';'], StringSplitOptions.RemoveEmptyEntries)
-            .Select(part => int.TryParse(part, out var id) ? id : (int?)null)
-            .Where(id => id is > 0)
-            .Select(id => id!.Value)
+        var ids = (allowedIndexerEntryIds ?? [])
             .Distinct()
             .Order()
             .ToArray();
+        if (ids.Length == 0)
+        {
+            TempData["AcquisitionSettingsError"] = "Select at least one indexer.";
+            return RedirectToPage();
+        }
 
         await policyStore.UpdateAsync(
             state =>
@@ -311,6 +315,7 @@ public sealed class AcquisitionModel(
         ImportSettings = await importSettings.LoadAsync(cancellationToken);
         Policy = await policyStore.LoadAsync(cancellationToken);
         Roots = await db.LibraryRoots.AsNoTracking().OrderBy(root => root.Name).ToArrayAsync(cancellationToken);
+        IndexerEntries = (await indexerStore.LoadAllAsync(cancellationToken)).OrderBy(entry => entry.Priority).ToArray();
         var autoMonitor = await aniListAutoMonitorStore.LoadAsync(cancellationToken);
         AniListAutoMonitorEnabled = autoMonitor.IsEnabled(currentAccount.ProfileId);
     }

@@ -24,7 +24,7 @@
             <span>@panel.ActiveDownloads active download(s)</span>
             @if (!panel.ProwlarrConfigured)
             {
-                <a asp-page="/Settings/Prowlarr">Prowlarr is not configured</a>
+                <a asp-page="/Settings/Indexers/Index">no indexer is configured</a>
             }
             @if (!panel.CanAcquire)
             {

@@ -1,0 +1,84 @@
+@page
+@model AniLingo.Web.Pages.Settings.DownloadClients.IndexModel
+@{
+    ViewData["Title"] = "Download clients";
+}
+
+<h1>Download clients</h1>
+<p class="muted">
+    SABnzbd (usenet) and qBittorrent (torrent) connections. The pipeline and Books submissions
+    pick the highest-priority enabled, healthy client that supports a release's protocol, best
+    priority first (lower number preferred), and fail over to the next client of that protocol on
+    submission failure.
+</p>
+
+@if (Model.Notice is not null)
+{
+    <p class="metadata-notice">@Model.Notice</p>
+}
+@if (Model.Error is not null)
+{
+    <p class="metadata-error">@Model.Error</p>
+}
+
+<a class="button" asp-page="/Settings/DownloadClients/Edit">Add download client</a>
+
+<table class="data-table">
+    <thead>
+        <tr>
+            <th>Priority</th>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Protocol</th>
+            <th>Enabled</th>
+            <th>Health</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var row in Model.Rows)
+        {
+            <tr>
+                <td>@row.Entry.Priority</td>
+                <td>@row.Entry.Name</td>
+                <td>@row.Entry.Type</td>
+                <td>@row.Entry.Protocol</td>
+                <td>
+                    <form method="post" asp-page-handler="Toggle" asp-route-id="@row.Entry.Id">
+                        <button type="submit" class="status-pill @(row.Entry.Enabled ? "status-ok" : "status-warn")">
+                            @(row.Entry.Enabled ? "Enabled" : "Disabled")
+                        </button>
+                    </form>
+                </td>
+                <td>
+                    @if (row.Health is null)
+                    {
+                        <span class="status-pill status-warn">Not checked</span>
+                    }
+                    else if (row.Health.IsHealthy)
+                    {
+                        <span class="status-pill status-ok">Healthy</span>
+                    }
+                    else
+                    {
+                        <span class="status-pill status-warn" title="@row.Health.LastError">Unhealthy</span>
+                    }
+                    <span class="muted">@(row.Health is null ? "" : row.Health.LastCheckedUtc.ToString("u"))</span>
+                </td>
+                <td>
+                    <a asp-page="/Settings/DownloadClients/Edit" asp-route-id="@row.Entry.Id">Edit</a>
+                    <form method="post" asp-page-handler="Test" asp-route-id="@row.Entry.Id" style="display:inline">
+                        <button type="submit">Test</button>
+                    </form>
+                    <form method="post" asp-page-handler="Delete" asp-route-id="@row.Entry.Id" style="display:inline">
+                        <button type="submit">Remove</button>
+                    </form>
+                </td>
+            </tr>
+        }
+        @if (Model.Rows.Count == 0)
+        {
+            <tr><td colspan="7" class="muted">No download client configured yet.</td></tr>
+        }
+    </tbody>
+</table>

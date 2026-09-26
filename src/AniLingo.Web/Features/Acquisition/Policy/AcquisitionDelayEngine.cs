@@ -93,11 +93,12 @@ public static class AcquisitionDelayEngine
     }
 
     /// <summary>
-    /// Indexer ids the anime's tags restrict searches to, or null when no restriction applies. Two
-    /// or more applicable restrictions intersect (an anime tagged for both is limited to indexers
-    /// every applicable restriction allows).
+    /// Canonical indexer entry ids (a whole Prowlarr entry or a direct Newznab/Torznab entry alike)
+    /// the anime's tags restrict searches to, or null when no restriction applies. Two or more
+    /// applicable restrictions intersect (an anime tagged for both is limited to entries every
+    /// applicable restriction allows).
     /// </summary>
-    public static int[]? RestrictedIndexerIds(
+    public static Guid[]? RestrictedIndexerEntryIds(
         IReadOnlyList<AnimeIndexerRestriction> restrictions,
         IReadOnlyCollection<string>? tagIds)
     {
@@ -107,10 +108,10 @@ public static class AcquisitionDelayEngine
             return null;
         }
 
-        IEnumerable<int> allowed = applicable[0].AllowedIndexerIds;
+        IEnumerable<Guid> allowed = applicable[0].AllowedIndexerEntryIds;
         foreach (var restriction in applicable.Skip(1))
         {
-            allowed = allowed.Intersect(restriction.AllowedIndexerIds);
+            allowed = allowed.Intersect(restriction.AllowedIndexerEntryIds);
         }
 
         return allowed.Distinct().Order().ToArray();

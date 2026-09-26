@@ -181,18 +181,18 @@
 
     <section class="panel">
         <div class="panel-heading"><h2>Tag-scoped indexer restrictions</h2></div>
-        <p class="muted">Restricts anime carrying any of the selected tags to the listed Prowlarr indexer ids. Narrows the anime's own indexer selection; never widens it.</p>
+        <p class="muted">Restricts anime carrying any of the selected tags to searching only the checked indexers (a whole Prowlarr connection, or a direct Newznab/Torznab connection). Narrows which indexers are searched at all; never widens it. If a restriction ends up with no enabled indexer allowed, no indexer is searched for that anime — it is never silently searched unrestricted.</p>
         @if (Model.Policy.IndexerRestrictions.Count > 0)
         {
             <table>
-                <thead><tr><th>Name</th><th>Tags</th><th>Allowed indexer ids</th><th></th></tr></thead>
+                <thead><tr><th>Name</th><th>Tags</th><th>Allowed indexers</th><th></th></tr></thead>
                 <tbody>
                     @foreach (var restriction in Model.Policy.IndexerRestrictions)
                     {
                         <tr>
                             <td>@restriction.Name</td>
                             <td>@string.Join(", ", restriction.TagIds)</td>
-                            <td>@string.Join(", ", restriction.AllowedIndexerIds)</td>
+                            <td>@string.Join(", ", restriction.AllowedIndexerEntryIds.Select(id => Model.IndexerEntries.FirstOrDefault(entry => entry.Id == id)?.Name ?? id.ToString()))</td>
                             <td>
                                 <form method="post" asp-page-handler="RemoveIndexerRestriction">
                                     <input type="hidden" name="restrictionId" value="@restriction.Id" />
@@ -215,7 +215,15 @@
                     }
                 </select>
             </label>
-            <label><span>Allowed indexer ids</span><input type="text" name="allowedIndexerIds" placeholder="1, 2" /></label>
+            <label>
+                <span>Allowed indexers</span>
+                <select name="allowedIndexerEntryIds" multiple required>
+                    @foreach (var entry in Model.IndexerEntries)
+                    {
+                        <option value="@entry.Id">@entry.Name (@entry.Type)</option>
+                    }
+                </select>
+            </label>
             <button class="button" type="submit">Add restriction</button>
         </form>
     </section>

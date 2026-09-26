@@ -211,15 +211,21 @@
     </section>
 
     <section class="panel">
-        <div class="panel-heading"><h2>SABnzbd</h2><span>Server</span></div>
-        <p class="muted">One download client connection and categories for Books and Anime.</p>
-        <a class="button" asp-page="/Settings/Sabnzbd">Manage SABnzbd</a>
+        <div class="panel-heading"><h2>Download clients</h2><span>Server</span></div>
+        <p class="muted">
+            SABnzbd and qBittorrent connections, categories, priority and health
+            (@Model.HealthyDownloadClients/@Model.TotalDownloadClients healthy).
+        </p>
+        <a class="button" asp-page="/Settings/DownloadClients/Index">Manage download clients</a>
     </section>
 
     <section class="panel">
-        <div class="panel-heading"><h2>Prowlarr</h2><span>Server</span></div>
-        <p class="muted">Indexer search for anime acquisition.</p>
-        <a class="button" asp-page="/Settings/Prowlarr">Manage Prowlarr</a>
+        <div class="panel-heading"><h2>Indexers</h2><span>Server</span></div>
+        <p class="muted">
+            Prowlarr and direct Newznab/Torznab connections, priority and health
+            (@Model.HealthyIndexers/@Model.TotalIndexers healthy).
+        </p>
+        <a class="button" asp-page="/Settings/Indexers/Index">Manage indexers</a>
     </section>
 
     <section class="panel">

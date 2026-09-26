@@ -13,13 +13,15 @@ public sealed class AcquisitionBackupService
     public const int CurrentVersion = 1;
 
     // Every canonical acquisition JSON store, relative to /data/acquisition. Keep this in sync
-    // when a new canonical acquisition store is added.
+    // when a new canonical acquisition store is added. health.json (AcquisitionHealthStore) is
+    // deliberately excluded: it is runtime health state (reachable/last error/last check), not a
+    // setting, and restoring it on a different installation would be meaningless.
     private static readonly IReadOnlyList<string> KnownFiles =
     [
         "monitoring.json",
         "quality-profiles.json",
-        "prowlarr.json",
-        "sabnzbd.json",
+        "indexers.json",
+        "download-clients.json",
         "sabnzbd-acquisitions.json",
         "imports.json",
         "ownership.json",
@@ -30,7 +32,7 @@ public sealed class AcquisitionBackupService
     ];
 
     private static readonly IReadOnlySet<string> SecretFiles =
-        new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "prowlarr.json", "sabnzbd.json" };
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "indexers.json", "download-clients.json" };
 
     private readonly string directory;
 
