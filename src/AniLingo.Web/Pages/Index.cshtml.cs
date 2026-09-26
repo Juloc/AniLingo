@@ -4,6 +4,7 @@ using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Localization;
 using AniLingo.Web.Features.Progress;
+using AniLingo.Web.Features.Reading;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
@@ -19,6 +20,12 @@ public sealed class IndexModel(AppDbContext db, CurrentAccountContext currentAcc
     public int EpisodeCount { get; private set; }
     public IReadOnlyList<HomeEpisode> RecentEpisodes { get; private set; } = [];
     public IReadOnlyList<ContinueWatchingItem> ContinueWatching { get; private set; } = [];
+
+    /// <summary>
+    /// Most recently read unfinished Novels, Books and Manga of the current
+    /// profile, newest first, each with its exact reader resume URL.
+    /// </summary>
+    public IReadOnlyList<ContinueReadingItem> ContinueReading { get; private set; } = [];
     public IReadOnlyList<PlaybackHistoryItem> PlaybackHistory { get; private set; } = [];
     public int PlaybackHistoryLimit => EpisodeProgressService.HistoryLimit;
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
@@ -56,6 +63,9 @@ public sealed class IndexModel(AppDbContext db, CurrentAccountContext currentAcc
         ContinueWatching = await progress.GetContinueWatchingAsync(
             cancellationToken: cancellationToken);
         PlaybackHistory = await progress.GetHistoryAsync(cancellationToken);
+        ContinueReading = await new ContinueReadingQuery(db).GetAsync(
+            currentAccount.ProfileId,
+            cancellationToken: cancellationToken);
 
         var configuration = new LearningConfigurationStore(db);
         var profileLearning = await configuration.ResolveProfileAsync(
