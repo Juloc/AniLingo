@@ -2,15 +2,16 @@
 @using AniLingo.Web.Features.Learning
 @model AniLingo.Web.Pages.Settings.LearningModel
 @{
-    ViewData["Title"] = "Learning settings";
+    var ui = Model.Ui;
+    ViewData["Title"] = ui["settings.learning.title"];
 }
 
 <header class="page-header">
     <div>
-        <a class="back-link" asp-page="/Settings/Index">← Settings</a>
-        <span class="eyebrow">Optional learning</span>
-        <h1>Learning settings</h1>
-        <p>Choose how much language help AniLingo should show. Watching and reading stay primary.</p>
+        <a class="back-link" asp-page="/Settings/Index">@ui["common.backToSettings"]</a>
+        <span class="eyebrow">@ui["settings.learning.eyebrow"]</span>
+        <h1>@ui["settings.learning.title"]</h1>
+        <p>@ui["settings.learning.pageDescription"]</p>
     </div>
 </header>
 
@@ -20,10 +21,10 @@
     <section class="panel">
         <div class="panel-heading">
             <div>
-                <span class="eyebrow">Default behavior</span>
-                <h2>Learning mode</h2>
+                <span class="eyebrow">@ui["settings.learning.mode.eyebrow"]</span>
+                <h2>@ui["settings.learning.mode.heading"]</h2>
             </div>
-            <span>@Model.Mode</span>
+            <span>@Model.ModeName(Model.Mode)</span>
         </div>
 
         <div class="settings-grid">
@@ -34,9 +35,9 @@
                         <input asp-for="Mode"
                                type="radio"
                                value="@mode" />
-                        <strong>@(mode == LearningMode.LanguageTools ? "Language tools" : mode.ToString())</strong>
+                        <strong>@Model.ModeName(mode)</strong>
                     </span>
-                    <small class="muted">@LearningModel.ModeDescription(mode)</small>
+                    <small class="muted">@Model.ModeDescription(mode)</small>
                 </label>
             }
         </div>
@@ -45,28 +46,28 @@
     <section class="panel">
         <div class="panel-heading">
             <div>
-                <span class="eyebrow">Language pairs</span>
-                <h2>Courses</h2>
+                <span class="eyebrow">@ui["settings.learning.courses.eyebrow"]</span>
+                <h2>@ui["settings.learning.courses.heading"]</h2>
             </div>
-            <a class="button" asp-page="/Settings/LearningCourses">Manage courses</a>
+            <a class="button" asp-page="/Settings/LearningCourses">@ui["settings.learning.courses.manage"]</a>
         </div>
-        <p class="muted">Choose which language pairs you study and which practice directions each course uses.</p>
+        <p class="muted">@ui["settings.learning.courses.description"]</p>
     </section>
 
     <details class="panel">
         <summary>
-            <strong>Customize individual features</strong>
-            <span class="muted">Global overrides</span>
+            <strong>@ui["settings.learning.customize.heading"]</strong>
+            <span class="muted">@ui["settings.learning.customize.subtitle"]</span>
         </summary>
         <div class="form-stack" style="margin-top:1rem;">
             @foreach (var option in LearningModel.CapabilityOptions)
             {
                 var current = Model.Global.GetOverride(option.Capability);
                 <label>
-                    <span>@option.Label</span>
+                    <span>@ui[option.LabelKey]</span>
                     <select name="cap_@option.Capability"
-                            asp-items='Model.OverrideOptions(current, "Use mode default")'></select>
-                    <small class="muted">@option.Description</small>
+                            asp-items='Model.OverrideOptions(current, ui["settings.learning.useModeDefault"])'></select>
+                    <small class="muted">@ui[option.DescriptionKey]</small>
                 </label>
             }
         </div>
@@ -75,14 +76,13 @@
     <section class="panel">
         <div class="panel-heading">
             <div>
-                <span class="eyebrow">Granular visibility</span>
-                <h2>Per media type</h2>
+                <span class="eyebrow">@ui["settings.learning.media.eyebrow"]</span>
+                <h2>@ui["settings.learning.media.heading"]</h2>
             </div>
-            <span>Inherits by default</span>
+            <span>@ui["settings.learning.media.inheritsByDefault"]</span>
         </div>
         <p class="muted">
-            A media type can inherit your default, turn Learning off, or use a different mode.
-            Individual series/books and content can override this again through the same hierarchy.
+            @ui["settings.learning.media.description"]
         </p>
 
         <div class="form-stack">
@@ -92,11 +92,11 @@
                 <details class="panel">
                     <summary>
                         <strong>@mediaType</strong>
-                        <span class="muted">@(settings.ModeOverride?.ToString() ?? "Inherit")</span>
+                        <span class="muted">@(settings.ModeOverride is { } modeOverride ? Model.ModeName(modeOverride) : ui["settings.learning.media.inherit"])</span>
                     </summary>
                     <div class="form-stack" style="margin-top:1rem;">
                         <label>
-                            <span>Mode</span>
+                            <span>@ui["settings.learning.media.modeLabel"]</span>
                             <select name="mediaMode_@mediaType"
                                     asp-items="Model.ModeOverrideOptions(settings.ModeOverride)"></select>
                         </label>
@@ -105,10 +105,10 @@
                         {
                             var current = settings.GetOverride(option.Capability);
                             <label>
-                                <span>@option.Label</span>
+                                <span>@ui[option.LabelKey]</span>
                                 <select name="@($"media_{mediaType}_{option.Capability}")"
-                                        asp-items='Model.OverrideOptions(current, "Inherit")'></select>
-                                <small class="muted">@option.Description</small>
+                                        asp-items='Model.OverrideOptions(current, ui["settings.learning.media.inherit"])'></select>
+                                <small class="muted">@ui[option.DescriptionKey]</small>
                             </label>
                         }
                     </div>
@@ -119,49 +119,49 @@
 
     <details class="panel">
         <summary>
-            <strong>Advanced review scheduling</strong>
-            <span class="muted">FSRS</span>
+            <strong>@ui["settings.learning.advanced.heading"]</strong>
+            <span class="muted">@ui["settings.learning.advanced.badge"]</span>
         </summary>
 
         <div class="form-stack" style="margin-top:1rem;">
             <label>
-                <span>Desired retention (%)</span>
+                <span>@ui["settings.learning.advanced.retentionLabel"]</span>
                 <input asp-for="DesiredRetentionPercent"
                        type="number"
                        min="80"
                        max="97"
                        step="1" />
                 <small class="muted">
-                    Higher values schedule reviews sooner. Leave this at 90% unless you have a reason to tune FSRS.
+                    @ui["settings.learning.advanced.retentionHint"]
                 </small>
                 <span asp-validation-for="DesiredRetentionPercent" class="validation"></span>
             </label>
 
             <label>
-                <span>New words per day</span>
+                <span>@ui["settings.learning.advanced.newWordsLabel"]</span>
                 <input asp-for="NewWordsPerDay"
                        type="number"
                        min="0"
                        max="100"
                        step="1" />
                 <small class="muted">
-                    Limits how many queued vocabulary items can enter active review in one day.
+                    @ui["settings.learning.advanced.newWordsHint"]
                 </small>
                 <span asp-validation-for="NewWordsPerDay" class="validation"></span>
             </label>
 
             <label>
-                <span>Reviews per round</span>
+                <span>@ui["settings.learning.advanced.reviewBatchLabel"]</span>
                 <input asp-for="ReviewBatchSize"
                        type="number"
                        min="5"
                        max="200"
                        step="5" />
-                <small class="muted">Limits one review session; it does not delete or skip due cards.</small>
+                <small class="muted">@ui["settings.learning.advanced.reviewBatchHint"]</small>
                 <span asp-validation-for="ReviewBatchSize" class="validation"></span>
             </label>
         </div>
     </details>
 
-    <button class="button button-primary" type="submit">Save learning preferences</button>
+    <button class="button button-primary" type="submit">@ui["settings.learning.save"]</button>
 </form>

@@ -2,6 +2,7 @@ using AniLingo.Web.Data;
 using AniLingo.Web.Features.Acquisition.Naming;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Library;
+using AniLingo.Web.Features.Localization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -16,6 +17,8 @@ public sealed class NamingModel(
     AnimeNamingProfileStore store,
     AppDbContext db) : PageModel
 {
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
+
     [BindProperty]
     public ProfileInput Input { get; set; } = ProfileInput.From(AnimeNamingPresets.SonarrDefault());
 
@@ -58,6 +61,7 @@ public sealed class NamingModel(
 
     public async Task<IActionResult> OnPostPreviewAsync(CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         await LoadAsync(cancellationToken);
         IsExistingProfile = State.Profiles.Any(profile => profile.Id.Equals(Input.Id, StringComparison.OrdinalIgnoreCase));
         BuildPreview();
@@ -66,6 +70,7 @@ public sealed class NamingModel(
 
     public async Task<IActionResult> OnPostSaveAsync(CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         await LoadAsync(cancellationToken);
         IsExistingProfile = State.Profiles.Any(profile => profile.Id.Equals(Input.Id, StringComparison.OrdinalIgnoreCase));
         BuildPreview();
@@ -76,30 +81,33 @@ public sealed class NamingModel(
 
         var profile = Input.ToProfile();
         await store.UpsertAsync(profile, cancellationToken);
-        TempData["NamingNotice"] = $"Saved naming profile '{profile.Name}'. Existing files keep their names until you rename them from an anime's rename page.";
+        TempData["NamingNotice"] = Ui.Format("settings.naming.status.saved", ("name", profile.Name));
         return RedirectToPage(new { edit = profile.Id });
     }
 
     public async Task<IActionResult> OnPostDefaultAsync(string profileId, CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         return await RunAsync(
             () => store.SetDefaultAsync(profileId, cancellationToken),
-            "Default naming profile updated.");
+            Ui["settings.naming.status.defaultUpdated"]);
     }
 
     public async Task<IActionResult> OnPostLibraryAsync(Guid rootId, string? profileId, CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         return await RunAsync(
             () => store.AssignLibraryAsync(rootId, profileId, cancellationToken),
-            "Library naming profile updated.");
+            Ui["settings.naming.status.libraryUpdated"]);
     }
 
     public async Task<IActionResult> OnPostDeleteAsync(string profileId, CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         var deleted = await store.DeleteAsync(profileId, cancellationToken);
         TempData[deleted ? "NamingNotice" : "NamingError"] = deleted
-            ? "Naming profile deleted."
-            : "A profile that is the default or assigned to a library or anime cannot be deleted.";
+            ? Ui["settings.naming.status.deleted"]
+            : Ui["settings.naming.status.cannotDelete"];
         return RedirectToPage();
     }
 
@@ -125,6 +133,7 @@ public sealed class NamingModel(
 
     private async Task LoadAsync(CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         State = await store.LoadAsync(cancellationToken);
         Roots = await db.LibraryRoots.AsNoTracking().OrderBy(root => root.Name).ToListAsync(cancellationToken);
     }

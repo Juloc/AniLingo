@@ -7,6 +7,7 @@ using AniLingo.Web.Features.Acquisition.Indexers;
 using AniLingo.Web.Features.Acquisition.Policy;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Library;
+using AniLingo.Web.Features.Localization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -31,6 +32,7 @@ public sealed class AcquisitionModel(
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true };
 
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public AnimeImportSettingsState ImportSettings { get; private set; } = AnimeImportSettingsState.Empty();
     public AcquisitionPolicyState Policy { get; private set; } = AcquisitionPolicyState.Empty();
     public IReadOnlyList<LibraryRoot> Roots { get; private set; } = [];
@@ -43,12 +45,23 @@ public sealed class AcquisitionModel(
 
     public async Task OnGetAsync(CancellationToken cancellationToken) => await LoadAsync(cancellationToken);
 
+    public string ImportModeLabel(AnimeImportMode mode) => mode switch
+    {
+        AnimeImportMode.Move => Ui["settings.acquisition.importMode.move"],
+        AnimeImportMode.Copy => Ui["settings.acquisition.importMode.copy"],
+        AnimeImportMode.Hardlink => Ui["settings.acquisition.importMode.hardlink"],
+        AnimeImportMode.HardlinkOrCopy => Ui["settings.acquisition.importMode.hardlinkOrCopy"],
+        _ => mode.ToString()
+    };
+
     public async Task<IActionResult> OnPostImportModeAsync(
         AnimeImportMode defaultImportMode,
         Guid? rootId,
         AnimeImportMode? rootImportMode,
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         await importSettings.UpdateAsync(
             state =>
             {
@@ -68,7 +81,7 @@ public sealed class AcquisitionModel(
                 return state with { DefaultImportMode = defaultImportMode, RootImportModes = roots };
             },
             cancellationToken);
-        TempData["AcquisitionSettingsNotice"] = "Import mode saved.";
+        TempData["AcquisitionSettingsNotice"] = Ui["settings.acquisition.status.importModeSaved"];
         return RedirectToPage();
     }
 
@@ -77,9 +90,11 @@ public sealed class AcquisitionModel(
         string localPrefix,
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         if (string.IsNullOrWhiteSpace(remotePrefix) || string.IsNullOrWhiteSpace(localPrefix))
         {
-            TempData["AcquisitionSettingsError"] = "Both the remote and local prefix are required.";
+            TempData["AcquisitionSettingsError"] = Ui["settings.acquisition.validation.pathMappingRequired"];
             return RedirectToPage();
         }
 
@@ -93,12 +108,14 @@ public sealed class AcquisitionModel(
                 return state with { RemotePathMappings = mappings };
             },
             cancellationToken);
-        TempData["AcquisitionSettingsNotice"] = "Path mapping saved.";
+        TempData["AcquisitionSettingsNotice"] = Ui["settings.acquisition.status.pathMappingSaved"];
         return RedirectToPage();
     }
 
     public async Task<IActionResult> OnPostRemovePathMappingAsync(string remotePrefix, CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         await importSettings.UpdateAsync(
             state => state with
             {
@@ -107,15 +124,17 @@ public sealed class AcquisitionModel(
                     .ToList()
             },
             cancellationToken);
-        TempData["AcquisitionSettingsNotice"] = "Path mapping removed.";
+        TempData["AcquisitionSettingsNotice"] = Ui["settings.acquisition.status.pathMappingRemoved"];
         return RedirectToPage();
     }
 
     public async Task<IActionResult> OnPostAddTagAsync(string name, CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         if (string.IsNullOrWhiteSpace(name))
         {
-            TempData["AcquisitionSettingsError"] = "Enter a tag name.";
+            TempData["AcquisitionSettingsError"] = Ui["settings.acquisition.validation.tagNameRequired"];
             return RedirectToPage();
         }
 
@@ -132,12 +151,14 @@ public sealed class AcquisitionModel(
                 return state with { Tags = tags };
             },
             cancellationToken);
-        TempData["AcquisitionSettingsNotice"] = "Tag added.";
+        TempData["AcquisitionSettingsNotice"] = Ui["settings.acquisition.status.tagAdded"];
         return RedirectToPage();
     }
 
     public async Task<IActionResult> OnPostRemoveTagAsync(string tagId, CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         await policyStore.UpdateAsync(
             state => state with
             {
@@ -150,7 +171,7 @@ public sealed class AcquisitionModel(
                     .ToList()
             },
             cancellationToken);
-        TempData["AcquisitionSettingsNotice"] = "Tag removed.";
+        TempData["AcquisitionSettingsNotice"] = Ui["settings.acquisition.status.tagRemoved"];
         return RedirectToPage();
     }
 
@@ -162,9 +183,11 @@ public sealed class AcquisitionModel(
         bool isDefault,
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         if (string.IsNullOrWhiteSpace(name) || delayMinutes < 0)
         {
-            TempData["AcquisitionSettingsError"] = "Enter a name and a non-negative delay.";
+            TempData["AcquisitionSettingsError"] = Ui["settings.acquisition.validation.delayProfileRequired"];
             return RedirectToPage();
         }
 
@@ -181,16 +204,18 @@ public sealed class AcquisitionModel(
                 return state with { DelayProfiles = profiles };
             },
             cancellationToken);
-        TempData["AcquisitionSettingsNotice"] = "Delay profile added.";
+        TempData["AcquisitionSettingsNotice"] = Ui["settings.acquisition.status.delayProfileAdded"];
         return RedirectToPage();
     }
 
     public async Task<IActionResult> OnPostRemoveDelayProfileAsync(string profileId, CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         await policyStore.UpdateAsync(
             state => state with { DelayProfiles = state.DelayProfiles.Where(profile => profile.Id != profileId).ToList() },
             cancellationToken);
-        TempData["AcquisitionSettingsNotice"] = "Delay profile removed.";
+        TempData["AcquisitionSettingsNotice"] = Ui["settings.acquisition.status.delayProfileRemoved"];
         return RedirectToPage();
     }
 
@@ -200,9 +225,11 @@ public sealed class AcquisitionModel(
         Guid[]? allowedIndexerEntryIds,
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         if (string.IsNullOrWhiteSpace(name) || tagIds is not { Length: > 0 })
         {
-            TempData["AcquisitionSettingsError"] = "Enter a name and select at least one tag.";
+            TempData["AcquisitionSettingsError"] = Ui["settings.acquisition.validation.indexerRestrictionNameAndTag"];
             return RedirectToPage();
         }
 
@@ -212,7 +239,7 @@ public sealed class AcquisitionModel(
             .ToArray();
         if (ids.Length == 0)
         {
-            TempData["AcquisitionSettingsError"] = "Select at least one indexer.";
+            TempData["AcquisitionSettingsError"] = Ui["settings.acquisition.validation.indexerRestrictionIndexer"];
             return RedirectToPage();
         }
 
@@ -224,25 +251,29 @@ public sealed class AcquisitionModel(
                 return state with { IndexerRestrictions = restrictions };
             },
             cancellationToken);
-        TempData["AcquisitionSettingsNotice"] = "Indexer restriction added.";
+        TempData["AcquisitionSettingsNotice"] = Ui["settings.acquisition.status.indexerRestrictionAdded"];
         return RedirectToPage();
     }
 
     public async Task<IActionResult> OnPostRemoveIndexerRestrictionAsync(string restrictionId, CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         await policyStore.UpdateAsync(
             state => state with { IndexerRestrictions = state.IndexerRestrictions.Where(item => item.Id != restrictionId).ToList() },
             cancellationToken);
-        TempData["AcquisitionSettingsNotice"] = "Indexer restriction removed.";
+        TempData["AcquisitionSettingsNotice"] = Ui["settings.acquisition.status.indexerRestrictionRemoved"];
         return RedirectToPage();
     }
 
     public async Task<IActionResult> OnPostAniListAutoMonitorAsync(bool enabled, CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         await aniListAutoMonitorStore.SetEnabledAsync(currentAccount.ProfileId, enabled, DateTimeOffset.UtcNow, cancellationToken);
         TempData["AcquisitionSettingsNotice"] = enabled
-            ? "AniList Current/Planning auto-monitor is on for this profile."
-            : "AniList Current/Planning auto-monitor is off for this profile.";
+            ? Ui["settings.acquisition.status.autoMonitorOn"]
+            : Ui["settings.acquisition.status.autoMonitorOff"];
         return RedirectToPage();
     }
 
@@ -256,10 +287,11 @@ public sealed class AcquisitionModel(
 
     public async Task<IActionResult> OnPostPreviewRestoreAsync(IFormFile backupFile, CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         await LoadAsync(cancellationToken);
         if (backupFile is null || backupFile.Length == 0)
         {
-            TempData["AcquisitionSettingsError"] = "Choose a backup file.";
+            TempData["AcquisitionSettingsError"] = Ui["settings.acquisition.validation.chooseBackupFile"];
             return RedirectToPage();
         }
 
@@ -270,7 +302,7 @@ public sealed class AcquisitionModel(
             var bundle = JsonSerializer.Deserialize<AcquisitionBackupBundle>(json, JsonOptions);
             if (bundle is null)
             {
-                TempData["AcquisitionSettingsError"] = "The backup file is empty or invalid.";
+                TempData["AcquisitionSettingsError"] = Ui["settings.acquisition.validation.backupEmpty"];
                 return RedirectToPage();
             }
 
@@ -279,7 +311,7 @@ public sealed class AcquisitionModel(
         }
         catch (JsonException)
         {
-            TempData["AcquisitionSettingsError"] = "The backup file is not valid JSON.";
+            TempData["AcquisitionSettingsError"] = Ui["settings.acquisition.validation.backupInvalidJson"];
             return RedirectToPage();
         }
 
@@ -288,23 +320,25 @@ public sealed class AcquisitionModel(
 
     public async Task<IActionResult> OnPostApplyRestoreAsync(string pendingRestoreJson, CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         try
         {
             var bundle = JsonSerializer.Deserialize<AcquisitionBackupBundle>(pendingRestoreJson, JsonOptions);
             if (bundle is null)
             {
-                TempData["AcquisitionSettingsError"] = "The backup could not be read.";
+                TempData["AcquisitionSettingsError"] = Ui["settings.acquisition.validation.backupUnreadable"];
                 return RedirectToPage();
             }
 
             var result = await backupService.RestoreAsync(bundle, cancellationToken);
             TempData[result.Success ? "AcquisitionSettingsNotice" : "AcquisitionSettingsError"] = result.Success
-                ? $"Restored {result.FilesWritten} acquisition settings file(s). Reload any open acquisition pages."
+                ? Ui.Format("settings.acquisition.status.restored", ("count", result.FilesWritten))
                 : string.Join(" ", result.Errors);
         }
         catch (JsonException)
         {
-            TempData["AcquisitionSettingsError"] = "The backup could not be read.";
+            TempData["AcquisitionSettingsError"] = Ui["settings.acquisition.validation.backupUnreadable"];
         }
 
         return RedirectToPage();
@@ -312,6 +346,7 @@ public sealed class AcquisitionModel(
 
     private async Task LoadAsync(CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         ImportSettings = await importSettings.LoadAsync(cancellationToken);
         Policy = await policyStore.LoadAsync(cancellationToken);
         Roots = await db.LibraryRoots.AsNoTracking().OrderBy(root => root.Name).ToArrayAsync(cancellationToken);

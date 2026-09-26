@@ -1,15 +1,16 @@
 @page
 @model AniLingo.Web.Pages.Settings.MappingReviewModel
 @{
-    ViewData["Title"] = "Mapping review";
+    var ui = Model.Ui;
+    ViewData["Title"] = ui["settings.mappingReview.title"];
 }
 
 <header class="page-header">
     <div>
-        <a class="back-link" asp-page="/Settings/Index">← Settings</a>
-        <span class="eyebrow">Server metadata</span>
-        <h1>Mapping review</h1>
-        <p>Ambiguous AniList matches stay here until you review or dismiss them.</p>
+        <a class="back-link" asp-page="/Settings/Index">@ui["common.backToSettings"]</a>
+        <span class="eyebrow">@ui["settings.mappingReview.eyebrow"]</span>
+        <h1>@ui["settings.mappingReview.title"]</h1>
+        <p>@ui["settings.mappingReview.pageDescription"]</p>
     </div>
 </header>
 
@@ -24,11 +25,11 @@
 {
     <section class="panel">
         <div class="panel-heading">
-            <h2>No pending mappings</h2>
-            <span>Clear</span>
+            <h2>@ui["settings.mappingReview.empty.title"]</h2>
+            <span>@ui["settings.mappingReview.clear"]</span>
         </div>
         <p class="muted">
-            AniLingo currently has no ambiguous Anime, Manga or Light Novel mappings waiting for review.
+            @ui["settings.mappingReview.empty.body"]
         </p>
     </section>
 }
@@ -63,7 +64,7 @@ else
                                 <strong>@candidate.Title</strong>
                                 @if (candidate.Score > 0)
                                 {
-                                    <small>Confidence score: @candidate.Score</small>
+                                    <small>@ui.Format("settings.mappingReview.confidenceScore", ("score", candidate.Score))</small>
                                 }
                                 @if (candidate.Evidence.Count > 0)
                                 {
@@ -75,18 +76,18 @@ else
                 }
 
                 <p class="muted">
-                    Updated @task.UpdatedAt.ToLocalTime().ToString("g")
+                    @ui.Format("settings.mappingReview.updatedAt", ("time", task.UpdatedAt.ToLocalTime().ToString("g")))
                 </p>
 
                 <div class="inline-actions">
                     @if (targetUrl is not null)
                     {
-                        <a class="button button-primary" href="@targetUrl">Review mapping</a>
+                        <a class="button button-primary" href="@targetUrl">@ui["settings.mappingReview.reviewMapping"]</a>
                     }
 
                     <form method="post" asp-page-handler="Dismiss">
                         <input type="hidden" name="id" value="@task.Id" />
-                        <button class="button" type="submit">Dismiss</button>
+                        <button class="button" type="submit">@ui["settings.mappingReview.dismiss"]</button>
                     </form>
                 </div>
             </section>

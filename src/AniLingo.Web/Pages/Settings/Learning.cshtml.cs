@@ -2,6 +2,7 @@ using System.ComponentModel.DataAnnotations;
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Learning;
+using AniLingo.Web.Features.Localization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -15,24 +16,26 @@ public sealed class LearningModel(
 {
     public static IReadOnlyList<LearningCapabilityOption> CapabilityOptions { get; } =
     [
-        new(LearningCapability.LanguageLookup, "Word lookup", "Tap words to see dictionary information without creating study cards."),
-        new(LearningCapability.ReadingAids, "Reading aids", "Show readings, transliteration or script help when a language toolkit supports it."),
-        new(LearningCapability.Translation, "Translation", "Offer translations while watching or reading."),
-        new(LearningCapability.AiExplanations, "AI explanations", "Allow optional contextual explanations. Never required for normal playback or reading."),
-        new(LearningCapability.Vocabulary, "Vocabulary", "Save and manage words independently from scheduled reviews."),
-        new(LearningCapability.Reviews, "Spaced repetition", "Use scheduled review cards and FSRS."),
-        new(LearningCapability.SentencePractice, "Sentence practice", "Practice sentences from content you actually watched or read."),
-        new(LearningCapability.ScriptTrainer, "Writing-system trainer", "Show language-specific script practice such as Kana when supported."),
-        new(LearningCapability.Progress, "Learning progress", "Show progress inside the Learning area."),
-        new(LearningCapability.HomeWidget, "Home learning widget", "Show a small Learning card on Home. Off by default even in Study mode."),
-        new(LearningCapability.ContentMetrics, "Learning metrics on content", "Show known/prepared percentages on normal media and reader surfaces."),
-        new(LearningCapability.PreparationSuggestions, "Pre-study suggestions", "Suggest vocabulary preparation before watching or reading."),
-        new(LearningCapability.PlayerTools, "Player language tools", "Enable the compact subtitle word/sentence inspector in the player."),
-        new(LearningCapability.ReaderTools, "Reader language tools", "Enable the compact word/sentence inspector while reading.")
+        new(LearningCapability.LanguageLookup, "settings.learning.capability.languageLookup.label", "settings.learning.capability.languageLookup.description"),
+        new(LearningCapability.ReadingAids, "settings.learning.capability.readingAids.label", "settings.learning.capability.readingAids.description"),
+        new(LearningCapability.Translation, "settings.learning.capability.translation.label", "settings.learning.capability.translation.description"),
+        new(LearningCapability.AiExplanations, "settings.learning.capability.aiExplanations.label", "settings.learning.capability.aiExplanations.description"),
+        new(LearningCapability.Vocabulary, "settings.learning.capability.vocabulary.label", "settings.learning.capability.vocabulary.description"),
+        new(LearningCapability.Reviews, "settings.learning.capability.reviews.label", "settings.learning.capability.reviews.description"),
+        new(LearningCapability.SentencePractice, "settings.learning.capability.sentencePractice.label", "settings.learning.capability.sentencePractice.description"),
+        new(LearningCapability.ScriptTrainer, "settings.learning.capability.scriptTrainer.label", "settings.learning.capability.scriptTrainer.description"),
+        new(LearningCapability.Progress, "settings.learning.capability.progress.label", "settings.learning.capability.progress.description"),
+        new(LearningCapability.HomeWidget, "settings.learning.capability.homeWidget.label", "settings.learning.capability.homeWidget.description"),
+        new(LearningCapability.ContentMetrics, "settings.learning.capability.contentMetrics.label", "settings.learning.capability.contentMetrics.description"),
+        new(LearningCapability.PreparationSuggestions, "settings.learning.capability.preparationSuggestions.label", "settings.learning.capability.preparationSuggestions.description"),
+        new(LearningCapability.PlayerTools, "settings.learning.capability.playerTools.label", "settings.learning.capability.playerTools.description"),
+        new(LearningCapability.ReaderTools, "settings.learning.capability.readerTools.label", "settings.learning.capability.readerTools.description")
     ];
 
     public static IReadOnlyList<LearningMediaType> MediaTypes { get; } =
         Enum.GetValues<LearningMediaType>();
+
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
 
     [BindProperty]
     public LearningMode Mode { get; set; }
@@ -62,6 +65,8 @@ public sealed class LearningModel(
 
     public async Task<IActionResult> OnPostAsync(CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         if (!ModelState.IsValid)
         {
             await LoadAsync(cancellationToken);
@@ -111,7 +116,7 @@ public sealed class LearningModel(
             NewWordsPerDay,
             cancellationToken);
 
-        TempData["Status"] = "Learning preferences saved.";
+        TempData["Status"] = Ui["settings.learning.saved"];
         return RedirectToPage();
     }
 
@@ -120,36 +125,44 @@ public sealed class LearningModel(
         string inheritLabel) =>
     [
         new(inheritLabel, "inherit", current is null),
-        new("On", "on", current == true),
-        new("Off", "off", current == false)
+        new(Ui["settings.learning.on"], "on", current == true),
+        new(Ui["settings.learning.off"], "off", current == false)
     ];
 
     public IEnumerable<SelectListItem> ModeOverrideOptions(
         LearningMode? current) =>
     [
-        new("Inherit", "inherit", current is null),
-        new("Off", "Off", current == LearningMode.Off),
-        new("Language tools", "LanguageTools", current == LearningMode.LanguageTools),
-        new("Study", "Study", current == LearningMode.Study),
-        new("Custom", "Custom", current == LearningMode.Custom)
+        new(Ui["settings.learning.media.inherit"], "inherit", current is null),
+        new(Ui["settings.learning.mode.off"], "Off", current == LearningMode.Off),
+        new(Ui["settings.learning.mode.languageTools"], "LanguageTools", current == LearningMode.LanguageTools),
+        new(Ui["settings.learning.mode.study"], "Study", current == LearningMode.Study),
+        new(Ui["settings.learning.mode.custom"], "Custom", current == LearningMode.Custom)
     ];
 
-    public static string ModeDescription(LearningMode mode) =>
+    public string ModeName(LearningMode mode) =>
         mode switch
         {
-            LearningMode.Off =>
-                "Watch and read normally. Learning UI stays out of the way unless a lower scope explicitly enables it.",
-            LearningMode.LanguageTools =>
-                "Lookup, readings, translation and optional explanations without cards or review obligations.",
-            LearningMode.Study =>
-                "Vocabulary, reviews, sentence practice and progress, while Home/content metrics remain non-intrusive by default.",
-            LearningMode.Custom =>
-                "Start with everything off and explicitly enable only the capabilities you want.",
+            LearningMode.Off => Ui["settings.learning.mode.off"],
+            LearningMode.LanguageTools => Ui["settings.learning.mode.languageTools"],
+            LearningMode.Study => Ui["settings.learning.mode.study"],
+            LearningMode.Custom => Ui["settings.learning.mode.custom"],
+            _ => mode.ToString()
+        };
+
+    public string ModeDescription(LearningMode mode) =>
+        mode switch
+        {
+            LearningMode.Off => Ui["settings.learning.mode.off.description"],
+            LearningMode.LanguageTools => Ui["settings.learning.mode.languageTools.description"],
+            LearningMode.Study => Ui["settings.learning.mode.study.description"],
+            LearningMode.Custom => Ui["settings.learning.mode.custom.description"],
             _ => string.Empty
         };
 
     private async Task LoadAsync(CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         var configuration = new LearningConfigurationStore(db);
         Global = await configuration.GetScopeAsync(
             currentAccount.ProfileId,
@@ -210,5 +223,5 @@ public sealed class LearningModel(
 
 public sealed record LearningCapabilityOption(
     LearningCapability Capability,
-    string Label,
-    string Description);
+    string LabelKey,
+    string DescriptionKey);

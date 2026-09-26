@@ -3,8 +3,13 @@ using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Library;
 using AniLingo.Web.Features.Subtitles;
 using AniLingo.Web.Features.Vocabulary;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
+using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace AniLingo.Tests;
 
@@ -144,6 +149,19 @@ public sealed class LearningSurfaceTests
 
             // Course settings list the course with its word count.
             var courses = new AniLingo.Web.Pages.Settings.LearningCoursesModel(db, account);
+            var coursesHttpContext = new DefaultHttpContext
+            {
+                RequestServices = new ServiceCollection()
+                    .AddSingleton<IModelMetadataProvider, EmptyModelMetadataProvider>()
+                    .BuildServiceProvider()
+            };
+            courses.PageContext = new PageContext
+            {
+                HttpContext = coursesHttpContext,
+                ViewData = new ViewDataDictionary<AniLingo.Web.Pages.Settings.LearningCoursesModel>(
+                    new EmptyModelMetadataProvider(),
+                    new ModelStateDictionary())
+            };
             await courses.OnGetAsync(CancellationToken.None);
             var course = courses.Courses.Single();
             Assert.AreEqual(2, courses.WordCounts[course.Id]);

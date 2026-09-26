@@ -2,18 +2,19 @@
 @using AniLingo.Web.Features.Localization
 @model AniLingo.Web.Pages.LocalizationAdmin.IndexModel
 @{
-    ViewData["Title"] = "UI languages";
+    var ui = Model.Ui;
+    ViewData["Title"] = ui["admin.languages.title"];
     var selected = Model.Locales.FirstOrDefault(x =>
         x.Locale.Equals(Model.SelectedLocale, StringComparison.OrdinalIgnoreCase));
 }
 
 <header class="page-header">
     <div>
-        <span class="eyebrow">Admin · Localization</span>
-        <h1>UI languages</h1>
-        <p>Persistent interface translations with contextual AI generation. Normal page loads never call AI.</p>
+        <span class="eyebrow">@ui["admin.languages.eyebrow"]</span>
+        <h1>@ui["admin.languages.title"]</h1>
+        <p>@ui["admin.languages.subtitle"]</p>
     </div>
-    <a class="button" href="/Settings/Language">Personal interface language</a>
+    <a class="button" href="/Settings/Language">@ui["admin.languages.personalLink"]</a>
 </header>
 
 <div asp-validation-summary="ModelOnly" class="validation"></div>
@@ -21,33 +22,33 @@
 <section class="panel">
     <div class="panel-heading">
         <div>
-            <span class="eyebrow">Add locale</span>
-            <h2>BCP-47 language</h2>
+            <span class="eyebrow">@ui["admin.languages.addLocale.eyebrow"]</span>
+            <h2>@ui["admin.languages.addLocale.heading"]</h2>
         </div>
-        <span>@(Model.AiStatus?.IsAuthenticated == true ? "AI connected" : "AI not connected")</span>
+        <span>@(Model.AiStatus?.IsAuthenticated == true ? ui["admin.languages.aiConnected"] : ui["admin.languages.aiNotConnected"])</span>
     </div>
 
     <form method="post" asp-page-handler="AddLanguage" class="form-stack">
         <label>
-            <span>Locale</span>
-            <input name="locale" placeholder="de, id, ro, ja, pt-BR…" autocomplete="off" required />
-            <small class="muted">UI language is independent from content and learning languages.</small>
+            <span>@ui["admin.languages.localeLabel"]</span>
+            <input name="locale" placeholder="@ui["admin.languages.localePlaceholder"]" autocomplete="off" required />
+            <small class="muted">@ui["admin.languages.localeHint"]</small>
         </label>
         <label>
             <span>
                 <input type="checkbox" name="generateNow" value="true" />
-                Generate missing translations immediately with AI
+                @ui["admin.languages.generateNowCheckbox"]
             </span>
         </label>
-        <button class="button button-primary" type="submit">Add language</button>
+        <button class="button button-primary" type="submit">@ui["admin.languages.add"]</button>
     </form>
 </section>
 
 <section class="section">
     <div class="section-heading">
         <div>
-            <span class="eyebrow">Catalog</span>
-            <h2>Languages</h2>
+            <span class="eyebrow">@ui["admin.languages.catalogEyebrow"]</span>
+            <h2>@ui["admin.languages.languagesHeading"]</h2>
         </div>
     </div>
 
@@ -64,12 +65,17 @@
                 </div>
                 @if (locale.IsSource)
                 {
-                    <p class="muted">English source catalog · @locale.Total resources</p>
+                    <p class="muted">@ui.Format("admin.languages.sourceCatalog", ("count", locale.Total))</p>
                 }
                 else
                 {
                     <p class="muted">
-                        @locale.Ready ready · @locale.Missing missing · @locale.Outdated outdated · @locale.Manual manual
+                        @ui.Format(
+                            "admin.languages.coverageSummary",
+                            ("ready", locale.Ready),
+                            ("missing", locale.Missing),
+                            ("outdated", locale.Outdated),
+                            ("manual", locale.Manual))
                     </p>
                 }
             </a>
@@ -82,10 +88,10 @@
     <section class="panel">
         <div class="panel-heading">
             <div>
-                <span class="eyebrow">Selected locale</span>
+                <span class="eyebrow">@ui["admin.languages.selectedEyebrow"]</span>
                 <h2>@selected.NativeName · @selected.Locale</h2>
             </div>
-            <span>@selected.CoveragePercent% ready</span>
+            <span>@ui.Format("admin.languages.readyPercent", ("percent", selected.CoveragePercent))</span>
         </div>
 
         @if (!selected.IsSource)
@@ -95,14 +101,14 @@
                     <input type="hidden" name="locale" value="@selected.Locale" />
                     <button class="button button-primary" type="submit"
                             disabled="@(Model.AiStatus?.IsAuthenticated != true)">
-                        Generate missing
+                        @ui["admin.languages.generateMissing"]
                     </button>
                 </form>
                 <form method="post" asp-page-handler="RegenerateOutdated">
                     <input type="hidden" name="locale" value="@selected.Locale" />
                     <button class="button" type="submit"
                             disabled="@(selected.Outdated == 0 || Model.AiStatus?.IsAuthenticated != true)">
-                        Regenerate outdated
+                        @ui["admin.languages.regenerateOutdated"]
                     </button>
                 </form>
             </div>
@@ -111,10 +117,10 @@
         <form method="get" class="form-stack" style="margin-top:1rem;">
             <input type="hidden" name="locale" value="@selected.Locale" />
             <label>
-                <span>Search resources</span>
-                <input name="search" value="@Model.Search" placeholder="player, learning.saveWord, Save…" />
+                <span>@ui["admin.languages.searchLabel"]</span>
+                <input name="search" value="@Model.Search" placeholder="@ui["admin.languages.searchPlaceholder"]" />
             </label>
-            <button class="button" type="submit">Search</button>
+            <button class="button" type="submit">@ui["common.search"]</button>
         </form>
     </section>
 
@@ -126,21 +132,21 @@
                     <span class="eyebrow">@entry.Message.Feature · @entry.Message.Surface</span>
                     <h3><code>@entry.Message.Key</code></h3>
                 </div>
-                <span class="status-pill">@(selected.IsSource ? "Source" : entry.Status.ToString())</span>
+                <span class="status-pill">@(selected.IsSource ? ui["admin.languages.sourceStatus"] : entry.Status.ToString())</span>
             </div>
 
             <div class="status-list">
-                <div><span>English source</span><strong>@entry.Message.DefaultText</strong></div>
-                <div><span>Meaning / context</span><strong>@entry.Message.Description</strong></div>
-                <div><span>Tone</span><strong>@entry.Message.Tone</strong></div>
+                <div><span>@ui["admin.languages.englishSourceLabel"]</span><strong>@entry.Message.DefaultText</strong></div>
+                <div><span>@ui["admin.languages.meaningLabel"]</span><strong>@entry.Message.Description</strong></div>
+                <div><span>@ui["admin.languages.toneLabel"]</span><strong>@entry.Message.Tone</strong></div>
                 @if (entry.Message.MaxLength is { } max)
                 {
-                    <div><span>Length guidance</span><strong>≤ @max characters when natural</strong></div>
+                    <div><span>@ui["admin.languages.lengthGuidanceLabel"]</span><strong>@ui.Format("admin.languages.lengthGuidanceValue", ("max", max))</strong></div>
                 }
                 @if (entry.Message.Placeholders is { Count: > 0 })
                 {
                     <div>
-                        <span>Placeholders</span>
+                        <span>@ui["admin.languages.placeholdersLabel"]</span>
                         <strong>@string.Join(", ", entry.Message.Placeholders.Select(x => $"{x.Key}: {x.Value}"))</strong>
                     </div>
                 }
@@ -152,11 +158,11 @@
                     <input type="hidden" name="locale" value="@selected.Locale" />
                     <input type="hidden" name="key" value="@entry.Message.Key" />
                     <label>
-                        <span>@selected.NativeName translation</span>
+                        <span>@ui.Format("admin.languages.translationLabel", ("locale", selected.NativeName))</span>
                         <textarea name="text" rows="2" required>@entry.Text</textarea>
                     </label>
                     <div class="inline-actions">
-                        <button class="button" type="submit">Save manual</button>
+                        <button class="button" type="submit">@ui["admin.languages.saveManual"]</button>
                     </div>
                 </form>
 
@@ -165,7 +171,7 @@
                     <form method="post" asp-page-handler="MarkReviewed">
                         <input type="hidden" name="locale" value="@selected.Locale" />
                         <input type="hidden" name="key" value="@entry.Message.Key" />
-                        <button class="text-link" type="submit">Mark reviewed</button>
+                        <button class="text-link" type="submit">@ui["admin.languages.markReviewed"]</button>
                     </form>
                 }
 

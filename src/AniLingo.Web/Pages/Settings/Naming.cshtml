@@ -2,15 +2,16 @@
 @using AniLingo.Web.Features.Acquisition.Naming
 @model AniLingo.Web.Pages.Settings.NamingModel
 @{
-    ViewData["Title"] = "Anime naming";
+    var ui = Model.Ui;
+    ViewData["Title"] = ui["settings.naming.title"];
 }
 
 <header class="page-header">
     <div>
-        <a class="back-link" href="/Admin/Sonarr">&larr; Sonarr</a>
-        <span class="eyebrow">Settings &middot; Acquisition</span>
-        <h1>Anime naming</h1>
-        <p>Sonarr-compatible folder and file templates. Saving a profile never renames existing files; renames are previewed and confirmed per anime.</p>
+        <a class="back-link" href="/Admin/Sonarr">@ui["settings.naming.backToSonarr"]</a>
+        <span class="eyebrow">@ui["settings.naming.eyebrow"]</span>
+        <h1>@ui["settings.naming.title"]</h1>
+        <p>@ui["settings.naming.pageDescription"]</p>
     </div>
 </header>
 
@@ -26,7 +27,7 @@
 <div class="settings-grid">
     <section class="panel">
         <div class="panel-heading">
-            <h2>Profiles</h2>
+            <h2>@ui["settings.naming.profilesHeading"]</h2>
             <span>@Model.State.Profiles.Length</span>
         </div>
         <ul>
@@ -36,26 +37,26 @@
                 var usage = Model.UsageCount(profile.Id);
                 <li>
                     <a asp-page="/Settings/Naming" asp-route-edit="@profile.Id"><strong>@profile.Name</strong></a>
-                    <span class="muted">@profile.Id@(isDefault ? " · default" : "")@(usage > 0 ? $" · {usage} assignment(s)" : "")</span>
+                    <span class="muted">@profile.Id@(isDefault ? $" · {ui["settings.naming.default"]}" : "")@(usage > 0 ? $" · {ui.Format("settings.naming.assignments", ("count", usage))}" : "")</span>
                 </li>
             }
         </ul>
         <div class="inline-actions">
             @foreach (var preset in AnimeNamingPresets.All)
             {
-                <a class="button" asp-page="/Settings/Naming" asp-route-preset="@preset.Id">New from “@preset.Name”</a>
+                <a class="button" asp-page="/Settings/Naming" asp-route-preset="@preset.Id">@ui.Format("settings.naming.newFromPreset", ("name", preset.Name))</a>
             }
         </div>
     </section>
 
     <section class="panel">
         <div class="panel-heading">
-            <h2>Selection</h2>
-            <span>Anime &gt; library &gt; default</span>
+            <h2>@ui["settings.naming.selectionHeading"]</h2>
+            <span>@ui["settings.naming.selectionPriority"]</span>
         </div>
         <form method="post" asp-page-handler="Default" class="form-stack">
             <label>
-                <span>Default profile</span>
+                <span>@ui["settings.naming.defaultProfileLabel"]</span>
                 <select name="profileId">
                     @foreach (var profile in Model.State.Profiles)
                     {
@@ -63,7 +64,7 @@
                     }
                 </select>
             </label>
-            <div class="inline-actions"><button class="button" type="submit">Set default</button></div>
+            <div class="inline-actions"><button class="button" type="submit">@ui["settings.naming.setDefault"]</button></div>
         </form>
 
         @foreach (var root in Model.Roots)
@@ -72,31 +73,31 @@
             <form method="post" asp-page-handler="Library" class="form-stack">
                 <input type="hidden" name="rootId" value="@root.Id" />
                 <label>
-                    <span>Library “@root.Name”</span>
+                    <span>@ui.Format("settings.naming.libraryLabel", ("name", root.Name))</span>
                     <select name="profileId">
-                        <option value="" selected="@(assigned is null)">Use default</option>
+                        <option value="" selected="@(assigned is null)">@ui["settings.naming.useDefault"]</option>
                         @foreach (var profile in Model.State.Profiles)
                         {
                             <option value="@profile.Id" selected="@(profile.Id.Equals(assigned, StringComparison.OrdinalIgnoreCase))">@profile.Name</option>
                         }
                     </select>
                 </label>
-                <div class="inline-actions"><button class="button" type="submit">Save</button></div>
+                <div class="inline-actions"><button class="button" type="submit">@ui["common.save"]</button></div>
             </form>
         }
-        <p class="muted">Per-anime profiles and series type are chosen on each anime's rename page.</p>
+        <p class="muted">@ui["settings.naming.perAnimeNote"]</p>
     </section>
 </div>
 
 <section class="panel">
     <div class="panel-heading">
-        <h2>@(Model.IsExistingProfile ? $"Edit “{Model.Input.Name}”" : "New profile")</h2>
+        <h2>@(Model.IsExistingProfile ? ui.Format("settings.naming.editProfile", ("name", Model.Input.Name)) : ui["settings.naming.newProfile"])</h2>
         <span>@Model.Input.Id</span>
     </div>
 
     <form method="post" class="form-stack">
         <label>
-            <span>Name</span>
+            <span>@ui["settings.naming.nameLabel"]</span>
             <input asp-for="Input.Name" maxlength="80" required />
         </label>
         @if (Model.IsExistingProfile)
@@ -106,67 +107,67 @@
         else
         {
             <label>
-                <span>Profile ID</span>
+                <span>@ui["settings.naming.profileIdLabel"]</span>
                 <input asp-for="Input.Id" maxlength="64" pattern="[a-z0-9-]+" required />
             </label>
         }
         <label>
-            <span>Series folder format</span>
+            <span>@ui["settings.naming.seriesFolderFormatLabel"]</span>
             <input asp-for="Input.SeriesFolderFormat" spellcheck="false" />
         </label>
         <label class="checkbox-row">
             <input type="checkbox" asp-for="Input.UseSeasonFolders" />
-            <span>Use season folders</span>
+            <span>@ui["settings.naming.useSeasonFolders"]</span>
         </label>
         <label>
-            <span>Season folder format</span>
+            <span>@ui["settings.naming.seasonFolderFormatLabel"]</span>
             <input asp-for="Input.SeasonFolderFormat" spellcheck="false" />
         </label>
         <label>
-            <span>Specials folder format</span>
+            <span>@ui["settings.naming.specialsFolderFormatLabel"]</span>
             <input asp-for="Input.SpecialsFolderFormat" spellcheck="false" />
         </label>
         <label>
-            <span>Standard episode format</span>
+            <span>@ui["settings.naming.standardEpisodeFormatLabel"]</span>
             <input asp-for="Input.StandardEpisodeFormat" spellcheck="false" />
         </label>
         <label>
-            <span>Daily episode format</span>
+            <span>@ui["settings.naming.dailyEpisodeFormatLabel"]</span>
             <input asp-for="Input.DailyEpisodeFormat" spellcheck="false" />
         </label>
         <label>
-            <span>Anime episode format</span>
+            <span>@ui["settings.naming.animeEpisodeFormatLabel"]</span>
             <input asp-for="Input.AnimeEpisodeFormat" spellcheck="false" />
-            <small class="muted">Used when every episode of the file has an absolute number; otherwise the standard format applies.</small>
+            <small class="muted">@ui["settings.naming.animeEpisodeFormatHint"]</small>
         </label>
         <label>
-            <span>Multi-episode style</span>
+            <span>@ui["settings.naming.multiEpisodeStyleLabel"]</span>
             <select asp-for="Input.MultiEpisodeStyle">
-                <option value="@AnimeMultiEpisodeStyle.Extend">Extend (S01E01-02-03)</option>
-                <option value="@AnimeMultiEpisodeStyle.Duplicate">Duplicate (S01E01.S01E02)</option>
-                <option value="@AnimeMultiEpisodeStyle.Repeat">Repeat (S01E01E02E03)</option>
-                <option value="@AnimeMultiEpisodeStyle.Scene">Scene (S01E01-E02-E03)</option>
-                <option value="@AnimeMultiEpisodeStyle.Range">Range (S01E01-03)</option>
-                <option value="@AnimeMultiEpisodeStyle.PrefixedRange">Prefixed range (S01E01-E03)</option>
+                <option value="@AnimeMultiEpisodeStyle.Extend">@ui["settings.naming.multiEpisode.extend"]</option>
+                <option value="@AnimeMultiEpisodeStyle.Duplicate">@ui["settings.naming.multiEpisode.duplicate"]</option>
+                <option value="@AnimeMultiEpisodeStyle.Repeat">@ui["settings.naming.multiEpisode.repeat"]</option>
+                <option value="@AnimeMultiEpisodeStyle.Scene">@ui["settings.naming.multiEpisode.scene"]</option>
+                <option value="@AnimeMultiEpisodeStyle.Range">@ui["settings.naming.multiEpisode.range"]</option>
+                <option value="@AnimeMultiEpisodeStyle.PrefixedRange">@ui["settings.naming.multiEpisode.prefixedRange"]</option>
             </select>
         </label>
         <label class="checkbox-row">
             <input type="checkbox" asp-for="Input.ReplaceIllegalCharacters" />
-            <span>Replace illegal characters (otherwise they are removed)</span>
+            <span>@ui["settings.naming.replaceIllegalCharacters"]</span>
         </label>
         <label>
-            <span>Colon replacement</span>
+            <span>@ui["settings.naming.colonReplacementLabel"]</span>
             <select asp-for="Input.ColonReplacement">
-                <option value="@AnimeColonReplacement.Smart">Smart replace (": " → " - ", ":" → "-")</option>
-                <option value="@AnimeColonReplacement.Delete">Delete</option>
-                <option value="@AnimeColonReplacement.Dash">Dash</option>
-                <option value="@AnimeColonReplacement.SpaceDash">Space dash</option>
-                <option value="@AnimeColonReplacement.SpaceDashSpace">Space dash space</option>
-                <option value="@AnimeColonReplacement.Custom">Custom</option>
+                <option value="@AnimeColonReplacement.Smart">@ui["settings.naming.colon.smart"]</option>
+                <option value="@AnimeColonReplacement.Delete">@ui["settings.naming.colon.delete"]</option>
+                <option value="@AnimeColonReplacement.Dash">@ui["settings.naming.colon.dash"]</option>
+                <option value="@AnimeColonReplacement.SpaceDash">@ui["settings.naming.colon.spaceDash"]</option>
+                <option value="@AnimeColonReplacement.SpaceDashSpace">@ui["settings.naming.colon.spaceDashSpace"]</option>
+                <option value="@AnimeColonReplacement.Custom">@ui["settings.naming.colon.custom"]</option>
             </select>
         </label>
         <label>
-            <span>Custom colon replacement</span>
+            <span>@ui["settings.naming.customColonReplacementLabel"]</span>
             <input asp-for="Input.CustomColonReplacement" maxlength="10" />
         </label>
 
@@ -181,8 +182,8 @@
         }
 
         <div class="inline-actions">
-            <button class="button" type="submit" asp-page-handler="Preview">Preview</button>
-            <button class="button button-primary" type="submit" asp-page-handler="Save">Save profile</button>
+            <button class="button" type="submit" asp-page-handler="Preview">@ui["settings.naming.preview"]</button>
+            <button class="button button-primary" type="submit" asp-page-handler="Save">@ui["settings.naming.saveProfile"]</button>
         </div>
     </form>
 
@@ -190,7 +191,7 @@
     {
         <form method="post" asp-page-handler="Delete" class="inline-actions">
             <input type="hidden" name="profileId" value="@Model.Input.Id" />
-            <button class="button" type="submit">Delete profile</button>
+            <button class="button" type="submit">@ui["settings.naming.deleteProfile"]</button>
         </form>
     }
 </section>
@@ -199,8 +200,8 @@
 {
     <section class="panel">
         <div class="panel-heading">
-            <h2>Preview</h2>
-            <span>Sonarr sample: The Series Title's! (2010)</span>
+            <h2>@ui["settings.naming.previewHeading"]</h2>
+            <span>@ui["settings.naming.sonarrSample"]</span>
         </div>
         <dl class="status-list">
             @foreach (var line in Model.Preview)

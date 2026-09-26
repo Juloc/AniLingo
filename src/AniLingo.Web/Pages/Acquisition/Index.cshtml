@@ -5,11 +5,29 @@
 @using AniLingo.Web.Features.Acquisition.Ownership
 @using AniLingo.Web.Features.Acquisition.Pipeline
 @using AniLingo.Web.Features.Acquisition.Prowlarr
+@using AniLingo.Web.Features.Operations
 @{
-    ViewData["Title"] = "Anime acquisition";
+    var ui = Model.Ui;
+    ViewData["Title"] = ui["acquisition.title"];
     var overview = Model.Overview;
     var scheduler = Model.Scheduler;
     var search = Model.SearchResult;
+
+    string DescribeMode(AnimeManagementMode mode) => mode switch
+    {
+        AnimeManagementMode.ReadOnlyCoexistence => ui["settings.sonarrMigration.mode.readOnlyCoexistence"],
+        AnimeManagementMode.ParallelAcquisition => ui["settings.sonarrMigration.mode.parallelAcquisition"],
+        AnimeManagementMode.AniLingoManaged => ui["settings.sonarrMigration.mode.aniLingoManaged"],
+        _ => mode.ToString()
+    };
+
+    string LogLevelLabel(OperationLogLevel level) => level switch
+    {
+        OperationLogLevel.Information => ui["admin.logs.level.information"],
+        OperationLogLevel.Warning => ui["admin.logs.level.warning"],
+        OperationLogLevel.Error => ui["admin.logs.level.error"],
+        _ => level.ToString()
+    };
 }
 
 @section Head {
@@ -18,12 +36,12 @@
 
 <header class="page-header">
     <div>
-        <span class="eyebrow">Library · Owner</span>
-        <h1>Anime acquisition</h1>
-        <p>Wanted episodes, downloads, imports and the reason behind every decision.</p>
+        <span class="eyebrow">@ui["acquisition.eyebrow"]</span>
+        <h1>@ui["acquisition.title"]</h1>
+        <p>@ui["acquisition.subtitle"]</p>
     </div>
     <form method="post" asp-page-handler="RunNow">
-        <button class="button button-primary" type="submit" disabled="@(!Model.ProwlarrConfigured)">Search all now</button>
+        <button class="button button-primary" type="submit" disabled="@(!Model.ProwlarrConfigured)">@ui["acquisition.searchAllNow"]</button>
     </form>
 </header>
 
@@ -43,61 +61,63 @@
 <div class="settings-grid">
     <section class="panel">
         <div class="panel-heading">
-            <h2>Schedule</h2>
+            <h2>@ui["acquisition.scheduleHeading"]</h2>
             <span>
                 @if (scheduler.IsRunning)
                 {
-                    <text>Running now</text>
+                    <text>@ui["acquisition.schedule.runningNow"]</text>
                 }
                 else if (overview.Schedule.Enabled && scheduler.NextRunAtUtc is { } next)
                 {
-                    <text>Next run @next.ToLocalTime().ToString("t")</text>
+                    <text>@ui.Format("acquisition.schedule.nextRun", ("time", next.ToLocalTime().ToString("t")))</text>
                 }
                 else
                 {
-                    <text>@(overview.Schedule.Enabled ? "Waiting for startup" : "Off")</text>
+                    <text>@(overview.Schedule.Enabled ? ui["acquisition.schedule.waitingForStartup"] : ui["acquisition.schedule.off"])</text>
                 }
             </span>
         </div>
         <form method="post" asp-page-handler="Schedule" class="acquisition-inline-form">
             <label class="acquisition-check">
                 <input type="checkbox" name="enabled" value="true" checked="@overview.Schedule.Enabled" />
-                <span>Search wanted episodes automatically</span>
+                <span>@ui["acquisition.searchAutomaticallyCheckbox"]</span>
             </label>
             <label>
-                <span>Every (minutes)</span>
+                <span>@ui["acquisition.everyMinutesLabel"]</span>
                 <input type="number"
                        name="intervalMinutes"
                        min="@AnimeMonitoringSchedule.MinimumIntervalMinutes"
                        max="@AnimeMonitoringSchedule.MaximumIntervalMinutes"
                        value="@overview.Schedule.IntervalMinutes" />
             </label>
-            <button class="button" type="submit">Save</button>
+            <button class="button" type="submit">@ui["common.save"]</button>
         </form>
         @if (scheduler.LastRunAtUtc is { } lastRun)
         {
             <p class="muted">
-                Last full run @lastRun.ToLocalTime().ToString("g"):
-                @(scheduler.LastRunError is { } runError ? $"failed — {runError}" : scheduler.LastRun?.ToString())
+                @ui.Format("acquisition.lastFullRun", ("time", lastRun.ToLocalTime().ToString("g")))
+                @(scheduler.LastRunError is { } runError ? ui.Format("acquisition.lastRunFailed", ("error", runError)) : scheduler.LastRun?.ToString())
             </p>
         }
         <p class="muted">
-            Each run searches at most @AnimeAcquisitionPipeline.MaxSearchesPerRun episodes
-            (@AnimeAcquisitionPipeline.MaxSearchesPerAnimePerRun per anime); runs never overlap.
+            @ui.Format(
+                "acquisition.maxSearchesNote",
+                ("max", AnimeAcquisitionPipeline.MaxSearchesPerRun),
+                ("perAnime", AnimeAcquisitionPipeline.MaxSearchesPerAnimePerRun))
         </p>
     </section>
 
     <section class="panel">
-        <div class="panel-heading"><h2>Connections</h2></div>
+        <div class="panel-heading"><h2>@ui["acquisition.connectionsHeading"]</h2></div>
         <div class="acquisition-connection-list">
-            <a asp-page="/Settings/Indexers/Index">Indexers</a>
-            <span class="status-pill @(Model.ProwlarrConfigured ? "status-ok" : "status-warn")">@(Model.ProwlarrConfigured ? "Configured" : "Not configured")</span>
-            <a asp-page="/Settings/DownloadClients/Index">Download clients</a>
-            <span class="status-pill @(Model.SabnzbdConfigured ? "status-ok" : "status-warn")">@(Model.SabnzbdConfigured ? "Configured" : "Not configured")</span>
-            <a asp-page="/Settings/SonarrMigration">Sonarr migration</a>
-            <span class="muted">Per-anime management mode</span>
-            <a asp-page="/Settings/Acquisition">Import, path mapping &amp; policy</a>
-            <span class="muted">Import mode, remote paths, tags, delay profiles</span>
+            <a asp-page="/Settings/Indexers/Index">@ui["acquisition.indexersLink"]</a>
+            <span class="status-pill @(Model.ProwlarrConfigured ? "status-ok" : "status-warn")">@(Model.ProwlarrConfigured ? ui["acquisition.configured"] : ui["acquisition.notConfigured"])</span>
+            <a asp-page="/Settings/DownloadClients/Index">@ui["acquisition.downloadClientsLink"]</a>
+            <span class="status-pill @(Model.SabnzbdConfigured ? "status-ok" : "status-warn")">@(Model.SabnzbdConfigured ? ui["acquisition.configured"] : ui["acquisition.notConfigured"])</span>
+            <a asp-page="/Settings/SonarrMigration">@ui["settings.sonarrMigration.title"]</a>
+            <span class="muted">@ui["acquisition.perAnimeManagementModeNote"]</span>
+            <a asp-page="/Settings/Acquisition">@ui["settings.acquisition.heading"]</a>
+            <span class="muted">@ui["acquisition.importModeNote"]</span>
         </div>
     </section>
 </div>
@@ -105,18 +125,18 @@
 @if (Model.RecentHistory.Count > 0)
 {
     <section class="panel">
-        <div class="panel-heading"><h2>Recent grab/import history</h2></div>
+        <div class="panel-heading"><h2>@ui["acquisition.recentHistoryHeading"]</h2></div>
         <table class="data-table">
             <thead>
                 <tr>
-                    <th>When</th>
-                    <th>Anime</th>
-                    <th>Episode</th>
-                    <th>Event</th>
-                    <th>Release</th>
-                    <th>Quality</th>
-                    <th>Score</th>
-                    <th>Reason</th>
+                    <th>@ui["acquisition.column.when"]</th>
+                    <th>@ui["acquisition.column.anime"]</th>
+                    <th>@ui["acquisition.column.episode"]</th>
+                    <th>@ui["acquisition.column.event"]</th>
+                    <th>@ui["acquisition.column.release"]</th>
+                    <th>@ui["acquisition.column.quality"]</th>
+                    <th>@ui["acquisition.column.score"]</th>
+                    <th>@ui["acquisition.column.reason"]</th>
                 </tr>
             </thead>
             <tbody>
@@ -142,8 +162,8 @@
 {
     <section class="panel" id="search-results">
         <div class="panel-heading">
-            <h2>Search · @search.Target.Anime.Title @(search.Episode is { } searched ? AnimeAcquisitionPipeline.Label(searched) : search.Mode.ToString())</h2>
-            <a asp-page="/Acquisition/Index">Close</a>
+            <h2>@ui.Format("acquisition.searchResultsHeading", ("title", search.Target.Anime.Title), ("scope", search.Episode is { } searched ? AnimeAcquisitionPipeline.Label(searched) : search.Mode.ToString()))</h2>
+            <a asp-page="/Acquisition/Index">@ui["acquisition.close"]</a>
         </div>
         @if (search.Error is not null)
         {
@@ -151,11 +171,11 @@
         }
         @foreach (var warning in search.Warnings)
         {
-            <p class="muted">Prowlarr: @warning.Message (@warning.Query)</p>
+            <p class="muted">@ui.Format("acquisition.prowlarrWarning", ("message", warning.Message), ("query", warning.Query))</p>
         }
         @if (search.Error is null && search.Candidates.Count == 0)
         {
-            <p class="muted">Prowlarr returned no results.</p>
+            <p class="muted">@ui["acquisition.noProwlarrResults"]</p>
         }
         else if (search.Candidates.Count > 0)
         {
@@ -168,8 +188,8 @@
                                 <strong>@candidate.Release.Title</strong>
                             </div>
                             <span>
-                                @candidate.Score.QualityKey · score @candidate.Score.Score
-                                · @(candidate.Release.Indexer ?? "unknown indexer")
+                                @candidate.Score.QualityKey · @ui.Format("acquisition.scoreValue", ("score", candidate.Score.Score))
+                                · @(candidate.Release.Indexer ?? ui["acquisition.unknownIndexer"])
                                 @if (candidate.Release.SizeBytes is { } size)
                                 {
                                     <text> · @((size / 1024d / 1024d / 1024d).ToString("0.00")) GB</text>
@@ -182,7 +202,7 @@
                             <small>@candidate.Decision.Reason @string.Join(" ", candidate.Score.RejectionReasons)</small>
                         </div>
                         <div class="operation-row-meta">
-                            <span class="status-pill @(candidate.Decision.Grab ? "status-ok" : "status-warn")">@(candidate.Decision.Grab ? "Accepted" : "Rejected")</span>
+                            <span class="status-pill @(candidate.Decision.Grab ? "status-ok" : "status-warn")">@(candidate.Decision.Grab ? ui["acquisition.accepted"] : ui["acquisition.rejected"])</span>
                             @if (candidate.Release.InternalDownloadUri is not null)
                             {
                                 <form method="post" asp-page-handler="Grab">
@@ -191,7 +211,7 @@
                                     <input type="hidden" name="episode" value="@Model.Episode" />
                                     <input type="hidden" name="mode" value="@search.Mode" />
                                     <input type="hidden" name="releaseIdentity" value="@candidate.Release.Identity" />
-                                    <button class="button @(candidate.Decision.Grab ? "button-primary" : "")" type="submit">@(candidate.Decision.Grab ? "Grab" : "Grab anyway")</button>
+                                    <button class="button @(candidate.Decision.Grab ? "button-primary" : "")" type="submit">@(candidate.Decision.Grab ? ui["acquisition.grab"] : ui["acquisition.grabAnyway"])</button>
                                 </form>
                             }
                         </div>
@@ -206,20 +226,20 @@
 {
     <section class="panel" id="manual-import">
         <div class="panel-heading">
-            <h2>Needs a decision</h2>
-            <span>@overview.ImportsNeedingAttention.Count import(s)</span>
+            <h2>@ui["acquisition.needsDecisionHeading"]</h2>
+            <span>@ui.Format("acquisition.importsCount", ("count", overview.ImportsNeedingAttention.Count))</span>
         </div>
         @foreach (var record in overview.ImportsNeedingAttention)
         {
             <article class="acquisition-import">
                 <div class="operation-title-line">
                     <strong>@record.AnimeTitle</strong>
-                    <span class="status-pill status-warn">@(record.Status == AnimeImportStatus.Failed ? "Failed" : "Manual import")</span>
+                    <span class="status-pill status-warn">@(record.Status == AnimeImportStatus.Failed ? ui["acquisition.failed"] : ui["acquisition.manualImport"])</span>
                 </div>
                 <p class="muted">@record.Message</p>
                 @if (!string.IsNullOrWhiteSpace(record.DownloadPath))
                 {
-                    <p class="muted acquisition-wrap">Download: <code>@record.DownloadPath</code></p>
+                    <p class="muted acquisition-wrap">@ui["acquisition.downloadLabel"] <code>@record.DownloadPath</code></p>
                 }
                 @foreach (var file in record.Files.Where(file => file.Status is AnimeImportFileStatus.ManualRequired or AnimeImportFileStatus.Failed))
                 {
@@ -233,14 +253,14 @@
                             <input type="hidden" name="recordId" value="@record.Id" />
                             <input type="hidden" name="sourcePath" value="@file.SourcePath" />
                             <label>
-                                <span>Season</span>
+                                <span>@ui["acquisition.seasonLabel"]</span>
                                 <input type="number" name="season" min="0" value="@(target?.SeasonNumber ?? 1)" required />
                             </label>
                             <label>
-                                <span>Episode</span>
+                                <span>@ui["acquisition.episodeLabel"]</span>
                                 <input type="number" name="episode" min="1" value="@target?.EpisodeNumber" required />
                             </label>
-                            <button class="button" type="submit">Import</button>
+                            <button class="button" type="submit">@ui["acquisition.import"]</button>
                         </form>
                     </div>
                 }
@@ -248,9 +268,9 @@
                     <input type="hidden" name="recordId" value="@record.Id" />
                     @if (record.ImportOperationId is { } importOperation)
                     {
-                        <a asp-page="/Admin/Operation" asp-route-id="@importOperation">Details</a>
+                        <a asp-page="/Admin/Operation" asp-route-id="@importOperation">@ui["acquisition.details"]</a>
                     }
-                    <button class="button" type="submit">Dismiss</button>
+                    <button class="button" type="submit">@ui["acquisition.dismiss"]</button>
                 </form>
             </article>
         }
@@ -259,12 +279,12 @@
 
 <section class="panel">
     <div class="panel-heading">
-        <h2>Downloads</h2>
-        <span>@overview.ActiveDownloads.Count active</span>
+        <h2>@ui["acquisition.downloadsHeading"]</h2>
+        <span>@ui.Format("acquisition.activeCount", ("count", overview.ActiveDownloads.Count))</span>
     </div>
     @if (overview.ActiveDownloads.Count == 0)
     {
-        <p class="muted">No anime download is running.</p>
+        <p class="muted">@ui["acquisition.noDownloadsRunning"]</p>
     }
     else
     {
@@ -274,7 +294,7 @@
                 <a class="operation-row operation-row-detailed" asp-page="/Admin/Operation" asp-route-id="@download.Operation.Id">
                     <div class="operation-copy">
                         <strong>@download.Acquisition.AnimeTitle · @AniLingo.Web.Features.Acquisition.Sabnzbd.SabnzbdAcquisitionService.FormatEpisodes(download.Acquisition.Episodes)</strong>
-                        <span>@download.Attempt.ReleaseTitle · attempt @download.Attempt.Number of @download.Acquisition.MaxAttempts</span>
+                        <span>@ui.Format("acquisition.attemptOf", ("title", download.Attempt.ReleaseTitle), ("number", download.Attempt.Number), ("max", download.Acquisition.MaxAttempts))</span>
                         @if (!string.IsNullOrWhiteSpace(download.Operation.Message))
                         {
                             <small>@download.Operation.Message</small>
@@ -297,12 +317,12 @@
 
 <section class="panel">
     <div class="panel-heading">
-        <h2>Wanted</h2>
-        <span>@overview.Wanted.Count episode(s)</span>
+        <h2>@ui["acquisition.wantedHeading"]</h2>
+        <span>@ui.Format("acquisition.episodesCount", ("count", overview.Wanted.Count))</span>
     </div>
     @if (overview.Wanted.Count == 0)
     {
-        <p class="muted">Nothing is wanted. Monitor an anime on its library page to track missing episodes.</p>
+        <p class="muted">@ui["acquisition.nothingWanted"]</p>
     }
     else
     {
@@ -313,13 +333,16 @@
                     <div class="operation-copy">
                         <strong>@row.Title · @AnimeAcquisitionPipeline.Label(row.Key)</strong>
                         <span>
-                            @(row.Reason == AnimeWantedReason.Missing ? "Missing" : "Upgrade wanted") since @row.SinceUtc.ToLocalTime().ToString("g")
+                            @ui.Format(
+                                "acquisition.wantedSince",
+                                ("reason", row.Reason == AnimeWantedReason.Missing ? ui["acquisition.reason.missing"] : ui["acquisition.reason.upgradeWanted"]),
+                                ("time", row.SinceUtc.ToLocalTime().ToString("g")))
                             @if (row.Attempt is { } attempt)
                             {
                                 <text> · @attempt.Status</text>
                                 @if (attempt.Status == AnimeAcquisitionAttemptStatus.Failed && attempt.NextRetryAtUtc is { } retry)
                                 {
-                                    <text>, retry after @retry.ToLocalTime().ToString("g")</text>
+                                    <text>, @ui.Format("acquisition.retryAfter", ("time", retry.ToLocalTime().ToString("g")))</text>
                                 }
                             }
                         </span>
@@ -331,26 +354,26 @@
                            asp-route-season="@row.Key.SeasonNumber"
                            asp-route-episode="@row.Key.EpisodeNumber"
                            asp-route-mode="Episode"
-                           asp-fragment="search-results">Search</a>
+                           asp-fragment="search-results">@ui["common.search"]</a>
                     </div>
                 </div>
             }
         </div>
         @if (overview.Wanted.Count > 200)
         {
-            <p class="muted">@(overview.Wanted.Count - 200) more wanted episode(s) not shown.</p>
+            <p class="muted">@ui.Format("acquisition.moreWantedNotShown", ("count", overview.Wanted.Count - 200))</p>
         }
     }
 </section>
 
 <section class="panel">
     <div class="panel-heading">
-        <h2>Monitored anime</h2>
+        <h2>@ui["acquisition.monitoredHeading"]</h2>
         <span>@overview.Monitored.Count</span>
     </div>
     @if (overview.Monitored.Count == 0)
     {
-        <p class="muted">No anime is monitored yet. Open an anime in the library and turn on monitoring in its acquisition section.</p>
+        <p class="muted">@ui["acquisition.noneMonitored"]</p>
     }
     else
     {
@@ -361,18 +384,22 @@
                     <div class="operation-copy">
                         <a asp-page="/Library/Anime" asp-route-id="@anime.AnimeId" asp-fragment="acquisition"><strong>@anime.Title</strong></a>
                         <span>
-                            @SonarrMigration.Describe(anime.Mode) · profile @anime.ProfileId · @anime.WantedCount wanted
+                            @ui.Format(
+                                "acquisition.monitoredSummary",
+                                ("mode", DescribeMode(anime.Mode)),
+                                ("profile", anime.ProfileId),
+                                ("wanted", anime.WantedCount))
                             @if (anime.IndexerIds.Length > 0)
                             {
-                                <text> · indexers @string.Join(", ", anime.IndexerIds)</text>
+                                <text> · @ui.Format("acquisition.indexersList", ("list", string.Join(", ", anime.IndexerIds)))</text>
                             }
                         </span>
                     </div>
                     <div class="operation-row-meta inline-actions">
-                        <a class="button" asp-page="/Acquisition/Index" asp-route-search="@anime.AnimeKey" asp-route-mode="Anime" asp-fragment="search-results">Interactive</a>
+                        <a class="button" asp-page="/Acquisition/Index" asp-route-search="@anime.AnimeKey" asp-route-mode="Anime" asp-fragment="search-results">@ui["acquisition.interactive"]</a>
                         <form method="post" asp-page-handler="SearchAnime">
                             <input type="hidden" name="animeKey" value="@anime.AnimeKey" />
-                            <button class="button" type="submit" disabled="@(anime.Mode == AnimeManagementMode.ReadOnlyCoexistence)">Search now</button>
+                            <button class="button" type="submit" disabled="@(anime.Mode == AnimeManagementMode.ReadOnlyCoexistence)">@ui["acquisition.searchNow"]</button>
                         </form>
                     </div>
                 </div>
@@ -383,12 +410,12 @@
 
 <section class="panel">
     <div class="panel-heading">
-        <h2>Recent decisions</h2>
-        <a asp-page="/Admin/Logs" asp-route-module="@AnimeAcquisitionPipeline.LogModule">All</a>
+        <h2>@ui["acquisition.recentDecisionsHeading"]</h2>
+        <a asp-page="/Admin/Logs" asp-route-module="@AnimeAcquisitionPipeline.LogModule">@ui["acquisition.all"]</a>
     </div>
     @if (overview.RecentDecisions.Count == 0)
     {
-        <p class="muted">No searches, grabs or imports yet.</p>
+        <p class="muted">@ui["acquisition.noDecisionsYet"]</p>
     }
     else
     {
@@ -399,7 +426,7 @@
                    asp-page="/Admin/Operation"
                    asp-route-id="@entry.OperationId">
                     <time>@entry.CreatedAtUtc.ToLocalTime().ToString("g")</time>
-                    <span>@entry.Level</span>
+                    <span>@LogLevelLabel(entry.Level)</span>
                     <strong>@entry.Module</strong>
                     <p>@entry.Message</p>
                 </a>
@@ -411,7 +438,7 @@
 @if (overview.RecentImports.Count > 0)
 {
     <section class="panel">
-        <div class="panel-heading"><h2>Recent imports</h2></div>
+        <div class="panel-heading"><h2>@ui["acquisition.recentImportsHeading"]</h2></div>
         <div class="operation-list">
             @foreach (var record in overview.RecentImports)
             {
