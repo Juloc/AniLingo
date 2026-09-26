@@ -1,4 +1,5 @@
 using AniLingo.Web.Data;
+using AniLingo.Web.Features.Acquisition.Import;
 using AniLingo.Web.Features.Acquisition.Monitoring;
 using AniLingo.Web.Features.Acquisition.Naming;
 using AniLingo.Web.Features.Acquisition.Ownership;
@@ -241,6 +242,36 @@ public sealed class AnimeNamingRenameTests
                 now));
             state.Blocklist.Add(new SabnzbdBlockedRelease("release-1", "Frieren - 02", "frieren", SabnzbdFailureKind.Download, "failed", null, now));
         });
+        var wantedKey = new AnimeEpisodeKey("frieren", 1, 2);
+        await fixture.Monitoring.UpdateAsync(state => AnimeMonitoringEngine.MarkGrabbed(
+            state with
+            {
+                Anime = new Dictionary<string, AnimeMonitorSettings>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["frieren"] = new("frieren", true, true, [], [])
+                },
+                Wanted = new Dictionary<string, AnimeWantedEpisode>(StringComparer.OrdinalIgnoreCase)
+                {
+                    [wantedKey.ToString()] = new(wantedKey, AnimeWantedReason.Missing, now)
+                }
+            },
+            wantedKey,
+            "frieren-02",
+            now));
+        var importId = Guid.NewGuid();
+        await fixture.Imports.UpsertAsync(new AnimeImportRecord(
+            importId,
+            Guid.NewGuid(),
+            null,
+            acquisitionId,
+            "frieren",
+            "Frieren",
+            null,
+            AnimeImportStatus.ManualRequired,
+            [new AnimeImportFileRecord(episode.MediaPath, 1, AnimeImportFileStatus.Imported, [], [], [], 1, [], episode.MediaPath, null)],
+            "needs a decision",
+            now,
+            now));
 
         var plan = await fixture.PlanAsync(renameSeriesFolder: true);
         Assert.AreEqual("frieren (2023)", plan.TargetAnimeKey);
@@ -263,6 +294,14 @@ public sealed class AnimeNamingRenameTests
         Assert.AreEqual("frieren (2023)", acquisition.AnimeKey, "In-flight downloads follow the new anime key.");
         Assert.AreEqual("frieren (2023)", acquisition.Episodes.Single().AnimeKey);
         Assert.AreEqual("frieren (2023)", acquisitions.Blocklist.Single().AnimeKey);
+        var monitoring = await fixture.Monitoring.LoadAsync();
+        Assert.IsTrue(monitoring.Anime["frieren (2023)"].Monitored, "Monitoring settings follow the new anime key.");
+        Assert.IsFalse(monitoring.Anime.ContainsKey("frieren"));
+        Assert.AreEqual("frieren (2023)", monitoring.Wanted.Values.Single().Key.AnimeKey);
+        Assert.AreEqual(AnimeAcquisitionAttemptStatus.Grabbed, monitoring.Attempts["frieren (2023):S01E02"].Status);
+        var import = await fixture.Imports.GetAsync(importId);
+        Assert.AreEqual("frieren (2023)", import!.AnimeKey, "Pending manual imports follow the new anime key.");
+        Assert.AreEqual(target, import.Files.Single().ImportedPath);
 
         var scan = await fixture.ScanAsync();
         Assert.AreEqual(0, scan.Removed);
@@ -290,6 +329,23 @@ public sealed class AnimeNamingRenameTests
 
         Assert.AreEqual(AnimeRenameItemStatus.Blocked, seasonTwo.Status);
         StringAssert.Contains(seasonTwo.Reason, "would be scanned as S01E03");
+    }
+
+    [TestMethod]
+    public async Task RunningAcquisitionImportBlocksRename()
+    {
+        await using var fixture = await RenameFixture.CreateAsync();
+        await fixture.AddEpisodeFileAsync(1, "Frieren 01.mkv");
+        var store = new OperationStore(fixture.Db);
+        var importId = await store.CreateAsync(new OperationDescriptor(AnimeImportExecutor.OperationKind, AnimeImportExecutor.OperationCategory, "Anime import"));
+        await store.MarkRunningAsync(importId);
+
+        var plan = await fixture.PlanAsync();
+
+        Assert.IsFalse(plan.CanExecute);
+        Assert.IsTrue(plan.BlockingReasons.Any(reason => reason.Contains("Anime import", StringComparison.Ordinal)));
+        await store.MarkSucceededAsync(importId, "done");
+        Assert.IsTrue((await fixture.PlanAsync()).CanExecute);
     }
 
     [TestMethod]
@@ -372,6 +428,8 @@ public sealed class AnimeNamingRenameTests
             var protection = DataProtectionProvider.Create(new DirectoryInfo(Path.Combine(tempRoot, "keys")));
             Acquisitions = new SabnzbdAcquisitionStore(protection, new DirectoryInfo(Path.Combine(tempRoot, "acquisition")));
             FileSystem = new TestFileSystem();
+            Monitoring = new AnimeMonitoringStore(tempRoot);
+            Imports = new AnimeImportStore(new DirectoryInfo(Path.Combine(tempRoot, "acquisition")));
             var services = new ServiceCollection().AddSingleton(db).BuildServiceProvider();
             var observation = new SonarrObservationService(
                 new SonarrConnectionStore(protection),
@@ -383,6 +441,8 @@ public sealed class AnimeNamingRenameTests
                 Naming,
                 Ownership,
                 Acquisitions,
+                Monitoring,
+                Imports,
                 observation,
                 new OperationRunner(db, services),
                 FileSystem,
@@ -393,6 +453,8 @@ public sealed class AnimeNamingRenameTests
         public DbContextOptions<AppDbContext> Options { get; }
         public FakeMediaProbeRunner ProbeRunner { get; } = new();
         public SabnzbdAcquisitionStore Acquisitions { get; }
+        public AnimeMonitoringStore Monitoring { get; }
+        public AnimeImportStore Imports { get; }
         public AppDbContext Db { get; }
         public LibraryRoot Root { get; }
         public Anime Anime { get; }

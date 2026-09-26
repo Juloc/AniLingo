@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using AniLingo.Web.Data;
+using AniLingo.Web.Features.Acquisition.Import;
 using AniLingo.Web.Features.Acquisition.Naming;
 using AniLingo.Web.Features.Operations;
 using AniLingo.Web.Features.Storage;
@@ -567,9 +568,13 @@ public sealed class LibraryScanCoordinator(
         await store.PruneFinishedAsync(OperationKind, HistoryLimit, CancellationToken.None);
     }
 
-    // A rename moves files and rewrites their MediaFiles rows as one step; a scan that saw half
-    // of it would treat the moved files as removed and re-added. The rename refuses to start
-    // beside a queued or running scan, and a scan waits here for a rename that already runs.
+    // Renames and acquisition imports move files and rewrite their MediaFiles rows as one step;
+    // a scan that saw half of it would treat the moved files as removed and re-added. Both
+    // refuse to start beside a queued or running scan, and a scan waits here for one that
+    // already runs.
+    private static readonly string[] FileMovingOperationKinds =
+        [AnimeRenameService.OperationKind, AnimeImportExecutor.OperationKind];
+
     private static async Task WaitForRenamesAsync(
         OperationStore store,
         Guid operationId,
@@ -578,13 +583,18 @@ public sealed class LibraryScanCoordinator(
         var reported = false;
         while (true)
         {
-            var renames = await store.ListAsync(
-                new OperationListFilter(
-                    View: "active",
-                    Category: OperationCategory,
-                    Kind: AnimeRenameService.OperationKind),
-                cancellationToken);
-            if (renames.Count == 0)
+            var active = 0;
+            foreach (var kind in FileMovingOperationKinds)
+            {
+                active += (await store.ListAsync(
+                    new OperationListFilter(
+                        View: "active",
+                        Category: OperationCategory,
+                        Kind: kind),
+                    cancellationToken)).Count;
+            }
+
+            if (active == 0)
             {
                 return;
             }
@@ -594,7 +604,7 @@ public sealed class LibraryScanCoordinator(
                 await store.ReportProgressAsync(
                     operationId,
                     0,
-                    "Waiting for a file rename to finish.",
+                    "Waiting for a file rename or import to finish.",
                     cancellationToken: cancellationToken);
                 reported = true;
             }

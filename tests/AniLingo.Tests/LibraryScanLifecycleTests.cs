@@ -1,3 +1,4 @@
+using AniLingo.Web.Features.Acquisition.Import;
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Acquisition.Naming;
 using AniLingo.Web.Features.Auth;
@@ -244,37 +245,39 @@ public sealed class LibraryScanLifecycleTests
     }
 
     [TestMethod]
-    public async Task ScanWaitsForARunningRenameBeforeTouchingTheLibrary()
+    [DataRow(AnimeRenameService.OperationKind, "Rename files: Frieren")]
+    [DataRow(AnimeImportExecutor.OperationKind, "Import Frieren S01E02")]
+    public async Task ScanWaitsForARunningFileMoveBeforeTouchingTheLibrary(string kind, string title)
     {
         await using var host = await LibraryScanTestHost.CreateAsync();
         var root = await host.AddRootAsync("Anime");
         host.WriteMedia(Path.Combine("Frieren", "Season 01", "Frieren - S01E01.mkv"));
 
-        // The rename belongs to the current process, so lane recovery leaves it running.
+        // The rename/import belongs to the current process, so lane recovery leaves it running.
         await host.StartWorkerAsync();
-        Guid renameId;
+        Guid moveId;
         await using (var scope = host.Services.CreateAsyncScope())
         {
             var store = new OperationStore(scope.ServiceProvider.GetRequiredService<AppDbContext>());
-            renameId = await store.CreateAsync(new OperationDescriptor(
-                AnimeRenameService.OperationKind,
+            moveId = await store.CreateAsync(new OperationDescriptor(
+                kind,
                 LibraryScanCoordinator.OperationCategory,
-                "Rename files: Frieren",
+                title,
                 Retryable: false));
-            await store.MarkRunningAsync(renameId);
+            await store.MarkRunningAsync(moveId);
         }
 
         var queued = await host.Scans.QueueAsync(new LibraryScanRequest(root.Id, LibraryScanTrigger.Manual));
         var waiting = await host.WaitForAsync(
             queued.OperationId!.Value,
-            x => x.Message == "Waiting for a file rename to finish.");
+            x => x.Message == "Waiting for a file rename or import to finish.");
         Assert.AreEqual(OperationStatus.Running, waiting.Status);
 
         await using (var scope = host.Services.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            Assert.AreEqual(0, await db.MediaFiles.CountAsync(), "Nothing is reconciled while the rename runs.");
-            await new OperationStore(db).MarkSucceededAsync(renameId);
+            Assert.AreEqual(0, await db.MediaFiles.CountAsync(), "Nothing is reconciled while files are being moved.");
+            await new OperationStore(db).MarkSucceededAsync(moveId);
         }
 
         var done = await host.WaitForAsync(queued.OperationId.Value, x => x.Status == OperationStatus.Succeeded);

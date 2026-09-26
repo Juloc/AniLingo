@@ -24,6 +24,8 @@ Owner-only administration:
 - `/Settings/Sabnzbd` — the one SABnzbd connection shared by Books and Anime (linked from Admin → System and Books → Acquisition settings)
 - `/Settings/SonarrMigration` — per-anime Sonarr/AniLingo ownership (linked from Admin → Sonarr)
 - `/Settings/Naming` — anime naming profiles, default and per-library selection (linked from Admin → Sonarr); per-anime selection and the rename preview live on `/Library/Rename/{animeId}` (see [ANIME_NAMING.md](ANIME_NAMING.md))
+- `/Settings/Prowlarr` — the Prowlarr connection for anime acquisition (linked from Admin → System)
+- `/Acquisition` — anime acquisition overview: schedule, wanted episodes, downloads, imports that need a decision, interactive search and recent decisions (linked from Admin → System and each anime page; see [ANIME_ACQUISITION.md](ANIME_ACQUISITION.md))
 
 Legacy owner routes under `/Settings` redirect to their `/Admin` counterparts.
 

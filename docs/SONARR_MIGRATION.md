@@ -68,7 +68,7 @@ When both managers act on the same release, download or path, AniLingo surfaces 
 
 ## Integration seams
 
-- Grab: `AnimeMonitoringEngine.EvaluateCandidate(..., ownership)` consults `SonarrParallelSafety.CanGrab`.
-- Import: `CompletedDownloadImportPlanner.Plan(..., ownership)` consults `SonarrParallelSafety.CanImport` and `CanMutateLibraryPath` for replaced files.
+- Grab: `AnimeMonitoringEngine.EvaluateCandidate(..., ownership)` consults `SonarrParallelSafety.CanGrab`; `AnimeAcquisitionPipeline` refreshes the snapshot before automatic and owner grabs and registers an AniLingo job for every grab (see [ANIME_ACQUISITION.md](ANIME_ACQUISITION.md)).
+- Import: `CompletedDownloadImportPlanner.Plan(..., ownership)` consults `SonarrParallelSafety.CanImport` and `CanMutateLibraryPath` for replaced files; `AnimeImportExecutor` also checks `CanMutateLibraryPath` for every destination before moving a file.
 - Rename: `AnimeRenameService` calls `SonarrParallelSafety.CanRename` for every file, sidecar and series-folder move before anything is moved (see [ANIME_NAMING.md](ANIME_NAMING.md)).
 - Executors obtain the snapshot from `SonarrObservationService.GetSnapshotAsync`.
