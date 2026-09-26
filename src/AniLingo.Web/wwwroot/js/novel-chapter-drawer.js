@@ -164,15 +164,14 @@
                 opener = document.activeElement;
                 reader.announcePanel("chapters");
                 ensureChapterRows();
-                requestAnimationFrame(() => {
-                    if (window.matchMedia("(min-width: 821px)").matches) {
-                        filter?.focus({ preventScroll: true });
-                    } else {
-                        drawer.focus({ preventScroll: true });
-                    }
-                    list.querySelector(".novel-drawer-row.current")
-                        ?.scrollIntoView({ block: "center" });
-                });
+                // Avoid opening the on-screen keyboard on touch layouts.
+                if (window.matchMedia("(min-width: 821px)").matches && filter) {
+                    filter.focus({ preventScroll: true });
+                } else {
+                    drawer.focus({ preventScroll: true });
+                }
+                list.querySelector(".novel-drawer-row.current")
+                    ?.scrollIntoView({ block: "center" });
             } else if (restoreFocus && opener instanceof HTMLElement) {
                 opener.focus({ preventScroll: true });
                 opener = null;

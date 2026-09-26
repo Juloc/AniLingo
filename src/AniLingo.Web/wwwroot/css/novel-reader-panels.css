@@ -23,6 +23,30 @@
     border-bottom-left-radius: 0;
 }
 
+/* reader-themes.css lifts every direct child of a personalized reader with
+   position: relative; z-index: 1. Floating panels must keep their fixed
+   layer, otherwise they render in the document flow below the chapter. */
+.novel-reader-shell[data-reader-personalization] > .novel-drawer-backdrop {
+    position: fixed;
+    z-index: 75;
+}
+
+.novel-reader-shell[data-reader-personalization] > .novel-chapter-drawer,
+.novel-reader-shell[data-reader-personalization] > .novel-reader-notes {
+    position: fixed;
+    z-index: 80;
+}
+
+.novel-reader-shell[data-reader-personalization] > .novel-selection-menu {
+    position: fixed;
+    z-index: 100;
+}
+
+.novel-reader-shell[data-reader-personalization] > .novel-reader-toast {
+    position: fixed;
+    z-index: 110;
+}
+
 /* Reader drawers */
 .novel-drawer-lock {
     overflow: hidden;

@@ -477,7 +477,7 @@
             if (open) {
                 notesOpener = document.activeElement;
                 reader.announcePanel("notes");
-                requestAnimationFrame(() => notes.focus({ preventScroll: true }));
+                notes.focus({ preventScroll: true });
             } else if (restoreFocus && notesOpener instanceof HTMLElement) {
                 notesOpener.focus({ preventScroll: true });
                 notesOpener = null;

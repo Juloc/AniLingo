@@ -1075,6 +1075,23 @@ body.novel-paged-body {
     pointer-events: none;
 }
 
+/* reader-themes.css lifts direct reader children with position: relative;
+   the progress rail and page controls stay fixed overlays. */
+.novel-reader-shell[data-reader-personalization] > .novel-reader-progress-rail {
+    position: fixed;
+    z-index: 28;
+}
+
+.novel-reader-shell[data-reader-personalization] > .novel-page-controls {
+    position: fixed;
+    z-index: 32;
+}
+
+.novel-reader-shell[data-reader-personalization] > .novel-page-bookmarks {
+    position: fixed;
+    z-index: 29;
+}
+
 .novel-page-bookmark {
     --bookmark-color: #b04455;
     width: 24px;
