@@ -1,20 +1,28 @@
 using AniLingo.Web.Data;
-using AniLingo.Web.Features.Operations;
-using AniLingo.Web.Features.Subtitles;
 using Microsoft.EntityFrameworkCore;
 
 namespace AniLingo.Web.Features.Library;
 
+// Queues one full reconciliation per enabled root once the host is up. The runs themselves
+// go through LibraryScanCoordinator like every other scan, so they share its guard,
+// progress reporting and history.
 public sealed class LibraryStartupScanService(
     IServiceScopeFactory scopeFactory,
+    LibraryScanCoordinator scans,
+    IHostApplicationLifetime lifetime,
     ILogger<LibraryStartupScanService> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // Ensure host startup is never held up by NAS enumeration.
-        await Task.Yield();
+        // Host startup is never held up by NAS probing. Lane recovery only abandons work of the
+        // previous process, so these runs stay queued even if recovery is still in progress.
+        await WaitForStartAsync(stoppingToken);
+        if (stoppingToken.IsCancellationRequested)
+        {
+            return;
+        }
 
-        StartupRoot[] roots;
+        Guid[] roots;
         await using (var scope = scopeFactory.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -22,181 +30,45 @@ public sealed class LibraryStartupScanService(
                 .AsNoTracking()
                 .Where(x => x.IsEnabled)
                 .OrderBy(x => x.CreatedAt)
-                .Select(x => new StartupRoot(x.Id, x.Name))
+                .Select(x => x.Id)
                 .ToArrayAsync(stoppingToken);
         }
 
-        var successfulScans = 0;
-
-        foreach (var root in roots)
+        foreach (var rootId in roots)
         {
-            stoppingToken.ThrowIfCancellationRequested();
-
-            Guid operationId = Guid.Empty;
             try
             {
-                await using var scope = scopeFactory.CreateAsyncScope();
-                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-                var operations = new OperationStore(db);
-
-                operationId = await operations.CreateAsync(
-                    new OperationDescriptor(
-                        "startup-library-scan",
-                        "Library",
-                        "Startup library reconciliation",
-                        root.Name,
-                        Lane: OperationLane.Maintenance,
-                        Retryable: false),
+                var queued = await scans.QueueAsync(
+                    new LibraryScanRequest(rootId, LibraryScanTrigger.Startup),
                     stoppingToken);
 
-                await operations.MarkRunningAsync(
-                    operationId,
-                    stoppingToken);
-                await operations.ReportProgressAsync(
-                    operationId,
-                    10,
-                    "Reconciling media files.",
-                    cancellationToken: stoppingToken);
-
-                var scanner = scope.ServiceProvider.GetRequiredService<LibraryScanner>();
-                var result = await scanner.ScanAsync(root.Id, stoppingToken);
-                successfulScans++;
-
-                await operations.ReportProgressAsync(
-                    operationId,
-                    100,
-                    $"{result.Discovered} added, {result.Updated} changed, {result.Removed} removed.",
-                    cancellationToken: stoppingToken);
-                await operations.MarkSucceededAsync(
-                    operationId,
-                    "Startup library reconciliation completed.",
-                    stoppingToken);
-
-                logger.LogInformation(
-                    "Startup library reconciliation completed for {RootId}: {Discovered} added, {Updated} changed, {Removed} removed.",
-                    root.Id,
-                    result.Discovered,
-                    result.Updated,
-                    result.Removed);
+                if (!queued.Queued)
+                {
+                    logger.LogWarning(
+                        "Startup library reconciliation was not queued for root {RootId}: {Reason}",
+                        rootId,
+                        queued.Message);
+                }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
-                if (operationId != Guid.Empty)
-                {
-                    await TryMarkInterruptedAsync(
-                        operationId,
-                        "Interrupted because AniLingo is stopping.");
-                }
-
-                break;
-            }
-            catch (DirectoryNotFoundException exception)
-            {
-                await TryMarkFailedAsync(operationId, "Media root is unavailable.");
-                logger.LogWarning(
-                    exception,
-                    "Startup library reconciliation skipped unavailable root {RootId}. Existing library state was preserved.",
-                    root.Id);
-            }
-            catch (IOException exception)
-            {
-                await TryMarkFailedAsync(operationId, "Media root could not be read safely.");
-                logger.LogWarning(
-                    exception,
-                    "Startup library reconciliation could not safely read root {RootId}. Existing library state was preserved.",
-                    root.Id);
-            }
-            catch (UnauthorizedAccessException exception)
-            {
-                await TryMarkFailedAsync(operationId, "Media root access was denied.");
-                logger.LogWarning(
-                    exception,
-                    "Startup library reconciliation cannot access root {RootId}. Existing library state was preserved.",
-                    root.Id);
+                return;
             }
             catch (Exception exception)
             {
-                await TryMarkFailedAsync(
-                    operationId,
-                    $"{exception.GetType().Name}: {exception.Message}");
                 logger.LogError(
                     exception,
-                    "Startup library reconciliation failed for root {RootId}; remaining roots will still be processed.",
-                    root.Id);
+                    "Startup library reconciliation could not be queued for root {RootId}; remaining roots are still queued.",
+                    rootId);
             }
         }
-
-        if (successfulScans == 0 || stoppingToken.IsCancellationRequested)
-        {
-            return;
-        }
-
-        try
-        {
-            await using var scope = scopeFactory.CreateAsyncScope();
-            var subtitles = scope.ServiceProvider.GetRequiredService<SubtitleImportService>();
-            var queued = await subtitles.QueueAllMissingAsync(stoppingToken);
-
-            logger.LogInformation(
-                "Startup learning-text preparation queued for {EpisodeCount} episode(s) after {RootCount} successful library reconciliation(s).",
-                queued,
-                successfulScans);
-        }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-        {
-        }
-        catch (Exception exception)
-        {
-            logger.LogError(
-                exception,
-                "Startup library reconciliation completed, but learning-text preparation could not be queued.");
-        }
     }
 
-    private async Task TryMarkFailedAsync(Guid operationId, string message)
+    private async Task WaitForStartAsync(CancellationToken stoppingToken)
     {
-        if (operationId == Guid.Empty)
-        {
-            return;
-        }
-
-        try
-        {
-            await using var scope = scopeFactory.CreateAsyncScope();
-            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            await new OperationStore(db).MarkFailedAsync(
-                operationId,
-                message,
-                CancellationToken.None);
-        }
-        catch (Exception exception)
-        {
-            logger.LogWarning(
-                exception,
-                "Could not persist failure state for startup operation {OperationId}.",
-                operationId);
-        }
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var startedRegistration = lifetime.ApplicationStarted.Register(() => started.TrySetResult());
+        using var stoppingRegistration = stoppingToken.Register(() => started.TrySetResult());
+        await started.Task;
     }
-
-    private async Task TryMarkInterruptedAsync(Guid operationId, string message)
-    {
-        try
-        {
-            await using var scope = scopeFactory.CreateAsyncScope();
-            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            await new OperationStore(db).MarkInterruptedAsync(
-                operationId,
-                message,
-                CancellationToken.None);
-        }
-        catch (Exception exception)
-        {
-            logger.LogWarning(
-                exception,
-                "Could not persist interrupted state for startup operation {OperationId}.",
-                operationId);
-        }
-    }
-
-    private sealed record StartupRoot(Guid Id, string Name);
 }

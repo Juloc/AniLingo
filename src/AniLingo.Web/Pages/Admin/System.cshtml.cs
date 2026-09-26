@@ -3,8 +3,6 @@ using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Library;
 using AniLingo.Web.Features.Operations;
 using AniLingo.Web.Features.Storage;
-using AniLingo.Web.Features.Subtitles;
-using AniLingo.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -20,7 +18,10 @@ public sealed record AdminLibraryRootRow(
     bool WakeOnLanEnabled,
     string? WakeMacAddress,
     string? WakeBroadcastAddress,
-    LibraryRootAvailabilitySnapshot Availability)
+    LibraryRootAvailabilitySnapshot Availability,
+    int ReconciliationIntervalMinutes,
+    AdminLibraryScanRow? ActiveScan,
+    AdminLibraryScanRow? LastScan)
 {
     public string AvailabilityLabel =>
         Availability.State switch
@@ -46,7 +47,7 @@ public sealed record AdminLibraryRootRow(
 [Authorize(Roles = AccountRoles.Owner)]
 public sealed class SystemModel(
     AppDbContext db,
-    BackgroundJobQueue jobs,
+    LibraryScanCoordinator scans,
     CurrentAccountContext account,
     LibraryRootAvailabilityService availability,
     WakeOnLanService wakeOnLan) : PageModel
@@ -200,61 +201,48 @@ public sealed class SystemModel(
         Guid rootId,
         CancellationToken cancellationToken)
     {
+        var result = await scans.QueueAsync(
+            new LibraryScanRequest(rootId, LibraryScanTrigger.Manual, ProfileId: account.ProfileId),
+            cancellationToken);
+
+        if (result.Outcome == LibraryScanQueueOutcome.RootNotFound)
+        {
+            return NotFound();
+        }
+
+        TempData["Status"] = result.Message;
+        return RedirectToPage();
+    }
+
+    public async Task<IActionResult> OnPostConfigureReconciliationAsync(
+        Guid rootId,
+        int reconciliationIntervalMinutes,
+        CancellationToken cancellationToken)
+    {
         var root = await db.LibraryRoots
-            .AsNoTracking()
             .SingleOrDefaultAsync(x => x.Id == rootId, cancellationToken);
         if (root is null)
         {
             return NotFound();
         }
 
-        var storage = await availability.CheckAsync(
-            rootId,
-            force: true,
-            cancellationToken);
-
-        if (storage is not { IsAvailable: true })
+        if (reconciliationIntervalMinutes != 0 &&
+            (reconciliationIntervalMinutes < LibraryRoot.MinimumReconciliationIntervalMinutes ||
+             reconciliationIntervalMinutes > LibraryRoot.MaximumReconciliationIntervalMinutes))
         {
-            TempData["Status"] =
-                "Library scan was not started because media storage is not currently readable.";
-            return RedirectToPage();
+            ModelState.AddModelError(
+                string.Empty,
+                $"The reconciliation interval must be 0 (off) or between {LibraryRoot.MinimumReconciliationIntervalMinutes} and {LibraryRoot.MaximumReconciliationIntervalMinutes} minutes.");
+            await LoadAsync(cancellationToken);
+            return Page();
         }
 
-        await jobs.QueueAsync(
-            new OperationDescriptor(
-                "library-scan",
-                "Library",
-                "Scan library",
-                root.Name,
-                account.ProfileId,
-                OperationLane.Maintenance,
-                Retryable: true),
-            async (operation, services, jobToken) =>
-            {
-                await operation.ReportAsync(
-                    10,
-                    "Scanning media files.",
-                    cancellationToken: jobToken);
+        root.ReconciliationIntervalMinutes = reconciliationIntervalMinutes;
+        await db.SaveChangesAsync(cancellationToken);
 
-                var scanner = services.GetRequiredService<LibraryScanner>();
-                await scanner.ScanAsync(rootId, jobToken);
-
-                await operation.ReportAsync(
-                    80,
-                    "Checking learning-text coverage.",
-                    cancellationToken: jobToken);
-
-                var subtitles = services.GetRequiredService<SubtitleImportService>();
-                await subtitles.QueueAllMissingAsync(jobToken);
-
-                await operation.ReportAsync(
-                    100,
-                    "Library scan completed.",
-                    cancellationToken: jobToken);
-            },
-            cancellationToken);
-
-        TempData["Status"] = "Library scan queued.";
+        TempData["Status"] = reconciliationIntervalMinutes == 0
+            ? "Periodic reconciliation disabled for this root."
+            : $"Periodic reconciliation set to every {reconciliationIntervalMinutes} minutes.";
         return RedirectToPage();
     }
 
@@ -265,9 +253,26 @@ public sealed class SystemModel(
             .OrderBy(x => x.Name)
             .ToListAsync(cancellationToken);
 
+        var rootNames = roots.ToDictionary(x => x.Id, x => x.Name);
+        var scanRows = (await new OperationStore(db).ListAsync(
+                new OperationListFilter(
+                    Kind: LibraryScanCoordinator.OperationKind,
+                    Limit: LibraryScanCoordinator.HistoryLimit),
+                cancellationToken))
+            .Select(operation => AdminLibraryScanRow.From(operation, rootNames))
+            .Where(row => row.Details is not null)
+            .ToArray();
+
         var rows = new List<AdminLibraryRootRow>(roots.Count);
         foreach (var root in roots)
         {
+            var activeScan = scanRows.FirstOrDefault(row =>
+                row.Details!.RootId == root.Id && row.Operation.IsActive);
+            var lastScan = scanRows
+                .Where(row => row.Details!.RootId == root.Id && !row.Operation.IsActive)
+                .OrderByDescending(row => row.Operation.FinishedAtUtc ?? row.Operation.UpdatedAtUtc)
+                .FirstOrDefault();
+
             var current = availability.GetCached(root)
                 ?? await availability.CheckAsync(
                     root.Id,
@@ -288,7 +293,10 @@ public sealed class SystemModel(
                 root.WakeOnLanEnabled,
                 root.WakeMacAddress,
                 root.WakeBroadcastAddress,
-                current));
+                current,
+                root.ReconciliationIntervalMinutes,
+                activeScan,
+                lastScan));
         }
 
         Roots = rows;

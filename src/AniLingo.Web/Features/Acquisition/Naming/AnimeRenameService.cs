@@ -34,7 +34,7 @@ public sealed class AnimeRenameService(
     public const string OperationKind = "anime-rename";
     private const string LogModule = "Rename";
     // Acquisition imports move files into series folders and rescan them, so they conflict too.
-    internal static readonly string[] ConflictingOperationKinds = ["library-scan", "startup-library-scan", OperationKind, AnimeImportExecutor.OperationKind];
+    internal static readonly string[] ConflictingOperationKinds = [LibraryScanCoordinator.OperationKind, OperationKind, AnimeImportExecutor.OperationKind];
     private static readonly string[] SidecarDirectoryNames = ["Subs", "Subtitles"];
 
     public async Task<AnimeRenamePlan?> PlanAsync(

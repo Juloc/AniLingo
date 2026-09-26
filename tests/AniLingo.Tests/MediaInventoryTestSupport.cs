@@ -63,13 +63,24 @@ internal sealed class FakeMediaProbeRunner : IMediaProbeRunner
         }
     }
 
-    public Task<MediaProbeRun> ProbeAsync(string fullPath, CancellationToken cancellationToken)
+    // When set, every probe waits for it; lets a test hold a library scan in its running state.
+    public Task? Gate { get; set; }
+
+    public async Task<MediaProbeRun> ProbeAsync(string fullPath, CancellationToken cancellationToken)
     {
+        MediaProbeRun result;
         lock (calls)
         {
             calls.Add(fullPath);
-            return Task.FromResult(results.GetValueOrDefault(fullPath, DefaultResult));
+            result = results.GetValueOrDefault(fullPath, DefaultResult);
         }
+
+        if (Gate is { } gate)
+        {
+            await gate.WaitAsync(cancellationToken);
+        }
+
+        return result;
     }
 }
 

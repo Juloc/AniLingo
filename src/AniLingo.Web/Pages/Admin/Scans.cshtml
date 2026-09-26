@@ -1,0 +1,110 @@
+@page
+@model AniLingo.Web.Pages.Admin.ScansModel
+@{
+    ViewData["Title"] = "Library scans";
+}
+
+<header class="page-header">
+    <div>
+        <span class="eyebrow">Admin</span>
+        <h1>Library scans</h1>
+        <p>Current and past reconciliation runs per media root.</p>
+    </div>
+    <a class="button" asp-page="/Admin/System">Media roots</a>
+</header>
+
+<partial name="_AdminNavigation" />
+
+<form method="get" class="operation-filter">
+    <select name="rootId" aria-label="Library root">
+        <option value="">All roots</option>
+        @foreach (var root in Model.Roots)
+        {
+            <option value="@root.Id" selected="@(Model.RootId == root.Id)">@root.Name</option>
+        }
+    </select>
+    <button class="button" type="submit">Filter</button>
+</form>
+
+<section class="panel" data-scan-history>
+    @if (Model.Scans.Count == 0)
+    {
+        <p class="muted">No library scans have been recorded yet.</p>
+    }
+    else
+    {
+        <div class="operation-list">
+            @foreach (var row in Model.Scans)
+            {
+                var operation = row.Operation;
+                <div class="operation-row operation-row-detailed" data-scan-active="@(operation.IsActive ? "true" : null)">
+                    <div class="operation-copy">
+                        <div class="operation-title-line">
+                            <strong>@row.RootName</strong>
+                            <span class="status-pill">@row.Scope</span>
+                        </div>
+                        <span>
+                            @row.Trigger · started @(operation.StartedAtUtc?.ToLocalTime().ToString("g") ?? "—")
+                            · finished @(operation.FinishedAtUtc?.ToLocalTime().ToString("g") ?? "—")
+                            · @row.Phase
+                            @if (row.FileProgress is { } files)
+                            {
+                                <text> · @files</text>
+                            }
+                        </span>
+                        @if (row.Counters is { } counters)
+                        {
+                            <small>
+                                @counters.MediaFiles media ·
+                                @counters.Discovered added ·
+                                @counters.Updated changed ·
+                                @counters.Removed removed ·
+                                @counters.Skipped skipped ·
+                                @counters.Subtitles subtitles ·
+                                @counters.Artwork artwork ·
+                                @counters.Metadata NFO ignored ·
+                                @counters.MediaAnalyzed analysed ·
+                                @counters.MediaAnalysisFailed analysis failed ·
+                                @counters.Errors errors ·
+                                @row.Warnings warnings
+                            </small>
+                        }
+                        else if (!string.IsNullOrWhiteSpace(operation.Message))
+                        {
+                            <small>@operation.Message</small>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(operation.Error))
+                        {
+                            <div class="operation-error">@operation.Error</div>
+                        }
+                        @if (operation.IsActive && operation.ProgressPercent is { } progress)
+                        {
+                            <div class="operation-progress" aria-label="@progress% complete">
+                                <span style="width:@progress%"></span>
+                            </div>
+                        }
+                    </div>
+                    <div class="operation-row-meta">
+                        <span class="status-pill operation-status-@operation.Status.ToString().ToLowerInvariant()">
+                            @operation.StatusLabel
+                        </span>
+                        <div class="inline-actions">
+                            <a class="button" asp-page="/Admin/Operation" asp-route-id="@operation.Id">Logs</a>
+                            @if (row.CanRunAgain)
+                            {
+                                <form method="post" asp-page-handler="RunAgain" asp-route-rootId="@Model.RootId">
+                                    <input type="hidden" name="operationId" value="@operation.Id" />
+                                    <button class="button" type="submit">Run again</button>
+                                </form>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</section>
+
+@section Scripts {
+    <script src="~/js/library-scans.js" asp-append-version="true"></script>
+}

@@ -45,9 +45,51 @@
                             <small>
                                 Last available:
                                 @(root.Availability.LastAvailableAtUtc?.ToLocalTime().ToString("g") ?? "not yet")
-                                · Last scan:
+                                · Last full scan:
                                 @(root.LastScannedAt?.ToLocalTime().ToString("g") ?? "never")
+                                · Periodic reconciliation:
+                                @(root.ReconciliationIntervalMinutes == 0 ? "off" : $"every {root.ReconciliationIntervalMinutes} min")
                             </small>
+
+                            @if (root.ActiveScan is { } active)
+                            {
+                                <small>
+                                    <span class="status-pill operation-status-@active.Operation.Status.ToString().ToLowerInvariant()">@active.Operation.StatusLabel</span>
+                                    @active.Trigger scan (@active.Scope) · @active.Phase
+                                    @if (active.FileProgress is { } files)
+                                    {
+                                        <text> · @files</text>
+                                    }
+                                    · <a asp-page="/Admin/Operation" asp-route-id="@active.Operation.Id">Details</a>
+                                </small>
+                                @if (active.Operation.ProgressPercent is { } progress)
+                                {
+                                    <div class="operation-progress" aria-label="@progress% complete">
+                                        <span style="width:@progress%"></span>
+                                    </div>
+                                }
+                            }
+                            else if (root.LastScan is { } last)
+                            {
+                                <small>
+                                    <span class="status-pill operation-status-@last.Operation.Status.ToString().ToLowerInvariant()">@last.Operation.StatusLabel</span>
+                                    @last.Trigger scan (@last.Scope)
+                                    @(last.Operation.FinishedAtUtc?.ToLocalTime().ToString("g") ?? "")
+                                    @if (last.Counters is { } counters)
+                                    {
+                                        <text> · @AniLingo.Web.Features.Library.LibraryScanCoordinator.Summarize(counters)</text>
+                                        @if (last.Warnings > 0)
+                                        {
+                                            <text> @last.Warnings warning(s).</text>
+                                        }
+                                    }
+                                    else if (!string.IsNullOrWhiteSpace(last.Operation.Error))
+                                    {
+                                        <text> · @last.Operation.Error</text>
+                                    }
+                                    · <a asp-page="/Admin/Operation" asp-route-id="@last.Operation.Id">Details</a>
+                                </small>
+                            }
 
                             <div class="inline-actions">
                                 <form method="post" asp-page-handler="TestRoot">
@@ -57,8 +99,12 @@
 
                                 <form method="post" asp-page-handler="Scan">
                                     <input type="hidden" name="rootId" value="@root.Id" />
-                                    <button class="button button-primary" type="submit">Queue library scan</button>
+                                    <button class="button button-primary" type="submit" disabled="@(root.ActiveScan is not null)">
+                                        @(root.ActiveScan is null ? "Queue library scan" : "Scan active")
+                                    </button>
                                 </form>
+
+                                <a class="button" asp-page="/Admin/Scans" asp-route-rootId="@root.Id">Scan history</a>
 
                                 @if (root.WakeOnLanEnabled && root.Availability.WakeConfigured)
                                 {
@@ -106,6 +152,26 @@
                                                placeholder="255.255.255.255" />
                                     </label>
                                     <button class="button" type="submit">Save Wake-on-LAN</button>
+                                </form>
+                            </details>
+
+                            <details>
+                                <summary>Periodic reconciliation</summary>
+                                <form method="post" asp-page-handler="ConfigureReconciliation" class="form-stack" style="margin-top:.75rem;">
+                                    <input type="hidden" name="rootId" value="@root.Id" />
+                                    <label>
+                                        <span>Full reconciliation interval in minutes (0 turns it off)</span>
+                                        <input name="reconciliationIntervalMinutes"
+                                               type="number"
+                                               inputmode="numeric"
+                                               min="0"
+                                               max="@AniLingo.Web.Features.Library.LibraryRoot.MaximumReconciliationIntervalMinutes"
+                                               value="@root.ReconciliationIntervalMinutes" />
+                                    </label>
+                                    <small class="muted">
+                                        Filesystem changes are picked up within seconds where the mount raises events; this full pass repairs anything missed, for example on network mounts. Runs are skipped while the storage is offline.
+                                    </small>
+                                    <button class="button" type="submit">Save interval</button>
                                 </form>
                             </details>
                         </div>

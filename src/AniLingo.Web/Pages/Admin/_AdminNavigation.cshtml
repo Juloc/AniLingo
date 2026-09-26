@@ -6,6 +6,7 @@
     <a class="admin-nav-item @(path == "/Admin" ? "active" : "")" asp-page="/Admin/Index">Overview</a>
     <a class="admin-nav-item @(path.StartsWithSegments("/Admin/Users") || path.StartsWithSegments("/Admin/User") ? "active" : "")" asp-page="/Admin/Users">Users</a>
     <a class="admin-nav-item @(path.StartsWithSegments("/Admin/Operations") || path.StartsWithSegments("/Admin/Operation") ? "active" : "")" asp-page="/Admin/Operations">Operations</a>
+    <a class="admin-nav-item @(path.StartsWithSegments("/Admin/Scans") ? "active" : "")" asp-page="/Admin/Scans">Scans</a>
     <a class="admin-nav-item @(path.StartsWithSegments("/Admin/Logs") ? "active" : "")" asp-page="/Admin/Logs">Logs</a>
     <a class="admin-nav-item @(path.StartsWithSegments("/Admin/System") || path.StartsWithSegments("/Admin/Subtitles") || path.StartsWithSegments("/Admin/Sonarr") || path.StartsWithSegments("/Admin/Ai") ? "active" : "")" asp-page="/Admin/System">System</a>
 </nav>

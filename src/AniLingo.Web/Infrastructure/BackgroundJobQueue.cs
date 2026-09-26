@@ -34,6 +34,10 @@ public abstract class BackgroundJobQueueBase(
                 SingleWriter = false
             });
 
+    // Operations this process queued itself are never recovered as abandoned, even when a
+    // producer queues before the worker has finished recovering the previous process.
+    private readonly DateTime ownedSinceUtc = DateTime.UtcNow;
+
     private readonly ConcurrentDictionary<Guid, RuntimeBackgroundWork> runtime =
         new();
 
@@ -193,7 +197,7 @@ public abstract class BackgroundJobQueueBase(
 
         foreach (var lane in RecoveryLanes)
         {
-            await store.RecoverInterruptedAsync(lane, cancellationToken);
+            await store.RecoverInterruptedAsync(lane, ownedSinceUtc, cancellationToken);
         }
     }
 }
