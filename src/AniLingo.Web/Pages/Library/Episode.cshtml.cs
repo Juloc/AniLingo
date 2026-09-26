@@ -77,6 +77,9 @@ public sealed class EpisodeModel(
         LearningSettings.IsEnabled(LearningCapability.PreparationSuggestions);
     public bool ShowVocabularyTools =>
         LearningSettings.IsEnabled(LearningCapability.Vocabulary);
+    /// <summary>Learn queues spaced repetition, so it also needs Reviews for this episode.</summary>
+    public bool ShowLearnAction =>
+        ShowVocabularyTools && LearningSettings.IsEnabled(LearningCapability.Reviews);
     public bool ShowPlayerTools =>
         LearningSettings.IsEnabled(LearningCapability.PlayerTools);
     public bool NeedsLearningSource =>
@@ -509,6 +512,26 @@ public sealed class EpisodeModel(
         return RedirectToPage(new { id });
     }
 
+    public async Task<IActionResult> OnPostSavedAsync(
+        Guid id,
+        Guid termId,
+        CancellationToken cancellationToken)
+    {
+        if (!await IsCapabilityEnabledAsync(
+                id,
+                LearningCapability.Vocabulary,
+                cancellationToken))
+        {
+            return Forbid();
+        }
+
+        await learningService.SetStateAsync(
+            termId,
+            UserTermState.Saved,
+            cancellationToken);
+        return RedirectToPage(new { id });
+    }
+
     public async Task<IActionResult> OnPostLearningAsync(
         Guid id,
         Guid termId,
@@ -517,6 +540,10 @@ public sealed class EpisodeModel(
         if (!await IsCapabilityEnabledAsync(
                 id,
                 LearningCapability.Vocabulary,
+                cancellationToken)
+            || !await IsCapabilityEnabledAsync(
+                id,
+                LearningCapability.Reviews,
                 cancellationToken))
         {
             return Forbid();

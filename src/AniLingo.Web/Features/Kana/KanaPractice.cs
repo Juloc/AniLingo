@@ -33,26 +33,4 @@ public static class KanaPractice
             ? string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase)
             : string.Equals(actual, expected, StringComparison.Ordinal);
     }
-
-    public static bool IsSuitableSentence(string? text)
-    {
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            return false;
-        }
-
-        var trimmed = text.Trim();
-        return trimmed.Length is >= 2 and <= 90
-            && trimmed.Any(IsJapaneseCharacter)
-            && !trimmed.Contains('\n')
-            && !trimmed.Contains('\r');
-    }
-
-    public static bool IsJapaneseCharacter(char character) =>
-        character is >= '\u3040' and <= '\u30ff'
-            or >= '\u3400' and <= '\u4dbf'
-            or >= '\u4e00' and <= '\u9fff'
-            or '々'
-            or '〆'
-            or 'ヶ';
 }

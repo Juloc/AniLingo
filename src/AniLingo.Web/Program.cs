@@ -11,6 +11,7 @@ using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Books;
 using AniLingo.Web.Features.ClientApi;
 using AniLingo.Web.Features.Learning;
+using AniLingo.Web.Features.Learning.LanguageAssistance;
 using AniLingo.Web.Features.Library;
 using AniLingo.Web.Features.MediaMapping;
 using AniLingo.Web.Features.MediaSegments;
@@ -205,6 +206,8 @@ builder.Services.AddSingleton<JapaneseTermExtractor>();
 builder.Services.AddSingleton<JapaneseDictionary>();
 builder.Services.AddSingleton<IReviewScheduler, FsrsReviewScheduler>();
 builder.Services.AddScoped<LearningService>();
+builder.Services.AddSingleton<LanguageTextAnalyzer>();
+builder.Services.AddScoped<LanguageInspectorService>();
 builder.Services.AddScoped<EpisodePreparationService>();
 builder.Services.AddScoped<LearningStatisticsService>();
 builder.Services.AddSingleton<PlaybackCueProjector>();
@@ -364,6 +367,7 @@ app.MapClientApiOfflineV1();
 app.MapHub<PlaybackSessionHub>(PlaybackSessionHub.Route)
     .AllowAnonymous();
 app.MapReaderThemeCatalog();
+app.MapLanguageInspector();
 app.MapRazorPages();
 
 try
