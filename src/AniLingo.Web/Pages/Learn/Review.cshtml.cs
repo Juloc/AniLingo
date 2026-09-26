@@ -3,22 +3,35 @@ using AniLingo.Web.Features.Ai;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Learning.Courses;
+using AniLingo.Web.Features.Learning.LanguageAssistance;
 using AniLingo.Web.Features.Localization;
+using AniLingo.Web.Features.Novels;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.EntityFrameworkCore;
 
 namespace AniLingo.Web.Pages.Learn;
+
+/// <summary>
+/// Return-to-source link for a review card whose word came from a
+/// non-anime reader (issue #147): the most recent <see cref="LearningContext"/>
+/// the profile recorded for the term's unit, resolved back to a chapter and
+/// paragraph anchor the reader can jump straight to.
+/// </summary>
+public sealed record ReviewSourceLink(string Label, string Url, string? Sentence);
 
 public sealed class ReviewModel(
     AppDbContext db,
     LearningService learningService,
     AiSentenceExplanationService aiExplanationService,
+    NovelCatalogQueries novels,
     CurrentAccountContext currentAccount) : PageModel
 {
     public IReadOnlyList<ReviewSessionCard> Session { get; private set; } = [];
     public ReviewSessionCard? Current => Session.FirstOrDefault();
     public IReadOnlyList<string> LocalHints { get; private set; } = [];
     public AiSentenceExplanation? AiExplanation { get; private set; }
+    public ReviewSourceLink? SourceLink { get; private set; }
     public string ProfileId => currentAccount.ProfileId;
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
 
@@ -43,6 +56,11 @@ public sealed class ReviewModel(
 
         if (Current?.Context is not { } context)
         {
+            if (Current?.TermId is { } uncontextedTermId)
+            {
+                SourceLink = await ResolveNovelSourceLinkAsync(uncontextedTermId, cancellationToken);
+            }
+
             return Page();
         }
 
@@ -51,6 +69,66 @@ public sealed class ReviewModel(
             context.Sentence,
             cancellationToken);
         return Page();
+    }
+
+    /// <summary>
+    /// The novel reader (issue #147) records a source-agnostic
+    /// <see cref="LearningContext"/> (<c>chapter:{id}</c> + <c>paragraph:{i}</c>)
+    /// instead of the legacy anime-only <see cref="ReviewAnimeContext"/>. This
+    /// resolves the most recent one back to a chapter/paragraph the reader can
+    /// jump straight to, for review items that came from a novel rather than
+    /// an anime episode.
+    /// </summary>
+    private async Task<ReviewSourceLink?> ResolveNovelSourceLinkAsync(
+        Guid termId,
+        CancellationToken cancellationToken)
+    {
+        var unitId = await db.LearningUnits
+            .AsNoTracking()
+            .Where(x => x.TermId == termId)
+            .Select(x => (Guid?)x.Id)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (unitId is not { } unit)
+        {
+            return null;
+        }
+
+        var learningContext = await db.LearningContexts
+            .AsNoTracking()
+            .Where(x => x.ProfileId == currentAccount.ProfileId
+                && x.UnitId == unit
+                && x.SourceType == "novel")
+            .OrderByDescending(x => x.CreatedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (learningContext is null)
+        {
+            return null;
+        }
+
+        if (!LanguageSourceAnchor.TryParseStored(
+                learningContext.SourceType,
+                learningContext.SourceKey,
+                learningContext.PositionKey,
+                out _,
+                out var chapterId,
+                out var position))
+        {
+            return null;
+        }
+
+        var chapter = await novels.GetChapterContextAsync(chapterId, cancellationToken);
+        if (chapter is null)
+        {
+            return null;
+        }
+
+        var url = position.Paragraph is { } paragraph
+            ? $"/Novels/Read/{chapterId}?paragraph={paragraph}&lang=ja"
+            : $"/Novels/Read/{chapterId}";
+        return new ReviewSourceLink(
+            $"{chapter.WorkTitle} · Kapitel {chapter.Number}",
+            url,
+            learningContext.Text);
     }
 
     public async Task<IActionResult> OnPostExplainAsync(

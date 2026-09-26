@@ -5,6 +5,7 @@ using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Learning.Courses;
 using AniLingo.Web.Features.Learning.LanguageAssistance;
+using AniLingo.Web.Features.Novels;
 using AniLingo.Web.Features.Statistics;
 using AniLingo.Web.Features.Vocabulary;
 using AniLingo.Web.Pages.Learn;
@@ -517,6 +518,7 @@ public sealed class LearningHubGatingTests
                 Db,
                 Learning,
                 new AiSentenceExplanationService(Db, new StubExplainer()),
+                new NovelCatalogQueries(Db),
                 Account));
 
         public ProgressModel Progress() =>

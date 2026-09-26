@@ -1689,6 +1689,9 @@ namespace AniLingo.Web.Data.Migrations
                     b.Property<double?>("FontSizeRem")
                         .HasColumnType("REAL");
 
+                    b.Property<bool?>("FuriganaEnabled")
+                        .HasColumnType("INTEGER");
+
                     b.Property<bool?>("GenreArtworkEnabled")
                         .HasColumnType("INTEGER");
 
