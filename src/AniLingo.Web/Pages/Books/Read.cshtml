@@ -46,6 +46,7 @@
 }
 @section Scripts {
     <script src="~/js/reader-themes.js" asp-append-version="true"></script>
+    <script src="~/js/offline-library-repository.js" asp-append-version="true"></script>
     <script src="~/js/books-reader.js" asp-append-version="true"></script>
     <script src="~/js/reader-shell.js" asp-append-version="true"></script>
     <script src="~/js/tts.js" asp-append-version="true"></script>
@@ -60,6 +61,7 @@
      data-reader-personalization
      data-view="@defaultView"
      data-target-language="@Model.Reader.TargetLanguage"
+     data-work-id="@Model.Reader.Work.Id"
      data-chapter-id="@Model.Reader.Chapter.Id"
      data-has-translation="@(hasAlternate ? "true" : "false")"
      data-progress="@initialProgress"
