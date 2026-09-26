@@ -57,7 +57,7 @@ Do not add enum-based lists of supported languages to the core model. Specialize
 
 ## Kana
 
-Kana practice uses the same model: every Kana symbol is a `Script` unit with a stable ID (`KanaCatalog.IdFor`), a `ja` variant and a `ja-Latn` romaji variant. A profile practices them in its non-primary `ja → ja-Latn` course named "Kana", created on first practice, so Japanese words are never saved into it implicitly. Kana cards are regular cards and appear in Reviews while that course is enabled.
+Kana practice uses the same model: every Kana symbol is a `Script` unit with a stable ID (`KanaCatalog.IdFor`), a `ja` variant and a `ja-Latn` romaji variant. A profile practices them in its non-primary `ja → ja-Latn` course named "Kana", created on first practice, so Japanese words are never saved into it implicitly. Kana cards are regular cards and appear in Reviews while that course is enabled. The Kana trainer page itself is available only while the ScriptTrainer capability resolves on and the profile has an enabled course with `ja` as source language (the Japanese toolkit is the one that supports `ScriptTrainer`); see `LearningModuleResolver`.
 
 ## Reviews and offline sync
 
