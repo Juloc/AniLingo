@@ -1,3 +1,4 @@
+using System.Globalization;
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Library;
 using AniLingo.Web.Features.Playback;
@@ -375,8 +376,16 @@ public sealed class MediaInventoryTests
                 Assert.IsTrue(index > 0, $"Expected migration {MigrationId}.");
                 await db.GetService<IMigrator>().MigrateAsync(migrations[index - 1]);
 
-                // These tables are unchanged by the migration, so the current model can seed them.
-                db.AddRange(root, anime, episode, media);
+                // LibraryRoots gained columns in later migrations, so the root is seeded with the
+                // columns of the pre-migration schema. The other tables are unchanged by the
+                // migration, so the current model can seed them.
+                await db.Database.ExecuteSqlRawAsync(
+                    "INSERT INTO LibraryRoots (Id, Name, Path, IsEnabled, CreatedAt, WakeOnLanEnabled) VALUES ({0}, {1}, {2}, 1, {3}, 0);",
+                    root.Id.ToString().ToUpperInvariant(),
+                    root.Name,
+                    root.Path,
+                    root.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss.FFFFFFF", CultureInfo.InvariantCulture));
+                db.AddRange(anime, episode, media);
                 await db.SaveChangesAsync();
 
                 await DatabaseMigrationBridge.UpgradeAsync(db);
