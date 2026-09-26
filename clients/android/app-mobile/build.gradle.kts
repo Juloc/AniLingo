@@ -25,11 +25,22 @@ android {
     }
 }
 
+// See settings.gradle.kts: core-tts-sherpa (the sherpa-onnx offline-neural runtime) only
+// exists in the build when this property is set, because it depends on a manually
+// downloaded AAR that is not part of this repository. docs/TTS.md documents the manual step.
+val neuralTtsEnabled = providers.gradleProperty("anilingoNeuralTtsEnabled")
+    .getOrElse("false")
+    .toBoolean()
+
 dependencies {
     implementation(project(":core-api"))
     implementation(project(":core-model"))
     implementation(project(":core-player"))
     implementation(project(":core-design"))
+    implementation(project(":core-tts"))
+    if (neuralTtsEnabled) {
+        implementation(project(":core-tts-sherpa"))
+    }
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.core.ktx)

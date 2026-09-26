@@ -4,6 +4,7 @@ using AniLingo.Web.Features.MediaSegments;
 using AniLingo.Web.Features.Playback;
 using AniLingo.Web.Features.PlaybackSessions;
 using AniLingo.Web.Features.Progress;
+using AniLingo.Web.Features.Speech;
 using AniLingo.Web.Features.Storage;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -271,6 +272,40 @@ public static class ClientApiEndpoints
         {
             await progressService.ClearHistoryAsync(cancellationToken);
             return Results.NoContent();
+        });
+
+        group.MapGet("/me/tts-preferences", async (
+            TtsPreferencesService ttsPreferences,
+            CancellationToken cancellationToken) =>
+        {
+            var preferences = await ttsPreferences.GetAsync(cancellationToken);
+            return Results.Ok(ClientApiMappings.ToClientTtsPreferences(preferences));
+        });
+
+        group.MapPut("/me/tts-preferences", async (
+            ClientTtsPreferencesUpdate update,
+            TtsPreferencesService ttsPreferences,
+            CancellationToken cancellationToken) =>
+        {
+            var preferences = await ttsPreferences.UpdateAsync(
+                new TtsPreferencesUpdate(
+                    update.ProviderId,
+                    update.Rate,
+                    update.Pitch,
+                    update.Volume,
+                    update.VoiceLanguage,
+                    update.VoiceId),
+                cancellationToken);
+            return Results.Ok(ClientApiMappings.ToClientTtsPreferences(preferences));
+        });
+
+        group.MapGet("/speech/models", async (
+            SpeechModelManifestStore manifestStore,
+            CancellationToken cancellationToken) =>
+        {
+            var manifest = await manifestStore.LoadAsync(cancellationToken);
+            return Results.Ok(new ClientSpeechModelsResponse(
+                manifest.Entries.Select(ClientApiMappings.ToClientSpeechModel).ToArray()));
         });
 
         group.MapGet("/episodes/{episodeId:guid}/player", async (

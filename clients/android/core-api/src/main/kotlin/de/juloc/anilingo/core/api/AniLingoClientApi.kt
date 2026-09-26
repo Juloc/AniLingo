@@ -12,8 +12,11 @@ import de.juloc.anilingo.core.model.EpisodeProgressUpdate
 import de.juloc.anilingo.core.model.MediaAvailability
 import de.juloc.anilingo.core.model.PlayerBootstrap
 import de.juloc.anilingo.core.model.RootAvailability
+import de.juloc.anilingo.core.model.SpeechModelsResponse
 import de.juloc.anilingo.core.model.TermDetail
 import de.juloc.anilingo.core.model.TermStateResult
+import de.juloc.anilingo.core.model.TtsPreferences
+import de.juloc.anilingo.core.model.TtsPreferencesUpdate
 
 interface AniLingoClientApi {
     suspend fun getCapabilities(): ClientCapabilities
@@ -52,6 +55,10 @@ interface AniLingoClientApi {
     suspend fun getRootAvailability(rootId: String): RootAvailability
     suspend fun testRoot(rootId: String): RootAvailability
     suspend fun wakeRoot(rootId: String): RootAvailability
+
+    suspend fun getTtsPreferences(): TtsPreferences
+    suspend fun updateTtsPreferences(update: TtsPreferencesUpdate): TtsPreferences
+    suspend fun getSpeechModels(): SpeechModelsResponse
 }
 
 sealed interface ApiCompatibility {
