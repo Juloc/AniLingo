@@ -1,6 +1,7 @@
 using System.Text.Json;
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
+using AniLingo.Web.Features.Localization;
 using AniLingo.Web.Features.Manga;
 using AniLingo.Web.Features.MediaMapping;
 using AniLingo.Web.Features.Operations;
@@ -18,6 +19,7 @@ public sealed class SeriesModel(
     MediaMappingReviewStore mappingReviewStore,
     AniListAccountService aniListAccount) : PageModel
 {
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public MangaSeriesDetail Series { get; private set; } = null!;
     public MangaProgressItem? Progress { get; private set; }
     public ExternalProgressSummary? ExternalProgress { get; private set; }
@@ -31,6 +33,8 @@ public sealed class SeriesModel(
         string? q,
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         var repository = new MangaRepository(db);
         var series = await repository.GetSeriesAsync(id, cancellationToken);
         if (series is null)
@@ -66,8 +70,8 @@ public sealed class SeriesModel(
             {
                 // The explicit search may fail; the local series page must not.
                 SearchError = exception is TaskCanceledException
-                    ? "AniList search timed out. Try again."
-                    : $"AniList search is unavailable: {exception.Message}";
+                    ? Ui["manga.series.searchTimeout"]
+                    : Ui.Format("manga.series.searchUnavailable", ("reason", exception.Message));
             }
         }
 
@@ -169,6 +173,8 @@ public sealed class SeriesModel(
             return Forbid();
         }
 
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         var repository = new MangaRepository(db);
         var series = await repository.GetSeriesAsync(id, cancellationToken);
         if (series is null)
@@ -208,8 +214,10 @@ public sealed class SeriesModel(
             "Manga source refreshed.",
             cancellationToken);
 
-        TempData["Status"] =
-            $"Refreshed {result.ChapterCount} chapter(s) / {result.PageCount} page(s).";
+        TempData["Status"] = Ui.Format(
+            "manga.status.refreshed",
+            ("chapters", result.ChapterCount),
+            ("pages", result.PageCount));
         return RedirectToPage(new { id });
     }
 

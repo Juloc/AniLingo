@@ -1,6 +1,7 @@
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Books;
 using AniLingo.Web.Features.Learning;
+using AniLingo.Web.Features.Localization;
 using AniLingo.Web.Features.Novels;
 using AniLingo.Web.Features.Operations;
 using AniLingo.Web.Features.ReaderCore;
@@ -19,6 +20,7 @@ public sealed class ReadModel(
     BackgroundJobQueue jobs,
     AppDbContext db) : PageModel
 {
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public BookReaderChapter Reader { get; private set; } = null!;
     public ReaderDocumentDescriptor ReaderDocument { get; private set; } = null!;
     public ReaderSettingsSnapshot ReaderSettings { get; private set; } = null!;
@@ -48,6 +50,7 @@ public sealed class ReadModel(
         string? view,
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         var target = BookLanguageCatalog.Normalize(lang);
         var reader = await books.GetReaderChapterAsync(
             id,

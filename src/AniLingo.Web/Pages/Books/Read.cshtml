@@ -1,6 +1,7 @@
 @page "/Books/Read/{id:guid}"
 @model AniLingo.Web.Pages.Books.ReadModel
 @{
+    var ui = Model.Ui;
     ViewData["Title"] = Model.Reader.Chapter.Title;
     var sourceIsTarget = Model.Reader.SourceLanguage.Equals(
         Model.Reader.TargetLanguage,
@@ -36,7 +37,7 @@
         Model.ReaderSettings,
         Model.Reader.TargetLanguage,
         bookBibleUrl,
-        bookBibleUrl is null ? null : "Book Bible");
+        bookBibleUrl is null ? null : ui["books.bible.title"]);
 }
 @section Head {
     <link rel="stylesheet" href="~/css/books.css" asp-append-version="true" />
@@ -73,10 +74,10 @@
         <span data-book-progress-bar style="width:@(initialProgress / 10)%"></span>
     </div>
 
-    <nav class="book-reader-toolbar" data-reader-chrome data-reader-chrome-primary aria-label="Book reader controls">
+    <nav class="book-reader-toolbar" data-reader-chrome data-reader-chrome-primary aria-label="@ui["books.read.controlsAria"]">
         <a class="book-reader-back"
            href="/Books/Library/@Model.Reader.Work.Id?lang=@Model.Reader.TargetLanguage"
-           aria-label="Back to book">
+           aria-label="@ui["books.read.backToBook"]">
             ←
         </a>
 
@@ -88,12 +89,12 @@
         <button class="book-reader-navigation"
                 type="button"
                 data-book-drawer-open
-                aria-label="Chapters and annotations"
-                title="Chapters and annotations">
+                aria-label="@ui["books.read.chaptersAndAnnotations"]"
+                title="@ui["books.read.chaptersAndAnnotations"]">
             ☰
         </button>
 
-        <div class="book-reader-view-switch" data-reader-language-control role="group" aria-label="Reading text">
+        <div class="book-reader-view-switch" data-reader-language-control role="group" aria-label="@ui["books.read.readingTextAria"]">
             @if (!sourceIsTarget && Model.TranslationEnabled)
             {
                 <button type="button"
@@ -102,13 +103,13 @@
                     @AniLingo.Web.Features.Books.BookLanguageCatalog.GetName(Model.Reader.TargetLanguage)
                 </button>
             }
-            <button type="button" data-book-view="original">Original</button>
+            <button type="button" data-book-view="original">@ui["books.read.original"]</button>
             @if (!sourceIsTarget && Model.TranslationEnabled)
             {
                 <button type="button"
                         data-book-view="both"
                         disabled="@(!hasAlternate)">
-                    Both
+                    @ui["books.read.both"]
                 </button>
             }
         </div>
@@ -116,8 +117,8 @@
         <button class="book-reader-bookmark"
                 type="button"
                 data-bookmark-button
-                aria-label="Add bookmark"
-                title="Add bookmark">
+                aria-label="@ui["books.read.addBookmarkAria"]"
+                title="@ui["books.read.addBookmarkAria"]">
             ♡
             <span data-bookmark-count>@Model.Reader.Bookmarks.Count</span>
         </button>
@@ -126,7 +127,7 @@
                 type="button"
                 data-book-autoscroll
                 aria-pressed="false"
-                title="Auto-scroll">
+                title="@ui["books.read.autoScroll"]">
             ▶
         </button>
 
@@ -134,7 +135,7 @@
     </nav>
 
     <header class="book-reader-chapter-title">
-        <span>Chapter @Model.Reader.Chapter.Number</span>
+        <span>@ui.Format("books.chapter.number", ("number", Model.Reader.Chapter.Number))</span>
         <h1>@Model.Reader.Chapter.Title</h1>
     </header>
 
@@ -146,8 +147,7 @@
     {
         <div class="book-translation-slot" data-translation-slot>
             <span data-translation-state>
-                @AniLingo.Web.Features.Books.BookLanguageCatalog.GetName(Model.Reader.TargetLanguage)
-                translation is not ready yet.
+                @ui.Format("books.read.translationNotReady", ("language", AniLingo.Web.Features.Books.BookLanguageCatalog.GetName(Model.Reader.TargetLanguage)))
             </span>
             <form method="post"
                   asp-page-handler="Translate"
@@ -155,7 +155,7 @@
                   data-book-translate-form>
                 <input type="hidden" name="lang" value="@Model.Reader.TargetLanguage" />
                 <button class="button button-primary" type="submit">
-                    Translate this chapter
+                    @ui["books.read.translateChapter"]
                 </button>
             </form>
         </div>
@@ -185,15 +185,15 @@
     </main>
 
     <div class="book-page-controls" data-book-page-controls data-reader-chrome hidden>
-        <button type="button" data-book-page-prev aria-label="Previous page">←</button>
+        <button type="button" data-book-page-prev aria-label="@ui["books.read.previousPageAria"]">←</button>
         <output data-book-page-number>1 / 1</output>
-        <button type="button" data-book-page-next aria-label="Next page">→</button>
+        <button type="button" data-book-page-next aria-label="@ui["books.read.nextPageAria"]">→</button>
     </div>
 
     <footer class="book-reader-footer">
         @if (Model.Reader.PreviousChapterId is Guid previous)
         {
-            <a href="/Books/Read/@previous?lang=@Model.Reader.TargetLanguage">← Previous chapter</a>
+            <a href="/Books/Read/@previous?lang=@Model.Reader.TargetLanguage">← @ui["books.read.previousChapter"]</a>
         }
         else
         {
@@ -203,7 +203,7 @@
         @if (Model.Reader.NextChapterId is Guid next)
         {
             <a href="/Books/Read/@next?lang=@Model.Reader.TargetLanguage"
-               data-reader-next-chapter="@next">Next chapter →</a>
+               data-reader-next-chapter="@next">@ui["books.read.nextChapter"] →</a>
         }
     </footer>
 
@@ -240,7 +240,7 @@
     </form>
 
     <div class="book-selection-toolbar" data-book-selection-toolbar hidden>
-        <button type="button" data-book-highlight-button>Highlight</button>
+        <button type="button" data-book-highlight-button>@ui["books.read.highlight"]</button>
     </div>
 
     <dialog class="book-reader-drawer" data-book-drawer>
@@ -248,40 +248,40 @@
             <header>
                 <div>
                     <strong>@(Model.Reader.Work.MetadataTitle ?? Model.Reader.Work.Title)</strong>
-                    <span>Chapter @Model.Reader.Chapter.Number · @Model.Reader.Chapter.Title</span>
+                    <span>@ui.Format("books.chapter.number", ("number", Model.Reader.Chapter.Number)) · @Model.Reader.Chapter.Title</span>
                 </div>
                 <button type="button"
                         data-book-drawer-close
-                        aria-label="Close">×</button>
+                        aria-label="@ui["books.read.closeDrawer"]">×</button>
             </header>
 
-            <div class="book-reader-drawer-tabs" role="tablist" aria-label="Reader navigation">
-                <button type="button" class="active" data-book-drawer-tab="chapters">Chapters</button>
-                <button type="button" data-book-drawer-tab="bookmarks">Bookmarks</button>
-                <button type="button" data-book-drawer-tab="highlights">Highlights</button>
+            <div class="book-reader-drawer-tabs" role="tablist" aria-label="@ui["books.read.drawerNavigationAria"]">
+                <button type="button" class="active" data-book-drawer-tab="chapters">@ui["books.read.tabChapters"]</button>
+                <button type="button" data-book-drawer-tab="bookmarks">@ui["books.read.tabBookmarks"]</button>
+                <button type="button" data-book-drawer-tab="highlights">@ui["books.read.tabHighlights"]</button>
             </div>
 
             <section data-book-drawer-panel="chapters">
                 <label class="book-reader-drawer-search">
-                    <span class="sr-only">Search chapters</span>
+                    <span class="sr-only">@ui["books.read.searchChapters"]</span>
                     <input type="search"
-                           placeholder="Search chapters"
+                           placeholder="@ui["books.read.searchChapters"]"
                            data-book-chapter-search />
                 </label>
                 <div class="book-reader-drawer-list" data-book-chapter-list>
-                    <span class="books-muted">Loading chapters…</span>
+                    <span class="books-muted">@ui["books.read.loadingChapters"]</span>
                 </div>
             </section>
 
             <section data-book-drawer-panel="bookmarks" hidden>
                 <div class="book-reader-drawer-list" data-book-bookmark-list>
-                    <span class="books-muted">Loading bookmarks…</span>
+                    <span class="books-muted">@ui["books.read.loadingBookmarks"]</span>
                 </div>
             </section>
 
             <section data-book-drawer-panel="highlights" hidden>
                 <div class="book-reader-drawer-list" data-book-highlight-list>
-                    <span class="books-muted">Loading highlights…</span>
+                    <span class="books-muted">@ui["books.read.loadingHighlights"]</span>
                 </div>
             </section>
         </div>

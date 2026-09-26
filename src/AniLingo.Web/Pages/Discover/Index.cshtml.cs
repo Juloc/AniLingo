@@ -2,6 +2,7 @@ using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Books;
 using AniLingo.Web.Features.Discovery;
+using AniLingo.Web.Features.Localization;
 using AniLingo.Web.Features.Metadata;
 using AniLingo.Web.Features.Novels;
 using AniLingo.Web.Features.Operations;
@@ -22,10 +23,12 @@ public sealed class IndexModel(
     CurrentAccountContext account,
     OperationRunner operations) : PageModel
 {
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public bool IsOwner => account.IsOwner;
 
-    public void OnGet()
+    public async Task OnGetAsync()
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
     }
 
     public async Task<IActionResult> OnGetResultsAsync(
@@ -71,6 +74,8 @@ public sealed class IndexModel(
             return Forbid();
         }
 
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         try
         {
             var result = await operations.RunAsync(
@@ -112,7 +117,7 @@ public sealed class IndexModel(
                                 metadataExternalId,
                                 token);
 
-                            return (WorkId: workId, Status: "Novel imported and matched to AniList.");
+                            return (WorkId: workId, Status: Ui["discover.import.novelMatched"]);
                         }
                         catch (Exception exception) when (
                             exception is InvalidOperationException or
@@ -126,13 +131,15 @@ public sealed class IndexModel(
 
                             return (
                                 WorkId: workId,
-                                Status: $"Novel imported. Metadata match needs attention: {exception.Message}");
+                                Status: Ui.Format(
+                                    "discover.import.novelMatchAttention",
+                                    ("reason", exception.Message)));
                         }
                     }
 
                     return (
                         WorkId: workId,
-                        Status: "Novel imported. Chapter text is loaded on demand.");
+                        Status: Ui["discover.import.novelImported"]);
                 },
                 "Discovered novel imported.",
                 cancellationToken);
