@@ -6,6 +6,7 @@ import androidx.media3.common.AudioAttributes
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -17,8 +18,10 @@ class AniLingoMedia3Player(context: Context) : Closeable {
     private val httpDataSourceFactory = DefaultHttpDataSource.Factory()
         .setAllowCrossProtocolRedirects(false)
 
+    // DefaultDataSource delegates http(s) to the authenticated HTTP factory and also reads
+    // app-private file:// URIs, which offline playback of downloaded episodes uses.
     private val mediaSourceFactory = DefaultMediaSourceFactory(context)
-        .setDataSourceFactory(httpDataSourceFactory)
+        .setDataSourceFactory(DefaultDataSource.Factory(context, httpDataSourceFactory))
 
     private val exoPlayer: ExoPlayer = ExoPlayer.Builder(context)
         .setMediaSourceFactory(mediaSourceFactory)

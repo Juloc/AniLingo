@@ -22,7 +22,18 @@ public sealed class IndexModel(AppDbContext db, CurrentAccountContext currentAcc
     public IReadOnlyList<PlaybackHistoryItem> PlaybackHistory { get; private set; } = [];
     public int PlaybackHistoryLimit => EpisodeProgressService.HistoryLimit;
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
+
+    /// <summary>
+    /// Due-review widget: resolved HomeWidget and Reviews capabilities at profile
+    /// scope. HomeWidget is off by default in every mode, including Study; the
+    /// user opts in through Learning settings.
+    /// </summary>
     public bool ShowLearningHomeWidget { get; private set; }
+
+    /// <summary>
+    /// Resolved ContentMetrics capability for the Anime media type. Controls
+    /// preparation percentages on recently discovered episode cards.
+    /// </summary>
     public bool ShowContentMetrics { get; private set; }
 
     public async Task<IActionResult> OnPostClearHistoryAsync(CancellationToken cancellationToken)
@@ -56,7 +67,8 @@ public sealed class IndexModel(AppDbContext db, CurrentAccountContext currentAcc
             cancellationToken);
 
         ShowLearningHomeWidget =
-            profileLearning.IsEnabled(LearningCapability.HomeWidget);
+            profileLearning.IsEnabled(LearningCapability.HomeWidget)
+            && profileLearning.IsEnabled(LearningCapability.Reviews);
         ShowContentMetrics =
             animeLearning.IsEnabled(LearningCapability.ContentMetrics);
 
@@ -72,43 +84,12 @@ public sealed class IndexModel(AppDbContext db, CurrentAccountContext currentAcc
         AnimeCount = await db.Anime.AsNoTracking().CountAsync(cancellationToken);
         EpisodeCount = await db.Episodes.AsNoTracking().CountAsync(cancellationToken);
 
-        var occurrenceTotals =
-            from episodeTerm in db.EpisodeTerms.AsNoTracking()
-            group episodeTerm by episodeTerm.EpisodeId
-            into episodeGroup
-            select new
-            {
-                EpisodeId = episodeGroup.Key,
-                TotalOccurrences = episodeGroup.Sum(x => (int?)x.Occurrences)
-            };
-
-        var preparedTotals =
-            from episodeTerm in db.EpisodeTerms.AsNoTracking()
-            join state in LearningQueries.TermStates(db, currentAccount.ProfileId)
-                    .Where(x =>
-                        x.State == UserTermState.Known
-                        || x.State == UserTermState.Learning)
-                on episodeTerm.TermId equals state.TermId
-            group episodeTerm by episodeTerm.EpisodeId
-            into episodeGroup
-            select new
-            {
-                EpisodeId = episodeGroup.Key,
-                PreparedOccurrences = episodeGroup.Sum(x => (int?)x.Occurrences)
-            };
-
         var recentEpisodes = await (
             from episode in db.Episodes.AsNoTracking()
             join anime in db.Anime.AsNoTracking() on episode.AnimeId equals anime.Id
             join metadataValue in db.AnimeMetadata.AsNoTracking()
                 on anime.Id equals metadataValue.AnimeId into metadataRows
             from metadata in metadataRows.DefaultIfEmpty()
-            join occurrenceValue in occurrenceTotals
-                on episode.Id equals occurrenceValue.EpisodeId into occurrenceRows
-            from occurrences in occurrenceRows.DefaultIfEmpty()
-            join preparedValue in preparedTotals
-                on episode.Id equals preparedValue.EpisodeId into preparedRows
-            from prepared in preparedRows.DefaultIfEmpty()
             orderby episode.DiscoveredAt descending
             select new HomeEpisode(
                 episode.Id,
@@ -116,20 +97,76 @@ public sealed class IndexModel(AppDbContext db, CurrentAccountContext currentAcc
                 metadata == null ? anime.Title : metadata.PreferredTitle,
                 episode.SeasonNumber,
                 episode.Number,
-                occurrences.TotalOccurrences ?? 0,
-                prepared.PreparedOccurrences ?? 0,
+                0,
+                0,
                 metadata == null ? null : metadata.CoverImageUrl))
             .Take(10)
             .ToListAsync(cancellationToken);
 
+        // Vocabulary coverage is only computed when the resolved Anime scope
+        // shows content metrics; otherwise Home never touches learning tables.
+        var coverage = ShowContentMetrics
+            ? await LoadCoverageAsync(
+                recentEpisodes.Select(x => x.Id).ToArray(),
+                cancellationToken)
+            : new Dictionary<Guid, (int Total, int Prepared)>();
+
         RecentEpisodes = recentEpisodes
-            .Select(row => row with
+            .Select(row =>
             {
-                CoverImageUrl = AnimeArtworkStore.ResolvePosterUrl(
-                    row.AnimeId,
-                    row.CoverImageUrl)
+                coverage.TryGetValue(row.Id, out var totals);
+                return row with
+                {
+                    TotalOccurrences = totals.Total,
+                    PreparedOccurrences = totals.Prepared,
+                    CoverImageUrl = AnimeArtworkStore.ResolvePosterUrl(
+                        row.AnimeId,
+                        row.CoverImageUrl)
+                };
             })
             .ToArray();
+    }
+
+    private async Task<Dictionary<Guid, (int Total, int Prepared)>> LoadCoverageAsync(
+        Guid[] episodeIds,
+        CancellationToken cancellationToken)
+    {
+        if (episodeIds.Length == 0)
+        {
+            return [];
+        }
+
+        var totals = await db.EpisodeTerms
+            .AsNoTracking()
+            .Where(x => episodeIds.Contains(x.EpisodeId))
+            .GroupBy(x => x.EpisodeId)
+            .Select(group => new
+            {
+                EpisodeId = group.Key,
+                Total = group.Sum(x => x.Occurrences)
+            })
+            .ToDictionaryAsync(x => x.EpisodeId, x => x.Total, cancellationToken);
+
+        var prepared = await (
+            from episodeTerm in db.EpisodeTerms.AsNoTracking()
+            join state in LearningQueries.TermStates(db, currentAccount.ProfileId)
+                    .Where(x =>
+                        x.State == UserTermState.Known
+                        || x.State == UserTermState.Learning)
+                on episodeTerm.TermId equals state.TermId
+            where episodeIds.Contains(episodeTerm.EpisodeId)
+            group episodeTerm by episodeTerm.EpisodeId
+            into episodeGroup
+            select new
+            {
+                EpisodeId = episodeGroup.Key,
+                Prepared = episodeGroup.Sum(x => x.Occurrences)
+            })
+            .ToDictionaryAsync(x => x.EpisodeId, x => x.Prepared, cancellationToken);
+
+        return totals.ToDictionary(
+            x => x.Key,
+            x => (x.Value, prepared.GetValueOrDefault(x.Key)));
     }
 
     public sealed record HomeEpisode(

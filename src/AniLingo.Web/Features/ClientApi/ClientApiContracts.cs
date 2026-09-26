@@ -47,7 +47,8 @@ public static class ClientApiContract
                 ContinueWatching: true,
                 PlaybackHistory: true,
                 PlaybackPreferences: true,
-                EmbeddedSubtitleCues: true));
+                EmbeddedSubtitleCues: true,
+                OfflineDownloads: true));
     }
 }
 
@@ -179,7 +180,8 @@ public sealed record ClientFeatureFlags(
     bool ContinueWatching,
     bool PlaybackHistory,
     bool PlaybackPreferences,
-    bool EmbeddedSubtitleCues);
+    bool EmbeddedSubtitleCues,
+    bool OfflineDownloads);
 
 public sealed record ClientErrorResponse(
     string Code,
