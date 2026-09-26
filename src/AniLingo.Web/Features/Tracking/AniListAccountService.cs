@@ -8,6 +8,7 @@ using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Metadata;
 using AniLingo.Web.Features.Manga;
 using AniLingo.Web.Features.MediaMapping;
+using AniLingo.Web.Features.Novels;
 using Microsoft.EntityFrameworkCore;
 
 namespace AniLingo.Web.Features.Tracking;
@@ -1081,6 +1082,32 @@ public sealed partial class AniListAccountService(
             displayTitle,
             "manga");
 
+        return WithMappedVolumeProgress(
+            account,
+            remote,
+            requestedProgress,
+            requestedVolumeProgress,
+            preview,
+            chapterCount,
+            displayTitle,
+            localProgress: requestedProgress);
+    }
+
+    /// <summary>
+    /// Adds mapped volume progress (Manga volumes, EPUB light-novel volumes)
+    /// to a chapter-progress context. Volume progress is only written forward,
+    /// only while the entry is CURRENT and never lowers chapter progress.
+    /// </summary>
+    private static ReadingProgressContext WithMappedVolumeProgress(
+        StoredAniListAccount account,
+        AniListRemoteListEntry remote,
+        int requestedProgress,
+        int? requestedVolumeProgress,
+        AniListReadingProgressPreview preview,
+        int? chapterCount,
+        string displayTitle,
+        int? localProgress)
+    {
         var volumeProgressToWrite =
             requestedVolumeProgress is > 0 &&
             requestedVolumeProgress.Value > remote.ProgressVolumes
@@ -1151,7 +1178,7 @@ public sealed partial class AniListAccountService(
             progressToWrite,
             preview,
             volumeProgressToWrite,
-            LocalProgress: requestedProgress);
+            LocalProgress: localProgress);
     }
 
     private async Task<ReadingProgressContext> BuildNovelProgressContextAsync(
@@ -1192,15 +1219,24 @@ public sealed partial class AniListAccountService(
                 AniListExternalProgressStateKind.NoLocalProgress);
         }
 
-        var chapterNumber = await db.NovelChapters
-            .AsNoTracking()
-            .Where(x =>
-                x.Id == localProgress.ChapterId &&
-                x.WorkId == workId)
-            .Select(x => (int?)x.Number)
+        // EPUB light-novel volumes are published volumes and may map to
+        // AniList volume progress; implicit web/book volumes never do.
+        var current = await (
+            from chapter in db.NovelChapters.AsNoTracking()
+            join volume in db.NovelVolumes.AsNoTracking()
+                on chapter.VolumeId equals volume.Id
+            where chapter.Id == localProgress.ChapterId &&
+                  chapter.WorkId == workId
+            select new
+            {
+                chapter.Number,
+                VolumeNumber = volume.Kind == NovelVolumeKinds.Epub
+                    ? (int?)volume.Number
+                    : null
+            })
             .SingleOrDefaultAsync(cancellationToken);
 
-        if (chapterNumber is null)
+        if (current is null)
         {
             return ReadingProgressContext.Blocked(
                 AniListReadingProgressPreview.Blocked(
@@ -1209,17 +1245,19 @@ public sealed partial class AniListAccountService(
                     aniListChapterCount: work.MetadataChapterCount));
         }
 
+        var chapterNumber = current.Number;
         var segment = await segmentMappings.ResolveAsync(
             "novel",
             workId.ToString(),
-            chapterNumber.Value,
-            localVolumeNumber: null,
+            chapterNumber,
+            current.VolumeNumber,
             localProgress.PositionPermille,
             completedThreshold: 950,
             cancellationToken);
 
         int mediaId;
         int requestedProgress;
+        int? requestedVolumeProgress = null;
         int? configuredChapterCount;
         var displayTitle = work.Title;
 
@@ -1252,6 +1290,7 @@ public sealed partial class AniListAccountService(
             }
 
             requestedProgress = segment.Progress;
+            requestedVolumeProgress = segment.VolumeProgress;
             configuredChapterCount = segment.RemoteChapterCount;
             displayTitle = segment.PreferredTitle ?? work.Title;
         }
@@ -1273,7 +1312,7 @@ public sealed partial class AniListAccountService(
             }
 
             var resolved = AutomaticMediaMatcher.ResolveReadingProgress(
-                chapterNumber.Value,
+                chapterNumber,
                 localProgress.PositionPermille,
                 completedThreshold: 950);
 
@@ -1365,11 +1404,15 @@ public sealed partial class AniListAccountService(
             chapterCount,
             displayTitle);
 
-        return new ReadingProgressContext(
+        return WithMappedVolumeProgress(
             account,
             remote,
             requestedProgress,
-            preview);
+            requestedVolumeProgress,
+            preview,
+            chapterCount,
+            displayTitle,
+            localProgress: null);
     }
 
     private async Task<ProgressContext> BuildProgressContextAsync(

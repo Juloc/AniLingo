@@ -1007,6 +1007,7 @@ namespace AniLingo.Web.Data.Migrations
             modelBuilder.Entity("AniLingo.Web.Features.Novels.NovelChapter", b =>
                 {
                     b.Property<Guid>("Id").ValueGeneratedOnAdd().HasColumnType("TEXT");
+                    b.Property<string>("ContentJson").HasColumnType("TEXT");
                     b.Property<DateTime>("ImportedAt").HasColumnType("TEXT");
                     b.Property<int>("Number").HasColumnType("INTEGER");
                     b.Property<string>("OriginalText").IsRequired().HasColumnType("TEXT");
@@ -1015,10 +1016,31 @@ namespace AniLingo.Web.Data.Migrations
                     b.Property<string>("SourceUrl").IsRequired().HasMaxLength(2048).HasColumnType("TEXT");
                     b.Property<string>("Title").IsRequired().HasMaxLength(500).HasColumnType("TEXT");
                     b.Property<DateTime>("UpdatedAt").HasColumnType("TEXT");
+                    b.Property<Guid>("VolumeId").HasColumnType("TEXT");
+                    b.Property<Guid>("WorkId").HasColumnType("TEXT");
+                    b.HasKey("Id");
+                    b.HasIndex("VolumeId");
+                    b.HasIndex("WorkId", "Number").IsUnique();
+                    b.ToTable("NovelChapters");
+                });
+
+            modelBuilder.Entity("AniLingo.Web.Features.Novels.NovelVolume", b =>
+                {
+                    b.Property<Guid>("Id").ValueGeneratedOnAdd().HasColumnType("TEXT");
+                    b.Property<string>("CoverAsset").HasMaxLength(120).HasColumnType("TEXT");
+                    b.Property<DateTime>("ImportedAt").HasColumnType("TEXT");
+                    b.Property<string>("Kind").IsRequired().HasMaxLength(16).HasColumnType("TEXT");
+                    b.Property<int>("Number").HasColumnType("INTEGER");
+                    b.Property<string>("SourceContentHash").HasMaxLength(64).HasColumnType("TEXT");
+                    b.Property<string>("SourceFileName").HasMaxLength(500).HasColumnType("TEXT");
+                    b.Property<string>("SourceKey").IsRequired().HasMaxLength(200).HasColumnType("TEXT");
+                    b.Property<string>("Title").HasMaxLength(500).HasColumnType("TEXT");
+                    b.Property<DateTime>("UpdatedAt").HasColumnType("TEXT");
                     b.Property<Guid>("WorkId").HasColumnType("TEXT");
                     b.HasKey("Id");
                     b.HasIndex("WorkId", "Number").IsUnique();
-                    b.ToTable("NovelChapters");
+                    b.HasIndex("WorkId", "SourceKey").IsUnique();
+                    b.ToTable("NovelVolumes");
                 });
 
             modelBuilder.Entity("AniLingo.Web.Features.Novels.NovelBookmark", b =>
@@ -1363,6 +1385,21 @@ namespace AniLingo.Web.Data.Migrations
                 });
 
             modelBuilder.Entity("AniLingo.Web.Features.Novels.NovelChapter", b =>
+                {
+                    b.HasOne("AniLingo.Web.Features.Novels.NovelVolume", null)
+                        .WithMany()
+                        .HasForeignKey("VolumeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("AniLingo.Web.Features.Novels.NovelWork", null)
+                        .WithMany()
+                        .HasForeignKey("WorkId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("AniLingo.Web.Features.Novels.NovelVolume", b =>
                 {
                     b.HasOne("AniLingo.Web.Features.Novels.NovelWork", null)
                         .WithMany()
