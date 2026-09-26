@@ -38,6 +38,15 @@ From that observation AniLingo recognizes Sonarr-owned series (linked Sonarr ser
 
 Ownership decisions and Sonarr links persist in the canonical ownership store (`/data/acquisition/ownership.json`).
 
+### Different mount paths
+
+When Sonarr and AniLingo see the shared library under different paths (different container
+mounts), configure the remote path mappings on `/Settings/Acquisition`: every Sonarr-observed path
+(series folder, episode file, queue output path, history source/target path) is rewritten through
+that mapping before AniLingo compares it to its own paths, so ownership recognition and rename-loop
+detection keep working. The same mapping also rewrites completed-download paths reported by the
+download client (see [ANIME_ACQUISITION.md](ANIME_ACQUISITION.md#import-mode-and-remote-path-mapping)) — it is one canonical list for both purposes.
+
 ## Safe rollout
 
 1. Start every existing title in **Read-only coexistence**.

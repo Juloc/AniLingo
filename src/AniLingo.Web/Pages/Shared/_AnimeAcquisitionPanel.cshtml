@@ -67,6 +67,35 @@
                        placeholder="All"
                        value="@(panel.Settings?.IndexerIds is { Length: > 0 } ids ? string.Join(", ", ids) : "")" />
             </label>
+            @if (panel.Roots.Count > 1)
+            {
+                <label>
+                    <span>Target root for new imports</span>
+                    <select name="targetRootId">
+                        <option value="">Anime's current root</option>
+                        @foreach (var root in panel.Roots)
+                        {
+                            <option value="@root.Id" selected="@(panel.Settings?.TargetRootId == root.Id)">@root.Name</option>
+                        }
+                    </select>
+                </label>
+            }
+            @if (panel.Tags.Count > 0)
+            {
+                <fieldset class="acquisition-check">
+                    <legend>Tags</legend>
+                    @foreach (var tag in panel.Tags)
+                    {
+                        <label class="acquisition-check">
+                            <input type="checkbox"
+                                   name="tagIds"
+                                   value="@tag.Id"
+                                   checked="@(panel.Settings?.TagIds?.Contains(tag.Id, StringComparer.OrdinalIgnoreCase) == true)" />
+                            <span>@tag.Name</span>
+                        </label>
+                    }
+                </fieldset>
+            }
             <button class="button" type="submit">Save</button>
         </form>
 
@@ -83,5 +112,29 @@
                asp-fragment="search-results">Interactive search</a>
             <a asp-page="/Acquisition/Index">Acquisition overview</a>
         </div>
+
+        @if (panel.RecentHistory.Count > 0)
+        {
+            <div class="acquisition-owner-facts">
+                <strong>Recent history</strong>
+            </div>
+            <ul class="acquisition-history-list">
+                @foreach (var entry in panel.RecentHistory)
+                {
+                    <li>
+                        @entry.OccurredAtUtc.ToLocalTime().ToString("g") · S@(entry.SeasonNumber.ToString("00"))E@(entry.EpisodeNumber.ToString("00")) ·
+                        @entry.EventKind ·
+                        @if (entry.ReleaseTitle is { } releaseTitle)
+                        {
+                            @releaseTitle <text> (@entry.QualityKey, score @entry.Score)</text>
+                        }
+                        else
+                        {
+                            @entry.Reason
+                        }
+                    </li>
+                }
+            </ul>
+        }
     </section>
 }

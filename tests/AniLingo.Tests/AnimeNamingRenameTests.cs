@@ -248,7 +248,7 @@ public sealed class AnimeNamingRenameTests
             {
                 Anime = new Dictionary<string, AnimeMonitorSettings>(StringComparer.OrdinalIgnoreCase)
                 {
-                    ["frieren"] = new("frieren", true, true, [], [])
+                    ["frieren"] = new("frieren", true, true, [], [], TagIds: ["slow"], TargetRootId: fixture.Root.Id)
                 },
                 Wanted = new Dictionary<string, AnimeWantedEpisode>(StringComparer.OrdinalIgnoreCase)
                 {
@@ -297,6 +297,8 @@ public sealed class AnimeNamingRenameTests
         var monitoring = await fixture.Monitoring.LoadAsync();
         Assert.IsTrue(monitoring.Anime["frieren (2023)"].Monitored, "Monitoring settings follow the new anime key.");
         Assert.IsFalse(monitoring.Anime.ContainsKey("frieren"));
+        CollectionAssert.AreEqual(new[] { "slow" }, monitoring.Anime["frieren (2023)"].TagIds, "Tags follow the new anime key.");
+        Assert.AreEqual(fixture.Root.Id, monitoring.Anime["frieren (2023)"].TargetRootId, "The target root assignment follows the new anime key.");
         Assert.AreEqual("frieren (2023)", monitoring.Wanted.Values.Single().Key.AnimeKey);
         Assert.AreEqual(AnimeAcquisitionAttemptStatus.Grabbed, monitoring.Attempts["frieren (2023):S01E02"].Status);
         var import = await fixture.Imports.GetAsync(importId);
@@ -435,6 +437,7 @@ public sealed class AnimeNamingRenameTests
                 new SonarrConnectionStore(protection),
                 new UnusedObserverClient(),
                 Ownership,
+                new AnimeImportSettingsStore(tempRoot),
                 NullLogger<SonarrObservationService>.Instance);
             Service = new AnimeRenameService(
                 db,

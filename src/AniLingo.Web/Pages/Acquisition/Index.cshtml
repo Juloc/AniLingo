@@ -96,9 +96,47 @@
             <span class="status-pill @(Model.SabnzbdConfigured ? "status-ok" : "status-warn")">@(Model.SabnzbdConfigured ? "Configured" : "Not configured")</span>
             <a asp-page="/Settings/SonarrMigration">Sonarr migration</a>
             <span class="muted">Per-anime management mode</span>
+            <a asp-page="/Settings/Acquisition">Import, path mapping &amp; policy</a>
+            <span class="muted">Import mode, remote paths, tags, delay profiles</span>
         </div>
     </section>
 </div>
+
+@if (Model.RecentHistory.Count > 0)
+{
+    <section class="panel">
+        <div class="panel-heading"><h2>Recent grab/import history</h2></div>
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>When</th>
+                    <th>Anime</th>
+                    <th>Episode</th>
+                    <th>Event</th>
+                    <th>Release</th>
+                    <th>Quality</th>
+                    <th>Score</th>
+                    <th>Reason</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var entry in Model.RecentHistory)
+                {
+                    <tr>
+                        <td>@entry.OccurredAtUtc.ToLocalTime().ToString("g")</td>
+                        <td>@(Model.AnimeTitles.TryGetValue(entry.AnimeId, out var title) ? title : entry.AnimeId.ToString())</td>
+                        <td>S@(entry.SeasonNumber.ToString("00"))E@(entry.EpisodeNumber.ToString("00"))</td>
+                        <td>@entry.EventKind</td>
+                        <td>@entry.ReleaseTitle</td>
+                        <td>@entry.QualityKey</td>
+                        <td>@entry.Score</td>
+                        <td>@entry.Reason</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </section>
+}
 
 @if (search is not null)
 {

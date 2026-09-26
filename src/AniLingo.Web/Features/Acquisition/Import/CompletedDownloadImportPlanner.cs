@@ -51,7 +51,8 @@ public static class CompletedDownloadImportPlanner
                             [],
                             [],
                             0,
-                            [reason]))
+                            [reason],
+                            context.AllowHardlinkFallbackToCopy))
                         .ToArray(),
                     reason);
             }
@@ -84,7 +85,8 @@ public static class CompletedDownloadImportPlanner
                 [],
                 [],
                 1,
-                ["Unsupported import file type."]));
+                ["Unsupported import file type."],
+                context.AllowHardlinkFallbackToCopy));
         }
 
         return new CompletedDownloadImportPlan(context.AcquisitionId, plans);
@@ -205,7 +207,8 @@ public static class CompletedDownloadImportPlanner
                     MatchSidecars(video, sidecars),
                     [],
                     mapping.Confidence,
-                    reasons);
+                    reasons,
+                    context.AllowHardlinkFallbackToCopy);
             }
 
             replacementPaths.Add(current.Path);
@@ -231,7 +234,8 @@ public static class CompletedDownloadImportPlanner
             MatchSidecars(video, sidecars),
             replacementPaths,
             mapping.Confidence,
-            reasons);
+            reasons,
+            context.AllowHardlinkFallbackToCopy);
     }
 
     private static MappingResult ResolveTargets(
@@ -375,7 +379,8 @@ public static class CompletedDownloadImportPlanner
             sidecars,
             [],
             confidence,
-            reasons);
+            reasons,
+            context.AllowHardlinkFallbackToCopy);
 
     private static void ValidateContext(CompletedDownloadImportContext context)
     {

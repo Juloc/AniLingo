@@ -1,3 +1,4 @@
+using AniLingo.Web.Features.Acquisition.Import;
 using AniLingo.Web.Features.Acquisition.Ownership;
 
 namespace AniLingo.Web.Features.Sonarr;
@@ -9,6 +10,7 @@ public sealed class SonarrObservationService(
     SonarrConnectionStore connectionStore,
     ISonarrObserverClient observerClient,
     AcquisitionOwnershipStore ownershipStore,
+    AnimeImportSettingsStore importSettings,
     ILogger<SonarrObservationService> logger)
 {
     public static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(1);
@@ -86,6 +88,33 @@ public sealed class SonarrObservationService(
                          .Distinct())
             {
                 files.AddRange(await observerClient.GetEpisodeFilesAsync(settings, seriesId, cancellationToken));
+            }
+
+            // Sonarr and AniLingo may see the shared library under different mount paths
+            // (#301/#302): translate every Sonarr-reported path through the same canonical remote
+            // path mapping used for completed-download paths, so path comparisons in
+            // SonarrOwnershipRecognizer/SonarrParallelSafety compare like with like.
+            var mapping = await importSettings.LoadAsync(cancellationToken);
+            if (mapping.RemotePathMappings.Count > 0)
+            {
+                series = series
+                    .Select(item => item with { Path = mapping.TranslatePath(item.Path) })
+                    .ToArray();
+                files = files
+                    .Select(item => item with { Path = mapping.TranslatePath(item.Path) })
+                    .ToList();
+                queue = queue
+                    .Select(item => item.OutputPath is null
+                        ? item
+                        : item with { OutputPath = mapping.TranslatePath(item.OutputPath) })
+                    .ToArray();
+                history = history
+                    .Select(item => item with
+                    {
+                        Path = item.Path is null ? null : mapping.TranslatePath(item.Path),
+                        SourcePath = item.SourcePath is null ? null : mapping.TranslatePath(item.SourcePath)
+                    })
+                    .ToArray();
             }
 
             return SonarrObservedState.FromObservation(series, files, queue, history, now);

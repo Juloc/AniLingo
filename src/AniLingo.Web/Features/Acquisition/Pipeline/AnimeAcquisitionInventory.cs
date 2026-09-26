@@ -199,9 +199,14 @@ public sealed class AnimeAcquisitionInventory(
             diagnostic);
     }
 
+    // preferredRootId (the anime's assigned target root, item 3 of the P1 backlog) is used only
+    // when the anime has no existing folder in any library root yet: an anime that is already
+    // organized under a root keeps importing there, so switching the assignment never splits an
+    // anime's episodes across two roots.
     public async Task<AnimeLibraryLocation?> GetLibraryLocationAsync(
         Guid animeId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Guid? preferredRootId = null)
     {
         var files = await db.MediaFiles
             .AsNoTracking()
@@ -245,7 +250,8 @@ public sealed class AnimeAcquisitionInventory(
             return new AnimeLibraryLocation(root.Id, rootPath, directories[0], usesSeasonFolders);
         }
 
-        var fallback = roots.FirstOrDefault();
+        var preferred = preferredRootId is { } id ? roots.FirstOrDefault(root => root.Id == id) : null;
+        var fallback = preferred ?? roots.FirstOrDefault();
         return fallback is null
             ? null
             : new AnimeLibraryLocation(fallback.Id, Path.GetFullPath(fallback.Path), null, false);

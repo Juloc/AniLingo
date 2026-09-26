@@ -19,15 +19,26 @@ public sealed class IndexerSearchCoordinator(
     public async Task<bool> HasEnabledIndexerAsync(CancellationToken cancellationToken) =>
         (await store.LoadAllAsync(cancellationToken)).Any(entry => entry.Enabled);
 
+    /// <summary>The ids of every currently enabled indexer entry (Prowlarr and direct
+    /// Newznab/Torznab alike), for callers that need to know whether a Guid-based restriction
+    /// (see <paramref name="allowedEntryIds"/> on <see cref="SearchAsync"/>) would leave anything
+    /// to search before committing to a search.</summary>
+    public async Task<IReadOnlyList<Guid>> EnabledEntryIdsAsync(CancellationToken cancellationToken) =>
+        (await store.LoadAllAsync(cancellationToken))
+            .Where(entry => entry.Enabled)
+            .Select(entry => entry.Id)
+            .ToArray();
+
     public async Task<IndexerAnimeSearchResult> SearchAsync(
         IndexerAnimeSearchTarget target,
         CancellationToken cancellationToken,
-        IReadOnlyList<int>? prowlarrIndexerIdOverride = null)
+        IReadOnlyList<int>? prowlarrIndexerIdOverride = null,
+        IReadOnlyCollection<Guid>? allowedEntryIds = null)
     {
         ArgumentNullException.ThrowIfNull(target);
 
         var entries = (await store.LoadAllAsync(cancellationToken))
-            .Where(entry => entry.Enabled)
+            .Where(entry => entry.Enabled && (allowedEntryIds is null || allowedEntryIds.Contains(entry.Id)))
             .OrderBy(entry => entry.Priority)
             .ToArray();
 
