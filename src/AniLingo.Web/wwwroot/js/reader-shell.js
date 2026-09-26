@@ -272,13 +272,19 @@
             tabs.className = "reader-settings-tabs";
             tabs.setAttribute("role", "tablist");
 
-            const panels = {};
-            for (const [key, label] of [
+            // The read-aloud section is server-rendered only when the document
+            // supports TTS; the tab exists only when that section is present.
+            const ttsSection = settingsForm.querySelector("[data-reader-tts-settings]");
+            const tabDefinitions = [
                 ["reading", "Lesen"],
                 ["text", "Text"],
                 ["appearance", "Aussehen"],
                 ["defaults", "Defaults"]
-            ]) {
+            ];
+            if (ttsSection) tabDefinitions.splice(3, 0, ["tts", "Vorlesen"]);
+
+            const panels = {};
+            for (const [key, label] of tabDefinitions) {
                 const button = document.createElement("button");
                 button.type = "button";
                 button.className = "reader-settings-tab";
@@ -295,7 +301,7 @@
                 panels[key] = panel;
             }
 
-            workspace.append(tabs, panels.reading, panels.text, panels.appearance, panels.defaults);
+            workspace.append(tabs, ...tabDefinitions.map(([key]) => panels[key]));
             settingsForm.prepend(workspace);
 
             const heading = settingsForm.querySelector(".reader-settings-heading");
@@ -332,6 +338,10 @@
             const googleFont = settingsForm.querySelector(".novel-google-font");
             if (googleFont && !workspace.contains(googleFont)) {
                 panels.text.append(googleFont);
+            }
+
+            if (ttsSection && !workspace.contains(ttsSection)) {
+                panels.tts.append(ttsSection);
             }
 
             const actions = settingsForm.querySelector(
@@ -527,13 +537,10 @@
             if (nav.childElementCount) root.append(nav);
         };
 
-        const buildOverflow = () => {
-            if (!topChrome || topChrome.querySelector("[data-reader-overflow]")) return;
-            const sources = [
-                root.querySelector("[data-reader-wake-lock-toggle]"),
-                root.querySelector("[data-reader-immersive-toggle]")
-            ].filter(Boolean);
-            if (!sources.length) return;
+        const ensureOverflow = () => {
+            if (!topChrome) return null;
+            const existing = topChrome.querySelector("[data-reader-overflow]");
+            if (existing) return existing.querySelector(".reader-overflow-menu");
 
             const wrap = document.createElement("details");
             wrap.className = "reader-overflow";
@@ -543,26 +550,66 @@
             summary.setAttribute("aria-label", "Weitere Reader-Aktionen");
             const menu = document.createElement("div");
             menu.className = "reader-overflow-menu";
-
-            for (const source of sources) {
-                source.classList.add("reader-overflow-source");
-                const button = document.createElement("button");
-                button.type = "button";
-                button.textContent =
-                    source.dataset.readerWakeLockToggle !== undefined
-                        ? "Bildschirm an"
-                        : "Immersiv";
-                button.addEventListener("click", () => {
-                    source.click();
-                    wrap.open = false;
-                });
-                menu.append(button);
-            }
             wrap.append(summary, menu);
             const target =
                 topChrome.querySelector(".novel-toolbar-end,.book-reader-toolbar") ||
                 topChrome;
             target.append(wrap);
+            return menu;
+        };
+
+        // Low-frequency actions live in the overflow menu (#286 hierarchy).
+        const addOverflowAction = (label, onClick) => {
+            const menu = ensureOverflow();
+            if (!menu) return null;
+            const button = document.createElement("button");
+            button.type = "button";
+            button.textContent = label;
+            button.addEventListener("click", () => {
+                onClick();
+                const wrap = menu.closest("details");
+                if (wrap) wrap.open = false;
+            });
+            menu.append(button);
+            return button;
+        };
+
+        const addMobileAction = (label, onClick) => {
+            let nav = root.querySelector("[data-reader-mobile-actions]");
+            if (!nav) {
+                nav = document.createElement("nav");
+                nav.className = "reader-mobile-actions";
+                nav.dataset.readerMobileActions = "";
+                nav.dataset.readerChrome = "";
+                nav.setAttribute("aria-label", "Reader");
+                root.append(nav);
+            }
+            const button = document.createElement("button");
+            button.type = "button";
+            button.textContent = label;
+            button.addEventListener("click", () => {
+                showChrome();
+                onClick();
+            });
+            nav.append(button);
+            return button;
+        };
+
+        const buildOverflow = () => {
+            if (!topChrome || topChrome.querySelector("[data-reader-overflow]")) return;
+            const sources = [
+                root.querySelector("[data-reader-wake-lock-toggle]"),
+                root.querySelector("[data-reader-immersive-toggle]")
+            ].filter(Boolean);
+
+            for (const source of sources) {
+                source.classList.add("reader-overflow-source");
+                addOverflowAction(
+                    source.dataset.readerWakeLockToggle !== undefined
+                        ? "Bildschirm an"
+                        : "Immersiv",
+                    () => source.click());
+            }
         };
 
         if (topChrome) {
@@ -576,6 +623,23 @@
         buildMobileActions();
         buildOverflow();
         updateModeVisibility();
+
+        // Integration seam for shared Reader extensions such as reader-tts.js.
+        // Extensions persist through the same ReaderPreferences command and place
+        // actions through the shell's chrome hierarchy. The extension may load
+        // before or after this script; whichever runs second performs the mount.
+        const api = Object.freeze({
+            root,
+            surface,
+            getSettings: () => settings,
+            postSettingsCommand,
+            addResetButton,
+            updateSourceBadges,
+            addOverflowAction,
+            addMobileAction
+        });
+        root.readerShell = api;
+        window.AniLingoReaderTts?.mount(api);
 
         settingsContainer?.addEventListener("toggle", () => {
             if (settingsContainer.open) {
