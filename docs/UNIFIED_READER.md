@@ -283,9 +283,30 @@ text. Illustration-only pages open the next text chapter.
 
 `novel-reader.js` is the single bootstrap: it owns the shared reader context,
 language view state and the restore lifecycle, then starts
-`novel-position.js`, `novel-annotations.js`, `novel-chapter-drawer.js` and
-`novel-translation.js`, which only register factories. Chrome, settings and
-paged mode stay in `reader-shell.js` and `reader-personalization.js`.
+`novel-position.js`, `novel-annotations.js`, `novel-chapter-drawer.js`,
+`novel-translation.js` and `novel-learning.js`, which only register factories.
+Chrome, settings and paged mode stay in `reader-shell.js` and
+`reader-personalization.js`.
 Styles: `novels.css` (reader surface), `novel-reader-panels.css` (drawer,
 notes, highlights, selection) and `novel-library.css` (library, work detail,
 chapter preparation).
+
+### Learning (issue #147)
+
+`Read.cshtml` hosts the shared language inspector
+(`LanguageInspectorHost.ForNovelChapter`, see docs/LEARNING_V2.md) without a
+`selectionSurface`, so the inspector never binds its own floating "Look up"
+button. Instead, `novel-learning.js` adds a "Nachschlagen" action to the
+existing selection menu (`novel-annotations.js`'s `data-selection-menu`) that
+opens the inspector for the current selection, and taps a Japanese word
+through `Intl.Segmenter` where the platform supports it. Saving a word from
+the reader records a `LearningContext` with `chapter:{id}` +
+`paragraph:{index}`, the same anchor shape Learn/Review resolves back into a
+"Zurück zum Kapitel" link.
+
+Optional furigana is computed from the same Japanese analysis pipeline as the
+inspector and rendered as `<ruby>`/`data-rt` (identical to native EPUB
+readings), so it survives highlighting without another selection/offset path.
+It is off by default, stored as `ReaderPreferences.FuriganaEnabled` (the
+existing preference cascade, saved at the global default scope), and only
+offered when the toolkit supports readings.

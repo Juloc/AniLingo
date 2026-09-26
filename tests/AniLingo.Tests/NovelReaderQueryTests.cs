@@ -1,8 +1,10 @@
 using System.Data.Common;
 using System.Text.Json;
 using AniLingo.Web.Data;
+using AniLingo.Web.Features.Learning.LanguageAssistance;
 using AniLingo.Web.Features.Novels;
 using AniLingo.Web.Features.Operations;
+using AniLingo.Web.Features.Vocabulary;
 using AniLingo.Web.Infrastructure;
 using AniLingo.Web.Pages.Novels;
 using Microsoft.AspNetCore.Mvc;
@@ -33,9 +35,9 @@ public sealed class NovelReaderQueryTests
         await fixture.SeedAnnotationsAsync(large, largeChapter, ReaderA, perChapterElsewhere: 400, inCurrent: 5);
 
         var smallQueries = await fixture.CountQueriesAsync(model =>
-            model.OnGetAsync(smallChapter.Id, null, null, null, CancellationToken.None));
+            model.OnGetAsync(smallChapter.Id, null, null, null, null, null, CancellationToken.None));
         var (largeQueries, largeModel) = await fixture.CountQueriesWithModelAsync(model =>
-            model.OnGetAsync(largeChapter.Id, null, null, null, CancellationToken.None));
+            model.OnGetAsync(largeChapter.Id, null, null, null, null, null, CancellationToken.None));
 
         Assert.AreEqual(smallQueries, largeQueries);
         Assert.IsTrue(largeQueries <= 10, $"Reader GET used {largeQueries} queries.");
@@ -108,7 +110,7 @@ public sealed class NovelReaderQueryTests
         var chapter = work.Chapters[0];
 
         var model = fixture.CreateReadModel(ReaderA);
-        var result = await model.OnGetAsync(chapter.Id, null, null, null, CancellationToken.None);
+        var result = await model.OnGetAsync(chapter.Id, null, null, null, null, null, CancellationToken.None);
 
         Assert.IsInstanceOfType<PageResult>(result);
         Assert.IsFalse(model.Chapter.HasContent);
@@ -128,13 +130,13 @@ public sealed class NovelReaderQueryTests
         Assert.IsTrue(operation.IsActive);
 
         var pending = fixture.CreateReadModel(ReaderA);
-        await pending.OnGetAsync(chapter.Id, null, null, operationId, CancellationToken.None);
+        await pending.OnGetAsync(chapter.Id, null, null, null, null, operationId, CancellationToken.None);
         Assert.IsNotNull(pending.Preparation);
         Assert.AreEqual(0, fixture.Source.Calls);
 
         // Another profile cannot observe someone else's preparation operation.
         var other = fixture.CreateReadModel(ReaderB);
-        await other.OnGetAsync(chapter.Id, null, null, operationId, CancellationToken.None);
+        await other.OnGetAsync(chapter.Id, null, null, null, null, operationId, CancellationToken.None);
         Assert.IsNull(other.Preparation);
 
         var status = await fixture.CreateReadModel(ReaderA)
@@ -172,7 +174,7 @@ public sealed class NovelReaderQueryTests
         Assert.AreEqual(300, stale.PositionPermille);
 
         var resume = fixture.CreateReadModel(ReaderA);
-        await resume.OnGetAsync(chapter.Id, null, null, null, CancellationToken.None);
+        await resume.OnGetAsync(chapter.Id, null, null, null, null, null, CancellationToken.None);
         Assert.AreEqual(new NovelReaderAnchor("de", 1, 7, 600, "Zweiter deutscher Absatz.", false), resume.InitialAnchor);
 
         var annotations = new NovelAnnotationService(fixture.Db);
@@ -182,11 +184,11 @@ public sealed class NovelReaderQueryTests
             ReaderA, chapter.Id, "ja", 1, 3, 6, null, CancellationToken.None);
 
         var bookmarkJump = fixture.CreateReadModel(ReaderA);
-        await bookmarkJump.OnGetAsync(chapter.Id, bookmark.Id, null, null, CancellationToken.None);
+        await bookmarkJump.OnGetAsync(chapter.Id, bookmark.Id, null, null, null, null, CancellationToken.None);
         Assert.AreEqual(new NovelReaderAnchor("ja", 0, 2, 150, bookmark.AnchorText, true), bookmarkJump.InitialAnchor);
 
         var highlightJump = fixture.CreateReadModel(ReaderA);
-        await highlightJump.OnGetAsync(chapter.Id, null, highlight.Id, null, CancellationToken.None);
+        await highlightJump.OnGetAsync(chapter.Id, null, highlight.Id, null, null, null, CancellationToken.None);
         Assert.AreEqual("ja", highlightJump.InitialAnchor.Language);
         Assert.AreEqual(1, highlightJump.InitialAnchor.ParagraphIndex);
         Assert.AreEqual(3, highlightJump.InitialAnchor.Offset);
@@ -194,7 +196,7 @@ public sealed class NovelReaderQueryTests
 
         // Another profile's bookmark id is not a valid jump target.
         var foreign = fixture.CreateReadModel(ReaderB);
-        await foreign.OnGetAsync(chapter.Id, bookmark.Id, null, null, CancellationToken.None);
+        await foreign.OnGetAsync(chapter.Id, bookmark.Id, null, null, null, null, CancellationToken.None);
         Assert.IsFalse(foreign.InitialAnchor.Forced);
         Assert.AreEqual(300, foreign.InitialAnchor.PositionPermille);
     }
@@ -499,6 +501,9 @@ public sealed class NovelReaderQueryTests
                 new NovelTranslationService(db, imports, new UnusedTranslator()),
                 new NovelMappingService(db, new UnusedMappingSuggester()),
                 new NovelJobs(new BackgroundJobQueue(services.GetRequiredService<IServiceScopeFactory>())),
+                new LanguageTextAnalyzer(
+                    new LanguageInspectorFixture.FakeMorphology(),
+                    new JapaneseDictionary(Path.GetTempPath())),
                 db,
                 EpisodeFlowFixture.Account(profileId),
                 new OperationRunner(db, services));
