@@ -1,0 +1,84 @@
+@page
+@model AniLingo.Web.Pages.Settings.ApiKeys.IndexModel
+@{
+    ViewData["Title"] = "API keys";
+}
+
+<h1>API keys</h1>
+<p class="muted">
+    Keys for the acquisition automation API (<code>/api/acquisition/v1</code>): monitoring, wanted
+    episodes, search-now, operations/history, manual imports and a health summary. Send a key in
+    the <code>X-Api-Key</code> header; it authenticates as the owner, scoped to that API only. See
+    the acquisition documentation for the full endpoint list and examples.
+</p>
+
+@if (Model.Notice is not null)
+{
+    <p class="metadata-notice">@Model.Notice</p>
+}
+@if (Model.Error is not null)
+{
+    <p class="metadata-error">@Model.Error</p>
+}
+
+@if (Model.CreatedRawKey is not null)
+{
+    <div class="metadata-notice">
+        <p><strong>'@Model.CreatedKeyName'</strong> — copy this key now; it will not be shown again:</p>
+        <p><code>@Model.CreatedRawKey</code></p>
+    </div>
+}
+
+<form method="post" asp-page-handler="Create">
+    <label>
+        Name
+        <input type="text" name="name" placeholder="e.g. Sonarr-style automation script" maxlength="120" required />
+    </label>
+    <button type="submit">Create key</button>
+</form>
+
+<table class="data-table">
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Key prefix</th>
+            <th>Created</th>
+            <th>Last used</th>
+            <th>Status</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var key in Model.Keys)
+        {
+            <tr>
+                <td>@key.Name</td>
+                <td><code>@key.KeyPrefix…</code></td>
+                <td>@key.CreatedAtUtc.ToString("u")</td>
+                <td>@(key.LastUsedAtUtc?.ToString("u") ?? "Never")</td>
+                <td>
+                    @if (key.IsActive)
+                    {
+                        <span class="status-pill status-ok">Active</span>
+                    }
+                    else
+                    {
+                        <span class="status-pill status-warn">Revoked @key.RevokedAtUtc?.ToString("u")</span>
+                    }
+                </td>
+                <td>
+                    @if (key.IsActive)
+                    {
+                        <form method="post" asp-page-handler="Revoke" asp-route-id="@key.Id" style="display:inline">
+                            <button type="submit">Revoke</button>
+                        </form>
+                    }
+                </td>
+            </tr>
+        }
+        @if (Model.Keys.Count == 0)
+        {
+            <tr><td colspan="6" class="muted">No API key created yet.</td></tr>
+        }
+    </tbody>
+</table>
