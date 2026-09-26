@@ -47,6 +47,13 @@ public sealed class ReaderPreference
     public string? BookmarkStyle { get; set; }
     public string? BookmarkColor { get; set; }
 
+    /// <summary>
+    /// Optional furigana over kanji, computed from the Japanese analysis
+    /// pipeline for readers whose source has none of its own. Off by default;
+    /// see <see cref="ReaderSettingsSnapshot.FuriganaEnabled"/>.
+    /// </summary>
+    public bool? FuriganaEnabled { get; set; }
+
     public string? TtsProviderId { get; set; }
     /// <summary>JSON object: normalized BCP-47 tag -> voice id. See <see cref="SpeechVoiceMap"/>.</summary>
     public string? TtsVoiceIds { get; set; }
@@ -93,6 +100,8 @@ public sealed class ReaderSettingsInput
     public string? BookmarkStyle { get; set; }
     public string? BookmarkColor { get; set; }
 
+    public bool FuriganaEnabled { get; set; }
+
     public string? TtsProviderId { get; set; } = "auto";
     /// <summary>JSON object: language tag -> voice id (the effective map the client posts back).</summary>
     public string? TtsVoiceIds { get; set; }
@@ -136,6 +145,12 @@ public sealed record ReaderSettingsSnapshot(
     string BookmarkColor,
     bool HasBookOverride)
 {
+    /// <summary>
+    /// Off by default. The reader only offers the control when the content
+    /// language's toolkit supports readings (Japanese today).
+    /// </summary>
+    public bool FuriganaEnabled { get; init; }
+
     public string ContentTypeKey { get; init; } = "light-novel";
     public bool HasTypeOverride { get; init; }
     public bool HasGenreOverride { get; init; }
@@ -668,6 +683,9 @@ public static class ReaderPreferenceStore
             ContentTypeKey = ReaderContentTypes.ToKey(contentType),
             HasTypeOverride = type is not null,
             HasGenreOverride = genreLayers.Length > 0,
+            // Off by default regardless of content-type preset; not part of
+            // ReaderSystemPreset (Features/ReaderCore) since every preset agrees.
+            FuriganaEnabled = ResolveValue("furiganaEnabled", x => x.FuriganaEnabled, false),
             TtsProviderId = ReaderPreferenceRules.NormalizeTtsProviderId(
                 ResolveString("ttsProviderId", x => x.TtsProviderId, preset.TtsProviderId)),
             TtsVoiceIds = ttsVoiceIds,
@@ -937,6 +955,7 @@ public static class ReaderPreferenceStore
             ReaderPreferenceRules.NormalizeBookmarkStyle(input.BookmarkStyle);
         preference.BookmarkColor =
             ReaderPreferenceRules.NormalizeBookmarkColor(input.BookmarkColor);
+        preference.FuriganaEnabled = input.FuriganaEnabled;
         preference.TtsProviderId =
             ReaderPreferenceRules.NormalizeTtsProviderId(input.TtsProviderId);
         preference.TtsVoiceIds =
@@ -1101,6 +1120,9 @@ public static class ReaderPreferenceStore
                 preference.BookmarkColor =
                     ReaderPreferenceRules.NormalizeBookmarkColor(input.BookmarkColor);
                 break;
+            case "furiganaEnabled":
+                preference.FuriganaEnabled = input.FuriganaEnabled;
+                break;
             case "ttsProviderId":
                 preference.TtsProviderId =
                     ReaderPreferenceRules.NormalizeTtsProviderId(input.TtsProviderId);
@@ -1166,6 +1188,7 @@ public static class ReaderPreferenceStore
             case "themeTintStrength": preference.ThemeTintStrength = null; break;
             case "bookmarkStyle": preference.BookmarkStyle = null; break;
             case "bookmarkColor": preference.BookmarkColor = null; break;
+            case "furiganaEnabled": preference.FuriganaEnabled = null; break;
             case "ttsProviderId": preference.TtsProviderId = null; break;
             case "ttsRate": preference.TtsRate = null; break;
             case "ttsPitch": preference.TtsPitch = null; break;
@@ -1206,6 +1229,7 @@ public static class ReaderPreferenceStore
         preference.ThemeTintStrength is null &&
         preference.BookmarkStyle is null &&
         preference.BookmarkColor is null &&
+        preference.FuriganaEnabled is null &&
         preference.TtsProviderId is null &&
         preference.TtsVoiceIds is null &&
         preference.TtsRate is null &&

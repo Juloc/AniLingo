@@ -1,9 +1,9 @@
 // Novel reader bootstrap. Feature modules (novel-position.js, novel-annotations.js,
-// novel-chapter-drawer.js, novel-translation.js) register factories on
-// window.AniLingoNovelReader; this file owns the shared reader context, the
-// language view state and the restore lifecycle, then starts every module once.
-// Chrome visibility, settings and paged mode stay in reader-shell.js and
-// reader-personalization.js.
+// novel-chapter-drawer.js, novel-translation.js, novel-learning.js) register
+// factories on window.AniLingoNovelReader; this file owns the shared reader
+// context, the language view state and the restore lifecycle, then starts
+// every module once. Chrome visibility, settings and paged mode stay in
+// reader-shell.js and reader-personalization.js.
 (() => {
     const shell = document.querySelector("[data-novel-reader]");
     if (!shell) return;
@@ -174,6 +174,7 @@
     reader.annotations = modules.annotations(reader);
     modules.chapterDrawer(reader);
     modules.translation(reader);
+    modules.learning?.(reader);
 
     shell.addEventListener("click", event => {
         const viewButton = event.target.closest("[data-reader-view]");

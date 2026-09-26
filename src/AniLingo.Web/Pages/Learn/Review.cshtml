@@ -146,6 +146,18 @@ else
                     </a>
                 </div>
 
+                @if (context is null && Model.SourceLink is { } sourceLink)
+                {
+                    <div class="panel review-context" data-review-reading-context>
+                        <span class="eyebrow">@Model.Ui["learn.readingContext"]</span>
+                        @if (!string.IsNullOrWhiteSpace(sourceLink.Sentence))
+                        {
+                            <p lang="@current.PromptLanguage">@sourceLink.Sentence</p>
+                        }
+                        <a class="text-link" href="@sourceLink.Url">@sourceLink.Label · @Model.Ui["learn.backToChapter"]</a>
+                    </div>
+                }
+
                 <form method="post"
                       asp-page-handler="Review"
                       class="review-actions"

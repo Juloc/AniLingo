@@ -1,5 +1,7 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
+using AniLingo.Web.Features.Learning.Courses;
+using AniLingo.Web.Features.Learning.LanguageAssistance;
 using AniLingo.Web.Features.Novels;
 using AniLingo.Web.Features.Operations;
 using AniLingo.Web.Features.ReaderCore;
@@ -17,6 +19,9 @@ public sealed record NovelReaderAnchor(
     string? AnchorText,
     bool Forced);
 
+/// <summary>One text run of a furigana overlay; see <see cref="ReadModel.BuildFuriganaSegments"/>.</summary>
+public sealed record FuriganaSegment(string Text, string? Reading);
+
 /// <summary>
 /// Novel reader page adapter. GET renders only cached content: a chapter
 /// without downloaded text shows a preparation state whose action queues the
@@ -30,6 +35,7 @@ public sealed class ReadModel(
     NovelTranslationService translations,
     NovelMappingService mappings,
     NovelJobs jobs,
+    LanguageTextAnalyzer languageAnalyzer,
     AppDbContext db,
     CurrentAccountContext account,
     OperationRunner operations) : PageModel
@@ -52,10 +58,24 @@ public sealed class ReadModel(
     public Guid? ReturnHighlightId { get; private set; }
     public bool IsOwner => account.IsOwner;
 
+    /// <summary>
+    /// Computed furigana is only offered when the content language's toolkit
+    /// supports readings (Japanese today); the toggle and <see cref="OnGetFuriganaAsync"/>
+    /// are both gated on it rather than a hardcoded language check.
+    /// </summary>
+    public bool FuriganaSupported { get; private set; }
+
+    private static bool FuriganaToolkitSupportsReadings =>
+        LearningLanguageToolkitRegistry.Supports(
+            NovelReadingLanguage.Japanese,
+            LearningLanguageCapability.Readings);
+
     public async Task<IActionResult> OnGetAsync(
         Guid id,
         Guid? bookmark,
         Guid? highlight,
+        int? paragraph,
+        string? lang,
         Guid? prepare,
         CancellationToken cancellationToken)
     {
@@ -93,6 +113,8 @@ public sealed class ReadModel(
             contentType,
             cancellationToken);
 
+        FuriganaSupported = FuriganaToolkitSupportsReadings;
+
         JapaneseParagraphs = NovelTextLayout.SplitParagraphs(chapter.OriginalText);
         GermanParagraphs = NovelTextLayout.SplitParagraphs(chapter.TranslationText);
         JapaneseBlocks = NovelChapterDocument.BuildReaderBlocks(
@@ -116,7 +138,7 @@ public sealed class ReadModel(
             chapter.Id,
             cancellationToken);
 
-        InitialAnchor = ResolveInitialAnchor(bookmark, highlight);
+        InitialAnchor = ResolveInitialAnchor(bookmark, highlight, paragraph, lang);
         return Page();
     }
 
@@ -387,6 +409,38 @@ public sealed class ReadModel(
             status = "ready",
             paragraphs = NovelTextLayout.SplitParagraphs(cached.Text)
         });
+    }
+
+    /// <summary>
+    /// Computed furigana over kanji, per Japanese paragraph, for the reader's
+    /// optional furigana toggle. Fetched on demand (never on the bounded
+    /// reader GET) and applied client-side so toggling never reloads the
+    /// page; native EPUB ruby a paragraph already carries is left alone
+    /// (<see cref="FuriganaSegment.Reading"/> is null for it).
+    /// </summary>
+    public async Task<IActionResult> OnGetFuriganaAsync(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        if (!FuriganaToolkitSupportsReadings)
+        {
+            return NotFound();
+        }
+
+        var chapter = await catalog.GetReaderChapterAsync(id, cancellationToken);
+        if (chapter is null || !chapter.HasContent)
+        {
+            return NotFound();
+        }
+
+        var blocks = NovelChapterDocument.BuildReaderBlocks(chapter.OriginalText, chapter.ContentJson);
+        var paragraphs = blocks
+            .Where(block => !block.IsImage)
+            .ToDictionary(
+                block => block.ParagraphIndex!.Value,
+                block => BuildFuriganaSegments(block.Runs));
+
+        return new JsonResult(new { paragraphs });
     }
 
     public async Task<IActionResult> OnPostRefreshSourceAsync(
@@ -772,7 +826,45 @@ public sealed class ReadModel(
             : RedirectToPage(new { id });
     }
 
-    private NovelReaderAnchor ResolveInitialAnchor(Guid? bookmarkId, Guid? highlightId)
+    /// <summary>
+    /// Computed reading of each text run for the furigana overlay
+    /// (<see cref="OnGetFuriganaAsync"/>): the concatenated <see cref="FuriganaSegment.Text"/>
+    /// values equal the paragraph's plain text exactly, so the client can wrap
+    /// them onto the live paragraph DOM by character offset regardless of
+    /// existing highlight marks, the same way novel-annotations.js already
+    /// wraps highlights. A run with its own native EPUB ruby is passed through
+    /// with <see cref="FuriganaSegment.Reading"/> null: it already shows its
+    /// own reading and must not be double-annotated.
+    /// </summary>
+    public IReadOnlyList<FuriganaSegment> BuildFuriganaSegments(IReadOnlyList<NovelInlineRun> runs)
+    {
+        var segments = new List<FuriganaSegment>(runs.Count);
+        foreach (var run in runs)
+        {
+            if (run.Ruby is { Length: > 0 } || string.IsNullOrEmpty(run.Text))
+            {
+                segments.Add(new FuriganaSegment(run.Text, null));
+                continue;
+            }
+
+            foreach (var token in languageAnalyzer.Analyze(run.Text, NovelReadingLanguage.Japanese))
+            {
+                var reading = token.Reading is { Length: > 0 } candidate
+                    && JapaneseScript.Contains(token.Surface)
+                        ? candidate
+                        : null;
+                segments.Add(new FuriganaSegment(token.Surface, reading));
+            }
+        }
+
+        return segments;
+    }
+
+    private NovelReaderAnchor ResolveInitialAnchor(
+        Guid? bookmarkId,
+        Guid? highlightId,
+        int? requestedParagraph,
+        string? requestedLanguage)
     {
         var hasTranslation = GermanParagraphs.Count > 0;
 
@@ -803,6 +895,33 @@ public sealed class ReadModel(
                 highlight.ParagraphIndex,
                 highlight.StartOffset,
                 0,
+                anchorText,
+                Forced: true);
+        }
+
+        // Round trip from a source context anchor (e.g. Learn/Review's "back to
+        // chapter" link) that names a paragraph directly, without an actual
+        // saved bookmark/highlight.
+        if (requestedParagraph is int index && index >= 0)
+        {
+            var language = requestedLanguage == NovelReadingLanguage.German && hasTranslation
+                ? NovelReadingLanguage.German
+                : NovelReadingLanguage.Japanese;
+            var paragraphs = language == NovelReadingLanguage.German
+                ? GermanParagraphs
+                : JapaneseParagraphs;
+            var anchorText = index < paragraphs.Count
+                ? NovelTextLayout.CreateAnchorText(paragraphs[index])
+                : null;
+            var positionPermille = paragraphs.Count > 0
+                ? Math.Clamp(index * 1000 / paragraphs.Count, 0, 999)
+                : 0;
+
+            return new NovelReaderAnchor(
+                language,
+                index,
+                0,
+                positionPermille,
                 anchorText,
                 Forced: true);
         }
