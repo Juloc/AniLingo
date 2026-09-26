@@ -224,21 +224,19 @@
     </section>
 
     <section class="panel">
-        <div class="panel-heading"><h2>Download clients</h2><span>Server</span></div>
+        <div class="panel-heading"><h2>@ui["admin.system.downloadClients"]</h2><span>@ui["admin.system.scope.server"]</span></div>
         <p class="muted">
-            SABnzbd and qBittorrent connections, categories, priority and health
-            (@Model.HealthyDownloadClients/@Model.TotalDownloadClients healthy).
+            @ui.Format("admin.system.downloadClientsDescription", ("healthy", Model.HealthyDownloadClients), ("total", Model.TotalDownloadClients))
         </p>
-        <a class="button" asp-page="/Settings/DownloadClients/Index">Manage download clients</a>
+        <a class="button" asp-page="/Settings/DownloadClients/Index">@ui["admin.system.manageDownloadClients"]</a>
     </section>
 
     <section class="panel">
-        <div class="panel-heading"><h2>Indexers</h2><span>Server</span></div>
+        <div class="panel-heading"><h2>@ui["admin.system.indexers"]</h2><span>@ui["admin.system.scope.server"]</span></div>
         <p class="muted">
-            Prowlarr and direct Newznab/Torznab connections, priority and health
-            (@Model.HealthyIndexers/@Model.TotalIndexers healthy).
+            @ui.Format("admin.system.indexersDescription", ("healthy", Model.HealthyIndexers), ("total", Model.TotalIndexers))
         </p>
-        <a class="button" asp-page="/Settings/Indexers/Index">Manage indexers</a>
+        <a class="button" asp-page="/Settings/Indexers/Index">@ui["admin.system.manageIndexers"]</a>
     </section>
 
     <section class="panel">
