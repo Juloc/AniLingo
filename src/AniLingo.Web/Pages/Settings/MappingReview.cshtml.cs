@@ -1,4 +1,6 @@
+using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
+using AniLingo.Web.Features.Localization;
 using AniLingo.Web.Features.MediaMapping;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -7,13 +9,17 @@ namespace AniLingo.Web.Pages.Settings;
 
 public sealed class MappingReviewModel(
     MediaMappingReviewStore reviewStore,
-    CurrentAccountContext account) : PageModel
+    CurrentAccountContext account,
+    AppDbContext db) : PageModel
 {
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public IReadOnlyList<MediaMappingReviewTask> Tasks { get; private set; } = [];
 
     public async Task<IActionResult> OnGetAsync(
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         if (!account.IsOwner)
         {
             return Forbid();
@@ -27,6 +33,8 @@ public sealed class MappingReviewModel(
         Guid id,
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         if (!account.IsOwner)
         {
             return Forbid();
@@ -36,8 +44,8 @@ public sealed class MappingReviewModel(
             id,
             cancellationToken);
         TempData["Status"] = removed
-            ? "Mapping review dismissed."
-            : "Mapping review task was already gone.";
+            ? Ui["settings.mappingReview.dismissed"]
+            : Ui["settings.mappingReview.alreadyGone"];
 
         return RedirectToPage();
     }

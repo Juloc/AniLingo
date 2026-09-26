@@ -1,15 +1,16 @@
 @page
 @model AniLingo.Web.Pages.Settings.LearningCoursesModel
 @{
-    ViewData["Title"] = "Learning courses";
+    var ui = Model.Ui;
+    ViewData["Title"] = ui["settings.learningCourses.title"];
 }
 
 <header class="page-header">
     <div>
-        <a class="back-link" asp-page="/Settings/Learning">← Learning settings</a>
-        <span class="eyebrow">Optional learning</span>
-        <h1>Learning courses</h1>
-        <p>Each course pairs two languages. Words from content in a language are saved into that language's primary course.</p>
+        <a class="back-link" asp-page="/Settings/Learning">@ui["settings.learningCourses.backToLearning"]</a>
+        <span class="eyebrow">@ui["settings.learning.eyebrow"]</span>
+        <h1>@ui["settings.learningCourses.title"]</h1>
+        <p>@ui["settings.learningCourses.pageDescription"]</p>
     </div>
 </header>
 
@@ -18,8 +19,8 @@
 @if (Model.Courses.Count == 0)
 {
     <div class="empty-state">
-        <h3>No courses yet</h3>
-        <p>A course is created automatically when you save your first word, or you can add one below.</p>
+        <h3>@ui["settings.learningCourses.empty.title"]</h3>
+        <p>@ui["settings.learningCourses.empty.body"]</p>
     </div>
 }
 
@@ -30,21 +31,21 @@
             <div class="panel-heading">
                 <div>
                     <span class="eyebrow">
-                        @LearningCoursesModel.LanguageName(course.SourceLanguage) → @LearningCoursesModel.LanguageName(course.TargetLanguage)
+                        @AniLingo.Web.Pages.Settings.LearningCoursesModel.LanguageName(course.SourceLanguage) → @AniLingo.Web.Pages.Settings.LearningCoursesModel.LanguageName(course.TargetLanguage)
                     </span>
                     <h2>@course.Name</h2>
                 </div>
                 <div class="inline-actions">
-                    <span class="status-pill">@Model.WordCounts.GetValueOrDefault(course.Id) words</span>
+                    <span class="status-pill">@ui.Format("settings.learningCourses.wordCount", ("count", Model.WordCounts.GetValueOrDefault(course.Id)))</span>
                     @if (course.IsPrimary)
                     {
-                        <span class="status-pill status-ok">Primary for @course.SourceLanguage</span>
+                        <span class="status-pill status-ok">@ui.Format("settings.learningCourses.primaryFor", ("language", course.SourceLanguage))</span>
                     }
                     else
                     {
                         <form method="post" asp-page-handler="Primary">
                             <input type="hidden" name="courseId" value="@course.Id" />
-                            <button class="chip" type="submit">Make primary for @course.SourceLanguage</button>
+                            <button class="chip" type="submit">@ui.Format("settings.learningCourses.makePrimaryFor", ("language", course.SourceLanguage))</button>
                         </form>
                     }
                 </div>
@@ -53,44 +54,44 @@
             <form method="post" asp-page-handler="Update" class="form-stack">
                 <input type="hidden" name="courseId" value="@course.Id" />
                 <label>
-                    <span>Name</span>
+                    <span>@ui["settings.learningCourses.nameLabel"]</span>
                     <input name="name" value="@course.Name" maxlength="120" />
                 </label>
 
                 <label class="checkbox-row">
                     <input type="checkbox" name="isEnabled" value="true" checked="@course.IsEnabled" />
-                    Course enabled
+                    @ui["settings.learningCourses.courseEnabled"]
                 </label>
 
                 <fieldset class="form-stack">
-                    <legend>Practice modes</legend>
+                    <legend>@ui["settings.learningCourses.practiceModes"]</legend>
                     <label class="checkbox-row">
                         <input type="checkbox" name="recognition" value="true" checked="@course.Options.RecognitionEnabled" />
-                        Recognition: @course.SourceLanguage → @course.TargetLanguage
+                        @ui.Format("settings.learningCourses.recognitionMode", ("source", course.SourceLanguage), ("target", course.TargetLanguage))
                     </label>
                     <label class="checkbox-row">
                         <input type="checkbox" name="production" value="true" checked="@course.Options.ProductionEnabled" />
-                        Production: @course.TargetLanguage → @course.SourceLanguage
+                        @ui.Format("settings.learningCourses.productionMode", ("source", course.SourceLanguage), ("target", course.TargetLanguage))
                     </label>
                     <label class="checkbox-row">
                         <input type="checkbox" name="listening" value="true" checked="@course.Options.ListeningEnabled" />
-                        Listening: hear @course.SourceLanguage
+                        @ui.Format("settings.learningCourses.listeningMode", ("source", course.SourceLanguage))
                     </label>
                     <label class="checkbox-row">
                         <input type="checkbox" name="writing" value="true" checked="@course.Options.WritingEnabled" />
-                        Writing: type @course.SourceLanguage
+                        @ui.Format("settings.learningCourses.writingMode", ("source", course.SourceLanguage))
                     </label>
                     <label class="checkbox-row">
                         <input type="checkbox" name="sentencePractice" value="true" checked="@course.Options.SentencePracticeEnabled" />
-                        Sentence practice
+                        @ui["settings.learningCourses.sentencePracticeMode"]
                     </label>
                     <small class="muted">
-                        Every mode keeps its own review schedule. Turning a mode off pauses its cards without deleting their history.
+                        @ui["settings.learningCourses.modesHint"]
                     </small>
                 </fieldset>
 
                 <div class="inline-actions">
-                    <button class="button" type="submit">Save course</button>
+                    <button class="button" type="submit">@ui["settings.learningCourses.saveCourse"]</button>
                 </div>
             </form>
         </section>
@@ -99,66 +100,66 @@
     <section class="panel">
         <div class="panel-heading">
             <div>
-                <span class="eyebrow">New course</span>
-                <h2>Add a language pair</h2>
+                <span class="eyebrow">@ui["settings.learningCourses.newCourse"]</span>
+                <h2>@ui["settings.learningCourses.addLanguagePair"]</h2>
             </div>
         </div>
 
         <form method="post" asp-page-handler="Create" class="form-stack">
             <div class="settings-grid">
                 <label>
-                    <span>Source language</span>
+                    <span>@ui["settings.learningCourses.sourceLanguageLabel"]</span>
                     <input asp-for="NewCourse.SourceLanguage"
                            placeholder="ja"
                            autocomplete="off"
                            autocapitalize="off"
                            spellcheck="false" />
-                    <small class="muted">The language you read, hear or write, as a BCP-47 tag such as ja, id, ro or de.</small>
+                    <small class="muted">@ui["settings.learningCourses.sourceLanguageHint"]</small>
                     <span asp-validation-for="NewCourse.SourceLanguage" class="validation"></span>
                 </label>
                 <label>
-                    <span>Target language</span>
+                    <span>@ui["settings.learningCourses.targetLanguageLabel"]</span>
                     <input asp-for="NewCourse.TargetLanguage"
                            placeholder="de"
                            autocomplete="off"
                            autocapitalize="off"
                            spellcheck="false" />
-                    <small class="muted">The language answers and meanings are given in.</small>
+                    <small class="muted">@ui["settings.learningCourses.targetLanguageHint"]</small>
                     <span asp-validation-for="NewCourse.TargetLanguage" class="validation"></span>
                 </label>
             </div>
 
             <label>
-                <span>Name (optional)</span>
+                <span>@ui["settings.learningCourses.nameOptionalLabel"]</span>
                 <input asp-for="NewCourse.Name" maxlength="120" />
             </label>
 
             <fieldset class="form-stack">
-                <legend>Practice modes</legend>
+                <legend>@ui["settings.learningCourses.practiceModes"]</legend>
                 <label class="checkbox-row">
                     <input asp-for="NewCourse.Recognition" type="checkbox" />
-                    Recognition
+                    @ui["settings.learningCourses.recognition"]
                 </label>
                 <label class="checkbox-row">
                     <input asp-for="NewCourse.Production" type="checkbox" />
-                    Production
+                    @ui["settings.learningCourses.production"]
                 </label>
                 <label class="checkbox-row">
                     <input asp-for="NewCourse.Listening" type="checkbox" />
-                    Listening
+                    @ui["settings.learningCourses.listening"]
                 </label>
                 <label class="checkbox-row">
                     <input asp-for="NewCourse.Writing" type="checkbox" />
-                    Writing
+                    @ui["settings.learningCourses.writing"]
                 </label>
                 <label class="checkbox-row">
                     <input asp-for="NewCourse.SentencePractice" type="checkbox" />
-                    Sentence practice
+                    @ui["settings.learningCourses.sentencePracticeMode"]
                 </label>
             </fieldset>
 
             <div class="inline-actions">
-                <button class="button button-primary" type="submit">Add course</button>
+                <button class="button button-primary" type="submit">@ui["settings.learningCourses.addCourse"]</button>
             </div>
         </form>
     </section>

@@ -4,11 +4,14 @@ namespace AniLingo.Tests;
 
 /// <summary>
 /// Guards the #185 localization migration of Books, Manga, Discover, Admin,
-/// Reading and Kana pages: their headings and buttons must come from the UI
-/// catalog instead of being hard-coded English literals. This intentionally
-/// scans only headings/buttons (not every text node) because these feature
-/// pages legitimately render dynamic user/library content (titles, file
-/// names, provider identifiers) in many other elements.
+/// Reading, Kana, Settings (except DownloadClients/Indexers, migrated
+/// separately), Acquisition, Appearance, Artwork, Companion,
+/// LocalizationAdmin, LocalizationPreferences and Statistics pages: their
+/// headings and buttons must come from the UI catalog instead of being
+/// hard-coded English literals. This intentionally scans only
+/// headings/buttons (not every text node) because these feature pages
+/// legitimately render dynamic user/library content (titles, file names,
+/// provider identifiers) in many other elements.
 /// </summary>
 [TestClass]
 public sealed partial class FeaturePageLocalizationTests
@@ -35,7 +38,19 @@ public sealed partial class FeaturePageLocalizationTests
     ];
 
     private static readonly string[] MigratedFolders =
-        ["Books", "Manga", "Discover", "Admin", "Reading", "Kana"];
+    [
+        "Books", "Manga", "Discover", "Admin", "Reading", "Kana",
+        "Settings", "Acquisition", "Appearance", "Artwork", "Companion",
+        "LocalizationAdmin", "LocalizationPreferences", "Statistics"
+    ];
+
+    // Sub-folders of a migrated folder that are still owned by other
+    // in-flight work and are intentionally excluded from this scan.
+    private static readonly string[] ExcludedRelativeDirectories =
+    [
+        Path.Combine("Settings", "DownloadClients"),
+        Path.Combine("Settings", "Indexers")
+    ];
 
     [TestMethod]
     public void MigratedFeaturePagesHaveNoHardCodedHeadingsOrButtons()
@@ -46,9 +61,13 @@ public sealed partial class FeaturePageLocalizationTests
                 Path.Combine(pagesRoot, folder),
                 "*.cshtml",
                 SearchOption.AllDirectories))
+            .Where(file => !ExcludedRelativeDirectories.Any(excluded =>
+                file.Contains(
+                    Path.DirectorySeparatorChar + excluded + Path.DirectorySeparatorChar,
+                    StringComparison.Ordinal)))
             .ToArray();
 
-        Assert.IsTrue(files.Length >= 20, "Expected page files from the migrated feature areas.");
+        Assert.IsTrue(files.Length >= 40, "Expected page files from the migrated feature areas.");
 
         var findings = files
             .SelectMany(file => FindHeadingOrButtonLiteralText(File.ReadAllText(file))
