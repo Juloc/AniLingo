@@ -42,6 +42,7 @@ import de.juloc.anilingo.mobile.MobileCompatibilityState
 import de.juloc.anilingo.mobile.NativePlayerScreen
 import de.juloc.anilingo.mobile.ServerOrigin
 import de.juloc.anilingo.mobile.ServerSettings
+import de.juloc.anilingo.mobile.TtsSettingsScreen
 import de.juloc.anilingo.mobile.WebSession
 import de.juloc.anilingo.mobile.offline.OfflineDownloads
 import de.juloc.anilingo.mobile.offline.OfflineDownloadsScreen
@@ -143,6 +144,7 @@ private fun AniLingoMobileApp(
     var showDownloads by rememberSaveable { mutableStateOf(false) }
     var showLibraryDownloads by rememberSaveable { mutableStateOf(false) }
     var currentWorkId by remember { mutableStateOf<String?>(null) }
+    var showTtsSettings by rememberSaveable { mutableStateOf(false) }
     var confirmServerChange by remember { mutableStateOf(false) }
     var accountCheck by remember { mutableIntStateOf(0) }
     var securityError by remember { mutableStateOf<String?>(null) }
@@ -358,9 +360,17 @@ private fun AniLingoMobileApp(
                     activeEpisodeId = null
                     showDownloads = true
                 },
+                onOpenTtsSettings = { showTtsSettings = true },
                 onClose = {
                     activeEpisodeId = null
                 },
+            )
+        }
+
+        if (showTtsSettings) {
+            TtsSettingsScreen(
+                api = api,
+                onClose = { showTtsSettings = false },
             )
         }
 

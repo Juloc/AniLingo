@@ -52,4 +52,7 @@ object ClientApiRoutes {
     fun rootAvailability(rootId: String) = "$Base/library-roots/$rootId/availability"
     fun testRoot(rootId: String) = "$Base/library-roots/$rootId/test"
     fun wakeRoot(rootId: String) = "$Base/library-roots/$rootId/wake"
+
+    const val TtsPreferences = "$Base/me/tts-preferences"
+    const val SpeechModels = "$Base/speech/models"
 }

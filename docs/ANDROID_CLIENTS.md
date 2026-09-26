@@ -65,7 +65,9 @@ clients/android/
 ├── core-model/
 ├── core-player/
 ├── core-session/
-└── core-design/
+├── core-design/
+├── core-tts/
+└── core-tts-sherpa/        (optional, see docs/TTS.md)
 ```
 
 Modules:
@@ -77,6 +79,8 @@ Modules:
 - `core-player`: Media3/ExoPlayer integration, direct/fallback selection, audio tracks, playback state.
 - `core-session`: playback-session/pairing/companion protocol.
 - `core-design`: generated player theme values and reusable native player controls.
+- `core-tts`: provider-neutral TTS contract, resolver, system (`TextToSpeech`) provider and offline-neural model manager (docs/TTS.md).
+- `core-tts-sherpa`: optional sherpa-onnx offline-neural binding; excluded from the build unless `-PanilingoNeuralTtsEnabled=true` because it needs a manually downloaded AAR (docs/TTS.md).
 
 Application IDs:
 

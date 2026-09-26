@@ -1,5 +1,7 @@
 using System.ComponentModel.DataAnnotations;
+using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
+using AniLingo.Web.Features.Localization;
 using AniLingo.Web.Features.MediaMapping;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -8,8 +10,10 @@ namespace AniLingo.Web.Pages.Settings;
 
 public sealed class MappingSegmentsModel(
     ReadingSegmentMappingStore segmentMappings,
-    CurrentAccountContext account) : PageModel
+    CurrentAccountContext account,
+    AppDbContext db) : PageModel
 {
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public IReadOnlyList<ReadingMediaSegmentMapping> Mappings { get; private set; } = [];
 
     [BindProperty]
@@ -53,6 +57,8 @@ public sealed class MappingSegmentsModel(
         string? localId,
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         if (!account.IsOwner)
         {
             return Forbid();
@@ -76,6 +82,8 @@ public sealed class MappingSegmentsModel(
     public async Task<IActionResult> OnPostAddAsync(
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         if (!account.IsOwner)
         {
             return Forbid();
@@ -85,14 +93,14 @@ public sealed class MappingSegmentsModel(
         {
             ModelState.AddModelError(
                 nameof(LocalId),
-                "Local media ID must be a valid GUID.");
+                Ui["settings.mappingSegments.validation.localId"]);
         }
 
         if (!int.TryParse(ExternalId, out var remoteId) || remoteId <= 0)
         {
             ModelState.AddModelError(
                 nameof(ExternalId),
-                "AniList media ID must be a positive integer.");
+                Ui["settings.mappingSegments.validation.externalId"]);
         }
 
         if (!ModelState.IsValid)
@@ -122,7 +130,7 @@ public sealed class MappingSegmentsModel(
                     DateTimeOffset.UtcNow),
                 cancellationToken);
 
-            TempData["Status"] = "Reading segment mapping added.";
+            TempData["Status"] = Ui["settings.mappingSegments.added"];
         }
         catch (InvalidOperationException exception)
         {
@@ -141,6 +149,8 @@ public sealed class MappingSegmentsModel(
         Guid id,
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         if (!account.IsOwner)
         {
             return Forbid();
@@ -150,8 +160,8 @@ public sealed class MappingSegmentsModel(
             id,
             cancellationToken);
         TempData["Status"] = removed
-            ? "Reading segment mapping removed."
-            : "Reading segment mapping was already gone.";
+            ? Ui["settings.mappingSegments.removed"]
+            : Ui["settings.mappingSegments.alreadyGone"];
 
         return RedirectToPage();
     }

@@ -16,6 +16,7 @@ public sealed class IndexModel(
 {
     private const int GenerationBatchSize = 100;
 
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public IReadOnlyList<UiLocaleSummary> Locales { get; private set; } = [];
     public IReadOnlyList<UiTranslationEntry> Entries { get; private set; } = [];
     public string SelectedLocale { get; private set; } = UiTranslationCatalog.SourceLocale;
@@ -35,6 +36,7 @@ public sealed class IndexModel(
         bool generateNow,
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         var store = new UiTranslationCatalogStore(db);
         await store.SyncSourceMessagesAsync(cancellationToken);
 
@@ -52,12 +54,18 @@ public sealed class IndexModel(
                     includeMissing: true,
                     includeOutdated: false,
                     cancellationToken);
-                TempData["Status"] =
-                    $"Added {added.NativeName} ({added.Locale}) and generated {count} UI translations.";
+                TempData["Status"] = Ui.Format(
+                    "localizationAdmin.status.addedAndGenerated",
+                    ("name", added.NativeName),
+                    ("locale", added.Locale),
+                    ("count", count));
             }
             else
             {
-                TempData["Status"] = $"Added {added.NativeName} ({added.Locale}).";
+                TempData["Status"] = Ui.Format(
+                    "localizationAdmin.status.added",
+                    ("name", added.NativeName),
+                    ("locale", added.Locale));
             }
 
             return RedirectToPage(new { locale = added.Locale });
@@ -75,6 +83,7 @@ public sealed class IndexModel(
         string locale,
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         var store = new UiTranslationCatalogStore(db);
         await store.SyncSourceMessagesAsync(cancellationToken);
 
@@ -87,8 +96,8 @@ public sealed class IndexModel(
                 includeOutdated: false,
                 cancellationToken);
             TempData["Status"] = count == 0
-                ? "No missing UI translations."
-                : $"Generated {count} missing UI translations.";
+                ? Ui["localizationAdmin.status.noMissing"]
+                : Ui.Format("localizationAdmin.status.generatedMissing", ("count", count));
         }
         catch (Exception exception) when (
             exception is ArgumentException or InvalidOperationException)
@@ -103,6 +112,7 @@ public sealed class IndexModel(
         string locale,
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         var store = new UiTranslationCatalogStore(db);
         await store.SyncSourceMessagesAsync(cancellationToken);
 
@@ -115,8 +125,8 @@ public sealed class IndexModel(
                 includeOutdated: true,
                 cancellationToken);
             TempData["Status"] = count == 0
-                ? "No outdated generated translations."
-                : $"Regenerated {count} outdated UI translations.";
+                ? Ui["localizationAdmin.status.noOutdated"]
+                : Ui.Format("localizationAdmin.status.regeneratedOutdated", ("count", count));
         }
         catch (Exception exception) when (
             exception is ArgumentException or InvalidOperationException)
@@ -133,13 +143,14 @@ public sealed class IndexModel(
         string text,
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         var store = new UiTranslationCatalogStore(db);
         await store.SyncSourceMessagesAsync(cancellationToken);
 
         try
         {
             await store.SaveManualAsync(locale, key, text, cancellationToken);
-            TempData["Status"] = $"Saved manual translation for {key}.";
+            TempData["Status"] = Ui.Format("localizationAdmin.status.savedManual", ("key", key));
         }
         catch (Exception exception) when (
             exception is ArgumentException
@@ -157,13 +168,14 @@ public sealed class IndexModel(
         string key,
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         var store = new UiTranslationCatalogStore(db);
         await store.SyncSourceMessagesAsync(cancellationToken);
 
         try
         {
             await store.MarkReviewedAsync(locale, key, cancellationToken);
-            TempData["Status"] = $"Marked {key} as reviewed.";
+            TempData["Status"] = Ui.Format("localizationAdmin.status.markedReviewed", ("key", key));
         }
         catch (Exception exception) when (
             exception is ArgumentException
@@ -189,14 +201,14 @@ public sealed class IndexModel(
             StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidOperationException(
-                "English is the catalog source language and is not AI-generated.");
+                Ui["localizationAdmin.error.englishIsSource"]);
         }
 
         var provider = await translationGenerator.GetStatusAsync(cancellationToken);
         if (!provider.IsAvailable || !provider.IsAuthenticated)
         {
             throw new InvalidOperationException(
-                "Connect the configured AI provider in Admin → AI before generating UI translations.");
+                Ui["localizationAdmin.error.aiNotConnected"]);
         }
 
         var pending = await store.GetPendingDefinitionsAsync(
@@ -226,6 +238,7 @@ public sealed class IndexModel(
         string? search,
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         var store = new UiTranslationCatalogStore(db);
         await store.SyncSourceMessagesAsync(cancellationToken);
 
