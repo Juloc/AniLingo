@@ -1,3 +1,4 @@
+using AniLingo.Web.Features.Acquisition.Sabnzbd;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Books;
 using Microsoft.AspNetCore.Mvc;
@@ -7,7 +8,8 @@ namespace AniLingo.Web.Pages.Books;
 
 public sealed class DetailsModel(
     BookCatalogService books,
-    CurrentAccountContext account) : PageModel
+    CurrentAccountContext account,
+    SabnzbdDownloadService sabnzbd) : PageModel
 {
     public BookCatalogItem? Book { get; private set; }
     public string? Error { get; private set; }
@@ -78,15 +80,22 @@ public sealed class DetailsModel(
 
         var title = (await books.GetAsync(
             id,
-            cancellationToken))?.Title;
+            cancellationToken))?.Title
+            ?? "AniLingo book";
 
         try
         {
-            var result = await books.QueueSabnzbdUrlAsync(
-                nzbUrl ?? "",
-                title,
+            var outcome = await sabnzbd.SubmitUrlAsync(
+                new SabnzbdSubmission(
+                    BookInboxImport.SabnzbdDownloadKind,
+                    "SABnzbd download",
+                    title,
+                    account.ProfileId,
+                    SabnzbdPurpose.Books,
+                    JobName: title),
+                SabnzbdDownloadService.ParseNzbUrl(nzbUrl),
                 cancellationToken);
-            TempData["Status"] = result.Message;
+            TempData["Status"] = outcome.Message;
         }
         catch (Exception exception) when (
             exception is InvalidOperationException

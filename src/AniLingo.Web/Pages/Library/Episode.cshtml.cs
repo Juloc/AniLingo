@@ -62,7 +62,7 @@ public sealed class EpisodeModel(
     public ActiveEpisodeSubtitle? ActiveSubtitle { get; private set; }
     public AudioTranscriptionState Transcription { get; private set; } =
         new(AudioTranscriptionStatus.None);
-    public AniListProgressPreview? AniListProgress { get; private set; }
+    public ExternalProgressSummary? ExternalProgress { get; private set; }
     public string? SubtitleNotice => TempData["SubtitleNotice"] as string;
     public string? SubtitleError => TempData["SubtitleError"] as string;
     public bool IsOwner => currentAccount.IsOwner;
@@ -133,7 +133,9 @@ public sealed class EpisodeModel(
         Playback = await playbackService.GetSnapshotAsync(id, cancellationToken);
         LocalProgress = await episodeProgressService.GetAsync(id, cancellationToken);
         Flow = await episodeProgressService.GetFlowAsync(id, cancellationToken);
-        AniListProgress = await aniListAccountService.GetEpisodeProgressPreviewAsync(
+        // Local-only: remote AniList progress is loaded after first paint
+        // through OnGetExternalProgressAsync.
+        ExternalProgress = await aniListAccountService.GetEpisodeProgressSummaryAsync(
             id,
             cancellationToken);
 
@@ -392,6 +394,28 @@ public sealed class EpisodeModel(
             ? "Episode marked as watched."
             : "Episode marked as unwatched.";
         return RedirectToPage(new { id });
+    }
+
+    public async Task<IActionResult> OnGetExternalProgressAsync(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        if (!await db.Episodes.AsNoTracking().AnyAsync(x => x.Id == id, cancellationToken))
+        {
+            return NotFound();
+        }
+
+        var state = await aniListAccountService.GetEpisodeProgressStateAsync(
+            id,
+            cancellationToken);
+
+        Response.Headers.CacheControl = "no-store";
+        return Partial(
+            "_ExternalProgressState",
+            new ExternalProgressRemoteView(
+                ExternalProgressMediaKind.Episode,
+                state,
+                "SyncAniList"));
     }
 
     public async Task<IActionResult> OnPostSyncAniListAsync(
