@@ -90,9 +90,9 @@
     <section class="panel">
         <div class="panel-heading"><h2>Connections</h2></div>
         <div class="acquisition-connection-list">
-            <a asp-page="/Settings/Prowlarr">Prowlarr</a>
+            <a asp-page="/Settings/Indexers/Index">Indexers</a>
             <span class="status-pill @(Model.ProwlarrConfigured ? "status-ok" : "status-warn")">@(Model.ProwlarrConfigured ? "Configured" : "Not configured")</span>
-            <a asp-page="/Settings/Sabnzbd">SABnzbd</a>
+            <a asp-page="/Settings/DownloadClients/Index">Download clients</a>
             <span class="status-pill @(Model.SabnzbdConfigured ? "status-ok" : "status-warn")">@(Model.SabnzbdConfigured ? "Configured" : "Not configured")</span>
             <a asp-page="/Settings/SonarrMigration">Sonarr migration</a>
             <span class="muted">Per-anime management mode</span>

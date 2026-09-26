@@ -1,8 +1,8 @@
+using AniLingo.Web.Features.Acquisition.DownloadClients;
 using AniLingo.Web.Features.Acquisition.Import;
 using AniLingo.Web.Features.Acquisition.Monitoring;
 using AniLingo.Web.Features.Acquisition.Pipeline;
 using AniLingo.Web.Features.Acquisition.Prowlarr;
-using AniLingo.Web.Features.Acquisition.Sabnzbd;
 using AniLingo.Web.Features.Auth;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -20,7 +20,7 @@ public sealed class IndexModel(
     AnimeAcquisitionPipeline pipeline,
     AnimeAcquisitionScheduler scheduler,
     AnimeImportExecutor importExecutor,
-    SabnzbdConnectionResolver sabnzbd) : PageModel
+    DownloadClientStore downloadClients) : PageModel
 {
     [BindProperty(SupportsGet = true)]
     public string? Search { get; set; }
@@ -46,7 +46,8 @@ public sealed class IndexModel(
     public async Task OnGetAsync(CancellationToken cancellationToken)
     {
         ProwlarrConfigured = await pipeline.IsProwlarrConfiguredAsync(cancellationToken);
-        SabnzbdConfigured = (await sabnzbd.ResolveAsync(cancellationToken)).IsConfigured;
+        SabnzbdConfigured = (await downloadClients.LoadAllAsync(cancellationToken))
+            .Any(entry => entry.Enabled && entry.Type == DownloadClientType.Sabnzbd);
         Overview = await pipeline.GetOverviewAsync(cancellationToken);
 
         if (!string.IsNullOrWhiteSpace(Search))
