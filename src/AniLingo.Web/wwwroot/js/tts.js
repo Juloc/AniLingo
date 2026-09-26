@@ -128,6 +128,28 @@
                     unavailableReason: null
                 };
             }
+        } else if (requestedVoice) {
+            // A voice chosen without a provider ("automatic") still wins when an
+            // available provider offers it for this language.
+            for (const provider of available) {
+                const providerId = String(provider.id).toLowerCase();
+                const selected = voices.find((voice) =>
+                    String(voice.providerId || "").toLowerCase() === providerId &&
+                    String(voice.voiceId).toLowerCase() === requestedVoice.toLowerCase());
+                if (selected && languageRank(selected.language, language) <= 1) {
+                    return {
+                        resolution: {
+                            providerId: provider.id,
+                            voiceId: selected.voiceId,
+                            voice: selected,
+                            language,
+                            usesProviderDefaultVoice: false,
+                            reason: "selected-voice"
+                        },
+                        unavailableReason: null
+                    };
+                }
+            }
         }
 
         for (const provider of available) {

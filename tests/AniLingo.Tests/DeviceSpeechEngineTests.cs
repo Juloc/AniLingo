@@ -151,7 +151,8 @@ public sealed class DeviceSpeechEngineTests
             var baseMatch = r({ language: "de-CH" }, [device], voices).resolution;
             var selected = r({ providerId: "device", voiceId: "ja-1", language: "ja" }, [device], voices).resolution;
             var wrongLanguage = r({ providerId: "device", voiceId: "ja-1", language: "de-DE" }, [device], voices).resolution;
-            var platformDefault = r({ language: "ko" }, [device], voices).resolution;
+            var automaticWithVoice = r({ providerId: "auto", voiceId: "de-at", language: "de-DE" }, [device], voices).resolution;
+            var platformDefault =r({ language: "ko" }, [device], voices).resolution;
             var noProvider = r({ language: "de" }, [], voices);
             var unavailable = r({ language: "de" }, [{ ...device, isAvailable: false }], voices);
             var noVoice = r({ language: "ko" }, [offline], voices);
@@ -163,6 +164,8 @@ public sealed class DeviceSpeechEngineTests
         Assert.AreEqual("ja-1", engine.Evaluate("selected.voiceId").AsString());
         Assert.AreEqual("selected-provider", engine.Evaluate("selected.reason").AsString());
         Assert.AreEqual("de-de", engine.Evaluate("wrongLanguage.voiceId").AsString());
+        Assert.AreEqual("de-at", engine.Evaluate("automaticWithVoice.voiceId").AsString());
+        Assert.AreEqual("selected-voice", engine.Evaluate("automaticWithVoice.reason").AsString());
         Assert.IsTrue(engine.Evaluate("platformDefault.usesProviderDefaultVoice").AsBoolean());
         Assert.IsTrue(engine.Evaluate("platformDefault.voiceId === null").AsBoolean());
         Assert.AreEqual("no-provider", engine.Evaluate("noProvider.unavailableReason").AsString());

@@ -176,6 +176,14 @@ public sealed class ReaderTtsTests
         Assert.IsTrue(selected.IsAvailable);
         Assert.AreEqual("de-voice", selected.Resolution!.VoiceId);
 
+        var automatic = SpeechAvailabilityResolver.Explain(
+            (settings with { TtsProviderId = "auto" }).SpeechPreferencesFor("de-DE"),
+            [device],
+            [new("device", "de-default", "Standard", "de-DE", IsDefault: true), .. voices]);
+        Assert.AreEqual("de-voice", automatic.Resolution!.VoiceId,
+            "A chosen voice wins even when the provider is automatic.");
+        Assert.AreEqual("selected-voice", automatic.Resolution.Reason);
+
         var missingVoice = SpeechAvailabilityResolver.Explain(
             settings.SpeechPreferencesFor("ja"), [device], voices);
         Assert.AreEqual("ja-other", missingVoice.Resolution!.VoiceId,

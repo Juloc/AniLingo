@@ -190,12 +190,23 @@
             api.updateSourceBadges();
         };
 
-        const save = async changedKey => {
-            try {
-                await api.postSettingsCommand({ changedKey });
-            } catch (error) {
-                console.warn(error);
-            }
+        // Saves run one at a time. Each request is built when it is sent, so it
+        // carries the newest control values; server state is applied back to the
+        // controls only once no save is pending, so an older response cannot undo
+        // a newer edit.
+        let saveQueue = Promise.resolve();
+        let pendingSaves = 0;
+        let latestSettings = null;
+
+        const save = changedKey => {
+            pendingSaves++;
+            saveQueue = saveQueue
+                .then(() => api.postSettingsCommand({ changedKey }))
+                .catch(error => console.warn(error))
+                .finally(() => {
+                    pendingSaves--;
+                    if (!pendingSaves && latestSettings) applySettings(latestSettings);
+                });
         };
 
         let restartTimer = 0;
@@ -237,7 +248,8 @@
         }
 
         root.addEventListener("anilingo:reader-settings-response", event => {
-            applySettings(event.detail?.settings);
+            latestSettings = event.detail?.settings || latestSettings;
+            if (!pendingSaves) applySettings(latestSettings);
         });
 
         applySettings(api.getSettings());
