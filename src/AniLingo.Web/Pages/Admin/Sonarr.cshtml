@@ -14,6 +14,7 @@
 </header>
 
 <partial name="_AdminNavigation" />
+<p class="muted">Per anime: <a asp-page="/Settings/SonarrMigration">Sonarr migration</a> &middot; <a asp-page="/Settings/Naming">Anime naming</a></p>
 
 <div class="settings-grid">
     <section class="panel">
@@ -80,15 +81,6 @@
         <p class="muted">
             Season artwork is intentionally deferred until AniLingo has a real Season model and season UI.
         </p>
-    </section>
-
-    <section class="panel">
-        <div class="panel-heading"><h2>Acquisition</h2><span>Per anime</span></div>
-        <p class="muted">Decide per anime whether Sonarr or AniLingo manages it, and how AniLingo names folders and files.</p>
-        <div class="inline-actions">
-            <a class="button" asp-page="/Settings/SonarrMigration">Sonarr migration</a>
-            <a class="button" asp-page="/Settings/Naming">Anime naming</a>
-        </div>
     </section>
 
     @if (Model.LastImport is { } import)

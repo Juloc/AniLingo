@@ -13,8 +13,8 @@
         <span class="eyebrow">Library &middot; Naming</span>
         <h1>Rename files</h1>
         <p>
-            Preview how profile “@plan.Naming.Profile.Name” (@plan.Naming.Source) names this anime. Only anime handed over to AniLingo under
-            <a href="/Settings/SonarrMigration">Sonarr migration</a> can be renamed; Sonarr-owned files are never touched.
+            Preview how profile “@plan.Naming.Profile.Name” (@plan.Naming.Source) names this anime. Anime left to Sonarr under
+            <a href="/Settings/SonarrMigration">Sonarr migration</a> and Sonarr-owned files are never renamed.
         </p>
     </div>
     <a class="button" href="/Settings/Naming">Naming profiles</a>
@@ -115,7 +115,7 @@
         {
             var pill = item.Status switch
             {
-                AnimeRenameItemStatus.Rename => "status-pill status-warning",
+                AnimeRenameItemStatus.Rename => "status-pill status-warn",
                 AnimeRenameItemStatus.Blocked => "status-pill status-error",
                 _ => "status-pill status-ok"
             };

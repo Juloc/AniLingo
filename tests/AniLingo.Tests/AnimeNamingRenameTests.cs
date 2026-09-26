@@ -1,6 +1,8 @@
 using AniLingo.Web.Data;
+using AniLingo.Web.Features.Acquisition.Monitoring;
 using AniLingo.Web.Features.Acquisition.Naming;
 using AniLingo.Web.Features.Acquisition.Ownership;
+using AniLingo.Web.Features.Acquisition.Sabnzbd;
 using AniLingo.Web.Features.Library;
 using AniLingo.Web.Features.Metadata;
 using AniLingo.Web.Features.Operations;
@@ -28,6 +30,7 @@ public sealed class AnimeNamingRenameTests
         await using var fixture = await RenameFixture.CreateAsync();
         var episode = await fixture.AddEpisodeFileAsync(1, "[SubsPlease] Frieren - S01E01 (1080p WEB-DL x264 AAC).mkv", sidecar: true);
         await fixture.Naming.AssignAnimeAsync(fixture.Anime.Id, AnimeNamingPresets.SonarrDefaultId, AnimeSeriesType.Anime);
+        var mediaFileId = await fixture.SeedMediaAnalysisAsync(episode.EpisodeId);
 
         var plan = await fixture.PlanAsync();
         var item = plan.Items.Single();
@@ -68,6 +71,9 @@ public sealed class AnimeNamingRenameTests
         Assert.AreEqual(episode.EpisodeId, (await fixture.Db.Episodes.SingleAsync()).Id);
         Assert.AreEqual(1, await fixture.Db.Anime.CountAsync());
         Assert.AreEqual(1, await fixture.Db.EpisodeProgress.CountAsync(x => x.EpisodeId == episode.EpisodeId));
+        Assert.AreEqual(mediaFileId, (await fixture.Db.MediaFiles.SingleAsync()).Id, "The media file row (and its inventory) survives the rename.");
+        Assert.AreEqual(1, await fixture.Db.MediaAnalyses.CountAsync(x => x.MediaFileId == mediaFileId));
+        Assert.AreEqual(0, fixture.ProbeRunner.Calls.Count, "A rename must not trigger a new media analysis.");
 
         var again = await fixture.PlanAsync();
         Assert.AreEqual(AnimeRenameItemStatus.Unchanged, again.Items.Single().Status, "Renaming with the same profile is idempotent.");
@@ -218,6 +224,23 @@ public sealed class AnimeNamingRenameTests
         });
         await fixture.Db.SaveChangesAsync();
         await fixture.Naming.UpsertAsync(RenameFixture.SimpleProfile() with { SeriesFolderFormat = "{Series TitleYear}" });
+        var now = DateTimeOffset.UtcNow;
+        var acquisitionId = Guid.NewGuid();
+        await fixture.Acquisitions.UpdateAsync(state =>
+        {
+            state.Acquisitions.Add(new SabnzbdAcquisition(
+                acquisitionId,
+                "frieren",
+                "Frieren",
+                [new AnimeEpisodeKey("frieren", 1, 2)],
+                null,
+                3,
+                [],
+                [],
+                now,
+                now));
+            state.Blocklist.Add(new SabnzbdBlockedRelease("release-1", "Frieren - 02", "frieren", SabnzbdFailureKind.Download, "failed", null, now));
+        });
 
         var plan = await fixture.PlanAsync(renameSeriesFolder: true);
         Assert.AreEqual("frieren (2023)", plan.TargetAnimeKey);
@@ -235,6 +258,11 @@ public sealed class AnimeNamingRenameTests
         var ownership = await fixture.Ownership.LoadAsync();
         Assert.IsTrue(ownership.Anime.ContainsKey("frieren (2023)"));
         Assert.IsFalse(ownership.Anime.ContainsKey("frieren"));
+        var acquisitions = await fixture.Acquisitions.LoadAsync();
+        var acquisition = acquisitions.Acquisitions.Single(x => x.Id == acquisitionId);
+        Assert.AreEqual("frieren (2023)", acquisition.AnimeKey, "In-flight downloads follow the new anime key.");
+        Assert.AreEqual("frieren (2023)", acquisition.Episodes.Single().AnimeKey);
+        Assert.AreEqual("frieren (2023)", acquisitions.Blocklist.Single().AnimeKey);
 
         var scan = await fixture.ScanAsync();
         Assert.AreEqual(0, scan.Removed);
@@ -262,6 +290,27 @@ public sealed class AnimeNamingRenameTests
 
         Assert.AreEqual(AnimeRenameItemStatus.Blocked, seasonTwo.Status);
         StringAssert.Contains(seasonTwo.Reason, "would be scanned as S01E03");
+    }
+
+    [TestMethod]
+    public async Task RunningLibraryScanBlocksRename()
+    {
+        await using var fixture = await RenameFixture.CreateAsync();
+        var episode = await fixture.AddEpisodeFileAsync(1, "Frieren 01.mkv");
+        var store = new OperationStore(fixture.Db);
+        var scanId = await store.CreateAsync(new OperationDescriptor("library-scan", "Library", "Scan library", fixture.Root.Name));
+        await store.MarkRunningAsync(scanId);
+
+        var plan = await fixture.PlanAsync();
+
+        Assert.IsFalse(plan.CanExecute);
+        Assert.IsTrue(plan.BlockingReasons.Any(reason => reason.Contains("Scan library", StringComparison.Ordinal)));
+        var result = await fixture.ExecuteAsync(plan);
+        Assert.IsFalse(result.Success);
+        Assert.IsTrue(File.Exists(episode.MediaPath));
+
+        await store.MarkSucceededAsync(scanId, "done");
+        Assert.IsTrue((await fixture.PlanAsync()).CanExecute);
     }
 
     [TestMethod]
@@ -306,18 +355,26 @@ public sealed class AnimeNamingRenameTests
 
     private sealed class RenameFixture : IAsyncDisposable
     {
-        private RenameFixture(string tempRoot, AppDbContext db, LibraryRoot root, Anime anime)
+        private RenameFixture(
+            string tempRoot,
+            DbContextOptions<AppDbContext> options,
+            AppDbContext db,
+            LibraryRoot root,
+            Anime anime)
         {
             TempRoot = tempRoot;
+            Options = options;
             Db = db;
             Root = root;
             Anime = anime;
             Naming = new AnimeNamingProfileStore(new DirectoryInfo(Path.Combine(tempRoot, "acquisition")));
             Ownership = new AcquisitionOwnershipStore(tempRoot);
+            var protection = DataProtectionProvider.Create(new DirectoryInfo(Path.Combine(tempRoot, "keys")));
+            Acquisitions = new SabnzbdAcquisitionStore(protection, new DirectoryInfo(Path.Combine(tempRoot, "acquisition")));
             FileSystem = new TestFileSystem();
             var services = new ServiceCollection().AddSingleton(db).BuildServiceProvider();
             var observation = new SonarrObservationService(
-                new SonarrConnectionStore(DataProtectionProvider.Create(new DirectoryInfo(Path.Combine(tempRoot, "keys")))),
+                new SonarrConnectionStore(protection),
                 new UnusedObserverClient(),
                 Ownership,
                 NullLogger<SonarrObservationService>.Instance);
@@ -325,6 +382,7 @@ public sealed class AnimeNamingRenameTests
                 db,
                 Naming,
                 Ownership,
+                Acquisitions,
                 observation,
                 new OperationRunner(db, services),
                 FileSystem,
@@ -332,6 +390,9 @@ public sealed class AnimeNamingRenameTests
         }
 
         public string TempRoot { get; }
+        public DbContextOptions<AppDbContext> Options { get; }
+        public FakeMediaProbeRunner ProbeRunner { get; } = new();
+        public SabnzbdAcquisitionStore Acquisitions { get; }
         public AppDbContext Db { get; }
         public LibraryRoot Root { get; }
         public Anime Anime { get; }
@@ -365,9 +426,10 @@ public sealed class AnimeNamingRenameTests
             await File.WriteAllTextAsync(Path.Combine(tempRoot, "dictionary", "jmdict-ger.tsv"), "");
             await File.WriteAllTextAsync(Path.Combine(tempRoot, "dictionary", "jmdict-eng-common.tsv"), "");
 
-            var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
+            var options = new DbContextOptionsBuilder<AppDbContext>()
                 .UseSqlite($"Data Source={Path.Combine(tempRoot, "anilingo.db")};Foreign Keys=True")
-                .Options);
+                .Options;
+            var db = new AppDbContext(options);
             await DatabaseMigrationBridge.UpgradeAsync(db);
 
             var root = new LibraryRoot { Name = "Anime", Path = libraryPath };
@@ -376,7 +438,7 @@ public sealed class AnimeNamingRenameTests
             db.Anime.Add(anime);
             await db.SaveChangesAsync();
 
-            var fixture = new RenameFixture(tempRoot, db, root, anime);
+            var fixture = new RenameFixture(tempRoot, options, db, root, anime);
             await fixture.Naming.UpsertAsync(SimpleProfile());
             await fixture.Naming.SetDefaultAsync(SimpleProfileId);
             if (managed)
@@ -423,6 +485,22 @@ public sealed class AnimeNamingRenameTests
             return (episode.Id, mediaPath);
         }
 
+        public async Task<Guid> SeedMediaAnalysisAsync(Guid episodeId)
+        {
+            var mediaFile = await Db.MediaFiles.SingleAsync(x => x.EpisodeId == episodeId);
+            Db.MediaAnalyses.Add(new MediaAnalysis
+            {
+                MediaFileId = mediaFile.Id,
+                Status = MediaAnalysisStatus.Succeeded,
+                ProbeVersion = MediaInventoryService.CurrentProbeVersion,
+                SourceSizeBytes = mediaFile.SizeBytes,
+                SourceLastWriteTimeUtc = mediaFile.LastWriteTimeUtc,
+                Container = "matroska"
+            });
+            await Db.SaveChangesAsync();
+            return mediaFile.Id;
+        }
+
         public async Task AddExtraFileForEpisodeAsync(int number, string fileName)
         {
             var episode = await Db.Episodes.SingleAsync(x => x.Number == number && x.SeasonNumber == 1);
@@ -448,12 +526,15 @@ public sealed class AnimeNamingRenameTests
                 new JapaneseTermExtractor(new EmptyMorphology()),
                 new JapaneseDictionary(Path.Combine(TempRoot, "dictionary")));
             var sonarrStore = new SonarrConnectionStore(DataProtectionProvider.Create(new DirectoryInfo(Path.Combine(TempRoot, "keys"))));
+            var inventory = MediaInventoryTestSupport.Create(Options, ProbeRunner);
             var scanner = new LibraryScanner(
                 Db,
                 new SubtitleImportService(Db, vocabulary),
                 new EmbeddedSubtitleExtractor(
                     new MediaProcessRunner(NullLogger<MediaProcessRunner>.Instance),
+                    inventory,
                     NullLogger<EmbeddedSubtitleExtractor>.Instance),
+                inventory,
                 new SonarrArtworkSyncService(
                     sonarrStore,
                     new SonarrArtworkImportService(Db, new TestHttpClientFactory(), NullLogger<SonarrArtworkImportService>.Instance),

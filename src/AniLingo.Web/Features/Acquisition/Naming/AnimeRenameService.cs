@@ -1,5 +1,6 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Acquisition.Ownership;
+using AniLingo.Web.Features.Acquisition.Sabnzbd;
 using AniLingo.Web.Features.Library;
 using AniLingo.Web.Features.Metadata;
 using AniLingo.Web.Features.Operations;
@@ -13,18 +14,22 @@ namespace AniLingo.Web.Features.Acquisition.Naming;
 // folder). Every move is checked against Sonarr ownership (SonarrParallelSafety.CanRename),
 // read-only mounts, cross-device moves, existing targets and library identity before anything
 // changes. Execution runs as an Operation, rolls filesystem moves back on failure and updates the
-// path-based canonical records (media files, subtitle sources, anime key, ownership paths) in the
-// same database transaction so progress and episode identity survive without a rescan.
+// path-based canonical records (media files, subtitle sources, anime key) in one database
+// transaction, with the ownership and SABnzbd acquisition stores rekeyed alongside it, so
+// progress and episode identity survive without a rescan.
 public sealed class AnimeRenameService(
     AppDbContext db,
     AnimeNamingProfileStore namingStore,
     AcquisitionOwnershipStore ownershipStore,
+    SabnzbdAcquisitionStore acquisitionStore,
     SonarrObservationService observation,
     OperationRunner operations,
     AnimeRenameFileSystem fileSystem,
     ILogger<AnimeRenameService> logger)
 {
+    public const string OperationKind = "anime-rename";
     private const string LogModule = "Rename";
+    private static readonly string[] ConflictingOperationKinds = ["library-scan", "startup-library-scan", OperationKind];
     private static readonly string[] SidecarDirectoryNames = ["Subs", "Subtitles"];
 
     public async Task<AnimeRenamePlan?> PlanAsync(
@@ -187,6 +192,11 @@ public sealed class AnimeRenameService(
                 blocking.Add($"The series folder '{move.TargetPath}' already exists.");
             }
 
+            if (folderMoves.Count(other => string.Equals(other.TargetPath, move.TargetPath, StringComparison.OrdinalIgnoreCase)) > 1)
+            {
+                blocking.Add($"Several series folders would be merged into '{move.TargetPath}'; merge them manually first.");
+            }
+
             var decision = SonarrParallelSafety.CanRename(ownership, anime.Key, move.SourcePath, move.TargetPath, now);
             if (!decision.Allowed)
             {
@@ -196,6 +206,7 @@ public sealed class AnimeRenameService(
 
         var items = CheckItems(drafts, folderMoves, anime.Key, ownership, now);
         blocking.AddRange(CheckWritableVolumes(items, folderMoves));
+        blocking.AddRange(await CheckActiveLibraryOperationsAsync(cancellationToken));
 
         return new AnimeRenamePlan(
             anime.Id,
@@ -257,7 +268,7 @@ public sealed class AnimeRenameService(
         {
             var moves = await operations.RunAsync(
                 new OperationDescriptor(
-                    "anime-rename",
+                    OperationKind,
                     "Library",
                     $"Rename files: {plan.AnimeTitle}",
                     Subject: plan.AnimeKey,
@@ -409,28 +420,47 @@ public sealed class AnimeRenameService(
 
         await db.SaveChangesAsync(CancellationToken.None);
 
-        var ownershipChanged = false;
-        await ownershipStore.UpdateAsync(
-            state =>
-            {
-                var updated = RekeyOwnership(state, plan.AnimeKey, plan.TargetAnimeKey, MapPath);
-                ownershipChanged = !ReferenceEquals(updated, state);
-                return updated;
-            },
-            CancellationToken.None);
-
+        // The JSON acquisition stores cannot join the database transaction, so every applied
+        // store change registers its reversal and is undone when a later step or the commit fails.
+        var compensations = new List<Func<Task>>();
         try
         {
+            var ownershipChanged = false;
+            await ownershipStore.UpdateAsync(
+                state =>
+                {
+                    var updated = RekeyOwnership(state, plan.AnimeKey, plan.TargetAnimeKey, MapPath);
+                    ownershipChanged = !ReferenceEquals(updated, state);
+                    return updated;
+                },
+                CancellationToken.None);
+            if (ownershipChanged)
+            {
+                var reverse = BuildReverseMap(mediaMap, sidecarMap, plan.FolderMoves);
+                compensations.Add(() => ownershipStore.UpdateAsync(
+                    state => RekeyOwnership(state, plan.TargetAnimeKey, plan.AnimeKey, reverse),
+                    CancellationToken.None));
+            }
+
+            if (await acquisitionStore.RekeyAnimeAsync(plan.AnimeKey, plan.TargetAnimeKey, CancellationToken.None))
+            {
+                compensations.Add(() => acquisitionStore.RekeyAnimeAsync(plan.TargetAnimeKey, plan.AnimeKey, CancellationToken.None));
+            }
+
             await transaction.CommitAsync(CancellationToken.None);
         }
         catch
         {
-            if (ownershipChanged)
+            for (var index = compensations.Count - 1; index >= 0; index--)
             {
-                var reverse = BuildReverseMap(mediaMap, sidecarMap, plan.FolderMoves);
-                await ownershipStore.UpdateAsync(
-                    state => RekeyOwnership(state, plan.TargetAnimeKey, plan.AnimeKey, reverse),
-                    CancellationToken.None);
+                try
+                {
+                    await compensations[index]();
+                }
+                catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException)
+                {
+                    logger.LogError(exception, "Could not undo an acquisition store change after the failed rename of {AnimeKey}.", plan.AnimeKey);
+                }
             }
 
             throw;
@@ -563,6 +593,19 @@ public sealed class AnimeRenameService(
         }
 
         return null;
+    }
+
+    // A scan that enumerated the old paths would treat the renamed files as removed and re-add
+    // the old ones; a second rename would race this one. Both must finish first.
+    private async Task<IReadOnlyList<string>> CheckActiveLibraryOperationsAsync(CancellationToken cancellationToken)
+    {
+        var active = await new OperationStore(db).ListAsync(
+            new OperationListFilter(View: "active", Category: "Library"),
+            cancellationToken);
+        return active
+            .Where(operation => ConflictingOperationKinds.Contains(operation.Kind, StringComparer.Ordinal))
+            .Select(operation => $"'{operation.Title}' is {operation.Status.ToString().ToLowerInvariant()}; rename after it finishes.")
+            .ToArray();
     }
 
     private IEnumerable<string> CheckWritableVolumes(
