@@ -1,3 +1,4 @@
+using AniLingo.Web.Data;
 using AniLingo.Web.Features.Library;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -80,23 +81,89 @@ public sealed class LibraryWatchTests
     }
 
     [TestMethod]
-    public async Task OverflowBatchQueuesOneFullWatchScanAndFolderBatchesCoalesce()
+    public async Task DebouncedBurstQueuesOnePartialScanOfTheDirtyFolders()
     {
         await using var host = await LibraryScanTestHost.CreateAsync();
         var root = await host.AddRootAsync("Anime");
         var service = new LibraryWatchService(host.ScopeFactory, host.Scans, NullLogger<LibraryWatchService>.Instance);
 
-        await service.QueueBatchAsync(new LibraryChangeBatch(root.Id, false, ["Frieren", "Bocchi"]), CancellationToken.None);
+        var tracker = new LibraryChangeTracker(TimeSpan.FromSeconds(10));
+        for (var i = 0; i < 20; i++)
+        {
+            tracker.RecordChange(root.Id, host.LibraryPath, Path.Combine(host.LibraryPath, "Frieren", "Season 01", $"part{i}.mkv"), T0.AddMilliseconds(i * 200));
+        }
+
+        tracker.RecordChange(root.Id, host.LibraryPath, Path.Combine(host.LibraryPath, "Bocchi", "poster.jpg"), T0.AddSeconds(4));
+
+        foreach (var batch in tracker.Drain(T0.AddSeconds(15)))
+        {
+            await service.QueueBatchAsync(batch, CancellationToken.None);
+        }
+
+        // A second, later batch for a folder of the still queued run is merged into it.
         await service.QueueBatchAsync(new LibraryChangeBatch(root.Id, false, ["Frieren"]), CancellationToken.None);
-        await service.QueueBatchAsync(new LibraryChangeBatch(root.Id, true, []), CancellationToken.None);
+
+        var scans = await host.ListScansAsync();
+        Assert.AreEqual(1, scans.Count, "A burst becomes exactly one partial scan.");
+        var details = LibraryScanDetails.TryParse(scans[0].Details)!;
+        Assert.AreEqual(LibraryScanTrigger.Watch, details.Trigger);
+        CollectionAssert.AreEqual(new[] { "Bocchi", "Frieren" }, details.Folders!.ToArray());
+        Assert.AreEqual("Anime", scans[0].Subject);
+        service.Dispose();
+    }
+
+    [TestMethod]
+    public async Task OverflowBatchQueuesAFullReconciliation()
+    {
+        await using var host = await LibraryScanTestHost.CreateAsync();
+        var root = await host.AddRootAsync("Anime");
+        var service = new LibraryWatchService(host.ScopeFactory, host.Scans, NullLogger<LibraryWatchService>.Instance);
+
+        var tracker = new LibraryChangeTracker(TimeSpan.FromSeconds(10));
+        tracker.RecordChange(root.Id, host.LibraryPath, Path.Combine(host.LibraryPath, "Frieren", "a.mkv"), T0);
+        tracker.RecordOverflow(root.Id, T0.AddSeconds(1));
+        foreach (var batch in tracker.Drain(T0.AddSeconds(20)))
+        {
+            await service.QueueBatchAsync(batch, CancellationToken.None);
+        }
+
         await service.QueueBatchAsync(new LibraryChangeBatch(root.Id, true, []), CancellationToken.None);
 
         var scans = await host.ListScansAsync();
-        var details = scans.Select(x => LibraryScanDetails.TryParse(x.Details)!).ToArray();
-        Assert.AreEqual(3, scans.Count);
-        Assert.IsTrue(details.All(x => x.Trigger == LibraryScanTrigger.Watch));
-        CollectionAssert.AreEquivalent(new string?[] { "Frieren", "Bocchi", null }, details.Select(x => x.Folder).ToArray());
-        Assert.IsTrue(scans.All(x => x.Subject!.StartsWith("Anime", StringComparison.Ordinal)));
+        Assert.AreEqual(1, scans.Count);
+        var details = LibraryScanDetails.TryParse(scans[0].Details)!;
+        Assert.AreEqual(LibraryScanTrigger.Watch, details.Trigger);
+        Assert.IsNull(details.Folders, "Lost events are repaired by a whole-root reconciliation.");
+        service.Dispose();
+    }
+
+    [TestMethod]
+    public async Task PeriodicPassQueuesOnlyDueReadableRootsAndNothingForOfflineRoots()
+    {
+        await using var host = await LibraryScanTestHost.CreateAsync();
+        var due = await host.AddRootAsync("Due");
+        var recent = await host.AddRootAsync("Recent", CreateDirectory(host, "recent"));
+        await host.AddRootAsync("Off", CreateDirectory(host, "off"), intervalMinutes: 0);
+        await host.AddRootAsync("Offline", Path.Combine(host.TempRoot, "missing"));
+
+        await using (var scope = host.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var root = await db.LibraryRoots.FindAsync(recent.Id);
+            root!.LastScannedAt = DateTime.UtcNow.AddMinutes(-10);
+            await db.SaveChangesAsync();
+        }
+
+        var service = new LibraryWatchService(host.ScopeFactory, host.Scans, NullLogger<LibraryWatchService>.Instance);
+        await service.ReconcileDueRootsAsync(CancellationToken.None);
+        await service.ReconcileDueRootsAsync(CancellationToken.None);
+
+        var scans = await host.ListScansAsync();
+        Assert.AreEqual(1, scans.Count, "Only the due, readable root is reconciled, and only once.");
+        var details = LibraryScanDetails.TryParse(scans[0].Details)!;
+        Assert.AreEqual(due.Id, details.RootId);
+        Assert.AreEqual(LibraryScanTrigger.Periodic, details.Trigger);
+        Assert.IsNull(details.Folders);
         service.Dispose();
     }
 
@@ -119,6 +186,13 @@ public sealed class LibraryWatchTests
         await service.StopAsync(CancellationToken.None);
         service.Dispose();
         Assert.AreEqual(0, service.WatchedRootCount);
+    }
+
+    private static string CreateDirectory(LibraryScanTestHost host, string name)
+    {
+        var path = Path.Combine(host.TempRoot, name);
+        Directory.CreateDirectory(path);
+        return path;
     }
 
     private static async Task WaitUntilAsync(Func<bool> condition, string expectation)

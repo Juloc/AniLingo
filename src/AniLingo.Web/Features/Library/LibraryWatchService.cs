@@ -91,24 +91,33 @@ public sealed class LibraryWatchService(
 
     private async Task SyncAsync(bool includePeriodic, CancellationToken cancellationToken)
     {
-        WatchedRoot[] roots;
-        await using (var scope = scopeFactory.CreateAsyncScope())
-        {
-            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            roots = await db.LibraryRoots
-                .AsNoTracking()
-                .Where(x => x.IsEnabled)
-                .Select(x => new WatchedRoot(x.Id, x.Path, x.ReconciliationIntervalMinutes, x.LastScannedAt))
-                .ToArrayAsync(cancellationToken);
-        }
-
+        var roots = await LoadRootsAsync(cancellationToken);
         SyncWatchers(roots);
 
-        if (!includePeriodic)
+        if (includePeriodic)
         {
-            return;
+            await RunPeriodicAsync(roots, cancellationToken);
         }
+    }
 
+    // One periodic safety reconciliation pass over every enabled root: queues a full scan for
+    // each root whose interval has elapsed. The service runs it once a minute.
+    public async Task ReconcileDueRootsAsync(CancellationToken cancellationToken) =>
+        await RunPeriodicAsync(await LoadRootsAsync(cancellationToken), cancellationToken);
+
+    private async Task<WatchedRoot[]> LoadRootsAsync(CancellationToken cancellationToken)
+    {
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        return await db.LibraryRoots
+            .AsNoTracking()
+            .Where(x => x.IsEnabled)
+            .Select(x => new WatchedRoot(x.Id, x.Path, x.ReconciliationIntervalMinutes, x.LastScannedAt))
+            .ToArrayAsync(cancellationToken);
+    }
+
+    private async Task RunPeriodicAsync(IReadOnlyList<WatchedRoot> roots, CancellationToken cancellationToken)
+    {
         foreach (var root in roots)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -274,13 +283,29 @@ public sealed class LibraryWatchService(
     private async Task QueueAsync(LibraryScanRequest request, CancellationToken cancellationToken)
     {
         var result = await scans.QueueAsync(request, cancellationToken);
-        if (result.Outcome is LibraryScanQueueOutcome.Queued or LibraryScanQueueOutcome.AlreadyActive)
+        if (result.Queued)
         {
             logger.LogDebug(
                 "Library change scan for root {RootId} ({Folder}): {Outcome}.",
                 request.RootId,
                 request.Folder ?? "full",
                 result.Outcome);
+            return;
+        }
+
+        if (result.Outcome == LibraryScanQueueOutcome.AlreadyActive)
+        {
+            // The running scan may already have passed this change; keep it pending so it is
+            // offered again after the next quiet period, once the running scan has finished.
+            if (request.Folder is null)
+            {
+                tracker.RecordOverflow(request.RootId, DateTime.UtcNow);
+            }
+            else
+            {
+                tracker.RecordFolder(request.RootId, request.Folder, DateTime.UtcNow);
+            }
+
             return;
         }
 
@@ -320,7 +345,16 @@ public sealed class LibraryWatchService(
                 root.Id,
                 root.ReconciliationIntervalMinutes);
         }
-        else if (!result.Queued && result.Outcome != LibraryScanQueueOutcome.AlreadyActive)
+        else if (result.Outcome == LibraryScanQueueOutcome.AlreadyActive)
+        {
+            // Another run of the root is executing; try again on the next pass instead of
+            // waiting a whole interval (a running full scan moves LastScannedAt anyway).
+            lock (gate)
+            {
+                periodicAttempts.Remove(root.Id);
+            }
+        }
+        else if (!result.Queued)
         {
             logger.LogWarning(
                 "Periodic library reconciliation was not queued for root {RootId}: {Message}",

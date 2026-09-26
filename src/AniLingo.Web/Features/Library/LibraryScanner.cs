@@ -114,6 +114,17 @@ public sealed class LibraryScanner(
             existingFiles = existingFiles
                 .Where(pair => pair.Key.StartsWith(scopePrefix, StringComparison.Ordinal))
                 .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+
+            // A vanished folder only counts as deleted while the root itself still has content;
+            // an empty mount point is an unavailable NAS, exactly like the full-scan guard below.
+            if (existingFiles.Count > 0 &&
+                candidates.Count == 0 &&
+                !Directory.EnumerateFileSystemEntries(rootPath).Any())
+            {
+                throw new IOException(
+                    "Library root is empty while AniLingo still has known media in the scanned folder. " +
+                    "Reconciliation was stopped to avoid treating an unavailable NAS mount as a mass deletion.");
+            }
         }
         else if (existingFiles.Count > 0 && candidates.Count == 0)
         {

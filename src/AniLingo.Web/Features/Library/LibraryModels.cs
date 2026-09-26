@@ -79,6 +79,28 @@ public sealed record ScanResult(int Discovered, int Updated, int Skipped, int Su
     public int WarningCount { get; init; }
 
     public const int MaxRecordedWarnings = 200;
+
+    // The result of one run that reconciled several folders one after another.
+    public static ScanResult Combine(IReadOnlyCollection<ScanResult> results) =>
+        new(
+            results.Sum(x => x.Discovered),
+            results.Sum(x => x.Updated),
+            results.Sum(x => x.Skipped),
+            results.Sum(x => x.SubtitleFiles))
+        {
+            Removed = results.Sum(x => x.Removed),
+            MetadataWarnings = results.Sum(x => x.MetadataWarnings),
+            MediaInventory = new MediaInventoryReconciliation(
+                results.Sum(x => x.MediaInventory.Unchanged),
+                results.Sum(x => x.MediaInventory.Analyzed),
+                results.Sum(x => x.MediaInventory.Failed),
+                results.Sum(x => x.MediaInventory.Deferred)),
+            MediaFiles = results.Sum(x => x.MediaFiles),
+            ArtworkImported = results.Sum(x => x.ArtworkImported),
+            Errors = results.Sum(x => x.Errors),
+            Warnings = results.SelectMany(x => x.Warnings).Take(MaxRecordedWarnings).ToArray(),
+            WarningCount = results.Sum(x => x.WarningCount)
+        };
 }
 
 // A root-relative path only: scan diagnostics never carry the host path of the root.

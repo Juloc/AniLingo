@@ -14,8 +14,8 @@ public sealed class LibraryStartupScanService(
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // Host startup is never held up by NAS probing, and the worker lanes have recovered
-        // interrupted runs of the previous process before new ones are queued.
+        // Host startup is never held up by NAS probing. Lane recovery only abandons work of the
+        // previous process, so these runs stay queued even if recovery is still in progress.
         await WaitForStartAsync(stoppingToken);
         if (stoppingToken.IsCancellationRequested)
         {

@@ -15,7 +15,7 @@ public sealed record AdminLibraryScanRow(
     LibraryScanDetails? Details,
     string RootName)
 {
-    public string Scope => Details?.Folder ?? "Whole root";
+    public string Scope => Details is null ? "—" : LibraryScanCoordinator.DescribeScope(Details.Folders);
 
     public string Trigger =>
         Details is null ? "—" : LibraryScanCoordinator.TriggerLabel(Details.Trigger);

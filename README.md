@@ -82,7 +82,7 @@ Then add `/media/anime` as a library root in AniLingo. Existing persisted librar
 
 Every root is reconciled once at startup, on **Queue library scan** under Admin → System, shortly after filesystem changes, and periodically. Where the mount raises filesystem events, AniLingo watches each root and reconciles only the changed anime folders about ten seconds after a burst of activity (for example a Sonarr import) has settled; lost events fall back to a full pass. Because network mounts often raise no events, each root also has a **Periodic reconciliation** interval (default every 30 minutes, `0` turns it off) that repairs anything missed. Periodic runs are skipped while the storage is offline.
 
-Duplicate requests for a root are coalesced while a scan is queued or running. Admin → Scans shows every run with its state, root, trigger, phase, timing and counters (media, added, changed, removed, skipped, subtitles, artwork, ignored NFO files, errors, warnings); item-level warnings such as unmatched files are listed with root-relative paths in the run's log. A run left running by a restart is marked interrupted and can be run again from the same page.
+Duplicate requests for a root are coalesced while a scan is queued or running. Admin → Scans shows every run with its state, root, trigger, phase, timing and counters (media, added, changed, removed, skipped, subtitles, artwork, ignored NFO files, media analysed or failed to analyse, errors, warnings); item-level warnings such as unmatched files are listed with root-relative paths in the run's log. A run left running by a restart is marked interrupted and can be run again from the same page.
 
 ### Sleeping / unavailable NAS and Wake-on-LAN
 

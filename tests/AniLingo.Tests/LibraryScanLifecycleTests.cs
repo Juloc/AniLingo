@@ -1,8 +1,12 @@
 using AniLingo.Web.Data;
+using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Library;
 using AniLingo.Web.Features.Operations;
+using AniLingo.Web.Pages.Admin;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace AniLingo.Tests;
 
@@ -40,7 +44,7 @@ public sealed class LibraryScanLifecycleTests
         var details = LibraryScanDetails.TryParse(operation.Details);
         Assert.IsNotNull(details);
         Assert.AreEqual(root.Id, details.RootId);
-        Assert.IsNull(details.Folder);
+        Assert.IsNull(details.Folders);
         Assert.AreEqual(LibraryScanTrigger.Manual, details.Trigger);
         Assert.AreEqual(LibraryScanPhase.Completed, details.Phase);
         Assert.AreEqual(2, details.FilesTotal);
@@ -125,24 +129,29 @@ public sealed class LibraryScanLifecycleTests
         var manual = await host.Scans.QueueAsync(new LibraryScanRequest(first.Id, LibraryScanTrigger.Manual));
         var duplicate = await host.Scans.QueueAsync(new LibraryScanRequest(first.Id, LibraryScanTrigger.Manual));
         var startup = await host.Scans.QueueAsync(new LibraryScanRequest(first.Id, LibraryScanTrigger.Startup));
+        var periodic = await host.Scans.QueueAsync(new LibraryScanRequest(first.Id, LibraryScanTrigger.Periodic));
         var folder = await host.Scans.QueueAsync(new LibraryScanRequest(first.Id, LibraryScanTrigger.Watch, "Frieren"));
         var other = await host.Scans.QueueAsync(new LibraryScanRequest(second.Id, LibraryScanTrigger.Manual));
 
         Assert.AreEqual(LibraryScanQueueOutcome.Queued, manual.Outcome);
-        Assert.AreEqual(LibraryScanQueueOutcome.AlreadyActive, duplicate.Outcome);
-        Assert.AreEqual(manual.OperationId, duplicate.OperationId);
-        Assert.AreEqual(LibraryScanQueueOutcome.AlreadyActive, startup.Outcome);
-        Assert.AreEqual(LibraryScanQueueOutcome.AlreadyActive, folder.Outcome);
+        foreach (var coalesced in new[] { duplicate, startup, periodic, folder })
+        {
+            Assert.AreEqual(LibraryScanQueueOutcome.Merged, coalesced.Outcome);
+            Assert.AreEqual(manual.OperationId, coalesced.OperationId);
+        }
+
         Assert.AreEqual(LibraryScanQueueOutcome.Queued, other.Outcome);
 
         var scans = await host.ListScansAsync();
         Assert.AreEqual(2, scans.Count);
+        var firstRun = scans.Single(x => x.Id == manual.OperationId);
+        Assert.IsNull(LibraryScanDetails.TryParse(firstRun.Details)!.Folders, "A whole-root run stays whole-root.");
         Assert.AreEqual(1, host.Scans.GetActive(first.Id).Count);
         Assert.AreEqual(1, host.Scans.GetActive(second.Id).Count);
     }
 
     [TestMethod]
-    public async Task FolderScansCoalescePerFolderAndAreAbsorbedByAFullScan()
+    public async Task QueuedRunMergesFoldersAndWidensToTheWholeRoot()
     {
         await using var host = await LibraryScanTestHost.CreateAsync();
         var root = await host.AddRootAsync("Anime");
@@ -150,22 +159,97 @@ public sealed class LibraryScanLifecycleTests
         var frieren = await host.Scans.QueueAsync(new LibraryScanRequest(root.Id, LibraryScanTrigger.Watch, "Frieren"));
         var frierenAgain = await host.Scans.QueueAsync(new LibraryScanRequest(root.Id, LibraryScanTrigger.Watch, "Frieren/"));
         var bocchi = await host.Scans.QueueAsync(new LibraryScanRequest(root.Id, LibraryScanTrigger.Watch, "Bocchi"));
-        var full = await host.Scans.QueueAsync(new LibraryScanRequest(root.Id, LibraryScanTrigger.Periodic));
-        var lateFolder = await host.Scans.QueueAsync(new LibraryScanRequest(root.Id, LibraryScanTrigger.Watch, "Gintama"));
 
         Assert.AreEqual(LibraryScanQueueOutcome.Queued, frieren.Outcome);
-        Assert.AreEqual(LibraryScanQueueOutcome.AlreadyActive, frierenAgain.Outcome);
-        Assert.AreEqual(LibraryScanQueueOutcome.Queued, bocchi.Outcome);
-        Assert.AreEqual(LibraryScanQueueOutcome.Queued, full.Outcome);
-        Assert.AreEqual(LibraryScanQueueOutcome.AlreadyActive, lateFolder.Outcome);
-        Assert.AreEqual(full.OperationId, lateFolder.OperationId);
+        Assert.AreEqual(LibraryScanQueueOutcome.Merged, frierenAgain.Outcome);
+        Assert.AreEqual(LibraryScanQueueOutcome.Merged, bocchi.Outcome);
+        Assert.AreEqual(frieren.OperationId, bocchi.OperationId);
 
-        var scans = await host.ListScansAsync();
-        var folders = scans
-            .Select(x => LibraryScanDetails.TryParse(x.Details)?.Folder)
-            .OrderBy(x => x, StringComparer.Ordinal)
-            .ToArray();
-        CollectionAssert.AreEqual(new string?[] { null, "Bocchi", "Frieren" }, folders);
+        var run = (await host.ListScansAsync()).Single();
+        CollectionAssert.AreEqual(
+            new[] { "Bocchi", "Frieren" },
+            LibraryScanDetails.TryParse(run.Details)!.Folders!.ToArray(),
+            "The queued run's persisted scope lists every merged folder.");
+
+        var full = await host.Scans.QueueAsync(new LibraryScanRequest(root.Id, LibraryScanTrigger.Periodic));
+        var lateFolder = await host.Scans.QueueAsync(new LibraryScanRequest(root.Id, LibraryScanTrigger.Watch, "Gintama"));
+        Assert.AreEqual(LibraryScanQueueOutcome.Merged, full.Outcome);
+        Assert.AreEqual(LibraryScanQueueOutcome.Merged, lateFolder.Outcome);
+
+        run = (await host.ListScansAsync()).Single();
+        Assert.IsNull(LibraryScanDetails.TryParse(run.Details)!.Folders, "A whole-root request widens the queued run.");
+        Assert.IsNull(host.Scans.GetActive(root.Id).Single().Folders);
+    }
+
+    [TestMethod]
+    public async Task MergedFoldersRunInOneOperationLikeSeparateFolderScans()
+    {
+        await using var host = await LibraryScanTestHost.CreateAsync();
+        var root = await host.AddRootAsync("Anime");
+        host.WriteMedia(Path.Combine("Frieren", "Season 01", "Frieren - S01E01.mkv"));
+        host.WriteMedia(Path.Combine("Bocchi", "Season 01", "Bocchi - S01E01.mkv"));
+        host.WriteMedia(Path.Combine("Bocchi", "Season 01", "extras.mkv"));
+        host.WriteMedia(Path.Combine("Gintama", "Season 01", "Gintama - S01E01.mkv"));
+
+        var first = await host.Scans.QueueAsync(new LibraryScanRequest(root.Id, LibraryScanTrigger.Watch, "Frieren"));
+        await host.Scans.QueueAsync(new LibraryScanRequest(root.Id, LibraryScanTrigger.Watch, "Bocchi"));
+        await host.StartWorkerAsync();
+
+        var operation = await host.WaitForAsync(first.OperationId!.Value, x => x.Status == OperationStatus.Succeeded);
+        var details = LibraryScanDetails.TryParse(operation.Details)!;
+        CollectionAssert.AreEqual(new[] { "Bocchi", "Frieren" }, details.Folders!.ToArray());
+        Assert.AreEqual(3, details.Counters!.MediaFiles);
+        Assert.AreEqual(2, details.Counters.Discovered);
+        Assert.AreEqual(1, details.Counters.Skipped);
+        Assert.AreEqual(1, details.Warnings);
+
+        await using var scope = host.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.AreEqual(2, await db.MediaFiles.CountAsync(), "Gintama is outside the merged folders.");
+        Assert.IsNull((await db.LibraryRoots.AsNoTracking().SingleAsync(x => x.Id == root.Id)).LastScannedAt);
+    }
+
+    [TestMethod]
+    public async Task RunningScanRejectsRequestsAndTheWatcherKeepsTheChangePending()
+    {
+        await using var host = await LibraryScanTestHost.CreateAsync();
+        var root = await host.AddRootAsync("Anime");
+        host.WriteMedia(Path.Combine("Frieren", "Season 01", "Frieren - S01E01.mkv"));
+
+        // Hold the scan inside its media-analysis phase.
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        host.Probe.Gate = gate.Task;
+        await host.StartWorkerAsync();
+        var running = await host.Scans.QueueAsync(new LibraryScanRequest(root.Id, LibraryScanTrigger.Manual));
+        await host.WaitForAsync(running.OperationId!.Value, _ => host.Probe.Calls.Count > 0);
+        Assert.IsTrue(host.Scans.GetActive(root.Id).Single().IsRunning);
+
+        var manual = await host.Scans.QueueAsync(new LibraryScanRequest(root.Id, LibraryScanTrigger.Manual));
+        Assert.AreEqual(LibraryScanQueueOutcome.AlreadyActive, manual.Outcome);
+        Assert.AreEqual(running.OperationId, manual.OperationId);
+
+        var watcher = new LibraryWatchService(host.ScopeFactory, host.Scans, NullLogger<LibraryWatchService>.Instance);
+        await watcher.QueueBatchAsync(new LibraryChangeBatch(root.Id, false, ["Frieren"]), CancellationToken.None);
+        Assert.IsTrue(watcher.HasPendingChanges, "A change seen during a running scan must be offered again later.");
+        Assert.AreEqual(1, (await host.ListScansAsync()).Count);
+
+        gate.SetResult();
+        await host.WaitForAsync(running.OperationId.Value, x => x.Status == OperationStatus.Succeeded);
+        await WaitUntilReleasedAsync(host, root.Id);
+
+        var next = await host.Scans.QueueAsync(new LibraryScanRequest(root.Id, LibraryScanTrigger.Watch, "Frieren"));
+        Assert.AreEqual(LibraryScanQueueOutcome.Queued, next.Outcome);
+        watcher.Dispose();
+    }
+
+    private static async Task WaitUntilReleasedAsync(LibraryScanTestHost host, Guid rootId)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        while (host.Scans.GetActive(rootId).Count > 0)
+        {
+            Assert.IsTrue(DateTime.UtcNow < deadline, "The root guard was not released.");
+            await Task.Delay(20);
+        }
     }
 
     [TestMethod]
@@ -277,6 +361,122 @@ public sealed class LibraryScanLifecycleTests
         Assert.AreEqual(2, removed.Removed);
         await Assert.ThrowsExactlyAsync<ArgumentException>(
             () => scanner.ScanFolderAsync(root.Id, "../outside", null, CancellationToken.None));
+    }
+
+    [TestMethod]
+    public async Task FolderScanAnalysesOnlyTheMediaOfItsSubtree()
+    {
+        await using var host = await LibraryScanTestHost.CreateAsync();
+        var root = await host.AddRootAsync("Anime");
+        var frieren1 = Path.GetFullPath(host.WriteMedia(Path.Combine("Frieren", "Season 01", "Frieren - S01E01.mkv")));
+        host.WriteMedia(Path.Combine("Bocchi", "Season 01", "Bocchi - S01E01.mkv"));
+
+        await using var scope = host.Services.CreateAsyncScope();
+        var scanner = scope.ServiceProvider.GetRequiredService<LibraryScanner>();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var full = await scanner.ScanAsync(root.Id, CancellationToken.None);
+        Assert.AreEqual(2, host.Probe.Calls.Count);
+        Assert.AreEqual(2, full.MediaInventory.Failed, "The fake probe rejects every file like invalid media.");
+
+        // Without analyses every file of the root would need a probe; a folder scan must only
+        // probe inside its folder.
+        await db.MediaAnalyses.ExecuteDeleteAsync();
+        host.Probe.ClearCalls();
+        var frieren2 = Path.GetFullPath(host.WriteMedia(Path.Combine("Frieren", "Season 01", "Frieren - S01E02.mkv")));
+
+        var folder = await scanner.ScanFolderAsync(root.Id, "Frieren", null, CancellationToken.None);
+
+        CollectionAssert.AreEquivalent(new[] { frieren1, frieren2 }, host.Probe.Calls.ToArray());
+        Assert.AreEqual(2, folder.MediaInventory.Failed);
+    }
+
+    [TestMethod]
+    public async Task FolderScanOfAnEmptyMountPointIsRejectedInsteadOfDeletingMedia()
+    {
+        await using var host = await LibraryScanTestHost.CreateAsync();
+        var root = await host.AddRootAsync("Anime");
+        host.WriteMedia(Path.Combine("Frieren", "Season 01", "Frieren - S01E01.mkv"));
+
+        await using var scope = host.Services.CreateAsyncScope();
+        var scanner = scope.ServiceProvider.GetRequiredService<LibraryScanner>();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await scanner.ScanAsync(root.Id, CancellationToken.None);
+
+        // The NAS unmounted: the mount point still exists but is empty.
+        Directory.Delete(Path.Combine(host.LibraryPath, "Frieren"), recursive: true);
+
+        await Assert.ThrowsExactlyAsync<IOException>(
+            () => scanner.ScanFolderAsync(root.Id, "Frieren", null, CancellationToken.None));
+        db.ChangeTracker.Clear();
+        Assert.AreEqual(1, await db.MediaFiles.CountAsync());
+    }
+
+    [TestMethod]
+    public async Task LaneRecoveryOnlyAbandonsWorkOfThePreviousProcess()
+    {
+        await using var host = await LibraryScanTestHost.CreateAsync();
+
+        await using var scope = host.Services.CreateAsyncScope();
+        var store = new OperationStore(scope.ServiceProvider.GetRequiredService<AppDbContext>());
+        var abandoned = await store.CreateAsync(new OperationDescriptor(
+            LibraryScanCoordinator.OperationKind,
+            LibraryScanCoordinator.OperationCategory,
+            "Previous process",
+            Lane: OperationLane.Maintenance));
+        await Task.Delay(20);
+        var processStartedUtc = DateTime.UtcNow;
+        await Task.Delay(20);
+
+        // Queued by the current process (for example the startup scan) before recovery ran.
+        var current = await store.CreateAsync(new OperationDescriptor(
+            LibraryScanCoordinator.OperationKind,
+            LibraryScanCoordinator.OperationCategory,
+            "Current process",
+            Lane: OperationLane.Maintenance));
+
+        var recovered = await store.RecoverInterruptedAsync(OperationLane.Maintenance, processStartedUtc);
+
+        Assert.AreEqual(1, recovered);
+        Assert.AreEqual(OperationStatus.Interrupted, (await store.GetAsync(abandoned))!.Status);
+        Assert.AreEqual(OperationStatus.Queued, (await store.GetAsync(current))!.Status);
+    }
+
+    [TestMethod]
+    public async Task ScanHistoryPageShowsCountersPerRoot()
+    {
+        await using var host = await LibraryScanTestHost.CreateAsync();
+        var root = await host.AddRootAsync("Anime");
+        host.WriteMedia(Path.Combine("Frieren", "Season 01", "Frieren - S01E01.mkv"));
+        host.WriteMedia(Path.Combine("Frieren", "notes.mkv"));
+
+        await host.StartWorkerAsync();
+        var queued = await host.Scans.QueueAsync(new LibraryScanRequest(root.Id, LibraryScanTrigger.Manual));
+        await host.WaitForAsync(queued.OperationId!.Value, x => x.Status == OperationStatus.Succeeded);
+
+        await using var scope = host.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var page = new ScansModel(db, host.Scans, new CurrentAccountContext(new HttpContextAccessor()))
+        {
+            RootId = root.Id
+        };
+        await page.OnGetAsync(CancellationToken.None);
+
+        var row = page.Scans.Single();
+        Assert.AreEqual("Anime", row.RootName);
+        Assert.AreEqual("Whole root", row.Scope);
+        Assert.AreEqual("Manual", row.Trigger);
+        Assert.AreEqual("Completed", row.Phase);
+        Assert.IsTrue(row.CanRunAgain);
+        Assert.IsNotNull(row.Counters);
+        Assert.AreEqual(2, row.Counters.MediaFiles);
+        Assert.AreEqual(1, row.Counters.Discovered);
+        Assert.AreEqual(1, row.Counters.Skipped);
+        Assert.AreEqual(1, row.Warnings);
+
+        page.RootId = Guid.NewGuid();
+        await page.OnGetAsync(CancellationToken.None);
+        Assert.AreEqual(0, page.Scans.Count);
     }
 
     [TestMethod]

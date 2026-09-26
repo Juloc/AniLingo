@@ -55,7 +55,7 @@
                             {
                                 <small>
                                     <span class="status-pill operation-status-@active.Operation.Status.ToString().ToLowerInvariant()">@active.Operation.StatusLabel</span>
-                                    @active.Trigger scan · @active.Phase
+                                    @active.Trigger scan (@active.Scope) · @active.Phase
                                     @if (active.FileProgress is { } files)
                                     {
                                         <text> · @files</text>
@@ -73,7 +73,7 @@
                             {
                                 <small>
                                     <span class="status-pill operation-status-@last.Operation.Status.ToString().ToLowerInvariant()">@last.Operation.StatusLabel</span>
-                                    @last.Trigger scan
+                                    @last.Trigger scan (@last.Scope)
                                     @(last.Operation.FinishedAtUtc?.ToLocalTime().ToString("g") ?? "")
                                     @if (last.Counters is { } counters)
                                     {

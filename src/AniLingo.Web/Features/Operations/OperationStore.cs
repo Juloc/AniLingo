@@ -370,8 +370,17 @@ public sealed class OperationStore(AppDbContext db)
             cancellationToken);
     }
 
+    public Task<int> RecoverInterruptedAsync(
+        OperationLane lane,
+        CancellationToken cancellationToken = default) =>
+        RecoverInterruptedAsync(lane, DateTime.UtcNow, cancellationToken);
+
+    // Only work created before the current process owned the lane is abandoned; work queued by
+    // this process while recovery was still pending (for example the startup library scan)
+    // must stay queued.
     public async Task<int> RecoverInterruptedAsync(
         OperationLane lane,
+        DateTime createdBeforeUtc,
         CancellationToken cancellationToken = default)
     {
         var now = DateTime.UtcNow;
@@ -388,10 +397,12 @@ public sealed class OperationStore(AppDbContext db)
                         UpdatedAtUtc = @now
                     WHERE Lane = @lane
                       AND Status IN (@queued, @running)
-                      AND (ExternalProvider IS NULL OR ExternalId IS NULL);
+                      AND (ExternalProvider IS NULL OR ExternalId IS NULL)
+                      AND CreatedAtUtc <= @createdBefore;
                     """;
                 Add(command, "@interrupted", (int)OperationStatus.Interrupted);
                 Add(command, "@now", Format(now));
+                Add(command, "@createdBefore", Format(createdBeforeUtc));
                 Add(command, "@lane", (int)lane);
                 Add(command, "@queued", (int)OperationStatus.Queued);
                 Add(command, "@running", (int)OperationStatus.Running);

@@ -17,16 +17,18 @@ namespace AniLingo.Tests;
 // A real SQLite database plus the scan services wired like Program.cs, without the web host.
 internal sealed class LibraryScanTestHost : IAsyncDisposable
 {
-    private LibraryScanTestHost(string tempRoot, ServiceProvider services)
+    private LibraryScanTestHost(string tempRoot, ServiceProvider services, FakeMediaProbeRunner probe)
     {
         TempRoot = tempRoot;
         Services = services;
+        Probe = probe;
         LibraryPath = Path.Combine(tempRoot, "anime");
     }
 
     public string TempRoot { get; }
     public string LibraryPath { get; }
     public ServiceProvider Services { get; }
+    public FakeMediaProbeRunner Probe { get; }
     public BackgroundJobWorker? Worker { get; private set; }
 
     public IServiceScopeFactory ScopeFactory =>
@@ -57,6 +59,7 @@ internal sealed class LibraryScanTestHost : IAsyncDisposable
         await File.WriteAllTextAsync(Path.Combine(dictionaryPath, "jmdict-ger.tsv"), "");
         await File.WriteAllTextAsync(Path.Combine(dictionaryPath, "jmdict-eng-common.tsv"), "");
 
+        var probe = new FakeMediaProbeRunner();
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddDbContext<AppDbContext>(options =>
@@ -73,6 +76,8 @@ internal sealed class LibraryScanTestHost : IAsyncDisposable
         services.AddSingleton<IHttpClientFactory, TestHttpClientFactory>();
         services.AddScoped<SonarrArtworkImportService>();
         services.AddScoped<SonarrArtworkSyncService>();
+        services.AddSingleton<IMediaProbeRunner>(probe);
+        services.AddSingleton<MediaInventoryService>();
         services.AddScoped<LibraryScanner>();
         services.AddSingleton<StorageAvailabilityCoordinator>();
         services.AddScoped<LibraryRootAvailabilityService>();
@@ -86,7 +91,7 @@ internal sealed class LibraryScanTestHost : IAsyncDisposable
             await DatabaseMigrationBridge.UpgradeAsync(db);
         }
 
-        return new LibraryScanTestHost(tempRoot, provider);
+        return new LibraryScanTestHost(tempRoot, provider, probe);
     }
 
     public async Task<LibraryRoot> AddRootAsync(string name, string? path = null, int intervalMinutes = 30)

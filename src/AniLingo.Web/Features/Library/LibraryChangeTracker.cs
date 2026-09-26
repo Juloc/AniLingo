@@ -44,6 +44,17 @@ public sealed class LibraryChangeTracker(TimeSpan quietPeriod)
         }
     }
 
+    // Keeps a folder dirty, for example when its scan could not be queued yet.
+    public void RecordFolder(Guid rootId, string folder, DateTime nowUtc)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(folder);
+
+        lock (gate)
+        {
+            Touch(rootId, nowUtc).Folders.Add(folder);
+        }
+    }
+
     // Buffer overflow or a broken watcher: events were lost, so only a full pass is safe.
     public void RecordOverflow(Guid rootId, DateTime nowUtc)
     {
