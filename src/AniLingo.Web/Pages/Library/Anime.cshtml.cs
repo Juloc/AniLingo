@@ -3,6 +3,7 @@ using AniLingo.Web.Features.Artwork;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Library;
+using AniLingo.Web.Features.Localization;
 using AniLingo.Web.Features.Metadata;
 using AniLingo.Web.Features.Operations;
 using AniLingo.Web.Features.Progress;
@@ -21,6 +22,7 @@ public sealed class AnimeModel(
     EpisodeProgressService episodeProgressService,
     AniListAccountService aniListAccountService) : PageModel
 {
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public Guid AnimeId { get; private set; }
     public string AnimeTitle { get; private set; } = "";
     public string LocalAnimeTitle { get; private set; } = "";
@@ -45,6 +47,7 @@ public sealed class AnimeModel(
         string? q,
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         var anime = await db.Anime
             .AsNoTracking()
             .SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
@@ -239,6 +242,7 @@ public sealed class AnimeModel(
         var state = await aniListAccountService.GetAnimeProgressStateAsync(
             id,
             cancellationToken);
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
 
         Response.Headers.CacheControl = "no-store";
         return Partial(
@@ -246,7 +250,8 @@ public sealed class AnimeModel(
             new ExternalProgressRemoteView(
                 ExternalProgressMediaKind.Anime,
                 state,
-                "SyncAniList"));
+                "SyncAniList",
+                ui));
     }
 
     public async Task<IActionResult> OnPostSyncAniListAsync(
@@ -413,7 +418,8 @@ public sealed class AnimeModel(
                     mappingId,
                     cancellationToken))
             {
-                TempData["MetadataError"] = "Episode mapping was not found.";
+                var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+                TempData["MetadataError"] = ui["library.anime.episodeMappingNotFound"];
             }
         }
         catch (AniListAccountException exception)

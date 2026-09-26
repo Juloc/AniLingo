@@ -4,20 +4,26 @@ namespace AniLingo.Tests;
 
 /// <summary>
 /// Guards the #185 localization migration of Books, Manga, Discover, Admin,
-/// Reading, Kana, Settings (except DownloadClients/Indexers, migrated
-/// separately), Acquisition, Appearance, Artwork, Companion,
-/// LocalizationAdmin, LocalizationPreferences and Statistics pages: their
+/// Reading, Kana, Settings, Acquisition, Appearance, Artwork, Companion,
+/// LocalizationAdmin, LocalizationPreferences, Statistics and Library pages
+/// (including Settings/DownloadClients and Settings/Indexers): their
 /// headings and buttons must come from the UI catalog instead of being
 /// hard-coded English literals. This intentionally scans only
 /// headings/buttons (not every text node) because these feature pages
 /// legitimately render dynamic user/library content (titles, file names,
 /// provider identifiers) in many other elements.
+///
+/// Library, Settings/DownloadClients, Settings/Indexers and the shared
+/// partials they use (_AnimeAcquisitionPanel, _ExternalProgress,
+/// _ExternalProgressState) are scanned with a wider element set that also
+/// covers &lt;h3&gt; and &lt;label&gt;, since those areas make heavy use of
+/// both.
 /// </summary>
 [TestClass]
 public sealed partial class FeaturePageLocalizationTests
 {
     // Proper nouns, product names and technical/format identifiers that are
-    // allowed to appear untranslated verbatim inside a heading or button.
+    // allowed to appear untranslated verbatim inside a heading, button or label.
     private static readonly string[] AllowedLiteralText =
     [
         "AniLingo",
@@ -28,6 +34,10 @@ public sealed partial class FeaturePageLocalizationTests
         "OPDS",
         "Sonarr",
         "SABnzbd",
+        "Prowlarr",
+        "Newznab",
+        "NAS",
+        "NFO",
         "ISBN",
         "AI",
         "API",
@@ -41,15 +51,25 @@ public sealed partial class FeaturePageLocalizationTests
     [
         "Books", "Manga", "Discover", "Admin", "Reading", "Kana",
         "Settings", "Acquisition", "Appearance", "Artwork", "Companion",
-        "LocalizationAdmin", "LocalizationPreferences", "Statistics"
+        "LocalizationAdmin", "LocalizationPreferences", "Statistics", "Library"
     ];
 
-    // Sub-folders of a migrated folder that are still owned by other
-    // in-flight work and are intentionally excluded from this scan.
-    private static readonly string[] ExcludedRelativeDirectories =
+    // Folders scanned with the wider h1/h2/h3/button/label element set because
+    // they make heavy use of <h3> and <label> for genuinely fixed UI copy.
+    private static readonly string[] ExtendedTagFolders =
     [
+        "Library",
         Path.Combine("Settings", "DownloadClients"),
         Path.Combine("Settings", "Indexers")
+    ];
+
+    // Shared partials (outside any single feature folder) migrated alongside
+    // Library for #185, also scanned with the wider element set.
+    private static readonly string[] ExtendedTagSharedPartials =
+    [
+        "_AnimeAcquisitionPanel.cshtml",
+        "_ExternalProgress.cshtml",
+        "_ExternalProgressState.cshtml"
     ];
 
     [TestMethod]
@@ -61,28 +81,48 @@ public sealed partial class FeaturePageLocalizationTests
                 Path.Combine(pagesRoot, folder),
                 "*.cshtml",
                 SearchOption.AllDirectories))
-            .Where(file => !ExcludedRelativeDirectories.Any(excluded =>
-                file.Contains(
-                    Path.DirectorySeparatorChar + excluded + Path.DirectorySeparatorChar,
-                    StringComparison.Ordinal)))
             .ToArray();
 
         Assert.IsTrue(files.Length >= 40, "Expected page files from the migrated feature areas.");
 
         var findings = files
-            .SelectMany(file => FindHeadingOrButtonLiteralText(File.ReadAllText(file))
+            .SelectMany(file => FindLiteralText(File.ReadAllText(file), HeadingOrButtonElement())
                 .Select(text => $"{Path.GetFileName(file)}: \"{text}\""))
             .ToArray();
 
         Assert.AreEqual(0, findings.Length, string.Join(Environment.NewLine, findings));
     }
 
-    private static IEnumerable<string> FindHeadingOrButtonLiteralText(string razor)
+    [TestMethod]
+    public void LibraryAndConnectionSettingsHaveNoHardCodedHeadingsButtonsOrLabels()
+    {
+        var pagesRoot = Path.Combine(RepositoryRoot(), "src", "AniLingo.Web", "Pages");
+        var sharedRoot = Path.Combine(pagesRoot, "Shared");
+
+        var files = ExtendedTagFolders
+            .SelectMany(folder => Directory.EnumerateFiles(
+                Path.Combine(pagesRoot, folder),
+                "*.cshtml",
+                SearchOption.AllDirectories))
+            .Concat(ExtendedTagSharedPartials.Select(name => Path.Combine(sharedRoot, name)))
+            .ToArray();
+
+        Assert.IsTrue(files.Length >= 10, "Expected page files from Library, the connection settings pages and their shared partials.");
+
+        var findings = files
+            .SelectMany(file => FindLiteralText(File.ReadAllText(file), ExtendedElement())
+                .Select(text => $"{Path.GetFileName(file)}: \"{text}\""))
+            .ToArray();
+
+        Assert.AreEqual(0, findings.Length, string.Join(Environment.NewLine, findings));
+    }
+
+    private static IEnumerable<string> FindLiteralText(string razor, Regex elementPattern)
     {
         var markup = StripCodeBlocks(Regex.Replace(razor, @"@\*.*?\*@", string.Empty, RegexOptions.Singleline));
         markup = Regex.Replace(markup, @"<script\b[^>]*>.*?</script>", "<script></script>", RegexOptions.Singleline);
 
-        foreach (Match tag in HeadingOrButtonElement().Matches(markup))
+        foreach (Match tag in elementPattern.Matches(markup))
         {
             var body = tag.Groups["body"].Value;
             var text = Regex.Replace(body, @"<[^>]+>", " ").Trim();
@@ -142,4 +182,7 @@ public sealed partial class FeaturePageLocalizationTests
 
     [GeneratedRegex(@"<(?<tag>h1|h2|button)\b[^>]*>(?<body>.*?)</\k<tag>>", RegexOptions.Singleline | RegexOptions.IgnoreCase)]
     private static partial Regex HeadingOrButtonElement();
+
+    [GeneratedRegex(@"<(?<tag>h1|h2|h3|button|label)\b[^>]*>(?<body>.*?)</\k<tag>>", RegexOptions.Singleline | RegexOptions.IgnoreCase)]
+    private static partial Regex ExtendedElement();
 }

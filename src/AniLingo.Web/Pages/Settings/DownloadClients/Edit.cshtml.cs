@@ -1,5 +1,7 @@
+using AniLingo.Web.Data;
 using AniLingo.Web.Features.Acquisition.DownloadClients;
 using AniLingo.Web.Features.Auth;
+using AniLingo.Web.Features.Localization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -8,8 +10,10 @@ namespace AniLingo.Web.Pages.Settings.DownloadClients;
 
 /// <summary>Add or edit one canonical SABnzbd download client entry.</summary>
 [Authorize(Roles = AccountRoles.Owner)]
-public sealed class EditModel(DownloadClientStore store) : PageModel
+public sealed class EditModel(AppDbContext db, DownloadClientStore store) : PageModel
 {
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
+
     [BindProperty(SupportsGet = true)]
     public Guid? Id { get; set; }
 
@@ -39,6 +43,7 @@ public sealed class EditModel(DownloadClientStore store) : PageModel
 
     public async Task OnGetAsync(CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         if (Id is not { } id)
         {
             return;
@@ -47,7 +52,7 @@ public sealed class EditModel(DownloadClientStore store) : PageModel
         var entry = await store.GetAsync(id, cancellationToken);
         if (entry is null)
         {
-            Error = "Download client not found.";
+            Error = Ui["settings.downloadClients.notFound"];
             return;
         }
 
@@ -61,13 +66,15 @@ public sealed class EditModel(DownloadClientStore store) : PageModel
 
     public async Task<IActionResult> OnPostAsync(CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         try
         {
             var existing = Id is { } id ? await store.GetAsync(id, cancellationToken) : null;
             var secret = string.IsNullOrWhiteSpace(Secret) ? existing?.Secret : Secret.Trim();
             if (string.IsNullOrWhiteSpace(secret))
             {
-                throw new ArgumentException("Enter the SABnzbd API key.");
+                Error = Ui["settings.downloadClients.enterApiKey"];
+                return Page();
             }
 
             await store.SaveAsync(
@@ -81,7 +88,7 @@ public sealed class EditModel(DownloadClientStore store) : PageModel
                     secret),
                 cancellationToken);
 
-            TempData["DownloadClientNotice"] = "Download client saved.";
+            TempData["DownloadClientNotice"] = Ui["settings.downloadClients.saved"];
             return RedirectToPage("Index");
         }
         catch (Exception exception) when (

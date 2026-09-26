@@ -1,14 +1,13 @@
 @page
 @model AniLingo.Web.Pages.Settings.DownloadClients.IndexModel
 @{
-    ViewData["Title"] = "Download clients";
+    var ui = Model.Ui;
+    ViewData["Title"] = ui["settings.downloadClients.title"];
 }
 
-<h1>Download clients</h1>
+<h1>@ui["settings.downloadClients.title"]</h1>
 <p class="muted">
-    SABnzbd connections. AniLingo is usenet-only; torrent clients are intentionally unsupported.
-    The pipeline and Books submissions pick the highest-priority enabled, healthy client, best
-    priority first (lower number preferred), and fail over to the next one on submission failure.
+    @ui["settings.downloadClients.description"]
 </p>
 
 @if (Model.Notice is not null)
@@ -20,16 +19,16 @@
     <p class="metadata-error">@Model.Error</p>
 }
 
-<a class="button" asp-page="/Settings/DownloadClients/Edit">Add download client</a>
+<a class="button" asp-page="/Settings/DownloadClients/Edit">@ui["settings.downloadClients.add"]</a>
 
 <table class="data-table">
     <thead>
         <tr>
-            <th>Priority</th>
-            <th>Name</th>
-            <th>Type</th>
-            <th>Enabled</th>
-            <th>Health</th>
+            <th>@ui["settings.connectionTable.column.priority"]</th>
+            <th>@ui["settings.connectionTable.column.name"]</th>
+            <th>@ui["settings.connectionTable.column.type"]</th>
+            <th>@ui["settings.connectionTable.column.enabled"]</th>
+            <th>@ui["settings.connectionTable.column.health"]</th>
             <th></th>
         </tr>
     </thead>
@@ -43,39 +42,39 @@
                 <td>
                     <form method="post" asp-page-handler="Toggle" asp-route-id="@row.Entry.Id">
                         <button type="submit" class="status-pill @(row.Entry.Enabled ? "status-ok" : "status-warn")">
-                            @(row.Entry.Enabled ? "Enabled" : "Disabled")
+                            @(row.Entry.Enabled ? ui["settings.connectionTable.enabled"] : ui["settings.connectionTable.disabled"])
                         </button>
                     </form>
                 </td>
                 <td>
                     @if (row.Health is null)
                     {
-                        <span class="status-pill status-warn">Not checked</span>
+                        <span class="status-pill status-warn">@ui["settings.connectionTable.notChecked"]</span>
                     }
                     else if (row.Health.IsHealthy)
                     {
-                        <span class="status-pill status-ok">Healthy</span>
+                        <span class="status-pill status-ok">@ui["settings.connectionTable.healthy"]</span>
                     }
                     else
                     {
-                        <span class="status-pill status-warn" title="@row.Health.LastError">Unhealthy</span>
+                        <span class="status-pill status-warn" title="@row.Health.LastError">@ui["settings.connectionTable.unhealthy"]</span>
                     }
                     <span class="muted">@(row.Health is null ? "" : row.Health.LastCheckedUtc.ToString("u"))</span>
                 </td>
                 <td>
-                    <a asp-page="/Settings/DownloadClients/Edit" asp-route-id="@row.Entry.Id">Edit</a>
+                    <a asp-page="/Settings/DownloadClients/Edit" asp-route-id="@row.Entry.Id">@ui["settings.connectionTable.edit"]</a>
                     <form method="post" asp-page-handler="Test" asp-route-id="@row.Entry.Id" style="display:inline">
-                        <button type="submit">Test</button>
+                        <button type="submit">@ui["settings.connectionTable.test"]</button>
                     </form>
                     <form method="post" asp-page-handler="Delete" asp-route-id="@row.Entry.Id" style="display:inline">
-                        <button type="submit">Remove</button>
+                        <button type="submit">@ui["common.remove"]</button>
                     </form>
                 </td>
             </tr>
         }
         @if (Model.Rows.Count == 0)
         {
-            <tr><td colspan="6" class="muted">No download client configured yet.</td></tr>
+            <tr><td colspan="6" class="muted">@ui["settings.downloadClients.empty"]</td></tr>
         }
     </tbody>
 </table>

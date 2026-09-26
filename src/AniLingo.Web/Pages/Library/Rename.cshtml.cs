@@ -1,5 +1,7 @@
+using AniLingo.Web.Data;
 using AniLingo.Web.Features.Acquisition.Naming;
 using AniLingo.Web.Features.Auth;
+using AniLingo.Web.Features.Localization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -9,12 +11,14 @@ namespace AniLingo.Web.Pages.Library;
 // Per-anime naming selection plus the rename preview and its confirmed execution.
 [Authorize(Roles = AccountRoles.Owner)]
 public sealed class RenameModel(
+    AppDbContext db,
     AnimeRenameService renameService,
     AnimeNamingProfileStore namingStore) : PageModel
 {
     [BindProperty(SupportsGet = true)]
     public bool Folder { get; set; }
 
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public Guid AnimeId { get; private set; }
     public AnimeRenamePlan? Plan { get; private set; }
     public AnimeNamingState Naming { get; private set; } = AnimeNamingPresets.CreateDefaultState();
@@ -25,6 +29,7 @@ public sealed class RenameModel(
 
     public async Task<IActionResult> OnGetAsync(Guid id, CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         AnimeId = id;
         Naming = await namingStore.LoadAsync(cancellationToken);
         Naming.AnimeAssignments.TryGetValue(id.ToString("D"), out var assignment);
@@ -39,10 +44,11 @@ public sealed class RenameModel(
         AnimeSeriesType seriesType,
         CancellationToken cancellationToken)
     {
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         try
         {
             await namingStore.AssignAnimeAsync(id, profileId, seriesType, cancellationToken);
-            TempData["RenameNotice"] = "Naming selection saved. Review the updated preview.";
+            TempData["RenameNotice"] = ui["library.rename.selectionSaved"];
         }
         catch (Exception exception) when (exception is InvalidDataException or ArgumentException)
         {

@@ -1,10 +1,11 @@
 @page "{id:guid?}"
 @model AniLingo.Web.Pages.Settings.Indexers.EditModel
 @{
-    ViewData["Title"] = Model.IsNew ? "Add indexer" : "Edit indexer";
+    var ui = Model.Ui;
+    ViewData["Title"] = Model.IsNew ? ui["settings.indexers.addTitle"] : ui["settings.indexers.editTitle"];
 }
 
-<h1>@(Model.IsNew ? "Add indexer" : "Edit indexer")</h1>
+<h1>@(Model.IsNew ? ui["settings.indexers.addTitle"] : ui["settings.indexers.editTitle"])</h1>
 
 @if (Model.Error is not null)
 {
@@ -13,40 +14,40 @@
 
 <form method="post">
     <div class="field">
-        <label asp-for="Name"></label>
+        <label asp-for="Name">@ui["settings.downloadClients.field.name"]</label>
         <input asp-for="Name" required />
     </div>
     <div class="field">
-        <label asp-for="Type"></label>
+        <label asp-for="Type">@ui["settings.indexers.field.type"]</label>
         <select asp-for="Type" asp-items="Html.GetEnumSelectList<AniLingo.Web.Features.Acquisition.Indexers.IndexerType>()"></select>
     </div>
     <div class="field">
-        <label asp-for="BaseUrl">Base URL</label>
+        <label asp-for="BaseUrl">@ui["settings.downloadClients.field.baseUrl"]</label>
         <input asp-for="BaseUrl" required placeholder="https://indexer.example" />
     </div>
     <div class="field">
-        <label asp-for="ApiKey">API key @(Model.IsNew ? "" : "(leave blank to keep the current key)")</label>
+        <label asp-for="ApiKey">@(Model.IsNew ? ui["settings.indexers.field.apiKey"] : ui["settings.indexers.field.apiKeyKeepCurrent"])</label>
         <input asp-for="ApiKey" type="password" autocomplete="new-password" />
     </div>
     <div class="field">
-        <label asp-for="Categories">Categories (comma separated)</label>
+        <label asp-for="Categories">@ui["settings.indexers.field.categories"]</label>
         <input asp-for="Categories" placeholder="5000, 5070" />
     </div>
     <div class="field">
-        <label asp-for="IndexerIds">Indexer IDs (Prowlarr only, optional)</label>
+        <label asp-for="IndexerIds">@ui["settings.indexers.field.indexerIds"]</label>
         <input asp-for="IndexerIds" />
     </div>
     <div class="field">
-        <label asp-for="SearchLimit"></label>
+        <label asp-for="SearchLimit">@ui["settings.indexers.field.searchLimit"]</label>
         <input asp-for="SearchLimit" type="number" min="1" max="1000" />
     </div>
     <div class="field">
-        <label asp-for="Priority">Priority (lower searched and preferred first)</label>
+        <label asp-for="Priority">@ui["settings.indexers.field.priority"]</label>
         <input asp-for="Priority" type="number" min="1" />
     </div>
     <div class="field">
-        <label><input asp-for="Enabled" type="checkbox" /> Enabled</label>
+        <label><input asp-for="Enabled" type="checkbox" /> @ui["settings.connectionTable.enabled"]</label>
     </div>
-    <button type="submit">Save</button>
-    <a asp-page="/Settings/Indexers/Index">Cancel</a>
+    <button type="submit">@ui["common.save"]</button>
+    <a asp-page="/Settings/Indexers/Index">@ui["common.cancel"]</a>
 </form>

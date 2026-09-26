@@ -1,5 +1,7 @@
+using AniLingo.Web.Data;
 using AniLingo.Web.Features.Acquisition.Indexers;
 using AniLingo.Web.Features.Auth;
+using AniLingo.Web.Features.Localization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -8,8 +10,10 @@ namespace AniLingo.Web.Pages.Settings.Indexers;
 
 /// <summary>Add or edit one canonical indexer entry.</summary>
 [Authorize(Roles = AccountRoles.Owner)]
-public sealed class EditModel(IndexerStore store) : PageModel
+public sealed class EditModel(AppDbContext db, IndexerStore store) : PageModel
 {
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
+
     [BindProperty(SupportsGet = true)]
     public Guid? Id { get; set; }
 
@@ -45,6 +49,7 @@ public sealed class EditModel(IndexerStore store) : PageModel
 
     public async Task OnGetAsync(CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         if (Id is not { } id)
         {
             return;
@@ -53,7 +58,7 @@ public sealed class EditModel(IndexerStore store) : PageModel
         var entry = await store.GetAsync(id, cancellationToken);
         if (entry is null)
         {
-            Error = "Indexer not found.";
+            Error = Ui["settings.indexers.notFound"];
             return;
         }
 
@@ -69,18 +74,21 @@ public sealed class EditModel(IndexerStore store) : PageModel
 
     public async Task<IActionResult> OnPostAsync(CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         try
         {
             if (!TryParseIds(Categories, out var categories) || !TryParseIds(IndexerIds, out var indexerIds))
             {
-                throw new ArgumentException("Categories and indexer IDs must be positive numbers separated by commas.");
+                Error = Ui["settings.indexers.invalidIds"];
+                return Page();
             }
 
             var existing = Id is { } id ? await store.GetAsync(id, cancellationToken) : null;
             var apiKey = string.IsNullOrWhiteSpace(ApiKey) ? existing?.ApiKey : ApiKey.Trim();
             if (string.IsNullOrWhiteSpace(apiKey))
             {
-                throw new ArgumentException("Enter the indexer's API key.");
+                Error = Ui["settings.indexers.enterApiKey"];
+                return Page();
             }
 
             await store.SaveAsync(
@@ -94,7 +102,7 @@ public sealed class EditModel(IndexerStore store) : PageModel
                     apiKey),
                 cancellationToken);
 
-            TempData["IndexerNotice"] = "Indexer saved.";
+            TempData["IndexerNotice"] = Ui["settings.indexers.saved"];
             return RedirectToPage("Index");
         }
         catch (Exception exception) when (
