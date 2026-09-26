@@ -18,6 +18,9 @@ import de.juloc.anilingo.core.model.LearningCoverage
 import de.juloc.anilingo.core.model.LearningSubtitle
 import de.juloc.anilingo.core.model.MediaAvailability
 import de.juloc.anilingo.core.model.MediaTrack
+import de.juloc.anilingo.core.model.OfflineDownloadPackage
+import de.juloc.anilingo.core.model.OfflineProgressItem
+import de.juloc.anilingo.core.model.OfflineProgressResult
 import de.juloc.anilingo.core.model.PlaybackOption
 import de.juloc.anilingo.core.model.PlayerBootstrap
 import de.juloc.anilingo.core.model.PlayerEpisode
@@ -44,7 +47,7 @@ class HttpAniLingoClientApi(
     origin: String,
     private val requestHeaders: () -> Map<String, String> = { emptyMap() },
     private val responseCookieSink: (List<String>) -> Unit = {},
-) : AniLingoClientApi {
+) : AniLingoClientApi, AniLingoOfflineApi {
     private val originUri = normalizeOrigin(origin)
 
     override suspend fun getCapabilities(): ClientCapabilities =
@@ -94,6 +97,25 @@ class HttpAniLingoClientApi(
 
     override suspend fun getPlayer(episodeId: String): PlayerBootstrap =
         requestJson("GET", ClientApiRoutes.player(episodeId)).toPlayerBootstrap()
+
+    override suspend fun getOfflineDownload(episodeId: String): OfflineDownloadPackage {
+        val json = requestJson("GET", ClientApiRoutes.offlineDownload(episodeId)).toString()
+        return OfflineDownloadPackage(
+            descriptor = OfflineDownloadJson.parseDescriptor(json),
+            json = json,
+        )
+    }
+
+    override suspend fun reconcileOfflineProgress(
+        items: List<OfflineProgressItem>,
+    ): List<OfflineProgressResult> =
+        OfflineDownloadJson.parseProgressResults(
+            requestJson(
+                method = "POST",
+                route = ClientApiRoutes.OfflineProgress,
+                body = OfflineDownloadJson.progressItemsBody(items),
+            ),
+        )
 
     override suspend fun getCues(
         episodeId: String,
@@ -230,7 +252,7 @@ class HttpAniLingoClientApi(
         serverVersion = getString("serverVersion"),
         features = getJSONObject("features").let { features ->
             ClientFeatureFlagParser.parse { name ->
-                if (name == "nativeSessionAuth") {
+                if (name == "nativeSessionAuth" || name == "offlineDownloads") {
                     features.optBoolean(name, false)
                 } else {
                     features.getBoolean(name)
@@ -530,5 +552,6 @@ internal object ClientFeatureFlagParser {
         companionControl = readBoolean("companionControl"),
         storageAvailability = readBoolean("storageAvailability"),
         ownerWakeOnLan = readBoolean("ownerWakeOnLan"),
+        offlineDownloads = readBoolean("offlineDownloads"),
     )
 }

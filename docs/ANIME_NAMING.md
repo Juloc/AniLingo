@@ -142,8 +142,8 @@ series type for that anime, reviews the plan and confirms it. Renaming works in 
 
 Optionally the series folder is renamed too. Because that moves every file, it only runs when no file
 of the anime is blocked. If the new folder name changes the library's anime key, the key changes
-together with the files, and the Sonarr ownership assignment, owned paths, jobs and SABnzbd
-acquisitions/blocklist entries follow it.
+together with the files, and the Sonarr ownership assignment, owned paths, jobs, SABnzbd
+acquisitions/blocklist entries, monitoring settings/wanted episodes and import records follow it.
 
 ### Safety rules
 
@@ -165,7 +165,7 @@ A file (or the whole plan) is blocked when:
   (for example a template without `{season}`/`{episode}` in a later season would be scanned as a
   different episode).
 - **The name is invalid** — empty, `.`/`..`, or longer than 255 bytes.
-- **Library work is running** — a library scan or another rename is active.
+- **Library work is running** — a library scan, another rename or an acquisition import is active (imports likewise wait for renames; see [ANIME_ACQUISITION.md](ANIME_ACQUISITION.md)).
 
 ### Execution, rollback and records
 
