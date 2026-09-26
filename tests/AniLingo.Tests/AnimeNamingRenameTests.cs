@@ -332,6 +332,23 @@ public sealed class AnimeNamingRenameTests
     }
 
     [TestMethod]
+    public async Task RunningAcquisitionImportBlocksRename()
+    {
+        await using var fixture = await RenameFixture.CreateAsync();
+        await fixture.AddEpisodeFileAsync(1, "Frieren 01.mkv");
+        var store = new OperationStore(fixture.Db);
+        var importId = await store.CreateAsync(new OperationDescriptor(AnimeImportExecutor.OperationKind, AnimeImportExecutor.OperationCategory, "Anime import"));
+        await store.MarkRunningAsync(importId);
+
+        var plan = await fixture.PlanAsync();
+
+        Assert.IsFalse(plan.CanExecute);
+        Assert.IsTrue(plan.BlockingReasons.Any(reason => reason.Contains("Anime import", StringComparison.Ordinal)));
+        await store.MarkSucceededAsync(importId, "done");
+        Assert.IsTrue((await fixture.PlanAsync()).CanExecute);
+    }
+
+    [TestMethod]
     public async Task RunningLibraryScanBlocksRename()
     {
         await using var fixture = await RenameFixture.CreateAsync();
