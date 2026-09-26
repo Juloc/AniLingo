@@ -226,22 +226,32 @@ public static class ClientApiEndpoints
             EpisodeProgressService progressService,
             CancellationToken cancellationToken) =>
         {
-            if (update.DefaultPlaybackSpeed is { } speed &&
-                !PlaybackPreferenceRules.IsAllowedSpeed(speed))
+            try
             {
-                return BadRequest(
-                    "invalid_playback_speed",
-                    $"defaultPlaybackSpeed must be one of {string.Join(", ", PlaybackPreferenceRules.Speeds)}.");
+                var preferences = await progressService.UpdatePreferencesAsync(
+                    new PlaybackPreferencesUpdate(
+                        update.AutoplayNext,
+                        update.PreferredAudioLanguage,
+                        update.PreferredSubtitleLanguage,
+                        update.DefaultPlaybackSpeed),
+                    cancellationToken);
+                return Results.Ok(ClientApiMappings.ToClientPreferences(preferences));
             }
-
-            var preferences = await progressService.UpdatePreferencesAsync(
-                new PlaybackPreferencesUpdate(
-                    update.AutoplayNext,
-                    update.PreferredAudioLanguage,
-                    update.PreferredSubtitleLanguage,
-                    update.DefaultPlaybackSpeed),
-                cancellationToken);
-            return Results.Ok(ClientApiMappings.ToClientPreferences(preferences));
+            catch (ArgumentOutOfRangeException exception)
+            {
+                return exception.ParamName switch
+                {
+                    "speed" => BadRequest(
+                        "invalid_playback_speed",
+                        $"defaultPlaybackSpeed must be one of {PlaybackPreferenceRules.SpeedList}."),
+                    "audioLanguage" => BadRequest(
+                        "invalid_audio_language",
+                        "preferredAudioLanguage must be an ISO 639 language tag or empty."),
+                    _ => BadRequest(
+                        "invalid_subtitle_language",
+                        "preferredSubtitleLanguage must be an ISO 639 language tag, off, or empty.")
+                };
+            }
         });
 
         group.MapGet("/me/playback-history", async (

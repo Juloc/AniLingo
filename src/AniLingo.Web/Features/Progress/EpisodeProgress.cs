@@ -1,3 +1,4 @@
+using System.Globalization;
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Artwork;
 using AniLingo.Web.Features.Auth;
@@ -62,22 +63,50 @@ public static class PlaybackPreferenceRules
 {
     public const double DefaultSpeed = 1.0;
 
-    /// <summary>Practical playback speeds; mirrored in design/player/player-tokens.json.</summary>
-    public static IReadOnlyList<double> Speeds { get; } = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
+    /// <summary>Practical playback speeds (0.5x–2.0x) owned by design/player/player-tokens.json.</summary>
+    public static IReadOnlyList<double> Speeds => PlayerDesign.PlaybackSpeeds;
+
+    public static string SpeedList =>
+        string.Join(", ", Speeds.Select(x => x.ToString(CultureInfo.InvariantCulture)));
 
     public static bool IsAllowedSpeed(double speed) =>
-        Speeds.Any(allowed => Math.Abs(allowed - speed) < 0.0001);
+        double.IsFinite(speed) && Speeds.Any(allowed => Math.Abs(allowed - speed) < 0.0001);
 
     public static double NormalizeSpeed(double speed)
     {
-        if (!double.IsFinite(speed) || !IsAllowedSpeed(speed))
+        if (!IsAllowedSpeed(speed))
         {
             throw new ArgumentOutOfRangeException(
                 nameof(speed),
-                $"Playback speed must be one of {string.Join(", ", Speeds)}.");
+                $"Playback speed must be one of {SpeedList}.");
         }
 
         return Speeds.First(allowed => Math.Abs(allowed - speed) < 0.0001);
+    }
+
+    /// <summary>Empty clears the preference (file default); otherwise a valid language tag.</summary>
+    public static string? NormalizeAudioLanguage(string value)
+    {
+        var normalized = NormalizeLanguage(value, "audioLanguage");
+        return normalized == PlaybackLanguages.SubtitlesOff
+            ? throw new ArgumentOutOfRangeException("audioLanguage", "Audio cannot be turned off.")
+            : normalized;
+    }
+
+    /// <summary>Empty clears the preference; <c>off</c> or a valid language tag otherwise.</summary>
+    public static string? NormalizeSubtitleLanguage(string value) =>
+        NormalizeLanguage(value, "subtitleLanguage");
+
+    private static string? NormalizeLanguage(string value, string parameter)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        return PlaybackLanguages.Normalize(value) ?? throw new ArgumentOutOfRangeException(
+            parameter,
+            "Language must be an ISO 639 language tag such as ja, en or de.");
     }
 }
 
@@ -673,8 +702,8 @@ public sealed class EpisodeProgressService(
     /// <summary>
     /// Applies a partial update to the profile's playback preferences. Values
     /// are normalized through <see cref="PlaybackLanguages"/> and
-    /// <see cref="PlaybackPreferenceRules"/>; an unsupported speed throws
-    /// <see cref="ArgumentOutOfRangeException"/>.
+    /// <see cref="PlaybackPreferenceRules"/>; an unsupported speed or language
+    /// throws <see cref="ArgumentOutOfRangeException"/> before anything is stored.
     /// </summary>
     public async Task<PlaybackPreferencesSnapshot> UpdatePreferencesAsync(
         PlaybackPreferencesUpdate update,
@@ -683,6 +712,12 @@ public sealed class EpisodeProgressService(
         var speed = update.DefaultPlaybackSpeed is { } requestedSpeed
             ? PlaybackPreferenceRules.NormalizeSpeed(requestedSpeed)
             : (double?)null;
+        var audioLanguage = update.PreferredAudioLanguage is { } requestedAudio
+            ? PlaybackPreferenceRules.NormalizeAudioLanguage(requestedAudio)
+            : null;
+        var subtitleLanguage = update.PreferredSubtitleLanguage is { } requestedSubtitle
+            ? PlaybackPreferenceRules.NormalizeSubtitleLanguage(requestedSubtitle)
+            : null;
 
         var preferences = await db.ProfilePlaybackPreferences
             .SingleOrDefaultAsync(
@@ -703,14 +738,14 @@ public sealed class EpisodeProgressService(
             preferences.AutoplayNext = autoplayNext;
         }
 
-        if (update.PreferredAudioLanguage is { } audioLanguage)
+        if (update.PreferredAudioLanguage is not null)
         {
-            preferences.PreferredAudioLanguage = PlaybackLanguages.Normalize(audioLanguage);
+            preferences.PreferredAudioLanguage = audioLanguage;
         }
 
-        if (update.PreferredSubtitleLanguage is { } subtitleLanguage)
+        if (update.PreferredSubtitleLanguage is not null)
         {
-            preferences.PreferredSubtitleLanguage = PlaybackLanguages.Normalize(subtitleLanguage);
+            preferences.PreferredSubtitleLanguage = subtitleLanguage;
         }
 
         if (speed is { } normalizedSpeed)
