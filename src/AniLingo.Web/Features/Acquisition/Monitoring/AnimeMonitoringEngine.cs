@@ -102,6 +102,36 @@ public static class AnimeMonitoringEngine
         };
     }
 
+    // Same as RefreshWanted, but only the wanted entries of one anime are recomputed; entries of
+    // other anime are kept untouched so single-anime runs never clear them.
+    public static AnimeMonitoringState RefreshWantedForAnime(
+        AnimeMonitoringState state,
+        string animeKey,
+        IEnumerable<AnimeEpisodeInventory> inventory,
+        AnimeQualityProfile profile,
+        DateTimeOffset now)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(animeKey);
+
+        var others = state.Wanted
+            .Where(pair => !pair.Value.Key.AnimeKey.Equals(animeKey, StringComparison.OrdinalIgnoreCase))
+            .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
+        var scoped = state with
+        {
+            Wanted = state.Wanted
+                .Where(pair => pair.Value.Key.AnimeKey.Equals(animeKey, StringComparison.OrdinalIgnoreCase))
+                .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase)
+        };
+
+        var refreshed = RefreshWanted(scoped, inventory, profile, now);
+        foreach (var pair in refreshed.Wanted)
+        {
+            others[pair.Key] = pair.Value;
+        }
+
+        return refreshed with { Wanted = others };
+    }
+
     public static IReadOnlyList<AnimeSearchRequest> PlanSearches(
         AnimeMonitoringState state,
         IEnumerable<AnimeWantedEpisode> wanted,
@@ -310,6 +340,51 @@ public static class AnimeMonitoringEngine
         var attempts = CloneAttempts(state);
         attempts.Remove(key.ToString());
         return WithHistory(state, attempts, key, now, "attempt-cleared", reason);
+    }
+
+    // A series-folder rename changes the library's anime key; monitoring settings, wanted
+    // episodes, attempts and history follow it. Returns the same instance when nothing changed.
+    public static AnimeMonitoringState RekeyAnime(
+        AnimeMonitoringState state,
+        string oldKey,
+        string newKey)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        ArgumentException.ThrowIfNullOrWhiteSpace(oldKey);
+        ArgumentException.ThrowIfNullOrWhiteSpace(newKey);
+
+        bool IsOld(string key) => key.Equals(oldKey, StringComparison.OrdinalIgnoreCase);
+        AnimeEpisodeKey Map(AnimeEpisodeKey key) => IsOld(key.AnimeKey) ? key with { AnimeKey = newKey } : key;
+
+        if (oldKey.Equals(newKey, StringComparison.Ordinal) ||
+            (!state.Anime.Values.Any(item => IsOld(item.AnimeKey)) &&
+             !state.Wanted.Values.Any(item => IsOld(item.Key.AnimeKey)) &&
+             !state.Attempts.Values.Any(item => IsOld(item.Key.AnimeKey)) &&
+             !state.History.Any(item => IsOld(item.Key.AnimeKey))))
+        {
+            return state;
+        }
+
+        var anime = state.Anime.Values
+            .Select(item => IsOld(item.AnimeKey) ? item with { AnimeKey = newKey } : item)
+            .ToDictionary(item => item.AnimeKey, StringComparer.OrdinalIgnoreCase);
+        var wanted = state.Wanted.Values
+            .Select(item => item with { Key = Map(item.Key) })
+            .ToDictionary(item => item.Key.ToString(), StringComparer.OrdinalIgnoreCase);
+        var attempts = state.Attempts.Values
+            .Select(item => item with { Key = Map(item.Key) })
+            .ToDictionary(item => item.Key.ToString(), StringComparer.OrdinalIgnoreCase);
+        var history = state.History
+            .Select(item => item with { Key = Map(item.Key) })
+            .ToList();
+
+        return state with
+        {
+            Anime = anime,
+            Wanted = wanted,
+            Attempts = attempts,
+            History = history
+        };
     }
 
     public static bool IsMonitored(AnimeMonitoringState state, AnimeEpisodeKey key)

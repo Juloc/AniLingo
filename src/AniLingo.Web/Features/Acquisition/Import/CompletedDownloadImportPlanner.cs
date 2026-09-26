@@ -320,7 +320,9 @@ public static class CompletedDownloadImportPlanner
             ["Episode identity could not be resolved safely from the completed file."]);
     }
 
-    private static bool SeriesMatches(
+    // Shared by the grab path so a search result is matched to the anime by the same rule as an
+    // imported file. Without aliases every title matches.
+    public static bool SeriesMatches(
         IReadOnlyList<string> aliases,
         string parsedSeriesTitle)
     {

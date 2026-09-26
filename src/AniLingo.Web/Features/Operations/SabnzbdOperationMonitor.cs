@@ -1,4 +1,5 @@
 using AniLingo.Web.Data;
+using AniLingo.Web.Features.Acquisition.Import;
 using AniLingo.Web.Features.Acquisition.Sabnzbd;
 using AniLingo.Web.Features.Books;
 
@@ -227,8 +228,40 @@ public sealed class SabnzbdOperationMonitorService(
             cancellationToken);
 
         await ImportCompletedBookDownloadsAsync(services, result.Completed, cancellationToken);
+        await ImportCompletedAnimeDownloadsAsync(services, result.Completed, history, cancellationToken);
         await ContinueFailedAnimeAcquisitionsAsync(services, result.Failed, cancellationToken);
         return true;
+    }
+
+    private async Task ImportCompletedAnimeDownloadsAsync(
+        IServiceProvider services,
+        IReadOnlyList<OperationSnapshot> completed,
+        SabnzbdHistorySnapshot history,
+        CancellationToken cancellationToken)
+    {
+        foreach (var operation in completed.Where(AnimeImportExecutor.IsAnimeDownload))
+        {
+            try
+            {
+                var storagePath = history.Jobs
+                    .FirstOrDefault(job => job.NzoId == operation.ExternalId)?
+                    .StoragePath;
+                await services.GetRequiredService<AnimeImportExecutor>()
+                    .ImportCompletedAsync(operation, storagePath, cancellationToken);
+            }
+            catch (Exception exception) when (
+                exception is InvalidOperationException
+                    or InvalidDataException
+                    or IOException
+                    or UnauthorizedAccessException)
+            {
+                // The import executor recovers unfinished imports on the next start.
+                logger.LogWarning(
+                    exception,
+                    "Could not import the completed anime download of operation {OperationId}.",
+                    operation.Id);
+            }
+        }
     }
 
     private async Task RecoverAcquisitionsAsync(CancellationToken cancellationToken)

@@ -21,7 +21,12 @@ public sealed class LibraryScanner(
         ".mkv", ".mp4", ".m4v", ".webm"
     };
 
-    public async Task<ScanResult> ScanAsync(Guid rootId, CancellationToken cancellationToken)
+    public Task<ScanResult> ScanAsync(Guid rootId, CancellationToken cancellationToken) =>
+        ScanAsync(rootId, null, cancellationToken);
+
+    // scopeDirectory limits reconciliation to one series folder inside the root (used after an
+    // acquisition import); stale-file removal is then limited to that folder as well.
+    public async Task<ScanResult> ScanAsync(Guid rootId, string? scopeDirectory, CancellationToken cancellationToken)
     {
         var root = await db.LibraryRoots.SingleAsync(x => x.Id == rootId, cancellationToken);
         if (!root.IsEnabled)
@@ -35,11 +40,22 @@ public sealed class LibraryScanner(
             throw new DirectoryNotFoundException($"Library root does not exist: {rootPath}");
         }
 
+        var scanPath = rootPath;
+        if (scopeDirectory is not null)
+        {
+            scanPath = Path.GetFullPath(scopeDirectory);
+            var rootPrefix = rootPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            if (!scanPath.StartsWith(rootPrefix, StringComparison.Ordinal) || !Directory.Exists(scanPath))
+            {
+                throw new DirectoryNotFoundException($"Scan scope is not a folder inside the library root: {scopeDirectory}");
+            }
+        }
+
         var candidates = new List<FileInfo>();
         var nfoFiles = new NfoFileIndex();
         try
         {
-            foreach (var path in Directory.EnumerateFiles(rootPath, "*", SearchOption.AllDirectories))
+            foreach (var path in Directory.EnumerateFiles(scanPath, "*", SearchOption.AllDirectories))
             {
                 if (MediaExtensions.Contains(Path.GetExtension(path)))
                 {
@@ -71,8 +87,9 @@ public sealed class LibraryScanner(
             .Select(file => Path.GetFullPath(file.FullName))
             .ToHashSet(StringComparer.Ordinal);
 
+        var scanPrefix = scanPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
         var existingFiles = await db.MediaFiles
-            .Where(x => x.LibraryRootId == rootId)
+            .Where(x => x.LibraryRootId == rootId && (scopeDirectory == null || x.Path.StartsWith(scanPrefix)))
             .ToDictionaryAsync(x => x.Path, StringComparer.Ordinal, cancellationToken);
 
         if (existingFiles.Count > 0 && candidates.Count == 0)
@@ -221,7 +238,11 @@ public sealed class LibraryScanner(
             db.MediaFiles.RemoveRange(staleMediaFiles);
         }
 
-        root.LastScannedAt = DateTime.UtcNow;
+        if (scopeDirectory is null)
+        {
+            root.LastScannedAt = DateTime.UtcNow;
+        }
+
         await db.SaveChangesAsync(cancellationToken);
 
         if (metadataService is not null)
