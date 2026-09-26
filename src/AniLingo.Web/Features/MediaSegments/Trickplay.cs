@@ -44,6 +44,7 @@ public sealed record TrickplayDescriptor(
 
 public sealed record TrickplayRequest(
     Guid EpisodeId,
+    Guid MediaFileId,
     string MediaIdentity,
     string SourcePath,
     double DurationSeconds,
@@ -60,7 +61,8 @@ public sealed class TrickplayGenerator(
     MediaProcessRunner processRunner,
     BackgroundJobQueue jobs,
     ILogger<TrickplayGenerator> logger,
-    string? rootPath = null)
+    string? rootPath = null,
+    string ffmpegExecutable = "ffmpeg")
 {
     public const int GeneratorVersion = 1;
     public const int IndexVersion = 1;
@@ -73,7 +75,9 @@ public sealed class TrickplayGenerator(
     public const int Rows = 10;
     public const int MinimumIntervalSeconds = 10;
     public const int MaximumThumbnails = 720;
+    public const int MaximumPendingGenerations = 2;
     public static readonly TimeSpan GenerationTimeout = TimeSpan.FromMinutes(20);
+    public static readonly TimeSpan EnqueueTimeout = TimeSpan.FromSeconds(2);
 
     private static readonly Regex AssetPattern = new(
         "^(index\\.json|sprite-[0-9]{3}\\.jpg)$",
@@ -90,11 +94,17 @@ public sealed class TrickplayGenerator(
 
     public string RootPath { get; } = rootPath ?? DefaultRootPath;
 
-    public static string CacheKey(string mediaIdentity) =>
-        $"{mediaIdentity}-v{GeneratorVersion}";
+    // One directory per media file, source identity and generator version. The media
+    // file prefix lets a new generation prune the superseded ones of the same file,
+    // so the cache holds at most one generation per media file.
+    public static string CacheKey(Guid mediaFileId, string mediaIdentity) =>
+        $"{MediaFilePrefix(mediaFileId)}{mediaIdentity}-v{GeneratorVersion}";
 
-    public string CacheDirectory(string mediaIdentity) =>
-        Path.Combine(RootPath, CacheKey(mediaIdentity));
+    public string CacheDirectory(Guid mediaFileId, string mediaIdentity) =>
+        Path.Combine(RootPath, CacheKey(mediaFileId, mediaIdentity));
+
+    private static string MediaFilePrefix(Guid mediaFileId) =>
+        $"{mediaFileId:N}-";
 
     public static bool IsAllowedAssetName(string fileName) =>
         AssetPattern.IsMatch(fileName);
@@ -135,27 +145,27 @@ public sealed class TrickplayGenerator(
             outputPattern
         ];
 
-    public TrickplayDescriptor Describe(string mediaIdentity)
+    public TrickplayDescriptor Describe(Guid mediaFileId, string mediaIdentity)
     {
-        var index = ReadIndex(mediaIdentity);
+        var index = ReadIndex(mediaFileId, mediaIdentity);
         if (index is not null)
         {
             return new TrickplayDescriptor(TrickplayState.Ready, null, index);
         }
 
-        return runtime.TryGetValue(CacheKey(mediaIdentity), out var state)
+        return runtime.TryGetValue(CacheKey(mediaFileId, mediaIdentity), out var state)
             ? new TrickplayDescriptor(state.State, state.Message, null)
             : TrickplayDescriptor.Unavailable;
     }
 
-    public TrickplayAsset? GetAsset(string mediaIdentity, string fileName)
+    public TrickplayAsset? GetAsset(Guid mediaFileId, string mediaIdentity, string fileName)
     {
-        if (!IsAllowedAssetName(fileName) || ReadIndex(mediaIdentity) is null)
+        if (!IsAllowedAssetName(fileName) || ReadIndex(mediaFileId, mediaIdentity) is null)
         {
             return null;
         }
 
-        var path = Path.Combine(CacheDirectory(mediaIdentity), fileName);
+        var path = Path.Combine(CacheDirectory(mediaFileId, mediaIdentity), fileName);
         return File.Exists(path)
             ? new TrickplayAsset(
                 path,
@@ -169,18 +179,28 @@ public sealed class TrickplayGenerator(
         TrickplayRequest request,
         CancellationToken cancellationToken)
     {
-        if (ReadIndex(request.MediaIdentity) is not null ||
+        if (ReadIndex(request.MediaFileId, request.MediaIdentity) is not null ||
             request.DurationSeconds <= 0 ||
             !double.IsFinite(request.DurationSeconds))
         {
             return false;
         }
 
-        var key = CacheKey(request.MediaIdentity);
+        var key = CacheKey(request.MediaFileId, request.MediaIdentity);
+        if (runtime.ContainsKey(key) || PendingCount() >= MaximumPendingGenerations)
+        {
+            // Already known, or enough work is pending: a later player load queues it.
+            return false;
+        }
+
         if (!runtime.TryAdd(key, new RuntimeState(TrickplayState.Queued, null)))
         {
             return false;
         }
+
+        // The shared job queue is bounded; a player request must never wait for it.
+        using var enqueueTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        enqueueTimeout.CancelAfter(EnqueueTimeout);
 
         try
         {
@@ -193,8 +213,16 @@ public sealed class TrickplayGenerator(
                     Lane: OperationLane.Maintenance,
                     Retryable: false),
                 (operation, _, token) => GenerateAsync(request, operation, token),
-                cancellationToken);
+                enqueueTimeout.Token);
             return true;
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            runtime.TryRemove(key, out _);
+            logger.LogDebug(
+                "Background queue busy; seek preview generation for {Subject} was not queued.",
+                request.Subject);
+            return false;
         }
         catch
         {
@@ -203,11 +231,14 @@ public sealed class TrickplayGenerator(
         }
     }
 
+    private int PendingCount() =>
+        runtime.Values.Count(x => x.State is TrickplayState.Queued or TrickplayState.Generating);
+
     public async Task<bool> RegenerateAsync(
         TrickplayRequest request,
         CancellationToken cancellationToken)
     {
-        var key = CacheKey(request.MediaIdentity);
+        var key = CacheKey(request.MediaFileId, request.MediaIdentity);
         if (runtime.TryGetValue(key, out var state) &&
             state.State is TrickplayState.Queued or TrickplayState.Generating)
         {
@@ -216,21 +247,21 @@ public sealed class TrickplayGenerator(
 
         runtime.TryRemove(key, out _);
         indexCache.TryRemove(key, out _);
-        DeleteDirectory(CacheDirectory(request.MediaIdentity));
+        DeleteDirectory(CacheDirectory(request.MediaFileId, request.MediaIdentity));
         return await EnsureQueuedAsync(request, cancellationToken);
     }
 
-    internal async Task GenerateAsync(
+    public async Task GenerateAsync(
         TrickplayRequest request,
         OperationExecutionContext operation,
         CancellationToken cancellationToken)
     {
-        var key = CacheKey(request.MediaIdentity);
+        var key = CacheKey(request.MediaFileId, request.MediaIdentity);
         runtime[key] = new RuntimeState(TrickplayState.Generating, null);
 
         try
         {
-            if (ReadIndex(request.MediaIdentity) is not null)
+            if (ReadIndex(request.MediaFileId, request.MediaIdentity) is not null)
             {
                 runtime.TryRemove(key, out _);
                 return;
@@ -249,7 +280,7 @@ public sealed class TrickplayGenerator(
 
             var intervalSeconds = ComputeIntervalSeconds(request.DurationSeconds);
             var thumbnailCount = ComputeThumbnailCount(request.DurationSeconds, intervalSeconds);
-            var finalDirectory = CacheDirectory(request.MediaIdentity);
+            var finalDirectory = CacheDirectory(request.MediaFileId, request.MediaIdentity);
             var temporaryDirectory = Path.Combine(
                 RootPath,
                 ".tmp",
@@ -259,7 +290,7 @@ public sealed class TrickplayGenerator(
             try
             {
                 var result = await processRunner.RunAsync(
-                    "ffmpeg",
+                    ffmpegExecutable,
                     BuildFfmpegArguments(
                         request.SourcePath,
                         Path.Combine(temporaryDirectory, "sprite-%03d.jpg"),
@@ -324,6 +355,7 @@ public sealed class TrickplayGenerator(
                 Directory.Move(temporaryDirectory, finalDirectory);
                 indexCache[key] = index;
                 runtime.TryRemove(key, out _);
+                PruneSupersededGenerations(request.MediaFileId, key);
 
                 logger.LogInformation(
                     "Generated {Count} seek preview thumbnails ({Interval}s interval, {Sprites} sprite sheets) for {Subject}.",
@@ -342,26 +374,32 @@ public sealed class TrickplayGenerator(
             runtime.TryRemove(key, out _);
             throw;
         }
-        catch (Exception exception) when (
-            exception is InvalidOperationException or IOException or UnauthorizedAccessException)
+        catch (Exception exception)
         {
-            runtime[key] = new RuntimeState(TrickplayState.Failed, exception.Message);
+            runtime[key] = new RuntimeState(
+                TrickplayState.Failed,
+                exception is InvalidOperationException
+                    ? exception.Message
+                    : "Seek preview generation failed; see the operation log.");
             throw;
         }
     }
 
-    private TrickplayIndex? ReadIndex(string mediaIdentity)
+    private TrickplayIndex? ReadIndex(Guid mediaFileId, string mediaIdentity)
     {
-        var key = CacheKey(mediaIdentity);
+        var key = CacheKey(mediaFileId, mediaIdentity);
+        var path = Path.Combine(CacheDirectory(mediaFileId, mediaIdentity), IndexFileName);
+
+        // The cache is disposable: an operator may delete it at any time.
+        if (!File.Exists(path))
+        {
+            indexCache.TryRemove(key, out _);
+            return null;
+        }
+
         if (indexCache.TryGetValue(key, out var cached))
         {
             return cached;
-        }
-
-        var path = Path.Combine(CacheDirectory(mediaIdentity), IndexFileName);
-        if (!File.Exists(path))
-        {
-            return null;
         }
 
         try
@@ -382,8 +420,8 @@ public sealed class TrickplayGenerator(
             {
                 logger.LogWarning(
                     "Ignoring inconsistent trickplay cache {Directory}; it will be regenerated on demand.",
-                    CacheDirectory(mediaIdentity));
-                DeleteDirectory(CacheDirectory(mediaIdentity));
+                    CacheDirectory(mediaFileId, mediaIdentity));
+                DeleteDirectory(CacheDirectory(mediaFileId, mediaIdentity));
                 return null;
             }
 
@@ -396,8 +434,33 @@ public sealed class TrickplayGenerator(
             logger.LogWarning(
                 exception,
                 "Could not read trickplay cache {Directory}; it will be regenerated on demand.",
-                CacheDirectory(mediaIdentity));
+                CacheDirectory(mediaFileId, mediaIdentity));
             return null;
+        }
+    }
+
+    // Removes older identities/generator versions of the same media file.
+    private void PruneSupersededGenerations(Guid mediaFileId, string currentKey)
+    {
+        try
+        {
+            foreach (var directory in Directory.EnumerateDirectories(RootPath, $"{MediaFilePrefix(mediaFileId)}*"))
+            {
+                var name = Path.GetFileName(directory);
+                if (!string.Equals(name, currentKey, StringComparison.Ordinal))
+                {
+                    indexCache.TryRemove(name, out _);
+                    DeleteDirectory(directory);
+                }
+            }
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException)
+        {
+            logger.LogWarning(
+                exception,
+                "Could not prune superseded trickplay caches under {Directory}.",
+                RootPath);
         }
     }
 

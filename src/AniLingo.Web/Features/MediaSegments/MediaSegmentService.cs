@@ -1,4 +1,5 @@
 using AniLingo.Web.Data;
+using AniLingo.Web.Features.Library;
 using AniLingo.Web.Features.Playback;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -8,6 +9,8 @@ namespace AniLingo.Web.Features.MediaSegments;
 public enum SegmentDetectionOutcome
 {
     NoMedia,
+    NotAnalyzed,
+    DetectorDisabled,
     Skipped,
     Completed
 }
@@ -26,6 +29,8 @@ public sealed class MediaSegmentService(
 {
     public double SkipConfidenceThreshold =>
         MediaSegmentPolicy.ClampConfidence(options.Value.SkipConfidenceThreshold);
+
+    public bool DetectorEnabled => detector is not NoOpMediaSegmentDetector;
 
     public async Task<IReadOnlyList<EpisodeMediaSegment>> ListAsync(
         Guid episodeId,
@@ -112,27 +117,38 @@ public sealed class MediaSegmentService(
 
     // Runs the configured detector and stores its result with method/version/confidence.
     // Skips the (potentially expensive) analysis while media identity and detector
-    // version match the stored detector markers.
+    // version match the stored detector markers, unless a rebuild is forced.
     public async Task<SegmentDetectionRun> RunDetectorAsync(
         Guid episodeId,
+        bool force,
         CancellationToken cancellationToken)
     {
-        var media = await GetMediaRowAsync(episodeId, cancellationToken);
+        if (!DetectorEnabled)
+        {
+            return new SegmentDetectionRun(SegmentDetectionOutcome.DetectorDisabled, 0);
+        }
+
+        var media = await GetMediaSourceAsync(episodeId, cancellationToken);
         if (media is null)
         {
             return new SegmentDetectionRun(SegmentDetectionOutcome.NoMedia, 0);
         }
 
-        var identity = MediaIdentity.Compute(media.Id, media.SizeBytes, media.LastWriteTimeUtc);
+        if (media.Identity is null)
+        {
+            return new SegmentDetectionRun(SegmentDetectionOutcome.NotAnalyzed, 0);
+        }
+
         var existing = await db.EpisodeMediaSegments
             .Where(x => x.EpisodeId == episodeId && x.Source == MediaSegmentSource.Detector)
             .ToListAsync(cancellationToken);
 
-        if (existing.Count > 0 &&
+        if (!force &&
+            existing.Count > 0 &&
             existing.All(x =>
                 string.Equals(x.Method, detector.Method, StringComparison.Ordinal) &&
                 string.Equals(x.Version, detector.Version, StringComparison.Ordinal) &&
-                string.Equals(x.MediaIdentity, identity, StringComparison.Ordinal)))
+                string.Equals(x.MediaIdentity, media.Identity, StringComparison.Ordinal)))
         {
             return new SegmentDetectionRun(SegmentDetectionOutcome.Skipped, existing.Count);
         }
@@ -142,8 +158,8 @@ public sealed class MediaSegmentService(
                 episodeId,
                 media.AnimeId,
                 media.Path,
-                identity,
-                null),
+                media.Identity,
+                media.DurationSeconds),
             cancellationToken);
 
         var now = DateTime.UtcNow;
@@ -166,7 +182,7 @@ public sealed class MediaSegmentService(
                 Method = detector.Method,
                 Version = detector.Version,
                 Confidence = MediaSegmentPolicy.ClampConfidence(result.Confidence),
-                MediaIdentity = identity,
+                MediaIdentity = media.Identity,
                 CreatedAt = now,
                 UpdatedAt = now
             });
@@ -184,7 +200,7 @@ public sealed class MediaSegmentService(
         CancellationToken cancellationToken)
     {
         var segments = await GetSegmentsAsync(episodeId, cancellationToken);
-        var request = await BuildTrickplayRequestAsync(episodeId, media, cancellationToken);
+        var request = await BuildTrickplayRequestAsync(episodeId, cancellationToken);
         if (request is null)
         {
             return new EpisodePlayerNavigation(segments, TrickplayDescriptor.Unavailable);
@@ -198,17 +214,17 @@ public sealed class MediaSegmentService(
 
         return new EpisodePlayerNavigation(
             segments,
-            trickplay.Describe(request.MediaIdentity));
+            trickplay.Describe(request.MediaFileId, request.MediaIdentity));
     }
 
     public async Task<TrickplayDescriptor> GetTrickplayAsync(
         Guid episodeId,
         CancellationToken cancellationToken)
     {
-        var media = await GetMediaRowAsync(episodeId, cancellationToken);
-        return media is null
-            ? TrickplayDescriptor.Unavailable
-            : trickplay.Describe(MediaIdentity.Compute(media.Id, media.SizeBytes, media.LastWriteTimeUtc));
+        var media = await GetMediaSourceAsync(episodeId, cancellationToken);
+        return media?.Identity is { } identity
+            ? trickplay.Describe(media.MediaFileId, identity)
+            : TrickplayDescriptor.Unavailable;
     }
 
     public async Task<TrickplayAsset?> GetTrickplayAssetAsync(
@@ -221,64 +237,89 @@ public sealed class MediaSegmentService(
             return null;
         }
 
-        var media = await GetMediaRowAsync(episodeId, cancellationToken);
-        return media is null
-            ? null
-            : trickplay.GetAsset(
-                MediaIdentity.Compute(media.Id, media.SizeBytes, media.LastWriteTimeUtc),
-                fileName);
+        var media = await GetMediaSourceAsync(episodeId, cancellationToken);
+        return media?.Identity is { } identity
+            ? trickplay.GetAsset(media.MediaFileId, identity, fileName)
+            : null;
     }
 
+    // Owner action: drop the current cache generation and queue a fresh one.
     public async Task<bool> RegenerateTrickplayAsync(
         Guid episodeId,
-        PlaybackMedia media,
         CancellationToken cancellationToken)
     {
-        var request = await BuildTrickplayRequestAsync(episodeId, media, cancellationToken);
+        var request = await BuildTrickplayRequestAsync(episodeId, cancellationToken);
         return request is not null &&
                await trickplay.RegenerateAsync(request, cancellationToken);
     }
 
+    // Duration and identity come from the canonical media inventory; this path never probes.
+    // Without a successful analysis there is no trickplay rather than a guessed timeline.
     private async Task<TrickplayRequest?> BuildTrickplayRequestAsync(
         Guid episodeId,
-        PlaybackMedia? media,
         CancellationToken cancellationToken)
     {
-        var row = await GetMediaRowAsync(episodeId, cancellationToken);
-        if (row is null)
+        var media = await GetMediaSourceAsync(episodeId, cancellationToken);
+        return media is { Identity: { } identity, DurationSeconds: > 0 and var duration }
+            ? new TrickplayRequest(
+                episodeId,
+                media.MediaFileId,
+                identity,
+                media.Path,
+                duration,
+                Path.GetFileName(media.Path))
+            : null;
+    }
+
+    private async Task<MediaSource?> GetMediaSourceAsync(
+        Guid episodeId,
+        CancellationToken cancellationToken)
+    {
+        var media = await (
+                from file in db.MediaFiles.AsNoTracking()
+                join episode in db.Episodes.AsNoTracking() on file.EpisodeId equals episode.Id
+                where file.EpisodeId == episodeId
+                orderby file.Path
+                select new { file.Id, episode.AnimeId, file.Path })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (media is null)
         {
             return null;
         }
 
-        var duration = media?.DurationSeconds ?? 0;
-        return new TrickplayRequest(
-            episodeId,
-            MediaIdentity.Compute(row.Id, row.SizeBytes, row.LastWriteTimeUtc),
-            row.Path,
-            duration,
-            Path.GetFileName(row.Path));
+        var analysis = await db.MediaAnalyses
+            .AsNoTracking()
+            .Where(x => x.MediaFileId == media.Id && x.Status == MediaAnalysisStatus.Succeeded)
+            .Select(x => new
+            {
+                x.SourceFingerprint,
+                x.SourceSizeBytes,
+                x.SourceLastWriteTimeUtc,
+                x.DurationSeconds
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        return new MediaSource(
+            media.Id,
+            media.AnimeId,
+            media.Path,
+            analysis is null
+                ? null
+                : MediaIdentity.Compute(
+                    media.Id,
+                    analysis.SourceFingerprint,
+                    analysis.SourceSizeBytes,
+                    analysis.SourceLastWriteTimeUtc),
+            analysis?.DurationSeconds is > 0 and var seconds && double.IsFinite(seconds)
+                ? seconds
+                : null);
     }
 
-    private async Task<MediaRow?> GetMediaRowAsync(
-        Guid episodeId,
-        CancellationToken cancellationToken) =>
-        await (
-            from media in db.MediaFiles.AsNoTracking()
-            join episode in db.Episodes.AsNoTracking() on media.EpisodeId equals episode.Id
-            where media.EpisodeId == episodeId
-            orderby media.Path
-            select new MediaRow(
-                media.Id,
-                episode.AnimeId,
-                media.Path,
-                media.SizeBytes,
-                media.LastWriteTimeUtc))
-            .FirstOrDefaultAsync(cancellationToken);
-
-    private sealed record MediaRow(
-        Guid Id,
+    private sealed record MediaSource(
+        Guid MediaFileId,
         Guid AnimeId,
         string Path,
-        long SizeBytes,
-        DateTime LastWriteTimeUtc);
+        string? Identity,
+        double? DurationSeconds);
 }

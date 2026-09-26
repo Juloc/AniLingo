@@ -1,5 +1,6 @@
 using System.Text.Json;
 using AniLingo.Web.Data;
+using AniLingo.Web.Features.Library;
 using Microsoft.EntityFrameworkCore;
 
 namespace AniLingo.Web.Features.MediaSegments;
@@ -276,6 +277,7 @@ public sealed class MediaSegmentSidecarImporter(
         var existingByKey = existing.ToDictionary(x => (x.EpisodeId, x.Kind));
         var desiredKeys = new HashSet<(Guid EpisodeId, MediaSegmentKind Kind)>();
         var directoryFiles = new Dictionary<string, SidecarFile>(StringComparer.Ordinal);
+        var listings = new SubtitleSidecarDirectoryCache();
         var imported = 0;
         var updated = 0;
         var warnings = 0;
@@ -289,6 +291,7 @@ public sealed class MediaSegmentSidecarImporter(
                 rootPath,
                 episodeMedia.ToArray(),
                 directoryFiles,
+                listings,
                 ref warnings);
 
             if (segments is null)
@@ -380,11 +383,12 @@ public sealed class MediaSegmentSidecarImporter(
         string rootPath,
         IReadOnlyList<MediaRow> episodeMedia,
         Dictionary<string, SidecarFile> directoryFiles,
+        SubtitleSidecarDirectoryCache listings,
         ref int warnings)
     {
         foreach (var media in episodeMedia)
         {
-            var sidecar = ReadFile(MediaSegmentSidecar.EpisodeSidecarPath(media.Path), ref warnings);
+            var sidecar = ReadFile(MediaSegmentSidecar.EpisodeSidecarPath(media.Path), listings, ref warnings);
             if (sidecar.Parsed is not null)
             {
                 return sidecar.Parsed.Segments;
@@ -402,7 +406,7 @@ public sealed class MediaSegmentSidecarImporter(
             var path = Path.Combine(directory, MediaSegmentSidecar.AnimeFileName);
             if (!directoryFiles.TryGetValue(path, out var sidecar))
             {
-                sidecar = ReadFile(path, ref warnings);
+                sidecar = ReadFile(path, listings, ref warnings);
                 directoryFiles[path] = sidecar;
             }
 
@@ -449,15 +453,24 @@ public sealed class MediaSegmentSidecarImporter(
         }
     }
 
-    private SidecarFile ReadFile(string path, ref int warnings)
+    // Existence is answered from one directory listing per folder and pass. A folder that
+    // cannot be listed (offline share) counts as unusable, so imported markers are kept.
+    private SidecarFile ReadFile(
+        string path,
+        SubtitleSidecarDirectoryCache listings,
+        ref int warnings)
     {
         try
         {
-            var info = new FileInfo(path);
-            if (!info.Exists)
+            var fullPath = Path.GetFullPath(path);
+            var directory = Path.GetDirectoryName(fullPath);
+            if (directory is null ||
+                !listings.GetFiles(directory).Contains(fullPath, StringComparer.Ordinal))
             {
                 return SidecarFile.Missing;
             }
+
+            var info = new FileInfo(fullPath);
 
             if (info.Length > MediaSegmentSidecar.MaxFileBytes)
             {

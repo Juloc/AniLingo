@@ -36,8 +36,8 @@ public sealed class EpisodeMediaSegment
     public string Version { get; set; } = "";
     public double Confidence { get; set; }
 
-    // Media identity the automatic result was computed against; lets a detector
-    // skip re-analysis while source identity and detector version are unchanged.
+    // Media identity (MediaIdentity.Compute) the automatic result was computed against;
+    // lets a detector skip re-analysis while source identity and detector version are unchanged.
     public string? MediaIdentity { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
@@ -239,18 +239,31 @@ public static class MediaTimecode
 
 public static class MediaIdentity
 {
-    // Canonical identity of one inventoried media file: the media row plus the
-    // size and last-write stamp recorded by the library scan. Any content change
-    // observed by reconciliation yields a new identity and invalidates generated analysis.
+    // Identity of the analysed source version recorded by the canonical media
+    // inventory (MediaAnalysis). The bounded content fingerprint is preferred, so a
+    // touched or re-copied file keeps its generated assets; size + last-write stamp
+    // is the fallback when the inventory could not read a fingerprint. Any content
+    // change re-analysed by the inventory yields a new identity.
     public static string Compute(
         Guid mediaFileId,
-        long sizeBytes,
-        DateTime lastWriteTimeUtc)
+        string? sourceFingerprint,
+        long sourceSizeBytes,
+        DateTime sourceLastWriteTimeUtc)
     {
-        var material = string.Create(
-            CultureInfo.InvariantCulture,
-            $"{mediaFileId:D}\n{sizeBytes}\n{lastWriteTimeUtc.Ticks}");
+        var material = string.IsNullOrEmpty(sourceFingerprint)
+            ? string.Create(
+                CultureInfo.InvariantCulture,
+                $"stat\n{mediaFileId:D}\n{sourceSizeBytes}\n{sourceLastWriteTimeUtc.Ticks}")
+            : string.Create(
+                CultureInfo.InvariantCulture,
+                $"content\n{sourceFingerprint}\n{sourceSizeBytes}");
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(material));
         return Convert.ToHexStringLower(hash)[..32];
     }
 }
+
+// Web player partial model: the same navigation data the client API exposes.
+public sealed record EpisodeMediaNavigationView(
+    Guid EpisodeId,
+    EpisodePlayerNavigation? Navigation,
+    bool CanEdit);
