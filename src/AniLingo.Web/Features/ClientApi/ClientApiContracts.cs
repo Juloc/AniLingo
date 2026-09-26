@@ -45,7 +45,8 @@ public static class ClientApiContract
                 OwnerWakeOnLan: true,
                 EpisodeFlow: true,
                 ContinueWatching: true,
-                PlaybackHistory: true));
+                PlaybackHistory: true,
+                OfflineDownloads: true));
     }
 }
 
@@ -172,7 +173,8 @@ public sealed record ClientFeatureFlags(
     bool OwnerWakeOnLan,
     bool EpisodeFlow,
     bool ContinueWatching,
-    bool PlaybackHistory);
+    bool PlaybackHistory,
+    bool OfflineDownloads);
 
 public sealed record ClientErrorResponse(
     string Code,

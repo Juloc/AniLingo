@@ -1,5 +1,6 @@
 package de.juloc.anilingo
 
+import android.content.Intent
 import android.os.Bundle
 import android.webkit.CookieManager
 import android.webkit.WebView
@@ -23,7 +24,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -40,7 +43,11 @@ import de.juloc.anilingo.mobile.NativePlayerScreen
 import de.juloc.anilingo.mobile.ServerOrigin
 import de.juloc.anilingo.mobile.ServerSettings
 import de.juloc.anilingo.mobile.WebSession
+import de.juloc.anilingo.mobile.offline.OfflineDownloads
+import de.juloc.anilingo.mobile.offline.OfflineDownloadsScreen
+import de.juloc.anilingo.mobile.offline.OfflineNotifications
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
@@ -48,23 +55,39 @@ class MainActivity : ComponentActivity() {
     private var activeOrigin: String? = null
     private var restoredWebState: Bundle? = null
     private var restoredWebOrigin: String? = null
+    private val downloadsRequest = mutableIntStateOf(0)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         restoredWebState = savedInstanceState?.getBundle(KeyWebViewState)
         restoredWebOrigin = savedInstanceState?.getString(KeyWebViewOrigin)
+        if (savedInstanceState == null) {
+            handleIntent(intent)
+        }
 
         setContent {
             MaterialTheme {
                 AniLingoMobileApp(
                     restoredWebState = restoredWebState,
                     restoredWebOrigin = restoredWebOrigin,
+                    downloadsRequest = downloadsRequest.intValue,
                     onWebViewChanged = { webView = it },
                     onOriginChanged = { activeOrigin = it },
                     onFinish = ::finish,
                 )
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleIntent(intent)
+    }
+
+    private fun handleIntent(intent: Intent?) {
+        if (intent?.action == OfflineNotifications.ActionOpenDownloads) {
+            downloadsRequest.intValue += 1
         }
     }
 
@@ -94,17 +117,74 @@ private sealed interface ServerGateState {
 private fun AniLingoMobileApp(
     restoredWebState: Bundle?,
     restoredWebOrigin: String?,
+    downloadsRequest: Int,
     onWebViewChanged: (WebView?) -> Unit,
     onOriginChanged: (String?) -> Unit,
     onFinish: () -> Unit,
 ) {
     val context = LocalContext.current
     val settings = remember { ServerSettings(context.applicationContext) }
+    val offline = remember { OfflineDownloads.get(context.applicationContext) }
+    val offlineSnapshot by offline.state.collectAsState()
     var originValue by rememberSaveable { mutableStateOf(settings.getOrigin()) }
     var activeEpisodeId by rememberSaveable { mutableStateOf<String?>(null) }
+    var showDownloads by rememberSaveable { mutableStateOf(false) }
+    var confirmServerChange by remember { mutableStateOf(false) }
+    var accountCheck by remember { mutableIntStateOf(0) }
     var securityError by remember { mutableStateOf<String?>(null) }
     var gateRetry by remember { mutableStateOf(0) }
     var currentWebView by remember { mutableStateOf<WebView?>(null) }
+
+    LaunchedEffect(downloadsRequest) {
+        if (downloadsRequest > 0) {
+            activeEpisodeId = null
+            showDownloads = true
+        }
+    }
+
+    fun changeServer() {
+        // Downloads belong to one account on one server; changing the server removes them.
+        offline.clearAll()
+        CookieManager.getInstance().removeAllCookies(null)
+        CookieManager.getInstance().flush()
+        settings.clearOrigin()
+        showDownloads = false
+        activeEpisodeId = null
+        originValue = null
+    }
+
+    fun requestServerChange() {
+        if (offlineSnapshot.downloads.isEmpty()) {
+            changeServer()
+        } else {
+            confirmServerChange = true
+        }
+    }
+
+    if (confirmServerChange) {
+        AlertDialog(
+            onDismissRequest = { confirmServerChange = false },
+            title = { Text("Change server?") },
+            text = {
+                Text("All ${offlineSnapshot.downloads.size} downloaded episodes are removed from this device.")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmServerChange = false
+                        changeServer()
+                    },
+                ) {
+                    Text("Change server")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmServerChange = false }) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
 
     val origin = remember(originValue) {
         originValue?.let { ServerOrigin.parse(it).getOrNull() }
@@ -157,42 +237,49 @@ private fun AniLingoMobileApp(
         }
     }
 
-    when (val gate = gateState) {
-        ServerGateState.Checking -> FullscreenStatus(
-            title = "Connecting to AniLingo",
-            detail = origin.value,
-            progress = true,
-        )
-        is ServerGateState.UpdateRequired -> FullscreenStatus(
-            title = "Update required",
-            detail = gate.detail,
-            progress = false,
-            primaryLabel = "Check again",
-            onPrimary = { gateRetry += 1 },
-            secondaryLabel = "Change server",
-            onSecondary = {
-                CookieManager.getInstance().removeAllCookies(null)
-                CookieManager.getInstance().flush()
-                settings.clearOrigin()
-                originValue = null
-            },
-        )
-        is ServerGateState.Unavailable -> FullscreenStatus(
-            title = "Server unavailable",
-            detail = gate.detail,
-            progress = false,
-            primaryLabel = "Try again",
-            onPrimary = { gateRetry += 1 },
-            secondaryLabel = "Change server",
-            onSecondary = {
-                CookieManager.getInstance().removeAllCookies(null)
-                CookieManager.getInstance().flush()
-                settings.clearOrigin()
-                originValue = null
-            },
-        )
-        ServerGateState.Compatible -> {
-            Box(modifier = Modifier.fillMaxSize()) {
+    // Account boundary for downloads: re-checked when the server becomes reachable and
+    // after WebView page loads (sign-in, logout and account switches happen there).
+    LaunchedEffect(origin.value, gateState, accountCheck) {
+        if (gateState == ServerGateState.Compatible) {
+            if (accountCheck > 0) {
+                delay(500)
+            }
+            withContext(Dispatchers.IO) {
+                offline.verifyAccount(origin.value, api)
+            }
+        }
+    }
+
+    val hasAccessibleDownloads = offlineSnapshot.accessibleDownloads(origin.value).isNotEmpty()
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        when (val gate = gateState) {
+            ServerGateState.Checking -> FullscreenStatus(
+                title = "Connecting to AniLingo",
+                detail = origin.value,
+                progress = true,
+            )
+            is ServerGateState.UpdateRequired -> FullscreenStatus(
+                title = "Update required",
+                detail = gate.detail,
+                progress = false,
+                primaryLabel = "Check again",
+                onPrimary = { gateRetry += 1 },
+                secondaryLabel = "Change server",
+                onSecondary = { requestServerChange() },
+            )
+            is ServerGateState.Unavailable -> FullscreenStatus(
+                title = "Server unavailable",
+                detail = gate.detail,
+                progress = false,
+                primaryLabel = "Try again",
+                onPrimary = { gateRetry += 1 },
+                secondaryLabel = "Change server",
+                onSecondary = { requestServerChange() },
+                tertiaryLabel = if (hasAccessibleDownloads) "Downloads" else null,
+                onTertiary = { showDownloads = true },
+            )
+            ServerGateState.Compatible -> {
                 AniLingoWebShell(
                     origin = origin,
                     restoredState = restoredWebState.takeIf {
@@ -206,28 +293,47 @@ private fun AniLingoMobileApp(
                     onEpisodeRequested = { episodeId ->
                         activeEpisodeId = episodeId
                     },
+                    onPageLoaded = { accountCheck += 1 },
                     onSecurityError = { securityError = it },
                 )
 
-                activeEpisodeId?.let { episodeId ->
-                    NativePlayerScreen(
-                        episodeId = episodeId,
-                        origin = origin,
-                        api = api,
-                        sessionHeaders = webSession::requestHeaders,
-                        onClose = {
-                            activeEpisodeId = null
-                        },
-                    )
+                BackHandler(enabled = activeEpisodeId == null && !showDownloads) {
+                    when {
+                        currentWebView?.canGoBack() == true -> currentWebView?.goBack()
+                        else -> onFinish()
+                    }
                 }
             }
+        }
 
-            BackHandler(enabled = activeEpisodeId == null) {
-                when {
-                    currentWebView?.canGoBack() == true -> currentWebView?.goBack()
-                    else -> onFinish()
-                }
-            }
+        activeEpisodeId?.let { episodeId ->
+            NativePlayerScreen(
+                episodeId = episodeId,
+                origin = origin,
+                api = api,
+                sessionHeaders = webSession::requestHeaders,
+                onOpenDownloads = {
+                    activeEpisodeId = null
+                    showDownloads = true
+                },
+                onClose = {
+                    activeEpisodeId = null
+                },
+            )
+        }
+
+        if (showDownloads) {
+            OfflineDownloadsScreen(
+                origin = origin.value,
+                downloads = offline,
+                api = api,
+                serverReachable = gateState == ServerGateState.Compatible,
+                onPlay = { episodeId ->
+                    showDownloads = false
+                    activeEpisodeId = episodeId
+                },
+                onClose = { showDownloads = false },
+            )
         }
     }
 
@@ -313,6 +419,8 @@ private fun FullscreenStatus(
     onPrimary: (() -> Unit)? = null,
     secondaryLabel: String? = null,
     onSecondary: (() -> Unit)? = null,
+    tertiaryLabel: String? = null,
+    onTertiary: (() -> Unit)? = null,
 ) {
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -347,6 +455,14 @@ private fun FullscreenStatus(
                         TextButton(onClick = onSecondary) {
                             Text(secondaryLabel)
                         }
+                    }
+                }
+                if (tertiaryLabel != null && onTertiary != null) {
+                    TextButton(
+                        onClick = onTertiary,
+                        modifier = Modifier.padding(top = 8.dp),
+                    ) {
+                        Text(tertiaryLabel)
                     }
                 }
             }

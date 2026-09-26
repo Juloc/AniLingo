@@ -142,6 +142,14 @@ DELETE /api/client/v1/me/playback-history
 
 The server is the only durable owner of resume position, watched state, autoplay preference and history; clients must not keep a second durable progress store. Clients should resume from `resumePositionMs` (zero means start from the beginning), send bounded checkpoints (for example every 15 seconds while playing plus pause/stop/end) and use `/flow` instead of computing next/previous episodes locally. The semantics are described in the README section *Playback continuity*.
 
+Bounded offline playback endpoints (additive v1, advertised by `offlineDownloads`; see §8.2):
+
+```text
+GET  /api/client/v1/episodes/{episodeId}/offline-download   download descriptor
+GET  /api/client/v1/offline/media/{mediaFileId}/content      original bytes, HTTP range + strong ETag
+POST /api/client/v1/offline/progress                         { items: [{ episodeId, positionMs, durationMs, completed }] }
+```
+
 The first v1 contract deliberately reports not-yet-implemented facilities through capability flags. HLS fallback, playback sessions, pairing and companion control remain `false` until their later delivery slices are merged. Clients must not infer support from route guesses.
 
 Later session/companion endpoints extend the same v1 boundary:
@@ -411,6 +419,24 @@ AniLingo has one canonical episode Play route. The WebView shell intercepts that
 When native playback closes, the user returns to the same WebView history/navigation state.
 
 The Companion screen itself remains a normal responsive AniLingo web page and therefore appears identically in a browser or inside the phone app.
+
+### 8.2 Bounded offline playback (phone, #225)
+
+The phone can keep explicitly chosen episodes of the user's own library on the device. This is deliberately not a download platform: no DRM, no license server, no automatic/Smart Downloads, no browser/PWA offline video and no bulk mirroring.
+
+Server contract:
+
+- `GET /episodes/{id}/offline-download` returns the episode/anime titles, audio and subtitle track metadata with defaults, the complete active Japanese learning cue set (tokens include reading, meaning and the learning state at download time), the canonical progress snapshot, and the media identity: canonical `sizeBytes` of the file on disk, a strong `eTag` (length + modification time) and a bounded content `fingerprint` (`sha256-length-head-tail-64k`: SHA-256 over the little-endian length, the first and the last 64 KiB; the same fingerprint the media inventory persists). Unavailable storage answers like the content endpoint (`503`/`404` with the availability JSON).
+- `GET /offline/media/{id}/content` serves the same read-only original bytes as `/media/{id}/content`, plus the strong `ETag`, so a resumed request uses `Range` + `If-Range` and can never splice bytes of two file versions. Source media is never modified or copied on the server.
+- `POST /offline/progress` replays checkpoints recorded while offline (at most 100 per request) through the canonical `EpisodeProgressService`. Reconciliation is monotonic and idempotent without any server-side per-client state: a checkpoint only moves the resume position forward or marks an unwatched episode watched; watched stays sticky (a stale partial checkpoint neither un-watches an episode nor replaces a newer rewatch position; a replayed completion is `unchanged`); the 30 s accidental-start rule applies unchanged. Every item gets a final outcome: `applied`, `completed`, `unchanged`, `ignored_behind`, `ignored_watched`, `ignored_accidental_start` or `episode_not_found`, plus the resulting canonical progress. A live `PUT /progress` keeps its normal semantics (it may rewind during a rewatch).
+
+Phone implementation (`app-mobile`, package `mobile.offline`; TV is out of scope for now):
+
+- The native player shows an explicit **Download** action when the server advertises `offlineDownloads`. Downloads are managed from the **Downloads** screen (player, download notification, launcher shortcut, or the *Server unavailable* screen): per-episode state (queued, downloading, paused, ready, failed) with pause/resume/cancel/retry/remove, storage used against a configurable device limit (default 10 GB) plus free device space, and a Wi-Fi-only switch (default on). Admission rejects a download that would exceed the limit or eat into a 1 GB device safety margin.
+- Transfers are WorkManager jobs (data-sync foreground work) that resume from the partial file length with `Range`/`If-Range`, so they survive process death and device restarts. An episode becomes **ready** only after its size and fingerprint match the descriptor; a changed server file fails the download instead of mixing versions.
+- Files live in app-private `noBackupFilesDir/offline/<owner>/<episode>/`. Downloads belong to one account on one server: logging out locks them (hidden, not playable, transfers paused) until the same account signs in again; signing in as another account or changing the server deletes them. The account is re-checked via `/me` whenever the server is reachable and after WebView page loads.
+- A ready download is played from the local file with Media3, also while online (the server bootstrap and fresh cues are used when reachable). Offline, the player uses the stored descriptor for titles, audio/subtitle selection and the learning overlay; word details come from the stored cue tokens, and learning-state changes wait until the server is reachable.
+- The client keeps only a local copy of the canonical progress plus a sync queue (one entry per episode, completion sticky). Checkpoints that cannot be delivered (offline playback or a lost connection) are queued and replayed by a network-constrained WorkManager job, which first confirms via `/me` that the same account is signed in. Every server outcome removes the queued entry; a successful live checkpoint supersedes a queued partial one.
 
 ## 9. Android TV interaction
 
@@ -779,8 +805,8 @@ The first Android/TV milestone does **not** include:
 - Chromecast as the primary playback architecture
 - cloud relay outside the configured AniLingo server
 - permanent trusted-device accounts just for pairing
-- offline anime downloads
-- copying source media into app storage
+- offline anime downloads (added afterwards as the bounded, explicit phone feature in §8.2)
+- copying source media into app storage outside that explicit download feature
 - client-side vocabulary database
 - server filesystem paths in APIs
 - mandatory server transcoding for Android-capable formats

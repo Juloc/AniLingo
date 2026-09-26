@@ -38,7 +38,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import de.juloc.anilingo.mobile.offline.EnqueueResult
+import de.juloc.anilingo.mobile.offline.LocalEpisode
+import de.juloc.anilingo.mobile.offline.OfflineDownload
+import de.juloc.anilingo.mobile.offline.OfflineDownloads
+import de.juloc.anilingo.mobile.offline.OfflinePlayback
 import java.io.Closeable
+import java.io.IOException
 
 data class NativePlayerUiState(
     val loading: Boolean = true,
@@ -58,6 +64,16 @@ data class NativePlayerUiState(
     val storage: MediaAvailability? = null,
     val storageRetryExhausted: Boolean = false,
     val wakeInProgress: Boolean = false,
+    /** The server advertises offline downloads and is currently reachable. */
+    val downloadsSupported: Boolean = false,
+    /** This account's managed download of the episode, if any. */
+    val download: OfflineDownload? = null,
+    val downloadBusy: Boolean = false,
+    val notice: String? = null,
+    /** Playback reads the verified local copy instead of streaming. */
+    val playingDownload: Boolean = false,
+    /** The server was unreachable; progress is queued locally and reconciled later. */
+    val offlineMode: Boolean = false,
 )
 
 @OptIn(UnstableApi::class)
@@ -67,6 +83,7 @@ class NativePlayerController(
     private val origin: ServerOrigin,
     private val api: HttpAniLingoClientApi,
     private val sessionHeaders: () -> Map<String, String>,
+    private val offline: OfflineDownloads = OfflineDownloads.get(context),
 ) : Closeable {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val mediaPlayer = AniLingoMedia3Player(context.applicationContext)
@@ -84,6 +101,7 @@ class NativePlayerController(
     private var lastProgressSentAt = 0L
     private var lastProgressPositionMs = -1L
     private var started = false
+    private var offlineMode = false
 
     private val playerListener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -108,6 +126,13 @@ class NativePlayerController(
 
     init {
         player.addListener(playerListener)
+        scope.launch {
+            offline.state.collect { snapshot ->
+                val download = snapshot.accessibleDownloads(origin.value)
+                    .firstOrNull { it.episodeId == episodeId }
+                _state.update { it.copy(download = download) }
+            }
+        }
         scope.launch {
             while (isActive) {
                 updatePlaybackClock()
@@ -215,7 +240,39 @@ class NativePlayerController(
         _state.update { it.copy(selectedSubtitleTrackId = track?.id) }
     }
 
+    fun requestDownload() {
+        if (_state.value.downloadBusy) {
+            return
+        }
+
+        scope.launch {
+            _state.update { it.copy(downloadBusy = true, notice = null) }
+            val result = offline.enqueue(origin.value, episodeId, api)
+            _state.update {
+                it.copy(
+                    downloadBusy = false,
+                    notice = (result as? EnqueueResult.Rejected)?.message,
+                )
+            }
+        }
+    }
+
+    fun clearNotice() {
+        _state.update { it.copy(notice = null) }
+    }
+
     fun loadTerm(termId: String) {
+        if (offlineMode) {
+            // Offline, the stored cue tokens carry reading, meaning and the state at download time.
+            _state.update {
+                it.copy(
+                    selectedTerm = OfflinePlayback.termFromCues(it.cues, termId),
+                    termLoading = false,
+                )
+            }
+            return
+        }
+
         scope.launch {
             _state.update { it.copy(termLoading = true) }
             try {
@@ -243,6 +300,13 @@ class NativePlayerController(
 
     fun setSelectedTermState(stateName: String) {
         val term = _state.value.selectedTerm ?: return
+        if (offlineMode) {
+            _state.update {
+                it.copy(notice = "Learning states can be changed once AniLingo is reachable again.")
+            }
+            return
+        }
+
         scope.launch {
             try {
                 val result = io { api.setTermState(term.id, stateName) }
@@ -313,6 +377,8 @@ class NativePlayerController(
             )
         }
 
+        val local = io { offline.readyEpisode(origin.value, episodeId) }
+
         try {
             val currentCapabilities = io { api.getCapabilities() }
             capabilities = currentCapabilities
@@ -330,15 +396,35 @@ class NativePlayerController(
                 }
             }
 
+            offlineMode = false
+            _state.update {
+                it.copy(
+                    downloadsSupported = currentCapabilities.features.offlineDownloads,
+                    offlineMode = false,
+                )
+            }
+
             val progress = io { api.getProgress(episodeId) }
             val playerBootstrap = io { api.getPlayer(episodeId) }
             bootstrap = playerBootstrap
 
             val cues = loadCues(playerBootstrap)
-            val resumePosition = if (!progress.isCompleted && progress.positionMs >= 5_000) {
-                progress.positionMs
+            // A checkpoint that is still queued from offline playback is newer than the server copy.
+            val resumePosition = if (local != null && local.pending != null) {
+                local.resumePositionMs
             } else {
-                0L
+                OfflineDownloads.resumeFrom(progress)
+            }
+
+            if (local != null) {
+                startLocalPlayback(
+                    local = local,
+                    playerBootstrap = playerBootstrap,
+                    cues = cues,
+                    resumePositionMs = resumePosition,
+                    serverReachable = true,
+                )
+                return
             }
 
             _state.update {
@@ -361,12 +447,68 @@ class NativePlayerController(
         } catch (exception: CancellationException) {
             throw exception
         } catch (exception: Exception) {
+            if (local != null) {
+                // The server is unreachable (or refused the session): play the verified local copy.
+                startLocalPlayback(
+                    local = local,
+                    playerBootstrap = null,
+                    cues = local.descriptor.learningCues.cues,
+                    resumePositionMs = local.resumePositionMs,
+                    serverReachable = false,
+                )
+                return
+            }
+
             _state.update {
                 it.copy(
                     loading = false,
                     error = userMessage(exception),
                 )
             }
+        }
+    }
+
+    private fun startLocalPlayback(
+        local: LocalEpisode,
+        playerBootstrap: PlayerBootstrap?,
+        cues: List<SubtitleCue>,
+        resumePositionMs: Long,
+        serverReachable: Boolean,
+    ) {
+        val playbackBootstrap = playerBootstrap ?: OfflinePlayback.bootstrap(local.descriptor)
+        bootstrap = playbackBootstrap
+        offlineMode = !serverReachable
+        sourceOffsetMs = 0L
+        currentTransport = PlaybackTransport.DIRECT
+
+        mediaPlayer.open(
+            uri = Uri.fromFile(local.mediaFile),
+            startPositionMs = resumePositionMs,
+            playWhenReady = true,
+        )
+
+        recoveryJob?.cancel()
+        recoveryJob = null
+        recoveryPlayback = null
+        _state.update {
+            it.copy(
+                loading = false,
+                error = null,
+                storage = null,
+                storageRetryExhausted = false,
+                bootstrap = playbackBootstrap,
+                cues = cues,
+                selectedAudioTrackId = playbackBootstrap.defaultAudioTrackId,
+                selectedSubtitleTrackId = playbackBootstrap.defaultSubtitleTrackId,
+                transport = PlaybackTransport.DIRECT,
+                playingDownload = true,
+                offlineMode = !serverReachable,
+                downloadsSupported = serverReachable && it.downloadsSupported,
+                positionMs = resumePositionMs,
+                durationMs = local.descriptor.media.durationMs
+                    ?: playbackBootstrap.media?.durationMs
+                    ?: it.durationMs,
+            )
         }
     }
 
@@ -474,6 +616,7 @@ class NativePlayerController(
                 storage = null,
                 storageRetryExhausted = false,
                 transport = transport,
+                playingDownload = false,
                 positionMs = absolutePositionMs,
                 durationMs = media.durationMs ?: it.durationMs,
             )
@@ -689,8 +832,7 @@ class NativePlayerController(
         completed: Boolean,
         force: Boolean,
     ) {
-        val currentCapabilities = capabilities ?: return
-        if (!currentCapabilities.features.playbackProgress) {
+        if (!offlineMode && capabilities?.features?.playbackProgress != true) {
             return
         }
 
@@ -707,17 +849,31 @@ class NativePlayerController(
         lastProgressSentAt = now
         lastProgressPositionMs = position
 
-        runCatching {
-            io {
+        val durationMs = _state.value.durationMs.takeIf { it > 0 }
+        if (offlineMode) {
+            offline.recordProgress(origin.value, episodeId, position, durationMs, completed)
+            return
+        }
+
+        try {
+            val saved = io {
                 api.setProgress(
                     episodeId = episodeId,
                     update = EpisodeProgressUpdate(
                         positionMs = position,
-                        durationMs = _state.value.durationMs.takeIf { it > 0 },
+                        durationMs = durationMs,
                         completed = completed,
                     ),
                 )
             }
+            offline.onLiveProgress(origin.value, episodeId, saved)
+        } catch (exception: CancellationException) {
+            throw exception
+        } catch (exception: ClientApiHttpException) {
+            // The server answered and rejected the checkpoint; queueing it would not help.
+        } catch (exception: IOException) {
+            // Connection lost mid-playback: keep the checkpoint for monotonic reconciliation.
+            offline.recordProgress(origin.value, episodeId, position, durationMs, completed)
         }
     }
 

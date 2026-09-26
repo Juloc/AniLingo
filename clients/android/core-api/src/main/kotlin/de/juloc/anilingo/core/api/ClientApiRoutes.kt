@@ -13,6 +13,8 @@ object ClientApiRoutes {
     fun episode(episodeId: String) = "$Base/episodes/$episodeId"
     fun progress(episodeId: String) = "$Base/episodes/$episodeId/progress"
     fun player(episodeId: String) = "$Base/episodes/$episodeId/player"
+    fun offlineDownload(episodeId: String) = "$Base/episodes/$episodeId/offline-download"
+    const val OfflineProgress = "$Base/offline/progress"
 
     fun cues(
         episodeId: String,

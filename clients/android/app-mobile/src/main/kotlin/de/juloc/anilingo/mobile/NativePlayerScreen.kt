@@ -1,9 +1,16 @@
 package de.juloc.anilingo.mobile
 
 import androidx.annotation.OptIn
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import de.juloc.anilingo.mobile.offline.DownloadState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -66,6 +73,7 @@ fun NativePlayerScreen(
     origin: ServerOrigin,
     api: HttpAniLingoClientApi,
     sessionHeaders: () -> Map<String, String>,
+    onOpenDownloads: () -> Unit,
     onClose: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -91,6 +99,32 @@ fun NativePlayerScreen(
 
     LaunchedEffect(controller) {
         controller.start()
+    }
+
+    // The download notification needs POST_NOTIFICATIONS on Android 13+; the download
+    // itself starts either way.
+    val notificationPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) {
+        controller.requestDownload()
+    }
+
+    fun startDownload() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            controller.requestDownload()
+        }
+    }
+
+    LaunchedEffect(ui.notice) {
+        if (ui.notice != null) {
+            kotlinx.coroutines.delay(5_000)
+            controller.clearNotice()
+        }
     }
 
     LaunchedEffect(controlsVisible, ui.isPlaying, learningState) {
@@ -239,7 +273,31 @@ fun NativePlayerScreen(
                     onSubtitleMenuOpen = { subtitleMenuOpen = it },
                     onAudioTrack = controller::selectAudioTrack,
                     onSubtitleTrack = controller::selectSubtitleTrack,
+                    onDownload = { startDownload() },
+                    onOpenDownloads = {
+                        scope.launch {
+                            controller.persistBeforeClose()
+                            onOpenDownloads()
+                        }
+                    },
                 )
+            }
+
+            ui.notice?.let { notice ->
+                Surface(
+                    color = design.sheet,
+                    shape = RoundedCornerShape(design.controlRadiusDp.dp),
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 72.dp, start = 16.dp, end = 16.dp),
+                ) {
+                    Text(
+                        text = notice,
+                        color = design.subtitleText,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    )
+                }
             }
 
             ui.storage?.let { storage ->
@@ -326,6 +384,8 @@ private fun PlayerControls(
     onSubtitleMenuOpen: (Boolean) -> Unit,
     onAudioTrack: (MediaTrack) -> Unit,
     onSubtitleTrack: (MediaTrack?) -> Unit,
+    onDownload: () -> Unit,
+    onOpenDownloads: () -> Unit,
 ) {
     val bootstrap = ui.bootstrap
     val duration = ui.durationMs.coerceAtLeast(1)
@@ -363,16 +423,25 @@ private fun PlayerControls(
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
+            DownloadControl(
+                ui = ui,
+                onDownload = onDownload,
+                onOpenDownloads = onOpenDownloads,
+            )
             Surface(
                 color = design.sheet,
                 shape = RoundedCornerShape(design.controlRadiusDp.dp),
             ) {
                 Text(
-                    text = when (ui.transport) {
-                        PlaybackTransport.DIRECT -> "Direct"
-                        PlaybackTransport.HLS_FALLBACK -> "Server"
-                        PlaybackTransport.LIVE_MP4_FALLBACK -> "Server"
-                        null -> "Checking"
+                    text = when {
+                        ui.offlineMode -> "Offline"
+                        ui.playingDownload -> "On device"
+                        else -> when (ui.transport) {
+                            PlaybackTransport.DIRECT -> "Direct"
+                            PlaybackTransport.HLS_FALLBACK -> "Server"
+                            PlaybackTransport.LIVE_MP4_FALLBACK -> "Server"
+                            null -> "Checking"
+                        }
                     },
                     color = design.subtitleText,
                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
@@ -478,6 +547,40 @@ private fun PlayerControls(
                 }
             }
         }
+    }
+}
+
+/**
+ * Explicit per-episode download action. Only shown while the server is
+ * reachable and advertises offline downloads, or when a download exists.
+ */
+@Composable
+private fun DownloadControl(
+    ui: NativePlayerUiState,
+    onDownload: () -> Unit,
+    onOpenDownloads: () -> Unit,
+) {
+    val download = ui.download
+    val label = when {
+        ui.downloadBusy -> "Preparing…"
+        download == null -> if (ui.downloadsSupported) "Download" else null
+        else -> when (download.state) {
+            DownloadState.QUEUED -> "Queued"
+            DownloadState.DOWNLOADING -> "${download.progressPercent}%"
+            DownloadState.PAUSED -> "Paused"
+            DownloadState.READY -> "Downloaded"
+            DownloadState.FAILED -> if (ui.downloadsSupported) "Retry download" else "Download failed"
+        }
+    } ?: return
+
+    val startsDownload = download == null ||
+        (download.state == DownloadState.FAILED && ui.downloadsSupported)
+
+    TextButton(
+        onClick = if (startsDownload) onDownload else onOpenDownloads,
+        enabled = !ui.downloadBusy,
+    ) {
+        Text(label, color = Color.White)
     }
 }
 

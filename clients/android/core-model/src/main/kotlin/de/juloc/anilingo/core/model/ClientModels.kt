@@ -24,6 +24,7 @@ data class ClientFeatureFlags(
     val companionControl: Boolean,
     val storageAvailability: Boolean,
     val ownerWakeOnLan: Boolean,
+    val offlineDownloads: Boolean = false,
 )
 
 data class ClientAccount(

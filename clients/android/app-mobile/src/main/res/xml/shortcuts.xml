@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:enabled="true"
+        android:shortcutId="downloads"
+        android:shortcutShortLabel="@string/shortcut_downloads">
+        <intent
+            android:action="de.juloc.anilingo.action.DOWNLOADS"
+            android:targetClass="de.juloc.anilingo.MainActivity"
+            android:targetPackage="de.juloc.anilingo" />
+    </shortcut>
+</shortcuts>
