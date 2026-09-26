@@ -8,6 +8,7 @@ using AniLingo.Web.Features.Library;
 using AniLingo.Web.Features.MediaSegments;
 using AniLingo.Web.Features.Metadata;
 using AniLingo.Web.Features.Novels;
+using AniLingo.Web.Features.OfflineLibrary;
 using AniLingo.Web.Features.Progress;
 using AniLingo.Web.Features.Subtitles;
 using AniLingo.Web.Features.Vocabulary;
@@ -49,6 +50,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<NovelProgress> NovelProgress => Set<NovelProgress>();
     public DbSet<NovelBookmark> NovelBookmarks => Set<NovelBookmark>();
     public DbSet<NovelHighlight> NovelHighlights => Set<NovelHighlight>();
+    public DbSet<NovelBookmarkTombstone> NovelBookmarkTombstones => Set<NovelBookmarkTombstone>();
     public DbSet<NovelAnimeMapping> NovelAnimeMappings => Set<NovelAnimeMapping>();
     public DbSet<ReaderPreference> ReaderPreferences => Set<ReaderPreference>();
     public DbSet<EpisodeMediaSegment> EpisodeMediaSegments => Set<EpisodeMediaSegment>();
@@ -356,6 +358,14 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasOne<NovelChapter>().WithMany().HasForeignKey(x => x.ChapterId).OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(x => new { x.ProfileId, x.WorkId, x.CreatedAt });
             entity.HasIndex(x => new { x.ProfileId, x.ChapterId });
+        });
+
+        modelBuilder.Entity<NovelBookmarkTombstone>(entity =>
+        {
+            entity.HasKey(x => x.BookmarkId);
+            entity.Property(x => x.ProfileId).HasMaxLength(80);
+            entity.HasOne<NovelWork>().WithMany().HasForeignKey(x => x.WorkId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(x => new { x.ProfileId, x.WorkId });
         });
 
         modelBuilder.Entity<NovelHighlight>(entity =>

@@ -51,7 +51,8 @@ public static class ClientApiContract
                 EmbeddedSubtitleCues: true,
                 OfflineDownloads: true,
                 MediaSegments: true,
-                Trickplay: true));
+                Trickplay: true,
+                OfflineLibrary: true));
     }
 }
 
@@ -195,7 +196,8 @@ public sealed record ClientFeatureFlags(
     bool EmbeddedSubtitleCues,
     bool OfflineDownloads,
     bool MediaSegments,
-    bool Trickplay);
+    bool Trickplay,
+    bool OfflineLibrary);
 
 public sealed record ClientErrorResponse(
     string Code,
