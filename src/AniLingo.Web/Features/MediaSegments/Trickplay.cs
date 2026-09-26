@@ -78,6 +78,7 @@ public sealed class TrickplayGenerator(
     public const int MaximumPendingGenerations = 2;
     public static readonly TimeSpan GenerationTimeout = TimeSpan.FromMinutes(20);
     public static readonly TimeSpan EnqueueTimeout = TimeSpan.FromSeconds(2);
+    public static readonly TimeSpan PendingExpiry = TimeSpan.FromHours(2);
 
     private static readonly Regex AssetPattern = new(
         "^(index\\.json|sprite-[0-9]{3}\\.jpg)$",
@@ -153,7 +154,8 @@ public sealed class TrickplayGenerator(
             return new TrickplayDescriptor(TrickplayState.Ready, null, index);
         }
 
-        return runtime.TryGetValue(CacheKey(mediaFileId, mediaIdentity), out var state)
+        return runtime.TryGetValue(CacheKey(mediaFileId, mediaIdentity), out var state) &&
+               (state.IsPending || state.State == TrickplayState.Failed)
             ? new TrickplayDescriptor(state.State, state.Message, null)
             : TrickplayDescriptor.Unavailable;
     }
@@ -187,13 +189,17 @@ public sealed class TrickplayGenerator(
         }
 
         var key = CacheKey(request.MediaFileId, request.MediaIdentity);
-        if (runtime.ContainsKey(key) || PendingCount() >= MaximumPendingGenerations)
+        var known = runtime.TryGetValue(key, out var existing);
+        if ((known && (existing!.IsPending || existing.State == TrickplayState.Failed)) ||
+            PendingCount() >= MaximumPendingGenerations)
         {
-            // Already known, or enough work is pending: a later player load queues it.
+            // Already queued or failed for this identity, or enough work is pending:
+            // a later player load queues it.
             return false;
         }
 
-        if (!runtime.TryAdd(key, new RuntimeState(TrickplayState.Queued, null)))
+        var queued = new RuntimeState(TrickplayState.Queued, null);
+        if (known ? !runtime.TryUpdate(key, queued, existing!) : !runtime.TryAdd(key, queued))
         {
             return false;
         }
@@ -232,15 +238,14 @@ public sealed class TrickplayGenerator(
     }
 
     private int PendingCount() =>
-        runtime.Values.Count(x => x.State is TrickplayState.Queued or TrickplayState.Generating);
+        runtime.Values.Count(x => x.IsPending);
 
     public async Task<bool> RegenerateAsync(
         TrickplayRequest request,
         CancellationToken cancellationToken)
     {
         var key = CacheKey(request.MediaFileId, request.MediaIdentity);
-        if (runtime.TryGetValue(key, out var state) &&
-            state.State is TrickplayState.Queued or TrickplayState.Generating)
+        if (runtime.TryGetValue(key, out var state) && state.IsPending)
         {
             return false;
         }
@@ -286,6 +291,7 @@ public sealed class TrickplayGenerator(
                 ".tmp",
                 $"{key}-{Guid.NewGuid():N}");
 
+            RemoveAbandonedTemporaryDirectories();
             Directory.CreateDirectory(temporaryDirectory);
             try
             {
@@ -439,6 +445,35 @@ public sealed class TrickplayGenerator(
         }
     }
 
+    // Work directories left behind by a crash or restart during generation.
+    private void RemoveAbandonedTemporaryDirectories()
+    {
+        var temporaryRoot = Path.Combine(RootPath, ".tmp");
+        try
+        {
+            if (!Directory.Exists(temporaryRoot))
+            {
+                return;
+            }
+
+            foreach (var directory in Directory.EnumerateDirectories(temporaryRoot))
+            {
+                if (DateTime.UtcNow - Directory.GetCreationTimeUtc(directory) > PendingExpiry)
+                {
+                    DeleteDirectory(directory);
+                }
+            }
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException)
+        {
+            logger.LogWarning(
+                exception,
+                "Could not clean abandoned trickplay work directories under {Directory}.",
+                temporaryRoot);
+        }
+    }
+
     // Removes older identities/generator versions of the same media file.
     private void PruneSupersededGenerations(Guid mediaFileId, string currentKey)
     {
@@ -483,5 +518,14 @@ public sealed class TrickplayGenerator(
         }
     }
 
-    private sealed record RuntimeState(TrickplayState State, string? Message);
+    private sealed record RuntimeState(TrickplayState State, string? Message)
+    {
+        public DateTime SinceUtc { get; } = DateTime.UtcNow;
+
+        // A queued job that was cancelled before it ran (or lost) must not block
+        // generation until the next restart.
+        public bool IsPending =>
+            State is TrickplayState.Queued or TrickplayState.Generating &&
+            DateTime.UtcNow - SinceUtc < PendingExpiry;
+    }
 }

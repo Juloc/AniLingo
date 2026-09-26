@@ -247,6 +247,12 @@ public sealed class MediaSegmentTests
 
         var snapshot = await playback.GetSnapshotAsync(media.EpisodeId, CancellationToken.None);
         Assert.AreEqual(TrickplayState.Ready, snapshot.Navigation?.Trickplay.State);
+        var readyClient = ClientApiMappings.ToClientTrickplay(media.EpisodeId, snapshot.Navigation!.Trickplay);
+        Assert.AreEqual("ready", readyClient.State);
+        Assert.AreEqual(
+            $"{ClientApiRoutes.TrickplayAsset(media.EpisodeId, "sprite-001.jpg")}?v={identity[..16]}-{TrickplayGenerator.GeneratorVersion}",
+            readyClient.SpriteUrls.Single(),
+            "Sprite URLs change with the media identity so cached images are never reused.");
         Assert.AreEqual(0, await CountTrickplayOperationsAsync(fixture), "An existing cache is never regenerated.");
 
         // A touched file with identical content keeps its identity and cache.

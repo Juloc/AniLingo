@@ -172,7 +172,7 @@ Episode page expose the same additive fields; the capability flags
     "columns": 10,
     "rows": 10,
     "thumbnailCount": 142,
-    "spriteUrls": [ "/api/client/v1/episodes/{id}/trickplay/sprite-001.jpg" ],
+    "spriteUrls": [ "/api/client/v1/episodes/{id}/trickplay/sprite-001.jpg?v=3f2a9c0d1e4b5a67-1" ],
     "descriptorUrl": "/api/client/v1/episodes/{id}/trickplay"
   }
 }
@@ -182,7 +182,9 @@ Episode page expose the same additive fields; the capability flags
 `[i × intervalMs, (i + 1) × intervalMs)` and sits on sprite
 `spriteUrls[i / (columns × rows)]` at column `i % columns`, row
 `(i / columns) % rows`. Clients poll `descriptorUrl` while the state is
-`generating`.
+`generating`, and use sprite URLs exactly as given: their `v` query changes with
+the media identity and generator version, so privately cached images of a
+replaced file are never reused.
 
 Separate endpoints:
 

@@ -640,7 +640,10 @@ public static class ClientApiMappings
             index is null
                 ? []
                 : index.Sprites
-                    .Select(sprite => ClientApiRoutes.TrickplayAsset(episodeId, sprite))
+                    // Asset names repeat across generations; the identity query keeps a
+                    // privately cached sprite of a replaced file from being reused.
+                    .Select(sprite =>
+                        $"{ClientApiRoutes.TrickplayAsset(episodeId, sprite)}?v={index.MediaIdentity[..Math.Min(16, index.MediaIdentity.Length)]}-{index.GeneratorVersion}")
                     .ToArray(),
             ClientApiRoutes.Trickplay(episodeId));
     }
