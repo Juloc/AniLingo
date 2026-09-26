@@ -15,8 +15,9 @@
         <h1>@Model.Ui["learn.title"]</h1>
         <p>@Model.Ui["learn.hub.subtitle"]</p>
     </div>
-    @if (Model.LearningEnabled)
+    @if (Model.ShowAnyModule || Model.ScriptTrainerNeedsCourse)
     {
+        @* Quiet states carry their own settings action. *@
         <a class="button" href="/Settings/Learning">@Model.Ui["learn.hub.settings"]</a>
     }
 </header>
