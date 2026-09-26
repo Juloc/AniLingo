@@ -199,6 +199,77 @@ public sealed class NfoLibraryScanTests
         Assert.AreEqual("Part B", (await fixture.Db.Episodes.AsNoTracking().SingleAsync()).Title);
     }
 
+    [TestMethod]
+    public async Task SeasonNfoAniListIdMapsThatSeasonsEpisodeRangeOnly()
+    {
+        await using var fixture = await NfoScanFixture.CreateAsync();
+        fixture.AddMedia("Sousou no Frieren", "Season 01", "Sousou no Frieren - S01E01.mkv");
+        fixture.AddMedia("Sousou no Frieren", "Season 02", "Sousou no Frieren - S02E01.mkv");
+        fixture.WriteNfo(
+            Path.Combine("Sousou no Frieren", "Season 02", "season.nfo"),
+            "<season><uniqueid type=\"anilist\">154595</uniqueid></season>");
+        fixture.Provider.Add("154595", "Frieren Season Two", episodeCount: 1);
+
+        var result = await fixture.Scanner.ScanAsync(fixture.Root.Id, CancellationToken.None);
+
+        Assert.AreEqual(0, result.MetadataWarnings);
+        var anime = await fixture.Db.Anime.AsNoTracking().SingleAsync();
+        var mappings = await fixture.Metadata.GetEpisodeMappingsAsync(anime.Id, CancellationToken.None);
+        Assert.AreEqual(1, mappings.Count);
+        Assert.AreEqual(2, mappings[0].SeasonNumber);
+        Assert.AreEqual(1, mappings[0].LocalEpisodeStart);
+        Assert.AreEqual(1, mappings[0].LocalEpisodeEnd);
+        Assert.AreEqual("154595", mappings[0].ExternalId);
+    }
+
+    [TestMethod]
+    public async Task LocalMetadataIsPersistedFromShowNfoAndSkippedWhenUnchanged()
+    {
+        await using var fixture = await NfoScanFixture.CreateAsync();
+        fixture.AddMedia("Sousou no Frieren", "Season 01", "Sousou no Frieren - S01E01.mkv");
+        var showNfoPath = fixture.WriteNfo(
+            Path.Combine("Sousou no Frieren", "tvshow.nfo"),
+            """
+            <tvshow>
+              <title>Frieren: Beyond Journey's End</title>
+              <originaltitle>葬送のフリーレン</originaltitle>
+              <plot>An elf mage outlives her party.</plot>
+              <year>2023</year>
+              <premiered>2023-09-29</premiered>
+              <uniqueid type="tvdb">424536</uniqueid>
+            </tvshow>
+            """);
+
+        await fixture.Scanner.ScanAsync(fixture.Root.Id, CancellationToken.None);
+
+        var anime = await fixture.Db.Anime.AsNoTracking().SingleAsync();
+        var local = await fixture.Db.AnimeLocalMetadata.AsNoTracking().SingleAsync(x => x.AnimeId == anime.Id);
+        Assert.AreEqual("nfo", local.Source);
+        Assert.AreEqual("葬送のフリーレン", local.OriginalTitle);
+        Assert.AreEqual("An elf mage outlives her party.", local.Plot);
+        Assert.AreEqual(2023, local.Year);
+        Assert.AreEqual(new DateOnly(2023, 9, 29), local.Premiered);
+        Assert.AreEqual("424536", local.TvdbId);
+        var firstUpdatedAt = local.UpdatedAt;
+
+        // Rewriting the file with different content but the exact same size and last-write time
+        // must not be picked up: an unchanged NFO is skipped rather than re-parsed.
+        var originalLength = new FileInfo(showNfoPath).Length;
+        var originalWriteTime = File.GetLastWriteTimeUtc(showNfoPath);
+        var replacement = "<tvshow><title>Different Title Entirely Here</title></tvshow>";
+        File.WriteAllText(showNfoPath, replacement.PadRight((int)originalLength));
+        File.SetLastWriteTimeUtc(showNfoPath, originalWriteTime);
+
+        await fixture.Scanner.ScanAsync(fixture.Root.Id, CancellationToken.None);
+
+        var localAfterRescan = await fixture.Db.AnimeLocalMetadata.AsNoTracking().SingleAsync(x => x.AnimeId == anime.Id);
+        Assert.AreEqual("An elf mage outlives her party.", localAfterRescan.Plot);
+        Assert.AreEqual(firstUpdatedAt, localAfterRescan.UpdatedAt);
+        Assert.AreEqual(
+            "Frieren: Beyond Journey's End",
+            (await fixture.Db.Anime.AsNoTracking().SingleAsync()).Title);
+    }
+
     private sealed class NfoScanFixture : IAsyncDisposable
     {
         private NfoScanFixture(
@@ -206,13 +277,15 @@ public sealed class NfoLibraryScanTests
             AppDbContext db,
             LibraryRoot root,
             LibraryScanner scanner,
-            FakeAniListProvider provider)
+            FakeAniListProvider provider,
+            AnimeMetadataService metadata)
         {
             TempRoot = tempRoot;
             Db = db;
             Root = root;
             Scanner = scanner;
             Provider = provider;
+            Metadata = metadata;
         }
 
         public string TempRoot { get; }
@@ -220,6 +293,7 @@ public sealed class NfoLibraryScanTests
         public LibraryRoot Root { get; }
         public LibraryScanner Scanner { get; }
         public FakeAniListProvider Provider { get; }
+        public AnimeMetadataService Metadata { get; }
 
         public static async Task<NfoScanFixture> CreateAsync()
         {
@@ -288,7 +362,7 @@ public sealed class NfoLibraryScanTests
                 NullLogger<LibraryScanner>.Instance,
                 metadata);
 
-            return new NfoScanFixture(tempRoot, db, root, scanner, provider);
+            return new NfoScanFixture(tempRoot, db, root, scanner, provider, metadata);
         }
 
         public string AddMedia(params string[] relativeParts)
@@ -333,7 +407,7 @@ public sealed class NfoLibraryScanTests
         public List<string> Requested { get; } = [];
         public List<string> Searches { get; } = [];
 
-        public void Add(string externalId, string title) =>
+        public void Add(string externalId, string title, int? episodeCount = 28) =>
             entries[externalId] = new AnimeMetadataCandidate(
                 AniListMetadataProvider.ProviderKey,
                 externalId,
@@ -348,7 +422,7 @@ public sealed class NfoLibraryScanTests
                 "FINISHED",
                 "FALL",
                 2023,
-                28,
+                episodeCount,
                 24);
 
         public Task<IReadOnlyList<AnimeMetadataCandidate>> SearchAsync(

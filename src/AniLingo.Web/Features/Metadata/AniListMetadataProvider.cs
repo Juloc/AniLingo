@@ -75,6 +75,25 @@ public sealed class AniListMetadataProvider(
         }
         """;
 
+    private const string ByMalIdQuery = """
+        query ($idMal: Int!) {
+          Media(idMal: $idMal, type: ANIME) {
+            id
+            title { romaji english native }
+            description(asHtml: false)
+            coverImage { extraLarge large }
+            bannerImage
+            format
+            status
+            season
+            seasonYear
+            episodes
+            duration
+            isAdult
+          }
+        }
+        """;
+
     private const string SequenceQuery = """
         query ($id: Int!) {
           Media(id: $id, type: ANIME) {
@@ -170,6 +189,24 @@ public sealed class AniListMetadataProvider(
         var response = await SendAsync(
             ByIdQuery,
             new { id },
+            cancellationToken);
+
+        return ParseMediaResponse(response);
+    }
+
+    // Looks an AniList entry up by its MyAnimeList ID, for a local NFO that only carries a MAL ID.
+    public async Task<AnimeMetadataCandidate?> GetByMalIdAsync(
+        string malId,
+        CancellationToken cancellationToken)
+    {
+        if (!int.TryParse(malId, out var idMal) || idMal <= 0)
+        {
+            return null;
+        }
+
+        var response = await SendAsync(
+            ByMalIdQuery,
+            new { idMal },
             cancellationToken);
 
         return ParseMediaResponse(response);

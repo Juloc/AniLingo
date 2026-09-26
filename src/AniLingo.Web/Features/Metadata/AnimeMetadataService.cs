@@ -438,6 +438,147 @@ public sealed class AnimeMetadataService(
         return decision;
     }
 
+    // Applies a local tvshow.nfo/episode NFO provider ID for a newly discovered anime that has no
+    // metadata match yet. An AniList ID is used directly; a MyAnimeList ID is resolved to AniList
+    // first (Jellyfin/Kodi NFOs commonly carry MAL rather than AniList IDs). Both paths only ever
+    // touch an anime that has no existing match, and a lookup failure falls through to the
+    // caller's normal automatic title matching instead of throwing.
+    public async Task<AnimeMetadataMatchResult> MatchNfoProviderIdsAsync(
+        Guid animeId,
+        string? aniListId,
+        string? myAnimeListId,
+        CancellationToken cancellationToken)
+    {
+        if (await GetAsync(animeId, cancellationToken) is not null)
+        {
+            return new AnimeMetadataMatchResult(
+                false,
+                "Anime already has an explicit metadata match.");
+        }
+
+        if (aniListId is not null)
+        {
+            return await MatchAsync(
+                animeId,
+                AniListMetadataProvider.ProviderKey,
+                aniListId,
+                cancellationToken);
+        }
+
+        if (myAnimeListId is null)
+        {
+            return new AnimeMetadataMatchResult(
+                false,
+                "The local NFO carries no AniList or MyAnimeList ID.");
+        }
+
+        var aniListProvider = providers.OfType<AniListMetadataProvider>().FirstOrDefault();
+        if (aniListProvider is null)
+        {
+            return new AnimeMetadataMatchResult(
+                false,
+                "The AniList metadata provider is not available.");
+        }
+
+        AnimeMetadataCandidate? candidate;
+        try
+        {
+            candidate = await aniListProvider.GetByMalIdAsync(myAnimeListId, cancellationToken);
+        }
+        catch (MetadataProviderException exception)
+        {
+            return new AnimeMetadataMatchResult(false, exception.Message);
+        }
+
+        if (candidate is null)
+        {
+            return new AnimeMetadataMatchResult(
+                false,
+                "No AniList entry was found for the local MyAnimeList ID.");
+        }
+
+        return await MatchAsync(
+            animeId,
+            candidate.Provider,
+            candidate.ExternalId,
+            cancellationToken);
+    }
+
+    // A season.nfo AniList ID (as written by the Jellyfin AniList plugin) feeds the existing
+    // episode-range mapping flow for that one local season, but only when the season has no
+    // manual or automatic mapping yet: a mapping already present is left untouched rather than
+    // silently replaced. A season that cannot be mapped automatically (an unknown AniList entry,
+    // a concurrent mapping change) becomes a mapping review task instead of being dropped.
+    public async Task<AnimeMetadataMatchResult> MatchSeasonAniListIdAsync(
+        Guid animeId,
+        int seasonNumber,
+        string aniListId,
+        CancellationToken cancellationToken)
+    {
+        var existingMappings = await aniListStore.LoadEpisodeMappingsAsync(
+            animeId,
+            cancellationToken);
+        if (existingMappings.Any(x => x.SeasonNumber == seasonNumber))
+        {
+            return new AnimeMetadataMatchResult(
+                false,
+                $"Season {seasonNumber} already has an episode mapping.");
+        }
+
+        var localSeasonNumbers = await db.Episodes
+            .AsNoTracking()
+            .Where(x => x.AnimeId == animeId && x.SeasonNumber == seasonNumber)
+            .OrderBy(x => x.Number)
+            .Select(x => x.Number)
+            .ToListAsync(cancellationToken);
+
+        if (localSeasonNumbers.Count == 0)
+        {
+            return new AnimeMetadataMatchResult(
+                false,
+                $"Local season {seasonNumber} was not found.");
+        }
+
+        AnimeMetadataMatchResult result;
+        try
+        {
+            result = await MatchEpisodeRangeAsync(
+                animeId,
+                seasonNumber,
+                localSeasonNumbers[0],
+                null,
+                1,
+                AniListMetadataProvider.ProviderKey,
+                aniListId,
+                cancellationToken);
+        }
+        catch (MetadataProviderException exception)
+        {
+            result = new AnimeMetadataMatchResult(false, exception.Message);
+        }
+
+        if (!result.Success)
+        {
+            var localTitle = await db.Anime
+                .AsNoTracking()
+                .Where(x => x.Id == animeId)
+                .Select(x => x.Title)
+                .SingleOrDefaultAsync(cancellationToken)
+                ?? animeId.ToString();
+
+            await reviewStore.UpsertAsync(
+                "anime",
+                animeId.ToString(),
+                localTitle,
+                $"episode-ranges:season-{seasonNumber}",
+                $"The season.nfo AniList ID for season {seasonNumber} could not be applied automatically: {result.Error}",
+                [],
+                cancellationToken);
+        }
+
+        return result;
+    }
+
     public async Task<AnimeMetadataMatchResult> MatchEpisodeRangeAsync(
         Guid animeId,
         int seasonNumber,

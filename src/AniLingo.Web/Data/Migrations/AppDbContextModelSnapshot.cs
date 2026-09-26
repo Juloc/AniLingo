@@ -585,6 +585,59 @@ namespace AniLingo.Web.Data.Migrations
                     b.ToTable("Anime");
                 });
 
+            modelBuilder.Entity("AniLingo.Web.Features.Library.AnimeLocalMetadata", b =>
+                {
+                    b.Property<Guid>("AnimeId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ImdbId")
+                        .HasMaxLength(12)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MyAnimeListId")
+                        .HasMaxLength(10)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("OriginalTitle")
+                        .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Plot")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateOnly?>("Premiered")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("SourceFileLastWriteTimeUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("SourceFileSizeBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("TmdbId")
+                        .HasMaxLength(10)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TvdbId")
+                        .HasMaxLength(10)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("Year")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("AnimeId");
+
+                    b.ToTable("AnimeLocalMetadata");
+                });
+
             modelBuilder.Entity("AniLingo.Web.Features.Library.Episode", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1415,6 +1468,15 @@ namespace AniLingo.Web.Data.Migrations
                     b.HasOne("AniLingo.Web.Features.Library.Anime", null)
                         .WithOne()
                         .HasForeignKey("AniLingo.Web.Features.Metadata.AnimeMetadata", "AnimeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("AniLingo.Web.Features.Library.AnimeLocalMetadata", b =>
+                {
+                    b.HasOne("AniLingo.Web.Features.Library.Anime", null)
+                        .WithOne()
+                        .HasForeignKey("AniLingo.Web.Features.Library.AnimeLocalMetadata", "AnimeId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
