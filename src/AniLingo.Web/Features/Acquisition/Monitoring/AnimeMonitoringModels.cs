@@ -34,14 +34,21 @@ public sealed record AnimeEpisodeKey(
 }
 
 // IndexerIds restricts automatic and interactive Prowlarr searches for this anime to the given
-// Prowlarr indexer ids; null or empty uses the global Prowlarr indexer selection.
+// Prowlarr indexer ids; null or empty uses the global Prowlarr indexer selection. TagIds are the
+// anime's assigned acquisition tags (AcquisitionPolicyStore is the tag catalog); delay profiles and
+// indexer restrictions can target them. TargetRootId is the library root new imports go to when the
+// anime has no folder yet; null defaults to the anime's current root (or the first enabled root).
+// Both TagIds and TargetRootId are anime-keyed data that already rides along whenever
+// AnimeMonitoringEngine.RekeyAnime moves this record to a new anime key after a series-folder rename.
 public sealed record AnimeMonitorSettings(
     string AnimeKey,
     bool Monitored,
     bool SearchOnAdd,
     Dictionary<int, bool> SeasonOverrides,
     Dictionary<string, bool> EpisodeOverrides,
-    int[]? IndexerIds = null);
+    int[]? IndexerIds = null,
+    string[]? TagIds = null,
+    Guid? TargetRootId = null);
 
 // The one scheduler setting for periodic monitoring runs.
 public sealed record AnimeMonitoringSchedule(
@@ -73,10 +80,13 @@ public sealed record AnimeSearchRequest(
     AnimeWantedReason Reason,
     AnimeSearchTrigger Trigger);
 
+// DelayedUntilUtc is set only when a delay profile (P1 item 4) is holding back an otherwise
+// accepted candidate; it is null for every ordinary accept/reject decision.
 public sealed record AnimeAutoGrabDecision(
     bool Grab,
     string Reason,
-    AnimeReleaseScoreResult Candidate);
+    AnimeReleaseScoreResult Candidate,
+    DateTimeOffset? DelayedUntilUtc = null);
 
 public sealed record AnimeAcquisitionAttempt(
     AnimeEpisodeKey Key,
