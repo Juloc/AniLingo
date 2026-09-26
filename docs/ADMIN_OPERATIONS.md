@@ -114,6 +114,17 @@ A folder scan run reconciles each of its folders through `LibraryScanner.ScanFol
 
 Each root has one **Periodic reconciliation** interval (`LibraryRoots.ReconciliationIntervalMinutes`, default 30, `0` turns it off, edited on `/Admin/System`). A full scan of the root is queued when the last completed full scan and the last periodic attempt are both older than the interval. An unavailable root is skipped without creating an operation and is not retried before the next interval, so an offline NAS does not fill the history.
 
+## Local-first page loads
+
+An ordinary page GET renders from SQLite and local files only. It must not contact AniList, OpenLibrary, Gutendex, Jimaku, Codex, Prowlarr, SABnzbd or Sonarr, and must not start ffprobe, ffmpeg or Whisper, import files or run a library scan just because the page was opened.
+
+- Optional remote state loads after first paint from a lazy page handler that sends `Cache-Control: no-store` and degrades to an "unavailable" state instead of failing the page. The AniList progress card (`_ExternalProgress` / `OnGetExternalProgressAsync`) on Anime, Episode, Manga series and Novel work pages is the reference pattern. The Manga and Novel readers do not load remote progress at all; it lives on the series/work page.
+- Discover renders its shell locally; trending, top, My AniList and search results come from its `Results` handler, whose external lookup is the explicit purpose of that request.
+- Explicit Search, Refresh, Sync, Import, Scan, Prepare and Translate actions do their intended external or heavy work, through `OperationRunner` or the queues described above.
+- `LocalFirstPageGetTests` runs page GETs with external clients that fail when called. Add a case there when a page gains a new dependency on a remote service.
+
+To measure page timings temporarily, set the log level `Logging:LogLevel:Microsoft.AspNetCore.Hosting.Diagnostics` to `Information` (environment variable `Logging__LogLevel__Microsoft.AspNetCore.Hosting.Diagnostics`); ASP.NET Core then logs every request with its elapsed time. Leave it at the default `Warning` otherwise.
+
 ## Media inventory
 
 `MediaAnalyses` / `MediaAnalysisStreams` are the canonical technical analysis of each `MediaFiles` row and are owned by `MediaInventoryService`. Library reconciliation, playback, the client API and embedded subtitle/Whisper stream selection read them; `FfprobeMediaProbeRunner` is the only code that invokes `ffprobe`.

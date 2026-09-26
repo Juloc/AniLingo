@@ -693,23 +693,6 @@ public sealed partial class AniListAccountService(
             mediaId: context.RemoteEntry?.MediaId ?? context.MediaId,
             remoteStatus: context.Preview.RemoteStatus);
 
-    public async Task<AniListReadingProgressPreview> GetMangaProgressPreviewAsync(
-        Guid seriesId,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            var context = await BuildMangaProgressContextAsync(
-                seriesId,
-                cancellationToken);
-            return context.Preview;
-        }
-        catch (AniListAccountException exception)
-        {
-            return AniListReadingProgressPreview.Blocked(exception.Message);
-        }
-    }
-
     public async Task<AniListProgressSyncResult> SyncMangaProgressAsync(
         Guid seriesId,
         CancellationToken cancellationToken)
