@@ -54,9 +54,7 @@
 
     registry.annotations = reader => {
         const { shell, clamp, normalizeText } = reader;
-        const bookmarkForm = shell.querySelector("[data-bookmark-form]");
         const highlightForm = shell.querySelector("[data-highlight-form]");
-        const removeBookmarkEndpoint = shell.querySelector("[data-remove-bookmark-endpoint]");
         const removeHighlightEndpoint = shell.querySelector("[data-remove-highlight-endpoint]");
         const bookmarkLabelEndpoint = shell.querySelector("[data-bookmark-label-endpoint]");
         const highlightNoteEndpoint = shell.querySelector("[data-highlight-note-endpoint]");
@@ -76,6 +74,15 @@
         const searchNotesUrl = shell.dataset.searchNotesUrl || "";
         const adjacentBookmarkUrl = shell.dataset.adjacentBookmarkUrl || "";
         const chapterId = shell.dataset.chapterId || "";
+        const workId = shell.dataset.workId || "";
+        // Bookmark add/remove/rename always go through the offline-first sync
+        // queue (#221 part 2), online and offline alike — see
+        // offline-library-repository.js and docs/OFFLINE_LIBRARY.md. Highlights
+        // are not part of the offline sync contract and keep using their
+        // existing endpoints below unchanged.
+        const repository = workId && window.AniLingoOfflineLibraryRepository
+            ? window.AniLingoOfflineLibraryRepository.forWork(workId)
+            : null;
 
         // Heading shown on every bookmark/highlight note card for the current
         // chapter, matching the label the server attaches to other chapters'
@@ -481,11 +488,9 @@
         };
 
         const removeBookmark = async bookmarkId => {
-            if (!removeBookmarkEndpoint || !bookmarkId) return false;
+            if (!repository || !bookmarkId) return false;
             try {
-                await reader.postForm(removeBookmarkEndpoint, data => {
-                    data.set("bookmarkId", bookmarkId);
-                });
+                await repository.queueBookmarkRemove(bookmarkId, { chapterId });
                 removeBookmarkUi(bookmarkId);
                 reader.showToast("Lesezeichen entfernt");
                 return true;
@@ -511,19 +516,23 @@
         };
 
         const saveBookmark = async () => {
-            if (!bookmarkForm) return;
+            if (!repository) return;
 
             const anchor = reader.position.currentAnchor();
             const position = reader.position.positionPermille();
+            const paragraph = anchor.paragraphIndex == null
+                ? null
+                : reader.paragraphAt(anchor.language, anchor.paragraphIndex);
             try {
-                const saved = await reader.postForm(bookmarkForm, data => {
-                    data.set("positionPermille", String(position));
-                    data.set("language", anchor.language);
-                    data.set(
-                        "paragraphIndex",
-                        anchor.paragraphIndex == null ? "" : String(anchor.paragraphIndex));
-                    data.set("characterOffset", String(anchor.characterOffset));
-                    data.set("label", "");
+                const engine = window.AniLingoOfflineLibraryRepository;
+                const saved = await repository.queueBookmarkUpsert({
+                    chapterId,
+                    positionPermille: position,
+                    language: anchor.language,
+                    paragraphIndex: anchor.paragraphIndex,
+                    characterOffset: anchor.characterOffset,
+                    anchorText: engine.createAnchorText(paragraph?.textContent),
+                    label: ""
                 });
 
                 if (!saved?.id) throw new Error("Lesezeichen konnte nicht gespeichert werden");
@@ -726,7 +735,6 @@
         // ---- edit (rename bookmark / edit highlight note) ------------------
 
         const editBookmarkLabel = async button => {
-            if (!bookmarkLabelEndpoint) return;
             const bookmarkId = button.dataset.bookmarkId || button.dataset.noteId;
             const card = button.closest("article");
             if (!bookmarkId || !card) return;
@@ -737,11 +745,39 @@
             const nextLabel = answer.trim();
             if (nextLabel === currentLabel) return;
 
+            // A bookmark of the currently open chapter has every field
+            // available locally, so its rename can go through the
+            // offline-first queue like add/remove. A bookmark from another
+            // chapter (renamed from the "other chapters"/search list) only
+            // has its label/position cached in the DOM here; renaming that
+            // one keeps using the existing endpoint's targeted field update
+            // (it already requires network to have loaded that list at all).
+            const known = chapterBookmarks.get(bookmarkId);
+
             try {
-                const saved = await reader.postForm(bookmarkLabelEndpoint, data => {
-                    data.set("bookmarkId", bookmarkId);
-                    data.set("label", nextLabel);
-                });
+                let saved;
+                if (known && repository) {
+                    saved = await repository.queueBookmarkUpsert({
+                        bookmarkId,
+                        chapterId: known.chapterId || chapterId,
+                        positionPermille: known.positionPermille,
+                        language: known.language,
+                        paragraphIndex: known.paragraphIndex,
+                        characterOffset: known.characterOffset,
+                        anchorText: known.anchorText,
+                        style: known.style,
+                        color: known.color,
+                        label: nextLabel
+                    });
+                } else if (bookmarkLabelEndpoint) {
+                    saved = await reader.postForm(bookmarkLabelEndpoint, data => {
+                        data.set("bookmarkId", bookmarkId);
+                        data.set("label", nextLabel);
+                    });
+                } else {
+                    return;
+                }
+
                 const label = saved?.label ?? nextLabel;
                 const position = Number(card.dataset.positionPermille || 0);
                 const displayTitle = label || `Lesezeichen · ${Math.round(position / 10)}%`;
@@ -752,7 +788,6 @@
                     if (strong) strong.textContent = displayTitle;
                 });
 
-                const known = chapterBookmarks.get(bookmarkId);
                 if (known) {
                     known.label = label;
                     chapterBookmarks.set(bookmarkId, known);
@@ -798,16 +833,20 @@
         // ---- bookmark selection & previous/next bookmark navigation --------
 
         const saveBookmarkAtSelection = async () => {
-            if (!bookmarkForm || !pendingSelection) return;
+            if (!repository || !pendingSelection) return;
             const selected = { ...pendingSelection };
 
             try {
-                const saved = await reader.postForm(bookmarkForm, data => {
-                    data.set("positionPermille", String(reader.position.positionPermille()));
-                    data.set("language", selected.language);
-                    data.set("paragraphIndex", String(selected.paragraphIndex));
-                    data.set("characterOffset", String(selected.startOffset));
-                    data.set("label", "");
+                const engine = window.AniLingoOfflineLibraryRepository;
+                const paragraph = reader.paragraphAt(selected.language, selected.paragraphIndex);
+                const saved = await repository.queueBookmarkUpsert({
+                    chapterId,
+                    positionPermille: reader.position.positionPermille(),
+                    language: selected.language,
+                    paragraphIndex: selected.paragraphIndex,
+                    characterOffset: selected.startOffset,
+                    anchorText: engine.createAnchorText(paragraph?.textContent),
+                    label: ""
                 });
 
                 if (!saved?.id) throw new Error("Lesezeichen konnte nicht gespeichert werden");

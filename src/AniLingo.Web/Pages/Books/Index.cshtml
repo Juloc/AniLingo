@@ -60,42 +60,51 @@
     }
     else
     {
-        <div class="books-grid">
-            @foreach (var book in Model.Library)
-            {
-                <a class="book-card"
-                   href="/Books/Library/@book.WorkId?lang=@Model.TargetLanguage">
-                    <div class="book-cover">
-                        @if (!string.IsNullOrWhiteSpace(book.CoverImageUrl))
-                        {
-                            <img src="@book.CoverImageUrl"
-                                 alt=""
-                                 loading="lazy"
-                                 referrerpolicy="no-referrer" />
-                        }
-                        else
-                        {
-                            <span>B</span>
-                        }
-                    </div>
-                    <div class="book-card-copy">
-                        <strong>@book.Title</strong>
-                        @if (!string.IsNullOrWhiteSpace(book.Author))
-                        {
-                            <span>@book.Author</span>
-                        }
-                        <small>
-                            @ui.Format("books.index.chapterSummary", ("count", book.ChapterCount), ("translated", book.TranslatedChapterCount))
-                        </small>
-                        @if (book.ProgressPermille > 0)
-                        {
-                            <div class="book-card-progress">
-                                <span style="width:@(book.ProgressPermille / 10)%"></span>
-                            </div>
-                        }
-                    </div>
-                </a>
-            }
+        @* Offline is purely client-side, browser-local state (#221): the filter only shows/hides
+           already-rendered cards, it never asks the server what is downloaded on this device. *@
+        <div data-offline-library-filter>
+            <div class="books-library-filter" role="group" aria-label="@ui["offlineLibrary.library.filterAll"] / @ui["offlineLibrary.library.filterOffline"]">
+                <button type="button" class="active" data-library-filter-option="all">@ui["offlineLibrary.library.filterAll"]</button>
+                <button type="button" data-library-filter-option="offline">@ui["offlineLibrary.library.filterOffline"]</button>
+            </div>
+            <div class="books-grid">
+                @foreach (var book in Model.Library)
+                {
+                    <a class="book-card"
+                       data-work-id="@book.WorkId"
+                       href="/Books/Library/@book.WorkId?lang=@Model.TargetLanguage">
+                        <div class="book-cover">
+                            @if (!string.IsNullOrWhiteSpace(book.CoverImageUrl))
+                            {
+                                <img src="@book.CoverImageUrl"
+                                     alt=""
+                                     loading="lazy"
+                                     referrerpolicy="no-referrer" />
+                            }
+                            else
+                            {
+                                <span>B</span>
+                            }
+                        </div>
+                        <div class="book-card-copy">
+                            <strong>@book.Title</strong>
+                            @if (!string.IsNullOrWhiteSpace(book.Author))
+                            {
+                                <span>@book.Author</span>
+                            }
+                            <small>
+                                @ui.Format("books.index.chapterSummary", ("count", book.ChapterCount), ("translated", book.TranslatedChapterCount))
+                            </small>
+                            @if (book.ProgressPermille > 0)
+                            {
+                                <div class="book-card-progress">
+                                    <span style="width:@(book.ProgressPermille / 10)%"></span>
+                                </div>
+                            }
+                        </div>
+                    </a>
+                }
+            </div>
         </div>
     }
 </section>

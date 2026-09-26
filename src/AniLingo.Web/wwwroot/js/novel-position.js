@@ -7,6 +7,10 @@
     registry.position = reader => {
         const { shell, clamp, normalizeText } = reader;
         const progressForm = shell.querySelector("[data-progress-form]");
+        const workId = shell.dataset.workId || "";
+        const repository = workId && window.AniLingoOfflineLibraryRepository
+            ? window.AniLingoOfflineLibraryRepository.forWork(workId)
+            : null;
         const progressBar = document.querySelector("[data-reading-progress]");
         const railFill = shell.querySelector("[data-reader-rail-fill]");
         const percentOutput = shell.querySelector("[data-reader-percent]");
@@ -60,8 +64,15 @@
             if (percentOutput) percentOutput.textContent = Math.round(progress / 10) + "%";
         };
 
+        // Progress is always written through the offline-first sync queue
+        // (offline-library-repository.js), online and offline alike — one
+        // canonical write path instead of this endpoint plus a second queued
+        // one. The local queue write itself does not depend on the network,
+        // so a failed save (queue write) is effectively only possible when
+        // storage itself is unavailable; the opportunistic online drain is
+        // best-effort and retried by the next progress save or reconnect.
         const sendProgress = () => {
-            if (!progressForm || !restoreComplete) return;
+            if (!progressForm || !restoreComplete || !repository) return;
 
             const position = positionPermille();
             const anchor = currentAnchor();
@@ -75,22 +86,14 @@
             if (key === lastSentKey) return;
             lastSentKey = key;
 
-            const data = new FormData(progressForm);
-            data.set("positionPermille", String(position));
-            data.set("anchorLanguage", anchor.language);
-            data.set(
-                "anchorParagraphIndex",
-                anchor.paragraphIndex == null ? "" : String(anchor.paragraphIndex));
-            data.set("anchorOffset", String(anchor.characterOffset));
-
-            fetch(progressForm.action, {
-                method: "POST",
-                body: data,
-                credentials: "same-origin",
-                headers: { "X-Requested-With": "fetch" },
-                keepalive: true
+            repository.queueProgress({
+                chapterId: shell.dataset.chapterId,
+                positionPermille: position,
+                anchorLanguage: anchor.language,
+                anchorParagraphIndex: anchor.paragraphIndex,
+                anchorOffset: anchor.characterOffset
             }).catch(() => {
-                // A failed save is retried with the next scroll pause.
+                // A failed queue write is retried with the next scroll pause.
                 lastSentKey = "";
             });
         };

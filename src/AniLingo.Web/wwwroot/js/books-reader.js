@@ -1387,3 +1387,33 @@
     ensureParagraphMetadata(translated);
     applyHighlights();
 })();
+
+(() => {
+    // #221 part 2: while offline, following the previous/next chapter footer
+    // link to a downloaded chapter renders it locally instead of a failing
+    // full-page navigation; to an undownloaded chapter shows a clear notice.
+    // Online, this never engages and the existing full-page navigation is
+    // unchanged. Progress/bookmark writes for Books are intentionally left
+    // on their existing (online-only) endpoints; see docs/OFFLINE_LIBRARY.md
+    // for why the shared /sync endpoint is not yet safe for Books' arbitrary
+    // target-language model.
+    const root = document.querySelector("[data-book-reader]");
+    if (!root || !root.dataset.workId || !window.AniLingoOfflineLibraryRepository) return;
+
+    window.AniLingoOfflineLibraryRepository.initializeOfflineChapterNavigation({
+        shell: root,
+        workId: root.dataset.workId,
+        linkSelector: ".book-reader-footer a[href^=\"/Books/Read/\"]",
+        contentSelector: "[data-book-reader-content]",
+        renderer: "book"
+    });
+
+    const toast = root.querySelector("[data-book-toast]");
+    root.addEventListener("anilingo:offline-chapter-missing", () => {
+        if (!toast) return;
+        toast.textContent = "This chapter has not been downloaded for offline reading.";
+        toast.hidden = false;
+        window.clearTimeout(toast._offlineMissingTimer);
+        toast._offlineMissingTimer = window.setTimeout(() => { toast.hidden = true; }, 2200);
+    });
+})();

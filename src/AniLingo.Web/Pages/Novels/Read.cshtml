@@ -20,6 +20,7 @@
     @if (Model.Chapter.HasContent)
     {
         @* Novel modules register themselves; novel-reader.js is the single bootstrap. *@
+        <script src="~/js/offline-library-repository.js" asp-append-version="true"></script>
         <script src="~/js/novel-position.js" asp-append-version="true"></script>
         <script src="~/js/novel-annotations.js" asp-append-version="true"></script>
         <script src="~/js/novel-chapter-drawer.js" asp-append-version="true"></script>

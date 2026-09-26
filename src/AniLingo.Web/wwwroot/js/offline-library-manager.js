@@ -238,6 +238,32 @@
 
     const listBooks = () => store.listManifests();
 
+    /**
+     * Resolves whether a chapter has a verified local copy and, if so, its
+     * stored payload. Consulted by the reader repository
+     * (offline-library-repository.js, #221 part 2) to serve chapter content
+     * local-first: "available" mirrors the exact finalization rule used by
+     * the download manager itself (hash match against the manifest's current
+     * ref, not merely "a payload happens to exist locally").
+     */
+    const loadLocalChapter = async (targetWorkId, chapterId) => {
+        const record = await store.getManifest(targetWorkId);
+        const ref = record?.manifest?.chapters?.find((c) => c.chapterId === chapterId);
+        if (!ref) return { available: false, payload: null };
+
+        const verified = await store.listVerified(targetWorkId);
+        const match = verified.find((v) => v.chapterId === chapterId && v.hash === ref.hash);
+        if (!match) return { available: false, payload: null };
+
+        const payload = await store.loadChapterPayload(targetWorkId, chapterId);
+        if (!payload || payload.hash !== ref.hash) return { available: false, payload: null };
+
+        return { available: true, payload };
+    };
+
+    /** Raw pending reading-state events, for reconciling optimistic UI after a reload before the queue drains. */
+    const listPendingSyncEvents = () => store.listSyncQueue();
+
     const storageUsage = async () => {
       const manifests = await store.listManifests();
       const books = await Promise.all(manifests.map(async (m) => ({
@@ -295,6 +321,8 @@
       removeChapter,
       removeBook,
       listBooks,
+      loadLocalChapter,
+      listPendingSyncEvents,
       storageUsage,
       queueSyncEvent,
       drainSyncQueue,
@@ -302,5 +330,18 @@
     });
   };
 
-  window.AniLingoOfflineLibraryManager = Object.freeze({ createManager });
+  // One manager per profile per page: every consumer (the "Save offline"
+  // action, Settings → Offline, the global download indicator and the
+  // reader repository, #221 part 2) shares the same IndexedDB/OPFS handle
+  // and Wi-Fi-only/queue state instead of each opening its own.
+  let sharedManagerPromise = null;
+  const getSharedManager = () => {
+    sharedManagerPromise ??= createManager().catch((error) => {
+      sharedManagerPromise = null;
+      throw error;
+    });
+    return sharedManagerPromise;
+  };
+
+  window.AniLingoOfflineLibraryManager = Object.freeze({ createManager, getSharedManager });
 })();
