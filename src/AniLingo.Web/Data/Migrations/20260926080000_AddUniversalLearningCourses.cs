@@ -12,7 +12,7 @@ namespace AniLingo.Web.Data.Migrations;
 /// migration; <see cref="RetireLegacyLearningState"/> then drops the legacy tables.
 /// </summary>
 [DbContext(typeof(AppDbContext))]
-[Migration("20260925203500_AddUniversalLearningCourses")]
+[Migration("20260926080000_AddUniversalLearningCourses")]
 public sealed class AddUniversalLearningCourses : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)

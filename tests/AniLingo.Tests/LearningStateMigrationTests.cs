@@ -11,7 +11,7 @@ namespace AniLingo.Tests;
 
 /// <summary>
 /// One-time conversion of the legacy Term/UserTerm/Review learning state into
-/// directional Learning cards at the 20260925204500_RetireLegacyLearningState boundary.
+/// directional Learning cards at the 20260926080500_RetireLegacyLearningState boundary.
 /// </summary>
 [TestClass]
 public sealed class LearningStateMigrationTests

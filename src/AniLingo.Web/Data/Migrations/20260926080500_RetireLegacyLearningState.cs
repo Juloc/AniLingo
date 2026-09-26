@@ -13,7 +13,7 @@ namespace AniLingo.Web.Data.Migrations;
 /// learning progress.
 /// </summary>
 [DbContext(typeof(AppDbContext))]
-[Migration("20260925204500_RetireLegacyLearningState")]
+[Migration("20260926080500_RetireLegacyLearningState")]
 public sealed class RetireLegacyLearningState : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)

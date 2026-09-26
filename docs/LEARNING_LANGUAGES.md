@@ -71,8 +71,8 @@ The native client API `/api/client/v1` keeps its term-based contracts: term deta
 
 Databases created before this change stored learning state in `UserTerms`/`Reviews` keyed to `Terms`. The upgrade converts it exactly once at a migration boundary:
 
-1. `20260925203500_AddUniversalLearningCourses` creates the Learning tables.
-2. While `20260925204500_RetireLegacyLearningState` is still pending, `DatabaseMigrationBridge` migrates up to step 1 and copies the legacy state in one transaction with deterministic IDs (card = UserTerm ID, unit = Term ID, review = Review ID), so an interrupted upgrade can be retried.
+1. `20260926080000_AddUniversalLearningCourses` creates the Learning tables.
+2. While `20260926080500_RetireLegacyLearningState` is still pending, `DatabaseMigrationBridge` migrates up to step 1 and copies the legacy state in one transaction with deterministic IDs (card = UserTerm ID, unit = Term ID, review = Review ID), so an interrupted upgrade can be retried.
 3. `RetireLegacyLearningState` drops `UserTerms` and `Reviews`. It refuses to run (and rolls back) if any UserTerm was not converted, so applying migrations without the bridge can never discard progress.
 
 Mapping:

@@ -12,8 +12,8 @@ namespace AniLingo.Web.Data;
 public static class DatabaseMigrationBridge
 {
     public const string Epoch2BaselineMigration = "20260922153000_InitialEpoch2Schema";
-    public const string UniversalLearningCoursesMigration = "20260925203500_AddUniversalLearningCourses";
-    public const string RetireLegacyLearningStateMigration = "20260925204500_RetireLegacyLearningState";
+    public const string UniversalLearningCoursesMigration = "20260926080000_AddUniversalLearningCourses";
+    public const string RetireLegacyLearningStateMigration = "20260926080500_RetireLegacyLearningState";
     private const string ProductVersion = "10.0.12";
     private const string MigrationLockTable = "__EFMigrationsLock";
     private static readonly TimeSpan StaleMigrationLockAge = TimeSpan.FromMinutes(2);

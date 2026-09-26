@@ -7,4 +7,4 @@ introducedIn: null
 minimumSupportedVersion: null
 bridgeVersion: null
 
-reason: "Epoch 3 establishes the EF Core migration baseline and provider-neutral metadata persistence. Epoch 2 SQLite databases are bridged in place after their expected core tables are verified. Legacy UserTerms/Reviews learning state is converted once into Learning cards at migration 20260925204500_RetireLegacyLearningState, which then drops the legacy tables; the conversion stays inside the supported epoch 2+ upgrade path."
+reason: "Epoch 3 establishes the EF Core migration baseline and provider-neutral metadata persistence. Epoch 2 SQLite databases are bridged in place after their expected core tables are verified. Legacy UserTerms/Reviews learning state is converted once into Learning cards at migration 20260926080500_RetireLegacyLearningState, which then drops the legacy tables; the conversion stays inside the supported epoch 2+ upgrade path."
