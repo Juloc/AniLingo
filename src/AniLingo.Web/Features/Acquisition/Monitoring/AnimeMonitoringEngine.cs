@@ -102,6 +102,36 @@ public static class AnimeMonitoringEngine
         };
     }
 
+    // Same as RefreshWanted, but only the wanted entries of one anime are recomputed; entries of
+    // other anime are kept untouched so single-anime runs never clear them.
+    public static AnimeMonitoringState RefreshWantedForAnime(
+        AnimeMonitoringState state,
+        string animeKey,
+        IEnumerable<AnimeEpisodeInventory> inventory,
+        AnimeQualityProfile profile,
+        DateTimeOffset now)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(animeKey);
+
+        var others = state.Wanted
+            .Where(pair => !pair.Value.Key.AnimeKey.Equals(animeKey, StringComparison.OrdinalIgnoreCase))
+            .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
+        var scoped = state with
+        {
+            Wanted = state.Wanted
+                .Where(pair => pair.Value.Key.AnimeKey.Equals(animeKey, StringComparison.OrdinalIgnoreCase))
+                .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase)
+        };
+
+        var refreshed = RefreshWanted(scoped, inventory, profile, now);
+        foreach (var pair in refreshed.Wanted)
+        {
+            others[pair.Key] = pair.Value;
+        }
+
+        return refreshed with { Wanted = others };
+    }
+
     public static IReadOnlyList<AnimeSearchRequest> PlanSearches(
         AnimeMonitoringState state,
         IEnumerable<AnimeWantedEpisode> wanted,

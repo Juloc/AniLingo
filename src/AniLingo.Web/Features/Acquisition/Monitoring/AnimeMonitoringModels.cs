@@ -33,12 +33,29 @@ public sealed record AnimeEpisodeKey(
     public override string ToString() => $"{AnimeKey}:S{SeasonNumber:00}E{EpisodeNumber:00}";
 }
 
+// IndexerIds restricts automatic and interactive Prowlarr searches for this anime to the given
+// Prowlarr indexer ids; null or empty uses the global Prowlarr indexer selection.
 public sealed record AnimeMonitorSettings(
     string AnimeKey,
     bool Monitored,
     bool SearchOnAdd,
     Dictionary<int, bool> SeasonOverrides,
-    Dictionary<string, bool> EpisodeOverrides);
+    Dictionary<string, bool> EpisodeOverrides,
+    int[]? IndexerIds = null);
+
+// The one scheduler setting for periodic monitoring runs.
+public sealed record AnimeMonitoringSchedule(
+    bool Enabled,
+    int IntervalMinutes)
+{
+    public const int MinimumIntervalMinutes = 5;
+    public const int MaximumIntervalMinutes = 24 * 60;
+
+    public static AnimeMonitoringSchedule Default { get; } = new(true, 30);
+
+    public TimeSpan Interval =>
+        TimeSpan.FromMinutes(Math.Clamp(IntervalMinutes, MinimumIntervalMinutes, MaximumIntervalMinutes));
+}
 
 public sealed record AnimeEpisodeInventory(
     AnimeEpisodeKey Key,
@@ -82,6 +99,8 @@ public sealed record AnimeMonitoringState(
     Dictionary<string, AnimeAcquisitionAttempt> Attempts,
     List<AnimeMonitoringHistoryEntry> History)
 {
+    public AnimeMonitoringSchedule Schedule { get; init; } = AnimeMonitoringSchedule.Default;
+
     public static AnimeMonitoringState Empty() =>
         new(
             1,
