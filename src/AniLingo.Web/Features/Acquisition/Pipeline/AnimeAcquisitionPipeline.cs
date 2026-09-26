@@ -125,13 +125,22 @@ public sealed class AnimeAcquisitionPipeline(
                 continue;
             }
 
+            if (SonarrParallelSafety.GetMode(snapshot.State, key) == AnimeManagementMode.ReadOnlyCoexistence)
+            {
+                notes.Add($"{target.Anime.Title}: read-only Sonarr coexistence; choose parallel acquisition or AniLingo-managed under Sonarr migration to search.");
+                continue;
+            }
+
             var wanted = state.Wanted.Values
                 .Where(item => item.Key.AnimeKey.Equals(key, StringComparison.OrdinalIgnoreCase))
                 .OrderBy(item => item.Key.SeasonNumber)
                 .ThenBy(item => item.Key.EpisodeNumber)
                 .ToArray();
+            // An owner "Search now" ignores the failure backoff; pending/grabbed episodes are
+            // still skipped so a manual run never grabs twice.
+            var planAt = trigger == AnimeSearchTrigger.Manual ? DateTimeOffset.MaxValue : now;
             var requests = AnimeMonitoringEngine
-                .PlanSearches(state, wanted, trigger, now)
+                .PlanSearches(state, wanted, trigger, planAt)
                 .Take(Math.Min(MaxSearchesPerAnimePerRun, MaxSearchesPerRun - searches))
                 .ToArray();
 
@@ -309,6 +318,11 @@ public sealed class AnimeAcquisitionPipeline(
             return new(false, "This release is already pending or was already grabbed.");
         }
 
+        if (await FindOpenAcquisitionAsync(animeKey, episodes, cancellationToken) is { } open)
+        {
+            return new(false, open);
+        }
+
         var operations = new OperationStore(db);
         var operationId = await operations.CreateAsync(
             new OperationDescriptor(
@@ -354,6 +368,7 @@ public sealed class AnimeAcquisitionPipeline(
         var now = DateTimeOffset.UtcNow;
         var updates = new List<Func<AnimeMonitoringState, AnimeMonitoringState>>();
         var exhausted = new HashSet<Guid>();
+        var unregistered = new List<SabnzbdAcquisition>();
 
         foreach (var attempt in state.Attempts.Values)
         {
@@ -361,12 +376,28 @@ public sealed class AnimeAcquisitionPipeline(
             switch (attempt.Status)
             {
                 case AnimeAcquisitionAttemptStatus.Pending:
-                    updates.Add(current => AnimeMonitoringEngine.ClearAttempt(current, key, now, "Search was interrupted before a grab; it will be retried."));
+                    // The process may have stopped after SABnzbd accepted the release but before
+                    // the grab was recorded; the relation store knows, so never search again then.
+                    var started = relations.Acquisitions
+                        .Where(item =>
+                            item.LatestAttempt is not null &&
+                            item.Episodes.Any(episode => SameEpisode(episode, key)) &&
+                            item.CreatedAtUtc >= (attempt.LastAttemptAtUtc ?? DateTimeOffset.MinValue))
+                        .MaxBy(item => item.UpdatedAtUtc);
+                    if (started is null)
+                    {
+                        updates.Add(current => AnimeMonitoringEngine.ClearAttempt(current, key, now, "Search was interrupted before a grab; it will be retried."));
+                        break;
+                    }
+
+                    var recoveredKey = ReleaseKeyOf(started.LatestAttempt!.ReleaseTitle);
+                    updates.Add(current => AnimeMonitoringEngine.MarkGrabbed(current, key, recoveredKey, now));
+                    unregistered.Add(started);
                     break;
 
                 case AnimeAcquisitionAttemptStatus.Grabbed:
                     var acquisition = relations.Acquisitions
-                        .Where(item => item.Episodes.Contains(key) && item.LatestAttempt is not null)
+                        .Where(item => item.Episodes.Any(episode => SameEpisode(episode, key)) && item.LatestAttempt is not null)
                         .MaxBy(item => item.UpdatedAtUtc);
                     if (acquisition is null)
                     {
@@ -414,26 +445,112 @@ public sealed class AnimeAcquisitionPipeline(
                 cancellationToken);
         }
 
-        if (exhausted.Count > 0)
+        if (exhausted.Count > 0 || unregistered.Count > 0)
         {
             await ownershipStore.UpdateAsync(
-                current => exhausted.Aggregate(current, (accumulated, id) =>
-                    accumulated.Jobs.TryGetValue(id.ToString(), out var job) && job.Status == AcquisitionOwnershipStatus.Pending
-                        ? SonarrParallelSafety.RegisterJob(accumulated, job with { Status = AcquisitionOwnershipStatus.Failed, UpdatedAtUtc = now })
-                        : accumulated),
+                current =>
+                {
+                    var next = exhausted.Aggregate(current, (accumulated, id) =>
+                        accumulated.Jobs.TryGetValue(id.ToString(), out var job) && job.Status == AcquisitionOwnershipStatus.Pending
+                            ? SonarrParallelSafety.RegisterJob(accumulated, job with { Status = AcquisitionOwnershipStatus.Failed, UpdatedAtUtc = now })
+                            : accumulated);
+                    return unregistered.Aggregate(next, (accumulated, item) =>
+                        accumulated.Jobs.ContainsKey(item.Id.ToString())
+                            ? accumulated
+                            : SonarrParallelSafety.RegisterJob(
+                                accumulated,
+                                new AcquisitionOwnership(
+                                    item.Id.ToString(),
+                                    item.AnimeKey,
+                                    AcquisitionOwner.AniLingo,
+                                    ReleaseKeyOf(item.LatestAttempt!.ReleaseTitle),
+                                    AcquisitionOwnershipStatus.Pending,
+                                    now)));
+                },
                 cancellationToken);
         }
     }
 
-    public async Task UpdateAnimeSettingsAsync(
-        Guid animeId,
+    /// <summary>
+    /// Returns why a new grab for these episodes must not start: an earlier acquisition is still
+    /// downloading or its completed download waits for (manual) import. The acquisition relation
+    /// and Operations are the source of truth, so this also holds after a restart.
+    /// </summary>
+    public async Task<string?> FindOpenAcquisitionAsync(
         string animeKey,
+        IReadOnlyList<AnimeEpisodeKey> episodes,
+        CancellationToken cancellationToken)
+    {
+        var relations = await acquisitions.LoadAsync(cancellationToken);
+        var candidates = relations.Acquisitions
+            .Where(item =>
+                item.LatestAttempt is not null &&
+                item.AnimeKey.Equals(animeKey, StringComparison.OrdinalIgnoreCase) &&
+                item.Episodes.Any(episode => episodes.Any(key => SameEpisode(episode, key))))
+            .OrderByDescending(item => item.UpdatedAtUtc)
+            .ToArray();
+        if (candidates.Length == 0)
+        {
+            return null;
+        }
+
+        var importState = await imports.LoadAsync(cancellationToken);
+        var operations = new OperationStore(db);
+        foreach (var acquisition in candidates)
+        {
+            var attempt = acquisition.LatestAttempt!;
+            var operation = await operations.GetAsync(attempt.OperationId, cancellationToken);
+            if (operation is null)
+            {
+                continue;
+            }
+
+            if (operation.IsActive)
+            {
+                return $"'{attempt.ReleaseTitle}' is still downloading for {SabnzbdAcquisitionService.FormatEpisodes(acquisition.Episodes)}.";
+            }
+
+            if (operation.Status == OperationStatus.Succeeded)
+            {
+                var import = importState.Imports.FirstOrDefault(record => record.DownloadOperationId == operation.Id);
+                var awaitingRecovery = import is null &&
+                                       operation.FinishedAtUtc is { } finished &&
+                                       finished >= DateTime.UtcNow - AnimeImportExecutor.RecoveryWindow;
+                if (awaitingRecovery || import is { Status: AnimeImportStatus.Importing or AnimeImportStatus.ManualRequired })
+                {
+                    return $"'{attempt.ReleaseTitle}' finished downloading and waits for import.";
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Saves the per-anime acquisition settings: monitoring lives in the monitoring state and the
+    /// profile assignment in the quality profile store (the default profile is not stored as an
+    /// assignment). Returns null when the anime does not exist.
+    /// </summary>
+    public async Task<AnimeSettingsUpdate?> UpdateAnimeSettingsAsync(
+        Guid animeId,
         bool monitored,
         bool searchOnAdd,
         string? profileId,
         int[] indexerIds,
         CancellationToken cancellationToken)
     {
+        var animeKey = await db.Anime
+            .AsNoTracking()
+            .Where(item => item.Id == animeId)
+            .Select(item => item.Key)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (animeKey is null)
+        {
+            return null;
+        }
+
+        var wasMonitored = (await monitoring.LoadAsync(cancellationToken)).Anime
+            .TryGetValue(animeKey, out var previous) && previous.Monitored;
         var profileState = await profiles.LoadAsync(cancellationToken);
         await profiles.AssignAnimeAsync(
             animeId,
@@ -457,6 +574,8 @@ public sealed class AnimeAcquisitionPipeline(
                 return current with { Anime = anime };
             },
             cancellationToken);
+
+        return new AnimeSettingsUpdate(animeKey, monitored && !wasMonitored);
     }
 
     public Task UpdateScheduleAsync(
@@ -472,16 +591,25 @@ public sealed class AnimeAcquisitionPipeline(
             },
             cancellationToken);
 
-    public async Task<AnimeAcquisitionPanel> GetAnimePanelAsync(
+    public async Task<AnimeAcquisitionPanel?> GetAnimePanelAsync(
         Guid animeId,
-        string animeKey,
         CancellationToken cancellationToken)
     {
+        var animeKey = await db.Anime
+            .AsNoTracking()
+            .Where(item => item.Id == animeId)
+            .Select(item => item.Key)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (animeKey is null)
+        {
+            return null;
+        }
+
         var state = await monitoring.LoadAsync(cancellationToken);
         var profileState = await profiles.LoadAsync(cancellationToken);
         var ownership = await ownershipStore.LoadAsync(cancellationToken);
         var relations = await acquisitions.LoadAsync(cancellationToken);
-        var prowlarrConfigured = await prowlarrSettings.LoadAsync(cancellationToken) is not null;
+        var prowlarrConfigured = await IsProwlarrConfiguredAsync(cancellationToken);
 
         state.Anime.TryGetValue(animeKey, out var settings);
         var assigned = profileState.AnimeProfileAssignments.TryGetValue(animeId.ToString("D"), out var profileId)
@@ -502,6 +630,22 @@ public sealed class AnimeAcquisitionPipeline(
             active,
             lastEvent is null ? null : $"{lastEvent.AtUtc:u} · {lastEvent.Key} · {lastEvent.Event}: {lastEvent.Reason}",
             prowlarrConfigured);
+    }
+
+    // Unreadable settings (for example a lost Data Protection key) count as not configured here;
+    // the run itself reports the underlying error.
+    public async Task<bool> IsProwlarrConfiguredAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await prowlarrSettings.LoadAsync(cancellationToken) is not null;
+        }
+        catch (Exception exception) when (
+            exception is InvalidDataException or System.Security.Cryptography.CryptographicException)
+        {
+            logger.LogWarning(exception, "Prowlarr settings could not be read.");
+            return false;
+        }
     }
 
     public async Task<AnimeAcquisitionOverview> GetOverviewAsync(CancellationToken cancellationToken)
@@ -613,6 +757,17 @@ public sealed class AnimeAcquisitionPipeline(
     {
         var operations = new OperationStore(db);
         var now = DateTimeOffset.UtcNow;
+        if (await FindOpenAcquisitionAsync(target.Anime.Key, [episode.Key], cancellationToken) is { } open)
+        {
+            // The monitoring attempt was lost (for example an older state file), but a download
+            // for the episode exists: record it as grabbed instead of searching again.
+            await monitoring.UpdateAsync(
+                current => AnimeMonitoringEngine.MarkGrabbed(current, episode.Key, "existing-acquisition", now),
+                cancellationToken);
+            logger.LogInformation("Skipped the search for {Episode}: {Reason}", episode.Key, open);
+            return false;
+        }
+
         var operationId = await operations.CreateAsync(
             new OperationDescriptor(
                 SearchOperationKind,
@@ -681,6 +836,14 @@ public sealed class AnimeAcquisitionPipeline(
     {
         var operations = new OperationStore(db);
         var now = DateTimeOffset.UtcNow;
+        if (await FindOpenAcquisitionAsync(target.Anime.Key, episodes, cancellationToken) is { } open)
+        {
+            var skipped = $"Not sent to SABnzbd: {open}";
+            await operations.AppendLogAsync(operationId, OperationLogLevel.Warning, LogModule, skipped, cancellationToken);
+            await operations.MarkSucceededAsync(operationId, skipped, CancellationToken.None);
+            return null;
+        }
+
         SabnzbdAcquisitionResult result;
         try
         {
@@ -868,6 +1031,18 @@ public sealed class AnimeAcquisitionPipeline(
             ? $"S{key.SeasonNumber:00}E{key.EpisodeNumber:00} (AniList {absolute})"
             : $"S{key.SeasonNumber:00}E{key.EpisodeNumber:00}";
 
+    // The local slot identifies an episode; the absolute number is derived and may be filled
+    // in later by a mapping, so it is not part of the identity here.
+    private static bool SameEpisode(AnimeEpisodeKey left, AnimeEpisodeKey right) =>
+        left.AnimeKey.Equals(right.AnimeKey, StringComparison.OrdinalIgnoreCase) &&
+        left.SeasonNumber == right.SeasonNumber &&
+        left.EpisodeNumber == right.EpisodeNumber;
+
+    private static string ReleaseKeyOf(string releaseTitle) =>
+        AnimeReleaseParser.Parse(releaseTitle).ReleaseKey is { Length: > 0 } releaseKey
+            ? releaseKey
+            : releaseTitle;
+
     private static bool Covers(AnimeReleaseInfo release, AnimeEpisodeKey key)
     {
         if (release.SeasonNumber is { } season && release.EpisodeStart is { } start && release.EpisodeEnd is { } end)
@@ -924,6 +1099,10 @@ public sealed class AnimeAcquisitionPipeline(
         return active;
     }
 }
+
+public sealed record AnimeSettingsUpdate(
+    string AnimeKey,
+    bool StartedMonitoring);
 
 public sealed record AnimeAcquisitionPanel(
     Guid AnimeId,
