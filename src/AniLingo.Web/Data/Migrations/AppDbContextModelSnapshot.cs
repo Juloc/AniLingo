@@ -620,6 +620,9 @@ namespace AniLingo.Web.Data.Migrations
                         .HasMaxLength(2048)
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("ReconciliationIntervalMinutes")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("WakeBroadcastAddress")
                         .HasMaxLength(64)
                         .HasColumnType("TEXT");

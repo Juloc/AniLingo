@@ -35,7 +35,8 @@ public sealed record OperationDescriptor(
     bool Retryable = true,
     long? BytesTotal = null,
     string? ExternalProvider = null,
-    string? ExternalId = null)
+    string? ExternalId = null,
+    string? Details = null)
 {
     public static OperationDescriptor Background(string title = "Background task") =>
         new("background", "Task", title, Retryable: true);
@@ -73,7 +74,8 @@ public sealed record OperationSnapshot(
     DateTime CreatedAtUtc,
     DateTime? StartedAtUtc,
     DateTime? FinishedAtUtc,
-    DateTime UpdatedAtUtc)
+    DateTime UpdatedAtUtc,
+    string? Details = null)
 {
     public bool IsActive =>
         Status is OperationStatus.Queued or OperationStatus.Running;
@@ -114,7 +116,8 @@ public sealed record OperationListFilter(
     OperationStatus? Status = null,
     string? Category = null,
     string? Search = null,
-    int Limit = 100);
+    int Limit = 100,
+    string? Kind = null);
 
 public sealed record OperationLogFilter(
     OperationLogLevel? Level = null,
