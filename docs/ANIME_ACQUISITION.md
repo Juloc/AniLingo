@@ -107,7 +107,8 @@ and duplicate protection always apply.
 The existing SABnzbd monitor projects queue/history onto the download operation (progress, ETA,
 failure reason). A failed download is blocklisted and the next candidate is sent, up to 3 attempts
 (see [ADMIN_OPERATIONS.md](ADMIN_OPERATIONS.md#sabnzbd)). When all candidates are exhausted the
-episode backs off and is searched again later.
+episode backs off and is searched again later. Cancelling a download on its operation page stops it without trying
+another candidate; the episode also backs off and is searched again later unless it is unmonitored.
 
 ## Import
 

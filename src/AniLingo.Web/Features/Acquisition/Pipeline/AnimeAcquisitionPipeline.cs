@@ -426,7 +426,10 @@ public sealed class AnimeAcquisitionPipeline(
                         break;
                     }
 
-                    var canAdvance = acquisition.Attempts.Length < acquisition.MaxAttempts &&
+                    // A failed download advances to the next candidate (SABnzbd monitor); a
+                    // cancelled or interrupted one does not, so the episode backs off instead.
+                    var canAdvance = operation.Status == OperationStatus.Failed &&
+                                     acquisition.Attempts.Length < acquisition.MaxAttempts &&
                                      acquisition.PendingCandidates.Any(candidate => !relations.IsBlocked(candidate.ReleaseIdentity));
                     if (!canAdvance)
                     {
@@ -741,8 +744,7 @@ public sealed class AnimeAcquisitionPipeline(
             downloads,
             attention,
             recentImports,
-            decisions,
-            state.History.AsEnumerable().Reverse().Take(30).ToArray());
+            decisions);
     }
 
     private async Task<bool> SearchAndGrabAsync(
@@ -1149,5 +1151,4 @@ public sealed record AnimeAcquisitionOverview(
     IReadOnlyList<AnimeDownloadRow> ActiveDownloads,
     IReadOnlyList<AnimeImportRecord> ImportsNeedingAttention,
     IReadOnlyList<AnimeImportRecord> RecentImports,
-    IReadOnlyList<OperationLogEntry> RecentDecisions,
-    IReadOnlyList<AnimeMonitoringHistoryEntry> RecentHistory);
+    IReadOnlyList<OperationLogEntry> RecentDecisions);
