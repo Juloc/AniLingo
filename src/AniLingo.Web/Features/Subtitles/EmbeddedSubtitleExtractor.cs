@@ -51,11 +51,6 @@ public sealed class EmbeddedSubtitleExtractor(
         new(StringComparer.Ordinal);
     private readonly SemaphoreSlim transcriptionGate = new(1, 1);
 
-    public Task<EmbeddedSubtitleContent?> ExtractPreferredJapaneseAsync(
-        string mediaPath,
-        CancellationToken cancellationToken) =>
-        ExtractPreferredTextAsync(mediaPath, JapaneseLanguageTag, cancellationToken);
-
     /// <summary>
     /// Extracts the preferred embedded text-subtitle stream whose language tag
     /// (or, absent one, title) matches <paramref name="targetLanguageTag"/> via
@@ -235,8 +230,9 @@ public sealed class EmbeddedSubtitleExtractor(
             }
 
             var technical = await ReadTechnicalInfoAsync(fullPath, cancellationToken);
-            var audioStreamIndex = SelectPreferredJapaneseAudioStreamIndex(
-                technical?.AudioStreams ?? []);
+            var audioStreamIndex = SelectPreferredAudioStreamIndex(
+                technical?.AudioStreams ?? [],
+                JapaneseLanguageTag);
             if (audioStreamIndex is null)
             {
                 MarkAudioTranscriptionFailed(fullPath, "No audio stream was found.");
@@ -366,17 +362,16 @@ public sealed class EmbeddedSubtitleExtractor(
             .ToLowerInvariant();
     }
 
-    // Prefers a Japanese-tagged audio stream and otherwise uses the first audio stream.
-    public static int? SelectPreferredJapaneseAudioStreamIndex(
-        IEnumerable<MediaStreamInfo> audioStreams)
+    // Prefers a stream tagged for the target language and otherwise uses the first audio stream.
+    public static int? SelectPreferredAudioStreamIndex(
+        IEnumerable<MediaStreamInfo> audioStreams,
+        string targetLanguageTag)
     {
         var ordered = audioStreams.OrderBy(x => x.Index).ToArray();
-        return (ordered.FirstOrDefault(x => IsJapanese(x.Language, x.Title)) ?? ordered.FirstOrDefault())
+        return (ordered.FirstOrDefault(x => MatchesLanguage(x.Language, x.Title, targetLanguageTag))
+                ?? ordered.FirstOrDefault())
             ?.Index;
     }
-
-    public static bool IsJapanese(string? language, string? title) =>
-        MatchesLanguage(language, title, JapaneseLanguageTag);
 
     /// <summary>
     /// True when a stream's language tag (or, absent one, its free-form title)
@@ -461,10 +456,6 @@ public sealed class EmbeddedSubtitleExtractor(
         {
         }
     }
-
-    public static MediaStreamInfo? SelectPreferredJapaneseTextStream(
-        IEnumerable<MediaStreamInfo> subtitleStreams) =>
-        SelectPreferredTextStream(subtitleStreams, JapaneseLanguageTag);
 
     /// <summary>
     /// Prefers the embedded text-subtitle stream tagged (or titled) for

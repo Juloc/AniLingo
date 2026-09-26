@@ -119,7 +119,7 @@ Issue #231's remaining part (noted in PR #354) was that subtitle *acquisition* -
 
 `SubtitleLanguageAliases` (`Features/Subtitles/SubtitleLanguageAliases.cs`) maps a BCP-47 tag to the extra tokens that name it in file names and embedded-track language tags - ISO 639-1/639-2 codes and common English/native names (`ja` → `jp`/`jpn`/`japanese`/`日本語`, `de` → `deu`/`ger`/`german`/`deutsch`, `id` → `ind`/`indonesian`, `en` → `eng`/`english`, `ro` → `ron`/`rum`/`romanian`, plus entries for the other languages the sidecar locator already recognized). Extend it by adding an entry; a language without one still matches its bare tag alone. `NameTokensFor` exposes the subset safe to look for as a free-form substring of a stream title (short ISO codes are excluded - they collide with ordinary words; full names and non-ASCII scripts are kept regardless of length).
 
-`SubtitleSidecarLocator.Classify`/`FindCandidates` and `EmbeddedSubtitleExtractor.MatchesLanguage`/`SelectPreferredTextStream` both take a `targetLanguageTag` and call into this table instead of keeping their own Japanese/English/... token lists. The Japanese-specific static overloads (`SelectPreferredJapaneseTextStream`, `IsJapanese`, `ExtractPreferredJapaneseAsync`) remain as thin wrappers over the generalized ones so existing Japanese-path call sites and tests are unaffected.
+`SubtitleSidecarLocator.Classify`/`FindCandidates` and `EmbeddedSubtitleExtractor.MatchesLanguage`/`SelectPreferredTextStream`/`ExtractPreferredTextAsync` all take a `targetLanguageTag` and call into this table instead of keeping their own Japanese/English/... token lists or a parallel Japanese-named overload; every call site, including the Japanese path, passes `"ja"` explicitly.
 
 ### Untagged sidecar files
 
@@ -127,7 +127,7 @@ Japanese keeps its long-standing kana heuristic (`SubtitleImportService.Contains
 
 ### Embedded tracks
 
-`EmbeddedSubtitleExtractor.SelectPreferredTextStream`/`MatchesLanguage` prefer a track whose language tag (or, absent one, title) matches the target language over an untagged/other-language one, then a full dialogue track over forced/signs-only, the default track, and finally stream order - the same preference Japanese always used, generalized to any target language via the alias table. Whisper's local audio transcription fallback and its audio-stream selection (`SelectPreferredJapaneseAudioStreamIndex`, `TranscribeJapaneseAudioAsync`) stay Japanese-only: the bundled model and its `-l ja` invocation are not generalized, so that stage is skipped (see below) once the resolved content language is not Japanese, rather than mis-transcribing other-language audio as Japanese.
+`EmbeddedSubtitleExtractor.SelectPreferredTextStream`/`MatchesLanguage` prefer a track whose language tag (or, absent one, title) matches the target language over an untagged/other-language one, then a full dialogue track over forced/signs-only, the default track, and finally stream order - the same preference Japanese always used, generalized to any target language via the alias table. `SelectPreferredAudioStreamIndex` (used only by the Whisper fallback) is parameterized the same way, but `TranscribeJapaneseAudioAsync` always calls it with `"ja"`: the bundled Whisper model and its `-l ja` invocation are not generalized, so that stage is skipped (see below) once the resolved content language is not Japanese, rather than mis-transcribing other-language audio as Japanese.
 
 ### Jimaku and Whisper stay Japanese-only, by design
 

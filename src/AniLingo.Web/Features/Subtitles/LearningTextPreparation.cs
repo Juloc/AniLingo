@@ -79,12 +79,11 @@ public static class LearningTextFallbackPolicy
     /// <param name="jimakuConfigured">An API key is saved for Jimaku.</param>
     /// <param name="jimakuEligibleForLanguage">
     /// The resolved content language can use Jimaku. Jimaku only indexes Japanese
-    /// fansub releases, so this is false whenever the target language is not
-    /// Japanese; defaults to true so existing Japanese-only callers are unaffected.
+    /// fansub releases, so this is false whenever the target language is not Japanese.
     /// </param>
     public static IReadOnlyList<LearningTextFallbackStage> Build(
         bool jimakuConfigured,
-        bool jimakuEligibleForLanguage = true) =>
+        bool jimakuEligibleForLanguage) =>
         jimakuConfigured && jimakuEligibleForLanguage ? WithJimaku : WithoutJimaku;
 }
 

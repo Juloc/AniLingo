@@ -4,9 +4,8 @@ using AniLingo.Web.Features.Subtitles;
 namespace AniLingo.Tests;
 
 // Embedded-track preference generalized by target language: EmbeddedSubtitleExtractorTests.cs
-// keeps the Japanese-only static helpers (SelectPreferredJapaneseTextStream, IsJapanese)
-// covered unchanged; these tests cover the same selection through the generalized
-// SelectPreferredTextStream/MatchesLanguage for de and id targets.
+// covers the Japanese case through the same SelectPreferredTextStream/MatchesLanguage
+// methods (passing "ja"); these tests cover de and id targets.
 [TestClass]
 public sealed class SubtitleLanguageEmbeddedTests
 {
