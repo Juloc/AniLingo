@@ -1,8 +1,11 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Acquisition.DownloadClients;
+using AniLingo.Web.Features.Acquisition.History;
+using AniLingo.Web.Features.Acquisition.Monitoring;
 using AniLingo.Web.Features.Acquisition.Naming;
 using AniLingo.Web.Features.Acquisition.Ownership;
 using AniLingo.Web.Features.Acquisition.Pipeline;
+using AniLingo.Web.Features.Acquisition.Quality;
 using AniLingo.Web.Features.Acquisition.Sabnzbd;
 using AniLingo.Web.Features.Library;
 using AniLingo.Web.Features.Operations;
@@ -30,6 +33,10 @@ public sealed class AnimeImportExecutor(
     SonarrObservationService observation,
     AnimeAcquisitionInventory inventory,
     AnimeNamingProfileStore namingStore,
+    AnimeMonitoringStore monitoring,
+    AnimeImportSettingsStore importSettings,
+    IHardLinkCreator hardLinkCreator,
+    AcquisitionHistoryService history,
     LibraryScanner scanner,
     DownloadClientStore downloadClients,
     IReadOnlyDictionary<DownloadClientType, IDownloadClient> downloadClientImplementations,
@@ -76,6 +83,16 @@ public sealed class AnimeImportExecutor(
         if (!IsAnimeDownload(download))
         {
             return null;
+        }
+
+        // The download client may report its storage path under a different mount than AniLingo
+        // sees the same folder (#301/#302): translate it once here, at the one place every
+        // completed-download path enters the import pipeline (a fresh completion and restart
+        // recovery both call this method).
+        if (!string.IsNullOrWhiteSpace(storagePath))
+        {
+            var settings = await importSettings.LoadAsync(cancellationToken);
+            storagePath = settings.TranslatePath(storagePath);
         }
 
         var existing = await imports.FindByDownloadAsync(download.Id, cancellationToken);
@@ -244,18 +261,25 @@ public sealed class AnimeImportExecutor(
             replaced.Add(currentPath);
         }
 
+        var monitoringState = await monitoring.LoadAsync(cancellationToken);
+        var preferredRootId = monitoringState.Anime.TryGetValue(record.AnimeKey, out var monitorSettings)
+            ? monitorSettings.TargetRootId
+            : null;
+        var location = await inventory.GetLibraryLocationAsync(target.Anime.Id, cancellationToken, preferredRootId);
+        var (importAction, allowHardlinkFallback) = await ResolveImportActionAsync(location?.RootId, cancellationToken);
+
         var file = record.Files[index];
         var planned = new PlannedAnimeImport(
             new CompletedDownloadFile(file.SourcePath, file.SizeBytes),
             AnimeImportDisposition.AutoImport,
-            AnimeImportFileAction.Move,
+            importAction,
             [requested],
             file.SidecarPaths.Where(File.Exists).ToArray(),
             replaced,
             1,
-            ["Imported manually by the owner."]);
+            ["Imported manually by the owner."],
+            allowHardlinkFallback);
 
-        var location = await inventory.GetLibraryLocationAsync(target.Anime.Id, cancellationToken);
         var operationId = record.ImportOperationId;
         var executed = await ExecuteFileAsync(planned, target, location, snapshot, jobId, operationId, cancellationToken);
 
@@ -367,27 +391,39 @@ public sealed class AnimeImportExecutor(
             return recovered;
         }
 
-        var entry = (await downloadClients.LoadAllAsync(cancellationToken))
-            .Where(item => item.Type == DownloadClientType.Sabnzbd && item.Enabled)
-            .OrderBy(item => item.Priority)
-            .FirstOrDefault();
-        if (entry is null || !downloadClientImplementations.TryGetValue(entry.Type, out var client))
+        // Grouped by the download client provider that actually accepted each job (recorded on the
+        // Operation as ExternalProvider at submission time) rather than hardcoded to SABnzbd, so a
+        // completed anime download recovered here has its reported path translated through the
+        // remote path mapping (below, in ImportCompletedCoreAsync) no matter which download client
+        // — usenet (SABnzbd) or torrent (qBittorrent) — reported it.
+        var entries = await downloadClients.LoadAllAsync(cancellationToken);
+        foreach (var group in completed.GroupBy(operation => operation.ExternalProvider ?? "", StringComparer.OrdinalIgnoreCase))
         {
-            logger.LogWarning(
-                "{Count} completed anime downloads await import but no SABnzbd download client is configured.",
-                completed.Length);
-            return recovered;
-        }
+            var entry = entries
+                .Where(item => item.Enabled &&
+                    downloadClientImplementations.TryGetValue(item.Type, out var impl) &&
+                    string.Equals(impl.ProviderId, group.Key, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(item => item.Priority)
+                .FirstOrDefault();
+            if (entry is null || !downloadClientImplementations.TryGetValue(entry.Type, out var client))
+            {
+                logger.LogWarning(
+                    "{Count} completed anime downloads await import but no '{Provider}' download client is configured.",
+                    group.Count(),
+                    group.Key);
+                continue;
+            }
 
-        var statuses = await client.GetStatusAsync(
-            entry,
-            completed.Select(operation => operation.ExternalId!).ToArray(),
-            cancellationToken);
-        foreach (var operation in completed)
-        {
-            var job = statuses.FirstOrDefault(item => item.ExternalId == operation.ExternalId);
-            await ImportCompletedCoreAsync(operation, job?.StoragePath, cancellationToken);
-            recovered++;
+            var statuses = await client.GetStatusAsync(
+                entry,
+                group.Select(operation => operation.ExternalId!).ToArray(),
+                cancellationToken);
+            foreach (var operation in group)
+            {
+                var job = statuses.FirstOrDefault(item => item.ExternalId == operation.ExternalId);
+                await ImportCompletedCoreAsync(operation, job?.StoragePath, cancellationToken);
+                recovered++;
+            }
         }
 
         return recovered;
@@ -455,6 +491,12 @@ public sealed class AnimeImportExecutor(
 
         var snapshot = await observation.GetSnapshotAsync(forceRefresh: true, cancellationToken);
         var jobId = acquisition.Id.ToString();
+        var monitoringState = await monitoring.LoadAsync(cancellationToken);
+        var preferredRootId = monitoringState.Anime.TryGetValue(acquisition.AnimeKey, out var monitorSettings)
+            ? monitorSettings.TargetRootId
+            : null;
+        var location = await inventory.GetLibraryLocationAsync(target.Anime.Id, cancellationToken, preferredRootId);
+        var (importAction, allowHardlinkFallback) = await ResolveImportActionAsync(location?.RootId, cancellationToken);
         var plan = CompletedDownloadImportPlanner.Plan(
             new CompletedDownloadImportContext(
                 jobId,
@@ -462,7 +504,8 @@ public sealed class AnimeImportExecutor(
                 aliases,
                 requested,
                 target.Profile,
-                AnimeImportFileAction.Move,
+                importAction,
+                allowHardlinkFallback,
                 DownloadId: download.ExternalId),
             files,
             existing,
@@ -491,7 +534,6 @@ public sealed class AnimeImportExecutor(
                 : state,
             cancellationToken);
 
-        var location = await inventory.GetLibraryLocationAsync(target.Anime.Id, cancellationToken);
         var results = new List<AnimeImportFileRecord>();
         foreach (var planned in plan.Files)
         {
@@ -618,13 +660,27 @@ public sealed class AnimeImportExecutor(
         try
         {
             Directory.CreateDirectory(directory);
-            if (planned.FileAction == AnimeImportFileAction.Copy)
+            switch (planned.FileAction)
             {
-                File.Copy(planned.Source.Path, destination, overwrite: false);
-            }
-            else
-            {
-                File.Move(planned.Source.Path, destination, overwrite: false);
+                case AnimeImportFileAction.Copy:
+                    File.Copy(planned.Source.Path, destination, overwrite: false);
+                    break;
+
+                case AnimeImportFileAction.Hardlink:
+                    try
+                    {
+                        hardLinkCreator.CreateHardLink(planned.Source.Path, destination);
+                    }
+                    catch (CrossDeviceLinkException) when (planned.AllowHardlinkFallbackToCopy)
+                    {
+                        File.Copy(planned.Source.Path, destination, overwrite: false);
+                    }
+
+                    break;
+
+                default:
+                    File.Move(planned.Source.Path, destination, overwrite: false);
+                    break;
             }
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
@@ -683,6 +739,29 @@ public sealed class AnimeImportExecutor(
                 OperationLogLevel.Information,
                 LogModule,
                 $"Imported {name} as {targets} → {Path.GetFileName(destination)} (confidence {planned.Confidence:0.00}). {string.Join(" ", planned.Reasons.Concat(notes))}",
+                cancellationToken);
+        }
+
+        var isUpgrade = planned.ExistingPathsToReplaceAfterCommit.Count > 0;
+        var release = AnimeReleaseParser.Parse(name);
+        var score = AnimeReleaseScorer.Score(target.Profile, new AnimeReleaseCandidate(release, planned.Source.SizeBytes));
+        foreach (var episodeTarget in planned.Targets)
+        {
+            await history.RecordAsync(
+                new AcquisitionHistoryEntry
+                {
+                    AnimeId = target.Anime.Id,
+                    SeasonNumber = episodeTarget.SeasonNumber,
+                    EpisodeNumber = episodeTarget.EpisodeNumber,
+                    AbsoluteEpisodeNumber = episodeTarget.AbsoluteEpisodeNumber,
+                    EventKind = isUpgrade ? AcquisitionHistoryEventKind.Upgraded : AcquisitionHistoryEventKind.Imported,
+                    ReleaseTitle = name,
+                    ReleaseKey = release.ReleaseKey,
+                    Score = score.Score,
+                    QualityKey = score.QualityKey,
+                    Reason = string.Join(" ", planned.Reasons),
+                    OccurredAtUtc = DateTime.UtcNow
+                },
                 cancellationToken);
         }
 
@@ -826,6 +905,23 @@ public sealed class AnimeImportExecutor(
                 return state with { Paths = paths };
             },
             cancellationToken);
+    }
+
+    // Resolves the canonical import mode (global default, overridden per library root) to the
+    // planner/executor's file action plus whether a cross-filesystem hardlink may fall back to a
+    // copy. rootId is null when no library root is enabled yet; the global default still applies.
+    private async Task<(AnimeImportFileAction Action, bool AllowHardlinkFallback)> ResolveImportActionAsync(
+        Guid? rootId,
+        CancellationToken cancellationToken)
+    {
+        var settings = await importSettings.LoadAsync(cancellationToken);
+        return settings.ModeFor(rootId) switch
+        {
+            AnimeImportMode.Copy => (AnimeImportFileAction.Copy, false),
+            AnimeImportMode.Hardlink => (AnimeImportFileAction.Hardlink, false),
+            AnimeImportMode.HardlinkOrCopy => (AnimeImportFileAction.Hardlink, true),
+            _ => (AnimeImportFileAction.Move, false)
+        };
     }
 
     private static IReadOnlyList<CompletedDownloadFile> EnumerateDownload(string downloadPath, out string? error)

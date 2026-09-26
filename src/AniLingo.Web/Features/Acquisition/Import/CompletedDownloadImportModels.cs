@@ -12,7 +12,8 @@ public enum AnimeImportDisposition
 public enum AnimeImportFileAction
 {
     Move,
-    Copy
+    Copy,
+    Hardlink
 }
 
 public sealed record RequestedAnimeEpisode(
@@ -37,6 +38,9 @@ public sealed record CompletedDownloadImportContext(
     IReadOnlyList<RequestedAnimeEpisode> RequestedEpisodes,
     AnimeQualityProfile QualityProfile,
     AnimeImportFileAction PreferredAction = AnimeImportFileAction.Move,
+    // Only meaningful when PreferredAction is Hardlink: the owner explicitly chose "Hardlink or
+    // copy", so a cross-filesystem hardlink falls back to a copy instead of failing the import.
+    bool AllowHardlinkFallbackToCopy = false,
     double AutoImportConfidenceThreshold = 0.90,
     string? DownloadId = null);
 
@@ -48,7 +52,8 @@ public sealed record PlannedAnimeImport(
     IReadOnlyList<string> SidecarPaths,
     IReadOnlyList<string> ExistingPathsToReplaceAfterCommit,
     double Confidence,
-    IReadOnlyList<string> Reasons);
+    IReadOnlyList<string> Reasons,
+    bool AllowHardlinkFallbackToCopy = false);
 
 public sealed record CompletedDownloadImportPlan(
     string AcquisitionId,

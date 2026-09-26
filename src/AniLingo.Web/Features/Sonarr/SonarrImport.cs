@@ -187,23 +187,39 @@ public static partial class SonarrSeriesMatcher
     }
 }
 
-public sealed class SonarrConnectionStore(IDataProtectionProvider dataProtectionProvider)
+public sealed class SonarrConnectionStore
 {
-    private const string RootPath = "/data/sonarr-import";
-    private static readonly string ConnectionPath = Path.Combine(RootPath, "connection.json");
-    private readonly IDataProtector protector =
-        dataProtectionProvider.CreateProtector("AniLingo.Sonarr.Connection.v1");
+    private readonly IDataProtector protector;
+    private readonly string rootPath;
+    private readonly string connectionPath;
+
+    public SonarrConnectionStore(IDataProtectionProvider dataProtectionProvider)
+        : this(dataProtectionProvider, new DirectoryInfo("/data/sonarr-import"))
+    {
+    }
+
+    public SonarrConnectionStore(
+        IDataProtectionProvider dataProtectionProvider,
+        DirectoryInfo directory)
+    {
+        ArgumentNullException.ThrowIfNull(dataProtectionProvider);
+        ArgumentNullException.ThrowIfNull(directory);
+
+        protector = dataProtectionProvider.CreateProtector("AniLingo.Sonarr.Connection.v1");
+        rootPath = directory.FullName;
+        connectionPath = Path.Combine(rootPath, "connection.json");
+    }
 
     public async Task<SonarrConnectionSettings?> LoadAsync(CancellationToken cancellationToken)
     {
-        if (!File.Exists(ConnectionPath))
+        if (!File.Exists(connectionPath))
         {
             return null;
         }
 
         try
         {
-            await using var stream = File.OpenRead(ConnectionPath);
+            await using var stream = File.OpenRead(connectionPath);
             var stored = await JsonSerializer.DeserializeAsync<StoredConnection>(
                 stream,
                 cancellationToken: cancellationToken);
@@ -230,8 +246,8 @@ public sealed class SonarrConnectionStore(IDataProtectionProvider dataProtection
         SonarrConnectionSettings settings,
         CancellationToken cancellationToken)
     {
-        Directory.CreateDirectory(RootPath);
-        var temporaryPath = ConnectionPath + ".tmp";
+        Directory.CreateDirectory(rootPath);
+        var temporaryPath = connectionPath + ".tmp";
         var stored = new StoredConnection(
             NormalizeBaseUrl(settings.BaseUrl),
             protector.Protect(settings.ApiKey));
@@ -252,12 +268,12 @@ public sealed class SonarrConnectionStore(IDataProtectionProvider dataProtection
                     cancellationToken: cancellationToken);
             }
 
-            File.Move(temporaryPath, ConnectionPath, true);
+            File.Move(temporaryPath, connectionPath, true);
 
             if (!OperatingSystem.IsWindows())
             {
                 File.SetUnixFileMode(
-                    ConnectionPath,
+                    connectionPath,
                     UnixFileMode.UserRead | UnixFileMode.UserWrite);
             }
         }
