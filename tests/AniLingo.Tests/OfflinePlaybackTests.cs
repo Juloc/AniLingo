@@ -1,6 +1,7 @@
 using System.Text.Json;
 using AniLingo.Web.Features.ClientApi;
 using AniLingo.Web.Features.Library;
+using AniLingo.Web.Features.Playback;
 using AniLingo.Web.Features.Progress;
 using Microsoft.EntityFrameworkCore;
 
@@ -206,7 +207,14 @@ public sealed class OfflinePlaybackTests
                 null,
                 "stream:1",
                 null,
-                new ClientCompatibilityFallback(false, null, false, false, null));
+                new ClientCompatibilityFallback(false, null, false, false, null),
+                new ClientPlayerDefaults(
+                    "stream:1",
+                    "off",
+                    null,
+                    1.0,
+                    ClientApiMappings.ToClientPreferences(PlaybackPreferencesSnapshot.Default)),
+                new ClientPlayerControls(PlaybackPreferenceRules.Speeds, PlaybackQuality.Names));
             var media = new ClientPlayerMedia(
                 mediaFileId,
                 "episode.mkv",

@@ -279,11 +279,11 @@ public sealed class EpisodeProgressTests
 
         Assert.IsFalse((await reader.GetPreferencesAsync()).AutoplayNext);
 
-        Assert.IsTrue((await reader.SetAutoplayNextAsync(true)).AutoplayNext);
+        Assert.IsTrue((await reader.UpdatePreferencesAsync(new PlaybackPreferencesUpdate(AutoplayNext: true))).AutoplayNext);
         Assert.IsTrue((await reader.GetPreferencesAsync()).AutoplayNext);
         Assert.IsFalse((await other.GetPreferencesAsync()).AutoplayNext);
 
-        Assert.IsFalse((await reader.SetAutoplayNextAsync(false)).AutoplayNext);
+        Assert.IsFalse((await reader.UpdatePreferencesAsync(new PlaybackPreferencesUpdate(AutoplayNext: false))).AutoplayNext);
         Assert.AreEqual(1, await fixture.Db.ProfilePlaybackPreferences.CountAsync());
     }
 }

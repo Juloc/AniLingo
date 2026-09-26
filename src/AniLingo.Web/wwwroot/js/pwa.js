@@ -434,10 +434,21 @@
 
     setHandler("play", () => void video.play().catch(() => {}));
     setHandler("pause", () => video.pause());
+    // System controls reuse the player's own ±10 s actions when available so
+    // restarted live streams seek on the absolute media timeline.
+    const playerSeek = (action, fallbackDelta) => {
+      const design = window.AniLingoPlayerDesign;
+      if (design &&root.querySelector("[data-player-controls]")) {
+        design.dispatch(root, action);
+      } else {
+        seekBy(fallbackDelta);
+      }
+    };
+
     setHandler("seekbackward", details =>
-      seekBy(-(details?.seekOffset || 10)));
+      playerSeek("seekBack10", -(details?.seekOffset || 10)));
     setHandler("seekforward", details =>
-      seekBy(details?.seekOffset || 10));
+      playerSeek("seekForward10", details?.seekOffset || 10));
     setHandler("seekto", details => {
       const target = Number(details?.seekTime);
       if (!Number.isFinite(target)) {

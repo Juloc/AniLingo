@@ -5,6 +5,7 @@ using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.MediaSegments;
 using AniLingo.Web.Features.Metadata;
 using AniLingo.Web.Features.Playback;
+using AniLingo.Web.Features.Progress;
 using AniLingo.Web.Features.Storage;
 using Microsoft.EntityFrameworkCore;
 
@@ -15,6 +16,7 @@ public sealed class ClientApiService(
     PlaybackService playbackService,
     LearningService learningService,
     MediaAvailabilityService mediaAvailability,
+    EpisodeProgressService progressService,
     CurrentAccountContext currentAccount,
     MediaSegmentService mediaSegments)
 {
@@ -281,8 +283,18 @@ public sealed class ClientApiService(
         var segments = ClientApiMappings.ToClientSegments(navigation.Segments);
         var trickplay = ClientApiMappings.ToClientTrickplay(episodeId, navigation.Trickplay);
 
+        var preferences = await progressService.GetPreferencesAsync(cancellationToken);
+        var controls = new ClientPlayerControls(
+            PlaybackPreferenceRules.Speeds,
+            PlaybackQuality.Names);
+
         if (media is null)
         {
+            var noMediaSubtitle = PlaybackTrackSelection.ResolveSubtitle(
+                null,
+                activeLearningTrackId is not null,
+                preferences.PreferredSubtitleLanguage);
+
             return new ClientPlayerBootstrap(
                 ClientApiContract.ApiVersion,
                 episode,
@@ -299,6 +311,13 @@ public sealed class ClientApiService(
                     false,
                     false,
                     null),
+                new ClientPlayerDefaults(
+                    null,
+                    noMediaSubtitle.ModeName,
+                    noMediaSubtitle.TrackId,
+                    preferences.DefaultPlaybackSpeed,
+                    ClientApiMappings.ToClientPreferences(preferences)),
+                controls,
                 segments,
                 trickplay);
         }
@@ -313,9 +332,15 @@ public sealed class ClientApiService(
             .Select(ClientApiMappings.ToClientTrack)
             .ToArray();
 
-        var defaultAudio = audioTracks.FirstOrDefault(x => x.IsDefault)
-            ?? audioTracks.FirstOrDefault();
+        var defaultAudio = PlaybackTrackSelection.DefaultAudio(tracks);
         var defaultSubtitle = subtitleTracks.FirstOrDefault(x => x.IsDefault);
+        var preferredAudio = PlaybackTrackSelection.ResolveAudio(
+            tracks,
+            preferences.PreferredAudioLanguage);
+        var preferredSubtitle = PlaybackTrackSelection.ResolveSubtitle(
+            tracks,
+            activeLearningTrackId is not null,
+            preferences.PreferredSubtitleLanguage);
 
         var fallbackAvailable = media.Server.IsReady;
         var storage = media.Storage
@@ -353,7 +378,7 @@ public sealed class ClientApiService(
             subtitleTracks,
             learningTracks,
             activeLearningTrackId,
-            defaultAudio?.Id,
+            defaultAudio is null ? null : PlaybackTrackIds.Format(defaultAudio.StreamIndex),
             defaultSubtitle?.Id,
             new ClientCompatibilityFallback(
                 fallbackAvailable,
@@ -361,6 +386,13 @@ public sealed class ClientApiService(
                 fallbackAvailable,
                 fallbackAvailable,
                 fallbackAvailable ? ClientApiRoutes.Hls(episodeId) : null),
+            new ClientPlayerDefaults(
+                preferredAudio is null ? null : PlaybackTrackIds.Format(preferredAudio.StreamIndex),
+                preferredSubtitle.ModeName,
+                preferredSubtitle.TrackId,
+                preferences.DefaultPlaybackSpeed,
+                ClientApiMappings.ToClientPreferences(preferences)),
+            controls,
             segments,
             trickplay);
     }

@@ -98,7 +98,7 @@ public sealed class EpisodeFlowTests
         await fixture.AddEpisodeAsync(other, 1, 3);
 
         var reader = fixture.Service("reader");
-        await reader.SetAutoplayNextAsync(true);
+        await reader.UpdatePreferencesAsync(new PlaybackPreferencesUpdate(AutoplayNext: true));
 
         var flow = await reader.GetFlowAsync(first.Id);
         Assert.IsNotNull(flow);

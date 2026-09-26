@@ -382,6 +382,7 @@ public sealed class NovelReaderQueryTests
                 SourceUrl = $"https://example.invalid/{key}",
                 Title = key
             };
+            var volume = new NovelVolume { WorkId = work.Id, Number = 1, SourceKey = "web" };
             var chapters = Enumerable.Range(1, chapterCount)
                 .Select(number =>
                 {
@@ -389,6 +390,7 @@ public sealed class NovelReaderQueryTests
                     return new NovelChapter
                     {
                         WorkId = work.Id,
+                        VolumeId = volume.Id,
                         Number = number,
                         SourceUrl = $"https://example.invalid/{key}/{number}",
                         Title = $"Title {number}",
@@ -399,6 +401,7 @@ public sealed class NovelReaderQueryTests
                 .ToList();
 
             Db.Add(work);
+            Db.Add(volume);
             Db.AddRange(chapters);
             await Db.SaveChangesAsync();
             Db.ChangeTracker.Clear();

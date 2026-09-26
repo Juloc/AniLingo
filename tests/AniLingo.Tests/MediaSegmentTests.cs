@@ -6,7 +6,9 @@ using AniLingo.Web.Features.Library;
 using AniLingo.Web.Features.MediaSegments;
 using AniLingo.Web.Features.Operations;
 using AniLingo.Web.Features.Playback;
+using AniLingo.Web.Features.Progress;
 using AniLingo.Web.Features.Storage;
+using AniLingo.Web.Features.Subtitles;
 using AniLingo.Web.Features.Vocabulary;
 using AniLingo.Web.Infrastructure;
 using Microsoft.Data.Sqlite;
@@ -334,10 +336,15 @@ public sealed class MediaSegmentTests
         var availability = new MediaAvailabilityService(
             fixture.Db,
             new LibraryRootAvailabilityService(fixture.Db, new StorageAvailabilityCoordinator()));
+        var subtitleExtractor = new EmbeddedSubtitleExtractor(
+            new MediaProcessRunner(NullLogger<MediaProcessRunner>.Instance),
+            fixture.Inventory,
+            NullLogger<EmbeddedSubtitleExtractor>.Instance);
         var playback = new PlaybackService(
             fixture.Db,
             new PlaybackCueProjector(new EmptyMorphology()),
             fixture.Inventory,
+            subtitleExtractor,
             availability,
             account,
             segments);
@@ -346,6 +353,7 @@ public sealed class MediaSegmentTests
             playback,
             new LearningService(fixture.Db, new FsrsReviewScheduler(), account),
             availability,
+            new EpisodeProgressService(fixture.Db, account),
             account,
             segments);
 

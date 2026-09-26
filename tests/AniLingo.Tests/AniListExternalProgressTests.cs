@@ -702,6 +702,8 @@ public sealed class AniListExternalProgressTests
                 MetadataTitle = title
             };
             Db.Add(work);
+            var volume = new NovelVolume { WorkId = work.Id, Number = 1, SourceKey = "web" };
+            Db.Add(volume);
 
             NovelChapter? current = null;
             for (var number = 1; number <= Math.Max(1, chapter ?? 1); number++)
@@ -709,6 +711,7 @@ public sealed class AniListExternalProgressTests
                 current = new NovelChapter
                 {
                     WorkId = work.Id,
+                    VolumeId = volume.Id,
                     Number = number,
                     SourceUrl = $"https://example.invalid/novel/{number}",
                     Title = $"Chapter {number}",

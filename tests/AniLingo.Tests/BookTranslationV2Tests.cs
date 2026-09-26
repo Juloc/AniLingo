@@ -488,9 +488,18 @@ public sealed class BookTranslationV2Tests
             MetadataStatus = "IMPORTED"
         };
 
+        var volume = new NovelVolume
+        {
+            WorkId = work.Id,
+            Number = 1,
+            Kind = NovelVolumeKinds.Book,
+            SourceKey = "book"
+        };
+
         var chapter = new NovelChapter
         {
             WorkId = work.Id,
+            VolumeId = volume.Id,
             Number = 1,
             Title = "Opening",
             SourceUrl = "book://translation-v2/1",
@@ -499,6 +508,7 @@ public sealed class BookTranslationV2Tests
         };
 
         db.NovelWorks.Add(work);
+        db.NovelVolumes.Add(volume);
         db.NovelChapters.Add(chapter);
         await db.SaveChangesAsync();
 

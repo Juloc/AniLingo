@@ -1,3 +1,4 @@
+using System.Text.Json;
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Manga;
@@ -22,6 +23,7 @@ public sealed class SeriesModel(
     public ExternalProgressSummary? ExternalProgress { get; private set; }
     public IReadOnlyList<MangaAniListCandidate> SearchResults { get; private set; } = [];
     public string Query { get; private set; } = "";
+    public string? SearchError { get; private set; }
     public bool IsOwner => account.IsOwner;
 
     public async Task<IActionResult> OnGetAsync(
@@ -49,9 +51,24 @@ public sealed class SeriesModel(
                     repository,
                     httpClientFactory,
                     mappingReviewStore);
-            SearchResults = await metadata.SearchAsync(
-                Query,
-                cancellationToken);
+            try
+            {
+                SearchResults = await metadata.SearchAsync(
+                    Query,
+                    cancellationToken);
+            }
+            catch (Exception exception) when (
+                !cancellationToken.IsCancellationRequested &&
+                exception is InvalidOperationException
+                    or HttpRequestException
+                    or JsonException
+                    or TaskCanceledException)
+            {
+                // The explicit search may fail; the local series page must not.
+                SearchError = exception is TaskCanceledException
+                    ? "AniList search timed out. Try again."
+                    : $"AniList search is unavailable: {exception.Message}";
+            }
         }
 
         // Local-only: remote AniList progress is loaded after first paint

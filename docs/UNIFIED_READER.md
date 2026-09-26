@@ -71,6 +71,7 @@ The runtime reorganizes the canonical controls into:
 - Lesen
 - Text
 - Aussehen
+- Vorlesen (only when the document supports read-aloud)
 - Defaults
 
 Scroll/Pages is a segmented primary choice. Scroll-only and page-only controls
@@ -97,6 +98,10 @@ In paged mode the shared shell routes swipes and left/right edge taps to the
 source reader's page-turn handler. Text selection takes precedence.
 
 The thin progress indicator is intentionally independent of chrome.
+
+Shared Reader extensions mount through `root.readerShell` (settings command,
+reset/source badges, overflow and mobile actions) instead of patching source
+readers. Read-aloud (`reader-tts.js`, see `docs/TTS.md`) is the first one.
 
 ## State ownership
 
@@ -168,6 +173,84 @@ Overlapping highlights are valid. An exact duplicate range returns the existing
 highlight. The client renders each paragraph as flat segments split at every
 highlight boundary; overlapping segments carry all highlight ids and a depth
 for stronger tinting, so no highlight is dropped by nested DOM ranges.
+Highlight marks wrap the text nodes of a pristine copy of the paragraph, so
+inline EPUB markup (emphasis, ruby) survives highlighting.
+
+### Series → volume → chapter
+
+Every `NovelWork` is a series, every chapter belongs to exactly one
+`NovelVolume` (`NovelChapters.VolumeId`, required, cascade). There is no
+chapter without a volume and no second runtime path:
+
+| Source | Volumes |
+| --- | --- |
+| Narou/Ncode web novel | one implicit `web` volume (the chapter index) |
+| Books catalog import | one implicit `book` volume |
+| EPUB light novel | one `epub` volume per imported EPUB file |
+
+Migration `AddNovelVolumes` moved every existing work into one implicit volume
+once (NovelChapters is rebuilt with foreign keys disabled so no translation,
+progress, bookmark or highlight is touched). Chapter `Number` stays the
+series-wide reading order (volume order, then spine order) and is renumbered
+when a volume is inserted between existing ones; progress and annotations
+reference chapter ids and survive renumbering. Manual segment and anime
+mappings are keyed by local chapter numbers and may need review after a volume
+is inserted in the middle of a series; automatic segments are reconciled on
+every import.
+
+**Decision: `NovelVolume`, not Book Edition/File.** A Book Edition (#291) is an
+alternative manifestation of the *same* content (language/ISBN, one primary
+edition per work); a volume is a *sequential part* of a series. Reusing
+Editions for volumes would break the primary-edition semantics. What is shared
+is the single EPUB path: `EpubBookParser` (Features/Books) is the only EPUB
+parser, and `NovelVolumeContent.SyncChaptersAsync` is the only writer of
+volume chapters — used by the Books import (implicit volume) and by
+`NovelEpubImportService` (EPUB volumes).
+
+### EPUB light-novel import
+
+`NovelEpubImportService` is the one import path for uploads (Novels → Add
+novel, or "Add or replace volumes" on an EPUB series) and for the reading
+inbox: the Books inbox path (Books → Integrations / `Books:InboxPath`) with a
+`light-novels` subfolder. EPUBs directly in `light-novels` resolve their series
+from metadata; EPUBs in `light-novels/<Series>/` belong to that series.
+
+- Series: explicit target series, else inbox folder name, else calibre
+  `series` / EPUB 3 `belongs-to-collection`, else the title without its volume
+  marker. Series identity is a hash of the normalized name.
+- Volume number: calibre `series_index` / `group-position`, else parsed from the
+  title (`第3巻`, `Vol. 3`, `（3）` …), else next free number.
+- Volume identity: package unique identifier, else ISBN, else title+author.
+  A file with an unknown identity but an existing EPUB volume number replaces
+  that volume. An unchanged file (same SHA-256) is a no-op.
+- Chapter identity inside a volume: spine document path, then identical text,
+  then unique title. Changed chapters are updated in place (translations are
+  invalidated by source hash), unchanged ones are not touched, removed ones are
+  deleted with their notes.
+- Every file succeeds or fails on its own with a diagnostic (not a ZIP,
+  missing container/package, malformed XML, no readable text, too large,
+  DRM-encrypted). Encrypted EPUBs are rejected; DRM is never removed.
+- Source files are only opened for reading. Normalized chapter text and block
+  structure live in SQLite; covers and illustrations are cached
+  content-addressed under `/data/novels/volumes/<volume>/` and served by
+  `/Novels/Asset/{volume}/{file}` (raster images only, `nosniff`).
+- After import the series goes through the canonical AniList matching
+  (`NovelMetadataService.AutoMatchAsync`). EPUB volume numbers feed the existing
+  reading-segment planner/resolver, so a segment with a volume range maps local
+  volumes to AniList `progressVolumes`; implicit web/book volumes never do.
+
+### EPUB content rendering
+
+`EpubBookParser` converts chapter XHTML by whitelist into paragraphs plus
+`NovelContentBlock`s (paragraph, heading, image) with inline runs (text,
+ruby reading, emphasis, strong). Scripts, styles, event handlers, links,
+iframes, SVG documents and external/`data:` resources never survive; only
+internal JPEG/PNG/GIF/WebP images are kept. The text blocks equal the
+paragraphs of `OriginalText`, so anchors, highlights and translations keep
+their paragraph indexes and offsets. The reader renders runs with encoded text,
+`<em>` (sesame emphasis dots in Japanese), `<strong>` and `<ruby>`; readings
+are drawn from `rt[data-rt]` by CSS so the paragraph DOM text stays the plain
+text. Illustration-only pages open the next text chapter.
 
 ### Front-end modules
 

@@ -76,8 +76,11 @@ Tracked network/import work includes:
 - Manga CBZ/ZIP upload, mounted-path import, source refresh and AniList metadata match
 - Discover handoffs for novel and Manga imports
 - local EPUB upload, Books inbox import and remote EPUB import
+- light-novel EPUB volume uploads and light-novel inbox imports (`<Books inbox>/light-novels`)
 - SABnzbd downloads for Books and Anime, including live queue/post-processing state when a full SABnzbd API key allows queue/history access
 - Sonarr artwork downloads
+
+Light-novel EPUB uploads on `/Novels` and on an EPUB series page accept up to 20 files of at most 100 MB each; the raised limits apply only to the owner's upload handlers.
 
 Manga uploads on `/Manga` and `/Discover/MangaImport` accept up to 200 CBZ/ZIP archives, at most 1 GB each and 4 GB in total. The raised request-body and multipart limits apply only to the owner's `Upload` handler on those two pages; every other request, including uploads attempted by non-owner accounts, keeps the ASP.NET Core defaults. A reverse proxy in front of AniLingo must not cap request bodies below roughly 4 GB for these uploads (Caddy has no body limit by default; nginx needs `client_max_body_size`).
 
@@ -110,6 +113,17 @@ Restart and retry: an abandoned running scan becomes `Interrupted` through the n
 A folder scan run reconciles each of its folders through `LibraryScanner.ScanFolderAsync` one after another and records the summed counters. `ScanFolderAsync` runs the same reconciliation code as a full scan, restricted to media below that folder: media, episodes, NFO metadata, local artwork, media inventory analysis and subtitles of the folder end up exactly as a full scan would leave them, while media elsewhere in the root are untouched and `LastScannedAt` (the anchor of the periodic schedule) only moves on full scans. The library-wide Sonarr artwork sync runs only when the folder scan discovered a new anime, and learning-text preparation is queued when it added or changed media. A vanished folder reconciles as deletion of its media unless the whole root is empty, which is treated like the full-scan mass-deletion guard (an unmounted NAS).
 
 Each root has one **Periodic reconciliation** interval (`LibraryRoots.ReconciliationIntervalMinutes`, default 30, `0` turns it off, edited on `/Admin/System`). A full scan of the root is queued when the last completed full scan and the last periodic attempt are both older than the interval. An unavailable root is skipped without creating an operation and is not retried before the next interval, so an offline NAS does not fill the history.
+
+## Local-first page loads
+
+An ordinary page GET renders from SQLite and local files only. It must not contact AniList, OpenLibrary, Gutendex, Jimaku, Codex, Prowlarr, SABnzbd or Sonarr, and must not start ffprobe, ffmpeg or Whisper, import files or run a library scan just because the page was opened.
+
+- Optional remote state loads after first paint from a lazy page handler that sends `Cache-Control: no-store` and degrades to an "unavailable" state instead of failing the page. The AniList progress card (`_ExternalProgress` / `OnGetExternalProgressAsync`) on Anime, Episode, Manga series and Novel work pages is the reference pattern. The Manga and Novel readers do not load remote progress at all; it lives on the series/work page.
+- Discover renders its shell locally; trending, top, My AniList and search results come from its `Results` handler, whose external lookup is the explicit purpose of that request.
+- Explicit Search, Refresh, Sync, Import, Scan, Prepare and Translate actions do their intended external or heavy work, through `OperationRunner` or the queues described above.
+- `LocalFirstPageGetTests` runs page GETs with external clients that fail when called. Add a case there when a page gains a new dependency on a remote service.
+
+To measure page timings temporarily, set the log level `Logging:LogLevel:Microsoft.AspNetCore.Hosting.Diagnostics` to `Information` (environment variable `Logging__LogLevel__Microsoft.AspNetCore.Hosting.Diagnostics`); ASP.NET Core then logs every request with its elapsed time. Leave it at the default `Warning` otherwise.
 
 ## Media inventory
 

@@ -74,6 +74,84 @@ public sealed class PlayerDesignTests
         StringAssert.Contains(episodeScript, "learningResumeOnClose");
     }
 
+    [TestMethod]
+    public void PlaybackSpeedsAndSeekStepComeFromTheCanonicalTokens()
+    {
+        var root = FindRepositoryRoot();
+        using var document = JsonDocument.Parse(File.ReadAllText(
+            Path.Combine(root, "design", "player", "player-tokens.json")));
+        var playback = document.RootElement.GetProperty("playback");
+        var speeds = playback.GetProperty("speeds").EnumerateArray().Select(x => x.GetDouble()).ToArray();
+
+        CollectionAssert.AreEqual(speeds, AniLingo.Web.Features.Playback.PlayerDesign.PlaybackSpeeds.ToArray(),
+            "The server must read speeds from the embedded design tokens, not a copy.");
+        CollectionAssert.AreEqual(speeds, AniLingo.Web.Features.Progress.PlaybackPreferenceRules.Speeds.ToArray());
+        Assert.AreEqual(0.5, speeds.Min());
+        Assert.AreEqual(2.0, speeds.Max());
+        CollectionAssert.Contains(speeds, 1.0);
+        Assert.AreEqual(
+            playback.GetProperty("seekStepSeconds").GetInt32(),
+            AniLingo.Web.Features.Playback.PlayerDesign.SeekStepSeconds);
+    }
+
+    [TestMethod]
+    public void WebPlayerControlsUseCanonicalIconsTokensAndActions()
+    {
+        var root = FindRepositoryRoot();
+        using var icons = JsonDocument.Parse(File.ReadAllText(
+            Path.Combine(root, "design", "player", "player-icons.json")));
+        using var tokens = JsonDocument.Parse(File.ReadAllText(
+            Path.Combine(root, "design", "player", "player-tokens.json")));
+        using var actions = JsonDocument.Parse(File.ReadAllText(
+            Path.Combine(root, "design", "player", "player-actions.json")));
+
+        var iconIds = icons.RootElement.GetProperty("icons").EnumerateObject().Select(x => x.Name).ToArray();
+        var page = File.ReadAllText(
+            Path.Combine(root, "src", "AniLingo.Web", "Pages", "Library", "Episode.cshtml"));
+        var usedIcons = System.Text.RegularExpressions.Regex
+            .Matches(page, "_PlayerIcon\" model=\"@\\(\"(?<id>[A-Za-z0-9]+)\"\\)")
+            .Select(x => x.Groups["id"].Value)
+            .ToArray();
+
+        Assert.IsTrue(usedIcons.Length >= 7, "Player controls render their icons from player-icons.json.");
+        foreach (var id in usedIcons)
+        {
+            CollectionAssert.Contains(iconIds, id);
+            Assert.AreEqual(
+                icons.RootElement.GetProperty("icons").GetProperty(id).GetProperty("path").GetString(),
+                AniLingo.Web.Features.Playback.PlayerDesign.Icon(id).Path);
+        }
+
+        var partial = File.ReadAllText(
+            Path.Combine(root, "src", "AniLingo.Web", "Pages", "Shared", "_PlayerIcon.cshtml"));
+        StringAssert.Contains(partial, "PlayerDesign.Icon(Model)");
+
+        foreach (var action in new[] { "seekBack10", "seekForward10", "repeatCurrentCue" })
+        {
+            StringAssert.Contains(page, $"data-player-action=\"{action}\"");
+        }
+
+        StringAssert.Contains(page, "data-playback-speed");
+        StringAssert.Contains(page, "data-subtitle-track");
+        StringAssert.Contains(page, "data-quality-cap");
+        StringAssert.Contains(page, "data-audio-track");
+
+        var designScript = File.ReadAllText(
+            Path.Combine(root, "src", "AniLingo.Web", "wwwroot", "js", "player-design.js"));
+        foreach (var id in actions.RootElement.GetProperty("actions").EnumerateArray()
+                     .Select(x => x.GetProperty("id").GetString()!))
+        {
+            StringAssert.Contains(designScript, $"{id}: \"{id}\"");
+        }
+
+        var css = File.ReadAllText(
+            Path.Combine(root, "src", "AniLingo.Web", "wwwroot", "css", "player.css"));
+        var radius = tokens.RootElement.GetProperty("radiusDp").GetProperty("control").GetInt32();
+        var playbackSubtitle = tokens.RootElement.GetProperty("typographySp").GetProperty("playbackSubtitle").GetInt32();
+        StringAssert.Contains(css, $"--player-control-radius: {radius}px;");
+        StringAssert.Contains(css, $"--player-playback-subtitle-size: {playbackSubtitle}px;");
+    }
+
     private static string FindRepositoryRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

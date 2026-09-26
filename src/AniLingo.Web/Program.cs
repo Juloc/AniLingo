@@ -240,6 +240,8 @@ builder.Services.AddHttpClient<NcodeNovelSourceProvider>(client =>
 builder.Services.AddScoped<INovelSourceProvider>(
     services => services.GetRequiredService<NcodeNovelSourceProvider>());
 builder.Services.AddScoped<NovelImportService>();
+builder.Services.AddSingleton<NovelVolumeAssetStore>();
+builder.Services.AddScoped<NovelEpubImportService>();
 builder.Services.AddScoped<NovelCatalogQueries>();
 builder.Services.AddScoped<NovelProgressService>();
 builder.Services.AddScoped<NovelAnnotationService>();
@@ -307,12 +309,18 @@ builder.Services.AddScoped<AniLingo.Web.Features.Acquisition.Naming.AnimeRenameS
 builder.Services.AddSingleton<MediaMappingReviewStore>();
 builder.Services.AddSingleton<ReadingSegmentMappingStore>();
 builder.Services.AddSingleton<AniListAccountStore>();
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<AniListRateLimitGate>();
+builder.Services.AddTransient<AniListRateLimitHandler>();
 builder.Services.AddHttpClient<AniListAccountService>(client =>
 {
     client.BaseAddress = new Uri("https://graphql.anilist.co/");
     client.Timeout = TimeSpan.FromSeconds(15);
     client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
-});
+}).AddHttpMessageHandler<AniListRateLimitHandler>();
+builder.Services.AddSingleton<AniListSyncStateStore>();
+builder.Services.AddScoped<AniListSyncService>();
+builder.Services.AddHostedService<AniListSyncBackgroundService>();
 
 builder.Services.AddSingleton<CodexCliProvider>();
 builder.Services.AddSingleton<AiProfileSettingsStore>();

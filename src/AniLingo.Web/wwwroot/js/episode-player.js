@@ -10,7 +10,9 @@
     }
 
     const profileId = document.body?.dataset.profileId || "unknown";
+    // Device-local facts (decoder/network capability) live in this browser only.
     const preferenceKey = `anilingo.profile.${profileId}.playbackMode`;
+    const qualityKey = `anilingo.profile.${profileId}.qualityCap`;
     const progressUrl = root.dataset.progressUrl || "";
     const persistedResumeSeconds = Number(root.dataset.resumeSeconds);
     const video = root.querySelector("[data-playback-video]");
@@ -53,6 +55,29 @@
     const postPlayCountdown = root.querySelector("[data-post-play-countdown]");
     const postPlayCancel = root.querySelector("[data-post-play-cancel]");
     const autoplayDelaySeconds = 10;
+
+    const playbackSubtitle = root.querySelector("[data-playback-subtitle]");
+    const speedSelect = root.querySelector("[data-playback-speed]");
+    const audioSelect = root.querySelector("[data-audio-track]");
+    const subtitleSelect = root.querySelector("[data-subtitle-track]");
+    const qualitySelect = root.querySelector("[data-quality-cap]");
+    const qualityHint = root.querySelector("[data-quality-hint]");
+    const saveDefaults = root.querySelector("[data-save-playback-defaults]");
+    const repeatLineButton = root.querySelector("[data-repeat-line]");
+    const controlsData = (() => {
+        try {
+            return JSON.parse(root.querySelector("[data-player-controls-data]")?.textContent || "{}");
+        } catch {
+            return {};
+        }
+    })();
+    const seekStepSeconds = Number(controlsData.seekStepSeconds) > 0
+        ? Number(controlsData.seekStepSeconds)
+        : 10;
+    const variants = new Map((controlsData.variants || []).map(variant => [
+        `${variant.mode}|${variant.audioTrackId || ""}|${variant.quality}`,
+        variant
+    ]));
 
     if (!video || !stage || !placeholder || !playbackStatus ||
         !playbackSummary || !playbackBadge || !modeSelect || !overlay || !data ||
@@ -104,6 +129,44 @@
         }
     };
 
+    const qualityCaps = ["auto", "1080p", "720p", "low"];
+    const readQualityCap = () => {
+        try {
+            const value = window.localStorage.getItem(qualityKey);
+            return qualityCaps.includes(value) ? value : "auto";
+        } catch {
+            return "auto";
+        }
+    };
+
+    const storeQualityCap = (value) => {
+        try {
+            window.localStorage.setItem(qualityKey, value);
+        } catch {
+        }
+    };
+
+    // Session-only selections: they survive fallback and stream restarts of
+    // this page but are never stored; "Save as my defaults" writes the
+    // profile-scoped preference instead.
+    let selectedAudioTrackId = audioSelect?.value || controlsData.initialAudioTrackId || null;
+    let qualityCap = readQualityCap();
+    let playbackSpeed = Number(speedSelect?.value) > 0 ? Number(speedSelect.value) : 1;
+    let subtitleChoice = subtitleSelect?.value || "learning";
+    if (qualitySelect) {
+        qualitySelect.value = qualityCap;
+    }
+
+    const variantFor = (mode) =>
+        variants.get(`${mode}|${selectedAudioTrackId || ""}|${qualityCap}`) || null;
+
+    // Liveness of the requested stream comes from the server decision for
+    // this exact (mode, audio, quality) combination.
+    const streamIsLive = (mode) => {
+        const variant = variantFor(mode);
+        return variant ? variant.isLive === true : options[mode]?.live === true;
+    };
+
     const readSceneStartSeconds = () => {
         const value = new URL(window.location.href).searchParams.get("at");
         if (value === null || !/^\d+$/.test(value)) {
@@ -129,6 +192,7 @@
             : null;
     let resumeShouldPlay = false;
     let streamStartSeconds = 0;
+    let loadedStreamLive = false;
     let timelinePreviewing = false;
     let playbackWasRequested = false;
     let storageState = root.dataset.storageState || "unknown";
@@ -166,7 +230,7 @@
 
     const absoluteCurrentTime = () => {
         const localTime = Number.isFinite(video.currentTime) ? video.currentTime : 0;
-        const absolute = options[effectiveMode]?.live
+        const absolute = loadedStreamLive
             ? streamStartSeconds + localTime
             : localTime;
         return clampToDuration(absolute);
@@ -249,17 +313,72 @@
             return "device";
         }
 
-        return deviceAllowed() ? "device" : "server";
+        if (!deviceAllowed()) {
+            return "server";
+        }
+
+        // Auto honours a remote quality cap only when the server proved the
+        // device stream exceeds it; otherwise device-first direct play wins.
+        const device = variantFor("device");
+        const server = variantFor("server");
+        const deviceExceedsCap = device?.isAvailable === true && device.satisfiesCap === false;
+        const serverHonoursCap = server?.isAvailable === true && server.satisfiesCap === true &&
+            options.server.availability === "ready";
+        if (device?.isAvailable === false || (deviceExceedsCap && serverHonoursCap)) {
+            return "server";
+        }
+
+        return "device";
+    };
+
+    // A new source resets playbackRate to defaultPlaybackRate, so both are set.
+    const applySpeed = () => {
+        video.defaultPlaybackRate = playbackSpeed;
+        video.playbackRate = playbackSpeed;
+    };
+
+    const updateQualityHint = () => {
+        if (!qualityHint) {
+            return;
+        }
+
+        const limit = Number(controlsData.capHeights?.[qualityCap]) || null;
+        const source = Number(controlsData.sourceHeight) || null;
+        const variant = variantFor(effectiveMode);
+        if (!limit || !variant) {
+            qualityHint.textContent = "";
+        } else if (variant.satisfiesCap === false) {
+            qualityHint.textContent =
+                `Device playback keeps the original ${source}p video. Choose Server playback to limit it to ${limit}p.`;
+        } else if (source && source > limit) {
+            qualityHint.textContent = `The server converts this stream to at most ${limit}p.`;
+        } else {
+            qualityHint.textContent = source
+                ? `The original ${source}p already fits this limit, so nothing extra is converted.`
+                : "Nothing extra is converted because the source resolution is unknown.";
+        }
     };
 
     const buildMediaUrl = (mode, startSeconds = 0) => {
         const url = new URL(root.dataset.mediaUrl || window.location.href, window.location.origin);
         url.searchParams.set("mode", mode);
 
-        if (options[mode]?.live && startSeconds > 0) {
+        if (streamIsLive(mode) && startSeconds > 0) {
             url.searchParams.set("start", String(startSeconds));
         } else {
             url.searchParams.delete("start");
+        }
+
+        if (selectedAudioTrackId && selectedAudioTrackId !== controlsData.fileDefaultAudioTrackId) {
+            url.searchParams.set("audio", selectedAudioTrackId);
+        } else {
+            url.searchParams.delete("audio");
+        }
+
+        if (qualityCap !== "auto") {
+            url.searchParams.set("quality", qualityCap);
+        } else {
+            url.searchParams.delete("quality");
         }
 
         return url.toString();
@@ -311,20 +430,24 @@
     };
 
     const loadSource = (mode, requestedStart = 0) => {
-        const live = options[mode]?.live === true;
-        streamStartSeconds = live ? clampToDuration(requestedStart) : 0;
+        const live = streamIsLive(mode);
+        const start = live ? clampToDuration(requestedStart) : 0;
+        const selection = `${mode}|${selectedAudioTrackId || ""}|${qualityCap}`;
         const sourceKey = live
-            ? `${mode}:${streamStartSeconds.toFixed(3)}`
-            : mode;
+            ? `${selection}:${start.toFixed(3)}`
+            : selection;
 
         if (video.dataset.playbackSource === sourceKey) {
             return false;
         }
 
+        streamStartSeconds = start;
+        loadedStreamLive = live;
         video.dataset.playbackMode = mode;
         video.dataset.playbackSource = sourceKey;
         video.src = buildMediaUrl(mode, streamStartSeconds);
         video.load();
+        applySpeed();
         return true;
     };
 
@@ -333,7 +456,7 @@
         video.hidden = false;
         stage.classList.remove("player-placeholder");
 
-        const live = options[mode]?.live === true;
+        const live = streamIsLive(mode);
         const requestedStart = pendingResumeTime !== null && Number.isFinite(pendingResumeTime)
             ? clampToDuration(pendingResumeTime)
             : 0;
@@ -595,6 +718,7 @@
         }
 
         setModeHint();
+        updateQualityHint();
         playbackStatus.textContent = option.status;
         playbackSummary.textContent = option.status;
         setBadge(option.availability, effectiveMode);
@@ -659,26 +783,88 @@
     let selectedCueStartMs = 0;
     let learningResumeOnClose = false;
 
-    const findCueIndex = (timeMs) => {
-        let low = 0;
-        let high = cues.length - 1;
-        let candidate = -1;
+    // Plain playback subtitle (an embedded text stream chosen for display).
+    // It is independent of the learning overlay: when it differs from the
+    // learning text, both stay visible.
+    let playbackCues = [];
+    let playbackCueKey = "";
+    const playbackCueCache = new Map();
 
-        while (low <= high) {
-            const middle = Math.floor((low + high) / 2);
-            if (cues[middle].startMs <= timeMs) {
-                candidate = middle;
-                low = middle + 1;
-            } else {
-                high = middle - 1;
+    const learningOverlayVisible = () => subtitleChoice !== "off" && cues.length > 0;
+
+    const selectedSubtitleIsLearningSource = () =>
+        subtitleSelect?.selectedOptions[0]?.dataset.learningSource === "true";
+
+    const playbackTrackId = () =>
+        subtitleChoice.startsWith("stream:") && !selectedSubtitleIsLearningSource()
+            ? subtitleChoice
+            : null;
+
+    const renderPlaybackSubtitle = (timeMs) => {
+        if (!playbackSubtitle) {
+            return;
+        }
+
+        const lines = playbackTrackId()
+            ? design.activeCuesAt(playbackCues, timeMs).map(cue => cue.text)
+            : [];
+        const key = lines.join("\n");
+        if (key === playbackCueKey) {
+            return;
+        }
+
+        playbackCueKey = key;
+        playbackSubtitle.textContent = key;
+        playbackSubtitle.hidden = key.length === 0;
+    };
+
+    const loadPlaybackCues = async (trackId) => {
+        if (!trackId) {
+            playbackCues = [];
+            return;
+        }
+
+        if (playbackCueCache.has(trackId)) {
+            playbackCues = playbackCueCache.get(trackId);
+            return;
+        }
+
+        const template = controlsData.subtitleCuesUrlTemplate || "";
+        try {
+            const response = await fetch(template.replace("__track__", encodeURIComponent(trackId)), {
+                credentials: "same-origin",
+                headers: { "Accept": "application/json" }
+            });
+            if (!response.ok) {
+                throw new Error("Subtitle track unavailable.");
+            }
+
+            const payload = await response.json();
+            const loaded = (payload.cues || []).slice().sort((a, b) => a.startMs - b.startMs);
+            playbackCueCache.set(trackId, loaded);
+            if (playbackTrackId() === trackId) {
+                playbackCues = loaded;
+            }
+        } catch {
+            playbackCues = [];
+            if (error) {
+                error.hidden = false;
+                error.textContent = "This subtitle track could not be loaded.";
             }
         }
+    };
 
-        if (candidate >= 0 && timeMs <= cues[candidate].endMs) {
-            return candidate;
+    const updateRepeatAvailability = () => {
+        if (repeatLineButton) {
+            repeatLineButton.disabled = !(learningOverlayVisible() && cues.length > 0) &&
+                playbackCues.length === 0;
         }
+    };
 
-        return -1;
+    const currentLineStartMs = () => {
+        const nowMs = Math.floor(absoluteCurrentTime() * 1000);
+        const source = learningOverlayVisible() ? cues : playbackCues;
+        return design.lineStartAt(source, nowMs);
     };
 
     const openLearning = (cue, token = null, selectedElement = null) => {
@@ -748,15 +934,38 @@
             case design.actions.learnCurrentCue:
                 openLearning(detail.cue);
                 break;
-            case design.actions.repeatCurrentCue:
+            case design.actions.repeatCurrentCue: {
+                // From the learning sheet repeat the inspected line; from the
+                // transport controls repeat the line at the playhead.
+                const startMs = learningTools && !inspector.hidden
+                    ? selectedCueStartMs
+                    : currentLineStartMs();
                 closeLearningSheet(false);
-                seekToAbsolute(Math.max(0, selectedCueStartMs / 1000), true);
+                if (startMs !== null) {
+                    seekToAbsolute(Math.max(0, startMs / 1000), true);
+                }
+                break;
+            }
+            case design.actions.seekBack10:
+                seekToAbsolute(absoluteCurrentTime() - seekStepSeconds);
+                break;
+            case design.actions.seekForward10:
+                seekToAbsolute(absoluteCurrentTime() + seekStepSeconds);
+                break;
+            case design.actions.seekTo:
+                if (Number.isFinite(detail.seconds)) {
+                    seekToAbsolute(detail.seconds);
+                }
                 break;
             case design.actions.closeOverlay:
                 closeLearningSheet(true);
                 break;
         }
     });
+
+    root.querySelectorAll("[data-player-controls] [data-player-action]").forEach(button =>
+        button.addEventListener("click", () =>
+            design.dispatch(root, button.dataset.playerAction)));
 
     replay?.addEventListener("click", () =>
         design.dispatch(root, design.actions.repeatCurrentCue));
@@ -770,8 +979,13 @@
         }
     });
 
+    // Both subtitle layers follow the media clock, so any playback speed keeps
+    // cue timing exact; the frame loop only raises the sampling rate.
     const sync = () => {
-        const index = findCueIndex(Math.floor(absoluteCurrentTime() * 1000));
+        const nowMs = Math.floor(absoluteCurrentTime() * 1000);
+        renderPlaybackSubtitle(nowMs);
+
+        const index = learningOverlayVisible() ? design.cueIndexAt(cues, nowMs) : -1;
         if (index === activeIndex) {
             return;
         }
@@ -780,10 +994,116 @@
         renderCue(index);
     };
 
+    let frameSyncActive = false;
+    const frameSync = () => {
+        if (video.paused || video.ended || video.hidden) {
+            frameSyncActive = false;
+            return;
+        }
+
+        sync();
+        if (typeof video.requestVideoFrameCallback === "function") {
+            video.requestVideoFrameCallback(frameSync);
+        } else {
+            window.requestAnimationFrame(frameSync);
+        }
+    };
+
+    const startFrameSync = () => {
+        if (!frameSyncActive) {
+            frameSyncActive = true;
+            frameSync();
+        }
+    };
+
+    const applySubtitleChoice = async () => {
+        activeIndex = -2;
+        playbackCueKey = null;
+        await loadPlaybackCues(playbackTrackId());
+        updateRepeatAvailability();
+        sync();
+    };
+
+    subtitleSelect?.addEventListener("change", () => {
+        subtitleChoice = subtitleSelect.value;
+        void applySubtitleChoice();
+    });
+
+    speedSelect?.addEventListener("change", () => {
+        const requested = Number(speedSelect.value);
+        playbackSpeed = Number.isFinite(requested) && requested > 0 ? requested : 1;
+        applySpeed();
+    });
+
+    const restartWithSelection = () => {
+        pendingResumeTime = absoluteCurrentTime();
+        resumeShouldPlay = !video.paused && !video.ended;
+        if (error) {
+            error.hidden = true;
+        }
+        applyPlayback();
+    };
+
+    audioSelect?.addEventListener("change", () => {
+        selectedAudioTrackId = audioSelect.value || null;
+        restartWithSelection();
+    });
+
+    qualitySelect?.addEventListener("change", () => {
+        qualityCap = qualityCaps.includes(qualitySelect.value) ? qualitySelect.value : "auto";
+        storeQualityCap(qualityCap);
+        restartWithSelection();
+    });
+
+    saveDefaults?.addEventListener("click", async () => {
+        if (!preferencesUrl) {
+            return;
+        }
+
+        const subtitleLanguage = subtitleChoice === "off"
+            ? "off"
+            : subtitleSelect?.selectedOptions[0]?.dataset.language || "";
+        const body = {
+            preferredAudioLanguage: audioSelect?.selectedOptions[0]?.dataset.language || "",
+            preferredSubtitleLanguage: subtitleLanguage,
+            defaultPlaybackSpeed: playbackSpeed
+        };
+        if (!audioSelect) {
+            delete body.preferredAudioLanguage;
+        }
+
+        saveDefaults.disabled = true;
+        try {
+            const response = await fetch(preferencesUrl, {
+                method: "PUT",
+                credentials: "same-origin",
+                headers: {
+                    "Accept": "application/json",
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify(body)
+            });
+            if (!response.ok) {
+                throw new Error("Preference update failed.");
+            }
+
+            if (qualityHint) {
+                qualityHint.textContent = "Saved as the default for every episode on this profile.";
+            }
+        } catch {
+            if (error) {
+                error.hidden = false;
+                error.textContent = "Your playback defaults could not be saved.";
+            }
+        } finally {
+            saveDefaults.disabled = false;
+        }
+    });
+
     const seekToAbsolute = (requestedSeconds, shouldPlay = !video.paused && !video.ended) => {
         const target = clampToDuration(requestedSeconds);
 
-        if (options[effectiveMode]?.live) {
+        if (loadedStreamLive) {
             pendingResumeTime = null;
             resumeShouldPlay = shouldPlay;
             loadSource(effectiveMode, target);
@@ -956,7 +1276,8 @@
         persistProgress(false, video.paused);
     });
     video.addEventListener("loadedmetadata", () => {
-        if (!options[effectiveMode]?.live &&
+        applySpeed();
+        if (!loadedStreamLive &&
             pendingResumeTime !== null &&
             Number.isFinite(pendingResumeTime)) {
             const target = clampToDuration(pendingResumeTime);
@@ -977,6 +1298,7 @@
     video.addEventListener("play", () => {
         playbackWasRequested = true;
         hidePostPlay();
+        startFrameSync();
     });
 
     video.addEventListener("pause", () => {
@@ -1099,6 +1421,7 @@
     });
 
     updateTimeline();
+    applySpeed();
     applyPlayback();
-    sync();
+    void applySubtitleChoice();
 })();
