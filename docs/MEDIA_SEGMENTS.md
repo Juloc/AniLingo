@@ -47,12 +47,14 @@ The threshold is part of the application configuration:
 ```json
 {
   "MediaSegments": {
-    "SkipConfidenceThreshold": 0.8
+    "SkipConfidenceThreshold": 0.8,
+    "FingerprintDetectionEnabled": false
   }
 }
 ```
 
-(`MediaSegments__SkipConfidenceThreshold` as an environment variable.) Each
+(`MediaSegments__SkipConfidenceThreshold` / `MediaSegments__FingerprintDetectionEnabled`
+as environment variables.) Each
 descriptor carries the threshold that was applied and a per-segment `canSkip`
 flag, so clients do not re-implement the rule.
 
@@ -120,9 +122,85 @@ media identity and detector version are unchanged; **Re-run segment detection**
 forces a rebuild. Detector markers never outrank manual, imported or provider
 markers, and a detector must not modify source media.
 
-The default detector is a no-op (`method` `none`): until cross-episode
-fingerprint detection of repeated OP/ED material exists, episodes without manual
-or imported markers have no skip action.
+The default detector is a no-op (`method` `none`). Setting
+`MediaSegments:FingerprintDetectionEnabled` to `true` (env var
+`MediaSegments__FingerprintDetectionEnabled`) switches to
+`AudioFingerprintMediaSegmentDetector`, which finds OP/ED material repeated
+across episodes of the same anime and season. It is **off by default**: the
+analysis decodes and hashes several minutes of audio per episode and is CPU
+heavy, so an owner opts in deliberately rather than it running unattended.
+
+### Cross-episode audio fingerprinting
+
+For each episode, `ffmpeg` decodes the first ~6 minutes ("intro window") and
+last ~6 minutes ("outro window") of audio to mono 16 kHz-class PCM (8 kHz,
+16-bit). No video is decoded (`-vn`) and nothing is written back to the source
+file. The PCM is hashed in C# into one compact fingerprint per ~256 ms analysis
+frame (50% overlap), using a Haitsma/Kalker-style robust hash: 33 log-spaced
+frequency bands per frame, one bit per pair of adjacent bands set when their
+energy difference increased since the previous frame. The hash is invariant to
+overall loudness and stable across light re-encoding, which is what makes the
+same OP/ED audio comparable when muxed differently across episode files.
+
+**Why C# hashing instead of `ffmpeg -af chromaprint`:** the runtime image
+(`debian:bookworm-slim` + apt `ffmpeg`, see `src/AniLingo.Web/Dockerfile`) is
+not guaranteed to have been built with `--enable-chromaprint` — Debian's
+packaged `ffmpeg` does not consistently ship that filter, and confirming it
+would require probing the image every time it is rebuilt. Hashing bounded PCM
+in C# has no such dependency, keeps the whole pipeline inside the existing
+`ffmpeg`/`ffprobe` + .NET toolchain already required for the rest of the
+feature, and needs no new native dependency in the Dockerfile.
+
+Given an episode and its analysed siblings (same anime, same season, capped at
+24 to bound the pairwise comparison cost), the detector aligns the requested
+episode's fingerprint against each sibling's by scanning every possible frame
+offset for the longest run of frames agreeing within a small Hamming distance
+(`AudioFingerprint.FindBestMatch`). Matching runs from different siblings that
+overlap are grouped; a **single corroborating sibling is enough** to report a
+marker (2 episodes total), and a **second corroborating sibling raises
+confidence** further (3+ episodes total, the preferred minimum). A candidate
+segment is rejected outright — not truncated — when it is shorter than ~20 s or
+longer than ~3 minutes, since neither bound is a plausible OP/ED length.
+
+**Fingerprint cache**: each episode's intro/outro hash sequences are cached
+under `/data/media-segment-cache/fingerprints/<media file>-<identity>-v<version>.json`,
+keyed by the canonical media identity and the detector's `FingerprintVersion`
+(see [media inventory](../README.md#media-inventory) — the detector never
+probes on its own). A season re-run after adding one new episode only decodes
+and hashes that episode; every sibling's fingerprint is reused from cache. A
+new identity or detector version prunes the superseded cache file for that
+media file, the same disposable-cache contract as trickplay.
+
+**Per-episode run state**: because a legitimate detection outcome can be "no
+shared segment found" (no markers to store), skip-if-unchanged cannot rely on
+detector marker rows alone. `EpisodeSegmentDetectionState` (one row per
+episode) records the method/version/media identity of the last run regardless
+of outcome, so an unchanged episode is never re-analysed by a later season run
+until its media identity or the detector version changes, or the owner forces
+a rebuild.
+
+**Season detection**: the owner segments page's **Detect intro/outro for this
+season** button queues one bounded background Operation (**Admin →
+Operations**, kind `segment-detection`, maintenance lane,
+`SeasonSegmentDetectionQueue`, at most two seasons analysed at once) that runs
+every episode of the season through the same per-episode detector call used by
+**Re-run segment detection**. It never blocks the request; a season already
+queued is not queued twice. There is currently no automatic trigger after a
+library scan — only the owner-initiated season button — since wiring that
+requires touching the library scanner, which is out of scope for this change.
+
+**Limits**:
+- Recap and preview-card detection are not attempted: unlike a fixed-window
+  OP/ED, recaps vary too much in placement and length for a bounded
+  intro/outro window to reliably bound, and are left for a future, differently
+  shaped detector.
+- Only audio is fingerprinted; a purely visual OP/ED (rare, but not unheard of)
+  is not detected.
+- Very short episodes (intro/outro window shorter than the ~20 s minimum
+  segment length) are skipped for that window rather than guessed.
+- Cross-episode alignment is quadratic in the number of siblings compared per
+  call (bounded to 24); a much longer-running show still analyses in bounded
+  time because fingerprints are cached and reused across the season.
 
 ## Seek previews (trickplay)
 
@@ -196,7 +274,10 @@ GET /api/client/v1/episodes/{id}/trickplay/{index.json|sprite-NNN.jpg}
 
 ## Not included
 
-- Cross-episode audio/video fingerprint detection of OP/ED (follow-up on #135)
+- Video-based fingerprinting and recap/preview-card detection (see the
+  cross-episode audio fingerprinting limits above)
+- An automatic trigger for season detection after a library scan (owner
+  button only; see above)
 - Provider/metadata marker import
 - Automatic skipping or per-profile auto-skip preferences
 - Viewing analytics or behaviour-based detection

@@ -25,7 +25,8 @@ public sealed class MediaSegmentService(
     AppDbContext db,
     IOptions<MediaSegmentOptions> options,
     IMediaSegmentDetector detector,
-    TrickplayGenerator trickplay)
+    TrickplayGenerator trickplay,
+    SeasonSegmentDetectionQueue? seasonDetection = null)
 {
     public double SkipConfidenceThreshold =>
         MediaSegmentPolicy.ClampConfidence(options.Value.SkipConfidenceThreshold);
@@ -116,8 +117,10 @@ public sealed class MediaSegmentService(
     }
 
     // Runs the configured detector and stores its result with method/version/confidence.
-    // Skips the (potentially expensive) analysis while media identity and detector
-    // version match the stored detector markers, unless a rebuild is forced.
+    // Skips the (potentially expensive) analysis while media identity and detector version
+    // are unchanged from the last run, unless a rebuild is forced. The per-episode run state
+    // is recorded even when the detector finds nothing to mark, so a detector that correctly
+    // reports "no shared segment" is not re-analysed on every call either.
     public async Task<SegmentDetectionRun> RunDetectorAsync(
         Guid episodeId,
         bool force,
@@ -143,23 +146,29 @@ public sealed class MediaSegmentService(
             .Where(x => x.EpisodeId == episodeId && x.Source == MediaSegmentSource.Detector)
             .ToListAsync(cancellationToken);
 
+        var state = await db.EpisodeSegmentDetectionStates
+            .SingleOrDefaultAsync(x => x.EpisodeId == episodeId, cancellationToken);
+
         if (!force &&
-            existing.Count > 0 &&
-            existing.All(x =>
-                string.Equals(x.Method, detector.Method, StringComparison.Ordinal) &&
-                string.Equals(x.Version, detector.Version, StringComparison.Ordinal) &&
-                string.Equals(x.MediaIdentity, media.Identity, StringComparison.Ordinal)))
+            state is not null &&
+            string.Equals(state.Method, detector.Method, StringComparison.Ordinal) &&
+            string.Equals(state.Version, detector.Version, StringComparison.Ordinal) &&
+            string.Equals(state.MediaIdentity, media.Identity, StringComparison.Ordinal))
         {
             return new SegmentDetectionRun(SegmentDetectionOutcome.Skipped, existing.Count);
         }
 
+        var siblings = await GetSiblingMediaAsync(episodeId, media, cancellationToken);
         var detected = await detector.DetectAsync(
             new MediaSegmentDetectionRequest(
                 episodeId,
+                media.MediaFileId,
                 media.AnimeId,
+                media.SeasonNumber,
                 media.Path,
                 media.Identity,
-                media.DurationSeconds),
+                media.DurationSeconds,
+                siblings),
             cancellationToken);
 
         var now = DateTime.UtcNow;
@@ -188,8 +197,100 @@ public sealed class MediaSegmentService(
             });
         }
 
+        if (state is null)
+        {
+            state = new EpisodeSegmentDetectionState { EpisodeId = episodeId };
+            db.EpisodeSegmentDetectionStates.Add(state);
+        }
+
+        state.Method = detector.Method;
+        state.Version = detector.Version;
+        state.MediaIdentity = media.Identity;
+        state.RunAt = now;
+        state.SegmentsFound = results.Length;
+
         await db.SaveChangesAsync(cancellationToken);
         return new SegmentDetectionRun(SegmentDetectionOutcome.Completed, results.Length);
+    }
+
+    // Queues cross-episode detection for the whole season the given episode belongs to (the
+    // owner segments page trigger). Returns false when detection is disabled, already running
+    // for this season, or the shared queue is momentarily busy; the caller never blocks on it.
+    public async Task<bool> QueueSeasonDetectionAsync(Guid episodeId, CancellationToken cancellationToken)
+    {
+        if (!DetectorEnabled || seasonDetection is null)
+        {
+            return false;
+        }
+
+        var episode = await (
+                from item in db.Episodes.AsNoTracking()
+                join anime in db.Anime.AsNoTracking() on item.AnimeId equals anime.Id
+                where item.Id == episodeId
+                select new { item.AnimeId, item.SeasonNumber, AnimeTitle = anime.Title })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (episode is null)
+        {
+            return false;
+        }
+
+        return await seasonDetection.EnsureQueuedAsync(
+            episode.AnimeId,
+            episode.SeasonNumber,
+            $"{episode.AnimeTitle} · Season {episode.SeasonNumber}",
+            cancellationToken);
+    }
+
+    public bool IsSeasonDetectionPending(Guid animeId, int seasonNumber) =>
+        seasonDetection?.IsPending(animeId, seasonNumber) ?? false;
+
+    // Other episodes of the same anime and season with successfully analysed media, for
+    // cross-episode fingerprint matching. Bounded and ordered by episode number so a detector
+    // sees the closest neighbours first when a season is unusually long.
+    private async Task<IReadOnlyList<SiblingEpisodeMedia>> GetSiblingMediaAsync(
+        Guid episodeId,
+        MediaSource media,
+        CancellationToken cancellationToken)
+    {
+        var rows = await (
+                from file in db.MediaFiles.AsNoTracking()
+                join episode in db.Episodes.AsNoTracking() on file.EpisodeId equals episode.Id
+                join analysis in db.MediaAnalyses.AsNoTracking() on file.Id equals analysis.MediaFileId
+                where episode.AnimeId == media.AnimeId &&
+                      episode.SeasonNumber == media.SeasonNumber &&
+                      episode.Id != episodeId &&
+                      analysis.Status == MediaAnalysisStatus.Succeeded
+                orderby episode.Number
+                select new
+                {
+                    EpisodeId = episode.Id,
+                    episode.Number,
+                    MediaFileId = file.Id,
+                    file.Path,
+                    analysis.SourceFingerprint,
+                    analysis.SourceSizeBytes,
+                    analysis.SourceLastWriteTimeUtc,
+                    analysis.DurationSeconds
+                })
+            .ToListAsync(cancellationToken);
+
+        return
+        [
+            .. rows
+                .Where(x => x.DurationSeconds is > 0)
+                .Select(x => new SiblingEpisodeMedia(
+                    x.EpisodeId,
+                    x.MediaFileId,
+                    x.Number,
+                    x.Path,
+                    MediaIdentity.Compute(
+                        x.MediaFileId,
+                        x.SourceFingerprint,
+                        x.SourceSizeBytes,
+                        x.SourceLastWriteTimeUtc),
+                    x.DurationSeconds!.Value))
+        ];
     }
 
     // Player descriptors for one episode. Queues trickplay generation when the
@@ -280,7 +381,7 @@ public sealed class MediaSegmentService(
                 join episode in db.Episodes.AsNoTracking() on file.EpisodeId equals episode.Id
                 where file.EpisodeId == episodeId
                 orderby file.Path
-                select new { file.Id, episode.AnimeId, file.Path })
+                select new { file.Id, episode.AnimeId, episode.SeasonNumber, file.Path })
             .FirstOrDefaultAsync(cancellationToken);
 
         if (media is null)
@@ -303,6 +404,7 @@ public sealed class MediaSegmentService(
         return new MediaSource(
             media.Id,
             media.AnimeId,
+            media.SeasonNumber,
             media.Path,
             analysis is null
                 ? null
@@ -319,6 +421,7 @@ public sealed class MediaSegmentService(
     private sealed record MediaSource(
         Guid MediaFileId,
         Guid AnimeId,
+        int SeasonNumber,
         string Path,
         string? Identity,
         double? DurationSeconds);
