@@ -1,7 +1,6 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Manga;
-using AniLingo.Web.Features.Tracking;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
@@ -9,8 +8,7 @@ namespace AniLingo.Web.Pages.Manga;
 
 public sealed class ReadModel(
     AppDbContext db,
-    CurrentAccountContext account,
-    AniListAccountService aniListAccount) : PageModel
+    CurrentAccountContext account) : PageModel
 {
     public MangaChapterRead Chapter { get; private set; } = null!;
     public IReadOnlyList<MangaChapterItem> Chapters { get; private set; } = [];
@@ -19,7 +17,6 @@ public sealed class ReadModel(
     public Guid? NextChapterId { get; private set; }
     public int InitialPage { get; private set; }
     public MangaReaderPreset ReaderSettings { get; private set; } = null!;
-    public AniListReadingProgressPreview? AniListProgress { get; private set; }
     public string ProfileId => account.ProfileId;
 
     public async Task<IActionResult> OnGetAsync(
@@ -54,10 +51,8 @@ public sealed class ReadModel(
             chapter.SeriesId,
             cancellationToken);
 
-        AniListProgress = await aniListAccount.GetMangaProgressPreviewAsync(
-            chapter.SeriesId,
-            cancellationToken);
-
+        // Local-only: the reader never waits on AniList. Remote progress and
+        // the Operations-backed sync are on the series page's lazy card.
         ReaderSettings = await MangaReaderPreferenceStore.GetAsync(
             db,
             account.ProfileId,
@@ -74,7 +69,6 @@ public sealed class ReadModel(
 
         return Page();
     }
-
 
     public async Task<IActionResult> OnPostPreferenceAsync(
         Guid id,
@@ -184,25 +178,6 @@ public sealed class ReadModel(
             cancellationToken);
 
         return new OkResult();
-    }
-
-    public async Task<IActionResult> OnPostSyncAniListProgressAsync(
-        Guid id,
-        CancellationToken cancellationToken)
-    {
-        var repository = new MangaRepository(db);
-        var chapter = await repository.GetChapterAsync(id, cancellationToken);
-        if (chapter is null)
-        {
-            return NotFound();
-        }
-
-        var result = await aniListAccount.SyncMangaProgressAsync(
-            chapter.SeriesId,
-            cancellationToken);
-        TempData["Status"] = result.Message;
-
-        return RedirectToPage(new { id });
     }
 
     public async Task<IActionResult> OnPostBookmarkAsync(
