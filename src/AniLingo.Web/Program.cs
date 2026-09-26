@@ -190,7 +190,9 @@ builder.Services.AddSingleton<MediaProcessRunner>();
 builder.Services.AddScoped<LibraryScanner>();
 builder.Services.AddSingleton<IMediaProbeRunner, FfprobeMediaProbeRunner>();
 builder.Services.AddSingleton<MediaInventoryService>();
+builder.Services.AddSingleton<LibraryScanCoordinator>();
 builder.Services.AddHostedService<LibraryStartupScanService>();
+builder.Services.AddHostedService<LibraryWatchService>();
 builder.Services.AddSingleton<StorageAvailabilityCoordinator>();
 builder.Services.AddScoped<LibraryRootAvailabilityService>();
 builder.Services.AddScoped<MediaAvailabilityService>();
@@ -235,6 +237,8 @@ builder.Services.AddHttpClient<NcodeNovelSourceProvider>(client =>
 builder.Services.AddScoped<INovelSourceProvider>(
     services => services.GetRequiredService<NcodeNovelSourceProvider>());
 builder.Services.AddScoped<NovelImportService>();
+builder.Services.AddSingleton<NovelVolumeAssetStore>();
+builder.Services.AddScoped<NovelEpubImportService>();
 builder.Services.AddScoped<NovelCatalogQueries>();
 builder.Services.AddScoped<NovelProgressService>();
 builder.Services.AddScoped<NovelAnnotationService>();

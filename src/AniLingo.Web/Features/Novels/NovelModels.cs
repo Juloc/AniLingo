@@ -27,14 +27,59 @@ public sealed class NovelWork
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
 
+/// <summary>
+/// A volume/book of a novel series. Every chapter belongs to exactly one
+/// volume: web novels and single books have one implicit volume, EPUB light
+/// novels have one volume per imported EPUB file.
+/// </summary>
+public sealed class NovelVolume
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid WorkId { get; set; }
+    /// <summary>Reading order within the series (1-based, unique per work).</summary>
+    public int Number { get; set; }
+    public string? Title { get; set; }
+    public string Kind { get; set; } = NovelVolumeKinds.Web;
+    /// <summary>
+    /// Deterministic source identity within the series. Re-importing a source
+    /// with the same identity refreshes this volume instead of adding one.
+    /// </summary>
+    public string SourceKey { get; set; } = "";
+    public string? SourceFileName { get; set; }
+    public string? SourceContentHash { get; set; }
+    /// <summary>File name of the cached cover in the volume asset store.</summary>
+    public string? CoverAsset { get; set; }
+    public DateTime ImportedAt { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}
+
+public static class NovelVolumeKinds
+{
+    /// <summary>Chapter index of a web novel source (Narou/Ncode).</summary>
+    public const string Web = "web";
+    /// <summary>A single book imported through the Books catalog.</summary>
+    public const string Book = "book";
+    /// <summary>A user-provided EPUB light-novel volume.</summary>
+    public const string Epub = "epub";
+}
+
 public sealed class NovelChapter
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid WorkId { get; set; }
+    public Guid VolumeId { get; set; }
+    /// <summary>Series-wide reading order (unique per work).</summary>
     public int Number { get; set; }
+    /// <summary>Source identity of the chapter within its volume.</summary>
     public string SourceUrl { get; set; } = "";
     public string Title { get; set; } = "";
     public string OriginalText { get; set; } = "";
+    /// <summary>
+    /// Sanitized structured rendering of <see cref="OriginalText"/> (headings,
+    /// emphasis, ruby, illustrations), see <see cref="NovelChapterDocument"/>.
+    /// Null when the source is plain text.
+    /// </summary>
+    public string? ContentJson { get; set; }
     public string SourceHash { get; set; } = "";
     public DateTime? PublishedAt { get; set; }
     public DateTime ImportedAt { get; set; } = DateTime.UtcNow;
@@ -171,7 +216,9 @@ public sealed record NovelListItem(
     int? CurrentChapterNumber,
     string? CurrentChapterTitle,
     int ProgressPermille,
-    DateTime? LastReadAt)
+    DateTime? LastReadAt,
+    int VolumeCount,
+    int? CurrentVolumeNumber)
 {
     public bool HasProgress => CurrentChapterId is not null;
 }
@@ -182,12 +229,34 @@ public sealed record NovelChapterItem(
     string Title,
     bool HasContent,
     bool HasTranslation,
-    DateTime? PublishedAt);
+    DateTime? PublishedAt,
+    Guid VolumeId);
+
+/// <summary>A volume of a series with its chapter range.</summary>
+public sealed record NovelVolumeItem(
+    Guid Id,
+    int Number,
+    string? Title,
+    string Kind,
+    string? CoverUrl,
+    string? SourceFileName,
+    DateTime UpdatedAt)
+{
+    public bool IsEpub => Kind == NovelVolumeKinds.Epub;
+}
 
 public sealed record NovelWorkDetail(
     NovelWork Work,
     IReadOnlyList<NovelChapterItem> Chapters,
-    IReadOnlyList<NovelAnimeMapping> Mappings);
+    IReadOnlyList<NovelAnimeMapping> Mappings,
+    IReadOnlyList<NovelVolumeItem> Volumes)
+{
+    public bool IsEpubSeries => Work.SourceProvider == NovelEpubImportService.Provider;
+
+    /// <summary>Series cover: the AniList cover, else the first volume cover.</summary>
+    public string? CoverUrl =>
+        Work.CoverImageUrl ?? Volumes.FirstOrDefault(x => x.CoverUrl is not null)?.CoverUrl;
+}
 
 public sealed record NovelMetadataCandidate(
     string Provider,

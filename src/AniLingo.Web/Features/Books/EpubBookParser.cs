@@ -1,16 +1,27 @@
+using System.Globalization;
 using System.IO.Compression;
 using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Xml;
 using System.Xml.Linq;
+using AniLingo.Web.Features.Novels;
 
 namespace AniLingo.Web.Features.Books;
 
+/// <summary>
+/// The one EPUB parser. It reads package metadata, spine order, chapters,
+/// cover and (on request) embedded images. Chapter XHTML is converted into
+/// plain paragraphs plus a sanitized block structure (headings, emphasis,
+/// ruby, illustrations); scripts, styles, event handlers, links and external
+/// resources never survive. DRM-protected EPUBs are rejected.
+/// </summary>
 public static partial class EpubBookParser
 {
     private const long MaxArchiveBytes = 100L * 1024 * 1024;
     private const long MaxExpandedBytes = 250L * 1024 * 1024;
     private const long MaxEntryBytes = 20L * 1024 * 1024;
+    private const long MaxImageBytes = 10L * 1024 * 1024;
     private const int MaxEntries = 10_000;
 
     private static readonly HashSet<string> BlockElements = new(
@@ -22,17 +33,49 @@ public static partial class EpubBookParser
         ],
         StringComparer.OrdinalIgnoreCase);
 
+    private static readonly HashSet<string> SkippedElements = new(
+        [
+            "script", "style", "head", "title", "noscript", "template",
+            "iframe", "object", "embed", "audio", "video", "canvas", "form",
+            "input", "button", "select", "textarea", "math", "rp", "rt", "rtc"
+        ],
+        StringComparer.OrdinalIgnoreCase);
+
+    private static readonly HashSet<string> EmphasisElements = new(
+        ["em", "i", "cite", "dfn", "var"],
+        StringComparer.OrdinalIgnoreCase);
+
+    private static readonly HashSet<string> StrongElements = new(
+        ["strong", "b"],
+        StringComparer.OrdinalIgnoreCase);
+
+    private static readonly Dictionary<string, string> RasterImageTypes = new(
+        StringComparer.OrdinalIgnoreCase)
+    {
+        ["image/jpeg"] = ".jpg",
+        ["image/jpg"] = ".jpg",
+        ["image/png"] = ".png",
+        ["image/gif"] = ".gif",
+        ["image/webp"] = ".webp"
+    };
+
+    private static readonly HashSet<string> FontObfuscationAlgorithms = new(
+        [
+            "http://www.idpf.org/2008/embedding",
+            "http://ns.adobe.com/pdf/enc#RC"
+        ],
+        StringComparer.Ordinal);
+
     public static ParsedEpubBook Parse(
         Stream input,
-        string fallbackTitle)
+        string fallbackTitle,
+        bool includeAssets = false)
     {
         using var buffered = CopyBounded(input, MaxArchiveBytes);
-        using var archive = new ZipArchive(
-            buffered,
-            ZipArchiveMode.Read,
-            leaveOpen: false);
+        using var archive = OpenArchive(buffered);
 
         ValidateArchive(archive);
+        RejectDrm(archive);
 
         var container = FindEntry(archive, "META-INF/container.xml")
             ?? throw new InvalidOperationException(
@@ -72,6 +115,8 @@ public static partial class EpubBookParser
         var publisher = MetadataValue(metadata, "publisher");
         var publishedDate = MetadataValue(metadata, "date");
         var (isbn10, isbn13) = ExtractIsbn(metadata);
+        var uniqueIdentifier = ExtractUniqueIdentifier(package.Root, metadata);
+        var (seriesTitle, seriesIndex) = ExtractSeries(metadata);
 
         var subjects = metadata?
             .Descendants()
@@ -92,7 +137,18 @@ public static partial class EpubBookParser
                 MediaType: x.Attribute("media-type")?.Value?.Trim() ?? "",
                 Properties: x.Attribute("properties")?.Value?.Trim() ?? ""))
             .Where(x => x.Id.Length > 0 && x.Href.Length > 0)
-            .ToDictionary(x => x.Id, StringComparer.Ordinal);
+            .GroupBy(x => x.Id, StringComparer.Ordinal)
+            .ToDictionary(x => x.Key, x => x.First(), StringComparer.Ordinal);
+
+        var mediaTypesByPath = new Dictionary<string, string>(
+            StringComparer.OrdinalIgnoreCase);
+        foreach (var item in manifest.Values)
+        {
+            if (TryResolveRelativePath(packageDirectory, item.Href, out var itemPath))
+            {
+                mediaTypesByPath.TryAdd(itemPath, item.MediaType);
+            }
+        }
 
         var spineIds = package
             .Descendants()
@@ -108,6 +164,7 @@ public static partial class EpubBookParser
         }
 
         var chapters = new List<ImportedBookChapter>();
+        var pendingImages = new List<NovelContentBlock>();
         var number = 1;
 
         foreach (var id in spineIds)
@@ -136,10 +193,29 @@ public static partial class EpubBookParser
                 continue;
             }
 
-            var chapter = ParseChapter(entry, number);
+            var chapter = ParseChapter(
+                entry,
+                NormalizeZipPath(entryPath),
+                number,
+                archive,
+                mediaTypesByPath);
+
             if (chapter.Text.Length < 10)
             {
+                // Illustration-only pages (colour inserts, frontispieces) have
+                // no readable text; their images open the next text chapter.
+                pendingImages.AddRange(chapter.Blocks.Where(
+                    block => block.Kind == NovelContentBlock.ImageKind));
                 continue;
+            }
+
+            if (pendingImages.Count > 0)
+            {
+                chapter = chapter with
+                {
+                    Blocks = [.. pendingImages, .. chapter.Blocks]
+                };
+                pendingImages.Clear();
             }
 
             chapters.Add(chapter);
@@ -150,6 +226,14 @@ public static partial class EpubBookParser
         {
             throw new InvalidOperationException(
                 "EPUB does not contain readable text chapters.");
+        }
+
+        if (pendingImages.Count > 0)
+        {
+            chapters[^1] = chapters[^1] with
+            {
+                Blocks = [.. chapters[^1].Blocks, .. pendingImages]
+            };
         }
 
         var coverId = package
@@ -181,24 +265,22 @@ public static partial class EpubBookParser
         if (coverItem is not null
             && coverItem.MediaType.StartsWith(
                 "image/",
-                StringComparison.OrdinalIgnoreCase))
+                StringComparison.OrdinalIgnoreCase)
+            && TryResolveRelativePath(packageDirectory, coverItem.Href, out var coverPath))
         {
-            var coverEntry = FindEntry(
-                archive,
-                ResolveRelativePath(
-                    packageDirectory,
-                    coverItem.Href));
+            var coverEntry = FindEntry(archive, coverPath);
 
             if (coverEntry is not null
-                && coverEntry.Length is > 0 and <= 10 * 1024 * 1024)
+                && coverEntry.Length is > 0 and <= MaxImageBytes)
             {
-                using var coverStream = coverEntry.Open();
-                using var coverMemory = new MemoryStream();
-                coverStream.CopyTo(coverMemory);
-                coverBytes = coverMemory.ToArray();
+                coverBytes = ReadEntryBytes(coverEntry);
                 coverMediaType = coverItem.MediaType;
             }
         }
+
+        var assets = includeAssets
+            ? ReadReferencedImages(archive, chapters)
+            : [];
 
         return new ParsedEpubBook(
             Clean(title, 500) ?? "Untitled book",
@@ -212,12 +294,64 @@ public static partial class EpubBookParser
             subjects,
             chapters,
             coverBytes,
-            coverMediaType);
+            coverMediaType)
+        {
+            UniqueIdentifier = Clean(uniqueIdentifier, 300),
+            SeriesTitle = Clean(seriesTitle, 500),
+            SeriesIndex = seriesIndex,
+            Assets = assets
+        };
+    }
+
+    private static ZipArchive OpenArchive(MemoryStream buffered)
+    {
+        try
+        {
+            return new ZipArchive(
+                buffered,
+                ZipArchiveMode.Read,
+                leaveOpen: false);
+        }
+        catch (InvalidDataException exception)
+        {
+            throw new InvalidOperationException(
+                $"File is not a valid EPUB (ZIP) archive: {exception.Message}",
+                exception);
+        }
+    }
+
+    /// <summary>
+    /// Rejects encrypted EPUBs. Only the standard font obfuscation algorithms
+    /// are accepted; AniLingo never removes DRM.
+    /// </summary>
+    private static void RejectDrm(ZipArchive archive)
+    {
+        var encryption = FindEntry(archive, "META-INF/encryption.xml");
+        if (encryption is null)
+        {
+            return;
+        }
+
+        var document = LoadXml(encryption);
+        var protectedContent = document
+            .Descendants()
+            .Where(x => x.Name.LocalName == "EncryptionMethod")
+            .Select(x => x.Attribute("Algorithm")?.Value?.Trim() ?? "")
+            .Any(algorithm => !FontObfuscationAlgorithms.Contains(algorithm));
+
+        if (protectedContent)
+        {
+            throw new InvalidOperationException(
+                "EPUB is DRM-protected (encrypted content). AniLingo imports only DRM-free EPUBs and does not remove DRM.");
+        }
     }
 
     private static ImportedBookChapter ParseChapter(
         ZipArchiveEntry entry,
-        int number)
+        string entryPath,
+        int number,
+        ZipArchive archive,
+        IReadOnlyDictionary<string, string> mediaTypesByPath)
     {
         if (entry.Length > MaxEntryBytes)
         {
@@ -236,53 +370,55 @@ public static partial class EpubBookParser
             html = reader.ReadToEnd();
         }
 
-        string text;
-        string? heading = null;
+        IReadOnlyList<NovelContentBlock> blocks;
 
         try
         {
-            var document = XDocument.Parse(
-                html,
-                LoadOptions.PreserveWhitespace);
+            var document = ParseXhtml(html);
 
             var body = document
                 .Descendants()
                 .FirstOrDefault(x => x.Name.LocalName == "body")
                 ?? document.Root;
 
-            if (body is null)
+            var builder = new ChapterBlockBuilder(
+                GetDirectory(entryPath),
+                archive,
+                mediaTypesByPath);
+            if (body is not null)
             {
-                text = "";
+                builder.Walk(body);
             }
-            else
-            {
-                heading = body
-                    .Descendants()
-                    .FirstOrDefault(x =>
-                        x.Name.LocalName is "h1" or "h2" or "h3")
-                    ?.Value;
 
-                var builder = new StringBuilder();
-                foreach (var node in body.Nodes())
-                {
-                    AppendNode(node, builder);
-                }
-
-                text = NormalizeText(builder.ToString());
-            }
+            blocks = builder.Finish();
         }
-        catch
+        catch (XmlException)
         {
+            // Not well-formed XHTML: keep the readable text as plain
+            // paragraphs; no markup of a malformed document is trusted.
             var withoutScripts = ScriptStyleRegex()
                 .Replace(html, " ");
             var withBreaks = BlockTagRegex()
                 .Replace(withoutScripts, "\n\n");
             var stripped = TagRegex()
                 .Replace(withBreaks, " ");
-            text = NormalizeText(WebUtility.HtmlDecode(stripped));
+
+            blocks = NormalizeText(WebUtility.HtmlDecode(stripped))
+                .Split("\n\n", StringSplitOptions.RemoveEmptyEntries)
+                .Select(paragraph => NovelChapterDocument.NormalizeTextBlock(
+                    NovelContentBlock.ParagraphKind,
+                    0,
+                    [new NovelInlineRun(paragraph)]))
+                .Where(block => block is not null)
+                .Cast<NovelContentBlock>()
+                .ToArray();
         }
 
-        var title = Clean(heading, 500);
+        var text = NovelChapterDocument.ToPlainText(blocks);
+        var heading = blocks.FirstOrDefault(
+            block => block.Kind == NovelContentBlock.HeadingKind && block.Level <= 3);
+
+        var title = Clean(heading?.PlainText, 500);
         if (string.IsNullOrWhiteSpace(title))
         {
             title = $"Chapter {number}";
@@ -291,80 +427,405 @@ public static partial class EpubBookParser
         return new ImportedBookChapter(
             number,
             title,
-            text);
+            text)
+        {
+            SourcePath = entryPath,
+            Blocks = blocks
+        };
     }
 
-    private static void AppendNode(
-        XNode node,
-        StringBuilder builder)
+    /// <summary>
+    /// Parses chapter XHTML without DTD processing. HTML named entities that
+    /// XML does not define are converted to numeric references first.
+    /// </summary>
+    private static XDocument ParseXhtml(string html)
     {
-        if (node is XText text)
-        {
-            var value = InlineWhitespaceRegex()
-                .Replace(text.Value, " ");
-            if (value.Length > 0)
+        var withoutDoctype = DoctypeRegex().Replace(html, "");
+        var withEntities = NamedEntityRegex().Replace(
+            withoutDoctype,
+            match =>
             {
-                builder.Append(value);
+                var name = match.Groups[1].Value;
+                if (name is "amp" or "lt" or "gt" or "quot" or "apos")
+                {
+                    return match.Value;
+                }
+
+                var decoded = WebUtility.HtmlDecode(match.Value);
+                return decoded == match.Value
+                    ? "&amp;" + name + ";"
+                    : string.Concat(decoded.EnumerateRunes().Select(
+                        rune => "&#" + rune.Value.ToString(CultureInfo.InvariantCulture) + ";"));
+            });
+
+        using var reader = XmlReader.Create(
+            new StringReader(withEntities),
+            new XmlReaderSettings
+            {
+                DtdProcessing = DtdProcessing.Prohibit,
+                XmlResolver = null,
+                IgnoreComments = true,
+                IgnoreProcessingInstructions = true
+            });
+
+        return XDocument.Load(reader, LoadOptions.PreserveWhitespace);
+    }
+
+    private static IReadOnlyList<ParsedEpubAsset> ReadReferencedImages(
+        ZipArchive archive,
+        IReadOnlyList<ImportedBookChapter> chapters)
+    {
+        var assets = new List<ParsedEpubAsset>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var block in chapters.SelectMany(chapter => chapter.Blocks))
+        {
+            if (block.Kind != NovelContentBlock.ImageKind ||
+                block.Source is null ||
+                !seen.Add(block.Source))
+            {
+                continue;
             }
 
-            return;
+            var entry = FindEntry(archive, block.Source);
+            if (entry is null || entry.Length is <= 0 or > MaxImageBytes)
+            {
+                continue;
+            }
+
+            var mediaType = MediaTypeFromExtension(block.Source);
+            if (mediaType is null)
+            {
+                continue;
+            }
+
+            assets.Add(new ParsedEpubAsset(
+                block.Source,
+                mediaType,
+                ReadEntryBytes(entry)));
         }
 
-        if (node is not XElement element)
-        {
-            return;
-        }
-
-        var localName = element.Name.LocalName;
-        if (localName.Equals("br", StringComparison.OrdinalIgnoreCase))
-        {
-            builder.Append('\n');
-            return;
-        }
-
-        var block = BlockElements.Contains(localName);
-        if (block)
-        {
-            EnsureParagraphBreak(builder);
-        }
-
-        foreach (var child in element.Nodes())
-        {
-            AppendNode(child, builder);
-        }
-
-        if (block)
-        {
-            EnsureParagraphBreak(builder);
-        }
+        return assets;
     }
 
-    private static void EnsureParagraphBreak(StringBuilder builder)
+    private static byte[] ReadEntryBytes(ZipArchiveEntry entry)
     {
-        if (builder.Length == 0)
+        using var stream = entry.Open();
+        using var memory = new MemoryStream();
+        stream.CopyTo(memory);
+        return memory.ToArray();
+    }
+
+    private static string? MediaTypeFromExtension(string path) =>
+        Path.GetExtension(path).ToLowerInvariant() switch
         {
-            return;
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".png" => "image/png",
+            ".gif" => "image/gif",
+            ".webp" => "image/webp",
+            _ => null
+        };
+
+    /// <summary>
+    /// Whitelist conversion of chapter XHTML into content blocks. Only text,
+    /// block boundaries, headings, emphasis, ruby and internal raster images
+    /// are kept; everything else is unwrapped or dropped.
+    /// </summary>
+    private sealed class ChapterBlockBuilder(
+        string chapterDirectory,
+        ZipArchive archive,
+        IReadOnlyDictionary<string, string> mediaTypesByPath)
+    {
+        private readonly List<NovelContentBlock> blocks = [];
+        private readonly List<NovelInlineRun> runs = [];
+        private readonly List<NovelContentBlock> deferredImages = [];
+        private string kind = NovelContentBlock.ParagraphKind;
+        private int level;
+        private int pendingBreaks;
+
+        public void Walk(XElement element) =>
+            WalkChildren(element, emphasis: false, strong: false);
+
+        public IReadOnlyList<NovelContentBlock> Finish()
+        {
+            EndBlock();
+            return blocks;
         }
 
-        while (builder.Length > 0
-            && builder[^1] is ' ' or '\t')
+        private void WalkChildren(XElement element, bool emphasis, bool strong)
         {
-            builder.Length--;
+            foreach (var node in element.Nodes())
+            {
+                WalkNode(node, emphasis, strong);
+            }
         }
 
-        if (builder.Length == 0)
+        private void WalkNode(XNode node, bool emphasis, bool strong)
         {
-            return;
+            if (node is XText text)
+            {
+                AppendText(text.Value, emphasis, strong);
+                return;
+            }
+
+            if (node is not XElement element)
+            {
+                return;
+            }
+
+            var name = element.Name.LocalName;
+            if (SkippedElements.Contains(name))
+            {
+                return;
+            }
+
+            if (name.Equals("br", StringComparison.OrdinalIgnoreCase))
+            {
+                pendingBreaks++;
+                return;
+            }
+
+            if (name.Equals("img", StringComparison.OrdinalIgnoreCase))
+            {
+                AddImage(
+                    element.Attribute("src")?.Value,
+                    element.Attribute("alt")?.Value);
+                return;
+            }
+
+            if (name.Equals("svg", StringComparison.OrdinalIgnoreCase))
+            {
+                // Only the raster image an SVG wrapper points at is kept.
+                var image = element
+                    .Descendants()
+                    .FirstOrDefault(x => x.Name.LocalName == "image");
+                AddImage(
+                    image?.Attributes().FirstOrDefault(
+                        x => x.Name.LocalName == "href")?.Value,
+                    null);
+                return;
+            }
+
+            if (name.Equals("ruby", StringComparison.OrdinalIgnoreCase))
+            {
+                AppendRuby(element, emphasis, strong);
+                return;
+            }
+
+            var childEmphasis = emphasis
+                || EmphasisElements.Contains(name)
+                || HasEmphasisClass(element);
+            var childStrong = strong || StrongElements.Contains(name);
+
+            if (!BlockElements.Contains(name))
+            {
+                WalkChildren(element, childEmphasis, childStrong);
+                return;
+            }
+
+            var headingLevel = name.Length == 2
+                && name[0] is 'h' or 'H'
+                && name[1] is >= '1' and <= '6'
+                    ? name[1] - '0'
+                    : 0;
+
+            EndBlock();
+            if (headingLevel > 0)
+            {
+                kind = NovelContentBlock.HeadingKind;
+                level = headingLevel;
+            }
+
+            WalkChildren(element, childEmphasis, childStrong);
+            EndBlock();
         }
 
-        if (builder[^1] != '\n')
+        private void AppendText(string value, bool emphasis, bool strong)
         {
-            builder.AppendLine();
+            if (value.Length == 0)
+            {
+                return;
+            }
+
+            if (value.Trim().Length > 0)
+            {
+                FlushBreaks();
+            }
+
+            runs.Add(new NovelInlineRun(value, null, emphasis, strong));
         }
 
-        if (builder.Length < 2 || builder[^2] != '\n')
+        private void AppendRuby(XElement ruby, bool emphasis, bool strong)
         {
-            builder.AppendLine();
+            var baseText = new StringBuilder();
+
+            foreach (var node in ruby.Nodes())
+            {
+                if (node is XText text)
+                {
+                    baseText.Append(text.Value);
+                    continue;
+                }
+
+                if (node is not XElement child)
+                {
+                    continue;
+                }
+
+                var name = child.Name.LocalName;
+                if (name.Equals("rp", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (name.Equals("rt", StringComparison.OrdinalIgnoreCase) ||
+                    name.Equals("rtc", StringComparison.OrdinalIgnoreCase))
+                {
+                    var reading = string.Concat(child
+                        .DescendantNodes()
+                        .OfType<XText>()
+                        .Where(x => x.Parent?.Name.LocalName is not "rp")
+                        .Select(x => x.Value));
+
+                    if (baseText.Length > 0)
+                    {
+                        FlushBreaks();
+                        runs.Add(new NovelInlineRun(
+                            baseText.ToString(),
+                            reading,
+                            emphasis,
+                            strong));
+                        baseText.Clear();
+                    }
+
+                    continue;
+                }
+
+                // rb and any other inline wrapper contribute base text only.
+                baseText.Append(string.Concat(child
+                    .DescendantNodes()
+                    .OfType<XText>()
+                    .Where(x => x.Parent?.Name.LocalName is not ("rt" or "rp" or "rtc"))
+                    .Select(x => x.Value)));
+            }
+
+            if (baseText.Length > 0)
+            {
+                AppendText(baseText.ToString(), emphasis, strong);
+            }
+        }
+
+        private void AddImage(string? source, string? alt)
+        {
+            var path = ResolveImagePath(source);
+            if (path is null)
+            {
+                return;
+            }
+
+            var image = new NovelContentBlock(
+                NovelContentBlock.ImageKind,
+                Source: path,
+                Alt: Clean(alt, 300));
+
+            if (runs.Any(run => run.Text.Trim().Length > 0))
+            {
+                // An inline image never splits a paragraph; it follows it.
+                deferredImages.Add(image);
+                return;
+            }
+
+            EndBlock();
+            blocks.Add(image);
+        }
+
+        private string? ResolveImagePath(string? source)
+        {
+            var value = source?.Trim();
+            if (string.IsNullOrEmpty(value) ||
+                value.StartsWith("//", StringComparison.Ordinal) ||
+                value.StartsWith('/') ||
+                SchemeRegex().IsMatch(value))
+            {
+                // External, absolute and data: resources are never loaded.
+                return null;
+            }
+
+            if (!TryResolveRelativePath(chapterDirectory, value, out var path) ||
+                FindEntry(archive, path) is null)
+            {
+                return null;
+            }
+
+            var mediaType = mediaTypesByPath.TryGetValue(path, out var declared)
+                ? declared
+                : MediaTypeFromExtension(path);
+
+            return mediaType is not null &&
+                RasterImageTypes.ContainsKey(mediaType) &&
+                MediaTypeFromExtension(path) is not null
+                    ? path
+                    : null;
+        }
+
+        private void FlushBreaks()
+        {
+            if (pendingBreaks >= 2)
+            {
+                // Consecutive line breaks separate paragraphs.
+                var currentKind = kind;
+                var currentLevel = level;
+                EndBlock();
+                kind = currentKind;
+                level = currentLevel;
+            }
+            else if (pendingBreaks == 1)
+            {
+                runs.Add(new NovelInlineRun(" "));
+            }
+
+            pendingBreaks = 0;
+        }
+
+        private void EndBlock()
+        {
+            pendingBreaks = 0;
+
+            if (runs.Count > 0)
+            {
+                var block = NovelChapterDocument.NormalizeTextBlock(
+                    kind,
+                    kind == NovelContentBlock.HeadingKind ? level : 0,
+                    runs);
+                if (block is not null)
+                {
+                    blocks.Add(block);
+                }
+
+                runs.Clear();
+            }
+
+            blocks.AddRange(deferredImages);
+            deferredImages.Clear();
+            kind = NovelContentBlock.ParagraphKind;
+            level = 0;
+        }
+
+        private static bool HasEmphasisClass(XElement element)
+        {
+            var classes = element.Attribute("class")?.Value;
+            if (string.IsNullOrWhiteSpace(classes))
+            {
+                return false;
+            }
+
+            return classes
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .Any(name =>
+                    name.Contains("sesame", StringComparison.OrdinalIgnoreCase) ||
+                    name.Contains("boten", StringComparison.OrdinalIgnoreCase) ||
+                    name.StartsWith("em-", StringComparison.OrdinalIgnoreCase) ||
+                    name.Equals("emphasis", StringComparison.OrdinalIgnoreCase));
         }
     }
 
@@ -390,6 +851,100 @@ public static partial class EpubBookParser
         return string.Join("\n\n", paragraphs);
     }
 
+    private static string? ExtractUniqueIdentifier(
+        XElement? package,
+        XElement? metadata)
+    {
+        var uniqueId = package?.Attribute("unique-identifier")?.Value?.Trim();
+        var identifiers = metadata?
+            .Elements()
+            .Where(x => x.Name.LocalName == "identifier")
+            .ToArray()
+            ?? [];
+
+        var identifier = identifiers.FirstOrDefault(x =>
+                !string.IsNullOrEmpty(uniqueId) &&
+                string.Equals(x.Attribute("id")?.Value?.Trim(), uniqueId, StringComparison.Ordinal))
+            ?? identifiers.FirstOrDefault();
+
+        return identifier is null
+            ? null
+            : NormalizeWhitespace(identifier.Value);
+    }
+
+    private static (string? Title, decimal? Index) ExtractSeries(XElement? metadata)
+    {
+        if (metadata is null)
+        {
+            return (null, null);
+        }
+
+        var metas = metadata
+            .Elements()
+            .Where(x => x.Name.LocalName == "meta")
+            .ToArray();
+
+        string? CalibreValue(string name) => metas
+            .FirstOrDefault(x => string.Equals(
+                x.Attribute("name")?.Value?.Trim(),
+                name,
+                StringComparison.OrdinalIgnoreCase))
+            ?.Attribute("content")
+            ?.Value;
+
+        var title = CalibreValue("calibre:series");
+        var index = ParseSeriesIndex(CalibreValue("calibre:series_index"));
+
+        var collection = metas.FirstOrDefault(x =>
+            x.Attribute("property")?.Value?.Trim() == "belongs-to-collection" &&
+            IsSeriesCollection(metas, x.Attribute("id")?.Value?.Trim()));
+
+        if (collection is not null)
+        {
+            title ??= collection.Value;
+            var id = collection.Attribute("id")?.Value?.Trim();
+            if (index is null && !string.IsNullOrEmpty(id))
+            {
+                index = ParseSeriesIndex(metas.FirstOrDefault(x =>
+                        x.Attribute("refines")?.Value?.Trim() == "#" + id &&
+                        x.Attribute("property")?.Value?.Trim() == "group-position")
+                    ?.Value);
+            }
+        }
+
+        return (
+            string.IsNullOrWhiteSpace(title) ? null : NormalizeWhitespace(title),
+            index);
+    }
+
+    private static bool IsSeriesCollection(
+        IReadOnlyList<XElement> metas,
+        string? id)
+    {
+        if (string.IsNullOrEmpty(id))
+        {
+            return true;
+        }
+
+        var type = metas.FirstOrDefault(x =>
+                x.Attribute("refines")?.Value?.Trim() == "#" + id &&
+                x.Attribute("property")?.Value?.Trim() == "collection-type")
+            ?.Value
+            ?.Trim();
+
+        // Untyped collections are treated as series; typed ones must say so.
+        return type is null ||
+            type.Equals("series", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static decimal? ParseSeriesIndex(string? value) =>
+        decimal.TryParse(
+            value?.Trim(),
+            NumberStyles.Number,
+            CultureInfo.InvariantCulture,
+            out var index) && index is > 0 and < 100_000
+            ? index
+            : null;
     private static void ValidateArchive(ZipArchive archive)
     {
         if (archive.Entries.Count == 0
@@ -470,10 +1025,26 @@ public static partial class EpubBookParser
                 $"EPUB XML entry '{entry.FullName}' is too large.");
         }
 
-        using var stream = entry.Open();
-        return XDocument.Load(
-            stream,
-            LoadOptions.PreserveWhitespace);
+        try
+        {
+            using var stream = entry.Open();
+            using var reader = XmlReader.Create(
+                stream,
+                new XmlReaderSettings
+                {
+                    DtdProcessing = DtdProcessing.Ignore,
+                    XmlResolver = null
+                });
+            return XDocument.Load(
+                reader,
+                LoadOptions.PreserveWhitespace);
+        }
+        catch (XmlException exception)
+        {
+            throw new InvalidOperationException(
+                $"EPUB file '{entry.FullName}' is not well-formed XML: {exception.Message}",
+                exception);
+        }
     }
 
     private static ZipArchiveEntry? FindEntry(
@@ -524,6 +1095,23 @@ public static partial class EpubBookParser
         }
 
         return string.Join("/", segments);
+    }
+
+    private static bool TryResolveRelativePath(
+        string directory,
+        string href,
+        out string path)
+    {
+        try
+        {
+            path = ResolveRelativePath(directory, href);
+            return path.Length > 0;
+        }
+        catch (InvalidOperationException)
+        {
+            path = "";
+            return false;
+        }
     }
 
     private static string NormalizeZipPath(string value) =>
@@ -712,4 +1300,13 @@ public static partial class EpubBookParser
 
     [GeneratedRegex(@"(?is)<[^>]+>")]
     private static partial Regex TagRegex();
+
+    [GeneratedRegex(@"(?is)<!DOCTYPE[^>\[]*(\[.*?\])?\s*>")]
+    private static partial Regex DoctypeRegex();
+
+    [GeneratedRegex(@"&([A-Za-z][A-Za-z0-9]{1,31});")]
+    private static partial Regex NamedEntityRegex();
+
+    [GeneratedRegex(@"^[A-Za-z][A-Za-z0-9+.\-]*:")]
+    private static partial Regex SchemeRegex();
 }
