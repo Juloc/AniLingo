@@ -779,6 +779,58 @@ namespace AniLingo.Web.Data.Migrations
                     b.ToTable("MediaFiles");
                 });
 
+            modelBuilder.Entity("AniLingo.Web.Features.MediaSegments.EpisodeMediaSegment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<double>("Confidence")
+                        .HasColumnType("REAL");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("EndMs")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("EpisodeId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("MediaIdentity")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Method")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Source")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("StartMs")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Version")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EpisodeId", "Kind", "Source")
+                        .IsUnique();
+
+                    b.ToTable("EpisodeMediaSegments");
+                });
+
             modelBuilder.Entity("AniLingo.Web.Features.Metadata.AnimeMetadata", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1278,6 +1330,15 @@ namespace AniLingo.Web.Data.Migrations
                     b.HasOne("AniLingo.Web.Features.Library.LibraryRoot", null)
                         .WithMany()
                         .HasForeignKey("LibraryRootId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("AniLingo.Web.Features.MediaSegments.EpisodeMediaSegment", b =>
+                {
+                    b.HasOne("AniLingo.Web.Features.Library.Episode", null)
+                        .WithMany()
+                        .HasForeignKey("EpisodeId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
