@@ -82,7 +82,7 @@
 
     ensureMeta("apple-mobile-web-app-capable", "yes");
     ensureMeta("apple-mobile-web-app-status-bar-style", "black-translucent");
-    ensureMeta("apple-mobile-web-app-title", "AniLingo");
+    ensureMeta("apple-mobile-web-app-title", "Jularr");
     ensureLink("apple-touch-icon", "/icons/apple-touch-icon.png");
 
     document.documentElement.dataset.displayMode = isStandalone()
@@ -398,20 +398,20 @@
     }
 
     const title = document.querySelector(".page-header h1")?.textContent?.trim()
-      || document.title.replace(/\s+-\s+AniLingo$/, "");
+      || document.title.replace(/\s+-\s+Jularr$/, "");
     const anime = document.querySelector(".page-header .back-link")?.textContent
       ?.replace(/^\s*←\s*/, "")
       ?.trim()
-      || "AniLingo";
+      || "Jularr";
 
     if ("MediaMetadata" in window) {
       navigator.mediaSession.metadata = new MediaMetadata({
         title,
         artist: anime,
-        album: "AniLingo",
+        album: "Jularr",
         artwork: [
-          { src: "/icons/anilingo-192.png", sizes: "192x192", type: "image/png" },
-          { src: "/icons/anilingo-512.png", sizes: "512x512", type: "image/png" }
+          { src: "/icons/jularr-192.png", sizes: "192x192", type: "image/png" },
+          { src: "/icons/jularr-512.png", sizes: "512x512", type: "image/png" }
         ]
       });
     }

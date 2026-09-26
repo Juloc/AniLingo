@@ -32,7 +32,7 @@ public sealed class OwnerAuthService(
 
         if (await db.OwnerAccounts.AnyAsync(cancellationToken))
         {
-            throw new InvalidOperationException("The AniLingo owner account has already been created.");
+            throw new InvalidOperationException("The Jularr owner account has already been created.");
         }
 
         var owner = new OwnerAccount

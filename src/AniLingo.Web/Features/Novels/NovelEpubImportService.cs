@@ -105,7 +105,7 @@ public static class NovelEpubUploads
 /// The one import path for user-provided EPUB light-novel volumes, used by
 /// uploads and by the reading inbox. It parses with the shared
 /// <see cref="EpubBookParser"/>, groups volumes into a series, caches
-/// normalized assets under AniLingo data and writes chapters through
+/// normalized assets under Jularr data and writes chapters through
 /// <see cref="NovelVolumeContent"/>. Source files are only ever read.
 /// Every file succeeds or fails on its own with a diagnostic.
 /// </summary>

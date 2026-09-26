@@ -119,7 +119,7 @@ public sealed partial class AniListAccountService
                 null,
                 0,
                 null,
-                "Watch an episode in AniLingo to compare progress with AniList.",
+                "Watch an episode in Jularr to compare progress with AniList.",
                 canSync: false,
                 forcedKind: AniListExternalProgressStateKind.NoLocalProgress);
         }
@@ -140,7 +140,7 @@ public sealed partial class AniListAccountService
             ? new AniListProgressSyncResult(
                 Success: false,
                 Changed: false,
-                "Watch an episode in AniLingo before syncing progress.")
+                "Watch an episode in Jularr before syncing progress.")
             : await SyncEpisodeProgressAsync(
                 latest.Id,
                 cancellationToken);

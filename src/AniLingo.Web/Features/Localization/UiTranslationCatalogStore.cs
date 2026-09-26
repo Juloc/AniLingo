@@ -3,7 +3,6 @@ using System.Data.Common;
 using System.Globalization;
 using System.Text.Json;
 using AniLingo.Web.Data;
-using AniLingo.Web.Features.Appearance;
 using Microsoft.EntityFrameworkCore;
 
 namespace AniLingo.Web.Features.Localization;
@@ -28,6 +27,12 @@ public sealed class UiTranslationCatalogStore(AppDbContext db)
 
             foreach (var message in UiTranslationResources.All)
             {
+                await CarryOverProductRenameAsync(
+                    connection,
+                    transaction,
+                    message,
+                    now,
+                    cancellationToken);
                 await MarkGeneratedTranslationsOutdatedAsync(
                     connection,
                     transaction,
@@ -701,96 +706,6 @@ public sealed class UiTranslationCatalogStore(AppDbContext db)
         }
     }
 
-    public async Task<string> GetProfileThemeAsync(
-        string profileId,
-        CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrWhiteSpace(profileId))
-        {
-            return AppTheme.System;
-        }
-
-        var connection = db.Database.GetDbConnection();
-        var openedHere = connection.State != ConnectionState.Open;
-        if (openedHere)
-        {
-            await connection.OpenAsync(cancellationToken);
-        }
-
-        try
-        {
-            await using var command = connection.CreateCommand();
-            command.CommandText =
-                """
-                SELECT "ThemeMode"
-                FROM "UiProfileThemes"
-                WHERE "ProfileId" = $profileId
-                LIMIT 1;
-                """;
-            Add(command, "$profileId", profileId);
-
-            var value = await command.ExecuteScalarAsync(cancellationToken);
-            return AppTheme.NormalizeOrSystem(
-                value is null or DBNull ? null : Convert.ToString(value, CultureInfo.InvariantCulture));
-        }
-        finally
-        {
-            if (openedHere)
-            {
-                await connection.CloseAsync();
-            }
-        }
-    }
-
-    public async Task SetProfileThemeAsync(
-        string profileId,
-        string theme,
-        CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrWhiteSpace(profileId))
-        {
-            throw new ArgumentException("Profile ID is required.", nameof(profileId));
-        }
-
-        if (!AppTheme.TryNormalize(theme, out var normalized))
-        {
-            throw new ArgumentException("Theme must be system, light or dark.", nameof(theme));
-        }
-
-        var connection = db.Database.GetDbConnection();
-        var openedHere = connection.State != ConnectionState.Open;
-        if (openedHere)
-        {
-            await connection.OpenAsync(cancellationToken);
-        }
-
-        try
-        {
-            await using var command = connection.CreateCommand();
-            command.CommandText =
-                """
-                INSERT INTO "UiProfileThemes" (
-                    "ProfileId", "ThemeMode", "UpdatedAt")
-                VALUES (
-                    $profileId, $theme, $updatedAt)
-                ON CONFLICT("ProfileId") DO UPDATE SET
-                    "ThemeMode" = excluded."ThemeMode",
-                    "UpdatedAt" = excluded."UpdatedAt";
-                """;
-            Add(command, "$profileId", profileId);
-            Add(command, "$theme", normalized);
-            Add(command, "$updatedAt", DateTime.UtcNow);
-            await command.ExecuteNonQueryAsync(cancellationToken);
-        }
-        finally
-        {
-            if (openedHere)
-            {
-                await connection.CloseAsync();
-            }
-        }
-    }
-
     public async Task<UiTextBundle> LoadProfileBundleAsync(
         string profileId,
         CancellationToken cancellationToken)
@@ -879,6 +794,59 @@ public sealed class UiTranslationCatalogStore(AppDbContext db)
         Add(command, "$englishName", source.EnglishName);
         Add(command, "$nativeName", source.NativeName);
         Add(command, "$direction", source.Direction);
+        Add(command, "$now", now);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// One-time upgrade step for the AniLingo → Jularr rebrand (#333): when a source message changed
+    /// only by the product name, its existing translations are renamed in place and re-pinned to the
+    /// new source hash instead of being marked outdated, so installed locales keep working without
+    /// an AI re-translation. Once every stored source message carries the new name this matches
+    /// nothing; it can be deleted after the release that ships the rebrand.
+    /// </summary>
+    private static async Task CarryOverProductRenameAsync(
+        DbConnection connection,
+        DbTransaction transaction,
+        UiMessageDefinition message,
+        DateTime now,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText =
+            """
+            UPDATE "UiTranslations"
+            SET "Text" = replace("Text", 'AniLingo', 'Jularr'),
+                "SourceHash" = $sourceHash,
+                "UpdatedAt" = $now
+            WHERE "MessageKey" = $key
+              AND "SourceHash" <> $sourceHash
+              AND "Status" IN ('Generated', 'Reviewed', 'Manual')
+              AND EXISTS (
+                  SELECT 1
+                  FROM "UiTranslationMessages" source
+                  WHERE source."Key" = $key
+                    AND source."SourceHash" = "UiTranslations"."SourceHash"
+                    AND instr(source."DefaultText" || source."Description" || source."DoNotTranslateJson", 'AniLingo') > 0
+                    AND replace(source."DefaultText", 'AniLingo', 'Jularr') = $defaultText
+                    AND replace(source."Description", 'AniLingo', 'Jularr') = $description
+                    AND replace(source."DoNotTranslateJson", 'AniLingo', 'Jularr') = $doNotTranslate
+                    AND source."PlaceholdersJson" = $placeholders
+                    AND source."Feature" = $feature
+                    AND source."Surface" = $surface
+                    AND source."Tone" = $tone);
+            """;
+        Add(command, "$key", message.Key);
+        Add(command, "$sourceHash", message.SourceHash);
+        Add(command, "$defaultText", message.DefaultText);
+        Add(command, "$description", message.Description);
+        Add(command, "$doNotTranslate", JsonSerializer.Serialize(message.DoNotTranslate ?? []));
+        Add(command, "$placeholders", JsonSerializer.Serialize(
+            message.Placeholders ?? new Dictionary<string, string>()));
+        Add(command, "$feature", message.Feature);
+        Add(command, "$surface", message.Surface);
+        Add(command, "$tone", message.Tone);
         Add(command, "$now", now);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }

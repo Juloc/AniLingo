@@ -604,7 +604,7 @@ public sealed class AnimeRenameService(
             var targetVolume = fileSystem.GetVolumeKey(NearestExistingDirectory(Path.GetDirectoryName(targetNow)!));
             if (!string.Equals(sourceVolume, targetVolume, StringComparison.Ordinal))
             {
-                return $"'{move.TargetPath}' is on another filesystem ({targetVolume}); AniLingo only renames within one filesystem so a move can never be a partial copy.";
+                return $"'{move.TargetPath}' is on another filesystem ({targetVolume}); Jularr only renames within one filesystem so a move can never be a partial copy.";
             }
         }
 

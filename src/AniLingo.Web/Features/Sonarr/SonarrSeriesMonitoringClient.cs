@@ -11,7 +11,7 @@ public interface ISonarrSeriesMonitoringClient
         CancellationToken cancellationToken);
 }
 
-// The single Sonarr mutation AniLingo performs: toggling series monitoring through the series
+// The single Sonarr mutation Jularr performs: toggling series monitoring through the series
 // editor. It is only called by SonarrMigrationService for an explicit owner migration action
 // (hand over / revert with the Sonarr monitoring option). It never deletes series or files.
 public sealed class SonarrSeriesMonitoringClient(IHttpClientFactory httpClientFactory)

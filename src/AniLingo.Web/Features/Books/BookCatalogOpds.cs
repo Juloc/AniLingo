@@ -367,7 +367,7 @@ public sealed partial class BookCatalogService
             "Accept",
             accept);
         request.Headers.UserAgent.ParseAdd(
-            "AniLingo/Books");
+            "Jularr/Books");
 
         AddOpdsAuthorizationIfAllowed(
             request,
@@ -423,7 +423,7 @@ public sealed partial class BookCatalogService
             new MediaTypeWithQualityHeaderValue(
                 "application/epub+zip"));
         request.Headers.UserAgent.ParseAdd(
-            "AniLingo/Books");
+            "Jularr/Books");
 
         AddOpdsAuthorizationIfAllowed(
             request,

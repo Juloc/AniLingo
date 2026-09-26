@@ -37,7 +37,7 @@
     display: block;
     height: 100%;
     border-radius: inherit;
-    background: var(--accent, #e9aa18);
+    background: var(--accent);
 }
 
 /* Reader */
@@ -62,8 +62,8 @@
     --reader-text: #edf0f3;
     --reader-muted: #8f99a6;
     --reader-border: #252b33;
-    --reader-mark: rgba(232, 170, 24, .28);
-    --reader-accent: #e9aa18;
+    --reader-mark: color-mix(in srgb, var(--accent) 28%, transparent);
+    --reader-accent: var(--accent);
     min-height: 100vh;
     color: var(--reader-text);
     background: var(--reader-bg);
@@ -80,7 +80,7 @@
     --reader-text: #2d2b27;
     --reader-muted: #726c61;
     --reader-border: #cec4ae;
-    --reader-mark: rgba(220, 159, 18, .28);
+    --reader-mark: color-mix(in srgb, var(--accent) 28%, transparent);
 }
 
 .novel-reader-shell[data-theme="light"] {
@@ -90,7 +90,7 @@
     --reader-text: #20242a;
     --reader-muted: #6f7782;
     --reader-border: #dce1e7;
-    --reader-mark: rgba(226, 163, 16, .28);
+    --reader-mark: color-mix(in srgb, var(--accent) 28%, transparent);
 }
 
 .novel-reader-toolbar {
@@ -219,7 +219,7 @@
     padding: 0 2px;
     border-radius: 999px;
     background: var(--reader-accent);
-    color: #16120a;
+    color: var(--on-accent);
     font-size: .56rem;
     font-weight: 800;
 }
@@ -864,7 +864,7 @@ body:has(.novel-reader-shell) .app-main {
 .novel-reader-title .novel-chapter-label {
     display: block;
     margin-bottom: .4rem;
-    color: var(--muted, #9aa4b2);
+    color: var(--muted);
     font-weight: 700;
     letter-spacing: .025em;
 }
@@ -929,7 +929,7 @@ body:has(.novel-reader-shell) .app-main {
     content: "◆";
     display: block;
     margin-top: .9rem;
-    color: var(--muted, #9aa4b2);
+    color: var(--muted);
     font-size: .72rem;
 }
 
@@ -954,7 +954,7 @@ body:has(.novel-reader-shell) .app-main {
 }
 
 .novel-settings-heading > span {
-    color: var(--muted, #9aa4b2);
+    color: var(--muted);
     font-size: .72rem;
 }
 
@@ -962,7 +962,7 @@ body:has(.novel-reader-shell) .app-main {
     display: grid;
     gap: .55rem;
     padding: .65rem 0;
-    border-top: 1px solid var(--border, #2a313a);
+    border-top: 1px solid var(--border);
 }
 
 .novel-settings-group label {
@@ -978,10 +978,10 @@ body:has(.novel-reader-shell) .app-main {
     min-width: 0;
     width: 100%;
     min-height: 34px;
-    border: 1px solid var(--border, #303743);
+    border: 1px solid var(--border);
     border-radius: 7px;
     padding: .35rem .5rem;
-    background: var(--surface, #0c1016);
+    background: var(--surface);
     color: inherit;
 }
 
@@ -994,7 +994,7 @@ body:has(.novel-reader-shell) .app-main {
     min-height: 30px;
     justify-self: end;
     padding: 2px;
-    border: 1px solid var(--border, #303743);
+    border: 1px solid var(--border);
     border-radius: 6px;
     background: transparent;
 }
@@ -1012,7 +1012,7 @@ body:has(.novel-reader-shell) .app-main {
 .novel-settings-actions {
     flex-wrap: wrap;
     padding-top: .65rem;
-    border-top: 1px solid var(--border, #2a313a);
+    border-top: 1px solid var(--border);
 }
 
 .novel-reader-shell[data-reading-mode="paged"] {
@@ -1078,7 +1078,7 @@ body.novel-paged-body {
     gap: .7rem;
     min-height: 42px;
     padding: .35rem .5rem;
-    border: 1px solid var(--border, #303743);
+    border: 1px solid var(--border);
     border-radius: 999px;
     background: color-mix(in srgb, var(--reader-paper) 92%, transparent);
     color: var(--reader-ink);
@@ -1186,7 +1186,7 @@ body.novel-paged-body {
 }
 
 .novel-bookmark-marker {
-    --bookmark-color: var(--accent, #e9aa18);
+    --bookmark-color: var(--accent);
 }
 
 .novel-bookmark-marker > span {

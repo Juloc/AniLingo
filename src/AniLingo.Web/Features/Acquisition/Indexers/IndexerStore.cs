@@ -6,7 +6,7 @@ namespace AniLingo.Web.Features.Acquisition.Indexers;
 /// <summary>
 /// The one canonical indexer list. Prowlarr and direct Newznab connections
 /// are all entries here; there is no other indexer configuration path.
-/// AniLingo is usenet-only, so no entry ever carries a torrent protocol.
+/// Jularr is usenet-only, so no entry ever carries a torrent protocol.
 /// Each entry's API key is protected at rest.
 /// </summary>
 public sealed class IndexerStore

@@ -6,7 +6,7 @@ namespace AniLingo.Web.Features.Speech;
 /// <c>{dataRoot}/speech/tts-model-manifest.json</c> without rebuilding the image or APK.
 /// With no override present the bundled default manifest (embedded in the assembly) is
 /// served, which lists zero models until an owner pins verified downloads (provider/model
-/// id, version, languages, voices, file URLs, byte sizes and SHA-256) so AniLingo never
+/// id, version, languages, voices, file URLs, byte sizes and SHA-256) so Jularr never
 /// claims a language or voice it cannot verify.
 /// </summary>
 public sealed class SpeechModelManifestStore

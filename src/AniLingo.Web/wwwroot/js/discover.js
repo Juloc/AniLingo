@@ -307,7 +307,7 @@
         if (item.isLocal) {
             const local = document.createElement("span");
             local.className = "discover-local";
-            local.textContent = "In AniLingo";
+            local.textContent = "In Jularr";
             kicker.append(local);
         }
 

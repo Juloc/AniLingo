@@ -36,15 +36,13 @@ public sealed class PlayerDesignTests
             .GetProperty("controlSizeDp")
             .GetProperty("touch")
             .GetInt32();
-        var accent = document.RootElement
-            .GetProperty("colors")
-            .GetProperty("accent")
-            .GetString()!;
 
         var css = File.ReadAllText(
             Path.Combine(root, "src", "AniLingo.Web", "wwwroot", "css", "player.css"));
         StringAssert.Contains(css, $"--player-control-size: {touchSize}px;");
-        StringAssert.Contains(css.ToLowerInvariant(), $"--player-accent: {accent.ToLowerInvariant()};");
+        // The web player follows the profile accent from the Jularr theme engine; the canonical
+        // colours in player-tokens.json remain the defaults for native clients.
+        StringAssert.Contains(css, "--player-accent: var(--accent);");
 
         var page = File.ReadAllText(
             Path.Combine(root, "src", "AniLingo.Web", "Pages", "Library", "Episode.cshtml"));

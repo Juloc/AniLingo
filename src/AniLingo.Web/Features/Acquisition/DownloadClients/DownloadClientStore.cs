@@ -6,7 +6,7 @@ namespace AniLingo.Web.Features.Acquisition.DownloadClients;
 /// <summary>
 /// The one canonical download client list. SABnzbd connections are all
 /// entries here; there is no other download client configuration path.
-/// AniLingo is usenet-only, so no entry is ever a torrent client. Each
+/// Jularr is usenet-only, so no entry is ever a torrent client. Each
 /// entry's secret is protected at rest.
 /// </summary>
 public sealed class DownloadClientStore

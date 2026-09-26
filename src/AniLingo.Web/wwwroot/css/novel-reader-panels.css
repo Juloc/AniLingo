@@ -562,9 +562,9 @@
 .novel-bookmark-appearance select {
     max-width: 88px;
     min-height: 30px;
-    border: 1px solid var(--border, #303743);
+    border: 1px solid var(--border);
     border-radius: 6px;
-    background: var(--surface, #0c1016);
+    background: var(--surface);
     color: inherit;
 }
 

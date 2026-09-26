@@ -16,7 +16,7 @@ public sealed record MediaProbeRun(
     string Output = "",
     string? Error = null);
 
-// The only place AniLingo invokes ffprobe. Everything else reads MediaInventoryService.
+// The only place Jularr invokes ffprobe. Everything else reads MediaInventoryService.
 public interface IMediaProbeRunner
 {
     Task<MediaProbeRun> ProbeAsync(string fullPath, CancellationToken cancellationToken);

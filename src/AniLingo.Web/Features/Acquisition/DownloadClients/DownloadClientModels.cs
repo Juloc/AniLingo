@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 namespace AniLingo.Web.Features.Acquisition.DownloadClients;
 
 /// <summary>
-/// Kind of download client connection. AniLingo is usenet-only: torrent
+/// Kind of download client connection. Jularr is usenet-only: torrent
 /// clients (qBittorrent) are intentionally unsupported.
 /// </summary>
 public enum DownloadClientType

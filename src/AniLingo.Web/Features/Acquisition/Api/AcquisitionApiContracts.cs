@@ -251,7 +251,7 @@ public sealed class AcquisitionApiException(int statusCode, string title, string
 
     public static AcquisitionApiException SonarrOwned(string animeKey, AnimeManagementMode mode) =>
         Conflict(
-            $"'{animeKey}' is in {mode} mode; Sonarr owns this anime, so AniLingo will not search, " +
+            $"'{animeKey}' is in {mode} mode; Sonarr owns this anime, so Jularr will not search, " +
             "grab or change its acquisition settings. Choose parallel acquisition or AniLingo-managed " +
             "under Sonarr migration first.");
 }

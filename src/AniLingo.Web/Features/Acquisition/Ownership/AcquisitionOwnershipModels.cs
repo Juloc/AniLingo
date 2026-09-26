@@ -30,7 +30,7 @@ public enum AnimeMigrationAction
     Revert
 }
 
-// SonarrSeriesId links the AniLingo anime to the Sonarr series that manages it.
+// SonarrSeriesId links the Jularr anime to the Sonarr series that manages it.
 // SonarrUnmonitoredByAniLingo records that a documented migration action unmonitored the
 // series in Sonarr, so a revert can restore exactly that change and nothing else.
 public sealed record AnimeManagementAssignment(
@@ -91,7 +91,7 @@ public sealed record AcquisitionOwnershipState(
             new Dictionary<string, ManagedMediaPath>(StringComparer.OrdinalIgnoreCase));
 }
 
-// Everything an acquisition decision seam needs: persisted AniLingo ownership plus the
+// Everything an acquisition decision seam needs: persisted Jularr ownership plus the
 // latest read-only Sonarr observation.
 public sealed record AcquisitionOwnershipSnapshot(
     AcquisitionOwnershipState State,

@@ -25,7 +25,7 @@ public sealed class MediaInventoryService(
 
     public const int DiagnosticMaxLength = 500;
 
-    // Never equal to CurrentProbeVersion (or any version AniLingo has ever shipped), so an
+    // Never equal to CurrentProbeVersion (or any version Jularr has ever shipped), so an
     // invalidated analysis is always evaluated as stale.
     private const int InvalidatedProbeVersion = -1;
 
