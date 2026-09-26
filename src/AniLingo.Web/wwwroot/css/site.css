@@ -160,6 +160,12 @@ button, input { font: inherit; }
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+.sidebar-offline-indicator {
+    display: block;
+    margin-bottom: 6px;
+    color: var(--muted);
+    font-size: .82em;
+}
 .mobile-nav { display: none; }
 
 .app-main { margin-inline-start: var(--sidebar); min-height: 100vh; padding: 34px 42px 60px; }

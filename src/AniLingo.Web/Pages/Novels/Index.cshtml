@@ -107,10 +107,17 @@
     }
     else
     {
+        @* Offline is purely client-side, browser-local state (#221): the filter only shows/hides
+           already-rendered cards, it never asks the server what is downloaded on this device. *@
+        <div data-offline-library-filter>
+            <div class="novel-library-filter" role="group" aria-label="Library filter">
+                <button type="button" class="active" data-library-filter-option="all">All</button>
+                <button type="button" data-library-filter-option="offline">Offline</button>
+            </div>
         <div class="novel-library-grid">
             @foreach (var work in Model.Works)
             {
-                <article class="novel-library-card">
+                <article class="novel-library-card" data-work-id="@work.Id">
                     <a class="novel-library-cover" href="/Novels/Work/@work.Id" aria-label="@work.Title">
                         @if (!string.IsNullOrWhiteSpace(work.CoverImageUrl))
                         {
@@ -157,6 +164,7 @@
                     </div>
                 </article>
             }
+        </div>
         </div>
     }
 </section>

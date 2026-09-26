@@ -20,6 +20,8 @@ monitoring engine (`Monitoring`), Sonarr ownership (`Ownership`), download clien
 completed-download planner (`Import`) and naming (`Naming`). Periodic health checks
 (`Features/Acquisition/Health`) test every enabled indexer and download client; an unhealthy entry
 is skipped by the search coordinator/client selector with a logged reason.
+`Features/Acquisition/Api` exposes the owner-only automation API described below; it calls the same
+services and adds no state of its own beyond the API keys themselves.
 
 ## Setup (owner)
 
@@ -61,6 +63,7 @@ monitored anime, recent decisions and recent imports.
 | Tag catalog, delay profiles, tag-scoped indexer restrictions | `/data/acquisition/acquisition-policy.json` (`AcquisitionPolicyStore`) |
 | Per-profile AniList Current/Planning auto-monitor opt-in | `/data/acquisition/anilist-auto-monitor.json` (`AniListAutoMonitorSettingsStore`) |
 | Per-episode grab/delay/import/upgrade history | the database (`AcquisitionHistoryEntry`, via `AcquisitionHistoryService`) |
+| Automation API keys (name, SHA-256 hash, created/last-used/revoked) — never the raw key | the database (`AcquisitionApiKey`, via `AcquisitionApiKeyService`) |
 | Episodes and files | the library database, updated only by the library scanner |
 
 `/Settings/Acquisition` is the one place to edit import mode, remote path mappings, tags, delay
@@ -246,6 +249,67 @@ unsupported-version bundle is refused entirely. Indexer and download client API 
 travel in the bundle already encrypted with this installation's Data Protection keys; restoring on a
 different installation keeps everything else but may require re-entering those credentials if they
 cannot be decrypted there.
+
+## Automation API
+
+`Features/Acquisition/Api` exposes an owner-only REST API at `/api/acquisition/v1` for an external
+automation client (a script, a Sonarr-style scheduler, a dashboard). Every write goes through the
+exact same services the pages above call (`AnimeAcquisitionPipeline`, `AnimeAcquisitionScheduler`,
+`AnimeImportExecutor`) — there is no second code path, so the API can never desync from the owner
+UI. Errors are RFC 7807 problem-details JSON (`application/problem+json`) with a clear `detail`.
+
+### Authentication
+
+Two ways to authenticate, both resolving to the owner account:
+
+- **Cookie**: the normal browser session (`/Account/Login`), same as every other owner page.
+- **API key**: an `X-Api-Key: <key>` header. Keys are created, listed and revoked on
+  `/Settings/ApiKeys` (owner only). The raw key is shown exactly once, right after creation; only a
+  SHA-256 hash is ever stored, so it cannot be recovered or shown again — only revoked and
+  replaced. A key is scoped to this API alone: it is wired into no other endpoint group, so a
+  leaked key cannot sign into the browser UI or the native client API.
+
+An invalid, malformed or revoked key returns `401`; an authenticated non-owner session returns
+`403`. Requests are rate-limited (`acquisitionApi` policy, 60/minute per key or per IP for a cookie
+session).
+
+### Endpoints
+
+| Method & path | Purpose |
+| --- | --- |
+| `GET /monitored` | Monitored anime with management mode, assigned quality profile, wanted-episode count and Prowlarr indexer-id restriction. |
+| `GET /anime/{animeId}/monitoring` | One anime's monitoring settings: monitored, search-on-add, quality profile, indexer ids, tags, target root, management mode. |
+| `PUT /anime/{animeId}/monitoring` | Sets the same fields (same call as the owner's Acquisition settings form). Refused with `409` for an anime in read-only Sonarr coexistence. |
+| `GET /wanted?animeId=` | Wanted episodes (missing or upgrade-wanted), optionally filtered to one anime. |
+| `POST /search` | Queues a search for every monitored anime (same request "Search now" sends) and returns a tracking operation id. `409` when the scheduler's request queue is full. |
+| `POST /anime/{animeId}/search` | Queues a search for one anime's wanted episodes. `409` for a read-only Sonarr-coexistence anime or a full queue. |
+| `GET /operations?status=&kind=&limit=` | Recent search/grab operations (add `kind=anime-import` for import operations). |
+| `GET /operations/{operationId}` | One operation's snapshot and log entries. |
+| `GET /history?animeId=&limit=` | Richer per-episode acquisition history (grab/delay/import/upgrade/skip), optionally for one anime. |
+| `GET /imports?attention=true` | Manual-import records; `attention=true` limits to those needing a decision. |
+| `POST /imports/{recordId}/resolve` | Imports a file as a chosen season/episode (`{"sourcePath","season","episode"}`), same as the owner's manual-import form. |
+| `POST /imports/{recordId}/dismiss` | Dismisses a manual-import record; downloaded files are left untouched. |
+| `GET /health` | Indexer and download-client health summary (enabled, reachable/auth-ok, last error, last checked). |
+
+### Examples
+
+```bash
+curl -H "X-Api-Key: $KEY" https://anilingo.example/api/acquisition/v1/monitored
+
+curl -H "X-Api-Key: $KEY" -X POST https://anilingo.example/api/acquisition/v1/anime/$ANIME_ID/search
+# => 202 {"operationId":"...","message":"Search for 'frieren' queued. ..."}
+
+curl -H "X-Api-Key: $KEY" -H "Content-Type: application/json" \
+  -X PUT https://anilingo.example/api/acquisition/v1/anime/$ANIME_ID/monitoring \
+  -d '{"monitored":true,"searchOnAdd":true,"qualityProfileId":null,"indexerIds":[],"tagIds":["dub"],"targetRootId":null}'
+
+# Sonarr-owned anime: refused, not silently ignored.
+curl -i -H "X-Api-Key: $KEY" -X POST https://anilingo.example/api/acquisition/v1/anime/$ANIME_ID/search
+# HTTP/1.1 409 Conflict
+# Content-Type: application/problem+json
+# {"type":"...","title":"Refused.","status":409,
+#  "detail":"'frieren' is in ReadOnlyCoexistence mode; Sonarr owns this anime, ..."}
+```
 
 ## Limits
 

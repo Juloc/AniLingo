@@ -252,6 +252,12 @@
     </section>
 
     <section class="panel">
+        <div class="panel-heading"><h2>@ui["admin.system.apiKeys"]</h2><span>@ui["admin.system.scope.server"]</span></div>
+        <p class="muted">@ui["admin.system.apiKeysDescription"]</p>
+        <a class="button" asp-page="/Settings/ApiKeys/Index">@ui["admin.system.manageApiKeys"]</a>
+    </section>
+
+    <section class="panel">
         <div class="panel-heading"><h2>@ui["admin.system.ai"]</h2><span>@ui["admin.system.scope.server"]</span></div>
         <p class="muted">@ui["admin.system.aiDescription"]</p>
         <a class="button" asp-page="/Admin/Ai">@ui["admin.system.manageAi"]</a>

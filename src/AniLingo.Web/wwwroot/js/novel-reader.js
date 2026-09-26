@@ -176,6 +176,24 @@
     modules.translation(reader);
     modules.learning?.(reader);
 
+    // #221 part 2: while offline, following the previous/next chapter footer
+    // link to a downloaded chapter renders it locally instead of a failing
+    // full-page navigation; to an undownloaded chapter shows a clear notice.
+    // Online, this never engages and the existing full-page navigation is
+    // unchanged. See offline-library-repository.js.
+    if (shell.dataset.workId && window.AniLingoOfflineLibraryRepository) {
+        window.AniLingoOfflineLibraryRepository.initializeOfflineChapterNavigation({
+            shell,
+            workId: shell.dataset.workId,
+            linkSelector: ".novel-reader-footer a[href^=\"/Novels/Read/\"]",
+            contentSelector: "[data-reader-content]",
+            renderer: "novel"
+        });
+        shell.addEventListener("anilingo:offline-chapter-missing", () => {
+            reader.showToast("Dieses Kapitel wurde nicht für den Offline-Zugriff heruntergeladen.");
+        });
+    }
+
     shell.addEventListener("click", event => {
         const viewButton = event.target.closest("[data-reader-view]");
         if (viewButton) {

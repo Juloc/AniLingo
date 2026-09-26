@@ -2,6 +2,7 @@ using AniLingo.Web.Data;
 using AniLingo.Web.Features.Artwork;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Library;
+using AniLingo.Web.Features.Localization;
 using AniLingo.Web.Features.Metadata;
 using AniLingo.Web.Features.Operations;
 using Microsoft.AspNetCore.Authorization;
@@ -29,6 +30,7 @@ public sealed class AnimeRepairModel(
     public const string ReanalyzeOperationKind = "anime-repair-reanalyze-media";
     private const string OperationCategory = "Anime";
 
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public Guid AnimeId { get; private set; }
     public string AnimeTitle { get; private set; } = "";
     public AnimeMetadata? Metadata { get; private set; }
@@ -47,6 +49,7 @@ public sealed class AnimeRepairModel(
         string? q,
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         var anime = await db.Anime
             .AsNoTracking()
             .SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
@@ -98,6 +101,7 @@ public sealed class AnimeRepairModel(
 
     public async Task<IActionResult> OnPostRefreshLocalAsync(Guid id, CancellationToken cancellationToken)
     {
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         try
         {
             var result = await operations.RunAsync(
@@ -112,14 +116,26 @@ public sealed class AnimeRepairModel(
                 null,
                 cancellationToken);
 
-            TempData["Status"] =
-                $"Refreshed {result.EpisodesConsidered} episode(s): {result.SubtitlesImported} subtitle(s) imported, " +
-                $"{result.ArtworkImported} artwork file(s) updated, {result.ArtworkUnchanged} unchanged" +
-                (result.NfoWarnings > 0 ? $", {result.NfoWarnings} NFO file(s) ignored." : ".");
+            TempData["Status"] = result.NfoWarnings > 0
+                ? ui.Format(
+                    "library.animeRepair.refreshLocalResultWithWarnings",
+                    ("episodes", result.EpisodesConsidered),
+                    ("subtitles", result.SubtitlesImported),
+                    ("artworkUpdated", result.ArtworkImported),
+                    ("artworkUnchanged", result.ArtworkUnchanged),
+                    ("nfoWarnings", result.NfoWarnings))
+                : ui.Format(
+                    "library.animeRepair.refreshLocalResult",
+                    ("episodes", result.EpisodesConsidered),
+                    ("subtitles", result.SubtitlesImported),
+                    ("artworkUpdated", result.ArtworkImported),
+                    ("artworkUnchanged", result.ArtworkUnchanged));
         }
         catch (Exception exception)
         {
-            TempData["Error"] = $"Local refresh failed: {exception.Message}";
+            TempData["Error"] = ui.Format(
+                "library.animeRepair.refreshLocalFailed",
+                ("message", exception.Message));
         }
 
         return RedirectToPage(new { id });
@@ -127,6 +143,7 @@ public sealed class AnimeRepairModel(
 
     public async Task<IActionResult> OnPostReanalyzeAsync(Guid id, CancellationToken cancellationToken)
     {
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         try
         {
             var result = await operations.RunAsync(
@@ -141,13 +158,18 @@ public sealed class AnimeRepairModel(
                 null,
                 cancellationToken);
 
-            TempData["Status"] =
-                $"Re-analysed {result.MediaFilesConsidered} media file(s): {result.Analyzed} succeeded, " +
-                $"{result.Failed} failed, {result.Deferred} deferred.";
+            TempData["Status"] = ui.Format(
+                "library.animeRepair.reanalyzeResult",
+                ("considered", result.MediaFilesConsidered),
+                ("succeeded", result.Analyzed),
+                ("failed", result.Failed),
+                ("deferred", result.Deferred));
         }
         catch (Exception exception)
         {
-            TempData["Error"] = $"Media re-analysis failed: {exception.Message}";
+            TempData["Error"] = ui.Format(
+                "library.animeRepair.reanalyzeFailed",
+                ("message", exception.Message));
         }
 
         return RedirectToPage(new { id });
@@ -159,6 +181,7 @@ public sealed class AnimeRepairModel(
         string externalId,
         CancellationToken cancellationToken)
     {
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         try
         {
             await operations.RunAsync(
@@ -181,7 +204,7 @@ public sealed class AnimeRepairModel(
                 "Anime metadata matched.",
                 cancellationToken);
 
-            TempData["Status"] = "Anime metadata matched.";
+            TempData["Status"] = ui["library.animeRepair.metadataMatched"];
         }
         catch (Exception exception) when (
             exception is MetadataProviderException or InvalidOperationException)
@@ -194,6 +217,7 @@ public sealed class AnimeRepairModel(
 
     public async Task<IActionResult> OnPostRefreshMetadataAsync(Guid id, CancellationToken cancellationToken)
     {
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         try
         {
             await operations.RunAsync(
@@ -214,7 +238,7 @@ public sealed class AnimeRepairModel(
                 "Anime metadata refreshed.",
                 cancellationToken);
 
-            TempData["Status"] = "Anime metadata refreshed.";
+            TempData["Status"] = ui["library.animeRepair.metadataRefreshed"];
         }
         catch (Exception exception) when (
             exception is MetadataProviderException or InvalidOperationException)

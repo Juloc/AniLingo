@@ -7,6 +7,12 @@
 }
 @* Shared by the desktop sidebar footer and the mobile More menu. *@
 <partial name="_AppThemeControl" />
+@if (User.Identity?.IsAuthenticated == true)
+{
+    @* Compact global offline-download indicator (#221): hidden by default, shown by
+       offline-library-ui.js only while something is downloading. *@
+    <span class="sidebar-offline-indicator" data-offline-download-indicator hidden></span>
+}
 <div class="sidebar-account">
     <span class="sidebar-user">@User.Identity?.Name</span>
     <form method="post" asp-page="/Account/Logout" data-offline-logout>

@@ -39,6 +39,18 @@
     <script type="application/json" id="app-shell-text">@Json.Serialize(ui.WithPrefix("pwa."))</script>
     <script src="~/js/app-theme.js" asp-append-version="true" defer></script>
     <script src="~/js/pwa.js" asp-append-version="true" defer></script>
+    @if (isAuthenticated)
+    {
+        @* Offline library (#221): loaded on every authenticated page (not just Settings/Offline and
+           the "Save offline" action) because the compact global download indicator in
+           _AppAccountFooter.cshtml needs the manager everywhere. Previously duplicated per-page;
+           see _OfflineLibraryAction.cshtml and Settings/Offline.cshtml. *@
+        <script type="application/json" id="offline-library-text">@Json.Serialize(ui.WithPrefix("offlineLibrary."))</script>
+        <script src="~/js/offline-library.js" asp-append-version="true" defer></script>
+        <script src="~/js/offline-library-storage.js" asp-append-version="true" defer></script>
+        <script src="~/js/offline-library-manager.js" asp-append-version="true" defer></script>
+        <script src="~/js/offline-library-ui.js" asp-append-version="true" defer></script>
+    }
     @await RenderSectionAsync("Head", required: false)
 </head>
 <body class="@(isAuthenticated ? "" : "auth-page")"

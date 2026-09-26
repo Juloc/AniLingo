@@ -1,5 +1,6 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Artwork;
+using AniLingo.Web.Features.Localization;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
 
@@ -7,10 +8,12 @@ namespace AniLingo.Web.Pages.Library;
 
 public sealed class IndexModel(AppDbContext db) : PageModel
 {
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public IReadOnlyList<AnimeRow> Anime { get; private set; } = [];
 
     public async Task OnGetAsync(CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         var rows = await (
             from anime in db.Anime.AsNoTracking()
             join metadataValue in db.AnimeMetadata.AsNoTracking()

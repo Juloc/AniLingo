@@ -9,4 +9,13 @@
             android:targetClass="de.juloc.anilingo.MainActivity"
             android:targetPackage="de.juloc.anilingo" />
     </shortcut>
+    <shortcut
+        android:enabled="true"
+        android:shortcutId="library_downloads"
+        android:shortcutShortLabel="@string/shortcut_library_downloads">
+        <intent
+            android:action="de.juloc.anilingo.action.LIBRARY_DOWNLOADS"
+            android:targetClass="de.juloc.anilingo.MainActivity"
+            android:targetPackage="de.juloc.anilingo" />
+    </shortcut>
 </shortcuts>

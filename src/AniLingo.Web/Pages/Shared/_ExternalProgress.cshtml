@@ -1,3 +1,4 @@
+@using AniLingo.Web.Features.Localization
 @using AniLingo.Web.Features.Tracking
 @model ExternalProgressPanel
 @*
@@ -5,17 +6,20 @@
     Everything rendered here is local. The profile's remote AniList state is
     fetched after first paint from RemoteStateUrl (a page handler that returns
     the _ExternalProgressState fragment), so page GETs never wait on AniList.
+    Ui defaults to English on pages not yet migrated to the per-request UI
+    catalog (issue #185); a migrated caller passes its own Model.Ui.
 *@
 @{
+    var ui = Model.Ui ?? UiTextBundle.English;
     var summary = Model.Summary;
     var (basisLabel, basisClass) = summary.MappingBasis switch
     {
-        ExternalMappingBasis.NeedsReview => ("Mapping needs review", "status-warn"),
-        ExternalMappingBasis.EpisodeRanges => ("Episode ranges", "status-ok"),
-        ExternalMappingBasis.ManualSegments => ("Manual segments", "status-ok"),
-        ExternalMappingBasis.AutomaticSegments => ("Automatic segments", "status-ok"),
-        ExternalMappingBasis.Matched => ("Matched", "status-ok"),
-        _ => ("Not matched", "")
+        ExternalMappingBasis.NeedsReview => (ui["library.externalProgress.basis.needsReview"], "status-warn"),
+        ExternalMappingBasis.EpisodeRanges => (ui["library.externalProgress.basis.episodeRanges"], "status-ok"),
+        ExternalMappingBasis.ManualSegments => (ui["library.externalProgress.basis.manualSegments"], "status-ok"),
+        ExternalMappingBasis.AutomaticSegments => (ui["library.externalProgress.basis.automaticSegments"], "status-ok"),
+        ExternalMappingBasis.Matched => (ui["library.matched"], "status-ok"),
+        _ => (ui["library.externalProgress.basis.notMatched"], "")
     };
 }
 <section class="panel external-progress"
@@ -23,7 +27,7 @@
          data-src="@Model.RemoteStateUrl">
     <div class="external-progress-summary">
         <div class="external-progress-local">
-            <span class="eyebrow">Jularr progress</span>
+            <span class="eyebrow">@ui["library.externalProgress.localEyebrow"]</span>
             <strong>@summary.LocalProgressText</strong>
         </div>
         <div class="external-progress-match">
@@ -35,7 +39,7 @@
                      referrerpolicy="no-referrer" />
             }
             <div>
-                <span class="eyebrow">AniList match</span>
+                <span class="eyebrow">@ui["library.externalProgress.matchEyebrow"]</span>
                 @if (summary.IsMatched)
                 {
                     <a href="@summary.AniListUrl"
@@ -44,7 +48,7 @@
                 }
                 else
                 {
-                    <strong>No AniList entry</strong>
+                    <strong>@ui["library.externalProgress.noEntry"]</strong>
                 }
                 <span class="status-pill @basisClass">@basisLabel</span>
             </div>
@@ -57,12 +61,12 @@
     }
 
     <div class="external-progress-remote" data-external-progress-remote aria-live="polite">
-        <span class="status-pill">Checking AniList…</span>
+        <span class="status-pill">@ui["library.externalProgress.checking"]</span>
     </div>
     <template data-external-progress-failed>
         <div class="external-progress-state">
-            <span class="status-pill status-error">AniList progress unavailable</span>
-            <p class="muted">Local progress is unaffected. Reload the page to try again.</p>
+            <span class="status-pill status-error">@ui["library.externalProgress.unavailable"]</span>
+            <p class="muted">@ui["library.externalProgress.unaffectedNotice"]</p>
         </div>
     </template>
 
@@ -71,15 +75,15 @@
         <div class="inline-actions external-progress-actions">
             @if (!string.IsNullOrWhiteSpace(Model.MatchUrl))
             {
-                <a class="button" href="@Model.MatchUrl">@(summary.IsMatched ? "Change match" : "Match AniList")</a>
+                <a class="button" href="@Model.MatchUrl">@(summary.IsMatched ? ui["library.externalProgress.changeMatch"] : ui["library.externalProgress.matchAniList"])</a>
             }
             @if (summary.MappingBasis == ExternalMappingBasis.NeedsReview)
             {
-                <a class="button" href="/Settings/MappingReview">Review mapping</a>
+                <a class="button" href="/Settings/MappingReview">@ui["library.externalProgress.reviewMapping"]</a>
             }
             @if (!string.IsNullOrWhiteSpace(Model.MappingUrl))
             {
-                <a class="button" href="@Model.MappingUrl">Edit mappings</a>
+                <a class="button" href="@Model.MappingUrl">@ui["library.externalProgress.editMappings"]</a>
             }
         </div>
     }

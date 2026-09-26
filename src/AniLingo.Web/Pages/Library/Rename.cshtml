@@ -2,22 +2,24 @@
 @using AniLingo.Web.Features.Acquisition.Naming
 @model AniLingo.Web.Pages.Library.RenameModel
 @{
+    var ui = Model.Ui;
     var plan = Model.Plan!;
-    ViewData["Title"] = $"Rename · {plan.AnimeTitle}";
+    ViewData["Title"] = ui.Format("library.rename.pageTitle", ("anime", plan.AnimeTitle));
     var operationId = Model.OperationId;
 }
 
 <header class="page-header">
     <div>
         <a class="back-link" href="/Library/Anime/@Model.AnimeId">&larr; @plan.AnimeTitle</a>
-        <span class="eyebrow">Library &middot; Naming</span>
-        <h1>Rename files</h1>
+        <span class="eyebrow">@ui["library.rename.eyebrow"]</span>
+        <h1>@ui["library.rename.title"]</h1>
         <p>
-            Preview how profile “@plan.Naming.Profile.Name” (@plan.Naming.Source) names this anime. Anime left to Sonarr under
-            <a href="/Settings/SonarrMigration">Sonarr migration</a> and Sonarr-owned files are never renamed.
+            @ui.Format("library.rename.description", ("profile", plan.Naming.Profile.Name), ("source", plan.Naming.Source))
+            <a href="/Settings/SonarrMigration">@ui["library.rename.sonarrMigrationLink"]</a>
+            @ui["library.rename.sonarrOwnedNotice"]
         </p>
     </div>
-    <a class="button" href="/Settings/Naming">Naming profiles</a>
+    <a class="button" href="/Settings/Naming">@ui["library.rename.namingProfilesLink"]</a>
 </header>
 
 @if (!string.IsNullOrWhiteSpace(Model.Notice))
@@ -30,20 +32,36 @@
 }
 @if (operationId is Guid id)
 {
-    <p><a href="/Admin/Operation/@id">Rename log</a></p>
+    <p><a href="/Admin/Operation/@id">@ui["library.rename.viewLog"]</a></p>
+}
+
+@{
+    string SeriesTypeLabel(AnimeSeriesType type) => type switch
+    {
+        AnimeSeriesType.Standard => ui["library.rename.seriesType.standard"],
+        AnimeSeriesType.Daily => ui["library.rename.seriesType.daily"],
+        _ => ui["library.rename.seriesType.anime"]
+    };
+
+    string RenameStatusLabel(AnimeRenameItemStatus status) => status switch
+    {
+        AnimeRenameItemStatus.Rename => ui["library.rename.status.rename"],
+        AnimeRenameItemStatus.Blocked => ui["library.rename.status.blocked"],
+        _ => ui["library.rename.status.unchanged"]
+    };
 }
 
 <div class="settings-grid">
     <section class="panel">
         <div class="panel-heading">
-            <h2>Naming for this anime</h2>
-            <span>@(Model.Assignment?.ProfileId is null ? "Inherited" : "Anime override")</span>
+            <h2>@ui["library.rename.namingHeading"]</h2>
+            <span>@(Model.Assignment?.ProfileId is null ? ui["library.rename.inherited"] : ui["library.rename.animeOverride"])</span>
         </div>
         <form method="post" asp-page-handler="Selection" asp-route-id="@Model.AnimeId" asp-route-folder="@Model.Folder" class="form-stack">
             <label>
-                <span>Profile</span>
+                <span>@ui["library.rename.profileLabel"]</span>
                 <select name="profileId">
-                    <option value="" selected="@(Model.Assignment?.ProfileId is null)">Library / default</option>
+                    <option value="" selected="@(Model.Assignment?.ProfileId is null)">@ui["library.rename.libraryDefaultOption"]</option>
                     @foreach (var profile in Model.Naming.Profiles)
                     {
                         <option value="@profile.Id" selected="@(string.Equals(profile.Id, Model.Assignment?.ProfileId, StringComparison.OrdinalIgnoreCase))">@profile.Name</option>
@@ -51,41 +69,44 @@
                 </select>
             </label>
             <label>
-                <span>Series type</span>
+                <span>@ui["library.rename.seriesTypeLabel"]</span>
                 <select name="seriesType">
                     @foreach (var type in Enum.GetValues<AnimeSeriesType>())
                     {
-                        <option value="@type" selected="@(type == (Model.Assignment?.SeriesType ?? AnimeSeriesType.Anime))">@type</option>
+                        <option value="@type" selected="@(type == (Model.Assignment?.SeriesType ?? AnimeSeriesType.Anime))">@SeriesTypeLabel(type)</option>
                     }
                 </select>
-                <small class="muted">Anime uses the anime format when absolute numbers are known, Daily uses the daily format when an air date is known.</small>
+                <small class="muted">@ui["library.rename.seriesTypeHint"]</small>
             </label>
-            <div class="inline-actions"><button class="button" type="submit">Save selection</button></div>
+            <div class="inline-actions"><button class="button" type="submit">@ui["library.rename.saveSelection"]</button></div>
         </form>
     </section>
 
     <section class="panel">
         <div class="panel-heading">
-            <h2>Plan</h2>
-            <span class="@(plan.CanExecute ? "status-pill status-ok" : "status-pill")">@plan.RenameCount to rename &middot; @plan.BlockedCount blocked</span>
+            <h2>@ui["library.rename.planHeading"]</h2>
+            <span class="@(plan.CanExecute ? "status-pill status-ok" : "status-pill")">@ui.Format("library.rename.planSummary", ("renameCount", plan.RenameCount), ("blockedCount", plan.BlockedCount))</span>
         </div>
         <div class="inline-actions">
             @if (Model.Folder)
             {
-                <a class="button" href="/Library/Rename/@Model.AnimeId">Keep series folder</a>
+                <a class="button" href="/Library/Rename/@Model.AnimeId">@ui["library.rename.keepSeriesFolder"]</a>
             }
             else
             {
-                <a class="button" href="/Library/Rename/@Model.AnimeId?folder=true">Also rename series folder</a>
+                <a class="button" href="/Library/Rename/@Model.AnimeId?folder=true">@ui["library.rename.alsoRenameSeriesFolder"]</a>
             }
         </div>
         @foreach (var move in plan.FolderMoves)
         {
-            <p class="muted">Series folder: <code>@move.SourcePath</code> &rarr; <code>@move.TargetPath</code></p>
+            <p class="muted">@ui["library.rename.seriesFolderLabel"] <code>@move.SourcePath</code> &rarr; <code>@move.TargetPath</code></p>
         }
         @if (plan.TargetAnimeKey != plan.AnimeKey)
         {
-            <p class="muted">Library key changes from <code>@plan.AnimeKey</code> to <code>@plan.TargetAnimeKey</code>; episodes, progress and Sonarr migration settings move with it.</p>
+            <p class="muted">
+                @ui["library.rename.libraryKeyChangeBefore"] <code>@plan.AnimeKey</code>
+                @ui["library.rename.libraryKeyChangeMiddle"] <code>@plan.TargetAnimeKey</code>@ui["library.rename.libraryKeyChangeAfter"]
+            </p>
         }
         @foreach (var reason in plan.BlockingReasons)
         {
@@ -95,7 +116,11 @@
         {
             <form method="post" asp-page-handler="Execute" asp-route-id="@Model.AnimeId" asp-route-folder="@Model.Folder" class="inline-actions">
                 <input type="hidden" name="fingerprint" value="@plan.Fingerprint" />
-                <button class="button button-primary" type="submit">Rename @plan.RenameCount file(s)@(plan.FolderMoves.Count > 0 ? " and move series folder" : "")</button>
+                <button class="button button-primary" type="submit">
+                    @(plan.FolderMoves.Count > 0
+                        ? ui.Format("library.rename.executeWithFolder", ("count", plan.RenameCount))
+                        : ui.Format("library.rename.execute", ("count", plan.RenameCount)))
+                </button>
             </form>
         }
     </section>
@@ -103,12 +128,12 @@
 
 <section class="panel">
     <div class="panel-heading">
-        <h2>Files</h2>
+        <h2>@ui["library.rename.filesHeading"]</h2>
         <span>@plan.Items.Count</span>
     </div>
     @if (plan.Items.Count == 0)
     {
-        <p class="muted">No media files are known for this anime.</p>
+        <p class="muted">@ui["library.rename.noMediaFiles"]</p>
     }
     <div class="status-list">
         @foreach (var item in plan.Items)
@@ -129,14 +154,14 @@
                     }
                     @if (item.Sidecars.Count > 0)
                     {
-                        <small class="muted">+ @item.Sidecars.Count sidecar file(s)</small>
+                        <small class="muted">@ui.Format("library.rename.sidecarCount", ("count", item.Sidecars.Count))</small>
                     }
                     @if (item.Reason is not null)
                     {
                         <small class="metadata-error">@item.Reason</small>
                     }
                 </div>
-                <span class="@pill">@item.Status</span>
+                <span class="@pill">@RenameStatusLabel(item.Status)</span>
             </div>
         }
     </div>
