@@ -28,6 +28,8 @@
         <script src="~/js/reader-themes.js" asp-append-version="true"></script>
         <script src="~/js/reader-personalization.js" asp-append-version="true"></script>
         <script src="~/js/reader-shell.js" asp-append-version="true"></script>
+        <script src="~/js/tts.js" asp-append-version="true"></script>
+        <script src="~/js/reader-tts.js" asp-append-version="true"></script>
     }
     else
     {
@@ -326,7 +328,8 @@
 
         @if (Model.Chapter.NextChapterId is Guid nextFooter)
         {
-            <a href="/Novels/Read/@nextFooter">Nächstes Kapitel →</a>
+            <a href="/Novels/Read/@nextFooter"
+               data-reader-next-chapter="@nextFooter">Nächstes Kapitel →</a>
         }
     </footer>
 

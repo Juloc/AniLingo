@@ -71,6 +71,7 @@ The runtime reorganizes the canonical controls into:
 - Lesen
 - Text
 - Aussehen
+- Vorlesen (only when the document supports read-aloud)
 - Defaults
 
 Scroll/Pages is a segmented primary choice. Scroll-only and page-only controls
@@ -97,6 +98,10 @@ In paged mode the shared shell routes swipes and left/right edge taps to the
 source reader's page-turn handler. Text selection takes precedence.
 
 The thin progress indicator is intentionally independent of chrome.
+
+Shared Reader extensions mount through `root.readerShell` (settings command,
+reset/source badges, overflow and mobile actions) instead of patching source
+readers. Read-aloud (`reader-tts.js`, see `docs/TTS.md`) is the first one.
 
 ## State ownership
 

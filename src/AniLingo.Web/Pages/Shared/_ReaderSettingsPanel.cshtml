@@ -1,6 +1,24 @@
 @model AniLingo.Web.Features.ReaderCore.ReaderSettingsPanelModel
+@using AniLingo.Web.Features.ReaderPreferences
+@using AniLingo.Web.Features.Speech
 @{
     var capabilities = Model.Document.Capabilities;
+}
+@if (capabilities.SupportsTts)
+{
+    @* Read-aloud entry point; reader-tts.js reveals it only when the device can speak. *@
+    <button class="reader-tts-toggle"
+            type="button"
+            data-reader-tts-toggle
+            aria-pressed="false"
+            aria-label="Vorlesen"
+            title="Vorlesen"
+            hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" />
+            <path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11" />
+        </svg>
+    </button>
 }
 <details class="reader-settings"
          data-reader-settings-panel
@@ -378,6 +396,81 @@
             </label>
         </div>
 
+        @if (capabilities.SupportsTts)
+        {
+            var tts = Model.Settings;
+            <section class="reader-tts-settings" data-reader-tts-settings aria-label="Vorlesen">
+                <input type="hidden"
+                       name="TtsVoiceIds"
+                       value="@(SpeechVoiceMap.Serialize(tts.TtsVoiceIds) ?? "")"
+                       data-reader-tts-voice-map />
+
+                <p class="reader-tts-status" data-reader-tts-status role="status"></p>
+
+                <label data-reader-tts-field="ttsProviderId">
+                    <span>Sprachausgabe</span>
+                    <select name="TtsProviderId" data-reader-tts-setting="ttsProviderId">
+                        <option value="auto" selected="@(tts.TtsProviderId == "auto")">Automatisch</option>
+                        <option value="device" selected="@(tts.TtsProviderId == "device")">Gerätestimme</option>
+                    </select>
+                </label>
+
+                @foreach (var language in Model.Document.Languages)
+                {
+                    var voiceKey = ReaderPreferenceRules.TtsVoiceFieldKey(language.Tag);
+                    var storedVoice = SpeechVoiceMap.VoiceIdFor(tts.TtsVoiceIds, language.Tag);
+                    <label data-reader-tts-field="@voiceKey">
+                        <span>Stimme @language.Label</span>
+                        <select data-reader-tts-voice="@language.Tag"
+                                data-reader-tts-voice-label="@language.Label">
+                            <option value="auto">Automatisch</option>
+                            @if (storedVoice is not null)
+                            {
+                                <option value="@storedVoice" selected>@storedVoice</option>
+                            }
+                        </select>
+                        <small data-reader-tts-voice-status="@language.Tag"></small>
+                    </label>
+                }
+
+                @foreach (var item in new[]
+                {
+                    ("TtsRate", "ttsRate", "Tempo", "0.5", "2.5", tts.TtsRate),
+                    ("TtsPitch", "ttsPitch", "Tonhöhe", "0.5", "2", tts.TtsPitch),
+                    ("TtsVolume", "ttsVolume", "Lautstärke", "0", "1", tts.TtsVolume)
+                })
+                {
+                    <label data-reader-tts-field="@item.Item2">
+                        <span>
+                            @item.Item3
+                            <output data-reader-tts-output="@item.Item2"></output>
+                        </span>
+                        <input type="range"
+                               name="@item.Item1"
+                               min="@item.Item4"
+                               max="@item.Item5"
+                               step="0.05"
+                               value="@item.Item6.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+                               data-reader-tts-setting="@item.Item2" />
+                    </label>
+                }
+
+                <label class="reader-settings-check" data-reader-tts-field="ttsAutoContinueChapters">
+                    <input type="checkbox"
+                           name="TtsAutoContinueChapters"
+                           value="true"
+                           checked="@tts.TtsAutoContinueChapters"
+                           data-reader-tts-setting="ttsAutoContinueChapters" />
+                    <span>Am Kapitelende automatisch weiterlesen</span>
+                </label>
+
+                <p class="reader-tts-privacy">
+                    Gerätestimmen: AniLingo sendet keinen Text an den Server.
+                    Als „Online“ markierte Stimmen verarbeitet der Browser-Anbieter.
+                </p>
+            </section>
+        }
+
         @if (!string.IsNullOrWhiteSpace(Model.AdditionalActionUrl)
              && !string.IsNullOrWhiteSpace(Model.AdditionalActionLabel))
         {
@@ -389,3 +482,13 @@
         }
     </form>
 </details>
+
+@if (capabilities.SupportsTts)
+{
+    @* reader-tts.js moves the player bar out of the auto-hiding toolbar. *@
+    <div class="reader-tts-bar" data-reader-tts-bar role="region" aria-label="Vorlesen" hidden>
+        <span class="reader-tts-bar-status" data-reader-tts-bar-status aria-live="polite"></span>
+        <button type="button" data-reader-tts-pause>Pause</button>
+        <button type="button" data-reader-tts-stop>Stopp</button>
+    </div>
+}

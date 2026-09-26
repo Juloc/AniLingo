@@ -95,6 +95,22 @@ public static class SpeechPreferenceResolver
                 }
             }
         }
+        else if (requestedVoice is not null)
+        {
+            // A voice chosen without a provider ("automatic") still wins when an
+            // available provider offers it for this language.
+            foreach (var provider in available)
+            {
+                var selected = voices.FirstOrDefault(x =>
+                    string.Equals(x.ProviderId, provider.Id, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(x.VoiceId, requestedVoice, StringComparison.OrdinalIgnoreCase));
+
+                if (selected is not null && IsLanguageCompatible(selected.Language, language))
+                {
+                    return Build(provider, selected, language, preferences, false, "selected-voice");
+                }
+            }
+        }
 
         foreach (var provider in available)
         {
