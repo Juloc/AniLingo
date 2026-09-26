@@ -1,3 +1,5 @@
+using AniLingo.Web.Features.Learning.Toolkits;
+
 namespace AniLingo.Web.Features.Vocabulary;
 
 public sealed record JapaneseDictionaryEntry(
@@ -6,7 +8,15 @@ public sealed record JapaneseDictionaryEntry(
     string Language,
     bool Common);
 
-public sealed class JapaneseDictionary
+/// <summary>
+/// Bundled JMdict (German, with English fallback) lookup. Also implements
+/// <see cref="IDictionaryLookup"/> so it can back the Japanese language
+/// toolkit's <c>Dictionary</c> capability; the explicit interface member
+/// adapts <see cref="JapaneseDictionaryEntry"/> to the toolkit-neutral
+/// <see cref="DictionaryLookupEntry"/> without changing this type's own
+/// <see cref="Find"/> contract used elsewhere.
+/// </summary>
+public sealed class JapaneseDictionary : IDictionaryLookup
 {
     public const string DefaultDirectory = "/app/dictionary";
 
@@ -26,6 +36,14 @@ public sealed class JapaneseDictionary
 
     public JapaneseDictionaryEntry? Find(string canonical) =>
         entries.Value.GetValueOrDefault(canonical);
+
+    DictionaryLookupEntry? IDictionaryLookup.Find(string canonical)
+    {
+        var entry = Find(canonical);
+        return entry is null
+            ? null
+            : new DictionaryLookupEntry(entry.Reading, entry.Meaning, entry.Language, entry.Common);
+    }
 
     private static IReadOnlyDictionary<string, JapaneseDictionaryEntry> Load(string directory)
     {

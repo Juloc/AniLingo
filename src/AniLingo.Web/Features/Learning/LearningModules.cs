@@ -42,8 +42,6 @@ public sealed record LearningModuleAvailability(
 
 public sealed class LearningModuleResolver(AppDbContext db)
 {
-    private static readonly LearningLanguageToolkitRegistry Toolkits = new();
-
     public async Task<LearningModuleAvailability> ResolveAsync(
         string profileId,
         CancellationToken cancellationToken)
@@ -95,7 +93,7 @@ public sealed class LearningModuleResolver(AppDbContext db)
         string languageTag,
         CancellationToken cancellationToken)
     {
-        if (!Toolkits.Get(languageTag).Supports(LearningLanguageCapability.ScriptTrainer))
+        if (!LearningLanguageToolkitRegistry.Supports(languageTag, LearningLanguageCapability.ScriptTrainer))
         {
             return false;
         }

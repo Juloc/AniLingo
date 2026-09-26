@@ -92,7 +92,9 @@ public sealed class LanguageInspectorService(
 
         var source = await ResolveSourceAsync(request.Context, cancellationToken);
         var canonical = Required(request.Text, MaxCanonicalLength, "Text")
-            .Normalize(LanguageTextAnalyzer.IsJapanese(source.Language)
+            .Normalize(LearningLanguageToolkitRegistry.Supports(
+                source.Language,
+                LearningLanguageCapability.Readings)
                 ? NormalizationForm.FormKC
                 : NormalizationForm.FormC);
         if (!canonical.Any(char.IsLetter))

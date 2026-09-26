@@ -53,7 +53,20 @@ Course languages are normalized culture/BCP-47 tags such as `ja`, `de`, `id`, `r
 
 Do not add enum-based lists of supported languages to the core model. Specialized language toolkits advertise enhanced capabilities, but a generic course is not blocked merely because no special toolkit exists.
 
-`LearningLanguageToolkitRegistry` returns the specialized Japanese toolkit for `ja` and a generic toolkit for every other valid language tag.
+`LearningLanguageToolkitRegistry` returns the specialized Japanese toolkit for `ja` and a generic toolkit for every other valid language tag. It is the single place that decides which implementation backs a language tag; other features query capability through it (`registry.Get(tag).Supports(...)` or the dependency-free `LearningLanguageToolkitRegistry.Supports(tag, capability)`) instead of re-implementing their own "is this Japanese" check.
+
+### Toolkit capabilities are pluggable, not hardcoded to Japanese
+
+`ILearningLanguageToolkit` (`Features/Learning/Courses/LearningLanguageToolkits.cs`) exposes, alongside `Supports(LearningLanguageCapability)`:
+
+- `TermExtractor` (`Features/Learning/Toolkits/ITermExtractor.cs`): tokenization/term extraction, non-null exactly when `Tokenization` is supported. Japanese resolves to the existing MeCab-based `JapaneseTermExtractor`; every other language resolves to `GenericTermExtractor`, which splits on Unicode word boundaries, case-folds and drops words in a small, explicitly-curated stopword list (`GenericStopwords`) for the few languages that have one (`de`, `id`, `ro`, `en` today) — a language without a curated list gets no stopword filtering rather than a guessed one.
+- `Dictionary` (`Features/Learning/Toolkits/IDictionaryLookup.cs`): bundled dictionary lookup, non-null exactly when `Dictionary` is supported. Japanese resolves to the bundled JMdict lookup (`JapaneseDictionary`); every other language has none — lookup shows the word itself (plus optional AI/translation where those capabilities exist) rather than pretending a dictionary exists.
+
+`VocabularyService.RebuildEpisodeAsync` extracts subtitle terms per subtitle track using that track's own `Language`, resolving the toolkit (and therefore the extractor/dictionary) per track instead of assuming `ja`. Every subtitle track the import pipeline produces today is Japanese, so Japanese stays the content language in practice and the existing behaviour is unchanged; the extraction path itself no longer hardcodes it, so a track carrying another language is picked up the same way.
+
+Readings/furigana/transliteration and the AI sentence explainer are gated by `toolkit.Supports(LearningLanguageCapability.Readings)` (`SentenceExplanationSupport.Supports`, `LanguageTextAnalyzer.Analyze`/`LookUp`, `SentencePracticeService.BuildCloze`, `SentencePracticeText.IsSuitable`, the canonical-form normalization in `LanguageInspectorService.SetStateAsync`), not a scattered `language == "ja"` check. Only the Japanese toolkit supports `Readings` today.
+
+`ReviewAnimeContext` carries the `Language` of the sentence it quotes — the term's own source language from the subtitle track it came from, never an assumed Japanese one. `SentencePracticeService`'s no-tracked-word fallback picks subtitle sentences in the profile's enabled courses' source languages, falling back to Japanese only when the profile has no enabled course (the existing canonical default, not a hardcoded assumption).
 
 ## Kana
 
