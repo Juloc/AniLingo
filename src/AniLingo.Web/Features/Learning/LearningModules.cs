@@ -85,6 +85,30 @@ public sealed class LearningModuleResolver(AppDbContext db)
         return LanguageAssistance.LanguageAssistanceAvailability.From(settings, surface);
     }
 
+    /// <summary>
+    /// Resolves the Translation capability for a Novel/Book work, optionally
+    /// narrowed to one chapter, through the canonical profile → media type →
+    /// work → content hierarchy. Shared by the readers (whole-chapter AI
+    /// translation) and the work/library chapter-list pages (the
+    /// "translated" badge and the translate/regenerate-whole-book actions),
+    /// so cached or queued translations never leak past a scope that
+    /// resolved Translation off.
+    /// </summary>
+    public async Task<bool> ResolveTranslationEnabledAsync(
+        string profileId,
+        LearningMediaType mediaType,
+        string workKey,
+        string? contentKey,
+        CancellationToken cancellationToken)
+    {
+        var settings = await new LearningConfigurationStore(db).ResolveAsync(
+            profileId,
+            new LearningScopeContext(mediaType, workKey, contentKey),
+            cancellationToken);
+
+        return settings.IsEnabled(LearningCapability.Translation);
+    }
+
     /// <summary>The Kana trainer is the writing-system trainer of the Japanese toolkit.</summary>
     public const string KanaLanguageTag = "ja";
 

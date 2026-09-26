@@ -6,7 +6,7 @@
     var sourceIsTarget = Model.Reader.SourceLanguage.Equals(
         Model.Reader.TargetLanguage,
         StringComparison.OrdinalIgnoreCase);
-    var translatedParagraphs = sourceIsTarget
+    var translatedParagraphs = sourceIsTarget || !Model.TranslationEnabled
         ? Array.Empty<string>()
         : Model.Reader.TranslatedParagraphs;
     var hasAlternate = translatedParagraphs.Count > 0;
@@ -95,7 +95,7 @@
         </button>
 
         <div class="book-reader-view-switch" data-reader-language-control role="group" aria-label="@ui["books.read.readingTextAria"]">
-            @if (!sourceIsTarget)
+            @if (!sourceIsTarget && Model.TranslationEnabled)
             {
                 <button type="button"
                         data-book-view="translated"
@@ -104,7 +104,7 @@
                 </button>
             }
             <button type="button" data-book-view="original">@ui["books.read.original"]</button>
-            @if (!sourceIsTarget)
+            @if (!sourceIsTarget && Model.TranslationEnabled)
             {
                 <button type="button"
                         data-book-view="both"
@@ -139,9 +139,10 @@
         <h1>@Model.Reader.Chapter.Title</h1>
     </header>
 
-    @if (!Model.Reader.SourceLanguage.Equals(
-        Model.Reader.TargetLanguage,
-        StringComparison.OrdinalIgnoreCase)
+    @if (Model.TranslationEnabled
+        && !Model.Reader.SourceLanguage.Equals(
+            Model.Reader.TargetLanguage,
+            StringComparison.OrdinalIgnoreCase)
         && !hasAlternate)
     {
         <div class="book-translation-slot" data-translation-slot>

@@ -1,5 +1,6 @@
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Books;
+using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Localization;
 using AniLingo.Web.Features.Novels;
 using AniLingo.Web.Features.Operations;
@@ -33,6 +34,14 @@ public sealed class ReadModel(
         || Reader.SourceLanguage.Equals(
             Reader.TargetLanguage,
             StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Whole-chapter AI translation, resolved through the canonical Learning
+    /// hierarchy (Book media type → work → chapter) rather than the presence
+    /// of a cached translation. When it resolves off, cached translated text
+    /// is withheld from the response and the translate/status handlers refuse.
+    /// </summary>
+    public bool TranslationEnabled { get; private set; }
 
     public async Task<IActionResult> OnGetAsync(
         Guid id,
@@ -80,6 +89,10 @@ public sealed class ReadModel(
         CurrentHighlights = await BookReaderAnnotationStore.GetChapterHighlightsAsync(
             db,
             account.ProfileId,
+            reader.Chapter.Id,
+            cancellationToken);
+        TranslationEnabled = await ResolveTranslationEnabledAsync(
+            reader.Work.Id,
             reader.Chapter.Id,
             cancellationToken);
         return Page();
@@ -233,6 +246,11 @@ public sealed class ReadModel(
             return NotFound();
         }
 
+        if (!await ResolveTranslationEnabledAsync(reader.Work.Id, reader.Chapter.Id, cancellationToken))
+        {
+            return Forbid();
+        }
+
         if (reader.SourceLanguage.Equals(
                 target,
                 StringComparison.OrdinalIgnoreCase)
@@ -299,6 +317,11 @@ public sealed class ReadModel(
                 status = "ready",
                 paragraphs = reader.OriginalParagraphs
             });
+        }
+
+        if (!await ResolveTranslationEnabledAsync(reader.Work.Id, reader.Chapter.Id, cancellationToken))
+        {
+            return Forbid();
         }
 
         if (reader.Translation is null)
@@ -512,4 +535,23 @@ public sealed class ReadModel(
             ? normalized
             : null;
     }
+
+    /// <summary>
+    /// Resolves the Translation capability for this chapter's scope (profile →
+    /// Book media type → work → chapter) so cached translated text and the
+    /// translate/status handlers follow the canonical Learning hierarchy
+    /// instead of only checking whether a translation happens to be cached.
+    /// Shared with the Library chapter-list page through
+    /// <see cref="LearningModuleResolver.ResolveTranslationEnabledAsync"/>.
+    /// </summary>
+    private Task<bool> ResolveTranslationEnabledAsync(
+        Guid workId,
+        Guid chapterId,
+        CancellationToken cancellationToken) =>
+        new LearningModuleResolver(db).ResolveTranslationEnabledAsync(
+            account.ProfileId,
+            LearningMediaType.Book,
+            workId.ToString(),
+            chapterId.ToString(),
+            cancellationToken);
 }
