@@ -1,5 +1,5 @@
-using System.Text.Json;
 using AniLingo.Web.Data;
+using AniLingo.Web.Features.Acquisition.Sabnzbd;
 using AniLingo.Web.Features.Operations;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -34,7 +34,7 @@ public sealed class OperationCoverageTests
                     Lane: OperationLane.Normal,
                     IsDownload: true,
                     Retryable: false,
-                    ExternalProvider: SabnzbdOperationsClient.ProviderId,
+                    ExternalProvider: SabnzbdClient.ProviderId,
                     ExternalId: "SABnzbd_nzo_test"));
 
             await store.MarkRunningAsync(localId);
@@ -64,87 +64,6 @@ public sealed class OperationCoverageTests
     }
 
     [TestMethod]
-    public void SabnzbdSnapshotParsesQueueProgressAndHistoryOutcome()
-    {
-        using var queue = JsonDocument.Parse(
-            """
-            {
-              "queue": {
-                "kbpersec": "512.5",
-                "slots": [
-                  {
-                    "nzo_id": "SABnzbd_nzo_active",
-                    "filename": "Example Book",
-                    "status": "Downloading",
-                    "mb": "100.00",
-                    "mbleft": "25.00",
-                    "percentage": "75",
-                    "timeleft": "0:02:00"
-                  }
-                ]
-              }
-            }
-            """);
-
-        using var history = JsonDocument.Parse(
-            """
-            {
-              "history": {
-                "slots": [
-                  {
-                    "nzo_id": "SABnzbd_nzo_done",
-                    "name": "Finished Book",
-                    "status": "Completed",
-                    "bytes": 10485760
-                  },
-                  {
-                    "nzo_id": "SABnzbd_nzo_failed",
-                    "name": "Failed Book",
-                    "status": "Failed",
-                    "bytes": 0
-                  }
-                ]
-              }
-            }
-            """);
-
-        var now = new DateTime(
-            2026,
-            9,
-            25,
-            9,
-            0,
-            0,
-            DateTimeKind.Utc);
-
-        var snapshot = SabnzbdOperationsClient.ParseSnapshot(
-            queue.RootElement,
-            history.RootElement,
-            now);
-
-        Assert.AreEqual(3, snapshot.Jobs.Count);
-        Assert.AreEqual(512.5 * 1024d, snapshot.QueueBytesPerSecond);
-
-        var active = snapshot.Jobs.Single(x => x.Id == "SABnzbd_nzo_active");
-        Assert.AreEqual("Example Book", active.Name);
-        Assert.AreEqual("Downloading", active.Status);
-        Assert.AreEqual(75, active.ProgressPercent);
-        Assert.AreEqual(100L * 1024L * 1024L, active.BytesTotal);
-        Assert.AreEqual(75L * 1024L * 1024L, active.BytesCompleted);
-        Assert.AreEqual(now.AddMinutes(2), active.EtaUtc);
-        Assert.IsFalse(active.IsHistory);
-
-        var completed = snapshot.Jobs.Single(x => x.Id == "SABnzbd_nzo_done");
-        Assert.AreEqual("Completed", completed.Status);
-        Assert.IsTrue(completed.IsHistory);
-        Assert.AreEqual(10L * 1024L * 1024L, completed.BytesTotal);
-
-        var failed = snapshot.Jobs.Single(x => x.Id == "SABnzbd_nzo_failed");
-        Assert.AreEqual("Failed", failed.Status);
-        Assert.IsTrue(failed.IsHistory);
-    }
-
-    [TestMethod]
     public async Task ExternalReferenceCanBeAttachedAfterSubmission()
     {
         var path = TempDatabasePath();
@@ -161,16 +80,16 @@ public sealed class OperationCoverageTests
                     "SAB download",
                     IsDownload: true,
                     Retryable: false,
-                    ExternalProvider: SabnzbdOperationsClient.ProviderId));
+                    ExternalProvider: SabnzbdClient.ProviderId));
 
             await store.MarkRunningAsync(id);
             await store.SetExternalReferenceAsync(
                 id,
-                SabnzbdOperationsClient.ProviderId,
+                SabnzbdClient.ProviderId,
                 "SABnzbd_nzo_late");
 
             var active = await store.ListActiveExternalAsync(
-                SabnzbdOperationsClient.ProviderId);
+                SabnzbdClient.ProviderId);
 
             Assert.AreEqual(1, active.Count);
             Assert.AreEqual(id, active[0].Id);

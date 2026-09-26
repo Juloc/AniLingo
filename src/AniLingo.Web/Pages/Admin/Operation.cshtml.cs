@@ -1,4 +1,5 @@
 using AniLingo.Web.Data;
+using AniLingo.Web.Features.Acquisition.Sabnzbd;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Operations;
 using AniLingo.Web.Infrastructure;
@@ -12,15 +13,27 @@ namespace AniLingo.Web.Pages.Admin;
 public sealed class OperationModel(
     AppDbContext db,
     BackgroundJobQueue backgroundJobs,
-    PlaybackJobQueue playbackJobs) : PageModel
+    PlaybackJobQueue playbackJobs,
+    SabnzbdDownloadService sabnzbd,
+    SabnzbdAcquisitionStore acquisitions) : PageModel
 {
     public OperationSnapshot Operation { get; private set; } = null!;
     public IReadOnlyList<OperationLogEntry> Logs { get; private set; } = [];
+    public SabnzbdAcquisition? Acquisition { get; private set; }
+    public SabnzbdAcquisitionAttempt? AcquisitionAttempt { get; private set; }
+    public IReadOnlyList<SabnzbdBlockedRelease> AcquisitionBlocklist { get; private set; } = [];
+
+    public bool IsSabnzbdJob =>
+        SabnzbdDownloadService.IsSabnzbdOperation(Operation);
+
+    public bool CanCancel =>
+        Operation.CanCancel || (IsSabnzbdJob && Operation.IsActive);
 
     public bool RuntimeAvailable =>
-        Operation.Lane == OperationLane.Interactive
+        IsSabnzbdJob
+        || (Operation.Lane == OperationLane.Interactive
             ? playbackJobs.HasRuntimeWork(Operation.Id)
-            : backgroundJobs.HasRuntimeWork(Operation.Id);
+            : backgroundJobs.HasRuntimeWork(Operation.Id));
 
     public async Task<IActionResult> OnGetAsync(
         Guid id,
@@ -39,6 +52,13 @@ public sealed class OperationModel(
         if (operation is null)
         {
             return NotFound();
+        }
+
+        if (SabnzbdDownloadService.IsSabnzbdOperation(operation))
+        {
+            TempData["Status"] = (await RunSabnzbdActionAsync(
+                () => sabnzbd.CancelAsync(id, cancellationToken))).Message;
+            return RedirectToPage(new { id });
         }
 
         var cancelled = operation.Lane == OperationLane.Interactive
@@ -61,6 +81,13 @@ public sealed class OperationModel(
             return NotFound();
         }
 
+        if (SabnzbdDownloadService.IsSabnzbdOperation(operation))
+        {
+            TempData["Status"] = (await RunSabnzbdActionAsync(
+                () => sabnzbd.RetryAsync(id, cancellationToken))).Message;
+            return RedirectToPage(new { id });
+        }
+
         var retried = operation.Lane == OperationLane.Interactive
             ? await playbackJobs.RetryAsync(id, cancellationToken)
             : await backgroundJobs.RetryAsync(id, cancellationToken);
@@ -69,6 +96,19 @@ public sealed class OperationModel(
             ? "Retry queued."
             : "Retry is unavailable after a server restart or for this operation type.";
         return RedirectToPage(new { id });
+    }
+
+    private static async Task<SabnzbdActionOutcome> RunSabnzbdActionAsync(
+        Func<Task<SabnzbdActionOutcome>> action)
+    {
+        try
+        {
+            return await action();
+        }
+        catch (InvalidOperationException exception)
+        {
+            return new SabnzbdActionOutcome(false, exception.Message);
+        }
     }
 
     private async Task<bool> LoadAsync(
@@ -86,6 +126,23 @@ public sealed class OperationModel(
         Logs = await store.ListLogsAsync(
             new OperationLogFilter(OperationId: id, Limit: 300),
             cancellationToken);
+
+        if (operation.Kind == SabnzbdAcquisitionService.OperationKind)
+        {
+            var state = await acquisitions.LoadAsync(cancellationToken);
+            if (state.FindByOperation(id) is { } relation)
+            {
+                Acquisition = relation.Acquisition;
+                AcquisitionAttempt = relation.Attempt;
+                var identities = relation.Acquisition.Attempts
+                    .Select(attempt => attempt.ReleaseIdentity)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                AcquisitionBlocklist = state.Blocklist
+                    .Where(entry => identities.Contains(entry.ReleaseIdentity))
+                    .ToArray();
+            }
+        }
+
         return true;
     }
 }

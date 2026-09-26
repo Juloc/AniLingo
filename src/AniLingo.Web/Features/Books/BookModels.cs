@@ -146,7 +146,3 @@ public sealed record BookReaderChapter(
     IReadOnlyList<NovelBookmark> Bookmarks,
     string SourceLanguage,
     string TargetLanguage);
-
-public sealed record SabnzbdSubmissionResult(
-    bool Accepted,
-    string Message);

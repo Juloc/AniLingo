@@ -27,48 +27,9 @@
         <h2>SABnzbd</h2>
         <p>
             AniLingo can send an NZB URL or file you selected to your SABnzbd instance.
-            The API key is stored under AniLingo <code>/data</code> and is only editable by the Owner.
+            The SABnzbd connection is shared with Anime and is configured once under
+            <a href="/Settings/Sabnzbd">Settings → SABnzbd</a>, including the category used for Books.
         </p>
-
-        @if (Model.SabEnvironmentOverride)
-        {
-            <div class="books-setting-note">
-                SAB URL/API key are currently supplied by environment configuration and override saved values.
-            </div>
-        }
-
-        <label>
-            SABnzbd URL
-            <input type="url"
-                   name="sabBaseUrl"
-                   value="@Model.Settings.SabnzbdBaseUrl"
-                   placeholder="http://sabnzbd:8080/" />
-        </label>
-
-        <label>
-            API key
-            <input type="password"
-                   name="sabApiKey"
-                   value=""
-                   autocomplete="new-password"
-                   placeholder="@(Model.HasSavedApiKey ? "Saved — leave blank to keep" : "SABnzbd API key")" />
-        </label>
-
-        @if (Model.HasSavedApiKey)
-        {
-            <label class="book-settings-check">
-                <input type="checkbox" name="clearApiKey" value="true" />
-                Remove saved API key
-            </label>
-        }
-
-        <label>
-            Category
-            <input type="text"
-                   name="sabCategory"
-                   value="@Model.Settings.SabnzbdCategory"
-                   placeholder="Optional, for example books" />
-        </label>
 
         <div class="books-integration-status">
             <span class="@(Model.SabConfigured ? "ready" : "")">
@@ -76,12 +37,9 @@
             </span>
             @if (Model.SabConfigured)
             {
-                <button class="button"
-                        type="submit"
-                        formaction="/Books/Integrations?handler=TestSab">
-                    Test connection
-                </button>
+                <span>Books category: @(Model.SabBooksCategory ?? "SABnzbd default")</span>
             }
+            <a class="button" href="/Settings/Sabnzbd">Manage SABnzbd</a>
         </div>
     </section>
 
