@@ -73,8 +73,11 @@ Tracked network/import work includes:
 - Manga CBZ/ZIP upload, mounted-path import, source refresh and AniList metadata match
 - Discover handoffs for novel and Manga imports
 - local EPUB upload, Books inbox import and remote EPUB import
+- light-novel EPUB volume uploads and light-novel inbox imports (`<Books inbox>/light-novels`)
 - SABnzbd downloads for Books and Anime, including live queue/post-processing state when a full SABnzbd API key allows queue/history access
 - Sonarr artwork downloads
+
+Light-novel EPUB uploads on `/Novels` and on an EPUB series page accept up to 20 files of at most 100 MB each; the raised limits apply only to the owner's upload handlers.
 
 Manga uploads on `/Manga` and `/Discover/MangaImport` accept up to 200 CBZ/ZIP archives, at most 1 GB each and 4 GB in total. The raised request-body and multipart limits apply only to the owner's `Upload` handler on those two pages; every other request, including uploads attempted by non-owner accounts, keeps the ASP.NET Core defaults. A reverse proxy in front of AniLingo must not cap request bodies below roughly 4 GB for these uploads (Caddy has no body limit by default; nginx needs `client_max_body_size`).
 

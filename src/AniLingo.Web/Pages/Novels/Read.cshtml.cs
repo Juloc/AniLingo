@@ -37,6 +37,8 @@ public sealed class ReadModel(
     public NovelReaderChapter Chapter { get; private set; } = null!;
     public IReadOnlyList<string> JapaneseParagraphs { get; private set; } = [];
     public IReadOnlyList<string> GermanParagraphs { get; private set; } = [];
+    /// <summary>Japanese content blocks: paragraphs, headings and illustrations.</summary>
+    public IReadOnlyList<NovelReaderBlock> JapaneseBlocks { get; private set; } = [];
     public IReadOnlyList<NovelAnimeMapping> AnimeMappings { get; private set; } = [];
     public NovelChapterAnnotations Annotations { get; private set; } =
         new([], [], 0, 0);
@@ -49,6 +51,11 @@ public sealed class ReadModel(
     public Guid? ReturnBookmarkId { get; private set; }
     public Guid? ReturnHighlightId { get; private set; }
     public bool IsOwner => account.IsOwner;
+
+    /// <summary>"Band 2 · Kapitel 14" for EPUB volumes, "Kapitel 14" otherwise.</summary>
+    public string ChapterLabel => Chapter.IsEpubVolume
+        ? $"Band {Chapter.VolumeNumber} · Kapitel {Chapter.Number}"
+        : $"Kapitel {Chapter.Number}";
 
     public async Task<IActionResult> OnGetAsync(
         Guid id,
@@ -92,6 +99,9 @@ public sealed class ReadModel(
 
         JapaneseParagraphs = NovelTextLayout.SplitParagraphs(chapter.OriginalText);
         GermanParagraphs = NovelTextLayout.SplitParagraphs(chapter.TranslationText);
+        JapaneseBlocks = NovelChapterDocument.BuildReaderBlocks(
+            chapter.OriginalText,
+            chapter.ContentJson);
 
         AnimeMappings = await mappings.GetForChapterAsync(
             chapter.WorkId,

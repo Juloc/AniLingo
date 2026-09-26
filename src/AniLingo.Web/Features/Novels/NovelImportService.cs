@@ -47,6 +47,13 @@ public sealed class NovelImportService(
 
         ApplyWorkSnapshot(work, snapshot);
 
+        // A web novel's chapter index is the series' single implicit volume.
+        var volume = await NovelVolumeContent.EnsureImplicitVolumeAsync(
+            db,
+            work,
+            NovelVolumeKinds.Web,
+            cancellationToken);
+
         var existing = await db.NovelChapters
             .Where(x => x.WorkId == work.Id)
             .ToDictionaryAsync(x => x.Number, cancellationToken);
@@ -58,6 +65,7 @@ public sealed class NovelImportService(
                 chapter = new NovelChapter
                 {
                     WorkId = work.Id,
+                    VolumeId = volume.Id,
                     Number = sourceChapter.Number,
                     ImportedAt = DateTime.UtcNow
                 };
