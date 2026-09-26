@@ -10,8 +10,8 @@ namespace AniLingo.Web.Pages.Settings.Indexers;
 public sealed record IndexerRow(IndexerEntry Entry, AcquisitionHealthStatus? Health);
 
 /// <summary>
-/// The canonical indexer list: Prowlarr and direct Newznab/Torznab connections, each with
-/// priority, enable/disable, test and health status.
+/// The canonical indexer list: Prowlarr and direct Newznab connections, each with priority,
+/// enable/disable, test and health status.
 /// </summary>
 [Authorize(Roles = AccountRoles.Owner)]
 public sealed class IndexModel(

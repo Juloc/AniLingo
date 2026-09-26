@@ -57,10 +57,8 @@ public static class DownloadClientSettingsMigration
                 Priority: 1,
                 new DownloadClientSettings(
                     resolved.Connection.Settings.BaseUrl,
-                    Username: null,
                     resolved.Connection.Settings.BooksCategory,
-                    resolved.Connection.Settings.AnimeCategory,
-                    SavePath: null),
+                    resolved.Connection.Settings.AnimeCategory),
                 resolved.Connection.ApiKey),
             cancellationToken);
 
@@ -102,6 +100,47 @@ public static class DownloadClientSettingsMigration
                 log("Removed the legacy SABnzbd settings file; the canonical download client list already has a SABnzbd entry.");
                 break;
         }
+
+        try
+        {
+            await RemoveUnsupportedEntriesAsync(clientStore, log, cancellationToken);
+        }
+        catch (Exception exception) when (
+            exception is InvalidDataException
+                or ArgumentException
+                or IOException
+                or UnauthorizedAccessException
+                or System.Security.Cryptography.CryptographicException)
+        {
+            log($"Could not clean up unsupported download client entries: {exception.Message}");
+        }
+    }
+
+    /// <summary>
+    /// One-time, idempotent cleanup: AniLingo is usenet-only, so a qBittorrent (torrent) download
+    /// client entry persisted by an earlier build is no longer readable as a supported
+    /// <see cref="DownloadClientType"/> value and must be dropped rather than silently
+    /// reinterpreted. Named entries are logged so the owner knows what was removed and can
+    /// reconfigure a SABnzbd replacement if needed. SABnzbd entries are never touched; running
+    /// this again after cleanup is a no-op.
+    /// </summary>
+    public static async Task<int> RemoveUnsupportedEntriesAsync(
+        DownloadClientStore clientStore,
+        Action<string> log,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(clientStore);
+        ArgumentNullException.ThrowIfNull(log);
+
+        var all = await clientStore.LoadAllAsync(cancellationToken);
+        var unsupported = all.Where(entry => !Enum.IsDefined(entry.Type)).ToArray();
+        foreach (var entry in unsupported)
+        {
+            await clientStore.DeleteAsync(entry.Id, cancellationToken);
+            log($"Removed download client '{entry.Name}': torrent download clients (qBittorrent) are no longer supported; AniLingo is usenet-only.");
+        }
+
+        return unsupported.Length;
     }
 
     private static void TryDelete(string path)

@@ -73,7 +73,7 @@ internal static class SabnzbdTestSupport
                 DownloadClientType.Sabnzbd,
                 Enabled: true,
                 Priority: 1,
-                new DownloadClientSettings("http://sabnzbd:8080", null, "books", "anime", null),
+                new DownloadClientSettings("http://sabnzbd:8080", "books", "anime"),
                 "secret-key"));
 
         var db = await CreateDatabaseAsync(Path.Combine(directory.FullName, "anilingo.db"));
@@ -106,10 +106,7 @@ internal sealed class SabnzbdTestEnvironment(
 
     public DownloadClientSubmissionService NewSubmissionService() =>
         new(
-            new Dictionary<DownloadClientType, IDownloadClient>
-            {
-                [DownloadClientType.Sabnzbd] = new SabnzbdDownloadClient(Client)
-            },
+            new SabnzbdDownloadClient(Client),
             new DownloadClientSelector(NewDownloadClientStore(), new AcquisitionHealthStore(Directory)),
             Db,
             NullLogger<DownloadClientSubmissionService>.Instance);

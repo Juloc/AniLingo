@@ -17,23 +17,15 @@
         <input asp-for="Name" required />
     </div>
     <div class="field">
-        <label asp-for="Type"></label>
-        <select asp-for="Type" asp-items="Html.GetEnumSelectList<AniLingo.Web.Features.Acquisition.DownloadClients.DownloadClientType>()"></select>
-    </div>
-    <div class="field">
         <label asp-for="BaseUrl">Base URL</label>
         <input asp-for="BaseUrl" required placeholder="http://localhost:8080" />
     </div>
     <div class="field">
-        <label asp-for="Username">Username (qBittorrent only)</label>
-        <input asp-for="Username" />
-    </div>
-    <div class="field">
-        <label asp-for="Secret">API key / password @(Model.IsNew ? "" : "(leave blank to keep the current value)")</label>
+        <label asp-for="Secret">API key @(Model.IsNew ? "" : "(leave blank to keep the current value)")</label>
         <input asp-for="Secret" type="password" autocomplete="new-password" />
     </div>
     <div class="field">
-        <label asp-for="BooksCategory">Books category (SABnzbd only)</label>
+        <label asp-for="BooksCategory">Books category</label>
         <input asp-for="BooksCategory" />
     </div>
     <div class="field">
@@ -41,11 +33,7 @@
         <input asp-for="AnimeCategory" />
     </div>
     <div class="field">
-        <label asp-for="SavePath">Save path (qBittorrent only, optional)</label>
-        <input asp-for="SavePath" />
-    </div>
-    <div class="field">
-        <label asp-for="Priority">Priority (lower preferred first within the same protocol)</label>
+        <label asp-for="Priority">Priority (lower preferred first)</label>
         <input asp-for="Priority" type="number" min="1" />
     </div>
     <div class="field">
