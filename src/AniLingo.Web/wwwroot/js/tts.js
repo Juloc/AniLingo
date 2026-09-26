@@ -40,6 +40,113 @@
         return baseLanguage(voice).toLowerCase() === baseLanguage(requested).toLowerCase() ? 1 : 2;
     };
 
+    const PROVIDER_RANK = { "offline-neural": 0, device: 1, cloud: 2 };
+
+    const compareText = (left, right) => {
+        const a = String(left || "").toLowerCase();
+        const b = String(right || "").toLowerCase();
+        return a < b ? -1 : a > b ? 1 : 0;
+    };
+
+    const compareOrdinal = (left, right) => {
+        const a = String(left || "");
+        const b = String(right || "");
+        return a < b ? -1 : a > b ? 1 : 0;
+    };
+
+    const bestVoice = (voices, language, rank) => voices
+        .filter((voice) => languageRank(voice.language, language) === rank)
+        .sort((left, right) =>
+            Number(Boolean(right.isDefault)) - Number(Boolean(left.isDefault)) ||
+            compareText(left.name, right.name) ||
+            compareOrdinal(left.voiceId, right.voiceId))[0] || null;
+
+    const resolveWithinProvider = (provider, allVoices, requestedVoice, language) => {
+        const providerId = String(provider.id).toLowerCase();
+        const voices = allVoices.filter((voice) =>
+            String(voice.providerId || "").toLowerCase() === providerId);
+        const build = (voice, reason) => ({
+            providerId: provider.id,
+            voiceId: voice ? voice.voiceId : null,
+            voice,
+            language,
+            usesProviderDefaultVoice: !voice,
+            reason
+        });
+
+        if (requestedVoice) {
+            const selected = voices.find((voice) =>
+                String(voice.voiceId).toLowerCase() === requestedVoice.toLowerCase());
+            if (selected && languageRank(selected.language, language) <= 1) {
+                return build(selected, "selected-voice");
+            }
+        }
+
+        const exact = bestVoice(voices, language, 0);
+        if (exact) return build(exact, "exact-language");
+
+        const base = bestVoice(voices, language, 1);
+        if (base) return build(base, "base-language");
+
+        return provider.capabilities?.platformDefaultVoice
+            ? build(null, "platform-default")
+            : null;
+    };
+
+    /**
+     * Browser mirror of Features/Speech SpeechPreferenceResolver and
+     * SpeechAvailabilityResolver: same provider order, voice matching and
+     * unavailable reasons. Device voices only exist on the client, so the Reader
+     * resolves them here instead of asking the server.
+     */
+    const resolveSpeech = (preferences = {}, providers = [], voices = []) => {
+        const language = normalizeLanguage(preferences.language);
+        const requestedVoice = String(preferences.voiceId || "").trim();
+        const requestedProvider = String(preferences.providerId || "").trim().toLowerCase();
+        const explicitProvider = requestedProvider === "auto" ? "" : requestedProvider;
+        const available = providers
+            .filter((provider) => provider && provider.isAvailable)
+            .sort((left, right) =>
+                (PROVIDER_RANK[left.kind] ?? 99) - (PROVIDER_RANK[right.kind] ?? 99) ||
+                compareOrdinal(left.id, right.id));
+
+        if (!available.length) {
+            return {
+                resolution: null,
+                unavailableReason: providers.length ? "provider-unavailable" : "no-provider"
+            };
+        }
+
+        if (explicitProvider) {
+            const provider = available.find((item) =>
+                String(item.id).toLowerCase() === explicitProvider);
+            const resolution = provider &&
+                resolveWithinProvider(provider, voices, requestedVoice, language);
+            if (resolution) {
+                return {
+                    resolution: { ...resolution, reason: "selected-provider" },
+                    unavailableReason: null
+                };
+            }
+        }
+
+        for (const provider of available) {
+            const resolution = resolveWithinProvider(
+                provider,
+                voices,
+                String(provider.id).toLowerCase() === explicitProvider ? requestedVoice : "",
+                language);
+            if (resolution) {
+                return {
+                    resolution: { ...resolution, reason: `${provider.kind}-fallback` },
+                    unavailableReason: null
+                };
+            }
+        }
+
+        return { resolution: null, unavailableReason: "no-voice-for-language" };
+    };
+
     const findBreak = (text, start, hardEnd) => {
         const windowText = text.slice(start, hardEnd);
         let best = -1;
@@ -113,6 +220,7 @@
             this.kind = "device";
             this._session = 0;
             this._state = "idle";
+            this._settleSession = null;
         }
 
         get supported() {
@@ -160,54 +268,159 @@
             return this._mapVoices(synth.getVoices());
         }
 
+        get descriptor() {
+            return {
+                id: this.id,
+                kind: this.kind,
+                isAvailable: this.supported,
+                capabilities: this.capabilities
+            };
+        }
+
         async speak(options = {}) {
+            const text = String(options.text || "").trim();
+            if (!text) {
+                this.stop();
+                return { completed: true };
+            }
+
+            return this.speakSequence(
+                [{ text, language: options.language, voiceId: options.voiceId }],
+                { ...options, lookAhead: 0 });
+        }
+
+        /**
+         * Speaks independent items (for example Reader paragraphs) as one cancellable
+         * session. `items` may be an array or any iterable and is pulled lazily: only
+         * the utterance being spoken plus `lookAhead` upcoming utterances ever exist in
+         * the platform queue. `itemstart` / `itemend` / `boundary` events carry the
+         * caller's item `key`; boundary offsets are relative to that item's text.
+         * Resolves `{ completed: true }` after the last item and `{ completed: false }`
+         * when Stop or a newer request cancelled the session.
+         */
+        async speakSequence(items, options = {}) {
             if (!this.supported) {
                 throw new Error("Device speech synthesis is not available in this browser.");
             }
 
-            const text = String(options.text || "").trim();
-            if (!text) {
-                this.stop();
-                return;
-            }
-
             this.stop();
             const session = ++this._session;
-            const language = normalizeLanguage(options.language);
+            const iterator = (items && typeof items[Symbol.iterator] === "function"
+                ? items
+                : [])[Symbol.iterator]();
+            const lookAhead = Math.trunc(clamp(options.lookAhead, 0, 8, 2));
+            const rate = clamp(options.rate, 0.5, 2.5, 1);
+            const pitch = clamp(options.pitch, 0.5, 2, 1);
+            const volume = clamp(options.volume, 0, 1, 1);
             const voices = await this.getVoices();
-            const voice = this._selectVoice(voices, language, options.voiceId);
-            const chunks = splitText(text, options.maxChunkLength);
+            if (session !== this._session) return { completed: false };
 
-            this._setState("speaking", { session, chunkCount: chunks.length });
+            const voiceCache = new Map();
+            const voiceFor = (language, voiceId) => {
+                const cacheKey = language + "|" + voiceId;
+                if (!voiceCache.has(cacheKey)) {
+                    voiceCache.set(cacheKey, this._selectVoice(voices, language, voiceId));
+                }
+                return voiceCache.get(cacheKey);
+            };
 
-            try {
-                for (let index = 0; index < chunks.length; index++) {
-                    if (session !== this._session) return;
-                    await this._speakChunk({
-                        chunk: chunks[index],
-                        index,
-                        count: chunks.length,
-                        session,
+            const pending = [];
+            let itemIndex = 0;
+            let exhausted = false;
+            const pull = () => {
+                while (!pending.length && !exhausted) {
+                    const next = iterator.next();
+                    if (next.done) {
+                        exhausted = true;
+                        break;
+                    }
+
+                    const value = next.value || {};
+                    const text = String(value.text || "");
+                    if (!text.trim()) continue;
+                    const language = normalizeLanguage(value.language || options.language);
+                    const voice = voiceFor(language, value.voiceId || options.voiceId || "");
+                    const chunks = splitText(text, options.maxChunkLength);
+                    const index = itemIndex++;
+                    chunks.forEach((chunk, chunkIndex) => pending.push({
+                        chunk,
                         language,
                         voice,
-                        rate: clamp(options.rate, 0.5, 2.5, 1),
-                        pitch: clamp(options.pitch, 0.5, 2, 1),
-                        volume: clamp(options.volume, 0, 1, 1)
-                    });
-                }
-
-                if (session === this._session) {
-                    this._setState("idle", { session });
-                    this.dispatchEvent(new CustomEvent("complete", {
-                        detail: { session, textLength: text.length }
+                        item: {
+                            key: value.key ?? index,
+                            index,
+                            chunkIndex,
+                            chunkCount: chunks.length,
+                            textLength: text.length
+                        }
                     }));
                 }
-            } catch (error) {
+                return pending.shift() || null;
+            };
+
+            this._setState("speaking", { session });
+
+            let ordinal = 0;
+            let inFlight = 0;
+            let failure = null;
+            await new Promise((resolve) => {
+                // stop() settles the session even when the platform never reports the
+                // cancelled utterances.
+                this._settleSession = resolve;
+                const pump = () => {
+                    if (session !== this._session || failure) {
+                        resolve();
+                        return;
+                    }
+
+                    while (inFlight <= lookAhead) {
+                        const job = pull();
+                        if (!job) break;
+                        inFlight++;
+                        this._speakChunk({
+                            chunk: job.chunk,
+                            index: ordinal++,
+                            count: null,
+                            session,
+                            language: job.language,
+                            voice: job.voice,
+                            rate,
+                            pitch,
+                            volume,
+                            item: job.item
+                        }).then(() => {
+                            inFlight--;
+                            pump();
+                        }, (error) => {
+                            failure = error;
+                            resolve();
+                        });
+                    }
+
+                    if (inFlight === 0 && exhausted && !pending.length) resolve();
+                };
+
+                pump();
+            });
+
+            if (session === this._session) this._settleSession = null;
+
+            if (failure) {
                 if (session === this._session) {
+                    this._session++;
+                    synth.cancel();
                     this._setState("idle", { session });
                 }
-                throw error;
+                throw failure;
             }
+
+            if (session !== this._session) return { completed: false };
+
+            this._setState("idle", { session });
+            this.dispatchEvent(new CustomEvent("complete", {
+                detail: { session, itemCount: itemIndex }
+            }));
+            return { completed: true };
         }
 
         pause() {
@@ -229,6 +442,9 @@
             if (this.supported) {
                 synth.cancel();
             }
+            const settle = this._settleSession;
+            this._settleSession = null;
+            settle?.();
             this._setState("idle", { session: this._session });
         }
 
@@ -251,24 +467,13 @@
         }
 
         _selectVoice(voices, language, voiceId) {
-            const requested = String(voiceId || "").trim();
-            if (requested) {
-                const selected = voices.find((voice) =>
-                    voice.voiceId === requested && languageRank(voice.language, language) <= 1);
-                if (selected) return selected;
-            }
-
-            const compatible = voices
-                .filter((voice) => languageRank(voice.language, language) <= 1)
-                .sort((left, right) =>
-                    languageRank(left.language, language) - languageRank(right.language, language) ||
-                    Number(right.isDefault) - Number(left.isDefault) ||
-                    left.name.localeCompare(right.name));
-
-            return compatible[0] || null;
+            return resolveSpeech(
+                { providerId: this.id, voiceId, language },
+                [this.descriptor],
+                voices).resolution?.voice || null;
         }
 
-        _speakChunk({ chunk, index, count, session, language, voice, rate, pitch, volume }) {
+        _speakChunk({ chunk, index, count, session, language, voice, rate, pitch, volume, item = null }) {
             return new Promise((resolve, reject) => {
                 if (session !== this._session) {
                     resolve();
@@ -284,8 +489,13 @@
 
                 utterance.onstart = () => {
                     if (session !== this._session) return;
+                    if (item && item.chunkIndex === 0) {
+                        this.dispatchEvent(new CustomEvent("itemstart", {
+                            detail: { session, item, voice: voice ? { voiceId: voice.voiceId, name: voice.name, language: voice.language } : null }
+                        }));
+                    }
                     this.dispatchEvent(new CustomEvent("utterancestart", {
-                        detail: { session, index, count, start: chunk.start, end: chunk.end }
+                        detail: { session, index, count, start: chunk.start, end: chunk.end, item }
                     }));
                 };
 
@@ -297,6 +507,7 @@
                             session,
                             index,
                             count,
+                            item,
                             name: event.name || null,
                             charIndex: chunk.start + localIndex,
                             charLength: Number.isFinite(event.charLength) ? event.charLength : 0
@@ -306,8 +517,13 @@
 
                 utterance.onend = () => {
                     this.dispatchEvent(new CustomEvent("utteranceend", {
-                        detail: { session, index, count, start: chunk.start, end: chunk.end }
+                        detail: { session, index, count, start: chunk.start, end: chunk.end, item }
                     }));
+                    if (item && session === this._session && item.chunkIndex === item.chunkCount - 1) {
+                        this.dispatchEvent(new CustomEvent("itemend", {
+                            detail: { session, item }
+                        }));
+                    }
                     resolve();
                 };
 
@@ -340,6 +556,7 @@
     window.AniLingoTts = Object.freeze({
         DeviceSpeechProvider,
         createDeviceProvider: () => new DeviceSpeechProvider(),
+        resolveSpeech,
         splitText,
         normalizeLanguage,
         baseLanguage
