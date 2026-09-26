@@ -23,12 +23,29 @@ public sealed class VocabularyModel(
     public string StateFilter { get; private set; } = "all";
     public Guid? CourseFilter { get; private set; }
 
-    public async Task OnGetAsync(
+    /// <summary>
+    /// Spaced repetition resolved on for the profile. Without it words can be
+    /// saved, marked known or ignored, but never enter the review queue.
+    /// </summary>
+    public bool ShowReviewActions { get; private set; }
+
+    public async Task<IActionResult> OnGetAsync(
         string? search,
         string? state,
         Guid? course,
         CancellationToken cancellationToken)
     {
+        var resolved = await LearningModuleGate.ResolveAsync(
+            db,
+            currentAccount.ProfileId,
+            cancellationToken);
+        if (!resolved.Vocabulary)
+        {
+            return LearningModuleGate.RedirectToHub();
+        }
+
+        ShowReviewActions = resolved.Reviews;
+
         Ui = await new UiTranslationCatalogStore(db).LoadProfileBundleAsync(
             currentAccount.ProfileId,
             cancellationToken);
@@ -108,7 +125,8 @@ public sealed class VocabularyModel(
                     prompt?.Reading,
                     answer?.Text,
                     card.State,
-                    cards.Any(x =>
+                    ShowReviewActions
+                    && cards.Any(x =>
                         x.State == UserTermState.Learning
                         && x.NextReviewAt != null
                         && x.NextReviewAt <= now),
@@ -119,6 +137,8 @@ public sealed class VocabularyModel(
                         .ToArray());
             })
             .ToArray();
+
+        return Page();
     }
 
     public Task<IActionResult> OnPostSaveAsync(
@@ -160,20 +180,45 @@ public sealed class VocabularyModel(
             _ => Ui["learn.mode.recognition"]
         };
 
+    public static string StateKey(UserTermState state) =>
+        state switch
+        {
+            UserTermState.Known => "learn.vocabulary.state.known",
+            UserTermState.Learning => "learn.vocabulary.state.learning",
+            UserTermState.Saved => "learn.vocabulary.state.saved",
+            UserTermState.Ignored => "learn.vocabulary.state.ignored",
+            UserTermState.Suspended => "learn.vocabulary.state.suspended",
+            _ => throw new ArgumentOutOfRangeException(nameof(state), state, null)
+        };
+
     private async Task<IActionResult> ChangeAsync(
         Guid courseId,
         Guid unitId,
         UserTermState state,
         CancellationToken cancellationToken)
     {
-        var inCourse = await db.LearningCards
+        var resolved = await LearningModuleGate.ResolveAsync(
+            db,
+            currentAccount.ProfileId,
+            cancellationToken);
+        if (!resolved.Vocabulary)
+        {
+            return Forbid();
+        }
+
+        // Learning and Suspended are review-queue states; they need SRS.
+        if (state is UserTermState.Learning or UserTermState.Suspended
+            && !resolved.Reviews)
+        {
+            return Forbid();
+        }
+
+        var card = await LearningQueries.WordCards(db, currentAccount.ProfileId)
             .AsNoTracking()
-            .AnyAsync(
-                x => x.ProfileId == currentAccount.ProfileId
-                    && x.CourseId == courseId
-                    && x.UnitId == unitId,
-                cancellationToken);
-        if (!inCourse)
+            .Where(x => x.CourseId == courseId && x.UnitId == unitId)
+            .Select(x => new { x.UnitId, x.PromptLanguage })
+            .SingleOrDefaultAsync(cancellationToken);
+        if (card is null)
         {
             return NotFound();
         }
@@ -184,7 +229,17 @@ public sealed class VocabularyModel(
             state,
             cancellationToken);
 
-        TempData["Status"] = $"Vocabulary item moved to {state}.";
+        var variants = await db.LearningVariants
+            .AsNoTracking()
+            .Where(x => x.UnitId == unitId)
+            .ToListAsync(cancellationToken);
+        var ui = await new UiTranslationCatalogStore(db).LoadProfileBundleAsync(
+            currentAccount.ProfileId,
+            cancellationToken);
+        TempData["Status"] = ui.Format(
+            "learn.vocabulary.moved",
+            ("term", Pick(variants, card.PromptLanguage)?.Text ?? ""),
+            ("state", ui[StateKey(state)]));
         return RedirectToPage();
     }
 

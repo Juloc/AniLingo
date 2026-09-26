@@ -13,36 +13,15 @@
     </div>
     @if (Model.ShowLearningHomeWidget && Model.DueReviews > 0)
     {
-        <a class="button" href="/Learn">
+        <a class="button" href="/Learn/Review" data-home-learning-widget>
             @Model.Ui.Format("home.reviewButton", ("count", Model.DueReviews))
         </a>
     }
 </header>
 
-<section class="metric-grid">
-    @if (Model.ShowLearningHomeWidget)
-    {
-        <partial name="_MetricCard"
-                 model='new MetricCardModel(
-                     Model.Ui["home.metric.due"],
-                     Model.DueReviews.ToString(),
-                     Model.Ui["home.metric.ready"])' />
-    }
-    <partial name="_MetricCard"
-             model='new MetricCardModel(
-                 Model.Ui["home.metric.anime"],
-                 Model.AnimeCount.ToString(),
-                 Model.Ui["home.metric.inLibrary"])' />
-    <partial name="_MetricCard"
-             model='new MetricCardModel(
-                 Model.Ui["home.metric.episodes"],
-                 Model.EpisodeCount.ToString(),
-                 Model.Ui["home.metric.discovered"])' />
-</section>
-
 @if (Model.ContinueWatching.Count > 0)
 {
-    <section class="section" data-continue-watching>
+    <section class="section section-first" data-continue-watching>
         <div class="section-heading">
             <div>
                 <span class="eyebrow">@Model.Ui["home.continueWatching.eyebrow"]</span>
@@ -80,6 +59,27 @@
     </section>
 }
 
+<section class="metric-grid">
+    @if (Model.ShowLearningHomeWidget)
+    {
+        <a class="metric-card metric-card-link" href="/Learn/Review" data-home-learning-widget>
+            <div class="metric-value">@Model.DueReviews</div>
+            <div class="metric-label">@Model.Ui["home.metric.due"]</div>
+            <div class="metric-hint">@Model.Ui["home.metric.ready"]</div>
+        </a>
+    }
+    <partial name="_MetricCard"
+             model='new MetricCardModel(
+                 Model.Ui["home.metric.anime"],
+                 Model.AnimeCount.ToString(),
+                 Model.Ui["home.metric.inLibrary"])' />
+    <partial name="_MetricCard"
+             model='new MetricCardModel(
+                 Model.Ui["home.metric.episodes"],
+                 Model.EpisodeCount.ToString(),
+                 Model.Ui["home.metric.discovered"])' />
+</section>
+
 <section class="section">
     <div class="section-heading">
         <div>
@@ -102,17 +102,22 @@
         <div class="media-grid">
             @foreach (var episode in Model.RecentEpisodes)
             {
+                var coverageLabel = !Model.ShowContentMetrics
+                    ? null
+                    : episode.TotalOccurrences == 0
+                        ? Model.Ui["home.library.noLearningText"]
+                        : Model.Ui.Format("home.library.prepared", ("percent", episode.PreparationPercent));
                 <partial name="_MediaCard" model='new MediaCardModel(
                     episode.AnimeTitle,
-                    $"S{episode.SeasonNumber:00} · Episode {episode.Number}",
+                    Model.Ui.Format(
+                        "home.continueWatching.episode",
+                        ("season", episode.SeasonNumber.ToString("00")),
+                        ("episode", episode.Number)),
                     $"/Library/Episode/{episode.Id}",
                     Model.ShowContentMetrics ? episode.PreparationPercent : null,
-                    Model.ShowContentMetrics
-                        ? (episode.TotalOccurrences == 0
-                            ? "No Japanese learning text"
-                            : $"{episode.PreparationPercent}% prepared")
-                        : null,
-                    episode.CoverImageUrl)' />
+                    coverageLabel,
+                    episode.CoverImageUrl,
+                    coverageLabel)' />
             }
         </div>
     }
