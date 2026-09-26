@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 
 namespace AniLingo.Web.Pages.Settings.DownloadClients;
 
-/// <summary>Add or edit one canonical download client entry.</summary>
+/// <summary>Add or edit one canonical SABnzbd download client entry.</summary>
 [Authorize(Roles = AccountRoles.Owner)]
 public sealed class EditModel(DownloadClientStore store) : PageModel
 {
@@ -17,13 +17,7 @@ public sealed class EditModel(DownloadClientStore store) : PageModel
     public string Name { get; set; } = "";
 
     [BindProperty]
-    public DownloadClientType Type { get; set; } = DownloadClientType.Sabnzbd;
-
-    [BindProperty]
     public string BaseUrl { get; set; } = "";
-
-    [BindProperty]
-    public string? Username { get; set; }
 
     [BindProperty]
     public string? Secret { get; set; }
@@ -33,9 +27,6 @@ public sealed class EditModel(DownloadClientStore store) : PageModel
 
     [BindProperty]
     public string? AnimeCategory { get; set; }
-
-    [BindProperty]
-    public string? SavePath { get; set; }
 
     [BindProperty]
     public int Priority { get; set; } = 1;
@@ -61,12 +52,9 @@ public sealed class EditModel(DownloadClientStore store) : PageModel
         }
 
         Name = entry.Name;
-        Type = entry.Type;
         BaseUrl = entry.Settings.BaseUrl;
-        Username = entry.Settings.Username;
         BooksCategory = entry.Settings.BooksCategory;
         AnimeCategory = entry.Settings.AnimeCategory;
-        SavePath = entry.Settings.SavePath;
         Priority = entry.Priority;
         Enabled = entry.Enabled;
     }
@@ -79,20 +67,17 @@ public sealed class EditModel(DownloadClientStore store) : PageModel
             var secret = string.IsNullOrWhiteSpace(Secret) ? existing?.Secret : Secret.Trim();
             if (string.IsNullOrWhiteSpace(secret))
             {
-                throw new ArgumentException(
-                    Type == DownloadClientType.Sabnzbd
-                        ? "Enter the SABnzbd API key."
-                        : "Enter the qBittorrent password.");
+                throw new ArgumentException("Enter the SABnzbd API key.");
             }
 
             await store.SaveAsync(
                 new DownloadClientEntry(
                     existing?.Id ?? Guid.NewGuid(),
                     Name,
-                    Type,
+                    DownloadClientType.Sabnzbd,
                     Enabled,
                     Priority,
-                    new DownloadClientSettings(BaseUrl, Username, BooksCategory, AnimeCategory, SavePath),
+                    new DownloadClientSettings(BaseUrl, BooksCategory, AnimeCategory),
                     secret),
                 cancellationToken);
 

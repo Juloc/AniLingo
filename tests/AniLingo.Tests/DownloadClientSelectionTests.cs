@@ -11,18 +11,17 @@ namespace AniLingo.Tests;
 public sealed class DownloadClientSelectionTests
 {
     [TestMethod]
-    public async Task SelectorOrdersByPriorityWithinProtocolAndSkipsDisabled()
+    public async Task SelectorOrdersByPriorityAndSkipsDisabled()
     {
         await using var environment = await Environment.CreateAsync();
-        await environment.Clients.SaveAsync(Entry("low-priority-usenet", DownloadClientType.Sabnzbd, priority: 5));
-        await environment.Clients.SaveAsync(Entry("high-priority-usenet", DownloadClientType.Sabnzbd, priority: 1));
-        await environment.Clients.SaveAsync(Entry("disabled-usenet", DownloadClientType.Sabnzbd, priority: 0, enabled: false));
-        await environment.Clients.SaveAsync(Entry("only-torrent", DownloadClientType.QBittorrent, priority: 1));
+        await environment.Clients.SaveAsync(Entry("low-priority", priority: 5));
+        await environment.Clients.SaveAsync(Entry("high-priority", priority: 1));
+        await environment.Clients.SaveAsync(Entry("disabled", priority: 0, enabled: false));
 
-        var selected = await environment.Selector.SelectAsync(DownloadProtocol.Usenet, CancellationToken.None);
+        var selected = await environment.Selector.SelectAsync(CancellationToken.None);
 
         CollectionAssert.AreEqual(
-            new[] { "high-priority-usenet", "low-priority-usenet" },
+            new[] { "high-priority", "low-priority" },
             selected.Select(entry => entry.Name).ToArray());
     }
 
@@ -30,14 +29,14 @@ public sealed class DownloadClientSelectionTests
     public async Task SelectorSkipsUnhealthyEntries()
     {
         await using var environment = await Environment.CreateAsync();
-        var unhealthy = Entry("unhealthy", DownloadClientType.Sabnzbd, priority: 1);
-        var healthy = Entry("healthy", DownloadClientType.Sabnzbd, priority: 2);
+        var unhealthy = Entry("unhealthy", priority: 1);
+        var healthy = Entry("healthy", priority: 2);
         await environment.Clients.SaveAsync(unhealthy);
         await environment.Clients.SaveAsync(healthy);
         await environment.Health.RecordAsync(
             new AcquisitionHealthStatus(AcquisitionHealthKind.DownloadClient, unhealthy.Id, unhealthy.Name, true, false, "auth failed", DateTimeOffset.UtcNow));
 
-        var selected = await environment.Selector.SelectAsync(DownloadProtocol.Usenet, CancellationToken.None);
+        var selected = await environment.Selector.SelectAsync(CancellationToken.None);
 
         Assert.AreEqual("healthy", selected.Single().Name);
     }
@@ -46,17 +45,13 @@ public sealed class DownloadClientSelectionTests
     public async Task SubmissionFailsOverToTheNextEnabledClientOnRejection()
     {
         await using var environment = await Environment.CreateAsync();
-        var first = Entry("first", DownloadClientType.Sabnzbd, priority: 1);
-        var second = Entry("second", DownloadClientType.Sabnzbd, priority: 2);
+        var first = Entry("first", priority: 1);
+        var second = Entry("second", priority: 2);
         await environment.Clients.SaveAsync(first);
         await environment.Clients.SaveAsync(second);
 
         // The first (highest-priority) entry always rejects; the second accepts.
-        var client = new FakeDownloadClient(
-            DownloadClientType.Sabnzbd,
-            DownloadProtocol.Usenet,
-            "sab",
-            succeeds: entry => entry.Name == "second");
+        var client = new FakeDownloadClient("sab", succeeds: entry => entry.Name == "second");
         var service = environment.NewSubmissionService(client);
 
         var outcome = await service.SubmitAsync(Spec(), CancellationToken.None);
@@ -70,12 +65,12 @@ public sealed class DownloadClientSelectionTests
     public async Task SubmissionTriesEachEnabledClientBeforeFailing()
     {
         await using var environment = await Environment.CreateAsync();
-        var first = Entry("first", DownloadClientType.Sabnzbd, priority: 1);
-        var second = Entry("second", DownloadClientType.Sabnzbd, priority: 2);
+        var first = Entry("first", priority: 1);
+        var second = Entry("second", priority: 2);
         await environment.Clients.SaveAsync(first);
         await environment.Clients.SaveAsync(second);
 
-        var client = new FakeDownloadClient(DownloadClientType.Sabnzbd, DownloadProtocol.Usenet, "sab", succeeds: _ => false);
+        var client = new FakeDownloadClient("sab", succeeds: _ => false);
         var service = environment.NewSubmissionService(client);
 
         var outcome = await service.SubmitAsync(Spec(), CancellationToken.None);
@@ -88,16 +83,15 @@ public sealed class DownloadClientSelectionTests
     }
 
     [TestMethod]
-    public async Task SubmissionFailsImmediatelyWhenNoClientSupportsTheProtocol()
+    public async Task SubmissionFailsImmediatelyWhenNoClientIsConfigured()
     {
         await using var environment = await Environment.CreateAsync();
-        await environment.Clients.SaveAsync(Entry("torrent-only", DownloadClientType.QBittorrent, priority: 1));
-        var service = environment.NewSubmissionService(new FakeDownloadClient(DownloadClientType.QBittorrent, DownloadProtocol.Torrent, "qbit", succeeds: _ => true));
+        var service = environment.NewSubmissionService(new FakeDownloadClient("sab", succeeds: _ => true));
 
         var outcome = await service.SubmitAsync(Spec(), CancellationToken.None);
 
         Assert.IsFalse(outcome.Accepted);
-        StringAssert.Contains(outcome.Message, "usenet");
+        StringAssert.Contains(outcome.Message, "No enabled, healthy download client is configured");
     }
 
     private static DownloadSubmissionSpec Spec() =>
@@ -106,35 +100,28 @@ public sealed class DownloadClientSelectionTests
             "Test download",
             "subject",
             null,
-            DownloadProtocol.Usenet,
             new Uri("https://indexer.example/a.nzb"),
-            MagnetUri: null,
             "release-name");
 
     private static DownloadClientEntry Entry(
         string name,
-        DownloadClientType type,
         int priority,
         bool enabled = true) =>
         new(
             Guid.NewGuid(),
             name,
-            type,
+            DownloadClientType.Sabnzbd,
             enabled,
             priority,
-            new DownloadClientSettings("http://client.example:8080", null, "books", "anime", null),
+            new DownloadClientSettings("http://client.example:8080", "books", "anime"),
             "secret");
 
     private sealed class FakeDownloadClient(
-        DownloadClientType type,
-        DownloadProtocol protocol,
         string providerId,
         Func<DownloadClientEntry, bool> succeeds) : IDownloadClient
     {
         public int SubmitCalls { get; private set; }
 
-        public DownloadClientType Type => type;
-        public DownloadProtocol Protocol => protocol;
         public string ProviderId => providerId;
 
         public Task<DownloadClientTestResult> TestAsync(DownloadClientEntry entry, CancellationToken cancellationToken) =>
@@ -184,7 +171,7 @@ public sealed class DownloadClientSelectionTests
 
         public DownloadClientSubmissionService NewSubmissionService(IDownloadClient client) =>
             new(
-                new Dictionary<DownloadClientType, IDownloadClient> { [client.Type] = client },
+                client,
                 Selector,
                 Db,
                 NullLogger<DownloadClientSubmissionService>.Instance);

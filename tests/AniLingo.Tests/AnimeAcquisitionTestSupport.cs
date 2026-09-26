@@ -161,7 +161,7 @@ internal sealed class AnimeAcquisitionEnvironment : IAsyncDisposable
                 DownloadClientType.Sabnzbd,
                 Enabled: true,
                 Priority: 1,
-                new DownloadClientSettings("http://sabnzbd:8080", null, "books", "anime", null),
+                new DownloadClientSettings("http://sabnzbd:8080", "books", "anime"),
                 "secret-key"));
 
         // A simple naming profile keeps the expected library paths readable in assertions.
@@ -392,11 +392,8 @@ internal sealed class AnimeAcquisitionEnvironment : IAsyncDisposable
             {
                 [IndexerType.Prowlarr] = new ProwlarrIndexer(provider.GetRequiredService<IProwlarrClient>())
             });
-        collection.AddSingleton<IReadOnlyDictionary<DownloadClientType, IDownloadClient>>(provider =>
-            new Dictionary<DownloadClientType, IDownloadClient>
-            {
-                [DownloadClientType.Sabnzbd] = new SabnzbdDownloadClient(provider.GetRequiredService<ISabnzbdClient>())
-            });
+        collection.AddSingleton<IDownloadClient>(provider =>
+            new SabnzbdDownloadClient(provider.GetRequiredService<ISabnzbdClient>()));
         collection.AddScoped<IndexerSearchCoordinator>();
         collection.AddScoped<DownloadClientSelector>();
         collection.AddScoped<DownloadClientSubmissionService>();

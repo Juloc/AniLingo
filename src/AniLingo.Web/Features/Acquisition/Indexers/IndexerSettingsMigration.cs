@@ -95,6 +95,46 @@ public static class IndexerSettingsMigration
                 log("Removed the legacy Prowlarr settings file; the canonical indexer list already has a Prowlarr entry.");
                 break;
         }
+
+        try
+        {
+            await RemoveUnsupportedEntriesAsync(indexerStore, log, cancellationToken);
+        }
+        catch (Exception exception) when (
+            exception is InvalidDataException
+                or ArgumentException
+                or IOException
+                or UnauthorizedAccessException
+                or System.Security.Cryptography.CryptographicException)
+        {
+            log($"Could not clean up unsupported indexer entries: {exception.Message}");
+        }
+    }
+
+    /// <summary>
+    /// One-time, idempotent cleanup: AniLingo is usenet-only, so a Torznab (torrent) indexer entry
+    /// persisted by an earlier build is no longer readable as a supported <see cref="IndexerType"/>
+    /// value and must be dropped rather than silently reinterpreted. Named entries are logged so the
+    /// owner knows what was removed and can reconfigure a usenet replacement if needed. Usenet
+    /// entries (Prowlarr, Newznab) are never touched; running this again after cleanup is a no-op.
+    /// </summary>
+    public static async Task<int> RemoveUnsupportedEntriesAsync(
+        IndexerStore indexerStore,
+        Action<string> log,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(indexerStore);
+        ArgumentNullException.ThrowIfNull(log);
+
+        var all = await indexerStore.LoadAllAsync(cancellationToken);
+        var unsupported = all.Where(entry => !Enum.IsDefined(entry.Type)).ToArray();
+        foreach (var entry in unsupported)
+        {
+            await indexerStore.DeleteAsync(entry.Id, cancellationToken);
+            log($"Removed indexer '{entry.Name}': torrent indexers (Torznab) are no longer supported; AniLingo is usenet-only.");
+        }
+
+        return unsupported.Length;
     }
 
     private static void TryDelete(string path)

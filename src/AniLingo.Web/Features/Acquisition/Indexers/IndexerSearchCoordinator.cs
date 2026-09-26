@@ -5,7 +5,7 @@ namespace AniLingo.Web.Features.Acquisition.Indexers;
 
 /// <summary>
 /// Searches every enabled, healthy indexer entry (Prowlarr and direct
-/// Newznab/Torznab alike) for an anime/episode/season target and merges the
+/// Newznab alike) for an anime/episode/season target and merges the
 /// results the same way the single-connection Prowlarr search used to:
 /// de-duplicated by release identity, best first. Unhealthy entries are
 /// skipped and reported as a warning with the reason.
@@ -20,7 +20,7 @@ public sealed class IndexerSearchCoordinator(
         (await store.LoadAllAsync(cancellationToken)).Any(entry => entry.Enabled);
 
     /// <summary>The ids of every currently enabled indexer entry (Prowlarr and direct
-    /// Newznab/Torznab alike), for callers that need to know whether a Guid-based restriction
+    /// Newznab alike), for callers that need to know whether a Guid-based restriction
     /// (see <paramref name="allowedEntryIds"/> on <see cref="SearchAsync"/>) would leave anything
     /// to search before committing to a search.</summary>
     public async Task<IReadOnlyList<Guid>> EnabledEntryIdsAsync(CancellationToken cancellationToken) =>

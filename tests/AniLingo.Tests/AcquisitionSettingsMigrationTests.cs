@@ -118,7 +118,7 @@ public sealed class AcquisitionSettingsMigrationTests
             var clients = new DownloadClientStore(protection, directory);
             var existing = new DownloadClientEntry(
                 Guid.NewGuid(), "Already configured", DownloadClientType.Sabnzbd, true, 1,
-                new DownloadClientSettings("http://already.example", null, "books", "anime", null), "existing-key");
+                new DownloadClientSettings("http://already.example", "books", "anime"), "existing-key");
             await clients.SaveAsync(existing);
 
             var outcome = await DownloadClientSettingsMigration.MigrateSabnzbdAsync(resolver, clients, legacy);
@@ -128,6 +128,93 @@ public sealed class AcquisitionSettingsMigrationTests
             var entries = await clients.LoadAllAsync();
             Assert.AreEqual(1, entries.Count);
             Assert.AreEqual("existing-key", entries.Single().Secret);
+        }
+        finally
+        {
+            directory.Delete(recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public async Task RemoveUnsupportedEntriesAsyncRemovesTorznabIndexersAndKeepsUsenetOnesIdempotently()
+    {
+        // AniLingo is usenet-only: an indexer entry persisted by an earlier build with a torrent
+        // (Torznab) type is no longer a defined IndexerType member and must be dropped, never
+        // silently reinterpreted as a supported type. Simulated here by casting the removed type's
+        // old numeric value (Torznab was IndexerType value 2) the same way an old JSON file would
+        // deserialize.
+        var directory = SabnzbdTestSupport.CreateTemporaryDirectory();
+        try
+        {
+            var protection = new EphemeralDataProtectionProvider();
+            var indexers = new IndexerStore(protection, directory);
+            var torrentEntry = new IndexerEntry(
+                Guid.NewGuid(), "Old torrent indexer", (IndexerType)2, true, 1,
+                IndexerSettings.CreateDefault("https://torrent-indexer.example", IndexerType.Newznab), "torrent-key");
+            var usenetEntry = new IndexerEntry(
+                Guid.NewGuid(), "Usenet indexer", IndexerType.Newznab, true, 1,
+                IndexerSettings.CreateDefault("https://usenet-indexer.example", IndexerType.Newznab), "usenet-key");
+            await indexers.SaveAsync(torrentEntry);
+            await indexers.SaveAsync(usenetEntry);
+
+            var messages = new List<string>();
+            var removed = await IndexerSettingsMigration.RemoveUnsupportedEntriesAsync(indexers, messages.Add);
+
+            Assert.AreEqual(1, removed);
+            Assert.AreEqual(1, messages.Count);
+            StringAssert.Contains(messages[0], "Old torrent indexer");
+            var remaining = await indexers.LoadAllAsync();
+            Assert.AreEqual(usenetEntry.Id, remaining.Single().Id);
+
+            // Idempotent: nothing left to remove on a second run, no warning logged.
+            var secondMessages = new List<string>();
+            var secondRemoved = await IndexerSettingsMigration.RemoveUnsupportedEntriesAsync(indexers, secondMessages.Add);
+            Assert.AreEqual(0, secondRemoved);
+            Assert.AreEqual(0, secondMessages.Count);
+            Assert.AreEqual(usenetEntry.Id, (await indexers.LoadAllAsync()).Single().Id);
+        }
+        finally
+        {
+            directory.Delete(recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public async Task RemoveUnsupportedEntriesAsyncRemovesQBittorrentClientsAndKeepsSabnzbdOnesIdempotently()
+    {
+        // AniLingo is usenet-only: a download client entry persisted by an earlier build with a
+        // torrent (qBittorrent) type is no longer a defined DownloadClientType member and must be
+        // dropped. Simulated by casting the removed type's old numeric value (QBittorrent was
+        // DownloadClientType value 1) the same way an old JSON file would deserialize.
+        var directory = SabnzbdTestSupport.CreateTemporaryDirectory();
+        try
+        {
+            var protection = new EphemeralDataProtectionProvider();
+            var clients = new DownloadClientStore(protection, directory);
+            var torrentEntry = new DownloadClientEntry(
+                Guid.NewGuid(), "Old qBittorrent client", (DownloadClientType)1, true, 1,
+                new DownloadClientSettings("http://qbittorrent.example:8080", null, "anime"), "torrent-secret");
+            var usenetEntry = new DownloadClientEntry(
+                Guid.NewGuid(), "SABnzbd", DownloadClientType.Sabnzbd, true, 1,
+                new DownloadClientSettings("http://sabnzbd.example:8080", "books", "anime"), "usenet-secret");
+            await clients.SaveAsync(torrentEntry);
+            await clients.SaveAsync(usenetEntry);
+
+            var messages = new List<string>();
+            var removed = await DownloadClientSettingsMigration.RemoveUnsupportedEntriesAsync(clients, messages.Add);
+
+            Assert.AreEqual(1, removed);
+            Assert.AreEqual(1, messages.Count);
+            StringAssert.Contains(messages[0], "Old qBittorrent client");
+            var remaining = await clients.LoadAllAsync();
+            Assert.AreEqual(usenetEntry.Id, remaining.Single().Id);
+
+            // Idempotent: nothing left to remove on a second run, no warning logged.
+            var secondMessages = new List<string>();
+            var secondRemoved = await DownloadClientSettingsMigration.RemoveUnsupportedEntriesAsync(clients, secondMessages.Add);
+            Assert.AreEqual(0, secondRemoved);
+            Assert.AreEqual(0, secondMessages.Count);
+            Assert.AreEqual(usenetEntry.Id, (await clients.LoadAllAsync()).Single().Id);
         }
         finally
         {

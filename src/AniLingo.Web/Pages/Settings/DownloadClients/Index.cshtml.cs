@@ -10,14 +10,14 @@ namespace AniLingo.Web.Pages.Settings.DownloadClients;
 public sealed record DownloadClientRow(DownloadClientEntry Entry, AcquisitionHealthStatus? Health);
 
 /// <summary>
-/// The canonical download client list: SABnzbd and qBittorrent connections, each with priority,
-/// enable/disable, test and health status. The pipeline and Books submission pick the
-/// highest-priority enabled, healthy client that supports a release's protocol.
+/// The canonical download client list: SABnzbd connections, each with priority, enable/disable,
+/// test and health status. The pipeline and Books submission pick the highest-priority enabled,
+/// healthy client, failing over to the next one on submission failure.
 /// </summary>
 [Authorize(Roles = AccountRoles.Owner)]
 public sealed class IndexModel(
     DownloadClientStore store,
-    IReadOnlyDictionary<DownloadClientType, IDownloadClient> clients,
+    IDownloadClient client,
     AcquisitionHealthStore health) : PageModel
 {
     public IReadOnlyList<DownloadClientRow> Rows { get; private set; } = [];
@@ -53,7 +53,7 @@ public sealed class IndexModel(
     public async Task<IActionResult> OnPostTestAsync(Guid id, CancellationToken cancellationToken)
     {
         var entry = await store.GetAsync(id, cancellationToken);
-        if (entry is null || !clients.TryGetValue(entry.Type, out var client))
+        if (entry is null)
         {
             TempData["DownloadClientError"] = "Download client not found.";
             return RedirectToPage();

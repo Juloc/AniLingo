@@ -7,9 +7,9 @@ using AniLingo.Web.Features.Acquisition.Prowlarr;
 namespace AniLingo.Web.Features.Acquisition.Indexers;
 
 /// <summary>
-/// Direct Newznab (usenet) or Torznab (torrent) indexer client. Both use the
-/// same caps/search XML API; only the release protocol of the results
-/// differs, carried per <see cref="ProwlarrReleaseCandidate.Protocol"/>.
+/// Direct Newznab (usenet) indexer client using the caps/search XML API.
+/// Every result carries the usenet protocol per
+/// <see cref="ProwlarrReleaseCandidate.Protocol"/>.
 /// </summary>
 public sealed class NewznabIndexer(HttpClient httpClient) : IIndexer
 {
@@ -110,7 +110,7 @@ public sealed class NewznabIndexer(HttpClient httpClient) : IIndexer
         var document = XDocument.Parse(xml);
         var items = document.Descendants().Where(element => element.Name.LocalName == "item");
         var releases = new List<ProwlarrReleaseCandidate>();
-        var protocol = entry.Protocol;
+        const string protocol = "usenet";
         var now = DateTimeOffset.UtcNow;
 
         foreach (var item in items)
@@ -251,23 +251,4 @@ public sealed class NewznabIndexer(HttpClient httpClient) : IIndexer
             HttpStatusCode.NotFound => "The indexer API endpoint was not found. Check the Base URL.",
             _ => $"The indexer returned HTTP {(int)statusCode}."
         };
-}
-
-/// <summary>Torznab is the torrent-protocol twin of Newznab; the wire format is identical.</summary>
-public sealed class TorznabIndexer(HttpClient httpClient) : IIndexer
-{
-    private readonly NewznabIndexer inner = new(httpClient);
-
-    public IndexerType Type => IndexerType.Torznab;
-
-    public Task<IndexerConnectionTestResult> TestAsync(
-        IndexerEntry entry,
-        CancellationToken cancellationToken) =>
-        inner.TestAsync(entry, cancellationToken);
-
-    public Task<IReadOnlyList<ProwlarrReleaseCandidate>> SearchAsync(
-        IndexerEntry entry,
-        IndexerSearchQuery query,
-        CancellationToken cancellationToken) =>
-        inner.SearchAsync(entry, query, cancellationToken);
 }

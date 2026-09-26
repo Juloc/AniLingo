@@ -89,8 +89,8 @@ public sealed class AcquisitionHealthTests
             var indexerEntry = NewEntry("My Indexer");
             await indexerStore.SaveAsync(indexerEntry);
             var clientEntry = new DownloadClientEntry(
-                Guid.NewGuid(), "My Client", DownloadClientType.QBittorrent, true, 1,
-                new DownloadClientSettings("http://client.example", "admin", null, "anime", null), "secret");
+                Guid.NewGuid(), "My Client", DownloadClientType.Sabnzbd, true, 1,
+                new DownloadClientSettings("http://client.example", null, "anime"), "secret");
             await clientStore.SaveAsync(clientEntry);
 
             var services = new ServiceCollection();
@@ -100,8 +100,7 @@ public sealed class AcquisitionHealthTests
             services.AddSingleton(health);
             services.AddSingleton<IReadOnlyDictionary<IndexerType, IIndexer>>(
                 new Dictionary<IndexerType, IIndexer> { [IndexerType.Newznab] = new FakeIndexer((_, _) => throw new InvalidOperationException("boom")) });
-            services.AddSingleton<IReadOnlyDictionary<DownloadClientType, IDownloadClient>>(
-                new Dictionary<DownloadClientType, IDownloadClient> { [DownloadClientType.QBittorrent] = new FakeTestOnlyDownloadClient(success: true) });
+            services.AddSingleton<IDownloadClient>(new FakeTestOnlyDownloadClient(success: true));
             await using var provider = services.BuildServiceProvider();
 
             var service = new AcquisitionHealthCheckService(provider.GetRequiredService<IServiceScopeFactory>(), NullLogger<AcquisitionHealthCheckService>.Instance);
@@ -159,9 +158,7 @@ public sealed class AcquisitionHealthTests
 
     private sealed class FakeTestOnlyDownloadClient(bool success) : IDownloadClient
     {
-        public DownloadClientType Type => DownloadClientType.QBittorrent;
-        public DownloadProtocol Protocol => DownloadProtocol.Torrent;
-        public string ProviderId => "qbittorrent";
+        public string ProviderId => "sabnzbd";
 
         public Task<DownloadClientTestResult> TestAsync(DownloadClientEntry entry, CancellationToken cancellationToken) =>
             Task.FromResult(new DownloadClientTestResult(success, success ? "1.0" : null, success ? null : "failed"));

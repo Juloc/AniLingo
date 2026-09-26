@@ -6,10 +6,9 @@
 
 <h1>Download clients</h1>
 <p class="muted">
-    SABnzbd (usenet) and qBittorrent (torrent) connections. The pipeline and Books submissions
-    pick the highest-priority enabled, healthy client that supports a release's protocol, best
-    priority first (lower number preferred), and fail over to the next client of that protocol on
-    submission failure.
+    SABnzbd connections. AniLingo is usenet-only; torrent clients are intentionally unsupported.
+    The pipeline and Books submissions pick the highest-priority enabled, healthy client, best
+    priority first (lower number preferred), and fail over to the next one on submission failure.
 </p>
 
 @if (Model.Notice is not null)
@@ -29,7 +28,6 @@
             <th>Priority</th>
             <th>Name</th>
             <th>Type</th>
-            <th>Protocol</th>
             <th>Enabled</th>
             <th>Health</th>
             <th></th>
@@ -42,7 +40,6 @@
                 <td>@row.Entry.Priority</td>
                 <td>@row.Entry.Name</td>
                 <td>@row.Entry.Type</td>
-                <td>@row.Entry.Protocol</td>
                 <td>
                     <form method="post" asp-page-handler="Toggle" asp-route-id="@row.Entry.Id">
                         <button type="submit" class="status-pill @(row.Entry.Enabled ? "status-ok" : "status-warn")">
@@ -78,7 +75,7 @@
         }
         @if (Model.Rows.Count == 0)
         {
-            <tr><td colspan="7" class="muted">No download client configured yet.</td></tr>
+            <tr><td colspan="6" class="muted">No download client configured yet.</td></tr>
         }
     </tbody>
 </table>

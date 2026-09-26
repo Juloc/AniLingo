@@ -314,29 +314,25 @@ builder.Services.AddHttpClient<IProwlarrClient, ProwlarrClient>(client =>
     client.Timeout = TimeSpan.FromSeconds(60);
 });
 
-// Indexers: Prowlarr and direct Newznab/Torznab connections share the one canonical list.
+// Indexers: Prowlarr and direct Newznab connections share the one canonical list. AniLingo is
+// usenet-only; torrent indexers (Torznab) are intentionally unsupported.
 builder.Services.AddSingleton<IndexerStore>();
 builder.Services.AddHttpClient<NewznabIndexer>(client => client.Timeout = TimeSpan.FromSeconds(60));
-builder.Services.AddHttpClient<TorznabIndexer>(client => client.Timeout = TimeSpan.FromSeconds(60));
 builder.Services.AddSingleton<IReadOnlyDictionary<IndexerType, IIndexer>>(services =>
     new Dictionary<IndexerType, IIndexer>
     {
         [IndexerType.Prowlarr] = new ProwlarrIndexer(services.GetRequiredService<IProwlarrClient>()),
-        [IndexerType.Newznab] = services.GetRequiredService<NewznabIndexer>(),
-        [IndexerType.Torznab] = services.GetRequiredService<TorznabIndexer>()
+        [IndexerType.Newznab] = services.GetRequiredService<NewznabIndexer>()
     });
 builder.Services.AddScoped<IndexerSearchCoordinator>();
 
-// Download clients: SABnzbd and qBittorrent connections share the one canonical list. The
-// pipeline and Books submission only depend on IDownloadClient, never on a specific client.
+// Download clients: SABnzbd connections share the one canonical list (several can fail over to
+// each other). AniLingo is usenet-only; torrent clients (qBittorrent) are intentionally
+// unsupported. The pipeline and Books submission only depend on IDownloadClient, never on
+// SabnzbdDownloadClient directly.
 builder.Services.AddSingleton<DownloadClientStore>();
-builder.Services.AddHttpClient<QBittorrentClient>(client => client.Timeout = TimeSpan.FromSeconds(30));
-builder.Services.AddSingleton<IReadOnlyDictionary<DownloadClientType, IDownloadClient>>(services =>
-    new Dictionary<DownloadClientType, IDownloadClient>
-    {
-        [DownloadClientType.Sabnzbd] = new SabnzbdDownloadClient(services.GetRequiredService<ISabnzbdClient>()),
-        [DownloadClientType.QBittorrent] = services.GetRequiredService<QBittorrentClient>()
-    });
+builder.Services.AddSingleton<IDownloadClient>(services =>
+    new SabnzbdDownloadClient(services.GetRequiredService<ISabnzbdClient>()));
 builder.Services.AddScoped<DownloadClientSelector>();
 builder.Services.AddScoped<DownloadClientSubmissionService>();
 

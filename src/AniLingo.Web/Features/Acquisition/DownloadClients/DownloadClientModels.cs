@@ -2,39 +2,33 @@ using System.Text.Json.Serialization;
 
 namespace AniLingo.Web.Features.Acquisition.DownloadClients;
 
+/// <summary>
+/// Kind of download client connection. AniLingo is usenet-only: torrent
+/// clients (qBittorrent) are intentionally unsupported.
+/// </summary>
 public enum DownloadClientType
 {
-    Sabnzbd,
-    QBittorrent
-}
-
-public enum DownloadProtocol
-{
-    Usenet,
-    Torrent
+    Sabnzbd
 }
 
 /// <summary>
-/// Type-specific settings. Only the fields relevant to <see cref="DownloadClientEntry.Type"/>
-/// are used; the rest stay null. SABnzbd keeps separate Books/Anime categories because it
-/// serves both features; qBittorrent (anime only, for now) uses <see cref="AnimeCategory"/>
-/// as its one category.
+/// Type-specific settings. SABnzbd keeps separate Books/Anime categories
+/// because it serves both features.
 /// </summary>
 public sealed record DownloadClientSettings(
     string BaseUrl,
-    string? Username,
     string? BooksCategory,
-    string? AnimeCategory,
-    string? SavePath)
+    string? AnimeCategory)
 {
     public static DownloadClientSettings CreateDefault(string baseUrl) =>
-        new(baseUrl, null, null, null, null);
+        new(baseUrl, null, null);
 }
 
 /// <summary>
 /// One entry of the canonical download client list. <see cref="Secret"/> is
-/// the API key (SABnzbd) or password (qBittorrent), protected at rest.
-/// <see cref="Priority"/> is lower-is-first.
+/// the SABnzbd API key, protected at rest. <see cref="Priority"/> is
+/// lower-is-first, and lets several SABnzbd connections fail over to each
+/// other on submission failure.
 /// </summary>
 public sealed record DownloadClientEntry(
     Guid Id,
@@ -45,17 +39,8 @@ public sealed record DownloadClientEntry(
     DownloadClientSettings Settings,
     [property: JsonIgnore] string? Secret)
 {
-    public DownloadProtocol Protocol => Type switch
-    {
-        DownloadClientType.Sabnzbd => DownloadProtocol.Usenet,
-        DownloadClientType.QBittorrent => DownloadProtocol.Torrent,
-        _ => throw new NotSupportedException($"Unknown download client type '{Type}'.")
-    };
-
     public string? CategoryFor(bool isBooks) =>
-        Type == DownloadClientType.Sabnzbd
-            ? (isBooks ? Settings.BooksCategory : Settings.AnimeCategory)
-            : Settings.AnimeCategory;
+        isBooks ? Settings.BooksCategory : Settings.AnimeCategory;
 }
 
 public sealed record DownloadClientTestResult(
@@ -64,12 +49,10 @@ public sealed record DownloadClientTestResult(
     string? Error = null);
 
 /// <summary>
-/// One release submission. Exactly one of <see cref="Url"/>/<see cref="MagnetUri"/>/<see cref="File"/> is set.
+/// One release submission. Exactly one of <see cref="Url"/>/<see cref="File"/> is set.
 /// </summary>
 public sealed record DownloadClientSubmitRequest(
-    DownloadProtocol Protocol,
     Uri? Url,
-    string? MagnetUri,
     string? Name,
     bool IsBooks = false,
     Stream? File = null,
@@ -107,17 +90,13 @@ public sealed record DownloadClientJobStatus(
 }
 
 /// <summary>
-/// One download client implementation. SABnzbd (usenet) and qBittorrent
-/// (torrent) each implement this once; the pipeline and Books submission
-/// only depend on this interface, never on a specific client.
+/// One download client implementation. SABnzbd is the only implementation;
+/// the pipeline and Books submission still depend only on this interface,
+/// never on <c>SabnzbdDownloadClient</c> directly.
 /// </summary>
 public interface IDownloadClient
 {
-    DownloadClientType Type { get; }
-
-    DownloadProtocol Protocol { get; }
-
-    /// <summary>Stable id stored as an Operation's ExternalProvider for jobs sent to this client type.</summary>
+    /// <summary>Stable id stored as an Operation's ExternalProvider for jobs sent to this client.</summary>
     string ProviderId { get; }
 
     Task<DownloadClientTestResult> TestAsync(

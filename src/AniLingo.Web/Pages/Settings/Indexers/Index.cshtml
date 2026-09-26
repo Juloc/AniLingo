@@ -6,9 +6,9 @@
 
 <h1>Indexers</h1>
 <p class="muted">
-    Prowlarr and direct Newznab/Torznab connections used by anime acquisition search, best
-    priority first (lower number searched and preferred first). Unhealthy entries are skipped by
-    the acquisition pipeline.
+    Prowlarr and direct Newznab connections used by anime acquisition search, best priority first
+    (lower number searched and preferred first). AniLingo is usenet-only; torrent indexers are
+    intentionally unsupported. Unhealthy entries are skipped by the acquisition pipeline.
 </p>
 
 @if (Model.Notice is not null)
@@ -39,7 +39,7 @@
             <tr>
                 <td>@row.Entry.Priority</td>
                 <td>@row.Entry.Name</td>
-                <td>@row.Entry.Type (@row.Entry.Protocol)</td>
+                <td>@row.Entry.Type</td>
                 <td>
                     <form method="post" asp-page-handler="Toggle" asp-route-id="@row.Entry.Id">
                         <button type="submit" class="status-pill @(row.Entry.Enabled ? "status-ok" : "status-warn")">
