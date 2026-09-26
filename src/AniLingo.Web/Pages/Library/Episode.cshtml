@@ -9,7 +9,8 @@
 @using AniLingo.Web.Features.Tracking
 @model AniLingo.Web.Pages.Library.EpisodeModel
 @{
-    ViewData["Title"] = $"{Model.AnimeTitle} E{Model.EpisodeNumber}";
+    var ui = Model.Ui;
+    ViewData["Title"] = ui.Format("library.episode.pageTitle", ("anime", Model.AnimeTitle), ("episode", Model.EpisodeNumber));
 }
 
 @section Head {
@@ -24,11 +25,12 @@
         @if (Model.ShowContentMetrics)
         {
             <p>
-                @Model.Preparation.DistinctTermCount distinct terms ·
-                @Model.Preparation.KnownTermCount known ·
-                @Model.Preparation.LearningTermCount learning ·
-                @Model.Preparation.NewTermCount new ·
-                @Model.Preparation.PreparedPercent% prepared
+                @ui.Format("library.episode.termSummary",
+                    ("distinct", Model.Preparation.DistinctTermCount),
+                    ("known", Model.Preparation.KnownTermCount),
+                    ("learning", Model.Preparation.LearningTermCount),
+                    ("new", Model.Preparation.NewTermCount),
+                    ("percent", Model.Preparation.PreparedPercent))
             </p>
         }
     </div>
@@ -41,7 +43,7 @@
            label = $"{Model.AnimeTitle} · E{Model.EpisodeNumber}",
            returnUrl = $"/Library/Episode/{Model.EpisodeId}"
        })">
-        Language tools &amp; Learning
+        @ui["library.languageToolsAndLearning"]
     </a>
 </header>
 
@@ -50,12 +52,12 @@
     var resumeMs = Model.LocalProgress?.ResumePositionMs ?? 0;
     var resumeLabel = AniLingo.Web.Features.Progress.EpisodeProgressService.FormatPosition(resumeMs);
 }
-<nav class="episode-flow" aria-label="Episode navigation" data-episode-flow>
+<nav class="episode-flow" aria-label="@ui["library.episode.navigationAria"]" data-episode-flow>
     @if (Model.Flow?.Previous is { } previous)
     {
         <a class="button"
            href="@Model.PreviousEpisodeUrl"
-           aria-label="Previous episode: S@(previous.SeasonNumber.ToString("00")) E@(previous.Number.ToString("00"))"
+           aria-label="@ui.Format("library.episode.previousEpisodeAria", ("season", previous.SeasonNumber.ToString("00")), ("episode", previous.Number.ToString("00")))"
            data-previous-episode>
             ← S@(previous.SeasonNumber.ToString("00")) · E@(previous.Number.ToString("00"))
         </a>
@@ -63,28 +65,28 @@
     <div class="episode-flow-state">
         @if (isWatched)
         {
-            <span class="status-pill status-ok" data-watched-state>Watched</span>
+            <span class="status-pill status-ok" data-watched-state>@ui["library.episode.watched"]</span>
         }
         else if (resumeMs > 0)
         {
-            <span class="status-pill" data-watched-state>Resume at @resumeLabel · @Model.LocalProgress!.Percent%</span>
+            <span class="status-pill" data-watched-state>@ui.Format("library.episode.resumeAt", ("position", resumeLabel), ("percent", Model.LocalProgress!.Percent))</span>
         }
         else
         {
-            <span class="status-pill" data-watched-state>Unwatched</span>
+            <span class="status-pill" data-watched-state>@ui["library.episode.unwatched"]</span>
         }
         <form method="post"
               asp-page-handler="Watched"
               asp-route-id="@Model.EpisodeId">
             <input type="hidden" name="watched" value="@(isWatched ? "false" : "true")" />
-            <button class="button" type="submit">@(isWatched ? "Mark unwatched" : "Mark watched")</button>
+            <button class="button" type="submit">@(isWatched ? ui["library.episode.markUnwatched"] : ui["library.episode.markWatched"])</button>
         </form>
     </div>
     @if (Model.Flow?.Next is { } next)
     {
         <a class="button button-primary"
            href="@Model.NextEpisodeUrl"
-           aria-label="Next episode: S@(next.SeasonNumber.ToString("00")) E@(next.Number.ToString("00"))"
+           aria-label="@ui.Format("library.episode.nextEpisodeAria", ("season", next.SeasonNumber.ToString("00")), ("episode", next.Number.ToString("00")))"
            data-next-episode>
             S@(next.SeasonNumber.ToString("00")) · E@(next.Number.ToString("00")) →
         </a>
@@ -98,7 +100,8 @@
         Url.Page(null, "ExternalProgress", new { id = Model.EpisodeId })!,
         MatchUrl: $"/Library/Anime/{Model.AnimeId}#anilist-match",
         MappingUrl: $"/Library/Anime/{Model.AnimeId}#anilist-episode-mappings",
-        CanManageMapping: Model.IsOwner);
+        CanManageMapping: Model.IsOwner,
+        Ui: ui);
     <partial name="_ExternalProgress" model="externalPanel" />
 }
 
@@ -107,19 +110,19 @@
     <section class="panel subtitle-source-panel">
         <div class="panel-heading">
             <div>
-                <span class="eyebrow">Learning source</span>
-                <h2>Japanese subtitles</h2>
+                <span class="eyebrow">@ui["library.episode.learningSourceEyebrow"]</span>
+                <h2>@ui["library.episode.japaneseSubtitlesHeading"]</h2>
             </div>
             @if (Model.ActiveSubtitle is { } activeBadge)
             {
-                <span class="status-pill status-ok">@activeBadge.CueCount cues · @Model.Terms.Count terms</span>
+                <span class="status-pill status-ok">@ui.Format("library.episode.cuesAndTerms", ("cues", activeBadge.CueCount), ("terms", Model.Terms.Count))</span>
             }
             else
             {
-                <span class="status-pill status-warning">Not imported</span>
+                <span class="status-pill status-warning">@ui["library.episode.notImported"]</span>
             }
         </div>
-    
+
         @if (!string.IsNullOrWhiteSpace(Model.SubtitleNotice))
         {
             <div class="subtitle-source-message status-ok">@Model.SubtitleNotice</div>
@@ -128,41 +131,41 @@
         {
             <div class="subtitle-source-message status-error">@Model.SubtitleError</div>
         }
-    
+
         @if (Model.ActiveSubtitle is null &&
              Model.Transcription.Status is AudioTranscriptionStatus.Queued or AudioTranscriptionStatus.Processing)
         {
             <div class="subtitle-source-message status-warning">
-                Generating Japanese transcript from the episode audio locally. Playback can start immediately.
+                @ui["library.episode.generatingTranscript"]
             </div>
         }
         else if (Model.ActiveSubtitle is null &&
                  Model.Transcription.Status == AudioTranscriptionStatus.Failed)
         {
             <div class="subtitle-source-message status-error">
-                @(Model.Transcription.Message ?? "Japanese audio transcription failed.")
+                @(Model.Transcription.Message ?? ui["library.episode.transcriptionFailed"])
             </div>
         }
-    
+
         @if (Model.ActiveSubtitle is { } active)
         {
             <div class="active-subtitle-source">
-                <span>Current Japanese source</span>
+                <span>@ui["library.episode.currentJapaneseSource"]</span>
                 <strong>@active.Label</strong>
-                <small>@(active.Format.ToUpperInvariant()) · @active.CueCount imported cues</small>
+                <small>@(active.Format.ToUpperInvariant()) · @ui.Format("library.episode.importedCues", ("count", active.CueCount))</small>
             </div>
         }
         else
         {
             <p class="muted subtitle-source-help">
-                AniLingo did not import a Japanese text track automatically. If no Japanese text stream is detected, a local Japanese audio transcription is queued automatically while playback remains available.
+                @ui["library.episode.noAutoImportHelp"]
             </p>
         }
-    
+
         @if (Model.SubtitleSources.Count == 0)
         {
             <div class="subtitle-source-empty">
-                No embedded subtitle streams were found. AniLingo will use local Japanese audio transcription as the fallback.
+                @ui["library.episode.noEmbeddedStreams"]
             </div>
         }
         else
@@ -174,26 +177,26 @@
                         <div class="subtitle-source-copy">
                             <strong>
                                 @(string.IsNullOrWhiteSpace(source.Title)
-                                    ? $"Stream #{source.StreamIndex}"
+                                    ? ui.Format("library.episode.streamNumber", ("index", source.StreamIndex))
                                     : source.Title)
                             </strong>
                             <span>
                                 #@source.StreamIndex · @(source.Codec.ToUpperInvariant()) ·
-                                @(string.IsNullOrWhiteSpace(source.Language) ? "und" : source.Language)
+                                @(string.IsNullOrWhiteSpace(source.Language) ? ui["library.episode.unknownLanguage"] : source.Language)
                                 @if (source.IsDefault)
                                 {
-                                    <text> · default</text>
+                                    <text> · @ui["library.episode.defaultTrack"]</text>
                                 }
                                 @if (source.IsForced)
                                 {
-                                    <text> · forced</text>
+                                    <text> · @ui["library.episode.forcedTrack"]</text>
                                 }
                             </span>
                         </div>
-    
+
                         @if (source.IsSelected)
                         {
-                            <span class="status-pill status-ok">@(string.IsNullOrWhiteSpace(source.Language) ? "Learning" : source.Language) source</span>
+                            <span class="status-pill status-ok">@ui.Format("library.episode.selectedSource", ("language", string.IsNullOrWhiteSpace(source.Language) ? ui["library.episode.learningLanguageFallback"] : source.Language))</span>
                         }
                         else if (source.IsText)
                         {
@@ -201,20 +204,20 @@
                                   asp-page-handler="UseSubtitle"
                                   asp-route-id="@Model.EpisodeId">
                                 <input type="hidden" name="streamIndex" value="@source.StreamIndex" />
-                                <button class="button" type="submit">Use as @(string.IsNullOrWhiteSpace(source.Language) ? "learning source" : source.Language)</button>
+                                <button class="button" type="submit">@ui.Format("library.episode.useAsSource", ("language", string.IsNullOrWhiteSpace(source.Language) ? ui["library.episode.learningSourceFallback"] : source.Language))</button>
                             </form>
                         }
                         else
                         {
-                            <span class="status-pill status-warning">Image subtitle · audio transcript fallback</span>
+                            <span class="status-pill status-warning">@ui["library.episode.imageSubtitleFallback"]</span>
                         }
                     </div>
                 }
             </div>
         }
     </section>
-    
-    
+
+
 }
 
 @if (Model.Playback.Media is { } media)
@@ -258,11 +261,11 @@
             {
             <aside class="player-learning-sheet"
                    data-word-inspector
-                   aria-label="Subtitle learning"
+                   aria-label="@ui["library.episode.subtitleLearningAria"]"
                    hidden>
                 <div class="player-learning-sheet-header">
                     <div class="player-learning-copy">
-                        <span class="player-learning-kicker" data-learning-kicker>Word</span>
+                        <span class="player-learning-kicker" data-learning-kicker>@ui["library.episode.word"]</span>
                         <strong class="player-learning-word" data-word lang="ja"></strong>
                         <span class="player-learning-reading" data-reading lang="ja"></span>
                     </div>
@@ -270,60 +273,60 @@
                             type="button"
                             data-close-learning
                             data-player-action="closeOverlay"
-                            aria-label="Close learning overlay">✕</button>
+                            aria-label="@ui["library.episode.closeLearningOverlay"]">✕</button>
                 </div>
                 <p class="player-learning-meaning" data-meaning></p>
                 <div class="player-learning-actions">
                     <button class="button player-action-button"
                             type="button"
                             data-replay
-                            data-player-action="repeatCurrentCue">↻ Repeat line</button>
+                            data-player-action="repeatCurrentCue">↻ @ui["library.episode.repeatLine"]</button>
                     <span class="status-pill" data-state></span>
                 </div>
             </aside>
             }
 
-            <div class="post-play" data-post-play role="dialog" aria-label="Episode finished" hidden>
-                <strong>Episode finished</strong>
+            <div class="post-play" data-post-play role="dialog" aria-label="@ui["library.episode.episodeFinished"]" hidden>
+                <strong>@ui["library.episode.episodeFinished"]</strong>
                 <span class="post-play-countdown" data-post-play-countdown aria-live="polite" hidden></span>
                 <div class="post-play-actions">
-                    <button class="button" type="button" data-post-play-replay>↻ Replay</button>
+                    <button class="button" type="button" data-post-play-replay>↻ @ui["library.episode.replay"]</button>
                     @if (Model.NextEpisodeUrl is { } postPlayNextUrl)
                     {
-                        <a class="button button-primary" href="@postPlayNextUrl" data-post-play-next>Next episode</a>
+                        <a class="button button-primary" href="@postPlayNextUrl" data-post-play-next>@ui["library.episode.nextEpisode"]</a>
                     }
-                    <a class="button" href="/Library/Anime/@Model.AnimeId" data-post-play-back>Back to episodes</a>
-                    <button class="button" type="button" data-post-play-cancel hidden>Cancel autoplay</button>
+                    <a class="button" href="/Library/Anime/@Model.AnimeId" data-post-play-back>@ui["library.episode.backToEpisodes"]</a>
+                    <button class="button" type="button" data-post-play-cancel hidden>@ui["library.episode.cancelAutoplay"]</button>
                 </div>
             </div>
 
             <div class="playback-preparation" data-playback-placeholder>
-                <span class="eyebrow">Browser playback</span>
-                <strong data-playback-status>Starting instant playback…</strong>
+                <span class="eyebrow">@ui["library.episode.browserPlayback"]</span>
+                <strong data-playback-status>@ui["library.episode.startingPlayback"]</strong>
                 <div data-storage-actions hidden style="display:flex; gap:.5rem; flex-wrap:wrap; justify-content:center; margin-top:.75rem;">
-                    <button class="button" type="button" data-storage-retry>Try again</button>
-                    <button class="button button-primary" type="button" data-storage-wake hidden>Wake NAS</button>
+                    <button class="button" type="button" data-storage-retry>@ui["library.episode.tryAgain"]</button>
+                    <button class="button button-primary" type="button" data-storage-wake hidden>@ui["library.episode.wakeNas"]</button>
                 </div>
             </div>
         </div>
 
         <div class="player-meta">
             <div>
-                <span class="eyebrow">Player</span>
+                <span class="eyebrow">@ui["library.episode.playerEyebrow"]</span>
                 <strong>@media.FileName</strong>
-                <span>@Model.Playback.Cues.Count synced Japanese cues · <span data-playback-summary>Checking device…</span></span>
+                <span>@ui.Format("library.episode.syncedCues", ("count", Model.Playback.Cues.Count)) · <span data-playback-summary>@ui["library.episode.checkingDevice"]</span></span>
             </div>
             <div class="playback-mode-control">
                 <label>
-                    <span>Playback</span>
+                    <span>@ui["library.episode.playbackLabel"]</span>
                     <select data-playback-mode>
-                        <option value="auto">Auto · device first</option>
-                        <option value="device">Device only</option>
-                        <option value="server">Server</option>
+                        <option value="auto">@ui["library.episode.playbackModeAuto"]</option>
+                        <option value="device">@ui["library.episode.playbackModeDevice"]</option>
+                        <option value="server">@ui["library.episode.playbackModeServer"]</option>
                     </select>
                 </label>
                 <small data-playback-mode-hint></small>
-                <span class="status-pill" data-playback-badge>Checking…</span>
+                <span class="status-pill" data-playback-badge>@ui["library.episode.checking"]</span>
             </div>
         </div>
 
@@ -335,7 +338,7 @@
                    step="0.1"
                    value="0"
                    disabled
-                   aria-label="Seek through the full episode"
+                   aria-label="@ui["library.episode.seekTimelineAria"]"
                    data-playback-timeline
                    style="flex:1; width:100%; min-width:0;" />
             <div><span data-playback-duration>--:--</span></div>
@@ -345,12 +348,12 @@
         {
             var seekStep = PlayerDesign.SeekStepSeconds;
             <div class="player-controls" data-player-controls>
-                <div class="player-transport" role="group" aria-label="Playback controls">
+                <div class="player-transport" role="group" aria-label="@ui["library.episode.playbackControlsAria"]">
                     <button class="player-control-button"
                             type="button"
                             data-player-action="seekBack10"
-                            aria-label="Back @seekStep seconds"
-                            title="Back @seekStep seconds">
+                            aria-label="@ui.Format("library.episode.seekBack", ("seconds", seekStep))"
+                            title="@ui.Format("library.episode.seekBack", ("seconds", seekStep))">
                         <partial name="_PlayerIcon" model="@("seekBack")" />
                         <span>@seekStep</span>
                     </button>
@@ -358,25 +361,25 @@
                             type="button"
                             data-player-action="repeatCurrentCue"
                             data-repeat-line
-                            aria-label="Repeat current line"
-                            title="Repeat current line">
+                            aria-label="@ui["library.episode.repeatCurrentLine"]"
+                            title="@ui["library.episode.repeatCurrentLine"]">
                         <partial name="_PlayerIcon" model="@("replay")" />
-                        <span>Line</span>
+                        <span>@ui["library.episode.line"]</span>
                     </button>
                     <button class="player-control-button"
                             type="button"
                             data-player-action="seekForward10"
-                            aria-label="Forward @seekStep seconds"
-                            title="Forward @seekStep seconds">
+                            aria-label="@ui.Format("library.episode.seekForward", ("seconds", seekStep))"
+                            title="@ui.Format("library.episode.seekForward", ("seconds", seekStep))">
                         <partial name="_PlayerIcon" model="@("seekForward")" />
                         <span>@seekStep</span>
                     </button>
                 </div>
 
                 <div class="player-selectors">
-                    <label class="player-select" title="Playback speed">
+                    <label class="player-select" title="@ui["library.episode.playbackSpeed"]">
                         <partial name="_PlayerIcon" model="@("speed")" />
-                        <span class="player-select-label">Speed</span>
+                        <span class="player-select-label">@ui["library.episode.speed"]</span>
                         <select data-playback-speed>
                             @foreach (var speed in controls.Speeds)
                             {
@@ -388,9 +391,9 @@
 
                     @if (controls.AudioTracks.Count > 1)
                     {
-                        <label class="player-select" title="Audio track">
+                        <label class="player-select" title="@ui["library.episode.audioTrack"]">
                             <partial name="_PlayerIcon" model="@("audioTrack")" />
-                            <span class="player-select-label">Audio</span>
+                            <span class="player-select-label">@ui["library.episode.audio"]</span>
                             <select data-audio-track>
                                 @foreach (var track in controls.AudioTracks)
                                 {
@@ -402,17 +405,17 @@
                         </label>
                     }
 
-                    <label class="player-select" title="Subtitles">
+                    <label class="player-select" title="@ui["library.episode.subtitles"]">
                         <partial name="_PlayerIcon" model="@("subtitles")" />
-                        <span class="player-select-label">Subtitles</span>
+                        <span class="player-select-label">@ui["library.episode.subtitles"]</span>
                         <select data-subtitle-track>
                             <option value="@PlayerControls.SubtitleOff"
-                                    selected="@(controls.InitialSubtitle == PlayerControls.SubtitleOff)">Off</option>
+                                    selected="@(controls.InitialSubtitle == PlayerControls.SubtitleOff)">@ui["library.episode.subtitlesOff"]</option>
                             @if (controls.HasLearningCues)
                             {
                                 <option value="@PlayerControls.SubtitleLearning"
                                         data-language="ja"
-                                        selected="@(controls.InitialSubtitle == PlayerControls.SubtitleLearning)">Japanese · learning</option>
+                                        selected="@(controls.InitialSubtitle == PlayerControls.SubtitleLearning)">@ui["library.episode.japaneseLearning"]</option>
                             }
                             @foreach (var track in controls.SubtitleTracks)
                             {
@@ -425,22 +428,22 @@
                         </select>
                     </label>
 
-                    <label class="player-select" title="Remote quality limit (this device)">
+                    <label class="player-select" title="@ui["library.episode.remoteQualityLimit"]">
                         <partial name="_PlayerIcon" model="@("quality")" />
-                        <span class="player-select-label">Quality</span>
+                        <span class="player-select-label">@ui["library.episode.quality"]</span>
                         <select data-quality-cap>
-                            <option value="auto">Auto · original</option>
+                            <option value="auto">@ui["library.episode.qualityAutoOriginal"]</option>
                             <option value="1080p">1080p</option>
                             <option value="720p">720p</option>
-                            <option value="low">Lower bandwidth</option>
+                            <option value="low">@ui["library.episode.lowerBandwidth"]</option>
                         </select>
                     </label>
 
                     <button class="button player-save-defaults"
                             type="button"
                             data-save-playback-defaults
-                            title="Use this audio language, subtitle choice and speed for every episode on this profile">
-                        Save as my defaults
+                            title="@ui["library.episode.saveDefaultsHint"]">
+                        @ui["library.episode.saveAsMyDefaults"]
                     </button>
                 </div>
                 <small class="player-controls-hint" data-quality-hint aria-live="polite"></small>
@@ -462,17 +465,17 @@
                 <button class="button"
                         type="button"
                         data-restart
-                        hidden="@(Model.ResumePositionSeconds <= 0)">↺ Restart from beginning</button>
+                        hidden="@(Model.ResumePositionSeconds <= 0)">↺ @ui["library.episode.restartFromBeginning"]</button>
                 @if (Model.NextEpisodeUrl is { } playerNextUrl)
                 {
-                    <a class="button" href="@playerNextUrl" data-player-next>Next episode →</a>
+                    <a class="button" href="@playerNextUrl" data-player-next>@ui["library.episode.nextEpisode"] →</a>
                 }
             </div>
             <label class="player-autoplay">
                 <input type="checkbox"
                        data-autoplay-toggle
                        checked="@(Model.Flow?.AutoplayNext == true)" />
-                <span>Autoplay next episode</span>
+                <span>@ui["library.episode.autoplayNextEpisode"]</span>
             </label>
         </div>
 
@@ -483,7 +486,7 @@
     <partial name="_LanguageInspector" model='LanguageInspectorHost.ForAnimeEpisode(Model.AnimeId, Model.EpisodeId, "ja")' />
     <script src="~/js/player-design.js" asp-append-version="true"></script>
     <script src="~/js/episode-player.js" asp-append-version="true"></script>
-    <partial name="_EpisodeMediaNavigation" model="new AniLingo.Web.Features.MediaSegments.EpisodeMediaNavigationView(Model.EpisodeId, Model.Playback.Navigation, Model.IsOwner)" />
+    <partial name="_EpisodeMediaNavigation" model="new AniLingo.Web.Features.MediaSegments.EpisodeMediaNavigationView(Model.EpisodeId, Model.Playback.Navigation, Model.IsOwner, ui)" />
 }
 
 @if (Model.ShowVocabularyTools
@@ -493,8 +496,8 @@
     @if (Model.Terms.Count == 0)
     {
         <div class="empty-state">
-            <h3>No vocabulary yet</h3>
-            <p>AniLingo will build vocabulary from an available text source when this scope uses Learning tools.</p>
+            <h3>@ui["library.episode.noVocabularyYet"]</h3>
+            <p>@ui["library.episode.noVocabularyHint"]</p>
         </div>
     }
     else
@@ -503,11 +506,11 @@
         {
             <section class="preparation-panel">
                 <div class="preparation-copy">
-                    <span class="eyebrow">Episode preparation</span>
-                    <strong>@Model.Preparation.PreparedPercent% lexical coverage</strong>
-                    <span>@Model.Preparation.PreparedOccurrences of @Model.Preparation.TotalOccurrences subtitle term occurrences are known or queued.</span>
+                    <span class="eyebrow">@ui["library.episode.preparationEyebrow"]</span>
+                    <strong>@ui.Format("library.episode.lexicalCoverage", ("percent", Model.Preparation.PreparedPercent))</strong>
+                    <span>@ui.Format("library.episode.occurrencesKnownOrQueued", ("prepared", Model.Preparation.PreparedOccurrences), ("total", Model.Preparation.TotalOccurrences))</span>
                     <div class="progress-track"><span style="width:@Model.Preparation.PreparedPercent%"></span></div>
-                    <small>Coverage is occurrence-weighted vocabulary coverage, not estimated dialogue comprehension.</small>
+                    <small>@ui["library.episode.coverageHint"]</small>
                 </div>
 
                 @if (Model.ShowPreparationSuggestions)
@@ -518,13 +521,13 @@
                               asp-page-handler="Prepare"
                               asp-route-id="@Model.EpisodeId">
                             <button class="button button-primary" type="submit">
-                                Prepare to @Model.Preparation.TargetPercent% · @Model.Preparation.RecommendedCount words
+                                @ui.Format("library.episode.prepareToTarget", ("target", Model.Preparation.TargetPercent), ("count", Model.Preparation.RecommendedCount))
                             </button>
                         </form>
                     }
                     else
                     {
-                        <span class="status-pill status-ok">@Model.Preparation.TargetPercent% prepared</span>
+                        <span class="status-pill status-ok">@ui.Format("library.episode.targetPrepared", ("percent", Model.Preparation.TargetPercent))</span>
                     }
                 }
             </section>
@@ -534,7 +537,7 @@
         {
             <div class="term-table">
                 <div class="term-table-head">
-                    <span>Term</span><span>Seen</span><span>Status</span>
+                    <span>@ui["library.episode.termColumn"]</span><span>@ui["library.episode.seenColumn"]</span><span>@ui["library.episode.statusColumn"]</span>
                 </div>
                 @foreach (var term in Model.Terms)
                 {
@@ -557,14 +560,14 @@
                                   asp-route-id="@Model.EpisodeId" hidden="@(!Model.ShowLearnAction)">
                                 <input type="hidden" name="termId" value="@term.TermId" />
                                 <button class="chip @(term.State == UserTermState.Learning ? "selected" : "")"
-                                        type="submit">Learn</button>
+                                        type="submit">@ui["library.episode.learn"]</button>
                             </form>
                             <form method="post"
                                   asp-page-handler="Known"
                                   asp-route-id="@Model.EpisodeId">
                                 <input type="hidden" name="termId" value="@term.TermId" />
                                 <button class="chip @(term.State == UserTermState.Known ? "selected" : "")"
-                                        type="submit">Known</button>
+                                        type="submit">@ui["library.episode.known"]</button>
                             </form>
                         </div>
                     </div>

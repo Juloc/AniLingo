@@ -1,10 +1,11 @@
 @page "{id:guid?}"
 @model AniLingo.Web.Pages.Settings.DownloadClients.EditModel
 @{
-    ViewData["Title"] = Model.IsNew ? "Add download client" : "Edit download client";
+    var ui = Model.Ui;
+    ViewData["Title"] = Model.IsNew ? ui["settings.downloadClients.addTitle"] : ui["settings.downloadClients.editTitle"];
 }
 
-<h1>@(Model.IsNew ? "Add download client" : "Edit download client")</h1>
+<h1>@(Model.IsNew ? ui["settings.downloadClients.addTitle"] : ui["settings.downloadClients.editTitle"])</h1>
 
 @if (Model.Error is not null)
 {
@@ -13,32 +14,32 @@
 
 <form method="post">
     <div class="field">
-        <label asp-for="Name"></label>
+        <label asp-for="Name">@ui["settings.downloadClients.field.name"]</label>
         <input asp-for="Name" required />
     </div>
     <div class="field">
-        <label asp-for="BaseUrl">Base URL</label>
+        <label asp-for="BaseUrl">@ui["settings.downloadClients.field.baseUrl"]</label>
         <input asp-for="BaseUrl" required placeholder="http://localhost:8080" />
     </div>
     <div class="field">
-        <label asp-for="Secret">API key @(Model.IsNew ? "" : "(leave blank to keep the current value)")</label>
+        <label asp-for="Secret">@(Model.IsNew ? ui["settings.downloadClients.field.apiKey"] : ui["settings.downloadClients.field.apiKeyKeepCurrent"])</label>
         <input asp-for="Secret" type="password" autocomplete="new-password" />
     </div>
     <div class="field">
-        <label asp-for="BooksCategory">Books category</label>
+        <label asp-for="BooksCategory">@ui["settings.downloadClients.field.booksCategory"]</label>
         <input asp-for="BooksCategory" />
     </div>
     <div class="field">
-        <label asp-for="AnimeCategory">Anime category</label>
+        <label asp-for="AnimeCategory">@ui["settings.downloadClients.field.animeCategory"]</label>
         <input asp-for="AnimeCategory" />
     </div>
     <div class="field">
-        <label asp-for="Priority">Priority (lower preferred first)</label>
+        <label asp-for="Priority">@ui["settings.downloadClients.field.priority"]</label>
         <input asp-for="Priority" type="number" min="1" />
     </div>
     <div class="field">
-        <label><input asp-for="Enabled" type="checkbox" /> Enabled</label>
+        <label><input asp-for="Enabled" type="checkbox" /> @ui["settings.connectionTable.enabled"]</label>
     </div>
-    <button type="submit">Save</button>
-    <a asp-page="/Settings/DownloadClients/Index">Cancel</a>
+    <button type="submit">@ui["common.save"]</button>
+    <a asp-page="/Settings/DownloadClients/Index">@ui["common.cancel"]</a>
 </form>
