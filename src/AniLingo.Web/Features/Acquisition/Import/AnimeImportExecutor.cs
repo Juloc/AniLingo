@@ -1,10 +1,12 @@
 using AniLingo.Web.Data;
+using AniLingo.Web.Features.Acquisition.Naming;
 using AniLingo.Web.Features.Acquisition.Ownership;
 using AniLingo.Web.Features.Acquisition.Pipeline;
 using AniLingo.Web.Features.Acquisition.Sabnzbd;
 using AniLingo.Web.Features.Library;
 using AniLingo.Web.Features.Operations;
 using AniLingo.Web.Features.Sonarr;
+using Microsoft.EntityFrameworkCore;
 
 namespace AniLingo.Web.Features.Acquisition.Import;
 
@@ -26,13 +28,14 @@ public sealed class AnimeImportExecutor(
     AcquisitionOwnershipStore ownershipStore,
     SonarrObservationService observation,
     AnimeAcquisitionInventory inventory,
+    AnimeNamingProfileStore namingStore,
     LibraryScanner scanner,
     ISabnzbdClient sabnzbd,
     SabnzbdConnectionResolver connections,
     ILogger<AnimeImportExecutor> logger)
 {
     public const string OperationKind = "anime-import";
-    public const string OperationCategory = "Acquisition";
+    public const string OperationCategory = "Library";
     public const string LogModule = "Import";
     public static readonly TimeSpan RecoveryWindow = TimeSpan.FromDays(7);
 
@@ -210,6 +213,11 @@ public sealed class AnimeImportExecutor(
             return new(false, "The downloaded file no longer exists.");
         }
 
+        if (await FindConflictingLibraryWorkAsync(null, cancellationToken) is { } waiting)
+        {
+            return new(false, waiting);
+        }
+
         var snapshot = await observation.GetSnapshotAsync(forceRefresh: true, cancellationToken);
         var jobId = record.AcquisitionId?.ToString() ?? record.Id.ToString();
         var download = await new OperationStore(db).GetAsync(record.DownloadOperationId, cancellationToken);
@@ -266,8 +274,7 @@ public sealed class AnimeImportExecutor(
                 ? $"Imported {Path.GetFileName(executed.ImportedPath)} manually as S{seasonNumber:00}E{episodeNumber:00}.{reconciled}"
                 : executed.Error ?? "Manual import did not complete.",
             operationId,
-            cancellationToken,
-            finalizeOperation: status != AnimeImportStatus.ManualRequired);
+            cancellationToken);
 
         return executed.Status == AnimeImportFileStatus.Imported
             ? new(true, $"Imported as S{seasonNumber:00}E{episodeNumber:00}.")
@@ -389,6 +396,15 @@ public sealed class AnimeImportExecutor(
         Guid operationId,
         CancellationToken cancellationToken)
     {
+        if (await FindConflictingLibraryWorkAsync(operationId, cancellationToken) is { } waiting)
+        {
+            // Stays Importing; the scheduler resumes it on its next run.
+            var deferred = record with { Message = waiting, UpdatedAtUtc = DateTimeOffset.UtcNow };
+            await imports.UpsertAsync(deferred, cancellationToken);
+            await new OperationStore(db).ReportProgressAsync(operationId, null, waiting, cancellationToken: cancellationToken);
+            return deferred;
+        }
+
         var target = await inventory.LoadAsync(acquisition.AnimeKey, cancellationToken);
         if (target is null)
         {
@@ -524,8 +540,7 @@ public sealed class AnimeImportExecutor(
             status,
             message,
             operationId,
-            cancellationToken,
-            finalizeOperation: status != AnimeImportStatus.ManualRequired);
+            cancellationToken);
     }
 
     private async Task<AnimeImportFileRecord> ExecuteFileAsync(
@@ -550,9 +565,9 @@ public sealed class AnimeImportExecutor(
             return ToRecord(planned, AnimeImportFileStatus.ManualRequired, null, reason);
         }
 
-        if (location?.AnimeDirectory is null)
+        if (location is null)
         {
-            return await ManualAsync("The anime has no folder in an enabled library root yet; create it and rescan, then import manually.");
+            return await ManualAsync("No library root is enabled; add one under Admin → System, then import manually.");
         }
 
         if (!File.Exists(planned.Source.Path))
@@ -560,16 +575,19 @@ public sealed class AnimeImportExecutor(
             return await ManualAsync("The downloaded file no longer exists.");
         }
 
-        var directory = AnimeImportDestination.ResolveDirectory(location, planned.Targets[0].SeasonNumber);
-        var destination = Path.Combine(
-            directory,
-            AnimeImportDestination.BuildFileName(target.Anime.Title, planned.Targets, name));
-        if (!Path.GetFullPath(destination).StartsWith(
-                Path.GetFullPath(location.RootPath).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar,
-                StringComparison.OrdinalIgnoreCase))
+        var named = await BuildTargetAsync(target, location, planned.Targets, planned.Source.Path, cancellationToken);
+        if (named is null)
         {
-            return await ManualAsync("The destination would leave the library root.");
+            return await ManualAsync("The anime no longer exists in the library.");
         }
+
+        if (named.Problem is not null)
+        {
+            return await ManualAsync(named.Problem);
+        }
+
+        var directory = named.Directory;
+        var destination = named.Path;
 
         if (File.Exists(destination) &&
             !planned.ExistingPathsToReplaceAfterCommit.Any(path => SonarrOwnershipRecognizer.PathEquals(path, destination)))
@@ -667,6 +685,43 @@ public sealed class AnimeImportExecutor(
         return ToRecord(planned, AnimeImportFileStatus.Imported, destination, notes.Count == 0 ? null : string.Join(" ", notes));
     }
 
+    private async Task<AnimeImportTarget?> BuildTargetAsync(
+        AnimeAcquisitionTarget target,
+        AnimeLibraryLocation location,
+        IReadOnlyList<RequestedAnimeEpisode> targets,
+        string sourcePath,
+        CancellationToken cancellationToken)
+    {
+        var anime = await db.Anime.AsNoTracking().SingleOrDefaultAsync(item => item.Id == target.Anime.Id, cancellationToken);
+        if (anime is null)
+        {
+            return null;
+        }
+
+        var metadata = await db.AnimeMetadata.AsNoTracking().SingleOrDefaultAsync(item => item.AnimeId == anime.Id, cancellationToken);
+        var episodes = await db.Episodes.AsNoTracking().Where(item => item.AnimeId == anime.Id).ToListAsync(cancellationToken);
+        var naming = await namingStore.LoadAsync(cancellationToken);
+        return AnimeImportDestination.Build(naming, anime, metadata, episodes, location, targets, sourcePath);
+    }
+
+    // Library scans and renames enumerate or move the same folders; an import waits for them
+    // (AnimeRenameService refuses to start while an import runs, for the same reason).
+    private async Task<string?> FindConflictingLibraryWorkAsync(
+        Guid? ownOperationId,
+        CancellationToken cancellationToken)
+    {
+        var active = await new OperationStore(db).ListAsync(
+            new OperationListFilter(View: "active", Category: OperationCategory),
+            cancellationToken);
+        return active
+            .Where(operation =>
+                operation.Id != ownOperationId &&
+                AnimeRenameService.ConflictingOperationKinds.Contains(operation.Kind, StringComparer.Ordinal) &&
+                operation.Kind != OperationKind)
+            .Select(operation => $"Waiting for '{operation.Title}' to finish before importing.")
+            .FirstOrDefault();
+    }
+
     private async Task<string> ReconcileAsync(
         AnimeLibraryLocation location,
         Guid? operationId,
@@ -700,8 +755,7 @@ public sealed class AnimeImportExecutor(
         AnimeImportStatus status,
         string message,
         Guid? operationId,
-        CancellationToken cancellationToken,
-        bool finalizeOperation = true)
+        CancellationToken cancellationToken)
     {
         var finished = record with
         {
@@ -728,7 +782,9 @@ public sealed class AnimeImportExecutor(
                 cancellationToken);
         }
 
-        if (operationId is { } id && finalizeOperation)
+        // A manual-import state finishes the operation too: the import record carries the pending
+        // decision, and a running operation would block renames of the anime indefinitely.
+        if (operationId is { } id)
         {
             var operations = new OperationStore(db);
             if (status == AnimeImportStatus.Failed)
@@ -739,10 +795,6 @@ public sealed class AnimeImportExecutor(
             {
                 await operations.MarkSucceededAsync(id, message, CancellationToken.None);
             }
-        }
-        else if (operationId is { } pending)
-        {
-            await new OperationStore(db).ReportProgressAsync(pending, null, message, cancellationToken: cancellationToken);
         }
 
         return finished;

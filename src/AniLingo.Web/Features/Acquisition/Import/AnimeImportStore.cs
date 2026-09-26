@@ -153,6 +153,64 @@ public sealed class AnimeImportStore
         }
     }
 
+    /// <summary>
+    /// A series-folder rename changes the anime key and the library paths; import records follow
+    /// both so pending manual imports still resolve the same anime. <paramref name="mapPath"/>
+    /// maps an old library path to its new location.
+    /// </summary>
+    public async Task<bool> RekeyAnimeAsync(
+        string oldKey,
+        string newKey,
+        Func<string, string>? mapPath = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(oldKey);
+        ArgumentException.ThrowIfNullOrWhiteSpace(newKey);
+
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            var state = await ReadUnsafeAsync(cancellationToken);
+            var changed = false;
+            for (var index = 0; index < state.Imports.Count; index++)
+            {
+                var record = state.Imports[index];
+                var keyChanges = record.AnimeKey.Equals(oldKey, StringComparison.OrdinalIgnoreCase) &&
+                                 !record.AnimeKey.Equals(newKey, StringComparison.Ordinal);
+                var files = mapPath is null
+                    ? record.Files
+                    : record.Files
+                        .Select(file => file.ImportedPath is { } imported && mapPath(imported) is var mapped && mapped != imported
+                            ? file with { ImportedPath = mapped }
+                            : file)
+                        .ToArray();
+                var pathsChange = !files.SequenceEqual(record.Files);
+                if (!keyChanges && !pathsChange)
+                {
+                    continue;
+                }
+
+                state.Imports[index] = record with
+                {
+                    AnimeKey = keyChanges ? newKey : record.AnimeKey,
+                    Files = files
+                };
+                changed = true;
+            }
+
+            if (changed)
+            {
+                await WriteUnsafeAsync(state, cancellationToken);
+            }
+
+            return changed;
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
     private async Task<AnimeImportStoreState> ReadUnsafeAsync(CancellationToken cancellationToken)
     {
         if (!File.Exists(storePath))

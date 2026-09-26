@@ -83,6 +83,7 @@ public sealed class AnimeAcquisitionScheduler(
         RunExclusiveAsync(
             async (pipeline, token) =>
             {
+                await ResumeImportsAsync(token);
                 var summary = await pipeline.RunAsync(trigger, animeKey, token);
                 if (animeKey is null)
                 {
@@ -163,6 +164,22 @@ public sealed class AnimeAcquisitionScheduler(
             }
 
             delay = schedule.Interval;
+        }
+    }
+
+    // Imports deferred while a library scan or rename ran, or missed by the SABnzbd monitor,
+    // continue before every run so their episodes are no longer wanted.
+    private async Task ResumeImportsAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            await scope.ServiceProvider.GetRequiredService<AnimeImportExecutor>().RecoverAsync(cancellationToken);
+        }
+        catch (Exception exception) when (
+            exception is IOException or InvalidDataException or InvalidOperationException or HttpRequestException or UnauthorizedAccessException)
+        {
+            logger.LogWarning(exception, "Pending anime imports could not be resumed; the next run retries them.");
         }
     }
 

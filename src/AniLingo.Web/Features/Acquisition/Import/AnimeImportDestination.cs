@@ -1,54 +1,96 @@
+using AniLingo.Web.Data;
+using AniLingo.Web.Features.Metadata;
+using AniLingo.Web.Features.Acquisition.Naming;
 using AniLingo.Web.Features.Acquisition.Pipeline;
+using AniLingo.Web.Features.Library;
 
 namespace AniLingo.Web.Features.Acquisition.Import;
 
+// Where an imported file goes. Problem is set when the file must not be imported automatically.
+public sealed record AnimeImportTarget(
+    string Directory,
+    string Path,
+    string? Problem);
+
 /// <summary>
-/// Naming seam for imported anime files. The configurable naming profiles of #299 replace this
-/// class; until then an imported file keeps its original name behind an "Anime - SxxEyy - " prefix
-/// so the library scanner (MediaPathParser) maps it to the requested local episode and the release
-/// parser can still read its quality for later upgrade decisions.
+/// Builds the library path of an imported file with the canonical anime naming (#299): the
+/// profile resolved by <see cref="AnimeNamingProfileStore"/> (anime, then library root, then
+/// default), the anime's existing series folder (a new folder is named with the profile's series
+/// folder template), the profile's season folder and episode template. Series, episode and
+/// absolute-number inputs are built exactly like <see cref="AnimeRenameService"/> builds them, so
+/// a later rename preview shows the imported file as unchanged. Release tokens come from the
+/// shared release parser.
 /// </summary>
 public static class AnimeImportDestination
 {
-    private static readonly char[] InvalidCharacters =
-        Path.GetInvalidFileNameChars().Concat([':', '*', '?', '"', '<', '>', '|', '/', '\\']).Distinct().ToArray();
-
-    public static string ResolveDirectory(
+    public static AnimeImportTarget Build(
+        AnimeNamingState naming,
+        Anime anime,
+        AnimeMetadata? metadata,
+        IReadOnlyList<Episode> existingEpisodes,
         AnimeLibraryLocation location,
-        int seasonNumber)
-    {
-        ArgumentNullException.ThrowIfNull(location);
-        if (location.AnimeDirectory is null)
-        {
-            throw new InvalidOperationException("The anime has no library folder yet.");
-        }
-
-        return location.UsesSeasonFolders
-            ? Path.Combine(location.AnimeDirectory, $"Season {seasonNumber:00}")
-            : location.AnimeDirectory;
-    }
-
-    public static string BuildFileName(
-        string animeTitle,
         IReadOnlyList<RequestedAnimeEpisode> targets,
-        string sourceFileName)
+        string sourcePath)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(animeTitle);
-        ArgumentException.ThrowIfNullOrWhiteSpace(sourceFileName);
+        ArgumentNullException.ThrowIfNull(naming);
+        ArgumentNullException.ThrowIfNull(anime);
+        ArgumentNullException.ThrowIfNull(location);
         if (targets.Count == 0)
         {
             throw new ArgumentException("At least one target episode is required.", nameof(targets));
         }
 
-        var first = targets.MinBy(target => target.EpisodeNumber)!;
-        var last = targets.MaxBy(target => target.EpisodeNumber)!;
-        var tag = last.EpisodeNumber == first.EpisodeNumber
-            ? $"S{first.SeasonNumber:00}E{first.EpisodeNumber:00}"
-            : $"S{first.SeasonNumber:00}E{first.EpisodeNumber:00}-E{last.EpisodeNumber:00}";
+        var ordered = targets
+            .OrderBy(target => target.SeasonNumber)
+            .ThenBy(target => target.EpisodeNumber)
+            .ToArray();
+        var first = ordered[0];
+        var resolution = AnimeNamingProfileStore.Resolve(naming, anime.Id, location.RootId);
+        var profile = resolution.Profile;
 
-        var stem = Path.GetFileNameWithoutExtension(sourceFileName);
-        var extension = Path.GetExtension(sourceFileName);
-        return Sanitize($"{animeTitle} - {tag} - {stem}") + extension.ToLowerInvariant();
+        var seriesFolder = location.AnimeDirectory;
+        if (seriesFolder is null)
+        {
+            var folderName = AnimeNamingFormatter.BuildSeriesFolderName(
+                profile,
+                AnimeRenameService.BuildSeries(anime, metadata, location.RootPath, resolution.SeriesType));
+            seriesFolder = System.IO.Path.Combine(location.RootPath, folderName);
+        }
+
+        var series = AnimeRenameService.BuildSeries(anime, metadata, seriesFolder, resolution.SeriesType);
+
+        // Absolute numbers come from local numbering including the episodes being imported.
+        var episodes = existingEpisodes.ToList();
+        foreach (var target in ordered.Where(target => !episodes.Any(episode =>
+                     episode.SeasonNumber == target.SeasonNumber && episode.Number == target.EpisodeNumber)))
+        {
+            episodes.Add(new Episode { AnimeId = anime.Id, SeasonNumber = target.SeasonNumber, Number = target.EpisodeNumber, Title = "" });
+        }
+
+        var offsets = AnimeRenameService.LocalAbsoluteOffsets(episodes);
+        var release = AnimeReleaseParser.TryParse(System.IO.Path.GetFileName(sourcePath), out var parsed) ? parsed : null;
+        var namingEpisodes = ordered
+            .Select(target => new AnimeNamingEpisode(
+                target.SeasonNumber,
+                target.EpisodeNumber,
+                offsets.TryGetValue(target.SeasonNumber, out var offset) ? offset + target.EpisodeNumber : null,
+                existingEpisodes.FirstOrDefault(episode =>
+                        episode.SeasonNumber == target.SeasonNumber &&
+                        episode.Number == target.EpisodeNumber &&
+                        !string.IsNullOrWhiteSpace(episode.Title))?.Title
+                    // The library scanner titles unknown episodes like this, so the name stays stable.
+                    ?? $"Episode {target.EpisodeNumber}",
+                release?.AirDate))
+            .ToArray();
+
+        var seasonFolder = AnimeNamingFormatter.BuildSeasonFolderName(profile, series, first.SeasonNumber);
+        var fileName = AnimeNamingFormatter.BuildEpisodeFileName(
+            profile,
+            new AnimeNamingRequest(series, namingEpisodes, release)) + System.IO.Path.GetExtension(sourcePath).ToLowerInvariant();
+        var directory = seasonFolder is null ? seriesFolder : System.IO.Path.Combine(seriesFolder, seasonFolder);
+        var path = System.IO.Path.GetFullPath(System.IO.Path.Combine(directory, fileName));
+
+        return new AnimeImportTarget(directory, path, Check(location, anime, first, seriesFolder, seasonFolder, fileName, path));
     }
 
     // A sidecar keeps everything after the video stem (for example ".ja.ass") behind the new stem.
@@ -57,20 +99,50 @@ public static class AnimeImportDestination
         string sidecarSourceName,
         string importedVideoName)
     {
-        var videoStem = Path.GetFileNameWithoutExtension(videoSourceName);
+        var videoStem = System.IO.Path.GetFileNameWithoutExtension(videoSourceName);
         var suffix = sidecarSourceName.StartsWith(videoStem, StringComparison.OrdinalIgnoreCase)
             ? sidecarSourceName[videoStem.Length..]
-            : Path.GetExtension(sidecarSourceName);
+            : System.IO.Path.GetExtension(sidecarSourceName);
 
-        return Path.GetFileNameWithoutExtension(importedVideoName) + suffix;
+        return System.IO.Path.GetFileNameWithoutExtension(importedVideoName) + suffix;
     }
 
-    public static string Sanitize(string value)
+    private static string? Check(
+        AnimeLibraryLocation location,
+        Anime anime,
+        RequestedAnimeEpisode first,
+        string seriesFolder,
+        string? seasonFolder,
+        string fileName,
+        string path)
     {
-        var characters = value
-            .Select(character => Array.IndexOf(InvalidCharacters, character) >= 0 ? ' ' : character)
+        var names = new[] { System.IO.Path.GetFileName(seriesFolder), seasonFolder, fileName }
+            .Where(name => name is not null)
+            .Select(name => name!)
             .ToArray();
-        var collapsed = string.Join(' ', new string(characters).Split(' ', StringSplitOptions.RemoveEmptyEntries));
-        return collapsed.Trim(' ', '.');
+        if (names.Any(name => string.IsNullOrWhiteSpace(name) || name is "." or ".." || AnimeNamingFormatter.ExceedsNameLimit(name)))
+        {
+            return "The naming profile produces an empty or too long name for this file.";
+        }
+
+        var root = System.IO.Path.GetFullPath(location.RootPath).TrimEnd(System.IO.Path.DirectorySeparatorChar) + System.IO.Path.DirectorySeparatorChar;
+        if (!path.StartsWith(root, StringComparison.Ordinal))
+        {
+            return "The destination would leave the library root.";
+        }
+
+        // The library must scan the new file back to this anime and episode.
+        if (!MediaPathParser.TryParse(location.RootPath, path, out var descriptor) ||
+            !descriptor.AnimeKey.Equals(anime.Key, StringComparison.Ordinal) ||
+            descriptor.SeasonNumber != first.SeasonNumber ||
+            descriptor.EpisodeNumber != first.EpisodeNumber)
+        {
+            var parsedAs = descriptor is null
+                ? "nothing"
+                : $"{descriptor.AnimeKey} S{descriptor.SeasonNumber:00}E{descriptor.EpisodeNumber:00}";
+            return $"The naming profile would name it '{System.IO.Path.GetFileName(path)}', which the library scans as {parsedAs} instead of {anime.Key} S{first.SeasonNumber:00}E{first.EpisodeNumber:00}; adjust the naming profile or import it manually.";
+        }
+
+        return null;
     }
 }
