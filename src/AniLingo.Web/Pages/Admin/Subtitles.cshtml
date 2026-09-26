@@ -18,7 +18,7 @@
     <div>
         <a class="back-link" asp-page="/Admin/System">← @ui["admin.nav.system"]</a>
         <span class="eyebrow">@ui["admin.subtitles.eyebrow"]</span>
-        <h1>@ui["admin.subtitles.heading"]</h1>
+        <h1>@ui.Format("admin.subtitles.heading", ("language", Model.ContentLanguageName))</h1>
         <p>@ui["admin.subtitles.fallbackOrder"]</p>
     </div>
 </header>
