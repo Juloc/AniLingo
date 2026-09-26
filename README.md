@@ -78,11 +78,17 @@ services:
 
 Then add `/media/anime` as a library root in AniLingo. Existing persisted library roots remain unchanged when upgrading.
 
+### Library scans
+
+Every root is reconciled once at startup, on **Queue library scan** under Admin → System, shortly after filesystem changes, and periodically. Where the mount raises filesystem events, AniLingo watches each root and reconciles only the changed anime folders about ten seconds after a burst of activity (for example a Sonarr import) has settled; lost events fall back to a full pass. Because network mounts often raise no events, each root also has a **Periodic reconciliation** interval (default every 30 minutes, `0` turns it off) that repairs anything missed. Periodic runs are skipped while the storage is offline.
+
+Duplicate requests for a root are coalesced while a scan is queued or running. Admin → Scans shows every run with its state, root, trigger, phase, timing and counters (media, added, changed, removed, skipped, subtitles, artwork, ignored NFO files, media analysed or failed to analyse, errors, warnings); item-level warnings such as unmatched files are listed with root-relative paths in the run's log. A run left running by a restart is marked interrupted and can be run again from the same page.
+
 ### Sleeping / unavailable NAS and Wake-on-LAN
 
 AniLingo treats temporary media-storage outages separately from deleted files. A sleeping or unavailable NAS does not remove the persisted Library, and an unexpectedly empty previously-populated root is rejected as unsafe reconciliation rather than interpreted as a mass deletion.
 
-Under **Settings → Media storage**, the owner can test each configured root without running a library scan. Wake-on-LAN can optionally be configured per root with a MAC address and, when needed from Docker networking, the LAN broadcast IPv4 address such as `192.168.178.255`. Wake actions are owner-only and rate-limited. Pressing Play as a normal user never sends a magic packet automatically.
+Under **Admin → System**, the owner can test each configured root without running a library scan. Wake-on-LAN can optionally be configured per root with a MAC address and, when needed from Docker networking, the LAN broadcast IPv4 address such as `192.168.178.255`. Wake actions are owner-only and rate-limited. Pressing Play as a normal user never sends a magic packet automatically.
 
 Playback checks the owning storage before codec selection. If storage is temporarily unavailable, the player preserves playback intent/position and retries with bounded backoff for up to about one minute. It resumes automatically when storage returns; after the automatic window it offers **Try again**. An owner also gets an explicit **Wake NAS** action in the player when Wake-on-LAN is configured. A root that is online while one concrete file is absent is reported as a real missing-file condition instead of being retried as a NAS outage.
 
@@ -137,6 +143,10 @@ Episode pages can explicitly sync watched progress for the currently signed-in A
 ### SABnzbd
 
 Books and Anime share one SABnzbd connection, configured by the owner under **Settings → SABnzbd** (`/Settings/Sabnzbd`) with a separate category for each. Every SABnzbd job appears under **Admin → Operations → Downloads** with progress, ETA, a clear failure reason (incomplete, corrupt, password-protected or failed extraction) and cancel/retry. When the anime acquisition service sends a release and it fails, that release is blocklisted and the next accepted release is tried within a bounded number of attempts. Supported configuration keys and the one-time move of older Books SABnzbd settings are described in [docs/ADMIN_OPERATIONS.md](docs/ADMIN_OPERATIONS.md#sabnzbd).
+
+### Anime acquisition
+
+The owner can let AniLingo acquire missing anime episodes without Sonarr: monitor an anime on its page, and the in-process scheduler searches Prowlarr for wanted episodes, scores the releases with the anime's quality profile, sends the best accepted one to SABnzbd, imports the completed download with the naming profile and reconciles the anime's library folder. Sonarr-owned anime, releases and paths are never touched, every accept/reject decision is logged with its reason, uncertain or blocked imports wait for a manual decision, and restarts neither lose nor duplicate downloads. Overview and manual actions: `/Acquisition`; Prowlarr: `/Settings/Prowlarr`. Details: [docs/ANIME_ACQUISITION.md](docs/ANIME_ACQUISITION.md).
 
 ### Anime naming
 

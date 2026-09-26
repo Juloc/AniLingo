@@ -23,7 +23,33 @@ public sealed class LibraryScanner(
         ".mkv", ".mp4", ".m4v", ".webm"
     };
 
-    public async Task<ScanResult> ScanAsync(Guid rootId, CancellationToken cancellationToken)
+    public Task<ScanResult> ScanAsync(Guid rootId, CancellationToken cancellationToken) =>
+        ReconcileAsync(rootId, null, null, cancellationToken);
+
+    public Task<ScanResult> ScanAsync(
+        Guid rootId,
+        LibraryScanProgressHandler? progress,
+        CancellationToken cancellationToken) =>
+        ReconcileAsync(rootId, null, progress, cancellationToken);
+
+    // Reconciles one folder below the root (normally an anime directory) with exactly the
+    // rules of a full scan, but only touches media files inside that folder. A folder that
+    // no longer exists reconciles as a deletion of its media.
+    public Task<ScanResult> ScanFolderAsync(
+        Guid rootId,
+        string relativeFolder,
+        LibraryScanProgressHandler? progress,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(relativeFolder);
+        return ReconcileAsync(rootId, relativeFolder, progress, cancellationToken);
+    }
+
+    private async Task<ScanResult> ReconcileAsync(
+        Guid rootId,
+        string? relativeFolder,
+        LibraryScanProgressHandler? progress,
+        CancellationToken cancellationToken)
     {
         var root = await db.LibraryRoots.SingleAsync(x => x.Id == rootId, cancellationToken);
         if (!root.IsEnabled)
@@ -37,11 +63,19 @@ public sealed class LibraryScanner(
             throw new DirectoryNotFoundException($"Library root does not exist: {rootPath}");
         }
 
+        var scopePath = ResolveScopePath(rootPath, relativeFolder);
+        var scopePrefix = scopePath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            + Path.DirectorySeparatorChar;
+
+        await ReportAsync(progress, LibraryScanPhase.Enumerating, 0, 0, cancellationToken);
+
         var candidates = new List<FileInfo>();
         var nfoFiles = new NfoFileIndex();
         try
         {
-            foreach (var path in Directory.EnumerateFiles(rootPath, "*", SearchOption.AllDirectories))
+            foreach (var path in Directory.Exists(scopePath)
+                         ? Directory.EnumerateFiles(scopePath, "*", SearchOption.AllDirectories)
+                         : [])
             {
                 if (MediaExtensions.Contains(Path.GetExtension(path)))
                 {
@@ -77,12 +111,34 @@ public sealed class LibraryScanner(
             .Where(x => x.LibraryRootId == rootId)
             .ToDictionaryAsync(x => x.Path, StringComparer.Ordinal, cancellationToken);
 
-        if (existingFiles.Count > 0 && candidates.Count == 0)
+        if (relativeFolder is not null)
+        {
+            existingFiles = existingFiles
+                .Where(pair => pair.Key.StartsWith(scopePrefix, StringComparison.Ordinal))
+                .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+
+            // A vanished folder only counts as deleted while the root itself still has content;
+            // an empty mount point is an unavailable NAS, exactly like the full-scan guard below.
+            if (existingFiles.Count > 0 &&
+                candidates.Count == 0 &&
+                !Directory.EnumerateFileSystemEntries(rootPath).Any())
+            {
+                throw new IOException(
+                    "Library root is empty while AniLingo still has known media in the scanned folder. " +
+                    "Reconciliation was stopped to avoid treating an unavailable NAS mount as a mass deletion.");
+            }
+        }
+        else if (existingFiles.Count > 0 && candidates.Count == 0)
         {
             throw new IOException(
                 "Library root returned no media files while AniLingo still has known media for it. " +
                 "Reconciliation was stopped to avoid treating an unavailable NAS mount as a mass deletion.");
         }
+
+        var warnings = new List<ScanWarning>();
+        var warningCount = 0;
+        var errors = 0;
+        var processed = 0;
 
         var animeByKey = await db.Anime.ToDictionaryAsync(x => x.Key, StringComparer.Ordinal, cancellationToken);
         var episodes = await db.Episodes.ToListAsync(cancellationToken);
@@ -100,14 +156,18 @@ public sealed class LibraryScanner(
         var nfoTitledEpisodes = new HashSet<(Guid AnimeId, int SeasonNumber, int EpisodeNumber)>();
         var metadataWarnings = 0;
 
+        await ReportAsync(progress, LibraryScanPhase.Reconciling, 0, candidates.Count, cancellationToken);
+
         foreach (var file in candidates)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            await ReportAsync(progress, LibraryScanPhase.Reconciling, processed++, candidates.Count, cancellationToken);
 
             var normalizedPath = Path.GetFullPath(file.FullName);
             if (!MediaPathParser.TryParse(rootPath, normalizedPath, out var descriptor))
             {
                 skipped++;
+                AddWarning(warnings, ref warningCount, rootPath, normalizedPath, "Unmatched media file");
                 continue;
             }
 
@@ -129,6 +189,7 @@ public sealed class LibraryScanner(
                 {
                     metadataWarnings++;
                     LogRejectedNfo(showNfoPath, show.Warning);
+                    AddWarning(warnings, ref warningCount, rootPath, showNfoPath, "Ignored NFO");
                 }
                 else
                 {
@@ -150,12 +211,18 @@ public sealed class LibraryScanner(
             }
 
             var episodeKey = (anime.Id, descriptor.SeasonNumber, descriptor.EpisodeNumber);
+            var episodeNfoPath = nfoFiles.FindEpisode(normalizedPath);
             var episodeTitle = ResolveEpisodeTitle(
-                nfoFiles.FindEpisode(normalizedPath),
+                episodeNfoPath,
                 descriptor,
                 nfoTitledEpisodes.Contains(episodeKey),
                 ref metadataWarnings,
-                out var titleFromNfo);
+                out var titleFromNfo,
+                out var nfoRejected);
+            if (nfoRejected)
+            {
+                AddWarning(warnings, ref warningCount, rootPath, episodeNfoPath!, "Ignored NFO");
+            }
             if (titleFromNfo)
             {
                 nfoTitledEpisodes.Add(episodeKey);
@@ -223,14 +290,20 @@ public sealed class LibraryScanner(
             db.MediaFiles.RemoveRange(staleMediaFiles);
         }
 
-        root.LastScannedAt = DateTime.UtcNow;
+        if (relativeFolder is null)
+        {
+            root.LastScannedAt = DateTime.UtcNow;
+        }
+
         await db.SaveChangesAsync(cancellationToken);
 
         if (metadataService is not null)
         {
+            var matched = 0;
             foreach (var animeId in newlyDiscoveredAnimeIds)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                await ReportAsync(progress, LibraryScanPhase.Metadata, matched++, newlyDiscoveredAnimeIds.Count, cancellationToken);
                 try
                 {
                     if (nfoAniListIds.TryGetValue(animeId, out var aniListId))
@@ -269,6 +342,7 @@ public sealed class LibraryScanner(
                 catch (Exception exception) when (
                     exception is MetadataProviderException or InvalidOperationException)
                 {
+                    errors++;
                     logger.LogWarning(
                         exception,
                         "Automatic metadata matching failed for anime {AnimeId}; the local library scan remains valid.",
@@ -302,7 +376,14 @@ public sealed class LibraryScanner(
             }
         }
 
-        await sonarrArtworkSync.SyncIfConfiguredAsync(cancellationToken);
+        await ReportAsync(progress, LibraryScanPhase.Artwork, 0, artworkDirectories.Count, cancellationToken);
+
+        // The Sonarr artwork sync is library-wide; a folder scan only needs it for anime it
+        // just discovered, everything else was synced by an earlier full reconciliation.
+        if (relativeFolder is null || newlyDiscoveredAnimeIds.Count > 0)
+        {
+            await sonarrArtworkSync.SyncIfConfiguredAsync(cancellationToken);
+        }
 
         if (segmentSidecars is not null)
         {
@@ -311,8 +392,10 @@ public sealed class LibraryScanner(
 
         var localArtworkImported = 0;
         var localArtworkUnchanged = 0;
+        var artworkProcessed = 0;
         foreach (var (animeId, animeDirectory) in artworkDirectories)
         {
+            await ReportAsync(progress, LibraryScanPhase.Artwork, artworkProcessed++, artworkDirectories.Count, cancellationToken);
             var artwork = await LocalAnimeArtworkImporter.ImportAsync(
                 animeId,
                 animeDirectory,
@@ -324,7 +407,11 @@ public sealed class LibraryScanner(
         // Runs ffprobe only for new/changed files or after a probe version bump; invalid media is
         // recorded as a diagnostic on its analysis instead of failing the root. Embedded subtitle
         // selection below reads this inventory.
-        var inventory = await mediaInventory.ReconcileAsync(rootId, cancellationToken);
+        await ReportAsync(progress, LibraryScanPhase.Analyzing, 0, 0, cancellationToken);
+        var inventory = await mediaInventory.ReconcileAsync(
+            rootId,
+            relativeFolder is null ? null : scopePrefix,
+            cancellationToken);
 
         var episodeIds = subtitleCandidates
             .Select(x => x.EpisodeId)
@@ -345,9 +432,12 @@ public sealed class LibraryScanner(
                 .ToListAsync(cancellationToken);
 
         var subtitleFiles = 0;
+        var subtitleEpisodes = 0;
         var sidecarListings = new SubtitleSidecarDirectoryCache();
+        await ReportAsync(progress, LibraryScanPhase.Subtitles, 0, episodeIds.Length, cancellationToken);
         foreach (var episodeCandidates in subtitleCandidates.GroupBy(x => x.EpisodeId))
         {
+            await ReportAsync(progress, LibraryScanPhase.Subtitles, subtitleEpisodes++, episodeIds.Length, cancellationToken);
             var episodeId = episodeCandidates.Key;
             var mediaCandidates = episodeCandidates
                 .OrderBy(x => x.MediaPath, StringComparer.Ordinal)
@@ -421,13 +511,69 @@ public sealed class LibraryScanner(
             inventory.Deferred,
             inventory.Unchanged);
 
+        await ReportAsync(progress, LibraryScanPhase.Completed, candidates.Count, candidates.Count, cancellationToken);
+
         return new ScanResult(discovered, updated, skipped, subtitleFiles)
         {
             Removed = removed,
             MetadataWarnings = metadataWarnings,
+            MediaFiles = candidates.Count,
+            ArtworkImported = localArtworkImported,
+            Errors = errors,
+            Warnings = warnings,
+            WarningCount = warningCount,
             MediaInventory = inventory
         };
     }
+
+    // The scope must stay inside the root; a relative folder is never allowed to escape it.
+    private static string ResolveScopePath(string rootPath, string? relativeFolder)
+    {
+        if (relativeFolder is null)
+        {
+            return rootPath;
+        }
+
+        var normalizedRoot = rootPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            + Path.DirectorySeparatorChar;
+        var scopePath = Path.GetFullPath(Path.Combine(rootPath, relativeFolder));
+        if (Path.IsPathRooted(relativeFolder) ||
+            !scopePath.StartsWith(normalizedRoot, StringComparison.Ordinal))
+        {
+            throw new ArgumentException(
+                "The folder to scan must be a relative path inside the library root.",
+                nameof(relativeFolder));
+        }
+
+        return scopePath;
+    }
+
+    private static Task ReportAsync(
+        LibraryScanProgressHandler? progress,
+        LibraryScanPhase phase,
+        int processed,
+        int total,
+        CancellationToken cancellationToken) =>
+        progress is null
+            ? Task.CompletedTask
+            : progress(new LibraryScanProgress(phase, processed, total), cancellationToken);
+
+    private static void AddWarning(
+        List<ScanWarning> warnings,
+        ref int warningCount,
+        string rootPath,
+        string path,
+        string reason)
+    {
+        warningCount++;
+        if (warnings.Count < ScanResult.MaxRecordedWarnings)
+        {
+            warnings.Add(new ScanWarning(reason, ToRelativePath(rootPath, path)));
+        }
+    }
+
+    internal static string ToRelativePath(string rootPath, string path) =>
+        Path.GetRelativePath(rootPath, path).Replace('\\', '/');
 
     // Precedence: an episode NFO whose numbers agree with the file name > the file-name title.
     // The first agreeing NFO (ordinal media path order) wins when several files share an episode.
@@ -437,9 +583,11 @@ public sealed class LibraryScanner(
         MediaDescriptor descriptor,
         bool alreadyTitledFromNfo,
         ref int metadataWarnings,
-        out bool titleFromNfo)
+        out bool titleFromNfo,
+        out bool nfoRejected)
     {
         titleFromNfo = false;
+        nfoRejected = false;
         if (alreadyTitledFromNfo)
         {
             return null;
@@ -454,6 +602,7 @@ public sealed class LibraryScanner(
         if (nfo.Value is null)
         {
             metadataWarnings++;
+            nfoRejected = true;
             LogRejectedNfo(nfoPath, nfo.Warning);
             return null;
         }

@@ -1,4 +1,6 @@
 using AniLingo.Web.Data;
+using AniLingo.Web.Features.Acquisition.Import;
+using AniLingo.Web.Features.Acquisition.Monitoring;
 using AniLingo.Web.Features.Acquisition.Ownership;
 using AniLingo.Web.Features.Acquisition.Sabnzbd;
 using AniLingo.Web.Features.Library;
@@ -22,6 +24,8 @@ public sealed class AnimeRenameService(
     AnimeNamingProfileStore namingStore,
     AcquisitionOwnershipStore ownershipStore,
     SabnzbdAcquisitionStore acquisitionStore,
+    AnimeMonitoringStore monitoringStore,
+    AnimeImportStore importStore,
     SonarrObservationService observation,
     OperationRunner operations,
     AnimeRenameFileSystem fileSystem,
@@ -29,7 +33,8 @@ public sealed class AnimeRenameService(
 {
     public const string OperationKind = "anime-rename";
     private const string LogModule = "Rename";
-    private static readonly string[] ConflictingOperationKinds = ["library-scan", "startup-library-scan", OperationKind];
+    // Acquisition imports move files into series folders and rescan them, so they conflict too.
+    internal static readonly string[] ConflictingOperationKinds = [LibraryScanCoordinator.OperationKind, OperationKind, AnimeImportExecutor.OperationKind];
     private static readonly string[] SidecarDirectoryNames = ["Subs", "Subtitles"];
 
     public async Task<AnimeRenamePlan?> PlanAsync(
@@ -445,6 +450,17 @@ public sealed class AnimeRenameService(
             if (await acquisitionStore.RekeyAnimeAsync(plan.AnimeKey, plan.TargetAnimeKey, CancellationToken.None))
             {
                 compensations.Add(() => acquisitionStore.RekeyAnimeAsync(plan.TargetAnimeKey, plan.AnimeKey, CancellationToken.None));
+            }
+
+            if (await monitoringStore.RekeyAnimeAsync(plan.AnimeKey, plan.TargetAnimeKey, CancellationToken.None))
+            {
+                compensations.Add(() => monitoringStore.RekeyAnimeAsync(plan.TargetAnimeKey, plan.AnimeKey, CancellationToken.None));
+            }
+
+            if (await importStore.RekeyAnimeAsync(plan.AnimeKey, plan.TargetAnimeKey, MapPath, CancellationToken.None))
+            {
+                var reverseImports = BuildReverseMap(mediaMap, sidecarMap, plan.FolderMoves);
+                compensations.Add(() => importStore.RekeyAnimeAsync(plan.TargetAnimeKey, plan.AnimeKey, reverseImports, CancellationToken.None));
             }
 
             await transaction.CommitAsync(CancellationToken.None);
@@ -972,7 +988,7 @@ public sealed class AnimeRenameService(
         return sidecars;
     }
 
-    private static AnimeNamingSeries BuildSeries(
+    internal static AnimeNamingSeries BuildSeries(
         Anime anime,
         AnimeMetadata? metadata,
         string seriesFolder,
@@ -1036,7 +1052,7 @@ public sealed class AnimeRenameService(
     // Absolute numbers come from local numbering only: season N episode E is absolute
     // (episodes of seasons 1..N-1) + E when every earlier season is present as 1..count without
     // gaps. Specials and seasons after a gap have no absolute number, so the standard template applies.
-    private static Dictionary<int, int> LocalAbsoluteOffsets(IReadOnlyList<Episode> episodes)
+    internal static Dictionary<int, int> LocalAbsoluteOffsets(IReadOnlyList<Episode> episodes)
     {
         var offsets = new Dictionary<int, int>();
         var offset = 0;
