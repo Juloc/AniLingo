@@ -193,7 +193,7 @@
     
                         @if (source.IsSelected)
                         {
-                            <span class="status-pill status-ok">Japanese source</span>
+                            <span class="status-pill status-ok">@(string.IsNullOrWhiteSpace(source.Language) ? "Learning" : source.Language) source</span>
                         }
                         else if (source.IsText)
                         {
@@ -201,7 +201,7 @@
                                   asp-page-handler="UseSubtitle"
                                   asp-route-id="@Model.EpisodeId">
                                 <input type="hidden" name="streamIndex" value="@source.StreamIndex" />
-                                <button class="button" type="submit">Use as Japanese</button>
+                                <button class="button" type="submit">Use as @(string.IsNullOrWhiteSpace(source.Language) ? "learning source" : source.Language)</button>
                             </form>
                         }
                         else

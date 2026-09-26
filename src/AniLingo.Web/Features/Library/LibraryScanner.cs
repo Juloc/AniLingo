@@ -1,5 +1,6 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Artwork;
+using AniLingo.Web.Features.Learning.Courses;
 using AniLingo.Web.Features.MediaSegments;
 using AniLingo.Web.Features.Metadata;
 using AniLingo.Web.Features.Sonarr;
@@ -518,6 +519,8 @@ public sealed class LibraryScanner(
         var subtitleFiles = 0;
         var subtitleEpisodes = 0;
         var sidecarListings = new SubtitleSidecarDirectoryCache();
+        var contentLanguage = await new LearningContentLanguageResolver(db)
+            .ResolveTargetLanguageAsync(cancellationToken);
         await ReportAsync(progress, LibraryScanPhase.Subtitles, 0, episodeIds.Length, cancellationToken);
         foreach (var episodeCandidates in subtitleCandidates.GroupBy(x => x.EpisodeId))
         {
@@ -558,8 +561,9 @@ public sealed class LibraryScanner(
                     break;
                 }
 
-                var embedded = await embeddedSubtitleExtractor.ExtractPreferredJapaneseAsync(
+                var embedded = await embeddedSubtitleExtractor.ExtractPreferredTextAsync(
                     candidate.MediaPath,
+                    contentLanguage,
                     cancellationToken);
 
                 if (embedded is null)
