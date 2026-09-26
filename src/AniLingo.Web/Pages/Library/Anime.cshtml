@@ -1,5 +1,6 @@
 @page "/Library/Anime/{id:guid}"
 @using AniLingo.Web.Features.Learning
+@using AniLingo.Web.Features.Tracking
 @model AniLingo.Web.Pages.Library.AnimeModel
 @{
     ViewData["Title"] = Model.AnimeTitle;
@@ -97,9 +98,26 @@
     </div>
 </section>
 
+@if (Model.ExternalProgress is { } externalProgress)
+{
+    var externalPanel = new ExternalProgressPanel(
+        externalProgress,
+        Url.Page(null, "ExternalProgress", new { id = Model.AnimeId })!,
+        // Range mappings can point at another AniList part; only reuse the
+        // matched cover when the resolved entry is the metadata match itself.
+        Model.Metadata is { } matchedMetadata &&
+        matchedMetadata.ExternalId == externalProgress.MatchedMediaId?.ToString()
+            ? matchedMetadata.CoverImageUrl
+            : null,
+        MatchUrl: "#anilist-match",
+        MappingUrl: "#anilist-episode-mappings",
+        CanManageMapping: Model.IsOwner);
+    <partial name="_ExternalProgress" model="externalPanel" />
+}
+
 @if (Model.IsOwner)
 {
-    <section class="panel metadata-panel">
+    <section class="panel metadata-panel" id="anilist-match">
         <div class="panel-heading">
             <h2>@(Model.Metadata is null ? "Match AniList" : "Change AniList match")</h2>
             @if (Model.Metadata is { } current)
@@ -225,7 +243,7 @@
         }
     </section>
 
-    <section class="panel metadata-panel">
+    <section class="panel metadata-panel" id="anilist-episode-mappings">
         <div class="panel-heading">
             <h2>AniList episode mappings</h2>
             <span>Local season/episode range → AniList media entry</span>

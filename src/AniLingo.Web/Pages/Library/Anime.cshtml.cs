@@ -17,7 +17,8 @@ public sealed class AnimeModel(
     AnimeMetadataService metadataService,
     CurrentAccountContext currentAccount,
     OperationRunner operations,
-    EpisodeProgressService episodeProgressService) : PageModel
+    EpisodeProgressService episodeProgressService,
+    AniListAccountService aniListAccountService) : PageModel
 {
     public Guid AnimeId { get; private set; }
     public string AnimeTitle { get; private set; } = "";
@@ -35,6 +36,7 @@ public sealed class AnimeModel(
     public int SuggestedMappingEpisodeStart { get; private set; } = 1;
     public bool IsOwner => currentAccount.IsOwner;
     public bool ShowContentMetrics { get; private set; }
+    public ExternalProgressSummary? ExternalProgress { get; private set; }
 
     public async Task<IActionResult> OnGetAsync(
         Guid id,
@@ -207,7 +209,57 @@ public sealed class AnimeModel(
             })
             .ToArray();
 
+        // Local-only: remote AniList progress is loaded after first paint
+        // through OnGetExternalProgressAsync.
+        ExternalProgress = await aniListAccountService.GetAnimeProgressSummaryAsync(
+            id,
+            cancellationToken);
+
         return Page();
+    }
+
+    public async Task<IActionResult> OnGetExternalProgressAsync(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        if (!await db.Anime.AsNoTracking().AnyAsync(x => x.Id == id, cancellationToken))
+        {
+            return NotFound();
+        }
+
+        var state = await aniListAccountService.GetAnimeProgressStateAsync(
+            id,
+            cancellationToken);
+
+        Response.Headers.CacheControl = "no-store";
+        return Partial(
+            "_ExternalProgressState",
+            new ExternalProgressRemoteView(
+                ExternalProgressMediaKind.Anime,
+                state,
+                "SyncAniList"));
+    }
+
+    public async Task<IActionResult> OnPostSyncAniListAsync(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var result = await operations.RunAsync(
+            new OperationDescriptor(
+                "anilist-anime-progress-sync",
+                "AniList",
+                "Sync anime progress",
+                ProfileId: currentAccount.ProfileId,
+                Lane: OperationLane.Normal,
+                Retryable: false),
+            (_, token) => aniListAccountService.SyncAnimeProgressAsync(
+                id,
+                token),
+            "Anime progress sync completed.",
+            cancellationToken);
+
+        TempData["Status"] = result.Message;
+        return RedirectToPage(new { id });
     }
 
     public async Task<IActionResult> OnPostWatchedAsync(

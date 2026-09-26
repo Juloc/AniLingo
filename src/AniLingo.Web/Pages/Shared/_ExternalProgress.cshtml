@@ -1,0 +1,104 @@
+@using AniLingo.Web.Features.Tracking
+@model ExternalProgressPanel
+@*
+    Shared AniList progress card for Anime, Episode, Manga and Novel detail pages.
+    Everything rendered here is local. The profile's remote AniList state is
+    fetched after first paint from RemoteStateUrl (a page handler that returns
+    the _ExternalProgressState fragment), so page GETs never wait on AniList.
+*@
+@{
+    var summary = Model.Summary;
+    var (basisLabel, basisClass) = summary.MappingBasis switch
+    {
+        ExternalMappingBasis.NeedsReview => ("Mapping needs review", "status-warn"),
+        ExternalMappingBasis.EpisodeRanges => ("Episode ranges", "status-ok"),
+        ExternalMappingBasis.ManualSegments => ("Manual segments", "status-ok"),
+        ExternalMappingBasis.AutomaticSegments => ("Automatic segments", "status-ok"),
+        ExternalMappingBasis.Matched => ("Matched", "status-ok"),
+        _ => ("Not matched", "")
+    };
+}
+<section class="panel external-progress"
+         data-external-progress
+         data-src="@Model.RemoteStateUrl">
+    <div class="external-progress-summary">
+        <div class="external-progress-local">
+            <span class="eyebrow">AniLingo progress</span>
+            <strong>@summary.LocalProgressText</strong>
+        </div>
+        <div class="external-progress-match">
+            @if (summary.IsMatched && !string.IsNullOrWhiteSpace(Model.MatchedCoverUrl))
+            {
+                <img src="@Model.MatchedCoverUrl"
+                     alt=""
+                     loading="lazy"
+                     referrerpolicy="no-referrer" />
+            }
+            <div>
+                <span class="eyebrow">AniList match</span>
+                @if (summary.IsMatched)
+                {
+                    <a href="@summary.AniListUrl"
+                       target="_blank"
+                       rel="noopener noreferrer">@summary.MatchedTitle</a>
+                }
+                else
+                {
+                    <strong>No AniList entry</strong>
+                }
+                <span class="status-pill @basisClass">@basisLabel</span>
+            </div>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(summary.ReviewReason))
+    {
+        <p class="muted">@summary.ReviewReason</p>
+    }
+
+    <div class="external-progress-remote" data-external-progress-remote aria-live="polite">
+        <span class="status-pill">Checking AniList…</span>
+    </div>
+    <template data-external-progress-failed>
+        <div class="external-progress-state">
+            <span class="status-pill status-error">AniList progress unavailable</span>
+            <p class="muted">Local progress is unaffected. Reload the page to try again.</p>
+        </div>
+    </template>
+
+    @if (Model.CanManageMapping)
+    {
+        <div class="inline-actions external-progress-actions">
+            @if (!string.IsNullOrWhiteSpace(Model.MatchUrl))
+            {
+                <a class="button" href="@Model.MatchUrl">@(summary.IsMatched ? "Change match" : "Match AniList")</a>
+            }
+            @if (summary.MappingBasis == ExternalMappingBasis.NeedsReview)
+            {
+                <a class="button" href="/Settings/MappingReview">Review mapping</a>
+            }
+            @if (!string.IsNullOrWhiteSpace(Model.MappingUrl))
+            {
+                <a class="button" href="@Model.MappingUrl">Edit mappings</a>
+            }
+        </div>
+    }
+</section>
+<script>
+    (() => {
+        const panel = document.currentScript?.previousElementSibling;
+        if (!panel || !panel.matches("[data-external-progress]")) {
+            return;
+        }
+
+        const slot = panel.querySelector("[data-external-progress-remote]");
+        const failed = panel.querySelector("template[data-external-progress-failed]");
+        fetch(panel.dataset.src, {
+            credentials: "same-origin",
+            headers: { Accept: "text/html" }
+        })
+            .then(response => response.ok ? response.text() : Promise.reject(response.status))
+            .then(html => { slot.innerHTML = html; })
+            .catch(() => slot.replaceChildren(failed.content.cloneNode(true)));
+    })();
+</script>

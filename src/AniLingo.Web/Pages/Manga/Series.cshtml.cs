@@ -3,6 +3,7 @@ using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Manga;
 using AniLingo.Web.Features.MediaMapping;
 using AniLingo.Web.Features.Operations;
+using AniLingo.Web.Features.Tracking;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
@@ -13,10 +14,12 @@ public sealed class SeriesModel(
     CurrentAccountContext account,
     IHttpClientFactory httpClientFactory,
     OperationRunner operations,
-    MediaMappingReviewStore mappingReviewStore) : PageModel
+    MediaMappingReviewStore mappingReviewStore,
+    AniListAccountService aniListAccount) : PageModel
 {
     public MangaSeriesDetail Series { get; private set; } = null!;
     public MangaProgressItem? Progress { get; private set; }
+    public ExternalProgressSummary? ExternalProgress { get; private set; }
     public IReadOnlyList<MangaAniListCandidate> SearchResults { get; private set; } = [];
     public string Query { get; private set; } = "";
     public bool IsOwner => account.IsOwner;
@@ -51,7 +54,60 @@ public sealed class SeriesModel(
                 cancellationToken);
         }
 
+        // Local-only: remote AniList progress is loaded after first paint
+        // through OnGetExternalProgressAsync.
+        ExternalProgress = await aniListAccount.GetMangaProgressSummaryAsync(
+            id,
+            cancellationToken);
+
         return Page();
+    }
+
+    public async Task<IActionResult> OnGetExternalProgressAsync(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var source = await new MangaRepository(db).GetAutoMatchSourceAsync(
+            id,
+            cancellationToken);
+        if (source is null)
+        {
+            return NotFound();
+        }
+
+        var state = await aniListAccount.GetMangaProgressStateAsync(
+            id,
+            cancellationToken);
+
+        Response.Headers.CacheControl = "no-store";
+        return Partial(
+            "_ExternalProgressState",
+            new ExternalProgressRemoteView(
+                ExternalProgressMediaKind.Manga,
+                state,
+                "SyncAniList"));
+    }
+
+    public async Task<IActionResult> OnPostSyncAniListAsync(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var result = await operations.RunAsync(
+            new OperationDescriptor(
+                "anilist-manga-progress-sync",
+                "AniList",
+                "Sync Manga progress",
+                ProfileId: account.ProfileId,
+                Lane: OperationLane.Normal,
+                Retryable: false),
+            (_, token) => aniListAccount.SyncMangaProgressAsync(
+                id,
+                token),
+            "Manga progress sync completed.",
+            cancellationToken);
+
+        TempData["Status"] = result.Message;
+        return RedirectToPage(new { id });
     }
 
     public async Task<IActionResult> OnPostMatchAsync(

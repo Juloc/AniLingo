@@ -80,9 +80,24 @@
     <div class="manga-message">@status</div>
 }
 
+@if (Model.ExternalProgress is { } externalProgress)
+{
+    var externalPanel = new AniLingo.Web.Features.Tracking.ExternalProgressPanel(
+        externalProgress,
+        Url.Page(null, "ExternalProgress", new { id = series.Id })!,
+        // Segment mappings can point at another AniList part than the series match.
+        externalProgress.MappingBasis == AniLingo.Web.Features.Tracking.ExternalMappingBasis.Matched
+            ? series.CoverImageUrl
+            : null,
+        MatchUrl: $"/Manga/Series/{series.Id}?q={Uri.EscapeDataString(series.Title)}#manga-manage",
+        MappingUrl: $"/Settings/MappingSegments?mediaType=manga&localId={series.Id}",
+        CanManageMapping: Model.IsOwner);
+    <partial name="_ExternalProgress" model="externalPanel" />
+}
+
 @if (Model.IsOwner)
 {
-    <details class="manga-manage">
+    <details class="manga-manage" id="manga-manage" open="@(Model.Query.Length > 0)">
         <summary>Manage</summary>
         <div class="manga-manage-body">
             <div class="manga-inline-actions">

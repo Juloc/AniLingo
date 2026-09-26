@@ -72,6 +72,45 @@ public sealed class MediaMappingReviewStore
         }
     }
 
+    public async Task<MediaMappingReviewTask?> FindPendingAsync(
+        string mediaType,
+        string localId,
+        IReadOnlyCollection<string>? purposes = null,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedMediaType = Required(mediaType, nameof(mediaType));
+        var normalizedLocalId = Required(localId, nameof(localId));
+        var wantedPurposes = purposes is { Count: > 0 }
+            ? purposes
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Select(x => x.Trim())
+                .ToHashSet(StringComparer.OrdinalIgnoreCase)
+            : null;
+
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            return (await ReadUnsafeAsync(cancellationToken))
+                .Where(x =>
+                    string.Equals(
+                        x.MediaType,
+                        normalizedMediaType,
+                        StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(
+                        x.LocalId,
+                        normalizedLocalId,
+                        StringComparison.Ordinal) &&
+                    (wantedPurposes is null ||
+                     wantedPurposes.Contains(x.Purpose)))
+                .OrderByDescending(x => x.UpdatedAt)
+                .FirstOrDefault();
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
     public async Task<MediaMappingReviewTask> UpsertAsync(
         string mediaType,
         string localId,
