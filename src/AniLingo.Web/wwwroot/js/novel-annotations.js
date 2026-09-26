@@ -4,6 +4,18 @@
 (() => {
     const registry = window.AniLingoNovelReader = window.AniLingoNovelReader || {};
 
+    // Desktop shortcuts for this module. Kept in one place and exposed on the
+    // registry so a single source of truth exists to check against reader-shell.js
+    // (Escape), reader-personalization.js (ArrowRight/ArrowLeft/PageUp/PageDown in
+    // paged mode) and reader-tts.js (Space/Arrow/PageUp/PageDown scroll tracking).
+    const READER_SHORTCUTS = {
+        bookmark: "b",
+        notes: "n",
+        previousBookmark: "[",
+        nextBookmark: "]"
+    };
+    registry.shortcutKeys = READER_SHORTCUTS;
+
     // Splits a paragraph into segments at every highlight boundary so multiple
     // and overlapping highlights render as flat, non-nested <mark> runs.
     const buildHighlightSegments = (textLength, highlights) => {
@@ -41,11 +53,13 @@
     registry.buildHighlightSegments = buildHighlightSegments;
 
     registry.annotations = reader => {
-        const { shell, clamp } = reader;
+        const { shell, clamp, normalizeText } = reader;
         const bookmarkForm = shell.querySelector("[data-bookmark-form]");
         const highlightForm = shell.querySelector("[data-highlight-form]");
         const removeBookmarkEndpoint = shell.querySelector("[data-remove-bookmark-endpoint]");
         const removeHighlightEndpoint = shell.querySelector("[data-remove-highlight-endpoint]");
+        const bookmarkLabelEndpoint = shell.querySelector("[data-bookmark-label-endpoint]");
+        const highlightNoteEndpoint = shell.querySelector("[data-highlight-note-endpoint]");
         const selectionMenu = shell.querySelector("[data-selection-menu]");
         const notes = shell.querySelector("[data-reader-notes]");
         const notesToggle = shell.querySelector("[data-reader-notes-toggle]");
@@ -59,7 +73,40 @@
         const emptyBookmarks = shell.querySelector("[data-empty-bookmarks]");
         const emptyHighlights = shell.querySelector("[data-empty-highlights]");
         const workNotesUrl = shell.dataset.workNotesUrl || "";
+        const searchNotesUrl = shell.dataset.searchNotesUrl || "";
+        const adjacentBookmarkUrl = shell.dataset.adjacentBookmarkUrl || "";
         const chapterId = shell.dataset.chapterId || "";
+
+        // Heading shown on every bookmark/highlight note card for the current
+        // chapter, matching the label the server attaches to other chapters'
+        // notes (chapter number/title and volume, when the work has volumes).
+        const currentChapterHeading = () => {
+            const volumeNumber = shell.dataset.volumeNumber;
+            const chapterNumber = shell.dataset.chapterNumber || "";
+            const chapterTitle = shell.dataset.chapterTitle || "";
+            const volumePrefix = volumeNumber ? `Band ${volumeNumber} · ` : "";
+            return `${volumePrefix}Kapitel ${chapterNumber} · ${chapterTitle}`;
+        };
+
+        const bookmarkCardSelector = id =>
+            `[data-note-kind="bookmarks"][data-note-id="${id}"]`;
+        const highlightCardSelector = id =>
+            `[data-note-kind="highlights"][data-note-id="${id}"]`;
+
+        const setCardDetailText = (card, text) => {
+            const link = card.querySelector("a");
+            if (!link) return;
+            let span = link.querySelector("span");
+            if (!text) {
+                span?.remove();
+                return;
+            }
+            if (!span) {
+                span = document.createElement("span");
+                link.append(span);
+            }
+            span.textContent = text;
+        };
 
         const chapterBookmarks = new Map();
         const highlights = new Map();
@@ -296,7 +343,12 @@
             }
         };
 
-        const createNoteCard = ({ href, heading, title, detail, removeAttribute, removeLabel, id }) => {
+        const createNoteCard = ({
+            href, heading, title, detail,
+            removeAttribute, removeLabel,
+            editAttribute, editLabel,
+            id
+        }) => {
             const card = document.createElement("article");
             card.className = "novel-note-card";
 
@@ -317,6 +369,21 @@
                 link.append(excerpt);
             }
 
+            const actions = document.createElement("div");
+            actions.className = "novel-note-actions";
+
+            let edit = null;
+            if (editAttribute) {
+                edit = document.createElement("button");
+                edit.type = "button";
+                edit.className = "novel-note-edit";
+                edit.setAttribute(editAttribute, "");
+                edit.dataset.noteId = id;
+                edit.textContent = "Bearbeiten";
+                edit.setAttribute("aria-label", editLabel || "Bearbeiten");
+                actions.append(edit);
+            }
+
             const remove = document.createElement("button");
             remove.type = "button";
             remove.className = "novel-note-remove";
@@ -324,9 +391,10 @@
             remove.dataset.noteId = id;
             remove.textContent = "Entfernen";
             remove.setAttribute("aria-label", removeLabel);
+            actions.append(remove);
 
-            card.append(link, remove);
-            return { card, link, remove };
+            card.append(link, actions);
+            return { card, link, remove, edit };
         };
 
         const renderBookmarkCard = bookmark => {
@@ -335,21 +403,29 @@
                 if (card.dataset.bookmarkId === bookmark.id) card.remove();
             });
 
-            const { card, link, remove } = createNoteCard({
+            const { card, link, remove, edit } = createNoteCard({
                 href: `/Novels/Read/${encodeURIComponent(bookmark.chapterId)}?bookmark=${encodeURIComponent(bookmark.id)}`,
+                heading: bookmark.chapterId === chapterId ? currentChapterHeading() : undefined,
                 title: bookmark.label || `Lesezeichen · ${Math.round(bookmark.positionPermille / 10)}%`,
                 detail: bookmark.anchorText,
                 removeAttribute: "data-remove-bookmark-button",
                 removeLabel: "Lesezeichen entfernen",
+                editAttribute: "data-edit-bookmark-button",
+                editLabel: "Lesezeichen umbenennen",
                 id: bookmark.id
             });
             card.dataset.bookmarkCard = "";
             card.dataset.bookmarkId = bookmark.id;
             card.dataset.bookmarkChapterId = bookmark.chapterId;
+            card.dataset.noteKind = "bookmarks";
+            card.dataset.noteId = bookmark.id;
+            card.dataset.bookmarkLabel = bookmark.label || "";
+            card.dataset.positionPermille = String(bookmark.positionPermille || 0);
             if (bookmark.style) card.dataset.bookmarkStyle = bookmark.style;
             if (bookmark.color) card.dataset.bookmarkColor = bookmark.color;
             link.dataset.localBookmarkId = bookmark.id;
             remove.dataset.bookmarkId = bookmark.id;
+            if (edit) edit.dataset.bookmarkId = bookmark.id;
             bookmarkList.prepend(card);
         };
 
@@ -359,18 +435,25 @@
                 if (card.dataset.highlightId === highlight.id) card.remove();
             });
 
-            const { card, link, remove } = createNoteCard({
+            const { card, link, remove, edit } = createNoteCard({
                 href: `/Novels/Read/${encodeURIComponent(highlight.chapterId || chapterId)}?highlight=${encodeURIComponent(highlight.id)}`,
+                heading: currentChapterHeading(),
                 title: highlight.text || "Markierung",
                 detail: highlight.note,
                 removeAttribute: "data-remove-highlight-button",
                 removeLabel: "Markierung entfernen",
+                editAttribute: "data-edit-highlight-button",
+                editLabel: "Notiz bearbeiten",
                 id: highlight.id
             });
             card.dataset.highlightCard = "";
             card.dataset.highlightId = highlight.id;
+            card.dataset.noteKind = "highlights";
+            card.dataset.noteId = highlight.id;
+            card.dataset.highlightNote = highlight.note || "";
             link.dataset.localHighlightId = highlight.id;
             remove.dataset.highlightId = highlight.id;
+            if (edit) edit.dataset.highlightId = highlight.id;
             highlightList.prepend(card);
         };
 
@@ -520,29 +603,47 @@
             }
         };
 
-        const otherNoteCard = (kind, note) => {
+        // Shared card builder for notes belonging to another chapter, used both
+        // for the "other chapters" toggle lists and for search results (which
+        // reuse the same removal/edit wiring via [data-other-note-card]).
+        const remoteNoteCard = (kind, note, variant) => {
             const isBookmark = kind === "bookmarks";
-            const { card } = createNoteCard({
+            const volumePrefix = note.volumeNumber ? `Band ${note.volumeNumber} · ` : "";
+            const heading = `${volumePrefix}Kapitel ${note.chapterNumber}${note.chapterTitle ? ` · ${note.chapterTitle}` : ""}`;
+            const { card, remove, edit } = createNoteCard({
                 href: isBookmark
                     ? `/Novels/Read/${encodeURIComponent(note.chapterId)}?bookmark=${encodeURIComponent(note.id)}`
                     : `/Novels/Read/${encodeURIComponent(note.chapterId)}?highlight=${encodeURIComponent(note.id)}`,
-                heading: `Kapitel ${note.chapterNumber}`,
+                heading,
                 title: note.title || (isBookmark
                     ? `Lesezeichen · ${Math.round((note.positionPermille || 0) / 10)}%`
                     : "Markierung"),
                 detail: note.detail,
                 removeAttribute: "data-remove-other-note",
                 removeLabel: isBookmark ? "Lesezeichen entfernen" : "Markierung entfernen",
+                editAttribute: "data-edit-other-note",
+                editLabel: isBookmark ? "Lesezeichen umbenennen" : "Notiz bearbeiten",
                 id: note.id
             });
             card.classList.add("novel-other-note");
             card.dataset.otherNoteCard = "";
             card.dataset.noteKind = kind;
             card.dataset.noteId = note.id;
-            card.querySelector("[data-remove-other-note]").dataset.noteKind = kind;
+            if (isBookmark) {
+                card.dataset.bookmarkLabel = note.title || "";
+                card.dataset.positionPermille = String(note.positionPermille || 0);
+            } else {
+                card.dataset.highlightNote = note.detail || "";
+            }
+            remove.dataset.noteKind = kind;
+            if (edit) edit.dataset.noteKind = kind;
             if (isBookmark && note.color) card.style.setProperty("--bookmark-color", note.color);
+            if (variant === "search") card.dataset.searchCard = "";
             return card;
         };
+
+        const otherNoteCard = (kind, note) => remoteNoteCard(kind, note, "other");
+        const searchNoteCard = (kind, note) => remoteNoteCard(kind, note, "search");
 
         const loadOtherNotes = async kind => {
             const state = otherNotes[kind];
@@ -606,13 +707,337 @@
                 : await removeHighlight(id);
             if (!removed) return;
 
-            button.closest("[data-other-note-card]")?.remove();
-            const count = shell.querySelector(`[data-other-notes-count="${kind}"]`);
-            if (count) {
-                count.textContent = String(Math.max(0, Number(count.textContent || 0) - 1));
+            const card = button.closest("[data-other-note-card]");
+            const isSearchCard = card?.dataset.searchCard !== undefined;
+            card?.remove();
+
+            // Search results share the removal wiring but page independently,
+            // so only the "other chapters" toggle list's offset bookkeeping
+            // needs to shift back by one.
+            if (!isSearchCard) {
+                const count = shell.querySelector(`[data-other-notes-count="${kind}"]`);
+                if (count) {
+                    count.textContent = String(Math.max(0, Number(count.textContent || 0) - 1));
+                }
+                otherNotes[kind].offset = Math.max(0, otherNotes[kind].offset - 1);
             }
-            otherNotes[kind].offset = Math.max(0, otherNotes[kind].offset - 1);
         };
+
+        // ---- edit (rename bookmark / edit highlight note) ------------------
+
+        const editBookmarkLabel = async button => {
+            if (!bookmarkLabelEndpoint) return;
+            const bookmarkId = button.dataset.bookmarkId || button.dataset.noteId;
+            const card = button.closest("article");
+            if (!bookmarkId || !card) return;
+
+            const currentLabel = card.dataset.bookmarkLabel || "";
+            const answer = window.prompt("Name des Lesezeichens:", currentLabel);
+            if (answer === null) return;
+            const nextLabel = answer.trim();
+            if (nextLabel === currentLabel) return;
+
+            try {
+                const saved = await reader.postForm(bookmarkLabelEndpoint, data => {
+                    data.set("bookmarkId", bookmarkId);
+                    data.set("label", nextLabel);
+                });
+                const label = saved?.label ?? nextLabel;
+                const position = Number(card.dataset.positionPermille || 0);
+                const displayTitle = label || `Lesezeichen · ${Math.round(position / 10)}%`;
+
+                shell.querySelectorAll(bookmarkCardSelector(bookmarkId)).forEach(match => {
+                    match.dataset.bookmarkLabel = label;
+                    const strong = match.querySelector("strong");
+                    if (strong) strong.textContent = displayTitle;
+                });
+
+                const known = chapterBookmarks.get(bookmarkId);
+                if (known) {
+                    known.label = label;
+                    chapterBookmarks.set(bookmarkId, known);
+                    renderBookmarkMarker(known);
+                }
+
+                reader.showToast("Lesezeichen umbenannt");
+            } catch (error) {
+                reader.showToast(error.message || "Lesezeichen konnte nicht umbenannt werden");
+            }
+        };
+
+        const editHighlightNote = async button => {
+            if (!highlightNoteEndpoint) return;
+            const highlightId = button.dataset.highlightId || button.dataset.noteId;
+            const card = button.closest("article");
+            if (!highlightId || !card) return;
+
+            const currentNote = card.dataset.highlightNote || "";
+            const answer = window.prompt("Notiz zu dieser Markierung:", currentNote);
+            if (answer === null) return;
+            const nextNote = answer.trim();
+            if (nextNote === currentNote) return;
+
+            try {
+                const saved = await reader.postForm(highlightNoteEndpoint, data => {
+                    data.set("highlightId", highlightId);
+                    data.set("note", nextNote);
+                });
+                const note = saved?.note ?? nextNote;
+
+                shell.querySelectorAll(highlightCardSelector(highlightId)).forEach(match => {
+                    match.dataset.highlightNote = note;
+                    setCardDetailText(match, note);
+                });
+
+                reader.showToast("Notiz gespeichert");
+            } catch (error) {
+                reader.showToast(error.message || "Notiz konnte nicht gespeichert werden");
+            }
+        };
+
+        // ---- bookmark selection & previous/next bookmark navigation --------
+
+        const saveBookmarkAtSelection = async () => {
+            if (!bookmarkForm || !pendingSelection) return;
+            const selected = { ...pendingSelection };
+
+            try {
+                const saved = await reader.postForm(bookmarkForm, data => {
+                    data.set("positionPermille", String(reader.position.positionPermille()));
+                    data.set("language", selected.language);
+                    data.set("paragraphIndex", String(selected.paragraphIndex));
+                    data.set("characterOffset", String(selected.startOffset));
+                    data.set("label", "");
+                });
+
+                if (!saved?.id) throw new Error("Lesezeichen konnte nicht gespeichert werden");
+
+                const bookmark = {
+                    ...saved,
+                    chapterId: saved.chapterId || chapterId,
+                    anchorText: saved.anchorText || "",
+                    label: saved.label || ""
+                };
+
+                renderBookmarkCard(bookmark);
+                if (bookmark.chapterId === chapterId) {
+                    chapterBookmarks.set(bookmark.id, bookmark);
+                    renderBookmarkMarker(bookmark);
+                }
+                syncCounts();
+
+                window.getSelection()?.removeAllRanges();
+                hideSelectionMenu();
+                reader.showToast("Auswahl als Lesezeichen gespeichert");
+            } catch (error) {
+                reader.showToast(error.message || "Lesezeichen konnte nicht gespeichert werden");
+            }
+        };
+
+        const goToAdjacentBookmark = async forward => {
+            if (!adjacentBookmarkUrl) return;
+
+            try {
+                const result = await reader.getJson(reader.withQuery(adjacentBookmarkUrl, {
+                    forward,
+                    positionPermille: reader.position.positionPermille()
+                }));
+
+                if (!result?.found) {
+                    reader.showToast("Keine Lesezeichen vorhanden");
+                    return;
+                }
+
+                if (result.chapterId === chapterId) {
+                    const local = chapterBookmarks.get(result.id);
+                    if (local) {
+                        reader.position.scrollTo(local);
+                        reader.showToast(
+                            local.anchorText || local.label ||
+                            `Lesezeichen · ${Math.round(local.positionPermille / 10)}%`);
+                    } else {
+                        reader.position.scrollTo({
+                            language: reader.anchorLanguage(),
+                            paragraphIndex: null,
+                            characterOffset: 0,
+                            positionPermille: result.positionPermille
+                        });
+                        reader.showToast(result.label || "Lesezeichen");
+                    }
+                } else {
+                    window.location.href =
+                        `/Novels/Read/${encodeURIComponent(result.chapterId)}?bookmark=${encodeURIComponent(result.id)}`;
+                }
+            } catch {
+                reader.showToast("Lesezeichen konnte nicht geladen werden");
+            }
+        };
+
+        // ---- tabs (Current chapter / All chapters / Bookmarks / Highlights) --
+
+        const notesTabs = Array.from(shell.querySelectorAll("[data-notes-tab]"));
+        const notesSections = {
+            bookmarks: shell.querySelector('[data-notes-section="bookmarks"]'),
+            highlights: shell.querySelector('[data-notes-section="highlights"]')
+        };
+        let activeTab = "current";
+
+        const applyTab = tab => {
+            activeTab = tab;
+            notesTabs.forEach(button => {
+                button.setAttribute("aria-selected", button.dataset.notesTab === tab ? "true" : "false");
+            });
+
+            const showBookmarks = tab === "current" || tab === "all" || tab === "bookmarks";
+            const showHighlights = tab === "current" || tab === "all" || tab === "highlights";
+            if (notesSections.bookmarks) notesSections.bookmarks.hidden = !showBookmarks;
+            if (notesSections.highlights) notesSections.highlights.hidden = !showHighlights;
+
+            const showOtherChapters = tab !== "current";
+            const visibleKinds = [
+                ...(showBookmarks ? ["bookmarks"] : []),
+                ...(showHighlights ? ["highlights"] : [])
+            ];
+
+            visibleKinds.forEach(kind => {
+                const container = shell.querySelector(`[data-other-notes="${kind}"]`);
+                if (!container) return;
+                container.hidden = !showOtherChapters;
+                if (!showOtherChapters) return;
+
+                const toggle = shell.querySelector(`[data-other-notes-toggle="${kind}"]`);
+                const list = shell.querySelector(`[data-other-note-list="${kind}"]`);
+                if (!toggle || !list) return;
+
+                if (toggle.getAttribute("aria-expanded") !== "true") {
+                    toggle.setAttribute("aria-expanded", "true");
+                    list.hidden = false;
+                }
+                if (!otherNotes[kind].loaded) {
+                    void loadOtherNotes(kind);
+                } else {
+                    const more = shell.querySelector(`[data-other-notes-more="${kind}"]`);
+                    if (more) more.hidden = !otherNotes[kind].hasMore;
+                }
+            });
+
+            if (searchInput && normalizeText(searchInput.value)) {
+                void runSearch();
+            }
+        };
+
+        // ---- search (server-side, bounded, paged, profile-isolated) --------
+
+        const searchInput = shell.querySelector("[data-notes-search]");
+        const searchSection = shell.querySelector("[data-notes-search-section]");
+        const searchList = shell.querySelector("[data-search-list]");
+        const searchMoreButton = shell.querySelector("[data-search-more]");
+        const searchStatus = shell.querySelector("[data-search-status]");
+
+        let searchTimer = null;
+        let searchRequestId = 0;
+        const searchState = { query: "", kinds: [], offsets: {}, hasMore: {} };
+
+        const searchKindsForTab = () => {
+            if (activeTab === "bookmarks") return ["bookmarks"];
+            if (activeTab === "highlights") return ["highlights"];
+            return ["bookmarks", "highlights"];
+        };
+
+        const setSearchActive = active => {
+            if (searchSection) searchSection.hidden = !active;
+            if (!active) return;
+
+            // While searching, the normal current/other-chapter blocks make way
+            // for the results list; clearing the query restores them (applyTab
+            // decides which of the two sections stay visible for the tab).
+            if (notesSections.bookmarks) notesSections.bookmarks.hidden = true;
+            if (notesSections.highlights) notesSections.highlights.hidden = true;
+        };
+
+        const runSearch = async () => {
+            const query = normalizeText(searchInput?.value);
+            if (!query) {
+                setSearchActive(false);
+                applyTab(activeTab);
+                return;
+            }
+
+            if (!searchNotesUrl) return;
+            setSearchActive(true);
+
+            const requestId = ++searchRequestId;
+            const kinds = searchKindsForTab();
+            searchState.query = query;
+            searchState.kinds = kinds;
+            searchState.offsets = Object.fromEntries(kinds.map(kind => [kind, 0]));
+            searchState.hasMore = Object.fromEntries(kinds.map(kind => [kind, false]));
+
+            if (searchList) searchList.replaceChildren();
+            if (searchMoreButton) searchMoreButton.hidden = true;
+            if (searchStatus) searchStatus.textContent = "Suche läuft …";
+
+            try {
+                const pages = await Promise.all(kinds.map(kind =>
+                    reader.getJson(reader.withQuery(searchNotesUrl, { kind, q: query, offset: 0 }))
+                        .then(page => ({ kind, page }))));
+                if (requestId !== searchRequestId) return;
+
+                let total = 0;
+                for (const { kind, page } of pages) {
+                    for (const note of page.items || []) {
+                        searchList?.append(searchNoteCard(kind, note));
+                        total++;
+                    }
+                    searchState.offsets[kind] = page.nextOffset ?? 0;
+                    searchState.hasMore[kind] = Boolean(page.hasMore);
+                }
+
+                if (searchMoreButton) {
+                    searchMoreButton.hidden = !kinds.some(kind => searchState.hasMore[kind]);
+                }
+                if (searchStatus) {
+                    searchStatus.textContent = total === 0 ? "Keine Treffer." : "";
+                }
+            } catch {
+                if (requestId !== searchRequestId) return;
+                if (searchStatus) searchStatus.textContent = "Suche fehlgeschlagen.";
+            }
+        };
+
+        const loadMoreSearchResults = async () => {
+            const kinds = searchState.kinds.filter(kind => searchState.hasMore[kind]);
+            if (kinds.length === 0 || !searchState.query || !searchNotesUrl) return;
+
+            if (searchMoreButton) searchMoreButton.disabled = true;
+            try {
+                const pages = await Promise.all(kinds.map(kind =>
+                    reader.getJson(reader.withQuery(searchNotesUrl, {
+                        kind,
+                        q: searchState.query,
+                        offset: searchState.offsets[kind]
+                    })).then(page => ({ kind, page }))));
+
+                for (const { kind, page } of pages) {
+                    for (const note of page.items || []) {
+                        searchList?.append(searchNoteCard(kind, note));
+                    }
+                    searchState.offsets[kind] = page.nextOffset ?? searchState.offsets[kind];
+                    searchState.hasMore[kind] = Boolean(page.hasMore);
+                }
+
+                if (searchMoreButton) {
+                    searchMoreButton.hidden = !searchState.kinds.some(kind => searchState.hasMore[kind]);
+                }
+            } finally {
+                if (searchMoreButton) searchMoreButton.disabled = false;
+            }
+        };
+
+        searchInput?.addEventListener("input", () => {
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(() => { void runSearch(); }, 250);
+        });
 
         // ---- events --------------------------------------------------------
 
@@ -625,7 +1050,9 @@
             const localBookmark = event.target.closest("[data-local-bookmark-id]");
             if (localBookmark && chapterBookmarks.has(localBookmark.dataset.localBookmarkId)) {
                 event.preventDefault();
-                reader.position.scrollTo(chapterBookmarks.get(localBookmark.dataset.localBookmarkId));
+                const target = chapterBookmarks.get(localBookmark.dataset.localBookmarkId);
+                reader.position.scrollTo(target);
+                if (target.anchorText) reader.showToast(target.anchorText);
                 return;
             }
 
@@ -659,6 +1086,28 @@
                 return;
             }
 
+            const editBookmarkButton = event.target.closest("[data-edit-bookmark-button]");
+            if (editBookmarkButton) {
+                void editBookmarkLabel(editBookmarkButton);
+                return;
+            }
+
+            const editHighlightButton = event.target.closest("[data-edit-highlight-button]");
+            if (editHighlightButton) {
+                void editHighlightNote(editHighlightButton);
+                return;
+            }
+
+            const editOther = event.target.closest("[data-edit-other-note]");
+            if (editOther) {
+                if (editOther.dataset.noteKind === "bookmarks") {
+                    void editBookmarkLabel(editOther);
+                } else {
+                    void editHighlightNote(editOther);
+                }
+                return;
+            }
+
             const otherToggle = event.target.closest("[data-other-notes-toggle]");
             if (otherToggle) {
                 toggleOtherNotes(otherToggle.dataset.otherNotesToggle);
@@ -668,6 +1117,24 @@
             const otherMore = event.target.closest("[data-other-notes-more]");
             if (otherMore) {
                 void loadOtherNotes(otherMore.dataset.otherNotesMore);
+                return;
+            }
+
+            const searchMore = event.target.closest("[data-search-more]");
+            if (searchMore) {
+                void loadMoreSearchResults();
+                return;
+            }
+
+            const notesTab = event.target.closest("[data-notes-tab]");
+            if (notesTab) {
+                applyTab(notesTab.dataset.notesTab);
+                return;
+            }
+
+            const bookmarkNav = event.target.closest("[data-bookmark-nav]");
+            if (bookmarkNav) {
+                void goToAdjacentBookmark(bookmarkNav.dataset.bookmarkNav === "next");
                 return;
             }
 
@@ -688,6 +1155,11 @@
 
             if (event.target.closest("[data-save-highlight]")) {
                 void saveHighlight(false);
+                return;
+            }
+
+            if (event.target.closest("[data-save-bookmark-selection]")) {
+                void saveBookmarkAtSelection();
             }
         });
 
@@ -695,7 +1167,14 @@
         document.addEventListener("click", event => {
             const marker = event.target.closest("[data-bookmark-marker]");
             if (marker) {
-                reader.position.scrollTo(chapterBookmarks.get(marker.dataset.bookmarkId));
+                const target = chapterBookmarks.get(marker.dataset.bookmarkId);
+                reader.position.scrollTo(target);
+                if (target?.anchorText) reader.showToast(target.anchorText);
+                return;
+            }
+
+            if (event.target.closest("[data-jump-context-dismiss]")) {
+                event.target.closest("[data-jump-context]")?.remove();
                 return;
             }
 
@@ -709,6 +1188,34 @@
         document.addEventListener("keydown", event => {
             if (event.key === "Escape" && notes && !notes.hidden) {
                 setNotesOpen(false);
+                return;
+            }
+
+            if (event.ctrlKey || event.metaKey || event.altKey) return;
+            if (event.target?.closest?.('input, textarea, select, [contenteditable=""], [contenteditable="true"]')) {
+                return;
+            }
+
+            const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
+            switch (key) {
+                case registry.shortcutKeys.bookmark:
+                    event.preventDefault();
+                    void saveBookmark();
+                    break;
+                case registry.shortcutKeys.notes:
+                    event.preventDefault();
+                    setNotesOpen(notes?.hidden !== false);
+                    break;
+                case registry.shortcutKeys.previousBookmark:
+                    event.preventDefault();
+                    void goToAdjacentBookmark(false);
+                    break;
+                case registry.shortcutKeys.nextBookmark:
+                    event.preventDefault();
+                    void goToAdjacentBookmark(true);
+                    break;
+                default:
+                    break;
             }
         });
 
@@ -739,6 +1246,15 @@
 
         renderAllHighlights();
         syncCounts();
+        applyTab("current");
+
+        // The forced-jump context banner (server-rendered when the reader opens
+        // straight onto a bookmark/highlight from elsewhere) fades on its own so
+        // it does not linger over the text.
+        const jumpContext = shell.querySelector("[data-jump-context]");
+        if (jumpContext) {
+            setTimeout(() => jumpContext.remove(), 6000);
+        }
 
         return {
             renderAllHighlights

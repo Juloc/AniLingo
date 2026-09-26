@@ -185,6 +185,97 @@ public sealed class ReadModel(
         });
     }
 
+    /// <summary>
+    /// Bounded, paged, profile-scoped search across the whole work's notes by
+    /// bookmark label/anchor text or highlight text/note.
+    /// </summary>
+    public async Task<IActionResult> OnGetSearchNotesAsync(
+        Guid id,
+        string? kind,
+        string? q,
+        int offset,
+        CancellationToken cancellationToken)
+    {
+        var noteKind = kind?.Trim().ToLowerInvariant() switch
+        {
+            "bookmarks" => NovelNoteKind.Bookmark,
+            "highlights" => NovelNoteKind.Highlight,
+            _ => (NovelNoteKind?)null
+        };
+
+        if (noteKind is null)
+        {
+            return BadRequest("Unknown note kind.");
+        }
+
+        if (string.IsNullOrWhiteSpace(q))
+        {
+            return BadRequest("A search query is required.");
+        }
+
+        var context = await catalog.GetChapterContextAsync(id, cancellationToken);
+        if (context is null)
+        {
+            return NotFound();
+        }
+
+        var page = await annotations.SearchWorkNotesAsync(
+            account.ProfileId,
+            context.WorkId,
+            noteKind.Value,
+            q,
+            offset,
+            cancellationToken);
+
+        return new JsonResult(new
+        {
+            items = page.Items,
+            nextOffset = page.NextOffset,
+            hasMore = page.HasMore
+        });
+    }
+
+    /// <summary>
+    /// The nearest bookmark before/after the caller's current chapter+position
+    /// across the whole work, for previous/next bookmark navigation.
+    /// </summary>
+    public async Task<IActionResult> OnGetAdjacentBookmarkAsync(
+        Guid id,
+        bool forward,
+        int positionPermille,
+        CancellationToken cancellationToken)
+    {
+        var context = await catalog.GetChapterContextAsync(id, cancellationToken);
+        if (context is null)
+        {
+            return NotFound();
+        }
+
+        var bookmark = await annotations.GetAdjacentBookmarkAsync(
+            account.ProfileId,
+            context.WorkId,
+            context.Number,
+            positionPermille,
+            forward,
+            cancellationToken);
+
+        if (bookmark is null)
+        {
+            return new JsonResult(new { found = false });
+        }
+
+        return new JsonResult(new
+        {
+            found = true,
+            bookmark.Id,
+            bookmark.ChapterId,
+            bookmark.ChapterNumber,
+            bookmark.Label,
+            bookmark.PositionPermille,
+            isCurrentChapter = bookmark.ChapterId == id
+        });
+    }
+
     public async Task<IActionResult> OnPostPrepareChapterAsync(
         Guid id,
         Guid? bookmark,
@@ -576,6 +667,54 @@ public sealed class ReadModel(
             bookmark.Id,
             bookmark.Style,
             bookmark.Color
+        });
+    }
+
+    public async Task<IActionResult> OnPostBookmarkLabelAsync(
+        Guid id,
+        Guid bookmarkId,
+        string? label,
+        CancellationToken cancellationToken)
+    {
+        var bookmark = await annotations.UpdateBookmarkLabelAsync(
+            account.ProfileId,
+            bookmarkId,
+            label,
+            cancellationToken);
+
+        if (bookmark is null)
+        {
+            return NotFound();
+        }
+
+        return new JsonResult(new
+        {
+            bookmark.Id,
+            bookmark.Label
+        });
+    }
+
+    public async Task<IActionResult> OnPostHighlightNoteAsync(
+        Guid id,
+        Guid highlightId,
+        string? note,
+        CancellationToken cancellationToken)
+    {
+        var highlight = await annotations.UpdateHighlightNoteAsync(
+            account.ProfileId,
+            highlightId,
+            note,
+            cancellationToken);
+
+        if (highlight is null)
+        {
+            return NotFound();
+        }
+
+        return new JsonResult(new
+        {
+            highlight.Id,
+            highlight.Note
         });
     }
 

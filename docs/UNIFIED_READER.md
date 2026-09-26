@@ -155,9 +155,36 @@ chapters. It does not embed the chapter index or work-wide notes.
   number or title in the database.
 - Notes panel: the current chapter's notes render with the page; notes from
   other chapters load on demand with `?handler=WorkNotes&kind=bookmarks|highlights&offset=n`
-  in pages of 40.
+  in pages of 40. Every note (current chapter or other) carries the chapter
+  number/title and, for EPUB works, the volume.
+- Notes search: `?handler=SearchNotes&kind=bookmarks|highlights&q=...&offset=n`
+  is a bounded, paged, profile-scoped `LIKE` search across the whole work
+  (current chapter included), same page size as the notes panel.
+- Previous/next bookmark: `?handler=AdjacentBookmark&forward=true|false&positionPermille=n`
+  returns the nearest bookmark before/after a chapter+position across the
+  whole work (wrapping at either end), bounded to a single row. The reader
+  binds this to `[`/`]` and to buttons in the notes panel.
 - Library counts (chapters, cached text, current German translations) are
   database aggregates.
+
+### Annotation editing
+
+A bookmark's name (`NovelBookmark.Label`) and a highlight's note
+(`NovelHighlight.Note`) can be changed after creation through
+`?handler=BookmarkLabel` / `?handler=HighlightNote`, without a full page
+reload. Selecting text also offers "Bookmark selection" next to "Highlight",
+which saves a bookmark anchored at the selection's start through the same
+`AddBookmarkAsync` path as any other bookmark.
+
+### Desktop keyboard shortcuts
+
+`novel-annotations.js` defines its shortcuts in one `READER_SHORTCUTS`
+constant so they can be checked against the rest of the reader: `B` saves a
+bookmark, `N` toggles the notes panel, `[`/`]` jump to the previous/next
+bookmark. They are chosen to not collide with `reader-shell.js` (`Escape`) or
+`reader-personalization.js`'s paged-mode navigation
+(`ArrowLeft`/`ArrowRight`/`PageUp`/`PageDown`). Shortcuts are ignored while
+typing in an input, textarea, select or contenteditable element.
 
 ### Chapters without cached text
 

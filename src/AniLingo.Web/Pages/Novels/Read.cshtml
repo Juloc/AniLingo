@@ -71,7 +71,12 @@
      data-chapter-number="@Model.Chapter.Number"
      data-chapters-url="@Url.Page("/Novels/Read", "Chapters", new { id = Model.Chapter.Id })"
      data-work-notes-url="@Url.Page("/Novels/Read", "WorkNotes", new { id = Model.Chapter.Id })"
+     data-search-notes-url="@Url.Page("/Novels/Read", "SearchNotes", new { id = Model.Chapter.Id })"
+     data-adjacent-bookmark-url="@Url.Page("/Novels/Read", "AdjacentBookmark", new { id = Model.Chapter.Id })"
      data-translation-status-url="@Url.Page("/Novels/Read", "TranslationStatus", new { id = Model.Chapter.Id })"
+     data-chapter-title="@Model.Chapter.Title"
+     data-volume-number="@(Model.Chapter.IsEpubVolume ? Model.Chapter.VolumeNumber.ToString() : "")"
+     data-volume-title="@(Model.Chapter.IsEpubVolume ? Model.Chapter.VolumeTitle : "")"
      data-view="@anchor.Language"
      data-has-translation="@hasTranslation.ToString().ToLowerInvariant()"
      data-progress-permille="@anchor.PositionPermille"
@@ -204,6 +209,16 @@
         </div>
         <output data-reader-percent>@(anchor.PositionPermille / 10)%</output>
     </aside>
+
+    @if (anchor.Forced && !string.IsNullOrWhiteSpace(anchor.AnchorText))
+    {
+        <div class="novel-jump-context" data-jump-context role="status">
+            <span>@anchor.AnchorText</span>
+            <button type="button" data-jump-context-dismiss aria-label="Schließen">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+            </button>
+        </div>
+    }
 
     <header class="novel-reader-title">
         <span class="novel-chapter-label">@(Model.Chapter.IsEpubVolume ? $"Band {Model.Chapter.VolumeNumber} · " : "")Kapitel @Model.Chapter.Number</span>
@@ -339,6 +354,7 @@
     <div class="novel-selection-menu" data-selection-menu hidden>
         <button type="button" data-save-highlight>Markieren</button>
         <button type="button" data-save-highlight-note>Markieren + Notiz</button>
+        <button type="button" data-save-bookmark-selection>Auswahl als Lesezeichen</button>
     </div>
 
     @foreach (var bookmark in currentBookmarks)
@@ -434,6 +450,24 @@
         <input type="hidden" name="bookmarkId" value="" />
         <input type="hidden" name="style" value="" />
         <input type="hidden" name="color" value="" />
+    </form>
+
+    <form method="post"
+          asp-page-handler="BookmarkLabel"
+          asp-route-id="@Model.Chapter.Id"
+          data-bookmark-label-endpoint
+          hidden>
+        <input type="hidden" name="bookmarkId" value="" />
+        <input type="hidden" name="label" value="" />
+    </form>
+
+    <form method="post"
+          asp-page-handler="HighlightNote"
+          asp-route-id="@Model.Chapter.Id"
+          data-highlight-note-endpoint
+          hidden>
+        <input type="hidden" name="highlightId" value="" />
+        <input type="hidden" name="note" value="" />
     </form>
 
     <script type="application/json" data-reader-settings-json>@Html.Raw(System.Text.Json.JsonSerializer.Serialize(
