@@ -335,11 +335,21 @@ public sealed class EpisodeModel(
         Guid id,
         string? mode,
         double? start,
+        string? audio,
+        string? quality,
         CancellationToken cancellationToken)
     {
+        if (!PlaybackQuality.TryParse(quality, out var qualityCap))
+        {
+            return BadRequest();
+        }
+
         var stream = await playbackService.GetStreamAsync(
             id,
-            ParsePlaybackMode(mode),
+            new PlaybackStreamRequest(
+                ParsePlaybackMode(mode),
+                string.IsNullOrWhiteSpace(audio) ? null : audio.Trim(),
+                qualityCap),
             cancellationToken);
         if (stream is null || !System.IO.File.Exists(stream.SourcePath))
         {
@@ -361,7 +371,9 @@ public sealed class EpisodeModel(
             var liveStream = LivePlaybackStream.Start(
                 stream.SourcePath,
                 stream.LivePlan!,
-                startSeconds);
+                startSeconds,
+                stream.AudioStreamIndex,
+                stream.QualityCap);
 
             return new FileStreamResult(liveStream, stream.ContentType)
             {

@@ -3,6 +3,7 @@ using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Storage;
+using AniLingo.Web.Features.Subtitles;
 using AniLingo.Web.Features.Vocabulary;
 using AniLingo.Web.Infrastructure;
 using Microsoft.EntityFrameworkCore;
@@ -187,50 +188,39 @@ public sealed record PlaybackStream(
     string ContentType,
     DateTimeOffset LastModified,
     PlaybackPreparationPlan? LivePlan,
-    double? DurationSeconds = null)
+    double? DurationSeconds = null,
+    int? AudioStreamIndex = null,
+    PlaybackQualityCap QualityCap = PlaybackQualityCap.Auto)
 {
     public bool IsLive => LivePlan is not null;
 }
 
-public sealed class PlaybackService
+/// <summary>
+/// One playback stream request. <paramref name="AudioTrackId"/> is a canonical
+/// <c>stream:N</c> id; null keeps the file default. The quality cap is the
+/// requesting device's bandwidth limit.
+/// </summary>
+public sealed record PlaybackStreamRequest(
+    PlaybackRequestedMode Mode,
+    string? AudioTrackId = null,
+    PlaybackQualityCap QualityCap = PlaybackQualityCap.Auto);
+
+/// <summary>Plain text cues of one embedded subtitle stream for display-only playback subtitles.</summary>
+public sealed record PlaybackEmbeddedSubtitleCues(
+    string TrackId,
+    string? Language,
+    IReadOnlyList<SubtitleCueData> Cues);
+
+public sealed class PlaybackService(
+    AppDbContext db,
+    PlaybackCueProjector projector,
+    PlaybackMediaProbe mediaProbe,
+    EmbeddedSubtitleExtractor subtitleExtractor,
+    MediaAvailabilityService mediaAvailability,
+    CurrentAccountContext currentAccount)
 {
-    private readonly AppDbContext db;
-    private readonly PlaybackCueProjector projector;
-    private readonly PlaybackMediaProbe mediaProbe;
-    private readonly MediaAvailabilityService? mediaAvailability;
-    private readonly string profileId;
+    private readonly string profileId = currentAccount.ProfileId;
 
-    public PlaybackService(
-        AppDbContext db,
-        PlaybackCueProjector projector,
-        PlaybackMediaProbe mediaProbe,
-        MediaAvailabilityService mediaAvailability,
-        CurrentAccountContext currentAccount)
-        : this(db, projector, mediaProbe, mediaAvailability, currentAccount.ProfileId)
-    {
-    }
-
-    public PlaybackService(
-        AppDbContext db,
-        PlaybackCueProjector projector,
-        PlaybackMediaProbe mediaProbe)
-        : this(db, projector, mediaProbe, null, LearningProfile.DefaultId)
-    {
-    }
-
-    private PlaybackService(
-        AppDbContext db,
-        PlaybackCueProjector projector,
-        PlaybackMediaProbe mediaProbe,
-        MediaAvailabilityService? mediaAvailability,
-        string profileId)
-    {
-        this.db = db;
-        this.projector = projector;
-        this.mediaProbe = mediaProbe;
-        this.mediaAvailability = mediaAvailability;
-        this.profileId = profileId;
-    }
     public async Task<PlaybackMedia?> GetMediaAsync(
         Guid episodeId,
         CancellationToken cancellationToken)
@@ -361,9 +351,17 @@ public sealed class PlaybackService
             availability);
     }
 
+    /// <summary>
+    /// Resolves the stream for one request. Direct play wins whenever the file
+    /// is browser-compatible, the requested audio track is the file default and
+    /// the quality cap is satisfied; a non-default audio track needs a
+    /// video-copy remux, and a cap becomes an encode only through
+    /// <see cref="ResolvePlan"/>. Returns null when the media, the requested
+    /// audio track or a usable plan does not exist.
+    /// </summary>
     public async Task<PlaybackStream?> GetStreamAsync(
         Guid episodeId,
-        PlaybackRequestedMode mode,
+        PlaybackStreamRequest request,
         CancellationToken cancellationToken)
     {
         var row = await GetMediaRowAsync(episodeId, cancellationToken);
@@ -390,16 +388,38 @@ public sealed class PlaybackService
             return null;
         }
 
-        if (IsUniversalDirect(row.Path, probe) ||
-            (mode == PlaybackRequestedMode.Device &&
+        PlaybackMediaTrack? audioTrack = null;
+        if (request.AudioTrackId is not null)
+        {
+            audioTrack = FindAudioTrack(probe, request.AudioTrackId);
+            if (audioTrack is null)
+            {
+                return null;
+            }
+        }
+
+        var defaultAudio = PlaybackTrackSelection.DefaultAudio(probe.Tracks);
+        var usesDefaultAudio = audioTrack is null ||
+            audioTrack.StreamIndex == defaultAudio?.StreamIndex;
+
+        // The probe snapshot does not expose the source resolution yet; the
+        // persisted media inventory supplies it here so a cap can prove that
+        // direct play exceeds the requested height.
+        int? sourceHeight = null;
+        var directEligible = IsUniversalDirect(row.Path, probe) ||
+            (request.Mode == PlaybackRequestedMode.Device &&
              IsHevc(probe.VideoCodec) &&
-             PlaybackMediaTypes.IsLikelyBrowserSupportedContainer(row.Path)))
+             PlaybackMediaTypes.IsLikelyBrowserSupportedContainer(row.Path));
+
+        if (directEligible &&
+            usesDefaultAudio &&
+            !PlaybackQuality.RequiresTranscode(request.QualityCap, sourceHeight))
         {
             return SourceStream(row.Path, probe.DurationSeconds);
         }
 
-        var plan = PlaybackPreparationPlan.Build(probe, mode);
-        if (!plan.CanPrepare || plan.Kind is null)
+        var plan = ResolvePlan(probe, request, audioTrack, sourceHeight);
+        if (plan is null)
         {
             return null;
         }
@@ -409,8 +429,111 @@ public sealed class PlaybackService
             "video/mp4",
             new DateTimeOffset(File.GetLastWriteTimeUtc(row.Path)),
             plan,
-            probe.DurationSeconds);
+            probe.DurationSeconds,
+            audioTrack?.StreamIndex,
+            request.QualityCap);
     }
+
+    /// <summary>
+    /// Builds the live plan for a request. A selected audio track re-derives
+    /// the audio mode from that track's codec. A quality cap upgrades a
+    /// video-copy plan to an H.264 encode only in Server mode and only when
+    /// the source height is known to exceed the cap; Device mode never
+    /// video-transcodes.
+    /// </summary>
+    public static PlaybackPreparationPlan? ResolvePlan(
+        PlaybackProbeResult probe,
+        PlaybackStreamRequest request,
+        PlaybackMediaTrack? audioTrack,
+        int? sourceHeight)
+    {
+        var plan = PlaybackPreparationPlan.Build(probe, request.Mode);
+        if (!plan.CanPrepare || plan.Kind is null)
+        {
+            return null;
+        }
+
+        if (audioTrack is not null)
+        {
+            plan = plan with
+            {
+                AudioMode = string.Equals(audioTrack.Codec, "aac", StringComparison.OrdinalIgnoreCase)
+                    ? PlaybackAudioMode.Copy
+                    : PlaybackAudioMode.Aac
+            };
+        }
+
+        if (request.Mode == PlaybackRequestedMode.Server &&
+            plan.VideoMode == PlaybackVideoMode.Copy &&
+            PlaybackQuality.RequiresTranscode(request.QualityCap, sourceHeight))
+        {
+            plan = plan with
+            {
+                Kind = PlaybackPreparationKind.ServerH264Transcode,
+                VideoMode = PlaybackVideoMode.H264,
+                TagHevcAsHvc1 = false,
+                Message = $"Video will be transcoded to H.264 at most {PlaybackQuality.MaxHeight(request.QualityCap)}p."
+            };
+        }
+
+        return plan;
+    }
+
+    /// <summary>
+    /// Extracts one embedded text subtitle stream as plain cues so a client can
+    /// keep a selected playback subtitle across stream restarts and fallbacks
+    /// that drop container subtitles. Returns null when the episode, media or
+    /// text stream does not exist.
+    /// </summary>
+    public async Task<PlaybackEmbeddedSubtitleCues?> GetEmbeddedSubtitleCuesAsync(
+        Guid episodeId,
+        string trackId,
+        CancellationToken cancellationToken)
+    {
+        if (!PlaybackTrackIds.TryParse(trackId, out var streamIndex))
+        {
+            return null;
+        }
+
+        var row = await GetMediaRowAsync(episodeId, cancellationToken);
+        if (row is null)
+        {
+            return null;
+        }
+
+        var availability = await CheckAvailabilityAsync(row.Id, cancellationToken);
+        if (availability is { IsAvailable: false } || !File.Exists(row.Path))
+        {
+            return null;
+        }
+
+        var extracted = await subtitleExtractor.ExtractTextStreamAsync(
+            row.Path,
+            streamIndex,
+            cancellationToken);
+        if (extracted is null)
+        {
+            return null;
+        }
+
+        var probe = await mediaProbe.ProbeAsync(row.Path, cancellationToken);
+        var language = probe?.Tracks?
+            .FirstOrDefault(x => x.Kind == PlaybackTrackKind.Subtitle && x.StreamIndex == streamIndex)?
+            .Language;
+
+        return new PlaybackEmbeddedSubtitleCues(
+            PlaybackTrackIds.Format(streamIndex),
+            language,
+            SubtitleParser.ParseFormat(extracted.Format, extracted.Content));
+    }
+
+    private static PlaybackMediaTrack? FindAudioTrack(
+        PlaybackProbeResult probe,
+        string trackId) =>
+        PlaybackTrackIds.TryParse(trackId, out var streamIndex)
+            ? probe.Tracks?.FirstOrDefault(x =>
+                x.Kind == PlaybackTrackKind.Audio && x.StreamIndex == streamIndex)
+            : null;
 
     public async Task<EpisodePlaybackSnapshot> GetSnapshotAsync(
         Guid episodeId,
@@ -561,12 +684,10 @@ public sealed class PlaybackService
         Guid mediaFileId,
         CancellationToken cancellationToken,
         bool force = false) =>
-        mediaAvailability is null
-            ? null
-            : await mediaAvailability.CheckMediaAsync(
-                mediaFileId,
-                force,
-                cancellationToken);
+        await mediaAvailability.CheckMediaAsync(
+            mediaFileId,
+            force,
+            cancellationToken);
 
     private static PlaybackOption BuildOption(
         MediaRow row,

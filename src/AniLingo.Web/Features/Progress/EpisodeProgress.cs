@@ -1,6 +1,7 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Artwork;
 using AniLingo.Web.Features.Auth;
+using AniLingo.Web.Features.Playback;
 using Microsoft.EntityFrameworkCore;
 
 namespace AniLingo.Web.Features.Progress;
@@ -37,13 +38,47 @@ public sealed class EpisodePlaybackHistoryEntry
 }
 
 /// <summary>
-/// Canonical profile-scoped playback preferences shared by every client.
+/// Canonical profile-scoped playback preferences shared by every client:
+/// user intent that follows the profile across devices. Device capability
+/// facts (playback mode, quality cap) are deliberately not stored here.
 /// </summary>
 public sealed class ProfilePlaybackPreferences
 {
     public string ProfileId { get; set; } = "";
     public bool AutoplayNext { get; set; }
+
+    /// <summary>Normalized language tag (see <see cref="PlaybackLanguages"/>); null means file default.</summary>
+    public string? PreferredAudioLanguage { get; set; }
+
+    /// <summary>Normalized language tag, <see cref="PlaybackLanguages.SubtitlesOff"/>, or null for the default.</summary>
+    public string? PreferredSubtitleLanguage { get; set; }
+
+    public double DefaultPlaybackSpeed { get; set; } = PlaybackPreferenceRules.DefaultSpeed;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>Product rules for playback preference values, shared by every client contract.</summary>
+public static class PlaybackPreferenceRules
+{
+    public const double DefaultSpeed = 1.0;
+
+    /// <summary>Practical playback speeds; mirrored in design/player/player-tokens.json.</summary>
+    public static IReadOnlyList<double> Speeds { get; } = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
+
+    public static bool IsAllowedSpeed(double speed) =>
+        Speeds.Any(allowed => Math.Abs(allowed - speed) < 0.0001);
+
+    public static double NormalizeSpeed(double speed)
+    {
+        if (!double.IsFinite(speed) || !IsAllowedSpeed(speed))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(speed),
+                $"Playback speed must be one of {string.Join(", ", Speeds)}.");
+        }
+
+        return Speeds.First(allowed => Math.Abs(allowed - speed) < 0.0001);
+    }
 }
 
 public sealed record EpisodeProgressSnapshot(
@@ -82,7 +117,10 @@ public sealed record EpisodeFlowSnapshot(
     Guid AnimeId,
     EpisodeReference? Previous,
     EpisodeReference? Next,
-    bool AutoplayNext);
+    PlaybackPreferencesSnapshot Preferences)
+{
+    public bool AutoplayNext => Preferences.AutoplayNext;
+}
 
 public enum ContinueWatchingKind
 {
@@ -128,7 +166,24 @@ public sealed record PlaybackHistoryItem(
     long? DurationMs,
     bool ReachedEnd);
 
-public sealed record PlaybackPreferencesSnapshot(bool AutoplayNext);
+public sealed record PlaybackPreferencesSnapshot(
+    bool AutoplayNext,
+    string? PreferredAudioLanguage = null,
+    string? PreferredSubtitleLanguage = null,
+    double DefaultPlaybackSpeed = PlaybackPreferenceRules.DefaultSpeed)
+{
+    public static PlaybackPreferencesSnapshot Default { get; } = new(false);
+}
+
+/// <summary>
+/// Partial preference update: null keeps the stored value. An empty language
+/// string clears that preference back to the file default.
+/// </summary>
+public sealed record PlaybackPreferencesUpdate(
+    bool? AutoplayNext = null,
+    string? PreferredAudioLanguage = null,
+    string? PreferredSubtitleLanguage = null,
+    double? DefaultPlaybackSpeed = null);
 
 /// <summary>
 /// Owner of all canonical episode playback facts for the current profile:
@@ -398,7 +453,7 @@ public sealed class EpisodeProgressService(
             animeId.Value,
             references.SingleOrDefault(x => x.Id == neighbors.PreviousEpisodeId),
             references.SingleOrDefault(x => x.Id == neighbors.NextEpisodeId),
-            preferences.AutoplayNext);
+            preferences);
     }
 
     /// <summary>
@@ -604,19 +659,31 @@ public sealed class EpisodeProgressService(
     public async Task<PlaybackPreferencesSnapshot> GetPreferencesAsync(
         CancellationToken cancellationToken = default)
     {
-        var autoplayNext = await db.ProfilePlaybackPreferences
+        var preferences = await db.ProfilePlaybackPreferences
             .AsNoTracking()
-            .Where(x => x.ProfileId == currentAccount.ProfileId)
-            .Select(x => (bool?)x.AutoplayNext)
-            .SingleOrDefaultAsync(cancellationToken);
+            .SingleOrDefaultAsync(
+                x => x.ProfileId == currentAccount.ProfileId,
+                cancellationToken);
 
-        return new PlaybackPreferencesSnapshot(autoplayNext ?? false);
+        return preferences is null
+            ? PlaybackPreferencesSnapshot.Default
+            : ToSnapshot(preferences);
     }
 
-    public async Task<PlaybackPreferencesSnapshot> SetAutoplayNextAsync(
-        bool autoplayNext,
+    /// <summary>
+    /// Applies a partial update to the profile's playback preferences. Values
+    /// are normalized through <see cref="PlaybackLanguages"/> and
+    /// <see cref="PlaybackPreferenceRules"/>; an unsupported speed throws
+    /// <see cref="ArgumentOutOfRangeException"/>.
+    /// </summary>
+    public async Task<PlaybackPreferencesSnapshot> UpdatePreferencesAsync(
+        PlaybackPreferencesUpdate update,
         CancellationToken cancellationToken = default)
     {
+        var speed = update.DefaultPlaybackSpeed is { } requestedSpeed
+            ? PlaybackPreferenceRules.NormalizeSpeed(requestedSpeed)
+            : (double?)null;
+
         var preferences = await db.ProfilePlaybackPreferences
             .SingleOrDefaultAsync(
                 x => x.ProfileId == currentAccount.ProfileId,
@@ -631,12 +698,38 @@ public sealed class EpisodeProgressService(
             db.ProfilePlaybackPreferences.Add(preferences);
         }
 
-        preferences.AutoplayNext = autoplayNext;
+        if (update.AutoplayNext is { } autoplayNext)
+        {
+            preferences.AutoplayNext = autoplayNext;
+        }
+
+        if (update.PreferredAudioLanguage is { } audioLanguage)
+        {
+            preferences.PreferredAudioLanguage = PlaybackLanguages.Normalize(audioLanguage);
+        }
+
+        if (update.PreferredSubtitleLanguage is { } subtitleLanguage)
+        {
+            preferences.PreferredSubtitleLanguage = PlaybackLanguages.Normalize(subtitleLanguage);
+        }
+
+        if (speed is { } normalizedSpeed)
+        {
+            preferences.DefaultPlaybackSpeed = normalizedSpeed;
+        }
+
         preferences.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(cancellationToken);
 
-        return new PlaybackPreferencesSnapshot(preferences.AutoplayNext);
+        return ToSnapshot(preferences);
     }
+
+    private static PlaybackPreferencesSnapshot ToSnapshot(ProfilePlaybackPreferences preferences) =>
+        new(
+            preferences.AutoplayNext,
+            preferences.PreferredAudioLanguage,
+            preferences.PreferredSubtitleLanguage,
+            preferences.DefaultPlaybackSpeed);
 
     private async Task<bool> RecordHistoryAsync(
         Guid episodeId,
