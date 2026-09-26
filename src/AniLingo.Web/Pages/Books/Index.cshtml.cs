@@ -2,6 +2,7 @@ using AniLingo.Web.Features.Acquisition.DownloadClients;
 using AniLingo.Web.Features.Acquisition.Sabnzbd;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Books;
+using AniLingo.Web.Features.Localization;
 using AniLingo.Web.Features.Operations;
 using AniLingo.Web.Data;
 using Microsoft.AspNetCore.Mvc;
@@ -17,6 +18,7 @@ public sealed class IndexModel(
     SabnzbdDownloadService sabnzbd,
     OperationRunner operations) : PageModel
 {
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public string Query { get; private set; } = "";
     public string TargetLanguage { get; private set; } = "id";
     public IReadOnlyList<BookCatalogItem> Results { get; private set; } = [];
@@ -31,6 +33,7 @@ public sealed class IndexModel(
         string? lang,
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         Query = q?.Trim() ?? "";
         TargetLanguage = BookLanguageCatalog.Normalize(lang);
         IsSabnzbdConfigured = account.IsOwner
@@ -55,11 +58,11 @@ public sealed class IndexModel(
         }
         catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            Error = "Book search timed out. Please try again.";
+            Error = Ui["books.index.searchTimeout"];
         }
         catch (HttpRequestException)
         {
-            Error = "Book search is temporarily unavailable. Please try again.";
+            Error = Ui["books.index.searchUnavailable"];
         }
         catch (InvalidOperationException exception)
         {
@@ -71,6 +74,8 @@ public sealed class IndexModel(
         IFormFile? epub,
         CancellationToken cancellationToken)
     {
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         if (!account.IsOwner)
         {
             return Forbid();
@@ -78,7 +83,7 @@ public sealed class IndexModel(
 
         if (epub is null || epub.Length == 0)
         {
-            TempData["Status"] = "Choose an EPUB file first.";
+            TempData["Status"] = ui["books.index.chooseEpubFirst"];
             return RedirectToPage();
         }
 
@@ -86,7 +91,7 @@ public sealed class IndexModel(
                 ".epub",
                 StringComparison.OrdinalIgnoreCase))
         {
-            TempData["Status"] = "Only EPUB files are supported for book import.";
+            TempData["Status"] = ui["books.index.epubOnly"];
             return RedirectToPage();
         }
 
@@ -183,6 +188,8 @@ public sealed class IndexModel(
     public async Task<IActionResult> OnPostImportInboxAsync(
         CancellationToken cancellationToken)
     {
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         if (!account.IsOwner)
         {
             return Forbid();
@@ -197,8 +204,8 @@ public sealed class IndexModel(
                 cancellationToken);
 
             TempData["Status"] = imported.Count == 0
-                ? "No EPUB files were found in the Books inbox."
-                : $"Books inbox imported {imported.Count} book(s).";
+                ? ui["books.index.inboxEmpty"]
+                : ui.Format("books.index.inboxImported", ("count", imported.Count));
         }
         catch (Exception exception) when (
             exception is InvalidOperationException
@@ -216,13 +223,15 @@ public sealed class IndexModel(
         string? displayName,
         CancellationToken cancellationToken)
     {
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         if (!account.IsOwner)
         {
             return Forbid();
         }
 
         var effectiveName = string.IsNullOrWhiteSpace(displayName)
-            ? "AniLingo book"
+            ? ui["books.index.defaultBookName"]
             : displayName.Trim();
 
         try
@@ -245,6 +254,8 @@ public sealed class IndexModel(
         IFormFile? nzb,
         CancellationToken cancellationToken)
     {
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         if (!account.IsOwner)
         {
             return Forbid();
@@ -252,7 +263,7 @@ public sealed class IndexModel(
 
         if (nzb is null || nzb.Length == 0)
         {
-            TempData["Status"] = "Choose an NZB file first.";
+            TempData["Status"] = ui["books.index.chooseNzbFirst"];
             return RedirectToPage();
         }
 

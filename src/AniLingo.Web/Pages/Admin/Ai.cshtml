@@ -2,19 +2,20 @@
 @model AniLingo.Web.Pages.Admin.AiModel
 @using AniLingo.Web.Features.Ai
 @{
-    ViewData["Title"] = "AI";
+    var ui = Model.Ui;
+    ViewData["Title"] = ui["admin.system.ai"];
 }
 
 <header class="page-header">
     <div>
-        <a class="back-link" asp-page="/Admin/System">← System</a>
-        <span class="eyebrow">Optional integration</span>
-        <h1>AI</h1>
-        <p>AI stays outside scanning, vocabulary extraction and review scheduling.</p>
+        <a class="back-link" asp-page="/Admin/System">← @ui["admin.nav.system"]</a>
+        <span class="eyebrow">@ui["admin.ai.eyebrow"]</span>
+        <h1>@ui["admin.system.ai"]</h1>
+        <p>@ui["admin.ai.subtitle"]</p>
     </div>
 </header>
 
-<partial name="_AdminNavigation" />
+<partial name="_AdminNavigation" model="Model.Ui" />
 
 <div class="settings-grid">
     <section class="panel">
@@ -22,33 +23,33 @@
             <h2>@Model.Provider.DisplayName</h2>
             @if (Model.Provider.IsAuthenticated)
             {
-                <span class="status-pill status-ok">Connected</span>
+                <span class="status-pill status-ok">@ui["admin.subtitles.connected"]</span>
             }
             else if (Model.Provider.IsAvailable)
             {
-                <span class="status-pill">Not connected</span>
+                <span class="status-pill">@ui["admin.ai.notConnected"]</span>
             }
             else
             {
-                <span class="status-pill status-error">Unavailable</span>
+                <span class="status-pill status-error">@ui["admin.ai.unavailable"]</span>
             }
         </div>
 
         <div class="status-list">
             <div>
-                <span>CLI</span>
-                <strong>@(Model.Provider.IsAvailable ? "Installed" : "Missing")</strong>
+                <span>@ui["admin.ai.cli"]</span>
+                <strong>@(Model.Provider.IsAvailable ? ui["admin.ai.installed"] : ui["admin.ai.missing"])</strong>
             </div>
             <div>
-                <span>Version</span>
+                <span>@ui["admin.ai.version"]</span>
                 <strong>@(Model.Provider.Version ?? "—")</strong>
             </div>
             <div>
-                <span>Authentication</span>
+                <span>@ui["admin.ai.authentication"]</span>
                 <strong>@(Model.Provider.AuthenticationMethod ?? "—")</strong>
             </div>
             <div>
-                <span>Credential storage</span>
+                <span>@ui["admin.ai.credentialStorage"]</span>
                 <strong>/data/codex</strong>
             </div>
         </div>
@@ -61,75 +62,73 @@
         @if (Model.Provider.IsAuthenticated)
         {
             <form method="post" asp-page-handler="Logout">
-                <button class="button" type="submit">Disconnect</button>
+                <button class="button" type="submit">@ui["admin.ai.disconnect"]</button>
             </form>
         }
         else if (Model.Provider.IsAvailable && !Model.Login.IsActive)
         {
             <form method="post" asp-page-handler="Connect">
-                <button class="button button-primary" type="submit">Connect with ChatGPT</button>
+                <button class="button button-primary" type="submit">@ui["admin.ai.connectWithChatGpt"]</button>
             </form>
         }
     </section>
 
     <section class="panel">
-        <div class="panel-heading"><h2>Device login</h2></div>
+        <div class="panel-heading"><h2>@ui["admin.ai.deviceLogin"]</h2></div>
 
         @if (Model.Login.State == DeviceLoginState.WaitingForUser)
         {
             <div class="device-login">
-                <p>1. Open the OpenAI login page.</p>
+                <p>@ui["admin.ai.step1"]</p>
                 <a class="button button-primary" href="@Model.Login.VerificationUrl" target="_blank" rel="noopener noreferrer">
-                    Open login page
+                    @ui["admin.ai.openLoginPage"]
                 </a>
 
-                <p>2. Enter this one-time code:</p>
+                <p>@ui["admin.ai.step2"]</p>
                 <code class="device-code">@Model.Login.UserCode</code>
 
-                <p class="muted">The code expires after about 15 minutes.</p>
+                <p class="muted">@ui["admin.ai.codeExpires"]</p>
 
                 <div class="inline-actions">
-                    <a class="button" asp-page="/Admin/Ai">Check connection</a>
+                    <a class="button" asp-page="/Admin/Ai">@ui["admin.ai.checkConnection"]</a>
                     <form method="post" asp-page-handler="Cancel">
-                        <button class="button" type="submit">Cancel</button>
+                        <button class="button" type="submit">@ui["common.cancel"]</button>
                     </form>
                 </div>
             </div>
         }
         else if (Model.Login.State == DeviceLoginState.Starting)
         {
-            <p class="muted">Waiting for Codex to create a device code.</p>
+            <p class="muted">@ui["admin.ai.waitingForDeviceCode"]</p>
             <div class="inline-actions">
-                <a class="button" asp-page="/Admin/Ai">Refresh</a>
+                <a class="button" asp-page="/Admin/Ai">@ui["admin.ai.refresh"]</a>
                 <form method="post" asp-page-handler="Cancel">
-                    <button class="button" type="submit">Cancel</button>
+                    <button class="button" type="submit">@ui["common.cancel"]</button>
                 </form>
             </div>
         }
         else if (Model.Login.State is DeviceLoginState.Failed or DeviceLoginState.Cancelled)
         {
-            <p class="validation">@(Model.Login.Message ?? "Login did not complete.")</p>
+            <p class="validation">@(Model.Login.Message ?? ui["admin.ai.loginIncomplete"])</p>
             @if (Model.Provider.IsAvailable && !Model.Provider.IsAuthenticated)
             {
                 <form method="post" asp-page-handler="Connect">
-                    <button class="button" type="submit">Try again</button>
+                    <button class="button" type="submit">@ui["admin.ai.tryAgain"]</button>
                 </form>
             }
         }
         else
         {
             <p class="muted">
-                Device-code login is intended for the headless Docker container.
-                No API key is required for this provider.
+                @ui["admin.ai.headlessDescription"]
             </p>
         }
     </section>
 
     <section class="panel">
-        <div class="panel-heading"><h2>Provider design</h2></div>
+        <div class="panel-heading"><h2>@ui["admin.ai.providerDesign"]</h2></div>
         <p class="muted">
-            Codex CLI is the first provider. Later providers can use API tokens or other engines
-            behind the same AI boundary. AI calls will only be added where they provide clear value.
+            @ui["admin.ai.providerDesignDescription"]
         </p>
     </section>
 </div>

@@ -1,6 +1,8 @@
 using System.ComponentModel.DataAnnotations;
+using AniLingo.Web.Data;
 using AniLingo.Web.Features.Admin;
 using AniLingo.Web.Features.Auth;
+using AniLingo.Web.Features.Localization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -9,9 +11,12 @@ namespace AniLingo.Web.Pages.Admin;
 
 [Authorize(Roles = AccountRoles.Owner)]
 public sealed class UsersModel(
+    AppDbContext db,
     OwnerAuthService authService,
     AdminUserProgressService progressService) : PageModel
 {
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
+
     public IReadOnlyList<AdminUserProgressSummary> Users { get; private set; } = [];
 
     [BindProperty]
@@ -25,11 +30,16 @@ public sealed class UsersModel(
     [MinLength(12, ErrorMessage = "Password must be at least 12 characters long.")]
     public string Password { get; set; } = "";
 
-    public async Task OnGetAsync(CancellationToken cancellationToken) =>
+    public async Task OnGetAsync(CancellationToken cancellationToken)
+    {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         await LoadAsync(cancellationToken);
+    }
 
     public async Task<IActionResult> OnPostCreateAsync(CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         if (!ModelState.IsValid)
         {
             await LoadAsync(cancellationToken);
@@ -39,7 +49,7 @@ public sealed class UsersModel(
         try
         {
             await authService.CreateUserAsync(UserName, Password, cancellationToken);
-            TempData["Status"] = $"User {UserName.Trim()} created.";
+            TempData["Status"] = Ui.Format("admin.users.created", ("userName", UserName.Trim()));
             return RedirectToPage();
         }
         catch (Exception exception) when (
@@ -57,7 +67,7 @@ public sealed class UsersModel(
         SetEnabledAsync(
             accountId,
             enabled: true,
-            successMessage: "User approved and enabled.",
+            successMessageKey: "admin.users.approved",
             cancellationToken);
 
     public Task<IActionResult> OnPostDisableAsync(
@@ -66,19 +76,21 @@ public sealed class UsersModel(
         SetEnabledAsync(
             accountId,
             enabled: false,
-            successMessage: "User disabled.",
+            successMessageKey: "admin.users.disabled",
             cancellationToken);
 
     private async Task<IActionResult> SetEnabledAsync(
         string accountId,
         bool enabled,
-        string successMessage,
+        string successMessageKey,
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         try
         {
             await authService.SetEnabledAsync(accountId, enabled, cancellationToken);
-            TempData["Status"] = successMessage;
+            TempData["Status"] = Ui[successMessageKey];
         }
         catch (InvalidOperationException exception)
         {

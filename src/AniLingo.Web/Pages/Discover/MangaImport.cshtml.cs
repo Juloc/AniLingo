@@ -1,6 +1,7 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Discovery;
+using AniLingo.Web.Features.Localization;
 using AniLingo.Web.Features.Manga;
 using AniLingo.Web.Features.Operations;
 using Microsoft.AspNetCore.Mvc;
@@ -15,11 +16,12 @@ public sealed class MangaImportModel(
     IHttpClientFactory httpClientFactory,
     OperationRunner operations) : PageModel
 {
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public string AniListId { get; private set; } = "";
     public string Title { get; private set; } = "";
     public string AniListUrl => $"https://anilist.co/manga/{AniListId}";
 
-    public IActionResult OnGet(
+    public async Task<IActionResult> OnGetAsync(
         string? anilistId,
         string? title)
     {
@@ -28,13 +30,15 @@ public sealed class MangaImportModel(
             return Forbid();
         }
 
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         if (!TryNormalizeSelection(
                 anilistId,
                 title,
                 out var normalizedId,
                 out var normalizedTitle))
         {
-            return BadRequest("A valid AniList manga ID is required.");
+            return BadRequest(Ui["discover.mangaImport.invalidSelection"]);
         }
 
         AniListId = normalizedId;
@@ -54,13 +58,15 @@ public sealed class MangaImportModel(
             return Forbid();
         }
 
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         if (!TryNormalizeSelection(
                 anilistId,
                 title,
                 out var normalizedId,
                 out var normalizedTitle))
         {
-            return BadRequest("A valid AniList manga ID is required.");
+            return BadRequest(Ui["discover.mangaImport.invalidSelection"]);
         }
 
         try
@@ -129,13 +135,15 @@ public sealed class MangaImportModel(
             return Forbid();
         }
 
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         if (!TryNormalizeSelection(
                 anilistId,
                 title,
                 out var normalizedId,
                 out var normalizedTitle))
         {
-            return BadRequest("A valid AniList manga ID is required.");
+            return BadRequest(Ui["discover.mangaImport.invalidSelection"]);
         }
 
         try
@@ -201,8 +209,11 @@ public sealed class MangaImportModel(
                 aniListId,
                 cancellationToken);
 
-            TempData["Status"] =
-                $"Imported {result.ChapterCount} chapter(s) / {result.PageCount} page(s) and matched {title} to AniList.";
+            TempData["Status"] = Ui.Format(
+                "discover.mangaImport.imported",
+                ("chapters", result.ChapterCount),
+                ("pages", result.PageCount),
+                ("title", title));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -219,8 +230,9 @@ public sealed class MangaImportModel(
                 "Manga import completed, but AniList matching needs attention.",
                 CancellationToken.None);
 
-            TempData["Status"] =
-                $"Manga imported, but the AniList match could not be completed: {exception.Message}";
+            TempData["Status"] = Ui.Format(
+                "discover.mangaImport.matchFailed",
+                ("reason", exception.Message));
         }
 
         DiscoveryCoordinator.InvalidateCache();

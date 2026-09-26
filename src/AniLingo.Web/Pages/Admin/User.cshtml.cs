@@ -1,5 +1,7 @@
+using AniLingo.Web.Data;
 using AniLingo.Web.Features.Admin;
 using AniLingo.Web.Features.Auth;
+using AniLingo.Web.Features.Localization;
 using AniLingo.Web.Features.Tracking;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -9,16 +11,21 @@ namespace AniLingo.Web.Pages.Admin;
 
 [Authorize(Roles = AccountRoles.Owner)]
 public sealed class UserModel(
+    AppDbContext db,
     OwnerAuthService authService,
     AdminUserProgressService progressService,
     AniListAccountStore aniListAccountStore) : PageModel
 {
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
+
     public AdminUserProgressSummary Account { get; private set; } = null!;
 
     public async Task<IActionResult> OnGetAsync(
         string id,
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         if (!await LoadAsync(id, cancellationToken))
         {
             return NotFound();
@@ -32,10 +39,12 @@ public sealed class UserModel(
         string userName,
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         try
         {
             await authService.RenameAsync(id, userName, cancellationToken);
-            TempData["Status"] = "User name updated.";
+            TempData["Status"] = Ui["admin.user.nameUpdated"];
             return RedirectToPage(new { id });
         }
         catch (Exception exception) when (
@@ -51,12 +60,14 @@ public sealed class UserModel(
         bool enabled,
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         try
         {
             await authService.SetEnabledAsync(id, enabled, cancellationToken);
             TempData["Status"] = enabled
-                ? "User enabled."
-                : "User disabled and existing sessions revoked.";
+                ? Ui["admin.user.enabled"]
+                : Ui["admin.user.disabledSessionsRevoked"];
             return RedirectToPage(new { id });
         }
         catch (InvalidOperationException exception)
@@ -71,10 +82,12 @@ public sealed class UserModel(
         string newPassword,
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         try
         {
             await authService.ResetPasswordAsync(id, newPassword, cancellationToken);
-            TempData["Status"] = "Password reset and existing sessions revoked.";
+            TempData["Status"] = Ui["admin.user.passwordReset"];
             return RedirectToPage(new { id });
         }
         catch (Exception exception) when (
@@ -89,10 +102,12 @@ public sealed class UserModel(
         string id,
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         try
         {
             await authService.InvalidateSessionsAsync(id, cancellationToken);
-            TempData["Status"] = "All existing sessions were signed out.";
+            TempData["Status"] = Ui["admin.user.sessionsSignedOut"];
             return RedirectToPage(new { id });
         }
         catch (InvalidOperationException exception)
@@ -107,6 +122,8 @@ public sealed class UserModel(
         string confirmation,
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         var account = await authService.GetAsync(id, cancellationToken);
         if (account is null)
         {
@@ -120,7 +137,7 @@ public sealed class UserModel(
         {
             ModelState.AddModelError(
                 string.Empty,
-                "Enter the user name exactly to confirm deletion.");
+                Ui["admin.user.confirmationRequired"]);
             return await ReloadOrNotFoundAsync(id, cancellationToken);
         }
 
@@ -128,7 +145,7 @@ public sealed class UserModel(
         {
             await authService.DeleteUserAsync(id, cancellationToken);
             await aniListAccountStore.DisconnectAsync(id, cancellationToken);
-            TempData["Status"] = $"User {account.UserName} deleted.";
+            TempData["Status"] = Ui.Format("admin.user.deleted", ("userName", account.UserName));
             return RedirectToPage("/Admin/Users");
         }
         catch (InvalidOperationException exception)

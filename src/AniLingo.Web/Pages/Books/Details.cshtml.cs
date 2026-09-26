@@ -1,6 +1,8 @@
+using AniLingo.Web.Data;
 using AniLingo.Web.Features.Acquisition.Sabnzbd;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Books;
+using AniLingo.Web.Features.Localization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
@@ -9,8 +11,10 @@ namespace AniLingo.Web.Pages.Books;
 public sealed class DetailsModel(
     BookCatalogService books,
     CurrentAccountContext account,
-    SabnzbdDownloadService sabnzbd) : PageModel
+    SabnzbdDownloadService sabnzbd,
+    AppDbContext db) : PageModel
 {
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public BookCatalogItem? Book { get; private set; }
     public string? Error { get; private set; }
     public bool IsOwner => account.IsOwner;
@@ -19,6 +23,8 @@ public sealed class DetailsModel(
         string id,
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         try
         {
             Book = await books.GetAsync(
@@ -30,12 +36,12 @@ public sealed class DetailsModel(
         }
         catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            Error = "The catalog request timed out. Please try again.";
+            Error = Ui["books.details.timeoutError"];
             return Page();
         }
         catch (HttpRequestException)
         {
-            Error = "The catalog is temporarily unavailable.";
+            Error = Ui["books.details.unavailableError"];
             return Page();
         }
     }
@@ -73,6 +79,8 @@ public sealed class DetailsModel(
         string? nzbUrl,
         CancellationToken cancellationToken)
     {
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         if (!account.IsOwner)
         {
             return Forbid();
@@ -81,7 +89,7 @@ public sealed class DetailsModel(
         var title = (await books.GetAsync(
             id,
             cancellationToken))?.Title
-            ?? "AniLingo book";
+            ?? ui["books.index.defaultBookName"];
 
         try
         {

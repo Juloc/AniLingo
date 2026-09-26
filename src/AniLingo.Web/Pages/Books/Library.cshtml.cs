@@ -1,5 +1,7 @@
+using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Books;
+using AniLingo.Web.Features.Localization;
 using AniLingo.Web.Features.Operations;
 using AniLingo.Web.Infrastructure;
 using Microsoft.AspNetCore.Mvc;
@@ -11,8 +13,10 @@ namespace AniLingo.Web.Pages.Books;
 public sealed class LibraryModel(
     BookCatalogService books,
     CurrentAccountContext account,
-    BackgroundJobQueue jobs) : PageModel
+    BackgroundJobQueue jobs,
+    AppDbContext db) : PageModel
 {
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public BookLibraryDetail Book { get; private set; } = null!;
     public string TargetLanguage { get; private set; } = "id";
     public bool SourceIsTarget { get; private set; }
@@ -23,6 +27,7 @@ public sealed class LibraryModel(
         string? lang,
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         TargetLanguage = BookLanguageCatalog.Normalize(lang);
         var detail = await books.GetLibraryBookAsync(
             id,
@@ -48,6 +53,7 @@ public sealed class LibraryModel(
         string? lang,
         CancellationToken cancellationToken)
     {
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         var targetLanguage = BookLanguageCatalog.Normalize(lang);
 
         var detail = await books.GetLibraryBookAsync(
@@ -66,7 +72,7 @@ public sealed class LibraryModel(
                 targetLanguage,
                 StringComparison.OrdinalIgnoreCase))
         {
-            TempData["Status"] = "The book is already in that language.";
+            TempData["Status"] = ui["books.library.alreadyInLanguage"];
             return RedirectToPage(new { id, lang = targetLanguage });
         }
 
@@ -99,8 +105,9 @@ public sealed class LibraryModel(
             },
             cancellationToken);
 
-        TempData["Status"] =
-            $"{BookLanguageCatalog.GetName(targetLanguage)} translation queued. You can start reading immediately; completed chapters appear as they finish.";
+        TempData["Status"] = ui.Format(
+            "books.library.translationQueued",
+            ("language", BookLanguageCatalog.GetName(targetLanguage)));
 
         return RedirectToPage(new { id, lang = targetLanguage });
     }
@@ -110,6 +117,8 @@ public sealed class LibraryModel(
         string? lang,
         CancellationToken cancellationToken)
     {
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         if (!account.IsOwner)
         {
             return Forbid();
@@ -132,7 +141,7 @@ public sealed class LibraryModel(
                 targetLanguage,
                 StringComparison.OrdinalIgnoreCase))
         {
-            TempData["Status"] = "The selected language is the original language.";
+            TempData["Status"] = ui["books.library.isOriginalLanguage"];
             return RedirectToPage(new { id, lang = targetLanguage });
         }
 
@@ -152,8 +161,9 @@ public sealed class LibraryModel(
             },
             cancellationToken);
 
-        TempData["Status"] =
-            $"{BookLanguageCatalog.GetName(targetLanguage)} translation cleared and queued again.";
+        TempData["Status"] = ui.Format(
+            "books.library.regenerateQueued",
+            ("language", BookLanguageCatalog.GetName(targetLanguage)));
 
         return RedirectToPage(new { id, lang = targetLanguage });
     }
@@ -162,6 +172,8 @@ public sealed class LibraryModel(
         Guid id,
         CancellationToken cancellationToken)
     {
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         if (!account.IsOwner)
         {
             return Forbid();
@@ -172,8 +184,7 @@ public sealed class LibraryModel(
             await books.DeleteImportedBookAsync(
                 id,
                 cancellationToken);
-            TempData["Status"] =
-                "Book removed from AniLingo. External source/download files were not changed.";
+            TempData["Status"] = ui["books.library.removed"];
             return RedirectToPage("/Books");
         }
         catch (InvalidOperationException exception)
