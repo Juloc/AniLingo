@@ -729,7 +729,13 @@ public sealed class AnimeImportExecutor(
     {
         try
         {
-            var result = await scanner.ScanAsync(location.RootId, location.AnimeDirectory, cancellationToken);
+            var result = location.AnimeDirectory is null
+                ? await scanner.ScanAsync(location.RootId, cancellationToken)
+                : await scanner.ScanFolderAsync(
+                    location.RootId,
+                    Path.GetRelativePath(location.RootPath, location.AnimeDirectory),
+                    progress: null,
+                    cancellationToken);
             var summary = $" Library reconciled: {result.Discovered} added, {result.Updated} changed, {result.Removed} removed.";
             if (operationId is { } id)
             {
