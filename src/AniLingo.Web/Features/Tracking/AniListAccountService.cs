@@ -772,6 +772,23 @@ public sealed partial class AniListAccountService(
         }
     }
 
+    public async Task<AniListReadingProgressPreview> GetNovelProgressPreviewAsync(
+        Guid workId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var context = await BuildNovelProgressContextAsync(
+                workId,
+                cancellationToken);
+            return context.Preview;
+        }
+        catch (AniListAccountException exception)
+        {
+            return AniListReadingProgressPreview.Blocked(exception.Message);
+        }
+    }
+
     public async Task<AniListProgressSyncResult> SyncNovelProgressAsync(
         Guid workId,
         CancellationToken cancellationToken)
