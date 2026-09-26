@@ -368,6 +368,21 @@ button, input { font: inherit; }
 }
 .status-pill.status-ok { background: rgba(79,180,116,.13); color: var(--success-text); }
 .status-pill.status-error { background: rgba(224,105,105,.12); color: var(--danger-text); }
+.status-pill.status-warn { background: var(--accent-soft); color: var(--warning-text); }
+
+.external-progress { display: grid; gap: 12px; margin-bottom: 18px; }
+.external-progress p { margin: 0; }
+.external-progress-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+.external-progress-local, .external-progress-match > div { display: grid; gap: 4px; align-content: start; justify-items: start; }
+.external-progress-match { display: flex; gap: 12px; align-items: flex-start; }
+.external-progress-match img { width: 44px; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 6px; flex: none; }
+.external-progress-state { display: grid; gap: 8px; justify-items: start; }
+.external-progress-state form { margin: 0; }
+.external-progress-state-heading { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 13px; }
+.external-progress-compare { display: flex; gap: 24px; flex-wrap: wrap; margin: 0; }
+.external-progress-compare dt { color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
+.external-progress-compare dd { margin: 2px 0 0; font-weight: 700; }
+.external-progress-compare small { margin-inline-start: 6px; color: var(--muted); font-weight: 600; }
 .device-login { display: grid; gap: 12px; }
 .device-login p { margin: 0; }
 .device-code {

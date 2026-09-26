@@ -1,6 +1,7 @@
 using System.IO.Compression;
 using System.Text;
 using AniLingo.Web.Data;
+using AniLingo.Web.Features.Acquisition.Sabnzbd;
 using AniLingo.Web.Features.Books;
 using AniLingo.Web.Features.Operations;
 using Microsoft.Data.Sqlite;
@@ -56,7 +57,7 @@ public sealed class BookInboxImportTests
     }
 
     [TestMethod]
-    public async Task OtherCompletedOperationsDoNotScanTheInbox()
+    public async Task CompletedAnimeSabnzbdDownloadsDoNotScanTheInbox()
     {
         var root = TempDirectory();
         var inbox = Directory.CreateDirectory(Path.Combine(root, "inbox")).FullName;
@@ -73,7 +74,7 @@ public sealed class BookInboxImportTests
 
             var imported = await BookInboxImport.ImportAfterDownloadsAsync(
                 services,
-                [Snapshot("anime-grab", "owner")],
+                [Snapshot(SabnzbdAcquisitionService.OperationKind, "owner")],
                 CancellationToken.None);
 
             Assert.IsFalse(imported);
@@ -163,7 +164,7 @@ public sealed class BookInboxImportTests
             EtaUtc: null,
             Attempt: 1,
             Retryable: false,
-            ExternalProvider: SabnzbdOperationsClient.ProviderId,
+            ExternalProvider: SabnzbdClient.ProviderId,
             ExternalId: "SABnzbd_nzo_test",
             CreatedAtUtc: DateTime.UtcNow,
             StartedAtUtc: DateTime.UtcNow,
