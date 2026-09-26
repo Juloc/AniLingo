@@ -22,8 +22,9 @@ public sealed class WorkModel(
     public IReadOnlyList<NovelMetadataCandidate> SearchResults { get; private set; } = [];
     public IReadOnlyList<NovelAnimeChoice> AnimeChoices { get; private set; } = [];
     public NovelProgress? Progress { get; private set; }
-    public AniListReadingProgressPreview? AniListProgress { get; private set; }
+    public ExternalProgressSummary? ExternalProgress { get; private set; }
     public string SearchQuery { get; private set; } = "";
+    public bool IsSearching { get; private set; }
     public bool IsOwner => account.IsOwner;
 
     public async Task<IActionResult> OnGetAsync(
@@ -42,15 +43,11 @@ public sealed class WorkModel(
             id,
             cancellationToken);
 
-        if (string.Equals(
-                Detail.Work.MetadataProvider,
-                NovelAniListProvider.ProviderKey,
-                StringComparison.OrdinalIgnoreCase))
-        {
-            AniListProgress = await aniListAccount.GetNovelProgressPreviewAsync(
-                id,
-                cancellationToken);
-        }
+        // Local-only: remote AniList progress is loaded after first paint
+        // through OnGetExternalProgressAsync.
+        ExternalProgress = await aniListAccount.GetNovelProgressSummaryAsync(
+            id,
+            cancellationToken);
 
         AnimeChoices = account.IsOwner
             ? await mappings.GetAnimeChoicesAsync(cancellationToken)
@@ -61,6 +58,7 @@ public sealed class WorkModel(
 
         if (account.IsOwner && !string.IsNullOrWhiteSpace(q))
         {
+            IsSearching = true;
             try
             {
                 SearchResults = await metadata.SearchAsync(
@@ -76,6 +74,28 @@ public sealed class WorkModel(
         }
 
         return Page();
+    }
+
+    public async Task<IActionResult> OnGetExternalProgressAsync(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        if (await catalog.GetWorkTitleAsync(id, cancellationToken) is null)
+        {
+            return NotFound();
+        }
+
+        var state = await aniListAccount.GetNovelProgressStateAsync(
+            id,
+            cancellationToken);
+
+        Response.Headers.CacheControl = "no-store";
+        return Partial(
+            "_ExternalProgressState",
+            new ExternalProgressRemoteView(
+                ExternalProgressMediaKind.Novel,
+                state,
+                "SyncAniListProgress"));
     }
 
     public async Task<IActionResult> OnPostSyncAniListProgressAsync(

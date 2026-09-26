@@ -34,6 +34,21 @@ public sealed class NovelReaderDesignTests
     }
 
     [TestMethod]
+    public void WorkPageUsesSharedAniListProgressCardLoadedAfterFirstPaint()
+    {
+        var root = FindRepositoryRoot();
+        var novels = Path.Combine(root, "src", "AniLingo.Web", "Pages", "Novels");
+        var page = File.ReadAllText(Path.Combine(novels, "Work.cshtml"));
+        var model = File.ReadAllText(Path.Combine(novels, "Work.cshtml.cs"));
+
+        StringAssert.Contains(page, "<partial name=\"_ExternalProgress\"");
+        StringAssert.Contains(model, "GetNovelProgressSummaryAsync");
+        StringAssert.Contains(model, "OnGetExternalProgressAsync");
+        StringAssert.Contains(model, "ExternalProgressMediaKind.Novel");
+        Assert.IsFalse(model.Contains("GetNovelProgressPreviewAsync", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
     public void ReaderDoesNotEmbedTheFullChapterIndex()
     {
         var root = FindRepositoryRoot();

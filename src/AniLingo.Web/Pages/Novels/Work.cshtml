@@ -86,48 +86,24 @@
     </div>
 </header>
 
-@if (Model.AniListProgress is { } aniListProgress)
+@if (Model.ExternalProgress is { } externalProgress)
 {
-    <section class="novel-panel">
-        <div class="panel-heading">
-            <div>
-                <span class="eyebrow">My AniList</span>
-                <h2>Reading progress</h2>
-            </div>
-            @if (aniListProgress.RemoteProgress is not null)
-            {
-                <span class="status-pill">
-                    @aniListProgress.RemoteProgress chapters
-                    @if (!string.IsNullOrWhiteSpace(aniListProgress.RemoteStatus))
-                    {
-                        <text> · @aniListProgress.RemoteStatus</text>
-                    }
-                </span>
-            }
-        </div>
-
-        <p class="novel-muted">@aniListProgress.Message</p>
-
-        @if (aniListProgress.CanSync)
-        {
-            <form method="post"
-                  asp-page-handler="SyncAniListProgress"
-                  asp-route-id="@work.Id">
-                <button class="button button-primary" type="submit">
-                    Sync chapter @aniListProgress.RequestedProgress
-                </button>
-            </form>
-        }
-        else if (aniListProgress.IsNoOp)
-        {
-            <span class="status-pill status-ok">Already up to date</span>
-        }
-    </section>
+    var externalPanel = new AniLingo.Web.Features.Tracking.ExternalProgressPanel(
+        externalProgress,
+        Url.Page(null, "ExternalProgress", new { id = work.Id })!,
+        // Segment mappings can point at another AniList part than the work match.
+        externalProgress.MappingBasis == AniLingo.Web.Features.Tracking.ExternalMappingBasis.Matched
+            ? work.CoverImageUrl
+            : null,
+        MatchUrl: $"/Novels/Work/{work.Id}?q={Uri.EscapeDataString(work.MetadataTitle ?? work.Title)}#novel-manage",
+        MappingUrl: $"/Settings/MappingSegments?mediaType=novel&localId={work.Id}",
+        CanManageMapping: Model.IsOwner);
+    <partial name="_ExternalProgress" model="externalPanel" />
 }
 
 @if (Model.IsOwner)
 {
-    <details class="novel-panel novel-admin-panel">
+    <details class="novel-panel novel-admin-panel" id="novel-manage" open="@Model.IsSearching">
         <summary><strong>Manage novel</strong></summary>
 
         <div class="novel-admin-content">
