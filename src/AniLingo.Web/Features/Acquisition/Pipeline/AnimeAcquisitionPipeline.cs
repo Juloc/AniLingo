@@ -671,7 +671,7 @@ public sealed class AnimeAcquisitionPipeline(
 
     // Unreadable settings (for example a lost Data Protection key) count as not configured here;
     // the run itself reports the underlying error. The name is kept for callers; it now reports
-    // whether any indexer (Prowlarr or direct Newznab/Torznab) is configured.
+    // whether any indexer (Prowlarr or direct Newznab) is configured.
     public async Task<bool> IsProwlarrConfiguredAsync(CancellationToken cancellationToken)
     {
         try
@@ -1211,8 +1211,8 @@ public sealed class AnimeAcquisitionPipeline(
         state.Anime.TryGetValue(animeKey, out var settings) ? settings.IndexerIds : null;
 
     // Tag-scoped indexer restrictions (P1 item 5) now operate on the canonical indexer entry id
-    // (Guid), the one identifier that covers a whole Prowlarr entry and each direct Newznab/
-    // Torznab entry alike — unlike ProwlarrIndexerIdsFor above, which only ever narrows within a
+    // (Guid), the one identifier that covers a whole Prowlarr entry and each direct Newznab
+    // entry alike — unlike ProwlarrIndexerIdsFor above, which only ever narrows within a
     // single Prowlarr entry's own sub-indexer aggregation. When a restriction applies but has no
     // overlap with the currently enabled entries, this is not silently ignored: the caller gets a
     // BlockedReason and must search no indexers at all for this pass.

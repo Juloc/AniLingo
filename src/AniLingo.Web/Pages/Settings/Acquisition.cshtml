@@ -181,7 +181,7 @@
 
     <section class="panel">
         <div class="panel-heading"><h2>Tag-scoped indexer restrictions</h2></div>
-        <p class="muted">Restricts anime carrying any of the selected tags to searching only the checked indexers (a whole Prowlarr connection, or a direct Newznab/Torznab connection). Narrows which indexers are searched at all; never widens it. If a restriction ends up with no enabled indexer allowed, no indexer is searched for that anime — it is never silently searched unrestricted.</p>
+        <p class="muted">Restricts anime carrying any of the selected tags to searching only the checked indexers (a whole Prowlarr connection, or a direct Newznab connection). Narrows which indexers are searched at all; never widens it. If a restriction ends up with no enabled indexer allowed, no indexer is searched for that anime — it is never silently searched unrestricted.</p>
         @if (Model.Policy.IndexerRestrictions.Count > 0)
         {
             <table>

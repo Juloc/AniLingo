@@ -5,20 +5,19 @@ namespace AniLingo.Web.Features.Acquisition.Indexers;
 
 /// <summary>
 /// Kind of indexer connection. Prowlarr aggregates other indexers itself;
-/// Newznab and Torznab are direct connections to a single indexer using its
-/// usenet or torrent protocol.
+/// Newznab is a direct connection to a single usenet indexer. AniLingo is
+/// usenet-only: torrent indexers (Torznab) are intentionally unsupported.
 /// </summary>
 public enum IndexerType
 {
     Prowlarr,
-    Newznab,
-    Torznab
+    Newznab
 }
 
 /// <summary>
 /// One canonical indexer connection's settings. <see cref="IndexerIds"/> is
 /// only meaningful for <see cref="IndexerType.Prowlarr"/> (Prowlarr's own
-/// per-indexer restriction); Newznab/Torznab ignore it.
+/// per-indexer restriction); Newznab ignores it.
 /// </summary>
 public sealed record IndexerSettings(
     string BaseUrl,
@@ -46,11 +45,7 @@ public sealed record IndexerEntry(
     bool Enabled,
     int Priority,
     IndexerSettings Settings,
-    [property: JsonIgnore] string ApiKey)
-{
-    /// <summary>The release protocol this indexer's results carry.</summary>
-    public string Protocol => Type == IndexerType.Torznab ? "torrent" : "usenet";
-}
+    [property: JsonIgnore] string ApiKey);
 
 public sealed record IndexerConnectionTestResult(
     bool Success,

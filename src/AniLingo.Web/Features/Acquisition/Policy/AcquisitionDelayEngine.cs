@@ -93,7 +93,7 @@ public static class AcquisitionDelayEngine
     }
 
     /// <summary>
-    /// Canonical indexer entry ids (a whole Prowlarr entry or a direct Newznab/Torznab entry alike)
+    /// Canonical indexer entry ids (a whole Prowlarr entry or a direct Newznab entry alike)
     /// the anime's tags restrict searches to, or null when no restriction applies. Two or more
     /// applicable restrictions intersect (an anime tagged for both is limited to entries every
     /// applicable restriction allows).
