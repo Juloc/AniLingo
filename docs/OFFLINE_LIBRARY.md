@@ -11,10 +11,12 @@ reuses one server model instead of separate PWA/Android business logic
 (matching the bounded offline playback design of #225/PR #341).
 
 Status: **part 1 delivered** (server contract, sync endpoint, PWA download
-manager foundation, Settings → Offline page). Part 2 (reader repository
-abstraction, placing the "Save offline" action on Novel/Book/Manga detail
-pages, Android Room/WorkManager) is future work; see [Part 2](#part-2-todo)
-below.
+manager foundation, Settings → Offline page) and **Android delivered**
+(native download engine, WebView interception; see
+[Android implementation](#android-implementation)). The reader repository
+abstraction (`Reader -> BookRepository`) so `/Novels/Read`/`/Books/Read`
+themselves serve local content is still future work; see
+[Part 2](#part-2-todo) below.
 
 ## Why a separate contract from bounded offline playback (#225)
 
@@ -292,6 +294,84 @@ that default under last-writer-wins.
   eligible-item selection with backoff, Wi-Fi-only eligibility, namespacing
   and storage formatting.
 
+## Android implementation
+
+`clients/android/app-mobile`, package `de.juloc.anilingo.mobile.offline.library`
+(kept separate from `mobile.offline`, the #341 bounded-offline-playback
+package, so the two features stay independently reviewable). Consumes the
+contract above through new `AniLingoLibraryApi`/`OfflineLibraryJson`
+(`core-api`) and `ClientOfflineLibrary*`/`OfflineLibrary*Event`/`Result`
+models (`core-model`), gated by the `offlineLibrary` capability flag.
+
+- **`LibraryStore`** — app-private persistence (books, chapters, settings,
+  progress/bookmark sync queues), a sibling of `OfflineStore` (#341): the
+  same `AtomicFile` + hand-written `org.json` codec, **not Room** — there is
+  no Room/reflection-serialization dependency anywhere in this app, and
+  introducing one for this feature alone was rejected as the higher-risk,
+  higher-friction option (see the file's KDoc for the trade-off). Chapters
+  and assets are stored keyed by their own globally-unique id/name
+  (`<owner>/chapters/<chapterId>.json`, `<owner>/assets/<asset>`), not
+  nested under a book folder, so a request path (`/chapters/{id}`,
+  `/assets/{volumeId}/{asset}`) resolves to a local file directly.
+- **`LibraryManifestDiff`** — pure differential diff (unit tested): a
+  chapter is downloaded only if new or its hash changed; unchanged chapters,
+  whatever their local download state, are left alone; deselected or
+  manifest-dropped chapters are queued for local removal.
+- **`LibraryContentIo.writeVerified`** — atomic finalization: writes to
+  `<file>.part`, reads the bytes back and byte-compares before an atomic
+  `renameTo`, exactly the "write, then read back and compare" rule the PWA
+  engine uses. A chapter is additionally rejected (retried later, not marked
+  verified) if the fetched payload's `hash` no longer matches the manifest
+  hash it was requested for (the version-race case `docs` calls out above).
+- **`LibraryDownloads`** — the manager: `enqueueBook` (manifest fetch + diff
+  + per-chapter WorkManager scheduling, whole-book or `chapterIds`
+  selection), pause/resume/retry/remove per chapter, remove per book,
+  Wi-Fi-only setting, storage usage. Reuses `OfflineAccountPolicy`,
+  `OfflineAccount`, `OfflineOwner` and `DownloadStateMachine` from `#341`
+  directly (unmodified) since none of them are anime-specific — the account
+  boundary (logout locks, account/server switch purges) and the
+  queued/downloading/paused/ready/failed state machine are exactly the same
+  shape for a chapter as for an episode. Cover/volume-cover assets are
+  downloaded best-effort inline (not a tracked WorkManager job): they never
+  gate "available offline" and a missed one is simply retried on the next
+  book refresh.
+- **`LibraryChapterDownloadWorker`** / **`LibrarySyncWorker`** — WorkManager
+  jobs mirroring `OfflineDownloadWorker`/`OfflineProgressSyncWorker`. A
+  chapter is one atomic download unit (not sub-file HTTP Range/resume like
+  episode media): chapters are bounded-size text, so the *job* itself is the
+  resumable unit via WorkManager's own retry/backoff — the same granularity
+  the PWA queue already uses. `LibrarySyncWorker` re-checks `/me` before
+  draining the queue, exactly like the offline-playback progress worker.
+- **WebView local interception** (`AniLingoWebShell.shouldInterceptRequest`,
+  `LibraryRequestInterception`): a same-origin `GET` matching the
+  offline-library manifest/chapter/asset path shape is answered from local
+  storage when available ("local source first"), otherwise falls through to
+  the network. This is the option (a) the issue asks for — the same web
+  reader would render offline content without a second rendering path — but
+  its effect today is limited: `/Novels/Read`/`/Books/Read` do not yet fetch
+  chapter content through `/api/client/v1/offline-library/**` client-side
+  (that is exactly the still-open "Reader repository abstraction" item
+  below), so this interception is currently exercised only if/when that
+  reader-side wiring lands. No `addJavascriptInterface`/JS bridge is added;
+  same-origin enforcement and the fixed, regex-validated path allowlist are
+  the only things that make this safe to expose.
+- **Entry points**: a floating native "Save offline" action
+  (`LibrarySaveOfflineOverlay`) appears over the WebView while browsing a
+  book/novel detail page (`/Novels/Work/{id}` or `/Books/Library/{id}`,
+  detected by URL path — the same technique `WebNavigationPolicy` already
+  uses for the episode Play route, not a JS bridge), and an "Offline books"
+  management screen (`LibraryDownloadsScreen`) is reachable next to the
+  existing Downloads screen (notification, launcher shortcut, *Server
+  unavailable* screen).
+- **Sync queue**: `LibraryProgressQueue`/`LibraryBookmarkQueue` are local
+  queue-bookkeeping only (record/acknowledge/batch, one pending entry per
+  work/bookmark id) — the server's forward-only and last-writer-wins rules
+  are the actual conflict resolution; the client always adopts whatever the
+  server answers with. `recordProgress`/`recordBookmark` and the queue are
+  fully implemented and tested, but (like the PWA side) have no reader call
+  site yet in this PR — wiring them up is the same reader-integration slice
+  as item 2 below, now shared across both clients.
+
 ## Part 2 TODO
 
 Left for the reader-integration slice (explicitly out of scope here because
@@ -301,13 +381,16 @@ another agent was editing the Novel reader concurrently):
    `Reader → BookRepository → {local source first, server source when
    required}` seam the issue describes, so `/Novels/Read` and `/Books/Read`
    can serve a downloaded chapter/progress/bookmarks from
-   `offline-library-storage.js` while offline, with **no separate
-   offline/online rendering path** in the reader itself.
+   `offline-library-storage.js` (PWA) or the local store above (Android)
+   while offline, with **no separate offline/online rendering path** in the
+   reader itself. This is what makes both clients' local-first interception
+   actually take effect for real page loads.
 2. Wire the reader's existing progress/bookmark writes to
-   `manager.queueSyncEvent(...)` first (offline-first: local write always
-   succeeds, then queued), and call `manager.drainSyncQueue()` on
-   reconnect/interval. The sync endpoint and conflict rules already exist
-   and are tested; only the reader-side call sites are missing.
+   `manager.queueSyncEvent(...)` (PWA) / `LibraryDownloads.recordProgress`
+   /`recordBookmark` (Android) first (offline-first: local write always
+   succeeds, then queued), and drain the queue on reconnect/interval. The
+   sync endpoint, conflict rules and both clients' local queues already
+   exist and are tested; only the reader-side call sites are missing.
 3. Place the `_OfflineLibraryAction` partial (and, once selection UI
    exists, per-chapter selection reusing `enqueueBook`'s `chapterIds`
    option) on `Pages/Novels/**` detail pages — explicitly not touched here.
@@ -319,15 +402,7 @@ another agent was editing the Novel reader concurrently):
    (`shellText`/`app-shell-text`) — left as plain English source strings for
    part 1, consistent with the rest of the codebase's untranslated JS
    surfaces, but not yet wired to `UiTranslationResources.cs`.
-6. **Android** (`app-mobile`, per `ANDROID_CLIENTS.md`'s architecture): Room
-   entities mirroring the IndexedDB stores above (manifests, queue,
-   verified chapters, bookmarks/progress sync queue), app-private storage
-   for chapter/asset bytes (mirroring OPFS), and WorkManager jobs for
-   persistent, resumable downloads — consuming the exact same
-   `/api/client/v1/offline-library/**` contract and
-   `OfflineLibrarySyncRules` semantics (server-side; Android only needs to
-   replay the same event shapes, not reimplement the conflict rules).
-7. **Manga reuse**: the manifest/chapter/asset/sync contract here is
+6. **Manga reuse**: the manifest/chapter/asset/sync contract here is
    already generic over "work → volume → chapter" content; a Manga chapter
    payload would swap `originalText`/`blocks` for an ordered page-image
    list while keeping the same manifest hash/diff/sync machinery. No second

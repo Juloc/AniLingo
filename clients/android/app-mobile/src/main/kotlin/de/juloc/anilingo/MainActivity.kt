@@ -46,6 +46,10 @@ import de.juloc.anilingo.mobile.WebSession
 import de.juloc.anilingo.mobile.offline.OfflineDownloads
 import de.juloc.anilingo.mobile.offline.OfflineDownloadsScreen
 import de.juloc.anilingo.mobile.offline.OfflineNotifications
+import de.juloc.anilingo.mobile.offline.library.LibraryDownloads
+import de.juloc.anilingo.mobile.offline.library.LibraryDownloadsScreen
+import de.juloc.anilingo.mobile.offline.library.LibraryNotifications
+import de.juloc.anilingo.mobile.offline.library.LibrarySaveOfflineOverlay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -56,6 +60,7 @@ class MainActivity : ComponentActivity() {
     private var restoredWebState: Bundle? = null
     private var restoredWebOrigin: String? = null
     private val downloadsRequest = mutableIntStateOf(0)
+    private val libraryDownloadsRequest = mutableIntStateOf(0)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -72,6 +77,7 @@ class MainActivity : ComponentActivity() {
                     restoredWebState = restoredWebState,
                     restoredWebOrigin = restoredWebOrigin,
                     downloadsRequest = downloadsRequest.intValue,
+                    libraryDownloadsRequest = libraryDownloadsRequest.intValue,
                     onWebViewChanged = { webView = it },
                     onOriginChanged = { activeOrigin = it },
                     onFinish = ::finish,
@@ -88,6 +94,9 @@ class MainActivity : ComponentActivity() {
     private fun handleIntent(intent: Intent?) {
         if (intent?.action == OfflineNotifications.ActionOpenDownloads) {
             downloadsRequest.intValue += 1
+        }
+        if (intent?.action == LibraryNotifications.ActionOpenLibraryDownloads) {
+            libraryDownloadsRequest.intValue += 1
         }
     }
 
@@ -118,6 +127,7 @@ private fun AniLingoMobileApp(
     restoredWebState: Bundle?,
     restoredWebOrigin: String?,
     downloadsRequest: Int,
+    libraryDownloadsRequest: Int,
     onWebViewChanged: (WebView?) -> Unit,
     onOriginChanged: (String?) -> Unit,
     onFinish: () -> Unit,
@@ -126,9 +136,13 @@ private fun AniLingoMobileApp(
     val settings = remember { ServerSettings(context.applicationContext) }
     val offline = remember { OfflineDownloads.get(context.applicationContext) }
     val offlineSnapshot by offline.state.collectAsState()
+    val library = remember { LibraryDownloads.get(context.applicationContext) }
+    val librarySnapshot by library.state.collectAsState()
     var originValue by rememberSaveable { mutableStateOf(settings.getOrigin()) }
     var activeEpisodeId by rememberSaveable { mutableStateOf<String?>(null) }
     var showDownloads by rememberSaveable { mutableStateOf(false) }
+    var showLibraryDownloads by rememberSaveable { mutableStateOf(false) }
+    var currentWorkId by remember { mutableStateOf<String?>(null) }
     var confirmServerChange by remember { mutableStateOf(false) }
     var accountCheck by remember { mutableIntStateOf(0) }
     var securityError by remember { mutableStateOf<String?>(null) }
@@ -142,19 +156,28 @@ private fun AniLingoMobileApp(
         }
     }
 
+    LaunchedEffect(libraryDownloadsRequest) {
+        if (libraryDownloadsRequest > 0) {
+            activeEpisodeId = null
+            showLibraryDownloads = true
+        }
+    }
+
     fun changeServer() {
         // Downloads belong to one account on one server; changing the server removes them.
         offline.clearAll()
+        library.clearAll()
         CookieManager.getInstance().removeAllCookies(null)
         CookieManager.getInstance().flush()
         settings.clearOrigin()
         showDownloads = false
+        showLibraryDownloads = false
         activeEpisodeId = null
         originValue = null
     }
 
     fun requestServerChange() {
-        if (offlineSnapshot.downloads.isEmpty()) {
+        if (offlineSnapshot.downloads.isEmpty() && librarySnapshot.books.isEmpty()) {
             changeServer()
         } else {
             confirmServerChange = true
@@ -166,7 +189,10 @@ private fun AniLingoMobileApp(
             onDismissRequest = { confirmServerChange = false },
             title = { Text("Change server?") },
             text = {
-                Text("All ${offlineSnapshot.downloads.size} downloaded episodes are removed from this device.")
+                Text(
+                    "All ${offlineSnapshot.downloads.size} downloaded episodes and " +
+                        "${librarySnapshot.books.size} offline books are removed from this device.",
+                )
             },
             confirmButton = {
                 TextButton(
@@ -246,11 +272,13 @@ private fun AniLingoMobileApp(
             }
             withContext(Dispatchers.IO) {
                 offline.verifyAccount(origin.value, api)
+                library.verifyAccount(origin.value, api)
             }
         }
     }
 
     val hasAccessibleDownloads = offlineSnapshot.accessibleDownloads(origin.value).isNotEmpty()
+    val hasAccessibleLibraryBooks = librarySnapshot.accessibleBooks(origin.value).isNotEmpty()
 
     Box(modifier = Modifier.fillMaxSize()) {
         when (val gate = gateState) {
@@ -278,6 +306,8 @@ private fun AniLingoMobileApp(
                 onSecondary = { requestServerChange() },
                 tertiaryLabel = if (hasAccessibleDownloads) "Downloads" else null,
                 onTertiary = { showDownloads = true },
+                quaternaryLabel = if (hasAccessibleLibraryBooks) "Offline books" else null,
+                onQuaternary = { showLibraryDownloads = true },
             )
             ServerGateState.Compatible -> {
                 AniLingoWebShell(
@@ -295,9 +325,21 @@ private fun AniLingoMobileApp(
                     },
                     onPageLoaded = { accountCheck += 1 },
                     onSecurityError = { securityError = it },
+                    onLibraryWorkPageChanged = { currentWorkId = it },
+                    resolveLibraryRequest = { path -> library.resolveLocalRequest(origin.value, path) },
                 )
 
-                BackHandler(enabled = activeEpisodeId == null && !showDownloads) {
+                if (currentWorkId != null && activeEpisodeId == null && !showDownloads && !showLibraryDownloads) {
+                    LibrarySaveOfflineOverlay(
+                        origin = origin.value,
+                        workId = currentWorkId!!,
+                        downloads = library,
+                        api = api,
+                        onOpenDownloads = { showLibraryDownloads = true },
+                    )
+                }
+
+                BackHandler(enabled = activeEpisodeId == null && !showDownloads && !showLibraryDownloads) {
                     when {
                         currentWebView?.canGoBack() == true -> currentWebView?.goBack()
                         else -> onFinish()
@@ -333,6 +375,14 @@ private fun AniLingoMobileApp(
                     activeEpisodeId = episodeId
                 },
                 onClose = { showDownloads = false },
+            )
+        }
+
+        if (showLibraryDownloads) {
+            LibraryDownloadsScreen(
+                origin = origin.value,
+                downloads = library,
+                onClose = { showLibraryDownloads = false },
             )
         }
     }
@@ -421,6 +471,8 @@ private fun FullscreenStatus(
     onSecondary: (() -> Unit)? = null,
     tertiaryLabel: String? = null,
     onTertiary: (() -> Unit)? = null,
+    quaternaryLabel: String? = null,
+    onQuaternary: (() -> Unit)? = null,
 ) {
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -463,6 +515,14 @@ private fun FullscreenStatus(
                         modifier = Modifier.padding(top = 8.dp),
                     ) {
                         Text(tertiaryLabel)
+                    }
+                }
+                if (quaternaryLabel != null && onQuaternary != null) {
+                    TextButton(
+                        onClick = onQuaternary,
+                        modifier = Modifier.padding(top = 8.dp),
+                    ) {
+                        Text(quaternaryLabel)
                     }
                 }
             }

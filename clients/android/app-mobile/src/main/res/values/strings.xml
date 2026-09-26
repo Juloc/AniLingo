@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="shortcut_downloads">Downloads</string>
+    <string name="shortcut_library_downloads">Offline books</string>
 </resources>
