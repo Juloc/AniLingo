@@ -80,7 +80,8 @@ public sealed class ReadModel(
             chapter.WorkId,
             contentType,
             chapter.WorkTitle,
-            ReaderPreferenceRules.ParseGenres(chapter.GenresJson));
+            ReaderPreferenceRules.ParseGenres(chapter.GenresJson),
+            languages: [new("ja", "Japanisch"), new("de", "Deutsch")]);
 
         ReaderSettings = await ReaderPreferenceStore.GetAsync(
             db,
