@@ -131,11 +131,21 @@ class OfflineDownloadWorker(
             )
         }
 
-        val media = store.mediaFile(download.ownerKey, download.episodeId)
-        if (downloads.find(download.ownerKey, download.episodeId) == null || !partial.renameTo(media)) {
-            // Removed while verifying, or the rename failed: never report an unverified file as ready.
+        val current = downloads.find(download.ownerKey, download.episodeId)
+        if (current == null) {
+            // Removed while verifying.
             partial.delete()
             return Result.success()
+        }
+
+        if (current.state != DownloadState.DOWNLOADING) {
+            // Paused while verifying: keep the complete partial file; resuming verifies again.
+            return Result.success()
+        }
+
+        val media = store.mediaFile(download.ownerKey, download.episodeId)
+        if (!partial.renameTo(media)) {
+            return fail(downloads, download, "The download could not be stored on this device.", keepPartial = false)
         }
 
         downloads.transition(download, DownloadEvent.Verified) { it.copy(downloadedBytes = it.sizeBytes) }
