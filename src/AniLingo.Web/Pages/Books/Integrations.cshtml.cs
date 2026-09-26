@@ -1,3 +1,4 @@
+using AniLingo.Web.Features.Acquisition.Sabnzbd;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Books;
 using Microsoft.AspNetCore.Mvc;
@@ -8,44 +9,21 @@ namespace AniLingo.Web.Pages.Books;
 public sealed class IntegrationsModel(
     BookCatalogService books,
     CurrentAccountContext account,
+    SabnzbdConnectionResolver sabnzbd,
     IConfiguration configuration) : PageModel
 {
     public BookIntegrationSettings Settings { get; private set; } =
         BookIntegrationSettings.Empty;
 
-    public bool HasSavedApiKey =>
-        !string.IsNullOrWhiteSpace(Settings.SabnzbdApiKey);
-
-    public bool SabConfigured => books.IsSabnzbdConfigured;
+    public bool SabConfigured { get; private set; }
+    public string? SabBooksCategory { get; private set; }
     public bool InboxConfigured => books.IsInboxConfigured;
-
-    public bool SabEnvironmentOverride =>
-        !string.IsNullOrWhiteSpace(
-            configuration["Books:SABnzbd:BaseUrl"])
-        || !string.IsNullOrWhiteSpace(
-            configuration["Books:SABnzbd:ApiKey"]);
 
     public bool InboxEnvironmentOverride =>
         !string.IsNullOrWhiteSpace(
             configuration["Books:InboxPath"]);
 
-    public IActionResult OnGet()
-    {
-        if (!account.IsOwner)
-        {
-            return Forbid();
-        }
-
-        Settings = BookIntegrationSettingsStore.Load();
-        return Page();
-    }
-
-    public async Task<IActionResult> OnPostSaveAsync(
-        string? sabBaseUrl,
-        string? sabApiKey,
-        string? sabCategory,
-        string? inboxPath,
-        bool clearApiKey,
+    public async Task<IActionResult> OnGetAsync(
         CancellationToken cancellationToken)
     {
         if (!account.IsOwner)
@@ -53,21 +31,26 @@ public sealed class IntegrationsModel(
             return Forbid();
         }
 
-        var existing = BookIntegrationSettingsStore.Load();
-        var effectiveApiKey = clearApiKey
-            ? null
-            : string.IsNullOrWhiteSpace(sabApiKey)
-                ? existing.SabnzbdApiKey
-                : sabApiKey;
+        Settings = BookIntegrationSettingsStore.Load();
+        var resolved = await sabnzbd.ResolveAsync(cancellationToken);
+        SabConfigured = resolved.IsConfigured;
+        SabBooksCategory = resolved.Effective.BooksCategory;
+        return Page();
+    }
+
+    public async Task<IActionResult> OnPostSaveAsync(
+        string? inboxPath,
+        CancellationToken cancellationToken)
+    {
+        if (!account.IsOwner)
+        {
+            return Forbid();
+        }
 
         try
         {
             await BookIntegrationSettingsStore.SaveAsync(
-                new BookIntegrationSettings(
-                    sabBaseUrl,
-                    effectiveApiKey,
-                    sabCategory,
-                    inboxPath),
+                new BookIntegrationSettings(inboxPath),
                 cancellationToken);
             TempData["Status"] = "Books acquisition settings saved.";
         }
@@ -77,32 +60,6 @@ public sealed class IntegrationsModel(
                 or UnauthorizedAccessException)
         {
             TempData["Status"] = exception.Message;
-        }
-
-        return RedirectToPage();
-    }
-
-    public async Task<IActionResult> OnPostTestSabAsync(
-        CancellationToken cancellationToken)
-    {
-        if (!account.IsOwner)
-        {
-            return Forbid();
-        }
-
-        try
-        {
-            var message = await books.TestSabnzbdAsync(
-                cancellationToken);
-            TempData["Status"] = message;
-        }
-        catch (Exception exception) when (
-            exception is InvalidOperationException
-                or HttpRequestException
-                or TaskCanceledException)
-        {
-            TempData["Status"] =
-                "SABnzbd connection failed: " + exception.Message;
         }
 
         return RedirectToPage();
