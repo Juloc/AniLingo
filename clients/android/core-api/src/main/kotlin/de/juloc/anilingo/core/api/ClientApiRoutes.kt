@@ -16,6 +16,12 @@ object ClientApiRoutes {
     fun offlineDownload(episodeId: String) = "$Base/episodes/$episodeId/offline-download"
     const val OfflineProgress = "$Base/offline/progress"
 
+    fun offlineLibraryManifest(workId: String) = "$Base/offline-library/works/$workId/manifest"
+    fun offlineLibraryChapter(chapterId: String) = "$Base/offline-library/chapters/$chapterId"
+    fun offlineLibraryAsset(volumeId: String, asset: String) =
+        "$Base/offline-library/assets/$volumeId/$asset"
+    const val OfflineLibrarySync = "$Base/offline-library/sync"
+
     fun cues(
         episodeId: String,
         trackId: String? = null,
@@ -46,4 +52,7 @@ object ClientApiRoutes {
     fun rootAvailability(rootId: String) = "$Base/library-roots/$rootId/availability"
     fun testRoot(rootId: String) = "$Base/library-roots/$rootId/test"
     fun wakeRoot(rootId: String) = "$Base/library-roots/$rootId/wake"
+
+    const val TtsPreferences = "$Base/me/tts-preferences"
+    const val SpeechModels = "$Base/speech/models"
 }

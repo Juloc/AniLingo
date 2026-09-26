@@ -74,6 +74,7 @@ fun NativePlayerScreen(
     api: HttpAniLingoClientApi,
     sessionHeaders: () -> Map<String, String>,
     onOpenDownloads: () -> Unit,
+    onOpenTtsSettings: () -> Unit,
     onClose: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -90,6 +91,14 @@ fun NativePlayerScreen(
         )
     }
     val ui by controller.state.collectAsState()
+
+    // The learning subtitle/vocabulary in the native player is always Japanese (see
+    // README); the TTS coordinator is scoped to this screen and closed with it.
+    val tts = remember(origin.value) { TtsCoordinator(context, api) }
+    val ttsState by tts.state.collectAsState()
+    DisposableEffect(tts) {
+        onDispose { tts.close() }
+    }
 
     var controlsVisible by remember { mutableStateOf(true) }
     var audioMenuOpen by remember { mutableStateOf(false) }
@@ -158,6 +167,7 @@ fun NativePlayerScreen(
 
     fun closeLearningSheet() {
         val previous = learningState
+        tts.stop()
         controller.clearSelectedTerm()
         learningState = null
         if (previous != null &&
@@ -355,12 +365,18 @@ fun NativePlayerScreen(
                     selectedTerm = ui.selectedTerm,
                     termLoading = ui.termLoading,
                     design = design,
+                    ttsSpeaking = ttsState.isSpeaking,
+                    ttsSpeakingKey = ttsState.speakingKey,
                     onToken = controller::loadTerm,
                     onRepeat = controller::repeatCurrentCue,
                     onKnown = { controller.setSelectedTermState("known") },
                     onLearning = { controller.setSelectedTermState("learning") },
                     onBackFromTerm = controller::clearSelectedTerm,
                     onClose = ::closeLearningSheet,
+                    onSpeakLine = { text -> tts.speak("line", text, "ja-JP") },
+                    onSpeakWord = { text -> tts.speak("word", text, "ja-JP") },
+                    onStopSpeaking = tts::stop,
+                    onOpenVoiceSettings = onOpenTtsSettings,
                 )
             }
         }
@@ -680,12 +696,18 @@ private fun LearningSheet(
     selectedTerm: de.juloc.anilingo.core.model.TermDetail?,
     termLoading: Boolean,
     design: MobilePlayerDesign,
+    ttsSpeaking: Boolean,
+    ttsSpeakingKey: String?,
     onToken: (String) -> Unit,
     onRepeat: () -> Unit,
     onKnown: () -> Unit,
     onLearning: () -> Unit,
     onBackFromTerm: () -> Unit,
     onClose: () -> Unit,
+    onSpeakLine: (String) -> Unit,
+    onSpeakWord: (String) -> Unit,
+    onStopSpeaking: () -> Unit,
+    onOpenVoiceSettings: () -> Unit,
 ) {
     Surface(
         color = design.sheet,
@@ -713,6 +735,20 @@ private fun LearningSheet(
                     TextButton(onClick = onBackFromTerm) {
                         Text("Sentence")
                     }
+                    TextButton(
+                        onClick = {
+                            if (ttsSpeaking && ttsSpeakingKey == "word") {
+                                onStopSpeaking()
+                            } else {
+                                onSpeakWord(selectedTerm.canonical)
+                            }
+                        },
+                    ) {
+                        Text(if (ttsSpeaking && ttsSpeakingKey == "word") "Stop" else "Speak")
+                    }
+                }
+                TextButton(onClick = onOpenVoiceSettings) {
+                    Text("Voice")
                 }
                 TextButton(onClick = onClose) {
                     Text("Close")
@@ -786,6 +822,19 @@ private fun LearningSheet(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = onRepeat) {
                     Text("Repeat line")
+                }
+                cue?.let {
+                    TextButton(
+                        onClick = {
+                            if (ttsSpeaking && ttsSpeakingKey == "line") {
+                                onStopSpeaking()
+                            } else {
+                                onSpeakLine(it.text)
+                            }
+                        },
+                    ) {
+                        Text(if (ttsSpeaking && ttsSpeakingKey == "line") "Stop" else "Speak line")
+                    }
                 }
             }
         }
