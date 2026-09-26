@@ -1,5 +1,6 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Acquisition;
+using AniLingo.Web.Features.Acquisition.Api;
 using AniLingo.Web.Features.Acquisition.AniListAutoMonitor;
 using AniLingo.Web.Features.Acquisition.Backup;
 using AniLingo.Web.Features.Acquisition.DownloadClients;
@@ -83,6 +84,21 @@ internal sealed class AnimeAcquisitionEnvironment : IAsyncDisposable
     public AcquisitionPolicyStore Policy => services.GetRequiredService<AcquisitionPolicyStore>();
     public AniListAutoMonitorSettingsStore AniListAutoMonitorSettings => services.GetRequiredService<AniListAutoMonitorSettingsStore>();
     public AniListAccountStore AniListAccounts => services.GetRequiredService<AniListAccountStore>();
+
+    /// <summary>Runs an action against a scoped <see cref="AcquisitionApiKeyService"/>.</summary>
+    public async Task<T> WithApiKeysAsync<T>(Func<AcquisitionApiKeyService, Task<T>> action)
+    {
+        await using var scope = services.CreateAsyncScope();
+        return await action(scope.ServiceProvider.GetRequiredService<AcquisitionApiKeyService>());
+    }
+
+    /// <summary>Runs an action against a scoped <see cref="AcquisitionApiService"/> — the same
+    /// façade the acquisition automation API endpoints call.</summary>
+    public async Task<T> WithAcquisitionApiAsync<T>(Func<AcquisitionApiService, Task<T>> action)
+    {
+        await using var scope = services.CreateAsyncScope();
+        return await action(scope.ServiceProvider.GetRequiredService<AcquisitionApiService>());
+    }
 
     public async Task<AnimeLibraryLocation?> GetLibraryLocationAsync(Guid animeId, Guid? preferredRootId = null)
     {
@@ -425,6 +441,8 @@ internal sealed class AnimeAcquisitionEnvironment : IAsyncDisposable
         collection.AddScoped<AnimeAcquisitionPipeline>();
         collection.AddScoped<AnimeImportExecutor>();
         collection.AddSingleton<AnimeAcquisitionScheduler>();
+        collection.AddScoped<AcquisitionApiKeyService>();
+        collection.AddScoped<AcquisitionApiService>();
         collection.AddHttpClient();
 
         var dictionary = Path.Combine(TempRoot, "dictionary");

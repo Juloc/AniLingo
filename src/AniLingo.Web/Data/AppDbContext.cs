@@ -1,3 +1,4 @@
+using AniLingo.Web.Features.Acquisition.Api;
 using AniLingo.Web.Features.Acquisition.History;
 using AniLingo.Web.Features.Ai;
 using AniLingo.Web.Features.ReaderPreferences;
@@ -58,6 +59,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<EpisodeMediaSegment> EpisodeMediaSegments => Set<EpisodeMediaSegment>();
     public DbSet<EpisodeSegmentDetectionState> EpisodeSegmentDetectionStates => Set<EpisodeSegmentDetectionState>();
     public DbSet<AcquisitionHistoryEntry> AcquisitionHistory => Set<AcquisitionHistoryEntry>();
+    public DbSet<AcquisitionApiKey> AcquisitionApiKeys => Set<AcquisitionApiKey>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -464,6 +466,15 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(x => x.Reason).HasMaxLength(1000);
             entity.HasOne<Anime>().WithMany().HasForeignKey(x => x.AnimeId).OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(x => new { x.AnimeId, x.SeasonNumber, x.EpisodeNumber, x.OccurredAtUtc });
+        });
+
+        modelBuilder.Entity<AcquisitionApiKey>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Name).HasMaxLength(120);
+            entity.Property(x => x.KeyPrefix).HasMaxLength(32);
+            entity.Property(x => x.KeyHash).HasMaxLength(64);
+            entity.HasIndex(x => x.KeyHash).IsUnique();
         });
     }
 }
