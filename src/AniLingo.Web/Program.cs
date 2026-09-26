@@ -270,6 +270,9 @@ builder.Services.AddSingleton<ISonarrObserverClient, SonarrObserverClient>();
 builder.Services.AddSingleton<ISonarrSeriesMonitoringClient, SonarrSeriesMonitoringClient>();
 builder.Services.AddSingleton<SonarrObservationService>();
 builder.Services.AddSingleton<SonarrMigrationService>();
+builder.Services.AddSingleton<AniLingo.Web.Features.Acquisition.Naming.AnimeNamingProfileStore>();
+builder.Services.AddSingleton<AniLingo.Web.Features.Acquisition.Naming.AnimeRenameFileSystem>();
+builder.Services.AddScoped<AniLingo.Web.Features.Acquisition.Naming.AnimeRenameService>();
 
 builder.Services.AddSingleton<MediaMappingReviewStore>();
 builder.Services.AddSingleton<ReadingSegmentMappingStore>();

@@ -204,6 +204,64 @@ public sealed class SabnzbdAcquisitionStore
                     StringComparison.OrdinalIgnoreCase)),
             cancellationToken);
 
+    // A series-folder rename changes the library's anime key; acquisitions and blocklist entries
+    // follow it so in-flight downloads still import into the same anime.
+    public async Task<bool> RekeyAnimeAsync(
+        string oldKey,
+        string newKey,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(oldKey);
+        ArgumentException.ThrowIfNullOrWhiteSpace(newKey);
+        if (string.Equals(oldKey, newKey, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var current = await LoadAsync(cancellationToken);
+        if (!current.Acquisitions.Any(acquisition => IsKey(acquisition.AnimeKey, oldKey)) &&
+            !current.Blocklist.Any(entry => IsKey(entry.AnimeKey, oldKey)))
+        {
+            return false;
+        }
+
+        var changed = false;
+        await UpdateAsync(
+            state =>
+            {
+                for (var index = 0; index < state.Acquisitions.Count; index++)
+                {
+                    var acquisition = state.Acquisitions[index];
+                    if (!IsKey(acquisition.AnimeKey, oldKey))
+                    {
+                        continue;
+                    }
+
+                    state.Acquisitions[index] = acquisition with
+                    {
+                        AnimeKey = newKey,
+                        Episodes = [.. acquisition.Episodes.Select(episode =>
+                            IsKey(episode.AnimeKey, oldKey) ? episode with { AnimeKey = newKey } : episode)]
+                    };
+                    changed = true;
+                }
+
+                for (var index = 0; index < state.Blocklist.Count; index++)
+                {
+                    if (IsKey(state.Blocklist[index].AnimeKey, oldKey))
+                    {
+                        state.Blocklist[index] = state.Blocklist[index] with { AnimeKey = newKey };
+                        changed = true;
+                    }
+                }
+            },
+            cancellationToken);
+        return changed;
+
+        static bool IsKey(string? value, string key) =>
+            string.Equals(value, key, StringComparison.OrdinalIgnoreCase);
+    }
+
     public string ProtectUrl(Uri nzbUrl)
     {
         ArgumentNullException.ThrowIfNull(nzbUrl);
