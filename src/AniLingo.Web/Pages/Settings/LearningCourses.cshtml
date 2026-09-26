@@ -1,0 +1,165 @@
+@page
+@model AniLingo.Web.Pages.Settings.LearningCoursesModel
+@{
+    ViewData["Title"] = "Learning courses";
+}
+
+<header class="page-header">
+    <div>
+        <a class="back-link" asp-page="/Settings/Learning">← Learning settings</a>
+        <span class="eyebrow">Optional learning</span>
+        <h1>Learning courses</h1>
+        <p>Each course pairs two languages. Words from content in a language are saved into that language's primary course.</p>
+    </div>
+</header>
+
+<div asp-validation-summary="ModelOnly" class="validation"></div>
+
+@if (Model.Courses.Count == 0)
+{
+    <div class="empty-state">
+        <h3>No courses yet</h3>
+        <p>A course is created automatically when you save your first word, or you can add one below.</p>
+    </div>
+}
+
+<div class="form-stack">
+    @foreach (var course in Model.Courses)
+    {
+        <section class="panel">
+            <div class="panel-heading">
+                <div>
+                    <span class="eyebrow">
+                        @LearningCoursesModel.LanguageName(course.SourceLanguage) → @LearningCoursesModel.LanguageName(course.TargetLanguage)
+                    </span>
+                    <h2>@course.Name</h2>
+                </div>
+                <div class="inline-actions">
+                    <span class="status-pill">@Model.WordCounts.GetValueOrDefault(course.Id) words</span>
+                    @if (course.IsPrimary)
+                    {
+                        <span class="status-pill status-ok">Primary for @course.SourceLanguage</span>
+                    }
+                    else
+                    {
+                        <form method="post" asp-page-handler="Primary">
+                            <input type="hidden" name="courseId" value="@course.Id" />
+                            <button class="chip" type="submit">Make primary for @course.SourceLanguage</button>
+                        </form>
+                    }
+                </div>
+            </div>
+
+            <form method="post" asp-page-handler="Update" class="form-stack">
+                <input type="hidden" name="courseId" value="@course.Id" />
+                <label>
+                    <span>Name</span>
+                    <input name="name" value="@course.Name" maxlength="120" />
+                </label>
+
+                <label class="checkbox-row">
+                    <input type="checkbox" name="isEnabled" value="true" checked="@course.IsEnabled" />
+                    Course enabled
+                </label>
+
+                <fieldset class="form-stack">
+                    <legend>Practice modes</legend>
+                    <label class="checkbox-row">
+                        <input type="checkbox" name="recognition" value="true" checked="@course.Options.RecognitionEnabled" />
+                        Recognition: @course.SourceLanguage → @course.TargetLanguage
+                    </label>
+                    <label class="checkbox-row">
+                        <input type="checkbox" name="production" value="true" checked="@course.Options.ProductionEnabled" />
+                        Production: @course.TargetLanguage → @course.SourceLanguage
+                    </label>
+                    <label class="checkbox-row">
+                        <input type="checkbox" name="listening" value="true" checked="@course.Options.ListeningEnabled" />
+                        Listening: hear @course.SourceLanguage
+                    </label>
+                    <label class="checkbox-row">
+                        <input type="checkbox" name="writing" value="true" checked="@course.Options.WritingEnabled" />
+                        Writing: type @course.SourceLanguage
+                    </label>
+                    <label class="checkbox-row">
+                        <input type="checkbox" name="sentencePractice" value="true" checked="@course.Options.SentencePracticeEnabled" />
+                        Sentence practice
+                    </label>
+                    <small class="muted">
+                        Every mode keeps its own review schedule. Turning a mode off pauses its cards without deleting their history.
+                    </small>
+                </fieldset>
+
+                <div class="inline-actions">
+                    <button class="button" type="submit">Save course</button>
+                </div>
+            </form>
+        </section>
+    }
+
+    <section class="panel">
+        <div class="panel-heading">
+            <div>
+                <span class="eyebrow">New course</span>
+                <h2>Add a language pair</h2>
+            </div>
+        </div>
+
+        <form method="post" asp-page-handler="Create" class="form-stack">
+            <div class="settings-grid">
+                <label>
+                    <span>Source language</span>
+                    <input asp-for="NewCourse.SourceLanguage"
+                           placeholder="ja"
+                           autocomplete="off"
+                           autocapitalize="off"
+                           spellcheck="false" />
+                    <small class="muted">The language you read, hear or write, as a BCP-47 tag such as ja, id, ro or de.</small>
+                    <span asp-validation-for="NewCourse.SourceLanguage" class="validation"></span>
+                </label>
+                <label>
+                    <span>Target language</span>
+                    <input asp-for="NewCourse.TargetLanguage"
+                           placeholder="de"
+                           autocomplete="off"
+                           autocapitalize="off"
+                           spellcheck="false" />
+                    <small class="muted">The language answers and meanings are given in.</small>
+                    <span asp-validation-for="NewCourse.TargetLanguage" class="validation"></span>
+                </label>
+            </div>
+
+            <label>
+                <span>Name (optional)</span>
+                <input asp-for="NewCourse.Name" maxlength="120" />
+            </label>
+
+            <fieldset class="form-stack">
+                <legend>Practice modes</legend>
+                <label class="checkbox-row">
+                    <input asp-for="NewCourse.Recognition" type="checkbox" />
+                    Recognition
+                </label>
+                <label class="checkbox-row">
+                    <input asp-for="NewCourse.Production" type="checkbox" />
+                    Production
+                </label>
+                <label class="checkbox-row">
+                    <input asp-for="NewCourse.Listening" type="checkbox" />
+                    Listening
+                </label>
+                <label class="checkbox-row">
+                    <input asp-for="NewCourse.Writing" type="checkbox" />
+                    Writing
+                </label>
+                <label class="checkbox-row">
+                    <input asp-for="NewCourse.SentencePractice" type="checkbox" />
+                    Sentence practice
+                </label>
+            </fieldset>
+
+            <div class="inline-actions">
+                <button class="button button-primary" type="submit">Add course</button>
+            </div>
+        </form>
+    </section>
+</div>

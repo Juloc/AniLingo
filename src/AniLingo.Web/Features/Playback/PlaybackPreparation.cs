@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
-using System.Globalization;
-using System.Text.Json;
 using AniLingo.Web.Data;
+using AniLingo.Web.Features.Library;
 using AniLingo.Web.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 
@@ -102,12 +101,36 @@ public sealed record PlaybackMediaTrack(
     bool IsForced,
     bool IsText);
 
+// Playback's decision view of the canonical media inventory (MediaInventoryService).
 public sealed record PlaybackProbeResult(
     string? VideoCodec,
     string? PixelFormat,
     string? AudioCodec,
     double? DurationSeconds = null,
-    IReadOnlyList<PlaybackMediaTrack>? Tracks = null);
+    IReadOnlyList<PlaybackMediaTrack>? Tracks = null,
+    int? VideoHeight = null)
+{
+    public static PlaybackProbeResult From(MediaTechnicalInfo technical) =>
+        new(
+            technical.Video?.Codec,
+            technical.Video?.PixelFormat,
+            technical.AudioStreams.FirstOrDefault()?.Codec,
+            technical.DurationSeconds,
+            [
+                .. technical.Streams.Select(stream => new PlaybackMediaTrack(
+                    stream.Index,
+                    stream.Kind == MediaStreamKind.Audio
+                        ? PlaybackTrackKind.Audio
+                        : PlaybackTrackKind.Subtitle,
+                    stream.Codec,
+                    stream.Language,
+                    stream.Title,
+                    stream.IsDefault,
+                    stream.IsForced,
+                    stream.IsText))
+            ],
+            technical.Video?.Height);
+}
 
 public enum PlaybackAudioMode
 {
@@ -235,197 +258,9 @@ public static class PlaybackCache
         };
 }
 
-public sealed class PlaybackMediaProbe(
-    MediaProcessRunner processRunner,
-    ILogger<PlaybackMediaProbe> logger)
-{
-    private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(20);
-    private readonly ConcurrentDictionary<string, ProbeCacheEntry> cache =
-        new(StringComparer.Ordinal);
-
-    public async Task<PlaybackProbeResult?> ProbeAsync(
-        string mediaPath,
-        CancellationToken cancellationToken)
-    {
-        var fullPath = Path.GetFullPath(mediaPath);
-        var info = new FileInfo(fullPath);
-        if (!info.Exists)
-        {
-            return null;
-        }
-
-        if (cache.TryGetValue(fullPath, out var cached) &&
-            cached.SizeBytes == info.Length &&
-            cached.LastWriteTimeUtc == info.LastWriteTimeUtc)
-        {
-            return cached.Result;
-        }
-
-        var result = await processRunner.RunAsync(
-            "ffprobe",
-            [
-                "-v", "error",
-                "-show_entries", "stream=index,codec_type,codec_name,pix_fmt:stream_tags=language,title:stream_disposition=default,forced:format=duration",
-                "-of", "json",
-                fullPath
-            ],
-            ProbeTimeout,
-            cancellationToken);
-
-        if (result is null || result.ExitCode != 0)
-        {
-            if (result is not null)
-            {
-                logger.LogWarning(
-                    "ffprobe failed while inspecting playback media {MediaPath}: {Error}",
-                    mediaPath,
-                    result.ErrorSummary);
-            }
-
-            return null;
-        }
-
-        try
-        {
-            var parsed = Parse(result.Output);
-            cache[fullPath] = new ProbeCacheEntry(
-                info.Length,
-                info.LastWriteTimeUtc,
-                parsed);
-            return parsed;
-        }
-        catch (JsonException exception)
-        {
-            logger.LogWarning(
-                exception,
-                "ffprobe returned invalid JSON for playback media {MediaPath}.",
-                mediaPath);
-            return null;
-        }
-    }
-
-    public static PlaybackProbeResult Parse(string probeJson)
-    {
-        using var document = JsonDocument.Parse(probeJson);
-        string? videoCodec = null;
-        string? pixelFormat = null;
-        string? audioCodec = null;
-        double? durationSeconds = null;
-        var tracks = new List<PlaybackMediaTrack>();
-
-        if (document.RootElement.TryGetProperty("format", out var format) &&
-            format.ValueKind == JsonValueKind.Object &&
-            ReadString(format, "duration") is { } durationValue &&
-            double.TryParse(
-                durationValue,
-                NumberStyles.Float,
-                CultureInfo.InvariantCulture,
-                out var parsedDuration) &&
-            double.IsFinite(parsedDuration) &&
-            parsedDuration > 0)
-        {
-            durationSeconds = parsedDuration;
-        }
-
-        if (document.RootElement.TryGetProperty("streams", out var streams) &&
-            streams.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var stream in streams.EnumerateArray())
-            {
-                var type = ReadString(stream, "codec_type");
-                var codec = ReadString(stream, "codec_name");
-
-                if (videoCodec is null && string.Equals(type, "video", StringComparison.OrdinalIgnoreCase))
-                {
-                    videoCodec = codec;
-                    pixelFormat = ReadString(stream, "pix_fmt");
-                    continue;
-                }
-
-                if (string.Equals(type, "audio", StringComparison.OrdinalIgnoreCase))
-                {
-                    audioCodec ??= codec;
-                    tracks.Add(ParseTrack(stream, PlaybackTrackKind.Audio, codec));
-                }
-                else if (string.Equals(type, "subtitle", StringComparison.OrdinalIgnoreCase))
-                {
-                    tracks.Add(ParseTrack(stream, PlaybackTrackKind.Subtitle, codec));
-                }
-            }
-        }
-
-        return new PlaybackProbeResult(
-            videoCodec,
-            pixelFormat,
-            audioCodec,
-            durationSeconds,
-            tracks);
-    }
-
-    private static PlaybackMediaTrack ParseTrack(
-        JsonElement stream,
-        PlaybackTrackKind kind,
-        string? codec)
-    {
-        var streamIndex =
-            stream.TryGetProperty("index", out var indexElement) &&
-            indexElement.TryGetInt32(out var parsedIndex)
-                ? parsedIndex
-                : -1;
-
-        string? language = null;
-        string? title = null;
-        if (stream.TryGetProperty("tags", out var tags) &&
-            tags.ValueKind == JsonValueKind.Object)
-        {
-            language = ReadString(tags, "language");
-            title = ReadString(tags, "title");
-        }
-
-        var isDefault = false;
-        var isForced = false;
-        if (stream.TryGetProperty("disposition", out var disposition) &&
-            disposition.ValueKind == JsonValueKind.Object)
-        {
-            isDefault = ReadFlag(disposition, "default");
-            isForced = ReadFlag(disposition, "forced");
-        }
-
-        return new PlaybackMediaTrack(
-            streamIndex,
-            kind,
-            codec,
-            language,
-            title,
-            isDefault,
-            isForced,
-            kind == PlaybackTrackKind.Subtitle && IsTextSubtitleCodec(codec));
-    }
-
-    private static bool IsTextSubtitleCodec(string? codec) =>
-        codec?.ToLowerInvariant() is
-            "ass" or "ssa" or "subrip" or "srt" or "webvtt" or "mov_text" or "text";
-
-    private static bool ReadFlag(JsonElement element, string propertyName) =>
-        element.TryGetProperty(propertyName, out var value) &&
-        ((value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var number) && number != 0) ||
-         value.ValueKind == JsonValueKind.True);
-
-    private static string? ReadString(JsonElement element, string propertyName) =>
-        element.TryGetProperty(propertyName, out var value) &&
-        value.ValueKind == JsonValueKind.String
-            ? value.GetString()
-            : null;
-
-    private sealed record ProbeCacheEntry(
-        long SizeBytes,
-        DateTime LastWriteTimeUtc,
-        PlaybackProbeResult Result);
-}
-
 public sealed class PlaybackPreparationService(
     AppDbContext db,
-    PlaybackMediaProbe probe,
+    MediaInventoryService mediaInventory,
     PlaybackPreparationTracker tracker,
     MediaProcessRunner processRunner,
     ILogger<PlaybackPreparationService> logger)
@@ -455,13 +290,13 @@ public sealed class PlaybackPreparationService(
             return;
         }
 
-        var mediaProbe = await probe.ProbeAsync(media.Path, cancellationToken);
-        if (mediaProbe is null)
+        var inventory = await mediaInventory.EnsureAnalyzedAsync(media.Id, cancellationToken);
+        if (inventory?.Technical is not { } technical)
         {
             return;
         }
 
-        var plan = PlaybackPreparationPlan.Build(mediaProbe, requestedMode);
+        var plan = PlaybackPreparationPlan.Build(PlaybackProbeResult.From(technical), requestedMode);
         if (!plan.CanPrepare || plan.Kind is null)
         {
             return;
