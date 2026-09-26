@@ -1,7 +1,8 @@
 @page "/Books/TranslationMemory/{id:guid}"
 @model AniLingo.Web.Pages.Books.TranslationMemoryModel
 @{
-    ViewData["Title"] = "Book Bible";
+    var ui = Model.Ui;
+    ViewData["Title"] = ui["books.bible.title"];
 }
 @section Head {
     <link rel="stylesheet"
@@ -12,17 +13,17 @@
 <div class="book-bible-page">
     <a class="book-bible-back"
        href="/Books/Library/@Model.WorkId?lang=@Model.TargetLanguage">
-        ← Back to book
+        ← @ui["books.read.backToBook"]
     </a>
 
     <header class="book-bible-header">
         <div>
-            <span class="book-bible-kicker">Translation memory</span>
+            <span class="book-bible-kicker">@ui["books.bible.kicker"]</span>
             <h1>@Model.WorkTitle</h1>
             <p>
-                Book Bible for
+                @ui["books.bible.forLanguage"]
                 <strong>@AniLingo.Web.Features.Books.BookLanguageCatalog.GetName(Model.TargetLanguage)</strong>.
-                Locked glossary terms override later AI suggestions.
+                @ui["books.bible.glossaryNote"]
             </p>
         </div>
     </header>
@@ -35,11 +36,9 @@
     @if (Model.Bible is null)
     {
         <section class="book-bible-empty">
-            <h2>No Book Bible yet</h2>
+            <h2>@ui["books.bible.emptyTitle"]</h2>
             <p>
-                Translate at least one chapter first. AniLingo will analyze the book,
-                create the initial style/entity/terminology memory and then this editor
-                becomes available.
+                @ui["books.bible.emptyBody"]
             </p>
         </section>
     }
@@ -48,10 +47,10 @@
         <section class="book-bible-section">
             <div class="book-bible-section-heading">
                 <div>
-                    <h2>Style guide</h2>
-                    <p>Persistent book-wide guidance used by translator, editor and QA.</p>
+                    <h2>@ui["books.bible.styleGuideTitle"]</h2>
+                    <p>@ui["books.bible.styleGuideDescription"]</p>
                 </div>
-                <span>Updated @Model.Bible.UpdatedAt.ToLocalTime().ToString("g")</span>
+                <span>@ui.Format("books.bible.updatedAt", ("date", Model.Bible.UpdatedAt.ToLocalTime().ToString("g")))</span>
             </div>
 
             <form method="post"
@@ -61,14 +60,14 @@
                 <input type="hidden" name="lang" value="@Model.TargetLanguage" />
 
                 <label>
-                    Narrative perspective
+                    @ui["books.bible.narrativePerspective"]
                     <textarea name="narrativePerspective"
                               rows="2"
                               maxlength="800">@Model.Bible.NarrativePerspective</textarea>
                 </label>
 
                 <label>
-                    Overall style
+                    @ui["books.bible.overallStyle"]
                     <textarea name="overallStyle"
                               rows="4"
                               maxlength="1600">@Model.Bible.OverallStyle</textarea>
@@ -76,13 +75,13 @@
 
                 <div class="book-bible-grid two">
                     <label>
-                        Register
+                        @ui["books.bible.register"]
                         <textarea name="register"
                                   rows="3"
                                   maxlength="800">@Model.Bible.Register</textarea>
                     </label>
                     <label>
-                        Audience
+                        @ui["books.bible.audience"]
                         <textarea name="audience"
                                   rows="3"
                                   maxlength="800">@Model.Bible.Audience</textarea>
@@ -101,7 +100,7 @@
 
                 <div>
                     <button class="button button-primary" type="submit">
-                        Save style guide
+                        @ui["books.bible.saveStyleGuide"]
                     </button>
                 </div>
             </form>
@@ -110,16 +109,16 @@
         <section class="book-bible-section">
             <div class="book-bible-section-heading">
                 <div>
-                    <h2>Glossary</h2>
+                    <h2>@ui["books.bible.glossaryTitle"]</h2>
                     <p>
-                        Stable translations for names, places, titles, magic terms and other recurring vocabulary.
+                        @ui["books.bible.glossaryDescription"]
                     </p>
                 </div>
-                <span>@Model.Bible.Terms.Count terms</span>
+                <span>@ui.Format("books.bible.termsCount", ("count", Model.Bible.Terms.Count))</span>
             </div>
 
             <details class="book-bible-add">
-                <summary>Add glossary term</summary>
+                <summary>@ui["books.bible.addTermSummary"]</summary>
                 <form method="post"
                       asp-page-handler="Term"
                       class="book-bible-form compact">
@@ -128,14 +127,14 @@
 
                     <div class="book-bible-grid two">
                         <label>
-                            Source
+                            @ui["books.bible.source"]
                             <input type="text"
                                    name="source"
                                    maxlength="240"
                                    required />
                         </label>
                         <label>
-                            Target
+                            @ui["books.bible.target"]
                             <input type="text"
                                    name="target"
                                    maxlength="240"
@@ -145,29 +144,29 @@
 
                     <div class="book-bible-grid two">
                         <label>
-                            Category
+                            @ui["books.bible.category"]
                             <input type="text"
                                    name="category"
                                    maxlength="120"
-                                   placeholder="name, place, magic, title…" />
+                                   placeholder="@ui["books.bible.categoryPlaceholder"]" />
                         </label>
                         <label class="book-bible-check">
                             <input type="checkbox"
                                    name="locked"
                                    value="true" />
-                            Lock this translation
+                            @ui["books.bible.lockTranslation"]
                         </label>
                     </div>
 
                     <label>
-                        Notes
+                        @ui["books.bible.notes"]
                         <textarea name="notes"
                                   rows="2"
                                   maxlength="1000"></textarea>
                     </label>
 
                     <div>
-                        <button class="button button-primary" type="submit">Add term</button>
+                        <button class="button button-primary" type="submit">@ui["books.bible.addTerm"]</button>
                     </div>
                 </form>
             </details>
@@ -189,13 +188,13 @@
                                 <strong>@term.Source</strong>
                                 @if (term.Locked)
                                 {
-                                    <span class="book-bible-lock">Locked</span>
+                                    <span class="book-bible-lock">@ui["books.bible.lockedBadge"]</span>
                                 }
                             </div>
 
                             <div class="book-bible-grid two">
                                 <label>
-                                    Target
+                                    @ui["books.bible.target"]
                                     <input type="text"
                                            name="target"
                                            maxlength="240"
@@ -203,7 +202,7 @@
                                            required />
                                 </label>
                                 <label>
-                                    Category
+                                    @ui["books.bible.category"]
                                     <input type="text"
                                            name="category"
                                            maxlength="120"
@@ -212,7 +211,7 @@
                             </div>
 
                             <label>
-                                Notes
+                                @ui["books.bible.notes"]
                                 <textarea name="notes"
                                           rows="2"
                                           maxlength="1000">@term.Notes</textarea>
@@ -224,27 +223,27 @@
                                            name="locked"
                                            value="true"
                                            checked="@term.Locked" />
-                                    Locked
+                                    @ui["books.bible.lockedBadge"]
                                 </label>
-                                <button class="button" type="submit">Save</button>
+                                <button class="button" type="submit">@ui["common.save"]</button>
                             </div>
                         </form>
 
                         <form method="post"
                               asp-page-handler="RemoveTerm"
                               class="book-bible-remove"
-                              onsubmit="return confirm('Remove this glossary term?');">
+                              onsubmit="return confirm('@ui["books.bible.confirmRemoveTerm"]');">
                             <input type="hidden" name="id" value="@Model.WorkId" />
                             <input type="hidden" name="lang" value="@Model.TargetLanguage" />
                             <input type="hidden" name="source" value="@term.Source" />
-                            <button type="submit">Remove</button>
+                            <button type="submit">@ui["books.bible.remove"]</button>
                         </form>
                     </article>
                 }
 
                 @if (Model.Bible.Terms.Count == 0)
                 {
-                    <p class="book-bible-muted">No glossary terms recorded yet.</p>
+                    <p class="book-bible-muted">@ui["books.bible.noTerms"]</p>
                 }
             </div>
         </section>
@@ -252,14 +251,14 @@
         <section class="book-bible-section">
             <div class="book-bible-section-heading">
                 <div>
-                    <h2>Characters & entities</h2>
-                    <p>Stable naming, relationships, pronouns and voice notes.</p>
+                    <h2>@ui["books.bible.entitiesTitle"]</h2>
+                    <p>@ui["books.bible.entitiesDescription"]</p>
                 </div>
-                <span>@Model.Bible.Entities.Count entities</span>
+                <span>@ui.Format("books.bible.entitiesCount", ("count", Model.Bible.Entities.Count))</span>
             </div>
 
             <details class="book-bible-add">
-                <summary>Add entity</summary>
+                <summary>@ui["books.bible.addEntitySummary"]</summary>
                 <form method="post"
                       asp-page-handler="Entity"
                       class="book-bible-form compact">
@@ -268,51 +267,51 @@
 
                     <div class="book-bible-grid three">
                         <label>
-                            Source name
+                            @ui["books.bible.sourceName"]
                             <input type="text"
                                    name="sourceName"
                                    maxlength="240"
                                    required />
                         </label>
                         <label>
-                            Target name
+                            @ui["books.bible.targetName"]
                             <input type="text"
                                    name="targetName"
                                    maxlength="240"
                                    required />
                         </label>
                         <label>
-                            Type
+                            @ui["books.bible.type"]
                             <input type="text"
                                    name="type"
                                    maxlength="120"
-                                   placeholder="character, place…" />
+                                   placeholder="@ui["books.bible.typePlaceholder"]" />
                         </label>
                     </div>
 
                     <label>
-                        Description
+                        @ui["books.bible.description"]
                         <textarea name="description" rows="2" maxlength="1200"></textarea>
                     </label>
 
                     <div class="book-bible-grid two">
                         <label>
-                            Pronouns / address
+                            @ui["books.bible.pronouns"]
                             <textarea name="pronouns" rows="2" maxlength="300"></textarea>
                         </label>
                         <label>
-                            Relationships
+                            @ui["books.bible.relationships"]
                             <textarea name="relationships" rows="2" maxlength="1200"></textarea>
                         </label>
                     </div>
 
                     <label>
-                        Voice notes
+                        @ui["books.bible.voiceNotes"]
                         <textarea name="voiceNotes" rows="2" maxlength="1200"></textarea>
                     </label>
 
                     <div>
-                        <button class="button button-primary" type="submit">Add entity</button>
+                        <button class="button button-primary" type="submit">@ui["books.bible.addEntity"]</button>
                     </div>
                 </form>
             </details>
@@ -337,7 +336,7 @@
                             </div>
 
                             <label>
-                                Target name
+                                @ui["books.bible.targetName"]
                                 <input type="text"
                                        name="targetName"
                                        maxlength="240"
@@ -346,7 +345,7 @@
                             </label>
 
                             <label>
-                                Description
+                                @ui["books.bible.description"]
                                 <textarea name="description"
                                           rows="2"
                                           maxlength="1200">@entity.Description</textarea>
@@ -354,13 +353,13 @@
 
                             <div class="book-bible-grid two">
                                 <label>
-                                    Pronouns / address
+                                    @ui["books.bible.pronouns"]
                                     <textarea name="pronouns"
                                               rows="2"
                                               maxlength="300">@entity.Pronouns</textarea>
                                 </label>
                                 <label>
-                                    Relationships
+                                    @ui["books.bible.relationships"]
                                     <textarea name="relationships"
                                               rows="2"
                                               maxlength="1200">@entity.Relationships</textarea>
@@ -368,33 +367,33 @@
                             </div>
 
                             <label>
-                                Voice notes
+                                @ui["books.bible.voiceNotes"]
                                 <textarea name="voiceNotes"
                                           rows="2"
                                           maxlength="1200">@entity.VoiceNotes</textarea>
                             </label>
 
                             <div class="book-bible-item-actions">
-                                <button class="button" type="submit">Save</button>
+                                <button class="button" type="submit">@ui["common.save"]</button>
                             </div>
                         </form>
 
                         <form method="post"
                               asp-page-handler="RemoveEntity"
                               class="book-bible-remove"
-                              onsubmit="return confirm('Remove this entity from translation memory?');">
+                              onsubmit="return confirm('@ui["books.bible.confirmRemoveEntity"]');">
                             <input type="hidden" name="id" value="@Model.WorkId" />
                             <input type="hidden" name="lang" value="@Model.TargetLanguage" />
                             <input type="hidden" name="sourceName" value="@entity.SourceName" />
                             <input type="hidden" name="type" value="@entity.Type" />
-                            <button type="submit">Remove</button>
+                            <button type="submit">@ui["books.bible.remove"]</button>
                         </form>
                     </article>
                 }
 
                 @if (Model.Bible.Entities.Count == 0)
                 {
-                    <p class="book-bible-muted">No entities recorded yet.</p>
+                    <p class="book-bible-muted">@ui["books.bible.noEntities"]</p>
                 }
             </div>
         </section>
@@ -402,10 +401,10 @@
         <section class="book-bible-section">
             <div class="book-bible-section-heading">
                 <div>
-                    <h2>Chapter memory</h2>
-                    <p>Read-only summaries and continuity notes produced after completed translations.</p>
+                    <h2>@ui["books.bible.chapterMemoryTitle"]</h2>
+                    <p>@ui["books.bible.chapterMemoryDescription"]</p>
                 </div>
-                <span>@Model.Bible.Chapters.Count chapters</span>
+                <span>@ui.Format("books.bible.chaptersCount", ("count", Model.Bible.Chapters.Count))</span>
             </div>
 
             <div class="book-bible-list">
@@ -414,7 +413,7 @@
                 {
                     <article class="book-bible-chapter">
                         <div>
-                            <strong>Chapter @chapter.ChapterNumber · @chapter.ChapterTitle</strong>
+                            <strong>@ui.Format("books.chapter.number", ("number", chapter.ChapterNumber)) · @chapter.ChapterTitle</strong>
                             <span>@chapter.UpdatedAt.ToLocalTime().ToString("g")</span>
                         </div>
                         @if (!string.IsNullOrWhiteSpace(chapter.Summary))
@@ -430,25 +429,24 @@
 
                 @if (Model.Bible.Chapters.Count == 0)
                 {
-                    <p class="book-bible-muted">No completed chapter memory yet.</p>
+                    <p class="book-bible-muted">@ui["books.bible.noChapterMemory"]</p>
                 }
             </div>
         </section>
 
         <section class="book-bible-danger">
             <div>
-                <h2>Reset Book Bible</h2>
+                <h2>@ui["books.bible.resetTitle"]</h2>
                 <p>
-                    Deletes style/entity/glossary/chapter memory for this target language.
-                    Existing translated chapter text, progress and bookmarks stay untouched.
+                    @ui["books.bible.resetDescription"]
                 </p>
             </div>
             <form method="post"
                   asp-page-handler="Reset"
-                  onsubmit="return confirm('Reset this Book Bible? Existing final translations will remain, but future translations will start with fresh memory.');">
+                  onsubmit="return confirm('@ui["books.bible.confirmReset"]');">
                 <input type="hidden" name="id" value="@Model.WorkId" />
                 <input type="hidden" name="lang" value="@Model.TargetLanguage" />
-                <button class="button book-bible-danger-button" type="submit">Reset memory</button>
+                <button class="button book-bible-danger-button" type="submit">@ui["books.bible.resetButton"]</button>
             </form>
         </section>
     }

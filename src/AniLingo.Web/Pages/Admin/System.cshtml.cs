@@ -1,6 +1,7 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Library;
+using AniLingo.Web.Features.Localization;
 using AniLingo.Web.Features.Operations;
 using AniLingo.Web.Features.Storage;
 using Microsoft.AspNetCore.Authorization;
@@ -23,15 +24,15 @@ public sealed record AdminLibraryRootRow(
     AdminLibraryScanRow? ActiveScan,
     AdminLibraryScanRow? LastScan)
 {
-    public string AvailabilityLabel =>
+    public string AvailabilityLabel(UiTextBundle ui) =>
         Availability.State switch
         {
-            StorageAvailabilityState.Available => "Online",
-            StorageAvailabilityState.Starting => "Starting",
-            StorageAvailabilityState.Offline => "Offline",
-            StorageAvailabilityState.Unreachable => "Unreachable",
-            StorageAvailabilityState.FileMissing => "File missing",
-            _ => "Unknown"
+            StorageAvailabilityState.Available => ui["admin.system.availability.online"],
+            StorageAvailabilityState.Starting => ui["admin.system.availability.starting"],
+            StorageAvailabilityState.Offline => ui["admin.system.availability.offline"],
+            StorageAvailabilityState.Unreachable => ui["admin.system.availability.unreachable"],
+            StorageAvailabilityState.FileMissing => ui["admin.system.availability.fileMissing"],
+            _ => ui["admin.system.availability.unknown"]
         };
 
     public string AvailabilityCss =>
@@ -52,6 +53,8 @@ public sealed class SystemModel(
     LibraryRootAvailabilityService availability,
     WakeOnLanService wakeOnLan) : PageModel
 {
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
+
     public IReadOnlyList<AdminLibraryRootRow> Roots { get; private set; } = [];
 
     [BindProperty]
@@ -60,14 +63,19 @@ public sealed class SystemModel(
     [BindProperty]
     public string Path { get; set; } = "/media/anime";
 
-    public Task OnGetAsync(CancellationToken cancellationToken) =>
-        LoadAsync(cancellationToken);
+    public async Task OnGetAsync(CancellationToken cancellationToken)
+    {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+        await LoadAsync(cancellationToken);
+    }
 
     public async Task<IActionResult> OnPostAddAsync(CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         if (string.IsNullOrWhiteSpace(Name) || string.IsNullOrWhiteSpace(Path))
         {
-            ModelState.AddModelError(string.Empty, "Name and path are required.");
+            ModelState.AddModelError(string.Empty, Ui["admin.system.error.nameAndPathRequired"]);
             await LoadAsync(cancellationToken);
             return Page();
         }
@@ -75,7 +83,7 @@ public sealed class SystemModel(
         var fullPath = System.IO.Path.GetFullPath(Path.Trim());
         if (await db.LibraryRoots.AnyAsync(x => x.Path == fullPath, cancellationToken))
         {
-            ModelState.AddModelError(string.Empty, "This library root already exists.");
+            ModelState.AddModelError(string.Empty, Ui["admin.system.error.rootExists"]);
             await LoadAsync(cancellationToken);
             return Page();
         }
@@ -87,7 +95,7 @@ public sealed class SystemModel(
         });
         await db.SaveChangesAsync(cancellationToken);
 
-        TempData["Status"] = "Library root added.";
+        TempData["Status"] = Ui["admin.system.rootAdded"];
         return RedirectToPage();
     }
 
@@ -98,6 +106,8 @@ public sealed class SystemModel(
         string? wakeBroadcastAddress,
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         var root = await db.LibraryRoots
             .SingleOrDefaultAsync(x => x.Id == rootId, cancellationToken);
         if (root is null)
@@ -113,7 +123,7 @@ public sealed class SystemModel(
         {
             ModelState.AddModelError(
                 string.Empty,
-                "Enter a valid 6-byte MAC address.");
+                Ui["admin.system.error.invalidMac"]);
             await LoadAsync(cancellationToken);
             return Page();
         }
@@ -122,7 +132,7 @@ public sealed class SystemModel(
         {
             ModelState.AddModelError(
                 string.Empty,
-                "Enter a MAC address before enabling Wake-on-LAN.");
+                Ui["admin.system.error.macRequired"]);
             await LoadAsync(cancellationToken);
             return Page();
         }
@@ -133,7 +143,7 @@ public sealed class SystemModel(
         {
             ModelState.AddModelError(
                 string.Empty,
-                "Wake-on-LAN broadcast must be a valid IPv4 address.");
+                Ui["admin.system.error.invalidBroadcast"]);
             await LoadAsync(cancellationToken);
             return Page();
         }
@@ -146,8 +156,8 @@ public sealed class SystemModel(
 
         await db.SaveChangesAsync(cancellationToken);
         TempData["Status"] = wakeOnLanEnabled
-            ? "Wake-on-LAN settings saved."
-            : "Wake-on-LAN disabled for this root.";
+            ? Ui["admin.system.wakeOnLanSaved"]
+            : Ui["admin.system.wakeOnLanDisabled"];
 
         return RedirectToPage();
     }
@@ -156,6 +166,8 @@ public sealed class SystemModel(
         Guid rootId,
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         var status = await availability.CheckAsync(
             rootId,
             force: true,
@@ -169,14 +181,14 @@ public sealed class SystemModel(
         TempData["Status"] = status.State switch
         {
             StorageAvailabilityState.Available =>
-                "Media storage is online and readable.",
+                Ui["admin.system.storage.online"],
             StorageAvailabilityState.Starting =>
-                "Media storage is starting; AniLingo will keep checking during playback.",
+                Ui["admin.system.storage.starting"],
             StorageAvailabilityState.Offline =>
-                "Media storage is currently offline.",
+                Ui["admin.system.storage.offline"],
             StorageAvailabilityState.Unreachable =>
-                $"Media storage cannot be read ({status.DiagnosticCode ?? "unreachable"}).",
-            _ => "Media storage availability is unknown."
+                Ui.Format("admin.system.storage.unreachable", ("code", status.DiagnosticCode ?? Ui["admin.system.storage.unreachableDefaultCode"])),
+            _ => Ui["admin.system.storage.unknown"]
         };
 
         return RedirectToPage();
@@ -219,6 +231,8 @@ public sealed class SystemModel(
         int reconciliationIntervalMinutes,
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         var root = await db.LibraryRoots
             .SingleOrDefaultAsync(x => x.Id == rootId, cancellationToken);
         if (root is null)
@@ -232,7 +246,10 @@ public sealed class SystemModel(
         {
             ModelState.AddModelError(
                 string.Empty,
-                $"The reconciliation interval must be 0 (off) or between {LibraryRoot.MinimumReconciliationIntervalMinutes} and {LibraryRoot.MaximumReconciliationIntervalMinutes} minutes.");
+                Ui.Format(
+                    "admin.system.error.reconciliationRange",
+                    ("min", LibraryRoot.MinimumReconciliationIntervalMinutes),
+                    ("max", LibraryRoot.MaximumReconciliationIntervalMinutes)));
             await LoadAsync(cancellationToken);
             return Page();
         }
@@ -241,8 +258,8 @@ public sealed class SystemModel(
         await db.SaveChangesAsync(cancellationToken);
 
         TempData["Status"] = reconciliationIntervalMinutes == 0
-            ? "Periodic reconciliation disabled for this root."
-            : $"Periodic reconciliation set to every {reconciliationIntervalMinutes} minutes.";
+            ? Ui["admin.system.reconciliationDisabled"]
+            : Ui.Format("admin.system.reconciliationSet", ("minutes", reconciliationIntervalMinutes));
         return RedirectToPage();
     }
 

@@ -1,5 +1,6 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
+using AniLingo.Web.Features.Localization;
 using AniLingo.Web.Features.Manga;
 using AniLingo.Web.Features.MediaMapping;
 using AniLingo.Web.Features.Operations;
@@ -16,12 +17,14 @@ public sealed class IndexModel(
     IHttpClientFactory httpClientFactory,
     MediaMappingReviewStore mappingReviewStore) : PageModel
 {
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public IReadOnlyList<MangaSeriesItem> Series { get; private set; } = [];
     public IReadOnlyList<MangaSeriesItem> ContinueReading { get; private set; } = [];
     public bool IsOwner => account.IsOwner;
 
     public async Task OnGetAsync(CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         var repository = new MangaRepository(db);
         Series = await repository.GetLibraryAsync(
             account.ProfileId,
@@ -43,6 +46,8 @@ public sealed class IndexModel(
         {
             return Forbid();
         }
+
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
 
         try
         {
@@ -90,8 +95,10 @@ public sealed class IndexModel(
                 "Manga upload imported.",
                 cancellationToken);
 
-            TempData["Status"] =
-                $"Imported {result.ChapterCount} chapter(s) / {result.PageCount} page(s).";
+            TempData["Status"] = Ui.Format(
+                "manga.status.imported",
+                ("chapters", result.ChapterCount),
+                ("pages", result.PageCount));
             return RedirectToPage(
                 "/Manga/Series",
                 new { id = result.SeriesId });
@@ -114,6 +121,8 @@ public sealed class IndexModel(
         {
             return Forbid();
         }
+
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
 
         try
         {
@@ -149,8 +158,10 @@ public sealed class IndexModel(
                 "Mounted Manga source imported.",
                 cancellationToken);
 
-            TempData["Status"] =
-                $"Imported {result.ChapterCount} chapter(s) / {result.PageCount} page(s).";
+            TempData["Status"] = Ui.Format(
+                "manga.status.imported",
+                ("chapters", result.ChapterCount),
+                ("pages", result.PageCount));
             return RedirectToPage(
                 "/Manga/Series",
                 new { id = result.SeriesId });

@@ -146,7 +146,7 @@ public sealed class LocalFirstPageGetTests
         await fixture.ConnectAniListAsync();
         var page = fixture.Attach(fixture.DiscoverPage());
 
-        page.OnGet();
+        await page.OnGetAsync();
 
         // Browse/search results come from the explicit, no-store Results
         // handler after first paint; the page GET itself stays local.
@@ -163,7 +163,7 @@ public sealed class LocalFirstPageGetTests
             fixture.HttpClientFactory,
             fixture.Operations));
 
-        var result = page.OnGet("321", "Remote Manga");
+        var result = await page.OnGetAsync("321", "Remote Manga");
 
         Assert.IsInstanceOfType<PageResult>(result);
         Assert.AreEqual("321", page.AniListId);

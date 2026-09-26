@@ -2,82 +2,83 @@
 @using AniLingo.Web.Features.Auth
 @model AniLingo.Web.Pages.Admin.UserModel
 @{
-    ViewData["Title"] = $"Manage {Model.Account.Account.UserName}";
+    var ui = Model.Ui;
+    ViewData["Title"] = ui.Format("admin.user.manageTitle", ("userName", Model.Account.Account.UserName));
     var account = Model.Account.Account;
 }
 
 <header class="page-header">
     <div>
-        <span class="eyebrow">Admin · Users</span>
+        <span class="eyebrow">@ui["admin.user.eyebrow"]</span>
         <h1>@account.UserName</h1>
-        <p>@account.Role · @(account.IsEnabled ? "enabled" : "awaiting approval / disabled")</p>
+        <p>@account.Role · @(account.IsEnabled ? ui["admin.user.statusEnabled"] : ui["admin.user.statusPending"])</p>
     </div>
-    <a class="button" asp-page="/Admin/Users">Back to users</a>
+    <a class="button" asp-page="/Admin/Users">@ui["admin.user.backToUsers"]</a>
 </header>
 
-<partial name="_AdminNavigation" />
+<partial name="_AdminNavigation" model="Model.Ui" />
 
 <div asp-validation-summary="ModelOnly" class="validation"></div>
 
 <section class="panel">
     <div class="panel-heading">
-        <h2>Progress</h2>
+        <h2>@ui["admin.user.progress"]</h2>
         @if (Model.Account.LastActivityAt is { } lastActivity)
         {
-            <span>Active @lastActivity.ToString("yyyy-MM-dd HH:mm") UTC</span>
+            <span>@ui.Format("admin.user.activeAt", ("time", lastActivity.ToString("yyyy-MM-dd HH:mm")))</span>
         }
         else
         {
-            <span>No activity yet</span>
+            <span>@ui["admin.user.noActivityYet"]</span>
         }
     </div>
 
     <div class="user-progress-grid">
         <div class="user-progress-item">
-            <span>Anime</span>
+            <span>@ui["admin.operation.anime"]</span>
             @if (Model.Account.CurrentAnime is { } anime)
             {
                 <strong>@anime.AnimeTitle</strong>
                 <small>
                     S@(anime.SeasonNumber.ToString("00")) E@(anime.EpisodeNumber.ToString("00"))
-                    · @(anime.IsCompleted ? "completed" : $"{anime.Percent}%")
+                    · @(anime.IsCompleted ? ui["admin.user.completed"] : $"{anime.Percent}%")
                 </small>
             }
             else
             {
-                <strong>No progress</strong>
-                <small>No episode started yet</small>
+                <strong>@ui["admin.user.noProgress"]</strong>
+                <small>@ui["admin.user.noEpisodeStarted"]</small>
             }
-            <em>@Model.Account.EpisodesStarted started · @Model.Account.EpisodesCompleted completed</em>
+            <em>@ui.Format("admin.user.episodesSummary", ("started", Model.Account.EpisodesStarted), ("completed", Model.Account.EpisodesCompleted))</em>
         </div>
 
         <div class="user-progress-item">
-            <span>Novels</span>
+            <span>@ui["admin.user.novels"]</span>
             @if (Model.Account.CurrentNovel is { } novel)
             {
                 <strong>@novel.WorkTitle</strong>
-                <small>Chapter @novel.ChapterNumber · @novel.Percent%</small>
+                <small>@ui.Format("admin.user.chapterPercent", ("chapter", novel.ChapterNumber), ("percent", novel.Percent))</small>
             }
             else
             {
-                <strong>No progress</strong>
-                <small>No novel started yet</small>
+                <strong>@ui["admin.user.noProgress"]</strong>
+                <small>@ui["admin.user.noNovelStarted"]</small>
             }
-            <em>@Model.Account.NovelsStarted started</em>
+            <em>@ui.Format("admin.user.novelsStarted", ("count", Model.Account.NovelsStarted))</em>
         </div>
 
         <div class="user-progress-item">
-            <span>Learning</span>
-            <strong>@Model.Account.Learning.KnownTerms known</strong>
-            <small>@Model.Account.Learning.LearningTerms learning · @Model.Account.Learning.Reviews reviews</small>
+            <span>@ui["admin.user.learning"]</span>
+            <strong>@ui.Format("admin.user.knownTerms", ("count", Model.Account.Learning.KnownTerms))</strong>
+            <small>@ui.Format("admin.user.learningSummary", ("learning", Model.Account.Learning.LearningTerms), ("reviews", Model.Account.Learning.Reviews))</small>
             <em>
                 @if (Model.Account.Learning.LastReviewAt is { } lastReview)
                 {
-                    <text>Last review @lastReview.ToString("yyyy-MM-dd HH:mm") UTC</text>
+                    @ui.Format("admin.user.lastReviewAt", ("time", lastReview.ToString("yyyy-MM-dd HH:mm")))
                 }
                 else
                 {
-                    <text>No reviews yet</text>
+                    @ui["admin.user.noReviewsYet"]
                 }
             </em>
         </div>
@@ -86,25 +87,25 @@
 
 <div class="settings-grid">
     <section class="panel">
-        <div class="panel-heading"><h2>Account</h2></div>
+        <div class="panel-heading"><h2>@ui["admin.user.account"]</h2></div>
 
         <div class="status-list">
-            <div><span>Role</span><strong>@account.Role</strong></div>
-            <div><span>Status</span><strong>@(account.IsEnabled ? "Enabled" : "Disabled / pending")</strong></div>
-            <div><span>Created</span><strong>@account.CreatedAt.ToString("yyyy-MM-dd HH:mm") UTC</strong></div>
+            <div><span>@ui["admin.user.role"]</span><strong>@account.Role</strong></div>
+            <div><span>@ui["admin.operation.status"]</span><strong>@(account.IsEnabled ? ui["admin.user.enabledLabel"] : ui["admin.user.disabledPendingLabel"])</strong></div>
+            <div><span>@ui["admin.operation.created"]</span><strong>@account.CreatedAt.ToString("yyyy-MM-dd HH:mm") UTC</strong></div>
         </div>
 
         <form method="post" asp-page-handler="Rename" class="form-stack">
             <input type="hidden" name="id" value="@account.Id" />
             <label>
-                <span>User name</span>
+                <span>@ui["admin.user.userNameLabel"]</span>
                 <input name="userName"
                        value="@account.UserName"
                        maxlength="80"
                        autocomplete="username"
                        required />
             </label>
-            <button class="button button-primary" type="submit">Rename user</button>
+            <button class="button button-primary" type="submit">@ui["admin.user.renameUser"]</button>
         </form>
 
         @if (account.Role != AccountRole.Owner)
@@ -114,7 +115,7 @@
                     <input type="hidden" name="id" value="@account.Id" />
                     <input type="hidden" name="enabled" value="@(!account.IsEnabled)" />
                     <button class="button" type="submit">
-                        @(account.IsEnabled ? "Disable user" : "Approve / enable")
+                        @(account.IsEnabled ? ui["admin.user.disableUser"] : ui["admin.user.approveEnable"])
                     </button>
                 </form>
             </div>
@@ -122,27 +123,27 @@
     </section>
 
     <section class="panel">
-        <div class="panel-heading"><h2>Security</h2></div>
+        <div class="panel-heading"><h2>@ui["admin.user.security"]</h2></div>
 
         <form method="post" asp-page-handler="ResetPassword" class="form-stack">
             <input type="hidden" name="id" value="@account.Id" />
             <label>
-                <span>New password</span>
+                <span>@ui["admin.user.newPassword"]</span>
                 <input name="newPassword"
                        type="password"
                        minlength="12"
                        autocomplete="new-password"
                        required />
             </label>
-            <button class="button" type="submit">Reset password</button>
+            <button class="button" type="submit">@ui["admin.user.resetPassword"]</button>
         </form>
 
         <form method="post" asp-page-handler="InvalidateSessions" class="form-stack">
             <input type="hidden" name="id" value="@account.Id" />
             <p class="muted">
-                Signs this account out on every device. The next use requires a fresh login.
+                @ui["admin.user.signOutAllDescription"]
             </p>
-            <button class="button" type="submit">Sign out all sessions</button>
+            <button class="button" type="submit">@ui["admin.user.signOutAllSessions"]</button>
         </form>
     </section>
 </div>
@@ -150,21 +151,21 @@
 @if (account.Role != AccountRole.Owner)
 {
     <section class="panel">
-        <div class="panel-heading"><h2>Delete user</h2></div>
+        <div class="panel-heading"><h2>@ui["admin.user.deleteUser"]</h2></div>
         <p class="muted">
-            This permanently removes the account and its AniLingo profile data.
-            Enter <strong>@account.UserName</strong> to confirm.
+            @ui["admin.user.deleteDescription1"]
+            @ui.Format("admin.user.deleteDescription2", ("userName", account.UserName))
         </p>
         <form method="post" asp-page-handler="Delete" class="form-stack">
             <input type="hidden" name="id" value="@account.Id" />
             <label>
-                <span>Confirmation</span>
+                <span>@ui["admin.user.confirmationLabel"]</span>
                 <input name="confirmation"
                        autocomplete="off"
                        placeholder="@account.UserName"
                        required />
             </label>
-            <button class="button" type="submit">Delete user permanently</button>
+            <button class="button" type="submit">@ui["admin.user.deletePermanently"]</button>
         </form>
     </section>
 }

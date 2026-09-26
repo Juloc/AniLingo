@@ -1,25 +1,38 @@
 @page
 @model AniLingo.Web.Pages.Admin.SystemModel
+@using AniLingo.Web.Features.Operations
 @{
-    ViewData["Title"] = "System";
+    var ui = Model.Ui;
+    ViewData["Title"] = ui["admin.nav.system"];
+
+    string OperationStatusLabel(OperationStatus status) => status switch
+    {
+        OperationStatus.Queued => ui["admin.operations.status.queued"],
+        OperationStatus.Running => ui["admin.operations.status.running"],
+        OperationStatus.Succeeded => ui["admin.operations.status.succeeded"],
+        OperationStatus.Failed => ui["admin.operations.status.failed"],
+        OperationStatus.Cancelled => ui["admin.operations.status.cancelled"],
+        OperationStatus.Interrupted => ui["admin.operations.status.interrupted"],
+        _ => status.ToString()
+    };
 }
 
 <header class="page-header">
     <div>
-        <span class="eyebrow">Admin</span>
-        <h1>System</h1>
-        <p>Server-wide media storage and integrations.</p>
+        <span class="eyebrow">@ui["nav.admin"]</span>
+        <h1>@ui["admin.nav.system"]</h1>
+        <p>@ui["admin.system.subtitle"]</p>
     </div>
 </header>
 
-<partial name="_AdminNavigation" />
+<partial name="_AdminNavigation" model="Model.Ui" />
 
 <div class="settings-grid">
     <section class="panel">
         <div class="panel-heading">
             <div>
-                <span class="eyebrow">Media storage</span>
-                <h2>Configured roots</h2>
+                <span class="eyebrow">@ui["admin.system.mediaStorage"]</span>
+                <h2>@ui["admin.system.configuredRoots"]</h2>
             </div>
             <span>@Model.Roots.Count</span>
         </div>
@@ -28,7 +41,7 @@
 
         @if (Model.Roots.Count == 0)
         {
-            <p class="muted">No roots configured.</p>
+            <p class="muted">@ui["admin.system.noRoots"]</p>
         }
         else
         {
@@ -39,32 +52,32 @@
                         <div class="form-stack" style="flex:1; min-width:0;">
                             <div>
                                 <strong>@root.Name</strong>
-                                <span class="status-pill @root.AvailabilityCss">@root.AvailabilityLabel</span>
+                                <span class="status-pill @root.AvailabilityCss">@root.AvailabilityLabel(ui)</span>
                             </div>
                             <code>@root.Path</code>
                             <small>
-                                Last available:
-                                @(root.Availability.LastAvailableAtUtc?.ToLocalTime().ToString("g") ?? "not yet")
-                                · Last full scan:
-                                @(root.LastScannedAt?.ToLocalTime().ToString("g") ?? "never")
-                                · Periodic reconciliation:
-                                @(root.ReconciliationIntervalMinutes == 0 ? "off" : $"every {root.ReconciliationIntervalMinutes} min")
+                                @ui["admin.system.lastAvailable"]
+                                @(root.Availability.LastAvailableAtUtc?.ToLocalTime().ToString("g") ?? ui["admin.system.notYet"])
+                                · @ui["admin.system.lastFullScan"]
+                                @(root.LastScannedAt?.ToLocalTime().ToString("g") ?? ui["admin.system.never"])
+                                · @ui["admin.system.periodicReconciliation"]
+                                @(root.ReconciliationIntervalMinutes == 0 ? ui["admin.system.off"] : ui.Format("admin.system.everyMinutes", ("minutes", root.ReconciliationIntervalMinutes)))
                             </small>
 
                             @if (root.ActiveScan is { } active)
                             {
                                 <small>
-                                    <span class="status-pill operation-status-@active.Operation.Status.ToString().ToLowerInvariant()">@active.Operation.StatusLabel</span>
-                                    @active.Trigger scan (@active.Scope) · @active.Phase
+                                    <span class="status-pill operation-status-@active.Operation.Status.ToString().ToLowerInvariant()">@OperationStatusLabel(active.Operation.Status)</span>
+                                    @ui.Format("admin.system.triggerScan", ("trigger", active.Trigger), ("scope", active.Scope)) · @active.Phase
                                     @if (active.FileProgress is { } files)
                                     {
                                         <text> · @files</text>
                                     }
-                                    · <a asp-page="/Admin/Operation" asp-route-id="@active.Operation.Id">Details</a>
+                                    · <a asp-page="/Admin/Operation" asp-route-id="@active.Operation.Id">@ui["admin.system.details"]</a>
                                 </small>
                                 @if (active.Operation.ProgressPercent is { } progress)
                                 {
-                                    <div class="operation-progress" aria-label="@progress% complete">
+                                    <div class="operation-progress" aria-label="@ui.Format("admin.operation.progressComplete", ("percent", progress))">
                                         <span style="width:@progress%"></span>
                                     </div>
                                 }
@@ -72,51 +85,51 @@
                             else if (root.LastScan is { } last)
                             {
                                 <small>
-                                    <span class="status-pill operation-status-@last.Operation.Status.ToString().ToLowerInvariant()">@last.Operation.StatusLabel</span>
-                                    @last.Trigger scan (@last.Scope)
+                                    <span class="status-pill operation-status-@last.Operation.Status.ToString().ToLowerInvariant()">@OperationStatusLabel(last.Operation.Status)</span>
+                                    @ui.Format("admin.system.triggerScan", ("trigger", last.Trigger), ("scope", last.Scope))
                                     @(last.Operation.FinishedAtUtc?.ToLocalTime().ToString("g") ?? "")
                                     @if (last.Counters is { } counters)
                                     {
                                         <text> · @AniLingo.Web.Features.Library.LibraryScanCoordinator.Summarize(counters)</text>
                                         @if (last.Warnings > 0)
                                         {
-                                            <text> @last.Warnings warning(s).</text>
+                                            <text> @ui.Format("admin.system.warningsCount", ("count", last.Warnings))</text>
                                         }
                                     }
                                     else if (!string.IsNullOrWhiteSpace(last.Operation.Error))
                                     {
                                         <text> · @last.Operation.Error</text>
                                     }
-                                    · <a asp-page="/Admin/Operation" asp-route-id="@last.Operation.Id">Details</a>
+                                    · <a asp-page="/Admin/Operation" asp-route-id="@last.Operation.Id">@ui["admin.system.details"]</a>
                                 </small>
                             }
 
                             <div class="inline-actions">
                                 <form method="post" asp-page-handler="TestRoot">
                                     <input type="hidden" name="rootId" value="@root.Id" />
-                                    <button class="button" type="submit">Test storage</button>
+                                    <button class="button" type="submit">@ui["admin.system.testStorage"]</button>
                                 </form>
 
                                 <form method="post" asp-page-handler="Scan">
                                     <input type="hidden" name="rootId" value="@root.Id" />
                                     <button class="button button-primary" type="submit" disabled="@(root.ActiveScan is not null)">
-                                        @(root.ActiveScan is null ? "Queue library scan" : "Scan active")
+                                        @(root.ActiveScan is null ? ui["admin.system.queueScan"] : ui["admin.system.scanActive"])
                                     </button>
                                 </form>
 
-                                <a class="button" asp-page="/Admin/Scans" asp-route-rootId="@root.Id">Scan history</a>
+                                <a class="button" asp-page="/Admin/Scans" asp-route-rootId="@root.Id">@ui["admin.system.scanHistory"]</a>
 
                                 @if (root.WakeOnLanEnabled && root.Availability.WakeConfigured)
                                 {
                                     <form method="post" asp-page-handler="WakeRoot">
                                         <input type="hidden" name="rootId" value="@root.Id" />
-                                        <button class="button" type="submit">Wake NAS</button>
+                                        <button class="button" type="submit">@ui["admin.system.wakeNas"]</button>
                                     </form>
                                 }
                             </div>
 
                             <details>
-                                <summary>Wake-on-LAN</summary>
+                                <summary>@ui["admin.system.wakeOnLan"]</summary>
                                 <form method="post" asp-page-handler="ConfigureWake" class="form-stack" style="margin-top:.75rem;">
                                     <input type="hidden" name="rootId" value="@root.Id" />
                                     <label>
@@ -134,33 +147,33 @@
                                                        name="wakeOnLanEnabled"
                                                        value="true" />
                                             }
-                                            Enable Wake-on-LAN
+                                            @ui["admin.system.enableWakeOnLan"]
                                         </span>
                                     </label>
                                     <label>
-                                        <span>NAS MAC address</span>
+                                        <span>@ui["admin.system.nasMacAddress"]</span>
                                         <input name="wakeMacAddress"
                                                value="@root.WakeMacAddress"
                                                autocomplete="off"
                                                placeholder="AA:BB:CC:DD:EE:FF" />
                                     </label>
                                     <label>
-                                        <span>Broadcast IPv4 (optional)</span>
+                                        <span>@ui["admin.system.broadcastIpv4"]</span>
                                         <input name="wakeBroadcastAddress"
                                                value="@root.WakeBroadcastAddress"
                                                autocomplete="off"
                                                placeholder="255.255.255.255" />
                                     </label>
-                                    <button class="button" type="submit">Save Wake-on-LAN</button>
+                                    <button class="button" type="submit">@ui["admin.system.saveWakeOnLan"]</button>
                                 </form>
                             </details>
 
                             <details>
-                                <summary>Periodic reconciliation</summary>
+                                <summary>@ui["admin.system.periodicReconciliationTitle"]</summary>
                                 <form method="post" asp-page-handler="ConfigureReconciliation" class="form-stack" style="margin-top:.75rem;">
                                     <input type="hidden" name="rootId" value="@root.Id" />
                                     <label>
-                                        <span>Full reconciliation interval in minutes (0 turns it off)</span>
+                                        <span>@ui["admin.system.reconciliationIntervalLabel"]</span>
                                         <input name="reconciliationIntervalMinutes"
                                                type="number"
                                                inputmode="numeric"
@@ -169,9 +182,9 @@
                                                value="@root.ReconciliationIntervalMinutes" />
                                     </label>
                                     <small class="muted">
-                                        Filesystem changes are picked up within seconds where the mount raises events; this full pass repairs anything missed, for example on network mounts. Runs are skipped while the storage is offline.
+                                        @ui["admin.system.reconciliationHint"]
                                     </small>
-                                    <button class="button" type="submit">Save interval</button>
+                                    <button class="button" type="submit">@ui["admin.system.saveInterval"]</button>
                                 </form>
                             </details>
                         </div>
@@ -182,55 +195,55 @@
     </section>
 
     <section class="panel">
-        <div class="panel-heading"><h2>Add root</h2></div>
+        <div class="panel-heading"><h2>@ui["admin.system.addRoot"]</h2></div>
         <form method="post" asp-page-handler="Add" class="form-stack">
             <label>
-                <span>Name</span>
+                <span>@ui["admin.system.nameLabel"]</span>
                 <input asp-for="Name" />
             </label>
             <label>
-                <span>Container path</span>
+                <span>@ui["admin.system.containerPathLabel"]</span>
                 <input asp-for="Path" />
             </label>
-            <button class="button button-primary" type="submit">Add library root</button>
+            <button class="button button-primary" type="submit">@ui["admin.system.addLibraryRoot"]</button>
         </form>
     </section>
 </div>
 
 <div class="settings-grid">
     <section class="panel">
-        <div class="panel-heading"><h2>Subtitles</h2><span>Server</span></div>
-        <p class="muted">Coverage, Jimaku lookup and missing transcript preparation.</p>
-        <a class="button" asp-page="/Admin/Subtitles">Manage subtitles</a>
+        <div class="panel-heading"><h2>@ui["admin.subtitles.title"]</h2><span>@ui["admin.system.scope.server"]</span></div>
+        <p class="muted">@ui["admin.system.subtitlesDescription"]</p>
+        <a class="button" asp-page="/Admin/Subtitles">@ui["admin.system.manageSubtitles"]</a>
     </section>
 
     <section class="panel">
-        <div class="panel-heading"><h2>Sonarr</h2><span>Server</span></div>
-        <p class="muted">Configure artwork import from the server's Sonarr library.</p>
-        <a class="button" asp-page="/Admin/Sonarr">Manage Sonarr</a>
+        <div class="panel-heading"><h2>@ui["admin.system.sonarr"]</h2><span>@ui["admin.system.scope.server"]</span></div>
+        <p class="muted">@ui["admin.system.sonarrDescription"]</p>
+        <a class="button" asp-page="/Admin/Sonarr">@ui["admin.system.manageSonarr"]</a>
     </section>
 
     <section class="panel">
-        <div class="panel-heading"><h2>SABnzbd</h2><span>Server</span></div>
-        <p class="muted">One download client connection and categories for Books and Anime.</p>
-        <a class="button" asp-page="/Settings/Sabnzbd">Manage SABnzbd</a>
+        <div class="panel-heading"><h2>@ui["admin.system.sabnzbd"]</h2><span>@ui["admin.system.scope.server"]</span></div>
+        <p class="muted">@ui["admin.system.sabnzbdDescription"]</p>
+        <a class="button" asp-page="/Settings/Sabnzbd">@ui["admin.system.manageSabnzbd"]</a>
     </section>
 
     <section class="panel">
-        <div class="panel-heading"><h2>Prowlarr</h2><span>Server</span></div>
-        <p class="muted">Indexer search for anime acquisition.</p>
-        <a class="button" asp-page="/Settings/Prowlarr">Manage Prowlarr</a>
+        <div class="panel-heading"><h2>@ui["admin.system.prowlarr"]</h2><span>@ui["admin.system.scope.server"]</span></div>
+        <p class="muted">@ui["admin.system.prowlarrDescription"]</p>
+        <a class="button" asp-page="/Settings/Prowlarr">@ui["admin.system.manageProwlarr"]</a>
     </section>
 
     <section class="panel">
-        <div class="panel-heading"><h2>Anime acquisition</h2><span>Server</span></div>
-        <p class="muted">Monitored anime, wanted episodes, downloads, imports and decisions.</p>
-        <a class="button" asp-page="/Acquisition/Index">Open acquisition</a>
+        <div class="panel-heading"><h2>@ui["admin.system.animeAcquisition"]</h2><span>@ui["admin.system.scope.server"]</span></div>
+        <p class="muted">@ui["admin.system.acquisitionDescription"]</p>
+        <a class="button" asp-page="/Acquisition/Index">@ui["admin.system.openAcquisition"]</a>
     </section>
 
     <section class="panel">
-        <div class="panel-heading"><h2>AI</h2><span>Server</span></div>
-        <p class="muted">Configure optional server-side AI providers and caches.</p>
-        <a class="button" asp-page="/Admin/Ai">Manage AI</a>
+        <div class="panel-heading"><h2>@ui["admin.system.ai"]</h2><span>@ui["admin.system.scope.server"]</span></div>
+        <p class="muted">@ui["admin.system.aiDescription"]</p>
+        <a class="button" asp-page="/Admin/Ai">@ui["admin.system.manageAi"]</a>
     </section>
 </div>
