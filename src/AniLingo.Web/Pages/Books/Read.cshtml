@@ -47,6 +47,8 @@
     <script src="~/js/reader-themes.js" asp-append-version="true"></script>
     <script src="~/js/books-reader.js" asp-append-version="true"></script>
     <script src="~/js/reader-shell.js" asp-append-version="true"></script>
+    <script src="~/js/tts.js" asp-append-version="true"></script>
+    <script src="~/js/reader-tts.js" asp-append-version="true"></script>
 }
 
 <div class="book-reader-page"
@@ -161,7 +163,8 @@
     <main class="book-reader-content" data-book-reader-content data-reader-surface>
         <article class="book-reader-column original"
                  data-book-original
-                 data-book-language="original">
+                 data-book-language="original"
+                 lang="@Model.Reader.SourceLanguage">
             @for (var index = 0; index < Model.Reader.OriginalParagraphs.Count; index++)
             {
                 <p data-book-paragraph="@index">@Model.Reader.OriginalParagraphs[index]</p>
@@ -171,6 +174,7 @@
         <article class="book-reader-column translated"
                  data-book-translated
                  data-book-language="@Model.Reader.TargetLanguage"
+                 lang="@Model.Reader.TargetLanguage"
                  hidden="@(!hasAlternate || defaultView == "original")">
             @for (var index = 0; index < translatedParagraphs.Count; index++)
             {
@@ -197,7 +201,8 @@
 
         @if (Model.Reader.NextChapterId is Guid next)
         {
-            <a href="/Books/Read/@next?lang=@Model.Reader.TargetLanguage">Next chapter →</a>
+            <a href="/Books/Read/@next?lang=@Model.Reader.TargetLanguage"
+               data-reader-next-chapter="@next">Next chapter →</a>
         }
     </footer>
 

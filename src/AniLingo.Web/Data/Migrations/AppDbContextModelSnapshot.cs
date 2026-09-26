@@ -142,6 +142,12 @@ namespace AniLingo.Web.Data.Migrations
                     b.Property<string>("ScopeKey").IsRequired().HasMaxLength(80).HasColumnType("TEXT");
                     b.Property<string>("TextAlignment").HasMaxLength(24).HasColumnType("TEXT");
                     b.Property<int?>("TextWidthPx").HasColumnType("INTEGER");
+                    b.Property<bool?>("TtsAutoContinueChapters").HasColumnType("INTEGER");
+                    b.Property<double?>("TtsPitch").HasColumnType("REAL");
+                    b.Property<string>("TtsProviderId").HasMaxLength(24).HasColumnType("TEXT");
+                    b.Property<double?>("TtsRate").HasColumnType("REAL");
+                    b.Property<string>("TtsVoiceIds").HasMaxLength(8000).HasColumnType("TEXT");
+                    b.Property<double?>("TtsVolume").HasColumnType("REAL");
                     b.Property<bool?>("TwoPageSpread").HasColumnType("INTEGER");
                     b.Property<DateTime>("UpdatedAt").HasColumnType("TEXT");
                     b.Property<Guid?>("WorkId").HasColumnType("TEXT");
@@ -530,6 +536,19 @@ namespace AniLingo.Web.Data.Migrations
 
                     b.Property<bool>("AutoplayNext")
                         .HasColumnType("INTEGER");
+
+                    b.Property<double>("DefaultPlaybackSpeed")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("REAL")
+                        .HasDefaultValue(1.0);
+
+                    b.Property<string>("PreferredAudioLanguage")
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PreferredSubtitleLanguage")
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("TEXT");

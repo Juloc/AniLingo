@@ -51,6 +51,7 @@ public sealed class EpisodeModel(
     public EpisodePlaybackSnapshot Playback { get; private set; } = EpisodePlaybackSnapshot.Empty;
     public EpisodeProgressSnapshot? LocalProgress { get; private set; }
     public EpisodeFlowSnapshot? Flow { get; private set; }
+    public PlayerControls? Controls { get; private set; }
     public double ResumePositionSeconds =>
         (LocalProgress?.ResumePositionMs ?? 0) / 1000d;
     public string? NextEpisodeUrl =>
@@ -141,6 +142,17 @@ public sealed class EpisodeModel(
         ExternalProgress = await aniListAccountService.GetEpisodeProgressSummaryAsync(
             id,
             cancellationToken);
+
+        if (Playback.Media is { } playbackMedia)
+        {
+            var preferences = Flow?.Preferences
+                ?? await episodeProgressService.GetPreferencesAsync(cancellationToken);
+            Controls = PlayerControls.Build(
+                playbackMedia,
+                Playback.Cues.Count > 0,
+                await FindLearningSourceStreamIndexAsync(id, playbackMedia.SourcePath, cancellationToken),
+                preferences);
+        }
 
         if (IsOwner && NeedsLearningSource)
         {
@@ -303,6 +315,31 @@ public sealed class EpisodeModel(
             .ToArray();
     }
 
+    private async Task<int?> FindLearningSourceStreamIndexAsync(
+        Guid episodeId,
+        string mediaPath,
+        CancellationToken cancellationToken)
+    {
+        var activePath = await db.SubtitleTracks
+            .AsNoTracking()
+            .Where(x => x.EpisodeId == episodeId && x.Language == "ja")
+            .OrderByDescending(x => x.ImportedAt)
+            .ThenBy(x => x.Id)
+            .Select(x => x.Path)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var prefix = EmbeddedSubtitleExtractor.BuildSourcePrefix(mediaPath);
+        return activePath is not null &&
+               activePath.StartsWith(prefix, StringComparison.Ordinal) &&
+               int.TryParse(
+                   activePath.AsSpan(prefix.Length),
+                   System.Globalization.NumberStyles.None,
+                   System.Globalization.CultureInfo.InvariantCulture,
+                   out var streamIndex)
+            ? streamIndex
+            : null;
+    }
+
     private static string BuildSubtitleLabel(string sourceKey)
     {
         if (sourceKey.StartsWith(
@@ -336,11 +373,21 @@ public sealed class EpisodeModel(
         Guid id,
         string? mode,
         double? start,
+        string? audio,
+        string? quality,
         CancellationToken cancellationToken)
     {
+        if (!PlaybackQuality.TryParse(quality, out var qualityCap))
+        {
+            return BadRequest();
+        }
+
         var stream = await playbackService.GetStreamAsync(
             id,
-            ParsePlaybackMode(mode),
+            new PlaybackStreamRequest(
+                ParsePlaybackMode(mode),
+                string.IsNullOrWhiteSpace(audio) ? null : audio.Trim(),
+                qualityCap),
             cancellationToken);
         if (stream is null || !System.IO.File.Exists(stream.SourcePath))
         {
@@ -362,7 +409,9 @@ public sealed class EpisodeModel(
             var liveStream = LivePlaybackStream.Start(
                 stream.SourcePath,
                 stream.LivePlan!,
-                startSeconds);
+                startSeconds,
+                stream.AudioStreamIndex,
+                stream.QualityCap);
 
             return new FileStreamResult(liveStream, stream.ContentType)
             {

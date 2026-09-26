@@ -203,6 +203,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         {
             entity.HasKey(x => x.ProfileId);
             entity.Property(x => x.ProfileId).HasMaxLength(80);
+            entity.Property(x => x.PreferredAudioLanguage).HasMaxLength(16);
+            entity.Property(x => x.PreferredSubtitleLanguage).HasMaxLength(16);
+            entity.Property(x => x.DefaultPlaybackSpeed).HasDefaultValue(PlaybackPreferenceRules.DefaultSpeed);
         });
 
         LearningCourseModelConfiguration.Configure(modelBuilder);
@@ -382,6 +385,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(x => x.BackgroundMotionMode).HasMaxLength(24);
             entity.Property(x => x.BookmarkStyle).HasMaxLength(24);
             entity.Property(x => x.BookmarkColor).HasMaxLength(16);
+            entity.Property(x => x.TtsProviderId).HasMaxLength(24);
+            entity.Property(x => x.TtsVoiceIds).HasMaxLength(8000);
             entity.HasOne<NovelWork>().WithMany().HasForeignKey(x => x.WorkId).OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(x => new { x.ProfileId, x.ScopeKey }).IsUnique();
             entity.HasIndex(x => x.WorkId);

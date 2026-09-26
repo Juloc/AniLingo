@@ -46,6 +46,8 @@ public static class ClientApiContract
                 EpisodeFlow: true,
                 ContinueWatching: true,
                 PlaybackHistory: true,
+                PlaybackPreferences: true,
+                EmbeddedSubtitleCues: true,
                 OfflineDownloads: true));
     }
 }
@@ -90,6 +92,9 @@ public static class ClientApiRoutes
 
     public static string Cues(Guid episodeId) =>
         $"{Episode(episodeId)}/cues";
+
+    public static string SubtitleTrackCues(Guid episodeId, string trackId) =>
+        $"{Episode(episodeId)}/subtitle-tracks/{Uri.EscapeDataString(trackId)}/cues";
 
     public static string DirectContent(Guid mediaFileId) =>
         $"{ClientApiContract.BasePath}/media/{mediaFileId:D}/content";
@@ -174,6 +179,8 @@ public sealed record ClientFeatureFlags(
     bool EpisodeFlow,
     bool ContinueWatching,
     bool PlaybackHistory,
+    bool PlaybackPreferences,
+    bool EmbeddedSubtitleCues,
     bool OfflineDownloads);
 
 public sealed record ClientErrorResponse(
@@ -292,7 +299,26 @@ public sealed record ClientContinueWatchingItem(
     DateTime UpdatedAtUtc,
     string? CoverImageUrl);
 
-public sealed record ClientPlaybackPreferences(bool AutoplayNext);
+/// <summary>
+/// Profile-scoped playback preferences. Language values are normalized tags;
+/// <c>preferredSubtitleLanguage</c> may be <c>off</c>. Null means "use the
+/// file default".
+/// </summary>
+public sealed record ClientPlaybackPreferences(
+    bool AutoplayNext,
+    string? PreferredAudioLanguage,
+    string? PreferredSubtitleLanguage,
+    double DefaultPlaybackSpeed);
+
+/// <summary>
+/// Partial update: omitted/null fields keep their stored value; an empty
+/// language string clears that preference.
+/// </summary>
+public sealed record ClientPlaybackPreferencesUpdate(
+    bool? AutoplayNext = null,
+    string? PreferredAudioLanguage = null,
+    string? PreferredSubtitleLanguage = null,
+    double? DefaultPlaybackSpeed = null);
 
 public sealed record ClientPlaybackHistoryResponse(
     int Limit,
@@ -322,7 +348,37 @@ public sealed record ClientPlayerBootstrap(
     Guid? ActiveLearningSubtitleTrackId,
     string? DefaultAudioTrackId,
     string? DefaultSubtitleTrackId,
-    ClientCompatibilityFallback Fallback);
+    ClientCompatibilityFallback Fallback,
+    ClientPlayerDefaults Defaults,
+    ClientPlayerControls Controls);
+
+/// <summary>
+/// Server-resolved initial selection for this profile: file defaults
+/// overridden by the profile's language preferences. <c>subtitleMode</c> is
+/// <c>off</c>, <c>learning</c> (the AniLingo cue overlay) or <c>embedded</c>
+/// (with <c>subtitleTrackId</c>).
+/// </summary>
+public sealed record ClientPlayerDefaults(
+    string? AudioTrackId,
+    string SubtitleMode,
+    string? SubtitleTrackId,
+    double PlaybackSpeed,
+    ClientPlaybackPreferences Preferences);
+
+/// <summary>Canonical control vocabulary: allowed speeds and quality-cap names.</summary>
+public sealed record ClientPlayerControls(
+    IReadOnlyList<double> PlaybackSpeeds,
+    IReadOnlyList<string> QualityCaps);
+
+public sealed record ClientEmbeddedSubtitleCues(
+    string TrackId,
+    string? Language,
+    IReadOnlyList<ClientPlainCue> Cues);
+
+public sealed record ClientPlainCue(
+    int StartMs,
+    int EndMs,
+    string Text);
 
 public sealed record ClientPlayerEpisode(
     Guid Id,
@@ -492,9 +548,24 @@ public static class ClientApiMappings
                 episode.Number,
                 episode.Title);
 
+    public static ClientPlaybackPreferences ToClientPreferences(
+        PlaybackPreferencesSnapshot preferences) =>
+        new(
+            preferences.AutoplayNext,
+            preferences.PreferredAudioLanguage,
+            preferences.PreferredSubtitleLanguage,
+            preferences.DefaultPlaybackSpeed);
+
+    public static ClientEmbeddedSubtitleCues ToClientEmbeddedSubtitleCues(
+        PlaybackEmbeddedSubtitleCues cues) =>
+        new(
+            cues.TrackId,
+            cues.Language,
+            cues.Cues.Select(x => new ClientPlainCue(x.StartMs, x.EndMs, x.Text)).ToArray());
+
     public static ClientMediaTrack ToClientTrack(PlaybackMediaTrack track) =>
         new(
-            $"stream:{track.StreamIndex}",
+            PlaybackTrackIds.Format(track.StreamIndex),
             track.StreamIndex,
             track.Kind == PlaybackTrackKind.Audio ? "audio" : "subtitle",
             track.Codec,

@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.ReaderCore;
+using AniLingo.Web.Features.Speech;
 using Microsoft.EntityFrameworkCore;
 
 namespace AniLingo.Web.Features.ReaderPreferences;
@@ -46,6 +47,14 @@ public sealed class ReaderPreference
     public string? BookmarkStyle { get; set; }
     public string? BookmarkColor { get; set; }
 
+    public string? TtsProviderId { get; set; }
+    /// <summary>JSON object: normalized BCP-47 tag -> voice id. See <see cref="SpeechVoiceMap"/>.</summary>
+    public string? TtsVoiceIds { get; set; }
+    public double? TtsRate { get; set; }
+    public double? TtsPitch { get; set; }
+    public double? TtsVolume { get; set; }
+    public bool? TtsAutoContinueChapters { get; set; }
+
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
 
@@ -83,6 +92,14 @@ public sealed class ReaderSettingsInput
 
     public string? BookmarkStyle { get; set; }
     public string? BookmarkColor { get; set; }
+
+    public string? TtsProviderId { get; set; } = "auto";
+    /// <summary>JSON object: language tag -> voice id (the effective map the client posts back).</summary>
+    public string? TtsVoiceIds { get; set; }
+    public double TtsRate { get; set; } = 1;
+    public double TtsPitch { get; set; } = 1;
+    public double TtsVolume { get; set; } = 1;
+    public bool TtsAutoContinueChapters { get; set; }
 }
 
 public sealed record ReaderSettingsSnapshot(
@@ -124,6 +141,29 @@ public sealed record ReaderSettingsSnapshot(
     public bool HasGenreOverride { get; init; }
     public IReadOnlyDictionary<string, string> EffectiveSources { get; init; } =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+    public string TtsProviderId { get; init; } = "auto";
+    public IReadOnlyDictionary<string, string> TtsVoiceIds { get; init; } = SpeechVoiceMap.Empty;
+    public double TtsRate { get; init; } = 1;
+    public double TtsPitch { get; init; } = 1;
+    public double TtsVolume { get; init; } = 1;
+    public bool TtsAutoContinueChapters { get; init; }
+
+    /// <summary>
+    /// Builds the provider-neutral speech request for one document language from the
+    /// effective Reader settings. This is the only bridge between Reader preferences and
+    /// the speech resolver; the Reader never stores a second copy of these values.
+    /// </summary>
+    public SpeechPreferences SpeechPreferencesFor(string? language) =>
+        new(
+            ProviderId: string.Equals(TtsProviderId, "auto", StringComparison.OrdinalIgnoreCase)
+                ? null
+                : TtsProviderId,
+            VoiceId: SpeechVoiceMap.VoiceIdFor(TtsVoiceIds, language),
+            Language: SpeechPreferenceResolver.NormalizeLanguageTag(language),
+            Rate: TtsRate,
+            Pitch: TtsPitch,
+            Volume: TtsVolume);
 }
 
 public static partial class ReaderPreferenceRules
@@ -292,6 +332,41 @@ public static partial class ReaderPreferenceRules
 
     public static double NormalizeThemeTintStrength(double value) =>
         Math.Round(Math.Clamp(value, 0, 2), 2);
+
+    private static readonly HashSet<string> TtsProviders =
+        new(StringComparer.OrdinalIgnoreCase) { "auto", "device" };
+
+    /// <summary>Field key prefix for one per-language voice entry: <c>ttsVoiceId:&lt;language&gt;</c>.</summary>
+    public const string TtsVoiceFieldPrefix = "ttsVoiceId:";
+
+    public static string NormalizeTtsProviderId(string? value) =>
+        NormalizeChoice(value, TtsProviders, "auto");
+
+    public static double NormalizeTtsRate(double value) =>
+        SpeechPreferenceResolver.NormalizeRate(value);
+
+    public static double NormalizeTtsPitch(double value) =>
+        SpeechPreferenceResolver.NormalizePitch(value);
+
+    public static double NormalizeTtsVolume(double value) =>
+        SpeechPreferenceResolver.NormalizeVolume(value);
+
+    public static string TtsVoiceFieldKey(string? language) =>
+        TtsVoiceFieldPrefix + SpeechPreferenceResolver.NormalizeLanguageTag(language);
+
+    public static bool TryParseTtsVoiceFieldKey(string? changedKey, out string language)
+    {
+        language = "";
+        var key = changedKey?.Trim();
+        if (key is null ||
+            !key.StartsWith(TtsVoiceFieldPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        language = SpeechPreferenceResolver.NormalizeLanguageTag(key[TtsVoiceFieldPrefix.Length..]);
+        return language != "und";
+    }
 
     public static IReadOnlyList<string> ParseGenres(string? json)
     {
@@ -463,6 +538,18 @@ public static class ReaderPreferenceStore
         var genreSelection = ReaderPreferenceRules.NormalizeGenreTheme(
             ResolveString("genreTheme", x => x.GenreTheme, preset.GenreTheme));
 
+        // Per-language voice entries inherit independently: a higher layer that only
+        // chooses a Japanese voice keeps the inherited German voice.
+        var ttsVoiceIds = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var layer in layers)
+        {
+            foreach (var (language, voiceId) in SpeechVoiceMap.Parse(layer.TtsVoiceIds))
+            {
+                ttsVoiceIds[language] = voiceId;
+                sources[ReaderPreferenceRules.TtsVoiceFieldKey(language)] = layer.ScopeKey;
+            }
+        }
+
         var snapshot = new ReaderSettingsSnapshot(
             ReadingMode: ReaderPreferenceRules.NormalizeReadingMode(
                 ResolveString("readingMode", x => x.ReadingMode, preset.ReadingMode)),
@@ -581,6 +668,19 @@ public static class ReaderPreferenceStore
             ContentTypeKey = ReaderContentTypes.ToKey(contentType),
             HasTypeOverride = type is not null,
             HasGenreOverride = genreLayers.Length > 0,
+            TtsProviderId = ReaderPreferenceRules.NormalizeTtsProviderId(
+                ResolveString("ttsProviderId", x => x.TtsProviderId, preset.TtsProviderId)),
+            TtsVoiceIds = ttsVoiceIds,
+            TtsRate = ReaderPreferenceRules.NormalizeTtsRate(
+                ResolveValue("ttsRate", x => x.TtsRate, preset.TtsRate)),
+            TtsPitch = ReaderPreferenceRules.NormalizeTtsPitch(
+                ResolveValue("ttsPitch", x => x.TtsPitch, preset.TtsPitch)),
+            TtsVolume = ReaderPreferenceRules.NormalizeTtsVolume(
+                ResolveValue("ttsVolume", x => x.TtsVolume, preset.TtsVolume)),
+            TtsAutoContinueChapters = ResolveValue(
+                "ttsAutoContinueChapters",
+                x => x.TtsAutoContinueChapters,
+                preset.TtsAutoContinueChapters),
             EffectiveSources = sources
         };
 
@@ -837,6 +937,39 @@ public static class ReaderPreferenceStore
             ReaderPreferenceRules.NormalizeBookmarkStyle(input.BookmarkStyle);
         preference.BookmarkColor =
             ReaderPreferenceRules.NormalizeBookmarkColor(input.BookmarkColor);
+        preference.TtsProviderId =
+            ReaderPreferenceRules.NormalizeTtsProviderId(input.TtsProviderId);
+        preference.TtsVoiceIds =
+            SpeechVoiceMap.Serialize(SpeechVoiceMap.Parse(input.TtsVoiceIds));
+        preference.TtsRate =
+            ReaderPreferenceRules.NormalizeTtsRate(input.TtsRate);
+        preference.TtsPitch =
+            ReaderPreferenceRules.NormalizeTtsPitch(input.TtsPitch);
+        preference.TtsVolume =
+            ReaderPreferenceRules.NormalizeTtsVolume(input.TtsVolume);
+        preference.TtsAutoContinueChapters = input.TtsAutoContinueChapters;
+    }
+
+    private static void ApplyTtsVoice(
+        ReaderPreference preference,
+        string language,
+        string? voiceId)
+    {
+        var map = new Dictionary<string, string>(
+            SpeechVoiceMap.Parse(preference.TtsVoiceIds),
+            StringComparer.OrdinalIgnoreCase);
+        var normalizedVoice = SpeechVoiceMap.NormalizeVoiceId(voiceId);
+
+        if (normalizedVoice is null)
+        {
+            map.Remove(language);
+        }
+        else if (map.Count < SpeechVoiceMap.MaxEntries || map.ContainsKey(language))
+        {
+            map[language] = normalizedVoice;
+        }
+
+        preference.TtsVoiceIds = SpeechVoiceMap.Serialize(map);
     }
 
     private static void ApplyField(
@@ -844,6 +977,14 @@ public static class ReaderPreferenceStore
         string changedKey,
         ReaderSettingsInput input)
     {
+        if (ReaderPreferenceRules.TryParseTtsVoiceFieldKey(changedKey, out var voiceLanguage))
+        {
+            // Only the exact language entry is written; base-language fallback is a read concern.
+            SpeechVoiceMap.Parse(input.TtsVoiceIds).TryGetValue(voiceLanguage, out var voiceId);
+            ApplyTtsVoice(preference, voiceLanguage, voiceId);
+            return;
+        }
+
         switch (changedKey.Trim())
         {
             case "readingMode":
@@ -960,6 +1101,25 @@ public static class ReaderPreferenceStore
                 preference.BookmarkColor =
                     ReaderPreferenceRules.NormalizeBookmarkColor(input.BookmarkColor);
                 break;
+            case "ttsProviderId":
+                preference.TtsProviderId =
+                    ReaderPreferenceRules.NormalizeTtsProviderId(input.TtsProviderId);
+                break;
+            case "ttsRate":
+                preference.TtsRate =
+                    ReaderPreferenceRules.NormalizeTtsRate(input.TtsRate);
+                break;
+            case "ttsPitch":
+                preference.TtsPitch =
+                    ReaderPreferenceRules.NormalizeTtsPitch(input.TtsPitch);
+                break;
+            case "ttsVolume":
+                preference.TtsVolume =
+                    ReaderPreferenceRules.NormalizeTtsVolume(input.TtsVolume);
+                break;
+            case "ttsAutoContinueChapters":
+                preference.TtsAutoContinueChapters = input.TtsAutoContinueChapters;
+                break;
             default:
                 throw new InvalidOperationException("Unknown reader setting.");
         }
@@ -969,6 +1129,12 @@ public static class ReaderPreferenceStore
         ReaderPreference preference,
         string changedKey)
     {
+        if (ReaderPreferenceRules.TryParseTtsVoiceFieldKey(changedKey, out var voiceLanguage))
+        {
+            ApplyTtsVoice(preference, voiceLanguage, null);
+            return;
+        }
+
         switch (changedKey.Trim())
         {
             case "readingMode": preference.ReadingMode = null; break;
@@ -1000,6 +1166,11 @@ public static class ReaderPreferenceStore
             case "themeTintStrength": preference.ThemeTintStrength = null; break;
             case "bookmarkStyle": preference.BookmarkStyle = null; break;
             case "bookmarkColor": preference.BookmarkColor = null; break;
+            case "ttsProviderId": preference.TtsProviderId = null; break;
+            case "ttsRate": preference.TtsRate = null; break;
+            case "ttsPitch": preference.TtsPitch = null; break;
+            case "ttsVolume": preference.TtsVolume = null; break;
+            case "ttsAutoContinueChapters": preference.TtsAutoContinueChapters = null; break;
             default:
                 throw new InvalidOperationException("Unknown reader setting.");
         }
@@ -1034,7 +1205,13 @@ public static class ReaderPreferenceStore
         preference.ThemeParallaxStrength is null &&
         preference.ThemeTintStrength is null &&
         preference.BookmarkStyle is null &&
-        preference.BookmarkColor is null;
+        preference.BookmarkColor is null &&
+        preference.TtsProviderId is null &&
+        preference.TtsVoiceIds is null &&
+        preference.TtsRate is null &&
+        preference.TtsPitch is null &&
+        preference.TtsVolume is null &&
+        preference.TtsAutoContinueChapters is null;
 
     private static async Task<ReaderPreference> FindOrCreateAsync(
         AppDbContext db,

@@ -241,11 +241,17 @@
              data-media-url="@Url.Page("/Library/Episode", "Media", new { id = Model.EpisodeId })">
         <div class="video-stage player-placeholder" data-video-stage>
             <video controls preload="none" playsinline hidden data-playback-video></video>
-            <div class="subtitle-overlay"
-                 data-subtitle-overlay
-                 lang="ja"
-                 aria-live="polite"
-                 hidden></div>
+            <div class="player-subtitle-stack">
+                <div class="subtitle-overlay"
+                     data-subtitle-overlay
+                     lang="ja"
+                     aria-live="polite"
+                     hidden></div>
+                <div class="playback-subtitle-overlay"
+                     data-playback-subtitle
+                     aria-live="polite"
+                     hidden></div>
+            </div>
 
             @if (Model.ShowPlayerTools)
             {
@@ -333,6 +339,122 @@
                    style="flex:1; width:100%; min-width:0;" />
             <div><span data-playback-duration>--:--</span></div>
         </div>
+
+        @if (Model.Controls is { } controls)
+        {
+            var seekStep = PlayerDesign.SeekStepSeconds;
+            <div class="player-controls" data-player-controls>
+                <div class="player-transport" role="group" aria-label="Playback controls">
+                    <button class="player-control-button"
+                            type="button"
+                            data-player-action="seekBack10"
+                            aria-label="Back @seekStep seconds"
+                            title="Back @seekStep seconds">
+                        <partial name="_PlayerIcon" model="@("seekBack")" />
+                        <span>@seekStep</span>
+                    </button>
+                    <button class="player-control-button"
+                            type="button"
+                            data-player-action="repeatCurrentCue"
+                            data-repeat-line
+                            aria-label="Repeat current line"
+                            title="Repeat current line">
+                        <partial name="_PlayerIcon" model="@("replay")" />
+                        <span>Line</span>
+                    </button>
+                    <button class="player-control-button"
+                            type="button"
+                            data-player-action="seekForward10"
+                            aria-label="Forward @seekStep seconds"
+                            title="Forward @seekStep seconds">
+                        <partial name="_PlayerIcon" model="@("seekForward")" />
+                        <span>@seekStep</span>
+                    </button>
+                </div>
+
+                <div class="player-selectors">
+                    <label class="player-select" title="Playback speed">
+                        <partial name="_PlayerIcon" model="@("speed")" />
+                        <span class="player-select-label">Speed</span>
+                        <select data-playback-speed>
+                            @foreach (var speed in controls.Speeds)
+                            {
+                                <option value="@speed.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+                                        selected="@(Math.Abs(speed - controls.InitialSpeed) < 0.0001)">@PlayerDesign.FormatSpeed(speed)</option>
+                            }
+                        </select>
+                    </label>
+
+                    @if (controls.AudioTracks.Count > 1)
+                    {
+                        <label class="player-select" title="Audio track">
+                            <partial name="_PlayerIcon" model="@("audioTrack")" />
+                            <span class="player-select-label">Audio</span>
+                            <select data-audio-track>
+                                @foreach (var track in controls.AudioTracks)
+                                {
+                                    <option value="@track.Id"
+                                            data-language="@(track.Language ?? "")"
+                                            selected="@(track.Id == controls.InitialAudioTrackId)">@track.Label</option>
+                                }
+                            </select>
+                        </label>
+                    }
+
+                    <label class="player-select" title="Subtitles">
+                        <partial name="_PlayerIcon" model="@("subtitles")" />
+                        <span class="player-select-label">Subtitles</span>
+                        <select data-subtitle-track>
+                            <option value="@PlayerControls.SubtitleOff"
+                                    selected="@(controls.InitialSubtitle == PlayerControls.SubtitleOff)">Off</option>
+                            @if (controls.HasLearningCues)
+                            {
+                                <option value="@PlayerControls.SubtitleLearning"
+                                        data-language="ja"
+                                        selected="@(controls.InitialSubtitle == PlayerControls.SubtitleLearning)">Japanese · learning</option>
+                            }
+                            @foreach (var track in controls.SubtitleTracks)
+                            {
+                                <option value="@track.Id"
+                                        data-language="@(track.Language ?? "")"
+                                        data-learning-source="@(track.IsLearningSource ? "true" : "false")"
+                                        disabled="@(!track.IsSelectable)"
+                                        selected="@(track.Id == controls.InitialSubtitle)">@track.Label</option>
+                            }
+                        </select>
+                    </label>
+
+                    <label class="player-select" title="Remote quality limit (this device)">
+                        <partial name="_PlayerIcon" model="@("quality")" />
+                        <span class="player-select-label">Quality</span>
+                        <select data-quality-cap>
+                            <option value="auto">Auto · original</option>
+                            <option value="1080p">1080p</option>
+                            <option value="720p">720p</option>
+                            <option value="low">Lower bandwidth</option>
+                        </select>
+                    </label>
+
+                    <button class="button player-save-defaults"
+                            type="button"
+                            data-save-playback-defaults
+                            title="Use this audio language, subtitle choice and speed for every episode on this profile">
+                        Save as my defaults
+                    </button>
+                </div>
+                <small class="player-controls-hint" data-quality-hint aria-live="polite"></small>
+                <script type="application/json" data-player-controls-data>@Html.Raw(JsonSerializer.Serialize(new
+                {
+                    fileDefaultAudioTrackId = controls.FileDefaultAudioTrackId,
+                    initialAudioTrackId = controls.InitialAudioTrackId,
+                    sourceHeight = controls.SourceHeight,
+                    seekStepSeconds = seekStep,
+                    capHeights = Enum.GetValues<PlaybackQualityCap>().ToDictionary(PlaybackQuality.Name, PlaybackQuality.MaxHeight),
+                    variants = controls.Variants,
+                    subtitleCuesUrlTemplate = ClientApiRoutes.SubtitleTrackCues(Model.EpisodeId, "__track__")
+                }, new JsonSerializerOptions(JsonSerializerDefaults.Web)))</script>
+            </div>
+        }
 
         <div class="player-meta player-flow-row">
             <div class="player-flow-actions">
