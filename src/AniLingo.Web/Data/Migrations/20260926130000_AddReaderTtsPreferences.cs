@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace AniLingo.Web.Data.Migrations;
 
 [DbContext(typeof(AppDbContext))]
-[Migration("20260926090000_AddReaderTtsPreferences")]
+[Migration("20260926130000_AddReaderTtsPreferences")]
 public sealed class AddReaderTtsPreferences : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)
