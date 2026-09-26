@@ -2,23 +2,24 @@
 @using AniLingo.Web.Features.Auth
 @model AniLingo.Web.Pages.Admin.UsersModel
 @{
-    ViewData["Title"] = "Users";
+    var ui = Model.Ui;
+    ViewData["Title"] = ui["admin.nav.users"];
 }
 
 <header class="page-header">
     <div>
-        <span class="eyebrow">Admin · Users</span>
-        <h1>Users</h1>
-        <p>Manage local accounts and review their AniLingo progress.</p>
+        <span class="eyebrow">@ui["admin.user.eyebrow"]</span>
+        <h1>@ui["admin.nav.users"]</h1>
+        <p>@ui["admin.users.subtitle"]</p>
     </div>
 </header>
 
-<partial name="_AdminNavigation" />
+<partial name="_AdminNavigation" model="Model.Ui" />
 
 <div class="settings-grid">
     <section class="panel">
         <div class="panel-heading">
-            <h2>Accounts</h2>
+            <h2>@ui["admin.users.accounts"]</h2>
             <span>@Model.Users.Count</span>
         </div>
 
@@ -31,10 +32,10 @@
                         <div>
                             <strong>@account.UserName</strong>
                             <small>
-                                @account.Role · @(account.IsEnabled ? "enabled" : "awaiting approval / disabled")
+                                @account.Role · @(account.IsEnabled ? ui["admin.user.statusEnabled"] : ui["admin.user.statusPending"])
                                 @if (user.LastActivityAt is { } lastActivity)
                                 {
-                                    <text> · active @lastActivity.ToString("yyyy-MM-dd HH:mm") UTC</text>
+                                    <text> · @ui.Format("admin.users.activeAt", ("time", lastActivity.ToString("yyyy-MM-dd HH:mm")))</text>
                                 }
                             </small>
                         </div>
@@ -46,69 +47,69 @@
                                 {
                                     <form method="post" asp-page-handler="Disable">
                                         <input type="hidden" name="accountId" value="@account.Id" />
-                                        <button class="button" type="submit">Disable</button>
+                                        <button class="button" type="submit">@ui["admin.users.disable"]</button>
                                     </form>
                                 }
                                 else
                                 {
                                     <form method="post" asp-page-handler="Approve">
                                         <input type="hidden" name="accountId" value="@account.Id" />
-                                        <button class="button button-primary" type="submit">Approve / enable</button>
+                                        <button class="button button-primary" type="submit">@ui["admin.user.approveEnable"]</button>
                                     </form>
                                 }
                             }
                             <a class="button"
                                asp-page="/Admin/User"
-                               asp-route-id="@account.Id">Manage</a>
+                               asp-route-id="@account.Id">@ui["admin.users.manage"]</a>
                         </div>
                     </div>
 
                     <div class="user-progress-grid">
                         <div class="user-progress-item">
-                            <span>Anime</span>
+                            <span>@ui["admin.operation.anime"]</span>
                             @if (user.CurrentAnime is { } anime)
                             {
                                 <strong>@anime.AnimeTitle</strong>
                                 <small>
                                     S@(anime.SeasonNumber.ToString("00")) E@(anime.EpisodeNumber.ToString("00"))
-                                    · @(anime.IsCompleted ? "completed" : $"{anime.Percent}%")
+                                    · @(anime.IsCompleted ? ui["admin.user.completed"] : $"{anime.Percent}%")
                                 </small>
                             }
                             else
                             {
-                                <strong>No progress</strong>
-                                <small>No episode started yet</small>
+                                <strong>@ui["admin.user.noProgress"]</strong>
+                                <small>@ui["admin.user.noEpisodeStarted"]</small>
                             }
-                            <em>@user.EpisodesStarted started · @user.EpisodesCompleted completed</em>
+                            <em>@ui.Format("admin.user.episodesSummary", ("started", user.EpisodesStarted), ("completed", user.EpisodesCompleted))</em>
                         </div>
 
                         <div class="user-progress-item">
-                            <span>Novels</span>
+                            <span>@ui["admin.user.novels"]</span>
                             @if (user.CurrentNovel is { } novel)
                             {
                                 <strong>@novel.WorkTitle</strong>
-                                <small>Chapter @novel.ChapterNumber · @novel.Percent%</small>
+                                <small>@ui.Format("admin.user.chapterPercent", ("chapter", novel.ChapterNumber), ("percent", novel.Percent))</small>
                             }
                             else
                             {
-                                <strong>No progress</strong>
-                                <small>No novel started yet</small>
+                                <strong>@ui["admin.user.noProgress"]</strong>
+                                <small>@ui["admin.user.noNovelStarted"]</small>
                             }
-                            <em>@user.NovelsStarted started</em>
+                            <em>@ui.Format("admin.user.novelsStarted", ("count", user.NovelsStarted))</em>
                         </div>
 
                         <div class="user-progress-item">
-                            <span>Learning</span>
-                            <strong>@user.Learning.KnownTerms known</strong>
-                            <small>@user.Learning.LearningTerms learning · @user.Learning.Reviews reviews</small>
+                            <span>@ui["admin.user.learning"]</span>
+                            <strong>@ui.Format("admin.user.knownTerms", ("count", user.Learning.KnownTerms))</strong>
+                            <small>@ui.Format("admin.user.learningSummary", ("learning", user.Learning.LearningTerms), ("reviews", user.Learning.Reviews))</small>
                             <em>
                                 @if (user.Learning.LastReviewAt is { } lastReview)
                                 {
-                                    <text>Last review @lastReview.ToString("yyyy-MM-dd HH:mm") UTC</text>
+                                    @ui.Format("admin.user.lastReviewAt", ("time", lastReview.ToString("yyyy-MM-dd HH:mm")))
                                 }
                                 else
                                 {
-                                    <text>No reviews yet</text>
+                                    @ui["admin.user.noReviewsYet"]
                                 }
                             </em>
                         </div>
@@ -120,20 +121,20 @@
     </section>
 
     <section class="panel">
-        <div class="panel-heading"><h2>Create user</h2></div>
+        <div class="panel-heading"><h2>@ui["admin.users.createUser"]</h2></div>
         <form method="post" asp-page-handler="Create" class="form-stack">
             <div asp-validation-summary="ModelOnly" class="validation"></div>
             <label>
-                <span>User name</span>
+                <span>@ui["admin.user.userNameLabel"]</span>
                 <input asp-for="UserName" autocomplete="username" />
                 <span asp-validation-for="UserName" class="validation"></span>
             </label>
             <label>
-                <span>Initial password</span>
+                <span>@ui["admin.users.initialPassword"]</span>
                 <input asp-for="Password" autocomplete="new-password" />
                 <span asp-validation-for="Password" class="validation"></span>
             </label>
-            <button class="button button-primary" type="submit">Create user</button>
+            <button class="button button-primary" type="submit">@ui["admin.users.createUser"]</button>
         </form>
     </section>
 </div>

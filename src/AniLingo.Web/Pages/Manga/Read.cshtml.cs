@@ -1,5 +1,6 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
+using AniLingo.Web.Features.Localization;
 using AniLingo.Web.Features.Manga;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -10,6 +11,7 @@ public sealed class ReadModel(
     AppDbContext db,
     CurrentAccountContext account) : PageModel
 {
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public MangaChapterRead Chapter { get; private set; } = null!;
     public IReadOnlyList<MangaChapterItem> Chapters { get; private set; } = [];
     public IReadOnlyList<MangaBookmarkItem> Bookmarks { get; private set; } = [];
@@ -24,6 +26,8 @@ public sealed class ReadModel(
         int? page,
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         var repository = new MangaRepository(db);
         var chapter = await repository.GetChapterAsync(id, cancellationToken);
         if (chapter is null)

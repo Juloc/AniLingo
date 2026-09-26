@@ -1,13 +1,14 @@
 @page "/Books/{id}"
 @model AniLingo.Web.Pages.Books.DetailsModel
 @{
-    ViewData["Title"] = Model.Book?.Title ?? "Book";
+    var ui = Model.Ui;
+    ViewData["Title"] = Model.Book?.Title ?? ui["books.details.fallbackTitle"];
 }
 @section Head {
     <link rel="stylesheet" href="~/css/books.css" asp-append-version="true" />
 }
 
-<a class="books-back" href="/Books">← Books</a>
+<a class="books-back" href="/Books">← @ui["nav.books"]</a>
 
 @if (TempData["Status"] is string status)
 {
@@ -43,7 +44,7 @@
             }
             @if (Model.Book.FirstPublishYear is not null)
             {
-                <p class="book-meta">First published @Model.Book.FirstPublishYear</p>
+                <p class="book-meta">@ui.Format("books.details.firstPublished", ("year", Model.Book.FirstPublishYear))</p>
             }
             @if (!string.IsNullOrWhiteSpace(Model.Book.Summary))
             {
@@ -67,10 +68,10 @@
                           asp-route-id="@Model.Book.Id">
                         <button class="button button-primary" type="submit">
                             @(!string.IsNullOrWhiteSpace(Model.Book.EpubUrl)
-                                ? "Add EPUB to library"
+                                ? ui["books.details.addEpub"]
                                 : Model.Book.CanAcquire
-                                    ? "Add to library"
-                                    : "Find free edition & add")
+                                    ? ui["books.details.addToLibrary"]
+                                    : ui["books.details.findFreeEdition"])
                         </button>
                     </form>
                 }
@@ -83,15 +84,14 @@
             @if (!Model.Book.CanAcquire)
             {
                 <p class="book-meta">
-                    AniLingo will check Project Gutenberg when you choose “Find free edition & add”.
-                    If no downloadable edition is available, import your EPUB from the Books page.
+                    @ui["books.details.acquireNote"]
                 </p>
             }
 
             @if (Model.IsOwner && Model.Book.SourceName != "Project Gutenberg")
             {
                 <details class="book-sab-panel">
-                    <summary>Send an NZB URL to SABnzbd</summary>
+                    <summary>@ui["books.details.sendNzbSummary"]</summary>
                     <form method="post"
                           asp-page-handler="SabUrl"
                           asp-route-id="@Model.Book.Id"
@@ -100,7 +100,7 @@
                                name="nzbUrl"
                                placeholder="https://…/book.nzb"
                                required />
-                        <button class="button" type="submit">Send</button>
+                        <button class="button" type="submit">@ui["books.details.send"]</button>
                     </form>
                 </details>
             }

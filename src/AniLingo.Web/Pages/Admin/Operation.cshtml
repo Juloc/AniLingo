@@ -1,43 +1,65 @@
 @page "{id:guid}"
 @model AniLingo.Web.Pages.Admin.OperationModel
+@using AniLingo.Web.Features.Operations
 @{
+    var ui = Model.Ui;
     ViewData["Title"] = Model.Operation.Title;
     var operation = Model.Operation;
+    var dash = "—";
+
+    string OperationStatusLabel(OperationStatus status) => status switch
+    {
+        OperationStatus.Queued => ui["admin.operations.status.queued"],
+        OperationStatus.Running => ui["admin.operations.status.running"],
+        OperationStatus.Succeeded => ui["admin.operations.status.succeeded"],
+        OperationStatus.Failed => ui["admin.operations.status.failed"],
+        OperationStatus.Cancelled => ui["admin.operations.status.cancelled"],
+        OperationStatus.Interrupted => ui["admin.operations.status.interrupted"],
+        _ => status.ToString()
+    };
+
+    string LogLevelLabel(OperationLogLevel level) => level switch
+    {
+        OperationLogLevel.Information => ui["admin.logs.level.information"],
+        OperationLogLevel.Warning => ui["admin.logs.level.warning"],
+        OperationLogLevel.Error => ui["admin.logs.level.error"],
+        _ => level.ToString()
+    };
 }
 
 <header class="page-header">
     <div>
-        <span class="eyebrow">Admin · Operation</span>
+        <span class="eyebrow">@ui["admin.operation.eyebrow"]</span>
         <h1>@operation.Title</h1>
         <p>@operation.Category · @operation.Kind</p>
     </div>
-    <a class="button" asp-page="/Admin/Operations">Back to operations</a>
+    <a class="button" asp-page="/Admin/Operations">@ui["admin.operation.backToOperations"]</a>
 </header>
 
-<partial name="_AdminNavigation" />
+<partial name="_AdminNavigation" model="Model.Ui" />
 
 <div class="settings-grid">
     <section class="panel">
         <div class="panel-heading">
-            <h2>Status</h2>
+            <h2>@ui["admin.operation.status"]</h2>
             <span class="status-pill operation-status-@operation.Status.ToString().ToLowerInvariant()">
-                @operation.StatusLabel
+                @OperationStatusLabel(operation.Status)
             </span>
         </div>
 
         <div class="status-list">
-            <div><span>Lane</span><strong>@operation.Lane</strong></div>
-            <div><span>Attempt</span><strong>@operation.Attempt</strong></div>
-            <div><span>Created</span><strong>@operation.CreatedAtUtc.ToLocalTime().ToString("g")</strong></div>
-            <div><span>Started</span><strong>@(operation.StartedAtUtc?.ToLocalTime().ToString("g") ?? "—")</strong></div>
-            <div><span>Finished</span><strong>@(operation.FinishedAtUtc?.ToLocalTime().ToString("g") ?? "—")</strong></div>
+            <div><span>@ui["admin.operation.lane"]</span><strong>@operation.Lane</strong></div>
+            <div><span>@ui["admin.operation.attempt"]</span><strong>@operation.Attempt</strong></div>
+            <div><span>@ui["admin.operation.created"]</span><strong>@operation.CreatedAtUtc.ToLocalTime().ToString("g")</strong></div>
+            <div><span>@ui["admin.operation.started"]</span><strong>@(operation.StartedAtUtc?.ToLocalTime().ToString("g") ?? dash)</strong></div>
+            <div><span>@ui["admin.operation.finished"]</span><strong>@(operation.FinishedAtUtc?.ToLocalTime().ToString("g") ?? dash)</strong></div>
             @if (!string.IsNullOrWhiteSpace(operation.ProfileId))
             {
-                <div><span>User</span><strong>@operation.ProfileId</strong></div>
+                <div><span>@ui["admin.operation.user"]</span><strong>@operation.ProfileId</strong></div>
             }
             @if (!string.IsNullOrWhiteSpace(operation.Subject))
             {
-                <div><span>Subject</span><strong>@operation.Subject</strong></div>
+                <div><span>@ui["admin.operation.subject"]</span><strong>@operation.Subject</strong></div>
             }
         </div>
 
@@ -46,7 +68,7 @@
             <div class="operation-progress operation-progress-large">
                 <span style="width:@progress%"></span>
             </div>
-            <p class="muted">@progress% complete</p>
+            <p class="muted">@ui.Format("admin.operation.progressComplete", ("percent", progress))</p>
         }
 
         @if (!string.IsNullOrWhiteSpace(operation.Message))
@@ -64,48 +86,48 @@
             {
                 <form method="post" asp-page-handler="Cancel">
                     <input type="hidden" name="id" value="@operation.Id" />
-                    <button class="button" type="submit">Cancel</button>
+                    <button class="button" type="submit">@ui["common.cancel"]</button>
                 </form>
             }
 
             @if (operation.Retryable
-                && operation.Status is AniLingo.Web.Features.Operations.OperationStatus.Failed
-                    or AniLingo.Web.Features.Operations.OperationStatus.Interrupted)
+                && operation.Status is OperationStatus.Failed
+                    or OperationStatus.Interrupted)
             {
                 <form method="post" asp-page-handler="Retry">
                     <input type="hidden" name="id" value="@operation.Id" />
                     <button class="button button-primary"
                             type="submit"
-                            disabled="@(!Model.RuntimeAvailable)">Retry</button>
+                            disabled="@(!Model.RuntimeAvailable)">@ui["admin.operation.retry"]</button>
                 </form>
             }
         </div>
 
         @if (operation.Retryable
-            && operation.Status is AniLingo.Web.Features.Operations.OperationStatus.Failed
-                or AniLingo.Web.Features.Operations.OperationStatus.Interrupted
+            && operation.Status is OperationStatus.Failed
+                or OperationStatus.Interrupted
             && !Model.RuntimeAvailable)
         {
-            <small class="muted">Retry payload is no longer available after an application restart.</small>
+            <small class="muted">@ui["admin.operation.retryPayloadUnavailable"]</small>
         }
     </section>
 
     <section class="panel">
-        <div class="panel-heading"><h2>Download</h2></div>
+        <div class="panel-heading"><h2>@ui["admin.operation.download"]</h2></div>
         @if (!operation.IsDownload)
         {
-            <p class="muted">This operation is not a download.</p>
+            <p class="muted">@ui["admin.operation.notDownload"]</p>
         }
         else
         {
             <div class="status-list">
-                <div><span>Downloaded</span><strong>@(operation.BytesCompleted?.ToString("N0") ?? "—") bytes</strong></div>
-                <div><span>Total</span><strong>@(operation.BytesTotal?.ToString("N0") ?? "unknown")</strong></div>
-                <div><span>Speed</span><strong>@(operation.BytesPerSecond is { } speed ? $"{speed / 1024d:N1} KiB/s" : "—")</strong></div>
-                <div><span>ETA</span><strong>@(operation.EtaUtc?.ToLocalTime().ToString("T") ?? "—")</strong></div>
+                <div><span>@ui["admin.operation.downloaded"]</span><strong>@ui.Format("admin.operation.bytesValue", ("bytes", operation.BytesCompleted?.ToString("N0") ?? dash))</strong></div>
+                <div><span>@ui["admin.operation.total"]</span><strong>@(operation.BytesTotal?.ToString("N0") ?? ui["admin.operation.unknown"])</strong></div>
+                <div><span>@ui["admin.operation.speed"]</span><strong>@(operation.BytesPerSecond is { } speed ? ui.Format("admin.operation.speedValue", ("speed", $"{speed / 1024d:N1}")) : dash)</strong></div>
+                <div><span>@ui["admin.operation.eta"]</span><strong>@(operation.EtaUtc?.ToLocalTime().ToString("T") ?? dash)</strong></div>
                 @if (Model.IsSabnzbdJob)
                 {
-                    <div><span>SABnzbd job</span><strong>@operation.ExternalId</strong></div>
+                    <div><span>@ui["admin.operation.sabnzbdJob"]</span><strong>@operation.ExternalId</strong></div>
                 }
             </div>
         }
@@ -114,18 +136,18 @@
     @if (Model.Acquisition is { } acquisition && Model.AcquisitionAttempt is { } attempt)
     {
         <section class="panel">
-            <div class="panel-heading"><h2>Anime acquisition</h2></div>
+            <div class="panel-heading"><h2>@ui["admin.operation.acquisition"]</h2></div>
             <div class="status-list">
-                <div><span>Anime</span><strong>@acquisition.AnimeTitle</strong></div>
-                <div><span>Episodes</span><strong>@AniLingo.Web.Features.Acquisition.Sabnzbd.SabnzbdAcquisitionService.FormatEpisodes(acquisition.Episodes)</strong></div>
-                <div><span>Release</span><strong>@attempt.ReleaseTitle</strong></div>
-                <div><span>Attempt</span><strong>@attempt.Number of @acquisition.MaxAttempts</strong></div>
-                <div><span>Untried candidates</span><strong>@acquisition.PendingCandidates.Length</strong></div>
+                <div><span>@ui["admin.operation.anime"]</span><strong>@acquisition.AnimeTitle</strong></div>
+                <div><span>@ui["admin.operation.episodes"]</span><strong>@AniLingo.Web.Features.Acquisition.Sabnzbd.SabnzbdAcquisitionService.FormatEpisodes(acquisition.Episodes)</strong></div>
+                <div><span>@ui["admin.operation.release"]</span><strong>@attempt.ReleaseTitle</strong></div>
+                <div><span>@ui["admin.operation.attempt"]</span><strong>@ui.Format("admin.operation.attemptOf", ("attempt", attempt.Number), ("max", acquisition.MaxAttempts))</strong></div>
+                <div><span>@ui["admin.operation.untriedCandidates"]</span><strong>@acquisition.PendingCandidates.Length</strong></div>
             </div>
 
             @if (acquisition.Attempts.Length > 1)
             {
-                <h3>Attempts</h3>
+                <h3>@ui["admin.operation.attempts"]</h3>
                 <ul>
                     @foreach (var other in acquisition.Attempts.OrderBy(item => item.Number))
                     {
@@ -139,7 +161,7 @@
 
             @if (Model.AcquisitionBlocklist.Count > 0)
             {
-                <h3>Blocklisted releases</h3>
+                <h3>@ui["admin.operation.blocklistedReleases"]</h3>
                 <ul>
                     @foreach (var blocked in Model.AcquisitionBlocklist)
                     {
@@ -153,19 +175,19 @@
 
 <section class="panel">
     <div class="panel-heading">
-        <h2>Operation log</h2>
+        <h2>@ui["admin.operation.log"]</h2>
         <div class="inline-actions">
             @if (operation.Kind == AniLingo.Web.Features.Library.LibraryScanCoordinator.OperationKind)
             {
-                <a class="button" asp-page="/Admin/Scans">Scan history</a>
+                <a class="button" asp-page="/Admin/Scans">@ui["admin.operation.scanHistory"]</a>
             }
-            <a class="button" asp-page="/Admin/Logs" asp-route-operationId="@operation.Id">Open in Logs</a>
+            <a class="button" asp-page="/Admin/Logs" asp-route-operationId="@operation.Id">@ui["admin.operation.openInLogs"]</a>
         </div>
     </div>
 
     @if (Model.Logs.Count == 0)
     {
-        <p class="muted">No log entries.</p>
+        <p class="muted">@ui["admin.operation.noLogEntries"]</p>
     }
     else
     {
@@ -174,7 +196,7 @@
             {
                 <div class="admin-log-row admin-log-@entry.Level.ToString().ToLowerInvariant()">
                     <time>@entry.CreatedAtUtc.ToLocalTime().ToString("G")</time>
-                    <span>@entry.Level</span>
+                    <span>@LogLevelLabel(entry.Level)</span>
                     <strong>@entry.Module</strong>
                     <p>@entry.Message</p>
                 </div>

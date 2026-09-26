@@ -1,6 +1,7 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Acquisition.Sabnzbd;
 using AniLingo.Web.Features.Auth;
+using AniLingo.Web.Features.Localization;
 using AniLingo.Web.Features.Operations;
 using AniLingo.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
@@ -17,6 +18,8 @@ public sealed class OperationModel(
     SabnzbdDownloadService sabnzbd,
     SabnzbdAcquisitionStore acquisitions) : PageModel
 {
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
+
     public OperationSnapshot Operation { get; private set; } = null!;
     public IReadOnlyList<OperationLogEntry> Logs { get; private set; } = [];
     public SabnzbdAcquisition? Acquisition { get; private set; }
@@ -39,6 +42,8 @@ public sealed class OperationModel(
         Guid id,
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         return await LoadAsync(id, cancellationToken)
             ? Page()
             : NotFound();
@@ -48,6 +53,8 @@ public sealed class OperationModel(
         Guid id,
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         var operation = await new OperationStore(db).GetAsync(id, cancellationToken);
         if (operation is null)
         {
@@ -66,8 +73,8 @@ public sealed class OperationModel(
             : await backgroundJobs.CancelAsync(id, cancellationToken);
 
         TempData["Status"] = cancelled
-            ? "Cancellation requested."
-            : "This operation is no longer attached to a running worker.";
+            ? Ui["admin.operation.cancelRequested"]
+            : Ui["admin.operation.cancelUnavailable"];
         return RedirectToPage(new { id });
     }
 
@@ -75,6 +82,8 @@ public sealed class OperationModel(
         Guid id,
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         var operation = await new OperationStore(db).GetAsync(id, cancellationToken);
         if (operation is null)
         {
@@ -93,8 +102,8 @@ public sealed class OperationModel(
             : await backgroundJobs.RetryAsync(id, cancellationToken);
 
         TempData["Status"] = retried
-            ? "Retry queued."
-            : "Retry is unavailable after a server restart or for this operation type.";
+            ? Ui["admin.operation.retryQueued"]
+            : Ui["admin.operation.retryUnavailable"];
         return RedirectToPage(new { id });
     }
 

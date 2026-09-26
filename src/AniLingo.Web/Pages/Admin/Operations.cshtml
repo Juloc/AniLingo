@@ -1,45 +1,63 @@
 @page
 @model AniLingo.Web.Pages.Admin.OperationsModel
+@using AniLingo.Web.Features.Operations
 @{
-    ViewData["Title"] = "Operations";
+    var ui = Model.Ui;
+    ViewData["Title"] = ui["admin.nav.operations"];
+
+    string OperationStatusLabel(OperationStatus status) => status switch
+    {
+        OperationStatus.Queued => ui["admin.operations.status.queued"],
+        OperationStatus.Running => ui["admin.operations.status.running"],
+        OperationStatus.Succeeded => ui["admin.operations.status.succeeded"],
+        OperationStatus.Failed => ui["admin.operations.status.failed"],
+        OperationStatus.Cancelled => ui["admin.operations.status.cancelled"],
+        OperationStatus.Interrupted => ui["admin.operations.status.interrupted"],
+        _ => status.ToString()
+    };
+
+    string OperationStatusLabelForName(string status) =>
+        Enum.TryParse<OperationStatus>(status, ignoreCase: true, out var parsed)
+            ? OperationStatusLabel(parsed)
+            : status;
 }
 
 <header class="page-header">
     <div>
-        <span class="eyebrow">Admin</span>
-        <h1>Operations</h1>
-        <p>Background work, downloads, queue state and history.</p>
+        <span class="eyebrow">@ui["nav.admin"]</span>
+        <h1>@ui["admin.nav.operations"]</h1>
+        <p>@ui["admin.operations.subtitle"]</p>
     </div>
 </header>
 
-<partial name="_AdminNavigation" />
+<partial name="_AdminNavigation" model="Model.Ui" />
 
-<nav class="operation-tabs" aria-label="Operation views">
-    <a class="@(Model.View == "active" ? "active" : "")" asp-route-view="active">Active</a>
-    <a class="@(Model.View == "queue" ? "active" : "")" asp-route-view="queue">Queue</a>
-    <a class="@(Model.View == "downloads" ? "active" : "")" asp-route-view="downloads">Downloads</a>
-    <a class="@(Model.View == "history" ? "active" : "")" asp-route-view="history">History</a>
-    <a class="@(Model.View == "all" ? "active" : "")" asp-route-view="all">All</a>
+<nav class="operation-tabs" aria-label="@ui["admin.operations.viewsAria"]">
+    <a class="@(Model.View == "active" ? "active" : "")" asp-route-view="active">@ui["admin.operations.view.active"]</a>
+    <a class="@(Model.View == "queue" ? "active" : "")" asp-route-view="queue">@ui["admin.operations.view.queue"]</a>
+    <a class="@(Model.View == "downloads" ? "active" : "")" asp-route-view="downloads">@ui["admin.operations.view.downloads"]</a>
+    <a class="@(Model.View == "history" ? "active" : "")" asp-route-view="history">@ui["admin.operations.view.history"]</a>
+    <a class="@(Model.View == "all" ? "active" : "")" asp-route-view="all">@ui["admin.operations.view.all"]</a>
 </nav>
 
 <form method="get" class="operation-filter">
     <input type="hidden" name="view" value="@Model.View" />
-    <input name="search" value="@Model.Search" placeholder="Search operations" />
+    <input name="search" value="@Model.Search" placeholder="@ui["admin.operations.filter.searchPlaceholder"]" />
     <select name="status">
-        <option value="">All statuses</option>
-        @foreach (var status in Enum.GetNames<AniLingo.Web.Features.Operations.OperationStatus>())
+        <option value="">@ui["admin.operations.filter.allStatuses"]</option>
+        @foreach (var status in Enum.GetNames<OperationStatus>())
         {
-            <option value="@status" selected="@(Model.Status == status)">@status</option>
+            <option value="@status" selected="@(Model.Status == status)">@OperationStatusLabelForName(status)</option>
         }
     </select>
-    <input name="category" value="@Model.Category" placeholder="Category" />
-    <button class="button" type="submit">Filter</button>
+    <input name="category" value="@Model.Category" placeholder="@ui["admin.operations.filter.categoryPlaceholder"]" />
+    <button class="button" type="submit">@ui["admin.filter.apply"]</button>
 </form>
 
 <section class="panel">
     @if (Model.Operations.Count == 0)
     {
-        <p class="muted">No operations match this view.</p>
+        <p class="muted">@ui["admin.operations.empty"]</p>
     }
     else
     {
@@ -52,11 +70,11 @@
                             <strong>@operation.Title</strong>
                             @if (operation.IsDownload)
                             {
-                                <span class="status-pill">Download</span>
+                                <span class="status-pill">@ui["admin.operations.download"]</span>
                             }
                         </div>
                         <span>
-                            @operation.Category · @operation.Lane · attempt @operation.Attempt
+                            @operation.Category · @operation.Lane · @ui.Format("admin.operations.attemptInline", ("attempt", operation.Attempt))
                             @if (!string.IsNullOrWhiteSpace(operation.Subject))
                             {
                                 <text> · @operation.Subject</text>
@@ -68,14 +86,14 @@
                         }
                         @if (operation.ProgressPercent is { } progress)
                         {
-                            <div class="operation-progress" aria-label="@progress% complete">
+                            <div class="operation-progress" aria-label="@ui.Format("admin.operation.progressComplete", ("percent", progress))">
                                 <span style="width:@progress%"></span>
                             </div>
                         }
                     </div>
                     <div class="operation-row-meta">
                         <span class="status-pill operation-status-@operation.Status.ToString().ToLowerInvariant()">
-                            @operation.StatusLabel
+                            @OperationStatusLabel(operation.Status)
                         </span>
                         <small>@operation.UpdatedAtUtc.ToLocalTime().ToString("g")</small>
                     </div>

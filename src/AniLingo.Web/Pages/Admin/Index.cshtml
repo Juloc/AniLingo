@@ -1,52 +1,65 @@
 @page
 @model AniLingo.Web.Pages.Admin.IndexModel
+@using AniLingo.Web.Features.Operations
 @{
-    ViewData["Title"] = "Admin";
+    var ui = Model.Ui;
+    ViewData["Title"] = ui["nav.admin"];
+
+    string OperationStatusLabel(OperationStatus status) => status switch
+    {
+        OperationStatus.Queued => ui["admin.operations.status.queued"],
+        OperationStatus.Running => ui["admin.operations.status.running"],
+        OperationStatus.Succeeded => ui["admin.operations.status.succeeded"],
+        OperationStatus.Failed => ui["admin.operations.status.failed"],
+        OperationStatus.Cancelled => ui["admin.operations.status.cancelled"],
+        OperationStatus.Interrupted => ui["admin.operations.status.interrupted"],
+        _ => status.ToString()
+    };
 }
 
 <header class="page-header">
     <div>
-        <span class="eyebrow">Owner</span>
-        <h1>Admin</h1>
-        <p>Server operations and account administration.</p>
+        <span class="eyebrow">@ui["settings.scope.owner"]</span>
+        <h1>@ui["nav.admin"]</h1>
+        <p>@ui["admin.index.subtitle"]</p>
     </div>
 </header>
 
-<partial name="_AdminNavigation" />
+<partial name="_AdminNavigation" model="Model.Ui" />
 
 <div class="metric-grid admin-metrics">
     <a class="metric-card" asp-page="/Admin/Operations" asp-route-view="active">
-        <span class="metric-label">Running</span>
+        <span class="metric-label">@ui["admin.operations.status.running"]</span>
         <strong class="metric-value">@Model.Summary.Running</strong>
-        <span class="metric-hint">@Model.Summary.Queued queued</span>
+        <span class="metric-hint">@ui.Format("admin.index.metric.queued", ("count", Model.Summary.Queued))</span>
     </a>
     <a class="metric-card" asp-page="/Admin/Operations" asp-route-view="downloads">
-        <span class="metric-label">Downloads</span>
+        <span class="metric-label">@ui["admin.index.metric.downloads"]</span>
         <strong class="metric-value">@Model.Summary.ActiveDownloads</strong>
-        <span class="metric-hint">active</span>
+        <span class="metric-hint">@ui["admin.index.metric.activeHint"]</span>
     </a>
     <a class="metric-card" asp-page="/Admin/Operations" asp-route-view="history" asp-route-status="Failed">
-        <span class="metric-label">Failed</span>
+        <span class="metric-label">@ui["admin.operations.status.failed"]</span>
         <strong class="metric-value">@Model.Summary.Failed</strong>
-        <span class="metric-hint">@Model.Summary.Interrupted interrupted</span>
+        <span class="metric-hint">@ui.Format("admin.index.metric.interrupted", ("count", Model.Summary.Interrupted))</span>
     </a>
     <a class="metric-card" asp-page="/Admin/Users">
-        <span class="metric-label">Users</span>
+        <span class="metric-label">@ui["admin.nav.users"]</span>
         <strong class="metric-value">@Model.UserCount</strong>
-        <span class="metric-hint">local accounts</span>
+        <span class="metric-hint">@ui["admin.index.metric.localAccounts"]</span>
     </a>
 </div>
 
 <div class="settings-grid">
     <section class="panel">
         <div class="panel-heading">
-            <h2>Recent operations</h2>
-            <a class="button" asp-page="/Admin/Operations">View all</a>
+            <h2>@ui["admin.index.recentOperations.title"]</h2>
+            <a class="button" asp-page="/Admin/Operations">@ui["admin.index.viewAll"]</a>
         </div>
 
         @if (Model.Recent.Count == 0)
         {
-            <p class="muted">No background operations have been recorded yet.</p>
+            <p class="muted">@ui["admin.index.noOperations"]</p>
         }
         else
         {
@@ -56,10 +69,10 @@
                     <a class="operation-row" asp-page="/Admin/Operation" asp-route-id="@operation.Id">
                         <div class="operation-copy">
                             <strong>@operation.Title</strong>
-                            <span>@operation.Category · @operation.StatusLabel · @operation.UpdatedAtUtc.ToLocalTime().ToString("g")</span>
+                            <span>@operation.Category · @OperationStatusLabel(operation.Status) · @operation.UpdatedAtUtc.ToLocalTime().ToString("g")</span>
                         </div>
                         <span class="status-pill operation-status-@operation.Status.ToString().ToLowerInvariant()">
-                            @operation.StatusLabel
+                            @OperationStatusLabel(operation.Status)
                         </span>
                     </a>
                 }
@@ -68,10 +81,10 @@
     </section>
 
     <section class="panel">
-        <div class="panel-heading"><h2>Server</h2></div>
+        <div class="panel-heading"><h2>@ui["admin.index.server.title"]</h2></div>
         <p class="muted">
-            Media storage, subtitle sources, Sonarr and server-side AI configuration live here instead of personal Settings.
+            @ui["admin.index.server.description"]
         </p>
-        <a class="button button-primary" asp-page="/Admin/System">Open system administration</a>
+        <a class="button button-primary" asp-page="/Admin/System">@ui["admin.index.server.open"]</a>
     </section>
 </div>
