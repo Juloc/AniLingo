@@ -174,6 +174,11 @@ public sealed record DueReviewItem(
     int IntervalDays);
 
 
+/// <summary>
+/// The BCP-47 tag of <see cref="Sentence"/> is the term's own source language,
+/// never an assumed Japanese one: it is whatever language the subtitle track
+/// the sentence came from actually carries.
+/// </summary>
 public sealed record ReviewAnimeContext(
     Guid EpisodeId,
     string AnimeTitle,
@@ -181,7 +186,8 @@ public sealed record ReviewAnimeContext(
     int EpisodeNumber,
     string EpisodeTitle,
     int CueStartMs,
-    string Sentence)
+    string Sentence,
+    string Language)
 {
     public string TimestampLabel
     {

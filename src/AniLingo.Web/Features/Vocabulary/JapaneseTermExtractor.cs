@@ -1,10 +1,19 @@
 using System.Text;
+using AniLingo.Web.Features.Learning.Toolkits;
 
 namespace AniLingo.Web.Features.Vocabulary;
 
 public sealed record JapaneseTermCandidate(string Canonical, string Reading);
 
-public sealed class JapaneseTermExtractor(IJapaneseMorphology morphology)
+/// <summary>
+/// Japanese tokenization/term extraction: MeCab morphological analysis kept to
+/// lexical parts of speech, dictionary-form lemmas and hiragana readings. Also
+/// implements <see cref="ITermExtractor"/> so it can back the Japanese language
+/// toolkit; the explicit interface member adapts <see cref="JapaneseTermCandidate"/>
+/// to the toolkit-neutral <see cref="TermCandidate"/> without changing this
+/// type's own <see cref="Extract"/> contract used elsewhere.
+/// </summary>
+public sealed class JapaneseTermExtractor(IJapaneseMorphology morphology) : ITermExtractor
 {
     private static readonly HashSet<string> IncludedPartsOfSpeech =
     [
@@ -45,6 +54,13 @@ public sealed class JapaneseTermExtractor(IJapaneseMorphology morphology)
 
         return result;
     }
+
+    IReadOnlyList<TermCandidate> ITermExtractor.Extract(string text) =>
+        Extract(text)
+            .Select(x => new TermCandidate(
+                x.Canonical,
+                string.IsNullOrEmpty(x.Reading) ? null : x.Reading))
+            .ToArray();
 
     internal static string ToHiragana(string value)
     {

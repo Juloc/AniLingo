@@ -772,7 +772,8 @@ public sealed class LearningService
                     selected.EpisodeNumber,
                     selected.EpisodeTitle,
                     selected.CueStartMs,
-                    sentence);
+                    sentence,
+                    language);
             }
         }
 
