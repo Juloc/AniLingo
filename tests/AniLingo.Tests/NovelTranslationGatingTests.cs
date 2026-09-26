@@ -111,6 +111,74 @@ public sealed class NovelTranslationGatingTests
             "A different novel on the same (globally Off) profile must not inherit the override.");
     }
 
+    // ---- Novels/Work (the per-chapter "DE" badge) shares the same
+    // Translation gate as the reader, through the exact same
+    // LearningModuleResolver.ResolveTranslationEnabledAsync call the Work
+    // page model makes at Novel/work scope (no content key: the badge is a
+    // whole-work affordance, not per-chapter).
+
+    [TestMethod]
+    public async Task WorkScopeResolvesTranslationTheSameWayTheWorkPageDoes()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var resolver = new LearningModuleResolver(fixture.Db);
+
+        Assert.IsFalse(
+            await resolver.ResolveTranslationEnabledAsync(
+                Profile, LearningMediaType.Novel, fixture.WorkId.ToString(), null, CancellationToken.None),
+            "Off must not offer the whole-work translation badge.");
+
+        await fixture.SetModeAsync(Profile, LearningMode.Study);
+        Assert.IsTrue(
+            await resolver.ResolveTranslationEnabledAsync(
+                Profile, LearningMediaType.Novel, fixture.WorkId.ToString(), null, CancellationToken.None));
+
+        // A work-level override (global Off, one novel set to Study) enables
+        // the badge only for that novel, the same override case the Work
+        // page's chapter badges must respect.
+        await new LearningConfigurationStore(fixture.Db).SetModeAsync(
+            Profile, LearningScopeRef.Profile, LearningMode.Off, CancellationToken.None);
+        await new LearningConfigurationStore(fixture.Db).SetModeAsync(
+            Profile,
+            LearningScopeRef.ForWork(LearningMediaType.Novel, fixture.WorkId.ToString()),
+            LearningMode.Study,
+            CancellationToken.None);
+
+        await using var otherFixture = await Fixture.CreateAsync();
+        Assert.IsTrue(
+            await resolver.ResolveTranslationEnabledAsync(
+                Profile, LearningMediaType.Novel, fixture.WorkId.ToString(), null, CancellationToken.None));
+        Assert.IsFalse(
+            await new LearningModuleResolver(otherFixture.Db).ResolveTranslationEnabledAsync(
+                Profile, LearningMediaType.Novel, otherFixture.WorkId.ToString(), null, CancellationToken.None),
+            "A different novel on the same (globally Off) profile must not inherit the override.");
+    }
+
+    [TestMethod]
+    public void WorkViewGatesTheTranslatedBadgeOnTranslationEnabled()
+    {
+        var view = File.ReadAllText(Path.Combine(
+            RepositoryRoot(), "src", "AniLingo.Web", "Pages", "Novels", "Work.cshtml"));
+
+        StringAssert.Contains(view, "@if (Model.TranslationEnabled && chapter.HasTranslation)");
+    }
+
+    private static string RepositoryRoot()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, "AniLingo.sln")))
+            {
+                return directory.FullName;
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new InvalidOperationException("Repository root not found.");
+    }
+
     private sealed class Fixture : IAsyncDisposable
     {
         private readonly string directory;

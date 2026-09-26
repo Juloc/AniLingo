@@ -538,20 +538,17 @@ public sealed class ReadModel(
     /// Book media type → work → chapter) so cached translated text and the
     /// translate/status handlers follow the canonical Learning hierarchy
     /// instead of only checking whether a translation happens to be cached.
+    /// Shared with the Library chapter-list page through
+    /// <see cref="LearningModuleResolver.ResolveTranslationEnabledAsync"/>.
     /// </summary>
-    private async Task<bool> ResolveTranslationEnabledAsync(
+    private Task<bool> ResolveTranslationEnabledAsync(
         Guid workId,
         Guid chapterId,
-        CancellationToken cancellationToken)
-    {
-        var settings = await new LearningConfigurationStore(db).ResolveAsync(
+        CancellationToken cancellationToken) =>
+        new LearningModuleResolver(db).ResolveTranslationEnabledAsync(
             account.ProfileId,
-            new LearningScopeContext(
-                LearningMediaType.Book,
-                WorkKey: workId.ToString(),
-                ContentKey: chapterId.ToString()),
+            LearningMediaType.Book,
+            workId.ToString(),
+            chapterId.ToString(),
             cancellationToken);
-
-        return settings.IsEnabled(LearningCapability.Translation);
-    }
 }

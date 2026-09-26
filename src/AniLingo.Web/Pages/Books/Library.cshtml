@@ -77,7 +77,7 @@
                 </small>
             </form>
 
-            @if (!Model.SourceIsTarget)
+            @if (!Model.SourceIsTarget && Model.TranslationEnabled)
             {
                 <form method="post"
                       asp-page-handler="TranslateBook"
@@ -90,19 +90,22 @@
             }
         </div>
 
-        <div class="book-translation-summary">
-            @if (Model.SourceIsTarget)
-            {
-                <span>Original language selected · no translation needed</span>
-            }
-            else
-            {
-                <span>@translatedCount / @Model.Book.Chapters.Count chapters translated</span>
-                <div class="book-card-progress">
-                    <span style="width:@(Model.Book.Chapters.Count == 0 ? 0 : translatedCount * 100 / Model.Book.Chapters.Count)%"></span>
-                </div>
-            }
-        </div>
+        @if (Model.SourceIsTarget || Model.TranslationEnabled)
+        {
+            <div class="book-translation-summary">
+                @if (Model.SourceIsTarget)
+                {
+                    <span>Original language selected · no translation needed</span>
+                }
+                else
+                {
+                    <span>@translatedCount / @Model.Book.Chapters.Count chapters translated</span>
+                    <div class="book-card-progress">
+                        <span style="width:@(Model.Book.Chapters.Count == 0 ? 0 : translatedCount * 100 / Model.Book.Chapters.Count)%"></span>
+                    </div>
+                }
+            </div>
+        }
 
         <div class="book-actions">
             @if (firstChapter is Guid chapterId)
@@ -133,7 +136,7 @@
     <details class="book-library-management">
         <summary>Manage book</summary>
         <div class="book-library-management-actions">
-            @if (!Model.SourceIsTarget)
+            @if (!Model.SourceIsTarget && Model.TranslationEnabled)
             {
                 <form method="post"
                       asp-page-handler="Regenerate"
@@ -178,7 +181,7 @@
             {
                 <small>Original</small>
             }
-            else if (chapter.HasTranslation)
+            else if (Model.TranslationEnabled && chapter.HasTranslation)
             {
                 <small class="ready">Translated</small>
             }

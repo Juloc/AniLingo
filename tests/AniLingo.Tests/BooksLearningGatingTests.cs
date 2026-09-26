@@ -1,9 +1,12 @@
+using System.Security.Claims;
 using AniLingo.Web.Data;
+using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Books;
 using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Novels;
 using AniLingo.Web.Infrastructure;
 using AniLingo.Web.Pages.Books;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -103,8 +106,91 @@ public sealed class BooksLearningGatingTests
             "A different book on the same (globally Off) profile must not inherit the override.");
     }
 
+    // ---- Books/Library (the per-chapter "Translated" badge and the whole-
+    // book Translate/Regenerate actions) shares the same Translation gate as
+    // the reader, through LearningModuleResolver.ResolveTranslationEnabledAsync.
+
+    [TestMethod]
+    public async Task LibraryPageResolvesTranslationDisabledOffAndRefusesTheWholeBookHandlers()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+
+        var library = fixture.CreateLibraryModel(Profile);
+        await library.OnGetAsync(fixture.WorkId, "de", CancellationToken.None);
+        Assert.IsFalse(library.TranslationEnabled, "Off must not offer whole-book translation.");
+
+        var translateResult = await fixture.CreateLibraryModel(Profile).OnPostTranslateBookAsync(
+            fixture.WorkId,
+            "de",
+            CancellationToken.None);
+        Assert.IsInstanceOfType(translateResult, typeof(ForbidResult));
+
+        var regenerateResult = await fixture.CreateLibraryModel(Fixture.Owner, owner: true).OnPostRegenerateAsync(
+            fixture.WorkId,
+            "de",
+            CancellationToken.None);
+        Assert.IsInstanceOfType(regenerateResult, typeof(ForbidResult));
+    }
+
+    [TestMethod]
+    public async Task LibraryPageEnablesTranslationByDefaultInStudy()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SetModeAsync(Profile, LearningMode.Study);
+
+        var library = fixture.CreateLibraryModel(Profile);
+        await library.OnGetAsync(fixture.WorkId, "de", CancellationToken.None);
+        Assert.IsTrue(library.TranslationEnabled);
+    }
+
+    [TestMethod]
+    public void LibraryViewGatesTheBadgeSummaryAndActionsOnTranslationEnabled()
+    {
+        var view = File.ReadAllText(Path.Combine(
+            RepositoryRoot(), "src", "AniLingo.Web", "Pages", "Books", "Library.cshtml"));
+
+        // Every place that reveals translation state or offers a translate
+        // action must gate on the resolved capability, not just SourceIsTarget
+        // or HasTranslation.
+        AssertGuardPrecedesHandler(view, "asp-page-handler=\"TranslateBook\"");
+        AssertGuardPrecedesHandler(view, "asp-page-handler=\"Regenerate\"");
+        StringAssert.Contains(view, "@if (Model.SourceIsTarget || Model.TranslationEnabled)");
+        StringAssert.Contains(view, "else if (Model.TranslationEnabled && chapter.HasTranslation)");
+    }
+
+    /// <summary>Asserts the nearest preceding "@if" guards the given form/handler with TranslationEnabled.</summary>
+    private static void AssertGuardPrecedesHandler(string view, string handlerMarker)
+    {
+        var handlerIndex = view.IndexOf(handlerMarker, StringComparison.Ordinal);
+        Assert.IsTrue(handlerIndex > 0, $"'{handlerMarker}' was not found.");
+
+        var guardIndex = view.LastIndexOf("@if (", handlerIndex, StringComparison.Ordinal);
+        Assert.IsTrue(guardIndex >= 0, $"No '@if' guard precedes '{handlerMarker}'.");
+
+        var guard = view[guardIndex..handlerIndex];
+        StringAssert.Contains(guard, "Model.TranslationEnabled");
+    }
+
+    private static string RepositoryRoot()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, "AniLingo.sln")))
+            {
+                return directory.FullName;
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new InvalidOperationException("Repository root not found.");
+    }
+
     private sealed class Fixture : IAsyncDisposable
     {
+        public const string Owner = "books-learner-owner";
+
         private readonly string directory;
         private readonly ServiceProvider services;
 
@@ -190,6 +276,31 @@ public sealed class BooksLearningGatingTests
                 TestAccounts.Context(profileId),
                 new BackgroundJobQueue(services.GetRequiredService<IServiceScopeFactory>()),
                 Db);
+
+        public LibraryModel CreateLibraryModel(string profileId, bool owner = false) =>
+            new(
+                Db,
+                NewBookCatalogService(),
+                owner ? OwnerContext(profileId) : TestAccounts.Context(profileId),
+                new BackgroundJobQueue(services.GetRequiredService<IServiceScopeFactory>()));
+
+        private static CurrentAccountContext OwnerContext(string profileId)
+        {
+            var identity = new ClaimsIdentity(
+            [
+                new Claim(ClaimTypes.NameIdentifier, profileId),
+                new Claim(ClaimTypes.Role, AccountRoles.Owner)
+            ],
+            "test");
+
+            return new CurrentAccountContext(new HttpContextAccessor
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    User = new ClaimsPrincipal(identity)
+                }
+            });
+        }
 
         private BookCatalogService NewBookCatalogService()
         {
