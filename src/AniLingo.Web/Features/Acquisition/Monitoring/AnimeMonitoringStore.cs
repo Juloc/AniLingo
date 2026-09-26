@@ -81,6 +81,21 @@ public sealed class AnimeMonitoringStore
         }
     }
 
+    public async Task<bool> RekeyAnimeAsync(
+        string oldKey,
+        string newKey,
+        CancellationToken cancellationToken = default)
+    {
+        var current = await LoadAsync(cancellationToken);
+        if (ReferenceEquals(AnimeMonitoringEngine.RekeyAnime(current, oldKey, newKey), current))
+        {
+            return false;
+        }
+
+        await UpdateAsync(state => AnimeMonitoringEngine.RekeyAnime(state, oldKey, newKey), cancellationToken);
+        return true;
+    }
+
     private async Task<AnimeMonitoringState> LoadUnlockedAsync(CancellationToken cancellationToken)
     {
         if (!File.Exists(_path))

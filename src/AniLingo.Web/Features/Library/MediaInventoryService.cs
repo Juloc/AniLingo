@@ -89,8 +89,16 @@ public sealed class MediaInventoryService(
 
     // Brings every media file of a root up to date. Uses the scanner-observed size/mtime on the
     // MediaFile rows, so an unchanged library performs no ffprobe and no extra file I/O.
+    public Task<MediaInventoryReconciliation> ReconcileAsync(
+        Guid libraryRootId,
+        CancellationToken cancellationToken) =>
+        ReconcileAsync(libraryRootId, null, cancellationToken);
+
+    // A partial library scan passes the full-path prefix of its folder (ending in a directory
+    // separator) so only the media it reconciled are brought up to date.
     public async Task<MediaInventoryReconciliation> ReconcileAsync(
         Guid libraryRootId,
+        string? pathPrefix,
         CancellationToken cancellationToken)
     {
         List<MediaFileIdentity> files;
@@ -112,6 +120,13 @@ public sealed class MediaInventoryService(
                     where media.LibraryRootId == libraryRootId
                     select analysis)
                 .ToDictionaryAsync(x => x.MediaFileId, cancellationToken);
+        }
+
+        if (pathPrefix is not null)
+        {
+            files = files
+                .Where(x => x.Path.StartsWith(pathPrefix, StringComparison.Ordinal))
+                .ToList();
         }
 
         int unchanged = 0, analyzed = 0, failed = 0, deferred = 0;

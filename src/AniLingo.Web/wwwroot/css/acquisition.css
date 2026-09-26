@@ -1,0 +1,57 @@
+/* Anime acquisition overview and the owner block on the anime page. Uses the shared tokens. */
+.acquisition-notice {
+    margin: 0 0 12px; padding: 10px 12px; border-radius: 8px;
+    background: var(--accent-soft); color: var(--text);
+}
+
+.acquisition-inline-form {
+    display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; margin: 0;
+}
+.acquisition-inline-form label {
+    display: grid; gap: 5px; color: var(--text-secondary); font-size: 12px; font-weight: 700;
+}
+.acquisition-inline-form input[type="number"],
+.acquisition-inline-form input[type="text"],
+.acquisition-inline-form select {
+    min-width: 0; width: 7.5rem; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--field-bg); color: var(--text); padding: 8px 9px; outline: none;
+}
+.acquisition-inline-form select { width: auto; max-width: 16rem; }
+.acquisition-inline-form input:focus,
+.acquisition-inline-form select:focus { border-color: var(--accent); }
+
+.acquisition-check,
+.acquisition-inline-form .acquisition-check {
+    display: flex; align-items: center; gap: 8px; min-height: 36px;
+}
+
+.acquisition-connection-list {
+    display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 10px 14px;
+}
+.acquisition-connection-list .status-pill { width: fit-content; }
+
+.acquisition-wrap,
+.acquisition-wrap strong,
+.acquisition-wrap small { white-space: normal; overflow-wrap: anywhere; }
+
+.acquisition-import {
+    display: grid; gap: 8px; padding: 12px 0; border-top: 1px solid var(--border);
+}
+.acquisition-import:first-of-type { border-top: 0; padding-top: 0; }
+.acquisition-import p { margin: 0; }
+.acquisition-import-file {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 12px;
+    padding: 10px; border-radius: 8px; background: var(--row-bg);
+}
+.acquisition-import-file small { display: block; margin-top: 3px; }
+
+.acquisition-owner-facts {
+    display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 0 0 12px; color: var(--muted); font-size: 13px;
+}
+
+@media (max-width: 720px) {
+    .acquisition-import-file { grid-template-columns: 1fr; }
+    .acquisition-inline-form { align-items: stretch; }
+    .acquisition-inline-form button { width: 100%; }
+}
+.acquisition-owner-actions { margin-top: 12px; }

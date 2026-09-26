@@ -1,5 +1,6 @@
 @page
 @using AniLingo.Web.Features.Progress
+@using AniLingo.Web.Features.Reading
 @model IndexModel
 @{
     ViewData["Title"] = Model.Ui["nav.home"];
@@ -54,6 +55,47 @@
                         : null,
                     item.CoverImageUrl,
                     Model.Ui.Format("home.continueWatching.progressAria", ("percent", item.Percent)))' />
+            }
+        </div>
+    </section>
+}
+
+@if (Model.ContinueReading.Count > 0)
+{
+    <section class="section section-first" data-continue-reading>
+        <div class="section-heading">
+            <div>
+                <span class="eyebrow">@Model.Ui["home.continueReading.eyebrow"]</span>
+                <h2>@Model.Ui["home.continueReading"]</h2>
+            </div>
+        </div>
+
+        <div class="media-grid">
+            @foreach (var item in Model.ContinueReading)
+            {
+                var kindLabel = item.Kind switch
+                {
+                    ContinueReadingKind.Book => Model.Ui["home.continueReading.kind.book"],
+                    ContinueReadingKind.Manga => Model.Ui["home.continueReading.kind.manga"],
+                    _ => Model.Ui["home.continueReading.kind.novel"]
+                };
+                var positionLabel = item.PageNumber is int page && item.PageCount is int pages
+                    ? Model.Ui.Format(
+                        "home.continueReading.chapterPage",
+                        ("chapter", item.ChapterLabel),
+                        ("page", page),
+                        ("pages", pages))
+                    : Model.Ui.Format(
+                        "home.continueReading.chapter",
+                        ("chapter", item.ChapterLabel));
+                <partial name="_MediaCard" model='new MediaCardModel(
+                    item.Title,
+                    positionLabel,
+                    item.ResumeUrl,
+                    item.ProgressPercent,
+                    kindLabel,
+                    item.CoverImageUrl,
+                    Model.Ui.Format("home.continueReading.progressAria", ("percent", item.ProgressPercent)))' />
             }
         </div>
     </section>
