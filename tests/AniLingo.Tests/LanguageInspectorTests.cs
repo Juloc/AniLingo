@@ -523,9 +523,16 @@ internal sealed class LanguageInspectorFixture : IAsyncDisposable
             SourceUrl = "https://example.invalid/book",
             Title = "Inspector Book"
         };
+        var volume = new NovelVolume
+        {
+            WorkId = work.Id,
+            Number = 1,
+            SourceKey = "volume-1"
+        };
         var chapter = new NovelChapter
         {
             WorkId = work.Id,
+            VolumeId = volume.Id,
             Number = 1,
             SourceUrl = "https://example.invalid/book/1",
             Title = "Chapter One",
@@ -533,7 +540,7 @@ internal sealed class LanguageInspectorFixture : IAsyncDisposable
             SourceHash = "hash"
         };
 
-        Db.AddRange(anime, episode, work, chapter);
+        Db.AddRange(anime, episode, work, volume, chapter);
         await Db.SaveChangesAsync();
 
         AnimeId = anime.Id;
