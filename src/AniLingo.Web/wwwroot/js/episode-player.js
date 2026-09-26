@@ -867,7 +867,30 @@
         return design.lineStartAt(source, nowMs);
     };
 
+    // The shared language inspector (issue #233) replaces this player's own
+    // learning sheet wherever the resolved scope renders it; the sheet below
+    // stays only as the fallback for scopes without PlayerTools.
+    const sharedInspector = window.AniLingoLanguageInspector;
+    const sharedInspectorAvailable = sharedInspector?.available === true;
+
     const openLearning = (cue, token = null, selectedElement = null) => {
+        overlay.querySelectorAll('[aria-pressed="true"]').forEach(element =>
+            element.removeAttribute("aria-pressed"));
+        if (selectedElement instanceof HTMLElement) {
+            selectedElement.setAttribute("aria-pressed", "true");
+        }
+
+        selectedCueStartMs = cue.startMs;
+
+        if (sharedInspectorAvailable) {
+            const sentence = design.cueText(cue);
+            void sharedInspector.open(token ? token.surface : sentence, {
+                sentence,
+                cueStartMs: cue.startMs
+            });
+            return;
+        }
+
         if (!learningTools) {
             return;
         }
@@ -877,7 +900,6 @@
         }
 
         video.pause();
-        selectedCueStartMs = cue.startMs;
 
         if (token) {
             learningKicker.textContent = "Word";
@@ -893,12 +915,6 @@
             meaning.textContent = "Tap a highlighted word in the subtitle to inspect its reading and meaning.";
             state.textContent = "";
             state.hidden = true;
-        }
-
-        overlay.querySelectorAll('[aria-pressed="true"]').forEach(element =>
-            element.removeAttribute("aria-pressed"));
-        if (selectedElement instanceof HTMLElement) {
-            selectedElement.setAttribute("aria-pressed", "true");
         }
 
         inspector.hidden = false;
@@ -924,6 +940,47 @@
     const renderCue = (index) => {
         design.renderCue(root, overlay, index < 0 ? null : cues[index]);
     };
+
+    if (sharedInspectorAvailable) {
+        let inspectorResumeOnClose = false;
+
+        sharedInspector.addEventListener("open", () => {
+            inspectorResumeOnClose = !video.paused && !video.ended;
+            video.pause();
+        });
+
+        sharedInspector.addEventListener("close", () => {
+            const shouldResume = inspectorResumeOnClose;
+            inspectorResumeOnClose = false;
+            if (shouldResume) {
+                void video.play().catch(() => {});
+            }
+        });
+
+        // Update the cached cue tokens so a word saved/learned/known/ignored
+        // through the inspector re-renders with its new state right away,
+        // through the same renderCue design.js already uses for the overlay.
+        sharedInspector.addEventListener("statechange", event => {
+            const detail = event.detail || {};
+            if (!detail.text) {
+                return;
+            }
+
+            let changed = false;
+            for (const cue of cues) {
+                for (const cueToken of cue.tokens || []) {
+                    if ((cueToken.canonical || cueToken.surface) === detail.text) {
+                        cueToken.state = detail.state;
+                        changed = true;
+                    }
+                }
+            }
+
+            if (changed && activeIndex >= 0) {
+                renderCue(activeIndex);
+            }
+        });
+    }
 
     root.addEventListener(design.actionEvent, event => {
         const detail = event.detail || {};

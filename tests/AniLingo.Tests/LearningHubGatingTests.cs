@@ -4,6 +4,7 @@ using AniLingo.Web.Features.Ai;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Learning.Courses;
+using AniLingo.Web.Features.Learning.LanguageAssistance;
 using AniLingo.Web.Features.Statistics;
 using AniLingo.Web.Features.Vocabulary;
 using AniLingo.Web.Pages.Learn;
@@ -356,6 +357,71 @@ public sealed class LearningHubGatingTests
         Assert.IsFalse(
             view.Contains("href=\"/Learn", StringComparison.Ordinal),
             "Episode must not link into the Learning hub directly.");
+    }
+
+    [TestMethod]
+    public void EpisodePageHostsTheSharedLanguageInspectorForItsScope()
+    {
+        // #233 player hook: Episode.cshtml renders the shared inspector partial
+        // for its own anime/episode scope, using the same host factory as the
+        // other surfaces (Books.Read, Learn.Sentences).
+        var pages = Path.Combine(RepositoryRoot(), "src", "AniLingo.Web", "Pages", "Library");
+        var view = File.ReadAllText(Path.Combine(pages, "Episode.cshtml"));
+
+        StringAssert.Contains(view, "@using AniLingo.Web.Features.Learning.LanguageAssistance");
+        StringAssert.Contains(
+            view,
+            "<partial name=\"_LanguageInspector\" model='LanguageInspectorHost.ForAnimeEpisode(Model.AnimeId, Model.EpisodeId, \"ja\")' />");
+
+        // It must load before episode-player.js so window.AniLingoLanguageInspector
+        // already exists when the player wires its open/close/statechange handlers.
+        var inspectorIndex = view.IndexOf("_LanguageInspector", StringComparison.Ordinal);
+        var episodeScriptIndex = view.IndexOf("~/js/episode-player.js", StringComparison.Ordinal);
+        Assert.IsTrue(inspectorIndex >= 0 && inspectorIndex < episodeScriptIndex);
+    }
+
+    [TestMethod]
+    public async Task EpisodeScopeShowsTheInspectorOnlyWhenPlayerToolsResolvesOn()
+    {
+        // #233: the inspector partial guards itself with
+        // LearningModuleResolver.ResolveAssistanceAsync(surface: Anime), which
+        // must follow the same PlayerTools capability the Episode page already
+        // uses for its own learning sheet (ShowPlayerTools).
+        await using var fixture = await Fixture.CreateAsync();
+        var context = new LearningScopeContext(
+            LearningMediaType.Anime,
+            WorkKey: "anime-1",
+            ContentKey: "episode-1");
+        var resolver = new LearningModuleResolver(fixture.Db);
+
+        var off = await resolver.ResolveAssistanceAsync(
+            Profile,
+            context,
+            LanguageSourceType.Anime,
+            CancellationToken.None);
+        Assert.IsFalse(off.ShowInspector, "Learning off must not render the inspector.");
+
+        await fixture.SetModeAsync(LearningMode.LanguageTools);
+        var tools = await resolver.ResolveAssistanceAsync(
+            Profile,
+            context,
+            LanguageSourceType.Anime,
+            CancellationToken.None);
+        Assert.IsTrue(tools.Any, "Language Tools enables lookup.");
+        Assert.IsTrue(tools.SurfaceTools, "Language Tools enables PlayerTools by default.");
+        Assert.IsTrue(tools.ShowInspector);
+
+        await fixture.SetCapabilityAsync(LearningCapability.PlayerTools, false);
+        var playerToolsOff = await resolver.ResolveAssistanceAsync(
+            Profile,
+            context,
+            LanguageSourceType.Anime,
+            CancellationToken.None);
+        Assert.IsTrue(playerToolsOff.Any, "Lookup is still on.");
+        Assert.IsFalse(playerToolsOff.SurfaceTools);
+        Assert.IsFalse(
+            playerToolsOff.ShowInspector,
+            "Without PlayerTools the player must not render the inspector, even with lookup on.");
     }
 
     [TestMethod]

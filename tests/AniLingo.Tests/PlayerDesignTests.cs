@@ -75,6 +75,23 @@ public sealed class PlayerDesignTests
     }
 
     [TestMethod]
+    public void EpisodePlayerWiresTheSharedLanguageInspector()
+    {
+        // #233: the player opens the shared inspector for subtitle taps when
+        // it is available, and only falls back to its own learning sheet
+        // otherwise; it also mirrors state changes back into the cached cues.
+        var root = FindRepositoryRoot();
+        var episodeScript = File.ReadAllText(
+            Path.Combine(root, "src", "AniLingo.Web", "wwwroot", "js", "episode-player.js"));
+
+        StringAssert.Contains(episodeScript, "window.AniLingoLanguageInspector");
+        StringAssert.Contains(episodeScript, "sharedInspector.open(");
+        StringAssert.Contains(episodeScript, "sharedInspector.addEventListener(\"open\"");
+        StringAssert.Contains(episodeScript, "sharedInspector.addEventListener(\"close\"");
+        StringAssert.Contains(episodeScript, "sharedInspector.addEventListener(\"statechange\"");
+    }
+
+    [TestMethod]
     public void PlaybackSpeedsAndSeekStepComeFromTheCanonicalTokens()
     {
         var root = FindRepositoryRoot();
