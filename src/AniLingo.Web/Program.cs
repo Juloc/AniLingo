@@ -24,6 +24,7 @@ using AniLingo.Web.Features.MediaMapping;
 using AniLingo.Web.Features.MediaSegments;
 using AniLingo.Web.Features.Metadata;
 using AniLingo.Web.Features.Novels;
+using AniLingo.Web.Features.OfflineLibrary;
 using AniLingo.Web.Features.Operations;
 using AniLingo.Web.Features.Playback;
 using AniLingo.Web.Features.PlaybackSessions;
@@ -230,6 +231,10 @@ builder.Services.AddScoped<EpisodeProgressService>();
 builder.Services.AddScoped<ClientApiService>();
 builder.Services.AddScoped<ClientApiOfflineService>();
 builder.Services.AddScoped<OfflineProgressReconciler>();
+builder.Services.AddScoped<OfflineLibraryQueries>();
+builder.Services.AddScoped<OfflineLibraryProgressReconciler>();
+builder.Services.AddScoped<OfflineLibraryBookmarkReconciler>();
+builder.Services.AddScoped<ClientApiOfflineLibraryService>();
 builder.Services.AddSingleton<ReaderThemeCatalog>();
 
 builder.Services.AddHttpClient<AniListMetadataProvider>(client =>
@@ -411,6 +416,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapClientApiV1();
 app.MapClientApiOfflineV1();
+app.MapClientApiOfflineLibraryV1();
 app.MapHub<PlaybackSessionHub>(PlaybackSessionHub.Route)
     .AllowAnonymous();
 app.MapReaderThemeCatalog();
