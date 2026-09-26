@@ -438,10 +438,19 @@ public sealed class ContinueReadingQueryTests
                 SourceUrl = "https://example.invalid/work",
                 Title = title
             };
+            var isBook = provider == BookCatalogService.ImportedBookProvider;
+            var volume = new NovelVolume
+            {
+                WorkId = work.Id,
+                Number = 1,
+                Kind = isBook ? NovelVolumeKinds.Book : NovelVolumeKinds.Web,
+                SourceKey = isBook ? NovelVolumeKinds.Book : NovelVolumeKinds.Web
+            };
             var chapterRows = Enumerable.Range(1, chapters)
                 .Select(number => new NovelChapter
                 {
                     WorkId = work.Id,
+                    VolumeId = volume.Id,
                     Number = number,
                     Title = $"Chapter {number}",
                     SourceUrl = $"https://example.invalid/work/{number}",
@@ -451,6 +460,7 @@ public sealed class ContinueReadingQueryTests
                 .ToArray();
 
             Db.NovelWorks.Add(work);
+            Db.NovelVolumes.Add(volume);
             Db.NovelChapters.AddRange(chapterRows);
             await Db.SaveChangesAsync();
             Db.ChangeTracker.Clear();
