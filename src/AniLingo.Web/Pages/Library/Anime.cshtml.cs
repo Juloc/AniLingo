@@ -161,15 +161,14 @@ public sealed class AnimeModel(
         {
             coverageRows = await (
                 from episodeTerm in db.EpisodeTerms.AsNoTracking()
-                join userTermValue in db.UserTerms.AsNoTracking()
-                        .Where(x => x.ProfileId == currentAccount.ProfileId)
-                    on episodeTerm.TermId equals userTermValue.TermId into userTerms
-                from userTerm in userTerms.DefaultIfEmpty()
+                join stateValue in LearningQueries.TermStates(db, currentAccount.ProfileId)
+                    on episodeTerm.TermId equals stateValue.TermId into states
+                from state in states.DefaultIfEmpty()
                 where episodeIds.Contains(episodeTerm.EpisodeId)
                 select new CoverageRow(
                     episodeTerm.EpisodeId,
                     episodeTerm.Occurrences,
-                    userTerm == null ? null : userTerm.State))
+                    state == null ? null : state.State))
                 .ToListAsync(cancellationToken);
         }
 

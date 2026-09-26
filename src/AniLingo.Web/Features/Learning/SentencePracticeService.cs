@@ -19,21 +19,21 @@ public sealed class SentencePracticeService(
         limit = Math.Clamp(limit, 1, 50);
 
         var rows = await (
-            from userTerm in db.UserTerms.AsNoTracking()
-            join term in db.Terms.AsNoTracking() on userTerm.TermId equals term.Id
+            from termState in LearningQueries.TermStates(db, profileId)
+            join term in db.Terms.AsNoTracking() on termState.TermId equals term.Id
             join episodeTerm in db.EpisodeTerms.AsNoTracking() on term.Id equals episodeTerm.TermId
             join episode in db.Episodes.AsNoTracking() on episodeTerm.EpisodeId equals episode.Id
             join anime in db.Anime.AsNoTracking() on episode.AnimeId equals anime.Id
             join track in db.SubtitleTracks.AsNoTracking() on episode.Id equals track.EpisodeId
             join cue in db.SubtitleCues.AsNoTracking() on track.Id equals cue.SubtitleTrackId
-            where userTerm.ProfileId == profileId
-                && userTerm.State != UserTermState.Ignored
+            where termState.SentencePracticeEnabled
+                && termState.State != UserTermState.Ignored
                 && term.Language == "ja"
                 && track.Language == "ja"
                 && cue.StartMs == episodeTerm.FirstCueStartMs
-            orderby userTerm.State == UserTermState.Learning ? 0 :
-                    userTerm.State == UserTermState.Saved ? 1 :
-                    userTerm.State == UserTermState.Known ? 2 : 3,
+            orderby termState.State == UserTermState.Learning ? 0 :
+                    termState.State == UserTermState.Saved ? 1 :
+                    termState.State == UserTermState.Known ? 2 : 3,
                 episodeTerm.Occurrences descending,
                 track.ImportedAt descending
             select new SentenceRow(

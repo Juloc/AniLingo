@@ -66,36 +66,32 @@ public sealed class StatisticsTests
             var now = new DateTime(2026, 9, 23, 9, 30, 0, DateTimeKind.Utc);
             const string profile = "profile-a";
 
-            db.UserTerms.AddRange(
-                new UserTerm
-                {
-                    ProfileId = profile,
-                    TermId = known.Id,
-                    State = UserTermState.Known,
-                    UpdatedAt = now.AddDays(-3)
-                },
-                new UserTerm
-                {
-                    ProfileId = profile,
-                    TermId = learning.Id,
-                    State = UserTermState.Learning,
-                    LearningStartedAt = now.AddDays(-2),
-                    NextReviewAt = now.AddMinutes(-5),
-                    UpdatedAt = now.AddDays(-1)
-                },
-                new UserTerm
-                {
-                    ProfileId = "other-profile",
-                    TermId = untouched.Id,
-                    State = UserTermState.Known,
-                    UpdatedAt = now.AddDays(-1)
-                });
+            await LearningTestData.SeedTermCardAsync(
+                db,
+                profile,
+                known,
+                UserTermState.Known,
+                updatedAt: now.AddDays(-3));
+            var learningCard = await LearningTestData.SeedTermCardAsync(
+                db,
+                profile,
+                learning,
+                UserTermState.Learning,
+                nextReviewAt: now.AddMinutes(-5),
+                learningStartedAt: now.AddDays(-2),
+                updatedAt: now.AddDays(-1));
+            var otherCard = await LearningTestData.SeedTermCardAsync(
+                db,
+                "other-profile",
+                untouched,
+                UserTermState.Known,
+                updatedAt: now.AddDays(-1));
 
-            db.Reviews.AddRange(
-                Review(profile, learning.Id, now.AddHours(-2)),
-                Review(profile, learning.Id, now.AddDays(-2)),
-                Review(profile, learning.Id, now.AddDays(-10)),
-                Review("other-profile", untouched.Id, now.AddHours(-1)));
+            db.LearningCardReviews.AddRange(
+                LearningTestData.Review(profile, learningCard.Id, now.AddHours(-2)),
+                LearningTestData.Review(profile, learningCard.Id, now.AddDays(-2)),
+                LearningTestData.Review(profile, learningCard.Id, now.AddDays(-10)),
+                LearningTestData.Review("other-profile", otherCard.Id, now.AddHours(-1)));
 
             await db.SaveChangesAsync();
 
@@ -175,14 +171,4 @@ public sealed class StatisticsTests
             File.Delete(databasePath);
         }
     }
-
-    private static Review Review(string profileId, Guid termId, DateTime reviewedAt) =>
-        new()
-        {
-            ProfileId = profileId,
-            TermId = termId,
-            Rating = ReviewRating.Good,
-            ReviewedAt = reviewedAt,
-            NextReviewAt = reviewedAt.AddDays(1)
-        };
 }

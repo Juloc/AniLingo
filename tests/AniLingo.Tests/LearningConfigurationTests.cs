@@ -46,16 +46,18 @@ public sealed class LearningConfigurationTests
             Meaning = "to eat"
         };
         fixture.Db.Terms.Add(term);
-        fixture.Db.UserTerms.Add(new UserTerm
-        {
-            ProfileId = "legacy-user",
-            TermId = term.Id,
-            State = UserTermState.Learning,
-            UpdatedAt = DateTime.UtcNow
-        });
         await fixture.Db.SaveChangesAsync();
 
-        await fixture.Db.GetService<IMigrator>().MigrateAsync();
+        var userTermId = Guid.NewGuid().ToString().ToUpperInvariant();
+        var termId = term.Id.ToString().ToUpperInvariant();
+        var updatedAt = DateTime.UtcNow;
+        await fixture.Db.Database.ExecuteSqlAsync(
+            $"""
+            INSERT INTO "UserTerms" ("Id", "ProfileId", "TermId", "State", "IntervalDays", "UpdatedAt")
+            VALUES ({userTermId}, 'legacy-user', {termId}, 2, 0, {updatedAt});
+            """);
+
+        await DatabaseMigrationBridge.UpgradeAsync(fixture.Db);
 
         var mode = await fixture.Store.GetProfileModeAsync(
             "legacy-user",

@@ -22,7 +22,16 @@ public sealed record KanaEntry(
 
 public static class KanaCatalog
 {
-    public const string Language = "ja-kana";
+    /// <summary>
+    /// Namespace of the stable Kana unit IDs. Before Learning courses existed,
+    /// Kana were stored as catalog Terms with this value as their language.
+    /// </summary>
+    public const string IdNamespace = "ja-kana";
+
+    /// <summary>Kana cards prompt with the Japanese symbol and answer with romaji.</summary>
+    public const string PromptLanguage = "ja";
+    public const string AnswerLanguage = "ja-Latn";
+    public const string CourseName = "Kana";
     public const int MaxStage = 20;
 
     private static readonly (string Hiragana, string Katakana, string Romaji, string Group, int Stage)[] Rows =
@@ -79,10 +88,10 @@ public static class KanaCatalog
 
     public static Guid IdFor(KanaEntry entry)
     {
-        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(Language + ":" + entry.Symbol));
+        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(IdNamespace + ":" + entry.Symbol));
         return new Guid(bytes.AsSpan(0, 16));
     }
 
-    public static KanaEntry? Find(Guid termId) =>
-        All.FirstOrDefault(entry => IdFor(entry) == termId);
+    public static KanaEntry? Find(Guid unitId) =>
+        All.FirstOrDefault(entry => IdFor(entry) == unitId);
 }

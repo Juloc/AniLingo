@@ -4,12 +4,15 @@ if (stage && window.AniLingoOfflineReviews) {
   const store = window.AniLingoOfflineReviews;
   const profileId = stage.dataset.profileId;
   const syncUrl = stage.dataset.syncUrl;
+  const dueTemplate = stage.dataset.dueTemplate || "{count}";
+  const noAnswer = stage.dataset.noAnswer || "";
   const sessionNode = stage.querySelector("[data-review-session]");
   const antiForgeryToken = stage
     .querySelector('input[name="__RequestVerificationToken"]')
     ?.value;
 
   let cards = [];
+  let modeLabels = {};
   let currentIndex = 0;
   let syncing = false;
 
@@ -19,12 +22,25 @@ if (stage && window.AniLingoOfflineReviews) {
     cards = [];
   }
 
+  try {
+    modeLabels = JSON.parse(stage.dataset.modeLabels || "{}");
+  } catch {
+    modeLabels = {};
+  }
+
   store.setActiveProfile(profileId);
 
+  const speech = window.AniLingoTts?.createDeviceProvider();
   const details = stage.querySelector("[data-review-details]");
   const reveal = stage.querySelector("[data-review-reveal]");
   const form = stage.querySelector("[data-review-form]");
+  const listen = stage.querySelector("[data-review-listen]");
+  const writeInput = stage.querySelector("[data-review-write-input]");
   const ratingButtons = [...stage.querySelectorAll("[data-review-rating]")];
+
+  if (listen && !speech?.supported) {
+    listen.disabled = true;
+  }
 
   const revealAnswer = () => {
     if (!details) {
@@ -41,13 +57,45 @@ if (stage && window.AniLingoOfflineReviews) {
     return true;
   };
 
+  const speakPrompt = () => {
+    const card = cards[currentIndex];
+    if (!card || !speech?.supported) {
+      return;
+    }
+
+    void speech.speak({ text: card.prompt, language: card.promptLanguage }).catch(() => {});
+  };
+
   reveal?.addEventListener("click", event => {
     event.preventDefault();
     revealAnswer();
   });
 
+  listen?.addEventListener("click", speakPrompt);
+
+  writeInput?.addEventListener("keydown", event => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      revealAnswer();
+    }
+  });
+
   function interval(card, rating) {
     return card?.intervals?.[rating] ?? "—";
+  }
+
+  function setText(selector, text, lang) {
+    const node = stage.querySelector(selector);
+    if (!node) {
+      return null;
+    }
+
+    node.textContent = text ?? "";
+    if (lang) {
+      node.lang = lang;
+    }
+
+    return node;
   }
 
   function renderCard(card, remaining) {
@@ -56,21 +104,42 @@ if (stage && window.AniLingoOfflineReviews) {
       return;
     }
 
-    stage.querySelector(".review-counter").textContent = remaining + " due";
-    stage.querySelector(".review-term").textContent = card.canonical ?? "";
+    const listening = card.mode === "Listening";
+    const writing = card.mode === "Writing";
 
-    const reading = stage.querySelector(".review-reading");
-    if (reading) {
-      reading.textContent = card.reading ?? "";
-      reading.hidden = !card.reading;
+    stage.querySelector(".review-counter").textContent =
+      dueTemplate.replace("{count}", String(remaining));
+    setText("[data-review-mode]", modeLabels[card.mode] ?? card.mode);
+
+    if (listen) {
+      listen.hidden = !listening;
     }
 
-    stage.querySelector(".review-answer").textContent =
-      card.meaning || "No local dictionary meaning available.";
+    setText("[data-review-prompt]", card.prompt, card.promptLanguage).hidden = listening;
+    setText("[data-review-prompt-reading]", card.promptReading, card.promptLanguage)
+      .hidden = listening || !card.promptReading;
 
-    const termInput = stage.querySelector("[data-review-term-id]");
-    if (termInput) {
-      termInput.value = card.termId;
+    const write = stage.querySelector("[data-review-write]");
+    if (write) {
+      write.hidden = !writing;
+    }
+
+    if (writeInput) {
+      writeInput.value = "";
+      writeInput.lang = card.answerLanguage ?? "";
+    }
+
+    setText(
+      "[data-review-heard]",
+      [card.prompt, card.promptReading].filter(Boolean).join(" · "),
+      card.promptLanguage).hidden = !listening;
+    setText("[data-review-answer]", card.answer || noAnswer, card.answerLanguage);
+    setText("[data-review-answer-reading]", card.answerReading, card.answerLanguage)
+      .hidden = !card.answerReading;
+
+    const cardInput = stage.querySelector("[data-review-card-id]");
+    if (cardInput) {
+      cardInput.value = card.cardId;
     }
 
     for (const button of ratingButtons) {
@@ -85,8 +154,9 @@ if (stage && window.AniLingoOfflineReviews) {
     if (context) {
       if (card.context) {
         context.hidden = false;
-        context.querySelector("[data-review-sentence]").textContent =
-          card.context.sentence ?? "";
+        const sentence = context.querySelector("[data-review-sentence]");
+        sentence.textContent = card.context.sentence ?? "";
+        sentence.lang = card.promptLanguage ?? "";
         const link = context.querySelector("[data-review-scene]");
         if (link) {
           link.href = "/Library/Episode/" + card.context.episodeId
@@ -106,6 +176,12 @@ if (stage && window.AniLingoOfflineReviews) {
 
     if (details) {
       details.open = false;
+    }
+
+    if (writing) {
+      writeInput?.focus();
+    } else if (listening) {
+      speakPrompt();
     }
   }
 
@@ -155,7 +231,7 @@ if (stage && window.AniLingoOfflineReviews) {
     });
 
     try {
-      await store.queueEvent(profileId, card.termId, rating);
+      await store.queueEvent(profileId, card.cardId, rating);
 
       if (navigator.onLine) {
         try {

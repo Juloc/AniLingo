@@ -42,9 +42,8 @@ public sealed class IndexModel(
             currentAccount.ProfileId,
             cancellationToken);
 
-        var stateCounts = await db.UserTerms
+        var stateCounts = await LearningQueries.WordCards(db, currentAccount.ProfileId)
             .AsNoTracking()
-            .Where(x => x.ProfileId == currentAccount.ProfileId)
             .GroupBy(x => x.State)
             .Select(group => new { State = group.Key, Count = group.Count() })
             .ToDictionaryAsync(x => x.State, x => x.Count, cancellationToken);
@@ -54,14 +53,9 @@ public sealed class IndexModel(
         KnownTerms = stateCounts.GetValueOrDefault(UserTermState.Known);
         IgnoredTerms = stateCounts.GetValueOrDefault(UserTermState.Ignored);
 
-        DueReviews = await db.UserTerms
-            .AsNoTracking()
-            .CountAsync(
-                x => x.ProfileId == currentAccount.ProfileId
-                    && x.State == UserTermState.Learning
-                    && x.NextReviewAt != null
-                    && x.NextReviewAt <= DateTime.UtcNow,
-                cancellationToken);
+        DueReviews = await LearningQueries
+            .DueCards(db, currentAccount.ProfileId, DateTime.UtcNow)
+            .CountAsync(cancellationToken);
 
         var hasVocabularyState =
             LearningTerms + SavedTerms + KnownTerms + IgnoredTerms > 0;

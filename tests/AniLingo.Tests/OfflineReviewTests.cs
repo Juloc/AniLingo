@@ -22,22 +22,22 @@ public sealed class OfflineReviewTests
         {
             var options = Options(databasePath);
             Guid termId;
+            Guid cardId;
 
             await using (var setup = new AppDbContext(options))
             {
                 await DatabaseMigrationBridge.UpgradeAsync(setup);
                 var term = new Term { Language = "ja", Canonical = "猫" };
                 setup.Terms.Add(term);
-                setup.UserTerms.Add(new UserTerm
-                {
-                    ProfileId = "account-a",
-                    TermId = term.Id,
-                    State = UserTermState.Learning,
-                    LearningStartedAt = DateTime.UtcNow.AddDays(-1),
-                    NextReviewAt = DateTime.UtcNow.AddMinutes(-1)
-                });
-                await setup.SaveChangesAsync();
+                var card = await LearningTestData.SeedTermCardAsync(
+                    setup,
+                    "account-a",
+                    term,
+                    UserTermState.Learning,
+                    nextReviewAt: DateTime.UtcNow.AddMinutes(-1),
+                    learningStartedAt: DateTime.UtcNow.AddDays(-1));
                 termId = term.Id;
+                cardId = card.Id;
             }
 
             var firstAt = DateTime.UtcNow.AddMinutes(-20);
@@ -78,34 +78,35 @@ public sealed class OfflineReviewTests
                     repeat.AlreadyApplied.ToArray());
 
                 var expectedFirst = scheduler.Schedule(
-                    termId,
+                    cardId,
                     new DateTimeOffset(DateTime.SpecifyKind(firstAt, DateTimeKind.Utc)),
                     [],
                     ReviewRating.Again);
                 var expectedFinal = scheduler.Schedule(
-                    termId,
+                    cardId,
                     new DateTimeOffset(DateTime.SpecifyKind(secondAt, DateTimeKind.Utc)),
                     [new ReviewHistoryItem(
                         ReviewRating.Again,
                         new DateTimeOffset(DateTime.SpecifyKind(firstAt, DateTimeKind.Utc)))],
                     ReviewRating.Good);
 
-                var reviews = await db.Reviews
+                var reviews = await db.LearningCardReviews
                     .AsNoTracking()
                     .Where(x => x.ProfileId == "account-a")
                     .OrderBy(x => x.ReviewedAt)
                     .ToListAsync();
 
                 Assert.AreEqual(2, reviews.Count);
+                Assert.IsTrue(reviews.All(x => x.CardId == cardId));
                 Assert.AreEqual(firstId, reviews[0].ClientEventId);
                 Assert.AreEqual(expectedFirst.NextReviewAt.UtcDateTime, reviews[0].NextReviewAt);
                 Assert.AreEqual(secondId, reviews[1].ClientEventId);
                 Assert.AreEqual(expectedFinal.NextReviewAt.UtcDateTime, reviews[1].NextReviewAt);
 
-                var userTerm = await db.UserTerms
+                var card = await db.LearningCards
                     .AsNoTracking()
-                    .SingleAsync(x => x.ProfileId == "account-a" && x.TermId == termId);
-                Assert.AreEqual(expectedFinal.NextReviewAt.UtcDateTime, userTerm.NextReviewAt);
+                    .SingleAsync(x => x.Id == cardId);
+                Assert.AreEqual(expectedFinal.NextReviewAt.UtcDateTime, card.NextReviewAt);
             }
         }
         finally
@@ -125,6 +126,7 @@ public sealed class OfflineReviewTests
             var options = Options(databasePath);
             Guid ownTermId;
             Guid foreignTermId;
+            Guid foreignCardId;
 
             await using (var setup = new AppDbContext(options))
             {
@@ -132,20 +134,10 @@ public sealed class OfflineReviewTests
                 var own = new Term { Language = "ja", Canonical = "猫" };
                 var foreign = new Term { Language = "ja", Canonical = "犬" };
                 setup.Terms.AddRange(own, foreign);
-                setup.UserTerms.AddRange(
-                    new UserTerm
-                    {
-                        ProfileId = "account-a",
-                        TermId = own.Id,
-                        State = UserTermState.Learning
-                    },
-                    new UserTerm
-                    {
-                        ProfileId = "account-b",
-                        TermId = foreign.Id,
-                        State = UserTermState.Learning
-                    });
-                await setup.SaveChangesAsync();
+                await LearningTestData.SeedTermCardAsync(
+                    setup, "account-a", own, UserTermState.Learning);
+                foreignCardId = (await LearningTestData.SeedTermCardAsync(
+                    setup, "account-b", foreign, UserTermState.Learning)).Id;
                 ownTermId = own.Id;
                 foreignTermId = foreign.Id;
             }
@@ -157,6 +149,7 @@ public sealed class OfflineReviewTests
                 Context("account-a"));
             var futureId = Guid.NewGuid();
             var foreignId = Guid.NewGuid();
+            var foreignCardEventId = Guid.NewGuid();
             var now = DateTime.UtcNow;
 
             var result = await service.SyncOfflineReviewsAsync(
@@ -170,16 +163,22 @@ public sealed class OfflineReviewTests
                     foreignId,
                     foreignTermId,
                     ReviewRating.Good,
-                    now.AddMinutes(-1))
+                    now.AddMinutes(-1)),
+                new OfflineReviewEvent(
+                    foreignCardEventId,
+                    null,
+                    ReviewRating.Good,
+                    now.AddMinutes(-1),
+                    foreignCardId)
             ],
             now,
             CancellationToken.None);
 
             CollectionAssert.AreEquivalent(
-                new[] { futureId, foreignId },
+                new[] { futureId, foreignId, foreignCardEventId },
                 result.Rejected.ToArray());
             Assert.AreEqual(0, result.Accepted.Count);
-            Assert.AreEqual(0, await db.Reviews.CountAsync());
+            Assert.AreEqual(0, await db.LearningCardReviews.CountAsync());
         }
         finally
         {
@@ -205,20 +204,10 @@ public sealed class OfflineReviewTests
                 var a = new Term { Language = "ja", Canonical = "猫" };
                 var b = new Term { Language = "ja", Canonical = "犬" };
                 setup.Terms.AddRange(a, b);
-                setup.UserTerms.AddRange(
-                    new UserTerm
-                    {
-                        ProfileId = "account-a",
-                        TermId = a.Id,
-                        State = UserTermState.Learning
-                    },
-                    new UserTerm
-                    {
-                        ProfileId = "account-b",
-                        TermId = b.Id,
-                        State = UserTermState.Learning
-                    });
-                await setup.SaveChangesAsync();
+                await LearningTestData.SeedTermCardAsync(
+                    setup, "account-a", a, UserTermState.Learning);
+                await LearningTestData.SeedTermCardAsync(
+                    setup, "account-b", b, UserTermState.Learning);
                 termA = a.Id;
                 termB = b.Id;
             }
@@ -263,7 +252,7 @@ public sealed class OfflineReviewTests
             await using var verify = new AppDbContext(options);
             Assert.AreEqual(
                 2,
-                await verify.Reviews.CountAsync(x => x.ClientEventId == eventId));
+                await verify.LearningCardReviews.CountAsync(x => x.ClientEventId == eventId));
         }
         finally
         {

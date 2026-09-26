@@ -78,8 +78,8 @@
     );
   }
 
-  async function queueEvent(profileId, termId, rating, reviewedAtUtc = new Date().toISOString()) {
-    if (!profileId || !termId || !ratingValue[rating]) {
+  async function queueEvent(profileId, cardId, rating, reviewedAtUtc = new Date().toISOString()) {
+    if (!profileId || !cardId || !ratingValue[rating]) {
       throw new Error("Invalid offline review event.");
     }
 
@@ -88,7 +88,7 @@
       key: profileId + ":" + eventId,
       profileId,
       eventId,
-      termId,
+      cardId,
       rating: ratingValue[rating],
       reviewedAtUtc
     };
@@ -148,7 +148,10 @@
         body: JSON.stringify({
           events: events.map(event => ({
             eventId: event.eventId,
-            termId: event.termId,
+            // Events queued before directional cards carry only the term ID;
+            // the server resolves those to the word's Recognition card.
+            cardId: event.cardId ?? null,
+            termId: event.termId ?? null,
             rating: event.rating,
             reviewedAtUtc: event.reviewedAtUtc
           }))
@@ -227,8 +230,9 @@
     }
 
     const pending = await listEvents(profileId);
-    const pendingTerms = new Set(pending.map(event => event.termId));
-    const cards = session.cards.filter(card => !pendingTerms.has(card.termId));
+    const pendingCards = new Set(pending.map(event => event.cardId).filter(Boolean));
+    const cards = session.cards.filter(card =>
+      card.cardId && !pendingCards.has(card.cardId));
     const card = cards[0];
 
     const empty = root.querySelector("[data-offline-empty]");
@@ -244,10 +248,17 @@
     empty?.setAttribute("hidden", "");
     review?.removeAttribute("hidden");
 
-    root.querySelector("[data-offline-term]").textContent = card.canonical ?? "";
-    root.querySelector("[data-offline-reading]").textContent = card.reading ?? "";
-    root.querySelector("[data-offline-meaning]").textContent =
-      card.meaning || "No local dictionary meaning available.";
+    const term = root.querySelector("[data-offline-term]");
+    term.textContent = card.prompt ?? "";
+    term.lang = card.promptLanguage ?? "";
+    const reading = root.querySelector("[data-offline-reading]");
+    reading.textContent = card.promptReading ?? "";
+    reading.lang = card.promptLanguage ?? "";
+    const answer = root.querySelector("[data-offline-meaning]");
+    answer.textContent =
+      [card.answer, card.answerReading].filter(Boolean).join(" · ")
+      || "No local dictionary meaning available.";
+    answer.lang = card.answerLanguage ?? "";
 
     const context = root.querySelector("[data-offline-context]");
     if (card.context) {
@@ -263,7 +274,7 @@
       button.onclick = async () => {
         button.disabled = true;
         try {
-          await queueEvent(profileId, card.termId, rating);
+          await queueEvent(profileId, card.cardId, rating);
           await renderOfflinePage();
         } finally {
           button.disabled = false;

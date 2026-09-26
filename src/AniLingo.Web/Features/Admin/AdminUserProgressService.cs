@@ -1,6 +1,7 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Learning;
+using AniLingo.Web.Features.Learning.Courses;
 using Microsoft.EntityFrameworkCore;
 
 namespace AniLingo.Web.Features.Admin;
@@ -110,8 +111,9 @@ public sealed class AdminUserProgressService(AppDbContext db)
             })
             .ToListAsync(cancellationToken);
 
-        var termRows = await db.UserTerms
+        var termRows = await db.LearningCards
             .AsNoTracking()
+            .Where(x => x.Mode == LearningCardMode.Recognition)
             .GroupBy(x => x.ProfileId)
             .Select(group => new
             {
@@ -122,7 +124,7 @@ public sealed class AdminUserProgressService(AppDbContext db)
             })
             .ToListAsync(cancellationToken);
 
-        var reviewRows = await db.Reviews
+        var reviewRows = await db.LearningCardReviews
             .AsNoTracking()
             .GroupBy(x => x.ProfileId)
             .Select(group => new

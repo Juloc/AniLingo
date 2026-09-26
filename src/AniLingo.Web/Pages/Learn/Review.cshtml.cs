@@ -2,6 +2,7 @@ using AniLingo.Web.Data;
 using AniLingo.Web.Features.Ai;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Learning;
+using AniLingo.Web.Features.Learning.Courses;
 using AniLingo.Web.Features.Localization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -20,6 +21,13 @@ public sealed class ReviewModel(
     public AiSentenceExplanation? AiExplanation { get; private set; }
     public string ProfileId => currentAccount.ProfileId;
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
+
+    public string ModeLabel(LearningCardMode mode) =>
+        Ui[ModeKey(mode)];
+
+    public IReadOnlyDictionary<string, string> ModeLabels =>
+        Enum.GetValues<LearningCardMode>()
+            .ToDictionary(mode => mode.ToString(), ModeLabel);
 
     public async Task OnGetAsync(CancellationToken cancellationToken)
     {
@@ -66,11 +74,24 @@ public sealed class ReviewModel(
     }
 
     public async Task<IActionResult> OnPostReviewAsync(
-        Guid termId,
+        Guid cardId,
         ReviewRating rating,
         CancellationToken cancellationToken)
     {
-        await learningService.ReviewAsync(termId, rating, cancellationToken);
+        if (!Enum.IsDefined(rating))
+        {
+            return BadRequest();
+        }
+
+        try
+        {
+            await learningService.ReviewAsync(cardId, rating, cancellationToken);
+        }
+        catch (InvalidOperationException)
+        {
+            TempData["Status"] = "This card is no longer due.";
+        }
+
         return RedirectToPage();
     }
 
@@ -90,4 +111,13 @@ public sealed class ReviewModel(
 
         return new JsonResult(result);
     }
+
+    private static string ModeKey(LearningCardMode mode) =>
+        mode switch
+        {
+            LearningCardMode.Production => "learn.mode.production",
+            LearningCardMode.Listening => "learn.mode.listening",
+            LearningCardMode.Writing => "learn.mode.writing",
+            _ => "learn.mode.recognition"
+        };
 }
