@@ -1,5 +1,6 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
+using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Learning.Courses;
 using AniLingo.Web.Features.Learning.LanguageAssistance;
 using AniLingo.Web.Features.Novels;
@@ -65,6 +66,14 @@ public sealed class ReadModel(
     /// </summary>
     public bool FuriganaSupported { get; private set; }
 
+    /// <summary>
+    /// Whole-chapter AI translation, resolved through the canonical Learning
+    /// hierarchy (Novel media type → work → chapter) rather than the presence
+    /// of a cached translation. When it resolves off, cached German text is
+    /// withheld from the response and the translate/status handlers refuse.
+    /// </summary>
+    public bool TranslationEnabled { get; private set; }
+
     private static bool FuriganaToolkitSupportsReadings =>
         LearningLanguageToolkitRegistry.Supports(
             NovelReadingLanguage.Japanese,
@@ -114,9 +123,15 @@ public sealed class ReadModel(
             cancellationToken);
 
         FuriganaSupported = FuriganaToolkitSupportsReadings;
+        TranslationEnabled = await ResolveTranslationEnabledAsync(
+            chapter.WorkId,
+            id,
+            cancellationToken);
 
         JapaneseParagraphs = NovelTextLayout.SplitParagraphs(chapter.OriginalText);
-        GermanParagraphs = NovelTextLayout.SplitParagraphs(chapter.TranslationText);
+        GermanParagraphs = TranslationEnabled
+            ? NovelTextLayout.SplitParagraphs(chapter.TranslationText)
+            : [];
         JapaneseBlocks = NovelChapterDocument.BuildReaderBlocks(
             chapter.OriginalText,
             chapter.ContentJson);
@@ -359,6 +374,11 @@ public sealed class ReadModel(
             return NotFound();
         }
 
+        if (!await ResolveTranslationEnabledAsync(context.WorkId, id, cancellationToken))
+        {
+            return Forbid();
+        }
+
         var cached = await translations.GetCachedAsync(
             id,
             NovelReadingLanguage.German,
@@ -394,6 +414,17 @@ public sealed class ReadModel(
         Guid id,
         CancellationToken cancellationToken)
     {
+        var context = await catalog.GetChapterContextAsync(id, cancellationToken);
+        if (context is null)
+        {
+            return NotFound();
+        }
+
+        if (!await ResolveTranslationEnabledAsync(context.WorkId, id, cancellationToken))
+        {
+            return Forbid();
+        }
+
         var cached = await translations.GetCachedAsync(
             id,
             NovelReadingLanguage.German,
@@ -968,4 +999,26 @@ public sealed class ReadModel(
             Request.Headers["X-Requested-With"].ToString(),
             "fetch",
             StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Resolves the Translation capability for this chapter's scope (profile →
+    /// Novel media type → work → chapter) so cached German text and the
+    /// translate/status handlers follow the canonical Learning hierarchy
+    /// instead of only checking whether a translation happens to be cached.
+    /// </summary>
+    private async Task<bool> ResolveTranslationEnabledAsync(
+        Guid workId,
+        Guid chapterId,
+        CancellationToken cancellationToken)
+    {
+        var settings = await new LearningConfigurationStore(db).ResolveAsync(
+            account.ProfileId,
+            new LearningScopeContext(
+                LearningMediaType.Novel,
+                WorkKey: workId.ToString(),
+                ContentKey: chapterId.ToString()),
+            cancellationToken);
+
+        return settings.IsEnabled(LearningCapability.Translation);
+    }
 }
