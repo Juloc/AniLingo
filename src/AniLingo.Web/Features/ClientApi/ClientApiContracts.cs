@@ -3,6 +3,7 @@ using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.MediaSegments;
 using AniLingo.Web.Features.Playback;
 using AniLingo.Web.Features.Progress;
+using AniLingo.Web.Features.Speech;
 using AniLingo.Web.Features.Storage;
 
 namespace AniLingo.Web.Features.ClientApi;
@@ -52,7 +53,8 @@ public static class ClientApiContract
                 OfflineDownloads: true,
                 MediaSegments: true,
                 Trickplay: true,
-                OfflineLibrary: true));
+                OfflineLibrary: true,
+                TtsPreferences: true));
     }
 }
 
@@ -93,6 +95,12 @@ public static class ClientApiRoutes
 
     public static string PlaybackHistory =>
         $"{ClientApiContract.BasePath}/me/playback-history";
+
+    public static string TtsPreferences =>
+        $"{ClientApiContract.BasePath}/me/tts-preferences";
+
+    public static string SpeechModels =>
+        $"{ClientApiContract.BasePath}/speech/models";
 
     public static string Cues(Guid episodeId) =>
         $"{Episode(episodeId)}/cues";
@@ -197,7 +205,8 @@ public sealed record ClientFeatureFlags(
     bool OfflineDownloads,
     bool MediaSegments,
     bool Trickplay,
-    bool OfflineLibrary);
+    bool OfflineLibrary,
+    bool TtsPreferences = false);
 
 public sealed record ClientErrorResponse(
     string Code,
@@ -339,6 +348,55 @@ public sealed record ClientPlaybackPreferencesUpdate(
 public sealed record ClientPlaybackHistoryResponse(
     int Limit,
     IReadOnlyList<ClientPlaybackHistoryItem> Items);
+
+/// <summary>
+/// Profile-level TTS preferences, backed by the canonical Reader preference "default"
+/// scope row (see <see cref="AniLingo.Web.Features.Speech.TtsPreferencesService"/>).
+/// "auto" means the deterministic resolver order (offline neural, then device, then
+/// cloud) picks the provider; VoiceIds maps a normalized BCP-47 tag to a provider voice id.
+/// </summary>
+public sealed record ClientTtsPreferences(
+    string ProviderId,
+    IReadOnlyDictionary<string, string> VoiceIds,
+    double Rate,
+    double Pitch,
+    double Volume);
+
+/// <summary>
+/// Partial update: omitted/null scalar fields keep their stored value. Setting
+/// VoiceLanguage without VoiceId (or with a blank/"auto" VoiceId) clears that language's
+/// stored voice.
+/// </summary>
+public sealed record ClientTtsPreferencesUpdate(
+    string? ProviderId = null,
+    double? Rate = null,
+    double? Pitch = null,
+    double? Volume = null,
+    string? VoiceLanguage = null,
+    string? VoiceId = null);
+
+public sealed record ClientSpeechModelFile(
+    string Name,
+    string Url,
+    long SizeBytes,
+    string Sha256);
+
+/// <summary>
+/// One explicit, verifiable offline-neural voice pack an owner has pinned in the model
+/// manifest (docs/TTS.md, Phase 3). A client must never infer support for a language or
+/// voice this entry does not list.
+/// </summary>
+public sealed record ClientSpeechModel(
+    string ProviderId,
+    string ModelId,
+    string Version,
+    IReadOnlyList<string> Languages,
+    IReadOnlyList<string> Voices,
+    IReadOnlyList<ClientSpeechModelFile> Files,
+    long TotalSizeBytes,
+    string MinimumCompatibleVersion);
+
+public sealed record ClientSpeechModelsResponse(IReadOnlyList<ClientSpeechModel> Models);
 
 public sealed record ClientPlaybackHistoryItem(
     Guid Id,
@@ -604,6 +662,28 @@ public static class ClientApiMappings
             preferences.PreferredAudioLanguage,
             preferences.PreferredSubtitleLanguage,
             preferences.DefaultPlaybackSpeed);
+
+    public static ClientTtsPreferences ToClientTtsPreferences(
+        TtsPreferencesSnapshot preferences) =>
+        new(
+            preferences.ProviderId,
+            preferences.VoiceIds,
+            preferences.Rate,
+            preferences.Pitch,
+            preferences.Volume);
+
+    public static ClientSpeechModel ToClientSpeechModel(SpeechModelManifestEntry model) =>
+        new(
+            model.ProviderId,
+            model.ModelId,
+            model.Version,
+            model.Languages,
+            model.Voices,
+            model.Files
+                .Select(file => new ClientSpeechModelFile(file.Name, file.Url, file.SizeBytes, file.Sha256))
+                .ToArray(),
+            model.TotalSizeBytes,
+            model.MinimumCompatibleVersion);
 
     public static ClientEmbeddedSubtitleCues ToClientEmbeddedSubtitleCues(
         PlaybackEmbeddedSubtitleCues cues) =>

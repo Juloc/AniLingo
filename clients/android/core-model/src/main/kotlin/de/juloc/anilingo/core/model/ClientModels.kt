@@ -25,6 +25,7 @@ data class ClientFeatureFlags(
     val storageAvailability: Boolean,
     val ownerWakeOnLan: Boolean,
     val offlineDownloads: Boolean = false,
+    val ttsPreferences: Boolean = false,
 )
 
 data class ClientAccount(
@@ -251,4 +252,60 @@ data class TermStateUpdate(
 data class TermStateResult(
     val termId: String,
     val state: String,
+)
+
+/**
+ * Profile-level TTS preferences (server: `ClientTtsPreferences`, backed by the canonical
+ * Reader preference "default" scope row; docs/TTS.md). "auto" means the deterministic
+ * resolver order picks the provider; voiceIds maps a normalized BCP-47 tag to a provider
+ * voice id. Device-only facts (which offline models are installed) are never part of this
+ * profile-scoped model; see `de.juloc.anilingo.core.tts.model.TtsModelManager`.
+ */
+data class TtsPreferences(
+    val providerId: String,
+    val voiceIds: Map<String, String>,
+    val rate: Double,
+    val pitch: Double,
+    val volume: Double,
+)
+
+/**
+ * Partial update: omitted/null scalar fields keep their stored value. Setting
+ * voiceLanguage without voiceId (or with a blank voiceId) clears that language's stored
+ * voice.
+ */
+data class TtsPreferencesUpdate(
+    val providerId: String? = null,
+    val rate: Double? = null,
+    val pitch: Double? = null,
+    val volume: Double? = null,
+    val voiceLanguage: String? = null,
+    val voiceId: String? = null,
+)
+
+data class SpeechModelFileDescriptor(
+    val name: String,
+    val url: String,
+    val sizeBytes: Long,
+    val sha256: String,
+)
+
+/**
+ * One offline-neural voice pack an owner has pinned in the server's model manifest
+ * (docs/TTS.md, Phase 3). Never infer support for a language or voice this entry does not
+ * list.
+ */
+data class SpeechModel(
+    val providerId: String,
+    val modelId: String,
+    val version: String,
+    val languages: List<String>,
+    val voices: List<String>,
+    val files: List<SpeechModelFileDescriptor>,
+    val totalSizeBytes: Long,
+    val minimumCompatibleVersion: String,
+)
+
+data class SpeechModelsResponse(
+    val models: List<SpeechModel>,
 )

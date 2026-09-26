@@ -72,14 +72,63 @@ Activation is download -> verify -> atomic move. Partial or checksum-failed down
 
 Model files stay outside the main web image/APK so server/Docker and Android release paths are not inflated by every language model.
 
+### Server: manifest and profile preferences
+
+`GET /api/client/v1/speech/models` serves the manifest as `ClientSpeechModelsResponse`
+(`AniLingo.Web.Features.Speech.SpeechModelManifest*`). It is owner-configurable without a
+rebuild: drop a JSON file at `{dataRoot}/speech/tts-model-manifest.json` (for example
+`/data/speech/tts-model-manifest.json` in the container); with no override present, the
+bundled default (embedded in the assembly, zero models) is served. Every entry needs
+`providerId`, `modelId`, `version`, at least one recognized BCP-47 language tag, and a
+`files` list where every file has `name`, `url`, `sizeBytes` and a 64-character hex
+`sha256`; an entry with any unparsable/unverifiable file is dropped entirely rather than
+partially served, and a manifest never claims a language or voice it does not list.
+
+`GET`/`PUT /api/client/v1/me/tts-preferences` is the native-client surface for
+profile-level provider/voice/rate/pitch/volume (`ClientTtsPreferences`,
+`AniLingo.Web.Features.Speech.TtsPreferencesService`). This reuses the canonical Reader
+preference "default" (profile, no book) scope row and its existing Tts* columns/rules
+instead of a second store: the Reader's Vorlesen settings and a native client's speech
+settings share the same profile-level provider/voice/rate/pitch/volume. `PUT` is a partial
+update (omitted/null fields keep their value); `voiceLanguage` + `voiceId` sets or (with a
+blank/absent `voiceId`) clears one language's stored voice without touching others.
+Installed-model facts are device-only and never part of this contract.
+
 ## Native clients
 
-Android:
-- isolated `core-tts` module
-- system provider uses Android `TextToSpeech`
-- offline provider uses sherpa-onnx locally
-- app-mobile consumes the provider-neutral contract
-- native TTS build work remains outside the server/Docker release critical path
+Android (Phase 3 delivered under this issue):
+- isolated `core-tts` module: the provider-neutral contract ported field-for-field from
+  the server resolver (`SpeechPreferenceResolver`/`SpeechAvailabilityResolver`), a
+  `SystemTtsProvider` over Android `TextToSpeech` (voice discovery, BCP-47 matching,
+  rate/pitch/volume, utterance lifecycle and word-boundary callbacks), a `TtsSession` that
+  drives one utterance at a time so Stop always cancels the whole queue and pause/resume
+  are emulated by restarting the current utterance, and a provider-neutral
+  `TtsModelManager` (download -> verify SHA-256 per file -> atomic activation; a staging
+  directory is never mistaken for an installed model)
+- `NeuralTtsProvider` is the sherpa-onnx contract. sherpa-onnx does not publish its
+  Android AAR to Maven Central (see k2-fsa/sherpa-onnx#3981) or any resolvable Maven
+  coordinate as of this writing, only as a manually downloaded GitHub release asset, so
+  the real binding lives in the optional `core-tts-sherpa` module. It is excluded from the
+  Gradle build (and CI) unless `-PanilingoNeuralTtsEnabled=true` is passed; the rest of
+  the app builds and works with zero offline-neural models either way. To enable it
+  locally: download `sherpa-onnx-<version>.aar` from
+  https://github.com/k2-fsa/sherpa-onnx/releases, place it unmodified at
+  `clients/android/core-tts-sherpa/libs/sherpa-onnx.aar` (not committed to this
+  repository), and build with the property set. Without that module (or the manifest
+  listing no models), the offline-neural provider reports itself unavailable and the
+  resolver falls through to Device/Cloud as usual.
+- app-mobile consumes the contract: a native `TtsSettingsScreen` (provider choice,
+  rate/pitch/volume synced through `/me/tts-preferences`, offline-model download/delete
+  against the server manifest) and a `TtsCoordinator` wired into the native player's
+  learning sheet (`NativePlayerScreen`/`LearningSheet`) as a Speak action for the current
+  subtitle line and for a looked-up word; both stop automatically when the sheet closes.
+  Spoken text is only ever handed to the local engine, never persisted or sent to the
+  server.
+- app-tv: not wired in this phase (the TV remote-control player surface does not yet have
+  a word-lookup/learning sheet to hang a Speak action off; revisit alongside that work).
+- native TTS build work remains outside the server/Docker release critical path (the
+  Android CI job only triggers on `clients/android/**` / `design/player/**`, unaffected by
+  server-only changes here)
 
 iOS, when a native client exists:
 - system provider uses `AVSpeechSynthesizer`
