@@ -21,10 +21,10 @@ Owner-only administration:
 - `/Admin/Subtitles`
 - `/Admin/Sonarr`
 - `/Admin/Ai`
-- `/Settings/Sabnzbd` — the one SABnzbd connection shared by Books and Anime (linked from Admin → System and Books → Acquisition settings)
+- `/Settings/DownloadClients` — the canonical download client list (SABnzbd, qBittorrent), shared by Books and Anime, with priority, enable/disable, test and health (linked from Admin → System and Books → Acquisition settings)
 - `/Settings/SonarrMigration` — per-anime Sonarr/AniLingo ownership (linked from Admin → Sonarr)
 - `/Settings/Naming` — anime naming profiles, default and per-library selection (linked from Admin → Sonarr); per-anime selection and the rename preview live on `/Library/Rename/{animeId}` (see [ANIME_NAMING.md](ANIME_NAMING.md))
-- `/Settings/Prowlarr` — the Prowlarr connection for anime acquisition (linked from Admin → System)
+- `/Settings/Indexers` — the canonical indexer list (Prowlarr, direct Newznab/Torznab) for anime acquisition, with priority, enable/disable, test and health (linked from Admin → System)
 - `/Acquisition` — anime acquisition overview: schedule, wanted episodes, downloads, imports that need a decision, interactive search and recent decisions (linked from Admin → System and each anime page; see [ANIME_ACQUISITION.md](ANIME_ACQUISITION.md))
 
 Legacy owner routes under `/Settings` redirect to their `/Admin` counterparts.
@@ -148,26 +148,31 @@ Persisted operational data must not contain:
 
 Exceptions are persisted as bounded type/message summaries rather than stack traces. Full server diagnostics may continue to use the normal application logger.
 
-## SABnzbd
+## SABnzbd and qBittorrent (download clients)
 
-AniLingo has one SABnzbd integration (`Features/Acquisition/Sabnzbd`) used by Books and Anime.
+Books and Anime submit downloads through one abstraction, `IDownloadClient`
+(`Features/Acquisition/DownloadClients`), with SABnzbd (usenet) and qBittorrent (torrent) as its
+two implementations; `Features/Acquisition/Sabnzbd` keeps SABnzbd's own protocol client and the
+anime-specific attempt/blocklist relation. The pipeline and Books submissions pick the
+highest-priority enabled, healthy client that supports a release's protocol and fail over to the
+next client of that protocol if a submission is rejected.
 
 ### Configuration
 
-The owner configures it once under `/Settings/Sabnzbd`: base URL, API key and one category per purpose (Books, Anime; empty means the SABnzbd default category). Settings are stored in `/data/acquisition/sabnzbd.json`; the API key is protected with ASP.NET Core Data Protection. **Test connection** checks both reachability and that the key can read the queue — the NZB-only key can submit but cannot provide progress, so use the full API key.
+The owner configures every download client under `/Settings/DownloadClients`: name, type
+(SABnzbd/qBittorrent), base URL, API key or password, categories (SABnzbd has separate Books and
+Anime categories; qBittorrent's one category is used for Anime), qBittorrent save path, priority
+and enabled. Settings are stored in `/data/acquisition/download-clients.json`; the secret is
+protected with ASP.NET Core Data Protection. **Test** on each entry checks reachability and
+authentication and records the result for the periodic health check (see
+[ANIME_ACQUISITION.md](ANIME_ACQUISITION.md)) — for SABnzbd, use the full API key rather than the
+NZB-only key so AniLingo can also track progress.
 
-Supported configuration keys (environment variables use `__`, for example `Sabnzbd__ApiKey`). A set key overrides the matching stored field and the settings page shows the override:
-
-| Key | Field |
-| --- | --- |
-| `Sabnzbd:BaseUrl` | SABnzbd URL |
-| `Sabnzbd:ApiKey` | API key |
-| `Sabnzbd:Categories:Books` | Books category |
-| `Sabnzbd:Categories:Anime` | Anime category |
-
-The earlier Books-only keys `Books:SABnzbd:BaseUrl`, `Books:SABnzbd:ApiKey` and `Books:SABnzbd:Category` are no longer read; startup logs the replacement key when one is still set.
-
-On startup, SABnzbd fields that earlier builds stored in `/data/books/integrations.json` are moved once into the shared settings (existing shared settings win) and removed from the Books file, which now only holds the Books inbox path.
+On startup, a SABnzbd connection from the earlier single-connection settings
+(`/data/acquisition/sabnzbd.json`, including the environment-variable overrides below and the
+still-earlier Books-only settings) is moved once into the canonical download client list; the
+legacy file is then removed. The previously supported `Sabnzbd:*` / `Books:SABnzbd:*` environment
+keys are only read by that one-time migration, not afterward.
 
 ### Jobs and state
 
