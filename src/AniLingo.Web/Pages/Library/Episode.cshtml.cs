@@ -142,7 +142,7 @@ public sealed class EpisodeModel(
             await LoadSubtitleSourcesAsync(
                 id,
                 Playback.Media is { Storage.IsAvailable: true } availableMedia
-                    ? availableMedia.SourcePath
+                    ? availableMedia
                     : null,
                 cancellationToken);
         }
@@ -246,7 +246,7 @@ public sealed class EpisodeModel(
 
     private async Task LoadSubtitleSourcesAsync(
         Guid episodeId,
-        string? mediaPath,
+        PlaybackMedia? media,
         CancellationToken cancellationToken)
     {
         var active = await db.SubtitleTracks
@@ -274,19 +274,17 @@ public sealed class EpisodeModel(
                 cueCount);
         }
 
-        if (string.IsNullOrWhiteSpace(mediaPath))
+        if (media is null)
         {
             return;
         }
 
-        var streams = await embeddedSubtitleExtractor.ProbeStreamsAsync(
-            mediaPath,
-            cancellationToken);
-
-        SubtitleSources = streams
+        // Embedded streams come from the canonical media inventory via the playback snapshot.
+        SubtitleSources = (media.Tracks ?? [])
+            .Where(stream => stream.Kind == PlaybackTrackKind.Subtitle && stream.Codec is not null)
             .Select(stream => new EpisodeSubtitleSource(
-                stream.Index,
-                stream.Codec,
+                stream.StreamIndex,
+                stream.Codec!,
                 stream.Language,
                 stream.Title,
                 stream.IsDefault,
@@ -295,7 +293,7 @@ public sealed class EpisodeModel(
                 active is not null &&
                 string.Equals(
                     active.Path,
-                    EmbeddedSubtitleExtractor.BuildSourceKey(mediaPath, stream.Index),
+                    EmbeddedSubtitleExtractor.BuildSourceKey(media.SourcePath, stream.StreamIndex),
                     StringComparison.Ordinal)))
             .ToArray();
     }

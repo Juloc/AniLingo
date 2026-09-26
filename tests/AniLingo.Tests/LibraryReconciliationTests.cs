@@ -229,8 +229,10 @@ public sealed class LibraryReconciliationTests
                 new JapaneseTermExtractor(new EmptyMorphology()),
                 new JapaneseDictionary(dictionaryPath));
             var subtitleImport = new SubtitleImportService(db, vocabulary);
+            var inventory = MediaInventoryTestSupport.Create(options);
             var embedded = new EmbeddedSubtitleExtractor(
                 new MediaProcessRunner(NullLogger<MediaProcessRunner>.Instance),
+                inventory,
                 NullLogger<EmbeddedSubtitleExtractor>.Instance);
             var sonarrStore = new SonarrConnectionStore(
                 DataProtectionProvider.Create(
@@ -247,6 +249,7 @@ public sealed class LibraryReconciliationTests
                 db,
                 subtitleImport,
                 embedded,
+                inventory,
                 sonarrSync,
                 NullLogger<LibraryScanner>.Instance);
 
