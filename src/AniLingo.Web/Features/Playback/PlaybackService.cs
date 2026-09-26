@@ -2,6 +2,7 @@ using System.Text;
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Learning;
+using AniLingo.Web.Features.MediaSegments;
 using AniLingo.Web.Features.Storage;
 using AniLingo.Web.Features.Vocabulary;
 using AniLingo.Web.Infrastructure;
@@ -82,7 +83,8 @@ public sealed record PlaybackCueSet(
 
 public sealed record EpisodePlaybackSnapshot(
     PlaybackMedia? Media,
-    IReadOnlyList<PlaybackCue> Cues)
+    IReadOnlyList<PlaybackCue> Cues,
+    EpisodePlayerNavigation? Navigation = null)
 {
     public static EpisodePlaybackSnapshot Empty { get; } = new(null, []);
 }
@@ -198,6 +200,7 @@ public sealed class PlaybackService
     private readonly PlaybackCueProjector projector;
     private readonly PlaybackMediaProbe mediaProbe;
     private readonly MediaAvailabilityService? mediaAvailability;
+    private readonly MediaSegmentService? segments;
     private readonly string profileId;
 
     public PlaybackService(
@@ -205,16 +208,18 @@ public sealed class PlaybackService
         PlaybackCueProjector projector,
         PlaybackMediaProbe mediaProbe,
         MediaAvailabilityService mediaAvailability,
-        CurrentAccountContext currentAccount)
-        : this(db, projector, mediaProbe, mediaAvailability, currentAccount.ProfileId)
+        CurrentAccountContext currentAccount,
+        MediaSegmentService? segments = null)
+        : this(db, projector, mediaProbe, mediaAvailability, currentAccount.ProfileId, segments)
     {
     }
 
     public PlaybackService(
         AppDbContext db,
         PlaybackCueProjector projector,
-        PlaybackMediaProbe mediaProbe)
-        : this(db, projector, mediaProbe, null, LearningProfile.DefaultId)
+        PlaybackMediaProbe mediaProbe,
+        MediaSegmentService? segments = null)
+        : this(db, projector, mediaProbe, null, LearningProfile.DefaultId, segments)
     {
     }
 
@@ -223,13 +228,15 @@ public sealed class PlaybackService
         PlaybackCueProjector projector,
         PlaybackMediaProbe mediaProbe,
         MediaAvailabilityService? mediaAvailability,
-        string profileId)
+        string profileId,
+        MediaSegmentService? segments)
     {
         this.db = db;
         this.projector = projector;
         this.mediaProbe = mediaProbe;
         this.mediaAvailability = mediaAvailability;
         this.profileId = profileId;
+        this.segments = segments;
     }
     public async Task<PlaybackMedia?> GetMediaAsync(
         Guid episodeId,
@@ -423,8 +430,11 @@ public sealed class PlaybackService
             fromMs: null,
             toMs: null,
             cancellationToken);
+        var navigation = segments is null
+            ? null
+            : await segments.GetPlayerNavigationAsync(episodeId, media, cancellationToken);
 
-        return new EpisodePlaybackSnapshot(media, cueSet.Cues);
+        return new EpisodePlaybackSnapshot(media, cueSet.Cues, navigation);
     }
 
     public async Task<PlaybackCueSet> GetCueSetAsync(

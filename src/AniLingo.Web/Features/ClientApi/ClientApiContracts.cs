@@ -1,5 +1,6 @@
 using System.Reflection;
 using AniLingo.Web.Features.Learning;
+using AniLingo.Web.Features.MediaSegments;
 using AniLingo.Web.Features.Playback;
 using AniLingo.Web.Features.Progress;
 using AniLingo.Web.Features.Storage;
@@ -45,7 +46,9 @@ public static class ClientApiContract
                 OwnerWakeOnLan: true,
                 EpisodeFlow: true,
                 ContinueWatching: true,
-                PlaybackHistory: true));
+                PlaybackHistory: true,
+                MediaSegments: true,
+                Trickplay: true));
     }
 }
 
@@ -89,6 +92,15 @@ public static class ClientApiRoutes
 
     public static string Cues(Guid episodeId) =>
         $"{Episode(episodeId)}/cues";
+
+    public static string Segments(Guid episodeId) =>
+        $"{Episode(episodeId)}/segments";
+
+    public static string Trickplay(Guid episodeId) =>
+        $"{Episode(episodeId)}/trickplay";
+
+    public static string TrickplayAsset(Guid episodeId, string fileName) =>
+        $"{Trickplay(episodeId)}/{fileName}";
 
     public static string DirectContent(Guid mediaFileId) =>
         $"{ClientApiContract.BasePath}/media/{mediaFileId:D}/content";
@@ -172,7 +184,9 @@ public sealed record ClientFeatureFlags(
     bool OwnerWakeOnLan,
     bool EpisodeFlow,
     bool ContinueWatching,
-    bool PlaybackHistory);
+    bool PlaybackHistory,
+    bool MediaSegments,
+    bool Trickplay);
 
 public sealed record ClientErrorResponse(
     string Code,
@@ -320,7 +334,40 @@ public sealed record ClientPlayerBootstrap(
     Guid? ActiveLearningSubtitleTrackId,
     string? DefaultAudioTrackId,
     string? DefaultSubtitleTrackId,
-    ClientCompatibilityFallback Fallback);
+    ClientCompatibilityFallback Fallback,
+    ClientSegmentDescriptor? Segments = null,
+    ClientTrickplayDescriptor? Trickplay = null);
+
+// Canonical skip markers. Clients seek to EndMs of a segment with CanSkip and
+// never derive their own boundaries or confidence rules.
+public sealed record ClientSegmentDescriptor(
+    double SkipConfidenceThreshold,
+    IReadOnlyList<ClientMediaSegment> Segments);
+
+public sealed record ClientMediaSegment(
+    string Kind,
+    long StartMs,
+    long EndMs,
+    string Source,
+    string Method,
+    string Version,
+    double Confidence,
+    bool CanSkip);
+
+// Timeline preview sprites. Thumbnail i covers [i * IntervalMs, (i + 1) * IntervalMs)
+// and sits on SpriteUrls[i / (Columns * Rows)] at column i % Columns, row (i / Columns) % Rows.
+public sealed record ClientTrickplayDescriptor(
+    string State,
+    string? Message,
+    int GeneratorVersion,
+    int? IntervalMs,
+    int? TileWidth,
+    int? TileHeight,
+    int? Columns,
+    int? Rows,
+    int? ThumbnailCount,
+    IReadOnlyList<string> SpriteUrls,
+    string DescriptorUrl);
 
 public sealed record ClientPlayerEpisode(
     Guid Id,
@@ -552,6 +599,51 @@ public static class ClientApiMappings
             UserTermState.Learning => "learning",
             _ => "new"
         };
+
+    public static ClientSegmentDescriptor ToClientSegments(EpisodeSegmentDescriptor descriptor) =>
+        new(
+            descriptor.SkipConfidenceThreshold,
+            descriptor.Segments
+                .Select(segment => new ClientMediaSegment(
+                    MediaSegmentPolicy.KindName(segment.Kind),
+                    segment.StartMs,
+                    segment.EndMs,
+                    MediaSegmentPolicy.SourceName(segment.Source),
+                    segment.Method,
+                    segment.Version,
+                    segment.Confidence,
+                    segment.CanSkip))
+                .ToArray());
+
+    public static ClientTrickplayDescriptor ToClientTrickplay(
+        Guid episodeId,
+        TrickplayDescriptor descriptor)
+    {
+        var index = descriptor.IsReady ? descriptor.Index : null;
+        var state = descriptor.State switch
+        {
+            TrickplayState.Ready when index is not null => "ready",
+            TrickplayState.Queued or TrickplayState.Generating => "generating",
+            _ => "unavailable"
+        };
+
+        return new ClientTrickplayDescriptor(
+            state,
+            descriptor.Message,
+            TrickplayGenerator.GeneratorVersion,
+            index?.IntervalMs,
+            index?.TileWidth,
+            index?.TileHeight,
+            index?.Columns,
+            index?.Rows,
+            index?.ThumbnailCount,
+            index is null
+                ? []
+                : index.Sprites
+                    .Select(sprite => ClientApiRoutes.TrickplayAsset(episodeId, sprite))
+                    .ToArray(),
+            ClientApiRoutes.Trickplay(episodeId));
+    }
 
     public static ClientCue ToClientCue(PlaybackCue cue)
     {

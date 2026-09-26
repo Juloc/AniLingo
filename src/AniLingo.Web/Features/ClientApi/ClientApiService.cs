@@ -2,6 +2,7 @@ using AniLingo.Web.Data;
 using AniLingo.Web.Features.Artwork;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Learning;
+using AniLingo.Web.Features.MediaSegments;
 using AniLingo.Web.Features.Metadata;
 using AniLingo.Web.Features.Playback;
 using AniLingo.Web.Features.Storage;
@@ -14,7 +15,8 @@ public sealed class ClientApiService(
     PlaybackService playbackService,
     LearningService learningService,
     MediaAvailabilityService mediaAvailability,
-    CurrentAccountContext currentAccount)
+    CurrentAccountContext currentAccount,
+    MediaSegmentService mediaSegments)
 {
     public async Task<ClientLibraryResponse> GetLibraryAsync(
         CancellationToken cancellationToken)
@@ -273,6 +275,13 @@ public sealed class ClientApiService(
                 $"{ClientApiRoutes.Cues(episodeId)}?trackId={x.Id:D}"))
             .ToArray();
 
+        var navigation = await mediaSegments.GetPlayerNavigationAsync(
+            episodeId,
+            media,
+            cancellationToken);
+        var segments = ClientApiMappings.ToClientSegments(navigation.Segments);
+        var trickplay = ClientApiMappings.ToClientTrickplay(episodeId, navigation.Trickplay);
+
         if (media is null)
         {
             return new ClientPlayerBootstrap(
@@ -290,7 +299,9 @@ public sealed class ClientApiService(
                     null,
                     false,
                     false,
-                    null));
+                    null),
+                segments,
+                trickplay);
         }
 
         var tracks = media.Tracks ?? [];
@@ -350,7 +361,36 @@ public sealed class ClientApiService(
                 fallbackAvailable ? "hls" : null,
                 fallbackAvailable,
                 fallbackAvailable,
-                fallbackAvailable ? ClientApiRoutes.Hls(episodeId) : null));
+                fallbackAvailable ? ClientApiRoutes.Hls(episodeId) : null),
+            segments,
+            trickplay);
+    }
+
+    public async Task<ClientSegmentDescriptor?> GetSegmentsAsync(
+        Guid episodeId,
+        CancellationToken cancellationToken)
+    {
+        if (!await db.Episodes.AsNoTracking().AnyAsync(x => x.Id == episodeId, cancellationToken))
+        {
+            return null;
+        }
+
+        return ClientApiMappings.ToClientSegments(
+            await mediaSegments.GetSegmentsAsync(episodeId, cancellationToken));
+    }
+
+    public async Task<ClientTrickplayDescriptor?> GetTrickplayAsync(
+        Guid episodeId,
+        CancellationToken cancellationToken)
+    {
+        if (!await db.Episodes.AsNoTracking().AnyAsync(x => x.Id == episodeId, cancellationToken))
+        {
+            return null;
+        }
+
+        return ClientApiMappings.ToClientTrickplay(
+            episodeId,
+            await mediaSegments.GetTrickplayAsync(episodeId, cancellationToken));
     }
 
     public async Task<ClientCueResponse?> GetCuesAsync(

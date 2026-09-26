@@ -4,6 +4,7 @@ using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Books;
 using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Library;
+using AniLingo.Web.Features.MediaSegments;
 using AniLingo.Web.Features.Metadata;
 using AniLingo.Web.Features.Novels;
 using AniLingo.Web.Features.Progress;
@@ -42,6 +43,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<NovelHighlight> NovelHighlights => Set<NovelHighlight>();
     public DbSet<NovelAnimeMapping> NovelAnimeMappings => Set<NovelAnimeMapping>();
     public DbSet<ReaderPreference> ReaderPreferences => Set<ReaderPreference>();
+    public DbSet<EpisodeMediaSegment> EpisodeMediaSegments => Set<EpisodeMediaSegment>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -364,6 +366,18 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasOne<NovelWork>().WithMany().HasForeignKey(x => x.WorkId).OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(x => new { x.WorkId, x.ChapterStart, x.ChapterEnd });
             entity.HasIndex(x => new { x.AnimeProvider, x.AnimeExternalId });
+        });
+
+        modelBuilder.Entity<EpisodeMediaSegment>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Kind).HasConversion<int>();
+            entity.Property(x => x.Source).HasConversion<int>();
+            entity.Property(x => x.Method).HasMaxLength(80);
+            entity.Property(x => x.Version).HasMaxLength(40);
+            entity.Property(x => x.MediaIdentity).HasMaxLength(64);
+            entity.HasOne<Episode>().WithMany().HasForeignKey(x => x.EpisodeId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(x => new { x.EpisodeId, x.Kind, x.Source }).IsUnique();
         });
     }
 }
