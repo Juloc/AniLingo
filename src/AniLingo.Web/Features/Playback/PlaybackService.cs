@@ -4,6 +4,7 @@ using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Library;
 using AniLingo.Web.Features.Storage;
+using AniLingo.Web.Features.Subtitles;
 using AniLingo.Web.Features.Vocabulary;
 using AniLingo.Web.Infrastructure;
 using Microsoft.EntityFrameworkCore;
@@ -44,7 +45,8 @@ public sealed record PlaybackMedia(
     string? AudioCodec = null,
     long? SizeBytes = null,
     IReadOnlyList<PlaybackMediaTrack>? Tracks = null,
-    MediaAvailabilitySnapshot? Storage = null)
+    MediaAvailabilitySnapshot? Storage = null,
+    int? VideoHeight = null)
 {
     public bool HasReadyOption => Device.IsReady || Server.IsReady;
     public bool IsPreparing => Device.IsPreparing || Server.IsPreparing;
@@ -188,16 +190,57 @@ public sealed record PlaybackStream(
     string ContentType,
     DateTimeOffset LastModified,
     PlaybackPreparationPlan? LivePlan,
-    double? DurationSeconds = null)
+    double? DurationSeconds = null,
+    int? AudioStreamIndex = null,
+    PlaybackQualityCap QualityCap = PlaybackQualityCap.Auto)
 {
     public bool IsLive => LivePlan is not null;
 }
+
+/// <summary>
+/// One playback stream request. <paramref name="AudioTrackId"/> is a canonical
+/// <c>stream:N</c> id; null keeps the file default. The quality cap is the
+/// requesting device's bandwidth limit.
+/// </summary>
+public sealed record PlaybackStreamRequest(
+    PlaybackRequestedMode Mode,
+    string? AudioTrackId = null,
+    PlaybackQualityCap QualityCap = PlaybackQualityCap.Auto);
+
+/// <summary>
+/// Outcome of <see cref="PlaybackService.Decide"/>: a null plan means direct
+/// play of the source file; otherwise a live remux/encode. The audio stream is
+/// the resolved selection (null only when the file has no audio).
+/// </summary>
+public sealed record PlaybackStreamDecision(
+    PlaybackPreparationPlan? Plan,
+    int? AudioStreamIndex);
+
+/// <summary>
+/// Server-decided outcome of one web player request. <c>SatisfiesCap</c> is
+/// false only when the inventory proves the delivered video is taller than the
+/// cap (Device mode never converts video, so it cannot honour such a cap).
+/// </summary>
+public sealed record PlaybackStreamVariant(
+    string Mode,
+    string? AudioTrackId,
+    string Quality,
+    bool IsAvailable,
+    bool IsLive,
+    bool SatisfiesCap);
+
+/// <summary>Plain text cues of one embedded subtitle stream for display-only playback subtitles.</summary>
+public sealed record PlaybackEmbeddedSubtitleCues(
+    string TrackId,
+    string? Language,
+    IReadOnlyList<SubtitleCueData> Cues);
 
 public sealed class PlaybackService
 {
     private readonly AppDbContext db;
     private readonly PlaybackCueProjector projector;
     private readonly MediaInventoryService mediaInventory;
+    private readonly EmbeddedSubtitleExtractor? subtitleExtractor;
     private readonly MediaAvailabilityService? mediaAvailability;
     private readonly string profileId;
 
@@ -205,17 +248,19 @@ public sealed class PlaybackService
         AppDbContext db,
         PlaybackCueProjector projector,
         MediaInventoryService mediaInventory,
+        EmbeddedSubtitleExtractor subtitleExtractor,
         MediaAvailabilityService mediaAvailability,
         CurrentAccountContext currentAccount)
-        : this(db, projector, mediaInventory, mediaAvailability, currentAccount.ProfileId)
+        : this(db, projector, mediaInventory, subtitleExtractor, mediaAvailability, currentAccount.ProfileId)
     {
     }
 
+    /// <summary>Decision-only instance (no storage checks, no subtitle extraction) for focused tests.</summary>
     public PlaybackService(
         AppDbContext db,
         PlaybackCueProjector projector,
         MediaInventoryService mediaInventory)
-        : this(db, projector, mediaInventory, null, LearningProfile.DefaultId)
+        : this(db, projector, mediaInventory, null, null, LearningProfile.DefaultId)
     {
     }
 
@@ -223,15 +268,18 @@ public sealed class PlaybackService
         AppDbContext db,
         PlaybackCueProjector projector,
         MediaInventoryService mediaInventory,
+        EmbeddedSubtitleExtractor? subtitleExtractor,
         MediaAvailabilityService? mediaAvailability,
         string profileId)
     {
         this.db = db;
         this.projector = projector;
         this.mediaInventory = mediaInventory;
+        this.subtitleExtractor = subtitleExtractor;
         this.mediaAvailability = mediaAvailability;
         this.profileId = profileId;
     }
+
     public async Task<PlaybackMedia?> GetMediaAsync(
         Guid episodeId,
         CancellationToken cancellationToken)
@@ -331,7 +379,8 @@ public sealed class PlaybackService
                 probe.AudioCodec,
                 row.SizeBytes,
                 probe.Tracks,
-                availability);
+                availability,
+                probe.VideoHeight);
         }
 
         var device = BuildOption(row, probe, PlaybackRequestedMode.Device);
@@ -359,12 +408,21 @@ public sealed class PlaybackService
             probe.AudioCodec,
             row.SizeBytes,
             probe.Tracks,
-            availability);
+            availability,
+            probe.VideoHeight);
     }
 
+    /// <summary>
+    /// Resolves the stream for one request. Direct play wins whenever the file
+    /// is browser-compatible, the requested audio track is the file default and
+    /// the quality cap is satisfied; a non-default audio track needs a
+    /// video-copy remux, and a cap becomes an encode only through
+    /// <see cref="ResolvePlan"/>. Returns null when the media, the requested
+    /// audio track or a usable plan does not exist.
+    /// </summary>
     public async Task<PlaybackStream?> GetStreamAsync(
         Guid episodeId,
-        PlaybackRequestedMode mode,
+        PlaybackStreamRequest request,
         CancellationToken cancellationToken)
     {
         var row = await GetMediaRowAsync(episodeId, cancellationToken);
@@ -391,27 +449,229 @@ public sealed class PlaybackService
             return null;
         }
 
-        if (IsUniversalDirect(row.Path, probe) ||
-            (mode == PlaybackRequestedMode.Device &&
-             IsHevc(probe.VideoCodec) &&
-             PlaybackMediaTypes.IsLikelyBrowserSupportedContainer(row.Path)))
-        {
-            return SourceStream(row.Path, probe.DurationSeconds);
-        }
-
-        var plan = PlaybackPreparationPlan.Build(probe, mode);
-        if (!plan.CanPrepare || plan.Kind is null)
+        var decision = Decide(row.Path, probe, request);
+        if (decision is null)
         {
             return null;
+        }
+
+        if (decision.Plan is null)
+        {
+            // HLS always encodes, so it still needs the resolved audio stream and cap.
+            return SourceStream(row.Path, probe.DurationSeconds) with
+            {
+                AudioStreamIndex = decision.AudioStreamIndex,
+                QualityCap = request.QualityCap
+            };
         }
 
         return new PlaybackStream(
             row.Path,
             "video/mp4",
             new DateTimeOffset(File.GetLastWriteTimeUtc(row.Path)),
-            plan,
-            probe.DurationSeconds);
+            decision.Plan,
+            probe.DurationSeconds,
+            decision.AudioStreamIndex,
+            request.QualityCap);
     }
+
+    /// <summary>
+    /// Pure stream decision from the canonical media inventory facts. Direct
+    /// play (null plan) wins whenever the file is browser-compatible, the
+    /// requested audio track is the file default and no Server-mode quality cap
+    /// is proven to be exceeded by the inventory's source height. Returns null
+    /// when the requested audio track or a usable live plan does not exist.
+    /// </summary>
+    public static PlaybackStreamDecision? Decide(
+        string sourcePath,
+        PlaybackProbeResult probe,
+        PlaybackStreamRequest request)
+    {
+        PlaybackMediaTrack? audioTrack = null;
+        if (request.AudioTrackId is not null)
+        {
+            audioTrack = FindAudioTrack(probe, request.AudioTrackId);
+            if (audioTrack is null)
+            {
+                return null;
+            }
+        }
+
+        var defaultAudio = PlaybackTrackSelection.DefaultAudio(probe.Tracks);
+        var usesDefaultAudio = audioTrack is null ||
+            audioTrack.StreamIndex == defaultAudio?.StreamIndex;
+
+        var directEligible = IsUniversalDirect(sourcePath, probe) ||
+            (request.Mode == PlaybackRequestedMode.Device &&
+             IsHevc(probe.VideoCodec) &&
+             PlaybackMediaTypes.IsLikelyBrowserSupportedContainer(sourcePath));
+
+        // Encoded paths always map the resolved audio stream explicitly so the
+        // canonical default (not merely the first stream) survives restarts.
+        var effectiveAudio = audioTrack ?? defaultAudio;
+        if (directEligible && usesDefaultAudio && !CapForcesEncode(request, probe.VideoHeight))
+        {
+            return new PlaybackStreamDecision(null, effectiveAudio?.StreamIndex);
+        }
+
+        var plan = ResolvePlan(probe, request, effectiveAudio);
+        return plan is null
+            ? null
+            : new PlaybackStreamDecision(plan, effectiveAudio?.StreamIndex);
+    }
+
+    /// <summary>
+    /// Builds the live plan for a request. A selected audio track re-derives
+    /// the audio mode from that track's codec. A quality cap upgrades a
+    /// video-copy plan to an H.264 encode only in Server mode and only when
+    /// the inventory proves the source is taller than the cap; Device mode
+    /// never video-transcodes.
+    /// </summary>
+    public static PlaybackPreparationPlan? ResolvePlan(
+        PlaybackProbeResult probe,
+        PlaybackStreamRequest request,
+        PlaybackMediaTrack? audioTrack)
+    {
+        var plan = PlaybackPreparationPlan.Build(probe, request.Mode);
+        if (!plan.CanPrepare || plan.Kind is null)
+        {
+            return null;
+        }
+
+        if (audioTrack is not null)
+        {
+            plan = plan with
+            {
+                AudioMode = string.Equals(audioTrack.Codec, "aac", StringComparison.OrdinalIgnoreCase)
+                    ? PlaybackAudioMode.Copy
+                    : PlaybackAudioMode.Aac
+            };
+        }
+
+        if (plan.VideoMode == PlaybackVideoMode.Copy &&
+            CapForcesEncode(request, probe.VideoHeight))
+        {
+            plan = plan with
+            {
+                Kind = PlaybackPreparationKind.ServerH264Transcode,
+                VideoMode = PlaybackVideoMode.H264,
+                TagHevcAsHvc1 = false,
+                Message = $"Video will be transcoded to H.264 at most {PlaybackQuality.MaxHeight(request.QualityCap)}p."
+            };
+        }
+
+        return plan;
+    }
+
+    private static bool CapForcesEncode(PlaybackStreamRequest request, int? sourceHeight) =>
+        request.Mode == PlaybackRequestedMode.Server &&
+        PlaybackQuality.RequiresTranscode(request.QualityCap, sourceHeight);
+
+    /// <summary>
+    /// Every (mode, audio track, quality cap) combination the web player can
+    /// request, decided once on the server with <see cref="Decide"/> so the
+    /// browser only reads the outcome (live or direct, cap satisfied) instead
+    /// of re-implementing codec rules.
+    /// </summary>
+    public static IReadOnlyList<PlaybackStreamVariant> DescribeVariants(PlaybackMedia media)
+    {
+        var probe = new PlaybackProbeResult(
+            media.VideoCodec,
+            media.PixelFormat,
+            media.AudioCodec,
+            media.DurationSeconds,
+            media.Tracks,
+            media.VideoHeight);
+        var audioIds = (media.Tracks ?? [])
+            .Where(x => x.Kind == PlaybackTrackKind.Audio)
+            .Select(x => (string?)PlaybackTrackIds.Format(x.StreamIndex))
+            .DefaultIfEmpty(null)
+            .ToArray();
+
+        var variants = new List<PlaybackStreamVariant>();
+        foreach (var mode in new[] { PlaybackRequestedMode.Device, PlaybackRequestedMode.Server })
+        {
+            foreach (var audioId in audioIds)
+            {
+                foreach (var cap in Enum.GetValues<PlaybackQualityCap>())
+                {
+                    var decision = Decide(
+                        media.SourcePath,
+                        probe,
+                        new PlaybackStreamRequest(mode, audioId, cap));
+                    var encodes = decision?.Plan?.VideoMode == PlaybackVideoMode.H264;
+                    variants.Add(new PlaybackStreamVariant(
+                        mode == PlaybackRequestedMode.Server ? "server" : "device",
+                        audioId,
+                        PlaybackQuality.Name(cap),
+                        decision is not null,
+                        decision?.Plan is not null,
+                        decision is not null &&
+                        (encodes || !PlaybackQuality.RequiresTranscode(cap, media.VideoHeight))));
+                }
+            }
+        }
+
+        return variants;
+    }
+
+    /// <summary>
+    /// Extracts one embedded text subtitle stream as plain cues so a client can
+    /// keep a selected playback subtitle across stream restarts and fallbacks
+    /// that drop container subtitles. Returns null when the episode, media or
+    /// text stream does not exist.
+    /// </summary>
+    public async Task<PlaybackEmbeddedSubtitleCues?> GetEmbeddedSubtitleCuesAsync(
+        Guid episodeId,
+        string trackId,
+        CancellationToken cancellationToken)
+    {
+        if (!PlaybackTrackIds.TryParse(trackId, out var streamIndex))
+        {
+            return null;
+        }
+
+        var row = await GetMediaRowAsync(episodeId, cancellationToken);
+        if (row is null)
+        {
+            return null;
+        }
+
+        var availability = await CheckAvailabilityAsync(row.Id, cancellationToken);
+        if (availability is { IsAvailable: false } || !File.Exists(row.Path))
+        {
+            return null;
+        }
+
+        var extractor = subtitleExtractor ?? throw new InvalidOperationException(
+            "This PlaybackService instance was created without subtitle extraction.");
+        var extracted = await extractor.ExtractTextStreamAsync(
+            row.Path,
+            streamIndex,
+            cancellationToken);
+        if (extracted is null)
+        {
+            return null;
+        }
+
+        var probe = await ReadTechnicalInfoAsync(row.Id, cancellationToken);
+        var language = probe?.Tracks?
+            .FirstOrDefault(x => x.Kind == PlaybackTrackKind.Subtitle && x.StreamIndex == streamIndex)?
+            .Language;
+
+        return new PlaybackEmbeddedSubtitleCues(
+            PlaybackTrackIds.Format(streamIndex),
+            language,
+            SubtitleParser.ParseFormat(extracted.Format, extracted.Content));
+    }
+
+    private static PlaybackMediaTrack? FindAudioTrack(
+        PlaybackProbeResult probe,
+        string trackId) =>
+        PlaybackTrackIds.TryParse(trackId, out var streamIndex)
+            ? probe.Tracks?.FirstOrDefault(x =>
+                x.Kind == PlaybackTrackKind.Audio && x.StreamIndex == streamIndex)
+            : null;
 
     public async Task<EpisodePlaybackSnapshot> GetSnapshotAsync(
         Guid episodeId,

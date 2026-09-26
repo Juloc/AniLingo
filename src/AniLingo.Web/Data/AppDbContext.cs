@@ -203,6 +203,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         {
             entity.HasKey(x => x.ProfileId);
             entity.Property(x => x.ProfileId).HasMaxLength(80);
+            entity.Property(x => x.PreferredAudioLanguage).HasMaxLength(16);
+            entity.Property(x => x.PreferredSubtitleLanguage).HasMaxLength(16);
+            entity.Property(x => x.DefaultPlaybackSpeed).HasDefaultValue(PlaybackPreferenceRules.DefaultSpeed);
         });
 
         LearningCourseModelConfiguration.Configure(modelBuilder);

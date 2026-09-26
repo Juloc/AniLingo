@@ -182,6 +182,31 @@ Playback is **device-first and instant**. Each browser stores its own preference
 
 There is no prepare-playback step. Direct-play files retain HTTP range support; remux/transcode paths emit fragmented MP4 to the browser as ffmpeg produces it, so the whole episode is never encoded before playback starts. The NAS media stays read-only. The current server fallback uses software `libx264`; hardware acceleration can be added later without changing the device-first selection model.
 
+### Player controls
+
+Below the video the player offers **−10 s / Repeat line / +10 s**, **Speed** (0.5×–2.0×), **Audio** (shown when the file has more than one audio track), **Subtitles** and **Quality**. Tracks are addressed by the stable canonical id `stream:{index}` from the [media inventory](#media-inventory) on every client.
+
+- **Speed** changes only the playback rate. Both subtitle layers follow the media clock, so cue timing stays exact at any speed.
+- **Audio**: the file's default track keeps direct play; another track is delivered as a live video-copy remux (video is never re-encoded just to switch audio). The selection survives a device → server fallback and every stream restart.
+- **Subtitles**: **Off**, **Japanese · learning** (the interactive AniLingo cue overlay) or any embedded text track. When the chosen playback subtitle differs from the learning text, both are shown: the plain playback line below the interactive Japanese line. Choosing the embedded stream that already is the learning source simply shows the learning overlay. Image subtitles (PGS/VobSub) are listed but cannot be rendered.
+- **Quality** is an optional remote-bandwidth cap: **Auto · original**, **1080p**, **720p** or **Lower bandwidth** (≤480p). It never transcodes when direct play already satisfies it: the server compares the cap with the source height from the media inventory, and only a source that is proven taller is converted (Server mode, or Auto when the server fallback can honour the cap). **Device only** never converts video, so a cap it cannot honour is explained instead of silently transcoding.
+- Fullscreen, Picture-in-Picture, Wake Lock and system media controls (Media Session, including ±10 s) are used when the browser supports them and are simply absent otherwise.
+
+**Save as my defaults** stores the current audio language, subtitle choice and speed for the profile.
+
+| Preference | Owner | Where it lives |
+| --- | --- | --- |
+| Preferred audio language | Profile | `ProfilePlaybackPreferences` (server), `/api/client/v1/me/playback-preferences` |
+| Preferred subtitle language or Off | Profile | `ProfilePlaybackPreferences` |
+| Default playback speed | Profile | `ProfilePlaybackPreferences` (default 1.0×) |
+| Autoplay next episode | Profile | `ProfilePlaybackPreferences` |
+| Playback mode (Auto / Device only / Server) | Device | Browser local storage per profile; native device settings |
+| Quality cap | Device | Browser local storage per profile; native device settings |
+| Decoder support (for example HEVC) | Device | Detected at runtime, never stored |
+| Current audio/subtitle track, speed in this playback | Session | Player memory only; kept across fallback/restart, dropped when the page closes |
+
+The server resolves the initial selection once (file default, overridden by a matching profile language) for both the web page and `/episodes/{id}/player`, so clients do not re-implement track or codec rules.
+
 ## Expected media layout
 
 A common layout works directly:

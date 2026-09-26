@@ -21,7 +21,8 @@
     "subtitlePreferred": 30,
     "subtitleMax": 34,
     "word": 26,
-    "meta": 13
+    "meta": 13,
+    "playbackSubtitle": 22
   },
   "colors": {
     "overlay": "#D90A0C10",
@@ -44,5 +45,9 @@
     "lineHeight": 1.45,
     "backgroundPaddingHorizontalDp": 10,
     "backgroundPaddingVerticalDp": 5
+  },
+  "playback": {
+    "speeds": [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0],
+    "seekStepSeconds": 10
   }
 }
