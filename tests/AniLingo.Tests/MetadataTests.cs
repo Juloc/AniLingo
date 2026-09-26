@@ -207,8 +207,12 @@ public sealed class MetadataTests
             Assert.AreEqual(1L, Convert.ToInt64(await check.ExecuteScalarAsync()));
 
             check.CommandText =
-                "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='IX_Reviews_ProfileId_ClientEventId';";
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='IX_LearningCardReviews_ProfileId_ClientEventId';";
             Assert.AreEqual(1L, Convert.ToInt64(await check.ExecuteScalarAsync()));
+
+            check.CommandText =
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('UserTerms', 'Reviews');";
+            Assert.AreEqual(0L, Convert.ToInt64(await check.ExecuteScalarAsync()));
         }
         finally
         {

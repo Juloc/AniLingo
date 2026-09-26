@@ -1,5 +1,6 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Learning;
+using AniLingo.Web.Features.Learning.Courses;
 using AniLingo.Web.Features.Vocabulary;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -19,11 +20,7 @@ public sealed class LearningHubVocabularyTests
             term.Id,
             CancellationToken.None);
 
-        var userTerm = await fixture.Db.UserTerms
-            .AsNoTracking()
-            .SingleAsync(x =>
-                x.ProfileId == LearningProfile.DefaultId
-                && x.TermId == term.Id);
+        var userTerm = await fixture.WordCardAsync(term.Id);
 
         Assert.AreEqual(UserTermState.Saved, userTerm.State);
         Assert.IsNull(userTerm.NextReviewAt);
@@ -48,11 +45,7 @@ public sealed class LearningHubVocabularyTests
             UserTermState.Learning,
             CancellationToken.None);
 
-        var queued = await fixture.Db.UserTerms
-            .AsNoTracking()
-            .SingleAsync(x =>
-                x.ProfileId == LearningProfile.DefaultId
-                && x.TermId == term.Id);
+        var queued = await fixture.WordCardAsync(term.Id);
 
         Assert.AreEqual(UserTermState.Learning, queued.State);
         Assert.IsNull(queued.LearningStartedAt);
@@ -62,11 +55,7 @@ public sealed class LearningHubVocabularyTests
 
         Assert.IsTrue(due.Any(x => x.TermId == term.Id));
 
-        var activated = await fixture.Db.UserTerms
-            .AsNoTracking()
-            .SingleAsync(x =>
-                x.ProfileId == LearningProfile.DefaultId
-                && x.TermId == term.Id);
+        var activated = await fixture.WordCardAsync(term.Id);
 
         Assert.IsNotNull(activated.LearningStartedAt);
         Assert.IsNotNull(activated.NextReviewAt);
@@ -103,12 +92,11 @@ public sealed class LearningHubVocabularyTests
         Assert.IsFalse(due.Any(x => x.TermId == ignored.Id));
         Assert.IsFalse(due.Any(x => x.TermId == suspended.Id));
 
-        var states = await fixture.Db.UserTerms
-            .AsNoTracking()
-            .Where(x =>
-                x.ProfileId == LearningProfile.DefaultId
-                && (x.TermId == ignored.Id || x.TermId == suspended.Id))
-            .ToDictionaryAsync(x => x.TermId);
+        var states = new Dictionary<Guid, LearningCard>
+        {
+            [ignored.Id] = await fixture.WordCardAsync(ignored.Id),
+            [suspended.Id] = await fixture.WordCardAsync(suspended.Id)
+        };
 
         Assert.AreEqual(UserTermState.Ignored, states[ignored.Id].State);
         Assert.IsNull(states[ignored.Id].NextReviewAt);
@@ -170,6 +158,15 @@ public sealed class LearningHubVocabularyTests
             await Db.SaveChangesAsync();
             return term;
         }
+
+        public Task<LearningCard> WordCardAsync(Guid termId) =>
+            (from card in Db.LearningCards.AsNoTracking()
+             join unit in Db.LearningUnits.AsNoTracking() on card.UnitId equals unit.Id
+             where card.ProfileId == LearningProfile.DefaultId
+                 && card.Mode == LearningCardMode.Recognition
+                 && unit.TermId == termId
+             select card)
+            .SingleAsync();
 
         public async ValueTask DisposeAsync()
         {

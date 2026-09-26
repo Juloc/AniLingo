@@ -183,6 +183,8 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 
 builder.Services.AddSingleton<MediaProcessRunner>();
 builder.Services.AddScoped<LibraryScanner>();
+builder.Services.AddSingleton<IMediaProbeRunner, FfprobeMediaProbeRunner>();
+builder.Services.AddSingleton<MediaInventoryService>();
 builder.Services.AddHostedService<LibraryStartupScanService>();
 builder.Services.AddSingleton<StorageAvailabilityCoordinator>();
 builder.Services.AddScoped<LibraryRootAvailabilityService>();
@@ -199,7 +201,6 @@ builder.Services.AddScoped<LearningService>();
 builder.Services.AddScoped<EpisodePreparationService>();
 builder.Services.AddScoped<LearningStatisticsService>();
 builder.Services.AddSingleton<PlaybackCueProjector>();
-builder.Services.AddSingleton<PlaybackMediaProbe>();
 builder.Services.AddSingleton<PlaybackPreparationTracker>();
 builder.Services.AddScoped<PlaybackPreparationService>();
 builder.Services.AddScoped<PlaybackService>();
@@ -229,7 +230,11 @@ builder.Services.AddHttpClient<NcodeNovelSourceProvider>(client =>
 });
 builder.Services.AddScoped<INovelSourceProvider>(
     services => services.GetRequiredService<NcodeNovelSourceProvider>());
-builder.Services.AddScoped<NovelService>();
+builder.Services.AddScoped<NovelImportService>();
+builder.Services.AddScoped<NovelCatalogQueries>();
+builder.Services.AddScoped<NovelProgressService>();
+builder.Services.AddScoped<NovelAnnotationService>();
+builder.Services.AddScoped<NovelJobs>();
 
 builder.Services.AddHttpClient<NovelAniListProvider>(client =>
 {

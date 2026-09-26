@@ -192,12 +192,11 @@ public sealed class ClientApiService(
 
         var termStates = await (
             from episodeTerm in db.EpisodeTerms.AsNoTracking()
-            join userTermValue in db.UserTerms.AsNoTracking()
-                    .Where(x => x.ProfileId == currentAccount.ProfileId)
-                on episodeTerm.TermId equals userTermValue.TermId into userTerms
-            from userTerm in userTerms.DefaultIfEmpty()
+            join stateValue in LearningQueries.TermStates(db, currentAccount.ProfileId)
+                on episodeTerm.TermId equals stateValue.TermId into states
+            from state in states.DefaultIfEmpty()
             where episodeTerm.EpisodeId == episodeId
-            select userTerm == null ? (UserTermState?)null : userTerm.State)
+            select state == null ? (UserTermState?)null : state.State)
             .ToListAsync(cancellationToken);
 
         var known = termStates.Count(x => x == UserTermState.Known);
@@ -429,10 +428,9 @@ public sealed class ClientApiService(
     {
         var row = await (
             from term in db.Terms.AsNoTracking()
-            join userTermValue in db.UserTerms.AsNoTracking()
-                    .Where(x => x.ProfileId == currentAccount.ProfileId)
-                on term.Id equals userTermValue.TermId into userTerms
-            from userTerm in userTerms.DefaultIfEmpty()
+            join stateValue in LearningQueries.TermStates(db, currentAccount.ProfileId)
+                on term.Id equals stateValue.TermId into states
+            from state in states.DefaultIfEmpty()
             where term.Id == termId
             select new
             {
@@ -440,7 +438,7 @@ public sealed class ClientApiService(
                 term.Canonical,
                 term.Reading,
                 term.Meaning,
-                State = userTerm == null ? (UserTermState?)null : userTerm.State
+                State = state == null ? (UserTermState?)null : state.State
             })
             .SingleOrDefaultAsync(cancellationToken);
 

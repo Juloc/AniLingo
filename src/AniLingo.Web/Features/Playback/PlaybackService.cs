@@ -2,6 +2,7 @@ using System.Text;
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Learning;
+using AniLingo.Web.Features.Library;
 using AniLingo.Web.Features.MediaSegments;
 using AniLingo.Web.Features.Storage;
 using AniLingo.Web.Features.Vocabulary;
@@ -198,7 +199,7 @@ public sealed class PlaybackService
 {
     private readonly AppDbContext db;
     private readonly PlaybackCueProjector projector;
-    private readonly PlaybackMediaProbe mediaProbe;
+    private readonly MediaInventoryService mediaInventory;
     private readonly MediaAvailabilityService? mediaAvailability;
     private readonly MediaSegmentService? segments;
     private readonly string profileId;
@@ -206,34 +207,34 @@ public sealed class PlaybackService
     public PlaybackService(
         AppDbContext db,
         PlaybackCueProjector projector,
-        PlaybackMediaProbe mediaProbe,
+        MediaInventoryService mediaInventory,
         MediaAvailabilityService mediaAvailability,
         CurrentAccountContext currentAccount,
         MediaSegmentService? segments = null)
-        : this(db, projector, mediaProbe, mediaAvailability, currentAccount.ProfileId, segments)
+        : this(db, projector, mediaInventory, mediaAvailability, currentAccount.ProfileId, segments)
     {
     }
 
     public PlaybackService(
         AppDbContext db,
         PlaybackCueProjector projector,
-        PlaybackMediaProbe mediaProbe,
+        MediaInventoryService mediaInventory,
         MediaSegmentService? segments = null)
-        : this(db, projector, mediaProbe, null, LearningProfile.DefaultId, segments)
+        : this(db, projector, mediaInventory, null, LearningProfile.DefaultId, segments)
     {
     }
 
     private PlaybackService(
         AppDbContext db,
         PlaybackCueProjector projector,
-        PlaybackMediaProbe mediaProbe,
+        MediaInventoryService mediaInventory,
         MediaAvailabilityService? mediaAvailability,
         string profileId,
         MediaSegmentService? segments)
     {
         this.db = db;
         this.projector = projector;
-        this.mediaProbe = mediaProbe;
+        this.mediaInventory = mediaInventory;
         this.mediaAvailability = mediaAvailability;
         this.profileId = profileId;
         this.segments = segments;
@@ -273,7 +274,7 @@ public sealed class PlaybackService
                 Storage: availability);
         }
 
-        var probe = await mediaProbe.ProbeAsync(row.Path, cancellationToken);
+        var probe = await ReadTechnicalInfoAsync(row.Id, cancellationToken);
         if (probe is null)
         {
             availability = await CheckAvailabilityAsync(
@@ -387,7 +388,7 @@ public sealed class PlaybackService
             return null;
         }
 
-        var probe = await mediaProbe.ProbeAsync(row.Path, cancellationToken);
+        var probe = await ReadTechnicalInfoAsync(row.Id, cancellationToken);
         if (probe is null || !File.Exists(row.Path))
         {
             _ = await CheckAvailabilityAsync(
@@ -498,17 +499,16 @@ public sealed class PlaybackService
         var termRows = await (
             from episodeTerm in db.EpisodeTerms.AsNoTracking()
             join term in db.Terms.AsNoTracking() on episodeTerm.TermId equals term.Id
-            join userTermValue in db.UserTerms.AsNoTracking()
-                    .Where(x => x.ProfileId == profileId)
-                on term.Id equals userTermValue.TermId into userTerms
-            from userTerm in userTerms.DefaultIfEmpty()
+            join stateValue in LearningQueries.TermStates(db, profileId)
+                on term.Id equals stateValue.TermId into states
+            from state in states.DefaultIfEmpty()
             where episodeTerm.EpisodeId == episodeId
             select new PlaybackTermInfo(
                 term.Id,
                 term.Canonical,
                 term.Reading,
                 term.Meaning,
-                userTerm == null ? null : userTerm.State))
+                state == null ? null : state.State))
             .ToListAsync(cancellationToken);
 
         var terms = termRows.ToDictionary(x => x.Canonical, StringComparer.Ordinal);
@@ -577,6 +577,13 @@ public sealed class PlaybackService
                 mediaFileId,
                 force,
                 cancellationToken);
+
+    private async Task<PlaybackProbeResult?> ReadTechnicalInfoAsync(
+        Guid mediaFileId,
+        CancellationToken cancellationToken) =>
+        (await mediaInventory.EnsureAnalyzedAsync(mediaFileId, cancellationToken))?.Technical is { } technical
+            ? PlaybackProbeResult.From(technical)
+            : null;
 
     private static PlaybackOption BuildOption(
         MediaRow row,

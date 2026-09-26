@@ -3,6 +3,7 @@ using AniLingo.Web.Features.ReaderPreferences;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Books;
 using AniLingo.Web.Features.Learning;
+using AniLingo.Web.Features.Learning.Courses;
 using AniLingo.Web.Features.Library;
 using AniLingo.Web.Features.MediaSegments;
 using AniLingo.Web.Features.Metadata;
@@ -20,13 +21,19 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<Anime> Anime => Set<Anime>();
     public DbSet<Episode> Episodes => Set<Episode>();
     public DbSet<MediaFile> MediaFiles => Set<MediaFile>();
+    public DbSet<MediaAnalysis> MediaAnalyses => Set<MediaAnalysis>();
+    public DbSet<MediaAnalysisStream> MediaAnalysisStreams => Set<MediaAnalysisStream>();
     public DbSet<AnimeMetadata> AnimeMetadata => Set<AnimeMetadata>();
     public DbSet<SubtitleTrack> SubtitleTracks => Set<SubtitleTrack>();
     public DbSet<SubtitleCue> SubtitleCues => Set<SubtitleCue>();
     public DbSet<Term> Terms => Set<Term>();
     public DbSet<EpisodeTerm> EpisodeTerms => Set<EpisodeTerm>();
-    public DbSet<UserTerm> UserTerms => Set<UserTerm>();
-    public DbSet<Review> Reviews => Set<Review>();
+    public DbSet<LearningUnit> LearningUnits => Set<LearningUnit>();
+    public DbSet<LearningVariant> LearningVariants => Set<LearningVariant>();
+    public DbSet<LearningCourse> LearningCourses => Set<LearningCourse>();
+    public DbSet<LearningCard> LearningCards => Set<LearningCard>();
+    public DbSet<LearningCardReview> LearningCardReviews => Set<LearningCardReview>();
+    public DbSet<LearningContext> LearningContexts => Set<LearningContext>();
     public DbSet<LearningPreferences> LearningPreferences => Set<LearningPreferences>();
     public DbSet<AiSentenceExplanationCache> AiSentenceExplanationCache => Set<AiSentenceExplanationCache>();
     public DbSet<OwnerAccount> OwnerAccounts => Set<OwnerAccount>();
@@ -113,6 +120,32 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasIndex(x => new { x.LibraryRootId, x.EpisodeId });
         });
 
+        modelBuilder.Entity<MediaAnalysis>(entity =>
+        {
+            entity.HasKey(x => x.MediaFileId);
+            entity.Property(x => x.Status).HasConversion<int>();
+            entity.Property(x => x.SourceFingerprint).HasMaxLength(64);
+            entity.Property(x => x.Diagnostic).HasMaxLength(MediaInventoryService.DiagnosticMaxLength);
+            entity.Property(x => x.Container).HasMaxLength(120);
+            entity.Property(x => x.VideoCodec).HasMaxLength(64);
+            entity.Property(x => x.VideoProfile).HasMaxLength(80);
+            entity.Property(x => x.PixelFormat).HasMaxLength(40);
+            entity.Property(x => x.DynamicRange).HasMaxLength(24);
+            entity.HasOne<MediaFile>().WithOne().HasForeignKey<MediaAnalysis>(x => x.MediaFileId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(x => new { x.Status, x.ProbeVersion });
+        });
+
+        modelBuilder.Entity<MediaAnalysisStream>(entity =>
+        {
+            entity.HasKey(x => new { x.MediaFileId, x.StreamIndex });
+            entity.Property(x => x.Kind).HasConversion<int>();
+            entity.Property(x => x.Codec).HasMaxLength(64);
+            entity.Property(x => x.Language).HasMaxLength(32);
+            entity.Property(x => x.Title).HasMaxLength(300);
+            entity.Property(x => x.ChannelLayout).HasMaxLength(64);
+            entity.HasOne<MediaAnalysis>().WithMany().HasForeignKey(x => x.MediaFileId).OnDelete(DeleteBehavior.Cascade);
+        });
+
         modelBuilder.Entity<SubtitleTrack>(entity =>
         {
             entity.HasKey(x => x.Id);
@@ -173,24 +206,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(x => x.ProfileId).HasMaxLength(80);
         });
 
-        modelBuilder.Entity<UserTerm>(entity =>
-        {
-            entity.HasKey(x => x.Id);
-            entity.Property(x => x.ProfileId).HasMaxLength(80);
-            entity.HasOne<Term>().WithMany().HasForeignKey(x => x.TermId).OnDelete(DeleteBehavior.Cascade);
-            entity.HasIndex(x => new { x.ProfileId, x.TermId }).IsUnique();
-            entity.HasIndex(x => new { x.ProfileId, x.State, x.NextReviewAt });
-            entity.HasIndex(x => new { x.LearningStartedAt, x.QueuePosition });
-        });
-
-        modelBuilder.Entity<Review>(entity =>
-        {
-            entity.HasKey(x => x.Id);
-            entity.Property(x => x.ProfileId).HasMaxLength(80);
-            entity.HasOne<Term>().WithMany().HasForeignKey(x => x.TermId).OnDelete(DeleteBehavior.Cascade);
-            entity.HasIndex(x => new { x.ProfileId, x.ReviewedAt });
-            entity.HasIndex(x => new { x.ProfileId, x.ClientEventId }).IsUnique();
-        });
+        LearningCourseModelConfiguration.Configure(modelBuilder);
 
         modelBuilder.Entity<LearningPreferences>(entity =>
         {

@@ -71,10 +71,10 @@ public sealed class LearningProfileIsolationTests
             }
 
             await using var verify = new AppDbContext(options);
-            var states = await verify.UserTerms
+            var states = await verify.LearningCards
                 .AsNoTracking()
                 .OrderBy(x => x.ProfileId)
-                .Select(x => new { x.ProfileId, x.State })
+                .Select(x => new { x.ProfileId, x.State, x.CourseId })
                 .ToListAsync();
 
             Assert.AreEqual(2, states.Count);
@@ -82,6 +82,20 @@ public sealed class LearningProfileIsolationTests
             Assert.AreEqual(UserTermState.Known, states[0].State);
             Assert.AreEqual("account-b", states[1].ProfileId);
             Assert.AreEqual(UserTermState.Learning, states[1].State);
+            Assert.AreNotEqual(states[0].CourseId, states[1].CourseId);
+
+            var courseOwners = await verify.LearningCourses
+                .AsNoTracking()
+                .OrderBy(x => x.ProfileId)
+                .Select(x => x.ProfileId)
+                .ToListAsync();
+            CollectionAssert.AreEqual(new[] { "account-a", "account-b" }, courseOwners);
+
+            // Each account sees only its own term state.
+            var stateA = await LearningQueries.TermStates(verify, "account-a").SingleAsync();
+            var stateB = await LearningQueries.TermStates(verify, "account-b").SingleAsync();
+            Assert.AreEqual(UserTermState.Known, stateA.State);
+            Assert.AreEqual(UserTermState.Learning, stateB.State);
 
             var preferences = await verify.LearningPreferences
                 .AsNoTracking()
