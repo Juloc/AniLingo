@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace AniLingo.Web.Data.Migrations;
 
 [DbContext(typeof(AppDbContext))]
-[Migration("20260926090000_AddPlaybackPreferenceDetails")]
+[Migration("20260926131000_AddPlaybackPreferenceDetails")]
 public sealed class AddPlaybackPreferenceDetails : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)
