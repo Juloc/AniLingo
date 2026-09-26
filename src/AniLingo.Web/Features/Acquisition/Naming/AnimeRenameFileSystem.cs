@@ -12,7 +12,7 @@ public class AnimeRenameFileSystem
     public virtual void MoveDirectory(string sourcePath, string targetPath) =>
         Directory.Move(sourcePath, targetPath);
 
-    // Null when AniLingo can create files in the directory; otherwise an operator-facing reason.
+    // Null when Jularr can create files in the directory; otherwise an operator-facing reason.
     // A read-only mount is detected from the mount table first so the common NAS case does not
     // need a write attempt; the probe file then catches permission-based read-only access.
     public virtual string? GetWriteBlocker(string directory)
@@ -38,7 +38,7 @@ public class AnimeRenameFileSystem
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            return $"'{fullPath}' is not writable by AniLingo ({exception.Message}).";
+            return $"'{fullPath}' is not writable by Jularr ({exception.Message}).";
         }
     }
 

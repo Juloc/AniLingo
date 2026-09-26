@@ -29,7 +29,7 @@ public sealed class SonarrObserverException(string message, Exception? innerExce
     : Exception(message, innerException);
 
 // Read-only Sonarr v3 observation. Every request is an HTTP GET; the only Sonarr mutation
-// AniLingo performs lives in SonarrSeriesMonitoringClient and is reachable solely from an
+// Jularr performs lives in SonarrSeriesMonitoringClient and is reachable solely from an
 // explicit owner migration action.
 public sealed class SonarrObserverClient(IHttpClientFactory httpClientFactory) : ISonarrObserverClient
 {

@@ -92,7 +92,7 @@ public static class CompletedDownloadImportPlanner
         return new CompletedDownloadImportPlan(context.AcquisitionId, plans);
     }
 
-    // Sonarr-owned sources are left to Sonarr; replacing a file AniLingo may not mutate needs
+    // Sonarr-owned sources are left to Sonarr; replacing a file Jularr may not mutate needs
     // an owner decision instead of an automatic import.
     private static PlannedAnimeImport ApplyOwnership(
         CompletedDownloadImportContext context,

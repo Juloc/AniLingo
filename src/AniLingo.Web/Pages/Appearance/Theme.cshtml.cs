@@ -1,7 +1,6 @@
 using System.Security.Claims;
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Appearance;
-using AniLingo.Web.Features.Localization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -24,8 +23,7 @@ public sealed class ThemeModel(AppDbContext db) : PageModel
             return BadRequest(new { error = "Unknown theme mode." });
         }
 
-        var store = new UiTranslationCatalogStore(db);
-        await store.SetProfileThemeAsync(
+        await new ProfileAppearanceStore(db).SetThemeAsync(
             profileId,
             normalized,
             HttpContext.RequestAborted);

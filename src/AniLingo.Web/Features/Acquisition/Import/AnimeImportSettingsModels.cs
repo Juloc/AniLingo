@@ -17,7 +17,7 @@ public enum AnimeImportMode
 
 /// <summary>
 /// Maps a path prefix as reported by an external system (the download client's completed-download
-/// path, or a Sonarr series/episode/queue path) to the equivalent local prefix AniLingo sees under
+/// path, or a Sonarr series/episode/queue path) to the equivalent local prefix Jularr sees under
 /// its own mounts. Entries are tried longest-prefix-first; a path with no matching entry is used
 /// unchanged. This is the one canonical mapping for both purposes: applying it to a download path
 /// and to a Sonarr-observed path keeps the two systems' view of "the same file" aligned even when

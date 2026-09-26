@@ -64,7 +64,7 @@ public sealed record SonarrObservedHistoryEvent(
     SonarrObservedEpisode? Episode);
 
 // Read-only view of what Sonarr currently manages. Observation never transfers ownership:
-// it only tells AniLingo which releases, downloads and paths it must leave alone.
+// it only tells Jularr which releases, downloads and paths it must leave alone.
 public sealed record SonarrObservedState(
     IReadOnlySet<string> ActiveReleaseKeys,
     IReadOnlySet<string> ActivePaths)

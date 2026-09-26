@@ -66,7 +66,7 @@ public static class DatabaseMigrationBridge
             if (!hasHistory && Epoch2Tables.All(
                     table => existingTables.Contains(table, StringComparer.Ordinal)))
             {
-                log?.Invoke("Bridging the pre-migration AniLingo database into the EF migration baseline.");
+                log?.Invoke("Bridging the pre-migration Jularr database into the EF migration baseline.");
 
                 await db.Database.ExecuteSqlRawAsync(
                     """
@@ -119,7 +119,7 @@ public static class DatabaseMigrationBridge
         {
             throw new TimeoutException(
                 $"SQLite migration did not finish within {MigrationTimeout.TotalSeconds:0} seconds. " +
-                "Check Docker logs for another AniLingo instance or a database lock.");
+                "Check Docker logs for another Jularr instance or a database lock.");
         }
 
         await MigrateLegacyLearningProfileAsync(db, cancellationToken, log);
@@ -655,7 +655,7 @@ public static class DatabaseMigrationBridge
             {
                 var remaining = StaleMigrationLockAge - age;
                 throw new InvalidOperationException(
-                    "A recent SQLite migration lock exists. AniLingo supports one application container per /data volume. " +
+                    "A recent SQLite migration lock exists. Jularr supports one application container per /data volume. " +
                     $"Another instance may still be migrating; retry in about {Math.Ceiling(remaining.TotalSeconds)} seconds.");
             }
         }

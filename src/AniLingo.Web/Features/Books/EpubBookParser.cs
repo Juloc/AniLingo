@@ -322,7 +322,7 @@ public static partial class EpubBookParser
 
     /// <summary>
     /// Rejects encrypted EPUBs. Only the standard font obfuscation algorithms
-    /// are accepted; AniLingo never removes DRM.
+    /// are accepted; Jularr never removes DRM.
     /// </summary>
     private static void RejectDrm(ZipArchive archive)
     {
@@ -342,7 +342,7 @@ public static partial class EpubBookParser
         if (protectedContent)
         {
             throw new InvalidOperationException(
-                "EPUB is DRM-protected (encrypted content). AniLingo imports only DRM-free EPUBs and does not remove DRM.");
+                "EPUB is DRM-protected (encrypted content). Jularr imports only DRM-free EPUBs and does not remove DRM.");
         }
     }
 

@@ -5,7 +5,7 @@ namespace AniLingo.Web.Features.Novels;
 
 /// <summary>
 /// Cache of normalized EPUB volume assets (cover and inline illustrations)
-/// under AniLingo data. Source EPUB files are never written; assets are
+/// under Jularr data. Source EPUB files are never written; assets are
 /// content-addressed per volume so re-importing a volume reuses unchanged
 /// files, and anything no longer referenced is pruned.
 /// </summary>

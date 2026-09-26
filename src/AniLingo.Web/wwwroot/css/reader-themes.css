@@ -231,13 +231,13 @@
 }
 
 .novel-theme-advanced {
-    border-top: 1px solid var(--border, #2a313a);
+    border-top: 1px solid var(--border);
     padding-top: .5rem;
 }
 
 .novel-theme-advanced > summary {
     cursor: pointer;
-    color: var(--muted, #9aa4b2);
+    color: var(--muted);
     font-size: .78rem;
 }
 

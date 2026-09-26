@@ -12,8 +12,8 @@
     color: inherit; text-decoration: none;
     transition: transform .16s ease, border-color .16s ease;
 }
-.learn-module:hover { transform: translateY(-2px); border-color: rgba(231,169,27,.35); }
-.learn-module-attention { border-color: rgba(231,169,27,.45); }
+.learn-module:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--accent) 35%, transparent); }
+.learn-module-attention { border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
 .learn-module-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .learn-module-heading h2 { margin: 0; font-size: 17px; }
 .learn-module p { margin: 0; font-size: 13px; }

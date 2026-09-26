@@ -6,18 +6,23 @@
     ViewData["Title"] = Model.Ui["nav.home"];
 }
 
-<header class="page-header hero-header">
-    <div>
+<header class="jularr-hero">
+    <div class="jularr-hero-art art-tint ink-night" aria-hidden="true"></div>
+    <img class="jularr-hero-heroine" src="~/brand/heroine.webp" alt="" aria-hidden="true" width="720" height="900" />
+    <div class="jularr-hero-copy">
+        <div class="jularr-hero-lockup" aria-hidden="true">
+            <partial name="_AppBrandMark" />
+        </div>
         <span class="eyebrow">@Model.Ui["home.eyebrow"]</span>
         <h1>@Model.Ui["home.title"]</h1>
         <p>@Model.Ui["home.subtitle"]</p>
+        @if (Model.ShowLearningHomeWidget && Model.DueReviews > 0)
+        {
+            <a class="button button-primary" href="/Learn/Review" data-home-learning-widget>
+                @Model.Ui.Format("home.reviewButton", ("count", Model.DueReviews))
+            </a>
+        }
     </div>
-    @if (Model.ShowLearningHomeWidget && Model.DueReviews > 0)
-    {
-        <a class="button" href="/Learn/Review" data-home-learning-widget>
-            @Model.Ui.Format("home.reviewButton", ("count", Model.DueReviews))
-        </a>
-    }
 </header>
 
 @if (Model.ContinueWatching.Count > 0)

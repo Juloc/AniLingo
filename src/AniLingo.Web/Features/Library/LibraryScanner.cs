@@ -125,14 +125,14 @@ public sealed class LibraryScanner(
                 !Directory.EnumerateFileSystemEntries(rootPath).Any())
             {
                 throw new IOException(
-                    "Library root is empty while AniLingo still has known media in the scanned folder. " +
+                    "Library root is empty while Jularr still has known media in the scanned folder. " +
                     "Reconciliation was stopped to avoid treating an unavailable NAS mount as a mass deletion.");
             }
         }
         else if (existingFiles.Count > 0 && candidates.Count == 0)
         {
             throw new IOException(
-                "Library root returned no media files while AniLingo still has known media for it. " +
+                "Library root returned no media files while Jularr still has known media for it. " +
                 "Reconciliation was stopped to avoid treating an unavailable NAS mount as a mass deletion.");
         }
 

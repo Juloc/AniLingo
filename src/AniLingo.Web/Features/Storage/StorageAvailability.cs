@@ -544,7 +544,7 @@ public sealed class WakeOnLanService(
             return new WakeOnLanResult(
                 false,
                 false,
-                "Wake-on-LAN could not be sent from the AniLingo container. Check the configured LAN broadcast address and Docker networking.",
+                "Wake-on-LAN could not be sent from the Jularr container. Check the configured LAN broadcast address and Docker networking.",
                 await availability.CheckAsync(rootId, true, cancellationToken));
         }
 

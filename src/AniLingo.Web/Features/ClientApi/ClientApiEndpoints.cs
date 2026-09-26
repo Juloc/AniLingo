@@ -36,7 +36,7 @@ public static class ClientApiEndpoints
                 return Results.Json(
                     new ClientErrorResponse(
                         "setup_required",
-                        "AniLingo must be set up in the browser before a native client can sign in."),
+                        "Jularr must be set up in the browser before a native client can sign in."),
                     statusCode: StatusCodes.Status409Conflict);
             }
 

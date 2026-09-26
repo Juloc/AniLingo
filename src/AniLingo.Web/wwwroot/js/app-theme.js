@@ -33,7 +33,11 @@ const AppThemeModes = ['system', 'light', 'dark'];
         root.dataset.appTheme = mode;
         for (const form of forms) updateControl(form, mode);
         updateThemeColor();
+        window.dispatchEvent(new CustomEvent('jularr:themechange', { detail: { mode } }));
     };
+
+    // Settings → Appearance switches the mode through the same path as the sidebar control.
+    window.JularrTheme = Object.freeze({ apply });
 
     for (const form of forms) {
         const button = form.querySelector('[data-theme-cycle]');

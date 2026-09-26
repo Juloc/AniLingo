@@ -65,7 +65,7 @@
         connectPanel.hidden = true;
         livePanel.hidden = false;
 
-        sessionTitle.textContent = state.animeTitle || "AniLingo TV";
+        sessionTitle.textContent = state.animeTitle || "Jularr TV";
         sessionEpisode.textContent = state.episodeTitle || `Episode ${state.episodeId}`;
         sessionStatus.textContent = state.isPlaying ? "Playing" : "Paused";
         currentSentence.textContent =
@@ -268,7 +268,7 @@
         socket.addEventListener("error", () => {
             showError(
                 sessionError,
-                "Live connection interrupted. AniLingo will reconnect automatically."
+                "Live connection interrupted. Jularr will reconnect automatically."
             );
         });
     };

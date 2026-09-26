@@ -8,7 +8,7 @@ public static class AnimeNamingPresets
     public const string SonarrMediaInfoId = "sonarr-mediainfo";
     public const string AnimeDetailedId = "anime-detailed";
 
-    // Reproduces the Sonarr naming examples AniLingo's release parser was built against (#294):
+    // Reproduces the Sonarr naming examples Jularr's release parser was built against (#294):
     //   The Series Title's! - S01E01 - Episode Title (1) WEBDL-1080p Proper AVC DTS[DE] [EN+DE] RlsGrp tt12345
     //   The Series Title's! - S01E01-E03 - Episode Title WEBDL-1080p Proper AVC DTS[DE] [EN+DE] RlsGrp tt12345
     // It is the default profile so imports match libraries already named that way.
@@ -46,7 +46,7 @@ public static class AnimeNamingPresets
             ColonReplacement: AnimeColonReplacement.Smart);
 
     // Common anime layout (absolute number, release details and group) built only from
-    // release-derived tokens AniLingo can fill without probing the media file.
+    // release-derived tokens Jularr can fill without probing the media file.
     public static AnimeNamingProfile AnimeDetailed() =>
         new(
             AnimeDetailedId,

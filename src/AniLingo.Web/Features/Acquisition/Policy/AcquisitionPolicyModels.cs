@@ -5,7 +5,7 @@ public sealed record AcquisitionTag(string Id, string Name);
 
 /// <summary>
 /// Delays grabbing a release for N minutes after an episode becomes wanted, so a slower but
-/// preferred release has a chance to appear before AniLingo settles for a lesser one. Scoped by
+/// preferred release has a chance to appear before Jularr settles for a lesser one. Scoped by
 /// quality profile id and/or tag ids; the most specific matching profile wins (see
 /// <see cref="AcquisitionDelayEngine.SelectProfile"/>). A profile with no scope at all is the
 /// fallback default when IsDefault is set.

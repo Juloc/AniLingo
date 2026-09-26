@@ -20,7 +20,7 @@ public sealed partial class FeaturePageLocalizationTests
     // allowed to appear untranslated verbatim inside a heading or button.
     private static readonly string[] AllowedLiteralText =
     [
-        "AniLingo",
+        "Jularr",
         "AniList",
         "EPUB",
         "CBZ",

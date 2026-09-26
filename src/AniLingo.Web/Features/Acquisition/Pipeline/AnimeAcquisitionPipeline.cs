@@ -920,7 +920,7 @@ public sealed class AnimeAcquisitionPipeline(
     }
 
     // Sends the accepted candidates (best first) to SABnzbd, records the grab on the monitoring
-    // state and registers the AniLingo ownership job for the release that was actually submitted.
+    // state and registers the Jularr ownership job for the release that was actually submitted.
     private async Task<AnimeSearchCandidate?> SubmitAsync(
         AnimeAcquisitionTarget target,
         IReadOnlyList<AnimeEpisodeKey> episodes,
