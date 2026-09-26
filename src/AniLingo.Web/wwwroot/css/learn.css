@@ -33,6 +33,25 @@
 .learn-filter > label:first-child { flex: 1 1 240px; }
 .learn-vocabulary .term-actions { flex-wrap: wrap; }
 
+/* Sentence practice module. */
+.sentence-modes { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 18px; }
+.sentence-list { display: grid; gap: 14px; }
+.sentence-card { min-width: 0; padding: clamp(14px, 3vw, 20px); border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.sentence-meta { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 13px; }
+.sentence-cloze, .sentence-full { margin: 14px 0; font-size: clamp(1.35rem, 5vw, 2.1rem); line-height: 1.65; overflow-wrap: anywhere; }
+.sentence-reveal { margin: 10px 0; }
+.sentence-reveal > summary { display: inline-flex; align-items: center; min-height: 40px; color: var(--accent-text); font-weight: 600; cursor: pointer; }
+.sentence-reveal > summary:focus-visible { border-radius: 6px; outline: 2px solid var(--accent); outline-offset: 2px; }
+.sentence-answer { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+.sentence-answer .sentence-full { margin: 0; }
+.sentence-explanation { display: grid; gap: 6px; margin: 8px 0 0; padding: 10px 12px; border-radius: 8px; background: var(--soft-fill); font-size: 14px; }
+.sentence-explanation ul { margin: 0; padding-inline-start: 18px; }
+.sentence-audio-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0; }
+.sentence-tokens { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0; }
+.sentence-token { padding: 0 2px; border: 0; border-radius: 6px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.sentence-token:hover, .sentence-token:focus-visible, .sentence-token.target { background: var(--accent-soft); }
+.sentence-token:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
 @media (max-width: 720px) {
     .learn-modules { grid-template-columns: 1fr; }
     .learn-filter > label, .learn-filter > label:first-child { flex: 1 1 100%; }
