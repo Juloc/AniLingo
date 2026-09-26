@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using AniLingo.Web.Data;
+using AniLingo.Web.Features.Learning.Courses;
 using AniLingo.Web.Features.Library;
 using AniLingo.Web.Features.Metadata;
 using AniLingo.Web.Features.Operations;
@@ -35,6 +36,11 @@ public sealed class SubtitleImportService
 {
     public const string JimakuSourcePrefix = "jimaku:";
 
+    // The canonical default when nothing else configures a content language, and the
+    // only language Jimaku (a Japanese fansub site) or the local Whisper fallback
+    // (a Japanese-only model invocation) ever serve.
+    private const string JapaneseLanguageTag = "ja";
+
     private const string JimakuStorePath = "/data/integrations/jimaku.json";
     private const string JimakuApiBase = "https://jimaku.cc/api/";
     private const int MaxJimakuDownloadBytes = 64 * 1024 * 1024;
@@ -57,6 +63,7 @@ public sealed class SubtitleImportService
     private readonly BackgroundJobQueue? jobs;
     private readonly IHttpClientFactory? httpClientFactory;
     private readonly IDataProtector? jimakuProtector;
+    private readonly LearningContentLanguageResolver contentLanguageResolver;
     private readonly ILogger<SubtitleImportService>? logger;
 
     public SubtitleImportService(
@@ -76,6 +83,7 @@ public sealed class SubtitleImportService
         this.jobs = jobs;
         this.httpClientFactory = httpClientFactory;
         this.logger = logger;
+        contentLanguageResolver = new LearningContentLanguageResolver(db);
         jimakuProtector = dataProtectionProvider?.CreateProtector(
             "AniLingo.Subtitles.Jimaku.ApiKey.v1");
     }
@@ -88,11 +96,13 @@ public sealed class SubtitleImportService
         SubtitleSidecarDirectoryCache listings,
         CancellationToken cancellationToken)
     {
+        var targetLanguage = await contentLanguageResolver.ResolveTargetLanguageAsync(cancellationToken);
+
         try
         {
-            foreach (var candidate in SubtitleSidecarLocator.FindJapaneseCandidates(mediaPaths, listings))
+            foreach (var candidate in SubtitleSidecarLocator.FindCandidates(mediaPaths, listings, targetLanguage))
             {
-                if (await TryImportSidecarAsync(episodeId, candidate, cancellationToken))
+                if (await TryImportSidecarAsync(episodeId, candidate, targetLanguage, cancellationToken))
                 {
                     return new SubtitleSidecarImportResult(
                         SubtitleSidecarImportStatus.Imported,
@@ -110,7 +120,7 @@ public sealed class SubtitleImportService
             return new SubtitleSidecarImportResult(SubtitleSidecarImportStatus.Unavailable);
         }
 
-        await RemoveSidecarTracksAsync(episodeId, cancellationToken);
+        await RemoveSidecarTracksAsync(episodeId, targetLanguage, cancellationToken);
         return new SubtitleSidecarImportResult(SubtitleSidecarImportStatus.NotFound);
     }
 
@@ -129,12 +139,14 @@ public sealed class SubtitleImportService
             return;
         }
 
+        var targetLanguage = await contentLanguageResolver.ResolveTargetLanguageAsync(cancellationToken);
         await ImportCuesAsync(
             episodeId,
             sourceKey,
             normalizedFormat,
             sourceUpdatedAt,
             cues,
+            targetLanguage,
             cancellationToken);
     }
 
@@ -144,6 +156,7 @@ public sealed class SubtitleImportService
         string normalizedFormat,
         DateTime sourceUpdatedAt,
         IReadOnlyList<SubtitleCueData> cues,
+        string targetLanguage,
         CancellationToken cancellationToken)
     {
         var track = await db.SubtitleTracks
@@ -151,7 +164,7 @@ public sealed class SubtitleImportService
 
         if (track is not null && track.SourceUpdatedAt == sourceUpdatedAt)
         {
-            await KeepCurrentTrackAsync(episodeId, track.Id, sourceKey, cancellationToken);
+            await KeepCurrentTrackAsync(episodeId, track.Id, sourceKey, targetLanguage, cancellationToken);
             return;
         }
 
@@ -161,7 +174,7 @@ public sealed class SubtitleImportService
             {
                 EpisodeId = episodeId,
                 Path = sourceKey,
-                Language = "ja",
+                Language = targetLanguage,
                 Format = normalizedFormat,
                 SourceUpdatedAt = sourceUpdatedAt
             };
@@ -170,7 +183,7 @@ public sealed class SubtitleImportService
         else
         {
             track.EpisodeId = episodeId;
-            track.Language = "ja";
+            track.Language = targetLanguage;
             track.Format = normalizedFormat;
             track.SourceUpdatedAt = sourceUpdatedAt;
             track.ImportedAt = DateTime.UtcNow;
@@ -180,7 +193,7 @@ public sealed class SubtitleImportService
                 .ExecuteDeleteAsync(cancellationToken);
         }
 
-        await RemoveOtherJapaneseTracksAsync(episodeId, track.Id, cancellationToken);
+        await RemoveOtherTracksAsync(episodeId, track.Id, targetLanguage, cancellationToken);
 
         db.SubtitleCues.AddRange(cues.Select(cue => new SubtitleCue
         {
@@ -196,18 +209,20 @@ public sealed class SubtitleImportService
         MarkPreparationReady(
             episodeId,
             DetectSourceKind(sourceKey),
-            $"Japanese learning text is ready ({cues.Count} cues).");
+            $"Learning text is ready ({cues.Count} cues).");
     }
 
     private async Task KeepCurrentTrackAsync(
         Guid episodeId,
         Guid trackId,
         string sourceKey,
+        string targetLanguage,
         CancellationToken cancellationToken)
     {
-        var removed = await RemoveOtherJapaneseTracksAsync(
+        var removed = await RemoveOtherTracksAsync(
             episodeId,
             trackId,
+            targetLanguage,
             cancellationToken);
 
         if (removed > 0)
@@ -218,12 +233,13 @@ public sealed class SubtitleImportService
         MarkPreparationReady(
             episodeId,
             DetectSourceKind(sourceKey),
-            "Japanese learning text is ready.");
+            "Learning text is ready.");
     }
 
     private async Task<bool> TryImportSidecarAsync(
         Guid episodeId,
         SubtitleSidecarCandidate candidate,
+        string targetLanguage,
         CancellationToken cancellationToken)
     {
         var info = new FileInfo(candidate.Path);
@@ -244,14 +260,22 @@ public sealed class SubtitleImportService
             current.EpisodeId == episodeId &&
             current.SourceUpdatedAt == sourceUpdatedAt)
         {
-            await KeepCurrentTrackAsync(episodeId, current.Id, candidate.Path, cancellationToken);
+            await KeepCurrentTrackAsync(episodeId, current.Id, candidate.Path, targetLanguage, cancellationToken);
             return true;
         }
 
         var content = await File.ReadAllTextAsync(candidate.Path, cancellationToken);
         var cues = SubtitleParser.ParseFormat(candidate.Format, content);
-        if (cues.Count == 0 ||
-            (!candidate.IsJapaneseTagged && !ContainsJapaneseDialogue(cues)))
+        if (cues.Count == 0)
+        {
+            return false;
+        }
+
+        // Japanese keeps its untagged-content kana heuristic; FindCandidates already
+        // restricts every other language's untagged candidates to "no tagged file
+        // exists", so an untagged candidate reaching here needs no further content gate.
+        var isJapaneseTarget = targetLanguage.Equals(JapaneseLanguageTag, StringComparison.OrdinalIgnoreCase);
+        if (!candidate.IsTargetLanguageTagged && isJapaneseTarget && !ContainsJapaneseDialogue(cues))
         {
             return false;
         }
@@ -262,18 +286,20 @@ public sealed class SubtitleImportService
             candidate.Format,
             sourceUpdatedAt,
             cues,
+            targetLanguage,
             cancellationToken);
         return true;
     }
 
     private async Task RemoveSidecarTracksAsync(
         Guid episodeId,
+        string targetLanguage,
         CancellationToken cancellationToken)
     {
         var removed = await db.SubtitleTracks
             .Where(x =>
                 x.EpisodeId == episodeId &&
-                x.Language == "ja" &&
+                x.Language == targetLanguage &&
                 !x.Path.StartsWith(EmbeddedSubtitleExtractor.SourcePrefix) &&
                 !x.Path.StartsWith(EmbeddedSubtitleExtractor.TranscriptionSourcePrefix) &&
                 !x.Path.StartsWith(JimakuSourcePrefix))
@@ -319,11 +345,12 @@ public sealed class SubtitleImportService
             return new LearningTextCoverageSnapshot(0, 0, 0, 0, 0, 0);
         }
 
+        var targetLanguage = await contentLanguageResolver.ResolveTargetLanguageAsync(cancellationToken);
         var readyIds = await db.SubtitleTracks
             .AsNoTracking()
             .Where(x =>
                 episodeIds.Contains(x.EpisodeId) &&
-                x.Language == "ja" &&
+                x.Language == targetLanguage &&
                 db.SubtitleCues.Any(cue => cue.SubtitleTrackId == x.Id))
             .Select(x => x.EpisodeId)
             .Distinct()
@@ -373,6 +400,7 @@ public sealed class SubtitleImportService
         CancellationToken cancellationToken)
     {
         var boundedLimit = Math.Clamp(limit, 1, 500);
+        var targetLanguage = await contentLanguageResolver.ResolveTargetLanguageAsync(cancellationToken);
 
         var rows = await (
             from episode in db.Episodes.AsNoTracking()
@@ -380,7 +408,7 @@ public sealed class SubtitleImportService
             where db.MediaFiles.Any(media => media.EpisodeId == episode.Id)
                 && !db.SubtitleTracks.Any(track =>
                     track.EpisodeId == episode.Id &&
-                    track.Language == "ja" &&
+                    track.Language == targetLanguage &&
                     db.SubtitleCues.Any(cue => cue.SubtitleTrackId == track.Id))
             orderby anime.Title, episode.SeasonNumber, episode.Number
             select new
@@ -409,12 +437,13 @@ public sealed class SubtitleImportService
         Guid episodeId,
         CancellationToken cancellationToken)
     {
-        if (await HasUsableJapaneseTextAsync(episodeId, cancellationToken))
+        var targetLanguage = await contentLanguageResolver.ResolveTargetLanguageAsync(cancellationToken);
+        if (await HasUsableTextAsync(episodeId, targetLanguage, cancellationToken))
         {
             MarkPreparationReady(
                 episodeId,
                 LearningTextSourceKind.Existing,
-                "Japanese learning text is already available.");
+                "Learning text is already available.");
             return false;
         }
 
@@ -467,7 +496,7 @@ public sealed class SubtitleImportService
         {
             MarkPreparationFailed(
                 episodeId,
-                "Could not queue Japanese learning-text preparation.");
+                "Could not queue learning-text preparation.");
             throw;
         }
     }
@@ -591,17 +620,18 @@ public sealed class SubtitleImportService
     {
         PreparationStates[episodeId] = new LearningTextPreparationState(
             LearningTextPreparationStatus.Processing,
-            Message: "Checking Japanese learning-text sources.",
+            Message: "Checking learning-text sources.",
             UpdatedAt: DateTimeOffset.UtcNow);
 
         try
         {
-            if (await HasUsableJapaneseTextAsync(episodeId, cancellationToken))
+            var targetLanguage = await contentLanguageResolver.ResolveTargetLanguageAsync(cancellationToken);
+            if (await HasUsableTextAsync(episodeId, targetLanguage, cancellationToken))
             {
                 MarkPreparationReady(
                     episodeId,
                     LearningTextSourceKind.Existing,
-                    "Japanese learning text is already available.");
+                    "Learning text is already available.");
                 return;
             }
 
@@ -612,9 +642,24 @@ public sealed class SubtitleImportService
                 return;
             }
 
+            // Jimaku only indexes Japanese fansub releases and the local Whisper fallback
+            // only ever decodes as Japanese, so both stay Japanese-only: neither is a
+            // usable source once the resolved content language is something else.
+            var isJapaneseTarget = targetLanguage.Equals(
+                JapaneseLanguageTag,
+                StringComparison.OrdinalIgnoreCase);
             var jimakuApiKey = await LoadJimakuApiKeyAsync(cancellationToken);
+            if (!isJapaneseTarget && jimakuApiKey is not null)
+            {
+                logger?.LogInformation(
+                    "Episode {EpisodeId} content language is {Language}; Jimaku (Japanese-only) and local Whisper transcription (Japanese-only model) are skipped for this stage.",
+                    episodeId,
+                    targetLanguage);
+            }
+
             var stages = LearningTextFallbackPolicy.Build(
-                !string.IsNullOrWhiteSpace(jimakuApiKey));
+                !string.IsNullOrWhiteSpace(jimakuApiKey),
+                isJapaneseTarget);
 
             foreach (var stage in stages)
             {
@@ -623,21 +668,21 @@ public sealed class SubtitleImportService
                 var imported = stage switch
                 {
                     LearningTextFallbackStage.LocalSubtitle =>
-                        await TryImportLocalSubtitleAsync(media, cancellationToken),
+                        await TryImportLocalSubtitleAsync(media, targetLanguage, cancellationToken),
                     LearningTextFallbackStage.EmbeddedSubtitle =>
-                        await TryImportEmbeddedSubtitleAsync(media, cancellationToken),
-                    LearningTextFallbackStage.Jimaku when jimakuApiKey is not null =>
+                        await TryImportEmbeddedSubtitleAsync(media, targetLanguage, cancellationToken),
+                    LearningTextFallbackStage.Jimaku when jimakuApiKey is not null && isJapaneseTarget =>
                         await TryImportJimakuAsync(
                             media,
                             jimakuApiKey,
                             cancellationToken),
-                    LearningTextFallbackStage.Whisper =>
+                    LearningTextFallbackStage.Whisper when isJapaneseTarget =>
                         await TryImportWhisperAsync(media, cancellationToken),
                     _ => false
                 };
 
                 if (imported &&
-                    await HasUsableJapaneseTextAsync(episodeId, cancellationToken))
+                    await HasUsableTextAsync(episodeId, targetLanguage, cancellationToken))
                 {
                     return;
                 }
@@ -648,7 +693,7 @@ public sealed class SubtitleImportService
             MarkPreparationFailed(
                 episodeId,
                 audioState.Message ??
-                "No usable Japanese subtitle or audio transcript could be produced.");
+                "No usable subtitle or audio transcript could be produced.");
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -662,7 +707,7 @@ public sealed class SubtitleImportService
                 episodeId);
             MarkPreparationFailed(
                 episodeId,
-                "Japanese learning-text preparation failed unexpectedly.");
+                "Learning-text preparation failed unexpectedly.");
         }
     }
 
@@ -779,6 +824,7 @@ public sealed class SubtitleImportService
 
     private async Task<bool> TryImportLocalSubtitleAsync(
         EpisodeMediaSnapshot media,
+        string targetLanguage,
         CancellationToken cancellationToken)
     {
         var sidecar = await ImportPreferredSidecarAsync(
@@ -788,7 +834,7 @@ public sealed class SubtitleImportService
             cancellationToken);
 
         if (sidecar.Status != SubtitleSidecarImportStatus.Imported ||
-            !await HasUsableJapaneseTextAsync(media.EpisodeId, cancellationToken))
+            !await HasUsableTextAsync(media.EpisodeId, targetLanguage, cancellationToken))
         {
             return false;
         }
@@ -796,16 +842,18 @@ public sealed class SubtitleImportService
         MarkPreparationReady(
             media.EpisodeId,
             LearningTextSourceKind.LocalSubtitle,
-            $"Using local Japanese subtitle {Path.GetFileName(sidecar.Path)}.");
+            $"Using local subtitle {Path.GetFileName(sidecar.Path)}.");
         return true;
     }
 
     private async Task<bool> TryImportEmbeddedSubtitleAsync(
         EpisodeMediaSnapshot media,
+        string targetLanguage,
         CancellationToken cancellationToken)
     {
-        var embedded = await RequireEmbeddedSubtitleExtractor().ExtractPreferredJapaneseAsync(
+        var embedded = await RequireEmbeddedSubtitleExtractor().ExtractPreferredTextAsync(
             media.MediaPath,
+            targetLanguage,
             cancellationToken);
 
         if (embedded is null)
@@ -821,7 +869,7 @@ public sealed class SubtitleImportService
             embedded.Content,
             cancellationToken);
 
-        if (!await HasUsableJapaneseTextAsync(media.EpisodeId, cancellationToken))
+        if (!await HasUsableTextAsync(media.EpisodeId, targetLanguage, cancellationToken))
         {
             return false;
         }
@@ -829,7 +877,7 @@ public sealed class SubtitleImportService
         MarkPreparationReady(
             media.EpisodeId,
             LearningTextSourceKind.EmbeddedSubtitle,
-            "Using embedded Japanese text subtitles.");
+            "Using embedded text subtitles.");
         return true;
     }
 
@@ -906,8 +954,9 @@ public sealed class SubtitleImportService
                     downloaded.Value.Content,
                     cancellationToken);
 
-                if (!await HasUsableJapaneseTextAsync(
+                if (!await HasUsableTextAsync(
                         media.EpisodeId,
+                        JapaneseLanguageTag,
                         cancellationToken))
                 {
                     continue;
@@ -956,7 +1005,7 @@ public sealed class SubtitleImportService
             transcript.Content,
             cancellationToken);
 
-        if (!await HasUsableJapaneseTextAsync(media.EpisodeId, cancellationToken))
+        if (!await HasUsableTextAsync(media.EpisodeId, JapaneseLanguageTag, cancellationToken))
         {
             return false;
         }
@@ -1253,39 +1302,44 @@ public sealed class SubtitleImportService
                 media.LastWriteTimeUtc))
             .FirstOrDefaultAsync(cancellationToken);
 
-    private Task<bool> HasUsableJapaneseTextAsync(
+    private Task<bool> HasUsableTextAsync(
         Guid episodeId,
+        string targetLanguage,
         CancellationToken cancellationToken) =>
         db.SubtitleTracks
             .AsNoTracking()
             .AnyAsync(
                 track =>
                     track.EpisodeId == episodeId &&
-                    track.Language == "ja" &&
+                    track.Language == targetLanguage &&
                     db.SubtitleCues.Any(cue => cue.SubtitleTrackId == track.Id),
                 cancellationToken);
 
-    private Task<List<Guid>> GetMissingEpisodeIdsAsync(
-        CancellationToken cancellationToken) =>
-        db.MediaFiles
+    private async Task<List<Guid>> GetMissingEpisodeIdsAsync(
+        CancellationToken cancellationToken)
+    {
+        var targetLanguage = await contentLanguageResolver.ResolveTargetLanguageAsync(cancellationToken);
+        return await db.MediaFiles
             .AsNoTracking()
             .Select(x => x.EpisodeId)
             .Distinct()
             .Where(episodeId =>
                 !db.SubtitleTracks.Any(track =>
                     track.EpisodeId == episodeId &&
-                    track.Language == "ja" &&
+                    track.Language == targetLanguage &&
                     db.SubtitleCues.Any(cue => cue.SubtitleTrackId == track.Id)))
             .ToListAsync(cancellationToken);
+    }
 
-    private Task<int> RemoveOtherJapaneseTracksAsync(
+    private Task<int> RemoveOtherTracksAsync(
         Guid episodeId,
         Guid preferredTrackId,
+        string targetLanguage,
         CancellationToken cancellationToken) =>
         db.SubtitleTracks
             .Where(x =>
                 x.EpisodeId == episodeId &&
-                x.Language == "ja" &&
+                x.Language == targetLanguage &&
                 x.Id != preferredTrackId)
             .ExecuteDeleteAsync(cancellationToken);
 

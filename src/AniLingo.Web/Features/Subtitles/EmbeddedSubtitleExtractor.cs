@@ -34,6 +34,8 @@ public sealed class EmbeddedSubtitleExtractor(
     public const string SourcePrefix = "embedded:";
     public const string TranscriptionSourcePrefix = "transcribed:";
 
+    private const string JapaneseLanguageTag = "ja";
+
     private const string TranscriptionRoot = "/data/transcription-cache";
     private const string WhisperModelPath = "/data/whisper/ggml-small-q5_1.bin";
     private const string WhisperModelUrl =
@@ -49,13 +51,24 @@ public sealed class EmbeddedSubtitleExtractor(
         new(StringComparer.Ordinal);
     private readonly SemaphoreSlim transcriptionGate = new(1, 1);
 
-    public async Task<EmbeddedSubtitleContent?> ExtractPreferredJapaneseAsync(
+    public Task<EmbeddedSubtitleContent?> ExtractPreferredJapaneseAsync(
         string mediaPath,
+        CancellationToken cancellationToken) =>
+        ExtractPreferredTextAsync(mediaPath, JapaneseLanguageTag, cancellationToken);
+
+    /// <summary>
+    /// Extracts the preferred embedded text-subtitle stream whose language tag
+    /// (or, absent one, title) matches <paramref name="targetLanguageTag"/> via
+    /// <see cref="SubtitleLanguageAliases"/>, instead of assuming Japanese.
+    /// </summary>
+    public async Task<EmbeddedSubtitleContent?> ExtractPreferredTextAsync(
+        string mediaPath,
+        string targetLanguageTag,
         CancellationToken cancellationToken)
     {
         var fullPath = Path.GetFullPath(mediaPath);
         var technical = await ReadTechnicalInfoAsync(fullPath, cancellationToken);
-        var stream = SelectPreferredJapaneseTextStream(technical?.SubtitleStreams ?? []);
+        var stream = SelectPreferredTextStream(technical?.SubtitleStreams ?? [], targetLanguageTag);
 
         return stream is null
             ? null
@@ -362,20 +375,27 @@ public sealed class EmbeddedSubtitleExtractor(
             ?.Index;
     }
 
-    public static bool IsJapanese(string? language, string? title)
+    public static bool IsJapanese(string? language, string? title) =>
+        MatchesLanguage(language, title, JapaneseLanguageTag);
+
+    /// <summary>
+    /// True when a stream's language tag (or, absent one, its free-form title)
+    /// names <paramref name="targetLanguageTag"/>, via <see cref="SubtitleLanguageAliases"/>
+    /// instead of a hardcoded Japanese check.
+    /// </summary>
+    public static bool MatchesLanguage(string? language, string? title, string targetLanguageTag)
     {
         var normalizedLanguage = language?.Trim();
 
         if (!string.IsNullOrWhiteSpace(normalizedLanguage) &&
             !normalizedLanguage.Equals("und", StringComparison.OrdinalIgnoreCase))
         {
-            return normalizedLanguage.Equals("ja", StringComparison.OrdinalIgnoreCase)
-                || normalizedLanguage.Equals("jpn", StringComparison.OrdinalIgnoreCase)
-                || normalizedLanguage.Equals("japanese", StringComparison.OrdinalIgnoreCase);
+            return SubtitleLanguageAliases.HasToken([normalizedLanguage], targetLanguageTag);
         }
 
-        return title?.Contains("japanese", StringComparison.OrdinalIgnoreCase) == true
-            || title?.Contains("日本語", StringComparison.Ordinal) == true;
+        return title is not null &&
+            SubtitleLanguageAliases.NameTokensFor(targetLanguageTag)
+                .Any(token => title.Contains(token, StringComparison.OrdinalIgnoreCase));
     }
 
     private async Task<bool> EnsureWhisperModelAsync(CancellationToken cancellationToken)
@@ -444,8 +464,20 @@ public sealed class EmbeddedSubtitleExtractor(
 
     public static MediaStreamInfo? SelectPreferredJapaneseTextStream(
         IEnumerable<MediaStreamInfo> subtitleStreams) =>
+        SelectPreferredTextStream(subtitleStreams, JapaneseLanguageTag);
+
+    /// <summary>
+    /// Prefers the embedded text-subtitle stream tagged (or titled) for
+    /// <paramref name="targetLanguageTag"/> over untagged/other-language ones,
+    /// then a full dialogue track over forced/signs-only, the default track,
+    /// and finally stream order - the same preference Japanese always used,
+    /// generalized to any target language.
+    /// </summary>
+    public static MediaStreamInfo? SelectPreferredTextStream(
+        IEnumerable<MediaStreamInfo> subtitleStreams,
+        string targetLanguageTag) =>
         subtitleStreams
-            .Where(x => x.IsText && IsJapanese(x.Language, x.Title))
+            .Where(x => x.IsText && MatchesLanguage(x.Language, x.Title, targetLanguageTag))
             .OrderBy(x => x.IsForced)
             .ThenBy(x => LooksLikeSignsOrSongs(x.Title))
             .ThenByDescending(x => x.IsDefault)
