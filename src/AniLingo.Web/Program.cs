@@ -211,6 +211,8 @@ builder.Services.AddScoped<MediaSegmentService>();
 builder.Services.AddScoped<MediaSegmentSidecarImporter>();
 builder.Services.AddScoped<EpisodeProgressService>();
 builder.Services.AddScoped<ClientApiService>();
+builder.Services.AddScoped<ClientApiOfflineService>();
+builder.Services.AddScoped<OfflineProgressReconciler>();
 builder.Services.AddSingleton<ReaderThemeCatalog>();
 
 builder.Services.AddHttpClient<AniListMetadataProvider>(client =>
@@ -276,6 +278,9 @@ builder.Services.AddSingleton<ISonarrObserverClient, SonarrObserverClient>();
 builder.Services.AddSingleton<ISonarrSeriesMonitoringClient, SonarrSeriesMonitoringClient>();
 builder.Services.AddSingleton<SonarrObservationService>();
 builder.Services.AddSingleton<SonarrMigrationService>();
+builder.Services.AddSingleton<AniLingo.Web.Features.Acquisition.Naming.AnimeNamingProfileStore>();
+builder.Services.AddSingleton<AniLingo.Web.Features.Acquisition.Naming.AnimeRenameFileSystem>();
+builder.Services.AddScoped<AniLingo.Web.Features.Acquisition.Naming.AnimeRenameService>();
 
 builder.Services.AddSingleton<MediaMappingReviewStore>();
 builder.Services.AddSingleton<ReadingSegmentMappingStore>();
@@ -325,6 +330,7 @@ app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapClientApiV1();
+app.MapClientApiOfflineV1();
 app.MapHub<PlaybackSessionHub>(PlaybackSessionHub.Route)
     .AllowAnonymous();
 app.MapReaderThemeCatalog();

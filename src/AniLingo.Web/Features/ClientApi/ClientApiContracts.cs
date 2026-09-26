@@ -47,6 +47,7 @@ public static class ClientApiContract
                 EpisodeFlow: true,
                 ContinueWatching: true,
                 PlaybackHistory: true,
+                OfflineDownloads: true,
                 MediaSegments: true,
                 Trickplay: true));
     }
@@ -185,6 +186,7 @@ public sealed record ClientFeatureFlags(
     bool EpisodeFlow,
     bool ContinueWatching,
     bool PlaybackHistory,
+    bool OfflineDownloads,
     bool MediaSegments,
     bool Trickplay);
 

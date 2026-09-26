@@ -1,0 +1,143 @@
+@page "/Library/Rename/{id:guid}"
+@using AniLingo.Web.Features.Acquisition.Naming
+@model AniLingo.Web.Pages.Library.RenameModel
+@{
+    var plan = Model.Plan!;
+    ViewData["Title"] = $"Rename · {plan.AnimeTitle}";
+    var operationId = Model.OperationId;
+}
+
+<header class="page-header">
+    <div>
+        <a class="back-link" href="/Library/Anime/@Model.AnimeId">&larr; @plan.AnimeTitle</a>
+        <span class="eyebrow">Library &middot; Naming</span>
+        <h1>Rename files</h1>
+        <p>
+            Preview how profile “@plan.Naming.Profile.Name” (@plan.Naming.Source) names this anime. Anime left to Sonarr under
+            <a href="/Settings/SonarrMigration">Sonarr migration</a> and Sonarr-owned files are never renamed.
+        </p>
+    </div>
+    <a class="button" href="/Settings/Naming">Naming profiles</a>
+</header>
+
+@if (!string.IsNullOrWhiteSpace(Model.Notice))
+{
+    <p class="metadata-error" style="color:inherit">@Model.Notice</p>
+}
+@if (!string.IsNullOrWhiteSpace(Model.Error))
+{
+    <p class="metadata-error">@Model.Error</p>
+}
+@if (operationId is Guid id)
+{
+    <p><a href="/Admin/Operation/@id">Rename log</a></p>
+}
+
+<div class="settings-grid">
+    <section class="panel">
+        <div class="panel-heading">
+            <h2>Naming for this anime</h2>
+            <span>@(Model.Assignment?.ProfileId is null ? "Inherited" : "Anime override")</span>
+        </div>
+        <form method="post" asp-page-handler="Selection" asp-route-id="@Model.AnimeId" asp-route-folder="@Model.Folder" class="form-stack">
+            <label>
+                <span>Profile</span>
+                <select name="profileId">
+                    <option value="" selected="@(Model.Assignment?.ProfileId is null)">Library / default</option>
+                    @foreach (var profile in Model.Naming.Profiles)
+                    {
+                        <option value="@profile.Id" selected="@(string.Equals(profile.Id, Model.Assignment?.ProfileId, StringComparison.OrdinalIgnoreCase))">@profile.Name</option>
+                    }
+                </select>
+            </label>
+            <label>
+                <span>Series type</span>
+                <select name="seriesType">
+                    @foreach (var type in Enum.GetValues<AnimeSeriesType>())
+                    {
+                        <option value="@type" selected="@(type == (Model.Assignment?.SeriesType ?? AnimeSeriesType.Anime))">@type</option>
+                    }
+                </select>
+                <small class="muted">Anime uses the anime format when absolute numbers are known, Daily uses the daily format when an air date is known.</small>
+            </label>
+            <div class="inline-actions"><button class="button" type="submit">Save selection</button></div>
+        </form>
+    </section>
+
+    <section class="panel">
+        <div class="panel-heading">
+            <h2>Plan</h2>
+            <span class="@(plan.CanExecute ? "status-pill status-ok" : "status-pill")">@plan.RenameCount to rename &middot; @plan.BlockedCount blocked</span>
+        </div>
+        <div class="inline-actions">
+            @if (Model.Folder)
+            {
+                <a class="button" href="/Library/Rename/@Model.AnimeId">Keep series folder</a>
+            }
+            else
+            {
+                <a class="button" href="/Library/Rename/@Model.AnimeId?folder=true">Also rename series folder</a>
+            }
+        </div>
+        @foreach (var move in plan.FolderMoves)
+        {
+            <p class="muted">Series folder: <code>@move.SourcePath</code> &rarr; <code>@move.TargetPath</code></p>
+        }
+        @if (plan.TargetAnimeKey != plan.AnimeKey)
+        {
+            <p class="muted">Library key changes from <code>@plan.AnimeKey</code> to <code>@plan.TargetAnimeKey</code>; episodes, progress and Sonarr migration settings move with it.</p>
+        }
+        @foreach (var reason in plan.BlockingReasons)
+        {
+            <p class="metadata-error">@reason</p>
+        }
+        @if (plan.CanExecute)
+        {
+            <form method="post" asp-page-handler="Execute" asp-route-id="@Model.AnimeId" asp-route-folder="@Model.Folder" class="inline-actions">
+                <input type="hidden" name="fingerprint" value="@plan.Fingerprint" />
+                <button class="button button-primary" type="submit">Rename @plan.RenameCount file(s)@(plan.FolderMoves.Count > 0 ? " and move series folder" : "")</button>
+            </form>
+        }
+    </section>
+</div>
+
+<section class="panel">
+    <div class="panel-heading">
+        <h2>Files</h2>
+        <span>@plan.Items.Count</span>
+    </div>
+    @if (plan.Items.Count == 0)
+    {
+        <p class="muted">No media files are known for this anime.</p>
+    }
+    <div class="status-list">
+        @foreach (var item in plan.Items)
+        {
+            var pill = item.Status switch
+            {
+                AnimeRenameItemStatus.Rename => "status-pill status-warn",
+                AnimeRenameItemStatus.Blocked => "status-pill status-error",
+                _ => "status-pill status-ok"
+            };
+            <div>
+                <div>
+                    <strong>S@(item.SeasonNumber.ToString("00"))E@(item.EpisodeNumber.ToString("00"))</strong>
+                    <code>@AniLingo.Web.Pages.Library.RenameModel.Display(item.SourcePath, item.SourceSeriesFolder)</code>
+                    @if (item.Status != AnimeRenameItemStatus.Unchanged && item.TargetPath != item.SourcePath)
+                    {
+                        <span>&rarr; <code>@AniLingo.Web.Pages.Library.RenameModel.Display(item.TargetPath, item.SourceSeriesFolder)</code></span>
+                    }
+                    @if (item.Sidecars.Count > 0)
+                    {
+                        <small class="muted">+ @item.Sidecars.Count sidecar file(s)</small>
+                    }
+                    @if (item.Reason is not null)
+                    {
+                        <small class="metadata-error">@item.Reason</small>
+                    }
+                </div>
+                <span class="@pill">@item.Status</span>
+            </div>
+        }
+    </div>
+</section>
