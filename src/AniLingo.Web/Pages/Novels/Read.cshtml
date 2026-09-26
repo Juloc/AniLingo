@@ -24,6 +24,7 @@
         <script src="~/js/novel-annotations.js" asp-append-version="true"></script>
         <script src="~/js/novel-chapter-drawer.js" asp-append-version="true"></script>
         <script src="~/js/novel-translation.js" asp-append-version="true"></script>
+        <script src="~/js/novel-learning.js" asp-append-version="true"></script>
         <script src="~/js/novel-reader.js" asp-append-version="true"></script>
         <script src="~/js/reader-themes.js" asp-append-version="true"></script>
         <script src="~/js/reader-personalization.js" asp-append-version="true"></script>
@@ -92,7 +93,10 @@
      data-paper-style="@Model.ReaderSettings.PaperStyle"
      data-genre-theme="@Model.ReaderSettings.ResolvedGenreTheme"
      data-genre-artwork="@Model.ReaderSettings.GenreArtworkEnabled.ToString().ToLowerInvariant()"
-     data-two-page="@Model.ReaderSettings.TwoPageSpread.ToString().ToLowerInvariant()">
+     data-two-page="@Model.ReaderSettings.TwoPageSpread.ToString().ToLowerInvariant()"
+     data-furigana-supported="@Model.FuriganaSupported.ToString().ToLowerInvariant()"
+     data-furigana-enabled="@Model.ReaderSettings.FuriganaEnabled.ToString().ToLowerInvariant()"
+     data-furigana-url="@Url.Page("/Novels/Read", "Furigana", new { id = Model.Chapter.Id })">
 
     <nav class="novel-reader-toolbar" data-reader-chrome data-reader-chrome-primary aria-label="Reader controls">
         <div class="novel-toolbar-start">
@@ -195,6 +199,21 @@
                     <path d="M8 4H4v4M16 4h4v4M20 16v4h-4M4 16v4h4" />
                 </svg>
             </button>
+
+            @if (Model.FuriganaSupported)
+            {
+                <button class="novel-icon-button"
+                        type="button"
+                        data-reader-furigana-toggle
+                        aria-pressed="@Model.ReaderSettings.FuriganaEnabled.ToString().ToLowerInvariant()"
+                        aria-label="Furigana ein-/ausblenden"
+                        title="Furigana">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M6 8h12M6 8v9M18 8v9" />
+                        <path d="M9 4.5h6" stroke-width="1.4" />
+                    </svg>
+                </button>
+            }
 
             <partial name="_ReaderSettingsPanel" model="@readerSettingsPanel" />
         </div>
@@ -355,6 +374,7 @@
         <button type="button" data-save-highlight>Markieren</button>
         <button type="button" data-save-highlight-note>Markieren + Notiz</button>
         <button type="button" data-save-bookmark-selection>Auswahl als Lesezeichen</button>
+        <button type="button" data-language-lookup-selection hidden>Nachschlagen</button>
     </div>
 
     @foreach (var bookmark in currentBookmarks)
@@ -476,3 +496,11 @@
 
     <div class="novel-reader-toast" data-reader-toast hidden role="status" aria-live="polite"></div>
 </div>
+@* Hosted without a selectionSurface/paragraphAttribute: the reader's own
+   selection menu offers "Nachschlagen" (see novel-learning.js) instead of the
+   inspector's built-in floating "Look up" button, so there is one selection UI. *@
+@{
+    var languageInspectorHost = AniLingo.Web.Features.Learning.LanguageAssistance.LanguageInspectorHost
+        .ForNovelChapter(Model.Chapter.WorkId, Model.Chapter.Id, "ja");
+}
+<partial name="_LanguageInspector" model="languageInspectorHost" />
