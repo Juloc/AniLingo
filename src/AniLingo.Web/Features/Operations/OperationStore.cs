@@ -15,6 +15,7 @@ public sealed class OperationStore(AppDbContext db)
     private const int MaxModuleLength = 120;
     private const int MaxExternalProviderLength = 80;
     private const int MaxExternalIdLength = 240;
+    private const int MaxDetailsLength = 8000;
 
     public async Task<Guid> CreateAsync(
         OperationDescriptor descriptor,
@@ -36,13 +37,13 @@ public sealed class OperationStore(AppDbContext db)
                         ProgressPercent, Message, Error, IsDownload, BytesTotal,
                         BytesCompleted, BytesPerSecond, EtaUtc, Attempt, Retryable,
                         ExternalProvider, ExternalId,
-                        CreatedAtUtc, StartedAtUtc, FinishedAtUtc, UpdatedAtUtc)
+                        CreatedAtUtc, StartedAtUtc, FinishedAtUtc, UpdatedAtUtc, Details)
                     VALUES (
                         @id, @kind, @category, @lane, @status, @profileId, @title, @subject,
                         NULL, NULL, NULL, @isDownload, @bytesTotal,
                         NULL, NULL, NULL, 1, @retryable,
                         @externalProvider, @externalId,
-                        @createdAt, NULL, NULL, @updatedAt);
+                        @createdAt, NULL, NULL, @updatedAt, @details);
                     """;
                 Add(command, "@id", id.ToString("D"));
                 Add(command, "@kind", Trim(descriptor.Kind, 100) ?? "background");
@@ -59,6 +60,7 @@ public sealed class OperationStore(AppDbContext db)
                 Add(command, "@externalId", Trim(descriptor.ExternalId, MaxExternalIdLength));
                 Add(command, "@createdAt", Format(now));
                 Add(command, "@updatedAt", Format(now));
+                Add(command, "@details", Trim(descriptor.Details, MaxDetailsLength));
                 await command.ExecuteNonQueryAsync(cancellationToken);
             },
             cancellationToken);
@@ -86,7 +88,7 @@ public sealed class OperationStore(AppDbContext db)
                            ProgressPercent, Message, Error, IsDownload, BytesTotal,
                            BytesCompleted, BytesPerSecond, EtaUtc, Attempt, Retryable,
                            ExternalProvider, ExternalId,
-                           CreatedAtUtc, StartedAtUtc, FinishedAtUtc, UpdatedAtUtc
+                           CreatedAtUtc, StartedAtUtc, FinishedAtUtc, UpdatedAtUtc, Details
                     FROM Operations
                     WHERE Id = @id
                     LIMIT 1;
@@ -136,6 +138,12 @@ public sealed class OperationStore(AppDbContext db)
             parameters.Add(("@category", filter.Category.Trim()));
         }
 
+        if (!string.IsNullOrWhiteSpace(filter.Kind))
+        {
+            conditions.Add("Kind = @kind");
+            parameters.Add(("@kind", filter.Kind.Trim()));
+        }
+
         if (!string.IsNullOrWhiteSpace(filter.Search))
         {
             conditions.Add("(Title LIKE @search OR Subject LIKE @search OR Message LIKE @search OR Kind LIKE @search)");
@@ -158,7 +166,7 @@ public sealed class OperationStore(AppDbContext db)
                            ProgressPercent, Message, Error, IsDownload, BytesTotal,
                            BytesCompleted, BytesPerSecond, EtaUtc, Attempt, Retryable,
                            ExternalProvider, ExternalId,
-                           CreatedAtUtc, StartedAtUtc, FinishedAtUtc, UpdatedAtUtc
+                           CreatedAtUtc, StartedAtUtc, FinishedAtUtc, UpdatedAtUtc, Details
                     FROM Operations
                     {where}
                     ORDER BY
@@ -432,7 +440,7 @@ public sealed class OperationStore(AppDbContext db)
                            ProgressPercent, Message, Error, IsDownload, BytesTotal,
                            BytesCompleted, BytesPerSecond, EtaUtc, Attempt, Retryable,
                            ExternalProvider, ExternalId,
-                           CreatedAtUtc, StartedAtUtc, FinishedAtUtc, UpdatedAtUtc
+                           CreatedAtUtc, StartedAtUtc, FinishedAtUtc, UpdatedAtUtc, Details
                     FROM Operations
                     WHERE ExternalProvider = @provider
                       AND ExternalId IS NOT NULL
@@ -499,6 +507,61 @@ public sealed class OperationStore(AppDbContext db)
         }
 
         return rows > 0;
+    }
+
+    // Details is the one structured, kind-specific document of a run (for example
+    // the persisted phase and counters of a library scan).
+    public Task SetDetailsAsync(
+        Guid id,
+        string? details,
+        CancellationToken cancellationToken = default) =>
+        UpdateAsync(
+            id,
+            """
+            Details = @details,
+            UpdatedAtUtc = @now
+            """,
+            [
+                ("@details", Trim(details, MaxDetailsLength)),
+                ("@now", Format(DateTime.UtcNow))
+            ],
+            cancellationToken);
+
+    // Keeps history bounded for frequently produced kinds: only the newest
+    // finished runs of the kind survive; active runs are never touched.
+    public async Task<int> PruneFinishedAsync(
+        string kind,
+        int keep,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(kind);
+        ArgumentOutOfRangeException.ThrowIfNegative(keep);
+
+        return await WithConnectionAsync(
+            async connection =>
+            {
+                await using var command = connection.CreateCommand();
+                command.CommandText =
+                    """
+                    DELETE FROM OperationLogs
+                    WHERE OperationId IN (
+                        SELECT Id FROM Operations
+                        WHERE Kind = @kind AND Status IN (3, 4, 5, 6)
+                        ORDER BY UpdatedAtUtc DESC
+                        LIMIT -1 OFFSET @keep);
+
+                    DELETE FROM Operations
+                    WHERE Id IN (
+                        SELECT Id FROM Operations
+                        WHERE Kind = @kind AND Status IN (3, 4, 5, 6)
+                        ORDER BY UpdatedAtUtc DESC
+                        LIMIT -1 OFFSET @keep);
+                    """;
+                Add(command, "@kind", kind.Trim());
+                Add(command, "@keep", keep);
+                return await command.ExecuteNonQueryAsync(cancellationToken);
+            },
+            cancellationToken);
     }
 
     public Task ReportProgressAsync(
@@ -719,7 +782,8 @@ public sealed class OperationStore(AppDbContext db)
             ParseDate(reader.GetString(20)),
             ReadNullableDate(reader, 21),
             ReadNullableDate(reader, 22),
-            ParseDate(reader.GetString(23)));
+            ParseDate(reader.GetString(23)),
+            ReadNullableString(reader, 24));
 
     private static int ReadCount(DbDataReader reader, int ordinal) =>
         reader.IsDBNull(ordinal)

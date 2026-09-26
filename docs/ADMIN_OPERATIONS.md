@@ -15,6 +15,7 @@ Owner-only administration:
 - `/Admin` — operational overview
 - `/Admin/Users` — local account management and progress
 - `/Admin/Operations` — active work, queue, downloads and history
+- `/Admin/Scans` — library scan runs per media root with phase, counters and warnings
 - `/Admin/Logs` — structured operation logs
 - `/Admin/System` — media roots and server integrations
 - `/Admin/Subtitles`
@@ -54,7 +55,7 @@ When AniLingo starts, local operations left in `Queued` or `Running` for a worke
 
 External operations can persist an `ExternalProvider` + `ExternalId`. Those jobs are not marked interrupted by the local worker reconciliation because their authoritative work continues outside AniLingo. Provider monitors resume after restart and keep the same canonical operation record current.
 
-Retry is available while the current process still owns the original retryable local delegate. After a process restart, local history remains but that transient delegate is intentionally unavailable. Durable provider-backed jobs such as SABnzbd instead resume status monitoring from their persisted external reference.
+Retry is available while the current process still owns the original retryable local delegate. After a process restart, local history remains but that transient delegate is intentionally unavailable. Durable provider-backed jobs such as SABnzbd instead resume status monitoring from their persisted external reference, and library scans can be run again from their persisted `Details` (see below).
 
 ## Downloads
 
@@ -81,6 +82,28 @@ Synchronous request-bound work uses the shared `OperationRunner`, which writes t
 Playback remux/transcode is currently streamed live by the media response path rather than pre-generated as a durable background preparation job. It is therefore not recorded as a separate completed operation. If a future UI adds explicit cached playback preparation, that producer must use the existing playback/operation lane instead of creating another task store.
 
 Other job producers should use the same operation descriptor rather than adding their own history table.
+
+### Structured details
+
+`Operations.Details` is an optional, kind-specific JSON document (at most 8 000 characters) for the structured facts of one run that the generic columns cannot hold. It is the only place for such data; producers must not add a parallel table for it. Library scans are the first kind that uses it.
+
+## Library scans
+
+Every library scan — startup, the **Queue library scan** button, filesystem-change scans and periodic reconciliation — goes through `LibraryScanCoordinator` (`Features/Library`). There is no separate scan-run store: each run is one operation of kind `library-scan` on the `Maintenance` lane, and `/Admin/Scans` plus the per-root state on `/Admin/System` are views over `Operations`.
+
+`Details` of a scan run carries the root ID, the scanned folder (empty for the whole root), the trigger (`Manual`, `Startup`, `Watch`, `Periodic`, `Retry`), the current phase (`Enumerating`, `Reconciling`, `Metadata`, `Artwork`, `Subtitles`, `Completed`), files processed/total and, once finished, the counters: media files, added, changed, removed, skipped, subtitle files, artwork imported, NFO files ignored, errors and warnings. Progress percent and the message are written through the normal operation progress at most once per second; phase changes are always written.
+
+Item-level findings (unmatched media files, ignored NFO files) are `OperationLogs` warnings of module `Scan` whose paths are relative to the root. Neither the logs nor the persisted error of a failed scan contain the host path of the root; the full exception goes to the application logger only.
+
+Coalescing: while a full scan of a root is queued or running, every further request for that root is rejected with a pointer to the active run (the UI disables the button). A folder scan only blocks the same folder; a full scan requested beside queued folder scans simply runs after them because the maintenance lane is sequential.
+
+Restart and retry: an abandoned running scan becomes `Interrupted` through the normal lane recovery. **Run again** on `/Admin/Scans` queues a fresh run for the root and folder recorded in the finished run's `Details`; this works after a restart, unlike the generic delegate retry. The newest 200 finished scan runs are kept; older ones and their logs are pruned after each completed scan.
+
+### Filesystem watcher and periodic reconciliation
+
+`LibraryWatchService` attaches a `FileSystemWatcher` to every enabled root that is readable and supports events. Callbacks only record the changed top-level folder (the anime directory); after the root has been quiet for 10 seconds the dirty folders are queued as folder scans (`Watch` trigger). A watcher error or buffer overflow queues a full reconciliation of that root instead and the watcher is re-attached on the next sync. Roots on mounts without event support, or roots that are offline, simply have no watcher; the service re-checks the root list every minute and attaches when the root becomes readable.
+
+Each root has one **Periodic reconciliation** interval (`LibraryRoots.ReconciliationIntervalMinutes`, default 30, `0` turns it off, edited on `/Admin/System`). A full scan of the root is queued when the last completed full scan and the last periodic attempt are both older than the interval. An unavailable root is skipped without creating an operation and is not retried before the next interval, so an offline NAS does not fill the history.
 
 ## Logs and security
 

@@ -182,7 +182,9 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 
 builder.Services.AddSingleton<MediaProcessRunner>();
 builder.Services.AddScoped<LibraryScanner>();
+builder.Services.AddSingleton<LibraryScanCoordinator>();
 builder.Services.AddHostedService<LibraryStartupScanService>();
+builder.Services.AddHostedService<LibraryWatchService>();
 builder.Services.AddSingleton<StorageAvailabilityCoordinator>();
 builder.Services.AddScoped<LibraryRootAvailabilityService>();
 builder.Services.AddScoped<MediaAvailabilityService>();
