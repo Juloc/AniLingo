@@ -1,6 +1,7 @@
 @page "/Manga/Read/{id:guid}"
 @model AniLingo.Web.Pages.Manga.ReadModel
 @{
+    var ui = Model.Ui;
     var chapter = Model.Chapter;
     var currentBookmarks = Model.Bookmarks
         .Where(x => x.ChapterId == chapter.Id)
@@ -42,52 +43,52 @@
      data-default-mode="@(Model.ReaderSettings.ReadingMode == "continuous" ? "continuous" : Model.ReaderSettings.TwoPageSpread ? "double" : "single")"
      style="--manga-bookmark-color:@Model.ReaderSettings.BookmarkColor">
 
-    <nav class="manga-reader-toolbar" aria-label="Manga reader controls">
+    <nav class="manga-reader-toolbar" aria-label="@ui["manga.reader.controlsAria"]">
         <div class="manga-toolbar-start">
             <button type="button"
                     class="manga-icon-button"
                     data-chapters-toggle
-                    aria-label="Chapters">
+                    aria-label="@ui["manga.chapters.title"]">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
             </button>
-            <span class="manga-reader-location">Ch. @chapter.Number · @chapter.Title</span>
+            <span class="manga-reader-location">@ui.Format("manga.reader.chapterLocation", ("chapter", chapter.Number), ("title", chapter.Title))</span>
         </div>
 
-        <div class="manga-mode-switch" role="group" aria-label="Page mode">
+        <div class="manga-mode-switch" role="group" aria-label="@ui["manga.reader.pageModeAria"]">
             <button type="button" data-mode="single">1</button>
             <button type="button" data-mode="double">2</button>
-            <button type="button" data-mode="continuous">Scroll</button>
+            <button type="button" data-mode="continuous">@ui["manga.reader.mode.scroll"]</button>
         </div>
 
         <div class="manga-toolbar-end">
             <button type="button"
                     class="manga-icon-button"
                     data-direction-toggle
-                    aria-label="Reading direction"
-                    title="Reading direction">@chapter.Direction.ToUpperInvariant()</button>
+                    aria-label="@ui["manga.reader.directionAria"]"
+                    title="@ui["manga.reader.directionAria"]">@chapter.Direction.ToUpperInvariant()</button>
             <button type="button"
                     class="manga-icon-button"
                     data-bookmark
-                    aria-label="Bookmark page">
+                    aria-label="@ui["manga.reader.bookmarkPageAria"]">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5h10v15l-5-3-5 3z" /></svg>
                 <span data-bookmark-count hidden="@(currentBookmarks.Length == 0)">@currentBookmarks.Length</span>
             </button>
             <details class="manga-settings">
-                <summary class="manga-icon-button" aria-label="Reader settings">Aa</summary>
+                <summary class="manga-icon-button" aria-label="@ui["manga.reader.settingsAria"]">Aa</summary>
                 <div class="manga-settings-popover">
-                    <button type="button" data-fit="height">Fit height</button>
-                    <button type="button" data-fit="width">Fit width</button>
+                    <button type="button" data-fit="height">@ui["manga.reader.fitHeight"]</button>
+                    <button type="button" data-fit="width">@ui["manga.reader.fitWidth"]</button>
                     <div>
                         <button type="button" data-zoom="-">−</button>
                         <span data-zoom-label>100%</span>
                         <button type="button" data-zoom="+">+</button>
                     </div>
                     <hr />
-                    <button type="button" data-save-manga-default>Use mode for all manga</button>
+                    <button type="button" data-save-manga-default>@ui["manga.reader.saveDefault"]</button>
                     <button type="button"
                             data-reset-manga-series
                             hidden="@(!Model.ReaderSettings.HasSeriesOverride)">
-                        Use manga default
+                        @ui["manga.reader.resetToDefault"]
                     </button>
                 </div>
             </details>
@@ -95,7 +96,7 @@
     </nav>
 
     <main class="manga-reader-stage" data-stage>
-        <button class="manga-tap-zone start" type="button" data-tap="start" aria-label="Previous or next page"></button>
+        <button class="manga-tap-zone start" type="button" data-tap="start" aria-label="@ui["manga.reader.tapZoneAria"]"></button>
 
         <div class="manga-page-frame" data-page-frame>
             <img data-page-left alt="" draggable="false" />
@@ -105,7 +106,7 @@
 
         <div class="manga-continuous" data-continuous hidden></div>
 
-        <button class="manga-tap-zone end" type="button" data-tap="end" aria-label="Previous or next page"></button>
+        <button class="manga-tap-zone end" type="button" data-tap="end" aria-label="@ui["manga.reader.tapZoneAria"]"></button>
     </main>
 
     <footer class="manga-reader-footer">
@@ -118,7 +119,7 @@
                    max="@(Math.Max(0, chapter.PageCount - 1))"
                    value="@Model.InitialPage"
                    data-page-scrubber
-                   aria-label="Page" />
+                   aria-label="@ui["manga.reader.pageScrubberAria"]" />
             <div class="manga-bookmark-ticks" data-bookmark-ticks></div>
         </div>
 
@@ -133,11 +134,11 @@
         <header>
             @* AniList progress and sync live on the series page's lazy card. *@
             <strong><a href="/Manga/Series/@chapter.SeriesId">@chapter.SeriesTitle</a></strong>
-            <button type="button" class="manga-icon-button" data-drawer-close aria-label="Close">
+            <button type="button" class="manga-icon-button" data-drawer-close aria-label="@ui["manga.reader.closeDrawer"]">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
             </button>
         </header>
-        <input type="search" data-chapter-search placeholder="Search chapters" />
+        <input type="search" data-chapter-search placeholder="@ui["manga.reader.chapterSearchPlaceholder"]" />
         <nav data-chapter-list></nav>
         <script type="application/json" data-chapter-data>@Html.Raw(chapterData)</script>
     </aside>

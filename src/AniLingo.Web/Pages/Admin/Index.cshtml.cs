@@ -1,6 +1,7 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Admin;
 using AniLingo.Web.Features.Auth;
+using AniLingo.Web.Features.Localization;
 using AniLingo.Web.Features.Operations;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -12,6 +13,8 @@ public sealed class IndexModel(
     AppDbContext db,
     AdminUserProgressService userProgressService) : PageModel
 {
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
+
     public OperationSummary Summary { get; private set; } =
         new(0, 0, 0, 0, 0, 0);
 
@@ -21,6 +24,8 @@ public sealed class IndexModel(
 
     public async Task OnGetAsync(CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         var store = new OperationStore(db);
         Summary = await store.GetSummaryAsync(cancellationToken);
         Recent = await store.ListAsync(

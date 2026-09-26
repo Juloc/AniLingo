@@ -1,7 +1,8 @@
 @page "/Discover"
 @model AniLingo.Web.Pages.Discover.IndexModel
 @{
-    ViewData["Title"] = "Discover";
+    var ui = Model.Ui;
+    ViewData["Title"] = ui["discover.index.title"];
 }
 
 @section Head {
@@ -13,22 +14,22 @@
      data-is-owner="@Model.IsOwner.ToString().ToLowerInvariant()">
     <header class="discover-header">
         <div>
-            <span class="eyebrow">Library discovery</span>
-            <h1>Discover</h1>
-            <p>Anime, light novels, manga and books in one search.</p>
+            <span class="eyebrow">@ui["discover.index.eyebrow"]</span>
+            <h1>@ui["discover.index.title"]</h1>
+            <p>@ui["discover.index.subtitle"]</p>
         </div>
 
-        <div class="discover-library-links" aria-label="Local libraries">
-            <a href="/Library">Anime library</a>
-            <a href="/Novels">Reading library</a>
-            <a href="/Books">Books</a>
+        <div class="discover-library-links" aria-label="@ui["discover.index.librariesAria"]">
+            <a href="/Library">@ui["discover.index.animeLibraryLink"]</a>
+            <a href="/Novels">@ui["discover.index.readingLibraryLink"]</a>
+            <a href="/Books">@ui["nav.books"]</a>
         </div>
     </header>
 
-    <section class="discover-controls" aria-label="Discovery controls">
+    <section class="discover-controls" aria-label="@ui["discover.index.controlsAria"]">
         <div class="discover-search-row">
             <label class="discover-search">
-                <span class="sr-only">Search titles, authors or series</span>
+                <span class="sr-only">@ui["discover.search.srLabel"]</span>
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                     <path d="m21 21-4.4-4.4m2.4-5.1a7.5 7.5 0 1 1-15 0 7.5 7.5 0 0 1 15 0Z" />
                 </svg>
@@ -36,31 +37,31 @@
                        data-discover-search
                        autocomplete="off"
                        spellcheck="false"
-                       placeholder="Search titles, authors or series…" />
+                       placeholder="@ui["discover.search.placeholder"]" />
                 <kbd>/</kbd>
             </label>
         </div>
 
         <div class="discover-filter-row">
-            <div class="discover-tabs" role="tablist" aria-label="Browse mode">
-                <button type="button" data-discover-mode="trending">Trending</button>
-                <button type="button" data-discover-mode="top">Top</button>
-                <button type="button" data-discover-mode="my-list">My AniList</button>
+            <div class="discover-tabs" role="tablist" aria-label="@ui["discover.tabs.browseModeAria"]">
+                <button type="button" data-discover-mode="trending">@ui["discover.tabs.trending"]</button>
+                <button type="button" data-discover-mode="top">@ui["discover.tabs.top"]</button>
+                <button type="button" data-discover-mode="my-list">@ui["discover.tabs.myAniList"]</button>
             </div>
 
-            <div class="discover-categories" aria-label="Category">
-                <button type="button" data-discover-category="all">All</button>
-                <button type="button" data-discover-category="anime">Anime</button>
-                <button type="button" data-discover-category="light-novel">Light novels</button>
-                <button type="button" data-discover-category="manga">Manga</button>
-                <button type="button" data-discover-category="book">Books</button>
+            <div class="discover-categories" aria-label="@ui["discover.categories.aria"]">
+                <button type="button" data-discover-category="all">@ui["discover.categories.all"]</button>
+                <button type="button" data-discover-category="anime">@ui["discover.categories.anime"]</button>
+                <button type="button" data-discover-category="light-novel">@ui["discover.categories.lightNovel"]</button>
+                <button type="button" data-discover-category="manga">@ui["reading.manga.title"]</button>
+                <button type="button" data-discover-category="book">@ui["nav.books"]</button>
             </div>
         </div>
     </section>
 
     <div class="discover-summary">
-        <strong data-discover-title>Trending</strong>
-        <span data-discover-count>Loading…</span>
+        <strong data-discover-title>@ui["discover.tabs.trending"]</strong>
+        <span data-discover-count>@ui["discover.results.loading"]</span>
     </div>
 
     <div class="discover-warning" data-discover-warning hidden></div>
@@ -83,22 +84,22 @@
     </section>
 
     <div class="discover-empty" data-discover-empty hidden>
-        <strong>No results</strong>
-        <span>Try another title or category.</span>
+        <strong>@ui["discover.results.emptyTitle"]</strong>
+        <span>@ui["discover.results.emptyBody"]</span>
     </div>
 
     @if (Model.IsOwner)
     {
         <details class="discover-import" data-discover-import>
-            <summary>Import an authorized light-novel source</summary>
+            <summary>@ui["discover.import.toggle"]</summary>
             <form method="post"
                   asp-page-handler="ImportSource"
                   class="discover-import-form"
                   data-discover-import-form>
                 <div>
-                    <strong data-import-title>Source URL</strong>
+                    <strong data-import-title>@ui["discover.import.sourceUrlHeading"]</strong>
                     <span>
-                        Use a source you own or are allowed to import. Supported source providers are validated by AniLingo.
+                        @ui["discover.import.sourceHint"]
                     </span>
                 </div>
                 <input type="hidden"
@@ -108,7 +109,7 @@
                        name="metadataExternalId"
                        data-import-external-id />
                 <label>
-                    <span>Source URL</span>
+                    <span>@ui["discover.import.sourceUrlHeading"]</span>
                     <input type="url"
                            name="sourceUrl"
                            required
@@ -118,10 +119,10 @@
                            placeholder="https://ncode.syosetu.com/…" />
                 </label>
                 <div class="discover-import-actions">
-                    <button class="button button-primary" type="submit">Import source</button>
+                    <button class="button button-primary" type="submit">@ui["discover.import.submit"]</button>
                     <button class="button"
                             type="button"
-                            data-import-clear>Clear match</button>
+                            data-import-clear>@ui["discover.import.clearMatch"]</button>
                 </div>
             </form>
         </details>

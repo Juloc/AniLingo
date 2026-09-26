@@ -6,6 +6,9 @@ using AniLingo.Web.Features.Library;
 using AniLingo.Web.Features.Operations;
 using AniLingo.Web.Pages.Admin;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
+using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -515,6 +518,19 @@ public sealed class LibraryScanLifecycleTests
         var page = new ScansModel(db, host.Scans, new CurrentAccountContext(new HttpContextAccessor()))
         {
             RootId = root.Id
+        };
+        var pageHttpContext = new DefaultHttpContext
+        {
+            RequestServices = new ServiceCollection()
+                .AddSingleton<IModelMetadataProvider, EmptyModelMetadataProvider>()
+                .BuildServiceProvider()
+        };
+        page.PageContext = new PageContext
+        {
+            HttpContext = pageHttpContext,
+            ViewData = new ViewDataDictionary<ScansModel>(
+                new EmptyModelMetadataProvider(),
+                new ModelStateDictionary())
         };
         await page.OnGetAsync(CancellationToken.None);
 

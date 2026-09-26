@@ -1,7 +1,8 @@
 @page "/Discover/MangaImport"
 @model AniLingo.Web.Pages.Discover.MangaImportModel
 @{
-    ViewData["Title"] = $"Add {Model.Title}";
+    var ui = Model.Ui;
+    ViewData["Title"] = ui.Format("discover.mangaImport.titleTemplate", ("title", Model.Title));
 }
 
 @section Head {
@@ -9,15 +10,14 @@
 }
 
 <div class="discover-manga-import">
-    <a class="discover-import-back" href="/Discover?category=manga">← Back to Discover</a>
+    <a class="discover-import-back" href="/Discover?category=manga">← @ui["discover.mangaImport.backLink"]</a>
 
     <header class="discover-manga-import-header">
         <div>
-            <span class="eyebrow">Manga import</span>
+            <span class="eyebrow">@ui["discover.mangaImport.eyebrow"]</span>
             <h1>@Model.Title</h1>
             <p>
-                Import your CBZ/ZIP files or a mounted Manga folder. AniLingo will keep
-                the files in the canonical Manga library and attach the selected AniList metadata.
+                @ui["discover.mangaImport.intro"]
             </p>
         </div>
 
@@ -25,7 +25,7 @@
            href="@Model.AniListUrl"
            target="_blank"
            rel="noopener noreferrer">
-            Open AniList
+            @ui["discover.mangaImport.openAniList"]
         </a>
     </header>
 
@@ -37,11 +37,10 @@
     <div class="discover-manga-import-grid">
         <section class="discover-manga-import-card">
             <div>
-                <span class="eyebrow">Recommended</span>
-                <h2>Upload CBZ / ZIP</h2>
+                <span class="eyebrow">@ui["discover.mangaImport.recommended"]</span>
+                <h2>@ui["discover.mangaImport.uploadHeading"]</h2>
                 <p>
-                    Best when the files are on your phone or computer.
-                    Multiple chapter archives become one Manga series.
+                    @ui["discover.mangaImport.uploadBody"]
                 </p>
             </div>
 
@@ -53,7 +52,7 @@
                 <input type="hidden" name="title" value="@Model.Title" />
 
                 <label>
-                    <span>Series name</span>
+                    <span>@ui["manga.upload.seriesName"]</span>
                     <input type="text"
                            name="seriesTitle"
                            value="@Model.Title"
@@ -61,7 +60,7 @@
                 </label>
 
                 <label>
-                    <span>CBZ / ZIP chapters</span>
+                    <span>@ui["manga.upload.archivesLabel"]</span>
                     <input type="file"
                            name="archives"
                            accept=".cbz,.zip,application/zip"
@@ -70,17 +69,17 @@
                 </label>
 
                 <button class="button button-primary" type="submit">
-                    Upload, import & match
+                    @ui["discover.mangaImport.uploadSubmit"]
                 </button>
             </form>
         </section>
 
         <section class="discover-manga-import-card">
             <div>
-                <span class="eyebrow">Server storage</span>
-                <h2>Import mounted path</h2>
+                <span class="eyebrow">@ui["discover.mangaImport.serverStorage"]</span>
+                <h2>@ui["discover.mangaImport.pathHeading"]</h2>
                 <p>
-                    Use a CBZ/ZIP file or Manga directory already mounted into the AniLingo container.
+                    @ui["discover.mangaImport.pathBody"]
                 </p>
             </div>
 
@@ -91,7 +90,7 @@
                 <input type="hidden" name="title" value="@Model.Title" />
 
                 <label>
-                    <span>Source path</span>
+                    <span>@ui["discover.mangaImport.sourcePathLabel"]</span>
                     <input type="text"
                            name="sourcePath"
                            required
@@ -100,14 +99,13 @@
                 </label>
 
                 <button class="button button-primary" type="submit">
-                    Import & match
+                    @ui["discover.mangaImport.pathSubmit"]
                 </button>
             </form>
         </section>
     </div>
 
     <p class="discover-manga-import-note">
-        AniLingo imports local/self-hosted Manga files only. The AniList result supplies metadata;
-        it is not used as a download source.
+        @ui["discover.mangaImport.footerNote"]
     </p>
 </div>

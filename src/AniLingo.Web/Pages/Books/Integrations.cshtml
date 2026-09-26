@@ -1,17 +1,18 @@
 @page "/Books/Integrations"
 @model AniLingo.Web.Pages.Books.IntegrationsModel
 @{
-    ViewData["Title"] = "Books acquisition settings";
+    var ui = Model.Ui;
+    ViewData["Title"] = ui["books.integrations.title"];
 }
 @section Head {
     <link rel="stylesheet" href="~/css/books.css" asp-append-version="true" />
 }
 
-<a class="books-back" href="/Books">← Books</a>
+<a class="books-back" href="/Books">← @ui["nav.books"]</a>
 
 <header class="books-settings-header">
-    <h1>Acquisition settings</h1>
-    <p>Configure your own download transport and the folder AniLingo checks for completed EPUB files.</p>
+    <h1>@ui["books.integrations.heading"]</h1>
+    <p>@ui["books.integrations.subtitle"]</p>
 </header>
 
 @if (TempData["Status"] is string status)
@@ -26,40 +27,39 @@
     <section>
         <h2>SABnzbd</h2>
         <p>
-            AniLingo can send an NZB URL or file you selected to your SABnzbd instance.
-            The SABnzbd connection is shared with Anime and is configured once under
-            <a href="/Settings/DownloadClients/Index">Settings → SABnzbd</a>, including the category used for Books.
+            @ui["books.integrations.sabDescription"]
+            <a href="/Settings/DownloadClients/Index">@ui["books.integrations.sabSettingsLink"]</a>@ui["books.integrations.sabSettingsSuffix"]
         </p>
 
         <div class="books-integration-status">
             <span class="@(Model.SabConfigured ? "ready" : "")">
-                @(Model.SabConfigured ? "Configured" : "Not configured")
+                @(Model.SabConfigured ? ui["books.integrations.configured"] : ui["books.integrations.notConfigured"])
             </span>
             @if (Model.SabConfigured)
             {
-                <span>Books category: @(Model.SabBooksCategory ?? "SABnzbd default")</span>
+                <span>@ui.Format("books.integrations.booksCategory", ("category", Model.SabBooksCategory ?? ui["books.integrations.sabDefaultCategory"]))</span>
             }
-            <a class="button" href="/Settings/DownloadClients/Index">Manage SABnzbd</a>
+            <a class="button" href="/Settings/DownloadClients/Index">@ui["books.integrations.manageSab"]</a>
         </div>
     </section>
 
     <section>
-        <h2>Completed-books inbox</h2>
+        <h2>@ui["books.integrations.inboxTitle"]</h2>
         <p>
-            Point this at a folder visible inside the AniLingo container.
-            Completed <code>.epub</code> files are imported automatically when a Books SABnzbd download finishes.
-            Files placed there by other tools are imported with <em>Import inbox now</em> on the Books page.
+            @ui["books.integrations.inboxDescription1"]
+            @ui["books.integrations.inboxDescription2a"] <code>.epub</code> @ui["books.integrations.inboxDescription2b"]
+            @ui["books.integrations.inboxDescription3a"] <em>@ui["books.index.importInboxButton"]</em> @ui["books.integrations.inboxDescription3b"]
         </p>
 
         @if (Model.InboxEnvironmentOverride)
         {
             <div class="books-setting-note">
-                The inbox path is currently supplied by environment configuration and overrides the saved path.
+                @ui["books.integrations.envOverrideNote"]
             </div>
         }
 
         <label>
-            Inbox path
+            @ui["books.integrations.inboxPathLabel"]
             <input type="text"
                    name="inboxPath"
                    value="@Model.Settings.InboxPath"
@@ -67,11 +67,11 @@
         </label>
 
         <span class="@(Model.InboxConfigured ? "ready" : "")">
-            @(Model.InboxConfigured ? "Configured" : "Not configured")
+            @(Model.InboxConfigured ? ui["books.integrations.configured"] : ui["books.integrations.notConfigured"])
         </span>
     </section>
 
     <div class="books-settings-save">
-        <button class="button button-primary" type="submit">Save settings</button>
+        <button class="button button-primary" type="submit">@ui["books.integrations.saveSettings"]</button>
     </div>
 </form>

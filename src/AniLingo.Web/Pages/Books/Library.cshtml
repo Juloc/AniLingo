@@ -1,6 +1,7 @@
 @page "/Books/Library/{id:guid}"
 @model AniLingo.Web.Pages.Books.LibraryModel
 @{
+    var ui = Model.Ui;
     ViewData["Title"] = Model.Book.Work.MetadataTitle ?? Model.Book.Work.Title;
     var title = Model.Book.Work.MetadataTitle ?? Model.Book.Work.Title;
     var translatedCount = Model.Book.Chapters.Count(x => x.HasTranslation);
@@ -11,7 +12,7 @@
     <link rel="stylesheet" href="~/css/books.css" asp-append-version="true" />
 }
 
-<a class="books-back" href="/Books?lang=@Model.TargetLanguage">← Books</a>
+<a class="books-back" href="/Books?lang=@Model.TargetLanguage">← @ui["nav.books"]</a>
 
 @if (TempData["Status"] is string status)
 {
@@ -55,7 +56,7 @@
         <div class="book-language-row">
             <form method="get" class="book-language-form">
                 <label>
-                    Reading language
+                    @ui["books.library.readingLanguage"]
                     <input type="text"
                            name="lang"
                            value="@Model.TargetLanguage"
@@ -71,9 +72,9 @@
                         <option value="@language.Key">@language.Value</option>
                     }
                 </datalist>
-                <button class="button" type="submit">Use language</button>
+                <button class="button" type="submit">@ui["books.library.useLanguage"]</button>
                 <small id="book-language-help">
-                    Choose a suggestion or enter a language tag such as <code>ro</code>, <code>sv</code> or <code>id-modern</code>.
+                    @ui["books.library.languageHelpPrefix"] <code>ro</code>, <code>sv</code> @ui["books.library.languageHelpConjunction"] <code>id-modern</code>.
                 </small>
             </form>
 
@@ -84,7 +85,7 @@
                       asp-route-id="@Model.Book.Work.Id">
                     <input type="hidden" name="lang" value="@Model.TargetLanguage" />
                     <button class="button button-primary" type="submit">
-                        Translate whole book to @AniLingo.Web.Features.Books.BookLanguageCatalog.GetName(Model.TargetLanguage)
+                        @ui.Format("books.library.translateWholeBook", ("language", AniLingo.Web.Features.Books.BookLanguageCatalog.GetName(Model.TargetLanguage)))
                     </button>
                 </form>
             }
@@ -93,11 +94,11 @@
         <div class="book-translation-summary">
             @if (Model.SourceIsTarget)
             {
-                <span>Original language selected · no translation needed</span>
+                <span>@ui["books.library.originalLanguageSelected"]</span>
             }
             else
             {
-                <span>@translatedCount / @Model.Book.Chapters.Count chapters translated</span>
+                <span>@ui.Format("books.library.chaptersTranslated", ("translated", translatedCount), ("total", Model.Book.Chapters.Count))</span>
                 <div class="book-card-progress">
                     <span style="width:@(Model.Book.Chapters.Count == 0 ? 0 : translatedCount * 100 / Model.Book.Chapters.Count)%"></span>
                 </div>
@@ -109,7 +110,7 @@
             {
                 <a class="button button-primary"
                    href="/Books/Read/@chapterId?lang=@Model.TargetLanguage">
-                    @(Model.Book.Progress is null ? "Start reading" : "Continue reading")
+                    @(Model.Book.Progress is null ? ui["books.library.startReading"] : ui["reader.continueReading"])
                 </a>
             }
             <a class="button"
@@ -120,7 +121,7 @@
                    label = title,
                    returnUrl = $"/Books/Library/{Model.Book.Work.Id}?lang={Model.TargetLanguage}"
                })">
-                Language tools &amp; Learning
+                @ui["books.library.languageToolsLearning"]
             </a>
         </div>
 
@@ -131,17 +132,17 @@
 @if (Model.IsOwner)
 {
     <details class="book-library-management">
-        <summary>Manage book</summary>
+        <summary>@ui["books.library.manageBook"]</summary>
         <div class="book-library-management-actions">
             @if (!Model.SourceIsTarget)
             {
                 <form method="post"
                       asp-page-handler="Regenerate"
                       asp-route-id="@Model.Book.Work.Id"
-                      onsubmit="return confirm('Regenerate the @AniLingo.Web.Features.Books.BookLanguageCatalog.GetName(Model.TargetLanguage) translation for this book? Existing cached translation text in this language will be replaced.');">
+                      onsubmit="return confirm('@ui.Format("books.library.confirmRegenerate", ("language", AniLingo.Web.Features.Books.BookLanguageCatalog.GetName(Model.TargetLanguage)))');">
                     <input type="hidden" name="lang" value="@Model.TargetLanguage" />
                     <button class="button" type="submit">
-                        Regenerate @AniLingo.Web.Features.Books.BookLanguageCatalog.GetName(Model.TargetLanguage)
+                        @ui.Format("books.library.regenerateButton", ("language", AniLingo.Web.Features.Books.BookLanguageCatalog.GetName(Model.TargetLanguage)))
                     </button>
                 </form>
             }
@@ -149,22 +150,21 @@
             <form method="post"
                   asp-page-handler="Delete"
                   asp-route-id="@Model.Book.Work.Id"
-                  onsubmit="return confirm('Remove this book from AniLingo? Reading progress, bookmarks and cached translations for this imported book will be removed. External source/download files will not be deleted.');">
+                  onsubmit="return confirm('@ui["books.library.confirmRemove"]');">
                 <button class="button book-danger-button" type="submit">
-                    Remove from AniLingo
+                    @ui["books.library.removeButton"]
                 </button>
             </form>
         </div>
         <p>
-            Removing a book only deletes AniLingo's imported library state.
-            The original EPUB or download outside AniLingo is left untouched.
+            @ui["books.library.manageNote"]
         </p>
     </details>
 }
 
 <section class="book-chapter-list">
     <div class="books-results-heading">
-        <strong>Chapters</strong>
+        <strong>@ui["books.library.chaptersHeading"]</strong>
         <span>@Model.Book.Chapters.Count</span>
     </div>
 
@@ -176,15 +176,15 @@
             <strong>@chapter.Title</strong>
             @if (Model.SourceIsTarget)
             {
-                <small>Original</small>
+                <small>@ui["books.read.original"]</small>
             }
             else if (chapter.HasTranslation)
             {
-                <small class="ready">Translated</small>
+                <small class="ready">@ui["books.library.translated"]</small>
             }
             else
             {
-                <small>Original available</small>
+                <small>@ui["books.library.originalAvailable"]</small>
             }
         </a>
     }

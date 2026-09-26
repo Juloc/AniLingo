@@ -1,6 +1,7 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Books;
+using AniLingo.Web.Features.Localization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
@@ -12,6 +13,7 @@ public sealed class TranslationMemoryModel(
     CurrentAccountContext account,
     IConfiguration configuration) : PageModel
 {
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public Guid WorkId { get; private set; }
     public string WorkTitle { get; private set; } = "";
     public string TargetLanguage { get; private set; } = "id";
@@ -22,6 +24,8 @@ public sealed class TranslationMemoryModel(
         string? lang,
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         if (!account.IsOwner)
         {
             return Forbid();
@@ -56,6 +60,8 @@ public sealed class TranslationMemoryModel(
         string? audience,
         CancellationToken cancellationToken)
     {
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         if (!account.IsOwner)
         {
             return Forbid();
@@ -77,8 +83,8 @@ public sealed class TranslationMemoryModel(
             cancellationToken);
 
         TempData["Status"] = bible is null
-            ? "Translation memory does not exist yet. Translate a chapter first."
-            : "Book Bible style updated.";
+            ? ui["books.bible.notExistYet"]
+            : ui["books.bible.styleUpdated"];
 
         return RedirectToPage(
             new { id, lang = target });
@@ -94,6 +100,8 @@ public sealed class TranslationMemoryModel(
         bool locked,
         CancellationToken cancellationToken)
     {
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         if (!account.IsOwner)
         {
             return Forbid();
@@ -119,10 +127,10 @@ public sealed class TranslationMemoryModel(
                 cancellationToken);
 
             TempData["Status"] = bible is null
-                ? "Translation memory does not exist yet. Translate a chapter first."
+                ? ui["books.bible.notExistYet"]
                 : locked
-                    ? "Glossary term saved and locked."
-                    : "Glossary term saved.";
+                    ? ui["books.bible.termSavedLocked"]
+                    : ui["books.bible.termSaved"];
         }
         catch (InvalidOperationException exception)
         {
@@ -139,6 +147,8 @@ public sealed class TranslationMemoryModel(
         string source,
         CancellationToken cancellationToken)
     {
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         if (!account.IsOwner)
         {
             return Forbid();
@@ -157,8 +167,8 @@ public sealed class TranslationMemoryModel(
             cancellationToken);
 
         TempData["Status"] = bible is null
-            ? "Translation memory does not exist."
-            : "Glossary term removed.";
+            ? ui["books.bible.notExist"]
+            : ui["books.bible.termRemoved"];
 
         return RedirectToPage(
             new { id, lang = target });
@@ -176,6 +186,8 @@ public sealed class TranslationMemoryModel(
         string? voiceNotes,
         CancellationToken cancellationToken)
     {
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         if (!account.IsOwner)
         {
             return Forbid();
@@ -203,8 +215,8 @@ public sealed class TranslationMemoryModel(
                 cancellationToken);
 
             TempData["Status"] = bible is null
-                ? "Translation memory does not exist yet. Translate a chapter first."
-                : "Entity translation memory saved.";
+                ? ui["books.bible.notExistYet"]
+                : ui["books.bible.entitySaved"];
         }
         catch (InvalidOperationException exception)
         {
@@ -222,6 +234,8 @@ public sealed class TranslationMemoryModel(
         string type,
         CancellationToken cancellationToken)
     {
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         if (!account.IsOwner)
         {
             return Forbid();
@@ -241,8 +255,8 @@ public sealed class TranslationMemoryModel(
             cancellationToken);
 
         TempData["Status"] = bible is null
-            ? "Translation memory does not exist."
-            : "Entity removed from translation memory.";
+            ? ui["books.bible.notExist"]
+            : ui["books.bible.entityRemoved"];
 
         return RedirectToPage(
             new { id, lang = target });
@@ -253,6 +267,8 @@ public sealed class TranslationMemoryModel(
         string? lang,
         CancellationToken cancellationToken)
     {
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         if (!account.IsOwner)
         {
             return Forbid();
@@ -269,8 +285,7 @@ public sealed class TranslationMemoryModel(
             target,
             cancellationToken);
 
-        TempData["Status"] =
-            "Book Bible reset. Existing translated chapters were not deleted.";
+        TempData["Status"] = ui["books.bible.resetDone"];
 
         return RedirectToPage(
             new { id, lang = target });

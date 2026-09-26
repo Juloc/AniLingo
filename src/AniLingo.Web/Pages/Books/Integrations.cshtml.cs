@@ -1,6 +1,8 @@
+using AniLingo.Web.Data;
 using AniLingo.Web.Features.Acquisition.DownloadClients;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Books;
+using AniLingo.Web.Features.Localization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
@@ -10,8 +12,10 @@ public sealed class IntegrationsModel(
     BookCatalogService books,
     CurrentAccountContext account,
     DownloadClientStore downloadClients,
-    IConfiguration configuration) : PageModel
+    IConfiguration configuration,
+    AppDbContext db) : PageModel
 {
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public BookIntegrationSettings Settings { get; private set; } =
         BookIntegrationSettings.Empty;
 
@@ -26,6 +30,8 @@ public sealed class IntegrationsModel(
     public async Task<IActionResult> OnGetAsync(
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         if (!account.IsOwner)
         {
             return Forbid();
@@ -45,6 +51,8 @@ public sealed class IntegrationsModel(
         string? inboxPath,
         CancellationToken cancellationToken)
     {
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         if (!account.IsOwner)
         {
             return Forbid();
@@ -55,7 +63,7 @@ public sealed class IntegrationsModel(
             await BookIntegrationSettingsStore.SaveAsync(
                 new BookIntegrationSettings(inboxPath),
                 cancellationToken);
-            TempData["Status"] = "Books acquisition settings saved.";
+            TempData["Status"] = ui["books.integrations.saved"];
         }
         catch (Exception exception) when (
             exception is InvalidOperationException

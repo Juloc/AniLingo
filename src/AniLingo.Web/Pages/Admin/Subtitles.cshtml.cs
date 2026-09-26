@@ -1,4 +1,6 @@
+using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
+using AniLingo.Web.Features.Localization;
 using AniLingo.Web.Features.Subtitles;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -8,8 +10,11 @@ namespace AniLingo.Web.Pages.Admin;
 
 [Authorize(Roles = AccountRoles.Owner)]
 public sealed class SubtitlesModel(
+    AppDbContext db,
     SubtitleImportService subtitleImportService) : PageModel
 {
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
+
     public LearningTextCoverageSnapshot Coverage { get; private set; } =
         new(0, 0, 0, 0, 0, 0);
 
@@ -30,6 +35,8 @@ public sealed class SubtitlesModel(
         {
             return Forbid();
         }
+
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
 
         await LoadAsync(cancellationToken);
         return Page();
@@ -59,8 +66,10 @@ public sealed class SubtitlesModel(
             return Forbid();
         }
 
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         await subtitleImportService.DisconnectJimakuAsync(cancellationToken);
-        TempData["Status"] = "Jimaku connection removed.";
+        TempData["Status"] = Ui["admin.subtitles.jimakuRemoved"];
         return RedirectToPage();
     }
 
@@ -72,12 +81,14 @@ public sealed class SubtitlesModel(
             return Forbid();
         }
 
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         var count = await subtitleImportService.QueueAllMissingAsync(
             cancellationToken);
 
         TempData["Status"] = count == 0
-            ? "No new learning-text preparation jobs were queued."
-            : $"Queued learning-text preparation for {count} episode(s).";
+            ? Ui["admin.subtitles.noneQueued"]
+            : Ui.Format("admin.subtitles.queuedCount", ("count", count));
         return RedirectToPage();
     }
 
@@ -90,13 +101,15 @@ public sealed class SubtitlesModel(
             return Forbid();
         }
 
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         var queued = await subtitleImportService.QueueLearningTextAsync(
             episodeId,
             cancellationToken);
 
         TempData["Status"] = queued
-            ? "Learning-text preparation queued."
-            : "Episode is already ready or currently being prepared.";
+            ? Ui["admin.subtitles.preparationQueued"]
+            : Ui["admin.subtitles.episodeAlreadyReady"];
         return RedirectToPage();
     }
 

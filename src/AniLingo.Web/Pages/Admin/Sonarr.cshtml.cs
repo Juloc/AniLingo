@@ -1,4 +1,6 @@
+using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
+using AniLingo.Web.Features.Localization;
 using AniLingo.Web.Features.Operations;
 using AniLingo.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
@@ -10,11 +12,13 @@ namespace AniLingo.Web.Pages.Admin;
 
 [Authorize(Roles = AccountRoles.Owner)]
 public sealed class SonarrModel(
+    AppDbContext db,
     SonarrConnectionStore connectionStore,
     SonarrArtworkImportService sonarrService,
     BackgroundJobQueue jobs,
     CurrentAccountContext account) : PageModel
 {
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
 
     [BindProperty]
     public string BaseUrl { get; set; } = "http://sonarr:8989";
@@ -32,6 +36,8 @@ public sealed class SonarrModel(
 
     public async Task OnGetAsync(CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         var saved = await connectionStore.LoadAsync(cancellationToken);
         if (saved is not null)
         {
@@ -42,6 +48,8 @@ public sealed class SonarrModel(
 
     public async Task<IActionResult> OnPostSaveAsync(CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         var settings = await ResolveSubmittedSettingsAsync(cancellationToken);
         if (settings is null)
         {
@@ -49,12 +57,14 @@ public sealed class SonarrModel(
         }
 
         await connectionStore.SaveAsync(settings, cancellationToken);
-        TempData["SonarrNotice"] = "Sonarr connection saved.";
+        TempData["SonarrNotice"] = Ui["admin.sonarr.connectionSaved"];
         return RedirectToPage();
     }
 
     public async Task<IActionResult> OnPostTestAsync(CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         var settings = await ResolveSubmittedSettingsAsync(cancellationToken);
         if (settings is null)
         {
@@ -78,6 +88,8 @@ public sealed class SonarrModel(
 
     public async Task<IActionResult> OnPostImportAsync(CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         var settings = await ResolveSubmittedSettingsAsync(cancellationToken);
         if (settings is null)
         {
@@ -123,14 +135,15 @@ public sealed class SonarrModel(
             },
             cancellationToken);
 
-        TempData["SonarrNotice"] =
-            "Artwork import queued. Progress is available under Admin → Operations → Downloads.";
+        TempData["SonarrNotice"] = Ui["admin.sonarr.importQueued"];
         return RedirectToPage();
     }
 
     private async Task<SonarrConnectionSettings?> ResolveSubmittedSettingsAsync(
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         var baseUrl = SonarrConnectionStore.NormalizeBaseUrl(BaseUrl);
         var apiKey = ApiKey?.Trim();
 
@@ -142,13 +155,13 @@ public sealed class SonarrModel(
 
         if (string.IsNullOrWhiteSpace(baseUrl))
         {
-            TempData["SonarrError"] = "Sonarr URL is required.";
+            TempData["SonarrError"] = Ui["admin.sonarr.urlRequired"];
             return null;
         }
 
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            TempData["SonarrError"] = "Sonarr API key is required.";
+            TempData["SonarrError"] = Ui["admin.sonarr.apiKeyRequired"];
             return null;
         }
 

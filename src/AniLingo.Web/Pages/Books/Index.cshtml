@@ -1,7 +1,8 @@
 @page "/Books"
 @model AniLingo.Web.Pages.Books.IndexModel
 @{
-    ViewData["Title"] = "Books";
+    var ui = Model.Ui;
+    ViewData["Title"] = ui["books.index.title"];
 }
 @section Head {
     <link rel="stylesheet" href="~/css/books.css" asp-append-version="true" />
@@ -9,14 +10,14 @@
 
 <header class="books-header">
     <div>
-        <h1>Books</h1>
-        <p>Search, import, translate and read books in AniLingo.</p>
-        <a class="books-settings-link" href="/Books/ForYou?lang=@Model.TargetLanguage">For you: suggestions from your reading →</a>
+        <h1>@ui["books.index.title"]</h1>
+        <p>@ui["books.index.subtitle"]</p>
+        <a class="books-settings-link" href="/Books/ForYou?lang=@Model.TargetLanguage">@ui["books.index.forYouLink"] →</a>
         @if (Model.IsOwner)
         {
             <div class="books-owner-links">
-                <a class="books-settings-link" href="/Books/Sources">Book sources</a>
-                <a class="books-settings-link" href="/Books/Integrations">Acquisition settings</a>
+                <a class="books-settings-link" href="/Books/Sources">@ui["books.sources.title"]</a>
+                <a class="books-settings-link" href="/Books/Integrations">@ui["books.index.acquisitionLink"]</a>
             </div>
         }
     </div>
@@ -24,10 +25,10 @@
         <input type="search"
                name="q"
                value="@Model.Query"
-               placeholder="Search title or author"
-               aria-label="Search books" />
+               placeholder="@ui["books.index.searchPlaceholder"]"
+               aria-label="@ui["books.index.searchAria"]" />
         <input type="hidden" name="lang" value="@Model.TargetLanguage" />
-        <button class="button button-primary" type="submit">Search</button>
+        <button class="button button-primary" type="submit">@ui["common.search"]</button>
     </form>
 </header>
 
@@ -43,17 +44,17 @@
 
 <section class="books-library-section">
     <div class="books-results-heading">
-        <strong>My books</strong>
+        <strong>@ui["books.index.myBooksHeading"]</strong>
         <span>@Model.Library.Count</span>
     </div>
 
     @if (Model.Library.Count == 0)
     {
         <div class="books-empty">
-            <p>No books imported yet.</p>
+            <p>@ui["books.index.emptyTitle"]</p>
             @if (Model.IsOwner)
             {
-                <span>Search for a downloadable edition or upload an EPUB.</span>
+                <span>@ui["books.index.emptyHint"]</span>
             }
         </div>
     }
@@ -84,8 +85,7 @@
                             <span>@book.Author</span>
                         }
                         <small>
-                            @book.ChapterCount chapters ·
-                            @book.TranslatedChapterCount translated
+                            @ui.Format("books.index.chapterSummary", ("count", book.ChapterCount), ("translated", book.TranslatedChapterCount))
                         </small>
                         @if (book.ProgressPermille > 0)
                         {
@@ -104,8 +104,8 @@
 {
     <section class="books-tools">
         <div>
-            <h2>Import EPUB</h2>
-            <p>Upload a DRM-free EPUB or import one from an authorized HTTPS download URL.</p>
+            <h2>@ui["books.index.importEpubTitle"]</h2>
+            <p>@ui["books.index.importEpubDescription"]</p>
             <form method="post"
                   asp-page-handler="Upload"
                   enctype="multipart/form-data"
@@ -114,7 +114,7 @@
                        name="epub"
                        accept=".epub,application/epub+zip"
                        required />
-                <button class="button button-primary" type="submit">Import file</button>
+                <button class="button button-primary" type="submit">@ui["books.index.importFileButton"]</button>
             </form>
             <form method="post"
                   asp-page-handler="RemoteEpub"
@@ -124,17 +124,17 @@
                        placeholder="https://publisher.example/book.epub"
                        inputmode="url"
                        required />
-                <button class="button" type="submit">Import EPUB URL</button>
+                <button class="button" type="submit">@ui["books.index.importEpubUrlButton"]</button>
             </form>
         </div>
 
         @if (Model.IsInboxConfigured)
         {
             <div>
-                <h2>Books inbox</h2>
-                <p>Import completed EPUB files from the configured shared download folder.</p>
+                <h2>@ui["books.index.inboxTitle"]</h2>
+                <p>@ui["books.index.inboxDescription"]</p>
                 <form method="post" asp-page-handler="ImportInbox">
-                    <button class="button" type="submit">Import inbox now</button>
+                    <button class="button" type="submit">@ui["books.index.importInboxButton"]</button>
                 </form>
             </div>
         }
@@ -142,8 +142,8 @@
         @if (Model.IsSabnzbdConfigured)
         {
             <div>
-                <h2>SABnzbd transport</h2>
-                <p>Send an NZB URL or NZB file you selected from an authorized source.</p>
+                <h2>@ui["books.index.sabTransportTitle"]</h2>
+                <p>@ui["books.index.sabDescription"]</p>
                 <form method="post"
                       asp-page-handler="SabUrl"
                       class="books-stack-form">
@@ -153,8 +153,8 @@
                            required />
                     <input type="text"
                            name="displayName"
-                           placeholder="Optional queue name" />
-                    <button class="button" type="submit">Send URL to SABnzbd</button>
+                           placeholder="@ui["books.index.sabQueueNamePlaceholder"]" />
+                    <button class="button" type="submit">@ui["books.index.sabSendUrlButton"]</button>
                 </form>
                 <form method="post"
                       asp-page-handler="SabFile"
@@ -164,16 +164,16 @@
                            name="nzb"
                            accept=".nzb,application/x-nzb"
                            required />
-                    <button class="button" type="submit">Send NZB file</button>
+                    <button class="button" type="submit">@ui["books.index.sabSendFileButton"]</button>
                 </form>
             </div>
         }
         else
         {
             <div>
-                <h2>SABnzbd transport</h2>
-                <p>SABnzbd is not configured yet.</p>
-                <a class="button" href="/Settings/DownloadClients/Index">Configure SABnzbd</a>
+                <h2>@ui["books.index.sabTransportTitle"]</h2>
+                <p>@ui["books.index.sabNotConfigured"]</p>
+                <a class="button" href="/Settings/DownloadClients/Index">@ui["books.index.sabConfigureLink"]</a>
             </div>
         }
     </section>
@@ -183,13 +183,13 @@
 {
     <section class="books-search-results">
         <div class="books-results-heading">
-            <strong>Results for “@Model.Query”</strong>
-            <span>@Model.Results.Count shown</span>
+            <strong>@ui["books.index.resultsForPrefix"] “@Model.Query”</strong>
+            <span>@ui.Format("books.index.resultsShown", ("count", Model.Results.Count))</span>
         </div>
 
         @if (Model.Results.Count == 0)
         {
-            <div class="books-empty">No matching books found.</div>
+            <div class="books-empty">@ui["books.index.noResults"]</div>
         }
         else
         {

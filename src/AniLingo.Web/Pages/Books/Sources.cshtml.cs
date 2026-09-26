@@ -1,5 +1,7 @@
+using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Books;
+using AniLingo.Web.Features.Localization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
@@ -7,8 +9,10 @@ namespace AniLingo.Web.Pages.Books;
 
 public sealed class SourcesModel(
     BookCatalogService books,
-    CurrentAccountContext account) : PageModel
+    CurrentAccountContext account,
+    AppDbContext db) : PageModel
 {
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public IReadOnlyList<BookOpdsSourceSettings> Sources { get; private set; } = [];
     public IReadOnlyList<BookOpdsCatalogItem> Results { get; private set; } = [];
     public string Query { get; private set; } = "";
@@ -20,6 +24,8 @@ public sealed class SourcesModel(
         bool search,
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         if (!account.IsOwner)
         {
             return Forbid();
@@ -47,6 +53,8 @@ public sealed class SourcesModel(
         string? password,
         CancellationToken cancellationToken)
     {
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         if (!account.IsOwner)
         {
             return Forbid();
@@ -64,8 +72,7 @@ public sealed class SourcesModel(
                 preserveExistingPassword: false,
                 cancellationToken);
 
-            TempData["Status"] =
-                "OPDS source saved.";
+            TempData["Status"] = ui["books.sources.saved"];
         }
         catch (Exception exception) when (
             exception is InvalidOperationException
@@ -83,6 +90,8 @@ public sealed class SourcesModel(
         bool enabled,
         CancellationToken cancellationToken)
     {
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         if (!account.IsOwner)
         {
             return Forbid();
@@ -96,8 +105,7 @@ public sealed class SourcesModel(
 
         if (source is null)
         {
-            TempData["Status"] =
-                "OPDS source was not found.";
+            TempData["Status"] = ui["books.sources.notFound"];
             return RedirectToPage();
         }
 
@@ -112,8 +120,8 @@ public sealed class SourcesModel(
             cancellationToken);
 
         TempData["Status"] = enabled
-            ? $"{source.Name} enabled."
-            : $"{source.Name} disabled.";
+            ? ui.Format("books.sources.sourceEnabled", ("name", source.Name))
+            : ui.Format("books.sources.sourceDisabled", ("name", source.Name));
 
         return RedirectToPage();
     }
@@ -122,6 +130,8 @@ public sealed class SourcesModel(
         string? sourceId,
         CancellationToken cancellationToken)
     {
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         if (!account.IsOwner)
         {
             return Forbid();
@@ -142,8 +152,7 @@ public sealed class SourcesModel(
                 or System.Xml.XmlException)
         {
             TempData["Status"] =
-                "OPDS connection failed: "
-                + exception.Message;
+                ui.Format("books.sources.testFailed", ("message", exception.Message));
         }
 
         return RedirectToPage();
@@ -153,6 +162,8 @@ public sealed class SourcesModel(
         string? sourceId,
         CancellationToken cancellationToken)
     {
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         if (!account.IsOwner)
         {
             return Forbid();
@@ -163,8 +174,7 @@ public sealed class SourcesModel(
             await books.RemoveOpdsSourceAsync(
                 sourceId ?? "",
                 cancellationToken);
-            TempData["Status"] =
-                "OPDS source removed.";
+            TempData["Status"] = ui["books.sources.removed"];
         }
         catch (Exception exception) when (
             exception is InvalidOperationException
@@ -183,6 +193,8 @@ public sealed class SourcesModel(
         string? bookKey,
         CancellationToken cancellationToken)
     {
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         if (!account.IsOwner)
         {
             return Forbid();
@@ -212,8 +224,7 @@ public sealed class SourcesModel(
                 or System.Xml.XmlException)
         {
             TempData["Status"] =
-                "OPDS import failed: "
-                + exception.Message;
+                ui.Format("books.sources.importFailed", ("message", exception.Message));
 
             return RedirectToPage(
                 new

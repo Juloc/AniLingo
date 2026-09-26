@@ -1,7 +1,8 @@
 @page "/Books/ForYou"
 @model AniLingo.Web.Pages.Books.ForYouModel
 @{
-    ViewData["Title"] = "For you · Books";
+    var ui = Model.Ui;
+    ViewData["Title"] = ui["books.foryou.title"];
     var result = Model.Recommendations;
     var shelfNumber = 0;
 }
@@ -10,14 +11,13 @@
     <link rel="stylesheet" href="~/css/book-recommendations.css" asp-append-version="true" />
 }
 
-<a class="books-back" href="/Books?lang=@Model.TargetLanguage">← Books</a>
+<a class="books-back" href="/Books?lang=@Model.TargetLanguage">← @ui["nav.books"]</a>
 
 <header class="books-header book-foryou-header">
     <div>
-        <h1>For you</h1>
+        <h1>@ui["books.foryou.heading"]</h1>
         <p>
-            Suggestions from this profile's reading and the local library.
-            Catalog searches only send book authors and subjects.
+            @ui["books.foryou.subtitle"]
         </p>
     </div>
 </header>
@@ -25,7 +25,7 @@
 @if (result.HasProviderFailures)
 {
     <div class="books-message" role="status">
-        Some book catalogs did not respond, so a few suggestions may be missing.
+        @ui["books.foryou.providerFailure"]
     </div>
 }
 
@@ -33,8 +33,8 @@
 {
     <section class="book-shelf" aria-labelledby="book-shelf-continue">
         <div class="book-shelf-heading">
-            <h2 id="book-shelf-continue">Continue reading</h2>
-            <p>Books you started on this profile.</p>
+            <h2 id="book-shelf-continue">@ui["reader.continueReading"]</h2>
+            <p>@ui["books.foryou.continueReadingDescription"]</p>
         </div>
         <div class="book-shelf-row">
             @foreach (var book in result.ContinueReading)
@@ -62,7 +62,7 @@
                         }
                         @if (book.Progress is { ChapterCount: > 0 } progress)
                         {
-                            <small>Chapter @(progress.ChapterIndex + 1) of @progress.ChapterCount</small>
+                            <small>@ui.Format("books.foryou.chapterProgress", ("current", progress.ChapterIndex + 1), ("total", progress.ChapterCount))</small>
                             <div class="book-card-progress">
                                 <span style="width:@((progress.ChapterIndex * 1000 + progress.PositionPermille) / (progress.ChapterCount * 10))%"></span>
                             </div>
@@ -123,10 +123,10 @@
 @if (result.ContinueReading.Count == 0 && result.Shelves.Count == 0)
 {
     <div class="books-empty book-foryou-empty">
-        <p>No suggestions right now.</p>
+        <p>@ui["books.foryou.emptyTitle"]</p>
         <span>
-            <a href="/Books?lang=@Model.TargetLanguage">Search the Books catalog</a>
-            or start reading a library book, then come back here.
+            <a href="/Books?lang=@Model.TargetLanguage">@ui["books.foryou.searchCatalogLink"]</a>
+            @ui["books.foryou.emptyBodySuffix"]
         </span>
     </div>
 }

@@ -1,6 +1,7 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Library;
+using AniLingo.Web.Features.Localization;
 using AniLingo.Web.Features.Operations;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -53,6 +54,8 @@ public sealed class ScansModel(
     LibraryScanCoordinator scans,
     CurrentAccountContext account) : PageModel
 {
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
+
     [BindProperty(SupportsGet = true)]
     public Guid? RootId { get; set; }
 
@@ -62,6 +65,8 @@ public sealed class ScansModel(
 
     public async Task OnGetAsync(CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         var roots = await db.LibraryRoots
             .AsNoTracking()
             .OrderBy(x => x.Name)

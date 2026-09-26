@@ -1,18 +1,33 @@
 @page
 @model AniLingo.Web.Pages.Admin.LogsModel
+@using AniLingo.Web.Features.Operations
 @{
-    ViewData["Title"] = "Logs";
+    var ui = Model.Ui;
+    ViewData["Title"] = ui["admin.nav.logs"];
+
+    string LogLevelLabel(OperationLogLevel level) => level switch
+    {
+        OperationLogLevel.Information => ui["admin.logs.level.information"],
+        OperationLogLevel.Warning => ui["admin.logs.level.warning"],
+        OperationLogLevel.Error => ui["admin.logs.level.error"],
+        _ => level.ToString()
+    };
+
+    string LogLevelLabelForName(string level) =>
+        Enum.TryParse<OperationLogLevel>(level, ignoreCase: true, out var parsed)
+            ? LogLevelLabel(parsed)
+            : level;
 }
 
 <header class="page-header">
     <div>
-        <span class="eyebrow">Admin</span>
-        <h1>Logs</h1>
-        <p>Structured operational events without credentials or raw request data.</p>
+        <span class="eyebrow">@ui["nav.admin"]</span>
+        <h1>@ui["admin.nav.logs"]</h1>
+        <p>@ui["admin.logs.subtitle"]</p>
     </div>
 </header>
 
-<partial name="_AdminNavigation" />
+<partial name="_AdminNavigation" model="Model.Ui" />
 
 <form method="get" class="operation-filter">
     @if (Model.OperationId is { } operationId)
@@ -20,21 +35,21 @@
         <input type="hidden" name="operationId" value="@operationId" />
     }
     <select name="level">
-        <option value="">All levels</option>
-        @foreach (var level in Enum.GetNames<AniLingo.Web.Features.Operations.OperationLogLevel>())
+        <option value="">@ui["admin.logs.filter.allLevels"]</option>
+        @foreach (var level in Enum.GetNames<OperationLogLevel>())
         {
-            <option value="@level" selected="@(Model.Level == level)">@level</option>
+            <option value="@level" selected="@(Model.Level == level)">@LogLevelLabelForName(level)</option>
         }
     </select>
-    <input name="module" value="@Model.Module" placeholder="Module" />
-    <input name="search" value="@Model.Search" placeholder="Search logs" />
-    <button class="button" type="submit">Filter</button>
+    <input name="module" value="@Model.Module" placeholder="@ui["admin.logs.filter.modulePlaceholder"]" />
+    <input name="search" value="@Model.Search" placeholder="@ui["admin.logs.filter.searchPlaceholder"]" />
+    <button class="button" type="submit">@ui["admin.filter.apply"]</button>
 </form>
 
 <section class="panel">
     @if (Model.Logs.Count == 0)
     {
-        <p class="muted">No log entries match this filter.</p>
+        <p class="muted">@ui["admin.logs.empty"]</p>
     }
     else
     {
@@ -45,7 +60,7 @@
                    asp-page="/Admin/Operation"
                    asp-route-id="@entry.OperationId">
                     <time>@entry.CreatedAtUtc.ToLocalTime().ToString("G")</time>
-                    <span>@entry.Level</span>
+                    <span>@LogLevelLabel(entry.Level)</span>
                     <strong>@entry.Module</strong>
                     <p>@entry.Message</p>
                 </a>

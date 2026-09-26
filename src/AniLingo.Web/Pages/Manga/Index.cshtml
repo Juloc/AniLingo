@@ -1,52 +1,53 @@
 @page "/Manga"
 @model AniLingo.Web.Pages.Manga.IndexModel
 @{
-    ViewData["Title"] = "Manga";
+    var ui = Model.Ui;
+    ViewData["Title"] = ui["reading.manga.title"];
 }
 @section Head {
     <link rel="stylesheet" href="~/css/manga.css" asp-append-version="true" />
 }
 
 <header class="manga-library-header">
-    <div class="reading-type-switch" aria-label="Reading type">
-        <a href="/Novels">Novels</a>
-        <a class="active" href="/Manga">Manga</a>
+    <div class="reading-type-switch" aria-label="@ui["manga.nav.readingTypeAria"]">
+        <a href="/Novels">@ui["reading.novels.title"]</a>
+        <a class="active" href="/Manga">@ui["reading.manga.title"]</a>
     </div>
 
     @if (Model.IsOwner)
     {
         <details class="manga-import">
-            <summary class="button">Import</summary>
+            <summary class="button">@ui["manga.import.toggle"]</summary>
             <div class="manga-import-panel">
                 <form method="post"
                       asp-page-handler="Upload"
                       enctype="multipart/form-data">
-                    <label for="seriesTitle">Series name</label>
+                    <label for="seriesTitle">@ui["manga.upload.seriesName"]</label>
                     <input id="seriesTitle"
                            name="seriesTitle"
                            type="text"
-                           placeholder="Optional for one archive" />
+                           placeholder="@ui["manga.upload.seriesNamePlaceholder"]" />
 
-                    <label for="archives">CBZ / ZIP chapters</label>
+                    <label for="archives">@ui["manga.upload.archivesLabel"]</label>
                     <input id="archives"
                            name="archives"
                            type="file"
                            accept=".cbz,.zip,application/zip"
                            multiple
                            required />
-                    <button class="button button-primary" type="submit">Upload & import</button>
+                    <button class="button button-primary" type="submit">@ui["manga.upload.submit"]</button>
                 </form>
 
-                <div class="manga-import-divider">Server path</div>
+                <div class="manga-import-divider">@ui["manga.import.serverPathDivider"]</div>
 
                 <form method="post" asp-page-handler="Import">
-                    <label for="sourcePath">Mounted CBZ/ZIP or manga directory</label>
+                    <label for="sourcePath">@ui["manga.import.sourcePathLabel"]</label>
                     <input id="sourcePath"
                            name="sourcePath"
                            type="text"
                            required
-                           placeholder="/media/manga/Series" />
-                    <button class="button" type="submit">Import path</button>
+                           placeholder="@ui["manga.import.pathPlaceholder"]" />
+                    <button class="button" type="submit">@ui["manga.import.pathSubmit"]</button>
                 </form>
             </div>
         </details>
@@ -61,7 +62,7 @@
 @if (Model.ContinueReading.Count > 0)
 {
     <section class="manga-section">
-        <h1>Continue reading</h1>
+        <h1>@ui["home.continueReading"]</h1>
         <div class="manga-continue-list">
             @foreach (var series in Model.ContinueReading)
             {
@@ -78,7 +79,7 @@
                     </div>
                     <div>
                         <strong>@series.Title</strong>
-                        <span>Ch. @series.CurrentChapterNumber · page @(series.CurrentPageIndex + 1)/@series.CurrentPageCount</span>
+                        <span>@ui.Format("manga.card.chapterPage", ("chapter", series.CurrentChapterNumber), ("page", series.CurrentPageIndex + 1), ("pages", series.CurrentPageCount))</span>
                         <div class="manga-progress"><span style="width:@series.ProgressPercent%"></span></div>
                     </div>
                     <span>@series.ProgressPercent%</span>
@@ -89,11 +90,11 @@
 }
 
 <section class="manga-section">
-    <h1>Manga</h1>
+    <h1>@ui["reading.manga.title"]</h1>
 
     @if (Model.Series.Count == 0)
     {
-        <div class="manga-empty">No manga imported yet.</div>
+        <div class="manga-empty">@ui["manga.index.empty"]</div>
     }
     else
     {
@@ -125,11 +126,11 @@
 
                     <div class="manga-card-copy">
                         <a href="/Manga/Series/@series.Id">@series.Title</a>
-                        <span>@series.ChapterCount ch.</span>
+                        <span>@ui.Format("manga.card.chapterCount", ("count", series.ChapterCount))</span>
                         @if (series.HasProgress)
                         {
                             <a class="manga-resume" href="/Manga/Read/@series.CurrentChapterId?page=@series.CurrentPageIndex">
-                                Continue ch. @series.CurrentChapterNumber
+                                @ui.Format("manga.card.continueChapter", ("chapter", series.CurrentChapterNumber))
                             </a>
                         }
                     </div>
