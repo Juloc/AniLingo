@@ -1,6 +1,8 @@
+using AniLingo.Web.Data;
 using AniLingo.Web.Features.Acquisition.Health;
 using AniLingo.Web.Features.Acquisition.Indexers;
 using AniLingo.Web.Features.Auth;
+using AniLingo.Web.Features.Localization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -15,16 +17,19 @@ public sealed record IndexerRow(IndexerEntry Entry, AcquisitionHealthStatus? Hea
 /// </summary>
 [Authorize(Roles = AccountRoles.Owner)]
 public sealed class IndexModel(
+    AppDbContext db,
     IndexerStore store,
     IReadOnlyDictionary<IndexerType, IIndexer> indexers,
     AcquisitionHealthStore health) : PageModel
 {
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public IReadOnlyList<IndexerRow> Rows { get; private set; } = [];
     public string? Notice => TempData["IndexerNotice"] as string;
     public string? Error => TempData["IndexerError"] as string;
 
     public async Task OnGetAsync(CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         var entries = (await store.LoadAllAsync(cancellationToken))
             .OrderBy(entry => entry.Priority)
             .ThenBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase);
@@ -51,10 +56,11 @@ public sealed class IndexModel(
 
     public async Task<IActionResult> OnPostTestAsync(Guid id, CancellationToken cancellationToken)
     {
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         var entry = await store.GetAsync(id, cancellationToken);
         if (entry is null || !indexers.TryGetValue(entry.Type, out var indexer))
         {
-            TempData["IndexerError"] = "Indexer not found.";
+            TempData["IndexerError"] = ui["settings.indexers.notFound"];
             return RedirectToPage();
         }
 
@@ -65,16 +71,19 @@ public sealed class IndexModel(
             cancellationToken);
 
         TempData[result.Success ? "IndexerNotice" : "IndexerError"] = result.Success
-            ? $"Connected to '{entry.Name}'{(result.Version is null ? "" : $" ({result.Version})")}."
-            : result.Error ?? "Connection failed.";
+            ? (result.Version is null
+                ? ui.Format("settings.indexers.connected", ("name", entry.Name))
+                : ui.Format("settings.indexers.connectedWithVersion", ("name", entry.Name), ("version", result.Version)))
+            : result.Error ?? ui["settings.indexers.connectionFailed"];
         return RedirectToPage();
     }
 
     public async Task<IActionResult> OnPostDeleteAsync(Guid id, CancellationToken cancellationToken)
     {
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         await store.DeleteAsync(id, cancellationToken);
         await health.RemoveAsync(AcquisitionHealthKind.Indexer, id, cancellationToken);
-        TempData["IndexerNotice"] = "Indexer removed.";
+        TempData["IndexerNotice"] = ui["settings.indexers.removed"];
         return RedirectToPage();
     }
 }

@@ -285,4 +285,5 @@ public static class MediaIdentity
 public sealed record EpisodeMediaNavigationView(
     Guid EpisodeId,
     EpisodePlayerNavigation? Navigation,
-    bool CanEdit);
+    bool CanEdit,
+    AniLingo.Web.Features.Localization.UiTextBundle? Ui = null);

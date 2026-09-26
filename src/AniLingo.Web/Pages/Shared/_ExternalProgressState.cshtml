@@ -1,26 +1,30 @@
+@using AniLingo.Web.Features.Localization
 @using AniLingo.Web.Features.Tracking
 @model ExternalProgressRemoteView
 @*
     Remote half of the AniList progress card. Rendered by a page handler after
     first paint. The state comes from the same canonical resolver that sync uses.
+    Ui defaults to English on pages not yet migrated to the per-request UI
+    catalog (issue #185); a migrated caller passes its own Model.Ui.
 *@
 @{
+    var ui = Model.Ui ?? UiTextBundle.English;
     var state = Model.State;
     var (label, css) = state.Kind switch
     {
-        AniListExternalProgressStateKind.Synced => ("Synced", "status-ok"),
-        AniListExternalProgressStateKind.LocalAhead => ("Local ahead", "status-warn"),
-        AniListExternalProgressStateKind.AniListAhead => ("AniList ahead", "status-warn"),
-        AniListExternalProgressStateKind.NotOnList => ("Not on list", "status-warn"),
-        AniListExternalProgressStateKind.MappingNeedsReview => ("Mapping needs review", "status-warn"),
-        AniListExternalProgressStateKind.NotConnected => ("AniList not connected", ""),
-        AniListExternalProgressStateKind.NoLocalProgress => ("No local progress", ""),
-        AniListExternalProgressStateKind.RemoteUnavailable => ("AniList progress unavailable", "status-error"),
-        _ => ("Sync blocked", "status-error")
+        AniListExternalProgressStateKind.Synced => (ui["library.externalProgress.state.synced"], "status-ok"),
+        AniListExternalProgressStateKind.LocalAhead => (ui["library.externalProgress.state.localAhead"], "status-warn"),
+        AniListExternalProgressStateKind.AniListAhead => (ui["library.externalProgress.state.aniListAhead"], "status-warn"),
+        AniListExternalProgressStateKind.NotOnList => (ui["library.externalProgress.state.notOnList"], "status-warn"),
+        AniListExternalProgressStateKind.MappingNeedsReview => (ui["library.externalProgress.basis.needsReview"], "status-warn"),
+        AniListExternalProgressStateKind.NotConnected => (ui["library.externalProgress.state.notConnected"], ""),
+        AniListExternalProgressStateKind.NoLocalProgress => (ui["library.externalProgress.state.noLocalProgress"], ""),
+        AniListExternalProgressStateKind.RemoteUnavailable => (ui["library.externalProgress.unavailable"], "status-error"),
+        _ => (ui["library.externalProgress.state.syncBlocked"], "status-error")
     };
     var unit = Model.MediaKind is ExternalProgressMediaKind.Anime or ExternalProgressMediaKind.Episode
-        ? "Episode"
-        : "Chapter";
+        ? ui["library.externalProgress.unit.episode"]
+        : ui["library.externalProgress.unit.chapter"];
     var showVolumes = state.LocalVolumeProgress is not null && state.RemoteVolumeProgress is not null;
     var showLocalUnit = state.LocalProgress > 0 &&
         state.Kind is not (AniListExternalProgressStateKind.MappingNeedsReview
@@ -49,7 +53,7 @@
                         @unit @state.LocalProgress
                         @if (showVolumes)
                         {
-                            <text> · Vol. @state.LocalVolumeProgress</text>
+                            <text> · @ui.Format("library.externalProgress.volume", ("number", state.LocalVolumeProgress))</text>
                         }
                     </dd>
                 </div>
@@ -62,7 +66,7 @@
                         @unit @remote
                         @if (showVolumes)
                         {
-                            <text> · Vol. @state.RemoteVolumeProgress</text>
+                            <text> · @ui.Format("library.externalProgress.volume", ("number", state.RemoteVolumeProgress))</text>
                         }
                         @if (!string.IsNullOrWhiteSpace(state.RemoteStatus))
                         {
@@ -83,12 +87,12 @@
     {
         <form method="post" asp-page-handler="@Model.SyncHandler">
             <button class="button button-primary" type="submit">
-                Sync @unit.ToLowerInvariant() @state.LocalProgress to AniList
+                @ui.Format("library.externalProgress.syncButton", ("unit", unit), ("progress", state.LocalProgress))
             </button>
         </form>
     }
     else if (state.Kind == AniListExternalProgressStateKind.NotConnected)
     {
-        <a class="button" href="/Settings/AniList">AniList settings</a>
+        <a class="button" href="/Settings/AniList">@ui["library.externalProgress.aniListSettings"]</a>
     }
 </div>

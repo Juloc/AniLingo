@@ -1,3 +1,4 @@
+using AniLingo.Web.Features.Localization;
 using AniLingo.Web.Features.Manga;
 using AniLingo.Web.Features.Metadata;
 using AniLingo.Web.Features.MediaMapping;
@@ -58,19 +59,26 @@ public sealed record ExternalProgressSummary(
 }
 
 /// <summary>View model of the shared <c>_ExternalProgress</c> partial.</summary>
+/// <remarks>
+/// <paramref name="Ui"/> defaults to English because the partial is shared by
+/// pages that are not all migrated to the per-request UI catalog yet (issue
+/// #185); a migrated page passes its own resolved <c>Model.Ui</c>.
+/// </remarks>
 public sealed record ExternalProgressPanel(
     ExternalProgressSummary Summary,
     string RemoteStateUrl,
     string? MatchedCoverUrl = null,
     string? MatchUrl = null,
     string? MappingUrl = null,
-    bool CanManageMapping = false);
+    bool CanManageMapping = false,
+    UiTextBundle? Ui = null);
 
 /// <summary>View model of the lazily loaded <c>_ExternalProgressState</c> fragment.</summary>
 public sealed record ExternalProgressRemoteView(
     ExternalProgressMediaKind MediaKind,
     AniListExternalProgressState State,
-    string? SyncHandler = null);
+    string? SyncHandler = null,
+    UiTextBundle? Ui = null);
 
 public sealed partial class AniListAccountService
 {

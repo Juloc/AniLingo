@@ -3,6 +3,7 @@
 @using AniLingo.Web.Features.Tracking
 @model AniLingo.Web.Pages.Library.AnimeModel
 @{
+    var ui = Model.Ui;
     ViewData["Title"] = Model.AnimeTitle;
 }
 
@@ -26,8 +27,8 @@
                  referrerpolicy="no-referrer" />
         }
         <div class="anime-hero-copy">
-            <a class="back-link" href="/Library">← Library</a>
-            <span class="eyebrow">Anime library</span>
+            <a class="back-link" href="/Library">← @ui["nav.library"]</a>
+            <span class="eyebrow">@ui["library.anime.eyebrow"]</span>
             <h1>@Model.AnimeTitle</h1>
 
             @if (Model.Metadata is { } metadata)
@@ -52,11 +53,11 @@
                     }
                     @if (metadata.EpisodeCount is int episodeCount)
                     {
-                        <span>@episodeCount episodes</span>
+                        <span>@ui.Format("library.index.episodeCount", ("count", episodeCount))</span>
                     }
                     @if (metadata.EpisodeDurationMinutes is int duration)
                     {
-                        <span>@duration min</span>
+                        <span>@ui.Format("library.anime.durationMinutes", ("minutes", duration))</span>
                     }
                 </div>
 
@@ -97,7 +98,7 @@
                            label = Model.AnimeTitle,
                            returnUrl = $"/Library/Anime/{Model.AnimeId}"
                        })">
-                        Language tools &amp; Learning
+                        @ui["library.languageToolsAndLearning"]
                     </a>
                 </div>
 
@@ -105,20 +106,20 @@
                 {
                     <div class="inline-actions">
                         <form method="post" asp-page-handler="RefreshMetadata" asp-route-id="@Model.AnimeId">
-                            <button class="button" type="submit">Refresh metadata</button>
+                            <button class="button" type="submit">@ui["library.anime.refreshMetadata"]</button>
                         </form>
                         <form method="post" asp-page-handler="RemoveMetadata" asp-route-id="@Model.AnimeId">
-                            <button class="button" type="submit">Remove match</button>
+                            <button class="button" type="submit">@ui["library.anime.removeMatch"]</button>
                         </form>
                     </div>
                 }
             }
             else
             {
-                <p>@Model.Episodes.Count episodes discovered.</p>
+                <p>@ui.Format("library.anime.episodesDiscovered", ("count", Model.Episodes.Count))</p>
             }
-            @if (Model.IsOwner) { <a class="button" href="/Library/Rename/@Model.AnimeId">Rename files</a> }
-            @if (Model.IsOwner) { <a class="button" href="/Library/AnimeRepair/@Model.AnimeId">Repair</a> }
+            @if (Model.IsOwner) { <a class="button" href="/Library/Rename/@Model.AnimeId">@ui["library.anime.renameFiles"]</a> }
+            @if (Model.IsOwner) { <a class="button" href="/Library/AnimeRepair/@Model.AnimeId">@ui["library.anime.repair"]</a> }
         </div>
     </div>
 </section>
@@ -136,7 +137,8 @@
             : null,
         MatchUrl: "#anilist-match",
         MappingUrl: "#anilist-episode-mappings",
-        CanManageMapping: Model.IsOwner);
+        CanManageMapping: Model.IsOwner,
+        Ui: ui);
     <partial name="_ExternalProgress" model="externalPanel" />
 }
 
@@ -144,27 +146,27 @@
 {
     <section class="panel metadata-panel" id="anilist-match">
         <div class="panel-heading">
-            <h2>@(Model.Metadata is null ? "Match AniList" : "Change AniList match")</h2>
+            <h2>@(Model.Metadata is null ? ui["library.searchAniList"] : ui["library.anime.changeAniListMatch"])</h2>
             @if (Model.Metadata is { } current)
             {
                 <span>@current.Provider · ID @current.ExternalId</span>
             }
         </div>
-    
+
         <form method="get" class="metadata-search">
             <input type="search"
                    name="q"
                    value="@Model.SearchQuery"
-                   aria-label="Anime title"
-                   placeholder="Search AniList" />
-            <button class="button button-primary" type="submit">Search AniList</button>
+                   aria-label="@ui["library.animeTitleAria"]"
+                   placeholder="@ui["library.searchAniListPlaceholder"]" />
+            <button class="button button-primary" type="submit">@ui["library.searchAniList"]</button>
         </form>
-    
+
         @if (!string.IsNullOrWhiteSpace(Model.MetadataError))
         {
             <p class="metadata-error">@Model.MetadataError</p>
         }
-    
+
         @if (Model.SearchResults.Count > 0)
         {
             <div class="metadata-results">
@@ -201,7 +203,7 @@
                                 }
                                 @if (candidate.EpisodeCount is int count)
                                 {
-                                    <text> · @count eps</text>
+                                    <text> · @ui.Format("library.episodeCountAbbrev", ("count", count))</text>
                                 }
                             </small>
                         </div>
@@ -214,20 +216,20 @@
                                 <button class="button" type="submit">
                                     @(Model.Metadata?.Provider == candidate.Provider &&
                                       Model.Metadata?.ExternalId == candidate.ExternalId
-                                        ? "Matched"
-                                        : "Use for display")
+                                        ? ui["library.matched"]
+                                        : ui["library.anime.useForDisplay"])
                                 </button>
                             </form>
 
                             <details>
-                                <summary>Map local episodes</summary>
+                                <summary>@ui["library.anime.mapLocalEpisodes"]</summary>
                                 <form method="post"
                                       asp-page-handler="MatchEpisodeRange"
                                       asp-route-id="@Model.AnimeId">
                                     <input type="hidden" name="provider" value="@candidate.Provider" />
                                     <input type="hidden" name="externalId" value="@candidate.ExternalId" />
                                     <label>
-                                        Local season
+                                        @ui["library.anime.localSeason"]
                                         <input type="number"
                                                name="seasonNumber"
                                                min="0"
@@ -235,7 +237,7 @@
                                                required />
                                     </label>
                                     <label>
-                                        Local from
+                                        @ui["library.anime.localFrom"]
                                         <input type="number"
                                                name="localEpisodeStart"
                                                min="1"
@@ -243,22 +245,22 @@
                                                required />
                                     </label>
                                     <label>
-                                        Local to
+                                        @ui["library.anime.localTo"]
                                         <input type="number"
                                                name="localEpisodeEnd"
                                                min="1"
-                                               placeholder="auto" />
+                                               placeholder="@ui["library.anime.autoPlaceholder"]" />
                                     </label>
                                     <label>
-                                        AniList starts at
+                                        @ui["library.anime.aniListStartsAt"]
                                         <input type="number"
                                                name="remoteEpisodeStart"
                                                min="1"
                                                value="1"
                                                required />
                                     </label>
-                                    <small>Leave “Local to” empty to use the AniList episode count automatically.</small>
-                                    <button class="button button-primary" type="submit">Add mapping</button>
+                                    <small>@ui["library.anime.localToHint"]</small>
+                                    <button class="button button-primary" type="submit">@ui["library.anime.addMapping"]</button>
                                 </form>
                             </details>
                         </div>
@@ -270,13 +272,13 @@
 
     <section class="panel metadata-panel" id="anilist-episode-mappings">
         <div class="panel-heading">
-            <h2>AniList episode mappings</h2>
-            <span>Local season/episode range → AniList media entry</span>
+            <h2>@ui["library.anime.episodeMappingsHeading"]</h2>
+            <span>@ui["library.anime.episodeMappingsCaption"]</span>
         </div>
 
         @if (Model.EpisodeMappings.Count == 0)
         {
-            <p>No explicit ranges yet. Single-season anime still use the normal AniList match. Multi-season anime and specials require explicit ranges for safe progress sync.</p>
+            <p>@ui["library.anime.noExplicitRanges"]</p>
         }
         else
         {
@@ -294,7 +296,7 @@
                                 → @mapping.PreferredTitle
                             </strong>
                             <span>
-                                AniList E@(mapping.RemoteEpisodeStart.ToString("00"))–E@(remoteEnd.ToString("00"))
+                                @ui.Format("library.anime.aniListRange", ("start", mapping.RemoteEpisodeStart.ToString("00")), ("end", remoteEnd.ToString("00")))
                                 · ID @mapping.ExternalId
                             </span>
                         </div>
@@ -302,7 +304,7 @@
                               asp-page-handler="RemoveEpisodeMapping"
                               asp-route-id="@Model.AnimeId">
                             <input type="hidden" name="mappingId" value="@mapping.Id" />
-                            <button class="button" type="submit">Remove</button>
+                            <button class="button" type="submit">@ui["common.remove"]</button>
                         </form>
                     </div>
                 }
@@ -310,7 +312,7 @@
         }
     </section>
 
-    <partial name="_AnimeAcquisitionPanel" model="Model.AnimeId" />
+    <partial name="_AnimeAcquisitionPanel" model="(Model.AnimeId, ui)" />
 }
 
 <div class="episode-list">
@@ -324,24 +326,24 @@
                 <strong>S@(episode.SeasonNumber.ToString("00")) · @episode.Title</strong>
                 @if (episode.IsWatched)
                 {
-                    <span class="episode-watch-state">✓ Watched</span>
+                    <span class="episode-watch-state">✓ @ui["library.episode.watched"]</span>
                 }
                 else if (episode.ResumePercent is int resumePercent)
                 {
-                    <span class="episode-watch-state">In progress · @resumePercent% watched</span>
+                    <span class="episode-watch-state">@ui.Format("library.anime.inProgressWatched", ("percent", resumePercent))</span>
                 }
                 <span>
                     @if (episode.JapaneseSubtitleTracks == 0)
                     {
-                        <text>No Japanese subtitle imported</text>
+                        <text>@ui["library.anime.noJapaneseSubtitle"]</text>
                     }
                     else if (Model.ShowContentMetrics)
                     {
-                        <text>@episode.TotalTerms vocabulary candidates · @episode.PreparationPercent% prepared</text>
+                        <text>@ui.Format("library.anime.vocabularyCandidates", ("count", episode.TotalTerms), ("percent", episode.PreparationPercent))</text>
                     }
                     else
                     {
-                        <text>@episode.JapaneseSubtitleTracks Japanese subtitle track@(episode.JapaneseSubtitleTracks == 1 ? "" : "s")</text>
+                        <text>@ui.Format("library.anime.subtitleTrackCount", ("count", episode.JapaneseSubtitleTracks))</text>
                     }
                 </span>
                 @if (Model.ShowContentMetrics)
@@ -359,8 +361,8 @@
             <input type="hidden" name="watched" value="@(episode.IsWatched ? "false" : "true")" />
             <button class="button"
                     type="submit"
-                    aria-label="@(episode.IsWatched ? $"Mark {episodeCode} unwatched" : $"Mark {episodeCode} watched")">
-                @(episode.IsWatched ? "Mark unwatched" : "Mark watched")
+                    aria-label="@(episode.IsWatched ? ui.Format("library.anime.markUnwatchedAria", ("code", episodeCode)) : ui.Format("library.anime.markWatchedAria", ("code", episodeCode)))">
+                @(episode.IsWatched ? ui["library.episode.markUnwatched"] : ui["library.episode.markWatched"])
             </button>
         </form>
         </div>

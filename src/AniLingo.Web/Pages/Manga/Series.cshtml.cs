@@ -99,6 +99,7 @@ public sealed class SeriesModel(
         var state = await aniListAccount.GetMangaProgressStateAsync(
             id,
             cancellationToken);
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
 
         Response.Headers.CacheControl = "no-store";
         return Partial(
@@ -106,7 +107,8 @@ public sealed class SeriesModel(
             new ExternalProgressRemoteView(
                 ExternalProgressMediaKind.Manga,
                 state,
-                "SyncAniList"));
+                "SyncAniList",
+                ui));
     }
 
     public async Task<IActionResult> OnPostSyncAniListAsync(

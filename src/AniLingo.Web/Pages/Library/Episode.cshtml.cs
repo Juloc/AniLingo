@@ -1,6 +1,7 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Learning;
+using AniLingo.Web.Features.Localization;
 using AniLingo.Web.Features.Operations;
 using AniLingo.Web.Features.Playback;
 using AniLingo.Web.Features.Progress;
@@ -41,6 +42,7 @@ public sealed class EpisodeModel(
     CurrentAccountContext currentAccount,
     OperationRunner operations) : PageModel
 {
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public Guid EpisodeId { get; private set; }
     public Guid AnimeId { get; private set; }
     public string AnimeTitle { get; private set; } = "";
@@ -102,6 +104,7 @@ public sealed class EpisodeModel(
 
     public async Task<IActionResult> OnGetAsync(Guid id, CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         var header = await (
             from episode in db.Episodes.AsNoTracking()
             join anime in db.Anime.AsNoTracking() on episode.AnimeId equals anime.Id
@@ -216,6 +219,7 @@ public sealed class EpisodeModel(
             return NotFound();
         }
 
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         try
         {
             await operations.RunAsync(
@@ -261,8 +265,9 @@ public sealed class EpisodeModel(
                 "Episode subtitle imported.",
                 cancellationToken);
 
-            TempData["SubtitleNotice"] =
-                $"Subtitle stream #{streamIndex} is now the Japanese learning source.";
+            TempData["SubtitleNotice"] = ui.Format(
+                "library.episode.subtitleNowLearningSource",
+                ("stream", streamIndex));
         }
         catch (InvalidOperationException exception)
         {
@@ -296,7 +301,7 @@ public sealed class EpisodeModel(
                 .CountAsync(x => x.SubtitleTrackId == active.Id, cancellationToken);
 
             ActiveSubtitle = new ActiveEpisodeSubtitle(
-                BuildSubtitleLabel(active.Path),
+                BuildSubtitleLabel(Ui, active.Path),
                 active.Format,
                 cueCount);
         }
@@ -350,20 +355,20 @@ public sealed class EpisodeModel(
             : null;
     }
 
-    private static string BuildSubtitleLabel(string sourceKey)
+    private static string BuildSubtitleLabel(UiTextBundle ui, string sourceKey)
     {
         if (sourceKey.StartsWith(
                 EmbeddedSubtitleExtractor.TranscriptionSourcePrefix,
                 StringComparison.Ordinal))
         {
-            return "Japanese audio transcription";
+            return ui["library.episode.subtitleSource.transcription"];
         }
 
         if (sourceKey.StartsWith(
                 SubtitleImportService.JimakuSourcePrefix,
                 StringComparison.Ordinal))
         {
-            return "Jimaku online subtitle";
+            return ui["library.episode.subtitleSource.jimaku"];
         }
 
         if (!sourceKey.StartsWith(
@@ -375,8 +380,8 @@ public sealed class EpisodeModel(
 
         var marker = sourceKey.LastIndexOf("#stream=", StringComparison.Ordinal);
         return marker >= 0
-            ? $"Embedded stream #{sourceKey[(marker + 8)..]}"
-            : "Embedded subtitle";
+            ? ui.Format("library.episode.subtitleSource.embeddedStream", ("stream", sourceKey[(marker + 8)..]))
+            : ui["library.episode.subtitleSource.embedded"];
     }
 
     public async Task<IActionResult> OnGetMediaAsync(
@@ -452,9 +457,10 @@ public sealed class EpisodeModel(
             return NotFound();
         }
 
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         TempData["Status"] = watched
-            ? "Episode marked as watched."
-            : "Episode marked as unwatched.";
+            ? ui["library.episode.markedWatched"]
+            : ui["library.episode.markedUnwatched"];
         return RedirectToPage(new { id });
     }
 
@@ -470,6 +476,7 @@ public sealed class EpisodeModel(
         var state = await aniListAccountService.GetEpisodeProgressStateAsync(
             id,
             cancellationToken);
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
 
         Response.Headers.CacheControl = "no-store";
         return Partial(
@@ -477,7 +484,8 @@ public sealed class EpisodeModel(
             new ExternalProgressRemoteView(
                 ExternalProgressMediaKind.Episode,
                 state,
-                "SyncAniList"));
+                "SyncAniList",
+                ui));
     }
 
     public async Task<IActionResult> OnPostSyncAniListAsync(

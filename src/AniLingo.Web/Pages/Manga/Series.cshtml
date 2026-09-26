@@ -92,7 +92,8 @@
             : null,
         MatchUrl: $"/Manga/Series/{series.Id}?q={Uri.EscapeDataString(series.Title)}#manga-manage",
         MappingUrl: $"/Settings/MappingSegments?mediaType=manga&localId={series.Id}",
-        CanManageMapping: Model.IsOwner);
+        CanManageMapping: Model.IsOwner,
+        Ui: ui);
     <partial name="_ExternalProgress" model="externalPanel" />
 }
 

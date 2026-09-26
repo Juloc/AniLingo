@@ -1,5 +1,6 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
+using AniLingo.Web.Features.Localization;
 using AniLingo.Web.Features.MediaSegments;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -21,6 +22,7 @@ public sealed class EpisodeSegmentsModel(
     MediaSegmentService segments,
     CurrentAccountContext currentAccount) : PageModel
 {
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public Guid EpisodeId { get; private set; }
     public Guid AnimeId { get; private set; }
     public string AnimeTitle { get; private set; } = "";
@@ -39,6 +41,7 @@ public sealed class EpisodeSegmentsModel(
             return Forbid();
         }
 
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         return await LoadAsync(id, cancellationToken) ? Page() : NotFound();
     }
 
@@ -59,10 +62,12 @@ public sealed class EpisodeSegmentsModel(
             return BadRequest();
         }
 
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         if (!MediaTimecode.TryParse(start, out var startMs) ||
             !MediaTimecode.TryParse(end, out var endMs))
         {
-            TempData["Status"] = "Enter start and end as m:ss, h:mm:ss or seconds (for example 1:30.5).";
+            TempData["Status"] = ui["library.episodeSegments.invalidTimecode"];
             return RedirectToPage(new { id });
         }
 
@@ -80,7 +85,9 @@ public sealed class EpisodeSegmentsModel(
             return RedirectToPage(new { id });
         }
 
-        TempData["Status"] = $"{MediaSegmentPolicy.KindLabel(kind)} saved as a manual marker.";
+        TempData["Status"] = ui.Format(
+            "library.episodeSegments.markerSaved",
+            ("kind", KindLabel(ui, kind)));
         return RedirectToPage(new { id });
     }
 
@@ -94,10 +101,11 @@ public sealed class EpisodeSegmentsModel(
             return Forbid();
         }
 
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         var removed = await segments.RemoveManualAsync(id, kind, cancellationToken);
         TempData["Status"] = removed
-            ? $"Manual {MediaSegmentPolicy.KindLabel(kind)} marker removed."
-            : "There was no manual marker to remove.";
+            ? ui.Format("library.episodeSegments.markerRemoved", ("kind", KindLabel(ui, kind)))
+            : ui["library.episodeSegments.noManualMarker"];
         return RedirectToPage(new { id });
     }
 
@@ -110,13 +118,14 @@ public sealed class EpisodeSegmentsModel(
             return Forbid();
         }
 
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         var run = await segments.RunDetectorAsync(id, force: true, cancellationToken);
         TempData["Status"] = run.Outcome switch
         {
-            SegmentDetectionOutcome.DetectorDisabled => "No automatic segment detector is configured.",
-            SegmentDetectionOutcome.NoMedia => "This episode has no media file.",
-            SegmentDetectionOutcome.NotAnalyzed => "The media file has not been analysed yet; run a library scan first.",
-            _ => $"Detection finished with {run.SegmentCount} marker(s)."
+            SegmentDetectionOutcome.DetectorDisabled => ui["library.episodeSegments.detectorDisabled"],
+            SegmentDetectionOutcome.NoMedia => ui["library.episodeSegments.noMedia"],
+            SegmentDetectionOutcome.NotAnalyzed => ui["library.episodeSegments.notAnalyzed"],
+            _ => ui.Format("library.episodeSegments.detectionFinished", ("count", run.SegmentCount))
         };
         return RedirectToPage(new { id });
     }
@@ -132,10 +141,11 @@ public sealed class EpisodeSegmentsModel(
             return Forbid();
         }
 
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         var queued = await segments.QueueSeasonDetectionAsync(id, cancellationToken);
         TempData["Status"] = queued
-            ? "Season detection was queued; see Admin → Operations for progress."
-            : "Season detection could not be queued: it may already be running, or no automatic detector is configured.";
+            ? ui["library.episodeSegments.seasonDetectionQueued"]
+            : ui["library.episodeSegments.seasonDetectionNotQueued"];
         return RedirectToPage(new { id });
     }
 
@@ -148,12 +158,25 @@ public sealed class EpisodeSegmentsModel(
             return Forbid();
         }
 
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         var queued = await segments.RegenerateTrickplayAsync(id, cancellationToken);
         TempData["Status"] = queued
-            ? "Seek preview generation was queued."
-            : "Seek previews could not be queued: the media has not been analysed yet or generation is already running.";
+            ? ui["library.episodeSegments.previewsQueued"]
+            : ui["library.episodeSegments.previewsNotQueued"];
         return RedirectToPage(new { id });
     }
+
+    // Local mapping from the shared MediaSegmentKind enum to catalog text: MediaSegmentPolicy's
+    // own KindLabel() also feeds the client API contract, so it intentionally stays English there.
+    public static string KindLabel(UiTextBundle ui, MediaSegmentKind kind) => kind switch
+    {
+        MediaSegmentKind.Intro => ui["library.episodeSegments.kind.intro"],
+        MediaSegmentKind.Recap => ui["library.episodeSegments.kind.recap"],
+        MediaSegmentKind.Outro => ui["library.episodeSegments.kind.outro"],
+        MediaSegmentKind.Preview => ui["library.episodeSegments.kind.preview"],
+        MediaSegmentKind.Credits => ui["library.episodeSegments.kind.credits"],
+        _ => MediaSegmentPolicy.KindLabel(kind)
+    };
 
     private async Task<bool> LoadAsync(Guid id, CancellationToken cancellationToken)
     {
@@ -191,7 +214,7 @@ public sealed class EpisodeSegmentsModel(
         [
             .. MediaSegmentPolicy.Kinds.Select(kind => new EpisodeSegmentKindRow(
                 kind,
-                MediaSegmentPolicy.KindLabel(kind),
+                KindLabel(Ui, kind),
                 resolved.Segments.FirstOrDefault(x => x.Kind == kind),
                 stored.FirstOrDefault(x => x.Kind == kind && x.Source == MediaSegmentSource.Manual),
                 [.. stored.Where(x => x.Kind == kind)]))

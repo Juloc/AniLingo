@@ -1,6 +1,8 @@
+using AniLingo.Web.Data;
 using AniLingo.Web.Features.Acquisition.DownloadClients;
 using AniLingo.Web.Features.Acquisition.Health;
 using AniLingo.Web.Features.Auth;
+using AniLingo.Web.Features.Localization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -16,16 +18,19 @@ public sealed record DownloadClientRow(DownloadClientEntry Entry, AcquisitionHea
 /// </summary>
 [Authorize(Roles = AccountRoles.Owner)]
 public sealed class IndexModel(
+    AppDbContext db,
     DownloadClientStore store,
     IDownloadClient client,
     AcquisitionHealthStore health) : PageModel
 {
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public IReadOnlyList<DownloadClientRow> Rows { get; private set; } = [];
     public string? Notice => TempData["DownloadClientNotice"] as string;
     public string? Error => TempData["DownloadClientError"] as string;
 
     public async Task OnGetAsync(CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         var entries = (await store.LoadAllAsync(cancellationToken))
             .OrderBy(entry => entry.Priority)
             .ThenBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase);
@@ -52,10 +57,11 @@ public sealed class IndexModel(
 
     public async Task<IActionResult> OnPostTestAsync(Guid id, CancellationToken cancellationToken)
     {
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         var entry = await store.GetAsync(id, cancellationToken);
         if (entry is null)
         {
-            TempData["DownloadClientError"] = "Download client not found.";
+            TempData["DownloadClientError"] = ui["settings.downloadClients.notFound"];
             return RedirectToPage();
         }
 
@@ -66,16 +72,19 @@ public sealed class IndexModel(
             cancellationToken);
 
         TempData[result.Success ? "DownloadClientNotice" : "DownloadClientError"] = result.Success
-            ? $"Connected to '{entry.Name}'{(result.Version is null ? "" : $" ({result.Version})")}."
-            : result.Error ?? "Connection failed.";
+            ? (result.Version is null
+                ? ui.Format("settings.downloadClients.connected", ("name", entry.Name))
+                : ui.Format("settings.downloadClients.connectedWithVersion", ("name", entry.Name), ("version", result.Version)))
+            : result.Error ?? ui["settings.downloadClients.connectionFailed"];
         return RedirectToPage();
     }
 
     public async Task<IActionResult> OnPostDeleteAsync(Guid id, CancellationToken cancellationToken)
     {
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         await store.DeleteAsync(id, cancellationToken);
         await health.RemoveAsync(AcquisitionHealthKind.DownloadClient, id, cancellationToken);
-        TempData["DownloadClientNotice"] = "Download client removed.";
+        TempData["DownloadClientNotice"] = ui["settings.downloadClients.removed"];
         return RedirectToPage();
     }
 }

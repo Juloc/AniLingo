@@ -1,26 +1,27 @@
 @page
 @model AniLingo.Web.Pages.Library.IndexModel
 @{
-    ViewData["Title"] = "Library";
+    var ui = Model.Ui;
+    ViewData["Title"] = ui["nav.library"];
 }
 
 <header class="page-header">
     <div>
-        <span class="eyebrow">Library</span>
-        <h1>Your anime</h1>
-        <p>Content discovered from configured NAS roots.</p>
+        <span class="eyebrow">@ui["nav.library"]</span>
+        <h1>@ui["library.index.title"]</h1>
+        <p>@ui["library.index.subtitle"]</p>
     </div>
     <div class="inline-actions">
-        <a class="button" href="/Settings/Sonarr">Import from Sonarr</a>
-        <a class="button" href="/Settings">Manage roots</a>
+        <a class="button" href="/Settings/Sonarr">@ui["library.index.importFromSonarr"]</a>
+        <a class="button" href="/Settings">@ui["library.index.manageRoots"]</a>
     </div>
 </header>
 
 @if (Model.Anime.Count == 0)
 {
     <div class="empty-state">
-        <h3>Library is empty</h3>
-        <p>Add a root and run the first scan.</p>
+        <h3>@ui["library.index.emptyTitle"]</h3>
+        <p>@ui["library.index.emptyHint"]</p>
     </div>
 }
 else
@@ -30,9 +31,10 @@ else
         {
             <partial name="_MediaCard" model='new MediaCardModel(
                 anime.Title,
-                $"{anime.EpisodeCount} episodes",
+                ui.Format("library.index.episodeCount", ("count", anime.EpisodeCount)),
                 $"/Library/Anime/{anime.Id}",
-                ImageUrl: anime.CoverImageUrl)' />
+                ImageUrl: anime.CoverImageUrl,
+                Ui: ui)' />
         }
     </div>
 }
