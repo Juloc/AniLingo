@@ -1,3 +1,5 @@
+using AniLingo.Web.Data;
+using AniLingo.Web.Features.Acquisition.History;
 using AniLingo.Web.Features.Acquisition.Import;
 using AniLingo.Web.Features.Acquisition.Monitoring;
 using AniLingo.Web.Features.Acquisition.Pipeline;
@@ -7,6 +9,7 @@ using AniLingo.Web.Features.Auth;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.EntityFrameworkCore;
 
 namespace AniLingo.Web.Pages.Acquisition;
 
@@ -20,7 +23,9 @@ public sealed class IndexModel(
     AnimeAcquisitionPipeline pipeline,
     AnimeAcquisitionScheduler scheduler,
     AnimeImportExecutor importExecutor,
-    SabnzbdConnectionResolver sabnzbd) : PageModel
+    SabnzbdConnectionResolver sabnzbd,
+    AcquisitionHistoryService history,
+    AppDbContext db) : PageModel
 {
     [BindProperty(SupportsGet = true)]
     public string? Search { get; set; }
@@ -39,6 +44,8 @@ public sealed class IndexModel(
     public bool ProwlarrConfigured { get; private set; }
     public bool SabnzbdConfigured { get; private set; }
     public string? ConfigurationError { get; private set; }
+    public IReadOnlyList<AcquisitionHistoryEntry> RecentHistory { get; private set; } = [];
+    public IReadOnlyDictionary<Guid, string> AnimeTitles { get; private set; } = new Dictionary<Guid, string>();
     public AnimeAcquisitionScheduler Scheduler => scheduler;
     public string? Notice => TempData["AcquisitionNotice"] as string;
     public string? Error => TempData["AcquisitionError"] as string;
@@ -48,6 +55,15 @@ public sealed class IndexModel(
         ProwlarrConfigured = await pipeline.IsProwlarrConfiguredAsync(cancellationToken);
         SabnzbdConfigured = (await sabnzbd.ResolveAsync(cancellationToken)).IsConfigured;
         Overview = await pipeline.GetOverviewAsync(cancellationToken);
+        RecentHistory = await history.RecentAsync(30, cancellationToken);
+        if (RecentHistory.Count > 0)
+        {
+            var animeIds = RecentHistory.Select(entry => entry.AnimeId).Distinct().ToArray();
+            AnimeTitles = await db.Anime
+                .AsNoTracking()
+                .Where(item => animeIds.Contains(item.Id))
+                .ToDictionaryAsync(item => item.Id, item => item.Title, cancellationToken);
+        }
 
         if (!string.IsNullOrWhiteSpace(Search))
         {
@@ -118,6 +134,8 @@ public sealed class IndexModel(
         bool searchOnAdd,
         string? profileId,
         string? indexerIds,
+        string[]? tagIds,
+        Guid? targetRootId,
         string? returnUrl,
         CancellationToken cancellationToken)
     {
@@ -135,7 +153,9 @@ public sealed class IndexModel(
                 searchOnAdd,
                 string.IsNullOrWhiteSpace(profileId) ? null : profileId.Trim(),
                 ids,
-                cancellationToken);
+                cancellationToken,
+                tagIds,
+                targetRootId);
             if (update is null)
             {
                 return NotFound();

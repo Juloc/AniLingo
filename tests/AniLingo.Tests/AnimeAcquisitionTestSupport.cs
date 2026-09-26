@@ -1,10 +1,14 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Acquisition;
+using AniLingo.Web.Features.Acquisition.AniListAutoMonitor;
+using AniLingo.Web.Features.Acquisition.Backup;
+using AniLingo.Web.Features.Acquisition.History;
 using AniLingo.Web.Features.Acquisition.Import;
 using AniLingo.Web.Features.Acquisition.Monitoring;
 using AniLingo.Web.Features.Acquisition.Naming;
 using AniLingo.Web.Features.Acquisition.Ownership;
 using AniLingo.Web.Features.Acquisition.Pipeline;
+using AniLingo.Web.Features.Acquisition.Policy;
 using AniLingo.Web.Features.Acquisition.Prowlarr;
 using AniLingo.Web.Features.Acquisition.Quality;
 using AniLingo.Web.Features.Acquisition.Sabnzbd;
@@ -40,12 +44,13 @@ internal sealed class AnimeAcquisitionEnvironment : IAsyncDisposable
 
     private ServiceProvider services;
 
-    private AnimeAcquisitionEnvironment(string tempRoot, DbContextOptions<AppDbContext> options, AppDbContext db, LibraryRoot root)
+    private AnimeAcquisitionEnvironment(string tempRoot, DbContextOptions<AppDbContext> options, AppDbContext db, LibraryRoot root, IHardLinkCreator? hardLinkCreator)
     {
         TempRoot = tempRoot;
         Options = options;
         Db = db;
         Root = root;
+        HardLinkCreator = hardLinkCreator ?? new FileSystemHardLinkCreator();
         services = Build();
     }
 
@@ -60,6 +65,8 @@ internal sealed class AnimeAcquisitionEnvironment : IAsyncDisposable
     public FakeProwlarrClient Prowlarr { get; } = new();
     public FakeSabnzbdClient Sabnzbd { get; } = new();
     public IDataProtectionProvider Protection { get; } = new EphemeralDataProtectionProvider();
+    public IHardLinkCreator HardLinkCreator { get; }
+    public HttpMessageHandler AniListHandler { get; set; } = new NotConnectedAniListHandler();
     public Guid AnimeId { get; private set; }
 
     public AnimeAcquisitionScheduler Scheduler => services.GetRequiredService<AnimeAcquisitionScheduler>();
@@ -68,8 +75,51 @@ internal sealed class AnimeAcquisitionEnvironment : IAsyncDisposable
     public SabnzbdAcquisitionStore Acquisitions => services.GetRequiredService<SabnzbdAcquisitionStore>();
     public AnimeImportStore Imports => services.GetRequiredService<AnimeImportStore>();
     public OperationStore Operations => new(Db);
+    public AnimeImportSettingsStore ImportSettings => services.GetRequiredService<AnimeImportSettingsStore>();
+    public AcquisitionPolicyStore Policy => services.GetRequiredService<AcquisitionPolicyStore>();
+    public AniListAutoMonitorSettingsStore AniListAutoMonitorSettings => services.GetRequiredService<AniListAutoMonitorSettingsStore>();
+    public AniListAccountStore AniListAccounts => services.GetRequiredService<AniListAccountStore>();
 
-    public static async Task<AnimeAcquisitionEnvironment> CreateAsync()
+    public async Task<AnimeLibraryLocation?> GetLibraryLocationAsync(Guid animeId, Guid? preferredRootId = null)
+    {
+        await using var scope = services.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<AnimeAcquisitionInventory>()
+            .GetLibraryLocationAsync(animeId, CancellationToken.None, preferredRootId);
+    }
+
+    public async Task<AcquisitionBackupBundle> ExportBackupAsync()
+    {
+        await using var scope = services.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<AcquisitionBackupService>().ExportAsync(CancellationToken.None);
+    }
+
+    public async Task<AcquisitionBackupPreview> PreviewRestoreAsync(AcquisitionBackupBundle bundle)
+    {
+        await using var scope = services.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<AcquisitionBackupService>().PreviewRestoreAsync(bundle, CancellationToken.None);
+    }
+
+    public async Task<AcquisitionBackupRestoreResult> RestoreBackupAsync(AcquisitionBackupBundle bundle)
+    {
+        await using var scope = services.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<AcquisitionBackupService>().RestoreAsync(bundle, CancellationToken.None);
+    }
+
+    public async Task<AniListAutoMonitorRunResult> RunAniListAutoMonitorAsync(string profileId)
+    {
+        await using var scope = services.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<AniListAutoMonitorService>().RunForProfileAsync(profileId, CancellationToken.None);
+    }
+
+    public async Task<IReadOnlyList<AcquisitionHistoryEntry>> HistoryForAnimeAsync(Guid animeId, int limit = 50)
+    {
+        await using var scope = services.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<AcquisitionHistoryService>().ForAnimeAsync(animeId, limit, CancellationToken.None);
+    }
+
+    public static Task<AnimeAcquisitionEnvironment> CreateAsync() => CreateAsync(null);
+
+    public static async Task<AnimeAcquisitionEnvironment> CreateAsync(IHardLinkCreator? hardLinkCreator)
     {
         var tempRoot = Path.Combine(Path.GetTempPath(), $"anilingo-acquisition-{Guid.NewGuid():N}");
         var library = Path.Combine(tempRoot, "anime");
@@ -89,7 +139,7 @@ internal sealed class AnimeAcquisitionEnvironment : IAsyncDisposable
         db.LibraryRoots.Add(root);
         await db.SaveChangesAsync();
 
-        var environment = new AnimeAcquisitionEnvironment(tempRoot, options, db, root);
+        var environment = new AnimeAcquisitionEnvironment(tempRoot, options, db, root, hardLinkCreator);
         await environment.services.GetRequiredService<SabnzbdSettingsStore>().SaveAsync(
             new SabnzbdStoredSettings("http://sabnzbd:8080", "secret-key", "books", "anime"));
         await environment.services.GetRequiredService<ProwlarrSettingsStore>().SaveAsync(
@@ -324,6 +374,15 @@ internal sealed class AnimeAcquisitionEnvironment : IAsyncDisposable
         collection.AddSingleton<SonarrObservationService>();
         collection.AddSingleton(new AniListAccountStore(Protection, NullLogger<AniListAccountStore>.Instance, integrations));
         collection.AddSingleton(new MediaMappingReviewStore(NullLogger<MediaMappingReviewStore>.Instance, integrations));
+        collection.AddSingleton(new ReadingSegmentMappingStore(NullLogger<ReadingSegmentMappingStore>.Instance, integrations));
+        collection.AddSingleton(new AnimeImportSettingsStore(DataRoot));
+        collection.AddSingleton(new AcquisitionPolicyStore(DataRoot));
+        collection.AddSingleton(new AniListAutoMonitorSettingsStore(DataRoot));
+        collection.AddSingleton<IHardLinkCreator>(HardLinkCreator);
+        collection.AddSingleton<IHttpClientFactory>(new SingleHandlerHttpClientFactory(() => AniListHandler));
+        collection.AddScoped<AcquisitionHistoryService>();
+        collection.AddScoped<AcquisitionBackupService>(_ => new AcquisitionBackupService(DataRoot));
+        collection.AddScoped<AniListAutoMonitorService>();
 
         collection.AddScoped<AnimeMetadataService>();
         collection.AddScoped<SabnzbdConnectionResolver>();
@@ -334,6 +393,7 @@ internal sealed class AnimeAcquisitionEnvironment : IAsyncDisposable
         collection.AddScoped<AnimeAcquisitionPipeline>();
         collection.AddScoped<AnimeImportExecutor>();
         collection.AddSingleton<AnimeAcquisitionScheduler>();
+        collection.AddHttpClient();
 
         var dictionary = Path.Combine(TempRoot, "dictionary");
         var mediaInventory = MediaInventoryTestSupport.Create(Options);
@@ -361,6 +421,19 @@ internal sealed class AnimeAcquisitionEnvironment : IAsyncDisposable
         public HttpClient CreateClient(string name) => new();
     }
 
+    private sealed class SingleHandlerHttpClientFactory(Func<HttpMessageHandler> handlerFactory) : IHttpClientFactory
+    {
+        public HttpClient CreateClient(string name) =>
+            new(handlerFactory(), disposeHandler: false) { BaseAddress = new Uri("https://graphql.anilist.co/") };
+    }
+
+    // The default handler for tests that never connect AniList: any GraphQL call would be a bug.
+    private sealed class NotConnectedAniListHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("No AniList connection is configured for this test.");
+    }
+
     private sealed class NoMorphology : IJapaneseMorphology
     {
         public IReadOnlyList<JapaneseMorphToken> Analyze(string text) => [];
@@ -380,6 +453,7 @@ internal sealed class FakeProwlarrClient : IProwlarrClient
 {
     public List<ProwlarrReleaseCandidate> Releases { get; } = [];
     public List<string> Queries { get; } = [];
+    public List<ProwlarrConnection> Connections { get; } = [];
 
     public Task<ProwlarrConnectionTestResult> TestAsync(ProwlarrConnection connection, CancellationToken cancellationToken) =>
         Task.FromResult(new ProwlarrConnectionTestResult(true, "test"));
@@ -390,6 +464,7 @@ internal sealed class FakeProwlarrClient : IProwlarrClient
         CancellationToken cancellationToken)
     {
         Queries.Add(search.Query);
+        Connections.Add(connection);
         return Task.FromResult<IReadOnlyList<ProwlarrReleaseCandidate>>([.. Releases]);
     }
 }

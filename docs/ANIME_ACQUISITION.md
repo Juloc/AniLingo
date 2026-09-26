@@ -34,14 +34,23 @@ monitored anime, recent decisions and recent imports.
 
 | Fact | Canonical store |
 | --- | --- |
-| Monitored flag, search-on-add, per-anime indexer IDs, wanted episodes, search attempts/backoff, schedule | `/data/acquisition/monitoring.json` (`AnimeMonitoringStore`) |
+| Monitored flag, search-on-add, per-anime indexer IDs, tags, target root, wanted episodes, search attempts/backoff, schedule | `/data/acquisition/monitoring.json` (`AnimeMonitoringStore`) |
 | Quality profile per anime | `/data/acquisition/quality-profiles.json` (`AnimeQualityProfileStore`; the default profile is not stored as an assignment) |
 | Prowlarr connection | `/data/acquisition/prowlarr.json` |
 | Acquisition ↔ anime/episodes/attempts, untried candidates, blocklist | `/data/acquisition/sabnzbd-acquisitions.json` |
 | Download status, progress, failure reason | the SABnzbd Operation (`anime-sabnzbd-download`) |
 | Import plan, per-file result, manual-import state | `/data/acquisition/imports.json` (`AnimeImportStore`) |
 | Ownership (mode, AniLingo/Sonarr jobs, owned paths) | `/data/acquisition/ownership.json` |
+| Import mode (global/per root), remote path mappings | `/data/acquisition/import-settings.json` (`AnimeImportSettingsStore`) |
+| Tag catalog, delay profiles, tag-scoped indexer restrictions | `/data/acquisition/acquisition-policy.json` (`AcquisitionPolicyStore`) |
+| Per-profile AniList Current/Planning auto-monitor opt-in | `/data/acquisition/anilist-auto-monitor.json` (`AniListAutoMonitorSettingsStore`) |
+| Per-episode grab/delay/import/upgrade history | the database (`AcquisitionHistoryEntry`, via `AcquisitionHistoryService`) |
 | Episodes and files | the library database, updated only by the library scanner |
+
+`/Settings/Acquisition` is the one place to edit import mode, remote path mappings, tags, delay
+profiles, indexer restrictions, the current profile's AniList auto-monitor rule, and to export or
+restore a JSON backup of every store above (Prowlarr/SABnzbd API keys travel in that backup
+encrypted with this installation's Data Protection keys, never in plain text).
 
 When a rename changes an anime's key (series folder rename), the monitoring and import stores
 are rekeyed together with the ownership and SABnzbd acquisition stores.
@@ -157,9 +166,65 @@ On startup, and before every scheduler run, the scheduler:
 
 The SABnzbd monitor separately advances failed downloads that were not handled before a restart.
 
+## Import mode and remote path mapping
+
+`/Settings/Acquisition` chooses how a completed download becomes a library file, globally and
+per library root: **Move** (the historical default, removes the source), **Copy** (keeps the
+source), **Hardlink** (no extra disk space, keeps the download seeding; fails the import with a
+clear reason when the source and the library root are on different filesystems) or **Hardlink or
+copy** (the explicit choice to fall back to a copy only on a different filesystem — no other mode
+falls back silently). The same page's remote path mappings (`RemotePrefix` → `LocalPrefix`) rewrite
+a path reported by the download client before anything reads it, and rewrite every Sonarr-observed
+path (series folder, episode file, queue output, history) the same way, so Sonarr ↔ AniLingo path
+matching (ownership checks, rename-loop detection) still works when the two containers mount the
+shared storage differently — closing the "different mount paths" gap from
+[SONARR_MIGRATION.md](SONARR_MIGRATION.md).
+
+## Multiple root folders
+
+An anime's imports go to the library root its existing files already live in. A brand-new anime
+with no folder yet uses its assigned **target root** (anime page → Acquisition, defaulting to
+"anime's current root") if one is set, otherwise the first enabled root.
+
+## Tags, delay profiles and indexer restrictions
+
+Anime carry simple owner-defined tags (catalog on `/Settings/Acquisition`, assignment on the anime
+page). A **delay profile** waits N minutes after an episode becomes wanted before grabbing a
+release that does not yet meet the quality profile's upgrade cutoff, so a preferred release has a
+chance to appear first; the most specific matching profile (quality profile + tag, then either
+alone, then an unscoped default) applies, and a release that already meets the cutoff always skips
+the wait. A held-back release is logged as *Delayed* (recent decisions, acquisition history) and
+does not count against the search-failure backoff. A **tag-scoped indexer restriction** narrows
+(never widens) the tagged anime's own Prowlarr indexer selection to an allowed set; several
+applicable restrictions intersect.
+
+## Richer acquisition history
+
+Every grab, delay, import and upgrade is recorded per episode (release, score, quality, indexer,
+reason, timestamp) and never trimmed by rekey (it is keyed by the anime's database ID, not its
+string key). Shown on `/Acquisition` (recent, across anime) and on the anime page's Acquisition
+section (that anime only).
+
+## AniList list auto-monitor
+
+Per profile, `/Settings/Acquisition` can opt in to monitoring anime that are on that profile's
+AniList Current/Planning lists and already exist locally, checked once per full acquisition run.
+Off by default; never adds an anime that is not local yet, and never touches an anime Sonarr
+manages (read-only coexistence).
+
+## Backup and restore
+
+`/Settings/Acquisition` exports one JSON bundle of every canonical acquisition store listed above
+and restores it with a dry-run preview (per-file exists/valid-JSON/would-change) before anything is
+written; an invalid or unsupported-version bundle is refused entirely. Prowlarr and SABnzbd API
+keys travel in the bundle already encrypted with this installation's Data Protection keys; restoring
+on a different installation keeps everything else but may require re-entering those two keys if they
+cannot be decrypted there.
+
 ## Limits
 
 - Only Prowlarr as indexer and SABnzbd as download client; usenet only.
 - No RSS feed polling: wanted episodes are found by the scheduled search.
-- Imports move files; copy/hardlink modes are not configurable yet.
 - Quality profiles can be assigned per anime; editing profiles has no UI yet.
+- AniList auto-monitor only enables monitoring for anime that already exist locally; it does not add
+  a new anime to the library.

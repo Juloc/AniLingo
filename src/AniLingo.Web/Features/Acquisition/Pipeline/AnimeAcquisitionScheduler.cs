@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using AniLingo.Web.Features.Acquisition.AniListAutoMonitor;
 using AniLingo.Web.Features.Acquisition.Import;
 using AniLingo.Web.Features.Acquisition.Monitoring;
 
@@ -219,6 +220,10 @@ public sealed class AnimeAcquisitionScheduler(
                 trigger,
                 animeKey ?? "all monitored anime",
                 summary);
+            if (animeKey is null)
+            {
+                await RunAniListAutoMonitorAsync(stoppingToken);
+            }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
@@ -232,6 +237,47 @@ public sealed class AnimeAcquisitionScheduler(
             }
 
             logger.LogWarning(exception, "Anime acquisition run failed.");
+        }
+    }
+
+    // P1 item 7: after every full run, auto-monitor anime on each opted-in profile's AniList
+    // Current/Planning lists that already exist locally. Best-effort: a failure here never fails
+    // the acquisition run itself and is retried on the next full run.
+    private async Task RunAniListAutoMonitorAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var settings = await scope.ServiceProvider
+                .GetRequiredService<AniListAutoMonitorSettingsStore>()
+                .LoadAsync(cancellationToken);
+            var enabledProfiles = settings.Profiles
+                .Where(pair => pair.Value.Enabled)
+                .Select(pair => pair.Key)
+                .ToArray();
+            if (enabledProfiles.Length == 0)
+            {
+                return;
+            }
+
+            var service = scope.ServiceProvider.GetRequiredService<AniListAutoMonitorService>();
+            foreach (var profileId in enabledProfiles)
+            {
+                var result = await service.RunForProfileAsync(profileId, cancellationToken);
+                if (result.NewlyMonitored > 0)
+                {
+                    logger.LogInformation(
+                        "AniList auto-monitor for profile {ProfileId}: {NewlyMonitored} anime newly monitored from {ListEntries} Current/Planning list entries.",
+                        profileId,
+                        result.NewlyMonitored,
+                        result.ListEntries);
+                }
+            }
+        }
+        catch (Exception exception) when (
+            exception is IOException or InvalidDataException or InvalidOperationException)
+        {
+            logger.LogWarning(exception, "AniList list auto-monitor pass failed; the next run retries it.");
         }
     }
 
