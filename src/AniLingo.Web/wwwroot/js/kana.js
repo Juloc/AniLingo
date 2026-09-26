@@ -45,28 +45,6 @@
         });
     });
 
-    document.querySelectorAll('[data-reveal-sentence]').forEach(function (button) {
-        button.addEventListener('click', function () {
-            const card = button.closest('.sentence-card');
-            const answer = card ? card.querySelector('.sentence-answer') : null;
-            if (!answer) return;
-            answer.hidden = false;
-            button.hidden = true;
-        });
-    });
-
-    document.querySelectorAll('.sentence-token').forEach(function (button) {
-        button.addEventListener('click', function () {
-            const card = button.closest('.sentence-card');
-            const details = card ? card.querySelector('[data-token-details]') : null;
-            if (!details) return;
-            const surface = button.getAttribute('data-token-surface') || '';
-            const reading = button.getAttribute('data-token-reading') || '';
-            const meaning = button.getAttribute('data-token-meaning') || '';
-            details.textContent = surface + (reading ? ' · ' + reading : '') + (meaning ? ' · ' + meaning : '');
-        });
-    });
-
     if (!root || entries.length === 0) return;
 
     const modeNode = root.querySelector('[data-challenge-mode]');

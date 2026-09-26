@@ -1,0 +1,126 @@
+@page "/Library/Episode/{id:guid}/segments"
+@using System.Globalization
+@using AniLingo.Web.Features.MediaSegments
+@model AniLingo.Web.Pages.Library.EpisodeSegmentsModel
+@{
+    ViewData["Title"] = $"Segments · {Model.AnimeTitle} E{Model.EpisodeNumber}";
+    var threshold = Model.SkipConfidenceThreshold.ToString("0.##", CultureInfo.InvariantCulture);
+}
+
+<header class="page-header">
+    <div>
+        <a class="back-link" href="/Library/Episode/@Model.EpisodeId">← @Model.AnimeTitle · E@(Model.EpisodeNumber.ToString("00"))</a>
+        <span class="eyebrow">S@(Model.SeasonNumber.ToString("00")) · E@(Model.EpisodeNumber.ToString("00"))</span>
+        <h1>Skip segments</h1>
+        <p>
+            Players offer a skip action only for markers with confidence of at least @threshold.
+            Manual markers always win over sidecar, provider and detected markers.
+        </p>
+    </div>
+</header>
+
+<section class="panel">
+    <div class="panel-heading">
+        <h2>Markers</h2>
+        <span>Times as m:ss, h:mm:ss or seconds, for example 1:30.5</span>
+    </div>
+
+    <div class="episode-list">
+        @foreach (var row in Model.Rows)
+        {
+            <div class="episode-row">
+                <div class="episode-main">
+                    <strong>@row.Label</strong>
+                    @if (row.Resolved is { } resolved)
+                    {
+                        <span>
+                            @MediaTimecode.Format(resolved.StartMs) – @MediaTimecode.Format(resolved.EndMs)
+                            · @MediaSegmentPolicy.SourceName(resolved.Source)
+                            (@resolved.Method @resolved.Version)
+                            · confidence @resolved.Confidence.ToString("0.##", CultureInfo.InvariantCulture)
+                        </span>
+                        <span class="status-pill @(resolved.CanSkip ? "status-ok" : "status-warn")">
+                            @(resolved.CanSkip ? "Skip offered" : "Below threshold · no skip")
+                        </span>
+                    }
+                    else
+                    {
+                        <span>No marker · no skip action</span>
+                    }
+                    @foreach (var candidate in row.Candidates.Where(x => row.Resolved is null || x.Source != row.Resolved.Source))
+                    {
+                        <small class="muted">
+                            Superseded @MediaSegmentPolicy.SourceName(candidate.Source):
+                            @MediaTimecode.Format(candidate.StartMs) – @MediaTimecode.Format(candidate.EndMs)
+                        </small>
+                    }
+                </div>
+                <form method="post"
+                      class="inline-actions"
+                      asp-page-handler="Save"
+                      asp-route-id="@Model.EpisodeId">
+                    <input type="hidden" name="kind" value="@row.Kind" />
+                    <input name="start"
+                           aria-label="@row.Label start"
+                           inputmode="decimal"
+                           autocomplete="off"
+                           placeholder="start"
+                           size="8"
+                           value="@(row.Manual is { } manualStart ? MediaTimecode.Format(manualStart.StartMs) : "")" />
+                    <input name="end"
+                           aria-label="@row.Label end"
+                           inputmode="decimal"
+                           autocomplete="off"
+                           placeholder="end"
+                           size="8"
+                           value="@(row.Manual is { } manualEnd ? MediaTimecode.Format(manualEnd.EndMs) : "")" />
+                    <button class="button" type="submit">Save</button>
+                </form>
+                @if (row.Manual is not null)
+                {
+                    <form method="post"
+                          asp-page-handler="Remove"
+                          asp-route-id="@Model.EpisodeId">
+                        <input type="hidden" name="kind" value="@row.Kind" />
+                        <button class="button" type="submit">Remove manual</button>
+                    </form>
+                }
+            </div>
+        }
+    </div>
+</section>
+
+<section class="panel">
+    <div class="panel-heading">
+        <h2>Generated navigation</h2>
+        <span>Stored in the disposable /data cache; source media is never modified</span>
+    </div>
+    <div class="inline-actions">
+        <span class="status-pill @(Model.Trickplay.IsReady ? "status-ok" : "")">
+            Seek previews: @(Model.Trickplay.State switch
+            {
+                TrickplayState.Ready => $"ready ({Model.Trickplay.Index!.ThumbnailCount} thumbnails)",
+                TrickplayState.Queued or TrickplayState.Generating => "generating",
+                TrickplayState.Failed => "failed",
+                _ => "not generated"
+            })
+        </span>
+        @if (Model.Trickplay.Message is { } trickplayMessage)
+        {
+            <small class="muted">@trickplayMessage</small>
+        }
+        <form method="post" asp-page-handler="RegeneratePreviews" asp-route-id="@Model.EpisodeId">
+            <button class="button" type="submit">Rebuild seek previews</button>
+        </form>
+        @if (Model.DetectorEnabled)
+        {
+            <form method="post" asp-page-handler="Detect" asp-route-id="@Model.EpisodeId">
+                <button class="button" type="submit">Re-run segment detection</button>
+            </form>
+        }
+        else
+        {
+            <small class="muted">Automatic detection is not configured; use manual markers or a segments.json sidecar.</small>
+        }
+    </div>
+</section>

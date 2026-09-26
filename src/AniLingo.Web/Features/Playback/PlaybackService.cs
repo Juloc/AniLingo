@@ -3,6 +3,7 @@ using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Library;
+using AniLingo.Web.Features.MediaSegments;
 using AniLingo.Web.Features.Storage;
 using AniLingo.Web.Features.Subtitles;
 using AniLingo.Web.Features.Vocabulary;
@@ -85,7 +86,8 @@ public sealed record PlaybackCueSet(
 
 public sealed record EpisodePlaybackSnapshot(
     PlaybackMedia? Media,
-    IReadOnlyList<PlaybackCue> Cues)
+    IReadOnlyList<PlaybackCue> Cues,
+    EpisodePlayerNavigation? Navigation = null)
 {
     public static EpisodePlaybackSnapshot Empty { get; } = new(null, []);
 }
@@ -242,6 +244,7 @@ public sealed class PlaybackService
     private readonly MediaInventoryService mediaInventory;
     private readonly EmbeddedSubtitleExtractor? subtitleExtractor;
     private readonly MediaAvailabilityService? mediaAvailability;
+    private readonly MediaSegmentService? segments;
     private readonly string profileId;
 
     public PlaybackService(
@@ -250,8 +253,9 @@ public sealed class PlaybackService
         MediaInventoryService mediaInventory,
         EmbeddedSubtitleExtractor subtitleExtractor,
         MediaAvailabilityService mediaAvailability,
-        CurrentAccountContext currentAccount)
-        : this(db, projector, mediaInventory, subtitleExtractor, mediaAvailability, currentAccount.ProfileId)
+        CurrentAccountContext currentAccount,
+        MediaSegmentService? segments = null)
+        : this(db, projector, mediaInventory, subtitleExtractor, mediaAvailability, currentAccount.ProfileId, segments)
     {
     }
 
@@ -259,8 +263,9 @@ public sealed class PlaybackService
     public PlaybackService(
         AppDbContext db,
         PlaybackCueProjector projector,
-        MediaInventoryService mediaInventory)
-        : this(db, projector, mediaInventory, null, null, LearningProfile.DefaultId)
+        MediaInventoryService mediaInventory,
+        MediaSegmentService? segments = null)
+        : this(db, projector, mediaInventory, null, null, LearningProfile.DefaultId, segments)
     {
     }
 
@@ -270,7 +275,8 @@ public sealed class PlaybackService
         MediaInventoryService mediaInventory,
         EmbeddedSubtitleExtractor? subtitleExtractor,
         MediaAvailabilityService? mediaAvailability,
-        string profileId)
+        string profileId,
+        MediaSegmentService? segments)
     {
         this.db = db;
         this.projector = projector;
@@ -278,6 +284,7 @@ public sealed class PlaybackService
         this.subtitleExtractor = subtitleExtractor;
         this.mediaAvailability = mediaAvailability;
         this.profileId = profileId;
+        this.segments = segments;
     }
 
     public async Task<PlaybackMedia?> GetMediaAsync(
@@ -684,8 +691,11 @@ public sealed class PlaybackService
             fromMs: null,
             toMs: null,
             cancellationToken);
+        var navigation = segments is null
+            ? null
+            : await segments.GetPlayerNavigationAsync(episodeId, media, cancellationToken);
 
-        return new EpisodePlaybackSnapshot(media, cueSet.Cues);
+        return new EpisodePlaybackSnapshot(media, cueSet.Cues, navigation);
     }
 
     public async Task<PlaybackCueSet> GetCueSetAsync(

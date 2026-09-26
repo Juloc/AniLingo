@@ -11,8 +11,10 @@ using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Books;
 using AniLingo.Web.Features.ClientApi;
 using AniLingo.Web.Features.Learning;
+using AniLingo.Web.Features.Learning.LanguageAssistance;
 using AniLingo.Web.Features.Library;
 using AniLingo.Web.Features.MediaMapping;
+using AniLingo.Web.Features.MediaSegments;
 using AniLingo.Web.Features.Metadata;
 using AniLingo.Web.Features.Novels;
 using AniLingo.Web.Features.Operations;
@@ -204,12 +206,19 @@ builder.Services.AddSingleton<JapaneseTermExtractor>();
 builder.Services.AddSingleton<JapaneseDictionary>();
 builder.Services.AddSingleton<IReviewScheduler, FsrsReviewScheduler>();
 builder.Services.AddScoped<LearningService>();
+builder.Services.AddSingleton<LanguageTextAnalyzer>();
+builder.Services.AddScoped<LanguageInspectorService>();
 builder.Services.AddScoped<EpisodePreparationService>();
 builder.Services.AddScoped<LearningStatisticsService>();
 builder.Services.AddSingleton<PlaybackCueProjector>();
 builder.Services.AddSingleton<PlaybackPreparationTracker>();
 builder.Services.AddScoped<PlaybackPreparationService>();
 builder.Services.AddScoped<PlaybackService>();
+builder.Services.Configure<MediaSegmentOptions>(builder.Configuration.GetSection(MediaSegmentOptions.SectionName));
+builder.Services.AddSingleton<IMediaSegmentDetector, NoOpMediaSegmentDetector>();
+builder.Services.AddSingleton<TrickplayGenerator>();
+builder.Services.AddScoped<MediaSegmentService>();
+builder.Services.AddScoped<MediaSegmentSidecarImporter>();
 builder.Services.AddScoped<EpisodeProgressService>();
 builder.Services.AddScoped<ClientApiService>();
 builder.Services.AddScoped<ClientApiOfflineService>();
@@ -359,6 +368,7 @@ app.MapClientApiOfflineV1();
 app.MapHub<PlaybackSessionHub>(PlaybackSessionHub.Route)
     .AllowAnonymous();
 app.MapReaderThemeCatalog();
+app.MapLanguageInspector();
 app.MapRazorPages();
 
 try
