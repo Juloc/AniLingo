@@ -210,6 +210,8 @@ builder.Services.AddScoped<PlaybackPreparationService>();
 builder.Services.AddScoped<PlaybackService>();
 builder.Services.AddScoped<EpisodeProgressService>();
 builder.Services.AddScoped<ClientApiService>();
+builder.Services.AddScoped<ClientApiOfflineService>();
+builder.Services.AddScoped<OfflineProgressReconciler>();
 builder.Services.AddSingleton<ReaderThemeCatalog>();
 
 builder.Services.AddHttpClient<AniListMetadataProvider>(client =>
@@ -342,6 +344,7 @@ app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapClientApiV1();
+app.MapClientApiOfflineV1();
 app.MapHub<PlaybackSessionHub>(PlaybackSessionHub.Route)
     .AllowAnonymous();
 app.MapReaderThemeCatalog();
