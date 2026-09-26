@@ -1,6 +1,7 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Learning;
+using AniLingo.Web.Features.Localization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
@@ -10,6 +11,8 @@ public sealed class LearningScopeModel(
     AppDbContext db,
     CurrentAccountContext currentAccount) : PageModel
 {
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
+
     [BindProperty(SupportsGet = true)]
     public LearningMediaType MediaType { get; set; }
 
@@ -49,13 +52,15 @@ public sealed class LearningScopeModel(
     public string DisplayLabel =>
         string.IsNullOrWhiteSpace(Label)
             ? Scope.Equals("content", StringComparison.OrdinalIgnoreCase)
-                ? "This item"
-                : $"This {MediaType.ToString().ToLowerInvariant()}"
+                ? Ui["settings.learningScope.thisItem"]
+                : Ui.Format("settings.learningScope.thisMediaType", ("mediaType", MediaType.ToString().ToLowerInvariant()))
             : Label.Trim();
 
     public async Task<IActionResult> OnGetAsync(
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         if (!TryBuildScopeReference(
                 MediaType,
                 Scope,
@@ -83,6 +88,8 @@ public sealed class LearningScopeModel(
     public async Task<IActionResult> OnPostAsync(
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         if (!TryBuildScopeReference(
                 MediaType,
                 Scope,
@@ -111,7 +118,7 @@ public sealed class LearningScopeModel(
                 cancellationToken);
         }
 
-        TempData["Status"] = $"Learning settings saved for {DisplayLabel}.";
+        TempData["Status"] = Ui.Format("settings.learningScope.saved", ("label", DisplayLabel));
 
         if (!string.IsNullOrWhiteSpace(ReturnUrl)
             && Url.IsLocalUrl(ReturnUrl))
@@ -131,23 +138,33 @@ public sealed class LearningScopeModel(
             });
     }
 
+    public string ModeName(LearningMode mode) =>
+        mode switch
+        {
+            LearningMode.Off => Ui["settings.learning.mode.off"],
+            LearningMode.LanguageTools => Ui["settings.learning.mode.languageTools"],
+            LearningMode.Study => Ui["settings.learning.mode.study"],
+            LearningMode.Custom => Ui["settings.learning.mode.custom"],
+            _ => mode.ToString()
+        };
+
     public string CapabilityLabel(LearningCapability capability) =>
         capability switch
         {
-            LearningCapability.LanguageLookup => "Word lookup",
-            LearningCapability.ReadingAids => "Reading aids",
-            LearningCapability.Translation => "Translation",
-            LearningCapability.AiExplanations => "AI explanations",
-            LearningCapability.Vocabulary => "Vocabulary",
-            LearningCapability.Reviews => "Spaced repetition",
-            LearningCapability.SentencePractice => "Sentence practice",
-            LearningCapability.ScriptTrainer => "Writing-system trainer",
-            LearningCapability.Progress => "Learning progress",
-            LearningCapability.HomeWidget => "Home learning widget",
-            LearningCapability.ContentMetrics => "Learning metrics",
-            LearningCapability.PreparationSuggestions => "Pre-study suggestions",
-            LearningCapability.PlayerTools => "Player language tools",
-            LearningCapability.ReaderTools => "Reader language tools",
+            LearningCapability.LanguageLookup => Ui["settings.learning.capability.languageLookup.label"],
+            LearningCapability.ReadingAids => Ui["settings.learning.capability.readingAids.label"],
+            LearningCapability.Translation => Ui["settings.learning.capability.translation.label"],
+            LearningCapability.AiExplanations => Ui["settings.learning.capability.aiExplanations.label"],
+            LearningCapability.Vocabulary => Ui["settings.learning.capability.vocabulary.label"],
+            LearningCapability.Reviews => Ui["settings.learning.capability.reviews.label"],
+            LearningCapability.SentencePractice => Ui["settings.learning.capability.sentencePractice.label"],
+            LearningCapability.ScriptTrainer => Ui["settings.learning.capability.scriptTrainer.label"],
+            LearningCapability.Progress => Ui["settings.learning.capability.progress.label"],
+            LearningCapability.HomeWidget => Ui["settings.learning.capability.homeWidget.label"],
+            LearningCapability.ContentMetrics => Ui["settings.learningScope.capability.contentMetrics.label"],
+            LearningCapability.PreparationSuggestions => Ui["settings.learning.capability.preparationSuggestions.label"],
+            LearningCapability.PlayerTools => Ui["settings.learning.capability.playerTools.label"],
+            LearningCapability.ReaderTools => Ui["settings.learning.capability.readerTools.label"],
             _ => capability.ToString()
         };
 
@@ -155,33 +172,33 @@ public sealed class LearningScopeModel(
         capability switch
         {
             LearningCapability.LanguageLookup =>
-                "Look up words without automatically adding them to reviews.",
+                Ui["settings.learningScope.capability.languageLookup.description"],
             LearningCapability.ReadingAids =>
-                "Readings, transliteration and script help when supported.",
+                Ui["settings.learningScope.capability.readingAids.description"],
             LearningCapability.Translation =>
-                "Offer translations for selected text or subtitles.",
+                Ui["settings.learningScope.capability.translation.description"],
             LearningCapability.AiExplanations =>
-                "Optional contextual grammar/meaning explanations.",
+                Ui["settings.learningScope.capability.aiExplanations.description"],
             LearningCapability.Vocabulary =>
-                "Allow saving and managing vocabulary.",
+                Ui["settings.learningScope.capability.vocabulary.description"],
             LearningCapability.Reviews =>
-                "Allow active spaced-repetition cards for this scope.",
+                Ui["settings.learningScope.capability.reviews.description"],
             LearningCapability.SentencePractice =>
-                "Use sentences from this content in practice.",
+                Ui["settings.learningScope.capability.sentencePractice.description"],
             LearningCapability.ScriptTrainer =>
-                "Enable writing-system practice when the language supports it.",
+                Ui["settings.learningScope.capability.scriptTrainer.description"],
             LearningCapability.Progress =>
-                "Include this scope in Learning progress.",
+                Ui["settings.learningScope.capability.progress.description"],
             LearningCapability.HomeWidget =>
-                "Allow this scope to contribute to the optional Home Learning widget.",
+                Ui["settings.learningScope.capability.homeWidget.description"],
             LearningCapability.ContentMetrics =>
-                "Show known/prepared metrics on content pages.",
+                Ui["settings.learningScope.capability.contentMetrics.description"],
             LearningCapability.PreparationSuggestions =>
-                "Suggest preparing vocabulary before consuming this content.",
+                Ui["settings.learningScope.capability.preparationSuggestions.description"],
             LearningCapability.PlayerTools =>
-                "Show compact language tools in the media player.",
+                Ui["settings.learningScope.capability.playerTools.description"],
             LearningCapability.ReaderTools =>
-                "Show compact language tools in the reader.",
+                Ui["settings.learningScope.capability.readerTools.description"],
             _ => string.Empty
         };
 
