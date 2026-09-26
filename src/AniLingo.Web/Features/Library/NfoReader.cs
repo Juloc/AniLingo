@@ -20,6 +20,10 @@ public sealed record NfoShowMetadata(
     DateOnly? Premiered,
     NfoProviderIds ProviderIds);
 
+// Kodi/Jellyfin season.nfo carries only provider IDs for AniLingo's purposes today (for example
+// the AniList ID a Jellyfin AniList plugin writes per season); title/plot are not consumed.
+public sealed record NfoSeasonMetadata(NfoProviderIds ProviderIds);
+
 public sealed record NfoEpisodeMetadata(
     string? Title,
     string? Plot,
@@ -48,6 +52,7 @@ public static partial class NfoReader
     public const int MaxTitleLength = 300;
 
     private const string ShowElement = "tvshow";
+    private const string SeasonElement = "season";
     private const string EpisodeElement = "episodedetails";
 
     private static readonly XmlReaderSettings ReaderSettings = new()
@@ -73,6 +78,28 @@ public static partial class NfoReader
 
     public static NfoReadResult<IReadOnlyList<NfoEpisodeMetadata>> ReadEpisodes(string path) =>
         Read(path, ParseEpisodes);
+
+    public static NfoReadResult<NfoSeasonMetadata> ReadSeason(string path) =>
+        Read(path, ParseSeason);
+
+    public static NfoReadResult<NfoSeasonMetadata> ParseSeason(Stream stream)
+    {
+        if (!TryReadRootElements(stream, out var roots, out var warning))
+        {
+            return NfoReadResult<NfoSeasonMetadata>.Rejected(warning);
+        }
+
+        var season = roots.FirstOrDefault(x => IsNamed(x, SeasonElement));
+        if (season is null)
+        {
+            return NfoReadResult<NfoSeasonMetadata>.Rejected(
+                $"NFO has no <{SeasonElement}> element.");
+        }
+
+        return new NfoReadResult<NfoSeasonMetadata>(
+            new NfoSeasonMetadata(ReadProviderIds(season)),
+            null);
+    }
 
     public static NfoReadResult<NfoShowMetadata> ParseShow(Stream stream)
     {

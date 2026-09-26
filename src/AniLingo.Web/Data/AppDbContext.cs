@@ -24,6 +24,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<MediaAnalysis> MediaAnalyses => Set<MediaAnalysis>();
     public DbSet<MediaAnalysisStream> MediaAnalysisStreams => Set<MediaAnalysisStream>();
     public DbSet<AnimeMetadata> AnimeMetadata => Set<AnimeMetadata>();
+    public DbSet<AnimeLocalMetadata> AnimeLocalMetadata => Set<AnimeLocalMetadata>();
     public DbSet<SubtitleTrack> SubtitleTracks => Set<SubtitleTrack>();
     public DbSet<SubtitleCue> SubtitleCues => Set<SubtitleCue>();
     public DbSet<Term> Terms => Set<Term>();
@@ -101,6 +102,18 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasOne<Anime>().WithOne().HasForeignKey<AnimeMetadata>(x => x.AnimeId).OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(x => x.AnimeId).IsUnique();
             entity.HasIndex(x => new { x.Provider, x.ExternalId }).IsUnique();
+        });
+
+        modelBuilder.Entity<AnimeLocalMetadata>(entity =>
+        {
+            entity.HasKey(x => x.AnimeId);
+            entity.Property(x => x.Source).HasMaxLength(20);
+            entity.Property(x => x.OriginalTitle).HasMaxLength(NfoReader.MaxTitleLength);
+            entity.Property(x => x.MyAnimeListId).HasMaxLength(10);
+            entity.Property(x => x.TvdbId).HasMaxLength(10);
+            entity.Property(x => x.TmdbId).HasMaxLength(10);
+            entity.Property(x => x.ImdbId).HasMaxLength(12);
+            entity.HasOne<Anime>().WithOne().HasForeignKey<AnimeLocalMetadata>(x => x.AnimeId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<Episode>(entity =>
