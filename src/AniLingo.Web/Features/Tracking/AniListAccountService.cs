@@ -410,6 +410,12 @@ public sealed partial class AniListAccountService(
         }
 
         var viewer = await FetchViewerAsync(token, cancellationToken);
+        // Refreshing the token of the same AniList user keeps the automatic
+        // sync setting; connecting a different AniList user starts at Off.
+        var previous = await store.LoadAsync(
+            currentAccount.ProfileId,
+            cancellationToken);
+        var keepSync = previous?.ViewerId == viewer.Id;
         var account = new StoredAniListAccount(
             clientId,
             viewer.Id,
@@ -417,7 +423,9 @@ public sealed partial class AniListAccountService(
             viewer.AvatarUrl,
             token,
             DateTimeOffset.UtcNow,
-            TryReadTokenExpiry(token));
+            TryReadTokenExpiry(token),
+            keepSync ? previous!.SyncMode : AniListSyncMode.Off,
+            keepSync ? previous!.SyncEnabledAt : null);
 
         await store.SaveAsync(
             currentAccount.ProfileId,
