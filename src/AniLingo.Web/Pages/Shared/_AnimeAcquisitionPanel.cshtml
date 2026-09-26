@@ -1,0 +1,87 @@
+@model Guid
+@using AniLingo.Web.Features.Acquisition.Ownership
+@using AniLingo.Web.Features.Acquisition.Pipeline
+@inject AnimeAcquisitionPipeline AcquisitionPipeline
+@*
+    Owner block for one anime: management mode, monitoring, quality profile and the search
+    actions. Forms post to the acquisition overview, which redirects back here.
+*@
+@{
+    var panel = await AcquisitionPipeline.GetAnimePanelAsync(Model, Context.RequestAborted);
+    var returnUrl = $"{Context.Request.Path}{Context.Request.QueryString}#acquisition";
+}
+@if (panel is not null)
+{
+    <link rel="stylesheet" href="~/css/acquisition.css" asp-append-version="true" />
+    <section class="panel metadata-panel" id="acquisition">
+        <div class="panel-heading">
+            <h2>Acquisition</h2>
+            <span class="status-pill @(panel.CanAcquire ? "status-ok" : "status-warn")">@SonarrMigration.Describe(panel.Mode)</span>
+        </div>
+
+        <div class="acquisition-owner-facts">
+            <span>@(panel.Monitored ? $"{panel.WantedCount} wanted" : "Not monitored")</span>
+            <span>@panel.ActiveDownloads active download(s)</span>
+            @if (!panel.ProwlarrConfigured)
+            {
+                <a asp-page="/Settings/Prowlarr">Prowlarr is not configured</a>
+            }
+            @if (!panel.CanAcquire)
+            {
+                <a asp-page="/Settings/SonarrMigration" asp-route-q="@panel.AnimeKey">Sonarr manages this anime; change the mode to acquire</a>
+            }
+            @if (panel.LastEvent is { } lastEvent)
+            {
+                <span>Last: @lastEvent</span>
+            }
+        </div>
+
+        <form method="post"
+              asp-page="/Acquisition/Index"
+              asp-page-handler="AnimeSettings"
+              class="acquisition-inline-form">
+            <input type="hidden" name="animeId" value="@panel.AnimeId" />
+            <input type="hidden" name="returnUrl" value="@returnUrl" />
+            <label class="acquisition-check">
+                <input type="checkbox" name="monitored" value="true" checked="@panel.Monitored" />
+                <span>Monitored</span>
+            </label>
+            <label class="acquisition-check">
+                <input type="checkbox" name="searchOnAdd" value="true" checked="@(panel.Settings?.SearchOnAdd ?? true)" />
+                <span>Search when monitoring starts</span>
+            </label>
+            <label>
+                <span>Quality profile</span>
+                <select name="profileId">
+                    @foreach (var profile in panel.Profiles)
+                    {
+                        <option value="@profile.Id" selected="@(profile.Id.Equals(panel.ProfileId, StringComparison.OrdinalIgnoreCase))">@profile.Name</option>
+                    }
+                </select>
+            </label>
+            <label>
+                <span>Prowlarr indexer IDs</span>
+                <input type="text"
+                       name="indexerIds"
+                       inputmode="numeric"
+                       placeholder="All"
+                       value="@(panel.Settings?.IndexerIds is { Length: > 0 } ids ? string.Join(", ", ids) : "")" />
+            </label>
+            <button class="button" type="submit">Save</button>
+        </form>
+
+        <div class="inline-actions acquisition-owner-actions">
+            <form method="post" asp-page="/Acquisition/Index" asp-page-handler="SearchAnime">
+                <input type="hidden" name="animeKey" value="@panel.AnimeKey" />
+                <input type="hidden" name="returnUrl" value="@returnUrl" />
+                <button class="button" type="submit" disabled="@(!panel.Monitored || !panel.CanAcquire || !panel.ProwlarrConfigured)">Search wanted now</button>
+            </form>
+            <a class="button"
+               asp-page="/Acquisition/Index"
+               asp-route-search="@panel.AnimeKey"
+               asp-route-mode="Anime"
+               asp-fragment="search-results">Interactive search</a>
+            <a asp-page="/Acquisition/Index">Acquisition overview</a>
+        </div>
+    </section>
+}
