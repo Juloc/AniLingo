@@ -1,4 +1,9 @@
 using AniLingo.Web.Data;
+using AniLingo.Web.Features.Acquisition.Import;
+using AniLingo.Web.Features.Acquisition.Monitoring;
+using AniLingo.Web.Features.Acquisition.Pipeline;
+using AniLingo.Web.Features.Acquisition.Prowlarr;
+using AniLingo.Web.Features.Acquisition.Quality;
 using AniLingo.Web.Features.Acquisition.Sabnzbd;
 using AniLingo.Web.Features.Admin;
 using AniLingo.Web.Features.Ai;
@@ -205,6 +210,8 @@ builder.Services.AddScoped<PlaybackPreparationService>();
 builder.Services.AddScoped<PlaybackService>();
 builder.Services.AddScoped<EpisodeProgressService>();
 builder.Services.AddScoped<ClientApiService>();
+builder.Services.AddScoped<ClientApiOfflineService>();
+builder.Services.AddScoped<OfflineProgressReconciler>();
 builder.Services.AddSingleton<ReaderThemeCatalog>();
 
 builder.Services.AddHttpClient<AniListMetadataProvider>(client =>
@@ -262,6 +269,21 @@ builder.Services.AddHttpClient<ISabnzbdClient, SabnzbdClient>(client =>
 builder.Services.AddScoped<SabnzbdDownloadService>();
 builder.Services.AddScoped<SabnzbdAcquisitionService>();
 builder.Services.AddHostedService<SabnzbdOperationMonitorService>();
+
+builder.Services.AddSingleton<ProwlarrSettingsStore>();
+builder.Services.AddHttpClient<IProwlarrClient, ProwlarrClient>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(60);
+});
+builder.Services.AddScoped<ProwlarrAnimeSearchService>();
+builder.Services.AddSingleton<AnimeQualityProfileStore>();
+builder.Services.AddSingleton(_ => new AnimeMonitoringStore("/data"));
+builder.Services.AddSingleton<AnimeImportStore>();
+builder.Services.AddScoped<AnimeAcquisitionInventory>();
+builder.Services.AddScoped<AnimeAcquisitionPipeline>();
+builder.Services.AddScoped<AnimeImportExecutor>();
+builder.Services.AddSingleton<AnimeAcquisitionScheduler>();
+builder.Services.AddHostedService(services => services.GetRequiredService<AnimeAcquisitionScheduler>());
 
 builder.Services.AddSingleton<SonarrConnectionStore>();
 builder.Services.AddScoped<SonarrArtworkImportService>();
@@ -324,6 +346,7 @@ app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapClientApiV1();
+app.MapClientApiOfflineV1();
 app.MapHub<PlaybackSessionHub>(PlaybackSessionHub.Route)
     .AllowAnonymous();
 app.MapReaderThemeCatalog();

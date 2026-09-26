@@ -26,6 +26,7 @@ fun AniLingoWebShell(
     onWebViewChanged: (WebView?) -> Unit,
     onEpisodeRequested: (String) -> Unit,
     onSecurityError: (String) -> Unit,
+    onPageLoaded: () -> Unit = {},
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val webSession = remember(origin.value) { WebSession(origin) }
@@ -110,6 +111,7 @@ fun AniLingoWebShell(
                     url: String,
                 ) {
                     CookieManagerCompat.flush()
+                    onPageLoaded()
                 }
 
                 override fun onReceivedSslError(
