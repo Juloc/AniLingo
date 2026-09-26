@@ -26,7 +26,7 @@
     <button class="button" type="submit">Filter</button>
 </form>
 
-<section class="panel">
+<section class="panel" data-scan-history>
     @if (Model.Scans.Count == 0)
     {
         <p class="muted">No library scans have been recorded yet.</p>
@@ -37,7 +37,7 @@
             @foreach (var row in Model.Scans)
             {
                 var operation = row.Operation;
-                <div class="operation-row operation-row-detailed">
+                <div class="operation-row operation-row-detailed" data-scan-active="@(operation.IsActive ? "true" : null)">
                     <div class="operation-copy">
                         <div class="operation-title-line">
                             <strong>@row.RootName</strong>
@@ -104,3 +104,7 @@
         </div>
     }
 </section>
+
+@section Scripts {
+    <script src="~/js/library-scans.js" asp-append-version="true"></script>
+}

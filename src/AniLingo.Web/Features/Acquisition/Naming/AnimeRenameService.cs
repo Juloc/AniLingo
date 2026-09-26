@@ -29,7 +29,7 @@ public sealed class AnimeRenameService(
 {
     public const string OperationKind = "anime-rename";
     private const string LogModule = "Rename";
-    private static readonly string[] ConflictingOperationKinds = ["library-scan", "startup-library-scan", OperationKind];
+    private static readonly string[] ConflictingOperationKinds = [LibraryScanCoordinator.OperationKind, OperationKind];
     private static readonly string[] SidecarDirectoryNames = ["Subs", "Subtitles"];
 
     public async Task<AnimeRenamePlan?> PlanAsync(

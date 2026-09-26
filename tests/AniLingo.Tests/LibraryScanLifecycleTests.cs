@@ -1,4 +1,5 @@
 using AniLingo.Web.Data;
+using AniLingo.Web.Features.Acquisition.Naming;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Library;
 using AniLingo.Web.Features.Operations;
@@ -240,6 +241,58 @@ public sealed class LibraryScanLifecycleTests
         var next = await host.Scans.QueueAsync(new LibraryScanRequest(root.Id, LibraryScanTrigger.Watch, "Frieren"));
         Assert.AreEqual(LibraryScanQueueOutcome.Queued, next.Outcome);
         watcher.Dispose();
+    }
+
+    [TestMethod]
+    public async Task ScanWaitsForARunningRenameBeforeTouchingTheLibrary()
+    {
+        await using var host = await LibraryScanTestHost.CreateAsync();
+        var root = await host.AddRootAsync("Anime");
+        host.WriteMedia(Path.Combine("Frieren", "Season 01", "Frieren - S01E01.mkv"));
+
+        // The rename belongs to the current process, so lane recovery leaves it running.
+        await host.StartWorkerAsync();
+        Guid renameId;
+        await using (var scope = host.Services.CreateAsyncScope())
+        {
+            var store = new OperationStore(scope.ServiceProvider.GetRequiredService<AppDbContext>());
+            renameId = await store.CreateAsync(new OperationDescriptor(
+                AnimeRenameService.OperationKind,
+                LibraryScanCoordinator.OperationCategory,
+                "Rename files: Frieren",
+                Retryable: false));
+            await store.MarkRunningAsync(renameId);
+        }
+
+        var queued = await host.Scans.QueueAsync(new LibraryScanRequest(root.Id, LibraryScanTrigger.Manual));
+        var waiting = await host.WaitForAsync(
+            queued.OperationId!.Value,
+            x => x.Message == "Waiting for a file rename to finish.");
+        Assert.AreEqual(OperationStatus.Running, waiting.Status);
+
+        await using (var scope = host.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            Assert.AreEqual(0, await db.MediaFiles.CountAsync(), "Nothing is reconciled while the rename runs.");
+            await new OperationStore(db).MarkSucceededAsync(renameId);
+        }
+
+        var done = await host.WaitForAsync(queued.OperationId.Value, x => x.Status == OperationStatus.Succeeded);
+        Assert.AreEqual(1, LibraryScanDetails.TryParse(done.Details)!.Counters!.Discovered);
+    }
+
+    [TestMethod]
+    public async Task CancelledQueuedRunNoLongerBlocksTheRoot()
+    {
+        await using var host = await LibraryScanTestHost.CreateAsync();
+        var root = await host.AddRootAsync("Anime");
+
+        var queued = await host.Scans.QueueAsync(new LibraryScanRequest(root.Id, LibraryScanTrigger.Manual));
+        Assert.IsTrue(await host.Queue.CancelAsync(queued.OperationId!.Value));
+
+        var next = await host.Scans.QueueAsync(new LibraryScanRequest(root.Id, LibraryScanTrigger.Manual));
+        Assert.AreEqual(LibraryScanQueueOutcome.Queued, next.Outcome);
+        Assert.AreNotEqual(queued.OperationId, next.OperationId);
     }
 
     private static async Task WaitUntilReleasedAsync(LibraryScanTestHost host, Guid rootId)

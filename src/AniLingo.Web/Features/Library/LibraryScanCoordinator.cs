@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using AniLingo.Web.Data;
+using AniLingo.Web.Features.Acquisition.Naming;
 using AniLingo.Web.Features.Operations;
 using AniLingo.Web.Features.Storage;
 using AniLingo.Web.Features.Subtitles;
@@ -126,6 +127,7 @@ public sealed class LibraryScanCoordinator(
     public const string OperationCategory = "Library";
     public const int HistoryLimit = 200;
     private static readonly TimeSpan ProgressWriteInterval = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan RenameWaitInterval = TimeSpan.FromSeconds(1);
 
     private readonly object gate = new();
     private readonly Dictionary<Guid, Reservation> active = new();
@@ -185,6 +187,8 @@ public sealed class LibraryScanCoordinator(
                     "Library scan was not started because media storage is not currently readable.");
             }
         }
+
+        await DropAbandonedReservationAsync(request.RootId, db, cancellationToken);
 
         Reservation reservation;
         var created = false;
@@ -276,6 +280,43 @@ public sealed class LibraryScanCoordinator(
         }
 
         return first;
+    }
+
+    // A queued run that was cancelled (or otherwise finished) before it started never reaches
+    // ExecuteAsync, so its reservation is dropped here instead of blocking the root forever.
+    private async Task DropAbandonedReservationAsync(
+        Guid rootId,
+        AppDbContext db,
+        CancellationToken cancellationToken)
+    {
+        Guid operationId;
+        lock (gate)
+        {
+            if (!active.TryGetValue(rootId, out var existing) ||
+                existing.Started ||
+                existing.OperationId == Guid.Empty)
+            {
+                return;
+            }
+
+            operationId = existing.OperationId;
+        }
+
+        var operation = await new OperationStore(db).GetAsync(operationId, cancellationToken);
+        if (operation is { IsActive: true })
+        {
+            return;
+        }
+
+        lock (gate)
+        {
+            if (active.TryGetValue(rootId, out var existing) &&
+                !existing.Started &&
+                existing.OperationId == operationId)
+            {
+                active.Remove(rootId);
+            }
+        }
     }
 
     private async Task<LibraryScanQueueResult> CreateRunAsync(
@@ -427,6 +468,8 @@ public sealed class LibraryScanCoordinator(
                 0,
                 null));
 
+        await WaitForRenamesAsync(store, operation.OperationId, cancellationToken);
+
         ScanResult result;
         try
         {
@@ -522,6 +565,42 @@ public sealed class LibraryScanCoordinator(
         }
 
         await store.PruneFinishedAsync(OperationKind, HistoryLimit, CancellationToken.None);
+    }
+
+    // A rename moves files and rewrites their MediaFiles rows as one step; a scan that saw half
+    // of it would treat the moved files as removed and re-added. The rename refuses to start
+    // beside a queued or running scan, and a scan waits here for a rename that already runs.
+    private static async Task WaitForRenamesAsync(
+        OperationStore store,
+        Guid operationId,
+        CancellationToken cancellationToken)
+    {
+        var reported = false;
+        while (true)
+        {
+            var renames = await store.ListAsync(
+                new OperationListFilter(
+                    View: "active",
+                    Category: OperationCategory,
+                    Kind: AnimeRenameService.OperationKind),
+                cancellationToken);
+            if (renames.Count == 0)
+            {
+                return;
+            }
+
+            if (!reported)
+            {
+                await store.ReportProgressAsync(
+                    operationId,
+                    0,
+                    "Waiting for a file rename to finish.",
+                    cancellationToken: cancellationToken);
+                reported = true;
+            }
+
+            await Task.Delay(RenameWaitInterval, cancellationToken);
+        }
     }
 
     public static string Summarize(LibraryScanCounters counters) =>
