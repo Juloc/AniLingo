@@ -222,6 +222,39 @@ public sealed class AcquisitionImportPolicyTests
     }
 
     [TestMethod]
+    public async Task ANonOverlappingIndexerRestrictionSearchesNoIndexersInsteadOfFallingBackToUnrestricted()
+    {
+        await using var environment = await AnimeAcquisitionEnvironment.CreateAsync();
+        await environment.SeedFrierenAsync();
+        await environment.Scheduler.RunExclusiveAsync(
+            (pipeline, token) => pipeline.UpdateAnimeSettingsAsync(environment.AnimeId, true, false, null, [1, 2, 3], token, tagIds: ["fast-track"]),
+            CancellationToken.None);
+        await environment.Policy.UpdateAsync(state => state with
+        {
+            Tags = [new AcquisitionTag("fast-track", "Fast track")],
+            IndexerRestrictions = [new AnimeIndexerRestriction("r1", "Trusted only", ["fast-track"], [7, 8])]
+        });
+        // A release exists and would otherwise be grabbed; it must never be found because the
+        // restriction leaves no indexer to search at all.
+        environment.Prowlarr.Releases.Add(AnimeAcquisitionEnvironment.Release(Best, "g1080"));
+
+        var run = await environment.Scheduler.RunNowAsync(null, AnimeSearchTrigger.PeriodicMissing, CancellationToken.None);
+
+        Assert.AreEqual(0, run.Grabs);
+        Assert.AreEqual(0, environment.Prowlarr.Queries.Count, "No indexers were searched at all; Prowlarr is never called with the anime's unrestricted selection.");
+        Assert.AreEqual(0, environment.Sabnzbd.Grabs.Count);
+
+        var monitoring = await environment.MonitoringStateAsync();
+        Assert.IsFalse(monitoring.Attempts.ContainsKey("frieren:S01E02"), "A restriction leaving no indexer is not the exponential search-failure backoff.");
+
+        var history = await environment.HistoryForAnimeAsync(environment.AnimeId);
+        var skipped = history.Single(entry => entry.EventKind == AcquisitionHistoryEventKind.Skipped);
+        StringAssert.Contains(skipped.Reason, "Trusted only");
+        StringAssert.Contains(skipped.Reason, "no indexer");
+        Assert.IsNull(skipped.ReleaseTitle);
+    }
+
+    [TestMethod]
     public async Task GrabAndImportAreRecordedInTheAcquisitionHistory()
     {
         await using var environment = await AnimeAcquisitionEnvironment.CreateAsync();

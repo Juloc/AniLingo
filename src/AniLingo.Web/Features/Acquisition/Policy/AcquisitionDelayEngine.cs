@@ -101,12 +101,7 @@ public static class AcquisitionDelayEngine
         IReadOnlyList<AnimeIndexerRestriction> restrictions,
         IReadOnlyCollection<string>? tagIds)
     {
-        ArgumentNullException.ThrowIfNull(restrictions);
-        var tags = new HashSet<string>(tagIds ?? [], StringComparer.OrdinalIgnoreCase);
-
-        var applicable = restrictions
-            .Where(restriction => restriction.TagIds.Length > 0 && restriction.TagIds.Any(tags.Contains))
-            .ToArray();
+        var applicable = ApplicableIndexerRestrictions(restrictions, tagIds);
         if (applicable.Length == 0)
         {
             return null;
@@ -119,5 +114,23 @@ public static class AcquisitionDelayEngine
         }
 
         return allowed.Distinct().Order().ToArray();
+    }
+
+    /// <summary>The names of the tag-scoped indexer restrictions that apply to this anime's tags,
+    /// for a clear "why" message when the intersection with the anime's own selection is empty.</summary>
+    public static string[] ApplicableIndexerRestrictionNames(
+        IReadOnlyList<AnimeIndexerRestriction> restrictions,
+        IReadOnlyCollection<string>? tagIds) =>
+        ApplicableIndexerRestrictions(restrictions, tagIds).Select(restriction => restriction.Name).ToArray();
+
+    private static AnimeIndexerRestriction[] ApplicableIndexerRestrictions(
+        IReadOnlyList<AnimeIndexerRestriction> restrictions,
+        IReadOnlyCollection<string>? tagIds)
+    {
+        ArgumentNullException.ThrowIfNull(restrictions);
+        var tags = new HashSet<string>(tagIds ?? [], StringComparer.OrdinalIgnoreCase);
+        return restrictions
+            .Where(restriction => restriction.TagIds.Length > 0 && restriction.TagIds.Any(tags.Contains))
+            .ToArray();
     }
 }

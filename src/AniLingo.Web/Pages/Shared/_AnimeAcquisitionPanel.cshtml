@@ -123,7 +123,15 @@
                 {
                     <li>
                         @entry.OccurredAtUtc.ToLocalTime().ToString("g") · S@(entry.SeasonNumber.ToString("00"))E@(entry.EpisodeNumber.ToString("00")) ·
-                        @entry.EventKind · @entry.ReleaseTitle (@entry.QualityKey, score @entry.Score)
+                        @entry.EventKind ·
+                        @if (entry.ReleaseTitle is { } releaseTitle)
+                        {
+                            @releaseTitle <text> (@entry.QualityKey, score @entry.Score)</text>
+                        }
+                        else
+                        {
+                            @entry.Reason
+                        }
                     </li>
                 }
             </ul>

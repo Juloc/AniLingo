@@ -242,7 +242,13 @@ public sealed class AnimeAcquisitionPipeline(
         try
         {
             var policy = await policyStore.LoadAsync(cancellationToken);
-            var result = await prowlarr.SearchAsync(ConnectionFor(connection, state, animeKey, policy), searchTarget, cancellationToken);
+            var (restrictedConnection, blockedReason) = ConnectionFor(connection, state, animeKey, policy);
+            if (blockedReason is not null)
+            {
+                return new(target, episode?.Key, mode, [], [], blockedReason);
+            }
+
+            var result = await prowlarr.SearchAsync(restrictedConnection!, searchTarget, cancellationToken);
             var snapshot = await observation.GetSnapshotAsync(forceRefresh: false, cancellationToken);
             var candidates = Evaluate(target, scope, wanted, episode?.Key, result.Releases, state, snapshot, policy, now);
             return new(target, episode?.Key, mode, candidates, result.Warnings, null);
@@ -815,8 +821,34 @@ public sealed class AnimeAcquisitionPipeline(
 
         try
         {
+            var (restrictedConnection, blockedReason) = ConnectionFor(connection, state, target.Anime.Key, policy);
+            if (blockedReason is not null)
+            {
+                // A tag-scoped indexer restriction leaves this anime with no allowed indexer: not
+                // a search failure (no exponential backoff) and not a delay (no release exists to
+                // wait for) — search nothing this pass and record why, same as a delayed decision.
+                await monitoring.UpdateAsync(
+                    current => AnimeMonitoringEngine.ClearAttempt(current, episode.Key, now, blockedReason),
+                    cancellationToken);
+                await history.RecordAsync(
+                    new AcquisitionHistoryEntry
+                    {
+                        AnimeId = target.Anime.Id,
+                        SeasonNumber = episode.Key.SeasonNumber,
+                        EpisodeNumber = episode.Key.EpisodeNumber,
+                        AbsoluteEpisodeNumber = episode.Key.AbsoluteEpisodeNumber,
+                        EventKind = AcquisitionHistoryEventKind.Skipped,
+                        Reason = blockedReason,
+                        OccurredAtUtc = now.UtcDateTime
+                    },
+                    cancellationToken);
+                await operations.AppendLogAsync(operationId, OperationLogLevel.Warning, LogModule, blockedReason, cancellationToken);
+                await operations.MarkSucceededAsync(operationId, blockedReason, CancellationToken.None);
+                return false;
+            }
+
             var result = await prowlarr.SearchAsync(
-                ConnectionFor(connection, state, target.Anime.Key, policy),
+                restrictedConnection!,
                 SearchTargetFor(episode),
                 cancellationToken);
             foreach (var warning in result.Warnings)
@@ -1163,8 +1195,10 @@ public sealed class AnimeAcquisitionPipeline(
             .ToArray();
 
     // Combines the anime's own indexer selection with any tag-scoped indexer restriction
-    // (P1 item 5): a restriction always narrows, never widens, the anime's own choice.
-    private static ProwlarrConnection ConnectionFor(
+    // (P1 item 5): a restriction always narrows, never widens, the anime's own choice. When the
+    // two do not overlap at all, the restriction is not silently ignored: the caller gets a
+    // BlockedReason instead of a connection, and must search no indexers for this pass.
+    private static (ProwlarrConnection? Connection, string? BlockedReason) ConnectionFor(
         ProwlarrConnection connection,
         AnimeMonitoringState state,
         string animeKey,
@@ -1182,9 +1216,16 @@ public sealed class AnimeAcquisitionPipeline(
             ({ } own, { } restrictedIds) => own.Intersect(restrictedIds).ToArray()
         };
 
+        if (restricted is not null && effective is { Length: 0 })
+        {
+            var names = AcquisitionDelayEngine.ApplicableIndexerRestrictionNames(policy.IndexerRestrictions, settings?.TagIds);
+            var label = names.Length > 0 ? string.Join("', '", names) : "a tag-scoped indexer restriction";
+            return (null, $"Indexer restriction '{label}' leaves no indexer allowed for this anime's own selection; no indexers were searched.");
+        }
+
         return effective is { Length: > 0 }
-            ? connection with { Settings = connection.Settings with { IndexerIds = effective } }
-            : connection;
+            ? (connection with { Settings = connection.Settings with { IndexerIds = effective } }, null)
+            : (connection, null);
     }
 
     private async Task<int> CountActiveDownloadsAsync(

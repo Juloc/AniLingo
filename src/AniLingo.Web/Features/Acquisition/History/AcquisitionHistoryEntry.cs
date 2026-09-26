@@ -1,7 +1,7 @@
 namespace AniLingo.Web.Features.Acquisition.History;
 
-/// <summary>What happened to a release for one episode. Grabbed/Delayed come from the search seam,
-/// Imported/Upgraded/ImportFailed/Dismissed from the import seam.</summary>
+/// <summary>What happened to a release for one episode. Grabbed/Delayed/Skipped come from the
+/// search seam, Imported/Upgraded/ImportFailed/Dismissed from the import seam.</summary>
 public enum AcquisitionHistoryEventKind
 {
     Grabbed,
@@ -9,7 +9,14 @@ public enum AcquisitionHistoryEventKind
     Imported,
     Upgraded,
     ImportFailed,
-    Dismissed
+    Dismissed,
+
+    /// <summary>
+    /// No indexer was searched for this episode this pass because a tag-scoped indexer
+    /// restriction left no allowed indexer (never a silent fall-back to the anime's unrestricted
+    /// selection). Added at the end so existing rows' stored int values are unaffected.
+    /// </summary>
+    Skipped
 }
 
 /// <summary>
