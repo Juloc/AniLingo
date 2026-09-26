@@ -304,3 +304,55 @@
     justify-content: center;
     gap: 10px;
 }
+
+/* Media segments (#135): canonical skip action and seek preview, rendered by player-segments.js. */
+.player-skip-segment {
+    position: absolute;
+    right: 16px;
+    bottom: 76px;
+    z-index: 5;
+    min-height: var(--player-control-size);
+    background: var(--player-overlay-bg);
+    color: #fff;
+    border-color: var(--player-accent);
+}
+
+.player-skip-segment:focus-visible {
+    box-shadow: 0 0 0 3px var(--player-focus);
+}
+
+.player-skip-segment[hidden],
+.player-trickplay-preview[hidden] {
+    display: none;
+}
+
+.player-trickplay-host {
+    position: relative;
+}
+
+.player-trickplay-preview {
+    position: absolute;
+    bottom: calc(100% + 6px);
+    z-index: 5;
+    display: grid;
+    justify-items: center;
+    gap: 4px;
+    padding: 4px;
+    border-radius: 8px;
+    background: var(--player-overlay-bg);
+    color: #fff;
+    font-size: 12px;
+    transform: translateX(-50%);
+    pointer-events: none;
+}
+
+.player-trickplay-image {
+    background-color: #000;
+    background-repeat: no-repeat;
+    border-radius: 4px;
+}
+
+.player-segments-edit {
+    margin: 8px 0 0;
+    font-size: 13px;
+}
