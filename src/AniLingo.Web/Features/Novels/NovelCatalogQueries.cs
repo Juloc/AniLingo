@@ -20,10 +20,16 @@ public sealed record NovelReaderChapter(
     string OriginalText,
     string? TranslationText,
     Guid? PreviousChapterId,
-    Guid? NextChapterId)
+    Guid? NextChapterId,
+    Guid VolumeId,
+    int VolumeNumber,
+    string? VolumeTitle,
+    string VolumeKind,
+    string? ContentJson)
 {
     public bool HasContent => OriginalText.Length > 0;
     public bool HasTranslation => !string.IsNullOrWhiteSpace(TranslationText);
+    public bool IsEpubVolume => VolumeKind == NovelVolumeKinds.Epub;
 }
 
 /// <summary>Small chapter/work identity used by reader write handlers.</summary>
@@ -42,7 +48,8 @@ public sealed record NovelChapterNavItem(
     int Number,
     string Title,
     bool HasContent,
-    bool HasTranslation);
+    bool HasTranslation,
+    int? VolumeNumber);
 
 public sealed record NovelChapterWindow(
     IReadOnlyList<NovelChapterNavItem> Items,
@@ -78,6 +85,16 @@ public sealed class NovelCatalogQueries(AppDbContext db)
                 work.MetadataStatus,
                 work.MetadataChapterCount,
                 work.MetadataVolumeCount,
+                VolumeCount = db.NovelVolumes.Count(volume =>
+                    volume.WorkId == work.Id &&
+                    volume.Kind == NovelVolumeKinds.Epub),
+                FirstVolume = db.NovelVolumes
+                    .Where(volume =>
+                        volume.WorkId == work.Id &&
+                        volume.CoverAsset != null)
+                    .OrderBy(volume => volume.Number)
+                    .Select(volume => new { volume.Id, volume.CoverAsset })
+                    .FirstOrDefault(),
                 ChapterCount = db.NovelChapters.Count(chapter => chapter.WorkId == work.Id),
                 LoadedChapterCount = db.NovelChapters.Count(chapter =>
                     chapter.WorkId == work.Id &&
@@ -101,6 +118,8 @@ public sealed class NovelCatalogQueries(AppDbContext db)
             from item in db.NovelProgress.AsNoTracking()
             join chapter in db.NovelChapters.AsNoTracking()
                 on item.ChapterId equals chapter.Id
+            join volume in db.NovelVolumes.AsNoTracking()
+                on chapter.VolumeId equals volume.Id
             where item.ProfileId == profileId
             select new
             {
@@ -108,6 +127,9 @@ public sealed class NovelCatalogQueries(AppDbContext db)
                 ChapterId = chapter.Id,
                 chapter.Number,
                 chapter.Title,
+                VolumeNumber = volume.Kind == NovelVolumeKinds.Epub
+                    ? (int?)volume.Number
+                    : null,
                 item.PositionPermille,
                 item.UpdatedAt
             })
@@ -123,7 +145,9 @@ public sealed class NovelCatalogQueries(AppDbContext db)
                     work.MetadataNativeTitle,
                     work.Author,
                     work.Description,
-                    work.CoverImageUrl,
+                    work.CoverImageUrl ?? (work.FirstVolume is { } first
+                        ? NovelVolumeAssetStore.Url(first.Id, first.CoverAsset!)
+                        : null),
                     work.BannerImageUrl,
                     work.MetadataStatus,
                     work.MetadataChapterCount,
@@ -135,7 +159,9 @@ public sealed class NovelCatalogQueries(AppDbContext db)
                     current?.Number,
                     current?.Title,
                     current?.PositionPermille ?? 0,
-                    current?.UpdatedAt);
+                    current?.UpdatedAt,
+                    work.VolumeCount,
+                    current?.VolumeNumber);
             })
             .ToList();
     }
@@ -167,7 +193,8 @@ public sealed class NovelCatalogQueries(AppDbContext db)
                     translation.TargetLanguage == NovelReadingLanguage.German &&
                     translation.PromptVersion == NovelTranslationService.PromptVersion &&
                     translation.SourceHash == chapter.SourceHash),
-                chapter.PublishedAt))
+                chapter.PublishedAt,
+                chapter.VolumeId))
             .ToListAsync(cancellationToken);
 
         var mappings = await db.NovelAnimeMappings
@@ -177,7 +204,24 @@ public sealed class NovelCatalogQueries(AppDbContext db)
             .ThenBy(x => x.EpisodeStart)
             .ToListAsync(cancellationToken);
 
-        return new NovelWorkDetail(work, chapters, mappings);
+        var volumes = (await db.NovelVolumes
+                .AsNoTracking()
+                .Where(x => x.WorkId == workId)
+                .OrderBy(x => x.Number)
+                .ToListAsync(cancellationToken))
+            .Select(volume => new NovelVolumeItem(
+                volume.Id,
+                volume.Number,
+                volume.Title,
+                volume.Kind,
+                volume.CoverAsset is null
+                    ? null
+                    : NovelVolumeAssetStore.Url(volume.Id, volume.CoverAsset),
+                volume.SourceFileName,
+                volume.UpdatedAt))
+            .ToArray();
+
+        return new NovelWorkDetail(work, chapters, mappings, volumes);
     }
 
     public Task<string?> GetWorkTitleAsync(
@@ -206,6 +250,8 @@ public sealed class NovelCatalogQueries(AppDbContext db)
             from chapter in db.NovelChapters.AsNoTracking()
             join work in db.NovelWorks.AsNoTracking()
                 on chapter.WorkId equals work.Id
+            join volume in db.NovelVolumes.AsNoTracking()
+                on chapter.VolumeId equals volume.Id
             where chapter.Id == chapterId
             select new NovelReaderChapter(
                 work.Id,
@@ -239,7 +285,12 @@ public sealed class NovelCatalogQueries(AppDbContext db)
                         next.Number > chapter.Number)
                     .OrderBy(next => next.Number)
                     .Select(next => (Guid?)next.Id)
-                    .FirstOrDefault())
+                    .FirstOrDefault(),
+                volume.Id,
+                volume.Number,
+                volume.Title,
+                volume.Kind,
+                chapter.ContentJson)
         ).SingleOrDefaultAsync(cancellationToken);
 
     public Task<NovelChapterContext?> GetChapterContextAsync(
@@ -382,5 +433,11 @@ public sealed class NovelCatalogQueries(AppDbContext db)
                 translation.ChapterId == chapter.Id &&
                 translation.TargetLanguage == NovelReadingLanguage.German &&
                 translation.PromptVersion == NovelTranslationService.PromptVersion &&
-                translation.SourceHash == chapter.SourceHash)));
+                translation.SourceHash == chapter.SourceHash),
+            db.NovelVolumes
+                .Where(volume =>
+                    volume.Id == chapter.VolumeId &&
+                    volume.Kind == NovelVolumeKinds.Epub)
+                .Select(volume => (int?)volume.Number)
+                .FirstOrDefault()));
 }

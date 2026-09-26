@@ -24,16 +24,38 @@
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
                 Add novel
             </summary>
-            <form method="post" asp-page-handler="Import" class="novel-import-form">
-                <label for="sourceUrl">Narou / Ncode URL</label>
-                <input id="sourceUrl"
-                       type="url"
-                       name="sourceUrl"
-                       required
-                       inputmode="url"
-                       placeholder="https://ncode.syosetu.com/n9669bk/" />
-                <button class="button button-primary" type="submit">Import</button>
-            </form>
+            <div class="novel-import-panel">
+                <form method="post" asp-page-handler="Import" class="novel-import-form">
+                    <label for="sourceUrl">Narou / Ncode URL</label>
+                    <input id="sourceUrl"
+                           type="url"
+                           name="sourceUrl"
+                           required
+                           inputmode="url"
+                           placeholder="https://ncode.syosetu.com/n9669bk/" />
+                    <button class="button button-primary" type="submit">Import</button>
+                </form>
+                <form method="post"
+                      asp-page-handler="UploadEpub"
+                      enctype="multipart/form-data"
+                      class="novel-import-form">
+                    <label for="epubs">EPUB light-novel volumes</label>
+                    <input id="epubs"
+                           type="file"
+                           name="epubs"
+                           accept=".epub,application/epub+zip"
+                           multiple
+                           required />
+                    <button class="button button-primary" type="submit">Upload</button>
+                </form>
+                @if (Model.IsInboxConfigured)
+                {
+                    <form method="post" asp-page-handler="ScanInbox" class="novel-import-form">
+                        <label>Reading inbox · <code>@AniLingo.Web.Features.Novels.NovelEpubImportService.InboxFolder</code></label>
+                        <button class="button" type="submit">Import from inbox</button>
+                    </form>
+                }
+            </div>
         </details>
     }
 </header>
@@ -61,7 +83,7 @@
                     </div>
                     <div class="novel-continue-copy">
                         <strong>@work.Title</strong>
-                        <span>Ch. @work.CurrentChapterNumber · @work.CurrentChapterTitle</span>
+                        <span>@(work.CurrentVolumeNumber is int currentVolume ? $"Vol. {currentVolume} · " : "")Ch. @work.CurrentChapterNumber · @work.CurrentChapterTitle</span>
                         <div class="novel-progress-track" aria-label="Chapter progress">
                             <span style="width:@(work.ProgressPermille / 10)%"></span>
                         </div>
@@ -111,7 +133,11 @@
                         <a href="/Novels/Work/@work.Id" class="novel-library-title">@work.Title</a>
 
                         <div class="novel-library-meta">
-                            @if (work.MetadataVolumeCount is int volumes)
+                            @if (work.VolumeCount > 0)
+                            {
+                                <span>@work.VolumeCount@(work.MetadataVolumeCount is int totalVolumes ? $"/{totalVolumes}" : "") vol.</span>
+                            }
+                            else if (work.MetadataVolumeCount is int volumes)
                             {
                                 <span>@volumes vol.</span>
                             }

@@ -93,7 +93,23 @@ public static class BookLanguageCatalog
 public sealed record ImportedBookChapter(
     int Number,
     string Title,
-    string Text);
+    string Text)
+{
+    /// <summary>Normalized archive path of the spine document (EPUB only).</summary>
+    public string? SourcePath { get; init; }
+
+    /// <summary>
+    /// Sanitized structured content whose text blocks equal the paragraphs of
+    /// <see cref="Text"/>. Image blocks reference archive paths.
+    /// </summary>
+    public IReadOnlyList<NovelContentBlock> Blocks { get; init; } = [];
+}
+
+/// <summary>An embedded raster image referenced by chapter content.</summary>
+public sealed record ParsedEpubAsset(
+    string Path,
+    string MediaType,
+    byte[] Bytes);
 
 public sealed record ParsedEpubBook(
     string Title,
@@ -107,7 +123,20 @@ public sealed record ParsedEpubBook(
     IReadOnlyList<string> Subjects,
     IReadOnlyList<ImportedBookChapter> Chapters,
     byte[]? CoverBytes,
-    string? CoverMediaType);
+    string? CoverMediaType)
+{
+    /// <summary>Value of the package's unique-identifier dc:identifier.</summary>
+    public string? UniqueIdentifier { get; init; }
+
+    /// <summary>Series name from calibre or EPUB 3 collection metadata.</summary>
+    public string? SeriesTitle { get; init; }
+
+    /// <summary>Position in the series from calibre or EPUB 3 metadata.</summary>
+    public decimal? SeriesIndex { get; init; }
+
+    /// <summary>Embedded images referenced by chapter blocks (only when requested).</summary>
+    public IReadOnlyList<ParsedEpubAsset> Assets { get; init; } = [];
+}
 
 public sealed record BookLibraryItem(
     Guid WorkId,

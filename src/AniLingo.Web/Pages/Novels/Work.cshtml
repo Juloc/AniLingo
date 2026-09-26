@@ -7,6 +7,20 @@
     var currentChapter = Model.Progress is null
         ? null
         : detail.Chapters.FirstOrDefault(x => x.Id == Model.Progress.ChapterId);
+    var epubVolumes = detail.Volumes.Where(x => x.IsEpub).ToArray();
+    var currentVolume = currentChapter is null
+        ? null
+        : epubVolumes.FirstOrDefault(x => x.Id == currentChapter.VolumeId);
+    // Series → volume → chapter; web novels and books have one implicit volume
+    // that is not shown as a group.
+    var chapterGroups = epubVolumes.Length > 0
+        ? epubVolumes
+            .Select(volume => (Volume: (AniLingo.Web.Features.Novels.NovelVolumeItem?)volume,
+                Chapters: (IReadOnlyList<AniLingo.Web.Features.Novels.NovelChapterItem>)detail.Chapters
+                    .Where(x => x.VolumeId == volume.Id)
+                    .ToArray()))
+            .ToArray()
+        : [(Volume: null, Chapters: detail.Chapters)];
     ViewData["Title"] = work.MetadataTitle ?? work.Title;
 }
 @section Head {
@@ -17,9 +31,9 @@
 
 <header class="novel-work-header">
     <div class="novel-work-cover">
-        @if (!string.IsNullOrWhiteSpace(work.CoverImageUrl))
+        @if (!string.IsNullOrWhiteSpace(detail.CoverUrl))
         {
-            <img src="@work.CoverImageUrl" alt="" referrerpolicy="no-referrer" />
+            <img src="@detail.CoverUrl" alt="" referrerpolicy="no-referrer" />
         }
         else
         {
@@ -39,7 +53,11 @@
             {
                 <span>@work.Author</span>
             }
-            @if (work.MetadataVolumeCount is int volumes)
+            @if (epubVolumes.Length > 0)
+            {
+                <span>@epubVolumes.Length@(work.MetadataVolumeCount is int totalVolumes ? $" of {totalVolumes}" : "") volumes</span>
+            }
+            else if (work.MetadataVolumeCount is int volumes)
             {
                 <span>@volumes volumes</span>
             }
@@ -59,7 +77,7 @@
             @if (currentChapter is not null)
             {
                 <a class="button button-primary novel-primary-action" href="/Novels/Read/@currentChapter.Id">
-                    Continue ch. @currentChapter.Number
+                    Continue @(currentVolume is null ? "" : $"vol. {currentVolume.Number} · ")ch. @currentChapter.Number
                 </a>
                 <span class="novel-progress-label">@(Model.Progress!.PositionPermille / 10)% through chapter</span>
             }
@@ -79,9 +97,12 @@
                 Language tools &amp; Learning
             </a>
 
-            <a class="novel-source-link" href="@work.SourceUrl" target="_blank" rel="noreferrer">
-                Source ↗
-            </a>
+            @if (!detail.IsEpubSeries)
+            {
+                <a class="novel-source-link" href="@work.SourceUrl" target="_blank" rel="noreferrer">
+                    Source ↗
+                </a>
+            }
         </div>
     </div>
 </header>
@@ -107,14 +128,59 @@
         <summary><strong>Manage novel</strong></summary>
 
         <div class="novel-admin-content">
-            <div class="novel-inline-form">
-                <form method="post" asp-page-handler="Refresh" asp-route-id="@work.Id">
-                    <button class="button" type="submit">Refresh chapters</button>
-                </form>
-                <form method="post" asp-page-handler="LoadAll" asp-route-id="@work.Id">
-                    <button class="button" type="submit">Cache all Japanese text</button>
-                </form>
-            </div>
+            @if (detail.IsEpubSeries)
+            {
+                <section class="novel-admin-section">
+                    <div class="panel-heading">
+                        <h2>EPUB volumes</h2>
+                    </div>
+
+                    <form method="post"
+                          asp-page-handler="UploadVolume"
+                          asp-route-id="@work.Id"
+                          enctype="multipart/form-data"
+                          class="novel-inline-form">
+                        <input type="file"
+                               name="epubs"
+                               accept=".epub,application/epub+zip"
+                               multiple
+                               required
+                               aria-label="EPUB volumes" />
+                        <button class="button button-primary" type="submit">Add or replace volumes</button>
+                    </form>
+
+                    @if (epubVolumes.Length > 0)
+                    {
+                        <div class="novel-mapping-list">
+                            @foreach (var volume in epubVolumes)
+                            {
+                                <div class="novel-mapping-row">
+                                    <div>
+                                        <strong>Volume @volume.Number</strong>
+                                        <div class="novel-muted">@volume.SourceFileName · @volume.UpdatedAt.ToString("yyyy-MM-dd")</div>
+                                    </div>
+                                    <span></span>
+                                    <form method="post" asp-page-handler="RemoveVolume" asp-route-id="@work.Id">
+                                        <input type="hidden" name="volumeId" value="@volume.Id" />
+                                        <button class="button" type="submit">Remove</button>
+                                    </form>
+                                </div>
+                            }
+                        </div>
+                    }
+                </section>
+            }
+            else
+            {
+                <div class="novel-inline-form">
+                    <form method="post" asp-page-handler="Refresh" asp-route-id="@work.Id">
+                        <button class="button" type="submit">Refresh chapters</button>
+                    </form>
+                    <form method="post" asp-page-handler="LoadAll" asp-route-id="@work.Id">
+                        <button class="button" type="submit">Cache all Japanese text</button>
+                    </form>
+                </div>
+            }
 
             <section class="novel-admin-section">
                 <div class="panel-heading">
@@ -239,46 +305,87 @@
 
 <section class="novel-chapters-section">
     <div class="novel-chapters-heading">
-        <h2>Chapters</h2>
-    </div>
-
-    <div class="novel-chapter-list">
-        @foreach (var chapter in detail.Chapters)
+        <h2>@(epubVolumes.Length > 0 ? "Volumes" : "Chapters")</h2>
+        @if (epubVolumes.Length > 0)
         {
-            var isCurrent = Model.Progress?.ChapterId == chapter.Id;
-            var isEarlier = currentChapter is not null && chapter.Number < currentChapter.Number;
-            <a class="novel-chapter-row @(isCurrent ? "current" : isEarlier ? "earlier" : "")" href="/Novels/Read/@chapter.Id">
-                <span class="novel-chapter-number">@chapter.Number</span>
-                <div class="novel-chapter-copy">
-                    <strong lang="ja">@chapter.Title</strong>
-                    <div class="novel-chapter-subline">
-                        @if (isCurrent)
-                        {
-                            <span>@(Model.Progress!.PositionPermille / 10)% read</span>
-                        }
-                        else if (chapter.PublishedAt is DateTime published)
-                        {
-                            <span>@published.ToString("yyyy-MM-dd")</span>
-                        }
-                    </div>
-                    @if (isCurrent)
-                    {
-                        <div class="novel-progress-track compact">
-                            <span style="width:@(Model.Progress!.PositionPermille / 10)%"></span>
-                        </div>
-                    }
-                </div>
-                <div class="novel-chapter-badges">
-                    @if (chapter.HasTranslation)
-                    {
-                        <span>DE</span>
-                    }
-                    @if (isCurrent)
-                    {
-                        <span class="current-dot" title="Current chapter"></span>
-                    }
-                </div>
-            </a>
+            <span>@epubVolumes.Length volumes · @detail.Chapters.Count chapters</span>
         }
     </div>
+
+    @foreach (var group in chapterGroups)
+    {
+        var volume = group.Volume;
+        var volumeCurrent = volume is not null && currentChapter?.VolumeId == volume.Id;
+        <div class="novel-volume-group @(volumeCurrent ? "current" : "")">
+            @if (volume is not null)
+            {
+                <header class="novel-volume-header" id="volume-@volume.Number">
+                    <div class="novel-volume-cover">
+                        @if (volume.CoverUrl is not null)
+                        {
+                            <img src="@volume.CoverUrl" alt="" loading="lazy" />
+                        }
+                        else
+                        {
+                            <span>@volume.Number</span>
+                        }
+                    </div>
+                    <div class="novel-volume-copy">
+                        <strong>Volume @volume.Number</strong>
+                        @if (!string.IsNullOrWhiteSpace(volume.Title))
+                        {
+                            <span lang="ja">@volume.Title</span>
+                        }
+                        <small>@group.Chapters.Count chapters@(volumeCurrent ? " · reading" : "")</small>
+                    </div>
+                    @if (group.Chapters.FirstOrDefault() is { } volumeStart)
+                    {
+                        <a class="button novel-volume-open" href="/Novels/Read/@(volumeCurrent ? currentChapter!.Id : volumeStart.Id)">
+                            @(volumeCurrent ? "Continue" : "Read")
+                        </a>
+                    }
+                </header>
+            }
+
+            <div class="novel-chapter-list">
+                @foreach (var chapter in group.Chapters)
+                {
+                    var isCurrent = Model.Progress?.ChapterId == chapter.Id;
+                    var isEarlier = currentChapter is not null && chapter.Number < currentChapter.Number;
+                    <a class="novel-chapter-row @(isCurrent ? "current" : isEarlier ? "earlier" : "")" href="/Novels/Read/@chapter.Id">
+                        <span class="novel-chapter-number">@chapter.Number</span>
+                        <div class="novel-chapter-copy">
+                            <strong lang="ja">@chapter.Title</strong>
+                            <div class="novel-chapter-subline">
+                                @if (isCurrent)
+                                {
+                                    <span>@(Model.Progress!.PositionPermille / 10)% read</span>
+                                }
+                                else if (chapter.PublishedAt is DateTime published)
+                                {
+                                    <span>@published.ToString("yyyy-MM-dd")</span>
+                                }
+                            </div>
+                            @if (isCurrent)
+                            {
+                                <div class="novel-progress-track compact">
+                                    <span style="width:@(Model.Progress!.PositionPermille / 10)%"></span>
+                                </div>
+                            }
+                        </div>
+                        <div class="novel-chapter-badges">
+                            @if (chapter.HasTranslation)
+                            {
+                                <span>DE</span>
+                            }
+                            @if (isCurrent)
+                            {
+                                <span class="current-dot" title="Current chapter"></span>
+                            }
+                        </div>
+                    </a>
+                }
+            </div>
+        </div>
+    }
 </section>

@@ -230,6 +230,12 @@
     font-size: .6rem;
 }
 
+.novel-drawer-volume {
+    margin-right: .4rem;
+    color: var(--reader-muted);
+    font-size: .68rem;
+}
+
 .novel-drawer-current-mark {
     width: 6px;
     height: 6px;

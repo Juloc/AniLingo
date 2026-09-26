@@ -223,9 +223,18 @@ public sealed class BookReaderAnnotationsTests
             Format = "EPUB:en"
         };
 
+        var volume = new NovelVolume
+        {
+            WorkId = work.Id,
+            Number = 1,
+            Kind = NovelVolumeKinds.Book,
+            SourceKey = "book"
+        };
+
         var first = new NovelChapter
         {
             WorkId = work.Id,
+            VolumeId = volume.Id,
             Number = 1,
             Title = "Chapter One",
             SourceUrl = "book://reader-test/1",
@@ -236,6 +245,7 @@ public sealed class BookReaderAnnotationsTests
         var second = new NovelChapter
         {
             WorkId = work.Id,
+            VolumeId = volume.Id,
             Number = 2,
             Title = "Chapter Two",
             SourceUrl = "book://reader-test/2",
@@ -244,6 +254,7 @@ public sealed class BookReaderAnnotationsTests
         };
 
         db.NovelWorks.Add(work);
+        db.NovelVolumes.Add(volume);
         db.NovelChapters.AddRange(first, second);
         await db.SaveChangesAsync();
 

@@ -568,6 +568,14 @@ public sealed class BookRecommendationTests
             ImportedAt = BaseTime.AddDays(importedDays)
         };
         db.NovelWorks.Add(work);
+        var volume = new NovelVolume
+        {
+            WorkId = work.Id,
+            Number = 1,
+            Kind = NovelVolumeKinds.Book,
+            SourceKey = "book"
+        };
+        db.NovelVolumes.Add(volume);
 
         var chapterIds = new Guid[chapters];
         for (var i = 0; i < chapters; i++)
@@ -575,6 +583,7 @@ public sealed class BookRecommendationTests
             var chapter = new NovelChapter
             {
                 WorkId = work.Id,
+                VolumeId = volume.Id,
                 Number = i + 1,
                 SourceUrl = $"upload:{title}:{i}",
                 Title = $"Chapter {i + 1}",
