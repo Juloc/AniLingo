@@ -232,12 +232,15 @@ public sealed class SubtitleSidecarReconciliationTests
                     new TestHttpClientFactory(),
                     NullLogger<SonarrArtworkImportService>.Instance),
                 NullLogger<SonarrArtworkSyncService>.Instance);
+            var inventory = MediaInventoryTestSupport.Create(options);
             var scanner = new LibraryScanner(
                 db,
                 new SubtitleImportService(db, vocabulary),
                 new EmbeddedSubtitleExtractor(
                     new MediaProcessRunner(NullLogger<MediaProcessRunner>.Instance),
+                    inventory,
                     NullLogger<EmbeddedSubtitleExtractor>.Instance),
+                inventory,
                 sonarrSync,
                 NullLogger<LibraryScanner>.Instance);
 
