@@ -9,6 +9,7 @@ import android.net.http.SslError
 import android.os.Bundle
 import android.webkit.SslErrorHandler
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -17,6 +18,9 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
+import de.juloc.anilingo.mobile.offline.library.LibraryLocalResponse
+import de.juloc.anilingo.mobile.offline.library.LibraryWebPages
+import java.io.ByteArrayInputStream
 
 @Composable
 fun AniLingoWebShell(
@@ -27,6 +31,8 @@ fun AniLingoWebShell(
     onEpisodeRequested: (String) -> Unit,
     onSecurityError: (String) -> Unit,
     onPageLoaded: () -> Unit = {},
+    onLibraryWorkPageChanged: (String?) -> Unit = {},
+    resolveLibraryRequest: ((String) -> LibraryLocalResponse?)? = null,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val webSession = remember(origin.value) { WebSession(origin) }
@@ -50,6 +56,26 @@ fun AniLingoWebShell(
             webSession.configureFor(this)
 
             webViewClient = object : WebViewClient() {
+                override fun shouldInterceptRequest(
+                    view: WebView,
+                    request: WebResourceRequest,
+                ): WebResourceResponse? {
+                    if (resolveLibraryRequest == null || request.method?.uppercase() != "GET") {
+                        return null
+                    }
+                    val candidate = runCatching { java.net.URI(request.url.toString()) }.getOrNull()
+                        ?: return null
+                    if (!origin.isSameOrigin(candidate)) {
+                        return null
+                    }
+                    val local = resolveLibraryRequest(candidate.path ?: "") ?: return null
+                    return WebResourceResponse(
+                        local.contentType,
+                        "utf-8",
+                        ByteArrayInputStream(local.bytes),
+                    )
+                }
+
                 override fun shouldOverrideUrlLoading(
                     view: WebView,
                     request: WebResourceRequest,
@@ -112,6 +138,8 @@ fun AniLingoWebShell(
                 ) {
                     CookieManagerCompat.flush()
                     onPageLoaded()
+                    val path = runCatching { java.net.URI(url).path }.getOrNull().orEmpty()
+                    onLibraryWorkPageChanged(LibraryWebPages.workId(path))
                 }
 
                 override fun onReceivedSslError(

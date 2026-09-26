@@ -19,6 +19,11 @@ import de.juloc.anilingo.core.model.LearningSubtitle
 import de.juloc.anilingo.core.model.MediaAvailability
 import de.juloc.anilingo.core.model.MediaTrack
 import de.juloc.anilingo.core.model.OfflineDownloadPackage
+import de.juloc.anilingo.core.model.OfflineLibraryBookmarkEvent
+import de.juloc.anilingo.core.model.OfflineLibraryChapterPackage
+import de.juloc.anilingo.core.model.OfflineLibraryManifestPackage
+import de.juloc.anilingo.core.model.OfflineLibraryProgressEvent
+import de.juloc.anilingo.core.model.OfflineLibrarySyncResult
 import de.juloc.anilingo.core.model.OfflineProgressItem
 import de.juloc.anilingo.core.model.OfflineProgressResult
 import de.juloc.anilingo.core.model.PlaybackOption
@@ -52,7 +57,7 @@ class HttpAniLingoClientApi(
     origin: String,
     private val requestHeaders: () -> Map<String, String> = { emptyMap() },
     private val responseCookieSink: (List<String>) -> Unit = {},
-) : AniLingoClientApi, AniLingoOfflineApi {
+) : AniLingoClientApi, AniLingoOfflineApi, AniLingoLibraryApi {
     private val originUri = normalizeOrigin(origin)
 
     override suspend fun getCapabilities(): ClientCapabilities =
@@ -119,6 +124,34 @@ class HttpAniLingoClientApi(
                 method = "POST",
                 route = ClientApiRoutes.OfflineProgress,
                 body = OfflineDownloadJson.progressItemsBody(items),
+            ),
+        )
+
+    override suspend fun getLibraryManifest(workId: String): OfflineLibraryManifestPackage {
+        val json = requestJson("GET", ClientApiRoutes.offlineLibraryManifest(workId)).toString()
+        return OfflineLibraryManifestPackage(
+            manifest = OfflineLibraryJson.parseManifest(json),
+            json = json,
+        )
+    }
+
+    override suspend fun getLibraryChapter(chapterId: String): OfflineLibraryChapterPackage {
+        val json = requestJson("GET", ClientApiRoutes.offlineLibraryChapter(chapterId)).toString()
+        return OfflineLibraryChapterPackage(
+            payload = OfflineLibraryJson.parseChapter(json),
+            json = json,
+        )
+    }
+
+    override suspend fun syncLibrary(
+        progress: List<OfflineLibraryProgressEvent>,
+        bookmarks: List<OfflineLibraryBookmarkEvent>,
+    ): OfflineLibrarySyncResult =
+        OfflineLibraryJson.parseSyncResult(
+            requestJson(
+                method = "POST",
+                route = ClientApiRoutes.OfflineLibrarySync,
+                body = OfflineLibraryJson.syncBody(progress, bookmarks),
             ),
         )
 
@@ -277,7 +310,11 @@ class HttpAniLingoClientApi(
         serverVersion = getString("serverVersion"),
         features = getJSONObject("features").let { features ->
             ClientFeatureFlagParser.parse { name ->
-                if (name == "nativeSessionAuth" || name == "offlineDownloads" || name == "ttsPreferences") {
+                if (name == "nativeSessionAuth" ||
+                    name == "offlineDownloads" ||
+                    name == "offlineLibrary" ||
+                    name == "ttsPreferences"
+                ) {
                     features.optBoolean(name, false)
                 } else {
                     features.getBoolean(name)
@@ -619,6 +656,7 @@ internal object ClientFeatureFlagParser {
         storageAvailability = readBoolean("storageAvailability"),
         ownerWakeOnLan = readBoolean("ownerWakeOnLan"),
         offlineDownloads = readBoolean("offlineDownloads"),
+        offlineLibrary = readBoolean("offlineLibrary"),
         ttsPreferences = readBoolean("ttsPreferences"),
     )
 }
