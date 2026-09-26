@@ -117,6 +117,13 @@
             <form method="post" asp-page-handler="Detect" asp-route-id="@Model.EpisodeId">
                 <button class="button" type="submit">Re-run segment detection</button>
             </form>
+            <form method="post" asp-page-handler="DetectSeason" asp-route-id="@Model.EpisodeId">
+                <button class="button" type="submit">Detect intro/outro for this season</button>
+            </form>
+            <small class="muted">
+                Compares this episode's audio against the rest of season @Model.SeasonNumber in a
+                background operation; it never blocks playback.
+            </small>
         }
         else
         {

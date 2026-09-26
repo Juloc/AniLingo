@@ -56,6 +56,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<NovelAnimeMapping> NovelAnimeMappings => Set<NovelAnimeMapping>();
     public DbSet<ReaderPreference> ReaderPreferences => Set<ReaderPreference>();
     public DbSet<EpisodeMediaSegment> EpisodeMediaSegments => Set<EpisodeMediaSegment>();
+    public DbSet<EpisodeSegmentDetectionState> EpisodeSegmentDetectionStates => Set<EpisodeSegmentDetectionState>();
     public DbSet<AcquisitionHistoryEntry> AcquisitionHistory => Set<AcquisitionHistoryEntry>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -441,6 +442,15 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(x => x.MediaIdentity).HasMaxLength(64);
             entity.HasOne<Episode>().WithMany().HasForeignKey(x => x.EpisodeId).OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(x => new { x.EpisodeId, x.Kind, x.Source }).IsUnique();
+        });
+
+        modelBuilder.Entity<EpisodeSegmentDetectionState>(entity =>
+        {
+            entity.HasKey(x => x.EpisodeId);
+            entity.Property(x => x.Method).HasMaxLength(80);
+            entity.Property(x => x.Version).HasMaxLength(40);
+            entity.Property(x => x.MediaIdentity).HasMaxLength(64);
+            entity.HasOne<Episode>().WithMany().HasForeignKey(x => x.EpisodeId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<AcquisitionHistoryEntry>(entity =>

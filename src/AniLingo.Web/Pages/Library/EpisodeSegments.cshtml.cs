@@ -121,6 +121,24 @@ public sealed class EpisodeSegmentsModel(
         return RedirectToPage(new { id });
     }
 
+    // Queues cross-episode OP/ED detection (audio fingerprinting) for every episode of this
+    // episode's season as one bounded background operation; never runs inline with the request.
+    public async Task<IActionResult> OnPostDetectSeasonAsync(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        if (!currentAccount.IsOwner)
+        {
+            return Forbid();
+        }
+
+        var queued = await segments.QueueSeasonDetectionAsync(id, cancellationToken);
+        TempData["Status"] = queued
+            ? "Season detection was queued; see Admin → Operations for progress."
+            : "Season detection could not be queued: it may already be running, or no automatic detector is configured.";
+        return RedirectToPage(new { id });
+    }
+
     public async Task<IActionResult> OnPostRegeneratePreviewsAsync(
         Guid id,
         CancellationToken cancellationToken)
