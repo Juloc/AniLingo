@@ -1,4 +1,4 @@
-using AniLingo.Web.Features.Acquisition.Sabnzbd;
+using AniLingo.Web.Features.Acquisition.DownloadClients;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Books;
 using Microsoft.AspNetCore.Mvc;
@@ -9,7 +9,7 @@ namespace AniLingo.Web.Pages.Books;
 public sealed class IntegrationsModel(
     BookCatalogService books,
     CurrentAccountContext account,
-    SabnzbdConnectionResolver sabnzbd,
+    DownloadClientStore downloadClients,
     IConfiguration configuration) : PageModel
 {
     public BookIntegrationSettings Settings { get; private set; } =
@@ -32,9 +32,12 @@ public sealed class IntegrationsModel(
         }
 
         Settings = BookIntegrationSettingsStore.Load();
-        var resolved = await sabnzbd.ResolveAsync(cancellationToken);
-        SabConfigured = resolved.IsConfigured;
-        SabBooksCategory = resolved.Effective.BooksCategory;
+        var entry = (await downloadClients.LoadAllAsync(cancellationToken))
+            .Where(item => item.Type == DownloadClientType.Sabnzbd)
+            .OrderBy(item => item.Priority)
+            .FirstOrDefault();
+        SabConfigured = entry?.Enabled == true;
+        SabBooksCategory = entry?.Settings.BooksCategory;
         return Page();
     }
 

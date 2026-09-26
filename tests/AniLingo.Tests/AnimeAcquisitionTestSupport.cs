@@ -1,6 +1,9 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Acquisition;
+using AniLingo.Web.Features.Acquisition.DownloadClients;
+using AniLingo.Web.Features.Acquisition.Health;
 using AniLingo.Web.Features.Acquisition.Import;
+using AniLingo.Web.Features.Acquisition.Indexers;
 using AniLingo.Web.Features.Acquisition.Monitoring;
 using AniLingo.Web.Features.Acquisition.Naming;
 using AniLingo.Web.Features.Acquisition.Ownership;
@@ -90,10 +93,24 @@ internal sealed class AnimeAcquisitionEnvironment : IAsyncDisposable
         await db.SaveChangesAsync();
 
         var environment = new AnimeAcquisitionEnvironment(tempRoot, options, db, root);
-        await environment.services.GetRequiredService<SabnzbdSettingsStore>().SaveAsync(
-            new SabnzbdStoredSettings("http://sabnzbd:8080", "secret-key", "books", "anime"));
-        await environment.services.GetRequiredService<ProwlarrSettingsStore>().SaveAsync(
-            new ProwlarrConnection(ProwlarrSettings.CreateDefault("http://prowlarr:9696"), "prowlarr-key"));
+        await environment.services.GetRequiredService<IndexerStore>().SaveAsync(
+            new IndexerEntry(
+                Guid.NewGuid(),
+                "Prowlarr",
+                IndexerType.Prowlarr,
+                Enabled: true,
+                Priority: 1,
+                IndexerSettings.CreateDefault("http://prowlarr:9696", IndexerType.Prowlarr),
+                "prowlarr-key"));
+        await environment.services.GetRequiredService<DownloadClientStore>().SaveAsync(
+            new DownloadClientEntry(
+                Guid.NewGuid(),
+                "SABnzbd",
+                DownloadClientType.Sabnzbd,
+                Enabled: true,
+                Priority: 1,
+                new DownloadClientSettings("http://sabnzbd:8080", null, "books", "anime", null),
+                "secret-key"));
 
         // A simple naming profile keeps the expected library paths readable in assertions.
         var naming = environment.services.GetRequiredService<AnimeNamingProfileStore>();
@@ -315,6 +332,22 @@ internal sealed class AnimeAcquisitionEnvironment : IAsyncDisposable
         collection.AddSingleton(new SabnzbdSettingsStore(Protection, acquisition));
         collection.AddSingleton(new SabnzbdAcquisitionStore(Protection, acquisition));
         collection.AddSingleton(new ProwlarrSettingsStore(Protection, acquisition));
+        collection.AddSingleton(new IndexerStore(Protection, acquisition));
+        collection.AddSingleton(new DownloadClientStore(Protection, acquisition));
+        collection.AddSingleton(new AcquisitionHealthStore(acquisition));
+        collection.AddSingleton<IReadOnlyDictionary<IndexerType, IIndexer>>(provider =>
+            new Dictionary<IndexerType, IIndexer>
+            {
+                [IndexerType.Prowlarr] = new ProwlarrIndexer(provider.GetRequiredService<IProwlarrClient>())
+            });
+        collection.AddSingleton<IReadOnlyDictionary<DownloadClientType, IDownloadClient>>(provider =>
+            new Dictionary<DownloadClientType, IDownloadClient>
+            {
+                [DownloadClientType.Sabnzbd] = new SabnzbdDownloadClient(provider.GetRequiredService<ISabnzbdClient>())
+            });
+        collection.AddScoped<IndexerSearchCoordinator>();
+        collection.AddScoped<DownloadClientSelector>();
+        collection.AddScoped<DownloadClientSubmissionService>();
         collection.AddSingleton(new AnimeQualityProfileStore(acquisition));
         collection.AddSingleton(new AnimeMonitoringStore(DataRoot));
         collection.AddSingleton(new AnimeImportStore(acquisition));

@@ -1,5 +1,6 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Acquisition.Import;
+using AniLingo.Web.Features.Acquisition.Indexers;
 using AniLingo.Web.Features.Acquisition.Monitoring;
 using AniLingo.Web.Features.Acquisition.Ownership;
 using AniLingo.Web.Features.Acquisition.Prowlarr;
@@ -33,7 +34,7 @@ public sealed record AnimeInteractiveSearch(
     AnimeEpisodeKey? Episode,
     ProwlarrAnimeSearchMode Mode,
     IReadOnlyList<AnimeSearchCandidate> Candidates,
-    IReadOnlyList<ProwlarrSearchWarning> Warnings,
+    IReadOnlyList<IndexerSearchWarning> Warnings,
     string? Error);
 
 public sealed record AnimeGrabResult(bool Success, string Message, Guid? OperationId = null);
@@ -49,8 +50,7 @@ public sealed class AnimeAcquisitionPipeline(
     AppDbContext db,
     AnimeMonitoringStore monitoring,
     AnimeQualityProfileStore profiles,
-    ProwlarrSettingsStore prowlarrSettings,
-    ProwlarrAnimeSearchService prowlarr,
+    IndexerSearchCoordinator indexers,
     SonarrObservationService observation,
     AcquisitionOwnershipStore ownershipStore,
     SabnzbdAcquisitionStore acquisitions,
@@ -85,10 +85,10 @@ public sealed class AnimeAcquisitionPipeline(
             return new(0, 0, 0, ["No anime is monitored."]);
         }
 
-        var connection = await prowlarrSettings.LoadAsync(cancellationToken);
-        if (connection is null)
+        var hasIndexers = await indexers.HasEnabledIndexerAsync(cancellationToken);
+        if (!hasIndexers)
         {
-            notes.Add("Prowlarr is not configured; wanted episodes were refreshed but not searched.");
+            notes.Add("No indexer is configured; wanted episodes were refreshed but not searched.");
         }
 
         var snapshot = await observation.GetSnapshotAsync(forceRefresh: true, cancellationToken);
@@ -120,7 +120,7 @@ public sealed class AnimeAcquisitionPipeline(
                     now),
                 cancellationToken);
 
-            if (connection is null)
+            if (!hasIndexers)
             {
                 continue;
             }
@@ -161,7 +161,6 @@ public sealed class AnimeAcquisitionPipeline(
                     wantedEpisode,
                     wanted,
                     request,
-                    connection,
                     snapshot,
                     cancellationToken);
                 if (grabbed)
@@ -202,10 +201,9 @@ public sealed class AnimeAcquisitionPipeline(
             return new(target, null, mode, [], [], "Choose an episode to search.");
         }
 
-        var connection = await prowlarrSettings.LoadAsync(cancellationToken);
-        if (connection is null)
+        if (!await indexers.HasEnabledIndexerAsync(cancellationToken))
         {
-            return new(target, episode?.Key, mode, [], [], "Prowlarr is not configured.");
+            return new(target, episode?.Key, mode, [], [], "No indexer is configured.");
         }
 
         var now = DateTimeOffset.UtcNow;
@@ -232,7 +230,10 @@ public sealed class AnimeAcquisitionPipeline(
 
         try
         {
-            var result = await prowlarr.SearchAsync(ConnectionFor(connection, state, animeKey), searchTarget, cancellationToken);
+            var result = await indexers.SearchAsync(
+                ToIndexerTarget(searchTarget),
+                cancellationToken,
+                ProwlarrIndexerIdsFor(state, animeKey));
             var snapshot = await observation.GetSnapshotAsync(forceRefresh: false, cancellationToken);
             var candidates = Evaluate(target, scope, wanted, episode?.Key, result.Releases, state, snapshot, now);
             return new(target, episode?.Key, mode, candidates, result.Warnings, null);
@@ -243,7 +244,7 @@ public sealed class AnimeAcquisitionPipeline(
         }
         catch (Exception exception) when (exception is ProwlarrException or HttpRequestException or TaskCanceledException)
         {
-            return new(target, episode?.Key, mode, [], [], $"Prowlarr search failed: {exception.Message}");
+            return new(target, episode?.Key, mode, [], [], $"Indexer search failed: {exception.Message}");
         }
     }
 
@@ -636,17 +637,18 @@ public sealed class AnimeAcquisitionPipeline(
     }
 
     // Unreadable settings (for example a lost Data Protection key) count as not configured here;
-    // the run itself reports the underlying error.
+    // the run itself reports the underlying error. The name is kept for callers; it now reports
+    // whether any indexer (Prowlarr or direct Newznab/Torznab) is configured.
     public async Task<bool> IsProwlarrConfiguredAsync(CancellationToken cancellationToken)
     {
         try
         {
-            return await prowlarrSettings.LoadAsync(cancellationToken) is not null;
+            return await indexers.HasEnabledIndexerAsync(cancellationToken);
         }
         catch (Exception exception) when (
             exception is InvalidDataException or System.Security.Cryptography.CryptographicException)
         {
-            logger.LogWarning(exception, "Prowlarr settings could not be read.");
+            logger.LogWarning(exception, "Indexer settings could not be read.");
             return false;
         }
     }
@@ -753,7 +755,6 @@ public sealed class AnimeAcquisitionPipeline(
         AnimeWantedEpisode wanted,
         IReadOnlyList<AnimeWantedEpisode> allWanted,
         AnimeSearchRequest request,
-        ProwlarrConnection connection,
         AcquisitionOwnershipSnapshot snapshot,
         CancellationToken cancellationToken)
     {
@@ -788,13 +789,13 @@ public sealed class AnimeAcquisitionPipeline(
 
         try
         {
-            var result = await prowlarr.SearchAsync(
-                ConnectionFor(connection, state, target.Anime.Key),
-                SearchTargetFor(episode),
-                cancellationToken);
+            var result = await indexers.SearchAsync(
+                ToIndexerTarget(SearchTargetFor(episode)),
+                cancellationToken,
+                ProwlarrIndexerIdsFor(state, target.Anime.Key));
             foreach (var warning in result.Warnings)
             {
-                await operations.AppendLogAsync(operationId, OperationLogLevel.Warning, LogModule, $"Prowlarr: {warning.Message} ({warning.Query})", cancellationToken);
+                await operations.AppendLogAsync(operationId, OperationLogLevel.Warning, LogModule, $"{warning.IndexerName}: {warning.Message}{(string.IsNullOrEmpty(warning.Query) ? "" : $" ({warning.Query})")}", cancellationToken);
             }
 
             var candidates = Evaluate(target, [episode], allWanted, episode.Key, result.Releases, state, snapshot, now);
@@ -822,7 +823,7 @@ public sealed class AnimeAcquisitionPipeline(
         catch (Exception exception) when (exception is ProwlarrException or HttpRequestException or TaskCanceledException)
         {
             await monitoring.UpdateAsync(current => AnimeMonitoringEngine.MarkFailed(current, episode.Key, null, now), cancellationToken);
-            await operations.MarkFailedAsync(operationId, $"Prowlarr search failed: {exception.Message}", CancellationToken.None);
+            await operations.MarkFailedAsync(operationId, $"Indexer search failed: {exception.Message}", CancellationToken.None);
             return false;
         }
     }
@@ -1073,13 +1074,18 @@ public sealed class AnimeAcquisitionPipeline(
             .Take(MaxSearchAliases)
             .ToArray();
 
-    private static ProwlarrConnection ConnectionFor(
-        ProwlarrConnection connection,
-        AnimeMonitoringState state,
-        string animeKey) =>
-        state.Anime.TryGetValue(animeKey, out var settings) && settings.IndexerIds is { Length: > 0 } indexerIds
-            ? connection with { Settings = connection.Settings with { IndexerIds = indexerIds } }
-            : connection;
+    private static IndexerAnimeSearchTarget ToIndexerTarget(ProwlarrAnimeSearchTarget target) =>
+        new(
+            target.CanonicalTitle,
+            target.Aliases,
+            (IndexerAnimeSearchMode)target.Mode,
+            target.SeasonNumber,
+            target.EpisodeNumber,
+            target.AbsoluteEpisodeNumber);
+
+    // Per-anime restriction only applies to Prowlarr's own indexer aggregation.
+    private static int[]? ProwlarrIndexerIdsFor(AnimeMonitoringState state, string animeKey) =>
+        state.Anime.TryGetValue(animeKey, out var settings) ? settings.IndexerIds : null;
 
     private async Task<int> CountActiveDownloadsAsync(
         SabnzbdAcquisitionStoreState relations,

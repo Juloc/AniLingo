@@ -1,23 +1,34 @@
 # Anime acquisition
 
-AniLingo can find, download and import missing anime episodes itself: wanted episode → Prowlarr
-search → release parsing and scoring → ownership check → SABnzbd → Operations tracking → import
-into the library with the naming profile → library reconciliation. Everything runs in-process;
-there is no separate service.
+AniLingo can find, download and import missing anime episodes itself: wanted episode → indexer
+search (Prowlarr and/or direct Newznab/Torznab) → release parsing and scoring → ownership check →
+a download client (SABnzbd or qBittorrent) → Operations tracking → import into the library with
+the naming profile → library reconciliation. Everything runs in-process; there is no separate
+service.
 
 Code: `Features/Acquisition/Pipeline` (inventory, pipeline, scheduler) and
 `Features/Acquisition/Import` (import store, destination, executor). The pipeline only wires the
-existing cores: release parser, quality profiles and scorer (`Quality`), Prowlarr search
-(`Prowlarr`), monitoring engine (`Monitoring`), Sonarr ownership (`Ownership`), SABnzbd
-acquisition (`Sabnzbd`), completed-download planner (`Import`) and naming (`Naming`).
+existing cores: release parser, quality profiles and scorer (`Quality`), indexer search
+(`Indexers`, one `IIndexer` interface with Prowlarr and direct Newznab/Torznab implementations),
+monitoring engine (`Monitoring`), Sonarr ownership (`Ownership`), download client submission
+(`DownloadClients`, one `IDownloadClient` interface with SABnzbd and qBittorrent implementations;
+`Sabnzbd` keeps the anime-specific attempt/blocklist relation and the raw SABnzbd protocol client),
+completed-download planner (`Import`) and naming (`Naming`). Periodic health checks
+(`Features/Acquisition/Health`) test every enabled indexer and download client; an unhealthy entry
+is skipped by the search coordinator/client selector with a logged reason.
 
 ## Setup (owner)
 
-1. **Prowlarr** — `/Settings/Prowlarr`: URL, API key (stored encrypted), Newznab categories,
-   optional indexer IDs. Only usenet results with an NZB link are used.
-2. **SABnzbd** — `/Settings/Sabnzbd` with an Anime category (see
-   [ADMIN_OPERATIONS.md](ADMIN_OPERATIONS.md#sabnzbd)). The completed-job folder must be visible to
-   AniLingo under the path SABnzbd reports.
+1. **Indexers** — `/Settings/Indexers`: add Prowlarr and/or direct Newznab/Torznab connections
+   (URL, API key stored encrypted, categories, priority, enable/disable). The search coordinator
+   queries every enabled, healthy indexer and merges the results; only Prowlarr honors a
+   per-anime indexer-ID restriction.
+2. **Download clients** — `/Settings/DownloadClients`: add SABnzbd (usenet) and/or qBittorrent
+   (torrent) connections (URL, API key/password stored encrypted, categories, save path, priority,
+   enable/disable). The pipeline and Books submissions pick the highest-priority enabled, healthy
+   client that supports a release's protocol and fail over to the next client of that protocol on
+   submission failure. SABnzbd's completed-job folder must be visible to AniLingo under the path
+   SABnzbd reports (see [ADMIN_OPERATIONS.md](ADMIN_OPERATIONS.md#sabnzbd)).
 3. **Management mode** — anime start in read-only Sonarr coexistence, where AniLingo never
    searches, grabs or imports. Choose *Parallel acquisition* or *AniLingo-managed* per anime under
    `/Settings/SonarrMigration` (see [SONARR_MIGRATION.md](SONARR_MIGRATION.md)).
@@ -36,9 +47,11 @@ monitored anime, recent decisions and recent imports.
 | --- | --- |
 | Monitored flag, search-on-add, per-anime indexer IDs, wanted episodes, search attempts/backoff, schedule | `/data/acquisition/monitoring.json` (`AnimeMonitoringStore`) |
 | Quality profile per anime | `/data/acquisition/quality-profiles.json` (`AnimeQualityProfileStore`; the default profile is not stored as an assignment) |
-| Prowlarr connection | `/data/acquisition/prowlarr.json` |
+| Indexer connections (Prowlarr, direct Newznab/Torznab) | `/data/acquisition/indexers.json` (`IndexerStore`) |
+| Download client connections (SABnzbd, qBittorrent) | `/data/acquisition/download-clients.json` (`DownloadClientStore`) |
+| Indexer/download-client health (reachable, auth ok, last error, last check) | `/data/acquisition/health.json` (`AcquisitionHealthStore`) |
 | Acquisition ↔ anime/episodes/attempts, untried candidates, blocklist | `/data/acquisition/sabnzbd-acquisitions.json` |
-| Download status, progress, failure reason | the SABnzbd Operation (`anime-sabnzbd-download`) |
+| Download status, progress, failure reason | the download client's Operation (`anime-sabnzbd-download`) |
 | Import plan, per-file result, manual-import state | `/data/acquisition/imports.json` (`AnimeImportStore`) |
 | Ownership (mode, AniLingo/Sonarr jobs, owned paths) | `/data/acquisition/ownership.json` |
 | Episodes and files | the library database, updated only by the library scanner |
@@ -159,7 +172,15 @@ The SABnzbd monitor separately advances failed downloads that were not handled b
 
 ## Limits
 
-- Only Prowlarr as indexer and SABnzbd as download client; usenet only.
+- The anime pipeline searches every enabled, healthy indexer (Prowlarr and direct
+  Newznab/Torznab) and scores usenet and torrent releases alike, but only grabs and downloads
+  usenet releases through a SABnzbd-compatible client today; torrent releases are shown as
+  rejected ("not a usenet release") until the grab path also submits through a torrent-capable
+  client (qBittorrent). qBittorrent's client (login, add, status, delete) and the
+  priority/failover client selection are implemented and used by Books-style usenet submissions
+  and the download client health checks; wiring the anime grab path to it is a follow-up.
 - No RSS feed polling: wanted episodes are found by the scheduled search.
 - Imports move files; copy/hardlink modes are not configurable yet.
 - Quality profiles can be assigned per anime; editing profiles has no UI yet.
+- Per-anime indexer restriction (`IndexerIds`) only applies to Prowlarr's own indexer
+  aggregation, not to individually restricting direct Newznab/Torznab entries.

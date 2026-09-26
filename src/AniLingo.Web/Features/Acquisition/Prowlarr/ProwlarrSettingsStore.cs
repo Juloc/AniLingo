@@ -33,6 +33,10 @@ public sealed class ProwlarrSettingsStore
         storePath = Path.Combine(directory.FullName, FileName);
     }
 
+    public bool Exists => File.Exists(storePath);
+
+    public string StorePath => storePath;
+
     public async Task<ProwlarrConnection?> LoadAsync(
         CancellationToken cancellationToken = default)
     {

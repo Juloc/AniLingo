@@ -1,4 +1,5 @@
 using AniLingo.Web.Data;
+using AniLingo.Web.Features.Acquisition.DownloadClients;
 using AniLingo.Web.Features.Acquisition.Naming;
 using AniLingo.Web.Features.Acquisition.Ownership;
 using AniLingo.Web.Features.Acquisition.Pipeline;
@@ -30,8 +31,8 @@ public sealed class AnimeImportExecutor(
     AnimeAcquisitionInventory inventory,
     AnimeNamingProfileStore namingStore,
     LibraryScanner scanner,
-    ISabnzbdClient sabnzbd,
-    SabnzbdConnectionResolver connections,
+    DownloadClientStore downloadClients,
+    IReadOnlyDictionary<DownloadClientType, IDownloadClient> downloadClientImplementations,
     ILogger<AnimeImportExecutor> logger)
 {
     public const string OperationKind = "anime-import";
@@ -366,22 +367,25 @@ public sealed class AnimeImportExecutor(
             return recovered;
         }
 
-        var connection = await connections.GetConnectionAsync(cancellationToken);
-        if (connection is null)
+        var entry = (await downloadClients.LoadAllAsync(cancellationToken))
+            .Where(item => item.Type == DownloadClientType.Sabnzbd && item.Enabled)
+            .OrderBy(item => item.Priority)
+            .FirstOrDefault();
+        if (entry is null || !downloadClientImplementations.TryGetValue(entry.Type, out var client))
         {
             logger.LogWarning(
-                "{Count} completed anime downloads await import but SABnzbd is not configured.",
+                "{Count} completed anime downloads await import but no SABnzbd download client is configured.",
                 completed.Length);
             return recovered;
         }
 
-        var history = await sabnzbd.GetHistoryAsync(
-            connection,
+        var statuses = await client.GetStatusAsync(
+            entry,
             completed.Select(operation => operation.ExternalId!).ToArray(),
             cancellationToken);
         foreach (var operation in completed)
         {
-            var job = history.Jobs.FirstOrDefault(item => item.NzoId == operation.ExternalId);
+            var job = statuses.FirstOrDefault(item => item.ExternalId == operation.ExternalId);
             await ImportCompletedCoreAsync(operation, job?.StoragePath, cancellationToken);
             recovered++;
         }

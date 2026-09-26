@@ -1,0 +1,146 @@
+using AniLingo.Web.Data;
+using AniLingo.Web.Features.Operations;
+
+namespace AniLingo.Web.Features.Acquisition.DownloadClients;
+
+public sealed record DownloadSubmissionSpec(
+    string OperationKind,
+    string Title,
+    string? Subject,
+    string? ProfileId,
+    DownloadProtocol Protocol,
+    Uri? Url,
+    string? MagnetUri,
+    string? Name,
+    bool IsBooks = false,
+    Stream? File = null,
+    string? FileName = null);
+
+public sealed record DownloadSubmissionOutcome(
+    bool Accepted,
+    Guid OperationId,
+    string? ExternalId,
+    Guid? ClientEntryId,
+    string Message);
+
+/// <summary>
+/// The one path that sends a release to a download client for Books and
+/// Anime: picks the highest-priority enabled, healthy client that supports
+/// the release protocol, and fails over to the next client of that protocol
+/// on submission failure. Operations remain the single status store; the
+/// external reference is the chosen client's entry ID plus its own job ID.
+/// </summary>
+public sealed class DownloadClientSubmissionService(
+    IReadOnlyDictionary<DownloadClientType, IDownloadClient> clients,
+    DownloadClientSelector selector,
+    AppDbContext db,
+    ILogger<DownloadClientSubmissionService> logger)
+{
+    public const string OperationCategory = "External downloads";
+
+    public static bool IsDownloadClientOperation(OperationSnapshot operation) =>
+        !string.IsNullOrWhiteSpace(operation.ExternalProvider) && !string.IsNullOrWhiteSpace(operation.ExternalId);
+
+    public async Task<DownloadSubmissionOutcome> SubmitAsync(
+        DownloadSubmissionSpec spec,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(spec);
+
+        var store = new OperationStore(db);
+        var operationId = await store.CreateAsync(
+            new OperationDescriptor(
+                spec.OperationKind,
+                OperationCategory,
+                spec.Title,
+                spec.Subject,
+                spec.ProfileId,
+                OperationLane.Normal,
+                IsDownload: true,
+                Retryable: true),
+            cancellationToken);
+
+        await store.MarkRunningAsync(operationId, cancellationToken);
+        await store.ReportProgressAsync(
+            operationId, 0, "Selecting a download client.", cancellationToken: cancellationToken);
+
+        var candidates = await selector.SelectAsync(spec.Protocol, cancellationToken);
+        if (candidates.Count == 0)
+        {
+            var protocolName = spec.Protocol == DownloadProtocol.Usenet ? "usenet" : "torrent";
+            var noClient = $"No enabled, healthy {protocolName} download client is configured.";
+            await store.MarkFailedAsync(operationId, noClient, CancellationToken.None);
+            return new DownloadSubmissionOutcome(false, operationId, null, null, noClient);
+        }
+
+        string? lastError = null;
+        foreach (var entry in candidates)
+        {
+            if (!clients.TryGetValue(entry.Type, out var client))
+            {
+                continue;
+            }
+
+            if (spec.File is { CanSeek: true })
+            {
+                spec.File.Position = 0;
+            }
+
+            DownloadClientSubmitResult result;
+            try
+            {
+                result = await client.SubmitAsync(
+                    entry,
+                    new DownloadClientSubmitRequest(
+                        spec.Protocol, spec.Url, spec.MagnetUri, spec.Name, spec.IsBooks, spec.File, spec.FileName),
+                    cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception exception) when (
+                exception is HttpRequestException or TaskCanceledException or DownloadClientException)
+            {
+                result = new DownloadClientSubmitResult(false, null, exception.Message);
+            }
+
+            if (result.Success && !string.IsNullOrWhiteSpace(result.ExternalId))
+            {
+                await store.SetExternalReferenceAsync(operationId, client.ProviderId, result.ExternalId, cancellationToken);
+                await store.ReportProgressAsync(
+                    operationId,
+                    0,
+                    $"Accepted by {entry.Name}; waiting for download progress.",
+                    cancellationToken: cancellationToken);
+                return new DownloadSubmissionOutcome(
+                    true,
+                    operationId,
+                    result.ExternalId,
+                    entry.Id,
+                    $"Sent to {entry.Name}. Track it under Admin → Operations → Downloads.");
+            }
+
+            if (result.Success)
+            {
+                // Accepted but the client returned no job ID to track; treat it as done.
+                const string untracked = "Sent, but the download client returned no job ID, so live progress is unavailable.";
+                await store.MarkSucceededAsync(operationId, untracked, CancellationToken.None);
+                return new DownloadSubmissionOutcome(true, operationId, null, entry.Id, untracked);
+            }
+
+            lastError = result.Error ?? $"{entry.Name} rejected the request.";
+            await store.AppendLogAsync(
+                operationId,
+                OperationLogLevel.Warning,
+                "Acquisition",
+                $"{entry.Name} did not accept the release: {lastError}",
+                CancellationToken.None);
+            logger.LogWarning("Download client '{Client}' rejected a submission: {Error}", entry.Name, lastError);
+        }
+
+        var message = lastError ?? "All configured download clients rejected the request.";
+        await store.MarkFailedAsync(operationId, message, CancellationToken.None);
+        return new DownloadSubmissionOutcome(false, operationId, null, null, message);
+    }
+}

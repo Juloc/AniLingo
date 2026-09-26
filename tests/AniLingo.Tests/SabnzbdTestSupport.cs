@@ -1,10 +1,13 @@
 using System.Net;
 using System.Text;
 using AniLingo.Web.Data;
+using AniLingo.Web.Features.Acquisition.DownloadClients;
+using AniLingo.Web.Features.Acquisition.Health;
 using AniLingo.Web.Features.Acquisition.Sabnzbd;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace AniLingo.Tests;
 
@@ -62,6 +65,17 @@ internal static class SabnzbdTestSupport
         await settings.SaveAsync(
             new SabnzbdStoredSettings("http://sabnzbd:8080", "secret-key", "books", "anime"));
 
+        var clients = new DownloadClientStore(protection, directory);
+        await clients.SaveAsync(
+            new DownloadClientEntry(
+                Guid.NewGuid(),
+                "SABnzbd",
+                DownloadClientType.Sabnzbd,
+                Enabled: true,
+                Priority: 1,
+                new DownloadClientSettings("http://sabnzbd:8080", null, "books", "anime", null),
+                "secret-key"));
+
         var db = await CreateDatabaseAsync(Path.Combine(directory.FullName, "anilingo.db"));
         return new SabnzbdTestEnvironment(directory, protection, settings, db);
     }
@@ -86,8 +100,22 @@ internal sealed class SabnzbdTestEnvironment(
     public SabnzbdAcquisitionStore NewAcquisitionStore() =>
         new(Protection, Directory);
 
+    /// <summary>A fresh store instance reads the persisted file, as after a restart.</summary>
+    public DownloadClientStore NewDownloadClientStore() =>
+        new(Protection, Directory);
+
+    public DownloadClientSubmissionService NewSubmissionService() =>
+        new(
+            new Dictionary<DownloadClientType, IDownloadClient>
+            {
+                [DownloadClientType.Sabnzbd] = new SabnzbdDownloadClient(Client)
+            },
+            new DownloadClientSelector(NewDownloadClientStore(), new AcquisitionHealthStore(Directory)),
+            Db,
+            NullLogger<DownloadClientSubmissionService>.Instance);
+
     public SabnzbdDownloadService NewDownloadService(SabnzbdAcquisitionStore store) =>
-        new(Client, Resolver, store, Db);
+        new(NewSubmissionService(), NewDownloadClientStore(), Client, store, Db);
 
     public SabnzbdAcquisitionService NewAcquisitionService(SabnzbdAcquisitionStore store) =>
         new(NewDownloadService(store), store, Db);
