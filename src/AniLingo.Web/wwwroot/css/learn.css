@@ -1,0 +1,39 @@
+/* Learning hub: module dashboard and vocabulary lifecycle. */
+.learn-metrics { margin-bottom: 26px; }
+
+.learn-modules {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 14px;
+}
+.learn-module {
+    display: flex; flex-direction: column; gap: 8px; min-width: 0;
+    padding: 18px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface);
+    color: inherit; text-decoration: none;
+    transition: transform .16s ease, border-color .16s ease;
+}
+.learn-module:hover { transform: translateY(-2px); border-color: rgba(231,169,27,.35); }
+.learn-module-attention { border-color: rgba(231,169,27,.45); }
+.learn-module-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.learn-module-heading h2 { margin: 0; font-size: 17px; }
+.learn-module p { margin: 0; font-size: 13px; }
+.learn-module-hint { border-style: dashed; }
+
+.learn-lifecycle { margin-bottom: 16px; }
+.learn-lifecycle-steps {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
+    margin: 0 0 8px; padding: 0; list-style: none;
+}
+.learn-lifecycle-steps li { display: flex; align-items: center; gap: 10px; }
+.learn-lifecycle-steps li + li::before { content: "→"; color: var(--muted); font-size: 12px; }
+.learn-lifecycle p { margin: 0; font-size: 12px; }
+
+.learn-filter { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
+.learn-filter > label { flex: 0 1 180px; min-width: 0; }
+.learn-filter > label:first-child { flex: 1 1 240px; }
+.learn-vocabulary .term-actions { flex-wrap: wrap; }
+
+@media (max-width: 720px) {
+    .learn-modules { grid-template-columns: 1fr; }
+    .learn-filter > label, .learn-filter > label:first-child { flex: 1 1 100%; }
+}
