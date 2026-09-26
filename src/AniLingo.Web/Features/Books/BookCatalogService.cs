@@ -1172,6 +1172,14 @@ public sealed partial class BookCatalogService(
     public bool IsInboxConfigured =>
         TryGetInboxPath(out _);
 
+    /// <summary>
+    /// The configured reading inbox (Books settings or <c>Books:InboxPath</c>).
+    /// Light-novel EPUB volumes are imported from its <c>light-novels</c>
+    /// subfolder by the Novel module.
+    /// </summary>
+    public string? InboxPath =>
+        TryGetInboxPath(out var path) ? path : null;
+
     public async Task<IReadOnlyList<Guid>> ImportInboxAsync(
         CancellationToken cancellationToken)
     {
@@ -1426,48 +1434,26 @@ public sealed partial class BookCatalogService(
             : null;
         work.UpdatedAt = DateTime.UtcNow;
 
-        var existing = await db.NovelChapters
-            .Where(x => x.WorkId == work.Id)
-            .ToDictionaryAsync(
-                x => x.Number,
-                cancellationToken);
+        // A Books work is a series with one implicit volume; its chapters go
+        // through the canonical Novel volume write path.
+        var volume = await NovelVolumeContent.EnsureImplicitVolumeAsync(
+            db,
+            work,
+            NovelVolumeKinds.Book,
+            cancellationToken);
 
-        var importedNumbers = new HashSet<int>();
-
-        foreach (var imported in parsed.Chapters)
-        {
-            importedNumbers.Add(imported.Number);
-
-            if (!existing.TryGetValue(
-                    imported.Number,
-                    out var chapter))
-            {
-                chapter = new NovelChapter
-                {
-                    WorkId = work.Id,
-                    Number = imported.Number,
-                    ImportedAt = DateTime.UtcNow
-                };
-                db.NovelChapters.Add(chapter);
-            }
-
-            chapter.Title = Truncate(
-                imported.Title,
-                500);
-            chapter.SourceUrl =
-                $"book://{work.Id:N}/{imported.Number.ToString(CultureInfo.InvariantCulture)}";
-            chapter.OriginalText = imported.Text;
-            chapter.SourceHash = Hash(imported.Text);
-            chapter.UpdatedAt = DateTime.UtcNow;
-        }
-
-        foreach (var stale in existing.Values.Where(
-                     x => !importedNumbers.Contains(x.Number)))
-        {
-            db.NovelChapters.Remove(stale);
-        }
-
-        await db.SaveChangesAsync(cancellationToken);
+        await NovelVolumeContent.SyncChaptersAsync(
+            db,
+            work,
+            volume,
+            parsed.Chapters
+                .OrderBy(x => x.Number)
+                .Select(imported => new NovelVolumeChapterInput(
+                    $"book://{work.Id:N}/{imported.Number.ToString(CultureInfo.InvariantCulture)}",
+                    imported.Title,
+                    imported.Text))
+                .ToArray(),
+            cancellationToken);
 
         await UpsertEditionAndFileAsync(
             work,

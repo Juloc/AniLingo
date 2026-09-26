@@ -234,6 +234,8 @@ builder.Services.AddHttpClient<NcodeNovelSourceProvider>(client =>
 builder.Services.AddScoped<INovelSourceProvider>(
     services => services.GetRequiredService<NcodeNovelSourceProvider>());
 builder.Services.AddScoped<NovelImportService>();
+builder.Services.AddSingleton<NovelVolumeAssetStore>();
+builder.Services.AddScoped<NovelEpubImportService>();
 builder.Services.AddScoped<NovelCatalogQueries>();
 builder.Services.AddScoped<NovelProgressService>();
 builder.Services.AddScoped<NovelAnnotationService>();

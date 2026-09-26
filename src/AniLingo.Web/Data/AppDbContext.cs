@@ -42,6 +42,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<NovelWork> NovelWorks => Set<NovelWork>();
     public DbSet<BookEdition> BookEditions => Set<BookEdition>();
     public DbSet<BookFile> BookFiles => Set<BookFile>();
+    public DbSet<NovelVolume> NovelVolumes => Set<NovelVolume>();
     public DbSet<NovelChapter> NovelChapters => Set<NovelChapter>();
     public DbSet<NovelTranslation> NovelTranslations => Set<NovelTranslation>();
     public DbSet<NovelProgress> NovelProgress => Set<NovelProgress>();
@@ -283,13 +284,29 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasIndex(x => x.ContentHash);
         });
 
+        modelBuilder.Entity<NovelVolume>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Title).HasMaxLength(500);
+            entity.Property(x => x.Kind).HasMaxLength(16);
+            entity.Property(x => x.SourceKey).HasMaxLength(200);
+            entity.Property(x => x.SourceFileName).HasMaxLength(500);
+            entity.Property(x => x.SourceContentHash).HasMaxLength(64);
+            entity.Property(x => x.CoverAsset).HasMaxLength(120);
+            entity.HasOne<NovelWork>().WithMany().HasForeignKey(x => x.WorkId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(x => new { x.WorkId, x.Number }).IsUnique();
+            entity.HasIndex(x => new { x.WorkId, x.SourceKey }).IsUnique();
+        });
+
         modelBuilder.Entity<NovelChapter>(entity =>
         {
             entity.HasKey(x => x.Id);
             entity.Property(x => x.SourceUrl).HasMaxLength(2048);
             entity.Property(x => x.Title).HasMaxLength(500);
             entity.Property(x => x.SourceHash).HasMaxLength(64);
+            entity.Property(x => x.ContentJson).HasColumnType("TEXT");
             entity.HasOne<NovelWork>().WithMany().HasForeignKey(x => x.WorkId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<NovelVolume>().WithMany().HasForeignKey(x => x.VolumeId).OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(x => new { x.WorkId, x.Number }).IsUnique();
         });
 

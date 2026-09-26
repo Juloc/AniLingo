@@ -176,6 +176,7 @@ public sealed class NovelTests
             var chapter = new NovelChapter
             {
                 WorkId = work.Id,
+                VolumeId = AddWebVolume(db, work).Id,
                 Number = 1,
                 SourceUrl = "https://example.invalid/work/1",
                 Title = "One",
@@ -229,10 +230,12 @@ public sealed class NovelTests
                 Title = "Novel"
             };
             db.Add(work);
+            var volume = AddWebVolume(db, work);
             db.AddRange(
                 new NovelChapter
                 {
                     WorkId = work.Id,
+                    VolumeId = volume.Id,
                     Number = 1,
                     SourceUrl = "https://example.invalid/work/1",
                     Title = "One"
@@ -240,6 +243,7 @@ public sealed class NovelTests
                 new NovelChapter
                 {
                     WorkId = work.Id,
+                    VolumeId = volume.Id,
                     Number = 2,
                     SourceUrl = "https://example.invalid/work/2",
                     Title = "Two"
@@ -324,6 +328,7 @@ public sealed class NovelTests
             var chapter = new NovelChapter
             {
                 WorkId = work.Id,
+                VolumeId = AddWebVolume(db, work).Id,
                 Number = 7,
                 SourceUrl = "https://example.invalid/anchored/7",
                 Title = "Seven",
@@ -401,6 +406,7 @@ public sealed class NovelTests
             var chapter = new NovelChapter
             {
                 WorkId = work.Id,
+                VolumeId = AddWebVolume(db, work).Id,
                 Number = 1,
                 SourceUrl = "https://example.invalid/notes/1",
                 Title = "One",
@@ -537,6 +543,19 @@ public sealed class NovelTests
         Path.Combine(
             Path.GetTempPath(),
             $"anilingo-novels-{Guid.NewGuid():N}.db");
+
+    private static NovelVolume AddWebVolume(AppDbContext db, NovelWork work)
+    {
+        var volume = new NovelVolume
+        {
+            WorkId = work.Id,
+            Number = 1,
+            Kind = NovelVolumeKinds.Web,
+            SourceKey = "web"
+        };
+        db.Add(volume);
+        return volume;
+    }
 
     private static async Task<AppDbContext> CreateDatabaseAsync(string path)
     {

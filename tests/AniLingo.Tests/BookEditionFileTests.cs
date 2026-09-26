@@ -116,10 +116,19 @@ public sealed class BookEditionFileTests
                 Format = "EPUB:en"
             };
             db.NovelWorks.Add(work);
+            var volume = new NovelVolume
+            {
+                WorkId = work.Id,
+                Number = 1,
+                Kind = NovelVolumeKinds.Book,
+                SourceKey = "book"
+            };
+            db.NovelVolumes.Add(volume);
 
             var chapter = new NovelChapter
             {
                 WorkId = work.Id,
+                VolumeId = volume.Id,
                 Number = 1,
                 SourceUrl = "book://edition-cascade/1",
                 Title = "Chapter One",
