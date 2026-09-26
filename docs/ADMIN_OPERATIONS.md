@@ -20,6 +20,7 @@ Owner-only administration:
 - `/Admin/Subtitles`
 - `/Admin/Sonarr`
 - `/Admin/Ai`
+- `/Settings/Sabnzbd` — the one SABnzbd connection shared by Books and Anime (linked from Admin → System and Books → Acquisition settings)
 
 Legacy owner routes under `/Settings` redirect to their `/Admin` counterparts.
 
@@ -70,7 +71,7 @@ Tracked network/import work includes:
 - Manga CBZ/ZIP upload, mounted-path import, source refresh and AniList metadata match
 - Discover handoffs for novel and Manga imports
 - local EPUB upload, Books inbox import and remote EPUB import
-- SABnzbd downloads, including live queue/post-processing state when a full SABnzbd API key allows queue/history access
+- SABnzbd downloads for Books and Anime, including live queue/post-processing state when a full SABnzbd API key allows queue/history access
 - Sonarr artwork downloads
 
 Manga uploads on `/Manga` and `/Discover/MangaImport` accept up to 200 CBZ/ZIP archives, at most 1 GB each and 4 GB in total. The raised request-body and multipart limits apply only to the owner's `Upload` handler on those two pages; every other request, including uploads attempted by non-owner accounts, keeps the ASP.NET Core defaults. A reverse proxy in front of AniLingo must not cap request bodies below roughly 4 GB for these uploads (Caddy has no body limit by default; nginx needs `client_max_body_size`).
@@ -95,11 +96,39 @@ Persisted operational data must not contain:
 
 Exceptions are persisted as bounded type/message summaries rather than stack traces. Full server diagnostics may continue to use the normal application logger.
 
+## SABnzbd
 
-## External download monitoring
+AniLingo has one SABnzbd integration (`Features/Acquisition/Sabnzbd`) used by Books and Anime.
 
-SABnzbd submissions remain canonical in the Books integration. Operations does not implement a second submit path.
+### Configuration
 
-Before submission AniLingo snapshots visible SAB job IDs. After the existing submit succeeds it resolves the newly assigned `nzo_id` and stores it on the operation. A hosted monitor then projects SAB queue/history state into the operation's progress, bytes, speed/ETA (when SAB exposes them), and terminal success/failure.
+The owner configures it once under `/Settings/Sabnzbd`: base URL, API key and one category per purpose (Books, Anime; empty means the SABnzbd default category). Settings are stored in `/data/acquisition/sabnzbd.json`; the API key is protected with ASP.NET Core Data Protection. **Test connection** checks both reachability and that the key can read the queue — the NZB-only key can submit but cannot provide progress, so use the full API key.
 
-The full SABnzbd API key can read queue/history. An NZB-only key may still submit a job but cannot provide live monitoring; AniLingo records the submission and clearly marks live tracking as unavailable rather than storing the API key in Operations.
+Supported configuration keys (environment variables use `__`, for example `Sabnzbd__ApiKey`). A set key overrides the matching stored field and the settings page shows the override:
+
+| Key | Field |
+| --- | --- |
+| `Sabnzbd:BaseUrl` | SABnzbd URL |
+| `Sabnzbd:ApiKey` | API key |
+| `Sabnzbd:Categories:Books` | Books category |
+| `Sabnzbd:Categories:Anime` | Anime category |
+
+The earlier Books-only keys `Books:SABnzbd:BaseUrl`, `Books:SABnzbd:ApiKey` and `Books:SABnzbd:Category` are no longer read; startup logs the replacement key when one is still set.
+
+On startup, SABnzbd fields that earlier builds stored in `/data/books/integrations.json` are moved once into the shared settings (existing shared settings win) and removed from the Books file, which now only holds the Books inbox path.
+
+### Jobs and state
+
+Every submission — Books NZB URL/file or an Anime release — goes through `SabnzbdDownloadService` and creates one canonical operation (`IsDownload`, `ExternalProvider = sabnzbd`, `ExternalId = nzo_id` returned by SABnzbd). Books uses kind `sabnzbd-download`, Anime uses `anime-sabnzbd-download`.
+
+One hosted monitor projects SABnzbd queue/history onto those operations: progress, bytes, queue speed (when a single job is downloading), ETA, post-processing state, completion and failure. Failures are classified (incomplete download, corrupt/repair failed, extraction failed, password-protected, script failure) and the operation error states the reason. A job that disappears from both queue and history for 15 minutes fails. After a restart the monitor continues from the persisted external references.
+
+When a Books download completes, the Books inbox import runs once. Anime completions do not touch the Books inbox.
+
+The acquisition store (`/data/acquisition/sabnzbd-acquisitions.json`) keeps only the durable relation of an anime acquisition (anime, episodes, attempts with their operation IDs and release identities, untried accepted candidates) and the blocklist of failed release identities. Candidate NZB URLs are stored protected because indexer URLs can carry credentials. It never stores job status; that is always read from the operation.
+
+When an anime download fails, its release identity is blocklisted and the next accepted, non-blocklisted candidate is sent, up to the acquisition's attempt limit (default 3). The failed operation's log records the replacement or why the acquisition stopped. On startup, any acquisition whose latest attempt failed before the process stopped is advanced once.
+
+### Cancel and retry
+
+The operation detail page (`/Admin/Operation/{id}`) cancels an active SABnzbd job (removed from SABnzbd queue/history including files) and retries a failed one through SABnzbd's retry, which requeues the same operation with the new `nzo_id`. Retrying an anime attempt is only allowed for the latest attempt of its acquisition and removes that release from the blocklist. Anime operations also show the anime, episodes, attempt number and blocklisted releases.

@@ -134,6 +134,10 @@ Episode pages can explicitly sync watched progress for the currently signed-in A
 
 **Books → For you** (`/Books/ForYou`) shows Continue reading plus “Because you read …”, “More by …”, similar-subject and popular free-book shelves. Recommendations are deterministic and content-based: seeds are the current profile's most recent meaningful reads, then recently imported library books; same author scores strongest, shared stored subjects add to the score, duplicates and books already in the local library are suppressed, and each book appears on only one shelf. Only the current profile's reading state is used; there is no household profiling and nothing is persisted. The normal `/Books` page stays local-only — catalog searches (a bounded handful per visit, with timeouts) run only when For you is opened, and a failing provider just removes its shelf.
 
+### SABnzbd
+
+Books and Anime share one SABnzbd connection, configured by the owner under **Settings → SABnzbd** (`/Settings/Sabnzbd`) with a separate category for each. Every SABnzbd job appears under **Admin → Operations → Downloads** with progress, ETA, a clear failure reason (incomplete, corrupt, password-protected or failed extraction) and cancel/retry. When the anime acquisition service sends a release and it fails, that release is blocklisted and the next accepted release is tried within a bounded number of attempts. Supported configuration keys and the one-time move of older Books SABnzbd settings are described in [docs/ADMIN_OPERATIONS.md](docs/ADMIN_OPERATIONS.md#sabnzbd).
+
 ## Web / Light Novels
 
 Open **Novels** to import a supported Japanese web novel. The first source provider is **Shōsetsuka ni Narō / ncode.syosetu.com**. AniLingo stores the work and chapter index in the existing SQLite database; Japanese chapter text is fetched and cached when a chapter is opened. **Cache all Japanese text** can queue the remaining chapters through the existing in-process background worker.

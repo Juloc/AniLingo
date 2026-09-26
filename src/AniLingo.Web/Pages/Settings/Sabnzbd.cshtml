@@ -1,0 +1,104 @@
+@page
+@model AniLingo.Web.Pages.Settings.SabnzbdModel
+@using AniLingo.Web.Features.Acquisition.Sabnzbd
+@{
+    ViewData["Title"] = "SABnzbd";
+    var resolved = Model.Resolved;
+}
+
+<header class="page-header">
+    <div>
+        <span class="eyebrow">Settings · Server</span>
+        <h1>SABnzbd</h1>
+        <p>One SABnzbd connection for Books and Anime downloads. Progress, failures, cancel and retry appear under Admin → Operations → Downloads.</p>
+    </div>
+    <a class="button" asp-page="/Admin/Operations" asp-route-view="downloads">Downloads</a>
+</header>
+
+<div class="settings-grid">
+    <section class="panel">
+        <div class="panel-heading">
+            <h2>Connection</h2>
+            <span>@(resolved?.IsConfigured == true ? "Configured" : "Not configured")</span>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(Model.Notice))
+        {
+            <p class="metadata-error" style="color:inherit">@Model.Notice</p>
+        }
+        @if (!string.IsNullOrWhiteSpace(Model.Error))
+        {
+            <p class="metadata-error">@Model.Error</p>
+        }
+        @if (!string.IsNullOrWhiteSpace(resolved?.ConfigurationError))
+        {
+            <p class="metadata-error">@resolved.ConfigurationError</p>
+        }
+
+        <form method="post" class="form-stack">
+            <label>
+                <span>SABnzbd URL</span>
+                <input asp-for="BaseUrl" type="url" placeholder="http://sabnzbd:8080" />
+                @if (resolved?.BaseUrlFromConfiguration == true)
+                {
+                    <small class="muted">Overridden by <code>@SabnzbdConfigurationKeys.BaseUrl</code>: @resolved.Effective.BaseUrl</small>
+                }
+            </label>
+            <label>
+                <span>API key</span>
+                <input asp-for="ApiKey"
+                       type="password"
+                       value=""
+                       autocomplete="new-password"
+                       placeholder="@(Model.HasSavedApiKey ? "Saved — leave blank to keep" : "Full SABnzbd API key")" />
+                <small class="muted">Use the full API key; the NZB key cannot read queue/history, so progress could not be tracked.</small>
+                @if (resolved?.ApiKeyFromConfiguration == true)
+                {
+                    <small class="muted">Overridden by <code>@SabnzbdConfigurationKeys.ApiKey</code>.</small>
+                }
+            </label>
+            @if (Model.HasSavedApiKey)
+            {
+                <label class="book-settings-check">
+                    <input asp-for="ClearApiKey" type="checkbox" />
+                    <span>Remove saved API key</span>
+                </label>
+            }
+            <label>
+                <span>Books category</span>
+                <input asp-for="BooksCategory" placeholder="Optional, for example books" />
+                @if (resolved?.BooksCategoryFromConfiguration == true)
+                {
+                    <small class="muted">Overridden by <code>@SabnzbdConfigurationKeys.BooksCategory</code>: @resolved.Effective.BooksCategory</small>
+                }
+            </label>
+            <label>
+                <span>Anime category</span>
+                <input asp-for="AnimeCategory" placeholder="Optional, for example anime" />
+                @if (resolved?.AnimeCategoryFromConfiguration == true)
+                {
+                    <small class="muted">Overridden by <code>@SabnzbdConfigurationKeys.AnimeCategory</code>: @resolved.Effective.AnimeCategory</small>
+                }
+            </label>
+            <small class="muted">Leave a category empty to use the SABnzbd default category.</small>
+
+            <div class="inline-actions">
+                <button class="button button-primary" type="submit" asp-page-handler="Save">Save</button>
+                @if (resolved?.IsConfigured == true)
+                {
+                    <button class="button" type="submit" asp-page-handler="Test">Test connection</button>
+                }
+            </div>
+        </form>
+    </section>
+
+    <section class="panel">
+        <div class="panel-heading"><h2>Where it is used</h2></div>
+        <p class="muted">
+            Books sends NZB URLs or files from the Books page; completed EPUB files are imported from the
+            <a href="/Books/Integrations">Books inbox</a>. Anime acquisition sends accepted releases and,
+            when a download fails (incomplete, corrupt, password-protected or failed extraction), blocklists
+            that release and tries the next accepted one.
+        </p>
+    </section>
+</div>

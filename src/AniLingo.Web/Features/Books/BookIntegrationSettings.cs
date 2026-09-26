@@ -2,14 +2,16 @@ using System.Text.Json;
 
 namespace AniLingo.Web.Features.Books;
 
+/// <summary>
+/// Books-only integration settings. SABnzbd connection settings are shared
+/// with Anime and live in the canonical SABnzbd settings store
+/// (Settings → SABnzbd).
+/// </summary>
 public sealed record BookIntegrationSettings(
-    string? SabnzbdBaseUrl,
-    string? SabnzbdApiKey,
-    string? SabnzbdCategory,
     string? InboxPath)
 {
     public static BookIntegrationSettings Empty { get; } =
-        new(null, null, null, null);
+        new((string?)null);
 }
 
 public static class BookIntegrationSettingsStore
@@ -87,30 +89,6 @@ public static class BookIntegrationSettingsStore
     public static BookIntegrationSettings Normalize(
         BookIntegrationSettings settings)
     {
-        string? baseUrl = Clean(settings.SabnzbdBaseUrl, 2048);
-        if (baseUrl is not null)
-        {
-            if (!Uri.TryCreate(
-                    baseUrl,
-                    UriKind.Absolute,
-                    out var sabUri)
-                || sabUri.Scheme is not ("http" or "https"))
-            {
-                throw new InvalidOperationException(
-                    "SABnzbd URL must be an absolute HTTP or HTTPS URL.");
-            }
-
-            baseUrl = sabUri
-                .ToString()
-                .TrimEnd('/');
-        }
-
-        var apiKey = Clean(
-            settings.SabnzbdApiKey,
-            512);
-        var category = Clean(
-            settings.SabnzbdCategory,
-            128);
         var inbox = Clean(
             settings.InboxPath,
             2048);
@@ -120,11 +98,7 @@ public static class BookIntegrationSettingsStore
             inbox = Path.GetFullPath(inbox);
         }
 
-        return new BookIntegrationSettings(
-            baseUrl,
-            apiKey,
-            category,
-            inbox);
+        return new BookIntegrationSettings(inbox);
     }
 
     private static string? Clean(

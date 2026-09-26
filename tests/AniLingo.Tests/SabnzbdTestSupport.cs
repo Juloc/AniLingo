@@ -1,0 +1,187 @@
+using System.Net;
+using System.Text;
+using AniLingo.Web.Data;
+using AniLingo.Web.Features.Acquisition.Sabnzbd;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+
+namespace AniLingo.Tests;
+
+internal static class SabnzbdTestSupport
+{
+    public static SabnzbdConnection Connection() =>
+        new(
+            new SabnzbdSettings(
+                "http://sabnzbd:8080",
+                BooksCategory: "books",
+                AnimeCategory: "anime"),
+            "secret-key");
+
+    public static DirectoryInfo CreateTemporaryDirectory() =>
+        Directory.CreateDirectory(
+            Path.Combine(
+                Path.GetTempPath(),
+                $"anilingo-sab-{Guid.NewGuid():N}"));
+
+    public static IConfiguration Configuration(
+        IReadOnlyDictionary<string, string?>? values = null) =>
+        new ConfigurationBuilder()
+            .AddInMemoryCollection(values ?? new Dictionary<string, string?>())
+            .Build();
+
+    public static HttpResponseMessage JsonResponse(string json) =>
+        new(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                json,
+                Encoding.UTF8,
+                "application/json")
+        };
+
+    public static async Task<AppDbContext> CreateDatabaseAsync(string path)
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseSqlite($"Data Source={path};Foreign Keys=True")
+            .Options;
+
+        var db = new AppDbContext(options);
+        await DatabaseMigrationBridge.UpgradeAsync(db);
+        return db;
+    }
+
+    /// <summary>
+    /// A configured SABnzbd environment backed by a fake client and an
+    /// isolated data directory/database.
+    /// </summary>
+    public static async Task<SabnzbdTestEnvironment> CreateEnvironmentAsync()
+    {
+        var directory = CreateTemporaryDirectory();
+        var protection = new EphemeralDataProtectionProvider();
+        var settings = new SabnzbdSettingsStore(protection, directory);
+        await settings.SaveAsync(
+            new SabnzbdStoredSettings("http://sabnzbd:8080", "secret-key", "books", "anime"));
+
+        var db = await CreateDatabaseAsync(Path.Combine(directory.FullName, "anilingo.db"));
+        return new SabnzbdTestEnvironment(directory, protection, settings, db);
+    }
+}
+
+internal sealed class SabnzbdTestEnvironment(
+    DirectoryInfo directory,
+    IDataProtectionProvider protection,
+    SabnzbdSettingsStore settings,
+    AppDbContext db) : IAsyncDisposable
+{
+    public DirectoryInfo Directory { get; } = directory;
+    public IDataProtectionProvider Protection { get; } = protection;
+    public SabnzbdSettingsStore Settings { get; } = settings;
+    public AppDbContext Db { get; private set; } = db;
+    public FakeSabnzbdClient Client { get; } = new();
+
+    public SabnzbdConnectionResolver Resolver =>
+        new(Settings, SabnzbdTestSupport.Configuration());
+
+    /// <summary>A fresh store instance reads the persisted file, as after a restart.</summary>
+    public SabnzbdAcquisitionStore NewAcquisitionStore() =>
+        new(Protection, Directory);
+
+    public SabnzbdDownloadService NewDownloadService(SabnzbdAcquisitionStore store) =>
+        new(Client, Resolver, store, Db);
+
+    public SabnzbdAcquisitionService NewAcquisitionService(SabnzbdAcquisitionStore store) =>
+        new(NewDownloadService(store), store, Db);
+
+    public async ValueTask DisposeAsync()
+    {
+        await Db.DisposeAsync();
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        Directory.Delete(recursive: true);
+    }
+}
+
+internal sealed class FakeSabnzbdClient : ISabnzbdClient
+{
+    private int nextId;
+
+    public SabnzbdQueueSnapshot Queue { get; set; } = new(false, null, null, []);
+    public SabnzbdHistorySnapshot History { get; set; } = new([]);
+    public List<SabnzbdGrabRequest> Grabs { get; } = [];
+    public List<string> Cancelled { get; } = [];
+    public List<string> Retried { get; } = [];
+    public Queue<SabnzbdGrabResult> GrabResults { get; } = new();
+
+    public Task<SabnzbdConnectionTestResult> TestAsync(
+        SabnzbdConnection connection,
+        CancellationToken cancellationToken) =>
+        Task.FromResult(new SabnzbdConnectionTestResult(true, "test", CanMonitor: true));
+
+    public Task<SabnzbdGrabResult> GrabAsync(
+        SabnzbdConnection connection,
+        SabnzbdGrabRequest grab,
+        CancellationToken cancellationToken)
+    {
+        Grabs.Add(grab);
+        return Task.FromResult(
+            GrabResults.Count > 0
+                ? GrabResults.Dequeue()
+                : new SabnzbdGrabResult(true, [$"SABnzbd_nzo_{++nextId}"]));
+    }
+
+    public Task<SabnzbdGrabResult> AddFileAsync(
+        SabnzbdConnection connection,
+        Stream nzb,
+        string fileName,
+        string? category,
+        CancellationToken cancellationToken) =>
+        Task.FromResult(new SabnzbdGrabResult(true, [$"SABnzbd_nzo_{++nextId}"]));
+
+    public Task<SabnzbdQueueSnapshot> GetQueueAsync(
+        SabnzbdConnection connection,
+        CancellationToken cancellationToken) =>
+        Task.FromResult(Queue);
+
+    public Task<SabnzbdHistorySnapshot> GetHistoryAsync(
+        SabnzbdConnection connection,
+        IReadOnlyCollection<string>? nzoIds,
+        CancellationToken cancellationToken) =>
+        Task.FromResult(History);
+
+    public Task<SabnzbdActionResult> CancelAsync(
+        SabnzbdConnection connection,
+        string nzoId,
+        bool deleteFiles,
+        CancellationToken cancellationToken)
+    {
+        Cancelled.Add(nzoId);
+        return Task.FromResult(new SabnzbdActionResult(true));
+    }
+
+    public Task<SabnzbdActionResult> DeleteHistoryAsync(
+        SabnzbdConnection connection,
+        string nzoId,
+        bool deleteFiles,
+        CancellationToken cancellationToken) =>
+        Task.FromResult(new SabnzbdActionResult(false, Error: "not in history"));
+
+    public Task<SabnzbdActionResult> RetryAsync(
+        SabnzbdConnection connection,
+        string nzoId,
+        CancellationToken cancellationToken)
+    {
+        Retried.Add(nzoId);
+        return Task.FromResult(new SabnzbdActionResult(true, $"{nzoId}_retry"));
+    }
+
+    public Task<SabnzbdActionResult> PauseAsync(
+        SabnzbdConnection connection,
+        string nzoId,
+        CancellationToken cancellationToken) =>
+        Task.FromResult(new SabnzbdActionResult(true));
+
+    public Task<SabnzbdActionResult> ResumeAsync(
+        SabnzbdConnection connection,
+        string nzoId,
+        CancellationToken cancellationToken) =>
+        Task.FromResult(new SabnzbdActionResult(true));
+}
