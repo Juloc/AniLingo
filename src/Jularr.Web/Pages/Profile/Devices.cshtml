@@ -20,7 +20,7 @@
 {
     <p class="muted">@ui["profile.devices.empty"]</p>
 }
-else
+@if (Model.Sessions.Count > 0)
 {
     <div class="sessions-table-wrap">
         <table class="sessions-table">
