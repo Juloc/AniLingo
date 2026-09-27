@@ -73,10 +73,19 @@ public sealed class ReadingSourceSettingsTests
                     new(true, 0)
             };
 
-        Assert.ThrowsException<InvalidDataException>(
-            () => ReadingSourceCatalog.Normalize(
+        var rejected = false;
+        try
+        {
+            _ = ReadingSourceCatalog.Normalize(
                 settings,
-                rejectInvalidPriority: true));
+                rejectInvalidPriority: true);
+        }
+        catch (InvalidDataException)
+        {
+            rejected = true;
+        }
+
+        Assert.IsTrue(rejected);
     }
 
     [TestMethod]
