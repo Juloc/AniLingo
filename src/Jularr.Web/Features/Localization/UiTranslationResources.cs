@@ -128,6 +128,7 @@ public static class UiTranslationResources
         M("calendar.empty", "No known releases in this period.", "Calendar", "Empty state", "Shown when the calendar has no releases for the selected period and filters.", "calm concise status", 50),
         M("calendar.imprecise.heading", "Date not exact yet", "Calendar", "Heading", "Heading above releases whose date is only known to the month, quarter or year, or not at all.", "clear heading", 28),
         M("calendar.upcoming.heading", "Upcoming", "Calendar", "Heading", "Heading of the short list of known upcoming releases on a media detail page.", "clear heading", 20),
+        M("calendar.upcoming.none", "Nothing more this month", "Calendar", "Empty state", "Side panel of the calendar's month view when the shown month has releases but none from today on.", "short status", 32),
         M("calendar.upcoming.next", "Next release", "Calendar", "Heading", "Heading on a media detail page when exactly one upcoming release is known.", "clear heading", 20),
         M("calendar.upcoming.open", "Open calendar", "Calendar", "Link", "Link from a media detail page to the release calendar.", "concise navigation action", 20),
 

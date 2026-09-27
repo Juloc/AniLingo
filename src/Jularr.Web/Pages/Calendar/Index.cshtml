@@ -87,7 +87,7 @@
     @switch (Model.View)
     {
         case CalendarView.Month:
-            <div class="calendar-month-layout@(sidebarUpcoming.Length == 0 ? " is-single" : "")">
+            <div class="calendar-month-layout">
                 <section class="calendar-main-card">
                     <div class="calendar-weekdays" aria-hidden="true">
                         @foreach (var weekday in weekdays)
@@ -150,10 +150,15 @@
                     </ol>
                 </section>
 
-                @if (sidebarUpcoming.Length > 0)
-                {
-                    <aside class="calendar-sidebar-card" aria-labelledby="calendar-upcoming-heading">
-                        <h3 id="calendar-upcoming-heading">@ui["calendar.upcoming.heading"]</h3>
+                <aside class="calendar-sidebar-card" aria-labelledby="calendar-upcoming-heading">
+                    <h3 id="calendar-upcoming-heading">@ui["calendar.upcoming.heading"]</h3>
+                    @if (sidebarUpcoming.Length == 0)
+                    {
+                        @* In the month view the empty text lives here only; the grid shows the empty days. *@
+                        <p class="calendar-sidebar-empty">@(Model.IsPeriodEmpty ? ui["calendar.empty"] : ui["calendar.upcoming.none"])</p>
+                    }
+                    else
+                    {
                         <ul class="calendar-sidebar-upcoming">
                             @foreach (var item in sidebarUpcoming)
                             {
@@ -182,8 +187,8 @@
                                 </li>
                             }
                         </ul>
-                    </aside>
-                }
+                    }
+                </aside>
             </div>
             break;
 
@@ -233,7 +238,7 @@
             break;
     }
 
-    @if (Model.IsPeriodEmpty)
+    @if (Model.IsPeriodEmpty && Model.View != CalendarView.Month)
     {
         <p class="calendar-empty">@ui["calendar.empty"]</p>
     }

@@ -21,7 +21,11 @@ public sealed class CalendarPageMarkupTests
         Assert.AreEqual(1, Count(Calendar, "Model.Link(date: Model.Next)"), "One next link.");
         Assert.AreEqual(1, Count(Calendar, "@Model.Title"), "The period title is shown once.");
         Assert.AreEqual(1, Count(Calendar, "calendar.filter.typeAria"), "The type filter is the only type control.");
-        Assert.AreEqual(1, Count(Calendar, "ui[\"calendar.empty\"]"), "One empty text.");
+        Assert.AreEqual(1, Count(Calendar, "<aside class=\"calendar-sidebar-card\""), "The month side panel stays.");
+        StringAssert.Contains(
+            Calendar,
+            "@if (Model.IsPeriodEmpty && Model.View != CalendarView.Month)",
+            "In the month view the empty text is shown once, in the side panel.");
 
         foreach (var removed in new[] { "calendar-mini", "calendar-legend", "calendar.upcoming.open" })
         {
@@ -42,6 +46,7 @@ public sealed class CalendarPageMarkupTests
         var css = Read("src", "Jularr.Web", "wwwroot", "css", "calendar.css");
         Assert.IsFalse(css.Contains(".calendar-mini", StringComparison.Ordinal));
         Assert.IsFalse(css.Contains(".calendar-legend", StringComparison.Ordinal));
+        Assert.IsFalse(css.Contains("border-inline-start", StringComparison.Ordinal), "Media types are not shown as edge stripes.");
     }
 
     [TestMethod]

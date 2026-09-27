@@ -325,9 +325,8 @@
     grid-template-columns: 34px minmax(0, 1fr);
     align-items: center;
     gap: 6px;
-    border-inline-start: 3px solid var(--calendar-type);
     border-radius: 7px;
-    background: color-mix(in srgb, var(--calendar-type) 9%, var(--surface));
+    background: color-mix(in srgb, var(--calendar-type) 12%, var(--surface));
 }
 .calendar-month-event > a:hover {
     background: color-mix(in srgb, var(--calendar-type) 16%, var(--surface));
@@ -377,9 +376,6 @@
 .calendar-more:hover { color: var(--text); }
 
 /* Month side panel: the next releases of the shown month. */
-.calendar-month-layout.is-single {
-    grid-template-columns: minmax(0, 1fr);
-}
 .calendar-sidebar-card {
     padding: 14px;
 }
@@ -403,7 +399,6 @@
     grid-template-columns: 34px minmax(0, 1fr);
     gap: 8px;
     align-items: center;
-    border-inline-start: 2px solid var(--calendar-type);
     border-radius: 7px;
 }
 .calendar-sidebar-upcoming li > a:hover {
@@ -445,6 +440,25 @@
     color: var(--muted);
     font-size: 9px;
 }
+.calendar-sidebar-empty {
+    margin: 8px 0 0;
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.4;
+}
+
+/* The media type is a small dot before the meta line, never a stripe. */
+.calendar-sidebar-copy small::before,
+.calendar-event-copy small::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    display: inline-block;
+    margin-inline-end: 5px;
+    border-radius: 999px;
+    background: var(--calendar-type, var(--accent));
+    vertical-align: 1px;
+}
 
 /* Shared event rows for week, agenda and detail-page upcoming blocks. */
 .calendar-list-card {
@@ -472,7 +486,6 @@
     align-items: center;
     gap: 12px;
     padding: 9px 12px;
-    border-inline-start: 3px solid var(--calendar-type, var(--accent));
 }
 .calendar-event.is-compact .calendar-event-link {
     grid-template-columns: minmax(0, 1fr) auto;
