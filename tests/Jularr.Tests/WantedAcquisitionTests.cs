@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Jularr.Tests;
 
@@ -189,7 +190,8 @@ public sealed class WantedAcquisitionTests
             var resolver = new CompletedDownloadLocationResolver(
                 clients,
                 client,
-                settings);
+                settings,
+                NullLogger<CompletedDownloadLocationResolver>.Instance);
             var operation = Operation(
                 Guid.NewGuid(),
                 "job-1",
