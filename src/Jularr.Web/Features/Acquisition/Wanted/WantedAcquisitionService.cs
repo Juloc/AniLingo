@@ -42,11 +42,10 @@ public sealed class WantedAcquisitionService(
     public const int MaxRequestsPerKindPerPass = 25;
 
     /// <summary>
-    /// How long a finished download may wait for its files (a purged SABnzbd history entry,
-    /// an unmapped path, an offline share) before the request stops waiting and asks the owner
-    /// for attention. Without it such a request would stay open forever.
+    /// How long a finished download may wait for its files before the request stops waiting and
+    /// asks the owner for attention (the shared completed-download import timeout).
     /// </summary>
-    public static readonly TimeSpan CompletedImportTimeout = TimeSpan.FromHours(24);
+    public static readonly TimeSpan CompletedImportTimeout = CompletedDownloadImportService.CompletedImportTimeout;
 
     public const string CancelledMessage =
         "The download was cancelled, so no other release was grabbed. Approve the request again to search.";
@@ -117,6 +116,11 @@ public sealed class WantedAcquisitionService(
                 cancellationToken);
         }
 
+        // Manual downloads (no request) go through the same importer.
+        advanced += await services
+            .GetRequiredService<CompletedDownloadImportService>()
+            .ImportManualDownloadsAsync(nowUtc, cancellationToken);
+
         return advanced;
     }
 
@@ -129,8 +133,7 @@ public sealed class WantedAcquisitionService(
         var store = services.GetRequiredService<AcquisitionAccessStore>();
         var operations = new OperationStore(
             services.GetRequiredService<AppDbContext>());
-        var dispatcher = services.GetRequiredService<CompletedDownloadDispatcher>();
-        var locations = services.GetRequiredService<ICompletedDownloadLocationResolver>();
+        var imports = services.GetRequiredService<CompletedDownloadImportService>();
 
         var downloading = await store.ListByStatusAsync(
             handler.Kind,
@@ -234,27 +237,11 @@ public sealed class WantedAcquisitionService(
                 advanced++;
             }
 
-            var location = await locations.ResolveAsync(
+            var result = await imports.ImportAsync(
                 operation,
-                cancellationToken);
-            if (!location.Resolved ||
-                string.IsNullOrWhiteSpace(location.SourcePath))
-            {
-                advanced += await KeepImportingAsync(
-                    store,
-                    request,
-                    operation,
-                    location.Message,
-                    nowUtc,
-                    cancellationToken);
-                continue;
-            }
-
-            var result = await dispatcher.DispatchAsync(
-                new CompletedDownloadImportRequest(
-                    request,
-                    operation,
-                    location.SourcePath),
+                request.Kind,
+                request,
+                nowUtc,
                 cancellationToken);
 
             switch (result.Disposition)
@@ -274,6 +261,7 @@ public sealed class WantedAcquisitionService(
                 case CompletedDownloadImportDisposition.RetryLater:
                     advanced += await KeepImportingAsync(
                         store,
+                        imports,
                         request,
                         operation,
                         result.Message,
@@ -305,6 +293,7 @@ public sealed class WantedAcquisitionService(
     /// </summary>
     private static async Task<int> KeepImportingAsync(
         AcquisitionAccessStore store,
+        CompletedDownloadImportService imports,
         AcquisitionRequest request,
         OperationSnapshot operation,
         string message,
@@ -316,6 +305,15 @@ public sealed class WantedAcquisitionService(
         var reason = string.IsNullOrWhiteSpace(message)
             ? "The completed download could not be imported."
             : message.Trim();
+
+        if (timedOut)
+        {
+            await imports.RecordGaveUpAsync(
+                operation,
+                $"{reason} Gave up importing {CompletedImportTimeout.TotalHours:0} hours after the download finished.",
+                nowUtc,
+                cancellationToken);
+        }
 
         await store.UpdateStatusAsync(
             request.Id,

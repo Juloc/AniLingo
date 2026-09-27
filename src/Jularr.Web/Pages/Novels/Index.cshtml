@@ -178,7 +178,7 @@
                     @if (Model.IsInboxConfigured)
                     {
                         <form method="post" asp-page-handler="ScanInbox" class="novel-import-form">
-                            <label>@ui["novels.index.inboxLabel"] · <code>@Jularr.Web.Features.Novels.NovelEpubImportService.InboxFolder</code></label>
+                            <label>@ui["novels.index.inboxLabel"] · <code>@Model.InboxPath</code></label>
                             <button class="button" type="submit">@ui["novels.index.importFromInbox"]</button>
                         </form>
                     }

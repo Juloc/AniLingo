@@ -74,26 +74,50 @@
         }
     </section>
 
-    <section class="panel">
-        <div class="panel-heading"><h2>@ui["settings.acquisition.mangaLibraryHeading"]</h2></div>
-        <p class="muted">@ui["settings.acquisition.mangaLibraryDescription"]</p>
-        <form method="post" asp-page-handler="MangaLibrary" class="form-stack">
-            <label>
-                <span>@ui["settings.acquisition.mangaLibraryRootLabel"]</span>
-                <input type="text" name="libraryRoot" value="@Model.MangaLibrary?.LibraryRoot" placeholder="/data/media/manga" />
-            </label>
-            <label>
-                <span>@ui["settings.acquisition.mangaImportModeLabel"]</span>
-                <select name="importMode">
-                    <option value="">@ui["settings.acquisition.usesDefault"]</option>
-                    @foreach (var mode in Enum.GetValues<ImportMode>())
+    <section class="panel" id="media-folders">
+        <div class="panel-heading"><h2>@ui["settings.acquisition.mediaFoldersHeading"]</h2></div>
+        <p class="muted">@ui["settings.acquisition.mediaFoldersDescription"]</p>
+        @foreach (var kind in Model.MediaFolderKinds)
+        {
+            var folders = Model.FoldersFor(kind);
+            var slug = Jularr.Web.Pages.Settings.AcquisitionModel.FolderName(kind);
+            <h3>@Model.MediaLabel(kind)</h3>
+            <form method="post" asp-page-handler="MediaFolders" class="form-stack">
+                <input type="hidden" name="kind" value="@kind" />
+                @if (Jularr.Web.Pages.Settings.AcquisitionModel.HasLibraryFolder(kind))
+                {
+                    <label>
+                        <span>@ui["settings.acquisition.libraryFolderLabel"]</span>
+                        <input type="text" name="libraryRoot" value="@folders.LibraryRoot" placeholder="/data/media/@slug" />
+                    </label>
+                    <label>
+                        <span>@ui["settings.acquisition.importModeLabel"]</span>
+                        <select name="importMode">
+                            <option value="">@ui["settings.acquisition.usesDefault"]</option>
+                            @foreach (var mode in Enum.GetValues<ImportMode>())
+                            {
+                                <option value="@mode" selected="@(folders.ImportMode == mode)">@Model.ImportModeLabel(mode)</option>
+                            }
+                        </select>
+                    </label>
+                }
+                else
+                {
+                    <p class="muted">@ui["settings.acquisition.storedInJularr"]</p>
+                }
+                <label>
+                    <span>@ui["settings.acquisition.inboxFolderLabel"]</span>
+                    <input type="text" name="inboxRoot" value="@folders.InboxRoot" placeholder="/data/downloads/complete/@slug" />
+                </label>
+                <div class="inline-actions">
+                    <button class="button" type="submit">@ui["common.save"]</button>
+                    @if (!string.IsNullOrWhiteSpace(folders.InboxRoot))
                     {
-                        <option value="@mode" selected="@(Model.MangaLibrary?.ImportMode == mode)">@Model.ImportModeLabel(mode)</option>
+                        <button class="button" type="submit" asp-page-handler="ScanInbox">@ui["settings.acquisition.scanInbox"]</button>
                     }
-                </select>
-            </label>
-            <button class="button" type="submit">@ui["common.save"]</button>
-        </form>
+                </div>
+            </form>
+        }
     </section>
 
     <section class="panel">

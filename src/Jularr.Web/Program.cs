@@ -379,9 +379,20 @@ builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Access.IAcquisitionRe
 builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Access.IAcquisitionRequestExecutor, Jularr.Web.Features.ReadingAcquisition.LightNovelAcquisitionRequestExecutor>();
 builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Wanted.IWantedRequestHandler, Jularr.Web.Features.ReadingAcquisition.MangaWantedRequestHandler>();
 builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Wanted.IWantedRequestHandler, Jularr.Web.Features.ReadingAcquisition.LightNovelWantedRequestHandler>();
-builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Import.ICompletedDownloadImportAdapter, Jularr.Web.Features.ReadingAcquisition.MangaCompletedDownloadImportAdapter>();
-builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Import.ICompletedDownloadImportAdapter, Jularr.Web.Features.ReadingAcquisition.LightNovelCompletedDownloadImportAdapter>();
+builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Wanted.IWantedRequestHandler, Jularr.Web.Features.Books.BookWantedRequestHandler>();
+builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Wanted.ReleaseRequestTracker>();
+builder.Services.AddScoped<Jularr.Web.Features.ReadingAcquisition.MangaCompletedDownloadImportAdapter>();
+builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Import.ICompletedDownloadImportAdapter>(services => services.GetRequiredService<Jularr.Web.Features.ReadingAcquisition.MangaCompletedDownloadImportAdapter>());
+builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Import.IMediaInboxImportAdapter>(services => services.GetRequiredService<Jularr.Web.Features.ReadingAcquisition.MangaCompletedDownloadImportAdapter>());
+builder.Services.AddScoped<Jularr.Web.Features.ReadingAcquisition.LightNovelCompletedDownloadImportAdapter>();
+builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Import.ICompletedDownloadImportAdapter>(services => services.GetRequiredService<Jularr.Web.Features.ReadingAcquisition.LightNovelCompletedDownloadImportAdapter>());
+builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Import.IMediaInboxImportAdapter>(services => services.GetRequiredService<Jularr.Web.Features.ReadingAcquisition.LightNovelCompletedDownloadImportAdapter>());
+builder.Services.AddScoped<Jularr.Web.Features.Books.BookCompletedDownloadImportAdapter>();
+builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Import.ICompletedDownloadImportAdapter>(services => services.GetRequiredService<Jularr.Web.Features.Books.BookCompletedDownloadImportAdapter>());
+builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Import.IMediaInboxImportAdapter>(services => services.GetRequiredService<Jularr.Web.Features.Books.BookCompletedDownloadImportAdapter>());
 builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Import.CompletedDownloadDispatcher>();
+builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Import.CompletedDownloadImportService>();
+builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Import.MediaInboxImportService>();
 builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Import.ICompletedDownloadLocationResolver, Jularr.Web.Features.Acquisition.Import.CompletedDownloadLocationResolver>();
 
 // Download clients: SABnzbd connections share the one canonical list (several can fail over to
@@ -400,7 +411,6 @@ builder.Services.AddHostedService<AcquisitionHealthCheckService>();
 builder.Services.AddScoped<SabnzbdDownloadService>();
 builder.Services.AddScoped<SabnzbdAcquisitionService>();
 builder.Services.AddHostedService<SabnzbdOperationMonitorService>();
-builder.Services.AddHostedService<Jularr.Web.Features.Books.BookRequestSearchService>();
 builder.Services.AddHostedService<Jularr.Web.Features.Acquisition.Wanted.WantedAcquisitionService>();
 
 builder.Services.AddSingleton<AnimeQualityProfileStore>();
@@ -537,6 +547,9 @@ try
         app.Services,
         message => Console.WriteLine($"[Jularr] {DateTimeOffset.UtcNow:O} {message}"));
     await DownloadClientSettingsMigration.RunAtStartupAsync(
+        app.Services,
+        message => Console.WriteLine($"[Jularr] {DateTimeOffset.UtcNow:O} {message}"));
+    await Jularr.Web.Features.Acquisition.Import.MediaFolderSettingsMigration.RunAtStartupAsync(
         app.Services,
         message => Console.WriteLine($"[Jularr] {DateTimeOffset.UtcNow:O} {message}"));
     var migratedBibles = await BookTranslationMemoryStore

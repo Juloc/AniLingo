@@ -205,6 +205,12 @@ matching (ownership checks, rename-loop detection) still works when the two cont
 shared storage differently — closing the "different mount paths" gap from
 [SONARR_MIGRATION.md](SONARR_MIGRATION.md).
 
+The same import modes and remote path mappings apply to Manga, Light Novels and Books through the
+shared `ImportFileTransfer` and `CompletedDownloadLocationResolver`; their folders are set under
+Settings → Acquisition → Media folders (see [READING_ACQUISITION.md](READING_ACQUISITION.md)).
+Every completed download, Anime included, shows the reported path, the mapped local path, the
+destination and the import mode on its operation page.
+
 ## Multiple root folders
 
 An anime's imports go to the library root its existing files already live in. A brand-new anime

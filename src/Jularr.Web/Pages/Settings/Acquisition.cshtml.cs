@@ -30,6 +30,7 @@ public sealed class AcquisitionModel(
     AcquisitionBackupService backupService,
     IndexerStore indexerStore,
     CurrentAccountContext currentAccount,
+    MediaInboxImportService inboxes,
     AppDbContext db) : PageModel
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true };
@@ -87,45 +88,116 @@ public sealed class AcquisitionModel(
         return RedirectToPage();
     }
 
-    public MediaLibraryTarget? MangaLibrary => ImportSettings.LibraryFor(MediaAcquisitionKind.Manga);
+    /// <summary>The reading media types with their own folders, in display order.</summary>
+    public IReadOnlyList<MediaAcquisitionKind> MediaFolderKinds => MediaInboxImportService.InboxKinds;
 
-    /// <summary>Sets (or, with an empty folder, clears) the Manga library folder and its import mode.</summary>
-    public async Task<IActionResult> OnPostMangaLibraryAsync(
+    public MediaLibraryTarget FoldersFor(MediaAcquisitionKind kind) => ImportSettings.FoldersFor(kind);
+
+    /// <summary>
+    /// Only Manga keeps its files in a NAS library folder; Light Novels and Books are read into
+    /// Jularr's own library, so they only have an inbox folder.
+    /// </summary>
+    public static bool HasLibraryFolder(MediaAcquisitionKind kind) => kind == MediaAcquisitionKind.Manga;
+
+    /// <summary>The conventional folder name of a media type in the NAS layout (placeholders only).</summary>
+    public static string FolderName(MediaAcquisitionKind kind) => kind switch
+    {
+        MediaAcquisitionKind.LightNovel => "lightnovels",
+        MediaAcquisitionKind.Book => "books",
+        _ => kind.ToString().ToLowerInvariant()
+    };
+
+    public string MediaLabel(MediaAcquisitionKind kind) => kind switch
+    {
+        MediaAcquisitionKind.Manga => Ui["settings.acquisition.mediaFolders.manga"],
+        MediaAcquisitionKind.LightNovel => Ui["settings.acquisition.mediaFolders.lightNovel"],
+        MediaAcquisitionKind.Book => Ui["settings.acquisition.mediaFolders.book"],
+        _ => kind.ToString()
+    };
+
+    /// <summary>
+    /// Sets the folders of one reading media type: the library folder and import mode (Manga)
+    /// and the inbox folder. An empty field clears that folder.
+    /// </summary>
+    public async Task<IActionResult> OnPostMediaFoldersAsync(
+        MediaAcquisitionKind kind,
         string? libraryRoot,
         ImportMode? importMode,
+        string? inboxRoot,
         CancellationToken cancellationToken)
     {
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
-        var root = libraryRoot?.Trim();
-        if (!string.IsNullOrEmpty(root) && !root.StartsWith('/') && !Path.IsPathFullyQualified(root))
-        {
-            TempData["AcquisitionSettingsError"] = Ui["settings.acquisition.validation.libraryRootAbsolute"];
-            return RedirectToPage();
-        }
-
-        if (importMode is { } mode && !Enum.IsDefined(mode))
+        if (!MediaFolderKinds.Contains(kind) || importMode is { } mode && !Enum.IsDefined(mode))
         {
             return BadRequest();
+        }
+
+        var library = HasLibraryFolder(kind) ? Clean(libraryRoot) : null;
+        var inbox = Clean(inboxRoot);
+        if (!IsAbsolute(library) || !IsAbsolute(inbox))
+        {
+            TempData["AcquisitionSettingsError"] = Ui["settings.acquisition.validation.libraryRootAbsolute"];
+            return RedirectToPage(pageName: null, pageHandler: null, routeValues: null, fragment: "media-folders");
         }
 
         await importSettings.UpdateAsync(
             state =>
             {
                 var libraries = new Dictionary<MediaAcquisitionKind, MediaLibraryTarget>(state.MediaLibraries ?? []);
-                if (string.IsNullOrEmpty(root))
+                var target = new MediaLibraryTarget(
+                    library,
+                    HasLibraryFolder(kind) && library is not null ? importMode : null,
+                    inbox);
+                if (target.LibraryRoot is null && target.InboxRoot is null)
                 {
-                    libraries.Remove(MediaAcquisitionKind.Manga);
+                    libraries.Remove(kind);
                 }
                 else
                 {
-                    libraries[MediaAcquisitionKind.Manga] = new MediaLibraryTarget(root, importMode);
+                    libraries[kind] = target;
                 }
 
                 return state with { MediaLibraries = libraries };
             },
             cancellationToken);
-        TempData["AcquisitionSettingsNotice"] = Ui["settings.acquisition.status.mangaLibrarySaved"];
-        return RedirectToPage();
+        TempData["AcquisitionSettingsNotice"] = Ui.Format("settings.acquisition.status.mediaFoldersSaved", ("media", MediaLabel(kind)));
+        return RedirectToPage(pageName: null, pageHandler: null, routeValues: null, fragment: "media-folders");
+
+        static string? Clean(string? value) =>
+            string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+        static bool IsAbsolute(string? path) =>
+            path is null || path.StartsWith('/') || Path.IsPathFullyQualified(path);
+    }
+
+    /// <summary>Imports what is in one media type's inbox folder now, with that media type's importer.</summary>
+    public async Task<IActionResult> OnPostScanInboxAsync(
+        MediaAcquisitionKind kind,
+        CancellationToken cancellationToken)
+    {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+        if (!MediaFolderKinds.Contains(kind))
+        {
+            return BadRequest();
+        }
+
+        try
+        {
+            var result = await inboxes.RunAsync(kind, currentAccount.ProfileId, cancellationToken);
+            TempData["AcquisitionSettingsNotice"] = Ui.Format(
+                "settings.acquisition.status.inboxScanned",
+                ("media", MediaLabel(kind)),
+                ("result", result.Message));
+        }
+        catch (Exception exception) when (
+            exception is InvalidOperationException or
+            IOException or
+            UnauthorizedAccessException)
+        {
+            TempData["AcquisitionSettingsError"] = exception.Message;
+        }
+
+        return RedirectToPage(pageName: null, pageHandler: null, routeValues: null, fragment: "media-folders");
     }
 
     public string PlaybackOptimizationLabel(LosslessPlaybackOptimizationMode mode) => mode switch

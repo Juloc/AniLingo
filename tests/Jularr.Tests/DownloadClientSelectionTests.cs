@@ -120,7 +120,7 @@ public sealed class DownloadClientSelectionTests
             DownloadClientType.Sabnzbd,
             enabled,
             priority,
-            new DownloadClientSettings("http://client.example:8080", "books", "anime"),
+            new DownloadClientSettings("http://client.example:8080", new Dictionary<MediaAcquisitionKind, string?> { [MediaAcquisitionKind.Book] = "books", [MediaAcquisitionKind.Anime] = "anime" }),
             "secret");
 
     [TestMethod]

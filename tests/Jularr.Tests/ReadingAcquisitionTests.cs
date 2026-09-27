@@ -1,6 +1,7 @@
 using Jularr.Web.Features.Acquisition;
 using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Acquisition.Prowlarr;
+using Jularr.Web.Features.Acquisition.Wanted;
 using Jularr.Web.Features.ReadingAcquisition;
 
 namespace Jularr.Tests;
@@ -200,10 +201,11 @@ public sealed class ReadingAcquisitionTests
     }
 
     [TestMethod]
-    public void TriedReleaseIsNeverSelectedAgain()
+    public void OnlyAcceptedReleasesBecomeCandidatesInRankOrder()
     {
         var first = Candidate("Frieren Vol 1 CBZ");
         var second = Candidate("Frieren Vol 1 Digital CBZ");
+        var rejected = Candidate("Frieren Vol 2 CBZ");
         var search = new ReadingUsenetSearchResult(
             [],
             [
@@ -216,28 +218,31 @@ public sealed class ReadingAcquisitionTests
                     second,
                     ReadingReleaseParser.Parse(second.Title),
                     140,
-                    null)
+                    null),
+                new RankedReadingRelease(
+                    rejected,
+                    ReadingReleaseParser.Parse(rejected.Title),
+                    0,
+                    "wrong volume")
             ],
             [],
             UsedCategoryFallback: false);
 
-        var picked = ReadingAcquisitionEngine.PickNextUntried(
-            search,
-            [first.Identity]);
+        var candidates = ReadingAcquisitionEngine.Candidates(search);
 
-        Assert.IsNotNull(picked);
-        Assert.AreEqual(
-            second.Identity,
-            picked.Release.Identity);
+        CollectionAssert.AreEqual(
+            new[] { first.Identity, second.Identity },
+            candidates.Select(candidate => candidate.Identity).ToArray(),
+            "Rejected releases are never candidates; the shared tracker skips tried ones.");
     }
 
     [TestMethod]
     public void RetryBackoffMatchesBookStyleCadence()
     {
-        Assert.AreEqual(TimeSpan.FromHours(6), ReadingAcquisitionEngine.SearchBackoff(1));
-        Assert.AreEqual(TimeSpan.FromHours(12), ReadingAcquisitionEngine.SearchBackoff(2));
-        Assert.AreEqual(TimeSpan.FromHours(24), ReadingAcquisitionEngine.SearchBackoff(3));
-        Assert.AreEqual(TimeSpan.FromHours(24), ReadingAcquisitionEngine.SearchBackoff(12));
+        Assert.AreEqual(TimeSpan.FromHours(6), ReleaseRequestTracker.SearchBackoff(1));
+        Assert.AreEqual(TimeSpan.FromHours(12), ReleaseRequestTracker.SearchBackoff(2));
+        Assert.AreEqual(TimeSpan.FromHours(24), ReleaseRequestTracker.SearchBackoff(3));
+        Assert.AreEqual(TimeSpan.FromHours(24), ReleaseRequestTracker.SearchBackoff(12));
     }
 
     private static ProwlarrReleaseCandidate Candidate(

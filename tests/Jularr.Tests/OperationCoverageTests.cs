@@ -171,12 +171,15 @@ public sealed class OperationCoverageTests
             "book-epub-upload-import",
             "remote-epub-import");
 
-        // The inbox import is shared by the explicit Books action and the
-        // SABnzbd completion path, so its kinds live with the operation.
+        // Inbox scans of every media type and manual downloads share the
+        // completed-download import, so their kinds live with it.
         AssertKinds(
             root,
-            "src/Jularr.Web/Features/Books/BookInboxImport.cs",
-            "book-inbox-import",
+            "src/Jularr.Web/Features/Acquisition/Import/MediaInboxImportService.cs",
+            "media-inbox-import");
+        AssertKinds(
+            root,
+            "src/Jularr.Web/Features/Acquisition/Import/CompletedDownloadImportService.cs",
             "sabnzbd-download");
     }
 

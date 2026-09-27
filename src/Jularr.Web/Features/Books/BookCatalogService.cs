@@ -1229,38 +1229,6 @@ public sealed partial class BookCatalogService(
             .ExecuteDeleteAsync(cancellationToken);
     }
 
-    public BookIntegrationSettings StoredIntegrationSettings =>
-        BookIntegrationSettingsStore.Load();
-
-    public bool IsInboxConfigured =>
-        TryGetInboxPath(out _);
-
-    /// <summary>
-    /// The configured reading inbox (Books settings or <c>Books:InboxPath</c>).
-    /// Light-novel EPUB volumes are imported from its <c>light-novels</c>
-    /// subfolder by the Novel module.
-    /// </summary>
-    public string? InboxPath =>
-        TryGetInboxPath(out var path) ? path : null;
-
-    public async Task<IReadOnlyList<Guid>> ImportInboxAsync(
-        CancellationToken cancellationToken)
-    {
-        if (!TryGetInboxPath(out var inboxPath))
-        {
-            throw new InvalidOperationException(
-                "Books inbox is not configured.");
-        }
-
-        if (!Directory.Exists(inboxPath))
-        {
-            throw new InvalidOperationException(
-                $"Books inbox '{inboxPath}' is not available.");
-        }
-
-        return await ImportBooksFromPathAsync(inboxPath, "inbox", hint: null, singleBook: false, cancellationToken);
-    }
-
     public async Task<string> GetReadableSampleAsync(
         BookCatalogItem book,
         CancellationToken cancellationToken,
@@ -2630,24 +2598,6 @@ public sealed partial class BookCatalogService(
             bytes,
             cancellationToken);
         return path;
-    }
-
-    private bool TryGetInboxPath(
-        out string inboxPath)
-    {
-        var stored = BookIntegrationSettingsStore.Load();
-        var configured = FirstNonEmpty(
-            configuration["Books:InboxPath"],
-            stored.InboxPath);
-
-        if (string.IsNullOrWhiteSpace(configured))
-        {
-            inboxPath = "";
-            return false;
-        }
-
-        inboxPath = Path.GetFullPath(configured);
-        return true;
     }
 
     private static string? FirstNonEmpty(

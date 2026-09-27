@@ -65,10 +65,10 @@ public sealed class EditModel(AppDbContext db, DownloadClientStore store) : Page
 
         Name = entry.Name;
         BaseUrl = entry.Settings.BaseUrl;
-        BooksCategory = entry.Settings.BooksCategory;
-        AnimeCategory = entry.Settings.AnimeCategory;
-        MangaCategory = entry.Settings.MangaCategory;
-        LightNovelCategory = entry.Settings.LightNovelCategory;
+        BooksCategory = entry.Settings.CategoryFor(MediaAcquisitionKind.Book);
+        AnimeCategory = entry.Settings.CategoryFor(MediaAcquisitionKind.Anime);
+        MangaCategory = entry.Settings.CategoryFor(MediaAcquisitionKind.Manga);
+        LightNovelCategory = entry.Settings.CategoryFor(MediaAcquisitionKind.LightNovel);
         Priority = entry.Priority;
         Enabled = entry.Enabled;
     }

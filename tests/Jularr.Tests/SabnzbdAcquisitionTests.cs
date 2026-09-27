@@ -1,3 +1,4 @@
+using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Acquisition;
 using Jularr.Web.Features.Acquisition.DownloadClients;
 using Jularr.Web.Features.Acquisition.Monitoring;
@@ -178,7 +179,7 @@ public sealed class SabnzbdAcquisitionTests
                 DownloadClientType.Sabnzbd,
                 Enabled: true,
                 Priority: 0,
-                new DownloadClientSettings("http://higher-priority:8080", "books", "anime"),
+                new DownloadClientSettings("http://higher-priority:8080", new Dictionary<MediaAcquisitionKind, string?> { [MediaAcquisitionKind.Book] = "books", [MediaAcquisitionKind.Anime] = "anime" }),
                 "secret-key"));
 
         var cancelled = await environment.NewDownloadService(store)

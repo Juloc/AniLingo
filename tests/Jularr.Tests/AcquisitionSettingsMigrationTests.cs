@@ -97,8 +97,8 @@ public sealed class AcquisitionSettingsMigrationTests
             Assert.AreEqual(DownloadClientType.Sabnzbd, entry.Type);
             Assert.AreEqual("http://sabnzbd:8080", entry.Settings.BaseUrl);
             Assert.AreEqual("secret-key", entry.Secret);
-            Assert.AreEqual("books", entry.Settings.BooksCategory);
-            Assert.AreEqual("anime", entry.Settings.AnimeCategory);
+            Assert.AreEqual("books", entry.Settings.CategoryFor(MediaAcquisitionKind.Book));
+            Assert.AreEqual("anime", entry.Settings.CategoryFor(MediaAcquisitionKind.Anime));
             Assert.IsNull(entry.Settings.CategoryFor(MediaAcquisitionKind.Manga));
             Assert.IsNull(entry.Settings.CategoryFor(MediaAcquisitionKind.LightNovel));
         }
@@ -121,7 +121,7 @@ public sealed class AcquisitionSettingsMigrationTests
             var clients = new DownloadClientStore(protection, directory);
             var existing = new DownloadClientEntry(
                 Guid.NewGuid(), "Already configured", DownloadClientType.Sabnzbd, true, 1,
-                new DownloadClientSettings("http://already.example", "books", "anime"), "existing-key");
+                new DownloadClientSettings("http://already.example", new Dictionary<MediaAcquisitionKind, string?> { [MediaAcquisitionKind.Book] = "books", [MediaAcquisitionKind.Anime] = "anime" }), "existing-key");
             await clients.SaveAsync(existing);
 
             var outcome = await DownloadClientSettingsMigration.MigrateSabnzbdAsync(resolver, clients, legacy);
@@ -196,10 +196,10 @@ public sealed class AcquisitionSettingsMigrationTests
             var clients = new DownloadClientStore(protection, directory);
             var torrentEntry = new DownloadClientEntry(
                 Guid.NewGuid(), "Old qBittorrent client", (DownloadClientType)1, true, 1,
-                new DownloadClientSettings("http://qbittorrent.example:8080", null, "anime"), "torrent-secret");
+                new DownloadClientSettings("http://qbittorrent.example:8080", new Dictionary<MediaAcquisitionKind, string?> { [MediaAcquisitionKind.Book] = null, [MediaAcquisitionKind.Anime] = "anime" }), "torrent-secret");
             var usenetEntry = new DownloadClientEntry(
                 Guid.NewGuid(), "SABnzbd", DownloadClientType.Sabnzbd, true, 1,
-                new DownloadClientSettings("http://sabnzbd.example:8080", "books", "anime"), "usenet-secret");
+                new DownloadClientSettings("http://sabnzbd.example:8080", new Dictionary<MediaAcquisitionKind, string?> { [MediaAcquisitionKind.Book] = "books", [MediaAcquisitionKind.Anime] = "anime" }), "usenet-secret");
             await clients.SaveAsync(torrentEntry);
             await clients.SaveAsync(usenetEntry);
 

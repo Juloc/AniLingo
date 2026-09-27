@@ -1,4 +1,5 @@
 using Jularr.Web.Data;
+using Jularr.Web.Features.Acquisition.DownloadClients;
 using Jularr.Web.Features.Acquisition.Sabnzbd;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Localization;
@@ -25,6 +26,9 @@ public sealed class OperationModel(
     public SabnzbdAcquisition? Acquisition { get; private set; }
     public SabnzbdAcquisitionAttempt? AcquisitionAttempt { get; private set; }
     public IReadOnlyList<SabnzbdBlockedRelease> AcquisitionBlocklist { get; private set; } = [];
+
+    /// <summary>Routing and completed-download import details of an external download, when recorded.</summary>
+    public DownloadOperationDetails? DownloadDetails { get; private set; }
 
     public bool IsSabnzbdJob =>
         SabnzbdDownloadService.IsSabnzbdOperation(Operation);
@@ -132,6 +136,7 @@ public sealed class OperationModel(
         }
 
         Operation = operation;
+        DownloadDetails = DownloadOperationDetails.TryParse(operation.Details, out var details) ? details : null;
         Logs = await store.ListLogsAsync(
             new OperationLogFilter(OperationId: id, Limit: 300),
             cancellationToken);

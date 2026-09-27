@@ -1,51 +1,14 @@
-using System.Text.Json;
 using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Acquisition.Wanted;
 
 namespace Jularr.Web.Features.ReadingAcquisition;
 
+/// <summary>Manga and Light Novel requests on the shared release-request Wanted policy.</summary>
 public abstract class ReadingWantedRequestHandler(
     AcquisitionAccessStore store,
-    AcquisitionRequestService requests) : IWantedRequestHandler
+    AcquisitionRequestService requests) : ReleaseRequestWantedHandler(store, requests)
 {
-    public abstract MediaAcquisitionKind Kind { get; }
-
-    public bool IsSearchDue(
-        AcquisitionRequest request,
-        DateTime nowUtc)
-    {
-        var payload = Payload(request);
-        return payload.NextSearchUtc is { } next
-            ? next <= nowUtc
-            : payload.Searches == 0;
-    }
-
-    public async Task ContinueAfterProblemAsync(
-        AcquisitionRequest request,
-        string problem,
-        CancellationToken cancellationToken)
-    {
-        var payload = Payload(request) with
-        {
-            LastProblem = string.IsNullOrWhiteSpace(problem)
-                ? "The previous release could not be used."
-                : problem.Trim(),
-            NextSearchUtc = null
-        };
-
-        await store.UpdatePayloadAsync(
-            request.Id,
-            JsonSerializer.Serialize(
-                payload,
-                JsonSerializerOptions.Web),
-            cancellationToken);
-
-        await requests.ContinueAsync(
-            request.Id,
-            cancellationToken);
-    }
-
-    private ReadingRequestPayload Payload(
+    protected override ReleaseRequestPayload ReadPayload(
         AcquisitionRequest request)
     {
         var fallback = Kind == MediaAcquisitionKind.Manga
