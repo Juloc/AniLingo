@@ -16,7 +16,8 @@ public sealed record MediaProbeRun(
     string Output = "",
     string? Error = null);
 
-// The only place Jularr invokes ffprobe. Everything else reads MediaInventoryService.
+// The only place Jularr invokes ffprobe. Everything else reads MediaInventoryService, or parses
+// the same output with MediaProbeParser.ParseDetail when it needs chapters and every stream.
 public interface IMediaProbeRunner
 {
     Task<MediaProbeRun> ProbeAsync(string fullPath, CancellationToken cancellationToken);
@@ -34,6 +35,7 @@ public sealed class FfprobeMediaProbeRunner(MediaProcessRunner processRunner) : 
                 "-v", "error",
                 "-show_format",
                 "-show_streams",
+                "-show_chapters",
                 "-of", "json",
                 fullPath
             ],

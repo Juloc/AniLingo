@@ -3,6 +3,7 @@ using Jularr.Web.Features.Artwork;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Library;
 using Jularr.Web.Features.Localization;
+using Jularr.Web.Features.Media.Optimization;
 using Jularr.Web.Features.Metadata;
 using Jularr.Web.Features.Operations;
 using Microsoft.AspNetCore.Authorization;
@@ -22,7 +23,8 @@ public sealed class AnimeRepairModel(
     AnimeMetadataService metadataService,
     LibraryScanCoordinator scans,
     CurrentAccountContext currentAccount,
-    OperationRunner operations) : PageModel
+    OperationRunner operations,
+    MediaOptimizationQueue optimizationQueue) : PageModel
 {
     public const string MatchOperationKind = "anime-metadata-match";
     public const string RefreshMetadataOperationKind = "anime-metadata-refresh";
@@ -246,6 +248,39 @@ public sealed class AnimeRepairModel(
             TempData["Error"] = exception.Message;
         }
 
+        return RedirectToPage(new { id });
+    }
+
+    // Queues the same lossless optimization an import runs, for every existing file of the anime.
+    public async Task<IActionResult> OnPostOptimizeAsync(Guid id, CancellationToken cancellationToken)
+    {
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+        var anime = await db.Anime.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
+        if (anime is null)
+        {
+            return NotFound();
+        }
+
+        var mediaFileIds = await (
+                from media in db.MediaFiles.AsNoTracking()
+                join episode in db.Episodes.AsNoTracking() on media.EpisodeId equals episode.Id
+                where episode.AnimeId == id
+                orderby media.Path
+                select media.Id)
+            .ToArrayAsync(cancellationToken);
+        if (mediaFileIds.Length == 0)
+        {
+            TempData["Error"] = ui["library.animeRepair.noMediaFiles"];
+            return RedirectToPage(new { id });
+        }
+
+        var operationId = await optimizationQueue.QueueAsync(
+            mediaFileIds,
+            anime.Title,
+            currentAccount.ProfileId,
+            cancellationToken);
+        TempData["Status"] = ui.Format("library.animeRepair.optimizeQueued", ("count", mediaFileIds.Length));
+        TempData["RepairOperation"] = operationId.ToString("D");
         return RedirectToPage(new { id });
     }
 }
