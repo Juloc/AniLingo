@@ -5,11 +5,11 @@ namespace Jularr.Web.Features.Auth;
 
 public sealed class CurrentAccountContext(
     IHttpContextAccessor accessor,
-    OperationProfileContext operationProfile)
+    OperationProfileContext? operationProfile = null)
 {
     public string ProfileId =>
         accessor.HttpContext?.User.FindFirstValue(ClaimTypes.NameIdentifier)
-        ?? operationProfile.ProfileId
+        ?? operationProfile?.ProfileId
         ?? throw new InvalidOperationException("Authenticated account ID is unavailable.");
 
     public bool IsOwner =>
