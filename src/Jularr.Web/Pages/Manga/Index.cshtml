@@ -6,6 +6,7 @@
 }
 @section Head {
     <link rel="stylesheet" href="~/css/manga.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/reading-catalog.css" asp-append-version="true" />
 }
 
 <header class="manga-library-header">
@@ -23,7 +24,7 @@
                     : ui["discover.card.add"])
             </summary>
             <div class="manga-import-panel">
-                <form method="get">
+                <form method="get" class="reading-catalog-form">
                     <label for="mangaCatalogQuery">@ui["discover.search.srLabel"]</label>
                     <input id="mangaCatalogQuery"
                            name="q"
@@ -38,15 +39,15 @@
                 {
                     @if (Model.SearchResults.Count == 0)
                     {
-                        <div class="manga-empty">@ui["books.add.noResults"]</div>
+                        <div class="reading-catalog-empty">@ui["books.add.noResults"]</div>
                     }
                     else
                     {
-                        <div class="manga-grid">
+                        <div class="reading-catalog-results">
                             @foreach (var result in Model.SearchResults)
                             {
-                                <article class="manga-card">
-                                    <div class="manga-cover">
+                                <article class="reading-catalog-result">
+                                    <div class="reading-catalog-cover">
                                         @if (!string.IsNullOrWhiteSpace(result.Item.CoverImageUrl))
                                         {
                                             <img src="@result.Item.CoverImageUrl" alt="" loading="lazy" referrerpolicy="no-referrer" />
@@ -57,28 +58,32 @@
                                         }
                                     </div>
 
-                                    <div class="manga-card-copy">
-                                        <strong>@result.Item.Title</strong>
+                                    <div class="reading-catalog-copy">
+                                        <span class="reading-catalog-title">@result.Item.Title</span>
                                         @if (!string.IsNullOrWhiteSpace(result.Item.NativeTitle) &&
                                              !string.Equals(result.Item.NativeTitle, result.Item.Title, StringComparison.OrdinalIgnoreCase))
                                         {
-                                            <span>@result.Item.NativeTitle</span>
+                                            <span class="reading-catalog-native">@result.Item.NativeTitle</span>
                                         }
-                                        <span>
+                                        <span class="reading-catalog-meta">
+                                            @if (result.Item.FirstPublishYear is int year)
+                                            {
+                                                @year
+                                            }
                                             @if (result.Item.VolumeCount is int volumes)
                                             {
-                                                @ui.Format("novels.card.volumeCount", ("count", volumes))
-                                            }
-                                            @if (result.Item.VolumeCount is int && result.Item.ChapterCount is int)
-                                            {
                                                 <text> · </text>
+                                                @ui.Format("novels.card.volumeCount", ("count", volumes))
                                             }
                                             @if (result.Item.ChapterCount is int chapters)
                                             {
+                                                <text> · </text>
                                                 @ui.Format("manga.card.chapterCount", ("count", chapters))
                                             }
                                         </span>
+                                    </div>
 
+                                    <div class="reading-catalog-action">
                                         @if (result.LocalUrl is { Length: > 0 } localUrl)
                                         {
                                             <a class="button" href="@localUrl">@ui["books.add.inLibrary"]</a>
@@ -113,7 +118,7 @@
 
                 @if (Model.IsOwner)
                 {
-                    <div class="manga-import-divider">@ui["books.add.manual"]</div>
+                    <div class="reading-catalog-divider">@ui["books.add.manual"]</div>
 
                     <form method="post"
                           asp-page-handler="Upload"
