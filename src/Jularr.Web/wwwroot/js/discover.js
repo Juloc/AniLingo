@@ -10,6 +10,9 @@
     const warning = root.querySelector("[data-discover-warning]");
     const modeButtons = [...root.querySelectorAll("[data-discover-mode]")];
     const categoryButtons = [...root.querySelectorAll("[data-discover-category]")];
+    const genreChip = root.querySelector("[data-discover-genre-chip]");
+    const genreLabel = root.querySelector("[data-discover-genre-label]");
+    const genreClear = root.querySelector("[data-discover-genre-clear]");
     const importDetails = root.querySelector("[data-discover-import]");
     const importTitle = root.querySelector("[data-import-title]");
     const importProvider = root.querySelector("[data-import-provider]");
@@ -37,12 +40,14 @@
         const query = (params.get("q") || "").trim();
         const category = normalizeCategory(params.get("category"));
         const requestedMode = normalizeMode(params.get("mode"));
+        const genre = (params.get("genre") || "").trim();
         if (requestedMode !== "search") browseMode = requestedMode;
 
         return {
             query,
             category,
-            mode: query ? "search" : requestedMode
+            mode: query ? "search" : requestedMode,
+            genre
         };
     }
 
@@ -92,6 +97,11 @@
             button.classList.toggle("active", active);
             button.setAttribute("aria-pressed", active ? "true" : "false");
         });
+
+        if (genreChip) {
+            genreChip.hidden = !state.genre;
+            if (state.genre) genreLabel.textContent = state.genre;
+        }
     }
 
     function updateUrl(push) {
@@ -100,6 +110,7 @@
         if (state.category !== "all") params.set("category", state.category);
         const urlMode = state.mode === "search" ? browseMode : state.mode;
         if (urlMode !== "trending") params.set("mode", urlMode);
+        if (state.genre) params.set("genre", state.genre);
 
         const query = params.toString();
         const url = query
@@ -177,6 +188,7 @@
             source
         });
         if (state.query.trim()) params.set("q", state.query.trim());
+        if (state.genre) params.set("genre", state.genre);
 
         const response = await fetch(
             `${window.location.pathname}?${params}`,
@@ -731,6 +743,12 @@
     });
 
     importClear?.addEventListener("click", clearImportContext);
+
+    genreClear?.addEventListener("click", () => {
+        state.genre = "";
+        syncControls();
+        load(true);
+    });
 
     document.addEventListener("keydown", event => {
         if (event.key !== "/" ||

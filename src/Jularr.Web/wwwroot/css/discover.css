@@ -86,6 +86,43 @@
     margin-top: 10px;
 }
 
+.discover-genre-row {
+    margin-top: 10px;
+}
+
+.discover-genre-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 6px 5px 12px;
+    border: 1px solid var(--border-strong);
+    border-radius: 999px;
+    background: var(--surface-2);
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.discover-genre-chip button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border: none;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+}
+
+.discover-genre-chip button:hover {
+    color: var(--text);
+    background: var(--surface);
+}
+
 .discover-tabs,
 .discover-categories {
     display: flex;

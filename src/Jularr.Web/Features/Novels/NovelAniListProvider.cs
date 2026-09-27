@@ -57,9 +57,9 @@ public sealed partial class NovelAniListProvider(
         """;
 
     private const string ReadingSearchQuery = """
-        query ($search: String!, $perPage: Int!) {
+        query ($search: String!, $perPage: Int!, $genre: [String]) {
           Page(page: 1, perPage: $perPage) {
-            media(search: $search, type: MANGA, isAdult: false) {
+            media(search: $search, type: MANGA, isAdult: false, genre_in: $genre) {
               id
               title { romaji english native }
               description(asHtml: false)
@@ -78,9 +78,9 @@ public sealed partial class NovelAniListProvider(
         """;
 
     private const string ReadingBrowseQuery = """
-        query ($perPage: Int!, $sort: [MediaSort!]) {
+        query ($perPage: Int!, $sort: [MediaSort!], $genre: [String]) {
           Page(page: 1, perPage: $perPage) {
-            media(type: MANGA, isAdult: false, sort: $sort) {
+            media(type: MANGA, isAdult: false, sort: $sort, genre_in: $genre) {
               id
               title { romaji english native }
               description(asHtml: false)
@@ -191,11 +191,20 @@ public sealed partial class NovelAniListProvider(
             .ToArray();
     }
 
+    public Task<IReadOnlyList<AniListReadingMediaCandidate>> SearchReadingMediaAsync(
+        string query,
+        int limit,
+        bool includeNovels,
+        bool includeManga,
+        CancellationToken cancellationToken) =>
+        SearchReadingMediaAsync(query, limit, includeNovels, includeManga, null, cancellationToken);
+
     public async Task<IReadOnlyList<AniListReadingMediaCandidate>> SearchReadingMediaAsync(
         string query,
         int limit,
         bool includeNovels,
         bool includeManga,
+        string? genre,
         CancellationToken cancellationToken)
     {
         var normalized = query.Trim();
@@ -209,7 +218,8 @@ public sealed partial class NovelAniListProvider(
             new
             {
                 search = normalized,
-                perPage = Math.Clamp(limit, 1, 24)
+                perPage = Math.Clamp(limit, 1, 24),
+                genre = GenreVariable(genre)
             },
             cancellationToken);
 
@@ -219,11 +229,20 @@ public sealed partial class NovelAniListProvider(
             includeManga);
     }
 
+    public Task<IReadOnlyList<AniListReadingMediaCandidate>> BrowseReadingMediaAsync(
+        bool trending,
+        int limit,
+        bool includeNovels,
+        bool includeManga,
+        CancellationToken cancellationToken) =>
+        BrowseReadingMediaAsync(trending, limit, includeNovels, includeManga, null, cancellationToken);
+
     public async Task<IReadOnlyList<AniListReadingMediaCandidate>> BrowseReadingMediaAsync(
         bool trending,
         int limit,
         bool includeNovels,
         bool includeManga,
+        string? genre,
         CancellationToken cancellationToken)
     {
         if (!includeNovels && !includeManga)
@@ -238,7 +257,8 @@ public sealed partial class NovelAniListProvider(
                 perPage = Math.Clamp(limit, 1, 24),
                 sort = trending
                     ? new[] { "TRENDING_DESC", "POPULARITY_DESC" }
-                    : new[] { "SCORE_DESC", "POPULARITY_DESC" }
+                    : new[] { "SCORE_DESC", "POPULARITY_DESC" },
+                genre = GenreVariable(genre)
             },
             cancellationToken);
 
@@ -247,6 +267,10 @@ public sealed partial class NovelAniListProvider(
             includeNovels,
             includeManga);
     }
+
+    // AniList treats a null genre_in as "no filter"; an empty array would match nothing.
+    private static string[]? GenreVariable(string? genre) =>
+        string.IsNullOrWhiteSpace(genre) ? null : [genre];
 
     public async Task<NovelMetadataCandidate?> GetAsync(
         string externalId,

@@ -52,6 +52,7 @@ public sealed class DiscoveryCoordinator(
                     request.Query,
                     CategoryName(request.Category),
                     ModeName(request.Mode),
+                    request.Genre,
                     false,
                     [],
                     []);
@@ -64,6 +65,7 @@ public sealed class DiscoveryCoordinator(
                     request.Query,
                     CategoryName(request.Category),
                     ModeName(request.Mode),
+                    request.Genre,
                     false,
                     [],
                     ["Connect your AniList account in Settings to browse My AniList."]);
@@ -92,6 +94,7 @@ public sealed class DiscoveryCoordinator(
             request.Query,
             CategoryName(request.Category),
             ModeName(request.Mode),
+            request.Genre,
             status.IsConnected,
             items.Take(MaximumResultCount).ToArray(),
             warnings.Distinct(StringComparer.Ordinal).ToArray());
@@ -134,10 +137,12 @@ public sealed class DiscoveryCoordinator(
                         ? await animeProvider.SearchAsync(
                             request.Query,
                             AnimeLimit,
+                            request.Genre,
                             cancellationToken)
                         : await animeProvider.BrowseAsync(
                             request.Mode == DiscoveryMode.Trending,
                             AnimeLimit,
+                            request.Genre,
                             cancellationToken);
 
                     return rows
@@ -159,12 +164,14 @@ public sealed class DiscoveryCoordinator(
                             ReadingLimit,
                             includeNovel,
                             includeManga,
+                            request.Genre,
                             cancellationToken)
                         : await readingProvider.BrowseReadingMediaAsync(
                             request.Mode == DiscoveryMode.Trending,
                             ReadingLimit,
                             includeNovel,
                             includeManga,
+                            request.Genre,
                             cancellationToken);
 
                     return rows
@@ -187,6 +194,7 @@ public sealed class DiscoveryCoordinator(
                         cancellationToken);
 
                     return rows
+                        .Where(row => MatchesGenre(row, request.Genre))
                         .Take(BookLimit)
                         .Select(MapBook)
                         .ToArray();
@@ -426,6 +434,15 @@ public sealed class DiscoveryCoordinator(
                 ? BuildMangaImportUrl(row.ExternalId, row.PreferredTitle)
                 : $"https://anilist.co/manga/{row.ExternalId}",
             isOwner && row.IsNovel);
+
+    // Only Open Library editions carry subject tags; the other book sources
+    // (Google Books, Wikisource, Gutenberg) never populate Subjects here. A
+    // genre filter can only be honored where subject data actually exists, so
+    // items without subjects are kept rather than dropped or fake-matched.
+    private static bool MatchesGenre(BookCatalogItem row, string genre) =>
+        genre.Length == 0
+        || row.Subjects.Count == 0
+        || row.Subjects.Any(subject => subject.Contains(genre, StringComparison.OrdinalIgnoreCase));
 
     private static DiscoveryItem MapBook(BookCatalogItem row) =>
         new(

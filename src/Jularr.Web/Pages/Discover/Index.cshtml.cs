@@ -62,11 +62,12 @@ public sealed class IndexModel(
         string? category,
         string? mode,
         string? source,
+        string? genre,
         CancellationToken cancellationToken)
     {
         Response.Headers.CacheControl = "no-store";
 
-        var request = DiscoveryRequest.Parse(q, category, mode);
+        var request = DiscoveryRequest.Parse(q, category, mode, genre);
         var coordinator = new DiscoveryCoordinator(
             animeProvider,
             readingProvider,
