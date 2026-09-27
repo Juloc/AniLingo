@@ -2,13 +2,13 @@
 @model Jularr.Web.Pages.Admin.ReadingSourcesModel
 @{
     var ui = Model.Ui;
-    ViewData["Title"] = "Reading sources";
+    ViewData["Title"] = ui["settings.title"];
 }
 
 <header class="page-header">
     <div>
         <a class="muted" asp-page="/Admin/Index">← @ui["common.back"]</a>
-        <h1>Reading sources</h1>
+        <h1>@ui["settings.title"]</h1>
         <p>Control which Light Novel sources appear in manual search and their order.</p>
     </div>
 </header>
