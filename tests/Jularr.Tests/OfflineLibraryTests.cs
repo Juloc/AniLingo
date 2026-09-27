@@ -1,4 +1,5 @@
 using Jularr.Web.Data;
+using Jularr.Web.Features.Books;
 using Jularr.Web.Features.Novels;
 using Jularr.Web.Features.OfflineLibrary;
 using Microsoft.Data.Sqlite;
@@ -428,13 +429,157 @@ public sealed class OfflineLibraryTests
         }
     }
 
-    private static NovelWork NewWork(string title) => new()
+    /// <summary>
+    /// #374 regression: a Book's arbitrary <see cref="BookLanguageCatalog"/>
+    /// target language must survive an offline sync round trip unchanged,
+    /// not get hard-normalized to "ja"/"de" the way a Novel's does.
+    /// </summary>
+    [TestMethod]
+    [DataRow("id")]
+    [DataRow("en")]
+    public async Task BookBookmarkSurvivesSyncRoundTripWithArbitraryLanguageUnchanged(string language)
     {
-        SourceProvider = "test",
+        var path = TempDatabasePath();
+        try
+        {
+            await using var db = await CreateDatabaseAsync(path);
+            var reconciler = new OfflineLibraryBookmarkReconciler(db);
+
+            var work = NewBookWork("Book bookmark work");
+            db.NovelWorks.Add(work);
+            var volume = NewVolume(work.Id, 1);
+            db.NovelVolumes.Add(volume);
+            var chapter = NewChapter(work.Id, volume.Id, 1, "hash-1");
+            chapter.OriginalText = "Paragraph one.\n\nParagraph two.";
+            db.NovelChapters.Add(chapter);
+            await db.SaveChangesAsync();
+
+            var add = new OfflineBookmarkEvent(
+                Guid.NewGuid(), Guid.NewGuid(), OfflineBookmarkEventType.Upsert,
+                work.Id, chapter.Id, language, 250, 3, 12, "Some anchor text.", "My bookmark", "fabric", "#abcdef",
+                DateTime.UtcNow);
+
+            var result = await reconciler.ReconcileAsync("profile-a", [add], CancellationToken.None);
+            Assert.AreEqual(OfflineBookmarkOutcome.Applied, result[0].Outcome);
+
+            var saved = await db.NovelBookmarks.SingleAsync();
+            Assert.AreEqual(language, saved.Language, "A Book's arbitrary target language must not be rewritten to ja/de.");
+            Assert.AreEqual(250, saved.PositionPermille);
+            Assert.AreEqual(3, saved.ParagraphIndex, "A Book's client-supplied paragraph anchor is not re-resolved server-side.");
+            Assert.AreEqual(12, saved.CharacterOffset);
+            Assert.AreEqual("Some anchor text.", saved.AnchorText);
+            Assert.AreEqual("My bookmark", saved.Label);
+        }
+        finally
+        {
+            Cleanup(path);
+        }
+    }
+
+    [TestMethod]
+    [DataRow("id")]
+    [DataRow("en")]
+    public async Task BookProgressSurvivesSyncRoundTripWithArbitraryLanguageUnchanged(string language)
+    {
+        var path = TempDatabasePath();
+        try
+        {
+            await using var db = await CreateDatabaseAsync(path);
+            var progressService = new NovelProgressService(db);
+            var reconciler = new OfflineLibraryProgressReconciler(db, progressService);
+
+            var work = NewBookWork("Book progress work");
+            db.NovelWorks.Add(work);
+            var volume = NewVolume(work.Id, 1);
+            db.NovelVolumes.Add(volume);
+            var chapter = NewChapter(work.Id, volume.Id, 1, "hash-1");
+            chapter.OriginalText = "Paragraph one.\n\nParagraph two.";
+            db.NovelChapters.Add(chapter);
+            await db.SaveChangesAsync();
+
+            var checkpoint = new OfflineLibraryProgressCheckpoint(
+                Guid.NewGuid(), work.Id, chapter.Id, 400, language, 2, 15, DateTime.UtcNow);
+
+            var result = await reconciler.ReconcileAsync("profile-a", [checkpoint], CancellationToken.None);
+            Assert.AreEqual(OfflineLibraryProgressOutcome.Applied, result[0].Outcome);
+
+            var saved = result[0].Progress;
+            Assert.IsNotNull(saved);
+            Assert.AreEqual(language, saved!.AnchorLanguage, "A Book's arbitrary target language must not be rewritten to ja/de.");
+            Assert.AreEqual(400, saved.PositionPermille);
+            Assert.AreEqual(2, saved.AnchorParagraphIndex, "A Book's client-supplied paragraph anchor is not re-resolved server-side.");
+            Assert.AreEqual(15, saved.AnchorOffset);
+        }
+        finally
+        {
+            Cleanup(path);
+        }
+    }
+
+    /// <summary>
+    /// #374 regression guard: Novel-typed works must keep the pre-existing
+    /// ja/de-only anchor language behavior after teaching the reconcilers to
+    /// special-case Books.
+    /// </summary>
+    [TestMethod]
+    public async Task NovelBookmarkAndProgressStillNormalizeUnsupportedLanguagesToJapanese()
+    {
+        var path = TempDatabasePath();
+        try
+        {
+            await using var db = await CreateDatabaseAsync(path);
+            var progressService = new NovelProgressService(db);
+            var progressReconciler = new OfflineLibraryProgressReconciler(db, progressService);
+            var bookmarkReconciler = new OfflineLibraryBookmarkReconciler(db);
+
+            var work = NewWork("Novel work");
+            db.NovelWorks.Add(work);
+            var volume = NewVolume(work.Id, 1);
+            db.NovelVolumes.Add(volume);
+            var chapter = NewChapter(work.Id, volume.Id, 1, "hash-1");
+            chapter.OriginalText = "Paragraph one.\n\nParagraph two.";
+            db.NovelChapters.Add(chapter);
+            await db.SaveChangesAsync();
+
+            var checkpoint = new OfflineLibraryProgressCheckpoint(
+                Guid.NewGuid(), work.Id, chapter.Id, 400, "en", 0, 0, DateTime.UtcNow);
+            var progressResult = await progressReconciler.ReconcileAsync("profile-a", [checkpoint], CancellationToken.None);
+            Assert.AreEqual(
+                NovelReadingLanguage.Japanese,
+                progressResult[0].Progress!.AnchorLanguage,
+                "A Novel's anchor language must still hard-normalize anything but German to Japanese.");
+
+            var add = new OfflineBookmarkEvent(
+                Guid.NewGuid(), Guid.NewGuid(), OfflineBookmarkEventType.Upsert,
+                work.Id, chapter.Id, "en", 100, 0, 0, null, null, null, null, DateTime.UtcNow);
+            var bookmarkResult = await bookmarkReconciler.ReconcileAsync("profile-a", [add], CancellationToken.None);
+            Assert.AreEqual(OfflineBookmarkOutcome.Applied, bookmarkResult[0].Outcome);
+            var savedBookmark = await db.NovelBookmarks.SingleAsync();
+            Assert.AreEqual(
+                NovelReadingLanguage.Japanese,
+                savedBookmark.Language,
+                "A Novel's bookmark language must still hard-normalize anything but German to Japanese.");
+
+            var germanCheckpoint = checkpoint with { ClientEventId = Guid.NewGuid(), AnchorLanguage = "de", PositionPermille = 500 };
+            var germanResult = await progressReconciler.ReconcileAsync("profile-a", [germanCheckpoint], CancellationToken.None);
+            Assert.AreEqual(NovelReadingLanguage.German, germanResult[0].Progress!.AnchorLanguage);
+        }
+        finally
+        {
+            Cleanup(path);
+        }
+    }
+
+    private static NovelWork NewWork(string title, string sourceProvider = "test") => new()
+    {
+        SourceProvider = sourceProvider,
         SourceKey = Guid.NewGuid().ToString("N"),
         SourceUrl = "https://example.invalid/work",
         Title = title
     };
+
+    private static NovelWork NewBookWork(string title) =>
+        NewWork(title, BookCatalogService.ImportedBookProvider);
 
     private static NovelVolume NewVolume(Guid workId, int number) => new()
     {
