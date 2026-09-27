@@ -455,7 +455,7 @@ public static class ReadingUsenetSearch
         return queries
             .Where(query => query.Length > 0)
             .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Take(10)
+            .Take(12)
             .ToArray();
     }
 
