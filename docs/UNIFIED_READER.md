@@ -15,8 +15,9 @@ It supplies:
 - genres
 - capability flags
 
-Current reflowable types are Book, Light Novel and Web Novel. Manga and fixed
-documents have capability presets ready for future image/fixed renderers.
+Current reflowable types are Book, Light Novel and Web Novel. PDF books are
+Books in fixed pages (see "PDF books"). Manga and fixed documents have
+capability presets ready for future image/fixed renderers.
 
 ## Capabilities
 
@@ -168,7 +169,45 @@ chapter opens at its end). Read-aloud page following never changes chapters.
 In-book search is `?handler=Search&q=` (`ReaderTextSearch`, bounded to 40
 candidate chapters per source and 60 hits, original text plus current
 translations). Bookmarks toggle on the current page and go through the offline
-sync queue like progress.
+sync queue like progress. A chapter opens at the saved position only when the
+saved progress is in that chapter (or at `?pos=`), otherwise at its start.
+
+The progress slider runs from 0 to the chapter's page count in Pages mode and
+its value is the last page on screen, the page the percentage in
+`{page} / {total} ({percent}%)` is computed from, so the handle always matches
+the label (Scroll mode uses the scroll position for both).
+
+### PDF books
+
+A PDF book (`NovelWork.Format` `PDF:<lang>`, one chapter per page, file at
+`/Books/File/{workId}` with range requests) opens in the same
+`/Books/Read/{chapterId}` frame. `Pages/Books/Read.cshtml` renders the PDF stage
+instead of the chapter text and `books-reader-pdf.js` draws the pages with
+pdf.js, vendored in `wwwroot/lib/pdfjs` (version and licence in `VERSION` and
+`LICENSE`). There is no browser PDF viewer, iframe or separate PDF page.
+
+- Layout: paper sheets in a single page or a book spread (the cover alone,
+  then 2–3, 4–5, …) in Pages mode, or a column of pages in Scroll mode. Zoom
+  (whole page, page width, 50–300 %) replaces font size and line spacing, which
+  fixed pages do not have (`ReaderLayoutKind.FixedPages`); the zoom choice is a
+  device convenience in localStorage.
+- Rendering: only the pages on screen and the neighbouring spreads render, on
+  canvases at the device pixel ratio (bounded per page); a few rendered pages
+  are kept, the rest are released.
+- Themes: pages are multiplied onto the paper in light paper styles and
+  inverted onto it in Midnight/Black. Images are copied above the themed page
+  untouched; a page-sized image that looks like paper (a scan) is themed like
+  text.
+- The pdf.js text layer carries selection, in-book search (page text through
+  pdf.js, hits marked in the layer) and read-aloud: each page's layer is one
+  read-aloud paragraph, and `reader-tts.js` asks for the next page
+  (`jularr:reader-tts-next-page`) when the pages on screen are read.
+- Contents come from the PDF outline, or page ranges without one; a number in
+  the contents filter jumps to that page. The transport buttons step through
+  outline sections (pages without an outline).
+- Progress and bookmarks store the page's chapter (position 0) through the
+  offline sync queue; the reader resumes on that page and keeps it in the URL.
+  Highlights and notes need text anchors and are not offered for PDF pages.
 
 ## State ownership
 

@@ -538,7 +538,9 @@ public sealed class NovelReaderQueryTests
             Db.Add(new NovelTranslation
             {
                 ChapterId = chapter.Id,
-                TargetLanguage = "de",
+                TargetLanguage = providerId is not null && NovelTranslationProviders.IsTranslateGemma(providerId)
+                    ? NovelReadingLanguage.GermanTranslateGemma
+                    : NovelReadingLanguage.German,
                 ProviderId = providerId ?? $"fake-{promptVersion}-{sourceHash}",
                 PromptVersion = promptVersion,
                 SourceHash = sourceHash ?? chapter.SourceHash,

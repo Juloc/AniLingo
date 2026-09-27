@@ -1,3 +1,4 @@
+using Jularr.Web.Features.Localization;
 using Jularr.Web.Features.Novels;
 using Jularr.Web.Features.ReadingSources;
 
@@ -102,5 +103,20 @@ public sealed class ReadingSourceSettingsTests
                 NovelAniListProvider.ProviderKey
             },
             keys);
+    }
+
+    [TestMethod]
+    public void EverySourceDescriptionIsInTheUiCatalog()
+    {
+        var catalogKeys = UiTranslationResources.All
+            .Select(message => message.Key)
+            .ToHashSet(StringComparer.Ordinal);
+
+        foreach (var source in ReadingSourceCatalog.Definitions)
+        {
+            Assert.IsTrue(
+                catalogKeys.Contains(source.DescriptionKey),
+                $"Missing UI resource {source.DescriptionKey}.");
+        }
     }
 }

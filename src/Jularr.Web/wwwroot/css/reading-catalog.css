@@ -82,6 +82,20 @@
     font-size: .8rem;
 }
 
+.reading-catalog-source {
+    justify-self: start;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: .05rem .45rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--muted);
+    font-size: .7rem;
+    font-weight: 600;
+}
+
 .reading-catalog-native {
     white-space: nowrap;
 }

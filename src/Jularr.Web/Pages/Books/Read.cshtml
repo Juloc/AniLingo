@@ -1,12 +1,17 @@
 @page "/Books/Read/{id:guid}"
 @model Jularr.Web.Pages.Books.ReadModel
 @using Jularr.Web.Features.Books
+@inject Microsoft.AspNetCore.Mvc.ViewFeatures.IFileVersionProvider FileVersions
 @{
     var ui = Model.Ui;
     var work = Model.Reader.Work;
     var chapter = Model.Reader.Chapter;
     var bookTitle = work.MetadataTitle ?? work.Title;
-    ViewData["Title"] = chapter.Title;
+    // A PDF book shows its pages (books-reader-pdf.js with the vendored pdf.js)
+    // in the same paper frame; text-only controls are not rendered for it.
+    var pdf = Model.Pdf;
+    var isPdf = pdf is not null;
+    ViewData["Title"] = isPdf ? bookTitle : chapter.Title;
     var target = Model.Reader.TargetLanguage;
     var sourceIsTarget = Model.Reader.SourceLanguage.Equals(target, StringComparison.OrdinalIgnoreCase);
     // Cached translated text is always readable (#369): reading an existing
@@ -17,7 +22,7 @@
     var hasAlternate = translatedParagraphs.Count > 0;
     var canTranslate = Model.TranslationEnabled && !sourceIsTarget && !hasAlternate;
     // The language menu only exists when there is something to switch to.
-    var hasLanguageChoice = hasAlternate || canTranslate || Model.CachedTranslationLanguages.Count > 0;
+    var hasLanguageChoice = !isPdf && (hasAlternate || canTranslate || Model.CachedTranslationLanguages.Count > 0);
     var defaultView = Model.RequestedView switch
     {
         "original" => "original",
@@ -25,14 +30,17 @@
         "both" when hasAlternate => "both",
         _ => hasAlternate ? "translated" : "original"
     };
-    var initialProgress = Model.RequestedPositionPermille ?? Model.Reader.Progress?.PositionPermille ?? 0;
+    var initialProgress = Model.InitialPositionPermille;
     var jsonOptions = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web);
+    var pdfPagesJson = isPdf ? System.Text.Json.JsonSerializer.Serialize(pdf!.PageChapterIds) : "[]";
+    string PdfAsset(string path) => FileVersions.AddFileVersionToPath(HttpContext.Request.PathBase, path);
+    var pdfLibUrl = PdfAsset("/lib/pdfjs/pdf.min.mjs");
     var settingsJson = System.Text.Json.JsonSerializer.Serialize(Model.ReaderSettings, jsonOptions);
     var highlightsJson = System.Text.Json.JsonSerializer.Serialize(Model.CurrentHighlights, jsonOptions);
     var bookmarksJson = System.Text.Json.JsonSerializer.Serialize(
         Model.Reader.Bookmarks.Select(x => new { x.Id, x.PositionPermille, x.Language }),
         jsonOptions);
-    var bookBibleUrl = Model.IsOwner && !sourceIsTarget
+    var bookBibleUrl = Model.IsOwner && !sourceIsTarget && !isPdf
         ? $"/Books/TranslationMemory/{work.Id}?lang={target}"
         : null;
     var readerSettingsPanel = new Jularr.Web.Features.ReaderCore.ReaderSettingsPanelModel(
@@ -53,15 +61,38 @@
     var bookUrl = $"/Books/Library/{work.Id}?lang={target}";
     var viewQuery = defaultView == "original" ? "" : $"&view={defaultView}";
     var paperStyles = new[] { ("white", "reader.frame.paper.white"), ("cream", "reader.frame.paper.cream"), ("sepia", "reader.frame.paper.sepia"), ("old-paper", "reader.frame.paper.oldPaper"), ("midnight", "reader.frame.paper.midnight"), ("oled", "reader.frame.paper.oled") };
+
+    // Zoom for fixed pages; it takes the place of font size and line spacing.
+    async Task PdfZoomRow(string? cssClass)
+    {
+        <div class="reader-menu-row book-pdf-zoom @cssClass" role="group" aria-label="@ui["books.read.zoom"]">
+            <partial name="_ReaderIcon" model="@("view")" />
+            <span>@ui["books.read.zoom"] <output data-book-pdf-zoom-value>100%</output></span>
+            <div class="reader-segmented">
+                <button type="button" data-book-pdf-fit="page" aria-pressed="true">@ui["books.read.fitPage"]</button>
+                <button type="button" data-book-pdf-fit="width" aria-pressed="false">@ui["books.read.fitWidth"]</button>
+                <button type="button" data-book-pdf-zoom="-1" aria-label="@ui["books.read.zoomOut"]" title="@ui["books.read.zoomOut"]">−</button>
+                <button type="button" data-book-pdf-zoom="1" aria-label="@ui["books.read.zoomIn"]" title="@ui["books.read.zoomIn"]">+</button>
+            </div>
+        </div>
+    }
 }
 @section Head {
     <link rel="stylesheet" href="~/css/reader-themes.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/reader-shell.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/book-reader.css" asp-append-version="true" />
+    @if (isPdf)
+    {
+        <link rel="modulepreload" href="@pdfLibUrl" />
+    }
 }
 @section Scripts {
     <script src="~/js/reader-themes.js" asp-append-version="true"></script>
     <script src="~/js/offline-library-repository.js" asp-append-version="true"></script>
+    @if (isPdf)
+    {
+        <script src="~/js/books-reader-pdf.js" asp-append-version="true"></script>
+    }
     <script src="~/js/books-reader.js" asp-append-version="true"></script>
     <script src="~/js/reader-shell.js" asp-append-version="true"></script>
     <script src="~/js/tts.js" asp-append-version="true"></script>
@@ -75,6 +106,7 @@
      data-reader-content-type="@Model.ReaderDocument.ContentTypeKey"
      data-reader-layout="@Model.ReaderDocument.LayoutKind.ToString().ToLowerInvariant()"
      data-reader-personalization
+     data-book-format="@(isPdf ? "pdf" : "epub")"
      data-view="@defaultView"
      data-target-language="@target"
      data-work-id="@Model.Reader.Work.Id"
@@ -92,6 +124,10 @@
     <script type="application/json" data-book-bookmarks-json>@Html.Raw(bookmarksJson)</script>
     <script type="application/json" data-reader-frame-text>@Json.Serialize(ui.WithPrefix("reader.frame."))</script>
     <script type="application/json" data-book-reader-text>@Json.Serialize(ui.WithPrefix("books.read."))</script>
+    @if (isPdf)
+    {
+        <script type="application/json" data-book-pdf-pages-json>@Html.Raw(pdfPagesJson)</script>
+    }
 
     <header class="reader-frame-top" data-reader-chrome-primary>
         <a class="reader-frame-icon" href="@bookUrl" aria-label="@ui["reader.frame.back"]" title="@ui["reader.frame.back"]">
@@ -99,8 +135,19 @@
         </a>
 
         <div class="reader-frame-title">
-            <strong data-book-chapter-title>@chapter.Title</strong>
-            <span>@bookTitle</span>
+            @if (isPdf)
+            {
+                <strong data-book-chapter-title>@bookTitle</strong>
+                @if (!string.IsNullOrWhiteSpace(work.Author))
+                {
+                    <span>@work.Author</span>
+                }
+            }
+            else
+            {
+                <strong data-book-chapter-title>@chapter.Title</strong>
+                <span>@bookTitle</span>
+            }
         </div>
 
         <div class="reader-frame-actions">
@@ -148,11 +195,14 @@
             </div>
             }
 
-            <button class="reader-frame-icon reader-frame-glyph reader-frame-desktop" type="button"
-                    data-reader-settings-open="text"
-                    aria-label="@ui["reader.frame.fontLayout"]" title="@ui["reader.frame.fontLayout"]">
-                <span class="reader-frame-glyph-inline" aria-hidden="true"></span>
-            </button>
+            @if (!isPdf)
+            {
+                <button class="reader-frame-icon reader-frame-glyph reader-frame-desktop" type="button"
+                        data-reader-settings-open="text"
+                        aria-label="@ui["reader.frame.fontLayout"]" title="@ui["reader.frame.fontLayout"]">
+                    <span class="reader-frame-glyph-inline" aria-hidden="true"></span>
+                </button>
+            }
 
             <div class="reader-menu-anchor">
                 <button class="reader-frame-icon reader-frame-desktop" type="button"
@@ -221,10 +271,17 @@
                         <partial name="_ReaderIcon" model="@("palette")" />
                         <span>@ui["reader.frame.colorScheme"]</span>
                     </button>
-                    <button type="button" role="menuitem" data-reader-contents-open="notes">
-                        <partial name="_ReaderIcon" model="@("notes")" />
-                        <span>@ui["books.read.tabNotes"]</span>
-                    </button>
+                    @if (isPdf)
+                    {
+                        await PdfZoomRow("reader-frame-mobile");
+                    }
+                    else
+                    {
+                        <button type="button" role="menuitem" data-reader-contents-open="notes">
+                            <partial name="_ReaderIcon" model="@("notes")" />
+                            <span>@ui["books.read.tabNotes"]</span>
+                        </button>
+                    }
                     <div class="reader-menu-row" role="group" aria-label="@ui["reader.frame.readingMode"]">
                         <partial name="_ReaderIcon" model="@("reading-mode")" />
                         <span>@ui["reader.frame.readingMode"]</span>
@@ -233,10 +290,13 @@
                             <button type="button" data-book-mode="paged" aria-pressed="false">@ui["reader.frame.modePages"]</button>
                         </div>
                     </div>
-                    <button type="button" role="menuitem" data-book-autoscroll-toggle aria-pressed="false" data-reader-mode-only="continuous">
-                        <partial name="_ReaderIcon" model="@("auto-scroll")" />
-                        <span>@ui["reader.frame.autoScroll"]</span>
-                    </button>
+                    @if (!isPdf)
+                    {
+                        <button type="button" role="menuitem" data-book-autoscroll-toggle aria-pressed="false" data-reader-mode-only="continuous">
+                            <partial name="_ReaderIcon" model="@("auto-scroll")" />
+                            <span>@ui["reader.frame.autoScroll"]</span>
+                        </button>
+                    }
                     <div class="reader-menu-row" role="group" aria-label="@ui["reader.frame.timer"]">
                         <partial name="_ReaderIcon" model="@("timer")" />
                         <span data-reader-timer-label>@ui["reader.frame.timer"]</span>
@@ -270,9 +330,12 @@
         <aside class="reader-contents" id="book-reader-contents" data-reader-contents aria-label="@ui["reader.frame.contents"]" hidden>
             <div class="reader-contents-head">
                 <div class="reader-contents-tabs" role="tablist" aria-label="@ui["reader.frame.contentsTabsAria"]">
-                    <button type="button" role="tab" id="book-tab-chapters" aria-controls="book-panel-chapters" aria-selected="true" data-reader-contents-tab="chapters">@ui["books.read.tabChapters"]</button>
+                    <button type="button" role="tab" id="book-tab-chapters" aria-controls="book-panel-chapters" aria-selected="true" data-reader-contents-tab="chapters">@(isPdf ? ui["reader.frame.contents"] : ui["books.read.tabChapters"])</button>
                     <button type="button" role="tab" id="book-tab-bookmarks" aria-controls="book-panel-bookmarks" aria-selected="false" tabindex="-1" data-reader-contents-tab="bookmarks">@ui["books.read.tabBookmarks"]</button>
-                    <button type="button" role="tab" id="book-tab-notes" aria-controls="book-panel-notes" aria-selected="false" tabindex="-1" data-reader-contents-tab="notes">@ui["books.read.tabNotes"]</button>
+                    @if (!isPdf)
+                    {
+                        <button type="button" role="tab" id="book-tab-notes" aria-controls="book-panel-notes" aria-selected="false" tabindex="-1" data-reader-contents-tab="notes">@ui["books.read.tabNotes"]</button>
+                    }
                     <button type="button" role="tab" id="book-tab-details" aria-controls="book-panel-details" aria-selected="false" tabindex="-1" data-reader-contents-tab="details">@ui["books.read.tabDetails"]</button>
                 </div>
                 <button class="reader-frame-icon" type="button" data-reader-contents-close
@@ -283,17 +346,20 @@
 
             <section class="reader-contents-panel" id="book-panel-chapters" role="tabpanel" aria-labelledby="book-tab-chapters" data-reader-contents-panel="chapters">
                 <input class="reader-contents-search" type="search" autocomplete="off"
-                       placeholder="@ui["books.read.searchChapters"]"
-                       aria-label="@ui["books.read.searchChapters"]"
+                       placeholder="@(isPdf ? ui["books.read.searchContents"] : ui["books.read.searchChapters"])"
+                       aria-label="@(isPdf ? ui["books.read.searchContents"] : ui["books.read.searchChapters"])"
                        data-book-chapter-search />
                 <ol class="reader-contents-list" data-book-chapter-list></ol>
             </section>
             <section class="reader-contents-panel" id="book-panel-bookmarks" role="tabpanel" aria-labelledby="book-tab-bookmarks" data-reader-contents-panel="bookmarks" hidden>
                 <ol class="reader-contents-list" data-book-bookmark-list></ol>
             </section>
-            <section class="reader-contents-panel" id="book-panel-notes" role="tabpanel" aria-labelledby="book-tab-notes" data-reader-contents-panel="notes" hidden>
-                <ol class="reader-contents-list" data-book-highlight-list></ol>
-            </section>
+            @if (!isPdf)
+            {
+                <section class="reader-contents-panel" id="book-panel-notes" role="tabpanel" aria-labelledby="book-tab-notes" data-reader-contents-panel="notes" hidden>
+                    <ol class="reader-contents-list" data-book-highlight-list></ol>
+                </section>
+            }
             <section class="reader-contents-panel" id="book-panel-details" role="tabpanel" aria-labelledby="book-tab-details" data-reader-contents-panel="details" hidden>
                 <div class="book-details">
                     <img src="/Books/Cover/@work.Id" alt="" width="120" height="180" loading="lazy" decoding="async" />
@@ -307,7 +373,7 @@
                             }
                             <dt>@ui["books.read.languageLabel"]</dt>
                             <dd>@sourceName</dd>
-                            <dt>@ui["books.read.chapterCount"]</dt>
+                            <dt>@(isPdf ? ui["books.read.pageCount"] : ui["books.read.chapterCount"])</dt>
                             <dd>@Model.ChapterCount</dd>
                         </dl>
                     </div>
@@ -317,6 +383,23 @@
         </aside>
         <div class="reader-contents-backdrop" data-reader-contents-backdrop hidden></div>
 
+        @if (isPdf)
+        {
+            <main class="book-stage" data-reader-surface aria-label="@bookTitle">
+                <div class="book-pdf-spread"
+                     data-book-pdf
+                     lang="@Model.Reader.SourceLanguage"
+                     data-pdf-file="@pdf!.FileUrl"
+                     data-pdf-lib="@pdfLibUrl"
+                     data-pdf-worker="@PdfAsset("/lib/pdfjs/pdf.worker.min.mjs")"
+                     data-pdf-cmaps="@Url.Content("~/lib/pdfjs/cmaps/")"
+                     data-pdf-fonts="@Url.Content("~/lib/pdfjs/standard_fonts/")"
+                     data-pdf-wasm="@Url.Content("~/lib/pdfjs/wasm/")"></div>
+                <p class="book-pdf-status" data-book-pdf-status role="status" hidden></p>
+            </main>
+        }
+        else
+        {
         <main class="book-stage" data-reader-surface aria-label="@chapter.Title">
             <div class="book-spread" data-book-spread>
                 <div class="book-sheet book-sheet-left" aria-hidden="true">
@@ -362,6 +445,7 @@
                 </div>
             </div>
         </main>
+        }
     </div>
 
     <footer class="reader-frame-bottom" data-reader-chrome>
@@ -377,7 +461,7 @@
                 <partial name="_ReaderIcon" model="@("back")" />
             </button>
             <label class="reader-progress-track">
-                <span class="reader-progress-label reader-frame-desktop" data-book-chapter-label>@chapterLabel</span>
+                <span class="reader-progress-label reader-frame-desktop" data-book-chapter-label>@(isPdf ? "" : chapterLabel)</span>
                 <input type="range" min="0" max="0" step="1" value="0"
                        data-reader-progress-slider
                        aria-label="@ui["reader.frame.progressAria"]" />
@@ -390,7 +474,15 @@
         </div>
 
         <div class="reader-frame-transport reader-frame-desktop">
-            @if (Model.Reader.PreviousChapterId is Guid previous)
+            @if (isPdf)
+            {
+                @* Outline sections, or pages when the PDF has no outline (books-reader.js). *@
+                <button class="reader-frame-icon" type="button" data-book-pdf-section="-1"
+                        aria-label="@ui["reader.frame.previousPage"]" title="@ui["reader.frame.previousPage"]">
+                    <partial name="_ReaderIcon" model="@("previous")" />
+                </button>
+            }
+            else if (Model.Reader.PreviousChapterId is Guid previous)
             {
                 <a class="reader-frame-icon" href="/Books/Read/@previous?lang=@target@viewQuery"
                    data-book-chapter-link="previous"
@@ -417,7 +509,14 @@
                 </button>
             }
 
-            @if (Model.Reader.NextChapterId is Guid next)
+            @if (isPdf)
+            {
+                <button class="reader-frame-icon" type="button" data-book-pdf-section="1"
+                        aria-label="@ui["reader.frame.nextPage"]" title="@ui["reader.frame.nextPage"]">
+                    <partial name="_ReaderIcon" model="@("next")" />
+                </button>
+            }
+            else if (Model.Reader.NextChapterId is Guid next)
             {
                 <a class="reader-frame-icon" href="/Books/Read/@next?lang=@target@viewQuery"
                    data-book-chapter-link="next"
@@ -458,6 +557,10 @@
                         <partial name="_ReaderIcon" model="@("view")" />
                         <span>@ui["reader.frame.twoPages"]</span>
                     </button>
+                    @if (isPdf)
+                    {
+                        await PdfZoomRow(null);
+                    }
                     <button type="button" role="menuitem" data-reader-fullscreen-toggle aria-pressed="false">
                         <partial name="_ReaderIcon" model="@("fullscreen")" />
                         <span data-reader-fullscreen-label>@ui["reader.frame.fullscreen"]</span>
@@ -486,10 +589,20 @@
                     <span>@ui["reader.frame.readAloud"]</span>
                 </button>
             }
-            <button type="button" data-reader-settings-open="text">
-                <span class="reader-frame-glyph-inline" aria-hidden="true"></span>
-                <span>@ui["reader.frame.appearance"]</span>
-            </button>
+            @if (isPdf)
+            {
+                <button type="button" data-reader-settings-open="appearance">
+                    <partial name="_ReaderIcon" model="@("palette")" />
+                    <span>@ui["reader.frame.appearance"]</span>
+                </button>
+            }
+            else
+            {
+                <button type="button" data-reader-settings-open="text">
+                    <span class="reader-frame-glyph-inline" aria-hidden="true"></span>
+                    <span>@ui["reader.frame.appearance"]</span>
+                </button>
+            }
             @if (hasLanguageChoice)
             {
                 <button type="button" data-reader-menu-toggle="language" aria-haspopup="menu" aria-expanded="false" aria-controls="book-menu-language">
@@ -508,6 +621,8 @@
         <partial name="_ReaderSettingsPanel" model="@readerSettingsPanel" />
     </div>
 
+    @if (!isPdf)
+    {
     <form method="post"
           asp-page-handler="Highlight"
           asp-route-id="@chapter.Id"
@@ -539,6 +654,7 @@
             <button type="submit">@ui["books.read.saveNote"]</button>
         </form>
     </div>
+    }
 
     <div class="book-reader-toast" data-book-toast hidden role="status" aria-live="polite"></div>
 </div>

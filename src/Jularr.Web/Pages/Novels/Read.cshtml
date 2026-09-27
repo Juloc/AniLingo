@@ -85,6 +85,7 @@
      data-volume-title="@(Model.Chapter.IsEpubVolume ? Model.Chapter.VolumeTitle : "")"
      data-view="@anchor.Language"
      data-has-translation="@hasTranslation.ToString().ToLowerInvariant()"
+     data-translate-gemma-available="@Model.TranslateGemmaAvailable.ToString().ToLowerInvariant()"
      data-progress-permille="@anchor.PositionPermille"
      data-anchor-language="@anchor.Language"
      data-anchor-paragraph="@anchor.ParagraphIndex"
@@ -510,6 +511,7 @@
     <script type="application/json" data-reader-settings-json>@Html.Raw(System.Text.Json.JsonSerializer.Serialize(
         Model.ReaderSettings,
         new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)))</script>
+    <script type="application/json" data-novel-translation-text>@Json.Serialize(ui.WithPrefix("novels.translation."))</script>
 
     <div class="novel-reader-toast" data-reader-toast hidden role="status" aria-live="polite"></div>
 </div>

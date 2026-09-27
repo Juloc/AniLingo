@@ -108,6 +108,36 @@ public sealed class AniListSyncTests
     }
 
     [TestMethod]
+    public async Task PlanningAnimeStartDateUsesTheConfiguredLocalDayAsync()
+    {
+        await using var fixture = await SyncFixture.CreateAsync();
+        // A zone whose calendar day differs from the UTC day at the fixture's current time.
+        var utcHour = fixture.Time.GetUtcNow().Hour;
+        fixture.Time.Zone = TimeZoneInfo.CreateCustomTimeZone(
+            "jularr-test-shifted",
+            TimeSpan.FromHours(utcHour < 12 ? -12 : 14),
+            "Shifted",
+            "Shifted");
+        await fixture.ConnectAsync(Owner, 42, OwnerToken);
+        await fixture.EnableAsync(Owner, AniListSyncMode.OnCompletion);
+        var anime = await fixture.AddAnimeAsync("Late Night Anime", 558, episodes: 12);
+        fixture.Remote.Put(OwnerToken, 558, progress: 0, status: "PLANNING");
+
+        await fixture.WatchAsync(Owner, anime, 1, completed: true, fixture.Time.Ago(TimeSpan.FromSeconds(5)));
+        var written = await fixture.RunAsync();
+        var localToday = TimeZoneInfo.ConvertTime(fixture.Time.GetUtcNow(), fixture.Time.Zone);
+        var utcToday = fixture.Time.GetUtcNow();
+
+        Assert.AreEqual(1, written.Written);
+        Assert.AreEqual(
+            new AniListFuzzyDate(localToday.Year, localToday.Month, localToday.Day),
+            fixture.Remote.StartedAt(OwnerToken, 558));
+        Assert.AreNotEqual(
+            new AniListFuzzyDate(utcToday.Year, utcToday.Month, utcToday.Day),
+            fixture.Remote.StartedAt(OwnerToken, 558));
+    }
+
+    [TestMethod]
     public async Task PlanningAnimePreservesExistingStartDateAsync()
     {
         await using var fixture = await SyncFixture.CreateAsync();
@@ -638,6 +668,10 @@ public sealed class AniListSyncTests
         private DateTimeOffset now = start;
 
         public override DateTimeOffset GetUtcNow() => now;
+
+        public TimeZoneInfo Zone { get; set; } = TimeZoneInfo.Utc;
+
+        public override TimeZoneInfo LocalTimeZone => Zone;
 
         public void Advance(TimeSpan by) => now += by;
 
