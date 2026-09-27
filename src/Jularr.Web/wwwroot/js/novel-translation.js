@@ -207,7 +207,7 @@
             return response.json();
         };
 
-        const waitForAiTranslation = async () => {
+        const waitForTranslation = async () => {
             for (let attempt = 0; attempt < 45; attempt++) {
                 await new Promise(resolve => setTimeout(resolve, 2000));
                 try {
@@ -267,7 +267,7 @@
 
                 button.textContent = "Läuft";
                 reader.showToast("AI-Übersetzung gestartet");
-                void waitForAiTranslation();
+                void waitForTranslation();
             } catch (error) {
                 button.disabled = false;
                 button.textContent = previous;
