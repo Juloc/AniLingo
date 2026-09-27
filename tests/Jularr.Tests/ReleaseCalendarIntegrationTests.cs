@@ -6,6 +6,7 @@ using Jularr.Web.Features.Library;
 using Jularr.Web.Features.Metadata;
 using Jularr.Web.Features.Novels;
 using Jularr.Web.Features.Tracking;
+using Jularr.Web.Features.Watchlist;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -146,6 +147,105 @@ public sealed class ReleaseCalendarIntegrationTests
     }
 
     [TestMethod]
+    public async Task FollowedWorkShowsOnlyLibraryEventsOnceItIsInTheLibrary()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        const string profile = "profile-a";
+        await new WatchlistStore(fixture.Db).FollowAsync(
+            profile,
+            new WatchlistDraft(new WatchlistIdentity(WatchlistMediaType.Anime, "anilist", "154587"), "Frieren"),
+            CancellationToken.None);
+        await new ReleaseCalendarCacheStore(fixture.Db).SaveAsync(
+            "anilist",
+            [new ReleaseSourceSnapshot("154587", "RELEASING",
+            [
+                new CachedRelease("anilist", "154587", ReleaseKind.Episode, 3, ReleaseDate.FromInstant(new DateTimeOffset(2026, 10, 5, 15, 0, 0, TimeSpan.Zero))),
+                new CachedRelease("anilist", "154587", ReleaseKind.Episode, 4, ReleaseDate.FromInstant(new DateTimeOffset(2026, 10, 12, 15, 0, 0, TimeSpan.Zero)))
+            ])],
+            Now.AddDays(-35),
+            Now.UtcDateTime,
+            CancellationToken.None);
+        var filter = new ReleaseCalendarFilter(new HashSet<ReleaseMediaType>(), ReleaseStateFilter.All, profile);
+
+        var followed = await fixture.Service().GetAsync(new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 31), TimeZoneInfo.Utc, filter, Now, false, CancellationToken.None);
+        var followedEvents = followed.Days.SelectMany(day => day.Events).ToArray();
+        Assert.AreEqual(2, followedEvents.Length);
+        Assert.IsTrue(followedEvents.All(release => release.Local.State == ReleaseLocalState.Following && !release.Local.InLibrary));
+
+        var monitored = await fixture.Service().GetAsync(
+            new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 31), TimeZoneInfo.Utc,
+            filter with { State = ReleaseStateFilter.Monitored }, Now, false, CancellationToken.None);
+        Assert.IsTrue(monitored.IsEmpty, "Following a work is not acquisition monitoring.");
+
+        await fixture.AddAnimeAsync();
+        var inLibrary = await fixture.Service().GetAsync(new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 31), TimeZoneInfo.Utc, filter, Now, false, CancellationToken.None);
+        var libraryEvents = inLibrary.Days.SelectMany(day => day.Events).ToArray();
+        Assert.AreEqual(2, libraryEvents.Length, "Each airing once, decided when the calendar is read.");
+        Assert.IsTrue(libraryEvents.All(release => release.Local.InLibrary));
+    }
+
+    [TestMethod]
+    public void LibraryEventWinsOverTheSameFollowedRelease()
+    {
+        var date = ReleaseDate.FromInstant(new DateTimeOffset(2026, 10, 5, 15, 0, 0, TimeSpan.Zero));
+        var library = new ReleaseEvent("library", ReleaseMediaType.Anime, Guid.NewGuid(), null, ReleaseKind.Episode, "Frieren",
+            new ReleaseUnit(3, 2), date, "anilist", "154587", new ReleaseLocalStatus(true, true, ReleaseLocalState.Monitored));
+        var followed = library with { Id = "followed", MediaId = Guid.NewGuid(), Unit = new ReleaseUnit(15), Local = ReleaseLocalStatus.Following };
+        var other = followed with { Id = "other", ProviderExternalId = "999" };
+
+        var kept = ReleaseCalendarAssembler.WithoutFollowedDuplicates([followed, library, other]);
+
+        CollectionAssert.AreEquivalent(new[] { "library", "other" }, kept.Select(release => release.Id).ToArray());
+    }
+
+    [TestMethod]
+    public async Task RefreshReadsTheWholeAiringScheduleOfTheWindow()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await new WatchlistStore(fixture.Db).FollowAsync(
+            "profile-a",
+            new WatchlistDraft(new WatchlistIdentity(WatchlistMediaType.Anime, "anilist", "21"), "ONE PIECE", Status: "RELEASING"),
+            CancellationToken.None);
+        const int pages = 6;
+        for (var page = 0; page < pages; page++)
+        {
+            fixture.Client.Responses.Enqueue(new AniListReleaseSchedule(
+                page == 0 ? [new AniListReleaseMedia(21, "ANIME", "RELEASING", 1999, 10, 20, null)] : [],
+                [new AniListAiring(21, 1100 + page, Now.AddDays(1 + 7 * page))],
+                HasMoreAirings: page < pages - 1));
+        }
+
+        var result = await fixture.Refresher().RefreshDueAsync(CancellationToken.None);
+        Assert.AreEqual(pages, result.Requests, "Paging does not stop after a few pages.");
+
+        var agenda = await fixture.Service().GetAsync(
+            new DateOnly(2026, 10, 1),
+            new DateOnly(2026, 10, 28),
+            TimeZoneInfo.Utc,
+            new ReleaseCalendarFilter(new HashSet<ReleaseMediaType>(), ReleaseStateFilter.All, "profile-a"),
+            Now,
+            includeUndated: false,
+            CancellationToken.None);
+        CollectionAssert.AreEqual(
+            new[] { 1100d, 1101d, 1102d, 1103d },
+            agenda.Days.SelectMany(day => day.Events).Select(release => release.Unit!.Number).ToArray(),
+            "A weekly show has every episode of a four-week agenda, not only the next one.");
+    }
+
+    [TestMethod]
+    public async Task RateLimitFromAnotherJobPausesTheReleaseRefresh()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.AddAnimeAsync();
+        fixture.Gate.Block(Now.AddMinutes(5));
+
+        var result = await fixture.Refresher().RefreshDueAsync(CancellationToken.None);
+
+        Assert.AreEqual(0, result.Requests);
+        Assert.AreEqual(TimeSpan.FromMinutes(5), result.RetryAfter);
+    }
+
+    [TestMethod]
     public async Task RefreshReplacesUpcomingReleasesAndKeepsHistory()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -250,18 +350,28 @@ public sealed class ReleaseCalendarIntegrationTests
             return new Fixture(directory, db);
         }
 
+        public AniListRateLimitGate Gate { get; } = new();
+
         public ReleaseCalendarRefresher Refresher() =>
-            new(Db, new ReleaseCalendarCacheStore(Db), Mappings, Client, NullLogger<ReleaseCalendarRefresher>.Instance, Clock)
-            {
-                RequestSpacing = TimeSpan.Zero
-            };
+            new(
+                Db,
+                new ReleaseCalendarCacheStore(Db),
+                Mappings,
+                Client,
+                new AniListRequestLimiter(Gate, Clock) { Spacing = TimeSpan.Zero },
+                NullLogger<ReleaseCalendarRefresher>.Instance,
+                Clock);
 
         public ReleaseCalendarService Service() =>
             new(
                 [
                     new AniListReleaseEventSource(Db, new ReleaseCalendarCacheStore(Db), Mappings, Monitoring),
                     new NovelChapterReleaseEventSource(Db),
-                    new BookReleaseEventSource(Db)
+                    new BookReleaseEventSource(Db),
+                    new WatchlistReleaseEventSource(
+                        new ReleaseCalendarCacheStore(Db),
+                        new WatchlistStore(Db),
+                        new WatchlistLibraryResolver(Db, Mappings))
                 ],
                 NullLogger<ReleaseCalendarService>.Instance);
 

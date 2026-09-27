@@ -48,7 +48,10 @@ public enum ReleaseLocalState
     Grabbed,
     Failed,
     Available,
-    Missing
+    Missing,
+
+    /// <summary>Not in the library; shown because the profile follows the work in its watchlist.</summary>
+    Following
 }
 
 /// <param name="InLibrary">The media is part of the local library.</param>
@@ -56,6 +59,9 @@ public enum ReleaseLocalState
 public sealed record ReleaseLocalStatus(bool InLibrary, bool? Monitored, ReleaseLocalState State)
 {
     public static ReleaseLocalStatus InLibraryOnly { get; } = new(true, null, ReleaseLocalState.None);
+
+    /// <summary>A followed work outside the library: no acquisition monitoring applies.</summary>
+    public static ReleaseLocalStatus Following { get; } = new(false, null, ReleaseLocalState.Following);
 
     public bool IsAvailable => State == ReleaseLocalState.Available;
 }

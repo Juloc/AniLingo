@@ -31,7 +31,7 @@ public static class ReleaseCalendarAssembler
         var imprecise = new List<ReleaseEvent>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
 
-        foreach (var release in events)
+        foreach (var release in WithoutFollowedDuplicates(events))
         {
             if (!seen.Add(release.Id) || !filter.Matches(release, now, zone))
             {
@@ -64,6 +64,35 @@ public static class ReleaseCalendarAssembler
 
         return (days, Order(imprecise));
     }
+
+    /// <summary>
+    /// Drops watchlist events for a provider release the library already shows: the same provider
+    /// entry, kind and date. The library event wins because it carries the local state.
+    /// </summary>
+    public static IReadOnlyList<ReleaseEvent> WithoutFollowedDuplicates(IEnumerable<ReleaseEvent> events)
+    {
+        var all = events as IReadOnlyList<ReleaseEvent> ?? events.ToArray();
+        var library = all
+            .Where(release => release.Local.State != ReleaseLocalState.Following)
+            .Select(ProviderKey)
+            .OfType<string>()
+            .ToHashSet(StringComparer.Ordinal);
+        return all
+            .Where(release => release.Local.State != ReleaseLocalState.Following ||
+                              ProviderKey(release) is not { } key ||
+                              !library.Contains(key))
+            .ToArray();
+    }
+
+    private static string? ProviderKey(ReleaseEvent release) =>
+        string.IsNullOrWhiteSpace(release.ProviderExternalId)
+            ? null
+            : string.Join(
+                '|',
+                release.Provider.ToLowerInvariant(),
+                release.ProviderExternalId,
+                release.Kind,
+                release.Date.ToStorage());
 
     public static IReadOnlyList<ReleaseEvent> Order(IEnumerable<ReleaseEvent> events) =>
         events

@@ -1,49 +1,113 @@
+using System.Threading.Channels;
+
 namespace Jularr.Web.Features.Franchises;
 
+/// <summary>
+/// Wakes the franchise refresh worker, for example after a follow or a manual refresh. What to
+/// refresh is always read from the database, so a lost or repeated signal does no harm.
+/// </summary>
+public sealed class FranchiseRefreshSignal
+{
+    private readonly Channel<bool> channel = Channel.CreateBounded<bool>(
+        new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropWrite });
+
+    public void Wake() => channel.Writer.TryWrite(true);
+
+    /// <summary>Waits until <see cref="Wake"/> is called or <paramref name="timeout"/> has passed.</summary>
+    public async Task WaitAsync(TimeSpan timeout, CancellationToken cancellationToken)
+    {
+        using var timer = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timer.CancelAfter(timeout);
+        try
+        {
+            await channel.Reader.WaitToReadAsync(timer.Token);
+            channel.Reader.TryRead(out _);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+        }
+    }
+}
+
+/// <summary>
+/// Background refresh of followed franchises. Each run of <see cref="FranchiseService.RefreshAsync"/>
+/// is bounded; the worker keeps going while franchises have due members, pauses as long as AniList
+/// asks after a 429, and otherwise sleeps until a follow or manual refresh wakes it or
+/// <see cref="Interval"/> has passed.
+/// </summary>
 public sealed class FranchiseRefreshService(
     IServiceScopeFactory scopes,
-    ILogger<FranchiseRefreshService> logger) : BackgroundService
+    FranchiseRefreshSignal signal,
+    ILogger<FranchiseRefreshService> logger,
+    TimeProvider clock) : BackgroundService
 {
-    public static readonly TimeSpan StartupDelay = TimeSpan.FromMinutes(5);
-    public static readonly TimeSpan Interval = TimeSpan.FromHours(24);
+    public static readonly TimeSpan StartupDelay = TimeSpan.FromMinutes(1);
+    public static readonly TimeSpan Interval = TimeSpan.FromHours(1);
+
+    /// <summary>Upper bound of runs before the worker sleeps again, so one wake-up cannot spin.</summary>
+    public const int MaxRunsPerWake = 200;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         try
         {
-            await Task.Delay(StartupDelay, stoppingToken);
+            await signal.WaitAsync(StartupDelay, stoppingToken);
             while (!stoppingToken.IsCancellationRequested)
             {
+                var wait = Interval;
                 try
                 {
-                    await using var scope = scopes.CreateAsyncScope();
-                    var store = scope.ServiceProvider.GetRequiredService<FranchiseStore>();
-                    var service = scope.ServiceProvider.GetRequiredService<FranchiseService>();
-                    foreach (var franchiseId in await store.ListFollowedFranchiseIdsAsync(stoppingToken))
-                    {
-                        try
-                        {
-                            await service.RefreshAsync(franchiseId, stoppingToken);
-                        }
-                        catch (Exception exception) when (!stoppingToken.IsCancellationRequested)
-                        {
-                            logger.LogInformation(
-                                exception,
-                                "Franchise {FranchiseId} could not be refreshed; local follow state is unchanged.",
-                                franchiseId);
-                        }
-                    }
+                    wait = await RefreshDueAsync(stoppingToken) ?? Interval;
                 }
                 catch (Exception exception) when (!stoppingToken.IsCancellationRequested)
                 {
                     logger.LogWarning(exception, "Refreshing followed franchises failed.");
                 }
 
-                await Task.Delay(Interval, stoppingToken);
+                await signal.WaitAsync(wait, stoppingToken);
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
         }
+    }
+
+    /// <summary>Runs until nothing is due; returns the pause AniList or a failure asked for.</summary>
+    private async Task<TimeSpan?> RefreshDueAsync(CancellationToken cancellationToken)
+    {
+        await using var scope = scopes.CreateAsyncScope();
+        var store = scope.ServiceProvider.GetRequiredService<FranchiseStore>();
+        var service = scope.ServiceProvider.GetRequiredService<FranchiseService>();
+        var runs = 0;
+        while (runs < MaxRunsPerWake)
+        {
+            var due = await store.ListRefreshDueAsync(
+                clock.GetUtcNow().UtcDateTime - FranchiseService.MemberRecheckAfter,
+                cancellationToken);
+            if (due.Count == 0)
+            {
+                return null;
+            }
+
+            foreach (var franchiseId in due)
+            {
+                var result = await service.RefreshAsync(franchiseId, cancellationToken);
+                runs++;
+                if (result.RetryAfter is { } retryAfter)
+                {
+                    logger.LogInformation(
+                        "Franchise refresh pauses for {Seconds:0} s.",
+                        retryAfter.TotalSeconds);
+                    return retryAfter;
+                }
+
+                if (runs >= MaxRunsPerWake)
+                {
+                    break;
+                }
+            }
+        }
+
+        return null;
     }
 }

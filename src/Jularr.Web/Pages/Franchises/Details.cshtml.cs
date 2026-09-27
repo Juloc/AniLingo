@@ -2,13 +2,19 @@ using Jularr.Web.Data;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Franchises;
 using Jularr.Web.Features.Localization;
-using Jularr.Web.Features.Metadata;
-using Jularr.Web.Features.Novels;
 using Jularr.Web.Features.Watchlist;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
 namespace Jularr.Web.Pages.Franchises;
+
+/// <summary>One member card: provider data plus what is decided now (library, follow state).</summary>
+public sealed record FranchiseMemberView(
+    FranchiseMember Member,
+    WatchlistLibraryMatch? Library,
+    string? RelationLabel,
+    bool IsFollowed,
+    bool IsHidden);
 
 public sealed class DetailsModel(
     AppDbContext db,
@@ -16,21 +22,19 @@ public sealed class DetailsModel(
     FranchiseStore franchises,
     FranchiseService franchiseService,
     MediaRelationStore relations,
-    WatchlistStore watchlist) : PageModel
+    WatchlistStore watchlist,
+    WatchlistLibraryResolver library) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
 
     public FranchiseSummary Franchise { get; private set; } = null!;
 
-    public IReadOnlyList<FranchiseMember> Members { get; private set; } = [];
-
-    public IReadOnlyList<MediaRelation> Relations { get; private set; } = [];
-
-    public IReadOnlySet<string> FollowedKeys { get; private set; } = new HashSet<string>();
+    public IReadOnlyList<FranchiseMemberView> Members { get; private set; } = [];
 
     public bool IsFollowed { get; private set; }
 
-    public bool IsOwner => account.IsOwner;
+    /// <summary>Followers and the owner may ask for a refresh.</summary>
+    public bool CanRefresh => IsFollowed || account.IsOwner;
 
     public async Task<IActionResult> OnGetAsync(Guid id, CancellationToken cancellationToken)
     {
@@ -42,24 +46,37 @@ public sealed class DetailsModel(
         }
 
         Franchise = franchise;
-        Members = await franchises.GetMembersAsync(id, cancellationToken);
-        Relations = await relations.GetForMembersAsync(
-            Members.Select(member => member.Media.Identity).ToArray(),
-            cancellationToken);
-        FollowedKeys = await watchlist.GetEffectiveKeysAsync(account.ProfileId, cancellationToken);
         IsFollowed = await franchises.IsFollowedAsync(account.ProfileId, id, cancellationToken);
+        var members = await franchises.GetMembersAsync(id, cancellationToken);
+        var graph = await relations.GetForFranchiseAsync(id, cancellationToken);
+        var matches = await library.ResolveAsync(members.Select(member => member.Media.Identity), cancellationToken);
+        var followed = await watchlist.GetEffectiveKeysAsync(account.ProfileId, cancellationToken);
+        var hidden = await watchlist.GetHiddenKeysAsync(account.ProfileId, cancellationToken);
+        var titles = members.ToDictionary(member => member.Media.Identity.Key, member => member.Media.Title, StringComparer.Ordinal);
+
+        Members = members
+            .Select(member =>
+            {
+                var key = member.Media.Identity.Key;
+                return new FranchiseMemberView(
+                    member,
+                    matches.GetValueOrDefault(key),
+                    RelationLabel(member, franchise.Seed, graph, titles),
+                    followed.Contains(key),
+                    hidden.Contains(key));
+            })
+            .ToArray();
         return Page();
     }
 
     public async Task<IActionResult> OnPostFollowAsync(Guid id, CancellationToken cancellationToken)
     {
-        var franchise = await franchises.GetAsync(id, cancellationToken);
-        if (franchise is null)
+        if (await franchises.GetAsync(id, cancellationToken) is null)
         {
             return NotFound();
         }
 
-        await franchises.FollowAsync(account.ProfileId, id, cancellationToken);
+        await franchiseService.FollowAsync(account.ProfileId, id, cancellationToken);
         return RedirectToPage(new { id });
     }
 
@@ -71,81 +88,73 @@ public sealed class DetailsModel(
 
     public async Task<IActionResult> OnPostRefreshAsync(Guid id, CancellationToken cancellationToken)
     {
-        try
+        var result = await franchiseService.RequestRefreshAsync(id, account.ProfileId, account.IsOwner, cancellationToken);
+        if (FranchiseRefreshStatus.MessageKey(result) is not { } key)
         {
-            await franchiseService.RefreshAsync(id, cancellationToken);
-        }
-        catch (Exception exception) when (
-            exception is MetadataProviderException or NovelMetadataProviderException)
-        {
-            TempData["Status"] = "Provider relations could not be refreshed. Existing franchise data was kept.";
+            return result == FranchiseRefreshRequest.NotFound ? NotFound() : Forbid();
         }
 
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+        TempData["Status"] = ui[key];
         return RedirectToPage(new { id });
     }
 
-    public async Task<IActionResult> OnPostRelationAsync(
+    /// <summary>Stops following one work of a followed franchise; <see cref="OnPostShowMemberAsync"/> undoes it.</summary>
+    public Task<IActionResult> OnPostHideMemberAsync(Guid id, string? key, CancellationToken cancellationToken) =>
+        WithMemberAsync(id, key, identity => watchlist.UnfollowAsync(account.ProfileId, identity, cancellationToken), cancellationToken);
+
+    public Task<IActionResult> OnPostShowMemberAsync(Guid id, string? key, CancellationToken cancellationToken) =>
+        WithMemberAsync(id, key, identity => watchlist.RestoreAsync(account.ProfileId, identity, cancellationToken), cancellationToken);
+
+    private async Task<IActionResult> WithMemberAsync(
         Guid id,
-        string? fromKey,
-        string? toKey,
-        string? relationType,
+        string? key,
+        Func<WatchlistIdentity, Task> action,
         CancellationToken cancellationToken)
     {
-        if (!account.IsOwner ||
-            string.IsNullOrWhiteSpace(fromKey) ||
-            string.IsNullOrWhiteSpace(toKey) ||
-            string.IsNullOrWhiteSpace(relationType) ||
-            fromKey == toKey)
+        if (!await franchises.IsFollowedAsync(account.ProfileId, id, cancellationToken))
         {
             return BadRequest();
         }
 
-        var members = await franchises.GetMembersAsync(id, cancellationToken);
-        var from = members.FirstOrDefault(member => member.Media.Identity.Key == fromKey);
-        var to = members.FirstOrDefault(member => member.Media.Identity.Key == toKey);
-        if (from is null || to is null)
+        var member = (await franchises.GetMembersAsync(id, cancellationToken))
+            .FirstOrDefault(item => item.Media.Identity.Key == key);
+        if (member is null)
         {
             return BadRequest();
         }
 
-        await relations.UpsertManualAsync(
-            from.Media.Identity,
-            to.Media.Identity,
-            relationType,
-            cancellationToken);
+        await action(member.Media.Identity);
         return RedirectToPage(new { id });
     }
 
-    public async Task<IActionResult> OnPostRelationReviewAsync(
-        Guid id,
-        Guid relationId,
-        bool confirm,
-        CancellationToken cancellationToken)
+    /// <summary>
+    /// "Sequel to X": how the member relates to another member that lists it, preferring the
+    /// seed. Null for the seed and when no labelled relation is known.
+    /// </summary>
+    private string? RelationLabel(
+        FranchiseMember member,
+        WatchlistIdentity seed,
+        IReadOnlyList<MediaRelation> graph,
+        IReadOnlyDictionary<string, string> titles)
     {
-        if (!account.IsOwner)
+        if (member.IsSeed)
         {
-            return Forbid();
+            return null;
         }
 
-        await relations.SetReviewStateAsync(
-            relationId,
-            confirm ? MediaRelationReviewState.Confirmed : MediaRelationReviewState.Rejected,
-            cancellationToken);
-        return RedirectToPage(new { id });
-    }
-
-    public async Task<IActionResult> OnPostRelationDeleteAsync(
-        Guid id,
-        Guid relationId,
-        CancellationToken cancellationToken)
-    {
-        if (!account.IsOwner)
-        {
-            return Forbid();
-        }
-
-        await relations.DeleteManualAsync(relationId, cancellationToken);
-        return RedirectToPage(new { id });
+        var key = member.Media.Identity.Key;
+        var incoming = graph
+            .Where(relation => relation.To.Key == key && relation.From.Key != key)
+            .Select(relation => (Relation: relation, LabelKey: FranchiseLabels.RelationKey(relation.RelationType)))
+            .Where(item => item.LabelKey is not null &&
+                           titles.TryGetValue(item.Relation.From.Key, out var title) &&
+                           !string.IsNullOrWhiteSpace(title))
+            .OrderByDescending(item => item.Relation.From.Key == seed.Key)
+            .FirstOrDefault();
+        return incoming.LabelKey is { } labelKey
+            ? Ui.Format(labelKey, ("title", titles[incoming.Relation.From.Key]))
+            : null;
     }
 
     public static string TypeLabelKey(WatchlistMediaType type) =>

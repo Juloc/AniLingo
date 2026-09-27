@@ -1,109 +1,233 @@
 using Jularr.Web.Data;
+using Jularr.Web.Features.Calendar;
 using Jularr.Web.Features.Franchises;
+using Jularr.Web.Features.Metadata;
+using Jularr.Web.Features.Tracking;
 using Jularr.Web.Features.Watchlist;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Jularr.Tests;
 
+/// <summary>
+/// Franchise membership on a migrated SQLite database with a fake AniList: only the seed identity
+/// comes from the browser, refresh runs are bounded and incremental, the member cap only limits
+/// growth, rate limits stop a run, and manual refreshes are limited to followers and the owner.
+/// </summary>
 [TestClass]
 public sealed class FranchiseRelationTests
 {
+    private static readonly DateTimeOffset Now = new(2026, 10, 1, 12, 0, 0, TimeSpan.Zero);
+
     [TestMethod]
-    public async Task ProviderRelationIsStoredDirectionally()
+    public async Task FollowStoresOnlyTheSeedAndTheRefreshBuildsMembersFromTheProvider()
     {
         await using var fixture = await Fixture.CreateAsync();
-        var store = new MediaRelationStore(fixture.Db);
-        var from = Identity("100");
-        var to = Identity("101");
+        fixture.Source.Add("100", "Series A", ("SEQUEL", "101"), ("CHARACTER", "500"));
+        fixture.Source.Add("101", "Series A 2", ("PREQUEL", "100"));
 
-        await store.UpsertProviderAsync(
-            from,
-            to,
-            "SEQUEL",
-            "anilist",
-            1.0,
-            confirmed: true,
-            CancellationToken.None);
+        var franchiseId = await fixture.Service.FollowFromSeedAsync("profile-a", Anime("100"), CancellationToken.None);
 
-        var relations = await store.GetForMembersAsync([from, to], CancellationToken.None);
-        var relation = relations.Single();
+        Assert.AreEqual(0, fixture.Source.Calls.Count, "Following makes no provider call.");
+        var pending = await fixture.Store.GetAsync(franchiseId, CancellationToken.None);
+        Assert.AreEqual("", pending!.Title);
+        Assert.AreEqual(0, pending.MemberCount);
+        CollectionAssert.AreEqual(new[] { franchiseId }, (await fixture.Store.ListRefreshDueAsync(Now.UtcDateTime, CancellationToken.None)).ToArray());
 
-        Assert.AreEqual(from.Key, relation.From.Key);
-        Assert.AreEqual(to.Key, relation.To.Key);
-        Assert.AreEqual("sequel", relation.RelationType);
-        Assert.AreEqual(MediaRelationReviewState.Confirmed, relation.ReviewState);
-        Assert.IsFalse(relation.IsManual);
+        var result = await fixture.Service.RefreshAsync(franchiseId, CancellationToken.None);
+
+        Assert.IsTrue(result.Complete);
+        Assert.AreEqual(2, result.Requests);
+        Assert.AreEqual("Series A", (await fixture.Store.GetAsync(franchiseId, CancellationToken.None))!.Title);
+        var members = await fixture.Store.GetMembersAsync(franchiseId, CancellationToken.None);
+        CollectionAssert.AreEquivalent(new[] { "100", "101" }, members.Select(member => member.Media.Identity.ExternalKey).ToArray());
+        var seed = members.Single(member => member.IsSeed);
+        Assert.AreEqual("Series A", seed.Media.Title);
+        Assert.IsNull(seed.RelationType, "Being listed as a prequel does not relabel the seed.");
+        var sequel = members.Single(member => !member.IsSeed);
+        Assert.AreEqual("SEQUEL", sequel.RelationType);
+        Assert.AreEqual("https://img.anilist.test/101.jpg", sequel.Media.CoverImageUrl);
+
+        var graph = await new MediaRelationStore(fixture.Db).GetForFranchiseAsync(franchiseId, CancellationToken.None);
+        Assert.IsTrue(graph.Any(relation => relation.From.ExternalKey == "100" && relation.To.ExternalKey == "101" && relation.RelationType == "sequel"));
+        Assert.AreEqual(0, (await fixture.Store.ListRefreshDueAsync(Now.UtcDateTime, CancellationToken.None)).Count);
     }
 
     [TestMethod]
-    public async Task ManualDecisionSurvivesProviderRefresh()
+    public async Task RunsAreBoundedAndContinueWhereTheyStopped()
     {
         await using var fixture = await Fixture.CreateAsync();
-        var store = new MediaRelationStore(fixture.Db);
-        var from = Identity("100");
-        var to = Identity("101");
+        const int works = 25;
+        for (var id = 1; id <= works; id++)
+        {
+            fixture.Source.Add(id.ToString(), $"Season {id}", id < works ? [("SEQUEL", (id + 1).ToString())] : []);
+        }
 
-        await store.UpsertProviderAsync(
-            from,
-            to,
-            "SEQUEL",
-            "anilist",
-            0.8,
-            confirmed: true,
-            CancellationToken.None);
+        var franchiseId = await fixture.Service.FollowFromSeedAsync("profile-a", Anime("1"), CancellationToken.None);
+        var runs = new List<FranchiseRefreshResult>();
+        do
+        {
+            runs.Add(await fixture.Service.RefreshAsync(franchiseId, CancellationToken.None));
+        }
+        while (!runs[^1].Complete && runs.Count < 30);
 
-        var relation = (await store.GetForMembersAsync([from, to], CancellationToken.None)).Single();
-        await store.SetReviewStateAsync(
-            relation.Id,
-            MediaRelationReviewState.Rejected,
-            CancellationToken.None);
+        Assert.IsTrue(runs.All(run => run.Requests <= FranchiseService.MaxRequestsPerRun));
+        Assert.IsTrue(runs[^1].Complete);
+        Assert.AreEqual(works, runs.Sum(run => run.Requests), "Every work is read once.");
+        Assert.AreEqual(works, (await fixture.Store.GetMembersAsync(franchiseId, CancellationToken.None)).Count);
 
-        await store.UpsertProviderAsync(
-            from,
-            to,
-            "SEQUEL",
-            "anilist",
-            1.0,
-            confirmed: true,
-            CancellationToken.None);
-
-        var visible = await store.GetForMembersAsync([from, to], CancellationToken.None);
-        Assert.AreEqual(0, visible.Count);
+        var again = await fixture.Service.RefreshAsync(franchiseId, CancellationToken.None);
+        Assert.AreEqual(0, again.Requests, "Nothing is read again before the recheck interval.");
     }
 
     [TestMethod]
-    public async Task ManualRelationReplacesProviderMetadata()
+    public async Task LargeFranchiseStillFindsANewSequel()
     {
         await using var fixture = await Fixture.CreateAsync();
-        var store = new MediaRelationStore(fixture.Db);
-        var from = Identity("100");
-        var to = Identity("101");
+        var franchiseId = await fixture.Store.GetOrCreateBySeedAsync(Anime("1"), CancellationToken.None);
+        await fixture.Store.FollowAsync("profile-a", franchiseId, CancellationToken.None);
+        for (var id = 1; id <= 80; id++)
+        {
+            var identity = Anime(id.ToString());
+            await fixture.Store.UpsertMemberAsync(franchiseId, new WatchlistDraft(identity, $"Work {id}"), id == 1 ? null : "SEQUEL", id == 1, CancellationToken.None);
+            await fixture.Store.MarkMemberCheckedAsync(franchiseId, identity, Now.UtcDateTime, CancellationToken.None);
+        }
 
-        await store.UpsertProviderAsync(
-            from,
-            to,
-            "RELATED",
-            "anilist",
-            0.6,
-            confirmed: false,
-            CancellationToken.None);
+        fixture.Source.Add("80", "Work 80", ("SEQUEL", "81"));
+        fixture.Source.Add("81", "Work 81");
+        fixture.Clock.Advance(FranchiseService.MemberRecheckAfter);
+        for (var run = 0; run < 12 && !(await fixture.Service.RefreshAsync(franchiseId, CancellationToken.None)).Complete; run++)
+        {
+        }
 
-        await store.UpsertManualAsync(
-            from,
-            to,
-            "RELATED",
-            CancellationToken.None);
-
-        var relation = (await store.GetForMembersAsync([from, to], CancellationToken.None)).Single();
-        Assert.IsTrue(relation.IsManual);
-        Assert.AreEqual("manual", relation.Source);
-        Assert.AreEqual(1.0, relation.Confidence);
-        Assert.AreEqual(MediaRelationReviewState.Confirmed, relation.ReviewState);
+        var members = await fixture.Store.GetMembersAsync(franchiseId, CancellationToken.None);
+        Assert.IsTrue(members.Any(member => member.Media.Identity.ExternalKey == "81"), "More than 60 works do not stop the refresh.");
     }
 
-    private static WatchlistIdentity Identity(string externalId) =>
+    [TestMethod]
+    public async Task MemberCapOnlyLimitsGrowth()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var related = Enumerable.Range(1000, FranchiseService.MaxMembers + 20)
+            .Select(id => ("SIDE_STORY", id.ToString()))
+            .ToArray();
+        fixture.Source.Add("1", "Seed", related);
+
+        var franchiseId = await fixture.Service.FollowFromSeedAsync("profile-a", Anime("1"), CancellationToken.None);
+        await fixture.Service.RefreshAsync(franchiseId, CancellationToken.None);
+
+        Assert.AreEqual(FranchiseService.MaxMembers, (await fixture.Store.GetMembersAsync(franchiseId, CancellationToken.None)).Count);
+    }
+
+    [TestMethod]
+    public async Task RateLimitStopsTheRunAndKeepsTheWorkDue()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        fixture.Source.Add("1", "Seed", ("SEQUEL", "2"));
+        fixture.Source.Add("2", "Sequel");
+        var franchiseId = await fixture.Service.FollowFromSeedAsync("profile-a", Anime("1"), CancellationToken.None);
+
+        fixture.Source.RateLimitOn = "1";
+        var limited = await fixture.Service.RefreshAsync(franchiseId, CancellationToken.None);
+        Assert.AreEqual(TimeSpan.FromMinutes(2), limited.RetryAfter);
+        Assert.IsFalse(limited.Complete);
+        Assert.AreEqual(0, (await fixture.Store.GetMembersAsync(franchiseId, CancellationToken.None)).Count);
+
+        var blocked = await fixture.Service.RefreshAsync(franchiseId, CancellationToken.None);
+        Assert.AreEqual(0, blocked.Requests, "No request while AniList's pause lasts.");
+
+        fixture.Source.RateLimitOn = null;
+        fixture.Clock.Advance(TimeSpan.FromMinutes(3));
+        var resumed = await fixture.Service.RefreshAsync(franchiseId, CancellationToken.None);
+        Assert.IsTrue(resumed.Complete);
+        Assert.AreEqual(2, (await fixture.Store.GetMembersAsync(franchiseId, CancellationToken.None)).Count);
+    }
+
+    [TestMethod]
+    public async Task ManualRefreshIsForFollowersOrTheOwnerWithACooldown()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var franchiseId = await fixture.Service.FollowFromSeedAsync("follower", Anime("1"), CancellationToken.None);
+
+        Assert.AreEqual(FranchiseRefreshRequest.NotAllowed, await fixture.Service.RequestRefreshAsync(franchiseId, "stranger", false, CancellationToken.None));
+        Assert.AreEqual(FranchiseRefreshRequest.Queued, await fixture.Service.RequestRefreshAsync(franchiseId, "follower", false, CancellationToken.None));
+        Assert.AreEqual(FranchiseRefreshRequest.CoolingDown, await fixture.Service.RequestRefreshAsync(franchiseId, "follower", false, CancellationToken.None));
+        Assert.AreEqual(FranchiseRefreshRequest.CoolingDown, await fixture.Service.RequestRefreshAsync(franchiseId, "owner", true, CancellationToken.None));
+
+        fixture.Clock.Advance(FranchiseService.RefreshCooldown + TimeSpan.FromMinutes(1));
+        Assert.AreEqual(FranchiseRefreshRequest.Queued, await fixture.Service.RequestRefreshAsync(franchiseId, "owner", true, CancellationToken.None));
+        Assert.AreEqual(FranchiseRefreshRequest.NotFound, await fixture.Service.RequestRefreshAsync(Guid.NewGuid(), "owner", true, CancellationToken.None));
+    }
+
+    [TestMethod]
+    public async Task ManualRefreshReadsKnownMembersAgain()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        fixture.Source.Add("1", "Seed", ("SEQUEL", "2"));
+        fixture.Source.Add("2", "Sequel");
+        var franchiseId = await fixture.Service.FollowFromSeedAsync("profile-a", Anime("1"), CancellationToken.None);
+        await fixture.Service.RefreshAsync(franchiseId, CancellationToken.None);
+
+        fixture.Clock.Advance(FranchiseService.RefreshCooldown + TimeSpan.FromMinutes(1));
+        fixture.Source.Add("2", "Sequel", ("SEQUEL", "3"));
+        fixture.Source.Add("3", "Third");
+        Assert.AreEqual(FranchiseRefreshRequest.Queued, await fixture.Service.RequestRefreshAsync(franchiseId, "profile-a", false, CancellationToken.None));
+        fixture.Clock.Advance(TimeSpan.FromSeconds(1));
+        await fixture.Service.RefreshAsync(franchiseId, CancellationToken.None);
+
+        Assert.IsTrue((await fixture.Store.GetMembersAsync(franchiseId, CancellationToken.None)).Any(member => member.Media.Identity.ExternalKey == "3"));
+    }
+
+    [TestMethod]
+    public void OnlyAniListWorksStartAFranchise()
+    {
+        Assert.IsTrue(FranchiseService.CanSeed(new WatchlistIdentity(WatchlistMediaType.LightNovel, "anilist", "1")));
+        Assert.IsFalse(FranchiseService.CanSeed(new WatchlistIdentity(WatchlistMediaType.Book, "anilist", "1")));
+        Assert.IsFalse(FranchiseService.CanSeed(new WatchlistIdentity(WatchlistMediaType.Anime, "tmdb", "1")));
+    }
+
+    private static WatchlistIdentity Anime(string externalId) =>
         new(WatchlistMediaType.Anime, "anilist", externalId);
+
+    private sealed class FakeRelationSource(AniListRateLimitGate gate, TimeProvider clock) : IFranchiseRelationSource
+    {
+        private readonly Dictionary<string, AniListRelatedMedia> works = new(StringComparer.Ordinal);
+
+        public List<string> Calls { get; } = [];
+
+        public string? RateLimitOn { get; set; }
+
+        public void Add(string externalId, string title, params (string Relation, string ExternalId)[] related) =>
+            works[externalId] = new AniListRelatedMedia(
+                Summary(externalId, title),
+                related.Select(item => new AniListMediaRelation(item.Relation, Summary(item.ExternalId, $"Work {item.ExternalId}"))).ToArray());
+
+        public Task<AniListRelatedMedia> GetRelatedAsync(WatchlistIdentity work, CancellationToken cancellationToken)
+        {
+            Calls.Add(work.ExternalKey);
+            if (RateLimitOn == work.ExternalKey)
+            {
+                // What AniListRateLimitHandler records before the provider throws.
+                gate.Block(clock.GetUtcNow() + TimeSpan.FromMinutes(2));
+                throw new MetadataProviderException("AniList returned HTTP 429.");
+            }
+
+            return Task.FromResult(works.GetValueOrDefault(work.ExternalKey) ?? new AniListRelatedMedia(null, []));
+        }
+
+        private static AniListMediaSummary Summary(string externalId, string title) =>
+            new("ANIME", externalId, title, null, $"https://img.anilist.test/{externalId}.jpg", "TV", "FINISHED", 2020);
+    }
+
+    private sealed class MutableClock(DateTimeOffset now) : TimeProvider
+    {
+        private DateTimeOffset current = now;
+
+        public override DateTimeOffset GetUtcNow() => current;
+
+        public void Advance(TimeSpan by) => current += by;
+    }
 
     private sealed class Fixture : IAsyncDisposable
     {
@@ -113,15 +237,34 @@ public sealed class FranchiseRelationTests
         {
             this.directory = directory;
             Db = db;
+            Store = new FranchiseStore(db);
+            var gate = new AniListRateLimitGate();
+            Source = new FakeRelationSource(gate, Clock);
+            Service = new FranchiseService(
+                Store,
+                new MediaRelationStore(db),
+                Source,
+                new AniListRequestLimiter(gate, Clock) { Spacing = TimeSpan.Zero },
+                new FranchiseRefreshSignal(),
+                NullLogger<FranchiseService>.Instance,
+                Clock);
         }
 
         public AppDbContext Db { get; }
+
+        public MutableClock Clock { get; } = new(Now);
+
+        public FranchiseStore Store { get; }
+
+        public FakeRelationSource Source { get; }
+
+        public FranchiseService Service { get; }
 
         public static async Task<Fixture> CreateAsync()
         {
             var directory = Path.Combine(
                 Path.GetTempPath(),
-                $"jularr-franchise-relations-{Guid.NewGuid():N}");
+                $"jularr-franchise-{Guid.NewGuid():N}");
             Directory.CreateDirectory(directory);
             var db = new AppDbContext(
                 new DbContextOptionsBuilder<AppDbContext>()

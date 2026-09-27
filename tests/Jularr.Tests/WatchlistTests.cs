@@ -20,7 +20,8 @@ public sealed class WatchlistTests
 
         var seed = Draft("100", "Series A");
         var sequel = Draft("101", "Series A 2");
-        var franchiseId = await franchises.GetOrCreateBySeedAsync(seed, CancellationToken.None);
+        var franchiseId = await franchises.GetOrCreateBySeedAsync(seed.Identity, CancellationToken.None);
+        await franchises.UpsertMemberAsync(franchiseId, seed, null, true, CancellationToken.None);
         await franchises.UpsertMemberAsync(
             franchiseId,
             sequel,
@@ -37,6 +38,14 @@ public sealed class WatchlistTests
         var excluded = await watchlist.GetEffectiveAsync(profile, CancellationToken.None);
         Assert.AreEqual(1, excluded.Count);
         Assert.AreEqual(seed.Identity.Key, excluded.Single().Identity.Key);
+        CollectionAssert.AreEqual(
+            new[] { sequel.Identity.Key },
+            (await watchlist.GetHiddenKeysAsync(profile, CancellationToken.None)).ToArray());
+
+        await watchlist.RestoreAsync(profile, sequel.Identity, CancellationToken.None);
+        var shownAgain = await watchlist.GetEffectiveAsync(profile, CancellationToken.None);
+        Assert.AreEqual(2, shownAgain.Count, "Hiding a franchise work can be undone.");
+        Assert.AreEqual(0, (await watchlist.GetHiddenKeysAsync(profile, CancellationToken.None)).Count);
 
         await watchlist.FollowAsync(profile, sequel, CancellationToken.None);
         var restored = await watchlist.GetEffectiveAsync(profile, CancellationToken.None);
@@ -70,7 +79,7 @@ public sealed class WatchlistTests
             new DateTime(2026, 10, 1, 12, 0, 0, DateTimeKind.Utc),
             CancellationToken.None);
 
-        var source = new WatchlistReleaseEventSource(cache, watchlist);
+        var source = new WatchlistReleaseEventSource(cache, watchlist, new WatchlistLibraryResolver(fixture.Db));
         var query = new ReleaseEventQuery(
             new DateOnly(2026, 10, 1),
             new DateOnly(2026, 10, 31),
@@ -82,9 +91,14 @@ public sealed class WatchlistTests
         var release = events.Single();
         Assert.AreEqual(ReleaseMediaType.Anime, release.MediaType);
         Assert.AreEqual(3, release.Unit?.Number);
-        Assert.AreEqual(ReleaseLocalState.Monitored, release.Local.State);
+        Assert.AreEqual(ReleaseLocalState.Following, release.Local.State);
+        Assert.IsNull(release.Local.Monitored);
         Assert.IsFalse(release.Local.InLibrary);
-        Assert.AreEqual("/Watchlist", release.DetailsUrl);
+        Assert.AreEqual($"/Watchlist#target-{followed.Identity.StableId:D}", release.DetailsUrl);
+        CollectionAssert.AreEquivalent(
+            new[] { ReleaseMediaType.Anime, ReleaseMediaType.Manga, ReleaseMediaType.LightNovel },
+            source.MediaTypes.ToArray(),
+            "No TV or movie filter without a source for them.");
 
         var otherProfile = await source.GetEventsAsync(
             query with { ProfileId = "profile-b" },
@@ -93,7 +107,7 @@ public sealed class WatchlistTests
     }
 
     [TestMethod]
-    public void WatchlistInputRejectsUnsafeDetailsUrl()
+    public void WatchlistInputRejectsUnsafeImageUrls()
     {
         Assert.IsTrue(WatchlistDraftInput.TryCreate(
             "anime",
@@ -101,16 +115,45 @@ public sealed class WatchlistTests
             "1",
             "Title",
             null,
-            "https://cdn.example/cover.jpg",
+            "javascript:alert(1)",
             "TV",
             "RELEASING",
             2026,
-            null,
-            "javascript:alert(1)",
-            out var draft));
+            out var unsafeCover));
+        Assert.IsNull(unsafeCover.CoverImageUrl);
 
-        Assert.IsNull(draft.DetailsUrl);
+        Assert.IsTrue(WatchlistDraftInput.TryCreate(
+            "anime", "anilist", "1", "Title", null, "https://cdn.example/cover.jpg", "TV", "RELEASING", 2026, out var draft));
         Assert.AreEqual("https://cdn.example/cover.jpg", draft.CoverImageUrl);
+        Assert.AreEqual("https://anilist.co/anime/1", draft.Identity.ProviderUrl, "Links are built from the identity.");
+    }
+
+    [TestMethod]
+    public async Task LibraryMembershipIsResolvedWhenShown()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var watchlist = new WatchlistStore(fixture.Db);
+        var resolver = new WatchlistLibraryResolver(fixture.Db);
+        await watchlist.FollowAsync("profile-a", Draft("154587", "Frieren"), CancellationToken.None);
+
+        var before = (await resolver.ApplyAsync(await watchlist.GetEffectiveAsync("profile-a", CancellationToken.None), CancellationToken.None)).Single();
+        Assert.IsNull(before.LocalMediaId);
+        Assert.AreEqual("https://anilist.co/anime/154587", before.DetailsUrl);
+
+        var anime = new Jularr.Web.Features.Library.Anime { Key = "frieren", Title = "Frieren" };
+        fixture.Db.Anime.Add(anime);
+        fixture.Db.AnimeMetadata.Add(new Jularr.Web.Features.Metadata.AnimeMetadata
+        {
+            AnimeId = anime.Id,
+            Provider = "anilist",
+            ExternalId = "154587",
+            PreferredTitle = "Frieren"
+        });
+        await fixture.Db.SaveChangesAsync();
+
+        var after = (await resolver.ApplyAsync(await watchlist.GetEffectiveAsync("profile-a", CancellationToken.None), CancellationToken.None)).Single();
+        Assert.AreEqual(anime.Id, after.LocalMediaId);
+        Assert.AreEqual($"/Library/Anime/{anime.Id}", after.DetailsUrl);
     }
 
     private static WatchlistDraft Draft(string externalId, string title) =>
@@ -120,8 +163,7 @@ public sealed class WatchlistTests
             CoverImageUrl: "https://cdn.example/cover.jpg",
             Format: "TV",
             Status: "RELEASING",
-            Year: 2026,
-            DetailsUrl: "/Watchlist");
+            Year: 2026);
 
     private sealed class Fixture : IAsyncDisposable
     {

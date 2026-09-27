@@ -171,6 +171,7 @@ public sealed class ReleaseCalendarPresenter
         ReleaseLocalState.Grabbed => (ui["calendar.state.grabbed"], "warn"),
         ReleaseLocalState.Monitored => (ui["calendar.state.monitored"], "info"),
         ReleaseLocalState.NotMonitored => (ui["calendar.state.notMonitored"], "muted"),
+        ReleaseLocalState.Following => (ui["calendar.state.following"], "muted"),
         _ => status.InLibrary ? (ui["calendar.state.inLibrary"], "muted") : (ui["calendar.state.notInLibrary"], "muted")
     };
 
