@@ -34,8 +34,10 @@ object TvPlayerInteraction {
     fun autoHide(
         state: TvPlayerUiState,
         isPlaying: Boolean,
+        companionVisible: Boolean = false,
     ): TvPlayerTransition =
         if (isPlaying &&
+            !companionVisible &&
             state.controlsVisible &&
             state.learningLayer == TvLearningLayer.CLOSED
         ) {
