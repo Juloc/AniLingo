@@ -1,5 +1,6 @@
 using System.Globalization;
 using Jularr.Web.Data;
+using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Calendar;
 using Jularr.Web.Features.Localization;
 using Microsoft.AspNetCore.Mvc;
@@ -17,6 +18,7 @@ public enum CalendarView
 public sealed class IndexModel(
     AppDbContext db,
     ReleaseCalendarService calendar,
+    CurrentAccountContext account,
     TimeProvider clock) : PageModel
 {
     public const int AgendaDays = 28;
@@ -75,7 +77,8 @@ public sealed class IndexModel(
         var (start, end) = Range();
         var filter = new ReleaseCalendarFilter(
             MediaType is { } selected ? new HashSet<ReleaseMediaType> { selected } : new HashSet<ReleaseMediaType>(),
-            State);
+            State,
+            account.ProfileId);
         Result = await calendar.GetAsync(start, end, zone, filter, now, View == CalendarView.Agenda, cancellationToken);
     }
 

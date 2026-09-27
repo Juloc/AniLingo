@@ -1,0 +1,199 @@
+@page "/Franchises/{id:guid}"
+@model Jularr.Web.Pages.Franchises.DetailsModel
+@using Jularr.Web.Features.Watchlist
+@{
+    var ui = Model.Ui;
+    ViewData["Title"] = Model.Franchise.Title;
+}
+
+@section Head {
+    <link rel="stylesheet" href="~/css/discover.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/franchise.css" asp-append-version="true" />
+}
+
+<div class="franchise-page">
+    <header class="franchise-header">
+        <div>
+            <a class="franchise-back" href="/Watchlist">@ui["franchise.back"]</a>
+            <h1>@Model.Franchise.Title</h1>
+            <p>@ui.Format("franchise.memberCount", ("count", Model.Franchise.MemberCount))</p>
+        </div>
+        <div class="franchise-header-actions">
+            @if (Model.IsFollowed)
+            {
+                <form method="post" asp-page-handler="Unfollow">
+                    <input type="hidden" name="id" value="@Model.Franchise.Id" />
+                    <button class="button" type="submit">@ui["watchlist.unfollowFranchise"]</button>
+                </form>
+            }
+            else
+            {
+                <form method="post" asp-page-handler="Follow">
+                    <input type="hidden" name="id" value="@Model.Franchise.Id" />
+                    <button class="button button-primary" type="submit">@ui["watchlist.followFranchise"]</button>
+                </form>
+            }
+
+            <form method="post" asp-page-handler="Refresh">
+                <input type="hidden" name="id" value="@Model.Franchise.Id" />
+                <button class="button" type="submit">@ui["watchlist.refreshFranchise"]</button>
+            </form>
+        </div>
+    </header>
+
+    @foreach (var group in Model.Members.GroupBy(member => member.Media.Identity.MediaType).OrderBy(group => group.Key))
+    {
+        <section class="franchise-group">
+            <div class="franchise-section-heading">
+                <h2>@ui[DetailsModel.TypeLabelKey(group.Key)]</h2>
+                <span>@group.Count()</span>
+            </div>
+
+            <div class="discover-grid franchise-grid">
+                @foreach (var member in group.OrderBy(member => member.Media.Title, StringComparer.CurrentCultureIgnoreCase))
+                {
+                    var item = member.Media;
+                    var followed = Model.FollowedKeys.Contains(item.Identity.Key);
+                    <article class="discover-card franchise-card">
+                        <div class="discover-cover">
+                            @if (!string.IsNullOrWhiteSpace(item.CoverImageUrl))
+                            {
+                                <img src="@item.CoverImageUrl" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />
+                            }
+                            else
+                            {
+                                <span class="discover-cover-placeholder">@item.Title[..1]</span>
+                            }
+                        </div>
+                        <div class="discover-card-copy">
+                            <div class="discover-card-kicker">
+                                <span>@ui[DetailsModel.TypeLabelKey(item.Identity.MediaType)]</span>
+                                @if (item.LocalMediaId is not null)
+                                {
+                                    <span class="discover-local">@ui["discover.card.inLibrary"]</span>
+                                }
+                                else if (followed)
+                                {
+                                    <span class="discover-local">@ui["discover.card.followed"]</span>
+                                }
+                            </div>
+                            <div class="discover-card-title">@item.Title</div>
+                            @if (!string.IsNullOrWhiteSpace(item.NativeTitle) && item.NativeTitle != item.Title)
+                            {
+                                <div class="discover-native-title">@item.NativeTitle</div>
+                            }
+                            <div class="discover-card-meta">
+                                @if (!string.IsNullOrWhiteSpace(item.Format))
+                                {
+                                    <span>@item.Format</span>
+                                }
+                                @if (item.Year is { } year)
+                                {
+                                    <span>@year</span>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(member.RelationType))
+                                {
+                                    <span>@member.RelationType!.Replace("_", " ")</span>
+                                }
+                            </div>
+                            <div class="discover-card-actions">
+                                @if (!string.IsNullOrWhiteSpace(item.DetailsUrl))
+                                {
+                                    <a class="primary" href="@item.DetailsUrl">@ui["watchlist.open"]</a>
+                                }
+                            </div>
+                        </div>
+                    </article>
+                }
+            </div>
+        </section>
+    }
+
+    @if (Model.Relations.Count > 0)
+    {
+        <section class="franchise-relations">
+            <div class="franchise-section-heading">
+                <h2>@ui["franchise.relations"]</h2>
+                <span>@ui["franchise.relationsHint"]</span>
+            </div>
+            <div class="franchise-relation-list">
+                @foreach (var relation in Model.Relations)
+                {
+                    var from = Model.Members.FirstOrDefault(member => member.Media.Identity.Key == relation.From.Key)?.Media;
+                    var to = Model.Members.FirstOrDefault(member => member.Media.Identity.Key == relation.To.Key)?.Media;
+                    if (from is null || to is null)
+                    {
+                        continue;
+                    }
+
+                    <article>
+                        <div class="franchise-relation-copy">
+                            <strong>@from.Title</strong>
+                            <span class="franchise-relation-arrow">→</span>
+                            <strong>@to.Title</strong>
+                            <span class="franchise-relation-type">@relation.RelationType.Replace("-", " ")</span>
+                            <span>@relation.Source · @relation.Confidence.ToString("0.##")</span>
+                        </div>
+                        @if (Model.IsOwner && relation.IsManual)
+                        {
+                            <form method="post" asp-page-handler="RelationDelete">
+                                <input type="hidden" name="id" value="@Model.Franchise.Id" />
+                                <input type="hidden" name="relationId" value="@relation.Id" />
+                                <button class="button" type="submit">@ui["franchise.removeRelation"]</button>
+                            </form>
+                        }
+                    </article>
+                }
+            </div>
+        </section>
+    }
+
+    @if (Model.IsOwner && Model.Members.Count > 1)
+    {
+        <details class="franchise-editor">
+            <summary>@ui["franchise.editRelations"]</summary>
+            <form method="post" asp-page-handler="Relation" class="franchise-editor-form">
+                <input type="hidden" name="id" value="@Model.Franchise.Id" />
+
+                <label>
+                    <span>@ui["franchise.from"]</span>
+                    <select name="fromKey" required>
+                        @foreach (var member in Model.Members)
+                        {
+                            <option value="@member.Media.Identity.Key">@member.Media.Title</option>
+                        }
+                    </select>
+                </label>
+
+                <label>
+                    <span>@ui["franchise.relationType"]</span>
+                    <select name="relationType" required>
+                        <option value="adaptation">Adaptation</option>
+                        <option value="based-on">Based on</option>
+                        <option value="prequel">Prequel</option>
+                        <option value="sequel">Sequel</option>
+                        <option value="spin-off">Spin-off</option>
+                        <option value="side-story">Side story</option>
+                        <option value="remake">Remake</option>
+                        <option value="alternative">Alternative version</option>
+                        <option value="compilation">Compilation</option>
+                        <option value="same-universe">Same universe</option>
+                        <option value="related">Related</option>
+                    </select>
+                </label>
+
+                <label>
+                    <span>@ui["franchise.to"]</span>
+                    <select name="toKey" required>
+                        @foreach (var member in Model.Members)
+                        {
+                            <option value="@member.Media.Identity.Key">@member.Media.Title</option>
+                        }
+                    </select>
+                </label>
+
+                <button class="button button-primary" type="submit">@ui["franchise.saveRelation"]</button>
+            </form>
+        </details>
+    }
+</div>
