@@ -238,6 +238,21 @@ public sealed class SyosetuCatalogClient(HttpClient client)
     private static readonly Uri Endpoint =
         new("https://api.syosetu.com/novelapi/api/");
 
+    public static bool IsValidNcode(string? value)
+    {
+        var code = value?.Trim();
+        if (code is null ||
+            code.Length is < 6 or > 12 ||
+            code[0] is not ('n' or 'N') ||
+            !code.AsSpan(1, 4).ToArray().All(char.IsDigit) ||
+            !code.AsSpan(5).ToArray().All(char.IsLetter))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
     public async Task<IReadOnlyList<ReadingCatalogCandidate>> SearchAsync(
         string query,
         int limit,
