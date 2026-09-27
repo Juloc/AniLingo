@@ -301,14 +301,6 @@ public sealed class TranslationMemoryModel(
                     && x.SourceProvider == BookCatalogService.ImportedBookProvider,
                 cancellationToken);
 
-    private BookTranslationMemoryStore CreateStore()
-    {
-        var configured = configuration[
-            "Books:Translation:MemoryPath"]?.Trim();
-
-        return new BookTranslationMemoryStore(
-            string.IsNullOrWhiteSpace(configured)
-                ? BookTranslationMemoryStore.DefaultRoot
-                : configured);
-    }
+    private BookTranslationMemoryStore CreateStore() =>
+        BookTranslationMemoryStore.FromConfiguration(configuration);
 }

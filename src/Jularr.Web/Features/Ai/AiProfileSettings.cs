@@ -35,6 +35,7 @@ public static class AiOperations
     public const string BookQa = "book-qa";
     public const string BookMemory = "book-memory";
     public const string NovelMapping = "novel-mapping";
+    public const string StoryContext = "story-context";
 
     /// <summary>Operations a profile can tune; UI translation runs on the owner's server connection only.</summary>
     public static IReadOnlyList<string> ProfileConfigurable { get; } =
@@ -46,7 +47,8 @@ public static class AiOperations
         BookEdit,
         BookQa,
         BookMemory,
-        NovelMapping
+        NovelMapping,
+        StoryContext
     ];
 
     public static bool IsKnown(string? operation) =>

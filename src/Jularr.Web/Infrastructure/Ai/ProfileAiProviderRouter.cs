@@ -3,11 +3,12 @@ using Jularr.Web.Features.Ai;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Books;
 using Jularr.Web.Features.Novels;
+using Jularr.Web.Features.StoryContext;
 
 namespace Jularr.Web.Infrastructure.Ai;
 
 /// <summary>The AI operations both the server Codex provider and personal API providers implement.</summary>
-internal interface IProfileAiBackend : IAiSentenceExplainer, INovelTranslator, IBookTranslator, INovelMappingSuggester;
+internal interface IProfileAiBackend : IAiSentenceExplainer, INovelTranslator, IBookTranslator, INovelMappingSuggester, IStoryContextExtractor;
 
 /// <summary>
 /// Routes every AI operation of the signed-in profile to its selected provider. Each call runs as a
@@ -27,6 +28,7 @@ public sealed class ProfileAiProviderRouter(
       INovelTranslator,
       IBookTranslator,
       INovelMappingSuggester,
+      IStoryContextExtractor,
       IAiUsageReporter
 {
     public string Id => "profile-ai-v1";
@@ -158,6 +160,17 @@ public sealed class ProfileAiProviderRouter(
             request.SourceText.Length + request.FinalTranslation.Length + request.ExistingContext.Length,
             request.ExistingContext.Length,
             (backend, token) => backend.ExtractTranslationMemoryAsync(request, token),
+            result => JsonSerializer.Serialize(result).Length,
+            cancellationToken);
+
+    public Task<StoryChapterExtraction> ExtractChapterAsync(
+        StoryChapterExtractionRequest request,
+        CancellationToken cancellationToken) =>
+        RunAsync(
+            AiOperations.StoryContext,
+            request.SourceText.Length + request.ExistingContext.Length + request.ChapterTitle.Length,
+            request.ExistingContext.Length,
+            (backend, token) => backend.ExtractChapterAsync(request, token),
             result => JsonSerializer.Serialize(result).Length,
             cancellationToken);
 

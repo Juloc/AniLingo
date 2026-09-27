@@ -45,22 +45,17 @@ jobs:
       - name: Install Android SDK
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: "9.6.0"
 
-      - name: Unit tests
+      - name: Test, lint and build debug APKs
         working-directory: clients/android
-        run: >
-          gradle --no-daemon --stacktrace
+        run: >-
+          gradle --stacktrace --parallel --build-cache
           :core-api:testDebugUnitTest
           :core-player:testDebugUnitTest
           :core-tts:testDebugUnitTest
-
-      - name: Lint
-        working-directory: clients/android
-        run: >
-          gradle --no-daemon --stacktrace
           :app-mobile:lintDebug
           :app-tv:lintDebug
           :core-api:lintDebug
@@ -69,11 +64,6 @@ jobs:
           :core-session:lintDebug
           :core-design:lintDebug
           :core-tts:lintDebug
-
-      - name: Build debug APKs
-        working-directory: clients/android
-        run: >
-          gradle --no-daemon --stacktrace
           :app-mobile:assembleDebug
           :app-tv:assembleDebug
 
@@ -125,7 +115,7 @@ jobs:
         if: steps.release_commit.outputs.is_release == 'true'
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
         if: steps.release_commit.outputs.is_release == 'true'
         with:
           gradle-version: "9.6.0"
@@ -168,8 +158,8 @@ jobs:
       - name: Build release APKs
         if: steps.release_commit.outputs.is_release == 'true'
         working-directory: clients/android
-        run: >
-          gradle --no-daemon --stacktrace
+        run: >-
+          gradle --stacktrace --parallel --build-cache
           :app-mobile:assembleRelease
           :app-tv:assembleRelease
 

@@ -41,7 +41,11 @@ public sealed record BookTranslationEntity(
     string? Description,
     string? Pronouns,
     string? Relationships,
-    string? VoiceNotes);
+    string? VoiceNotes)
+{
+    /// <summary>Other source-text names of the entity, from the shared story memory.</summary>
+    public IReadOnlyList<string> Aliases { get; init; } = [];
+}
 
 public sealed record BookTranslationTerm(
     string Source,
@@ -59,6 +63,9 @@ public sealed record BookTranslationBibleSeed(
     IReadOnlyList<BookTranslationEntity> Entities,
     IReadOnlyList<BookTranslationTerm> Terms)
 {
+    /// <summary>Highest chapter included in the analysis sample; null when unknown.</summary>
+    public int? AnalysisThroughChapter { get; init; }
+
     public static BookTranslationBibleSeed Empty { get; } =
         new(
             null,

@@ -5,6 +5,7 @@ using Jularr.Web.Features.Ai;
 using Jularr.Web.Features.Books;
 using Jularr.Web.Features.Localization;
 using Jularr.Web.Features.Novels;
+using Jularr.Web.Features.StoryContext;
 
 namespace Jularr.Web.Infrastructure.Ai;
 
@@ -14,7 +15,7 @@ namespace Jularr.Web.Infrastructure.Ai;
 /// shell, web search, plugins and tool suggestions disabled. Login stays on the CLI device flow.
 /// </summary>
 public sealed partial class CodexCliProvider(CodexAppServerGateway appServer)
-    : IAiProvider, IAiSentenceExplainer, INovelTranslator, IBookTranslator, INovelMappingSuggester, IUiTranslationGenerator, IProfileAiBackend, IDisposable
+    : IAiProvider, IAiSentenceExplainer, INovelTranslator, IBookTranslator, INovelMappingSuggester, IUiTranslationGenerator, IStoryContextExtractor, IProfileAiBackend, IDisposable
 {
     private const string CodexHome = "/data/codex";
     private static readonly JsonSerializerOptions ResultJsonOptions = new() { PropertyNameCaseInsensitive = true };
@@ -515,6 +516,22 @@ public sealed partial class CodexCliProvider(CodexAppServerGateway appServer)
             CleanAiValue(result.ContinuityNotes),
             MapEntities(result.Entities),
             MapTerms(result.Terms));
+    }
+
+    public async Task<StoryChapterExtraction> ExtractChapterAsync(
+        StoryChapterExtractionRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await RunStructuredAsync<StoryContextExtractionPrompt.Result>(
+            AiOperations.StoryContext,
+            StoryContextExtractionPrompt.Schema,
+            StoryContextExtractionPrompt.Instructions
+                + "\n\n"
+                + StoryContextExtractionPrompt.BuildInput(request),
+            TimeSpan.FromMinutes(5),
+            cancellationToken);
+
+        return StoryContextExtractionPrompt.Map(result);
     }
 
     public async Task<IReadOnlyList<NovelMappingSuggestion>> SuggestMappingsAsync(

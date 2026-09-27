@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Web.Features.Ai;
 
-/// <summary>Cached model catalogs (table from migration 20260927210000).</summary>
+/// <summary>Cached model catalogs (table from migration 20260928094213).</summary>
 public sealed class AiModelCatalogStore(AppDbContext db) : IAiModelCatalogStore
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);

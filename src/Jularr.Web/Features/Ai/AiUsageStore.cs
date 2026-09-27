@@ -156,7 +156,7 @@ public sealed record AiUsageReport(
     }
 }
 
-/// <summary>Daily usage aggregates (table from migration 20260927210000). Counters only.</summary>
+/// <summary>Daily usage aggregates (table from migration 20260928094213). Counters only.</summary>
 public sealed class AiUsageStore(AppDbContext db)
 {
     private static readonly string[] CounterColumns =

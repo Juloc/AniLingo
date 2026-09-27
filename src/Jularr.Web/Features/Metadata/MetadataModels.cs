@@ -19,6 +19,10 @@ public sealed class AnimeMetadata
     public int? SeasonYear { get; set; }
     public int? EpisodeCount { get; set; }
     public int? EpisodeDurationMinutes { get; set; }
+
+    /// <summary>Provider average score on a 0-100 scale (AniList <c>averageScore</c>); null when unrated.</summary>
+    public int? AverageScore { get; set; }
+
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
 
@@ -37,7 +41,8 @@ public sealed record AnimeMetadataCandidate(
     string? Season,
     int? SeasonYear,
     int? EpisodeCount,
-    int? EpisodeDurationMinutes);
+    int? EpisodeDurationMinutes,
+    int? AverageScore = null);
 
 public sealed record AnimeMetadataMatchResult(
     bool Success,

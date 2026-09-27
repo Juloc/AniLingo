@@ -5,6 +5,10 @@
     ViewData["Title"] = ui["nav.library"];
 }
 
+@section Head {
+    <link rel="stylesheet" href="~/css/media-card.css" asp-append-version="true" />
+}
+
 <header class="page-header">
     <div>
         <span class="eyebrow">@ui["nav.library"]</span>
@@ -17,7 +21,7 @@
     </div>
 </header>
 
-@if (Model.Anime.Count == 0)
+@if (Model.Cards.Count == 0)
 {
     <div class="empty-state">
         <h3>@ui["library.index.emptyTitle"]</h3>
@@ -26,15 +30,10 @@
 }
 else
 {
-    <div class="media-grid">
-        @foreach (var anime in Model.Anime)
+    <div class="banner-card-grid">
+        @foreach (var card in Model.Cards)
         {
-            <partial name="_MediaCard" model='new MediaCardModel(
-                anime.Title,
-                ui.Format("library.index.episodeCount", ("count", anime.EpisodeCount)),
-                $"/Library/Anime/{anime.Id}",
-                ImageUrl: anime.CoverImageUrl,
-                Ui: ui)' />
+            <partial name="_MediaBannerCard" model="card" />
         }
     </div>
 }

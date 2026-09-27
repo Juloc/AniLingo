@@ -103,6 +103,73 @@ Shared Reader extensions mount through `root.readerShell` (settings command,
 reset/source badges, overflow and mobile actions) instead of patching source
 readers. Read-aloud (`reader-tts.js`, see `docs/TTS.md`) is the first one.
 
+## Reader frame
+
+Pages that render the shared frame opt in with `data-reader-frame` on the
+reader root. The Books reader is the first; Light Novel and Manga follow the
+same structure. The frame keeps Jularr's app sidebar: the reader never builds a
+second app navigation, it only lays out its own area.
+
+Structure (markup classes live in `reader-shell.css`, icons in
+`Pages/Shared/_ReaderIcon.cshtml`, text in `reader.frame.*`):
+
+- top bar (`.reader-frame-top`, `data-reader-chrome-primary`): back, title and
+  subtitle, then language, font & layout, colour scheme, bookmark, search and
+  More. On phones only back, title and More stay; the rest moves into More and
+  the tool row.
+- contents panel (`[data-reader-contents]`) inside the reader area with tabs
+  (`data-reader-contents-tab` / `data-reader-contents-panel`). From 1100 px it is
+  a collapsible side panel whose open state is a device convenience in
+  localStorage; below that it overlays the reader area as a modal panel with
+  focus trap and backdrop.
+- bottom bar (`.reader-frame-bottom`): contents, progress slider
+  (`[data-reader-progress-slider]`, `[data-reader-progress-text]`), then
+  type-specific transport and settings buttons. On phones it becomes the page
+  slider with previous/next page and the tool row (`.reader-frame-tools`).
+- popover menus: any `[data-reader-menu-toggle="name"]` opens
+  `[data-reader-menu="name"]`; one menu at a time, Escape/outside click close,
+  arrow keys move between items, activating a `menuitem`/`menuitemradio`
+  closes the menu. Phones show menus as bottom sheets over a scrim.
+- settings sheet: `[data-reader-settings-open="tab"]` opens the shared
+  `_ReaderSettingsPanel` at `reading`, `text`, `appearance`, `tts` or `defaults`.
+- `[data-reader-fullscreen-toggle]`, `[data-reader-share]`,
+  `[data-reader-timer="minutes"]` and `[data-reader-page-step="±1"]` are handled
+  by the shell. The reading timer stops read-aloud and dispatches
+  `jularr:reader-timer-end`.
+
+Source adapter contract:
+
+- the adapter dispatches `jularr:reader-location` with
+  `{ value, max, text, valueText }` whenever the position changes; the shell
+  updates the slider.
+- the shell dispatches `jularr:reader-seek` (`{ value }`) while the slider is
+  dragged, `jularr:reader-page-edge` for taps, swipes and page buttons,
+  `jularr:reader-contents` (`{ open, tab }`) so lists load lazily, and
+  `jularr:reader-layout` when the reader area changes size.
+- chrome only auto-hides on phones in Scroll mode; elsewhere the bars are part
+  of the layout so the page area never jumps.
+
+### Books adapter
+
+`books-reader.js` pages the chapter into CSS columns inside a paper spread
+(`book-reader.css`): two pages from 860 px of reader width when "Two pages" is
+on, otherwise one page sized by the text-width setting. Page turns are a
+transform on the column box, so long chapters are laid out once per size or
+setting change. A paragraph anchor keeps the reading position across layout
+changes (font load, window size, contents panel, mode); repeated relayouts
+without reader movement reuse the same anchor so the position does not drift.
+Scroll mode keeps window scrolling. The chapter opening shows the chapter
+number and an ink ornament; the sakura branch and ink mountains are drawn only
+in the page margins (two masked bands of one rotated image), never over text.
+
+Chapter ends continue to the adjacent chapter on user page turns (previous
+chapter opens at its end). Read-aloud page following never changes chapters.
+`?p=<paragraph>` opens a chapter at a paragraph (search hits, highlights).
+In-book search is `?handler=Search&q=` (`ReaderTextSearch`, bounded to 40
+candidate chapters per source and 60 hits, original text plus current
+translations). Bookmarks toggle on the current page and go through the offline
+sync queue like progress.
+
 ## State ownership
 
 Durable typography, paper, theme, mode and layout settings belong to

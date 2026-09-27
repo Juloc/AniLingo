@@ -218,22 +218,8 @@ public sealed class LibraryModel(
     }
 
     private static string GetSourceLanguage(
-        Jularr.Web.Features.Novels.NovelWork work)
-    {
-        if (!string.IsNullOrWhiteSpace(work.Format)
-            && work.Format.StartsWith(
-                "EPUB:",
-                StringComparison.OrdinalIgnoreCase))
-        {
-            var value = work.Format[5..].Trim();
-            if (value.Length > 0)
-            {
-                return value;
-            }
-        }
-
-        return "en";
-    }
+        Jularr.Web.Features.Novels.NovelWork work) =>
+        BookFileFormats.Language(work.Format) ?? "en";
 
     /// <summary>
     /// Resolves the Translation capability for this book's Book/work scope.

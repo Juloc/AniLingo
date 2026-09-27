@@ -1,6 +1,7 @@
 @page
 @model Jularr.Web.Pages.Settings.AcquisitionModel
 @using Jularr.Web.Features.Acquisition.Import
+@using Jularr.Web.Features.Media.Optimization
 @{
     var ui = Model.Ui;
     ViewData["Title"] = ui["settings.acquisition.title"];
@@ -71,6 +72,23 @@
                 </tbody>
             </table>
         }
+    </section>
+
+    <section class="panel">
+        <div class="panel-heading"><h2>@ui["settings.acquisition.playbackOptimizationHeading"]</h2></div>
+        <p class="muted">@ui["settings.acquisition.playbackOptimizationDescription"]</p>
+        <form method="post" asp-page-handler="PlaybackOptimization" class="form-stack">
+            <label>
+                <span>@ui["settings.acquisition.playbackOptimizationLabel"]</span>
+                <select name="playbackOptimization">
+                    @foreach (var mode in Enum.GetValues<LosslessPlaybackOptimizationMode>())
+                    {
+                        <option value="@mode" selected="@(Model.ImportSettings.PlaybackOptimization == mode)">@Model.PlaybackOptimizationLabel(mode)</option>
+                    }
+                </select>
+            </label>
+            <button class="button" type="submit">@ui["common.save"]</button>
+        </form>
     </section>
 
     <section class="panel">

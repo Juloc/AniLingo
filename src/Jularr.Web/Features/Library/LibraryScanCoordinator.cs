@@ -37,7 +37,8 @@ public sealed record LibraryScanCounters(
     int Metadata,
     int Errors,
     int MediaAnalyzed = 0,
-    int MediaAnalysisFailed = 0);
+    int MediaAnalysisFailed = 0,
+    int Relinked = 0);
 
 // The structured document persisted in Operations.Details for every library scan run.
 // It is the one place that carries the root, scope, trigger, phase and counters of a run.
@@ -172,13 +173,16 @@ public sealed class LibraryScanCoordinator(
         }
 
         // Filesystem events prove the mount is live; every other trigger probes first so an
-        // offline NAS never produces a failed operation per attempt.
+        // offline NAS never produces a failed operation per attempt. The probe only observes
+        // the storage: scans never wake a sleeping Wake-on-LAN NAS.
         if (request.Trigger != LibraryScanTrigger.Watch)
         {
             var availability = scope.ServiceProvider.GetRequiredService<LibraryRootAvailabilityService>();
             var storage = await availability.CheckAsync(
                 request.RootId,
-                force: request.Trigger is LibraryScanTrigger.Manual or LibraryScanTrigger.Retry,
+                force: request.Trigger is LibraryScanTrigger.Manual
+                    or LibraryScanTrigger.Retry
+                    or LibraryScanTrigger.Startup,
                 cancellationToken);
             if (storage is not { IsAvailable: true })
             {
@@ -615,6 +619,7 @@ public sealed class LibraryScanCoordinator(
 
     public static string Summarize(LibraryScanCounters counters) =>
         $"{counters.Discovered} added, {counters.Updated} changed, {counters.Removed} removed, " +
+        (counters.Relinked > 0 ? $"{counters.Relinked} relinked, " : "") +
         $"{counters.Skipped} skipped, {counters.Subtitles} subtitle files.";
 
     public static string DescribeScope(IReadOnlyList<string>? folders) =>
@@ -821,7 +826,8 @@ public sealed class LibraryScanCoordinator(
                 result.MetadataWarnings,
                 result.Errors,
                 result.MediaInventory.Analyzed,
-                result.MediaInventory.Failed);
+                result.MediaInventory.Failed,
+                result.Relinked);
 
             details = details with
             {

@@ -11,7 +11,7 @@ namespace Jularr.Web.Data.Migrations;
 /// Only counters are stored; prompts and responses are never persisted.
 /// </summary>
 [DbContext(typeof(AppDbContext))]
-[Migration("20260927210000_AddAiControlCenter")]
+[Migration("20260928094213_AddAiControlCenter")]
 public sealed class AddAiControlCenter : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)

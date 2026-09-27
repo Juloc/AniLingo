@@ -27,6 +27,7 @@ public sealed class AniListMetadataProvider(
               status
               season
               seasonYear
+              averageScore
               episodes
               duration
               isAdult
@@ -48,6 +49,7 @@ public sealed class AniListMetadataProvider(
               status
               season
               seasonYear
+              averageScore
               episodes
               duration
               isAdult
@@ -68,6 +70,7 @@ public sealed class AniListMetadataProvider(
             status
             season
             seasonYear
+            averageScore
             episodes
             duration
             isAdult
@@ -87,6 +90,7 @@ public sealed class AniListMetadataProvider(
             status
             season
             seasonYear
+            averageScore
             episodes
             duration
             isAdult
@@ -106,6 +110,7 @@ public sealed class AniListMetadataProvider(
             status
             season
             seasonYear
+            averageScore
             episodes
             duration
             isAdult
@@ -123,6 +128,7 @@ public sealed class AniListMetadataProvider(
                   status
                   season
                   seasonYear
+                  averageScore
                   episodes
                   duration
                   isAdult
@@ -550,7 +556,8 @@ public sealed class AniListMetadataProvider(
             ReadString(media, "season"),
             ReadInt(media, "seasonYear"),
             ReadInt(media, "episodes"),
-            ReadInt(media, "duration"));
+            ReadInt(media, "duration"),
+            ReadInt(media, "averageScore"));
     }
 
     private static string? ReadString(JsonElement element, string propertyName)

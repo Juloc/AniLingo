@@ -180,12 +180,12 @@ public sealed class LocalFirstPageGetTests
     {
         await using var fixture = await LocalFirstFixture.CreateAsync();
         await fixture.AddAnimeAsync("Local Anime", episodes: 3);
-        var page = fixture.Attach(new LibraryIndexModel(fixture.Db));
+        var page = fixture.Attach(new LibraryIndexModel(fixture.Db, fixture.OwnerAccount));
 
         await page.OnGetAsync(CancellationToken.None);
 
-        Assert.AreEqual(1, page.Anime.Count);
-        Assert.AreEqual(3, page.Anime[0].EpisodeCount);
+        var card = Assert.ContainsSingle(page.Cards);
+        Assert.AreEqual("Local Anime", card.Title);
         fixture.Guard.AssertNotCalled();
     }
 
