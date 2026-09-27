@@ -11,19 +11,25 @@
 
 <div class="discover-shell"
      data-discover
-     data-is-owner="@Model.IsOwner.ToString().ToLowerInvariant()">
+     data-is-owner="@Model.IsOwner.ToString().ToLowerInvariant()"
+     data-add-url="@Url.Page("/Discover/Index", "Add")"
+     data-add-anime="@Model.AddActions.GetValueOrDefault("anime")"
+     data-add-manga="@Model.AddActions.GetValueOrDefault("manga")"
+     data-add-light-novel="@Model.AddActions.GetValueOrDefault("light-novel")"
+     data-text-add="@ui["discover.card.add"]"
+     data-text-request="@ui["discover.card.request"]"
+     data-text-add-failed="@ui["discover.card.addFailed"]"
+     data-text-open="@ui["requests.open"]"
+     data-status-pending="@ui["requests.status.pending"]"
+     data-status-approved="@ui["requests.status.approved"]"
+     data-status-searching="@ui["requests.status.searching"]"
+     data-status-downloading="@ui["requests.status.downloading"]"
+     data-status-completed="@ui["requests.status.completed"]"
+     data-status-failed="@ui["requests.status.failed"]"
+     data-status-rejected="@ui["requests.status.rejected"]">
+    @Html.AntiForgeryToken()
     <header class="discover-header">
-        <div>
-            <span class="eyebrow">@ui["discover.index.eyebrow"]</span>
-            <h1>@ui["discover.index.title"]</h1>
-            <p>@ui["discover.index.subtitle"]</p>
-        </div>
-
-        <div class="discover-library-links" aria-label="@ui["discover.index.librariesAria"]">
-            <a href="/Library">@ui["discover.index.animeLibraryLink"]</a>
-            <a href="/Novels">@ui["discover.index.readingLibraryLink"]</a>
-            <a href="/Books">@ui["nav.books"]</a>
-        </div>
+        <h1>@ui["discover.index.title"]</h1>
     </header>
 
     <section class="discover-controls" aria-label="@ui["discover.index.controlsAria"]">

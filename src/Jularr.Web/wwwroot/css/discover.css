@@ -16,33 +16,14 @@
 }
 
 .discover-header {
-    display: flex;
-    align-items: flex-end;
-    justify-content: space-between;
-    gap: 24px;
-    margin-bottom: 22px;
+    margin-bottom: 14px;
 }
 
 .discover-header h1 {
-    margin: 4px 0 5px;
+    margin: 4px 0 0;
     font-size: clamp(28px, 4vw, 38px);
     letter-spacing: -.035em;
 }
-
-.discover-header p {
-    margin: 0;
-    color: var(--muted);
-}
-
-.discover-library-links {
-    display: flex;
-    gap: 14px;
-    color: var(--muted);
-    font-size: 13px;
-    font-weight: 650;
-}
-
-.discover-library-links a:hover { color: var(--text); }
 
 .discover-controls {
     position: sticky;
@@ -305,6 +286,7 @@
 
 .discover-card-actions {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 7px;
     margin-top: auto;
@@ -328,6 +310,18 @@
 .discover-card-actions button:hover {
     color: var(--text);
     border-color: var(--border-strong);
+}
+
+.discover-card-actions button:disabled { cursor: progress; opacity: .6; }
+
+.discover-add { display: contents; }
+
+.discover-card-actions .status-pill { font-size: 10px; }
+
+.discover-add-note {
+    flex-basis: 100%;
+    color: var(--muted);
+    font-size: 11px;
 }
 
 .discover-card-actions .primary {
@@ -455,15 +449,7 @@
 
 @media (max-width: 820px) {
     .discover-header {
-        align-items: flex-start;
-        flex-direction: column;
-        margin-bottom: 12px;
-    }
-
-    .discover-library-links {
-        width: 100%;
-        overflow-x: auto;
-        white-space: nowrap;
+        margin-bottom: 8px;
     }
 
     .discover-controls {

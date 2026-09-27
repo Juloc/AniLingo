@@ -793,17 +793,31 @@ public sealed class AnimeMetadataService(
             return new AnimeMetadataMatchResult(false, "Local anime was not found.");
         }
 
-        var provider = GetProvider(providerKey);
-        var candidate = await provider.GetAsync(externalId, cancellationToken);
+        var candidate = await GetCandidateAsync(providerKey, externalId, cancellationToken);
         if (candidate is null)
         {
             return new AnimeMetadataMatchResult(false, "The metadata entry was not found.");
         }
 
+        return await MatchAsync(animeId, candidate, cancellationToken);
+    }
+
+    public Task<AnimeMetadataCandidate?> GetCandidateAsync(
+        string providerKey,
+        string externalId,
+        CancellationToken cancellationToken) =>
+        GetProvider(providerKey).GetAsync(externalId, cancellationToken);
+
+    /// <summary>Stores an entry the caller already loaded from its provider as the anime's match.</summary>
+    public async Task<AnimeMetadataMatchResult> MatchAsync(
+        Guid animeId,
+        AnimeMetadataCandidate candidate,
+        CancellationToken cancellationToken)
+    {
         var usedByOtherAnime = await db.AnimeMetadata
             .AsNoTracking()
             .AnyAsync(
-                x => x.Provider == provider.Key &&
+                x => x.Provider == candidate.Provider &&
                     x.ExternalId == candidate.ExternalId &&
                     x.AnimeId != animeId,
                 cancellationToken);

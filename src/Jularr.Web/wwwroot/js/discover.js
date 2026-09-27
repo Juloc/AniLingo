@@ -16,6 +16,15 @@
     const importExternalId = root.querySelector("[data-import-external-id]");
     const importUrl = root.querySelector("[data-import-url]");
     const importClear = root.querySelector("[data-import-clear]");
+    const token = root.querySelector("input[name='__RequestVerificationToken']")?.value || "";
+    // "add", "request" or "" per AniList category, from the owner's access rules.
+    const addActions = {
+        "anime": root.dataset.addAnime || "",
+        "manga": root.dataset.addManga || "",
+        "light-novel": root.dataset.addLightNovel || ""
+    };
+    const statusText = status =>
+        root.dataset[`status${status.charAt(0).toUpperCase()}${status.slice(1)}`] || status;
 
     let abortController = null;
     let debounceTimer = null;
@@ -361,6 +370,10 @@
             actions.append(createLink(item.detailsUrl, "AniList", false));
         }
 
+        if (!item.isLocal && addActions[item.category]) {
+            renderAddAction(item, actions);
+        }
+
         if (item.canImportSource) {
             const source = document.createElement("button");
             source.type = "button";
@@ -373,6 +386,67 @@
         copy.append(actions);
         card.append(cover, copy);
         return card;
+    }
+
+    function renderAddAction(item, actions) {
+        const slot = document.createElement("span");
+        slot.className = "discover-add";
+        actions.append(slot);
+
+        const showStatus = (status, resultUrl, message) => {
+            const pill = document.createElement("span");
+            pill.className = `status-pill request-status-${status}`;
+            pill.textContent = statusText(status);
+            if (message) pill.title = message;
+            slot.replaceChildren(pill);
+            if (resultUrl) slot.append(createLink(resultUrl, root.dataset.textOpen || "", false));
+            // A failed add explains what to fix (for example a missing library root).
+            if (status === "failed" && message) {
+                const note = document.createElement("small");
+                note.className = "discover-add-note";
+                note.textContent = message;
+                slot.append(note);
+            }
+        };
+
+        if (item.requestStatus) {
+            showStatus(item.requestStatus, null, null);
+            return;
+        }
+
+        const action = addActions[item.category];
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "primary";
+        button.textContent = action === "add" ? root.dataset.textAdd : root.dataset.textRequest;
+        button.addEventListener("click", async () => {
+            button.disabled = true;
+            const body = new FormData();
+            body.set("category", item.category);
+            body.set("externalId", item.externalId);
+            body.set("title", item.title);
+            const subtitle = [item.format ? formatLabel(item.format) : null, item.year].filter(Boolean).join(" · ");
+            if (subtitle) body.set("subtitle", subtitle);
+            if (item.coverImageUrl) body.set("coverImageUrl", item.coverImageUrl);
+            body.set("__RequestVerificationToken", token);
+            try {
+                const response = await fetch(root.dataset.addUrl, {
+                    method: "POST",
+                    body,
+                    credentials: "same-origin",
+                    headers: { Accept: "application/json" }
+                });
+                if (!response.ok) throw new Error(String(response.status));
+                const payload = await response.json();
+                item.requestStatus = payload.status;
+                showStatus(payload.status, payload.resultUrl, payload.message);
+            } catch {
+                button.disabled = false;
+                button.title = root.dataset.textAddFailed || "";
+                button.textContent = root.dataset.textAddFailed || button.textContent;
+            }
+        });
+        slot.append(button);
     }
 
     function createProgress(item) {
