@@ -118,7 +118,7 @@ public sealed class WantedAcquisitionService(
         var operations = new OperationStore(
             services.GetRequiredService<AppDbContext>());
         var dispatcher = services.GetRequiredService<CompletedDownloadDispatcher>();
-        var locations = services.GetRequiredService<CompletedDownloadLocationResolver>();
+        var locations = services.GetRequiredService<ICompletedDownloadLocationResolver>();
 
         var downloading = await store.ListByStatusAsync(
             handler.Kind,
