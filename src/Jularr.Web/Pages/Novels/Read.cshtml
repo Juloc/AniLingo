@@ -61,9 +61,23 @@
         Model.ReaderDocument,
         Model.ReaderSettings,
         LayoutPreferences: true);
-    var chapterLabel = chapter.IsEpubVolume
-        ? ui.Format("novels.read.volumeChapterLabel", ("volume", chapter.VolumeNumber), ("number", chapter.Number))
-        : ui.Format("novels.read.chapterLabel", ("number", chapter.Number));
+    // A title that is itself a numbering ("Chapter 3", "第三章") stands alone instead of
+    // under a second, differently numbered "Chapter N" label.
+    var chapterLabel = Jularr.Web.Features.Novels.NovelTextLayout.IsNumberingTitle(chapter.Title)
+        ? chapter.IsEpubVolume
+            ? ui.Format("novels.reader.volumeLabel", ("volume", chapter.VolumeNumber))
+            : null
+        : chapter.IsEpubVolume
+            ? ui.Format("novels.read.volumeChapterLabel", ("volume", chapter.VolumeNumber), ("number", chapter.Number))
+            : ui.Format("novels.read.chapterLabel", ("number", chapter.Number));
+    // Sources often open the body with the chapter heading the opening already shows. That
+    // paragraph stays in the DOM (paragraph indexes, offsets) but is not drawn twice.
+    var firstTextBlock = Model.JapaneseBlocks.FirstOrDefault(block => !block.IsImage);
+    var titleEchoIndex = firstTextBlock?.ParagraphIndex is int firstIndex
+        && firstIndex < Model.JapaneseParagraphs.Count
+        && Jularr.Web.Features.Novels.NovelTextLayout.IsTitleEcho(Model.JapaneseParagraphs[firstIndex], chapter.Title)
+            ? firstIndex
+            : -1;
     var supportsTts = Model.ReaderDocument.Capabilities.SupportsTts;
     var canTranslate = !hasTranslation && Model.TranslationEnabled && Model.IsOwner;
     // The TranslateGemma track adds its source switch to the language menu only
@@ -143,8 +157,11 @@
             <span class="novel-frame-series">@chapter.WorkTitle</span>
             <span class="novel-frame-separator" aria-hidden="true"><partial name="_ReaderIcon" model="@("forward")" /></span>
             <span class="novel-frame-chapter">
-                <strong>@chapterLabel</strong>
-                <span>@chapter.Title</span>
+                <strong>@(chapterLabel ?? chapter.Title)</strong>
+                @if (chapterLabel is not null)
+                {
+                    <span>@chapter.Title</span>
+                }
             </span>
         </div>
 
@@ -435,7 +452,10 @@
                         @* No illustration of its own: an accepted generated header (#451), if any. *@
                         <partial name="_ChapterArtwork" model='new Jularr.Web.Features.ChapterArtwork.ChapterArtworkSlot(chapter.WorkId, chapter.Number, ui["chapterArt.aiGenerated"])' />
                     }
-                    <span class="novel-chapter-label">@chapterLabel</span>
+                    @if (chapterLabel is not null)
+                    {
+                        <span class="novel-chapter-label">@chapterLabel</span>
+                    }
                     <h1>@chapter.Title</h1>
                     <svg class="novel-opening-ornament" viewBox="0 0 240 16" aria-hidden="true" focusable="false">
                         <path d="M8 8h86M146 8h86" />
@@ -480,7 +500,7 @@
                     var headingLevel = block.IsHeading ? Math.Min(block.HeadingLevel + 1, 6) : (int?)null;
                     @* A scene-break line ("◇◇◇") is drawn as a section ornament; its text stays
                        in the DOM so paragraph indexes and offsets are unchanged. *@
-                    <section class="novel-reader-segment@(block.IsSceneBreak ? " is-scene-break" : "")"
+                    <section class="novel-reader-segment@(block.IsSceneBreak ? " is-scene-break" : "")@(index == titleEchoIndex ? " is-title-echo" : "")"
                              role="@(block.IsSceneBreak ? "separator" : null)"
                              data-reader-segment="@index">
                         <p class="novel-reader-paragraph ja@(headingClass)"
@@ -555,7 +575,6 @@
 
         <div class="reader-progress">
             <label class="reader-progress-track">
-                <span class="reader-progress-label reader-frame-desktop">@chapterLabel</span>
                 <input type="range" min="0" max="0" step="1" value="0"
                        data-reader-progress-slider
                        aria-label="@ui["reader.frame.progressAria"]" />

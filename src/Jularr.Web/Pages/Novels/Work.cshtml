@@ -23,10 +23,19 @@
             .ToArray()
         : [(Volume: null, Chapters: detail.Chapters)];
     ViewData["Title"] = work.MetadataTitle ?? work.Title;
+    string ChapterCount(int count) => count == 1
+        ? ui["novels.work.oneChapterInline"]
+        : ui.Format("novels.work.chaptersCountInline", ("count", count));
+    string VolumeCount(int count) => count == 1
+        ? ui["novels.work.oneVolumeInline"]
+        : ui.Format("novels.work.volumesCountInline", ("count", count));
 }
 @section Head {
     <link rel="stylesheet" href="~/css/novel-library.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/franchise-links.css" asp-append-version="true" />
+}
+@section Scripts {
+    <script src="~/js/novel-file-picker.js" asp-append-version="true"></script>
 }
 
 <a class="back-link" href="/Novels">@ui["novels.work.backToNovels"]</a>
@@ -59,13 +68,13 @@
             {
                 <span>@(work.MetadataVolumeCount is int totalVolumes
                     ? ui.Format("novels.work.volumesOfTotalInline", ("count", epubVolumes.Length), ("total", totalVolumes))
-                    : ui.Format("novels.work.volumesCountInline", ("count", epubVolumes.Length)))</span>
+                    : VolumeCount(epubVolumes.Length))</span>
             }
             else if (work.MetadataVolumeCount is int volumes)
             {
-                <span>@ui.Format("novels.work.volumesCountInline", ("count", volumes))</span>
+                <span>@VolumeCount(volumes)</span>
             }
-            <span>@ui.Format("novels.work.chaptersCountInline", ("count", work.MetadataChapterCount ?? detail.Chapters.Count))</span>
+            <span>@ChapterCount(work.MetadataChapterCount ?? detail.Chapters.Count)</span>
             @if (!string.IsNullOrWhiteSpace(work.MetadataStatus))
             {
                 <span>@work.MetadataStatus.Replace("_", " ").ToLowerInvariant()</span>
@@ -109,9 +118,10 @@
                     @ui["novels.work.sourceLink"]
                 </a>
             }
-        </div>
 
-        <partial name="_OfflineLibraryAction" model="new Jularr.Web.Features.OfflineLibrary.OfflineLibraryActionViewModel(work.Id, work.MetadataTitle ?? work.Title)" />
+            @* Same row as the other actions; its status stays a small note next to it. *@
+            <partial name="_OfflineLibraryAction" model="new Jularr.Web.Features.OfflineLibrary.OfflineLibraryActionViewModel(work.Id, work.MetadataTitle ?? work.Title)" />
+        </div>
     </div>
 </header>
 
@@ -154,12 +164,20 @@
                           asp-route-id="@work.Id"
                           enctype="multipart/form-data"
                           class="novel-inline-form">
-                        <input type="file"
-                               name="epubs"
-                               accept=".epub,application/epub+zip"
-                               multiple
-                               required
-                               aria-label="@ui["novels.work.epubVolumesHeading"]" />
+                        <div class="novel-file-picker" data-novel-file-picker>
+                            <input id="novel-work-epubs"
+                                   type="file"
+                                   name="epubs"
+                                   accept=".epub,application/epub+zip"
+                                   multiple
+                                   required
+                                   aria-label="@ui["novels.work.epubVolumesHeading"]" />
+                            <label class="button" for="novel-work-epubs">@ui["novels.index.chooseEpubs"]</label>
+                            <span class="novel-file-names"
+                                  data-novel-file-names
+                                  data-empty="@ui["novels.index.noEpubChosen"]"
+                                  data-several="@ui["novels.index.epubsChosen"]"></span>
+                        </div>
                         <button class="button button-primary" type="submit">@ui["novels.work.addOrReplaceVolumes"]</button>
                     </form>
 
@@ -322,7 +340,7 @@
         <h2>@(epubVolumes.Length > 0 ? ui["novels.work.volumesHeading"] : ui["manga.chapters.title"])</h2>
         @if (epubVolumes.Length > 0)
         {
-            <span>@ui.Format("novels.work.volumesCountInline", ("count", epubVolumes.Length)) · @ui.Format("novels.work.chaptersCountInline", ("count", detail.Chapters.Count))</span>
+            <span>@VolumeCount(epubVolumes.Length) · @ChapterCount(detail.Chapters.Count)</span>
         }
     </div>
 
@@ -350,7 +368,7 @@
                         {
                             <span lang="ja">@volume.Title</span>
                         }
-                        <small>@ui.Format("novels.work.chaptersCountInline", ("count", group.Chapters.Count))@(volumeCurrent ? $" · {ui["novels.work.readingIndicator"]}" : "")</small>
+                        <small>@ChapterCount(group.Chapters.Count)@(volumeCurrent ? $" · {ui["novels.work.readingIndicator"]}" : "")</small>
                     </div>
                     @if (group.Chapters.FirstOrDefault() is { } volumeStart)
                     {

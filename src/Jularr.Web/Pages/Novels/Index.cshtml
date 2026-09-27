@@ -9,6 +9,9 @@
     <link rel="stylesheet" href="~/css/reading.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/reading-catalog.css" asp-append-version="true" />
 }
+@section Scripts {
+    <script src="~/js/novel-file-picker.js" asp-append-version="true"></script>
+}
 
 <header class="novel-library-header">
     <div class="novel-library-title-block">
@@ -30,7 +33,7 @@
             </summary>
             <div class="novel-import-panel">
                 <form method="get" class="reading-catalog-form">
-                    <label for="novelCatalogQuery">@ui["discover.search.srLabel"]</label>
+                    <label class="novel-visually-hidden" for="novelCatalogQuery">@ui["discover.search.srLabel"]</label>
                     <input id="novelCatalogQuery"
                            name="q"
                            type="search"
@@ -146,7 +149,7 @@
                                required
                                inputmode="url"
                                placeholder="https://ncode.syosetu.com/n9669bk/" />
-                        <button class="button button-primary" type="submit">@ui["novels.index.importSubmit"]</button>
+                        <button class="button" type="submit">@ui["novels.index.importSubmit"]</button>
                     </form>
                 }
 
@@ -157,13 +160,20 @@
                           enctype="multipart/form-data"
                           class="novel-import-form">
                         <label for="epubs">@ui["novels.index.epubLabel"]</label>
-                        <input id="epubs"
-                               type="file"
-                               name="epubs"
-                               accept=".epub,application/epub+zip"
-                               multiple
-                               required />
-                        <button class="button button-primary" type="submit">@ui["novels.index.uploadSubmit"]</button>
+                        <div class="novel-file-picker" data-novel-file-picker>
+                            <input id="epubs"
+                                   type="file"
+                                   name="epubs"
+                                   accept=".epub,application/epub+zip"
+                                   multiple
+                                   required />
+                            <label class="button" for="epubs">@ui["novels.index.chooseEpubs"]</label>
+                            <span class="novel-file-names"
+                                  data-novel-file-names
+                                  data-empty="@ui["novels.index.noEpubChosen"]"
+                                  data-several="@ui["novels.index.epubsChosen"]"></span>
+                        </div>
+                        <button class="button" type="submit">@ui["novels.index.uploadSubmit"]</button>
                     </form>
                     @if (Model.IsInboxConfigured)
                     {

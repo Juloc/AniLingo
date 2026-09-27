@@ -794,14 +794,23 @@
         mobileButton = api.addMobileAction(tt("play", "Read aloud"), () => primary(takeSelection()));
         mobileButton?.addEventListener("pointerdown", captureSelection);
 
-        api.addOverflowAction(tt("readParagraph", "Read this paragraph"), () => {
+        // Frame menus show an icon before every item; these reuse the read-aloud icon so
+        // their labels line up with the rest.
+        const withIcon = button => {
+            const icon = toggle?.querySelector(".reader-play-icon svg");
+            if (!button || !icon) return;
+            const label = document.createElement("span");
+            label.textContent = button.textContent;
+            button.replaceChildren(icon.cloneNode(true), label);
+        };
+        withIcon(api.addOverflowAction(tt("readParagraph", "Read this paragraph"), () => {
             stopPlayback();
             start("paragraph");
-        });
-        api.addOverflowAction(tt("readPage", "Read this page"), () => {
+        }));
+        withIcon(api.addOverflowAction(tt("readPage", "Read this page"), () => {
             stopPlayback();
             start("page");
-        });
+        }));
 
         pauseButton?.addEventListener("click", () => {
             if (state === "speaking") pause();

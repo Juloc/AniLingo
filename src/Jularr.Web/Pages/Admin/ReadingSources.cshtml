@@ -18,59 +18,51 @@
     <div class="panel" role="alert">@Model.LoadError</div>
 }
 
-<form method="post" asp-page-handler="Save">
-    <div class="settings-grid">
-        @foreach (var source in Model.Sources)
-        {
-            <section class="panel">
-                <div class="panel-heading">
-                    <div>
-                        <h2>@source.Definition.Name</h2>
-                        <p class="muted">@ui[source.Definition.DescriptionKey]</p>
-                    </div>
-                    <label>
-                        @if (source.Preference.Enabled)
-                        {
-                            <input type="checkbox"
-                                   name="enabledProviders"
-                                   value="@source.Definition.Key"
-                                   checked />
-                        }
-                        else
-                        {
-                            <input type="checkbox"
-                                   name="enabledProviders"
-                                   value="@source.Definition.Key" />
-                        }
-                        @ui["admin.readingSources.enabled"]
-                    </label>
+<form method="post" asp-page-handler="Save" class="form-stack">
+    @* One source per row, with the app's form controls (form-stack, checkbox-row). *@
+    @foreach (var source in Model.Sources)
+    {
+        <section class="panel">
+            <div class="panel-heading">
+                <div>
+                    <h2>@source.Definition.Name</h2>
+                    <p class="muted">@ui[source.Definition.DescriptionKey]</p>
                 </div>
+            </div>
 
-                <div class="form-field">
-                    <label for="priority-@source.Definition.Key">@ui["admin.readingSources.priority"]</label>
+            <div class="form-stack">
+                <label class="checkbox-row">
+                    <input type="checkbox"
+                           name="enabledProviders"
+                           value="@source.Definition.Key"
+                           checked="@source.Preference.Enabled" />
+                    @ui["admin.readingSources.enabled"]
+                </label>
+
+                <label for="priority-@source.Definition.Key">
+                    @ui["admin.readingSources.priority"]
                     <input id="priority-@source.Definition.Key"
                            type="number"
                            min="1"
                            max="999"
                            name="priority[@source.Definition.Key]"
                            value="@source.Preference.Priority" />
-                    <span class="muted">@ui["admin.readingSources.priorityHint"]</span>
-                </div>
-
-                <div class="muted">
+                </label>
+                <p class="muted">
+                    @ui["admin.readingSources.priorityHint"]
                     @(source.Definition.SupportsDirectImport
                         ? ui["admin.readingSources.directImport"]
                         : ui["admin.readingSources.requestFlow"])
-                </div>
+                </p>
 
                 @if (ViewData.ModelState.TryGetValue(source.Definition.Key, out var errorState) &&
                      errorState.Errors.Count > 0)
                 {
-                    <div role="alert">@errorState.Errors[0].ErrorMessage</div>
+                    <p class="validation" role="alert">@errorState.Errors[0].ErrorMessage</p>
                 }
-            </section>
-        }
-    </div>
+            </div>
+        </section>
+    }
 
     <div class="form-actions">
         <button class="button button-primary" type="submit">@ui["common.save"]</button>

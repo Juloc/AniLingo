@@ -57,4 +57,10 @@
         flex-direction: column;
         gap: 2px;
     }
+
+    /* In the column layout the title is no longer width-limited by the row; without
+       this a long franchise name widened the whole page on phones. */
+    .franchise-links-list a > span {
+        max-width: 100%;
+    }
 }

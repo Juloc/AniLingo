@@ -79,6 +79,11 @@ public sealed partial class ReaderThemeCatalog
 
     private readonly string _assetRootPath;
 
+    // The assets ship with the app and do not change while it runs. Scanning them
+    // (directories, image variants, theme.json) took seconds on slow volumes and
+    // ran twice per request, so the reader background picker stayed empty.
+    private IReadOnlyList<ReaderThemeDescriptor>? _themes;
+
     public ReaderThemeCatalog(IWebHostEnvironment environment)
         : this(Path.Combine(
             environment.WebRootPath ??
@@ -92,7 +97,10 @@ public sealed partial class ReaderThemeCatalog
         _assetRootPath = Path.GetFullPath(assetRootPath);
     }
 
-    public IReadOnlyList<ReaderThemeDescriptor> GetAll()
+    public IReadOnlyList<ReaderThemeDescriptor> GetAll() =>
+        Volatile.Read(ref _themes) ?? Interlocked.CompareExchange(ref _themes, Scan(), null) ?? _themes!;
+
+    private IReadOnlyList<ReaderThemeDescriptor> Scan()
     {
         if (!Directory.Exists(_assetRootPath))
         {
