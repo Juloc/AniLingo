@@ -1213,3 +1213,7 @@ button, input { font: inherit; }
 }
 /* Long context lists run over the blossom art; keep the labels readable. */
 .sidebar:has(.nav-context)::after { opacity: calc(var(--blossom-opacity) * .3); }
+/* The sidebar already leads back to Settings on desktop; the link stays for phones. */
+@media (min-width: 821px) {
+    .back-link[href="/Settings"] { display: none; }
+}
