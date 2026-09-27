@@ -52,6 +52,7 @@
     let pageCount = 1;
     let currentPage = 0;
     let resizeTimer = null;
+    let settledPagedAnchor = null;
     let autoScrollFrame = null;
     let autoScrollLastTime = null;
     let autoScrollRunning = false;
@@ -459,12 +460,76 @@
         }
     };
 
-    const initialAnchorElement = () => {
+    // A reading anchor is a paragraph plus a character offset into its text
+    // (textContent, the same unit novel-position.js stores for Scroll mode). In
+    // Pages mode a long paragraph can continue from the previous page, so the
+    // offset marks the first character on the current page.
+    const initialAnchor = () => {
         const language = shell.dataset.anchorLanguage || "ja";
         const index = shell.dataset.anchorParagraph;
         if (index == null || index === "") return null;
-        return shell.querySelector(
+        const paragraph = shell.querySelector(
             `[data-reader-paragraph][data-language="${cssEscape(language)}"][data-index="${cssEscape(index)}"]`);
+        return paragraph
+            ? { paragraph, offset: Math.max(0, Number(shell.dataset.anchorOffset) || 0) }
+            : null;
+    };
+
+    // Maps a textContent offset to a one-character range inside the paragraph.
+    const characterRange = (paragraph, offset) => {
+        const walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
+        let remaining = offset;
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+            const length = node.data.length;
+            if (remaining < length) {
+                const range = document.createRange();
+                range.setStart(node, remaining);
+                range.setEnd(node, remaining + 1);
+                return range;
+            }
+            remaining -= length;
+        }
+        return null;
+    };
+
+    // Left edge of the character at (or the first rendered one after) offset.
+    const characterLeft = (paragraph, offset, length) => {
+        for (let index = offset; index < Math.min(length, offset + 8); index++) {
+            const rect = characterRange(paragraph, index)?.getClientRects()[0];
+            if (rect && (rect.width > 0 || rect.height > 0)) return rect.left;
+        }
+        return null;
+    };
+
+    // Page index of a viewport x coordinate. Capturing and restoring an anchor
+    // both use this, so a saved anchor always maps back to the page it came from.
+    const pageAt = left => {
+        const width = Math.max(1, content.clientWidth);
+        return Math.floor((content.scrollLeft + left - content.getBoundingClientRect().left + 1) / width);
+    };
+
+    const pagedAnchor = paragraphs => {
+        const page = Math.round(content.scrollLeft / Math.max(1, content.clientWidth));
+        const paragraph = paragraphs.find(item =>
+            Array.from(item.getClientRects()).some(rect => rect.width > 0 && pageAt(rect.left) >= page));
+        if (!paragraph) return { paragraph: paragraphs[0], offset: 0 };
+
+        const first = paragraph.getClientRects()[0];
+        if (!first || pageAt(first.left) >= page) return { paragraph, offset: 0 };
+
+        // The paragraph started on an earlier page: find the first character laid
+        // out on this page. Characters run in reading order across the columns,
+        // so "on this page or later" is monotonic in the offset.
+        const length = paragraph.textContent?.length || 0;
+        let low = 0;
+        let high = length;
+        while (low < high) {
+            const middle = Math.floor((low + high) / 2);
+            const left = characterLeft(paragraph, middle, length);
+            if (left !== null && pageAt(left) >= page) high = middle;
+            else low = middle + 1;
+        }
+        return { paragraph, offset: Math.min(low, Math.max(0, length - 1)) };
     };
 
     const captureLogicalAnchor = () => {
@@ -478,12 +543,7 @@
         if (paragraphs.length === 0) return null;
 
         if ((shell.dataset.readingMode || state.readingMode) === "paged") {
-            const contentRect = content.getBoundingClientRect();
-            return paragraphs.find(paragraph => {
-                const rect = paragraph.getBoundingClientRect();
-                return rect.right > contentRect.left + 20 &&
-                    rect.left < contentRect.right - 20;
-            }) || paragraphs[0];
+            return pagedAnchor(paragraphs);
         }
 
         const target = window.innerHeight * .28;
@@ -494,7 +554,20 @@
             if (rect.top <= target && rect.bottom >= target) break;
             if (rect.top > target) break;
         }
-        return selected;
+        const rect = selected.getBoundingClientRect();
+        const length = selected.textContent?.length || 0;
+        const fraction = rect.height <= 0 ? 0 : clamp((target - rect.top) / rect.height, 0, 1);
+        return { paragraph: selected, offset: Math.round(length * fraction) };
+    };
+
+    // Page that shows the anchor's character (the paragraph start for offset 0).
+    const pageOfAnchor = anchor => {
+        const length = anchor.paragraph.textContent?.length || 0;
+        const left = anchor.offset > 0 && anchor.offset < length
+            ? characterLeft(anchor.paragraph, anchor.offset, length)
+            : null;
+        const edge = left ?? anchor.paragraph.getClientRects()[0]?.left;
+        return edge == null ? currentPage : pageAt(edge);
     };
 
     const updateReadingProgress = () => {
@@ -512,9 +585,12 @@
         });
     };
 
+    // Runs once a page turn or swipe has settled.
     const sendPagedProgress = () => {
-        if (!progressForm || state.readingMode !== "paged") return;
-        const paragraph = captureLogicalAnchor();
+        if (state.readingMode !== "paged") return;
+        const anchor = captureLogicalAnchor();
+        settledPagedAnchor = anchor;
+        if (!progressForm) return;
         const language =
             shell.dataset.view === "de" && shell.dataset.hasTranslation === "true"
                 ? "de"
@@ -524,8 +600,8 @@
         const data = new FormData(progressForm);
         setFormValue(data, "positionPermille", progress);
         setFormValue(data, "anchorLanguage", language);
-        setFormValue(data, "anchorParagraphIndex", paragraph?.dataset.index ?? "");
-        setFormValue(data, "anchorOffset", 0);
+        setFormValue(data, "anchorParagraphIndex", anchor?.paragraph.dataset.index ?? "");
+        setFormValue(data, "anchorOffset", anchor?.offset ?? 0);
 
         fetch(progressForm.action, {
             method: "POST",
@@ -620,23 +696,17 @@
         shell.classList.toggle("reader-frame-fixed", frame);
         if (pageControls) pageControls.hidden = false;
         document.body.classList.add("novel-paged-body");
+        settledPagedAnchor = anchor;
 
         requestAnimationFrame(() => {
             syncPageState();
-            if (anchor) {
-                const contentRect = content.getBoundingClientRect();
-                const anchorRect = anchor.getBoundingClientRect();
-                const horizontalOffset =
-                    content.scrollLeft + anchorRect.left - contentRect.left;
-                goToPage(Math.floor(horizontalOffset / Math.max(1, content.clientWidth)), false);
-            }
+            if (anchor) goToPage(pageOfAnchor(anchor), false);
             syncPageState();
         });
     };
 
     const teardownPaged = anchor => {
-        const index = anchor?.dataset.index;
-        const language = anchor?.dataset.language;
+        settledPagedAnchor = null;
         content.scrollLeft = 0;
         shell.dataset.readingMode = "continuous";
         shell.classList.remove("reader-frame-fixed");
@@ -644,17 +714,17 @@
         document.body.classList.remove("novel-paged-body");
 
         requestAnimationFrame(() => {
-            if (index == null || !language) return;
-            const target = shell.querySelector(
-                `[data-reader-paragraph][data-language="${cssEscape(language)}"][data-index="${cssEscape(index)}"]`);
-            if (!target) return;
-            const top = window.scrollY + target.getBoundingClientRect().top - window.innerHeight * .28;
+            if (!anchor) return;
+            const rect = anchor.paragraph.getBoundingClientRect();
+            const length = anchor.paragraph.textContent?.length || 0;
+            const fraction = length <= 0 ? 0 : clamp(anchor.offset / length, 0, 1);
+            const top = window.scrollY + rect.top + rect.height * fraction - window.innerHeight * .28;
             window.scrollTo({ top: Math.max(0, top), behavior: "auto" });
         });
     };
 
     const applySettings = (preserveAnchor = true) => {
-        const anchor = preserveAnchor ? captureLogicalAnchor() : initialAnchorElement();
+        const anchor = preserveAnchor ? captureLogicalAnchor() : initialAnchor();
         const previousMode = shell.dataset.readingMode || state.readingMode;
 
         shell.dataset.readingMode = state.readingMode;
@@ -957,7 +1027,7 @@
 
     const savePagedBookmark = async () => {
         if (!bookmarkForm) return;
-        const paragraph = captureLogicalAnchor();
+        const anchor = captureLogicalAnchor();
         const language =
             shell.dataset.view === "de" && shell.dataset.hasTranslation === "true"
                 ? "de"
@@ -967,8 +1037,8 @@
         const data = new FormData(bookmarkForm);
         setFormValue(data, "positionPermille", position);
         setFormValue(data, "language", language);
-        setFormValue(data, "paragraphIndex", paragraph?.dataset.index ?? "");
-        setFormValue(data, "characterOffset", 0);
+        setFormValue(data, "paragraphIndex", anchor?.paragraph.dataset.index ?? "");
+        setFormValue(data, "characterOffset", anchor?.offset ?? 0);
         setFormValue(data, "label", "");
         setFormValue(data, "style", state.bookmarkStyle);
         setFormValue(data, "color", state.bookmarkColor);
@@ -1151,10 +1221,7 @@
             `[data-reader-paragraph][data-language="${cssEscape(language || "ja")}"][data-index="${cssEscape(String(index))}"]`);
         if (!target) return;
         if (state.readingMode === "paged") {
-            const contentRect = content.getBoundingClientRect();
-            const rect = target.getBoundingClientRect();
-            const offset = content.scrollLeft + rect.left - contentRect.left;
-            goToPage(Math.floor(offset / Math.max(1, content.clientWidth)), false);
+            goToPage(pageOfAnchor({ paragraph: target, offset: 0 }), false);
         } else {
             const top = window.scrollY + target.getBoundingClientRect().top - window.innerHeight * .28;
             window.scrollTo({ top: Math.max(0, top), behavior: reduceMotion.matches ? "auto" : "smooth" });
@@ -1290,15 +1357,12 @@
         clearTimeout(resizeTimer);
         resizeTimer = setTimeout(() => {
             if (state.readingMode === "paged") {
-                const anchor = captureLogicalAnchor();
+                // The columns have already reflowed by now, so the anchor comes from
+                // the last settled page rather than from the resized layout.
+                const anchor = settledPagedAnchor || captureLogicalAnchor();
                 requestAnimationFrame(() => {
                     syncPageState();
-                    if (anchor) {
-                        const contentRect = content.getBoundingClientRect();
-                        const rect = anchor.getBoundingClientRect();
-                        const horizontalOffset = content.scrollLeft + rect.left - contentRect.left;
-                        goToPage(Math.floor(horizontalOffset / Math.max(1, content.clientWidth)), false);
-                    }
+                    if (anchor) goToPage(pageOfAnchor(anchor), false);
                 });
             }
         }, 160);

@@ -14,11 +14,6 @@
 
 <a class="books-back" href="/Books?lang=@Model.TargetLanguage">← @ui["nav.books"]</a>
 
-@if (TempData["Status"] is string status)
-{
-    <div class="books-message">@status</div>
-}
-
 <header class="book-detail-header book-library-header">
     <div class="book-detail-cover">
         @if (!string.IsNullOrWhiteSpace(Model.Book.Work.CoverImageUrl))

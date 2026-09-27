@@ -14,10 +14,6 @@
     </div>
 </header>
 
-@if (!string.IsNullOrWhiteSpace(Model.Status))
-{
-    <p class="metadata-error" style="color:inherit">@Model.Status</p>
-}
 @if (!string.IsNullOrWhiteSpace(Model.Error))
 {
     <p class="metadata-error">@Model.Error</p>

@@ -10,11 +10,6 @@
 
 <a class="books-back" href="/Books">← @ui["nav.books"]</a>
 
-@if (TempData["Status"] is string status)
-{
-    <div class="books-message">@status</div>
-}
-
 @if (!string.IsNullOrWhiteSpace(Model.Error))
 {
     <div class="books-message">@Model.Error</div>
