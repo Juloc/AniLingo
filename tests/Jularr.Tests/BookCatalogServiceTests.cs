@@ -356,7 +356,7 @@ public sealed class BookCatalogServiceTests
     }
 
     [TestMethod]
-    public async Task EmptySearchReturnsOpenLibraryDailyTrending()
+    public async Task EmptySearchReturnsOpenLibraryTrendingWithCurrentGoogleCover()
     {
         var path = TempDatabasePath();
 
@@ -366,28 +366,57 @@ public sealed class BookCatalogServiceTests
 
             using var client = new HttpClient(new DelegateHttpMessageHandler(request =>
             {
-                Assert.AreEqual("openlibrary.org", request.RequestUri?.Host);
-                StringAssert.Contains(
-                    request.RequestUri?.AbsolutePath ?? "",
-                    "/trending/daily.json");
+                if (request.RequestUri?.Host == "openlibrary.org")
+                {
+                    StringAssert.Contains(
+                        request.RequestUri?.AbsolutePath ?? "",
+                        "/trending/daily.json");
 
-                return JsonResponse("""
-                    {
-                      "works": [
+                    return JsonResponse("""
                         {
-                          "key": "/works/OL45804W",
-                          "title": "Dune",
-                          "author_name": ["Frank Herbert"],
-                          "cover_i": 15194431,
-                          "first_publish_year": 1965,
-                          "subject": ["Science fiction"],
-                          "isbn": ["9780593099322"],
-                          "publisher": ["Ace"],
-                          "publish_date": ["2019"]
+                          "works": [
+                            {
+                              "key": "/works/OL45804W",
+                              "title": "Dune",
+                              "author_name": ["Frank Herbert"],
+                              "cover_i": 15194431,
+                              "first_publish_year": 1965,
+                              "subject": ["Science fiction"],
+                              "isbn": ["9780593099322"],
+                              "publisher": ["Ace"],
+                              "publish_date": ["2019"]
+                            }
+                          ]
                         }
-                      ]
-                    }
-                    """);
+                        """);
+                }
+
+                if (request.RequestUri?.Host == "www.googleapis.com")
+                {
+                    return JsonResponse("""
+                        {
+                          "items": [
+                            {
+                              "id": "modern-dune",
+                              "volumeInfo": {
+                                "title": "Dune",
+                                "authors": ["Frank Herbert"],
+                                "publishedDate": "2019",
+                                "industryIdentifiers": [
+                                  {"type": "ISBN_13", "identifier": "9780593099322"}
+                                ],
+                                "imageLinks": {
+                                  "large": "http://books.google.com/modern-dune.jpg"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                        """);
+                }
+
+                throw new AssertFailedException(
+                    $"Unexpected request: {request.RequestUri}");
             }))
             {
                 BaseAddress = new Uri("https://gutendex.com/")
@@ -402,6 +431,9 @@ public sealed class BookCatalogServiceTests
             Assert.AreEqual("ol-OL45804W", books[0].Id);
             Assert.AreEqual("Dune", books[0].Title);
             Assert.AreEqual("Frank Herbert", books[0].Author);
+            Assert.AreEqual(
+                "https://books.google.com/modern-dune.jpg",
+                books[0].CoverImageUrl);
             Assert.IsFalse(books[0].CanAcquire);
         }
         finally
