@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Jularr.Web.Data;
 using Jularr.Web.Features.Learning;
 using Jularr.Web.Features.Learning.LanguageAssistance;
@@ -18,10 +19,13 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Jularr.Tests;
 
 /// <summary>
-/// #230: the novel reader's whole-chapter German AI translation must resolve
-/// the Translation capability through the canonical hierarchy (profile → Novel
-/// media type → work → chapter) instead of always being available once cached.
-/// Follows the pattern in NovelLearningTests/HomePageLearningGatingTests.
+/// #230/#369: the novel reader's whole-chapter German AI *translation
+/// generation* must resolve the Translation capability through the canonical
+/// hierarchy (profile → Novel media type → work → chapter). Reading an
+/// already cached German translation, however, is core reader behaviour and
+/// must always work regardless of that capability (#369 fixed a regression
+/// where #230 withheld cached text while Learning was off). Follows the
+/// pattern in NovelLearningTests/HomePageLearningGatingTests.
 /// </summary>
 [TestClass]
 public sealed class NovelTranslationGatingTests
@@ -29,7 +33,7 @@ public sealed class NovelTranslationGatingTests
     private const string Profile = "novel-translation-learner";
 
     [TestMethod]
-    public async Task OffWithholdsCachedGermanTextAndRefusesTheStatusHandler()
+    public async Task OffStillExposesCachedGermanTextAndTheStatusHandlerReturnsReady()
     {
         await using var fixture = await Fixture.CreateAsync();
         await fixture.SeedCachedGermanTranslationAsync();
@@ -38,12 +42,32 @@ public sealed class NovelTranslationGatingTests
         await reader.OnGetAsync(
             fixture.ChapterId, null, null, null, null, null, CancellationToken.None);
 
-        Assert.IsFalse(reader.TranslationEnabled, "Off must not offer chapter translation.");
-        Assert.AreEqual(0, reader.GermanParagraphs.Count, "Cached German text must not be exposed while off.");
+        Assert.IsFalse(
+            reader.TranslationEnabled,
+            "Off must not offer *generating* a new chapter translation.");
+        Assert.AreEqual(
+            1,
+            reader.GermanParagraphs.Count,
+            "#369: reading an already cached German translation is core reader " +
+            "behaviour and must not depend on the Learning Translation capability.");
 
         var status = await fixture.CreateReadModel(Profile)
             .OnGetTranslationStatusAsync(fixture.ChapterId, CancellationToken.None);
-        Assert.IsInstanceOfType(status, typeof(ForbidResult));
+        var json = JsonDocument.Parse(JsonSerializer.Serialize(((JsonResult)status).Value));
+        Assert.AreEqual("ready", json.RootElement.GetProperty("status").GetString());
+    }
+
+    [TestMethod]
+    public async Task OffWithoutACachedTranslationStillRefusesTheStatusHandler()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+
+        var status = await fixture.CreateReadModel(Profile)
+            .OnGetTranslationStatusAsync(fixture.ChapterId, CancellationToken.None);
+        Assert.IsInstanceOfType(
+            status,
+            typeof(ForbidResult),
+            "Without a cached translation, checking status implies generation, which stays gated.");
     }
 
     [TestMethod]
@@ -115,56 +139,78 @@ public sealed class NovelTranslationGatingTests
             "A different novel on the same (globally Off) profile must not inherit the override.");
     }
 
-    // ---- Novels/Work (the per-chapter "DE" badge) shares the same
-    // Translation gate as the reader, through the exact same
-    // LearningModuleResolver.ResolveTranslationEnabledAsync call the Work
-    // page model makes at Novel/work scope (no content key: the badge is a
-    // whole-work affordance, not per-chapter).
-
     [TestMethod]
-    public async Task WorkScopeResolvesTranslationTheSameWayTheWorkPageDoes()
+    public async Task OffStillSupportsOriginalGermanAndBothWhereTranslatedContentExists()
     {
+        // Acceptance criteria (#369): "Novel reader still supports Original /
+        // German / Both where translated content exists" even with Learning
+        // Off. JapaneseParagraphs/GermanParagraphs are what the reader view
+        // renders both languages from, and the view's language switch only
+        // disables German/Both when there is no cached text (see the source
+        // assertion below), not on the resolved capability.
         await using var fixture = await Fixture.CreateAsync();
-        var resolver = new LearningModuleResolver(fixture.Db);
+        await fixture.SeedCachedGermanTranslationAsync();
 
-        Assert.IsFalse(
-            await resolver.ResolveTranslationEnabledAsync(
-                Profile, LearningMediaType.Novel, fixture.WorkId.ToString(), null, CancellationToken.None),
-            "Off must not offer the whole-work translation badge.");
+        var reader = fixture.CreateReadModel(Profile);
+        await reader.OnGetAsync(
+            fixture.ChapterId, null, null, null, null, null, CancellationToken.None);
 
-        await fixture.SetModeAsync(Profile, LearningMode.Study);
-        Assert.IsTrue(
-            await resolver.ResolveTranslationEnabledAsync(
-                Profile, LearningMediaType.Novel, fixture.WorkId.ToString(), null, CancellationToken.None));
-
-        // A work-level override (global Off, one novel set to Study) enables
-        // the badge only for that novel, the same override case the Work
-        // page's chapter badges must respect.
-        await new LearningConfigurationStore(fixture.Db).SetModeAsync(
-            Profile, LearningScopeRef.Profile, LearningMode.Off, CancellationToken.None);
-        await new LearningConfigurationStore(fixture.Db).SetModeAsync(
-            Profile,
-            LearningScopeRef.ForWork(LearningMediaType.Novel, fixture.WorkId.ToString()),
-            LearningMode.Study,
-            CancellationToken.None);
-
-        await using var otherFixture = await Fixture.CreateAsync();
-        Assert.IsTrue(
-            await resolver.ResolveTranslationEnabledAsync(
-                Profile, LearningMediaType.Novel, fixture.WorkId.ToString(), null, CancellationToken.None));
-        Assert.IsFalse(
-            await new LearningModuleResolver(otherFixture.Db).ResolveTranslationEnabledAsync(
-                Profile, LearningMediaType.Novel, otherFixture.WorkId.ToString(), null, CancellationToken.None),
-            "A different novel on the same (globally Off) profile must not inherit the override.");
+        Assert.IsFalse(reader.TranslationEnabled);
+        Assert.IsTrue(reader.JapaneseParagraphs.Count > 0, "Original must always be readable.");
+        Assert.IsTrue(reader.GermanParagraphs.Count > 0, "German must be readable once cached, even with Learning off.");
     }
 
     [TestMethod]
-    public void WorkViewGatesTheTranslatedBadgeOnTranslationEnabled()
+    public void ReaderViewDisablesTheLanguageSwitchOnCachedContentNotOnTranslationEnabled()
+    {
+        var view = File.ReadAllText(Path.Combine(
+            RepositoryRoot(), "src", "Jularr.Web", "Pages", "Novels", "Read.cshtml"));
+
+        StringAssert.Contains(
+            view,
+            "var hasTranslation = Model.GermanParagraphs.Count > 0;",
+            "#369: the language switch (Original/German/Both) must be driven by the cache, not the capability.");
+
+        var switchIndex = view.IndexOf("novel-view-switch", StringComparison.Ordinal);
+        Assert.IsTrue(switchIndex > 0, "Language switch markup not found.");
+        var switchMarkupEnd = view.IndexOf("</div>", switchIndex, StringComparison.Ordinal);
+        var switchMarkup = view[switchIndex..switchMarkupEnd];
+        Assert.IsFalse(
+            switchMarkup.Contains("TranslationEnabled", StringComparison.Ordinal),
+            "The language switch itself must not reference the resolved Learning capability.");
+    }
+
+    // ---- Novels/Work (the per-chapter "DE" badge). #369: unlike the
+    // reader's *generation* gate, the badge only reflects whether a chapter
+    // already has a cached translation - it is core reader status, not a
+    // Learning affordance, so the Work page no longer resolves the
+    // Translation capability at all.
+
+    [TestMethod]
+    public void WorkViewShowsTheTranslatedBadgeFromTheCacheAlone()
     {
         var view = File.ReadAllText(Path.Combine(
             RepositoryRoot(), "src", "Jularr.Web", "Pages", "Novels", "Work.cshtml"));
 
-        StringAssert.Contains(view, "@if (Model.TranslationEnabled && chapter.HasTranslation)");
+        StringAssert.Contains(view, "@if (chapter.HasTranslation)");
+        StringAssert.Contains(
+            view,
+            "chapter.HasTranslation",
+            "The badge must not resolve the Learning Translation capability (#369).");
+        Assert.IsFalse(
+            view.Contains("Model.TranslationEnabled", StringComparison.Ordinal),
+            "The Work page must not gate the cached-translation badge behind Learning (#369).");
+    }
+
+    [TestMethod]
+    public void WorkPageDoesNotResolveTheTranslationCapability()
+    {
+        // The Work page model has no TranslationEnabled property to resolve;
+        // this documents the intent alongside the reader/library gating tests.
+        var properties = typeof(WorkModel).GetProperties();
+        Assert.IsFalse(
+            properties.Any(p => p.Name == "TranslationEnabled"),
+            "#369: the Work page's chapter badge must not depend on a resolved Learning capability.");
     }
 
     private static string RepositoryRoot()
@@ -244,7 +290,7 @@ public sealed class NovelTranslationGatingTests
             return new Fixture(directory, services, db, work.Id, chapter.Id);
         }
 
-        /// <summary>Seeds a cached German translation directly so the reader has content to withhold.</summary>
+        /// <summary>Seeds a cached German translation directly so the reader has content to read.</summary>
         public async Task SeedCachedGermanTranslationAsync()
         {
             var chapter = await Db.NovelChapters.SingleAsync(x => x.Id == ChapterId);

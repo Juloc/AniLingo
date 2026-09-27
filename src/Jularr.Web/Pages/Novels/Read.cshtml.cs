@@ -69,10 +69,13 @@ public sealed class ReadModel(
     public bool FuriganaSupported { get; private set; }
 
     /// <summary>
-    /// Whole-chapter AI translation, resolved through the canonical Learning
-    /// hierarchy (Novel media type → work → chapter) rather than the presence
-    /// of a cached translation. When it resolves off, cached German text is
-    /// withheld from the response and the translate/status handlers refuse.
+    /// Whether generating (or regenerating) the chapter's German AI
+    /// translation is allowed, resolved through the canonical Learning
+    /// hierarchy (Novel media type → work → chapter). This only gates the
+    /// translate/generation-status handlers and the "translate this chapter"
+    /// prompt; it must never withhold an already cached translation, since
+    /// reading available German text is core reader behaviour and must work
+    /// with Learning off (#369).
     /// </summary>
     public bool TranslationEnabled { get; private set; }
 
@@ -132,7 +135,12 @@ public sealed class ReadModel(
             cancellationToken);
 
         JapaneseParagraphs = NovelTextLayout.SplitParagraphs(chapter.OriginalText);
-        GermanParagraphs = TranslationEnabled
+        // Cached German text is always readable (Original/German/Both):
+        // reading an already available translation is core reader behaviour
+        // and must not depend on the Learning Translation capability (#369).
+        // Only generating a *new* translation is gated, through
+        // TranslationEnabled below.
+        GermanParagraphs = chapter.HasTranslation
             ? NovelTextLayout.SplitParagraphs(chapter.TranslationText)
             : [];
         JapaneseBlocks = NovelChapterDocument.BuildReaderBlocks(
@@ -426,26 +434,30 @@ public sealed class ReadModel(
             return NotFound();
         }
 
-        if (!await ResolveTranslationEnabledAsync(context.WorkId, id, cancellationToken))
-        {
-            return Forbid();
-        }
-
         var cached = await translations.GetCachedAsync(
             id,
             NovelReadingLanguage.German,
             cancellationToken);
 
-        if (cached is null)
+        // Reading an already cached translation is core reader behaviour and
+        // must not depend on the Learning capability (#369); only a *pending*
+        // generation (no cached text yet) requires the resolved capability,
+        // since it implies a translation would still need to be produced.
+        if (cached is not null)
         {
-            return new JsonResult(new { status = "pending" });
+            return new JsonResult(new
+            {
+                status = "ready",
+                paragraphs = NovelTextLayout.SplitParagraphs(cached.Text)
+            });
         }
 
-        return new JsonResult(new
+        if (!await ResolveTranslationEnabledAsync(context.WorkId, id, cancellationToken))
         {
-            status = "ready",
-            paragraphs = NovelTextLayout.SplitParagraphs(cached.Text)
-        });
+            return Forbid();
+        }
+
+        return new JsonResult(new { status = "pending" });
     }
 
     /// <summary>

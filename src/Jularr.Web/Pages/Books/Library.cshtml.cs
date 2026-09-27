@@ -24,11 +24,12 @@ public sealed class LibraryModel(
     public bool IsOwner => account.IsOwner;
 
     /// <summary>
-    /// Whole-book translation state (the per-chapter "Translated" badge, the
-    /// translated-count summary and the Translate/Regenerate actions), gated
-    /// the same way as the Book reader's own translation UI: through
-    /// <see cref="LearningModuleResolver.ResolveTranslationEnabledAsync"/> for
-    /// this work's Book scope, not by whether a translation is cached.
+    /// Whether generating a whole-book translation (Translate/Regenerate) is
+    /// allowed, resolved through <see cref="LearningModuleResolver.ResolveTranslationEnabledAsync"/>
+    /// for this work's Book scope. The per-chapter "Translated" badge and the
+    /// translated-count summary reflect the cache instead: reading an already
+    /// available translated chapter is core reader behaviour and must not
+    /// depend on this capability (#369).
     /// </summary>
     public bool TranslationEnabled { get; private set; }
 

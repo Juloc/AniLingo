@@ -382,7 +382,11 @@
                             }
                         </div>
                         <div class="novel-chapter-badges">
-                            @if (Model.TranslationEnabled && chapter.HasTranslation)
+                            @* Reflects the cache only: reading an already
+                               available German chapter is core reader
+                               behaviour and must not depend on the Learning
+                               Translation capability (#369). *@
+                            @if (chapter.HasTranslation)
                             {
                                 <span>DE</span>
                             }
