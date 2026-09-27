@@ -1,0 +1,306 @@
+# Information architecture
+
+Canonical reference for the consumer/admin split, the media model, provider mapping, admin
+navigation and the Sonarr/Radarr/Bazarr/Readarr parity gap. Source: [#510](https://github.com/Juloc/Jularr/issues/510)
+(epic) and its comments. Implementation is split into [#517](https://github.com/Juloc/Jularr/issues/517)
+(navigation), [#518](https://github.com/Juloc/Jularr/issues/518) (admin dashboard, sessions),
+[#519](https://github.com/Juloc/Jularr/issues/519) (consumer pages), [#520](https://github.com/Juloc/Jularr/issues/520)
+(Home rows/Discover filters), [#521](https://github.com/Juloc/Jularr/issues/521) (roles/permissions),
+[#522](https://github.com/Juloc/Jularr/issues/522) (Android TV navigation). This document (#516)
+does not change code.
+
+Related docs, not repeated here: [ADMIN_OPERATIONS.md](ADMIN_OPERATIONS.md),
+[ANIME_ACQUISITION.md](ANIME_ACQUISITION.md), [ANIME_NAMING.md](ANIME_NAMING.md),
+[READING_ACQUISITION.md](READING_ACQUISITION.md), [MEDIA_SEGMENTS.md](MEDIA_SEGMENTS.md),
+[ANDROID_CLIENTS.md](ANDROID_CLIENTS.md).
+
+## 1. Consumer vs Admin
+
+Rule (#510): a normal user must never need to understand Sonarr/Radarr/Bazarr/Readarr concepts —
+provider IDs, root folders, naming profiles, indexers, download clients, scans, mapping conflicts,
+remux jobs, transcodes or acquisition pipelines. Everything that exposes those concepts is Admin.
+Admin and consumer UI are visually related but structurally separate; no raw technical metadata
+appears on consumer pages unless a user genuinely needs it (dub/sub availability, progress).
+
+### Desktop/tablet sidebar
+
+Base navigation stays visible; Admin and Settings expand inline instead of opening a disconnected
+shell:
+
+- Home, Library, Watchlist, Calendar, Activity, Admin (permission-gated), Settings, Profile.
+- Selecting **Admin** expands the sidebar section directly under it with the Admin navigation.
+  Selecting **Settings** does the same for personal settings.
+- Only one large contextual section expands at a time on narrower layouts; the last selected
+  child page is remembered.
+- Today's implementation (`UiShellNavigation.Build`, `Features/Localization/UiShellNavigation.cs`)
+  already renders Admin/Settings as an inline expanding `Context` under the app shell rather than a
+  separate shell — the structural piece exists. What #517 must still finish: an explicit
+  **Activity** primary destination (today Activity-equivalent pages sit only under Admin →
+  Operations/Scans/Logs) and the mobile Profile grouping below.
+
+### Mobile bottom navigation
+
+Netflix-style consumer app, not a management console:
+
+- Bottom bar: Home, Calendar, Watchlist, Profile. Search stays globally accessible at the top.
+- No separate Library tab: Home and Library are one experience with type filters
+  (All/Movies/TV/Anime/Manga/Novels/Books).
+- Activity, Downloads, Devices, Settings and Admin (permission-gated) all live under **Profile**,
+  which drills into dedicated navigation screens rather than permanent nested menus.
+- Today's mobile bar (`UiNavigationCatalog.MobilePrimarySlots`) is
+  `home, library, reading, learn|discover` with no Profile slot and no Calendar slot — this is the
+  concrete gap #517 closes.
+
+### TV sidebar
+
+Aggressively simplified for D-pad use, intentionally different from desktop:
+
+- Home, Watchlist, Activity, Profile/Settings. No dedicated Library page (availability is a
+  state/filter inside Home, not a destination) and no separate Search item — Home carries a
+  search field at the top and combines search, discovery and Continue Watching in one surface.
+  No separate Movies/TV/Anime destinations: content filters instead.
+- Trailer preview on focus (no hover, no mouse dependency); strong focus state; Back restores
+  previous view/focus; remembers last focused item per screen.
+- None of this exists yet for Android TV nav; it is entirely #522's scope (the current Android TV
+  contract in [ANDROID_CLIENTS.md](ANDROID_CLIENTS.md) §9 only fixes
+  Library → Anime → Episode → Player browse layering and remote key semantics, not the sidebar
+  itself).
+
+### Home as Discover entry
+
+Home's Netflix-style rows are dual-purpose: scrolling browses the row, activating the row heading
+opens Discover pre-filtered to that row's facet (media type, genre, "Trending Anime", franchise,
+etc.). Discover/Search must therefore be filter-driven and able to receive a filter from Home,
+Calendar, Watchlist, franchises, genres and tags alike. `/Discover` exists today
+(`Features/Discovery`) but only as an AniList-backed browse/import surface; it does not yet accept
+row-sourced filters or show local availability/watchlist state on cards. That wiring is #520.
+
+## 2. Media model
+
+Four layers per #510. Mapped to what exists in `src/Jularr.Web/Data` and `Features/` today:
+
+| Layer | #510 description | State | Where |
+| --- | --- | --- | --- |
+| 1. Storage/Admin structure | Root, work folder, season/special folder, media file/sidecars | **Exists** | `LibraryRoot`, `MediaFile` (`Data/AppDbContext.cs`); root config and wake state on `/Admin/System` |
+| 2. Jularr internal structure | Work, season/unit, episode/chapter/volume, stable internal IDs | **Exists** | `Anime`, `Episode`, `MediaFile` for video; `NovelWork`/`NovelVolume`/`NovelChapter`, `BookEdition`/`BookFile` for reading. Manga is file-based (`MangaModels.cs`: `MangaSeriesItem`/`MangaChapterItem`), not a DB entity — its "stable ID" is a derived series key, not a row id |
+| 3. Provider mappings | AniList, TVDB, TMDb, IMDb, MAL, future providers | **Partial** | `AnimeMetadata` (AniList match: provider+external id, cover/banner, unique per anime) and `AnimeLocalMetadata` (TVDB/MAL ids, NFO-sourced) exist; `NovelAnimeMapping` cross-references novel↔anime. Provider **roles are not independently configurable** (display metadata vs. episode structure vs. acquisition identity vs. progress vs. artwork vs. cross-reference IDs, per #510) — AniList is hard-wired as metadata/progress/artwork source, TVDB/local numbering as episode structure; there is no settings surface to reassign a role to a different provider. See [#525](https://github.com/Juloc/Jularr/issues/525) |
+| 4. User presentation groups | Seasons, parts, cours, story arcs, specials, person/week/round groups (reality shows), independent of files/provider coordinates | **Missing** | No presentation-group entity exists. `AnimeSequenceMappingPlanner` (`Features/MediaMapping/AnimeSequenceMapping.cs`) only plans local-season → AniList-part **range mappings** for numbering/acquisition purposes; it does not produce a user-facing display grouping, and nothing renders a reality-show-style "Anna: E01–E05" grouping over an unchanged S01E01-E20 file layout. `FranchiseModels.cs`/`WatchlistModels.cs` cover cross-work relations, not intra-season grouping. See [#524](https://github.com/Juloc/Jularr/issues/524) |
+
+Reality-show example ("Anna: E01-E05" over S01E01-E20) and anime-cour example (AniList Part 1
+E01-E11 / Part 2 E01-E12 over one local season) both depend on layer 4, which does not exist yet.
+
+## 3. Anime multi-provider mapping
+
+**Provider roles** (display metadata: AniList; episode structure: local/TVDB; acquisition identity:
+TVDB/absolute numbering; progress: AniList; artwork: AniList; cross-reference: IMDb/MAL/TMDb/TVDB)
+are Jularr's de facto behavior today but are not a configurable per-anime setting — they are
+implicit in which service each feature calls (`AnimeMetadataService` for AniList display/progress/
+artwork, `AnimeLocalMetadata` for local/TVDB numbering and cross-reference ids). **Partial.**
+
+**Range mapping**: `AnimeSequenceMappingPlanner` (`Features/MediaMapping/AnimeSequenceMapping.cs`)
+plans local-season-to-AniList-part ranges from contiguous local numbering and an anchor AniList
+entry; `AnimeSpecialMapping.cs` covers specials/OVA/ONA separately. `NovelAnimeMapping` and
+`ReadingSegmentMappingStore` (chapter-range ↔ external id) do the equivalent for reading media.
+**Exists** for the planning/automatic-match mechanics; **partial** for the owner-facing workflow
+(below).
+
+**`/Settings/MappingReview`** (`Pages/Settings/MappingReview.cshtml(.cs)`, backed by
+`MediaMappingReviewStore`) lists `MediaMappingReviewTask` items — provider, external id, title,
+score and evidence per candidate, across media types (`MediaType`/`LocalId`/`Purpose`/`Reason`).
+Today it only supports **Dismiss** (`OnPostDismissAsync`); there is no **Apply** action on the page,
+no per-episode override UI, no explicit "unmapped" state control, no preview-before-apply step and
+no audit history — matches are applied automatically elsewhere (`AutomaticMediaMapping.cs`) and
+this page is a dismiss-only exception queue, not the "automatic candidate matching, confidence/
+evidence, auto-map, exact/partial/missing/conflict states, per-episode overrides, preview before
+apply, audit history, safe remapping without losing progress" workflow #510 describes. **Partial**
+(tracked in [#525](https://github.com/Juloc/Jularr/issues/525)).
+
+**`/Settings/MappingSegments`** (`Pages/Settings/MappingSegments.cshtml(.cs)`, backed by
+`ReadingSegmentMappingStore`) maps local chapter ranges (`LocalChapterStart`/`End`) to an external
+provider's chapter numbering (`RemoteChapterStart`) for Manga/Light Novels. It is **not** an anime
+episode-range mapping tool despite the adjacent name — anime range mapping has no owner-facing page
+of its own yet; it runs only through the automatic planner. **Partial** (exists for reading media,
+missing for anime as a dedicated review UI).
+
+## 4. Admin navigation
+
+Target groups per #510 ("Dashboard, Library, Acquisition, Wanted/Missing, Queue, Downloads,
+Metadata & Mapping, Subtitles, Media Processing, Playback & Sessions, Storage, Calendar/Releases,
+Jobs/Activity, Integrations, Users & Permissions, Settings, Diagnostics") against the current
+catalog in `src/Jularr.Web/Features/Localization/UiShellNavigation.cs`:
+
+| Target group | Current route | State |
+| --- | --- | --- |
+| Dashboard | `/Admin` (admin-overview) | Exists, but not the "is anything broken / who's watching / what's transcoding" landing page #510 wants — see §6/§7. #518 |
+| Library | `/Library`, `/Library/AnimeRepair/{id}` | Exists as consumer+admin hybrid (repair tools are owner-only but live under the consumer Library route) |
+| Acquisition | `/Acquisition` (admin-anime-acquisition), `/Settings/Acquisition` (admin-import) | Exists |
+| Wanted / Missing | inside `/Acquisition` | Exists (not a separate nav entry, but present as a section) |
+| Queue / Downloads | inside `/Acquisition`, Operations `IsDownload` rows | Exists (no standalone "Downloads" nav entry; folded into Acquisition and Operations) |
+| Metadata & Mapping | `/Settings/MappingReview`, `/Settings/MappingSegments` (admin-mapping) | Partial — see §3 |
+| Subtitles | `/Admin/Subtitles`, `/Settings/Subtitles` (admin-subtitles) | Exists |
+| Media Processing | no dedicated nav entry (optimizer/trickplay/segments run as background Operations, surfaced only in `/Admin/Operations`) | Partial |
+| Playback & Sessions | **missing** — no admin sessions page exists (`Features/PlaybackSessions` has the hub/coordinator/store but no admin view) | Missing. #518 |
+| Storage | `/Admin/System` (admin-system, roots/wake/health) | Exists |
+| Calendar / Releases | consumer `/Calendar` only; no admin releases nav entry | Partial |
+| Jobs / Activity | `/Admin/Operations`, `/Admin/Scans`, `/Admin/Logs` (admin-operations, admin-scans, admin-logs) | Exists |
+| Integrations | `/Admin/Usenet`, `/Admin/Sonarr` (admin-usenet, admin-sonarr) | Partial — Usenet/Sonarr only, no general integrations hub (Prowlarr health lives under Usenet) |
+| Users & Permissions | `/Admin/Users`, `/Admin/Requests` (admin-users, admin-requests) | Partial — user management and request policy exist; a permissions/roles matrix does not (§8). #521 |
+| Settings | `/Settings/*` section (Admin AI, API keys, Localization) | Exists |
+| Diagnostics | `/Admin/Logs`, `/Admin/Ai` (admin-ai) | Partial — operation logs exist; no dependency/service health or version/update diagnostics (§5, Sonarr/Radarr table) |
+
+## 5. Parity matrices
+
+State legend: **exists** (built and reachable today), **partial** (built but incomplete against
+the #510 description), **missing** (not built). Verified by grep against `src/Jularr.Web` — see
+each row's Where.
+
+### 5.1 Sonarr/Radarr
+
+| Capability | State | Where | Issue |
+| --- | --- | --- | --- |
+| Root folders / storage state | Exists | `LibraryRoot`, `/Admin/System` | — |
+| Monitored/unmonitored works | Exists | `AnimeMonitoringStore` (`/data/acquisition/monitoring.json`) | — |
+| Monitored seasons/episodes (granular) | Partial — monitoring is per-anime, not per-season | `AnimeAcquisitionInventory` | #396 |
+| Missing / cutoff unmet | Exists | Wanted-episode logic, quality-profile upgrade cutoff | — |
+| Rescan/refresh | Exists | `LibraryScanCoordinator`, per-anime repair (`AnimeRepairService`) | — |
+| Rename preview + execute | Exists | `/Library/Rename/{animeId}`, `AnimeRenameService` | — |
+| Manual import | Exists | `/Acquisition` "Needs a decision", `AnimeImportExecutor` | — |
+| Move/organize files | Exists | Naming profile + `ImportFileTransfer` | — |
+| Quality/language inventory (dedicated report) | Partial — data exists per file (`MediaAnalysis`) but no cross-library inventory view | `MediaInventoryService` | #421 |
+| Duplicate detection | Missing — import-time existing-file detection only, no library-wide duplicate report | `CompletedDownloadImportPlanner` | #437 |
+| Health/problems (unified) | Partial — per-root and per-indexer/client health exist separately, no single "problems" view | `/Admin/System`, `AcquisitionHealthStore` | #518 |
+| Indexers/Prowlarr integration | Exists | `/Settings/Indexers` | — |
+| Download clients/SABnzbd | Exists | `/Settings/DownloadClients` | — |
+| Automatic + interactive search | Exists | `AnimeAcquisitionScheduler`, `/Acquisition?search=` | — |
+| Release scoring | Exists | `AnimeReleaseParser` + quality scorer | — |
+| Quality profiles (assign) | Exists | `AnimeQualityProfileStore` | — |
+| Quality profiles (edit UI) | Missing — documented limit, assignment only | ANIME_ACQUISITION.md "Limits" | #396 |
+| Language profiles (acquisition scoring) | Missing — no separate language-weighted profile beyond naming tokens | — | #396 |
+| Preferred/rejected terms, upgrade rules | Exists | Quality profile required/forbidden terms, upgrade cutoff | — |
+| Queue / history / blocklist / retries | Exists | Operations (`IsDownload`), `AcquisitionHistoryEntry`, blocklist | — |
+| Import decisions / rejected reasons | Exists | "Needs a decision", search operation log | — |
+| Naming profiles, preview, collision checks | Exists (anime only) | `/Settings/Naming`, `AnimeNamingFormatter` | — |
+| Naming for Movies/TV/Books/Manga/Novels | Missing — naming-profile system is anime-only | — | #396 (Movies/TV), #529 (Books/Manga/Novels) |
+| Sidecar handling on rename | Exists | subtitle/NFO sidecars follow the plan | — |
+| Media processing: ffprobe inventory, remux, verification, rollback | Exists | `MediaInventoryService`, `MediaContainerOptimizer`, `MediaRemuxVerifier` | — |
+| Media processing: dedicated transcode/optimize job (beyond lossless remux) | Partial — only the lossless MP4 remux is a durable job; lossy transcode happens live during playback, not as a background optimization job | `MediaContainerOptimizer`, playback-plan `transcode` mode | #403 |
+| **Movies and TV library** | **Missing — Jularr has no Movie or TV Show entity, acquisition, or naming distinct from anime; only Anime is modeled** | `Data/AppDbContext.cs` has no `Movie`/`Show` `DbSet` | #396 |
+| Requests & approvals (Overseerr/Jellyseerr-style) | Partial — request lifecycle and admin policy page exist; no per-user request history page or availability-state indicator on cards | `AcquisitionRequestService`, `/Admin/Requests` | #436 |
+| Notifications (events/destinations) | Missing | — | #429 |
+| Clients & devices inventory (admin) | Missing — pairing/session state exists per playback session, no admin inventory/revoke page | `Features/PlaybackSessions` | #527 |
+| Transcoder resources dashboard | Missing | — | #403 |
+| Remote access & security overview | Missing | — | #527 |
+| Migration/coexistence: Sonarr | Exists | SONARR_MIGRATION.md, `SonarrParallelSafety` | — |
+| Migration/coexistence: Radarr/Bazarr/Readarr/Plex/Jellyfin | Missing | — | #433 |
+| Backup/export/restore (full app state) | Partial — acquisition-store bundle only | `/Settings/Acquisition` export/restore | #416 |
+| Retention & cleanup (recycle/trash, orphaned files) | Partial — scan prunes its own old runs/logs only, no library-wide cleanup preview | `LibraryScanCoordinator` retention | #414 |
+| API/webhooks/automation | Partial — REST automation API exists for acquisition only, no generic webhooks | `Features/Acquisition/Api` | #438 (provider framework) / #429 (webhook destinations) |
+| System health & updates | Missing | — | #528 |
+
+### 5.2 Bazarr
+
+| Capability | State | Where | Issue |
+| --- | --- | --- | --- |
+| Sidecar subtitle import (per-episode, per-folder) | Exists | `MediaSegmentSidecarImporter`-adjacent `SubtitleImportService`, sidecar formats | — |
+| Embedded subtitle extraction | Exists | `EmbeddedSubtitleExtractor` | — |
+| Generated transcription subtitle | Exists | Whisper-based transcription (`LearningTextPreparation.cs`) | — |
+| Forced/SDH detection | Partial — forced-track detection exists for extraction ordering; no owner-facing forced/SDH preference setting | `EmbeddedSubtitleExtractor.cs` (`IsForced`) | #526 |
+| Missing-subtitle tracking | Partial — covered only implicitly (no file → nothing to import); no dedicated "missing subtitles" list like Bazarr's | `/Admin/Subtitles` | #526 |
+| External subtitle provider search/download | Partial — Jimaku integration exists but is scoped to the Japanese learning subtitle, not general multi-language subtitle acquisition | `SubtitleImportService.cs`, `Pages/Admin/Subtitles.cshtml.cs` | #526 |
+| Subtitle language profiles | Missing — no per-anime/per-library subtitle-language profile equivalent to Bazarr's | — | #526 |
+| Subtitle sync/validation | Missing — no timing-sync or validation tool | — | #526 |
+| Replace/remove subtitle | Exists | Rename/repair "Refresh subtitles" path re-imports; per-track removal via subtitle sources | — |
+| Per-media subtitle diagnostics | Exists | Episode subtitle sources partial (`_EpisodeSubtitleSources.cshtml`) | — |
+
+### 5.3 Readarr (books/manga/novels)
+
+| Capability | State | Where | Issue |
+| --- | --- | --- | --- |
+| Work/volume/chapter identity — Novels | Exists | `NovelWork`, `NovelVolume`, `NovelChapter`, `NovelTranslation` | — |
+| Work/edition/file identity — Books | Exists | `BookEdition`, `BookFile` | — |
+| Series/chapter identity — Manga | Partial — file-derived (`MangaSeriesItem`/`MangaChapterItem`), not a durable DB entity like anime/novels | `Features/Manga/MangaModels.cs`, `MangaRepository` | #529 |
+| Acquisition (search/download/import) | Exists | `Features/ReadingAcquisition`, `AcquisitionRequestService` | — |
+| Monitoring/wanted | Exists | `WantedAcquisitionService` | — |
+| Metadata/provider mapping | Exists (AniList) | Manga/Novel AniList match services | — |
+| Naming/organization | Partial — Manga library folder + import mode exist; no configurable naming-template system like anime's | READING_ACQUISITION.md "Manga library" | #529 |
+| Reading progress | Exists | `NovelProgress`, `MangaProgressItem`, bookmarks/highlights | — |
+| Multiple editions/formats | Exists (Books) | `BookEdition`/`BookFile` (EPUB, PDF) | — |
+| Chapter-range provider mapping | Exists | `ReadingSegmentMappingStore`, `/Settings/MappingSegments` | — |
+| Cross-media anime↔novel mapping | Exists | `NovelAnimeMapping` | — |
+
+Radarr's Movies/TV capabilities specifically: Jularr has **no movie or TV library at all** today —
+only Anime is a first-class media type with its own entity, acquisition pipeline and naming system.
+Every Radarr-parity row above is therefore "missing" at the data-model level, not just the UI
+level; #396 is the tracked epic for building a Movie/TV-capable unified model.
+
+## 6. Pipeline observability
+
+Target timeline (#510): release found → scored → accepted/rejected → sent to downloader →
+download started/completed → import matched → target path calculated → file moved → ffprobe →
+subtitle discovery → metadata mapping → artwork refresh → optional remux/optimization → library
+reconciliation → ready.
+
+What `Operations`/`OperationLogs` (see [ADMIN_OPERATIONS.md](ADMIN_OPERATIONS.md)) record today,
+by operation kind:
+
+| Pipeline step | Recorded today | Operation kind / lane |
+| --- | --- | --- |
+| Release found / scored / accepted-rejected | Yes, in the search operation's log (module `Acquisition`) | `anime-search` |
+| Sent to downloader / download started-completed | Yes | `anime-sabnzbd-download` (Anime), `sabnzbd-download` (Books) |
+| Import matched / target path / file moved | Yes | `anime-import` (module `Import`) |
+| ffprobe | Yes, as part of library reconciliation, not its own operation | folded into `library-scan` / `anime-repair-reanalyze-media` |
+| Subtitle discovery | Yes, folded into scan | `library-scan` |
+| Metadata mapping | Yes | `anime-metadata-match`, `anime-metadata-refresh` |
+| Artwork refresh | Yes, folded into scan's Artwork phase | `library-scan` |
+| Remux/optimization | Yes | `media-optimization` |
+| Library reconciliation / ready | Yes | `library-scan` |
+
+Every step above already has a durable operation and log; what is **not** built is a single
+cross-operation timeline view that stitches one release's full journey (search → download →
+import → optimize) into one visual sequence — today an admin must find the related operations
+separately (by anime, by time). That combined view is part of the admin dashboard scope (#518).
+
+## 7. Sessions
+
+**Admin view (missing today):** #510 wants a Plex-style live sessions view — user, media/episode,
+client/device, IP, start time, position, bitrate/resolution, tracks, playback method (Direct
+Play/Direct Stream/Transcode), transcode reason/speed, bandwidth, errors/rebuffers, and an
+authorized stop-session action. `Features/PlaybackSessions` (`PlaybackSessionStore`,
+`PlaybackSessionCoordinator`, `PlaybackSessionHub`) already models session state for the TV↔phone
+companion feature (`sessionId`, position, tracks, revision — see
+[ANDROID_CLIENTS.md](ANDROID_CLIENTS.md) §10.1), but there is no admin page rendering it and no
+transcode-diagnostics fields on the model. #518 builds this.
+
+**User view (missing today):** a restricted Plex-like self-service view of the user's own sessions/
+devices, playback history, progress, downloads/offline devices, with the ability to end their own
+sessions — no other user's or admin's data. `EpisodePlaybackHistoryEntry` and
+`ProfilePlaybackPreferences` already hold the durable history/preference data this page would read;
+no page exposes it as a session/account view yet. #518 builds this.
+
+## 8. Permissions matrix
+
+Today only two roles exist (`Features/Auth/OwnerAccount.cs`): `AccountRole.Owner` and
+`AccountRole.User`. There is no `Media manager` role. #521 implements the middle tier and the
+policy checks below; the table states the target state, not today's binary Owner/User split.
+
+| Area / action | Owner | Media manager | User |
+| --- | --- | --- | --- |
+| Consumer pages (Home, Library, Watchlist, Calendar, Discover, playback, reading) | Full | Full | Full |
+| Own account settings, own sessions/history | Full | Full | Full |
+| Request media (Requests queue) | Full | Full | Allowed per acquisition-access policy (today: `AcquisitionAccessPolicy.UserAdd`) |
+| Approve/reject requests | Full | Full | No |
+| View admin dashboard, Operations, Scans, Logs | Full | Full (read) | No |
+| Delete media / library files | Full | No (per #510's sensitive-action list) | No |
+| Rename/move files | Full | No | No |
+| Mapping changes (MappingReview/MappingSegments) | Full | Full | No |
+| Acquisition settings (indexers, download clients, quality profiles) | Full | Full | No |
+| User management (create/disable accounts, roles) | Full | No | No |
+| Stop another user's playback session | Full | Full | No |
+| Storage/root/integration settings | Full | No | No |
+| API keys / automation | Full | No | No |
+
+`Media manager` is intended to run the day-to-day media-operations workflows (acquisition,
+mapping, request approval, session moderation) without the account-management and system-settings
+authority reserved for Owner. Sensitive-action gating listed above follows #510's own list
+verbatim (delete, rename/move, mapping changes, acquisition settings, user management, stopping
+another user's session, storage/settings/integration changes).
