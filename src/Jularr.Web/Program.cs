@@ -76,6 +76,7 @@ var connectionString = builder.Configuration.GetConnectionString("Default")
 builder.Services.AddDbContext<AppDbContext>(options => options.UseSqlite(connectionString));
 
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<OperationProfileContext>();
 builder.Services.AddScoped<CurrentAccountContext>();
 builder.Services.AddScoped<OwnerAuthService>();
 builder.Services.AddScoped<AdminUserProgressService>();
