@@ -489,7 +489,7 @@ fun TvEpisodeScreen(
 }
 
 @Composable
-private fun TvInfoPill(private fun TvInfoPill(text: String) {
+private fun TvInfoPill(text: String) {
     Box(
         modifier = Modifier
             .background(
@@ -707,8 +707,7 @@ private fun effectivePort(uri: URI): Int =
 }
 
 @Composable
-@Composable
-private fun TvCenteredPanel(private fun TvCenteredPanel(
+private fun TvCenteredPanel(
     title: String,
     description: String,
     content: @Composable () -> Unit,
