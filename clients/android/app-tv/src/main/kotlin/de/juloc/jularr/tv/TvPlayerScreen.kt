@@ -30,6 +30,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -86,6 +87,7 @@ fun TvPlayerScreen(
     val context = LocalContext.current
     val design = remember { TvPlayerDesignLoader.load(context) }
     var uiState by remember { mutableStateOf(TvPlayerUiState()) }
+    var controlsInteractionRevision by remember { mutableIntStateOf(0) }
     var isPlaying by remember { mutableStateOf(player.player.isPlaying) }
     var positionMs by remember { mutableStateOf(player.player.currentPosition.coerceAtLeast(0)) }
     var durationMs by remember { mutableStateOf(player.player.duration.takeIf { it > 0 } ?: 0L) }
@@ -143,6 +145,21 @@ fun TvPlayerScreen(
             focusedWordIndex = transition.state.focusedWordIndex,
             onOpenOnPhone = onOpenOnPhone,
         )
+    }
+
+    LaunchedEffect(
+        uiState.controlsVisible,
+        uiState.learningLayer,
+        isPlaying,
+        controlsInteractionRevision,
+    ) {
+        if (uiState.controlsVisible &&
+            uiState.learningLayer == TvLearningLayer.CLOSED &&
+            isPlaying
+        ) {
+            delay(design.controlsAutoHideMs)
+            apply(TvPlayerInteraction.autoHide(uiState, isPlaying))
+        }
     }
 
     LaunchedEffect(remoteCommand?.commandId) {
@@ -247,6 +264,12 @@ fun TvPlayerScreen(
                 }
                 if (event.type != KeyEventType.KeyDown) {
                     return@onPreviewKeyEvent false
+                }
+
+                if (uiState.controlsVisible &&
+                    uiState.learningLayer == TvLearningLayer.CLOSED
+                ) {
+                    controlsInteractionRevision += 1
                 }
 
                 val transition = when (event.key) {
