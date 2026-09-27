@@ -1030,7 +1030,7 @@ public static class UiTranslationResources
         M("ai.effort.high", "High", "AI", "Option", "Reasoning level: thorough reasoning, slower.", "short option label", 16),
         M("ai.effort.xhigh", "Very high", "AI", "Option", "Reasoning level: the most thorough reasoning, slowest.", "short option label", 18),
         M("ai.usage.details", "Usage by task and model", "AI", "Disclosure", "Expands the AI usage breakdown by task and model for the selected period.", "short disclosure label", 36, null, ["AI"]),
-        M("ai.budget.title", "Limits", "AI", "Heading", "Group of Jularr-local AI safeguards in Settings → AI Advanced: daily token limit, warning threshold and parallel tasks. Separate from the provider's own quota.", "short form group label", 20, null, ["AI", "Jularr"]),
+        M("ai.budget.title", "Usage limits", "AI", "Heading", "Group of Jularr-local AI safeguards in Settings → AI Advanced: daily token limit, warning threshold and parallel tasks. Separate from the provider's own quota.", "short form group label", 20, null, ["AI", "Jularr"]),
         M("ai.budget.daily", "Daily token limit", "AI", "Label", "Maximum input plus output tokens this profile may use per UTC day; AI tasks stop once it is used up.", "short form label", 28),
         M("ai.budget.warnAt", "Warn at %", "AI", "Label", "Share of the daily token limit at which a warning is shown.", "short form label", 16),
         M("ai.budget.parallel", "Parallel AI tasks", "AI", "Label", "How many AI requests of this profile run at the same time; further requests wait in the queue.", "short form label", 28, null, ["AI"]),
