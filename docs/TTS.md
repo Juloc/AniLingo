@@ -49,6 +49,7 @@ Behavior:
 - the spoken paragraph is marked and, where the browser reports word boundaries, the spoken word is highlighted with the CSS Custom Highlight API (annotated paragraph DOM is not modified)
 - the view follows the spoken text: continuous mode scrolls, paged mode turns pages through the shared page-edge event; manual scrolling suspends following for a few seconds
 - reading continues across the paragraphs and pages of a chapter; at the chapter end it stops unless the explicit `ttsAutoContinueChapters` setting is on, in which case it opens the next chapter and continues from its first paragraph
+- readers that keep only the pages around the current one in the document (PDF books) answer `jularr:reader-tts-next-page` with the next page's text layer, and reading continues there until the end of the document
 - Pause cancels and Resume restarts from the last spoken word, because Web Speech `pause()` is unreliable on mobile browsers
 - switching the visible language stops reading
 

@@ -593,11 +593,48 @@
 
         const nextChapterLink = () => root.querySelector("[data-reader-next-chapter]");
 
+        // Continues with `element` and the paragraphs after it in its language.
+        const planFrom = element => {
+            const all = paragraphs();
+            const index = all.indexOf(element);
+            if (index < 0) return null;
+            const language = languageOf(element);
+            const segments = all.slice(index)
+                .filter(item => languageOf(item) === language)
+                .map(segmentOf);
+            return { mode: "continue", segments, index: 0, offset: 0 };
+        };
+
+        // Readers that keep only the pages around the current one in the document
+        // (PDF books) show the next page on request: they set `ready` to a promise
+        // of its first paragraph, or leave it unset at the end of the document.
+        const continueOnNextPage = currentPlan => {
+            const request = { after: currentPlan.segments.at(-1)?.element || null, ready: null };
+            root.dispatchEvent(new CustomEvent("jularr:reader-tts-next-page", { detail: request }));
+            if (!request.ready) return false;
+            const id = run;
+            Promise.resolve(request.ready).then(element => {
+                if (id !== run) return;
+                const nextPlan = element ? planFrom(element) : null;
+                if (nextPlan?.segments.length) {
+                    play(nextPlan, 0, 0);
+                    return;
+                }
+                stopPlayback();
+                flash(tt("end", "End reached."));
+            }, () => {
+                if (id === run) failed(new Error("next page"));
+            });
+            return true;
+        };
+
         const finished = currentPlan => {
             if (currentPlan.mode !== "continue") {
                 stopPlayback();
                 return;
             }
+
+            if (continueOnNextPage(currentPlan)) return;
 
             const next = nextChapterLink();
             if (next?.href && preferences().autoContinueChapters) {
