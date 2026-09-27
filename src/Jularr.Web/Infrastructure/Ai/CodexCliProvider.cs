@@ -5,10 +5,11 @@ using Jularr.Web.Features.Ai;
 using Jularr.Web.Features.Books;
 using Jularr.Web.Features.Localization;
 using Jularr.Web.Features.Novels;
+using Jularr.Web.Features.StoryContext;
 
 namespace Jularr.Web.Infrastructure.Ai;
 
-public sealed partial class CodexCliProvider : IAiProvider, IAiSentenceExplainer, INovelTranslator, IBookTranslator, INovelMappingSuggester, IUiTranslationGenerator, IDisposable
+public sealed partial class CodexCliProvider : IAiProvider, IAiSentenceExplainer, INovelTranslator, IBookTranslator, INovelMappingSuggester, IUiTranslationGenerator, IStoryContextExtractor, IDisposable
 {
     private const string CodexHome = "/data/codex";
     private readonly object gate = new();
@@ -669,6 +670,22 @@ public sealed partial class CodexCliProvider : IAiProvider, IAiSentenceExplainer
             CleanAiValue(result.ContinuityNotes),
             MapEntities(result.Entities),
             MapTerms(result.Terms));
+    }
+
+    public async Task<StoryChapterExtraction> ExtractChapterAsync(
+        StoryChapterExtractionRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await RunBookStructuredAsync<StoryContextExtractionPrompt.Result>(
+            StoryContextExtractionPrompt.Operation,
+            StoryContextExtractionPrompt.Schema,
+            StoryContextExtractionPrompt.Instructions
+                + "\n\n"
+                + StoryContextExtractionPrompt.BuildInput(request),
+            TimeSpan.FromMinutes(5),
+            cancellationToken);
+
+        return StoryContextExtractionPrompt.Map(result);
     }
 
     private async Task<T> RunBookStructuredAsync<T>(

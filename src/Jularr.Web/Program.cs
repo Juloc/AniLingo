@@ -35,6 +35,7 @@ using Jularr.Web.Features.ReaderThemes;
 using Jularr.Web.Features.Sonarr;
 using Jularr.Web.Features.Statistics;
 using Jularr.Web.Features.Storage;
+using Jularr.Web.Features.StoryContext;
 using Jularr.Web.Features.Subtitles;
 using Jularr.Web.Features.Tracking;
 using Jularr.Web.Features.Vocabulary;
@@ -444,6 +445,10 @@ builder.Services.AddScoped<IAiSentenceExplainer>(services => services.GetRequire
 builder.Services.AddScoped<INovelTranslator>(services => services.GetRequiredService<ProfileAiProviderRouter>());
 builder.Services.AddScoped<IBookTranslator>(services => services.GetRequiredService<ProfileAiProviderRouter>());
 builder.Services.AddScoped<INovelMappingSuggester>(services => services.GetRequiredService<ProfileAiProviderRouter>());
+builder.Services.AddScoped<IStoryContextExtractor>(services => services.GetRequiredService<ProfileAiProviderRouter>());
+builder.Services.AddSingleton(services => StoryContextStore.FromConfiguration(services.GetRequiredService<IConfiguration>()));
+builder.Services.AddSingleton<StoryContextSnapshotCache>();
+builder.Services.AddScoped<StoryContextService>();
 builder.Services.AddScoped<AiSentenceExplanationService>();
 
 builder.Services.AddSingleton<BackgroundJobQueue>();
@@ -495,6 +500,13 @@ try
     await DownloadClientSettingsMigration.RunAtStartupAsync(
         app.Services,
         message => Console.WriteLine($"[Jularr] {DateTimeOffset.UtcNow:O} {message}"));
+    var migratedBibles = await BookTranslationMemoryStore
+        .FromConfiguration(app.Configuration)
+        .MigrateLegacyAsync(CancellationToken.None);
+    if (migratedBibles > 0)
+    {
+        Console.WriteLine($"[Jularr] {DateTimeOffset.UtcNow:O} Moved {migratedBibles} translation bible(s) into the shared story context.");
+    }
     Console.WriteLine($"[Jularr] {DateTimeOffset.UtcNow:O} Database ready. Starting web server.");
 }
 catch (Exception ex)

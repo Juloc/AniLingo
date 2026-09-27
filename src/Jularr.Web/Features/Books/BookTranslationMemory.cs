@@ -1,7 +1,9 @@
 using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
+using Jularr.Web.Features.StoryContext;
 
 namespace Jularr.Web.Features.Books;
 
@@ -13,6 +15,13 @@ public sealed record BookTranslationChapterMemory(
     string? ContinuityNotes,
     DateTime UpdatedAt);
 
+/// <summary>
+/// The translation bible of one work and target language: a projection of
+/// the shared story memory (<see cref="StoryContextDocument"/>) plus the
+/// translation-only choices (target names, glossary targets, locks, notes).
+/// The same shape was the stored version-1 file format and is still read for
+/// migration.
+/// </summary>
 public sealed record BookTranslationBible
 {
     public int Version { get; init; } = 1;
@@ -30,9 +39,42 @@ public sealed record BookTranslationBible
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
 
+/// <summary>Translation-only data stored per work and target language (format version 2).</summary>
+public sealed class BookTranslationExtension
+{
+    public const int CurrentVersion = 2;
+
+    public int Version { get; set; } = CurrentVersion;
+    public Guid WorkId { get; set; }
+    public string SourceLanguage { get; set; } = "und";
+    public string TargetLanguage { get; set; } = "und";
+    public List<BookTranslationEntityName> Entities { get; set; } = [];
+    public List<BookTranslationTermChoice> Terms { get; set; } = [];
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}
+
+public sealed class BookTranslationEntityName
+{
+    public string Name { get; set; } = "";
+    public string Type { get; set; } = "entity";
+    public string TargetName { get; set; } = "";
+}
+
+public sealed class BookTranslationTermChoice
+{
+    public string Source { get; set; } = "";
+    public string Target { get; set; } = "";
+    public string? Notes { get; set; }
+    public bool Locked { get; set; }
+}
+
 public sealed class BookTranslationMemoryStore
 {
     private const int MaxBytes = 2 * 1024 * 1024;
+    private const int MaxEntities = 250;
+    private const int MaxTerms = 500;
+    private const string LegacyBackupSuffix = ".v1.bak";
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -43,22 +85,30 @@ public sealed class BookTranslationMemoryStore
         new(StringComparer.Ordinal);
 
     private readonly string rootPath;
+    private readonly StoryContextStore story;
 
     private SemaphoreSlim Gate =>
         Gates.GetOrAdd(
             rootPath,
             _ => new SemaphoreSlim(1, 1));
 
+    /// <summary>Stores the shared story memory in <c>story-context</c> below <paramref name="rootPath"/>.</summary>
     public BookTranslationMemoryStore(string rootPath)
+        : this(
+            rootPath,
+            new StoryContextStore(
+                Path.Combine(
+                    RequireRoot(rootPath),
+                    "story-context")))
     {
-        if (string.IsNullOrWhiteSpace(rootPath))
-        {
-            throw new ArgumentException(
-                "Translation memory root path is required.",
-                nameof(rootPath));
-        }
+    }
 
-        this.rootPath = Path.GetFullPath(rootPath);
+    public BookTranslationMemoryStore(
+        string rootPath,
+        StoryContextStore story)
+    {
+        this.rootPath = Path.GetFullPath(RequireRoot(rootPath));
+        this.story = story;
     }
 
     public static string DefaultRoot =>
@@ -67,21 +117,41 @@ public sealed class BookTranslationMemoryStore
             "books",
             "translation-memory");
 
+    public static BookTranslationMemoryStore FromConfiguration(
+        IConfiguration configuration)
+    {
+        var configured = configuration[
+            "Books:Translation:MemoryPath"]?.Trim();
+
+        return new BookTranslationMemoryStore(
+            string.IsNullOrWhiteSpace(configured)
+                ? DefaultRoot
+                : configured,
+            StoryContextStore.FromConfiguration(configuration));
+    }
+
+    public StoryContextStore StoryContext => story;
+
     public async Task<BookTranslationBible?> LoadAsync(
         Guid workId,
         string targetLanguage,
         CancellationToken cancellationToken)
     {
-        var path = GetPath(
-            workId,
-            targetLanguage);
-
         await Gate.WaitAsync(cancellationToken);
         try
         {
-            return await LoadCoreAsync(
-                path,
+            var extension = await LoadExtensionCoreAsync(
+                workId,
+                targetLanguage,
                 cancellationToken);
+
+            if (extension is null)
+            {
+                return null;
+            }
+
+            var document = await story.LoadAsync(workId, cancellationToken);
+            return Compose(extension, document);
         }
         finally
         {
@@ -108,32 +178,45 @@ public sealed class BookTranslationMemoryStore
 
         var seed = await seedFactory(cancellationToken);
 
-        var bible = new BookTranslationBible
+        await Gate.WaitAsync(cancellationToken);
+        try
         {
-            WorkId = workId,
-            SourceLanguage = NormalizeLanguage(sourceLanguage),
-            TargetLanguage = NormalizeLanguage(targetLanguage),
-            NarrativePerspective = Clean(seed.NarrativePerspective, 800),
-            OverallStyle = Clean(seed.OverallStyle, 1600),
-            Register = Clean(seed.Register, 800),
-            Audience = Clean(seed.Audience, 800),
-            UpdatedAt = DateTime.UtcNow
-        };
+            var extension = await LoadExtensionCoreAsync(
+                    workId,
+                    targetLanguage,
+                    cancellationToken)
+                ?? new BookTranslationExtension
+                {
+                    WorkId = workId,
+                    SourceLanguage = NormalizeLanguage(sourceLanguage),
+                    TargetLanguage = NormalizeLanguage(targetLanguage)
+                };
 
-        MergeThemes(
-            bible.Themes,
-            seed.Themes);
-        MergeEntities(
-            bible.Entities,
-            seed.Entities);
-        MergeTerms(
-            bible.Terms,
-            seed.Terms);
+            var document = await story.UpdateAsync(
+                workId,
+                sourceLanguage,
+                doc => StoryContextMerge.ApplySeed(
+                    doc,
+                    ToSeedInput(seed)),
+                cancellationToken);
 
-        await SaveAsync(
-            bible,
-            cancellationToken);
-        return bible;
+            foreach (var entity in seed.Entities)
+            {
+                MergeEntityName(extension, entity);
+            }
+
+            foreach (var term in seed.Terms)
+            {
+                MergeTermChoice(extension, term);
+            }
+
+            await SaveExtensionCoreAsync(extension, cancellationToken);
+            return Compose(extension, document);
+        }
+        finally
+        {
+            Gate.Release();
+        }
     }
 
     public async Task ApplyChapterDeltaAsync(
@@ -142,64 +225,58 @@ public sealed class BookTranslationMemoryStore
         int chapterNumber,
         string chapterTitle,
         BookTranslationMemoryDelta delta,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? sourceHash = null)
     {
-        MergeEntities(
-            bible.Entities,
-            delta.Entities);
-        MergeTerms(
-            bible.Terms,
-            delta.Terms);
-
-        var chapter = new BookTranslationChapterMemory(
-            chapterId,
-            chapterNumber,
-            Clean(chapterTitle, 500) ?? $"Chapter {chapterNumber}",
-            Clean(delta.ChapterSummary, 2500),
-            Clean(delta.ContinuityNotes, 2000),
-            DateTime.UtcNow);
-
-        var existingIndex = bible.Chapters.FindIndex(x =>
-            x.ChapterId == chapterId);
-
-        if (existingIndex >= 0)
-        {
-            bible.Chapters[existingIndex] = chapter;
-        }
-        else
-        {
-            bible.Chapters.Add(chapter);
-        }
-
-        if (bible.Chapters.Count > 1000)
-        {
-            bible.Chapters.RemoveRange(
-                0,
-                bible.Chapters.Count - 1000);
-        }
-
-        bible.UpdatedAt = DateTime.UtcNow;
-
-        await SaveAsync(
-            bible,
-            cancellationToken);
-    }
-
-    public async Task SaveAsync(
-        BookTranslationBible bible,
-        CancellationToken cancellationToken)
-    {
-        var path = GetPath(
-            bible.WorkId,
-            bible.TargetLanguage);
-
         await Gate.WaitAsync(cancellationToken);
         try
         {
-            await SaveCoreAsync(
-                bible,
-                path,
+            var extension = await LoadExtensionCoreAsync(
+                    bible.WorkId,
+                    bible.TargetLanguage,
+                    cancellationToken)
+                ?? new BookTranslationExtension
+                {
+                    WorkId = bible.WorkId,
+                    SourceLanguage = NormalizeLanguage(bible.SourceLanguage),
+                    TargetLanguage = NormalizeLanguage(bible.TargetLanguage)
+                };
+
+            foreach (var entity in delta.Entities)
+            {
+                MergeEntityName(extension, entity);
+            }
+
+            foreach (var term in delta.Terms)
+            {
+                MergeTermChoice(extension, term);
+            }
+
+            var locked = extension.Terms
+                .Where(x => x.Locked)
+                .Select(x => x.Source)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            var document = await story.UpdateAsync(
+                bible.WorkId,
+                bible.SourceLanguage,
+                doc => StoryContextMerge.ApplyChapter(
+                    doc,
+                    new StoryChapterInput(
+                        chapterId,
+                        chapterNumber,
+                        chapterTitle,
+                        delta.ChapterSummary,
+                        delta.ContinuityNotes,
+                        sourceHash,
+                        "translation:" + extension.TargetLanguage,
+                        delta.Entities.Select(ToEntityInput).ToArray(),
+                        delta.Terms.Select(x => new StoryTermInput(x.Source, x.Category)).ToArray()),
+                    locked.Contains),
                 cancellationToken);
+
+            await SaveExtensionCoreAsync(extension, cancellationToken);
+            CopyInto(Compose(extension, document), bible);
         }
         finally
         {
@@ -218,17 +295,12 @@ public sealed class BookTranslationMemoryStore
         MutateAsync(
             workId,
             targetLanguage,
-            bible =>
-            {
-                bible.NarrativePerspective =
-                    Clean(narrativePerspective, 800);
-                bible.OverallStyle =
-                    Clean(overallStyle, 1600);
-                bible.Register =
-                    Clean(register, 800);
-                bible.Audience =
-                    Clean(audience, 800);
-            },
+            (_, doc) => StoryContextMerge.SetStyle(
+                doc,
+                narrativePerspective,
+                overallStyle,
+                register,
+                audience),
             cancellationToken);
 
     public Task<BookTranslationBible?> UpsertTermAsync(
@@ -239,63 +311,87 @@ public sealed class BookTranslationMemoryStore
         string? category,
         string? notes,
         bool locked,
-        CancellationToken cancellationToken) =>
-        MutateAsync(
+        CancellationToken cancellationToken)
+    {
+        var cleanSource = Clean(source, 240)
+            ?? throw new InvalidOperationException(
+                "Source term is required.");
+        var cleanTarget = Clean(target, 240)
+            ?? throw new InvalidOperationException(
+                "Target term is required.");
+
+        return MutateAsync(
             workId,
             targetLanguage,
-            bible =>
+            (extension, doc) =>
             {
-                var cleanSource = Clean(source, 240)
-                    ?? throw new InvalidOperationException(
-                        "Source term is required.");
-                var cleanTarget = Clean(target, 240)
-                    ?? throw new InvalidOperationException(
-                        "Target term is required.");
-
-                var value = new BookTranslationTerm(
-                    cleanSource,
-                    cleanTarget,
-                    Clean(category, 120) ?? "term",
-                    Clean(notes, 1000),
-                    locked);
-
-                var index = bible.Terms.FindIndex(x =>
+                var index = extension.Terms.FindIndex(x =>
                     x.Source.Equals(
                         cleanSource,
                         StringComparison.OrdinalIgnoreCase));
 
-                if (index >= 0)
-                {
-                    bible.Terms[index] = value;
-                }
-                else if (bible.Terms.Count < 500)
-                {
-                    bible.Terms.Add(value);
-                }
-                else
+                if (index < 0 && extension.Terms.Count >= MaxTerms)
                 {
                     throw new InvalidOperationException(
                         "The Book Bible already contains the maximum number of terms.");
                 }
+
+                StoryContextMerge.UpsertTerm(
+                    doc,
+                    cleanSource,
+                    Clean(category, 120) ?? "term");
+
+                var value = new BookTranslationTermChoice
+                {
+                    Source = cleanSource,
+                    Target = cleanTarget,
+                    Notes = Clean(notes, 1000),
+                    Locked = locked
+                };
+
+                if (index >= 0)
+                {
+                    extension.Terms[index] = value;
+                }
+                else
+                {
+                    extension.Terms.Add(value);
+                }
             },
             cancellationToken);
+    }
 
-    public Task<BookTranslationBible?> RemoveTermAsync(
+    public async Task<BookTranslationBible?> RemoveTermAsync(
         Guid workId,
         string targetLanguage,
         string source,
-        CancellationToken cancellationToken) =>
-        MutateAsync(
+        CancellationToken cancellationToken)
+    {
+        var clean = source.Trim();
+        var referencedElsewhere = await IsReferencedByOtherLanguagesAsync(
             workId,
             targetLanguage,
-            bible =>
+            extension => extension.Terms.Any(x =>
+                x.Source.Equals(clean, StringComparison.OrdinalIgnoreCase)),
+            cancellationToken);
+
+        return await MutateAsync(
+            workId,
+            targetLanguage,
+            (extension, doc) =>
             {
-                bible.Terms.RemoveAll(x =>
+                extension.Terms.RemoveAll(x =>
                     x.Source.Equals(
-                        source.Trim(),
+                        clean,
                         StringComparison.OrdinalIgnoreCase));
+
+                if (!referencedElsewhere)
+                {
+                    StoryContextMerge.RemoveTerm(doc, clean);
+                }
             },
             cancellationToken);
+    }
 
     public Task<BookTranslationBible?> UpsertEntityAsync(
         Guid workId,
@@ -307,125 +403,502 @@ public sealed class BookTranslationMemoryStore
         string? pronouns,
         string? relationships,
         string? voiceNotes,
-        CancellationToken cancellationToken) =>
-        MutateAsync(
+        CancellationToken cancellationToken)
+    {
+        var cleanSource = Clean(sourceName, 240)
+            ?? throw new InvalidOperationException(
+                "Source entity name is required.");
+        var cleanTarget = Clean(targetName, 240)
+            ?? throw new InvalidOperationException(
+                "Target entity name is required.");
+        var cleanType = Clean(type, 120) ?? "entity";
+
+        return MutateAsync(
             workId,
             targetLanguage,
-            bible =>
+            (extension, doc) =>
             {
-                var cleanSource = Clean(sourceName, 240)
-                    ?? throw new InvalidOperationException(
-                        "Source entity name is required.");
-                var cleanTarget = Clean(targetName, 240)
-                    ?? throw new InvalidOperationException(
-                        "Target entity name is required.");
-                var cleanType = Clean(type, 120) ?? "entity";
-
-                var value = new BookTranslationEntity(
-                    cleanSource,
-                    cleanTarget,
-                    cleanType,
-                    Clean(description, 1200),
-                    Clean(pronouns, 300),
-                    Clean(relationships, 1200),
-                    Clean(voiceNotes, 1200));
-
-                var index = bible.Entities.FindIndex(x =>
-                    x.SourceName.Equals(
-                        cleanSource,
-                        StringComparison.OrdinalIgnoreCase)
-                    && x.Type.Equals(
-                        cleanType,
-                        StringComparison.OrdinalIgnoreCase));
-
-                if (index >= 0)
-                {
-                    bible.Entities[index] = value;
-                }
-                else if (bible.Entities.Count < 250)
-                {
-                    bible.Entities.Add(value);
-                }
-                else
+                var index = FindEntityName(extension, cleanSource, cleanType);
+                if (index < 0 && extension.Entities.Count >= MaxEntities)
                 {
                     throw new InvalidOperationException(
                         "The Book Bible already contains the maximum number of entities.");
                 }
+
+                StoryContextMerge.UpsertEntity(
+                    doc,
+                    new StoryEntityInput(
+                        cleanSource,
+                        cleanType,
+                        Clean(description, 1200),
+                        Clean(pronouns, 300),
+                        Clean(relationships, 1200),
+                        Clean(voiceNotes, 1200)));
+
+                var value = new BookTranslationEntityName
+                {
+                    Name = cleanSource,
+                    Type = cleanType,
+                    TargetName = cleanTarget
+                };
+
+                if (index >= 0)
+                {
+                    extension.Entities[index] = value;
+                }
+                else
+                {
+                    extension.Entities.Add(value);
+                }
             },
             cancellationToken);
+    }
 
-    public Task<BookTranslationBible?> RemoveEntityAsync(
+    public async Task<BookTranslationBible?> RemoveEntityAsync(
         Guid workId,
         string targetLanguage,
         string sourceName,
         string type,
-        CancellationToken cancellationToken) =>
-        MutateAsync(
+        CancellationToken cancellationToken)
+    {
+        var cleanName = sourceName.Trim();
+        var cleanType = type.Trim();
+        var referencedElsewhere = await IsReferencedByOtherLanguagesAsync(
             workId,
             targetLanguage,
-            bible =>
-            {
-                bible.Entities.RemoveAll(x =>
-                    x.SourceName.Equals(
-                        sourceName.Trim(),
-                        StringComparison.OrdinalIgnoreCase)
-                    && x.Type.Equals(
-                        type.Trim(),
-                        StringComparison.OrdinalIgnoreCase));
-            },
+            extension => FindEntityName(extension, cleanName, cleanType) >= 0,
             cancellationToken);
 
+        return await MutateAsync(
+            workId,
+            targetLanguage,
+            (extension, doc) =>
+            {
+                extension.Entities.RemoveAll(x =>
+                    x.Name.Equals(cleanName, StringComparison.OrdinalIgnoreCase)
+                    && x.Type.Equals(cleanType, StringComparison.OrdinalIgnoreCase));
+
+                if (!referencedElsewhere)
+                {
+                    StoryContextMerge.RemoveEntity(doc, cleanName, cleanType);
+                }
+            },
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Deletes the bible of one target language. The shared story memory is
+    /// removed with the last translation that uses it.
+    /// </summary>
     public async Task ResetAsync(
         Guid workId,
         string targetLanguage,
         CancellationToken cancellationToken)
     {
-        var path = GetPath(
-            workId,
-            targetLanguage);
-
         await Gate.WaitAsync(cancellationToken);
         try
         {
-            if (File.Exists(path))
+            var path = GetPath(workId, targetLanguage);
+            foreach (var file in new[] { path, path + LegacyBackupSuffix })
             {
-                File.Delete(path);
+                if (File.Exists(file))
+                {
+                    File.Delete(file);
+                }
             }
+
+            if (EnumerateExtensionFiles(workId).Any())
+            {
+                return;
+            }
+
+            await story.DeleteAsync(workId, cancellationToken);
         }
         finally
         {
             Gate.Release();
         }
+    }
+
+    /// <summary>Deletes every translation bible and the shared story memory of a work.</summary>
+    public async Task DeleteWorkAsync(
+        Guid workId,
+        CancellationToken cancellationToken)
+    {
+        await Gate.WaitAsync(cancellationToken);
+        try
+        {
+            var directory = WorkDirectory(workId);
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+
+            await story.DeleteAsync(workId, cancellationToken);
+        }
+        finally
+        {
+            Gate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Migrates every version-1 bible below the root into the shared story
+    /// memory plus a version-2 translation extension. Idempotent; the
+    /// original file is kept as <c>&lt;lang&gt;.json.v1.bak</c>.
+    /// </summary>
+    public async Task<int> MigrateLegacyAsync(
+        CancellationToken cancellationToken)
+    {
+        if (!Directory.Exists(rootPath))
+        {
+            return 0;
+        }
+
+        var migrated = 0;
+        foreach (var directory in Directory.EnumerateDirectories(rootPath))
+        {
+            if (!Guid.TryParseExact(
+                    Path.GetFileName(directory),
+                    "N",
+                    out var workId))
+            {
+                continue;
+            }
+
+            foreach (var file in Directory.EnumerateFiles(directory, "*.json"))
+            {
+                await Gate.WaitAsync(cancellationToken);
+                try
+                {
+                    if (await ReadFileAsync(file, cancellationToken) is { Legacy: { } legacy }
+                        && legacy.WorkId == workId)
+                    {
+                        await MigrateCoreAsync(legacy, file, cancellationToken);
+                        migrated++;
+                    }
+                }
+                finally
+                {
+                    Gate.Release();
+                }
+            }
+        }
+
+        return migrated;
+    }
+
+    public static string RenderContext(
+        BookTranslationBible bible,
+        int maxCharacters = StoryContextBudgets.TranslationFull) =>
+        Render(
+            bible,
+            new StoryContextQuery
+            {
+                Fields = StoryContextFields.Style
+                    | StoryContextFields.Themes
+                    | StoryContextFields.Entities
+                    | StoryContextFields.EntityDetails
+                    | StoryContextFields.Terms
+                    | StoryContextFields.RecentChapters,
+                MaxThemes = 20,
+                MaxEntities = 80,
+                MaxTerms = 140,
+                RecentChapterCount = 8
+            },
+            "Established entities/characters:",
+            "Established terminology:",
+            "Recent chapter memory:",
+            includeEntityNotes: true,
+            maxCharacters);
+
+    /// <summary>
+    /// Translation context for one source segment: only entities and terms
+    /// the segment mentions (locked terms always), and the chapters leading
+    /// into <paramref name="chapterNumber"/> when given.
+    /// </summary>
+    public static string RenderRelevantContext(
+        BookTranslationBible bible,
+        string sourceText,
+        int maxCharacters = StoryContextBudgets.TranslationMemory,
+        int? chapterNumber = null) =>
+        Render(
+            bible,
+            new StoryContextQuery
+            {
+                Chapter = chapterNumber,
+                Fields = StoryContextFields.Style
+                    | StoryContextFields.Themes
+                    | StoryContextFields.Entities
+                    | StoryContextFields.EntityDetails
+                    | StoryContextFields.Terms
+                    | StoryContextFields.RecentChapters,
+                RelevantText = sourceText,
+                PinnedTerms = bible.Terms
+                    .Where(x => x.Locked)
+                    .Select(x => x.Source)
+                    .ToArray(),
+                MaxThemes = 12,
+                MaxEntities = 24,
+                MaxTerms = 48,
+                RecentChapterCount = 3
+            },
+            "Relevant established entities/characters:",
+            "Relevant established terminology:",
+            "Recent continuity:",
+            includeEntityNotes: false,
+            maxCharacters);
+
+    private static string Render(
+        BookTranslationBible bible,
+        StoryContextQuery query,
+        string entitiesHeading,
+        string termsHeading,
+        string chaptersHeading,
+        bool includeEntityNotes,
+        int maxCharacters)
+    {
+        var snapshot = StoryContextBuilder.Build(
+            ToDocument(bible),
+            query);
+
+        var targets = bible.Entities
+            .GroupBy(x => (x.SourceName.ToLowerInvariant(), x.Type.ToLowerInvariant()))
+            .ToDictionary(x => x.Key, x => x.First().TargetName);
+        var terms = bible.Terms
+            .GroupBy(x => x.Source, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(x => x.Key, x => x.First(), StringComparer.OrdinalIgnoreCase);
+
+        var builder = new StringBuilder();
+        builder.AppendLine("BOOK TRANSLATION BIBLE");
+
+        if (snapshot.Style is { } style)
+        {
+            AppendValue(builder, "Narrative perspective", style.NarrativePerspective);
+            AppendValue(builder, "Overall style", style.OverallStyle);
+            AppendValue(builder, "Register", style.Register);
+            AppendValue(builder, "Audience", style.Audience);
+        }
+
+        if (snapshot.Themes.Count > 0)
+        {
+            builder.AppendLine("Themes: " + string.Join(", ", snapshot.Themes));
+        }
+
+        if (snapshot.Entities.Count > 0)
+        {
+            builder.AppendLine(entitiesHeading);
+            foreach (var entity in snapshot.Entities)
+            {
+                var target = targets.GetValueOrDefault(
+                    (entity.Name.ToLowerInvariant(), entity.Type.ToLowerInvariant()),
+                    entity.Name);
+
+                builder.AppendLine(
+                    $"- {entity.Name} → {target} [{entity.Type}]"
+                    + Optional(entity.Pronouns, " pronouns=")
+                    + Optional(entity.Relationships, " relationships=")
+                    + Optional(entity.VoiceNotes, " voice=")
+                    + (includeEntityNotes
+                        ? Optional(entity.Description, " notes=")
+                        : ""));
+            }
+        }
+
+        if (snapshot.Terms.Count > 0)
+        {
+            builder.AppendLine(termsHeading);
+            foreach (var view in snapshot.Terms)
+            {
+                var term = terms[view.Source];
+                builder.AppendLine(
+                    $"- {term.Source} → {term.Target} [{term.Category}]"
+                    + (term.Locked ? " LOCKED" : "")
+                    + Optional(term.Notes, " notes="));
+            }
+        }
+
+        if (snapshot.RecentChapters.Count > 0)
+        {
+            builder.AppendLine(chaptersHeading);
+            foreach (var chapter in snapshot.RecentChapters)
+            {
+                builder.AppendLine(
+                    $"- Chapter {chapter.Number}: {chapter.Title}"
+                    + Optional(chapter.Summary, " summary=")
+                    + Optional(chapter.ContinuityNotes, " continuity="));
+            }
+        }
+
+        return StoryContextBuilder.Truncate(
+            builder.ToString().Trim(),
+            maxCharacters);
+    }
+
+    /// <summary>The bible's neutral content as a story document (for the context builder).</summary>
+    private static StoryContextDocument ToDocument(BookTranslationBible bible) =>
+        new()
+        {
+            WorkId = bible.WorkId,
+            SourceLanguage = bible.SourceLanguage,
+            Style = new StoryStyle
+            {
+                NarrativePerspective = bible.NarrativePerspective,
+                OverallStyle = bible.OverallStyle,
+                Register = bible.Register,
+                Audience = bible.Audience
+            },
+            Themes = [.. bible.Themes],
+            Entities = bible.Entities
+                .Select(x => new StoryEntity
+                {
+                    Name = x.SourceName,
+                    Type = x.Type,
+                    Aliases = [.. x.Aliases],
+                    Description = x.Description,
+                    Pronouns = x.Pronouns,
+                    Relationships = x.Relationships,
+                    VoiceNotes = x.VoiceNotes
+                })
+                .ToList(),
+            Terms = bible.Terms
+                .Select(x => new StoryTerm
+                {
+                    Source = x.Source,
+                    Category = x.Category
+                })
+                .ToList(),
+            Chapters = bible.Chapters
+                .Select(x => new StoryChapterMemory
+                {
+                    ChapterId = x.ChapterId,
+                    Number = x.ChapterNumber,
+                    Title = x.ChapterTitle,
+                    Summary = x.Summary,
+                    ContinuityNotes = x.ContinuityNotes
+                })
+                .ToList()
+        };
+
+    private static BookTranslationBible Compose(
+        BookTranslationExtension extension,
+        StoryContextDocument? document)
+    {
+        document ??= new StoryContextDocument
+        {
+            WorkId = extension.WorkId,
+            SourceLanguage = extension.SourceLanguage
+        };
+
+        var names = extension.Entities
+            .GroupBy(x => (x.Name.ToLowerInvariant(), x.Type.ToLowerInvariant()))
+            .ToDictionary(x => x.Key, x => x.First().TargetName);
+
+        var entities = document.Entities
+            .Where(x => names.ContainsKey((x.Name.ToLowerInvariant(), x.Type.ToLowerInvariant())))
+            .Select(x => new BookTranslationEntity(
+                x.Name,
+                names[(x.Name.ToLowerInvariant(), x.Type.ToLowerInvariant())],
+                x.Type,
+                x.Description,
+                x.Pronouns,
+                x.Relationships,
+                x.VoiceNotes)
+            {
+                Aliases = x.Aliases.ToArray()
+            })
+            .ToList();
+
+        var terms = extension.Terms
+            .Select(x => new BookTranslationTerm(
+                x.Source,
+                x.Target,
+                StoryContextMerge.FindTerm(document, x.Source)?.Category ?? "term",
+                x.Notes,
+                x.Locked))
+            .ToList();
+
+        return new BookTranslationBible
+        {
+            Version = BookTranslationExtension.CurrentVersion,
+            WorkId = extension.WorkId,
+            SourceLanguage = extension.SourceLanguage,
+            TargetLanguage = extension.TargetLanguage,
+            NarrativePerspective = document.Style.NarrativePerspective,
+            OverallStyle = document.Style.OverallStyle,
+            Register = document.Style.Register,
+            Audience = document.Style.Audience,
+            Themes = [.. document.Themes],
+            Entities = entities,
+            Terms = terms,
+            Chapters = document.Chapters
+                .OrderBy(x => x.Number)
+                .Select(x => new BookTranslationChapterMemory(
+                    x.ChapterId,
+                    x.Number,
+                    x.Title,
+                    x.Summary,
+                    x.ContinuityNotes,
+                    x.UpdatedAt))
+                .ToList(),
+            UpdatedAt = extension.UpdatedAt > document.UpdatedAt
+                ? extension.UpdatedAt
+                : document.UpdatedAt
+        };
+    }
+
+    private static void CopyInto(
+        BookTranslationBible source,
+        BookTranslationBible destination)
+    {
+        destination.NarrativePerspective = source.NarrativePerspective;
+        destination.OverallStyle = source.OverallStyle;
+        destination.Register = source.Register;
+        destination.Audience = source.Audience;
+        destination.UpdatedAt = source.UpdatedAt;
+        Replace(destination.Themes, source.Themes);
+        Replace(destination.Entities, source.Entities);
+        Replace(destination.Terms, source.Terms);
+        Replace(destination.Chapters, source.Chapters);
+    }
+
+    private static void Replace<T>(List<T> destination, List<T> source)
+    {
+        destination.Clear();
+        destination.AddRange(source);
     }
 
     private async Task<BookTranslationBible?> MutateAsync(
         Guid workId,
         string targetLanguage,
-        Action<BookTranslationBible> mutation,
+        Action<BookTranslationExtension, StoryContextDocument> mutation,
         CancellationToken cancellationToken)
     {
-        var path = GetPath(
-            workId,
-            targetLanguage);
-
         await Gate.WaitAsync(cancellationToken);
         try
         {
-            var bible = await LoadCoreAsync(
-                path,
+            var extension = await LoadExtensionCoreAsync(
+                workId,
+                targetLanguage,
                 cancellationToken);
 
-            if (bible is null)
+            if (extension is null)
             {
                 return null;
             }
 
-            mutation(bible);
-            await SaveCoreAsync(
-                bible,
-                path,
+            var document = await story.UpdateAsync(
+                workId,
+                extension.SourceLanguage,
+                doc =>
+                {
+                    mutation(extension, doc);
+                    return true;
+                },
                 cancellationToken);
-            return bible;
+
+            await SaveExtensionCoreAsync(extension, cancellationToken);
+            return Compose(extension, document);
         }
         finally
         {
@@ -433,7 +906,255 @@ public sealed class BookTranslationMemoryStore
         }
     }
 
-    private static async Task<BookTranslationBible?> LoadCoreAsync(
+    private async Task<bool> IsReferencedByOtherLanguagesAsync(
+        Guid workId,
+        string targetLanguage,
+        Func<BookTranslationExtension, bool> predicate,
+        CancellationToken cancellationToken)
+    {
+        var current = GetPath(workId, targetLanguage);
+
+        foreach (var file in EnumerateExtensionFiles(workId))
+        {
+            if (string.Equals(
+                    Path.GetFullPath(file),
+                    current,
+                    StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (await ReadFileAsync(file, cancellationToken) is { Extension: { } other }
+                && predicate(other))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private IEnumerable<string> EnumerateExtensionFiles(Guid workId)
+    {
+        var directory = WorkDirectory(workId);
+        return Directory.Exists(directory)
+            ? Directory.EnumerateFiles(directory, "*.json")
+            : [];
+    }
+
+    /// <summary>Loads the language extension, migrating a version-1 bible on first read.</summary>
+    private async Task<BookTranslationExtension?> LoadExtensionCoreAsync(
+        Guid workId,
+        string targetLanguage,
+        CancellationToken cancellationToken)
+    {
+        var path = GetPath(workId, targetLanguage);
+        var stored = await ReadFileAsync(path, cancellationToken);
+
+        if (stored?.Legacy is { } legacy)
+        {
+            return await MigrateCoreAsync(legacy, path, cancellationToken);
+        }
+
+        return stored?.Extension;
+    }
+
+    private async Task<BookTranslationExtension> MigrateCoreAsync(
+        BookTranslationBible legacy,
+        string path,
+        CancellationToken cancellationToken)
+    {
+        var backup = path + LegacyBackupSuffix;
+        if (!File.Exists(backup))
+        {
+            File.Copy(path, backup);
+        }
+
+        var targetLanguage = NormalizeLanguage(legacy.TargetLanguage);
+
+        await story.UpdateAsync(
+            legacy.WorkId,
+            legacy.SourceLanguage,
+            doc =>
+            {
+                var changed = StoryContextMerge.ApplySeed(
+                    doc,
+                    ToSeedInput(
+                        new BookTranslationBibleSeed(
+                            legacy.NarrativePerspective,
+                            legacy.OverallStyle,
+                            legacy.Register,
+                            legacy.Audience,
+                            legacy.Themes,
+                            legacy.Entities,
+                            legacy.Terms)));
+
+                foreach (var entity in doc.Entities.Where(x => x.Origin == StoryFactOrigins.Analysis))
+                {
+                    entity.Origin = StoryFactOrigins.Legacy;
+                }
+
+                foreach (var term in doc.Terms.Where(x => x.Origin == StoryFactOrigins.Analysis))
+                {
+                    term.Origin = StoryFactOrigins.Legacy;
+                }
+
+                foreach (var chapter in legacy.Chapters)
+                {
+                    if (doc.Chapters.Any(x =>
+                            x.ChapterId == chapter.ChapterId
+                            || x.Number == chapter.ChapterNumber))
+                    {
+                        continue;
+                    }
+
+                    doc.Chapters.Add(new StoryChapterMemory
+                    {
+                        ChapterId = chapter.ChapterId,
+                        Number = chapter.ChapterNumber,
+                        Title = chapter.ChapterTitle,
+                        Summary = chapter.Summary,
+                        ContinuityNotes = chapter.ContinuityNotes,
+                        ExtractedBy = "translation:" + targetLanguage,
+                        UpdatedAt = chapter.UpdatedAt
+                    });
+                    changed = true;
+                }
+
+                return changed;
+            },
+            cancellationToken);
+
+        var extension = new BookTranslationExtension
+        {
+            WorkId = legacy.WorkId,
+            SourceLanguage = NormalizeLanguage(legacy.SourceLanguage),
+            TargetLanguage = targetLanguage,
+            UpdatedAt = legacy.UpdatedAt
+        };
+
+        foreach (var entity in legacy.Entities)
+        {
+            MergeEntityName(extension, entity);
+        }
+
+        foreach (var term in legacy.Terms)
+        {
+            MergeTermChoice(extension, term);
+        }
+
+        await SaveExtensionCoreAsync(extension, cancellationToken, keepUpdatedAt: true);
+        return extension;
+    }
+
+    private static StorySeedInput ToSeedInput(BookTranslationBibleSeed seed) =>
+        new(
+            seed.NarrativePerspective,
+            seed.OverallStyle,
+            seed.Register,
+            seed.Audience,
+            seed.Themes,
+            seed.Entities.Select(ToEntityInput).ToArray(),
+            seed.Terms.Select(x => new StoryTermInput(x.Source, x.Category)).ToArray(),
+            seed.AnalysisThroughChapter);
+
+    private static StoryEntityInput ToEntityInput(BookTranslationEntity entity) =>
+        new(
+            entity.SourceName,
+            entity.Type,
+            entity.Description,
+            entity.Pronouns,
+            entity.Relationships,
+            entity.VoiceNotes,
+            Appearance: null,
+            entity.Aliases);
+
+    private static void MergeEntityName(
+        BookTranslationExtension extension,
+        BookTranslationEntity entity)
+    {
+        var name = Clean(entity.SourceName, 240);
+        var target = Clean(entity.TargetName, 240);
+        if (name is null || target is null)
+        {
+            return;
+        }
+
+        var type = Clean(entity.Type, 120) ?? "entity";
+        var index = FindEntityName(extension, name, type);
+        if (index >= 0)
+        {
+            extension.Entities[index].TargetName = target;
+        }
+        else if (extension.Entities.Count < MaxEntities)
+        {
+            extension.Entities.Add(new BookTranslationEntityName
+            {
+                Name = name,
+                Type = type,
+                TargetName = target
+            });
+        }
+    }
+
+    /// <summary>A locked term keeps its target; AI suggestions only fill missing notes.</summary>
+    private static void MergeTermChoice(
+        BookTranslationExtension extension,
+        BookTranslationTerm term)
+    {
+        var source = Clean(term.Source, 240);
+        var target = Clean(term.Target, 240);
+        if (source is null || target is null)
+        {
+            return;
+        }
+
+        var notes = Clean(term.Notes, 1000);
+        var current = extension.Terms.FirstOrDefault(x =>
+            x.Source.Equals(source, StringComparison.OrdinalIgnoreCase));
+
+        if (current is null)
+        {
+            if (extension.Terms.Count < MaxTerms)
+            {
+                extension.Terms.Add(new BookTranslationTermChoice
+                {
+                    Source = source,
+                    Target = target,
+                    Notes = notes,
+                    Locked = term.Locked
+                });
+            }
+
+            return;
+        }
+
+        if (current.Locked)
+        {
+            current.Notes = string.IsNullOrWhiteSpace(current.Notes)
+                ? notes
+                : current.Notes;
+            return;
+        }
+
+        current.Target = target;
+        current.Notes = notes;
+        current.Locked = term.Locked;
+    }
+
+    private static int FindEntityName(
+        BookTranslationExtension extension,
+        string name,
+        string type) =>
+        extension.Entities.FindIndex(x =>
+            x.Name.Equals(name, StringComparison.OrdinalIgnoreCase)
+            && x.Type.Equals(type, StringComparison.OrdinalIgnoreCase));
+
+    private sealed record StoredFile(
+        BookTranslationExtension? Extension,
+        BookTranslationBible? Legacy);
+
+    private static async Task<StoredFile?> ReadFileAsync(
         string path,
         CancellationToken cancellationToken)
     {
@@ -451,35 +1172,50 @@ public sealed class BookTranslationMemoryStore
                 return null;
             }
 
-            await using var stream = new FileStream(
-                path,
-                FileMode.Open,
-                FileAccess.Read,
-                FileShare.Read,
-                81920,
-                useAsync: true);
+            var bytes = await File.ReadAllBytesAsync(path, cancellationToken);
+            using var json = JsonDocument.Parse(bytes);
+            var version = json.RootElement.TryGetProperty("version", out var value)
+                && value.ValueKind == JsonValueKind.Number
+                    ? value.GetInt32()
+                    : 1;
 
-            return await JsonSerializer.DeserializeAsync<BookTranslationBible>(
-                stream,
-                JsonOptions,
-                cancellationToken);
+            return version >= BookTranslationExtension.CurrentVersion
+                ? new StoredFile(
+                    json.RootElement.Deserialize<BookTranslationExtension>(JsonOptions),
+                    null)
+                : new StoredFile(
+                    null,
+                    json.RootElement.Deserialize<BookTranslationBible>(JsonOptions));
         }
         catch (Exception exception) when (
             exception is IOException
                 or UnauthorizedAccessException
-                or JsonException)
+                or JsonException
+                or FormatException
+                or InvalidOperationException)
         {
             return null;
         }
     }
 
-    private static async Task SaveCoreAsync(
-        BookTranslationBible bible,
-        string path,
-        CancellationToken cancellationToken)
+    private async Task SaveExtensionCoreAsync(
+        BookTranslationExtension extension,
+        CancellationToken cancellationToken,
+        bool keepUpdatedAt = false)
     {
-        NormalizeBible(bible);
+        extension.Version = BookTranslationExtension.CurrentVersion;
+        extension.Entities.RemoveAll(x =>
+            string.IsNullOrWhiteSpace(x.Name)
+            || string.IsNullOrWhiteSpace(x.TargetName));
+        extension.Terms.RemoveAll(x =>
+            string.IsNullOrWhiteSpace(x.Source)
+            || string.IsNullOrWhiteSpace(x.Target));
+        if (!keepUpdatedAt)
+        {
+            extension.UpdatedAt = DateTime.UtcNow;
+        }
 
+        var path = GetPath(extension.WorkId, extension.TargetLanguage);
         var directory = Path.GetDirectoryName(path)
             ?? throw new InvalidOperationException(
                 "Book translation-memory directory is unavailable.");
@@ -496,7 +1232,7 @@ public sealed class BookTranslationMemoryStore
         {
             await JsonSerializer.SerializeAsync(
                 stream,
-                bible,
+                extension,
                 JsonOptions,
                 cancellationToken);
         }
@@ -514,210 +1250,10 @@ public sealed class BookTranslationMemoryStore
             overwrite: true);
     }
 
-    public static string RenderContext(
-        BookTranslationBible bible,
-        int maxCharacters = 12000)
-    {
-        var builder = new StringBuilder();
-
-        AppendLine(
-            builder,
-            "BOOK TRANSLATION BIBLE");
-        AppendValue(
-            builder,
-            "Narrative perspective",
-            bible.NarrativePerspective);
-        AppendValue(
-            builder,
-            "Overall style",
-            bible.OverallStyle);
-        AppendValue(
-            builder,
-            "Register",
-            bible.Register);
-        AppendValue(
-            builder,
-            "Audience",
-            bible.Audience);
-
-        if (bible.Themes.Count > 0)
-        {
-            AppendLine(
-                builder,
-                "Themes: "
-                + string.Join(
-                    ", ",
-                    bible.Themes.Take(20)));
-        }
-
-        if (bible.Entities.Count > 0)
-        {
-            AppendLine(
-                builder,
-                "Established entities/characters:");
-
-            foreach (var entity in bible.Entities.Take(80))
-            {
-                AppendLine(
-                    builder,
-                    $"- {entity.SourceName} → {entity.TargetName} [{entity.Type}]"
-                    + Optional(
-                        entity.Pronouns,
-                        " pronouns=")
-                    + Optional(
-                        entity.Relationships,
-                        " relationships=")
-                    + Optional(
-                        entity.VoiceNotes,
-                        " voice=")
-                    + Optional(
-                        entity.Description,
-                        " notes="));
-            }
-        }
-
-        if (bible.Terms.Count > 0)
-        {
-            AppendLine(
-                builder,
-                "Established terminology:");
-
-            foreach (var term in bible.Terms.Take(140))
-            {
-                AppendLine(
-                    builder,
-                    $"- {term.Source} → {term.Target} [{term.Category}]"
-                    + (term.Locked ? " LOCKED" : "")
-                    + Optional(
-                        term.Notes,
-                        " notes="));
-            }
-        }
-
-        var recentChapters = bible.Chapters
-            .OrderByDescending(x => x.ChapterNumber)
-            .Take(8)
-            .OrderBy(x => x.ChapterNumber)
-            .ToArray();
-
-        if (recentChapters.Length > 0)
-        {
-            AppendLine(
-                builder,
-                "Recent chapter memory:");
-
-            foreach (var chapter in recentChapters)
-            {
-                AppendLine(
-                    builder,
-                    $"- Chapter {chapter.ChapterNumber}: {chapter.ChapterTitle}"
-                    + Optional(
-                        chapter.Summary,
-                        " summary=")
-                    + Optional(
-                        chapter.ContinuityNotes,
-                        " continuity="));
-            }
-        }
-
-        var value = builder
-            .ToString()
-            .Trim();
-
-        return value.Length <= maxCharacters
-            ? value
-            : value[..maxCharacters];
-    }
-
-    public static string RenderRelevantContext(
-        BookTranslationBible bible,
-        string sourceText,
-        int maxCharacters = 5000)
-    {
-        var builder = new StringBuilder();
-
-        AppendLine(builder, "BOOK TRANSLATION BIBLE");
-        AppendValue(builder, "Narrative perspective", bible.NarrativePerspective);
-        AppendValue(builder, "Overall style", bible.OverallStyle);
-        AppendValue(builder, "Register", bible.Register);
-        AppendValue(builder, "Audience", bible.Audience);
-
-        if (bible.Themes.Count > 0)
-        {
-            AppendLine(
-                builder,
-                "Themes: " + string.Join(", ", bible.Themes.Take(12)));
-        }
-
-        var relevantEntities = bible.Entities
-            .Where(entity =>
-                sourceText.Contains(
-                    entity.SourceName,
-                    StringComparison.OrdinalIgnoreCase))
-            .Take(24)
-            .ToArray();
-
-        if (relevantEntities.Length > 0)
-        {
-            AppendLine(builder, "Relevant established entities/characters:");
-            foreach (var entity in relevantEntities)
-            {
-                AppendLine(
-                    builder,
-                    $"- {entity.SourceName} → {entity.TargetName} [{entity.Type}]"
-                    + Optional(entity.Pronouns, " pronouns=")
-                    + Optional(entity.Relationships, " relationships=")
-                    + Optional(entity.VoiceNotes, " voice="));
-            }
-        }
-
-        var relevantTerms = bible.Terms
-            .Where(term =>
-                term.Locked
-                || sourceText.Contains(
-                    term.Source,
-                    StringComparison.OrdinalIgnoreCase))
-            .OrderByDescending(term => term.Locked)
-            .Take(48)
-            .ToArray();
-
-        if (relevantTerms.Length > 0)
-        {
-            AppendLine(builder, "Relevant established terminology:");
-            foreach (var term in relevantTerms)
-            {
-                AppendLine(
-                    builder,
-                    $"- {term.Source} → {term.Target} [{term.Category}]"
-                    + (term.Locked ? " LOCKED" : "")
-                    + Optional(term.Notes, " notes="));
-            }
-        }
-
-        var recentChapters = bible.Chapters
-            .OrderByDescending(x => x.ChapterNumber)
-            .Take(3)
-            .OrderBy(x => x.ChapterNumber)
-            .ToArray();
-
-        if (recentChapters.Length > 0)
-        {
-            AppendLine(builder, "Recent continuity:");
-            foreach (var chapter in recentChapters)
-            {
-                AppendLine(
-                    builder,
-                    $"- Chapter {chapter.ChapterNumber}: {chapter.ChapterTitle}"
-                    + Optional(chapter.Summary, " summary=")
-                    + Optional(chapter.ContinuityNotes, " continuity="));
-            }
-        }
-
-        var value = builder.ToString().Trim();
-        return value.Length <= maxCharacters
-            ? value
-            : value[..maxCharacters];
-    }
+    private string WorkDirectory(Guid workId) =>
+        Path.Combine(
+            rootPath,
+            workId.ToString("N"));
 
     private string GetPath(
         Guid workId,
@@ -735,239 +1271,16 @@ public sealed class BookTranslationMemoryStore
         }
 
         return Path.Combine(
-            rootPath,
-            workId.ToString("N"),
+            WorkDirectory(workId),
             safeLanguage + ".json");
     }
 
-    private static void NormalizeBible(
-        BookTranslationBible bible)
-    {
-        bible.NarrativePerspective =
-            Clean(
-                bible.NarrativePerspective,
-                800);
-        bible.OverallStyle =
-            Clean(
-                bible.OverallStyle,
-                1600);
-        bible.Register =
-            Clean(
-                bible.Register,
-                800);
-        bible.Audience =
-            Clean(
-                bible.Audience,
-                800);
-
-        bible.Themes.RemoveAll(x =>
-            string.IsNullOrWhiteSpace(x));
-        bible.Entities.RemoveAll(x =>
-            string.IsNullOrWhiteSpace(x.SourceName)
-            || string.IsNullOrWhiteSpace(x.TargetName));
-        bible.Terms.RemoveAll(x =>
-            string.IsNullOrWhiteSpace(x.Source)
-            || string.IsNullOrWhiteSpace(x.Target));
-
-        if (bible.Themes.Count > 40)
-        {
-            bible.Themes.RemoveRange(
-                40,
-                bible.Themes.Count - 40);
-        }
-
-        if (bible.Entities.Count > 250)
-        {
-            bible.Entities.RemoveRange(
-                250,
-                bible.Entities.Count - 250);
-        }
-
-        if (bible.Terms.Count > 500)
-        {
-            bible.Terms.RemoveRange(
-                500,
-                bible.Terms.Count - 500);
-        }
-
-        bible.UpdatedAt = DateTime.UtcNow;
-    }
-
-    private static void MergeThemes(
-        List<string> destination,
-        IEnumerable<string> incoming)
-    {
-        foreach (var value in incoming)
-        {
-            var clean = Clean(
-                value,
-                160);
-            if (clean is null
-                || destination.Contains(
-                    clean,
-                    StringComparer.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            destination.Add(clean);
-
-            if (destination.Count >= 40)
-            {
-                break;
-            }
-        }
-    }
-
-    private static void MergeEntities(
-        List<BookTranslationEntity> destination,
-        IEnumerable<BookTranslationEntity> incoming)
-    {
-        foreach (var item in incoming)
-        {
-            var source = Clean(
-                item.SourceName,
-                240);
-            var target = Clean(
-                item.TargetName,
-                240);
-
-            if (source is null
-                || target is null)
-            {
-                continue;
-            }
-
-            var type = Clean(
-                    item.Type,
-                    120)
-                ?? "entity";
-
-            var normalized = new BookTranslationEntity(
-                source,
-                target,
-                type,
-                Clean(
-                    item.Description,
-                    1200),
-                Clean(
-                    item.Pronouns,
-                    300),
-                Clean(
-                    item.Relationships,
-                    1200),
-                Clean(
-                    item.VoiceNotes,
-                    1200));
-
-            var index = destination.FindIndex(x =>
-                x.SourceName.Equals(
-                    source,
-                    StringComparison.OrdinalIgnoreCase)
-                && x.Type.Equals(
-                    type,
-                    StringComparison.OrdinalIgnoreCase));
-
-            if (index >= 0)
-            {
-                destination[index] = MergeEntity(
-                    destination[index],
-                    normalized);
-            }
-            else if (destination.Count < 250)
-            {
-                destination.Add(normalized);
-            }
-        }
-    }
-
-    private static BookTranslationEntity MergeEntity(
-        BookTranslationEntity current,
-        BookTranslationEntity incoming) =>
-        current with
-        {
-            TargetName = incoming.TargetName,
-            Description = Prefer(
-                incoming.Description,
-                current.Description),
-            Pronouns = Prefer(
-                incoming.Pronouns,
-                current.Pronouns),
-            Relationships = Prefer(
-                incoming.Relationships,
-                current.Relationships),
-            VoiceNotes = Prefer(
-                incoming.VoiceNotes,
-                current.VoiceNotes)
-        };
-
-    private static void MergeTerms(
-        List<BookTranslationTerm> destination,
-        IEnumerable<BookTranslationTerm> incoming)
-    {
-        foreach (var item in incoming)
-        {
-            var source = Clean(
-                item.Source,
-                240);
-            var target = Clean(
-                item.Target,
-                240);
-
-            if (source is null
-                || target is null)
-            {
-                continue;
-            }
-
-            var category = Clean(
-                    item.Category,
-                    120)
-                ?? "term";
-
-            var normalized = new BookTranslationTerm(
-                source,
-                target,
-                category,
-                Clean(
-                    item.Notes,
-                    1000),
-                item.Locked);
-
-            var index = destination.FindIndex(x =>
-                x.Source.Equals(
-                    source,
-                    StringComparison.OrdinalIgnoreCase));
-
-            if (index < 0)
-            {
-                if (destination.Count < 500)
-                {
-                    destination.Add(normalized);
-                }
-
-                continue;
-            }
-
-            var current = destination[index];
-            if (current.Locked)
-            {
-                destination[index] = current with
-                {
-                    Notes = Prefer(
-                        current.Notes,
-                        normalized.Notes)
-                };
-                continue;
-            }
-
-            destination[index] = normalized with
-            {
-                Locked = current.Locked
-                    || normalized.Locked
-            };
-        }
-    }
+    private static string RequireRoot(string rootPath) =>
+        string.IsNullOrWhiteSpace(rootPath)
+            ? throw new ArgumentException(
+                "Translation memory root path is required.",
+                nameof(rootPath))
+            : rootPath;
 
     private static string NormalizeLanguage(
         string? value)
@@ -980,13 +1293,6 @@ public sealed class BookTranslationMemoryStore
             ? "und"
             : normalized;
     }
-
-    private static string? Prefer(
-        string? primary,
-        string? fallback) =>
-        string.IsNullOrWhiteSpace(primary)
-            ? fallback
-            : primary;
 
     private static string? Clean(
         string? value,
@@ -1012,17 +1318,8 @@ public sealed class BookTranslationMemoryStore
     {
         if (!string.IsNullOrWhiteSpace(value))
         {
-            AppendLine(
-                builder,
-                name + ": " + value);
+            builder.AppendLine(name + ": " + value);
         }
-    }
-
-    private static void AppendLine(
-        StringBuilder builder,
-        string value)
-    {
-        builder.AppendLine(value);
     }
 
     private static string Optional(
