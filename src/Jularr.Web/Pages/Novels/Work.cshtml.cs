@@ -1,6 +1,5 @@
 using Jularr.Web.Data;
 using Jularr.Web.Features.Auth;
-using Jularr.Web.Features.Learning;
 using Jularr.Web.Features.Localization;
 using Jularr.Web.Features.Novels;
 using Jularr.Web.Features.Operations;
@@ -34,14 +33,6 @@ public sealed class WorkModel(
     public bool IsSearching { get; private set; }
     public bool IsOwner => account.IsOwner;
 
-    /// <summary>
-    /// Whole-work translation state (the chapter "Translated" badges), gated
-    /// the same way as the Novel reader's own translation UI: through
-    /// <see cref="LearningModuleResolver.ResolveTranslationEnabledAsync"/> for
-    /// this work's Novel scope, not by whether a translation is cached.
-    /// </summary>
-    public bool TranslationEnabled { get; private set; }
-
     public async Task<IActionResult> OnGetAsync(
         Guid id,
         string? q,
@@ -53,13 +44,6 @@ public sealed class WorkModel(
         {
             return NotFound();
         }
-
-        TranslationEnabled = await new LearningModuleResolver(db).ResolveTranslationEnabledAsync(
-            account.ProfileId,
-            LearningMediaType.Novel,
-            id.ToString(),
-            contentKey: null,
-            cancellationToken);
 
         Progress = await progress.GetProgressAsync(
             account.ProfileId,

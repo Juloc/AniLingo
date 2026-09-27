@@ -88,11 +88,12 @@ public sealed class LearningModuleResolver(AppDbContext db)
     /// <summary>
     /// Resolves the Translation capability for a Novel/Book work, optionally
     /// narrowed to one chapter, through the canonical profile → media type →
-    /// work → content hierarchy. Shared by the readers (whole-chapter AI
-    /// translation) and the work/library chapter-list pages (the
-    /// "translated" badge and the translate/regenerate-whole-book actions),
-    /// so cached or queued translations never leak past a scope that
-    /// resolved Translation off.
+    /// work → content hierarchy. This only authorizes *generating* (or
+    /// regenerating) a translation - the readers' translate handlers and the
+    /// library's whole-book translate/regenerate actions. It must never gate
+    /// reading an already cached translation (the "translated" badges and the
+    /// cached text itself): that is core reader behaviour and must work with
+    /// Learning off (#369).
     /// </summary>
     public async Task<bool> ResolveTranslationEnabledAsync(
         string profileId,
