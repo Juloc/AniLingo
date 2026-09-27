@@ -437,9 +437,20 @@ builder.Services.AddSingleton<AniListSyncStateStore>();
 builder.Services.AddScoped<AniListSyncService>();
 builder.Services.AddHostedService<AniListSyncBackgroundService>();
 
+builder.Services.AddSingleton<ICodexAppServerLauncher, CodexAppServerProcessLauncher>();
+builder.Services.AddSingleton<CodexAppServerClient>();
+builder.Services.AddSingleton<CodexAppServerGateway>();
 builder.Services.AddSingleton<CodexCliProvider>();
 builder.Services.AddSingleton<AiProfileSettingsStore>();
+builder.Services.AddSingleton<AiUsagePersistenceQueue>();
+builder.Services.AddSingleton<IAiUsageSink>(services => services.GetRequiredService<AiUsagePersistenceQueue>());
+builder.Services.AddHostedService<AiUsagePersistenceWorker>();
 builder.Services.AddSingleton<AiUsageTracker>();
+builder.Services.AddSingleton<AiActivityTracker>();
+builder.Services.AddSingleton<AiActivityRunner>();
+builder.Services.AddScoped<AiUsageStore>();
+builder.Services.AddScoped<IAiModelCatalogStore, AiModelCatalogStore>();
+builder.Services.AddScoped<AiModelCatalogService>();
 builder.Services.AddHttpClient("ai-openai-compatible", client =>
 {
     client.Timeout = TimeSpan.FromMinutes(4);
@@ -486,6 +497,7 @@ app.MapHub<PlaybackSessionHub>(PlaybackSessionHub.Route)
     .AllowAnonymous();
 app.MapReaderThemeCatalog();
 app.MapLanguageInspector();
+app.MapAiActivity();
 app.MapRazorPages();
 
 try
