@@ -109,10 +109,11 @@ public sealed class ReadingCatalogSearchTests
             "https://ncode.syosetu.com/n1234ab/",
             true);
 
-        Assert.IsGreaterThan(
+        Assert.IsTrue(
             ReadingCatalogSearch.MatchScore(
                 "Mushoku Tensei",
-                exact),
+                exact)
+            >
             ReadingCatalogSearch.MatchScore(
                 "Mushoku Tensei",
                 authorOnly));
