@@ -280,7 +280,7 @@ public sealed class NovelCatalogQueries(AppDbContext db)
                 db.NovelTranslations
                     .Where(translation =>
                         translation.ChapterId == chapter.Id &&
-                        translation.TargetLanguage == NovelReadingLanguage.German &&
+                        translation.TargetLanguage == NovelReadingLanguage.GermanTranslateGemma &&
                         translation.PromptVersion == NovelTranslationService.TranslateGemmaPromptVersion &&
                         translation.SourceHash == chapter.SourceHash &&
                         translation.ProviderId.StartsWith(NovelTranslationProviders.TranslateGemmaPrefix))

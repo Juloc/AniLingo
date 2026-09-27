@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Jularr.Web.Data;
 using Jularr.Web.Features.Auth;
+using Jularr.Web.Features.Calendar;
 using Jularr.Web.Features.Metadata;
 using Jularr.Web.Features.Manga;
 using Jularr.Web.Features.MediaMapping;
@@ -64,6 +65,10 @@ public sealed record AniListRemoteListEntry(
 {
     public bool ProtectedFieldsEqual(AniListRemoteListEntry other) =>
         string.Equals(Status, other.Status, StringComparison.Ordinal) &&
+        Equals(StartedAt, other.StartedAt) &&
+        ProtectedFieldsEqualExceptTrackingStart(other);
+
+    public bool ProtectedFieldsEqualExceptTrackingStart(AniListRemoteListEntry other) =>
         Nullable.Equals(Score, other.Score) &&
         Repeat == other.Repeat &&
         Priority == other.Priority &&
@@ -72,7 +77,6 @@ public sealed record AniListRemoteListEntry(
         HiddenFromStatusLists == other.HiddenFromStatusLists &&
         JsonNode.DeepEquals(CustomLists, other.CustomLists) &&
         JsonNode.DeepEquals(AdvancedScores, other.AdvancedScores) &&
-        Equals(StartedAt, other.StartedAt) &&
         Equals(CompletedAt, other.CompletedAt);
 }
 
@@ -219,7 +223,9 @@ public sealed partial class AniListAccountService(
     ReadingSegmentMappingStore segmentMappings,
     MediaMappingReviewStore mappingReviewStore,
     CurrentAccountContext currentAccount,
-    ILogger<AniListAccountService> logger)
+    ILogger<AniListAccountService> logger,
+    TimeProvider? timeProvider = null,
+    IHttpContextAccessor? httpContextAccessor = null)
 {
     private const string ViewerQuery = """
         query {
@@ -345,12 +351,72 @@ public sealed partial class AniListAccountService(
         }
         """;
 
+    // A PLANNING entry is intentionally started in the same write as its first
+    // safe forward progress. Status is fixed to CURRENT and startedAt is the
+    // only additional list field accepted by this transition.
+    private const string SaveStartingProgressMutation = """
+        mutation ($id: Int!, $progress: Int!, $startYear: Int, $startMonth: Int, $startDay: Int) {
+          SaveMediaListEntry(
+            id: $id,
+            progress: $progress,
+            status: CURRENT,
+            startedAt: { year: $startYear, month: $startMonth, day: $startDay }) {
+            id
+            userId
+            mediaId
+            status
+            progress
+            progressVolumes
+            score
+            repeat
+            priority
+            private
+            notes
+            hiddenFromStatusLists
+            customLists
+            advancedScores
+            startedAt { year month day }
+            completedAt { year month day }
+            updatedAt
+          }
+        }
+        """;
+
     // Reading media may additionally update progressVolumes, but only when an
     // explicit segment mapping resolves a higher volume. No other list fields
     // are accepted by this mutation.
     private const string SaveReadingProgressMutation = """
         mutation ($id: Int!, $progress: Int!, $progressVolumes: Int!) {
           SaveMediaListEntry(id: $id, progress: $progress, progressVolumes: $progressVolumes) {
+            id
+            userId
+            mediaId
+            status
+            progress
+            progressVolumes
+            score
+            repeat
+            priority
+            private
+            notes
+            hiddenFromStatusLists
+            customLists
+            advancedScores
+            startedAt { year month day }
+            completedAt { year month day }
+            updatedAt
+          }
+        }
+        """;
+
+    private const string SaveStartingReadingProgressMutation = """
+        mutation ($id: Int!, $progress: Int!, $progressVolumes: Int!, $startYear: Int, $startMonth: Int, $startDay: Int) {
+          SaveMediaListEntry(
+            id: $id,
+            progress: $progress,
+            progressVolumes: $progressVolumes,
+            status: CURRENT,
+            startedAt: { year: $startYear, month: $startMonth, day: $startDay }) {
             id
             userId
             mediaId
@@ -618,6 +684,13 @@ public sealed partial class AniListAccountService(
                 localVolumeProgress,
                 remoteVolumeProgress);
 
+        // Equal numbers are not "synchronized" while a write is still offered, for example a
+        // PLANNING entry that the sync button would switch to CURRENT.
+        if (kind == AniListExternalProgressStateKind.Synced && canSync)
+        {
+            kind = AniListExternalProgressStateKind.LocalAhead;
+        }
+
         var resolvedMessage = kind == AniListExternalProgressStateKind.Synced
             ? "Local and AniList progress are synchronized."
             : message;
@@ -739,7 +812,7 @@ public sealed partial class AniListAccountService(
             {
                 updated = await SaveReadingProgressAsync(
                     account.AccessToken,
-                    remote.Id,
+                    remote,
                     context.RequestedProgress,
                     requestedVolumeProgress,
                     cancellationToken);
@@ -754,7 +827,7 @@ public sealed partial class AniListAccountService(
             {
                 updated = await SaveProgressAsync(
                     account.AccessToken,
-                    remote.Id,
+                    remote,
                     context.RequestedProgress,
                     cancellationToken);
 
@@ -764,12 +837,15 @@ public sealed partial class AniListAccountService(
                     context.RequestedProgress);
             }
 
+            var startedTracking = IsPlanningStatus(remote.Status);
             return new AniListProgressSyncResult(
                 Success: true,
                 Changed: true,
-                context.RequestedVolumeProgress is int
-                    ? $"AniList manga progress updated: chapters {remote.Progress} → {updated.Progress}, volumes {remote.ProgressVolumes} → {updated.ProgressVolumes}. No other list fields were sent."
-                    : $"AniList manga chapter progress updated from {remote.Progress} to {updated.Progress}. No other list fields were sent.");
+                startedTracking
+                    ? $"AniList moved from Planning to Reading and started tracking at chapter {updated.Progress}."
+                    : context.RequestedVolumeProgress is int
+                        ? $"AniList manga progress updated: chapters {remote.Progress} → {updated.Progress}, volumes {remote.ProgressVolumes} → {updated.ProgressVolumes}. No other list fields were sent."
+                        : $"AniList manga chapter progress updated from {remote.Progress} to {updated.Progress}. No other list fields were sent.");
         }
         catch (AniListAccountException exception)
         {
@@ -835,7 +911,7 @@ public sealed partial class AniListAccountService(
             {
                 updated = await SaveReadingProgressAsync(
                     account.AccessToken,
-                    remote.Id,
+                    remote,
                     context.RequestedProgress,
                     requestedVolumeProgress,
                     cancellationToken);
@@ -850,7 +926,7 @@ public sealed partial class AniListAccountService(
             {
                 updated = await SaveProgressAsync(
                     account.AccessToken,
-                    remote.Id,
+                    remote,
                     context.RequestedProgress,
                     cancellationToken);
 
@@ -860,12 +936,15 @@ public sealed partial class AniListAccountService(
                     context.RequestedProgress);
             }
 
+            var startedTracking = IsPlanningStatus(remote.Status);
             return new AniListProgressSyncResult(
                 Success: true,
                 Changed: true,
-                context.RequestedVolumeProgress is int
-                    ? $"AniList reading progress updated: chapters {remote.Progress} → {updated.Progress}, volumes {remote.ProgressVolumes} → {updated.ProgressVolumes}. No other list fields were sent."
-                    : $"AniList chapter progress updated from {remote.Progress} to {updated.Progress}. No other list fields were sent.");
+                startedTracking
+                    ? $"AniList moved from Planning to Reading and started tracking at chapter {updated.Progress}."
+                    : context.RequestedVolumeProgress is int
+                        ? $"AniList reading progress updated: chapters {remote.Progress} → {updated.Progress}, volumes {remote.ProgressVolumes} → {updated.ProgressVolumes}. No other list fields were sent."
+                        : $"AniList chapter progress updated from {remote.Progress} to {updated.Progress}. No other list fields were sent.");
         }
         catch (AniListAccountException exception)
         {
@@ -909,7 +988,7 @@ public sealed partial class AniListAccountService(
 
             var updated = await SaveProgressAsync(
                 account.AccessToken,
-                remote.Id,
+                remote,
                 context.RequestedProgress,
                 cancellationToken);
 
@@ -921,7 +1000,9 @@ public sealed partial class AniListAccountService(
             return new AniListProgressSyncResult(
                 Success: true,
                 Changed: true,
-                $"AniList progress updated from {remote.Progress} to {updated.Progress}. No other list fields were sent.");
+                IsPlanningStatus(remote.Status)
+                    ? $"AniList moved from Planning to Watching and started tracking at episode {updated.Progress}."
+                    : $"AniList progress updated from {remote.Progress} to {updated.Progress}. No other list fields were sent.");
         }
         catch (AniListAccountException exception)
         {
@@ -1110,7 +1191,7 @@ public sealed partial class AniListAccountService(
         return WithMappedVolumeProgress(
             account,
             remote,
-            requestedProgress,
+            preview.RequestedProgress,
             requestedVolumeProgress,
             preview,
             chapterCount,
@@ -1121,7 +1202,8 @@ public sealed partial class AniListAccountService(
     /// <summary>
     /// Adds mapped volume progress (Manga volumes, EPUB light-novel volumes)
     /// to a chapter-progress context. Volume progress is only written forward,
-    /// only while the entry is CURRENT or REPEATING and never lowers chapter progress.
+    /// while the entry is CURRENT/REPEATING or while starting a PLANNING entry,
+    /// and never lowers chapter progress.
     /// </summary>
     private static ReadingProgressContext WithMappedVolumeProgress(
         StoredAniListAccount account,
@@ -1139,13 +1221,13 @@ public sealed partial class AniListAccountService(
                 ? requestedVolumeProgress
                 : null;
 
-        var progressToWrite = requestedProgress;
+        var progressToWrite = preview.RequestedProgress;
         if (volumeProgressToWrite is not null && preview.IsNoOp)
         {
-            if (!IsProgressWritableStatus(remote.Status))
+            if (!IsProgressTrackableStatus(remote.Status))
             {
                 preview = AniListReadingProgressPreview.Blocked(
-                    $"AniList status is {remote.Status ?? "unknown"}. For safety, Jularr only writes reading progress while the entry is CURRENT or REPEATING.",
+                    $"AniList status is {remote.Status ?? "unknown"}. Jularr tracks CURRENT/REPEATING entries and can start PLANNING entries.",
                     requestedProgress,
                     displayTitle,
                     remote.Progress,
@@ -1582,13 +1664,19 @@ public sealed partial class AniListAccountService(
         return new ProgressContext(
             account,
             remote,
-            resolved.RemoteEpisodeNumber,
+            remoteSafety.RequestedProgress,
             remoteSafety);
     }
 
     private static bool IsProgressWritableStatus(string? status) =>
         string.Equals(status, "CURRENT", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(status, "REPEATING", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsPlanningStatus(string? status) =>
+        string.Equals(status, "PLANNING", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsProgressTrackableStatus(string? status) =>
+        IsProgressWritableStatus(status) || IsPlanningStatus(status);
 
     public static AniListProgressPreview EvaluateRemoteProgressSafety(
         AniListRemoteListEntry remote,
@@ -1607,7 +1695,8 @@ public sealed partial class AniListAccountService(
                 aniListEpisodeCount);
         }
 
-        if (remote.Progress >= requestedProgress)
+        var startsTracking = IsPlanningStatus(remote.Status);
+        if (!startsTracking && remote.Progress >= requestedProgress)
         {
             return new AniListProgressPreview(
                 CanSync: false,
@@ -1620,10 +1709,10 @@ public sealed partial class AniListAccountService(
                 aniListEpisodeCount);
         }
 
-        if (!IsProgressWritableStatus(remote.Status))
+        if (!IsProgressTrackableStatus(remote.Status))
         {
             return AniListProgressPreview.Blocked(
-                $"AniList status is {remote.Status ?? "unknown"}. For safety, Jularr only writes progress while the entry is CURRENT (Watching) or REPEATING (Rewatching).",
+                $"AniList status is {remote.Status ?? "unknown"}. Jularr tracks CURRENT/REPEATING entries and can start PLANNING entries.",
                 requestedProgress,
                 mediaTitle,
                 remote.Progress,
@@ -1631,8 +1720,12 @@ public sealed partial class AniListAccountService(
                 aniListEpisodeCount);
         }
 
+        var progressToWrite = startsTracking
+            ? Math.Max(remote.Progress, requestedProgress)
+            : requestedProgress;
+
         if (aniListEpisodeCount is > 0 &&
-            requestedProgress >= aniListEpisodeCount.Value)
+            progressToWrite >= aniListEpisodeCount.Value)
         {
             return AniListProgressPreview.Blocked(
                 "This is the final AniList episode. Jularr does not sync the last episode automatically because AniList may also change completion status/date. Finish the entry in AniList itself.",
@@ -1646,9 +1739,11 @@ public sealed partial class AniListAccountService(
         return new AniListProgressPreview(
             CanSync: true,
             IsNoOp: false,
-            $"Ready to increase AniList progress from {remote.Progress} to {requestedProgress}.",
+            startsTracking
+                ? $"Ready to start AniList tracking and set progress to {progressToWrite}."
+                : $"Ready to increase AniList progress from {remote.Progress} to {progressToWrite}.",
             mediaTitle,
-            requestedProgress,
+            progressToWrite,
             remote.Progress,
             remote.Status,
             aniListEpisodeCount);
@@ -1661,7 +1756,8 @@ public sealed partial class AniListAccountService(
         string? mediaTitle,
         string mediaKind = "light novel")
     {
-        if (remote.Progress >= requestedProgress)
+        var startsTracking = IsPlanningStatus(remote.Status);
+        if (!startsTracking && remote.Progress >= requestedProgress)
         {
             return new AniListReadingProgressPreview(
                 CanSync: false,
@@ -1685,10 +1781,10 @@ public sealed partial class AniListAccountService(
                 aniListChapterCount);
         }
 
-        if (!IsProgressWritableStatus(remote.Status))
+        if (!IsProgressTrackableStatus(remote.Status))
         {
             return AniListReadingProgressPreview.Blocked(
-                $"AniList status is {remote.Status ?? "unknown"}. For safety, Jularr only writes chapter progress while the entry is CURRENT (Reading) or REPEATING (Rereading).",
+                $"AniList status is {remote.Status ?? "unknown"}. Jularr tracks CURRENT/REPEATING entries and can start PLANNING entries.",
                 requestedProgress,
                 mediaTitle,
                 remote.Progress,
@@ -1696,8 +1792,12 @@ public sealed partial class AniListAccountService(
                 aniListChapterCount);
         }
 
+        var progressToWrite = startsTracking
+            ? Math.Max(remote.Progress, requestedProgress)
+            : requestedProgress;
+
         if (aniListChapterCount is > 0 &&
-            requestedProgress >= aniListChapterCount.Value)
+            progressToWrite >= aniListChapterCount.Value)
         {
             return AniListReadingProgressPreview.Blocked(
                 "This would reach the final AniList chapter. Jularr leaves completion status/date to AniList.",
@@ -1711,9 +1811,11 @@ public sealed partial class AniListAccountService(
         return new AniListReadingProgressPreview(
             CanSync: true,
             IsNoOp: false,
-            $"Ready to increase AniList chapter progress from {remote.Progress} to {requestedProgress}.",
+            startsTracking
+                ? $"Ready to start AniList tracking and set chapter progress to {progressToWrite}."
+                : $"Ready to increase AniList chapter progress from {remote.Progress} to {progressToWrite}.",
             mediaTitle,
-            requestedProgress,
+            progressToWrite,
             remote.Progress,
             remote.Status,
             aniListChapterCount);
@@ -1780,15 +1882,21 @@ public sealed partial class AniListAccountService(
 
     private async Task<AniListRemoteListEntry> SaveProgressAsync(
         string accessToken,
-        int listEntryId,
+        AniListRemoteListEntry remote,
         int progress,
         CancellationToken cancellationToken)
     {
+        var startsTracking = IsPlanningStatus(remote.Status);
+        var startedAt = startsTracking
+            ? ResolveTrackingStartDate(remote)
+            : null;
         var body = await SendAuthenticatedAsync(
             accessToken,
-            SaveProgressMutation,
-            BuildProgressMutationVariables(listEntryId, progress),
-            "saving list progress",
+            startsTracking ? SaveStartingProgressMutation : SaveProgressMutation,
+            startsTracking
+                ? BuildStartingProgressMutationVariables(remote.Id, progress, startedAt!)
+                : BuildProgressMutationVariables(remote.Id, progress),
+            startsTracking ? "starting list progress tracking" : "saving list progress",
             cancellationToken);
 
         return ParseListEntryResponse(body, "SaveMediaListEntry")
@@ -1798,24 +1906,65 @@ public sealed partial class AniListAccountService(
 
     private async Task<AniListRemoteListEntry> SaveReadingProgressAsync(
         string accessToken,
-        int listEntryId,
+        AniListRemoteListEntry remote,
         int progress,
         int progressVolumes,
         CancellationToken cancellationToken)
     {
+        var startsTracking = IsPlanningStatus(remote.Status);
+        var startedAt = startsTracking
+            ? ResolveTrackingStartDate(remote)
+            : null;
         var body = await SendAuthenticatedAsync(
             accessToken,
-            SaveReadingProgressMutation,
-            BuildReadingProgressMutationVariables(
-                listEntryId,
-                progress,
-                progressVolumes),
-            "saving reading progress",
+            startsTracking ? SaveStartingReadingProgressMutation : SaveReadingProgressMutation,
+            startsTracking
+                ? BuildStartingReadingProgressMutationVariables(
+                    remote.Id,
+                    progress,
+                    progressVolumes,
+                    startedAt!)
+                : BuildReadingProgressMutationVariables(
+                    remote.Id,
+                    progress,
+                    progressVolumes),
+            startsTracking ? "starting reading progress tracking" : "saving reading progress",
             cancellationToken);
 
         return ParseListEntryResponse(body, "SaveMediaListEntry")
             ?? throw new AniListAccountException(
                 "AniList returned no list entry after saving reading progress.");
+    }
+
+    private AniListFuzzyDate ResolveTrackingStartDate(AniListRemoteListEntry remote)
+    {
+        if (remote.StartedAt is not null)
+        {
+            return remote.StartedAt;
+        }
+
+        var clock = timeProvider ?? TimeProvider.System;
+        return TrackingStartDate(clock.GetUtcNow(), ResolveTrackingTimeZone(clock));
+    }
+
+    /// <summary>
+    /// AniList start dates are calendar days, so "today" is the viewer's day, not the UTC day:
+    /// an episode watched just after midnight in Germany starts tracking on that new day.
+    /// </summary>
+    public static AniListFuzzyDate TrackingStartDate(DateTimeOffset now, TimeZoneInfo zone)
+    {
+        var local = TimeZoneInfo.ConvertTime(now, zone);
+        return new AniListFuzzyDate(local.Year, local.Month, local.Day);
+    }
+
+    // The browser zone the calendar already reports (jularr-tz cookie) on interactive syncs;
+    // background syncs have no request and use the server's configured zone (TZ).
+    private TimeZoneInfo ResolveTrackingTimeZone(TimeProvider clock)
+    {
+        var browserZone = httpContextAccessor?.HttpContext?.Request.Cookies[CalendarTimeZone.CookieName];
+        return string.IsNullOrWhiteSpace(browserZone)
+            ? clock.LocalTimeZone
+            : CalendarTimeZone.Resolve(browserZone);
     }
 
     private void ValidateProgressOnlyUpdate(
@@ -1837,13 +1986,13 @@ public sealed partial class AniListAccountService(
                 "AniList returned an unexpected progress response. No further sync was attempted.");
         }
 
-        if (!remote.ProtectedFieldsEqual(updated))
+        if (!ProtectedFieldsMatchExpectedProgressWrite(remote, updated))
         {
             logger.LogCritical(
-                "AniList protected list fields changed unexpectedly while updating progress-only for entry {EntryId}. A pre-write backup was saved under /data/integrations.",
+                "AniList protected list fields changed unexpectedly while updating progress for entry {EntryId}. A pre-write backup was saved under /data/integrations.",
                 remote.Id);
             throw new AniListAccountException(
-                "AniList changed fields outside progress unexpectedly. Sync stopped and a pre-write backup was saved.");
+                "AniList changed fields outside the allowed progress/start transition unexpectedly. Sync stopped and a pre-write backup was saved.");
         }
     }
 
@@ -1867,14 +2016,29 @@ public sealed partial class AniListAccountService(
                 "AniList returned an unexpected reading-progress response. No further sync was attempted.");
         }
 
-        if (!remote.ProtectedFieldsEqual(updated))
+        if (!ProtectedFieldsMatchExpectedProgressWrite(remote, updated))
         {
             logger.LogCritical(
                 "AniList protected list fields changed unexpectedly while updating chapter/volume progress for entry {EntryId}. A pre-write backup was saved under /data/integrations.",
                 remote.Id);
             throw new AniListAccountException(
-                "AniList changed fields outside chapter/volume progress unexpectedly. Sync stopped and a pre-write backup was saved.");
+                "AniList changed fields outside the allowed reading-progress/start transition unexpectedly. Sync stopped and a pre-write backup was saved.");
         }
+    }
+
+    private static bool ProtectedFieldsMatchExpectedProgressWrite(
+        AniListRemoteListEntry remote,
+        AniListRemoteListEntry updated)
+    {
+        if (!IsPlanningStatus(remote.Status))
+        {
+            return remote.ProtectedFieldsEqual(updated);
+        }
+
+        return string.Equals(updated.Status, "CURRENT", StringComparison.OrdinalIgnoreCase) &&
+               updated.StartedAt is not null &&
+               (remote.StartedAt is null || Equals(remote.StartedAt, updated.StartedAt)) &&
+               remote.ProtectedFieldsEqualExceptTrackingStart(updated);
     }
 
     public static IReadOnlyDictionary<string, int> BuildProgressMutationVariables(
@@ -1895,6 +2059,23 @@ public sealed partial class AniListAccountService(
         {
             ["id"] = listEntryId,
             ["progress"] = progress
+        };
+    }
+
+    public static IReadOnlyDictionary<string, int?> BuildStartingProgressMutationVariables(
+        int listEntryId,
+        int progress,
+        AniListFuzzyDate startedAt)
+    {
+        ValidateProgressMutationInput(listEntryId, progress);
+
+        return new Dictionary<string, int?>(StringComparer.Ordinal)
+        {
+            ["id"] = listEntryId,
+            ["progress"] = progress,
+            ["startYear"] = startedAt.Year,
+            ["startMonth"] = startedAt.Month,
+            ["startDay"] = startedAt.Day
         };
     }
 
@@ -1924,6 +2105,42 @@ public sealed partial class AniListAccountService(
             ["progress"] = progress,
             ["progressVolumes"] = progressVolumes
         };
+    }
+
+    public static IReadOnlyDictionary<string, int?> BuildStartingReadingProgressMutationVariables(
+        int listEntryId,
+        int progress,
+        int progressVolumes,
+        AniListFuzzyDate startedAt)
+    {
+        ValidateProgressMutationInput(listEntryId, progress);
+        if (progressVolumes < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(progressVolumes));
+        }
+
+        return new Dictionary<string, int?>(StringComparer.Ordinal)
+        {
+            ["id"] = listEntryId,
+            ["progress"] = progress,
+            ["progressVolumes"] = progressVolumes,
+            ["startYear"] = startedAt.Year,
+            ["startMonth"] = startedAt.Month,
+            ["startDay"] = startedAt.Day
+        };
+    }
+
+    private static void ValidateProgressMutationInput(int listEntryId, int progress)
+    {
+        if (listEntryId <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(listEntryId));
+        }
+
+        if (progress < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(progress));
+        }
     }
 
     private async Task<string> SendAuthenticatedAsync(

@@ -3,6 +3,7 @@ using Jularr.Web.Features.Acquisition.Import;
 using Jularr.Web.Features.Acquisition.Monitoring;
 using Jularr.Web.Features.Acquisition.Ownership;
 using Jularr.Web.Features.Acquisition.Sabnzbd;
+using Jularr.Web.Features.Artwork;
 using Jularr.Web.Features.Library;
 using Jularr.Web.Features.Metadata;
 using Jularr.Web.Features.Operations;
@@ -87,6 +88,7 @@ public sealed class AnimeRenameService(
         var blocking = new List<string>();
         var folderMoves = new List<AnimeRenameMove>();
         var drafts = new List<Draft>();
+        var seasonArtworkDirectories = new HashSet<string>(StringComparer.Ordinal);
         var seriesByFolder = new Dictionary<string, AnimeNamingSeries>(StringComparer.Ordinal);
         string? targetKey = renameSeriesFolder ? null : anime.Key;
 
@@ -173,6 +175,14 @@ public sealed class AnimeRenameService(
             }
 
             var sidecars = FindSidecars(source, targetDirectory, Path.GetFileNameWithoutExtension(fileName));
+            var sourceDirectory = Path.GetDirectoryName(source)!;
+            if (!string.Equals(sourceDirectory, currentSeriesFolder, StringComparison.Ordinal) &&
+                !string.Equals(Rebase(sourceDirectory, folderMoves), Path.GetDirectoryName(target), StringComparison.Ordinal) &&
+                seasonArtworkDirectories.Add(sourceDirectory))
+            {
+                sidecars = [.. sidecars, .. FindSeasonArtwork(sourceDirectory, Path.GetDirectoryName(target)!, folderMoves)];
+            }
+
             drafts.Add(new Draft(mediaFile, episode, source, target, currentSeriesFolder, sidecars, null));
         }
 
@@ -987,6 +997,22 @@ public sealed class AnimeRenameService(
 
         return sidecars;
     }
+
+    // Season artwork (poster.jpg, fanart.jpg, ... in the season folder) belongs to that folder and
+    // follows it when the profile renames the season folder. Artwork already in the target folder
+    // stays and the source file is left where it is.
+    private static IReadOnlyList<AnimeRenameMove> FindSeasonArtwork(
+        string sourceDirectory,
+        string targetDirectory,
+        IReadOnlyList<AnimeRenameMove> folderMoves) =>
+        Directory.EnumerateFiles(sourceDirectory)
+            .Where(file => AnimeArtworkFiles.IsArtworkFileName(Path.GetFileName(file)))
+            .Order(StringComparer.Ordinal)
+            .Select(file => new AnimeRenameMove(
+                Path.GetFullPath(file),
+                Path.GetFullPath(Path.Combine(targetDirectory, Path.GetFileName(file)))))
+            .Where(move => !File.Exists(Unrebase(move.TargetPath, folderMoves)))
+            .ToArray();
 
     internal static AnimeNamingSeries BuildSeries(
         Anime anime,

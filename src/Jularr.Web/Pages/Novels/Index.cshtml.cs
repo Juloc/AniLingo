@@ -5,6 +5,7 @@ using Jularr.Web.Features.Localization;
 using Jularr.Web.Features.Novels;
 using Jularr.Web.Features.Operations;
 using Jularr.Web.Features.ReadingDiscovery;
+using Jularr.Web.Features.ReadingSources;
 using Jularr.Web.Data;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -14,6 +15,7 @@ namespace Jularr.Web.Pages.Novels;
 
 public sealed record NovelCatalogResult(
     ReadingCatalogCandidate Item,
+    ReadingSourceDefinition Source,
     string? LocalUrl,
     string? RequestStatus);
 
@@ -65,12 +67,15 @@ public sealed class IndexModel(
             return;
         }
 
+        var sourceSettings = await LoadReadingSourceSettingsAsync(
+            cancellationToken);
         var syosetuClient = httpClientFactory.CreateClient();
         var candidates = await ReadingCatalogSearch.SearchLightNovelsAsync(
             readingProvider,
             syosetuClient,
+            sourceSettings,
             SearchQuery,
-            18,
+            24,
             cancellationToken);
 
         var aniListIds = candidates
@@ -152,6 +157,7 @@ public sealed class IndexModel(
 
                 return new NovelCatalogResult(
                     candidate,
+                    ReadingSourceCatalog.GetRequired(candidate.Provider),
                     localUrl,
                     requestStatus);
             })
@@ -188,6 +194,13 @@ public sealed class IndexModel(
 
         if (normalizedProvider == NcodeNovelSourceProvider.ProviderKey &&
             !SyosetuCatalogClient.IsValidNcode(normalizedId))
+        {
+            return BadRequest();
+        }
+
+        var sourceSettings = await LoadReadingSourceSettingsAsync(
+            cancellationToken);
+        if (!sourceSettings.IsEnabled(normalizedProvider))
         {
             return BadRequest();
         }
@@ -296,7 +309,10 @@ public sealed class IndexModel(
         string sourceUrl,
         CancellationToken cancellationToken)
     {
-        if (!account.IsOwner)
+        var capabilities = await requests.GetCapabilitiesAsync(
+            MediaAcquisitionKind.LightNovel,
+            cancellationToken);
+        if (!capabilities.CanAdd || capabilities.AddCreatesRequest)
         {
             return Forbid();
         }
@@ -421,5 +437,23 @@ public sealed class IndexModel(
         }
 
         return RedirectToPage();
+    }
+
+    private async Task<ReadingSourceSettingsState> LoadReadingSourceSettingsAsync(
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await ReadingSourceSettingsStore.Default.LoadAsync(
+                cancellationToken);
+        }
+        catch (InvalidDataException exception)
+        {
+            var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+            TempData["Status"] = ui.Format(
+                "novels.index.sourceSettingsInvalid",
+                ("error", exception.Message));
+            return ReadingSourceSettingsState.Default;
+        }
     }
 }

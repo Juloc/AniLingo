@@ -8,18 +8,12 @@ public sealed class AnimeModel : PageModel
 {
     public IActionResult OnGet(Guid id, string kind)
     {
-        var artworkKind = kind.Equals("poster", StringComparison.OrdinalIgnoreCase)
-            ? AnimeArtworkKind.Poster
-            : kind.Equals("fanart", StringComparison.OrdinalIgnoreCase)
-                ? AnimeArtworkKind.Fanart
-                : (AnimeArtworkKind?)null;
-
-        if (artworkKind is null)
+        if (!AnimeArtworkSlot.TryParse(kind, out var slot))
         {
             return NotFound();
         }
 
-        var path = AnimeArtworkStore.FindPath(id, artworkKind.Value);
+        var path = AnimeArtworkCache.Default.FindPath(id, slot);
         if (path is null)
         {
             return NotFound();
@@ -28,6 +22,6 @@ public sealed class AnimeModel : PageModel
         Response.Headers.CacheControl = "public,max-age=31536000,immutable";
         return PhysicalFile(
             path,
-            AnimeArtworkStore.GetContentType(path));
+            AnimeArtworkFiles.GetContentType(path));
     }
 }

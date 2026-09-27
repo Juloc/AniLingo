@@ -17,6 +17,7 @@ using Jularr.Web.Features.Admin;
 using Jularr.Web.Features.Ai;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Books;
+using Jularr.Web.Features.ChapterArtwork;
 using Jularr.Web.Features.ClientApi;
 using Jularr.Web.Features.Learning;
 using Jularr.Web.Features.Learning.LanguageAssistance;
@@ -260,6 +261,7 @@ builder.Services.AddSingleton<PlaybackCueProjector>();
 builder.Services.AddSingleton<PlaybackPreparationTracker>();
 builder.Services.AddScoped<PlaybackPreparationService>();
 builder.Services.AddScoped<PlaybackService>();
+Jularr.Web.Features.Playback.Decision.PlaybackDecisionRegistration.AddPlaybackDecision(builder.Services);
 builder.Services.Configure<MediaSegmentOptions>(builder.Configuration.GetSection(MediaSegmentOptions.SectionName));
 // Single canonical opt-in: cross-episode audio fingerprint detection is CPU heavy (it decodes and
 // hashes several minutes of audio per episode), so it stays off unless explicitly enabled.
@@ -302,6 +304,9 @@ builder.Services.AddScoped<IAnimeMetadataProvider>(
     services => services.GetRequiredService<AniListMetadataProvider>());
 builder.Services.AddScoped<AnimeMetadataService>();
 builder.Services.AddScoped<AnimeRepairService>();
+builder.Services.AddHttpClient(Jularr.Web.Features.Artwork.AnimeArtworkLibrary.HttpClientName, client =>
+    client.Timeout = TimeSpan.FromSeconds(30));
+builder.Services.AddScoped<Jularr.Web.Features.Artwork.AnimeArtworkLibrary>();
 
 builder.Services.AddHttpClient<NcodeNovelSourceProvider>(client =>
 {
@@ -470,6 +475,11 @@ builder.Services.AddScoped<IStoryContextExtractor>(services => services.GetRequi
 builder.Services.AddSingleton(services => StoryContextStore.FromConfiguration(services.GetRequiredService<IConfiguration>()));
 builder.Services.AddSingleton<StoryContextSnapshotCache>();
 builder.Services.AddScoped<StoryContextService>();
+builder.Services.AddScoped<IAiImageGenerator, ProfileAiImageRouter>();
+builder.Services.AddSingleton(services => ChapterArtworkGlobalSettingsStore.FromConfiguration(services.GetRequiredService<IConfiguration>()));
+builder.Services.AddScoped<ChapterArtworkStore>();
+builder.Services.AddScoped<ChapterArtworkService>();
+builder.Services.AddHostedService<ChapterArtworkAutoGenerator>();
 builder.Services.AddScoped<AiSentenceExplanationService>();
 
 builder.Services.AddSingleton<BackgroundJobQueue>();
@@ -494,6 +504,7 @@ app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapClientApiV1();
+app.MapClientApiPlaybackPlanV1();
 app.MapAcquisitionApiV1();
 app.MapClientApiOfflineV1();
 app.MapClientApiOfflineLibraryV1();

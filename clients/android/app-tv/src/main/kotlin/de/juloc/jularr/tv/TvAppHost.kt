@@ -25,6 +25,7 @@ import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import de.juloc.jularr.core.player.JularrMedia3Player
 import de.juloc.jularr.core.player.PlaybackTransport
+import de.juloc.jularr.core.player.toPlaybackMetadata
 import de.juloc.jularr.core.session.PlaybackCommand
 import de.juloc.jularr.core.session.PlaybackPairing
 import de.juloc.jularr.core.session.PlaybackSessionToken
@@ -327,6 +328,7 @@ fun TvAppHost(
             startPositionMs = plan.startPositionMs,
             playWhenReady = resumeShouldPlay,
             requestHeaders = cookies.requestHeaders(),
+            metadata = bundle.bootstrap.episode.toPlaybackMetadata(),
         )
         openedEpisodeId = route.episodeId
     }
@@ -416,6 +418,8 @@ fun TvAppHost(
                 TvLibraryScreen(
                     account = account,
                     library = library,
+                    serverOrigin = settings.origin.orEmpty(),
+                    requestHeaders = cookies.requestHeaders(),
                     error = snapshot.error,
                     onAnime = { anime ->
                         launchSnapshot { controller.openAnime(anime.id) }
@@ -448,6 +452,8 @@ fun TvAppHost(
             } else {
                 TvAnimeScreen(
                     anime = anime,
+                    serverOrigin = settings.origin.orEmpty(),
+                    requestHeaders = cookies.requestHeaders(),
                     onEpisode = { episode ->
                         launchSnapshot {
                             controller.openEpisode(
@@ -479,6 +485,8 @@ fun TvAppHost(
                 TvEpisodeScreen(
                     anime = anime,
                     page = page,
+                    serverOrigin = settings.origin.orEmpty(),
+                    requestHeaders = cookies.requestHeaders(),
                     busy = snapshot.busy,
                     error = snapshot.error,
                     onPlay = {

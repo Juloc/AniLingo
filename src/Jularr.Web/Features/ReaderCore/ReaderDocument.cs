@@ -95,7 +95,8 @@ public sealed record ReaderCapabilities(
                 SupportsThemeArtwork: false,
                 SupportsZoom: true,
                 SupportsVerticalReading: true,
-                SupportsTts: false)
+                // A book in fixed pages (a PDF book) reads its text layer aloud.
+                SupportsTts: contentType is ReaderContentType.Book)
         };
 }
 

@@ -1,275 +1,199 @@
+using System.Globalization;
 using SkiaSharp;
 
 namespace Jularr.Web.Features.Artwork;
 
-public enum AnimeArtworkKind
+/// <summary>One served artwork image: the series poster or fanart, or a season poster.</summary>
+public readonly record struct AnimeArtworkSlot(AnimeArtworkKind Kind, int? SeasonNumber = null)
 {
-    Poster,
-    Fanart
+    public static AnimeArtworkSlot Poster => new(AnimeArtworkKind.Poster);
+    public static AnimeArtworkSlot Fanart => new(AnimeArtworkKind.Fanart);
+
+    public static AnimeArtworkSlot SeasonPoster(int seasonNumber) =>
+        new(AnimeArtworkKind.Poster, seasonNumber);
+
+    public string Slug =>
+        SeasonNumber is int season
+            ? string.Create(CultureInfo.InvariantCulture, $"season-{season:00}-{AnimeArtworkFiles.BaseName(Kind)}")
+            : AnimeArtworkFiles.BaseName(Kind);
+
+    public static bool TryParse(string? slug, out AnimeArtworkSlot slot)
+    {
+        slot = default;
+        switch (slug?.ToLowerInvariant())
+        {
+            case "poster":
+                slot = Poster;
+                return true;
+            case "fanart":
+                slot = Fanart;
+                return true;
+        }
+
+        const string prefix = "season-";
+        const string suffix = "-poster";
+        if (slug is null ||
+            !slug.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ||
+            !slug.EndsWith(suffix, StringComparison.OrdinalIgnoreCase) ||
+            !int.TryParse(
+                slug.AsSpan(prefix.Length, slug.Length - prefix.Length - suffix.Length),
+                NumberStyles.None,
+                CultureInfo.InvariantCulture,
+                out var season) ||
+            season > 999)
+        {
+            return false;
+        }
+
+        slot = SeasonPoster(season);
+        return true;
+    }
 }
 
-public static class AnimeArtworkStore
+/// <summary>
+/// Rebuildable WebP derivatives of the canonical artwork beside the media. The cache is never
+/// canonical: deleting it loses nothing, the next library scan regenerates it from the NAS.
+/// Artwork a previous version stored under /data/artwork/anime is still served from there until
+/// the library scan has moved it beside the media.
+/// </summary>
+public sealed class AnimeArtworkCache(string rootPath, string legacyRootPath)
 {
-    public const string RootPath = "/data/artwork/anime";
-    public const int PosterMaxWidth = 512;
-    public const int FanartMaxWidth = 1600;
+    public const string DefaultRootPath = "/data/cache/artwork/anime";
+    public const string DefaultLegacyRootPath = "/data/artwork/anime";
 
-    private const long MaxImageBytes = 20 * 1024 * 1024;
-    private const int WebpQuality = 82;
     private const string DerivativeVersion = "v1:webp82:poster512:fanart1600";
+    private static readonly string[] LegacyExtensions = [".webp", ".jpg", ".jpeg", ".png"];
 
-    private static readonly string[] SupportedExtensions = [".jpg", ".jpeg", ".png", ".webp"];
+    public static AnimeArtworkCache Default { get; } = new(DefaultRootPath, DefaultLegacyRootPath);
 
-    public static string? ResolvePosterUrl(Guid animeId, string? fallbackUrl) =>
-        GetPublicUrl(animeId, AnimeArtworkKind.Poster) ?? fallbackUrl;
+    public string RootPath { get; } = rootPath;
+    public string LegacyRootPath { get; } = legacyRootPath;
 
-    public static string? ResolveFanartUrl(Guid animeId, string? fallbackUrl) =>
-        GetPublicUrl(animeId, AnimeArtworkKind.Fanart) ?? fallbackUrl;
-
-    public static string? GetPublicUrl(Guid animeId, AnimeArtworkKind kind)
+    public string? GetPublicUrl(Guid animeId, AnimeArtworkSlot slot)
     {
-        var path = FindPath(animeId, kind);
+        var path = FindPath(animeId, slot);
         if (path is null)
         {
             return null;
         }
 
         var version = File.GetLastWriteTimeUtc(path).Ticks;
-        return $"/artwork/anime/{animeId:D}/{ToSlug(kind)}?v={version}";
+        return $"/artwork/anime/{animeId:D}/{slot.Slug}?v={version}";
     }
 
-    public static string? FindPath(Guid animeId, AnimeArtworkKind kind)
+    public string? FindPath(Guid animeId, AnimeArtworkSlot slot)
     {
-        var directory = GetArtworkDirectory(animeId);
-        var name = ToSlug(kind);
-
-        foreach (var extension in SupportedExtensions)
+        var derivative = DerivativePath(animeId, slot);
+        if (File.Exists(derivative))
         {
-            var path = Path.Combine(directory, name + extension);
-            if (File.Exists(path))
-            {
-                return path;
-            }
+            return derivative;
         }
 
-        return null;
+        return slot.SeasonNumber is null ? FindLegacyPath(animeId, slot.Kind) : null;
     }
 
-    public static string GetContentType(string path) =>
-        Path.GetExtension(path).ToLowerInvariant() switch
-        {
-            ".jpg" or ".jpeg" => "image/jpeg",
-            ".png" => "image/png",
-            ".webp" => "image/webp",
-            _ => "application/octet-stream"
-        };
+    public string LegacyDirectory(Guid animeId) =>
+        Path.Combine(LegacyRootPath, animeId.ToString("N"));
 
-    public static bool IsOptimizedDerivative(Guid animeId, AnimeArtworkKind kind)
+    public string? FindLegacyPath(Guid animeId, AnimeArtworkKind kind)
     {
-        var path = FindPath(animeId, kind);
-        if (path is null ||
-            !Path.GetExtension(path).Equals(".webp", StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        var markerPath = GetDerivativeMarkerPath(animeId, kind);
-        try
-        {
-            return File.Exists(markerPath) &&
-                   string.Equals(
-                       File.ReadAllText(markerPath).Trim(),
-                       DerivativeVersion,
-                       StringComparison.Ordinal);
-        }
-        catch (IOException)
-        {
-            return false;
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return false;
-        }
+        var directory = LegacyDirectory(animeId);
+        return LegacyExtensions
+            .Select(extension => Path.Combine(directory, AnimeArtworkFiles.BaseName(kind) + extension))
+            .FirstOrDefault(File.Exists);
     }
 
-    public static async Task<bool> EnsureOptimizedAsync(
+    /// <summary>
+    /// Regenerates the slot's derivative when the canonical file (path, size or last write)
+    /// changed since it was built. Returns true when a new derivative was written.
+    /// </summary>
+    public async Task<bool> RefreshAsync(
         Guid animeId,
-        AnimeArtworkKind kind,
+        AnimeArtworkSlot slot,
+        string canonicalPath,
         CancellationToken cancellationToken)
     {
-        if (IsOptimizedDerivative(animeId, kind))
+        var source = new FileInfo(canonicalPath);
+        if (!source.Exists || source.Length == 0 || source.Length > AnimeArtworkFiles.MaxImageBytes)
         {
             return false;
         }
 
-        var existingPath = FindPath(animeId, kind);
-        if (existingPath is null)
-        {
-            return false;
-        }
-
-        var existing = new FileInfo(existingPath);
-        if (!existing.Exists || existing.Length == 0 || existing.Length > MaxImageBytes)
-        {
-            return false;
-        }
-
-        byte[] bytes;
-        try
-        {
-            bytes = await File.ReadAllBytesAsync(existingPath, cancellationToken);
-        }
-        catch (IOException)
-        {
-            return false;
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return false;
-        }
-
-        await using var source = new MemoryStream(bytes, writable: false);
-        return await SaveAsync(
-            animeId,
-            kind,
-            source,
-            GetContentType(existingPath),
-            cancellationToken);
-    }
-
-    public static async Task<bool> ImportFileIfChangedAsync(
-        Guid animeId,
-        AnimeArtworkKind kind,
-        string sourcePath,
-        CancellationToken cancellationToken)
-    {
-        var source = new FileInfo(sourcePath);
-        if (!source.Exists)
-        {
-            return false;
-        }
-
-        var contentType = GetContentType(source.FullName);
-        if (!IsSupportedContentType(contentType))
-        {
-            return false;
-        }
-
-        var sourceIdentity = BuildSourceIdentity(source);
-        if (IsOptimizedDerivative(animeId, kind) &&
-            string.Equals(
-                await ReadSourceIdentityAsync(animeId, kind, cancellationToken),
-                sourceIdentity,
-                StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        await using var stream = new FileStream(
+        var identity = string.Join(
+            '|',
+            DerivativeVersion,
             source.FullName,
-            FileMode.Open,
-            FileAccess.Read,
-            FileShare.Read,
-            64 * 1024,
-            FileOptions.Asynchronous | FileOptions.SequentialScan);
-
-        if (!await SaveAsync(
-                animeId,
-                kind,
-                stream,
-                contentType,
-                cancellationToken))
+            source.Length.ToString(CultureInfo.InvariantCulture),
+            source.LastWriteTimeUtc.Ticks.ToString(CultureInfo.InvariantCulture));
+        var derivativePath = DerivativePath(animeId, slot);
+        var markerPath = derivativePath + ".source";
+        if (File.Exists(derivativePath) &&
+            string.Equals(await TryReadAsync(markerPath, cancellationToken), identity, StringComparison.Ordinal))
         {
             return false;
         }
 
-        var importedPath = FindPath(animeId, kind);
-        if (importedPath is not null)
+        var bytes = await File.ReadAllBytesAsync(source.FullName, cancellationToken);
+        await using var input = new MemoryStream(bytes, writable: false);
+        await using var output = new MemoryStream();
+        if (!await AnimeArtworkStore.CreateOptimizedDerivativeAsync(slot.Kind, input, output, cancellationToken))
         {
-            File.SetLastWriteTimeUtc(importedPath, source.LastWriteTimeUtc);
+            return false;
         }
 
-        await WriteTextAtomicAsync(
-            GetSourceMarkerPath(animeId, kind),
-            sourceIdentity,
+        Directory.CreateDirectory(Path.GetDirectoryName(derivativePath)!);
+        await AnimeArtworkFiles.WriteAtomicAsync(derivativePath, output.ToArray(), cancellationToken);
+        await AnimeArtworkFiles.WriteAtomicAsync(
+            markerPath,
+            System.Text.Encoding.UTF8.GetBytes(identity),
             cancellationToken);
-
         return true;
     }
 
-    public static async Task<bool> SaveAsync(
-        Guid animeId,
-        AnimeArtworkKind kind,
-        Stream source,
-        string? contentType,
-        CancellationToken cancellationToken)
+    /// <summary>Drops a derivative whose canonical file is gone.</summary>
+    public void Remove(Guid animeId, AnimeArtworkSlot slot)
     {
-        if (!IsSupportedContentType(contentType))
-        {
-            return false;
-        }
+        var derivativePath = DerivativePath(animeId, slot);
+        AnimeArtworkFiles.TryDelete(derivativePath);
+        AnimeArtworkFiles.TryDelete(derivativePath + ".source");
+    }
 
-        var directory = GetArtworkDirectory(animeId);
-        Directory.CreateDirectory(directory);
+    private string DerivativePath(Guid animeId, AnimeArtworkSlot slot) =>
+        Path.Combine(RootPath, animeId.ToString("N"), slot.Slug + ".webp");
 
-        var finalPath = Path.Combine(directory, ToSlug(kind) + ".webp");
-        var temporaryPath = finalPath + ".tmp";
-
+    private static async Task<string?> TryReadAsync(string path, CancellationToken cancellationToken)
+    {
         try
         {
-            await using (var output = new FileStream(
-                             temporaryPath,
-                             FileMode.Create,
-                             FileAccess.Write,
-                             FileShare.None,
-                             64 * 1024,
-                             FileOptions.Asynchronous | FileOptions.SequentialScan))
-            {
-                if (!await CreateOptimizedDerivativeAsync(
-                        kind,
-                        source,
-                        output,
-                        cancellationToken))
-                {
-                    return false;
-                }
-            }
-
-            foreach (var supportedExtension in SupportedExtensions)
-            {
-                var existingPath = Path.Combine(directory, ToSlug(kind) + supportedExtension);
-                if (!string.Equals(existingPath, finalPath, StringComparison.Ordinal) &&
-                    File.Exists(existingPath))
-                {
-                    File.Delete(existingPath);
-                }
-            }
-
-            File.Move(temporaryPath, finalPath, true);
-
-            // Direct saves (for example Sonarr) replace any previously tracked
-            // local source. Local imports write their source identity again
-            // immediately after this method succeeds.
-            var sourceMarkerPath = GetSourceMarkerPath(animeId, kind);
-            if (File.Exists(sourceMarkerPath))
-            {
-                File.Delete(sourceMarkerPath);
-            }
-
-            await WriteTextAtomicAsync(
-                GetDerivativeMarkerPath(animeId, kind),
-                DerivativeVersion,
-                cancellationToken);
-            return true;
+            return File.Exists(path)
+                ? (await File.ReadAllTextAsync(path, cancellationToken)).Trim()
+                : null;
         }
-        finally
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            if (File.Exists(temporaryPath))
-            {
-                File.Delete(temporaryPath);
-            }
+            return null;
         }
     }
+}
+
+/// <summary>Artwork URLs for pages and the client API; a remote provider URL is only the fallback.</summary>
+public static class AnimeArtworkStore
+{
+    public const int PosterMaxWidth = 512;
+    public const int FanartMaxWidth = 1600;
+
+    private const int WebpQuality = 82;
+
+    public static string? ResolvePosterUrl(Guid animeId, string? fallbackUrl) =>
+        AnimeArtworkCache.Default.GetPublicUrl(animeId, AnimeArtworkSlot.Poster) ?? fallbackUrl;
+
+    public static string? ResolveFanartUrl(Guid animeId, string? fallbackUrl) =>
+        AnimeArtworkCache.Default.GetPublicUrl(animeId, AnimeArtworkSlot.Fanart) ?? fallbackUrl;
+
+    /// <summary>The season's own poster, falling back to the series poster.</summary>
+    public static string? ResolveSeasonPosterUrl(Guid animeId, int seasonNumber, string? fallbackUrl) =>
+        AnimeArtworkCache.Default.GetPublicUrl(animeId, AnimeArtworkSlot.SeasonPoster(seasonNumber)) ??
+        ResolvePosterUrl(animeId, fallbackUrl);
 
     public static async Task<bool> CreateOptimizedDerivativeAsync(
         AnimeArtworkKind kind,
@@ -277,45 +201,20 @@ public static class AnimeArtworkStore
         Stream destination,
         CancellationToken cancellationToken)
     {
-        await using var buffered = new MemoryStream();
-        var buffer = new byte[64 * 1024];
-        long total = 0;
-
-        while (true)
-        {
-            var read = await source.ReadAsync(buffer, cancellationToken);
-            if (read == 0)
-            {
-                break;
-            }
-
-            total += read;
-            if (total > MaxImageBytes)
-            {
-                return false;
-            }
-
-            await buffered.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
-        }
-
-        if (total == 0)
+        var bytes = await AnimeArtworkFiles.ReadLimitedAsync(source, cancellationToken);
+        if (bytes is null || bytes.Length == 0)
         {
             return false;
         }
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        SKBitmap? decoded;
-        try
-        {
-            decoded = SKBitmap.Decode(buffered.ToArray());
-        }
-        catch (ArgumentNullException)
+        if (AnimeArtworkFiles.DetectExtension(bytes) is null)
         {
             return false;
         }
 
-        using var bitmap = decoded;
+        using var bitmap = SKBitmap.Decode(bytes);
         if (bitmap is null || bitmap.Width <= 0 || bitmap.Height <= 0)
         {
             return false;
@@ -358,8 +257,7 @@ public static class AnimeArtworkStore
                 return false;
             }
 
-            var bytes = data.ToArray();
-            await destination.WriteAsync(bytes, cancellationToken);
+            await destination.WriteAsync(data.ToArray(), cancellationToken);
             return true;
         }
         finally
@@ -367,75 +265,4 @@ public static class AnimeArtworkStore
             resized?.Dispose();
         }
     }
-
-    private static string GetArtworkDirectory(Guid animeId) =>
-        Path.Combine(RootPath, animeId.ToString("N"));
-
-    private static string GetDerivativeMarkerPath(Guid animeId, AnimeArtworkKind kind) =>
-        Path.Combine(
-            GetArtworkDirectory(animeId),
-            ToSlug(kind) + ".derivative");
-
-    private static string GetSourceMarkerPath(Guid animeId, AnimeArtworkKind kind) =>
-        Path.Combine(
-            GetArtworkDirectory(animeId),
-            ToSlug(kind) + ".source");
-
-    private static string BuildSourceIdentity(FileInfo source) =>
-        $"{source.Length}:{source.LastWriteTimeUtc.Ticks}";
-
-    private static async Task<string?> ReadSourceIdentityAsync(
-        Guid animeId,
-        AnimeArtworkKind kind,
-        CancellationToken cancellationToken)
-    {
-        var path = GetSourceMarkerPath(animeId, kind);
-        if (!File.Exists(path))
-        {
-            return null;
-        }
-
-        try
-        {
-            return (await File.ReadAllTextAsync(path, cancellationToken)).Trim();
-        }
-        catch (IOException)
-        {
-            return null;
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return null;
-        }
-    }
-
-    private static async Task WriteTextAtomicAsync(
-        string path,
-        string value,
-        CancellationToken cancellationToken)
-    {
-        var temporaryPath = path + ".tmp";
-        try
-        {
-            await File.WriteAllTextAsync(temporaryPath, value, cancellationToken);
-            File.Move(temporaryPath, path, true);
-        }
-        finally
-        {
-            if (File.Exists(temporaryPath))
-            {
-                File.Delete(temporaryPath);
-            }
-        }
-    }
-
-    private static bool IsSupportedContentType(string? contentType) =>
-        contentType?.Split(';', 2)[0].Trim().ToLowerInvariant() is
-            "image/jpeg" or
-            "image/jpg" or
-            "image/png" or
-            "image/webp";
-
-    private static string ToSlug(AnimeArtworkKind kind) =>
-        kind == AnimeArtworkKind.Poster ? "poster" : "fanart";
 }

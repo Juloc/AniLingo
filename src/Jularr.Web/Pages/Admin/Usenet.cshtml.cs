@@ -4,10 +4,12 @@ using Jularr.Web.Features.Acquisition.DownloadClients;
 using Jularr.Web.Features.Acquisition.Health;
 using Jularr.Web.Features.Acquisition.Import;
 using Jularr.Web.Features.Acquisition.Indexers;
+using Jularr.Web.Features.Acquisition.Prowlarr;
 using Jularr.Web.Features.Acquisition.Sabnzbd;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Books;
 using Jularr.Web.Features.Localization;
+using Jularr.Web.Features.ReadingAcquisition;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -29,6 +31,18 @@ public sealed record UsenetIndexerCard(IndexerEntry Entry, AcquisitionHealthStat
 
 public sealed record UsenetClientCard(DownloadClientEntry Entry, AcquisitionHealthStatus? Health);
 
+/// <summary>One release as the media type's own selector judged it; <see cref="Score"/> 0 means rejected.</summary>
+public sealed record UsenetTestRelease(ProwlarrReleaseCandidate Release, int Score, string? RejectedBecause);
+
+/// <summary>The search test result, from the same search and ranking automatic adding uses.</summary>
+public sealed record UsenetSearchTest(
+    IReadOnlyList<string> Queries,
+    IReadOnlyList<UsenetTestRelease> Ranked,
+    IReadOnlyList<IndexerSearchWarning> Warnings,
+    bool UsedCategoryFallback,
+    ProwlarrReleaseCandidate? Picked,
+    string FailureMessage);
+
 /// <summary>One SABnzbd job for the recent downloads list; <see cref="LocalPathReadable"/> is null when unknown.</summary>
 public sealed record UsenetDownloadRow(
     string Name,
@@ -45,8 +59,9 @@ public sealed record UsenetDownloadRow(
 
 /// <summary>
 /// The owner's Usenet hub: a setup checklist, every indexer and SABnzbd connection with health,
-/// test, enable, edit and remove, a book search test that shows which release automatic adding
-/// would pick, and the recent SABnzbd queue and history with whether Jularr can read each result.
+/// test, enable, edit and remove, a Book/Manga/Light Novel search test that shows which release
+/// automatic adding would pick, and the recent SABnzbd queue and history with whether Jularr can
+/// read each result.
 /// </summary>
 [Authorize(Roles = AccountRoles.Owner)]
 public sealed class UsenetModel(
@@ -63,6 +78,14 @@ public sealed class UsenetModel(
     BookCatalogService books) : PageModel
 {
     private static readonly TimeSpan SabnzbdTimeout = TimeSpan.FromSeconds(6);
+
+    /// <summary>Every media type that downloads through SABnzbd, in display order.</summary>
+    public static IReadOnlyList<MediaAcquisitionKind> DownloadKinds { get; } =
+        [MediaAcquisitionKind.Anime, MediaAcquisitionKind.Book, MediaAcquisitionKind.Manga, MediaAcquisitionKind.LightNovel];
+
+    /// <summary>The media types the search test can run.</summary>
+    public static IReadOnlyList<MediaAcquisitionKind> TestKinds { get; } =
+        [MediaAcquisitionKind.Book, MediaAcquisitionKind.Manga, MediaAcquisitionKind.LightNovel];
 
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public IReadOnlyList<UsenetCheck> Checks { get; private set; } = [];
@@ -81,7 +104,13 @@ public sealed class UsenetModel(
     [BindProperty(SupportsGet = true)]
     public string? TestAuthor { get; set; }
 
-    public BookUsenetSearchResult? TestResult { get; private set; }
+    /// <summary>"book", "manga" or "lightNovel"; anything else tests a book search.</summary>
+    [BindProperty(SupportsGet = true)]
+    public string? TestKind { get; set; }
+
+    public MediaAcquisitionKind TestMediaKind => ParseTestKind(TestKind);
+
+    public UsenetSearchTest? TestResult { get; private set; }
 
     public string? Notice => TempData["UsenetNotice"] as string;
     public string? Error => TempData["UsenetError"] as string;
@@ -128,10 +157,60 @@ public sealed class UsenetModel(
 
         if (!string.IsNullOrWhiteSpace(TestTitle))
         {
-            TestResult = await BookUsenetSearch.SearchAsync(searchCoordinator, TestTitle, TestAuthor, cancellationToken);
+            TestResult = await RunSearchTestAsync(TestMediaKind, TestTitle, TestAuthor, cancellationToken);
         }
 
         Checks = BuildChecks();
+    }
+
+    public static MediaAcquisitionKind ParseTestKind(string? value) => value switch
+    {
+        "manga" => MediaAcquisitionKind.Manga,
+        "lightNovel" => MediaAcquisitionKind.LightNovel,
+        _ => MediaAcquisitionKind.Book
+    };
+
+    /// <summary>Newznab categories an indexer is searched in for one media type.</summary>
+    public static IReadOnlyList<int> SearchCategories(IndexerEntry entry, MediaAcquisitionKind kind) => kind switch
+    {
+        MediaAcquisitionKind.Anime => entry.Settings.Categories,
+        MediaAcquisitionKind.Book => entry.Settings.EffectiveBookCategories,
+        _ => ReadingUsenetSearch.Categories(entry, kind)
+    };
+
+    private async Task<UsenetSearchTest> RunSearchTestAsync(
+        MediaAcquisitionKind kind,
+        string title,
+        string? author,
+        CancellationToken cancellationToken)
+    {
+        if (kind == MediaAcquisitionKind.Book)
+        {
+            var book = await BookUsenetSearch.SearchAsync(searchCoordinator, title, author, cancellationToken);
+            return new UsenetSearchTest(
+                book.Queries,
+                book.Ranked.Select(ranked => new UsenetTestRelease(ranked.Release, ranked.Score, ranked.RejectedBecause)).ToArray(),
+                book.Warnings,
+                book.UsedCategoryFallback,
+                book.Picked,
+                book.FailureMessage);
+        }
+
+        var reading = await ReadingUsenetSearch.SearchAsync(
+            searchCoordinator,
+            new ReadingAcquisitionTarget(
+                kind,
+                title.Trim(),
+                [],
+                string.IsNullOrWhiteSpace(author) ? null : author.Trim()),
+            cancellationToken);
+        return new UsenetSearchTest(
+            reading.Queries,
+            reading.Ranked.Select(ranked => new UsenetTestRelease(ranked.Release, ranked.Score, ranked.RejectedBecause)).ToArray(),
+            reading.Warnings,
+            reading.UsedCategoryFallback,
+            reading.Picked,
+            reading.FailureMessage);
     }
 
     public async Task<IActionResult> OnPostTestIndexerAsync(Guid id, CancellationToken cancellationToken)
@@ -340,14 +419,7 @@ public sealed class UsenetModel(
                 ? new UsenetCheck("client", UsenetCheckState.Ok, string.Join(", ", enabledClients.Where(card => card.Health?.IsHealthy == true).Select(card => card.Entry.Name)), null)
                 : new UsenetCheck("client", UsenetCheckState.Warning, Ui["admin.usenet.check.client.untested"], null));
 
-        var booksCategory = enabledClients
-            .Select(card => card.Entry.Settings.BooksCategory)
-            .FirstOrDefault(category => !string.IsNullOrWhiteSpace(category));
-        checks.Add(enabledClients.Length == 0
-            ? new UsenetCheck("booksCategory", UsenetCheckState.Unknown, Ui["admin.usenet.check.needsClient"], null)
-            : booksCategory is null
-                ? new UsenetCheck("booksCategory", UsenetCheckState.Warning, Ui["admin.usenet.check.booksCategory.missing"], $"/Settings/DownloadClients/Edit/{enabledClients[0].Entry.Id}")
-                : new UsenetCheck("booksCategory", UsenetCheckState.Ok, booksCategory, null));
+        checks.Add(BuildCategoryCheck(Ui, enabledClients.Select(card => card.Entry).ToArray()));
 
         var completed = Downloads.Where(row => row.LocalPathReadable is not null).ToArray();
         checks.Add(completed.Length == 0
@@ -375,5 +447,37 @@ public sealed class UsenetModel(
                 "/Admin/Requests"));
 
         return checks;
+    }
+
+    /// <summary>
+    /// Every media type should land in its own SABnzbd category so SABnzbd's sorting and the
+    /// importers never mix Anime, Books, Manga and Light Novels.
+    /// </summary>
+    public static UsenetCheck BuildCategoryCheck(UiTextBundle ui, IReadOnlyList<DownloadClientEntry> enabledClients)
+    {
+        if (enabledClients.Count == 0)
+        {
+            return new UsenetCheck("categories", UsenetCheckState.Unknown, ui["admin.usenet.check.needsClient"], null);
+        }
+
+        string Label(MediaAcquisitionKind kind) => ui[$"admin.requests.kind.{AcquisitionAccessNames.Kind(kind)}"];
+        var categories = DownloadKinds
+            .Select(kind => (Kind: kind, Category: enabledClients
+                .Select(entry => entry.Settings.CategoryFor(kind))
+                .FirstOrDefault(category => category is not null)))
+            .ToArray();
+        var missing = categories.Where(item => item.Category is null).Select(item => Label(item.Kind)).ToArray();
+
+        return missing.Length == 0
+            ? new UsenetCheck(
+                "categories",
+                UsenetCheckState.Ok,
+                string.Join(" · ", categories.Select(item => $"{Label(item.Kind)}: {item.Category}")),
+                null)
+            : new UsenetCheck(
+                "categories",
+                UsenetCheckState.Warning,
+                ui.Format("admin.usenet.check.categories.missing", ("types", string.Join(", ", missing))),
+                $"/Settings/DownloadClients/Edit/{enabledClients[0].Id}");
     }
 }

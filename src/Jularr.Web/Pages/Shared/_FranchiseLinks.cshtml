@@ -9,7 +9,7 @@
             @foreach (var franchise in Model.Franchises)
             {
                 <a href="/Franchises/@franchise.Id">
-                    <span>@franchise.Title</span>
+                    <span>@Jularr.Web.Features.Franchises.FranchiseLabels.Title(Model.Ui, franchise.Title)</span>
                     <small>@Model.Ui.Format("franchise.memberCount", ("count", franchise.MemberCount))</small>
                 </a>
             }

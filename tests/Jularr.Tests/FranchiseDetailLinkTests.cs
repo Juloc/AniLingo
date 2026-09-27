@@ -16,7 +16,9 @@ public sealed class FranchiseDetailLinkTests
         var store = new FranchiseStore(fixture.Db);
 
         var seed = Draft(WatchlistMediaType.Anime, "100", "Series");
-        var franchiseId = await store.GetOrCreateBySeedAsync(seed, CancellationToken.None);
+        var franchiseId = await store.GetOrCreateBySeedAsync(seed.Identity, CancellationToken.None);
+        await store.UpsertMemberAsync(franchiseId, seed, null, true, CancellationToken.None);
+        await store.SetTitleAsync(franchiseId, seed.Title, CancellationToken.None);
 
         var manga = Draft(WatchlistMediaType.Manga, "200", "Series Manga");
         await store.UpsertMemberAsync(
@@ -53,10 +55,7 @@ public sealed class FranchiseDetailLinkTests
         WatchlistMediaType type,
         string externalId,
         string title) =>
-        new(
-            new WatchlistIdentity(type, "anilist", externalId),
-            title,
-            DetailsUrl: "/Watchlist");
+        new(new WatchlistIdentity(type, "anilist", externalId), title);
 
     private sealed class Fixture : IAsyncDisposable
     {

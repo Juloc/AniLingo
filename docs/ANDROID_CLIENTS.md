@@ -245,6 +245,24 @@ The existing browser fragmented-MP4 path may remain while native support is adde
 
 ## 5. Playback selection
 
+### 5.0 Playback plan (canonical, #403)
+
+Advertised by `playbackPlan`. Every client — web, installed PWA, phone, TV — asks the server how to play instead of deciding itself:
+
+```text
+POST   /api/client/v1/episodes/{episodeId}/playback-plan
+GET    /api/client/v1/stream-sessions/{sessionId}/stream?startSeconds={seconds}   (progressive fMP4)
+GET    /api/client/v1/stream-sessions/{sessionId}/hls?startSeconds={seconds}      (redirects to the fMP4 HLS playlist)
+DELETE /api/client/v1/stream-sessions/{sessionId}
+```
+
+Request body (every field optional):
+
+- `capabilities`: what the device measured, each claim `confirmed` (decoder API asked about that exact configuration), `inferred` (weaker signal), `unknown` or `unsupported`: per container (`mp4`, `matroska`, `webm`) the video codecs (`h264`, `hevc`, `av1`, `vp9`, … with `bitDepths`, `maxHeight`, optional `codecTags`) and audio codecs (with `maxChannels`); `hdr` (`display`, `hdr10`, `hdr10Plus`, `hlg`, `dolbyVision`); `delivery` (`progressiveMp4`, `hls`); `subtitles` (`text`, `styledAss`, `image`); `features` (`audioTrackSelection`, `pictureInPicture`, …); `client` (`kind` = `web|pwa|android|android_tv`). Media3 clients report their decoder list; omitting the document makes the server infer a conservative one.
+- `audioTrackId`, `subtitleTrackId` (canonical `stream:N`; a bitmap subtitle the client cannot draw is burned in), `quality` (`auto`, `original`, `20mbps` … `1mbps`; legacy `1080p/720p/low` are accepted), `mode` (`auto`, `direct_only`, `always_transcode`), `network` (`throughputKbps`, `bufferSeconds`, `recentStalls`, `saveData`, `connectionType`), `failedModes` (modes that just failed on this device), `replacesSessionId`, `wake` (default `true`: the request is a play intent and wakes sleeping Wake-on-LAN storage; send `false` to only decide, e.g. when a screen opens).
+
+The response carries `sessionId`, `plan` and `delivery`. `plan.mode` is `direct_play` (untouched file, no server processing), `direct_stream` (video copied into fMP4, audio copied or converted), `transcode` (H.264) or `unavailable`. `plan.reasons[]` is machine-readable (`code`, `severity`, `rulesOut`, `values`) and explains every mode that was ruled out — clients show them as "Why not Direct Play?". `delivery.url` is the stream to open; live transports restart at a position with `delivery.startParameter`. When playback fails, send the failed mode in `failedModes` and play the new plan; never pick a fallback locally. Server-side quality decisions (Automatic, home/remote defaults) are part of the plan.
+
 ### 5.1 Native algorithm
 
 For both phone and TV:
@@ -526,6 +544,8 @@ When no modal/sheet is open:
 - Left/right with controls hidden: -10s/+10s
 - Back with controls visible: hide controls
 - Back with controls hidden: leave player after normal navigation behavior
+- controls auto-hide after the canonical `timing.controlsAutoHide` token while playback runs; every remote key resets the timer. Paused playback, an open learning overlay or the phone companion overlay keep them visible.
+- when the controls hide, remote focus returns to the player surface so the next key still reaches the player
 
 Player control row always contains a **Learn this line** action.
 

@@ -325,9 +325,85 @@
 }
 
 .discover-card-actions .primary {
+    min-height: 30px;
+    padding: 5px 12px;
     border-color: color-mix(in srgb, var(--accent) 22%, transparent);
     background: var(--accent-soft);
     color: var(--accent-text);
+    font-size: 11px;
+}
+
+/* Follow toggle and its franchise menu: one compact secondary control. */
+.discover-follow {
+    position: relative;
+    display: inline-flex;
+}
+
+.discover-card-actions .discover-follow > button {
+    min-height: 26px;
+    padding: 3px 7px;
+    background: transparent;
+    font-size: 10px;
+}
+
+.discover-card-actions .discover-follow-toggle[aria-pressed="true"] {
+    color: var(--accent-text);
+}
+
+.discover-card-actions .discover-follow-toggle:not(:last-child) {
+    border-start-end-radius: 0;
+    border-end-end-radius: 0;
+}
+
+.discover-card-actions .discover-follow-more {
+    margin-inline-start: -1px;
+    padding-inline: 5px;
+    border-start-start-radius: 0;
+    border-end-start-radius: 0;
+}
+
+.discover-follow-menu {
+    position: absolute;
+    inset-block-start: calc(100% + 4px);
+    inset-inline-start: 0;
+    z-index: 20;
+    min-width: max-content;
+    padding: 4px;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    background: var(--surface);
+    box-shadow: var(--shadow-card);
+}
+
+.discover-follow-menu[hidden] { display: none; }
+
+.discover-card-actions .discover-follow-menu > a,
+.discover-card-actions .discover-follow-menu > button {
+    width: 100%;
+    display: block;
+    border: 0;
+    background: transparent;
+    text-align: start;
+    white-space: nowrap;
+}
+
+.discover-card-actions .discover-follow-menu > a:hover,
+.discover-card-actions .discover-follow-menu > button:hover {
+    background: var(--surface-2);
+}
+
+.discover-card-actions .discover-provider-link {
+    min-height: 0;
+    margin-inline-start: auto;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--muted);
+    font-weight: 650;
+}
+
+.discover-card-actions .discover-provider-link:hover {
+    text-decoration: underline;
 }
 
 .discover-empty {

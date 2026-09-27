@@ -1,0 +1,127 @@
+using Jularr.Web.Data;
+using Jularr.Web.Features.Auth;
+using Jularr.Web.Features.Localization;
+using Jularr.Web.Features.ReadingSources;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.RazorPages;
+
+namespace Jularr.Web.Pages.Admin;
+
+public sealed record ReadingSourceRow(
+    ReadingSourceDefinition Definition,
+    ReadingSourcePreference Preference);
+
+[Authorize(Roles = AccountRoles.Owner)]
+public sealed class ReadingSourcesModel(
+    AppDbContext db) : PageModel
+{
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
+    public IReadOnlyList<ReadingSourceRow> Sources { get; private set; } = [];
+    public string? LoadError { get; private set; }
+
+    public async Task OnGetAsync(
+        CancellationToken cancellationToken)
+    {
+        Ui = await UiRequestLocalization.GetBundleAsync(
+            HttpContext,
+            db);
+
+        var settings = await LoadSettingsAsync(
+            cancellationToken);
+
+        Sources = ReadingSourceCatalog.Definitions
+            .Select(definition =>
+                new ReadingSourceRow(
+                    definition,
+                    settings.Get(definition.Key)))
+            .OrderBy(row => row.Preference.Priority)
+            .ThenBy(row => row.Definition.Name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    public async Task<IActionResult> OnPostSaveAsync(
+        List<string>? enabledProviders,
+        Dictionary<string, int>? priority,
+        CancellationToken cancellationToken)
+    {
+        Ui = await UiRequestLocalization.GetBundleAsync(
+            HttpContext,
+            db);
+        var enabled = new HashSet<string>(
+            enabledProviders ?? [],
+            StringComparer.OrdinalIgnoreCase);
+        var preferences =
+            new Dictionary<string, ReadingSourcePreference>(
+                StringComparer.OrdinalIgnoreCase);
+
+        foreach (var definition in ReadingSourceCatalog.Definitions)
+        {
+            var sourcePriority =
+                priority is not null &&
+                priority.TryGetValue(
+                    definition.Key,
+                    out var configuredPriority)
+                    ? configuredPriority
+                    : definition.DefaultPriority;
+
+            if (sourcePriority is < 1 or > 999)
+            {
+                ModelState.AddModelError(
+                    definition.Key,
+                    Ui.Format(
+                        "admin.readingSources.priorityRange",
+                        ("source", definition.Name),
+                        ("min", 1),
+                        ("max", 999)));
+                continue;
+            }
+
+            preferences[definition.Key] =
+                new ReadingSourcePreference(
+                    enabled.Contains(definition.Key),
+                    sourcePriority);
+        }
+
+        if (!ModelState.IsValid)
+        {
+            Sources = ReadingSourceCatalog.Definitions
+                .Select(definition =>
+                    new ReadingSourceRow(
+                        definition,
+                        preferences.TryGetValue(
+                            definition.Key,
+                            out var preference)
+                            ? preference
+                            : ReadingSourceCatalog.DefaultPreference(
+                                definition)))
+                .OrderBy(row => row.Preference.Priority)
+                .ThenBy(row => row.Definition.Name, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            return Page();
+        }
+
+        await ReadingSourceSettingsStore.Default.SaveAsync(
+            new ReadingSourceSettingsState(preferences),
+            cancellationToken);
+
+        TempData["Status"] = Ui["admin.readingSources.saved"];
+        return RedirectToPage();
+    }
+
+    private async Task<ReadingSourceSettingsState> LoadSettingsAsync(
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await ReadingSourceSettingsStore.Default.LoadAsync(
+                cancellationToken);
+        }
+        catch (InvalidDataException exception)
+        {
+            LoadError = exception.Message;
+            return ReadingSourceSettingsState.Default;
+        }
+    }
+}

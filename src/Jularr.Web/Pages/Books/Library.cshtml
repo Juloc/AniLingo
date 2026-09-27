@@ -137,6 +137,7 @@
     <details class="book-library-management">
         <summary>@ui["books.library.manageBook"]</summary>
         <div class="book-library-management-actions">
+            <a class="button" href="/Books/ChapterArt/@Model.Book.Work.Id">@ui["chapterArt.title"]</a>
             @if (!Model.SourceIsTarget && Model.TranslationEnabled)
             {
                 <form method="post"
