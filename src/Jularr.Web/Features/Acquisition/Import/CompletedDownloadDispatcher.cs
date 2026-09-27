@@ -105,7 +105,8 @@ public interface ICompletedDownloadLocationResolver
 public sealed class CompletedDownloadLocationResolver(
     DownloadClientStore downloadClients,
     IDownloadClient client,
-    AnimeImportSettingsStore importSettings)
+    AnimeImportSettingsStore importSettings,
+    ILogger<CompletedDownloadLocationResolver> logger)
     : ICompletedDownloadLocationResolver
 {
     public async Task<CompletedDownloadLocation> ResolveAsync(
@@ -133,7 +134,7 @@ public sealed class CompletedDownloadLocationResolver(
                 return new CompletedDownloadLocation(
                     false,
                     null,
-                    $"The download client used by this job ({details.ClientEntryId}) is no longer configured.");
+                    "The download client used by this job is no longer configured.");
             }
         }
         else
@@ -193,10 +194,14 @@ public sealed class CompletedDownloadLocationResolver(
             InvalidOperationException or
             InvalidDataException)
         {
+            logger.LogWarning(
+                exception,
+                "Could not resolve completed path for operation {OperationId}.",
+                operation.Id);
             return new CompletedDownloadLocation(
                 false,
                 null,
-                $"Completed path is temporarily unavailable: {exception.Message}");
+                "The completed path is temporarily unavailable.");
         }
     }
 }
