@@ -267,7 +267,7 @@ public sealed class IndexModel(
 
             if (request.Status == AcquisitionRequestStatus.Completed &&
                 request.ResultUrl is { Length: > 0 } resultUrl &&
-                resultUrl.StartsWith('/', StringComparison.Ordinal))
+                resultUrl.StartsWith("/", StringComparison.Ordinal))
             {
                 return LocalRedirect(resultUrl);
             }
