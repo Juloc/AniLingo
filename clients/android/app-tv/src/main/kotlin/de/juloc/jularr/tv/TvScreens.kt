@@ -1,7 +1,6 @@
 package de.juloc.jularr.tv
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,7 +14,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -25,29 +23,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Button
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
-import coil3.compose.AsyncImage
-import coil3.network.NetworkHeaders
-import coil3.network.httpHeaders
-import coil3.request.ImageRequest
 import de.juloc.jularr.core.model.AnimeDetail
-import de.juloc.jularr.core.model.AnimeSummary
-import de.juloc.jularr.core.model.ClientAccount
-import de.juloc.jularr.core.model.ClientLibrary
 import de.juloc.jularr.core.model.EpisodeSummary
-import java.net.URI
 
 @Composable
 fun TvSetupScreen(
@@ -60,8 +43,8 @@ fun TvSetupScreen(
     var localError by remember { mutableStateOf<String?>(null) }
 
     TvCenteredPanel(
-        title = "Connect Jularr",
-        description = "Enter the address of your Jularr server.",
+        title = stringResource(R.string.tv_setup_title),
+        description = stringResource(R.string.tv_setup_description),
     ) {
         TvInput(
             value = origin,
@@ -69,8 +52,8 @@ fun TvSetupScreen(
                 origin = it
                 localError = null
             },
-            label = "Server address",
-            placeholder = "https://jularr.example",
+            label = stringResource(R.string.tv_setup_label_server),
+            placeholder = stringResource(R.string.tv_setup_placeholder_server),
         )
 
         (localError ?: error)?.let {
@@ -93,7 +76,13 @@ fun TvSetupScreen(
                 }
             },
         ) {
-            Text(if (busy) "Connecting…" else "Continue")
+            Text(
+                if (busy) {
+                    stringResource(R.string.tv_setup_button_connecting)
+                } else {
+                    stringResource(R.string.tv_setup_button_continue)
+                },
+            )
         }
     }
 }
@@ -110,20 +99,20 @@ fun TvLoginScreen(
     var password by rememberSaveable { mutableStateOf("") }
 
     TvCenteredPanel(
-        title = "Sign in",
+        title = stringResource(R.string.tv_login_title),
         description = serverOrigin,
     ) {
         TvInput(
             value = userName,
             onValueChange = { userName = it },
-            label = "User name",
-            placeholder = "Jularr user",
+            label = stringResource(R.string.tv_login_label_username),
+            placeholder = stringResource(R.string.tv_login_placeholder_username),
         )
         TvInput(
             value = password,
             onValueChange = { password = it },
-            label = "Password",
-            placeholder = "Password",
+            label = stringResource(R.string.tv_login_label_password),
+            placeholder = stringResource(R.string.tv_login_placeholder_password),
             password = true,
         )
 
@@ -140,88 +129,19 @@ fun TvLoginScreen(
                 enabled = !busy && userName.isNotBlank() && password.isNotEmpty(),
                 onClick = { onLogin(userName.trim(), password) },
             ) {
-                Text(if (busy) "Signing in…" else "Sign in")
+                Text(
+                    if (busy) {
+                        stringResource(R.string.tv_login_button_signing_in)
+                    } else {
+                        stringResource(R.string.tv_login_button_sign_in)
+                    },
+                )
             }
             Button(
                 enabled = !busy,
                 onClick = onChangeServer,
             ) {
-                Text("Change server")
-            }
-        }
-    }
-}
-
-@Composable
-fun TvLibraryScreen(
-    account: ClientAccount,
-    library: ClientLibrary,
-    serverOrigin: String,
-    requestHeaders: Map<String, String>,
-    error: String?,
-    onAnime: (AnimeSummary) -> Unit,
-    onRefresh: () -> Unit,
-    onSignOut: () -> Unit,
-) {
-    Surface(modifier = Modifier.fillMaxSize()) {
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 48.dp, vertical = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(22.dp),
-        ) {
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                        Text("Library", style = MaterialTheme.typography.headlineLarge)
-                        Text(
-                            "Jularr · ${account.userName ?: account.role}",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
-                        )
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Button(onClick = onRefresh) { Text("Refresh") }
-                        Button(onClick = onSignOut) { Text("Sign out") }
-                    }
-                }
-            }
-
-            error?.let {
-                item {
-                    Text(
-                        text = it,
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                }
-            }
-
-            item {
-                if (library.anime.isEmpty()) {
-                    Text(
-                        "No anime in the library yet.",
-                        style = MaterialTheme.typography.bodyLarge,
-                    )
-                } else {
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                        items(
-                            items = library.anime,
-                            key = { it.id },
-                        ) { anime ->
-                            AnimeButton(
-                                anime = anime,
-                                serverOrigin = serverOrigin,
-                                requestHeaders = requestHeaders,
-                                onClick = { onAnime(anime) },
-                            )
-                        }
-                    }
-                }
+                Text(stringResource(R.string.tv_login_button_change_server))
             }
         }
     }
@@ -249,7 +169,7 @@ fun TvAnimeScreen(
                     verticalAlignment = Alignment.Top,
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                        Button(onClick = onBack) { Text("Back") }
+                        Button(onClick = onBack) { Text(stringResource(R.string.tv_action_back)) }
                         TvArtwork(
                             url = anime.coverImageUrl,
                             serverOrigin = serverOrigin,
@@ -286,7 +206,10 @@ fun TvAnimeScreen(
                             anime.seasonYear?.let { TvInfoPill(it.toString()) }
                             anime.format?.takeIf { it.isNotBlank() }?.let { TvInfoPill(it) }
                             TvInfoPill(
-                                "${anime.seasons.sumOf { it.episodes.size }} episodes",
+                                stringResource(
+                                    R.string.tv_anime_episode_count,
+                                    anime.seasons.sumOf { it.episodes.size },
+                                ),
                             )
                         }
 
@@ -304,7 +227,7 @@ fun TvAnimeScreen(
             for (season in anime.seasons) {
                 item {
                     Text(
-                        text = "Season ${season.number}",
+                        text = stringResource(R.string.tv_anime_season_header, season.number),
                         style = MaterialTheme.typography.titleLarge,
                     )
                 }
@@ -353,14 +276,18 @@ fun TvEpisodeScreen(
                 horizontalArrangement = Arrangement.spacedBy(18.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Button(onClick = onBack) { Text("Back") }
+                Button(onClick = onBack) { Text(stringResource(R.string.tv_action_back)) }
                 Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Text(
                         text = anime.title,
                         style = MaterialTheme.typography.titleLarge,
                     )
                     Text(
-                        text = "Season ${episode.seasonNumber} · Episode ${episode.number}",
+                        text = stringResource(
+                            R.string.tv_episode_season_and_number,
+                            episode.seasonNumber,
+                            episode.number,
+                        ),
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
@@ -399,17 +326,19 @@ fun TvEpisodeScreen(
 
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         TvInfoPill(
-                            text = if (episode.hasMedia) {
-                                "Ready to play"
-                            } else {
-                                "Media unavailable"
-                            },
+                            text = stringResource(
+                                if (episode.hasMedia) {
+                                    R.string.tv_episode_status_ready
+                                } else {
+                                    R.string.tv_episode_status_media_unavailable
+                                },
+                            ),
                         )
                         if (episode.activeLearningSubtitleTrackId != null) {
-                            TvInfoPill(text = "Japanese learning subtitles")
+                            TvInfoPill(text = stringResource(R.string.tv_episode_status_japanese_subtitles))
                         }
                         if (progress.isCompleted) {
-                            TvInfoPill(text = "Watched")
+                            TvInfoPill(text = stringResource(R.string.tv_episode_status_watched))
                         }
                     }
 
@@ -420,11 +349,14 @@ fun TvEpisodeScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                             ) {
                                 Text(
-                                    "Continue at ${formatEpisodePosition(progress.positionMs)}",
+                                    stringResource(
+                                        R.string.tv_episode_continue_at,
+                                        formatEpisodePosition(progress.positionMs),
+                                    ),
                                     style = MaterialTheme.typography.bodyLarge,
                                 )
                                 Text(
-                                    "${progress.percent}%",
+                                    stringResource(R.string.tv_episode_progress_percent, progress.percent),
                                     style = MaterialTheme.typography.bodyMedium,
                                 )
                             }
@@ -448,8 +380,12 @@ fun TvEpisodeScreen(
 
                     val learning = episode.learning
                     Text(
-                        text = "Vocabulary · ${learning.knownTerms} known · " +
-                            "${learning.learningTerms} learning · ${learning.newTerms} new",
+                        text = stringResource(
+                            R.string.tv_episode_vocabulary,
+                            learning.knownTerms,
+                            learning.learningTerms,
+                            learning.newTerms,
+                        ),
                         style = MaterialTheme.typography.bodyMedium,
                     )
 
@@ -468,9 +404,10 @@ fun TvEpisodeScreen(
                         ) {
                             Text(
                                 when {
-                                    busy -> "Loading…"
-                                    progress.positionMs > 0 && !progress.isCompleted -> "Resume"
-                                    else -> "Play"
+                                    busy -> stringResource(R.string.tv_episode_loading)
+                                    progress.positionMs > 0 && !progress.isCompleted ->
+                                        stringResource(R.string.tv_episode_resume)
+                                    else -> stringResource(R.string.tv_episode_play)
                                 },
                             )
                         }
@@ -478,310 +415,11 @@ fun TvEpisodeScreen(
                             enabled = !busy,
                             onClick = onBack,
                         ) {
-                            Text("Episodes")
+                            Text(stringResource(R.string.tv_episode_episodes_button))
                         }
                     }
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun TvInfoPill(text: String) {
-    Box(
-        modifier = Modifier
-            .background(
-                color = MaterialTheme.colorScheme.surface,
-                shape = MaterialTheme.shapes.small,
-            )
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-    ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.labelLarge,
-        )
-    }
-}
-
-private fun formatEpisodePosition(valueMs: Long): String {
-    val totalSeconds = valueMs.coerceAtLeast(0) / 1000
-    val hours = totalSeconds / 3600
-    val minutes = (totalSeconds % 3600) / 60
-    val seconds = totalSeconds % 60
-    return if (hours > 0) {
-        "%d:%02d:%02d".format(hours, minutes, seconds)
-    } else {
-        "%d:%02d".format(minutes, seconds)
-    }
-}
-
-@Composable
-private fun AnimeButton(
-    anime: AnimeSummary,
-    serverOrigin: String,
-    requestHeaders: Map<String, String>,
-    onClick: () -> Unit,
-) {
-    Button(
-        onClick = onClick,
-        modifier = Modifier
-            .width(210.dp)
-            .height(330.dp),
-    ) {
-        Column(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            TvArtwork(
-                url = anime.coverImageUrl,
-                serverOrigin = serverOrigin,
-                requestHeaders = requestHeaders,
-                contentDescription = anime.title,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(225.dp)
-                    .clip(MaterialTheme.shapes.small),
-            )
-            Text(
-                text = anime.title,
-                style = MaterialTheme.typography.titleMedium,
-                maxLines = 2,
-            )
-            Text(
-                text = buildString {
-                    anime.seasonYear?.let { append(it).append(" · ") }
-                    anime.format?.takeIf { it.isNotBlank() }?.let { append(it).append(" · ") }
-                    append(anime.episodeCount).append(" ep.")
-                },
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
-    }
-}
-
-@Composable
-private fun EpisodeButton(
-    episode: EpisodeSummary,
-    onClick: () -> Unit,
-) {
-    Button(
-        enabled = episode.hasMedia,
-        onClick = onClick,
-        modifier = Modifier
-            .width(240.dp)
-            .height(112.dp),
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Text(
-                    "E${episode.number}",
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                if (episode.hasJapaneseLearningSubtitle) {
-                    Text(
-                        "日本語",
-                        style = MaterialTheme.typography.labelMedium,
-                    )
-                }
-            }
-            Text(
-                episode.title,
-                maxLines = 2,
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            if (!episode.hasMedia) {
-                Text(
-                    "Media unavailable",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-        }
-    }
-}
-
-internal data class TvArtworkSource(
-    val url: String,
-    val authenticated: Boolean,
-)
-
-@Composable
-private fun TvArtwork(
-    url: String?,
-    serverOrigin: String,
-    requestHeaders: Map<String, String>,
-    contentDescription: String?,
-    modifier: Modifier = Modifier,
-    contentScale: ContentScale = ContentScale.Crop,
-) {
-    val context = LocalContext.current
-    val source = remember(url, serverOrigin) {
-        resolveArtworkSource(serverOrigin, url)
-    }
-
-    Box(
-        modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant),
-        contentAlignment = Alignment.Center,
-    ) {
-        if (source == null) {
-            Text(
-                text = contentDescription
-                    ?.trim()
-                    ?.take(1)
-                    ?.uppercase()
-                    .orEmpty(),
-                style = MaterialTheme.typography.headlineLarge,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f),
-            )
-            return@Box
-        }
-
-        val request = remember(source, requestHeaders) {
-            val builder = ImageRequest.Builder(context)
-                .data(source.url)
-
-            if (source.authenticated && requestHeaders.isNotEmpty()) {
-                val headers = NetworkHeaders.Builder().also { network ->
-                    requestHeaders.forEach { (name, value) ->
-                        network.set(name, value)
-                    }
-                }.build()
-                builder.httpHeaders(headers)
-            }
-
-            builder.build()
-        }
-
-        AsyncImage(
-            model = request,
-            contentDescription = contentDescription,
-            modifier = Modifier.fillMaxSize(),
-            contentScale = contentScale,
-        )
-    }
-}
-
-internal fun resolveArtworkSource(
-    serverOrigin: String,
-    rawUrl: String?,
-): TvArtworkSource? {
-    val value = rawUrl?.trim()?.takeIf { it.isNotEmpty() } ?: return null
-    return runCatching {
-        val candidate = URI(value)
-        val base = serverOrigin
-            .trim()
-            .takeIf { it.isNotEmpty() }
-            ?.let { URI(it.trimEnd('/') + "/") }
-
-        val resolved = when {
-            candidate.isAbsolute -> candidate
-            base != null -> base.resolve(candidate)
-            else -> return null
-        }
-
-        TvArtworkSource(
-            url = resolved.toString(),
-            authenticated = base != null && sameOrigin(base, resolved),
-        )
-    }.getOrNull()
-}
-
-private fun sameOrigin(
-    left: URI,
-    right: URI,
-): Boolean =
-    left.scheme.equals(right.scheme, ignoreCase = true) &&
-        left.host.equals(right.host, ignoreCase = true) &&
-        effectivePort(left) == effectivePort(right)
-
-private fun effectivePort(uri: URI): Int =
-    when {
-        uri.port >= 0 -> uri.port
-        uri.scheme.equals("https", ignoreCase = true) -> 443
-        uri.scheme.equals("http", ignoreCase = true) -> 80
-        else -> -1
-}
-
-@Composable
-private fun TvCenteredPanel(
-    title: String,
-    description: String,
-    content: @Composable () -> Unit,
-) {
-    Surface(modifier = Modifier.fillMaxSize()) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(48.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Column(
-                modifier = Modifier.width(620.dp),
-                verticalArrangement = Arrangement.spacedBy(18.dp),
-            ) {
-                Text(title, style = MaterialTheme.typography.headlineLarge)
-                Text(description, style = MaterialTheme.typography.bodyLarge)
-                content()
-            }
-        }
-    }
-}
-
-@Composable
-private fun TvInput(
-    value: String,
-    onValueChange: (String) -> Unit,
-    label: String,
-    placeholder: String,
-    password: Boolean = false,
-) {
-    var focused by remember { mutableStateOf(false) }
-
-    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-        Text(label, style = MaterialTheme.typography.labelLarge)
-        BasicTextField(
-            value = value,
-            onValueChange = onValueChange,
-            singleLine = true,
-            visualTransformation = if (password) {
-                PasswordVisualTransformation()
-            } else {
-                VisualTransformation.None
-            },
-            textStyle = TextStyle(
-                color = MaterialTheme.colorScheme.onSurface,
-                fontSize = 20.sp,
-            ),
-            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-            modifier = Modifier
-                .fillMaxWidth()
-                .onFocusChanged { focused = it.isFocused }
-                .border(
-                    width = if (focused) 3.dp else 1.dp,
-                    color = if (focused) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f)
-                    },
-                    shape = MaterialTheme.shapes.small,
-                )
-                .background(
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                    shape = MaterialTheme.shapes.small,
-                )
-                .padding(horizontal = 16.dp, vertical = 14.dp),
-            decorationBox = { inner ->
-                if (value.isEmpty()) {
-                    Text(
-                        placeholder,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                    )
-                }
-                inner()
-            },
-        )
     }
 }

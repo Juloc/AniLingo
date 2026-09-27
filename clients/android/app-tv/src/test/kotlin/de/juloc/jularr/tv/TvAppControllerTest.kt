@@ -22,6 +22,7 @@ import de.juloc.jularr.core.model.TtsPreferencesUpdate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.coroutines.startCoroutine
 
@@ -63,7 +64,7 @@ class TvAppControllerTest {
     }
 
     @Test
-    fun loginMovesToLibraryAndKeepsAccountProfile() {
+    fun loginMovesToHomeAndKeepsAccountProfile() {
         val store = FakeOriginStore("https://jularr.example")
         val api = FakeApi()
         val controller = TvAppController(store) { api }
@@ -71,9 +72,54 @@ class TvAppControllerTest {
         runSuspend { controller.restoreConnection() }
         val state = runSuspend { controller.login("jessi", "password-password") }
 
-        assertEquals(TvRoute.Library, state.navigation.route)
+        assertEquals(TvRoute.Home, state.navigation.route)
         assertEquals("profile", state.account?.profileId)
         assertEquals(1, state.library?.anime?.size)
+        assertEquals(1, state.continueWatching.size)
+    }
+
+    @Test
+    fun selectingActivityLoadsPlaybackHistoryWhenTheServerAdvertisesIt() {
+        val store = FakeOriginStore("https://jularr.example")
+        val api = FakeApi()
+        val controller = TvAppController(store) { api }
+
+        runSuspend { controller.restoreConnection() }
+        runSuspend { controller.login("jessi", "password-password") }
+        val state = runSuspend { controller.selectSidebarRoute(TvRoute.Activity) }
+
+        assertEquals(TvRoute.Activity, state.navigation.route)
+        assertFalse(state.activityUsesContinueWatchingFallback)
+        assertEquals(1, state.activity.size)
+    }
+
+    @Test
+    fun selectingActivityFallsBackToContinueWatchingWithoutTheFlag() {
+        val store = FakeOriginStore("https://jularr.example")
+        val api = FakeApi(advertisePlaybackHistory = false)
+        val controller = TvAppController(store) { api }
+
+        runSuspend { controller.restoreConnection() }
+        runSuspend { controller.login("jessi", "password-password") }
+        val state = runSuspend { controller.selectSidebarRoute(TvRoute.Activity) }
+
+        assertTrue(state.activityUsesContinueWatchingFallback)
+        assertEquals(1, state.continueWatching.size)
+    }
+
+    @Test
+    fun switchingSidebarTabsClearsAnimeButKeepsSelection() {
+        val store = FakeOriginStore("https://jularr.example")
+        val api = FakeApi()
+        val controller = TvAppController(store) { api }
+
+        runSuspend { controller.restoreConnection() }
+        runSuspend { controller.login("jessi", "password-password") }
+        runSuspend { controller.openAnime("anime") }
+        val state = runSuspend { controller.selectSidebarRoute(TvRoute.Watchlist) }
+
+        assertEquals(TvRoute.Watchlist, state.navigation.route)
+        assertNull(state.anime)
     }
 
     @Test
@@ -139,6 +185,7 @@ class TvAppControllerTest {
 
     private class FakeApi(
         private val failLogin: Boolean = false,
+        private val advertisePlaybackHistory: Boolean = true,
     ) : JularrClientApi {
         override suspend fun getCapabilities() = ClientCapabilities(
             apiVersion = 1,
@@ -161,6 +208,8 @@ class TvAppControllerTest {
                 companionControl = false,
                 storageAvailability = true,
                 ownerWakeOnLan = true,
+                continueWatching = true,
+                playbackHistory = advertisePlaybackHistory,
             ),
         )
 
@@ -193,6 +242,40 @@ class TvAppControllerTest {
                     seasonYear = 2026,
                     format = "TV",
                 ),
+            ),
+        )
+
+        override suspend fun getContinueWatching() = listOf(
+            de.juloc.jularr.core.model.ContinueWatchingItem(
+                kind = "episode",
+                episodeId = "episode",
+                animeId = "anime",
+                animeTitle = "Anime",
+                seasonNumber = 1,
+                episodeNumber = 3,
+                episodeTitle = "Episode 3",
+                resumePositionMs = 444_000,
+                durationMs = 1_200_000,
+                percent = 37,
+                updatedAtUtc = "2026-09-27T00:00:00Z",
+                coverImageUrl = null,
+            ),
+        )
+
+        override suspend fun getPlaybackHistory() = listOf(
+            de.juloc.jularr.core.model.PlaybackHistoryItem(
+                id = "history-1",
+                episodeId = "episode",
+                animeId = "anime",
+                animeTitle = "Anime",
+                seasonNumber = 1,
+                episodeNumber = 3,
+                episodeTitle = "Episode 3",
+                startedAtUtc = "2026-09-26T00:00:00Z",
+                lastPlayedAtUtc = "2026-09-27T00:00:00Z",
+                positionMs = 444_000,
+                durationMs = 1_200_000,
+                reachedEnd = false,
             ),
         )
 

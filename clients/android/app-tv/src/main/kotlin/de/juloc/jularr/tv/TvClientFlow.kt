@@ -8,11 +8,13 @@ import de.juloc.jularr.core.model.ClientAccount
 import de.juloc.jularr.core.model.ClientCapabilities
 import de.juloc.jularr.core.model.ClientLibrary
 import de.juloc.jularr.core.model.ClientLogin
+import de.juloc.jularr.core.model.ContinueWatchingItem
 import de.juloc.jularr.core.model.CueResponse
 import de.juloc.jularr.core.model.EpisodeDetail
 import de.juloc.jularr.core.model.EpisodeProgress
 import de.juloc.jularr.core.model.EpisodeProgressUpdate
 import de.juloc.jularr.core.model.MediaAvailability
+import de.juloc.jularr.core.model.PlaybackHistoryItem
 import de.juloc.jularr.core.model.PlayerBootstrap
 import de.juloc.jularr.core.model.RootAvailability
 import de.juloc.jularr.core.model.TermStateResult
@@ -54,6 +56,7 @@ class TvClientFlow(
     suspend fun login(
         userName: String,
         password: String,
+        capabilities: ClientCapabilities,
     ): TvSignedInData {
         val client = requireApi()
         val account = client.login(
@@ -66,11 +69,22 @@ class TvClientFlow(
         return TvSignedInData(
             account = account,
             library = client.getLibrary(),
+            continueWatching = if (capabilities.features.continueWatching) {
+                client.getContinueWatching()
+            } else {
+                emptyList()
+            },
         )
     }
 
     suspend fun refreshLibrary(): ClientLibrary =
         requireApi().getLibrary()
+
+    suspend fun loadContinueWatching(): List<ContinueWatchingItem> =
+        requireApi().getContinueWatching()
+
+    suspend fun loadPlaybackHistory(): List<PlaybackHistoryItem> =
+        requireApi().getPlaybackHistory()
 
     suspend fun loadAnime(animeId: String): AnimeDetail =
         requireApi().getAnime(animeId)
@@ -185,6 +199,7 @@ class TvClientFlow(
 data class TvSignedInData(
     val account: ClientAccount,
     val library: ClientLibrary,
+    val continueWatching: List<ContinueWatchingItem> = emptyList(),
 )
 
 data class TvEpisodePageData(

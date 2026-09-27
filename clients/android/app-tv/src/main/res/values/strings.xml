@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Connect / sign in -->
+    <string name="tv_setup_title">Connect Jularr</string>
+    <string name="tv_setup_description">Enter the address of your Jularr server.</string>
+    <string name="tv_setup_label_server">Server address</string>
+    <string name="tv_setup_placeholder_server">https://jularr.example</string>
+    <string name="tv_setup_button_connecting">Connecting…</string>
+    <string name="tv_setup_button_continue">Continue</string>
+
+    <string name="tv_login_title">Sign in</string>
+    <string name="tv_login_label_username">User name</string>
+    <string name="tv_login_placeholder_username">Jularr user</string>
+    <string name="tv_login_label_password">Password</string>
+    <string name="tv_login_placeholder_password">Password</string>
+    <string name="tv_login_button_signing_in">Signing in…</string>
+    <string name="tv_login_button_sign_in">Sign in</string>
+    <string name="tv_login_button_change_server">Change server</string>
+
+    <!-- Sidebar -->
+    <string name="tv_sidebar_home">Home</string>
+    <string name="tv_sidebar_watchlist">Watchlist</string>
+    <string name="tv_sidebar_activity">Activity</string>
+    <string name="tv_sidebar_profile">Profile</string>
+
+    <!-- Home -->
+    <string name="tv_home_search_placeholder">Search Jularr</string>
+    <!-- Movies/TV filters intentionally omitted: see TvContentFilter for why. -->
+    <string name="tv_home_filter_all">All</string>
+    <string name="tv_home_filter_anime">Anime</string>
+    <string name="tv_home_row_continue_watching">Continue Watching</string>
+    <string name="tv_home_row_anime">Anime</string>
+    <string name="tv_home_empty">No anime in the library yet.</string>
+
+    <!-- Search / browse -->
+    <string name="tv_search_placeholder">Search titles</string>
+    <string name="tv_search_empty_query">Start typing to search your library.</string>
+    <string name="tv_search_no_results">No titles match “%1$s”.</string>
+
+    <!-- Watchlist -->
+    <string name="tv_watchlist_title">Watchlist</string>
+    <string name="tv_watchlist_unavailable">Watchlist isn\'t available in the Jularr Android TV app yet. Use the Jularr web app to manage your watchlist for now.</string>
+
+    <!-- Activity -->
+    <string name="tv_activity_title">Activity</string>
+    <string name="tv_activity_empty">Nothing played yet.</string>
+    <string name="tv_activity_unavailable_note">Recent activity isn\'t available from the server yet, so this shows Continue Watching instead.</string>
+    <string name="tv_activity_status_finished">Finished</string>
+    <string name="tv_activity_status_in_progress">%1$d%%</string>
+    <string name="tv_activity_last_played">Last played %1$s</string>
+
+    <!-- Profile -->
+    <string name="tv_profile_title">Profile</string>
+    <string name="tv_profile_role_owner">Owner</string>
+    <string name="tv_profile_role_user">User</string>
+    <string name="tv_profile_server_label">Server</string>
+    <string name="tv_profile_sign_out">Sign out</string>
+    <string name="tv_profile_change_server">Change server</string>
+
+    <!-- Shared actions / messages -->
+    <string name="tv_action_back">Back</string>
+    <string name="tv_action_sign_in">Sign in</string>
+    <string name="tv_message_home_unavailable_title">Home unavailable</string>
+    <string name="tv_message_home_unavailable_body">Sign in again to load your Jularr library.</string>
+    <string name="tv_message_anime_unavailable_title">Anime unavailable</string>
+    <string name="tv_message_anime_unavailable_body">Could not load this anime.</string>
+    <string name="tv_message_episode_unavailable_title">Episode unavailable</string>
+    <string name="tv_message_episode_unavailable_body">Could not load this episode.</string>
+
+    <!-- Anime / episode detail -->
+    <string name="tv_anime_episode_count">%1$d episodes</string>
+    <string name="tv_anime_season_header">Season %1$d</string>
+    <string name="tv_episode_status_ready">Ready to play</string>
+    <string name="tv_episode_status_media_unavailable">Media unavailable</string>
+    <string name="tv_episode_status_japanese_subtitles">Japanese learning subtitles</string>
+    <string name="tv_episode_status_watched">Watched</string>
+    <string name="tv_episode_continue_at">Continue at %1$s</string>
+    <string name="tv_episode_progress_percent">%1$d%%</string>
+    <string name="tv_episode_vocabulary">Vocabulary · %1$d known · %2$d learning · %3$d new</string>
+    <string name="tv_episode_play">Play</string>
+    <string name="tv_episode_resume">Resume</string>
+    <string name="tv_episode_loading">Loading…</string>
+    <string name="tv_episode_episodes_button">Episodes</string>
+    <string name="tv_episode_number">E%1$d</string>
+    <string name="tv_episode_season_and_number">Season %1$d · Episode %2$d</string>
+    <string name="tv_episode_japanese_label">日本語</string>
+</resources>

@@ -2,6 +2,7 @@ package de.juloc.jularr.tv
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Test
 
 class TvNavigationTest {
@@ -22,8 +23,22 @@ class TvNavigationTest {
     }
 
     @Test
-    fun libraryAnimeEpisodePlayerBackStackIsRemoteFriendly() {
-        var state = TvNavigationState(TvRoute.Library)
+    fun signingInLandsOnHomeNotLibrary() {
+        val state = TvNavigation.signedIn(TvNavigationState(TvRoute.Login))
+        assertEquals(TvRoute.Home, state.route)
+    }
+
+    @Test
+    fun sidebarIsExactlyHomeWatchlistActivityProfile() {
+        assertEquals(
+            listOf(TvRoute.Home, TvRoute.Watchlist, TvRoute.Activity, TvRoute.Profile),
+            TvNavigation.sidebarRoutes,
+        )
+    }
+
+    @Test
+    fun homeAnimeEpisodePlayerBackStackIsRemoteFriendly() {
+        var state = TvNavigationState(TvRoute.Home)
         state = TvNavigation.openAnime(state, "anime")
         state = TvNavigation.openEpisode(state, "episode", "anime")
         state = TvNavigation.openPlayer(state, "episode", "anime")
@@ -35,14 +50,63 @@ class TvNavigationTest {
         assertEquals(TvRoute.Anime("anime"), state.route)
 
         state = TvNavigation.back(state)!!
-        assertEquals(TvRoute.Library, state.route)
+        assertEquals(TvRoute.Home, state.route)
 
         assertNull(TvNavigation.back(state))
     }
 
     @Test
+    fun searchOpensFromHomeAndBackReturnsToHome() {
+        var state = TvNavigationState(TvRoute.Home)
+        state = TvNavigation.openSearch(state)
+        assertEquals(TvRoute.Search, state.route)
+
+        state = TvNavigation.back(state)!!
+        assertEquals(TvRoute.Home, state.route)
+    }
+
+    @Test
+    fun animeOpenedFromSearchReturnsToSearchOnBack() {
+        var state = TvNavigationState(TvRoute.Home)
+        state = TvNavigation.openSearch(state)
+        state = TvNavigation.openAnime(state, "anime")
+
+        state = TvNavigation.back(state)!!
+        assertEquals(TvRoute.Search, state.route)
+    }
+
+    @Test
+    fun switchingSidebarTabsReplacesInsteadOfStacking() {
+        var state = TvNavigationState(TvRoute.Home)
+        state = TvNavigation.openSidebarRoute(state, TvRoute.Watchlist)
+        state = TvNavigation.openSidebarRoute(state, TvRoute.Activity)
+        state = TvNavigation.openSidebarRoute(state, TvRoute.Profile)
+
+        assertEquals(TvRoute.Profile, state.route)
+        assertEquals(emptyList<TvRoute>(), state.previous)
+        assertNull(TvNavigation.back(state))
+    }
+
+    @Test
+    fun selectingTheAlreadyActiveSidebarRouteIsANoOp() {
+        val state = TvNavigationState(TvRoute.Watchlist)
+        val result = TvNavigation.openSidebarRoute(state, TvRoute.Watchlist)
+        assertSame(state, result)
+    }
+
+    @Test
+    fun backFromContentPushedOverAnySidebarTabReturnsToThatTab() {
+        var state = TvNavigationState(TvRoute.Home)
+        state = TvNavigation.openSidebarRoute(state, TvRoute.Watchlist)
+        state = TvNavigation.openAnime(state, "anime")
+
+        state = TvNavigation.back(state)!!
+        assertEquals(TvRoute.Watchlist, state.route)
+    }
+
+    @Test
     fun signOutDropsProtectedBackStack() {
-        var state = TvNavigationState(TvRoute.Library)
+        var state = TvNavigationState(TvRoute.Home)
         state = TvNavigation.openAnime(state, "anime")
         state = TvNavigation.signOut(state)
 
@@ -56,5 +120,22 @@ class TvNavigationTest {
 
         assertEquals(TvRoute.Setup, state.route)
         assertNull(TvNavigation.back(state))
+    }
+
+    @Test
+    fun screenKeysAreStablePerScreenIdentity() {
+        assertEquals("home", TvNavigation.screenKey(TvRoute.Home))
+        assertEquals("search", TvNavigation.screenKey(TvRoute.Search))
+        assertEquals("watchlist", TvNavigation.screenKey(TvRoute.Watchlist))
+        assertEquals("activity", TvNavigation.screenKey(TvRoute.Activity))
+        assertEquals("profile", TvNavigation.screenKey(TvRoute.Profile))
+        assertEquals(
+            "anime:one",
+            TvNavigation.screenKey(TvRoute.Anime("one")),
+        )
+        assertEquals(
+            TvNavigation.screenKey(TvRoute.Anime("one")),
+            TvNavigation.screenKey(TvRoute.Anime("one")),
+        )
     }
 }

@@ -8,6 +8,8 @@ object ClientApiRoutes {
     const val Logout = "$Base/session/logout"
     const val Me = "$Base/me"
     const val Library = "$Base/library"
+    const val ContinueWatching = "$Base/continue-watching"
+    const val PlaybackHistory = "$Base/me/playback-history"
 
     fun anime(animeId: String) = "$Base/anime/$animeId"
     fun episode(episodeId: String) = "$Base/episodes/$episodeId"
