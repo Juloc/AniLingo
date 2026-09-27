@@ -10,77 +10,161 @@ public sealed partial class AppShellNavigationTests
     private static readonly string[] AllowedLiteralText = ["Jularr"];
 
     [TestMethod]
+    public void DesktopSidebarListsTheBaseDestinationsInOrder()
+    {
+        var owner = UiShellNavigation.Build("/", learningVisible: true, isOwner: true);
+        CollectionAssert.AreEqual(
+            new[] { "home", "library", "watchlist", "calendar", "learn", "activity", "admin", "settings", "profile" },
+            owner.Primary.Concat(owner.Secondary).Select(item => item.Id).ToArray());
+
+        var user = UiShellNavigation.Build("/", learningVisible: false, isOwner: false);
+        CollectionAssert.AreEqual(
+            new[] { "home", "library", "watchlist", "calendar", "activity", "settings", "profile" },
+            user.Primary.Concat(user.Secondary).Select(item => item.Id).ToArray());
+    }
+
+    [TestMethod]
+    public void DiscoverReadingAndBooksAreNoSidebarItemsButStayReachable()
+    {
+        var nav = UiShellNavigation.Build("/", learningVisible: true, isOwner: true);
+        var ids = nav.Primary.Concat(nav.Secondary).Select(item => item.Id).ToArray();
+
+        foreach (var removed in new[] { "discover", "reading", "books" })
+        {
+            CollectionAssert.DoesNotContain(ids, removed);
+        }
+
+        CollectionAssert.AreEqual(
+            new[] { "/Library", "/Reading", "/Books" },
+            UiNavigationCatalog.LibraryTabs.Select(tab => tab.Href).ToArray());
+
+        var search = File.ReadAllText(Path.Combine(RepositoryRoot(), "src", "Jularr.Web", "Pages", "Shared", "_AppSearch.cshtml"));
+        StringAssert.Contains(search, "action=\"/Discover\"");
+        StringAssert.Contains(search, "name=\"q\"");
+    }
+
+    [TestMethod]
+    [DataRow("/Library", "library-anime")]
+    [DataRow("/Library/Anime/7a4c", "library-anime")]
+    [DataRow("/Reading", "library-reading")]
+    [DataRow("/Novels/Work/7a4c", "library-reading")]
+    [DataRow("/Manga", "library-reading")]
+    [DataRow("/Books", "library-books")]
+    [DataRow("/Books/Details/7a4c", "library-books")]
+    public void LibraryTabsMarkExactlyOneMediaType(string path, string expectedId)
+    {
+        var active = UiShellNavigation.BuildLibraryTabs(path).Where(tab => tab.IsActive).ToArray();
+
+        Assert.AreEqual(1, active.Length, path);
+        Assert.AreEqual(expectedId, active[0].Id);
+        Assert.AreEqual("library", UiShellNavigation.Build(path, learningVisible: true, isOwner: true).Primary.Single(item => item.IsActive).Id);
+    }
+
+    [TestMethod]
     [DataRow(false, false)]
     [DataRow(true, false)]
     [DataRow(false, true)]
     [DataRow(true, true)]
-    public void MobileNavigationIsBoundedAndStillReachesEveryDestination(
+    public void MobileBarHasFourTabsAndProfileReachesEveryOtherDestination(
         bool learningVisible,
         bool isOwner)
     {
         var nav = UiShellNavigation.Build("/", learningVisible, isOwner);
 
+        CollectionAssert.AreEqual(
+            new[] { "home", "calendar", "watchlist", "profile" },
+            nav.MobilePrimary.Select(item => item.Id).ToArray());
         Assert.IsTrue(nav.MobilePrimary.Count <= UiShellNavigation.MaxMobilePrimaryItems);
-        Assert.IsTrue(nav.MobilePrimary.Count >= 3);
 
-        var desktop = nav.Primary.Concat(nav.Secondary).Select(x => x.Id).ToArray();
-        var mobile = nav.MobilePrimary.Concat(nav.MobileMore).Select(x => x.Id).ToArray();
-        CollectionAssert.AreEquivalent(desktop, mobile);
-        Assert.AreEqual(mobile.Length, mobile.Distinct(StringComparer.Ordinal).Count());
-
-        CollectionAssert.Contains(mobile, "books");
-        CollectionAssert.Contains(mobile, "settings");
+        var (links, elsewhere) = UiShellNavigation.BuildProfile(learningVisible, isOwner);
+        var desktop = nav.Primary.Concat(nav.Secondary).Select(item => item.Id).ToArray();
+        var mobile = nav.MobilePrimary.Concat(links).Concat(elsewhere).Select(item => item.Id).ToArray();
+        CollectionAssert.IsSubsetOf(desktop, mobile, "Every sidebar destination is reachable on a phone.");
+        Assert.AreEqual(mobile.Length, mobile.Distinct(StringComparer.Ordinal).Count(), "A destination is listed twice on a phone.");
         Assert.AreEqual(isOwner, mobile.Contains("admin"));
         Assert.AreEqual(learningVisible, mobile.Contains("learn"));
     }
 
     [TestMethod]
-    public void SettingsAndAdminStayOutOfPrimaryDestinations()
+    public void ProfileListsAccountActivityDownloadsSettingsAndAdminInOrder()
     {
-        var nav = UiShellNavigation.Build("/", learningVisible: true, isOwner: true);
+        var (owner, _) = UiShellNavigation.BuildProfile(learningVisible: true, isOwner: true);
+        var expected = UiNavigationCatalog.DevicesPageAvailable
+            ? new[] { "settings-account", "activity", "settings-offline", "profile-devices", "settings", "admin" }
+            : new[] { "settings-account", "activity", "settings-offline", "settings", "admin" };
+        CollectionAssert.AreEqual(expected, owner.Select(item => item.Id).ToArray());
 
-        CollectionAssert.AreEqual(
-            new[] { "settings", "admin" },
-            nav.Secondary.Select(x => x.Id).ToArray());
-        Assert.IsFalse(nav.Primary.Any(x => x.Id is "settings" or "admin"));
-        Assert.IsFalse(nav.MobilePrimary.Any(x => x.Id is "settings" or "admin"));
-        CollectionAssert.AreEqual(
-            new[] { "home", "library", "reading", "learn" },
-            nav.MobilePrimary.Select(x => x.Id).ToArray());
+        var (user, _) = UiShellNavigation.BuildProfile(learningVisible: true, isOwner: false);
+        CollectionAssert.AreEqual(expected.Where(id => id != "admin").ToArray(), user.Select(item => item.Id).ToArray());
+
+        Assert.AreEqual("/Profile/Account", owner.Single(item => item.Id == "settings-account").Href);
+        Assert.AreEqual("/Settings/Offline", owner.Single(item => item.Id == "settings-offline").Href);
+        Assert.AreEqual(UiShellNavigation.DrillInHref("settings"), owner.Single(item => item.Id == "settings").Href);
+        Assert.AreEqual(UiShellNavigation.DrillInHref("admin"), owner.Single(item => item.Id == "admin").Href);
     }
 
     [TestMethod]
-    public void DiscoverTakesTheLearningSlotWhenLearningIsOff()
+    public void DevicesLinkFollowsThePageThatOwnsIt()
     {
-        var nav = UiShellNavigation.Build("/", learningVisible: false, isOwner: false);
+        var page = Path.Combine(RepositoryRoot(), "src", "Jularr.Web", "Pages", "Profile", "Devices.cshtml");
+        Assert.AreEqual(File.Exists(page), UiNavigationCatalog.DevicesPageAvailable, "Set DevicesPageAvailable together with the Devices page.");
 
-        CollectionAssert.AreEqual(
-            new[] { "home", "library", "reading", "discover" },
-            nav.MobilePrimary.Select(x => x.Id).ToArray());
+        var (links, _) = UiShellNavigation.BuildProfile(learningVisible: true, isOwner: true);
+        Assert.AreEqual(UiNavigationCatalog.DevicesPageAvailable, links.Any(item => item.Id == "profile-devices"));
     }
 
     [TestMethod]
-    [DataRow("/", "home", false)]
-    [DataRow("/Library/Anime/7a4c", "library", false)]
-    [DataRow("/Novels/Read/7a4c", "reading", false)]
-    [DataRow("/Manga", "reading", false)]
-    [DataRow("/Books/Read/7a4c", "books", true)]
-    [DataRow("/Discover", "discover", true)]
-    [DataRow("/Learn/Kana", "learn", false)]
-    [DataRow("/Statistics", "learn", false)]
-    [DataRow("/Settings/Language", "settings", true)]
-    [DataRow("/Admin/Languages", "admin", true)]
-    public void CurrentLocationMarksExactlyOneDestination(
-        string path,
-        string expectedId,
-        bool insideMoreMenu)
+    public void DrillInListsReuseTheSidebarGroupsAndAdminIsOwnerOnly()
+    {
+        var settings = UiShellNavigation.BuildSection("settings", isOwner: false);
+        Assert.IsNotNull(settings);
+        CollectionAssert.AreEqual(
+            UiNavigationCatalog.Settings.Select(section => section.TitleKey).ToArray(),
+            settings.Groups!.Select(group => group.TitleKey).ToArray());
+        CollectionAssert.AreEqual(
+            UiNavigationCatalog.Settings.SelectMany(section => section.Entries).Select(entry => entry.Id).ToArray(),
+            settings.Groups!.SelectMany(group => group.Items).Select(item => item.Id).ToArray());
+        Assert.IsFalse(settings.Groups!.SelectMany(group => group.Items).Any(item => item.IsActive));
+
+        Assert.IsNull(UiShellNavigation.BuildSection("admin", isOwner: false), "Users have no Admin drill-in.");
+        Assert.IsNotNull(UiShellNavigation.BuildSection("ADMIN", isOwner: true));
+        Assert.IsNull(UiShellNavigation.BuildSection("profile", isOwner: true), "Only sections drill in.");
+        Assert.IsNull(UiShellNavigation.BuildSection("Devices", isOwner: true));
+    }
+
+    [TestMethod]
+    [DataRow("/", "home", "home")]
+    [DataRow("/Library/Anime/7a4c", "library", "profile")]
+    [DataRow("/Novels/Read/7a4c", "library", "profile")]
+    [DataRow("/Books/Read/7a4c", "library", "profile")]
+    [DataRow("/Franchises/7", "watchlist", "watchlist")]
+    [DataRow("/Calendar", "calendar", "calendar")]
+    [DataRow("/Activity", "activity", "profile")]
+    [DataRow("/Learn/Kana", "learn", "profile")]
+    [DataRow("/Statistics", "learn", "profile")]
+    [DataRow("/Profile", "profile", "profile")]
+    [DataRow("/Profile/settings", "profile", "profile")]
+    [DataRow("/Profile/Account", "settings", "profile")]
+    [DataRow("/Settings/Language", "settings", "profile")]
+    [DataRow("/Admin/Users", "admin", "profile")]
+    [DataRow("/Settings/Acquisition", "admin", "profile")]
+    public void CurrentLocationMarksExactlyOneDestination(string path, string expectedId, string expectedMobileId)
     {
         var nav = UiShellNavigation.Build(path, learningVisible: true, isOwner: true);
 
-        var active = nav.Primary.Concat(nav.Secondary).Where(x => x.IsActive).ToArray();
-        Assert.AreEqual(1, active.Length);
+        var active = nav.Primary.Concat(nav.Secondary).Where(item => item.IsActive).ToArray();
+        Assert.AreEqual(1, active.Length, path);
         Assert.AreEqual(expectedId, active[0].Id);
-        Assert.AreEqual(insideMoreMenu, nav.MoreIsActive);
+        Assert.AreEqual(expectedMobileId, nav.MobilePrimary.Single(item => item.IsActive).Id);
+    }
+
+    [TestMethod]
+    public void DiscoverHasNoSidebarItemSoNothingIsMarked()
+    {
+        var nav = UiShellNavigation.Build("/Discover", learningVisible: true, isOwner: true);
+
+        Assert.IsFalse(nav.Primary.Concat(nav.Secondary).Any(item => item.IsActive));
+        Assert.IsFalse(nav.MobilePrimary.Any(item => item.IsActive));
     }
 
     [TestMethod]
@@ -92,30 +176,92 @@ public sealed partial class AppShellNavigationTests
     [DataRow("/Settings/Acquisition", "admin-import")]
     [DataRow("/Settings/MappingSegments", "admin-mapping")]
     [DataRow("/LocalizationAdmin", "admin-localization")]
-    public void AdminPagesShowTheAdminSidebarWithExactlyOneActivePage(string path, string expectedId)
+    public void AdminExpandsInlineWithExactlyOneActivePage(string path, string expectedId)
     {
         var nav = UiShellNavigation.Build(path, learningVisible: true, isOwner: true);
 
-        Assert.IsNotNull(nav.Context);
-        Assert.AreEqual("admin", nav.Context.Id);
-        var active = nav.Context.Groups.SelectMany(group => group.Items).Where(item => item.IsActive).ToArray();
+        Assert.AreEqual("admin", nav.Expanded?.Id);
+        Assert.AreEqual(1, nav.Secondary.Count(item => item.IsExpanded), "Only one section is open.");
+        var active = nav.Expanded!.Groups!.SelectMany(group => group.Items).Where(item => item.IsActive).ToArray();
         Assert.AreEqual(1, active.Length, path);
         Assert.AreEqual(expectedId, active[0].Id);
-        Assert.AreEqual("admin", nav.Secondary.Single(item => item.IsActive).Id, "Admin pages under /Settings still mark Admin.");
+        Assert.IsFalse(nav.Expanded.IsCurrentPage, "The child page is current, not the section anchor.");
+
+        CollectionAssert.AreEqual(
+            new[] { "home", "library", "watchlist", "calendar", "learn", "activity" },
+            nav.Primary.Select(item => item.Id).ToArray(),
+            "The base navigation stays visible inside Admin.");
+        Assert.IsFalse(nav.ShowCurrentReading);
     }
 
     [TestMethod]
-    public void SettingsPagesShowTheSettingsSidebarAndUsersNeverSeeAdminPages()
+    [DataRow("/Settings", "settings-overview")]
+    [DataRow("/Settings/Appearance", "settings-appearance")]
+    [DataRow("/Appearance/Accent", "settings-appearance")]
+    [DataRow("/Profile/Account", "settings-account")]
+    [DataRow("/Settings/Offline", "settings-offline")]
+    public void SettingsExpandsInlineWithExactlyOneActivePage(string path, string expectedId)
     {
-        var owner = UiShellNavigation.Build("/Settings/Appearance", learningVisible: true, isOwner: true);
-        Assert.AreEqual("settings", owner.Context?.Id);
-        Assert.AreEqual("settings-appearance", owner.Context!.Groups.SelectMany(group => group.Items).Single(item => item.IsActive).Id);
+        foreach (var isOwner in new[] { true, false })
+        {
+            var nav = UiShellNavigation.Build(path, learningVisible: true, isOwner);
 
-        var user = UiShellNavigation.Build("/Settings/Acquisition", learningVisible: false, isOwner: false);
-        Assert.AreEqual("settings", user.Context?.Id, "Without the owner role an admin path is not an admin context.");
-        Assert.IsFalse(user.Context!.Groups.SelectMany(group => group.Items).Any(item => item.Id.StartsWith("admin", StringComparison.Ordinal)));
+            Assert.AreEqual("settings", nav.Expanded?.Id, path);
+            Assert.AreEqual(1, nav.Secondary.Count(item => item.IsExpanded));
+            Assert.AreEqual(expectedId, nav.Expanded!.Groups!.SelectMany(group => group.Items).Single(item => item.IsActive).Id);
+            Assert.AreEqual(isOwner ? 9 : 8, nav.Primary.Count + nav.Secondary.Count, "The base navigation stays visible inside Settings.");
+        }
+    }
 
-        Assert.IsNull(UiShellNavigation.Build("/Books", learningVisible: true, isOwner: true).Context);
+    [TestMethod]
+    [DataRow("/")]
+    [DataRow("/Library")]
+    [DataRow("/Profile")]
+    [DataRow("/Activity")]
+    public void NoSectionIsExpandedOutsideAdminAndSettings(string path)
+    {
+        var nav = UiShellNavigation.Build(path, learningVisible: true, isOwner: true);
+
+        Assert.IsNull(nav.Expanded);
+        Assert.IsTrue(nav.Secondary.All(item => item.Groups is null));
+    }
+
+    [TestMethod]
+    public void UsersNeverSeeAdminDestinations()
+    {
+        foreach (var path in new[] { "/", "/Admin", "/Admin/Users", "/Settings/Acquisition", "/Settings" })
+        {
+            var nav = UiShellNavigation.Build(path, learningVisible: true, isOwner: false);
+            var ids = nav.Primary.Concat(nav.Secondary).Concat(nav.MobilePrimary)
+                .SelectMany(item => (item.Groups?.SelectMany(group => group.Items) ?? []).Prepend(item))
+                .Select(item => item.Id)
+                .ToArray();
+
+            Assert.IsFalse(ids.Any(id => id.StartsWith("admin", StringComparison.Ordinal)), path);
+            Assert.AreNotEqual("admin", nav.Expanded?.Id, path);
+        }
+
+        var (links, elsewhere) = UiShellNavigation.BuildProfile(learningVisible: true, isOwner: false);
+        Assert.IsFalse(links.Concat(elsewhere).Any(item => item.Id.StartsWith("admin", StringComparison.Ordinal)));
+    }
+
+    [TestMethod]
+    public void SettingsListsNoOwnerOnlyPage()
+    {
+        var pages = typeof(UiShellNavigation).Assembly.GetTypes()
+            .Where(type => typeof(Microsoft.AspNetCore.Mvc.RazorPages.PageModel).IsAssignableFrom(type))
+            .ToArray();
+
+        foreach (var entry in UiNavigationCatalog.Settings.SelectMany(section => section.Entries))
+        {
+            Assert.IsFalse(entry.OwnerOnly, entry.Id);
+            var model = PageModelFor(pages, entry.Href);
+            Assert.IsNotNull(model, $"No page model for {entry.Href}.");
+            var ownerOnly = model.GetCustomAttributes(typeof(Microsoft.AspNetCore.Authorization.AuthorizeAttribute), inherit: true)
+                .Cast<Microsoft.AspNetCore.Authorization.AuthorizeAttribute>()
+                .Any(attribute => attribute.Roles?.Contains(Jularr.Web.Features.Auth.AccountRoles.Owner, StringComparison.Ordinal) == true);
+            Assert.IsFalse(ownerOnly, $"{entry.Href} is owner-only and belongs under Admin.");
+        }
     }
 
     [TestMethod]
@@ -136,23 +282,25 @@ public sealed partial class AppShellNavigationTests
     [TestMethod]
     public void EveryPageAppearsOnceInTheNavigationCatalog()
     {
-        var entries = UiNavigationCatalog.App
-            .Concat(UiNavigationCatalog.Secondary)
-            .Concat(UiNavigationCatalog.Admin.SelectMany(section => section.Entries))
-            .Concat(UiNavigationCatalog.Settings.SelectMany(section => section.Entries))
-            .ToArray();
+        var entries = UiNavigationCatalog.All.Concat(UiNavigationCatalog.LibraryTabs).ToArray();
         var icons = File.ReadAllText(Path.Combine(RepositoryRoot(), "src", "Jularr.Web", "Pages", "Shared", "_AppIcon.cshtml"));
 
         Assert.AreEqual(entries.Length, entries.Select(entry => entry.Id).Distinct().Count(), "Duplicate navigation id.");
-        var contextHrefs = UiNavigationCatalog.Admin.Concat(UiNavigationCatalog.Settings)
+        var sectionHrefs = UiNavigationCatalog.Admin.Concat(UiNavigationCatalog.Settings)
             .SelectMany(section => section.Entries)
             .Select(entry => entry.Href)
             .ToArray();
-        Assert.AreEqual(contextHrefs.Length, contextHrefs.Distinct(StringComparer.OrdinalIgnoreCase).Count(), "A page is listed twice.");
+        Assert.AreEqual(sectionHrefs.Length, sectionHrefs.Distinct(StringComparer.OrdinalIgnoreCase).Count(), "A page is listed twice.");
+        var catalogIds = UiNavigationCatalog.All.Select(entry => entry.Id).ToHashSet(StringComparer.Ordinal);
+        foreach (var id in UiNavigationCatalog.ProfileLinkIds.Concat(UiNavigationCatalog.MobilePrimaryIds))
+        {
+            Assert.IsTrue(catalogIds.Contains(id), $"Unknown navigation id {id}.");
+        }
+
         foreach (var entry in entries)
         {
             Assert.IsTrue(UiTranslationResources.TryGet(entry.LabelKey, out var message), $"Missing catalog key {entry.LabelKey}.");
-            Assert.IsTrue(message.MaxLength is > 0 and <= 18, entry.LabelKey);
+            Assert.IsTrue(message.MaxLength is > 0 and <= 24, entry.LabelKey);
             StringAssert.Contains(icons, $"case \"{entry.Icon}\":", $"Missing icon {entry.Icon}.");
         }
 
@@ -176,8 +324,39 @@ public sealed partial class AppShellNavigationTests
             Assert.IsTrue(message.MaxLength is > 0 and <= 18, item.LabelKey);
         }
 
-        Assert.IsTrue(UiTranslationResources.TryGet("nav.more", out var more));
-        Assert.IsTrue(more.MaxLength <= 12, "The More tab shares a narrow bottom-bar cell.");
+        foreach (var removed in new[] { "nav.more", "nav.backToApp" })
+        {
+            Assert.IsFalse(UiTranslationResources.TryGet(removed, out _), $"{removed} has no surface any more.");
+        }
+    }
+
+    [TestMethod]
+    public void ShellHasNoMoreSheetOrContextSidebar()
+    {
+        var web = Path.Combine(RepositoryRoot(), "src", "Jularr.Web");
+        var navigation = File.ReadAllText(Path.Combine(web, "Pages", "Shared", "_AppNavigation.cshtml"));
+        var pwa = File.ReadAllText(Path.Combine(web, "wwwroot", "js", "pwa.js"));
+        var css = File.ReadAllText(Path.Combine(web, "wwwroot", "css", "site.css"));
+
+        foreach (var gone in new[] { "data-nav-more", "mobile-more", "nav-context", "nav-back" })
+        {
+            Assert.IsFalse(navigation.Contains(gone, StringComparison.Ordinal), gone);
+            Assert.IsFalse(pwa.Contains(gone, StringComparison.Ordinal), gone);
+            Assert.IsFalse(css.Contains(gone, StringComparison.Ordinal), gone);
+        }
+
+        StringAssert.Contains(navigation, "nav-children");
+        StringAssert.Contains(navigation, "_AppSearch");
+    }
+
+    private static Type? PageModelFor(Type[] pages, string href)
+    {
+        var segments = UiNavigationCatalog.PathOf(href).Split('/', StringSplitOptions.RemoveEmptyEntries);
+        var folder = string.Join('.', segments.SkipLast(1).Prepend("Jularr.Web.Pages"));
+        var name = segments.Length == 0 ? "Index" : segments[^1];
+
+        return pages.FirstOrDefault(type => type.FullName == $"{folder}.{name}Model")
+            ?? pages.FirstOrDefault(type => type.FullName == $"Jularr.Web.Pages.{string.Join('.', segments)}.IndexModel");
     }
 
     [TestMethod]
@@ -190,6 +369,9 @@ public sealed partial class AppShellNavigationTests
             .Append(Path.Combine(pages, "Shared", "_Layout.cshtml"))
             .Concat(Directory.EnumerateFiles(Path.Combine(pages, "Account"), "*.cshtml"))
             .Append(Path.Combine(pages, "Settings", "Index.cshtml"))
+            .Append(Path.Combine(pages, "Shared", "_LibraryTypeTabs.cshtml"))
+            .Concat(Directory.EnumerateFiles(Path.Combine(pages, "Profile"), "*.cshtml"))
+            .Concat(Directory.EnumerateFiles(Path.Combine(pages, "Activity"), "*.cshtml"))
             .ToArray();
 
         Assert.IsTrue(files.Length >= 10, "Expected the shell partials, layout, account and settings pages.");
@@ -214,7 +396,7 @@ public sealed partial class AppShellNavigationTests
         StringAssert.Contains(navigation, "UiShellNavigation.Build");
 
         var nav = UiShellNavigation.Build("/", learningVisible: true, isOwner: true);
-        foreach (var icon in nav.Primary.Concat(nav.Secondary).Select(x => x.Icon).Append("more"))
+        foreach (var icon in nav.Primary.Concat(nav.Secondary).Select(x => x.Icon).Append("search"))
         {
             StringAssert.Contains(icons, $"case \"{icon}\":", $"Missing icon {icon}.");
         }

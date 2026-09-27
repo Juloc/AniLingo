@@ -1,29 +1,31 @@
 namespace Jularr.Web.Features.Localization;
 
+/// <summary>
+/// One rendered link. <see cref="Groups"/> is set on a section anchor (Admin, Settings) whose
+/// child pages are listed beneath it, either expanded in the sidebar or on a drill-in screen.
+/// </summary>
 public sealed record UiNavigationItem(
     string Id,
     string LabelKey,
     string Href,
     string Icon,
-    bool IsActive);
+    bool IsActive,
+    IReadOnlyList<UiNavigationGroup>? Groups = null)
+{
+    public bool IsExpanded => Groups is not null;
 
-/// <summary>A titled group of links inside a sidebar context (Admin or Settings).</summary>
+    /// <summary>True when this link itself is the current page, not only its section.</summary>
+    public bool IsCurrentPage =>
+        IsActive && !(Groups?.SelectMany(group => group.Items).Any(item => item.IsActive) ?? false);
+}
+
+/// <summary>A titled group of child pages inside Admin or Settings.</summary>
 public sealed record UiNavigationGroup(string TitleKey, IReadOnlyList<UiNavigationItem> Items);
-
-/// <summary>
-/// The sidebar while the user is inside an area with its own pages (Admin, Settings): a way back
-/// to the app, the area title and its pages, grouped. Replaces the app destinations in the
-/// desktop sidebar; the mobile bottom bar keeps the app destinations.
-/// </summary>
-public sealed record UiNavigationContext(
-    string Id,
-    string TitleKey,
-    UiNavigationItem Back,
-    IReadOnlyList<UiNavigationGroup> Groups);
 
 /// <summary>
 /// One destination in <see cref="UiNavigationCatalog"/>. <see cref="Matches"/> are the path roots
 /// that mark it active (the href's path when empty); <see cref="Exact"/> matches the href only.
+/// <see cref="Sections"/> are the grouped child pages of a section anchor.
 /// </summary>
 public sealed record UiNavigationEntry(
     string Id,
@@ -33,44 +35,24 @@ public sealed record UiNavigationEntry(
     string[]? Matches = null,
     bool Exact = false,
     bool OwnerOnly = false,
-    bool RequiresLearning = false);
+    bool RequiresLearning = false,
+    UiNavigationSection[]? Sections = null);
 
 public sealed record UiNavigationSection(string TitleKey, UiNavigationEntry[] Entries);
 
 /// <summary>
-/// Every sidebar destination in one place. To move, rename, regroup or hide a link, edit this
-/// table only: pages, sidebar, mobile bar and tests all read from it. Each page appears once.
+/// Every shell destination in one place. To move, rename, regroup or hide a link, edit this
+/// table only: sidebar, mobile bar, Profile, Library tabs and tests all read from it. Each page
+/// appears once; lists that show a page again (Profile) refer to it by id.
 /// </summary>
 public static class UiNavigationCatalog
 {
-    public static readonly UiNavigationEntry[] App =
+    /// <summary>Media types inside Library. The Library destination is active on all of them.</summary>
+    public static readonly UiNavigationEntry[] LibraryTabs =
     [
-        new("home", "nav.home", "/", "home", Exact: true),
-        new("discover", "nav.discover", "/Discover", "discover"),
-        new("library", "nav.library", "/Library", "library"),
-        new("watchlist", "nav.watchlist", "/Watchlist", "watchlist", ["/Watchlist", "/Franchises"]),
-        new("reading", "nav.reading", "/Reading", "reading", ["/Reading", "/Novels", "/Manga"]),
-        new("books", "nav.books", "/Books", "books"),
-        new("calendar", "nav.calendar", "/Calendar", "calendar"),
-        new("learn", "nav.learn", "/Learn", "learn", ["/Learn", "/Statistics", "/Kana"], RequiresLearning: true)
-    ];
-
-    public static readonly UiNavigationEntry[] Secondary =
-    [
-        new("settings", "nav.settings", "/Settings", "settings"),
-        new("admin", "nav.admin", "/Admin", "admin", OwnerOnly: true)
-    ];
-
-    /// <summary>Readers whose sidebar shows the open book, novel or manga with its progress.</summary>
-    public static readonly string[] CurrentReadingRoots = ["/Books/Read", "/Novels/Read", "/Manga/Read"];
-
-    /// <summary>Phone bottom bar, in order; the first id that is present wins each slot.</summary>
-    public static readonly string[][] MobilePrimarySlots =
-    [
-        ["home"],
-        ["library"],
-        ["reading"],
-        ["learn", "discover"]
+        new("library-anime", "nav.libraryTab.anime", "/Library", "library"),
+        new("library-reading", "nav.libraryTab.reading", "/Reading", "reading", ["/Reading", "/Novels", "/Manga"]),
+        new("library-books", "nav.books", "/Books", "books")
     ];
 
     public static readonly UiNavigationSection[] Admin =
@@ -102,12 +84,13 @@ public static class UiNavigationCatalog
         ])
     ];
 
+    /// <summary>Personal pages only; server configuration belongs to <see cref="Admin"/>.</summary>
     public static readonly UiNavigationSection[] Settings =
     [
         new("nav.group.settingsYou",
         [
             new("settings-overview", "settings.nav.overview", "/Settings", "settings", Exact: true),
-            new("settings-account", "settings.nav.account", "/Settings/User", "users"),
+            new("settings-account", "settings.nav.account", "/Profile/Account", "profile"),
             new("settings-appearance", "settings.nav.appearance", "/Settings/Appearance", "palette", ["/Settings/Appearance", "/Appearance"]),
             new("settings-language", "settings.nav.language", "/Settings/Language", "globe", ["/Settings/Language", "/LocalizationPreferences"])
         ]),
@@ -123,9 +106,54 @@ public static class UiNavigationCatalog
         ])
     ];
 
-    /// <summary>Every path root of a section, used to decide which sidebar context a page belongs to.</summary>
+    public static readonly UiNavigationEntry[] App =
+    [
+        new("home", "nav.home", "/", "home", Exact: true),
+        new("library", "nav.library", "/Library", "library", [.. Roots(LibraryTabs)]),
+        new("watchlist", "nav.watchlist", "/Watchlist", "watchlist", ["/Watchlist", "/Franchises"]),
+        new("calendar", "nav.calendar", "/Calendar", "calendar"),
+        new("learn", "nav.learn", "/Learn", "learn", ["/Learn", "/Statistics", "/Kana"], RequiresLearning: true),
+        new("activity", "nav.activity", "/Activity", "history")
+    ];
+
+    public static readonly UiNavigationEntry[] Secondary =
+    [
+        new("admin", "nav.admin", "/Admin", "admin", OwnerOnly: true, Sections: Admin),
+        new("settings", "nav.settings", "/Settings", "settings", Sections: Settings),
+        new("profile", "nav.profile", "/Profile", "profile")
+    ];
+
+    /// <summary>
+    /// The Devices page belongs to #518. Set this once <c>Pages/Profile/Devices.cshtml</c>
+    /// exists; a test keeps the two in sync.
+    /// </summary>
+    public static readonly bool DevicesPageAvailable = false;
+
+    public static readonly UiNavigationEntry ProfileDevices =
+        new("profile-devices", "nav.devices", "/Profile/Devices", "devices");
+
+    /// <summary>The Profile page list, in order, by catalog id.</summary>
+    public static readonly string[] ProfileLinkIds =
+        ["settings-account", "activity", "settings-offline", "profile-devices", "settings", "admin"];
+
+    /// <summary>Phone bottom bar, in order. Everything else is reached from Profile or search.</summary>
+    public static readonly string[] MobilePrimaryIds = ["home", "calendar", "watchlist", "profile"];
+
+    /// <summary>Readers whose sidebar shows the open book, novel or manga with its progress.</summary>
+    public static readonly string[] CurrentReadingRoots = ["/Books/Read", "/Novels/Read", "/Manga/Read"];
+
+    /// <summary>Every entry that has its own page, including section children.</summary>
+    public static IEnumerable<UiNavigationEntry> All =>
+        App.Concat(Secondary)
+            .Concat(Admin.Concat(Settings).SelectMany(section => section.Entries))
+            .Append(ProfileDevices);
+
+    /// <summary>Every path root of a set of entries, used to decide which section a page belongs to.</summary>
+    public static IEnumerable<string> Roots(IEnumerable<UiNavigationEntry> entries) =>
+        entries.SelectMany(entry => entry.Matches ?? [PathOf(entry.Href)]);
+
     public static IEnumerable<string> Roots(UiNavigationSection[] sections) =>
-        sections.SelectMany(section => section.Entries).SelectMany(entry => entry.Matches ?? [PathOf(entry.Href)]);
+        Roots(sections.SelectMany(section => section.Entries));
 
     public static string PathOf(string href)
     {
@@ -137,75 +165,116 @@ public static class UiNavigationCatalog
 /// <summary>
 /// Canonical destination model for the shared app shell, built from
 /// <see cref="UiNavigationCatalog"/>. The desktop sidebar renders <see cref="Primary"/> and
-/// <see cref="Secondary"/>, or <see cref="Context"/> inside Admin or Settings; the mobile bottom
-/// bar renders a bounded <see cref="MobilePrimary"/> set plus a More menu with every remaining
-/// destination, so both layouts expose the same destinations. Labels are UI catalog keys.
+/// <see cref="Secondary"/>; inside Admin or Settings that item carries its grouped child pages
+/// and the rest of the sidebar stays. The phone bottom bar renders <see cref="MobilePrimary"/>;
+/// every other destination is on the Profile page (<see cref="BuildProfile"/>) or behind search.
+/// Labels are UI catalog keys.
 /// </summary>
 public sealed record UiShellNavigation(
     IReadOnlyList<UiNavigationItem> Primary,
     IReadOnlyList<UiNavigationItem> Secondary,
     IReadOnlyList<UiNavigationItem> MobilePrimary,
-    IReadOnlyList<UiNavigationItem> MobileMore,
-    UiNavigationContext? Context = null,
     bool ShowCurrentReading = false)
 {
     public const int MaxMobilePrimaryItems = 4;
 
-    public bool MoreIsActive => MobileMore.Any(x => x.IsActive);
+    /// <summary>The section expanded in the sidebar, if any. Never more than one.</summary>
+    public UiNavigationItem? Expanded => Secondary.FirstOrDefault(item => item.IsExpanded);
 
     public static UiShellNavigation Build(
         PathString path,
         bool learningVisible,
         bool isOwner)
     {
-        bool Visible(UiNavigationEntry entry) =>
-            (!entry.OwnerOnly || isOwner) && (!entry.RequiresLearning || learningVisible);
-
-        // Admin pages that live under /Settings belong to the Admin context, not to Settings.
-        var inAdmin = isOwner && IsUnder(path, UiNavigationCatalog.Roots(UiNavigationCatalog.Admin).ToArray());
-        var inSettings = !inAdmin && IsUnder(path, "/Settings", "/Appearance", "/LocalizationPreferences");
+        // Admin pages that live under /Settings belong to Admin, not to Settings.
+        var inAdmin = isOwner && IsUnder(path, UiNavigationCatalog.Roots(UiNavigationCatalog.Admin));
+        var inSettings = !inAdmin && IsUnder(path, UiNavigationCatalog.Roots(UiNavigationCatalog.Settings));
 
         var primary = UiNavigationCatalog.App
-            .Where(Visible)
+            .Where(entry => Visible(entry, learningVisible, isOwner))
             .Select(entry => ToItem(entry, IsActive(entry, path)))
             .ToArray();
         var secondary = UiNavigationCatalog.Secondary
-            .Where(Visible)
-            .Select(entry => ToItem(entry, entry.Id switch
+            .Where(entry => Visible(entry, learningVisible, isOwner))
+            .Select(entry => entry.Id switch
             {
-                "admin" => inAdmin,
-                "settings" => inSettings,
-                _ => IsActive(entry, path)
-            }))
+                "admin" => inAdmin ? Expand(entry, path, isOwner) : ToItem(entry, false),
+                "settings" => inSettings ? Expand(entry, path, isOwner) : ToItem(entry, false),
+                _ => ToItem(entry, !inAdmin && !inSettings && IsActive(entry, path))
+            })
             .ToArray();
 
+        // On a phone, every destination outside the bottom bar is reached through Profile.
         var all = primary.Concat(secondary).ToArray();
-        var mobilePrimary = UiNavigationCatalog.MobilePrimarySlots
-            .Select(slot => slot.Select(id => all.FirstOrDefault(item => item.Id == id)).FirstOrDefault(item => item is not null))
+        var elsewhereActive = all.Any(item => item.IsActive && !UiNavigationCatalog.MobilePrimaryIds.Contains(item.Id));
+        var mobilePrimary = UiNavigationCatalog.MobilePrimaryIds
+            .Select(id => all.FirstOrDefault(item => item.Id == id))
             .OfType<UiNavigationItem>()
+            .Select(item => item.Id == "profile" ? item with { IsActive = item.IsActive || elsewhereActive } : item)
             .Take(MaxMobilePrimaryItems)
             .ToArray();
-        var mobileMore = all.Where(x => !mobilePrimary.Contains(x)).ToArray();
 
-        var context = inAdmin
-            ? BuildContext("admin", "nav.admin", UiNavigationCatalog.Admin, path, Visible)
-            : inSettings
-                ? BuildContext("settings", "nav.settings", UiNavigationCatalog.Settings, path, Visible)
-                : null;
-
-        var showCurrentReading = context is null && IsUnder(path, UiNavigationCatalog.CurrentReadingRoots);
-        return new UiShellNavigation(primary, secondary, mobilePrimary, mobileMore, context, showCurrentReading);
+        var showCurrentReading = !inAdmin && !inSettings && IsUnder(path, UiNavigationCatalog.CurrentReadingRoots);
+        return new UiShellNavigation(primary, secondary, mobilePrimary, showCurrentReading);
     }
 
-    private static UiNavigationContext BuildContext(
-        string id,
-        string titleKey,
-        UiNavigationSection[] sections,
-        PathString path,
-        Func<UiNavigationEntry, bool> visible)
+    /// <summary>
+    /// The Profile page: <c>Links</c> in catalog order (Admin and Settings open their drill-in
+    /// list), and <c>Elsewhere</c>, the remaining destinations the phone bottom bar has no room for.
+    /// </summary>
+    public static (IReadOnlyList<UiNavigationItem> Links, IReadOnlyList<UiNavigationItem> Elsewhere) BuildProfile(
+        bool learningVisible,
+        bool isOwner)
     {
+        var entries = UiNavigationCatalog.All.ToDictionary(entry => entry.Id, StringComparer.Ordinal);
+        var links = UiNavigationCatalog.ProfileLinkIds
+            .Where(id => id != UiNavigationCatalog.ProfileDevices.Id || UiNavigationCatalog.DevicesPageAvailable)
+            .Select(id => entries[id])
+            .Where(entry => Visible(entry, learningVisible, isOwner))
+            .Select(entry => ToItem(entry, false) with
+            {
+                Href = entry.Sections is null ? entry.Href : DrillInHref(entry.Id)
+            })
+            .ToArray();
+
+        var elsewhere = UiNavigationCatalog.App.Concat(UiNavigationCatalog.Secondary)
+            .Where(entry => Visible(entry, learningVisible, isOwner))
+            .Where(entry => !UiNavigationCatalog.MobilePrimaryIds.Contains(entry.Id)
+                && !UiNavigationCatalog.ProfileLinkIds.Contains(entry.Id))
+            .Select(entry => ToItem(entry, false))
+            .ToArray();
+
+        return (links, elsewhere);
+    }
+
+    /// <summary>The drill-in list of Admin or Settings, or null when the section is not available.</summary>
+    public static UiNavigationItem? BuildSection(string? sectionId, bool isOwner)
+    {
+        var entry = UiNavigationCatalog.Secondary.FirstOrDefault(candidate =>
+            candidate.Sections is not null
+            && string.Equals(candidate.Id, sectionId, StringComparison.OrdinalIgnoreCase));
+        return entry is null || !Visible(entry, learningVisible: true, isOwner)
+            ? null
+            : Expand(entry, PathString.Empty, isOwner);
+    }
+
+    public static string DrillInHref(string sectionId) => $"/Profile/{sectionId}";
+
+    /// <summary>Library media-type tabs; exactly one is active on any Library page.</summary>
+    public static IReadOnlyList<UiNavigationItem> BuildLibraryTabs(PathString path) =>
+        UiNavigationCatalog.LibraryTabs.Select(entry => ToItem(entry, IsActive(entry, path))).ToArray();
+
+    private static bool Visible(UiNavigationEntry entry, bool learningVisible, bool isOwner) =>
+        (!entry.OwnerOnly || isOwner) && (!entry.RequiresLearning || learningVisible);
+
+    private static UiNavigationItem Expand(UiNavigationEntry anchor, PathString path, bool isOwner)
+    {
+        var entries = anchor.Sections!
+            .SelectMany(section => section.Entries)
+            .Where(entry => Visible(entry, learningVisible: true, isOwner))
+            .ToArray();
+
         // The most specific match wins, so "/Admin" (overview) is not active on "/Admin/Users".
-        var entries = sections.SelectMany(section => section.Entries).Where(visible).ToArray();
         var active = entries
             .Select(entry => (entry, length: MatchLength(entry, path)))
             .Where(candidate => candidate.length >= 0)
@@ -213,14 +282,17 @@ public sealed record UiShellNavigation(
             .Select(candidate => candidate.entry.Id)
             .FirstOrDefault();
 
-        var groups = sections
+        var groups = anchor.Sections!
             .Select(section => new UiNavigationGroup(
                 section.TitleKey,
-                section.Entries.Where(visible).Select(entry => ToItem(entry, entry.Id == active)).ToArray()))
+                section.Entries
+                    .Where(entries.Contains)
+                    .Select(entry => ToItem(entry, entry.Id == active))
+                    .ToArray()))
             .Where(group => group.Items.Count > 0)
             .ToArray();
 
-        return new UiNavigationContext(id, titleKey, new UiNavigationItem("back", "nav.backToApp", "/", "back", false), groups);
+        return ToItem(anchor, path.HasValue) with { Groups = groups };
     }
 
     private static UiNavigationItem ToItem(UiNavigationEntry entry, bool isActive) =>
@@ -231,10 +303,15 @@ public sealed record UiShellNavigation(
     /// <summary>Length of the matching root, or -1 when the entry does not match the path.</summary>
     private static int MatchLength(UiNavigationEntry entry, PathString path)
     {
+        if (!path.HasValue)
+        {
+            return -1;
+        }
+
         var href = UiNavigationCatalog.PathOf(entry.Href);
         if (entry.Exact)
         {
-            var current = path.HasValue ? path.Value!.TrimEnd('/') : string.Empty;
+            var current = path.Value!.TrimEnd('/');
             return string.Equals(current, href.TrimEnd('/'), StringComparison.OrdinalIgnoreCase) ? href.Length : -1;
         }
 
@@ -245,6 +322,6 @@ public sealed record UiShellNavigation(
             .Max();
     }
 
-    private static bool IsUnder(PathString path, params string[] roots) =>
+    private static bool IsUnder(PathString path, IEnumerable<string> roots) =>
         roots.Any(root => path.StartsWithSegments(root, StringComparison.OrdinalIgnoreCase));
 }

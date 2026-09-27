@@ -586,30 +586,6 @@
   window.addEventListener("online", () =>
     showToast(shellLabel("pwa.online")));
 
-  // The mobile More menu is a native <details> element; this only adds the
-  // expected dismissal behavior (outside tap and Escape).
-  const openNavigationMenus = () =>
-    document.querySelectorAll("details[data-nav-more][open]");
-
-  document.addEventListener("click", event => {
-    openNavigationMenus().forEach(menu => {
-      if (!menu.contains(event.target)) {
-        menu.open = false;
-      }
-    });
-  });
-
-  document.addEventListener("keydown", event => {
-    if (event.key !== "Escape") {
-      return;
-    }
-
-    openNavigationMenus().forEach(menu => {
-      menu.open = false;
-      menu.querySelector("summary")?.focus();
-    });
-  });
-
   document.addEventListener("submit", event => {
     if (event.target instanceof HTMLFormElement
         && event.target.matches("[data-offline-logout]")) {

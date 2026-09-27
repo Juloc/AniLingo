@@ -5,7 +5,7 @@
     var appVersion = ViewData["AppBuildVersion"] as string ?? AppBuildInfo.Version;
     var isOwner = User.IsInRole(Jularr.Web.Features.Auth.AccountRoles.Owner);
 }
-@* Shared by the desktop sidebar footer and the mobile More menu. *@
+@* Shared by the desktop sidebar footer and the phone Profile page. *@
 <partial name="_AppThemeControl" />
 @if (User.Identity?.IsAuthenticated == true)
 {

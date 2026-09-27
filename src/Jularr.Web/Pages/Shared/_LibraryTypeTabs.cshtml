@@ -1,0 +1,15 @@
+@using Jularr.Web.Features.Localization
+@model UiTextBundle
+@{
+    var ui = Model;
+    var tabs = UiShellNavigation.BuildLibraryTabs(Context.Request.Path);
+}
+@* Library media types: Anime, Manga and light novels, Books. Tabs come from UiNavigationCatalog.LibraryTabs. *@
+<nav class="library-type-tabs" aria-label="@ui["nav.libraryTabsAria"]">
+    @foreach (var tab in tabs)
+    {
+        <a class="library-type-tab @(tab.IsActive ? "active" : "")"
+           href="@tab.Href"
+           aria-current="@(tab.IsActive ? "page" : null)">@ui[tab.LabelKey]</a>
+    }
+</nav>
