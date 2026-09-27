@@ -258,7 +258,13 @@ public sealed class NovelTests
                         {
                             choices = new[]
                             {
-                                new { message = new { content = translation } }
+                                new
+                                {
+                                    message = new
+                                    {
+                                        content = translation
+                                    }
+                                }
                             }
                         }),
                         System.Text.Encoding.UTF8,
