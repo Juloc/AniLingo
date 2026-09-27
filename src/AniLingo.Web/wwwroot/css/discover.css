@@ -65,8 +65,8 @@
 }
 
 .discover-search:focus-within {
-    border-color: rgba(231,169,27,.5);
-    box-shadow: 0 0 0 3px rgba(231,169,27,.08);
+    border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
 .discover-search svg {
@@ -86,14 +86,14 @@
     font-size: 15px;
 }
 
-.discover-search input::placeholder { color: #68717e; }
+.discover-search input::placeholder { color: var(--muted); }
 
 .discover-search kbd {
     padding: 2px 6px;
     border: 1px solid var(--border);
-    border-bottom-color: rgba(255,255,255,.15);
+    border-bottom-color: var(--border-strong);
     border-radius: 5px;
-    color: #737c89;
+    color: var(--muted);
     background: var(--surface-2);
     font-size: 11px;
 }
@@ -139,8 +139,8 @@
 
 .discover-tabs button.active,
 .discover-categories button.active {
-    color: #f6c554;
-    border-color: rgba(231,169,27,.18);
+    color: var(--accent-text);
+    border-color: color-mix(in srgb, var(--accent) 18%, transparent);
     background: var(--accent-soft);
 }
 
@@ -161,10 +161,10 @@
 .discover-warning {
     margin-bottom: 12px;
     padding: 10px 12px;
-    border: 1px solid rgba(231,169,27,.22);
+    border: 1px solid color-mix(in srgb, var(--warning-text) 22%, transparent);
     border-radius: 9px;
-    background: rgba(231,169,27,.07);
-    color: #d8c28d;
+    background: color-mix(in srgb, var(--warning-text) 7%, transparent);
+    color: var(--warning-text);
     font-size: 12px;
 }
 
@@ -187,8 +187,8 @@
 }
 
 .discover-card:hover {
-    border-color: rgba(255,255,255,.14);
-    background: #13171d;
+    border-color: var(--border-strong);
+    background: var(--row-hover);
 }
 
 .discover-cover {
@@ -210,7 +210,7 @@
     height: 100%;
     display: grid;
     place-items: center;
-    color: #5d6672;
+    color: var(--muted);
     font-size: 18px;
     font-weight: 800;
 }
@@ -227,7 +227,7 @@
     align-items: center;
     gap: 6px;
     min-width: 0;
-    color: #7e8794;
+    color: var(--muted);
     font-size: 10px;
     font-weight: 800;
     text-transform: uppercase;
@@ -235,7 +235,7 @@
 }
 
 .discover-local {
-    color: #8cc89b;
+    color: var(--success-text);
     text-transform: none;
     letter-spacing: 0;
 }
@@ -254,7 +254,7 @@
 
 .discover-native-title {
     margin-top: 3px;
-    color: #767f8c;
+    color: var(--muted);
     font-size: 11px;
     white-space: nowrap;
     overflow: hidden;
@@ -273,7 +273,7 @@
 .discover-card-meta span + span::before {
     content: "·";
     margin-right: 8px;
-    color: #4f5661;
+    color: var(--muted);
 }
 
 .discover-progress {
@@ -318,7 +318,7 @@
     border: 1px solid var(--border);
     border-radius: 7px;
     background: var(--surface-2);
-    color: #cbd0d7;
+    color: var(--text-secondary);
     cursor: pointer;
     font-size: 10px;
     font-weight: 750;
@@ -327,13 +327,13 @@
 .discover-card-actions a:hover,
 .discover-card-actions button:hover {
     color: var(--text);
-    border-color: rgba(255,255,255,.15);
+    border-color: var(--border-strong);
 }
 
 .discover-card-actions .primary {
-    border-color: rgba(231,169,27,.22);
+    border-color: color-mix(in srgb, var(--accent) 22%, transparent);
     background: var(--accent-soft);
-    color: #f2c75d;
+    color: var(--accent-text);
 }
 
 .discover-empty {
@@ -438,7 +438,7 @@
     position: absolute;
     inset: 0;
     transform: translateX(-100%);
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,.035), transparent);
+    background: linear-gradient(90deg, transparent, var(--soft-fill), transparent);
     animation: discover-shimmer 1.3s infinite;
 }
 

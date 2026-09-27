@@ -37,7 +37,7 @@ public static partial class SonarrParallelSafety
             return new(false, "This release is already owned by an acquisition job.");
         }
 
-        return new(true, "Release is not owned by Sonarr or another AniLingo job.");
+        return new(true, "Release is not owned by Sonarr or another Jularr job.");
     }
 
     public static OwnershipDecision CanMutatePath(
@@ -54,7 +54,7 @@ public static partial class SonarrParallelSafety
 
         if (mode == AnimeManagementMode.ReadOnlyCoexistence)
         {
-            return new(false, "Read-only coexistence forbids AniLingo filesystem mutations.");
+            return new(false, "Read-only coexistence forbids Jularr filesystem mutations.");
         }
 
         if (sonarr.ActivePaths.Any(item =>
@@ -75,12 +75,12 @@ public static partial class SonarrParallelSafety
                 return new(false, "Path belongs to another anime.");
             }
 
-            return new(true, "Path is owned by AniLingo for this anime.");
+            return new(true, "Path is owned by Jularr for this anime.");
         }
 
         if (mode == AnimeManagementMode.ParallelAcquisition)
         {
-            return new(false, "Parallel mode may mutate only paths explicitly owned by AniLingo.");
+            return new(false, "Parallel mode may mutate only paths explicitly owned by Jularr.");
         }
 
         return new(true, "AniLingo-managed mode allows unclaimed target paths when Sonarr has no active ownership.");
@@ -104,7 +104,7 @@ public static partial class SonarrParallelSafety
 
         if (hasActiveAniLingoJobs && target == AnimeManagementMode.ReadOnlyCoexistence)
         {
-            return new(false, "Finish or cancel active AniLingo jobs before handing the anime back to Sonarr.");
+            return new(false, "Finish or cancel active Jularr jobs before handing the anime back to Sonarr.");
         }
 
         return new(true, "Management mode transition is safe.");
@@ -187,7 +187,7 @@ public static partial class SonarrParallelSafety
                     "release",
                     job.AnimeKey,
                     job.ReleaseKey!,
-                    "AniLingo and Sonarr both report an active job for the same release."));
+                    "Jularr and Sonarr both report an active job for the same release."));
             }
         }
 

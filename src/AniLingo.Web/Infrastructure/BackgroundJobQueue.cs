@@ -300,7 +300,7 @@ public abstract class BackgroundJobWorkerBase<TQueue>(
             {
                 await store.MarkInterruptedAsync(
                     queued.OperationId,
-                    "Interrupted because AniLingo is stopping.",
+                    "Interrupted because Jularr is stopping.",
                     CancellationToken.None);
                 break;
             }

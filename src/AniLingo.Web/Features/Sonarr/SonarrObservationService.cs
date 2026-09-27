@@ -75,8 +75,8 @@ public sealed class SonarrObservationService(
             var queue = await observerClient.GetQueueAsync(settings, cancellationToken);
             var history = await observerClient.GetRecentHistoryAsync(settings, cancellationToken);
 
-            // Exact Sonarr file paths matter only for anime AniLingo may mutate; read-only
-            // coexistence already blocks every AniLingo mutation, so skip those series.
+            // Exact Sonarr file paths matter only for anime Jularr may mutate; read-only
+            // coexistence already blocks every Jularr mutation, so skip those series.
             var knownSeries = series.Select(item => item.Id).ToHashSet();
             var files = new List<SonarrObservedEpisodeFile>();
             foreach (var seriesId in state.Anime.Values
@@ -90,7 +90,7 @@ public sealed class SonarrObservationService(
                 files.AddRange(await observerClient.GetEpisodeFilesAsync(settings, seriesId, cancellationToken));
             }
 
-            // Sonarr and AniLingo may see the shared library under different mount paths
+            // Sonarr and Jularr may see the shared library under different mount paths
             // (#301/#302): translate every Sonarr-reported path through the same canonical remote
             // path mapping used for completed-download paths, so path comparisons in
             // SonarrOwnershipRecognizer/SonarrParallelSafety compare like with like.
@@ -128,7 +128,7 @@ public sealed class SonarrObservationService(
         {
             logger.LogWarning(
                 exception,
-                "Sonarr observation failed; Sonarr-linked AniLingo acquisition actions are paused until Sonarr can be observed.");
+                "Sonarr observation failed; Sonarr-linked Jularr acquisition actions are paused until Sonarr can be observed.");
             return SonarrObservedState.Unavailable(
                 exception is SonarrObserverException ? exception.Message : "Sonarr could not be reached.",
                 now);
@@ -148,7 +148,7 @@ public sealed class SonarrObservationService(
             if (reportedConflicts.Add(key))
             {
                 logger.LogWarning(
-                    "Sonarr/AniLingo ownership conflict ({Kind}) for {AnimeKey}: {Value}. {Reason}",
+                    "Sonarr/Jularr ownership conflict ({Kind}) for {AnimeKey}: {Value}. {Reason}",
                     conflict.Kind,
                     conflict.AnimeKey,
                     conflict.Value,

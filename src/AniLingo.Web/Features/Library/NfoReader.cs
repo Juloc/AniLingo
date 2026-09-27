@@ -20,7 +20,7 @@ public sealed record NfoShowMetadata(
     DateOnly? Premiered,
     NfoProviderIds ProviderIds);
 
-// Kodi/Jellyfin season.nfo carries only provider IDs for AniLingo's purposes today (for example
+// Kodi/Jellyfin season.nfo carries only provider IDs for Jularr's purposes today (for example
 // the AniList ID a Jellyfin AniList plugin writes per season); title/plot are not consumed.
 public sealed record NfoSeasonMetadata(NfoProviderIds ProviderIds);
 

@@ -17,7 +17,8 @@ public sealed class PwaManifestTests
         using var document = JsonDocument.Parse(File.ReadAllText(manifestPath));
         var root = document.RootElement;
 
-        Assert.AreEqual("AniLingo", root.GetProperty("name").GetString());
+        Assert.AreEqual("Jularr", root.GetProperty("name").GetString());
+        Assert.AreEqual("Jularr", root.GetProperty("short_name").GetString());
         Assert.AreEqual("standalone", root.GetProperty("display").GetString());
         Assert.AreEqual("/", root.GetProperty("start_url").GetString());
         Assert.IsFalse(root.GetProperty("prefer_related_applications").GetBoolean());
