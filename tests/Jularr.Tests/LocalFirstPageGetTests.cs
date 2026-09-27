@@ -3,6 +3,7 @@ using Jularr.Web.Data;
 using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Books;
+using Jularr.Web.Features.Franchises;
 using Jularr.Web.Features.Library;
 using Jularr.Web.Features.Manga;
 using Jularr.Web.Features.MediaMapping;
@@ -10,6 +11,7 @@ using Jularr.Web.Features.Metadata;
 using Jularr.Web.Features.Novels;
 using Jularr.Web.Features.Operations;
 using Jularr.Web.Features.Tracking;
+using Jularr.Web.Features.Watchlist;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -384,10 +386,21 @@ public sealed class LocalFirstPageGetTests
                 ReviewStore,
                 segmentStore);
 
+            var animeProvider = new AniListMetadataProvider(
+                Guard.CreateClient(),
+                NullLogger<AniListMetadataProvider>.Instance);
+            var franchiseStore = new FranchiseStore(Db);
+            var relationStore = new MediaRelationStore(Db);
+            var watchlistStore = new WatchlistStore(Db);
+            var franchiseService = new FranchiseService(
+                franchiseStore,
+                relationStore,
+                animeProvider,
+                readingProvider,
+                NullLogger<FranchiseService>.Instance);
+
             return new DiscoverIndexModel(
-                new AniListMetadataProvider(
-                    Guard.CreateClient(),
-                    NullLogger<AniListMetadataProvider>.Instance),
+                animeProvider,
                 readingProvider,
                 new BookCatalogService(
                     Guard.CreateClient(),
@@ -406,6 +419,8 @@ public sealed class LocalFirstPageGetTests
                     OwnerAccount,
                     NullLogger<AcquisitionRequestService>.Instance),
                 new AcquisitionAccessStore(Db),
+                watchlistStore,
+                franchiseService,
                 NullLogger<Jularr.Web.Features.Discovery.DiscoveryCoordinator>.Instance);
         }
 
