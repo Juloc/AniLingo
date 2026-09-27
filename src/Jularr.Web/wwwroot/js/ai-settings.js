@@ -30,6 +30,22 @@
     provider?.addEventListener("change", syncProvider);
     syncProvider();
 
+    // Personal picker: "Other model ID…" reveals the free-text field (always visible without JS).
+    const personalModel = form.querySelector("[data-ai-personal-model]");
+    const customModel = form.querySelector("[data-ai-custom-model]");
+    if (personalModel && customModel) {
+        const syncCustom = () => {
+            customModel.hidden = personalModel.value !== "__custom";
+        };
+        personalModel.addEventListener("change", () => {
+            syncCustom();
+            if (!customModel.hidden) {
+                customModel.focus();
+            }
+        });
+        syncCustom();
+    }
+
     const model = form.querySelector("[data-ai-model]");
     const effort = form.querySelector("[data-ai-effort]");
     const effortField = form.querySelector("[data-ai-effort-field]");

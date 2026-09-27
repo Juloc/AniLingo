@@ -86,6 +86,17 @@ public sealed class AiControlCenterPageTests
         await Assert.ThrowsExactlyAsync<InvalidOperationException>(
             () => fixture.Router().TranslateAsync("こんにちは", "de", CancellationToken.None));
         Assert.AreEqual(1, fixture.Requests, "No request without a model.");
+
+        loaded.ModelName = AiSettingsModel.CustomModelOption;
+        loaded.CustomModelName = "unlisted-model";
+        await loaded.OnPostSaveAsync(CancellationToken.None);
+        Assert.AreEqual("unlisted-model", (await fixture.Settings.LoadAsync(Profile, CancellationToken.None)).Model, "A model the provider does not list can still be entered.");
+
+        var picked = fixture.Page();
+        await picked.OnGetAsync(CancellationToken.None);
+        picked.ModelName = "model-a";
+        await picked.OnPostSaveAsync(CancellationToken.None);
+        Assert.AreEqual("model-a", (await fixture.Settings.LoadAsync(Profile, CancellationToken.None)).Model);
     }
 
     [TestMethod]

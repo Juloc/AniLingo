@@ -70,6 +70,12 @@ public sealed class AiModel(
     [BindProperty]
     public string? ModelName { get; set; }
 
+    /// <summary>Picker value meaning "type another model ID" (see <see cref="CustomModelName"/>).</summary>
+    public const string CustomModelOption = "__custom";
+
+    [BindProperty]
+    public string? CustomModelName { get; set; }
+
     [BindProperty]
     public string? ServerModel { get; set; }
 
@@ -215,6 +221,9 @@ public sealed class AiModel(
                 ? AiViewFormat.CatalogStatus(Ui, catalog, time.GetUtcNow())
                 : Ui["ai.models.refreshFailed"];
 
+    private string? PersonalModel() =>
+        ModelName == CustomModelOption ? CustomModelName : ModelName;
+
     private async Task<bool> SaveAsync(
         CancellationToken cancellationToken)
     {
@@ -245,7 +254,7 @@ public sealed class AiModel(
                 new AiProfileSettings(
                     ProviderId,
                     BaseUrl,
-                    isServer ? ServerModel : ModelName,
+                    isServer ? ServerModel : PersonalModel(),
                     key,
                     TranslationMode)
                 {
@@ -264,6 +273,7 @@ public sealed class AiModel(
         {
             ModelState.AddModelError(string.Empty, exception.Message);
             ApiKey = null;
+            ModelName = PersonalModel();
             return false;
         }
     }

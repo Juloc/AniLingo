@@ -138,14 +138,35 @@
                 <div class="ai-model-field">
                     <label>
                         <span>@ui["settings.ai.model"]</span>
-                        <input asp-for="ModelName" autocomplete="off" spellcheck="false" list="ai-personal-models" placeholder="@ui["ai.models.manualPlaceholder"]" />
-                        <datalist id="ai-personal-models">
-                            @foreach (var entry in personalCatalog.Models)
-                            {
-                                <option value="@entry.Id"></option>
-                            }
-                        </datalist>
+                        @if (personalCatalog.HasModels)
+                        {
+                            var customModel = !Model.PersonalModelMissing && personalCatalog.Find(Model.ModelName) is null;
+                            <select name="ModelName" data-ai-personal-model>
+                                <option value="" selected="@Model.PersonalModelMissing">@ui["ai.models.choosePlaceholder"]</option>
+                                @foreach (var entry in personalCatalog.Models)
+                                {
+                                    <option value="@entry.Id" selected="@(entry.Id == Model.ModelName)">@AiViewFormat.ModelOption(ui, entry)</option>
+                                }
+                                <option value="@Jularr.Web.Pages.Settings.AiModel.CustomModelOption" selected="@customModel">@ui["ai.models.other"]</option>
+                            </select>
+                        }
+                        else
+                        {
+                            <input asp-for="ModelName" autocomplete="off" spellcheck="false" placeholder="@ui["ai.models.manualPlaceholder"]" />
+                        }
                     </label>
+                    @if (personalCatalog.HasModels)
+                    {
+                        var customModel = !Model.PersonalModelMissing && personalCatalog.Find(Model.ModelName) is null;
+                        <input name="CustomModelName" value="@(customModel ? Model.ModelName : null)" autocomplete="off" spellcheck="false"
+                               data-ai-custom-model aria-label="@ui["ai.models.other"]" placeholder="@ui["ai.models.manualPlaceholder"]" />
+                    }
+                    <datalist id="ai-personal-models">
+                        @foreach (var entry in personalCatalog.Models)
+                        {
+                            <option value="@entry.Id"></option>
+                        }
+                    </datalist>
                     <div class="ai-model-status">
                         <small class="muted" data-ai-catalog-status="@AiProviderIds.OpenAiCompatible">@AiViewFormat.CatalogStatus(ui, personalCatalog, Model.Now)</small>
                         <button class="button ai-button-small" type="submit" asp-page-handler="RefreshModels">@ui["ai.models.refresh"]</button>

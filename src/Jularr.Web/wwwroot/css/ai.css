@@ -16,7 +16,7 @@
 
 .ai-model-field { display: grid; gap: 6px; }
 .ai-model-status { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.ai-model-status small { flex: 1; min-width: 0; }
+.ai-model-status small { flex: 1 1 12rem; min-width: 0; }
 .ai-button-small { padding: 5px 10px; font-size: 12px; }
 .ai-note { font-size: 12px; color: var(--text-secondary); }
 .ai-note-warn { color: var(--warning-text); font-weight: 700; }
