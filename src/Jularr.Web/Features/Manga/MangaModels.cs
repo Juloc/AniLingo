@@ -99,6 +99,12 @@ public sealed record MangaAniListProgressContext(
     int PageIndex,
     int PageCount);
 
+/// <summary>Where a series lives: its id, title and canonical source folder.</summary>
+public sealed record MangaSeriesLocation(
+    Guid Id,
+    string Title,
+    string SourcePath);
+
 public sealed record MangaImportResult(
     Guid SeriesId,
     int ChapterCount,

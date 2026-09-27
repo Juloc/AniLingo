@@ -1,3 +1,4 @@
+using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Media.Optimization;
 
 namespace Jularr.Web.Features.Acquisition.Import;
@@ -28,6 +29,12 @@ public enum ImportMode
 public sealed record RemotePathMapping(string RemotePrefix, string LocalPrefix);
 
 /// <summary>
+/// Where completed downloads of one media type end up (the canonical NAS library folder) and,
+/// optionally, how they get there. A null import mode uses the global default.
+/// </summary>
+public sealed record MediaLibraryTarget(string LibraryRoot, ImportMode? ImportMode = null);
+
+/// <summary>
 /// The one canonical import-policy settings: default import mode, per-library-root overrides,
 /// remote path mappings, the per-anime target root for new imports and the post-import playback
 /// optimization. Stored at
@@ -43,11 +50,28 @@ public sealed record AnimeImportSettingsState(
     // Direct Play without losing anything (MediaContainerOptimizer). Off unless the owner opts in.
     public LosslessPlaybackOptimizationMode PlaybackOptimization { get; init; } = LosslessPlaybackOptimizationMode.Off;
 
+    /// <summary>
+    /// Final library folder (and optional import-mode override) per non-anime media type, for
+    /// example Manga. Anime keeps using its library roots. A media type without an entry imports
+    /// completed downloads in place.
+    /// </summary>
+    public Dictionary<MediaAcquisitionKind, MediaLibraryTarget> MediaLibraries { get; init; } = [];
+
     public static AnimeImportSettingsState Empty() =>
         new(1, ImportMode.Move, [], []);
 
     public ImportMode ModeFor(Guid? rootId) =>
         rootId is { } id && RootImportModes.TryGetValue(id, out var mode) ? mode : DefaultImportMode;
+
+    public MediaLibraryTarget? LibraryFor(MediaAcquisitionKind kind) =>
+        MediaLibraries is not null &&
+        MediaLibraries.TryGetValue(kind, out var target) &&
+        !string.IsNullOrWhiteSpace(target.LibraryRoot)
+            ? target
+            : null;
+
+    public ImportMode ModeFor(MediaAcquisitionKind kind) =>
+        LibraryFor(kind)?.ImportMode ?? DefaultImportMode;
 
     /// <summary>
     /// Rewrites <paramref name="path"/> using the longest matching remote prefix. Comparison is
