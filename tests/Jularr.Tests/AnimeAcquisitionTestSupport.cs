@@ -1,5 +1,6 @@
 using Jularr.Web.Data;
 using Jularr.Web.Features.Acquisition;
+using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Acquisition.Api;
 using Jularr.Web.Features.Acquisition.AniListAutoMonitor;
 using Jularr.Web.Features.Acquisition.Backup;
@@ -17,6 +18,7 @@ using Jularr.Web.Features.Acquisition.Prowlarr;
 using Jularr.Web.Features.Acquisition.Quality;
 using Jularr.Web.Features.Acquisition.Sabnzbd;
 using Jularr.Web.Features.Library;
+using Jularr.Web.Features.Media.Optimization;
 using Jularr.Web.Features.MediaMapping;
 using Jularr.Web.Features.Metadata;
 using Jularr.Web.Features.Operations;
@@ -71,6 +73,7 @@ internal sealed class AnimeAcquisitionEnvironment : IAsyncDisposable
     public IDataProtectionProvider Protection { get; } = new EphemeralDataProtectionProvider();
     public IHardLinkCreator HardLinkCreator { get; }
     public HttpMessageHandler AniListHandler { get; set; } = new NotConnectedAniListHandler();
+    public FakeAnimeMetadataProvider AniListMetadata { get; } = new();
     public Guid AnimeId { get; private set; }
     public Guid ProwlarrIndexerEntryId { get; private set; }
 
@@ -84,6 +87,12 @@ internal sealed class AnimeAcquisitionEnvironment : IAsyncDisposable
     public AcquisitionPolicyStore Policy => services.GetRequiredService<AcquisitionPolicyStore>();
     public AniListAutoMonitorSettingsStore AniListAutoMonitorSettings => services.GetRequiredService<AniListAutoMonitorSettingsStore>();
     public AniListAccountStore AniListAccounts => services.GetRequiredService<AniListAccountStore>();
+
+    public async Task<T> WithScopeAsync<T>(Func<IServiceProvider, Task<T>> action)
+    {
+        await using var scope = services.CreateAsyncScope();
+        return await action(scope.ServiceProvider);
+    }
 
     /// <summary>Runs an action against a scoped <see cref="AcquisitionApiKeyService"/>.</summary>
     public async Task<T> WithApiKeysAsync<T>(Func<AcquisitionApiKeyService, Task<T>> action)
@@ -123,6 +132,19 @@ internal sealed class AnimeAcquisitionEnvironment : IAsyncDisposable
     {
         await using var scope = services.CreateAsyncScope();
         return await scope.ServiceProvider.GetRequiredService<AcquisitionBackupService>().RestoreAsync(bundle, CancellationToken.None);
+    }
+
+    /// <summary>What an approved or automatic anime request from Discover runs.</summary>
+    public async Task<AcquisitionExecution> ExecuteAnimeRequestAsync(string aniListId)
+    {
+        await using var scope = services.CreateAsyncScope();
+        var execution = await scope.ServiceProvider.GetRequiredService<AnimeAcquisitionRequestExecutor>().ExecuteAsync(
+            new AcquisitionRequest(
+                Guid.NewGuid(), MediaAcquisitionKind.Anime, AniListMetadataProvider.ProviderKey, aniListId, "Requested", null, null, null,
+                "owner", AcquisitionRequestStatus.Searching, null, null, null, DateTime.UtcNow, DateTime.UtcNow, "owner", DateTime.UtcNow),
+            CancellationToken.None);
+        Db.ChangeTracker.Clear();
+        return execution;
     }
 
     public async Task<AniListAutoMonitorRunResult> RunAniListAutoMonitorAsync(string profileId)
@@ -432,7 +454,9 @@ internal sealed class AnimeAcquisitionEnvironment : IAsyncDisposable
         collection.AddScoped<AcquisitionBackupService>(_ => new AcquisitionBackupService(DataRoot));
         collection.AddScoped<AniListAutoMonitorService>();
 
+        collection.AddSingleton<IAnimeMetadataProvider>(AniListMetadata);
         collection.AddScoped<AnimeMetadataService>();
+        collection.AddScoped<AnimeAcquisitionRequestExecutor>();
         collection.AddScoped<SabnzbdConnectionResolver>();
         collection.AddScoped<SabnzbdDownloadService>();
         collection.AddScoped<SabnzbdAcquisitionService>();
@@ -440,6 +464,9 @@ internal sealed class AnimeAcquisitionEnvironment : IAsyncDisposable
         collection.AddScoped<AnimeAcquisitionInventory>();
         collection.AddScoped<AnimeAcquisitionPipeline>();
         collection.AddScoped<AnimeImportExecutor>();
+        collection.AddSingleton<BackgroundJobQueue>();
+        collection.AddSingleton(new MediaOptimizationJournal(Path.Combine(DataRoot, "media-optimization")));
+        collection.AddSingleton<MediaOptimizationQueue>();
         collection.AddSingleton<AnimeAcquisitionScheduler>();
         collection.AddScoped<AcquisitionApiKeyService>();
         collection.AddScoped<AcquisitionApiService>();
@@ -496,6 +523,23 @@ internal sealed class AnimeAcquisitionEnvironment : IAsyncDisposable
         public Task<IReadOnlyList<SonarrObservedQueueItem>> GetQueueAsync(SonarrConnectionSettings settings, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<IReadOnlyList<SonarrObservedHistoryEvent>> GetRecentHistoryAsync(SonarrConnectionSettings settings, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
+}
+
+/// <summary>AniList entries by id; unknown ids are not found. Search returns nothing.</summary>
+internal sealed class FakeAnimeMetadataProvider : IAnimeMetadataProvider
+{
+    public Dictionary<string, AnimeMetadataCandidate> Entries { get; } = new(StringComparer.Ordinal);
+    public string Key => AniListMetadataProvider.ProviderKey;
+
+    public Task<IReadOnlyList<AnimeMetadataCandidate>> SearchAsync(string query, int limit, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<AnimeMetadataCandidate>>([]);
+
+    public Task<AnimeMetadataCandidate?> GetAsync(string externalId, CancellationToken cancellationToken) =>
+        Task.FromResult(Entries.GetValueOrDefault(externalId));
+
+    public void Add(string id, string title, int? episodeCount, int? year = null) =>
+        Entries[id] = new AnimeMetadataCandidate(
+            AniListMetadataProvider.ProviderKey, id, title, title, null, null, null, null, null, "TV", "RELEASING", null, year, episodeCount, 24);
 }
 
 /// <summary>Returns the configured releases for every query and counts the queries.</summary>

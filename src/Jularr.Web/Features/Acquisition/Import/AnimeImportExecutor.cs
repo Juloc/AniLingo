@@ -8,6 +8,7 @@ using Jularr.Web.Features.Acquisition.Pipeline;
 using Jularr.Web.Features.Acquisition.Quality;
 using Jularr.Web.Features.Acquisition.Sabnzbd;
 using Jularr.Web.Features.Library;
+using Jularr.Web.Features.Media.Optimization;
 using Jularr.Web.Features.Operations;
 using Jularr.Web.Features.Sonarr;
 using Microsoft.EntityFrameworkCore;
@@ -40,7 +41,8 @@ public sealed class AnimeImportExecutor(
     LibraryScanner scanner,
     DownloadClientStore downloadClients,
     IDownloadClient downloadClient,
-    ILogger<AnimeImportExecutor> logger)
+    ILogger<AnimeImportExecutor> logger,
+    MediaOptimizationQueue? optimizationQueue = null)
 {
     public const string OperationKind = "anime-import";
     public const string OperationCategory = "Library";
@@ -50,6 +52,11 @@ public sealed class AnimeImportExecutor(
     // The SABnzbd monitor, startup recovery and owner actions run in different scopes; one
     // process-wide gate keeps two of them from executing the same import at the same time.
     private static readonly SemaphoreSlim ExecutionGate = new(1, 1);
+
+    // Held by a caller that swaps a library file (the lossless playback optimizer) so no import
+    // moves files or rescans folders at the same moment; null while an import is executing.
+    public static IDisposable? TryEnterExecution() =>
+        ExecutionGate.Wait(0) ? new ExecutionLease() : null;
 
     public static bool IsAnimeDownload(OperationSnapshot operation) =>
         string.Equals(operation.Kind, SabnzbdAcquisitionService.OperationKind, StringComparison.Ordinal);
@@ -292,6 +299,7 @@ public sealed class AnimeImportExecutor(
         var status = files.Any(item => item.Status is AnimeImportFileStatus.ManualRequired or AnimeImportFileStatus.Failed)
             ? AnimeImportStatus.ManualRequired
             : AnimeImportStatus.Imported;
+        await QueuePlaybackOptimizationAsync([executed], record.AnimeTitle, download?.ProfileId, operationId, cancellationToken);
         await FinishAsync(
             record with { Files = files },
             status,
@@ -572,6 +580,7 @@ public sealed class AnimeImportExecutor(
             _ => "No video file could be imported."
         };
 
+        await QueuePlaybackOptimizationAsync(results, acquisition.AnimeTitle, acquisition.ProfileId, operationId, cancellationToken);
         return await FinishAsync(
             record with { Files = results.ToArray() },
             status,
@@ -830,6 +839,66 @@ public sealed class AnimeImportExecutor(
         }
     }
 
+    // Post-import step: queues the lossless playback optimization of the files this run imported as
+    // its own Operation, so a remux never holds the import open. The optimizer re-checks ownership
+    // and waits for this import to finish before it replaces anything.
+    private async Task QueuePlaybackOptimizationAsync(
+        IEnumerable<AnimeImportFileRecord> files,
+        string subject,
+        string? profileId,
+        Guid? importOperationId,
+        CancellationToken cancellationToken)
+    {
+        if (optimizationQueue is null)
+        {
+            return;
+        }
+
+        var paths = files
+            .Where(file => file.Status == AnimeImportFileStatus.Imported && file.ImportedPath is not null)
+            .Select(file => Path.GetFullPath(file.ImportedPath!))
+            .ToArray();
+        if (paths.Length == 0)
+        {
+            return;
+        }
+
+        var settings = await importSettings.LoadAsync(cancellationToken);
+        if (settings.PlaybackOptimization == LosslessPlaybackOptimizationMode.Off)
+        {
+            return;
+        }
+
+        var mediaFileIds = await db.MediaFiles
+            .AsNoTracking()
+            .Where(media => paths.Contains(media.Path))
+            .Select(media => media.Id)
+            .ToArrayAsync(cancellationToken);
+        if (mediaFileIds.Length == 0)
+        {
+            return;
+        }
+
+        string message;
+        try
+        {
+            // The background queue is bounded; never let a full queue hold the import gate.
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(10));
+            await optimizationQueue.QueueAsync(mediaFileIds, subject, profileId, timeout.Token);
+            message = $"Queued lossless playback optimization for {mediaFileIds.Length} file(s).";
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            message = "Lossless playback optimization was not queued because the background queue is full; run it from the anime's repair page.";
+        }
+
+        if (importOperationId is { } id)
+        {
+            await new OperationStore(db).AppendLogAsync(id, OperationLogLevel.Information, LogModule, message, cancellationToken);
+        }
+    }
+
     private async Task<AnimeImportRecord> FinishAsync(
         AnimeImportRecord record,
         AnimeImportStatus status,
@@ -957,6 +1026,19 @@ public sealed class AnimeImportExecutor(
          extension.Equals(".nzb", StringComparison.OrdinalIgnoreCase) ||
          extension.Equals(".par2", StringComparison.OrdinalIgnoreCase) ||
          extension.Equals(".sfv", StringComparison.OrdinalIgnoreCase));
+
+    private sealed class ExecutionLease : IDisposable
+    {
+        private int released;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref released, 1) == 0)
+            {
+                ExecutionGate.Release();
+            }
+        }
+    }
 
     private static AnimeImportFileRecord ToRecord(
         PlannedAnimeImport planned,

@@ -16,6 +16,19 @@
         Context.Request.Path,
         learningVisible,
         User.IsInRole(Jularr.Web.Features.Auth.AccountRoles.Owner));
+
+    // Inside a reader the sidebar shows the work that is open, never another one.
+    Jularr.Web.Features.Reading.ContinueReadingItem? current = null;
+    var readerChapter = Context.Request.Path.Value?.Split('/', StringSplitOptions.RemoveEmptyEntries).ElementAtOrDefault(2);
+    if (nav.ShowCurrentReading && !string.IsNullOrWhiteSpace(profileId) && Guid.TryParse(readerChapter, out var chapterId))
+    {
+        var recent = await new Jularr.Web.Features.Reading.ContinueReadingQuery(LearningNavigationDb)
+            .GetAsync(profileId, cancellationToken: Context.RequestAborted);
+        var workId = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.FirstOrDefaultAsync(
+            LearningNavigationDb.NovelChapters.Where(chapter => chapter.Id == chapterId).Select(chapter => (Guid?)chapter.WorkId),
+            Context.RequestAborted);
+        current = recent.FirstOrDefault(item => item.ChapterId == chapterId || (workId is { } id && item.WorkId == id));
+    }
 }
 <aside class="sidebar">
     <a class="brand" href="/">
@@ -48,6 +61,11 @@
                 <partial name="_AppNavLink" model="item" />
             }
         </nav>
+    }
+
+    @if (current is not null)
+    {
+        <partial name="_AppCurrentReading" model="current" />
     }
 
     <nav class="nav-list nav-list-secondary" aria-label="@ui["nav.secondaryAria"]">

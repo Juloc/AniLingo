@@ -95,6 +95,10 @@ public static partial class MediaPathParser
         return true;
     }
 
+    // The key a scan gives the anime whose files live in a series folder with this name.
+    public static string AnimeKeyForSeriesFolder(string folderName) =>
+        NormalizeKey(CleanTitle(folderName));
+
     private static string CleanTitle(string value)
     {
         var withoutGroup = ReleaseGroupRegex().Replace(value, "");
