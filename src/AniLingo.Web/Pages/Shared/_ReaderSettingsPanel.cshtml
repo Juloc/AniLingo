@@ -1,7 +1,16 @@
 @model AniLingo.Web.Features.ReaderCore.ReaderSettingsPanelModel
+@using AniLingo.Web.Data
+@using AniLingo.Web.Features.Localization
 @using AniLingo.Web.Features.ReaderPreferences
 @using AniLingo.Web.Features.Speech
+@inject AppDbContext ReaderSettingsDb
+@*
+    Shared reader settings panel for the Books and Novels prose readers (issue #185).
+    Self-contained: it resolves its own UI bundle instead of taking one from the
+    caller, since both readers already pass a fully-built ReaderSettingsPanelModel.
+*@
 @{
+    var ui = await UiRequestLocalization.GetBundleAsync(Context, ReaderSettingsDb);
     var capabilities = Model.Document.Capabilities;
 }
 @if (capabilities.SupportsTts)
@@ -11,8 +20,8 @@
             type="button"
             data-reader-tts-toggle
             aria-pressed="false"
-            aria-label="Vorlesen"
-            title="Vorlesen"
+            aria-label="@ui["reader.settings.readAloudAria"]"
+            title="@ui["reader.settings.readAloudAria"]"
             hidden>
         <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" />
@@ -24,8 +33,8 @@
          data-reader-settings-panel
          data-reader-settings-container>
     <summary class="reader-settings-trigger"
-             aria-label="Leseeinstellungen"
-             title="Leseeinstellungen">Aa</summary>
+             aria-label="@ui["reader.settings.toggleAria"]"
+             title="@ui["reader.settings.toggleAria"]">Aa</summary>
 
     <form class="reader-settings-panel"
           method="post"
@@ -44,17 +53,17 @@
 
         <header class="reader-settings-heading">
             <div>
-                <strong>Lesen</strong>
+                <strong>@ui["reader.settings.heading"]</strong>
                 <small>@Model.Document.Title</small>
             </div>
             <span data-reader-override-state data-book-override-state>
                 @(Model.Settings.HasBookOverride
-                    ? "Für dieses Buch angepasst"
+                    ? ui["reader.settings.override.book"]
                     : Model.Settings.HasGenreOverride
-                        ? "Genre-Standard"
+                        ? ui["reader.settings.override.genre"]
                         : Model.Settings.HasTypeOverride
-                            ? "Typ-Standard"
-                            : "Mein Standard")
+                            ? ui["reader.settings.override.type"]
+                            : ui["reader.settings.override.mine"])
             </span>
         </header>
 
@@ -62,18 +71,18 @@
             @if (capabilities.SupportsContinuous || capabilities.SupportsPaged)
             {
                 <label>
-                    <span>Lesemodus</span>
+                    <span>@ui["reader.settings.readingMode"]</span>
                     <select name="ReadingMode"
                             data-reader-setting
                             data-setting-key="readingMode"
                             data-book-setting="readingMode">
                         @if (capabilities.SupportsContinuous)
                         {
-                            <option value="continuous">Scrollen</option>
+                            <option value="continuous">@ui["reader.settings.readingMode.continuous"]</option>
                         }
                         @if (capabilities.SupportsPaged)
                         {
-                            <option value="paged">Seiten</option>
+                            <option value="paged">@ui["reader.settings.readingMode.paged"]</option>
                         }
                     </select>
                 </label>
@@ -82,18 +91,18 @@
             @if (capabilities.SupportsPageCurl || capabilities.SupportsPaged)
             {
                 <label>
-                    <span>Seitenanimation</span>
+                    <span>@ui["reader.settings.pageTransition"]</span>
                     <select name="PageTransition"
                             data-reader-setting
                             data-setting-key="pageTransition"
                             data-book-setting="pageTransition">
                         @if (capabilities.SupportsPageCurl)
                         {
-                            <option value="curl">Umblättern</option>
+                            <option value="curl">@ui["reader.settings.pageTransition.curl"]</option>
                         }
-                        <option value="slide">Schieben</option>
-                        <option value="fade">Überblenden</option>
-                        <option value="none">Keine</option>
+                        <option value="slide">@ui["reader.settings.pageTransition.slide"]</option>
+                        <option value="fade">@ui["reader.settings.pageTransition.fade"]</option>
+                        <option value="none">@ui["reader.settings.pageTransition.none"]</option>
                     </select>
                 </label>
             }
@@ -107,7 +116,7 @@
                            data-reader-setting
                            data-setting-key="twoPageSpread"
                            data-book-setting="twoPageSpread" />
-                    <span>Doppelseite auf breiten Displays</span>
+                    <span>@ui["reader.settings.twoPageSpread"]</span>
                 </label>
             }
 
@@ -115,7 +124,7 @@
             {
                 <label>
                     <span>
-                        Auto-Scroll
+                        @ui["reader.settings.autoScroll"]
                         <output data-setting-output="autoScrollSpeed"
                                 data-book-setting-output="autoScrollSpeed"></output>
                     </span>
@@ -133,7 +142,7 @@
             @if (capabilities.SupportsTypography)
             {
                 <label>
-                    <span>Schrift</span>
+                    <span>@ui["reader.settings.fontFamily"]</span>
                     <select name="FontFamily"
                             data-reader-setting
                             data-setting-key="fontFamily"
@@ -155,7 +164,7 @@
                     <input type="search"
                            data-reader-google-font
                            list="reader-google-fonts"
-                           placeholder="Weitere Google Font" />
+                           placeholder="@ui["reader.settings.customGoogleFontPlaceholder"]" />
                     <datalist id="reader-google-fonts">
                         <option value="Source Serif 4"></option>
                         <option value="Crimson Pro"></option>
@@ -165,12 +174,12 @@
                     </datalist>
                     <button type="button"
                             class="button"
-                            data-reader-apply-google-font>Anwenden</button>
+                            data-reader-apply-google-font>@ui["reader.settings.apply"]</button>
                 </div>
 
                 <label>
                     <span>
-                        Textgröße
+                        @ui["reader.settings.fontSize"]
                         <output data-setting-output="fontSizeRem"
                                 data-book-setting-output="fontSizeRem"></output>
                     </span>
@@ -186,7 +195,7 @@
 
                 <label>
                     <span>
-                        Zeilenhöhe
+                        @ui["reader.settings.lineHeight"]
                         <output data-setting-output="lineHeight"
                                 data-book-setting-output="lineHeight"></output>
                     </span>
@@ -202,7 +211,7 @@
 
                 <label>
                     <span>
-                        Absatzabstand
+                        @ui["reader.settings.paragraphSpacing"]
                         <output data-setting-output="paragraphSpacingEm"
                                 data-book-setting-output="paragraphSpacingEm"></output>
                     </span>
@@ -218,7 +227,7 @@
 
                 <label>
                     <span>
-                        Textbreite
+                        @ui["reader.settings.textWidth"]
                         <output data-setting-output="textWidthPx"
                                 data-book-setting-output="textWidthPx"></output>
                     </span>
@@ -233,18 +242,18 @@
                 </label>
 
                 <label>
-                    <span>Ausrichtung</span>
+                    <span>@ui["reader.settings.textAlignment"]</span>
                     <select name="TextAlignment"
                             data-reader-setting
                             data-setting-key="textAlignment"
                             data-book-setting="textAlignment">
-                        <option value="start">Links</option>
-                        <option value="justify">Blocksatz</option>
+                        <option value="start">@ui["reader.settings.textAlignment.start"]</option>
+                        <option value="justify">@ui["reader.settings.textAlignment.justify"]</option>
                     </select>
                 </label>
 
                 <label>
-                    <span>Kapitelstil</span>
+                    <span>@ui["reader.settings.chapterStyle"]</span>
                     <select name="ChapterStyle"
                             data-reader-setting
                             data-setting-key="chapterStyle"
@@ -259,7 +268,7 @@
             }
 
             <label>
-                <span>Papier</span>
+                <span>@ui["reader.settings.paperStyle"]</span>
                 <select name="PaperStyle"
                         data-reader-setting
                         data-setting-key="paperStyle"
@@ -282,34 +291,34 @@
                            data-reader-setting
                            data-setting-key="genreArtworkEnabled"
                            data-book-setting="genreArtworkEnabled" />
-                    <span>Genre-Hintergrund</span>
+                    <span>@ui["reader.settings.genreArtwork"]</span>
                 </label>
 
                 <label>
-                    <span>Genre / Stimmung</span>
+                    <span>@ui["reader.settings.genreTheme"]</span>
                     <select name="GenreTheme"
                             data-reader-setting
                             data-setting-key="genreTheme"
                             data-book-setting="genreTheme"
                             data-reader-genre-select>
-                        <option value="auto">Automatisch</option>
+                        <option value="auto">@ui["reader.settings.auto"]</option>
                     </select>
                 </label>
 
                 <label>
-                    <span>Hintergrund</span>
+                    <span>@ui["reader.settings.background"]</span>
                     <select name="BackgroundAssetId"
                             data-reader-setting
                             data-setting-key="backgroundAssetId"
                             data-book-setting="backgroundAssetId"
                             data-reader-background-select>
-                        <option value="auto">Automatisch</option>
+                        <option value="auto">@ui["reader.settings.auto"]</option>
                     </select>
                 </label>
 
                 <label>
                     <span>
-                        Hintergrundstärke
+                        @ui["reader.settings.backgroundIntensity"]
                         <output data-setting-output="backgroundIntensity"
                                 data-book-setting-output="backgroundIntensity"></output>
                     </span>
@@ -324,37 +333,37 @@
                 </label>
 
                 <label>
-                    <span>Bewegung</span>
+                    <span>@ui["reader.settings.backgroundMotion"]</span>
                     <select name="BackgroundMotionMode"
                             data-reader-setting
                             data-setting-key="backgroundMotionMode"
                             data-book-setting="backgroundMotionMode">
-                        <option value="auto">Automatisch</option>
-                        <option value="static">Statisch</option>
-                        <option value="parallax">2.5D / Parallax</option>
+                        <option value="auto">@ui["reader.settings.auto"]</option>
+                        <option value="static">@ui["reader.settings.backgroundMotion.static"]</option>
+                        <option value="parallax">@ui["reader.settings.backgroundMotion.parallax"]</option>
                     </select>
                 </label>
 
                 <details class="reader-theme-advanced">
-                    <summary>Theme fein einstellen</summary>
+                    <summary>@ui["reader.settings.advancedTheme"]</summary>
                     <div class="reader-theme-advanced-grid">
                         @foreach (var item in new[]
                         {
-                            ("ThemeEffectStrength", "themeEffectStrength", "Effekte", "0", "2", ".05"),
-                            ("ThemeBrightness", "themeBrightness", "Helligkeit", ".65", "1.35", ".05"),
-                            ("ThemeContrast", "themeContrast", "Kontrast", ".7", "1.3", ".05"),
-                            ("ThemeSaturation", "themeSaturation", "Sättigung", "0", "1.5", ".05"),
-                            ("ThemeBlurPx", "themeBlurPx", "Blur", "0", "8", ".5"),
-                            ("ThemeVignetteStrength", "themeVignetteStrength", "Vignette", "0", "2", ".05"),
-                            ("ThemeGrainStrength", "themeGrainStrength", "Körnung", "0", "2", ".05"),
-                            ("ThemeTextBackdropStrength", "themeTextBackdropStrength", "Textfläche", "0", "2", ".05"),
-                            ("ThemeParallaxStrength", "themeParallaxStrength", "Parallax", "0", "2", ".05"),
-                            ("ThemeTintStrength", "themeTintStrength", "Tönung", "0", "2", ".05")
+                            ("ThemeEffectStrength", "themeEffectStrength", "reader.settings.theme.effects", "0", "2", ".05"),
+                            ("ThemeBrightness", "themeBrightness", "reader.settings.theme.brightness", ".65", "1.35", ".05"),
+                            ("ThemeContrast", "themeContrast", "reader.settings.theme.contrast", ".7", "1.3", ".05"),
+                            ("ThemeSaturation", "themeSaturation", "reader.settings.theme.saturation", "0", "1.5", ".05"),
+                            ("ThemeBlurPx", "themeBlurPx", "reader.settings.theme.blur", "0", "8", ".5"),
+                            ("ThemeVignetteStrength", "themeVignetteStrength", "reader.settings.theme.vignette", "0", "2", ".05"),
+                            ("ThemeGrainStrength", "themeGrainStrength", "reader.settings.theme.grain", "0", "2", ".05"),
+                            ("ThemeTextBackdropStrength", "themeTextBackdropStrength", "reader.settings.theme.textBackdrop", "0", "2", ".05"),
+                            ("ThemeParallaxStrength", "themeParallaxStrength", "reader.settings.theme.parallax", "0", "2", ".05"),
+                            ("ThemeTintStrength", "themeTintStrength", "reader.settings.theme.tint", "0", "2", ".05")
                         })
                         {
                             <label>
                                 <span>
-                                    @item.Item3
+                                    @ui[item.Item3]
                                     <output data-setting-output="@item.Item2"
                                             data-book-setting-output="@item.Item2"></output>
                                 </span>
@@ -373,21 +382,21 @@
             }
 
             <label>
-                <span>Lesezeichen-Stil</span>
+                <span>@ui["reader.settings.bookmarkStyle"]</span>
                 <select name="BookmarkStyle"
                         data-reader-setting
                         data-setting-key="bookmarkStyle"
                         data-book-setting="bookmarkStyle">
-                    <option value="fabric">Stoffband</option>
-                    <option value="paper">Papier</option>
-                    <option value="leather">Leder</option>
-                    <option value="cord">Schnur</option>
+                    <option value="fabric">Fabric ribbon</option>
+                    <option value="paper">Paper</option>
+                    <option value="leather">Leather</option>
+                    <option value="cord">Cord</option>
                     <option value="minimal">Minimal</option>
                 </select>
             </label>
 
             <label>
-                <span>Lesezeichen-Farbe</span>
+                <span>@ui["reader.settings.bookmarkColor"]</span>
                 <input type="color"
                        name="BookmarkColor"
                        data-reader-setting
@@ -399,7 +408,7 @@
         @if (capabilities.SupportsTts)
         {
             var tts = Model.Settings;
-            <section class="reader-tts-settings" data-reader-tts-settings aria-label="Vorlesen">
+            <section class="reader-tts-settings" data-reader-tts-settings aria-label="@ui["reader.settings.readAloudAria"]">
                 <input type="hidden"
                        name="TtsVoiceIds"
                        value="@(SpeechVoiceMap.Serialize(tts.TtsVoiceIds) ?? "")"
@@ -408,10 +417,10 @@
                 <p class="reader-tts-status" data-reader-tts-status role="status"></p>
 
                 <label data-reader-tts-field="ttsProviderId">
-                    <span>Sprachausgabe</span>
+                    <span>@ui["reader.settings.ttsProvider"]</span>
                     <select name="TtsProviderId" data-reader-tts-setting="ttsProviderId">
-                        <option value="auto" selected="@(tts.TtsProviderId == "auto")">Automatisch</option>
-                        <option value="device" selected="@(tts.TtsProviderId == "device")">Gerätestimme</option>
+                        <option value="auto" selected="@(tts.TtsProviderId == "auto")">@ui["reader.settings.auto"]</option>
+                        <option value="device" selected="@(tts.TtsProviderId == "device")">@ui["reader.settings.ttsProvider.device"]</option>
                     </select>
                 </label>
 
@@ -420,10 +429,10 @@
                     var voiceKey = ReaderPreferenceRules.TtsVoiceFieldKey(language.Tag);
                     var storedVoice = SpeechVoiceMap.VoiceIdFor(tts.TtsVoiceIds, language.Tag);
                     <label data-reader-tts-field="@voiceKey">
-                        <span>Stimme @language.Label</span>
+                        <span>@ui.Format("reader.settings.ttsVoice", ("language", language.Label))</span>
                         <select data-reader-tts-voice="@language.Tag"
                                 data-reader-tts-voice-label="@language.Label">
-                            <option value="auto">Automatisch</option>
+                            <option value="auto">@ui["reader.settings.auto"]</option>
                             @if (storedVoice is not null)
                             {
                                 <option value="@storedVoice" selected>@storedVoice</option>
@@ -435,14 +444,14 @@
 
                 @foreach (var item in new[]
                 {
-                    ("TtsRate", "ttsRate", "Tempo", "0.5", "2.5", tts.TtsRate),
-                    ("TtsPitch", "ttsPitch", "Tonhöhe", "0.5", "2", tts.TtsPitch),
-                    ("TtsVolume", "ttsVolume", "Lautstärke", "0", "1", tts.TtsVolume)
+                    ("TtsRate", "ttsRate", "reader.settings.tts.rate", "0.5", "2.5", tts.TtsRate),
+                    ("TtsPitch", "ttsPitch", "reader.settings.tts.pitch", "0.5", "2", tts.TtsPitch),
+                    ("TtsVolume", "ttsVolume", "reader.settings.tts.volume", "0", "1", tts.TtsVolume)
                 })
                 {
                     <label data-reader-tts-field="@item.Item2">
                         <span>
-                            @item.Item3
+                            @ui[item.Item3]
                             <output data-reader-tts-output="@item.Item2"></output>
                         </span>
                         <input type="range"
@@ -461,12 +470,11 @@
                            value="true"
                            checked="@tts.TtsAutoContinueChapters"
                            data-reader-tts-setting="ttsAutoContinueChapters" />
-                    <span>Am Kapitelende automatisch weiterlesen</span>
+                    <span>@ui["reader.settings.tts.autoContinue"]</span>
                 </label>
 
                 <p class="reader-tts-privacy">
-                    Gerätestimmen: AniLingo sendet keinen Text an den Server.
-                    Als „Online“ markierte Stimmen verarbeitet der Browser-Anbieter.
+                    @ui["reader.settings.tts.privacyNotice"]
                 </p>
             </section>
         }
@@ -486,9 +494,9 @@
 @if (capabilities.SupportsTts)
 {
     @* reader-tts.js moves the player bar out of the auto-hiding toolbar. *@
-    <div class="reader-tts-bar" data-reader-tts-bar role="region" aria-label="Vorlesen" hidden>
+    <div class="reader-tts-bar" data-reader-tts-bar role="region" aria-label="@ui["reader.settings.readAloudAria"]" hidden>
         <span class="reader-tts-bar-status" data-reader-tts-bar-status aria-live="polite"></span>
-        <button type="button" data-reader-tts-pause>Pause</button>
-        <button type="button" data-reader-tts-stop>Stopp</button>
+        <button type="button" data-reader-tts-pause>@ui["reader.settings.tts.pause"]</button>
+        <button type="button" data-reader-tts-stop>@ui["reader.settings.tts.stop"]</button>
     </div>
 }

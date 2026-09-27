@@ -1,6 +1,7 @@
 using AniLingo.Web.Data;
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Learning;
+using AniLingo.Web.Features.Localization;
 using AniLingo.Web.Features.Novels;
 using AniLingo.Web.Features.Operations;
 using AniLingo.Web.Features.Tracking;
@@ -23,6 +24,7 @@ public sealed class WorkModel(
     CurrentAccountContext account,
     OperationRunner operations) : PageModel
 {
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public NovelWorkDetail? Detail { get; private set; }
     public IReadOnlyList<NovelMetadataCandidate> SearchResults { get; private set; } = [];
     public IReadOnlyList<NovelAnimeChoice> AnimeChoices { get; private set; } = [];
@@ -45,6 +47,7 @@ public sealed class WorkModel(
         string? q,
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         Detail = await catalog.GetWorkDetailAsync(id, cancellationToken);
         if (Detail is null)
         {
@@ -109,13 +112,15 @@ public sealed class WorkModel(
             id,
             cancellationToken);
 
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         Response.Headers.CacheControl = "no-store";
         return Partial(
             "_ExternalProgressState",
             new ExternalProgressRemoteView(
                 ExternalProgressMediaKind.Novel,
                 state,
-                "SyncAniListProgress"));
+                "SyncAniListProgress",
+                ui));
     }
 
     public async Task<IActionResult> OnPostSyncAniListProgressAsync(
@@ -149,6 +154,7 @@ public sealed class WorkModel(
             return Forbid();
         }
 
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         try
         {
             await operations.RunAsync(
@@ -164,7 +170,7 @@ public sealed class WorkModel(
                 "Novel table of contents refreshed.",
                 cancellationToken);
 
-            TempData["Status"] = "Table of contents refreshed.";
+            TempData["Status"] = ui["novels.work.tocRefreshed"];
         }
         catch (InvalidOperationException exception)
         {
@@ -192,9 +198,17 @@ public sealed class WorkModel(
             targetWorkId: id,
             cancellationToken);
 
-        TempData["Status"] = outcomes is null
-            ? $"Choose one to {NovelEpubUploadRequestLimitsAttribute.MaximumFiles} EPUB files."
-            : NovelEpubImportOutcome.Summarize(outcomes);
+        if (outcomes is null)
+        {
+            var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+            TempData["Status"] = ui.Format(
+                "novels.index.chooseEpubFiles",
+                ("max", NovelEpubUploadRequestLimitsAttribute.MaximumFiles));
+        }
+        else
+        {
+            TempData["Status"] = NovelEpubImportOutcome.Summarize(outcomes);
+        }
 
         return RedirectToPage(new { id });
     }
@@ -209,10 +223,11 @@ public sealed class WorkModel(
             return Forbid();
         }
 
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         try
         {
             await epubImports.RemoveVolumeAsync(id, volumeId, cancellationToken);
-            TempData["Status"] = "Volume removed.";
+            TempData["Status"] = ui["novels.work.volumeRemoved"];
         }
         catch (InvalidOperationException exception)
         {
@@ -250,9 +265,10 @@ public sealed class WorkModel(
                 cancellationToken);
         }
 
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         TempData["Status"] = chapterIds.Count == 0
-            ? "All chapter text is already cached."
-            : $"Queued {chapterIds.Count} chapter texts for local caching.";
+            ? ui["novels.work.allCached"]
+            : ui.Format("novels.work.queuedCaching", ("count", chapterIds.Count));
 
         return RedirectToPage(new { id });
     }
@@ -268,6 +284,7 @@ public sealed class WorkModel(
             return Forbid();
         }
 
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         try
         {
             await operations.RunAsync(
@@ -286,7 +303,7 @@ public sealed class WorkModel(
                 "Novel metadata matched.",
                 cancellationToken);
 
-            TempData["Status"] = "AniList novel matched.";
+            TempData["Status"] = ui["novels.work.matched"];
         }
         catch (Exception exception) when (
             exception is InvalidOperationException or NovelMetadataProviderException)
@@ -307,7 +324,8 @@ public sealed class WorkModel(
         }
 
         await metadata.RemoveAsync(id, cancellationToken);
-        TempData["Status"] = "AniList novel match removed.";
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+        TempData["Status"] = ui["novels.work.matchRemoved"];
         return RedirectToPage(new { id });
     }
 
@@ -327,6 +345,7 @@ public sealed class WorkModel(
             return Forbid();
         }
 
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         try
         {
             await mappings.AddManualAsync(
@@ -339,7 +358,7 @@ public sealed class WorkModel(
                 episodeEnd,
                 label,
                 cancellationToken);
-            TempData["Status"] = "Episode mapping saved.";
+            TempData["Status"] = ui["novels.work.mappingSaved"];
         }
         catch (InvalidOperationException exception)
         {
@@ -372,7 +391,8 @@ public sealed class WorkModel(
             account.ProfileId,
             cancellationToken);
 
-        TempData["Status"] = "AI episode matching queued. Refresh this page after it completes.";
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+        TempData["Status"] = ui["novels.work.aiMappingQueued"];
         return RedirectToPage(new { id });
     }
 
@@ -387,7 +407,8 @@ public sealed class WorkModel(
         }
 
         await mappings.RemoveAsync(id, mappingId, cancellationToken);
-        TempData["Status"] = "Episode mapping removed.";
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+        TempData["Status"] = ui["novels.work.mappingRemoved"];
         return RedirectToPage(new { id });
     }
 }

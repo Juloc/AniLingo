@@ -1,5 +1,6 @@
 using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Books;
+using AniLingo.Web.Features.Localization;
 using AniLingo.Web.Features.Novels;
 using AniLingo.Web.Features.Operations;
 using AniLingo.Web.Data;
@@ -18,6 +19,7 @@ public sealed class IndexModel(
     OperationRunner operations,
     AppDbContext db) : PageModel
 {
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public IReadOnlyList<NovelListItem> Works { get; private set; } = [];
     public IReadOnlyList<NovelListItem> ContinueReading { get; private set; } = [];
     public bool IsOwner => account.IsOwner;
@@ -25,6 +27,7 @@ public sealed class IndexModel(
 
     public async Task OnGetAsync(CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         Works = await catalog.GetLibraryAsync(account.ProfileId, cancellationToken);
         ContinueReading = Works
             .Where(x => x.HasProgress)
@@ -42,6 +45,7 @@ public sealed class IndexModel(
             return Forbid();
         }
 
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         var store = new OperationStore(db);
         var operationId = await store.CreateAsync(
             new OperationDescriptor(
@@ -64,7 +68,7 @@ public sealed class IndexModel(
                 "Novel metadata and chapter index imported.",
                 cancellationToken);
 
-            TempData["Status"] = "Novel imported. Chapter text is loaded on demand.";
+            TempData["Status"] = ui["discover.import.novelImported"];
             return RedirectToPage("/Novels/Work", new { id = workId });
         }
         catch (InvalidOperationException exception)
@@ -97,8 +101,10 @@ public sealed class IndexModel(
 
         if (outcomes is null)
         {
-            TempData["Status"] =
-                $"Choose one to {NovelEpubUploadRequestLimitsAttribute.MaximumFiles} EPUB files.";
+            var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+            TempData["Status"] = ui.Format(
+                "novels.index.chooseEpubFiles",
+                ("max", NovelEpubUploadRequestLimitsAttribute.MaximumFiles));
             return RedirectToPage();
         }
 
@@ -125,7 +131,8 @@ public sealed class IndexModel(
         var inbox = books.InboxPath;
         if (inbox is null)
         {
-            TempData["Status"] = "Configure the reading inbox in Books → Integrations first.";
+            var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+            TempData["Status"] = ui["novels.index.configureInboxFirst"];
             return RedirectToPage();
         }
 

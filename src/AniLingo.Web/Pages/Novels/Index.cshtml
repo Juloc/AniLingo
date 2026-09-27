@@ -1,7 +1,8 @@
 @page "/Novels"
 @model AniLingo.Web.Pages.Novels.IndexModel
 @{
-    ViewData["Title"] = "Novels";
+    var ui = Model.Ui;
+    ViewData["Title"] = ui["novels.index.title"];
 }
 @section Head {
     <link rel="stylesheet" href="~/css/novel-library.css" asp-append-version="true" />
@@ -10,11 +11,11 @@
 
 <header class="novel-library-header">
     <div class="novel-library-title-block">
-        <div class="reading-type-switch" aria-label="Reading type">
-            <a class="active" href="/Novels">Novels</a>
-            <a href="/Manga">Manga</a>
+        <div class="reading-type-switch" aria-label="@ui["novels.nav.readingTypeAria"]">
+            <a class="active" href="/Novels">@ui["reading.novels.title"]</a>
+            <a href="/Manga">@ui["reading.manga.title"]</a>
         </div>
-        <h1>Light novels</h1>
+        <h1>@ui["novels.index.title"]</h1>
     </div>
 
     @if (Model.IsOwner)
@@ -22,37 +23,37 @@
         <details class="novel-import-popover">
             <summary class="novel-add-button">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
-                Add novel
+                @ui["novels.index.addNovel"]
             </summary>
             <div class="novel-import-panel">
                 <form method="post" asp-page-handler="Import" class="novel-import-form">
-                    <label for="sourceUrl">Narou / Ncode URL</label>
+                    <label for="sourceUrl">@ui["novels.index.sourceUrlLabel"]</label>
                     <input id="sourceUrl"
                            type="url"
                            name="sourceUrl"
                            required
                            inputmode="url"
                            placeholder="https://ncode.syosetu.com/n9669bk/" />
-                    <button class="button button-primary" type="submit">Import</button>
+                    <button class="button button-primary" type="submit">@ui["novels.index.importSubmit"]</button>
                 </form>
                 <form method="post"
                       asp-page-handler="UploadEpub"
                       enctype="multipart/form-data"
                       class="novel-import-form">
-                    <label for="epubs">EPUB light-novel volumes</label>
+                    <label for="epubs">@ui["novels.index.epubLabel"]</label>
                     <input id="epubs"
                            type="file"
                            name="epubs"
                            accept=".epub,application/epub+zip"
                            multiple
                            required />
-                    <button class="button button-primary" type="submit">Upload</button>
+                    <button class="button button-primary" type="submit">@ui["novels.index.uploadSubmit"]</button>
                 </form>
                 @if (Model.IsInboxConfigured)
                 {
                     <form method="post" asp-page-handler="ScanInbox" class="novel-import-form">
-                        <label>Reading inbox · <code>@AniLingo.Web.Features.Novels.NovelEpubImportService.InboxFolder</code></label>
-                        <button class="button" type="submit">Import from inbox</button>
+                        <label>@ui["novels.index.inboxLabel"] · <code>@AniLingo.Web.Features.Novels.NovelEpubImportService.InboxFolder</code></label>
+                        <button class="button" type="submit">@ui["novels.index.importFromInbox"]</button>
                     </form>
                 }
             </div>
@@ -64,7 +65,7 @@
 {
     <section class="novel-shelf" aria-labelledby="continue-reading-heading">
         <div class="novel-section-heading">
-            <h2 id="continue-reading-heading">Continue reading</h2>
+            <h2 id="continue-reading-heading">@ui["home.continueReading"]</h2>
         </div>
 
         <div class="novel-continue-list">
@@ -83,8 +84,10 @@
                     </div>
                     <div class="novel-continue-copy">
                         <strong>@work.Title</strong>
-                        <span>@(work.CurrentVolumeNumber is int currentVolume ? $"Vol. {currentVolume} · " : "")Ch. @work.CurrentChapterNumber · @work.CurrentChapterTitle</span>
-                        <div class="novel-progress-track" aria-label="Chapter progress">
+                        <span>@(work.CurrentVolumeNumber is int currentVolume
+                            ? ui.Format("novels.card.volumeChapterLocation", ("volume", currentVolume), ("chapter", work.CurrentChapterNumber), ("title", work.CurrentChapterTitle))
+                            : ui.Format("novels.card.chapterLocation", ("chapter", work.CurrentChapterNumber), ("title", work.CurrentChapterTitle)))</span>
+                        <div class="novel-progress-track" aria-label="@ui["novels.card.progressAria"]">
                             <span style="width:@(work.ProgressPermille / 10)%"></span>
                         </div>
                     </div>
@@ -98,21 +101,21 @@
 
 <section class="novel-shelf" aria-labelledby="library-heading">
     <div class="novel-section-heading">
-        <h2 id="library-heading">Library</h2>
+        <h2 id="library-heading">@ui["nav.library"]</h2>
     </div>
 
     @if (Model.Works.Count == 0)
     {
-        <div class="novel-empty">No novels yet.</div>
+        <div class="novel-empty">@ui["novels.index.empty"]</div>
     }
     else
     {
         @* Offline is purely client-side, browser-local state (#221): the filter only shows/hides
            already-rendered cards, it never asks the server what is downloaded on this device. *@
         <div data-offline-library-filter>
-            <div class="novel-library-filter" role="group" aria-label="Library filter">
-                <button type="button" class="active" data-library-filter-option="all">All</button>
-                <button type="button" data-library-filter-option="offline">Offline</button>
+            <div class="novel-library-filter" role="group" aria-label="@ui["novels.index.filterAria"]">
+                <button type="button" class="active" data-library-filter-option="all">@ui["novels.index.filterAll"]</button>
+                <button type="button" data-library-filter-option="offline">@ui["novels.index.filterOffline"]</button>
             </div>
         <div class="novel-library-grid">
             @foreach (var work in Model.Works)
@@ -142,13 +145,15 @@
                         <div class="novel-library-meta">
                             @if (work.VolumeCount > 0)
                             {
-                                <span>@work.VolumeCount@(work.MetadataVolumeCount is int totalVolumes ? $"/{totalVolumes}" : "") vol.</span>
+                                <span>@(work.MetadataVolumeCount is int totalVolumes
+                                    ? ui.Format("novels.card.volumeCountOfTotal", ("count", work.VolumeCount), ("total", totalVolumes))
+                                    : ui.Format("novels.card.volumeCount", ("count", work.VolumeCount)))</span>
                             }
                             else if (work.MetadataVolumeCount is int volumes)
                             {
-                                <span>@volumes vol.</span>
+                                <span>@ui.Format("novels.card.volumeCount", ("count", volumes))</span>
                             }
-                            <span>@work.ChapterCount ch.</span>
+                            <span>@ui.Format("manga.card.chapterCount", ("count", work.ChapterCount))</span>
                             @if (!string.IsNullOrWhiteSpace(work.MetadataStatus))
                             {
                                 <span>@work.MetadataStatus.Replace("_", " ").ToLowerInvariant()</span>
@@ -158,7 +163,7 @@
                         @if (work.HasProgress)
                         {
                             <a class="novel-resume-link" href="/Novels/Read/@work.CurrentChapterId">
-                                Continue ch. @work.CurrentChapterNumber
+                                @ui.Format("manga.card.continueChapter", ("chapter", work.CurrentChapterNumber))
                             </a>
                         }
                     </div>
