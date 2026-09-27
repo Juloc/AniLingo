@@ -24,6 +24,12 @@ public sealed record AiProfileSettings(
     string? ApiKey,
     AiTranslationMode TranslationMode)
 {
+    /// <summary>
+    /// Image model of the OpenAI-compatible provider (for example
+    /// <c>gpt-image-1</c>). Image generation stays unavailable without it.
+    /// </summary>
+    public string? ImageModel { get; init; }
+
     public static AiProfileSettings Default { get; } =
         new(
             AiProviderIds.Server,

@@ -1046,6 +1046,11 @@ public sealed partial class BookCatalogService(
         await CreateTranslationMemoryStore().DeleteWorkAsync(
             workId,
             cancellationToken);
+        await ChapterArtwork.ChapterArtworkService.DeleteWorkAsync(
+            db,
+            configuration,
+            workId,
+            cancellationToken);
     }
 
     private static void DeleteLocalCoverFiles(Guid workId)

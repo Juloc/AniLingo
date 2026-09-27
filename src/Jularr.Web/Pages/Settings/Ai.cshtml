@@ -36,6 +36,11 @@
         </label>
 
         <label>
+            <span>@Model.Ui["settings.ai.imageModel"]</span>
+            <input asp-for="ImageModel" autocomplete="off" placeholder="gpt-image-1" />
+        </label>
+
+        <label>
             <span>@Model.Ui["settings.ai.apiKey"]</span>
             <input asp-for="ApiKey" type="password" autocomplete="new-password" />
             @if (Model.HasStoredApiKey)
@@ -63,6 +68,63 @@
             <button class="button" type="submit" asp-page-handler="Reset" formnovalidate>
                 @Model.Ui["settings.ai.reset"]
             </button>
+        </div>
+    </form>
+</section>
+
+<section class="panel">
+    <div class="panel-heading">
+        <h2>@Model.Ui["chapterArt.title"]</h2>
+    </div>
+    <form method="post" asp-page-handler="Artwork" class="form-stack">
+        <label>
+            <input type="checkbox" name="enabled" value="true" checked="@Model.Artwork.Enabled" />
+            <span>@Model.Ui["chapterArt.prefs.show"]</span>
+        </label>
+
+        @if (Model.IsOwner)
+        {
+            <label>
+                <input type="checkbox" name="autoGenerate" value="true" checked="@Model.Artwork.AutoGenerate" />
+                <span>@Model.Ui["chapterArt.prefs.auto"]</span>
+            </label>
+            <label>
+                <span>@Model.Ui["chapterArt.style"]</span>
+                <select name="style">
+                    @foreach (var style in Enum.GetValues<Jularr.Web.Features.ChapterArtwork.ChapterArtworkStyle>())
+                    {
+                        var value = Jularr.Web.Features.ChapterArtwork.ChapterArtworkNames.Style(style);
+                        <option value="@value" selected="@(Model.Artwork.Style == style)">@Model.Ui[$"chapterArt.style.{value}"]</option>
+                    }
+                </select>
+            </label>
+            <label>
+                <span>@Model.Ui["chapterArt.prefs.quality"]</span>
+                <select name="quality">
+                    <option value="standard" selected="@(Model.Artwork.Quality == AiImageQuality.Standard)">@Model.Ui["chapterArt.quality.standard"]</option>
+                    <option value="high" selected="@(Model.Artwork.Quality == AiImageQuality.High)">@Model.Ui["chapterArt.quality.high"]</option>
+                </select>
+            </label>
+            <label>
+                <span>@Model.Ui["chapterArt.prefs.variations"]</span>
+                <input type="number" name="variations" min="1" max="3" value="@Model.Artwork.Variations" />
+            </label>
+            <label>
+                <input type="checkbox" name="globalEnabled" value="true" checked="@Model.ArtworkGlobal.Enabled" />
+                <span>@Model.Ui["chapterArt.global.enabled"]</span>
+            </label>
+            <label>
+                <span>@Model.Ui["chapterArt.global.storageRoot"]</span>
+                <input name="storageRoot" value="@Model.ArtworkGlobal.StorageRoot" autocomplete="off" placeholder="/media/books" />
+            </label>
+        }
+        else
+        {
+            <input type="hidden" name="variations" value="@Model.Artwork.Variations" />
+        }
+
+        <div class="inline-actions">
+            <button class="button button-primary" type="submit">@Model.Ui["chapterArt.save"]</button>
         </div>
     </form>
 </section>

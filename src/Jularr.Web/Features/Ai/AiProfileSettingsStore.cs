@@ -80,7 +80,10 @@ public sealed class AiProfileSettingsStore
                         persisted.BaseUrl,
                         persisted.Model,
                         apiKey,
-                        persisted.TranslationMode),
+                        persisted.TranslationMode)
+                    {
+                        ImageModel = persisted.ImageModel
+                    },
                     requireSecret: false);
             }
             catch (Exception exception) when (
@@ -124,7 +127,8 @@ public sealed class AiProfileSettingsStore
                 string.IsNullOrWhiteSpace(validated.ApiKey)
                     ? null
                     : protector.Protect(validated.ApiKey),
-                validated.TranslationMode);
+                validated.TranslationMode,
+                validated.ImageModel);
 
             try
             {
@@ -196,8 +200,16 @@ public sealed class AiProfileSettingsStore
             {
                 BaseUrl = null,
                 Model = null,
-                ApiKey = null
+                ApiKey = null,
+                ImageModel = null
             };
+        }
+
+        var imageModel = settings.ImageModel?.Trim();
+        if (imageModel?.Length > 120)
+        {
+            throw new InvalidOperationException(
+                "Enter a valid image model name.");
         }
 
         var baseUrl = settings.BaseUrl?.Trim();
@@ -227,7 +239,8 @@ public sealed class AiProfileSettingsStore
         {
             BaseUrl = baseUrl.TrimEnd('/'),
             Model = model,
-            ApiKey = string.IsNullOrWhiteSpace(apiKey) ? null : apiKey
+            ApiKey = string.IsNullOrWhiteSpace(apiKey) ? null : apiKey,
+            ImageModel = string.IsNullOrWhiteSpace(imageModel) ? null : imageModel
         };
     }
 
@@ -280,5 +293,6 @@ public sealed class AiProfileSettingsStore
         string? BaseUrl,
         string? Model,
         string? ProtectedApiKey,
-        AiTranslationMode TranslationMode);
+        AiTranslationMode TranslationMode,
+        string? ImageModel = null);
 }

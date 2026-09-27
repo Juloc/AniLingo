@@ -94,8 +94,17 @@ public sealed class StoryContextService(
     /// <paramref name="maxChapters"/> per call. Each extraction only receives
     /// the chapter text and the compact context known before that chapter.
     /// </summary>
+    public Task<StoryContextExtractionResult> ExtractThroughAsync(
+        Guid workId,
+        int throughChapter,
+        int maxChapters,
+        CancellationToken cancellationToken) =>
+        ExtractThroughAsync(workId, fromChapter: 1, throughChapter, maxChapters, cancellationToken);
+
+    /// <summary>Like <see cref="ExtractThroughAsync(Guid, int, int, CancellationToken)"/> for chapters from <paramref name="fromChapter"/> on.</summary>
     public async Task<StoryContextExtractionResult> ExtractThroughAsync(
         Guid workId,
+        int fromChapter,
         int throughChapter,
         int maxChapters,
         CancellationToken cancellationToken)
@@ -114,6 +123,7 @@ public sealed class StoryContextService(
             .AsNoTracking()
             .Where(x =>
                 x.WorkId == workId
+                && x.Number >= fromChapter
                 && x.Number <= throughChapter
                 && x.OriginalText != "")
             .OrderBy(x => x.Number)

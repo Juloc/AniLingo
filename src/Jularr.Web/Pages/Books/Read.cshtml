@@ -140,6 +140,7 @@
         <partial name="_ReaderSettingsPanel" model="@readerSettingsPanel" />
     </nav>
 
+    <partial name="_ChapterArtwork" model='new Jularr.Web.Features.ChapterArtwork.ChapterArtworkSlot(Model.Reader.Work.Id, Model.Reader.Chapter.Number, ui["chapterArt.aiGenerated"])' />
     <header class="book-reader-chapter-title">
         <span>@ui.Format("books.chapter.number", ("number", Model.Reader.Chapter.Number))</span>
         <h1>@Model.Reader.Chapter.Title</h1>
