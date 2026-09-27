@@ -83,6 +83,29 @@ class TvAppControllerTest {
         assertFalse(state.busy)
     }
 
+    @Test
+    fun openingEpisodeShowsDetailRouteBeforePlayback() {
+        val store = FakeOriginStore("https://jularr.example")
+        val api = FakeApi()
+        val controller = TvAppController(store) { api }
+
+        runSuspend { controller.restoreConnection() }
+        val state = runSuspend {
+            controller.openEpisode(
+                episodeId = "episode",
+                animeId = "anime",
+            )
+        }
+
+        assertEquals(
+            TvRoute.Episode("episode", "anime"),
+            state.navigation.route,
+        )
+        assertEquals("Episode 3", state.episodePage?.detail?.title)
+        assertEquals(37, state.episodePage?.progress?.percent)
+        assertNull(state.episode)
+    }
+
     private class FakeOriginStore(
         override var origin: String? = null,
     ) : TvServerOriginStore {
@@ -151,8 +174,32 @@ class TvAppControllerTest {
         )
 
         override suspend fun getAnime(animeId: String): AnimeDetail = error("unused")
-        override suspend fun getEpisode(episodeId: String): EpisodeDetail = error("unused")
-        override suspend fun getProgress(episodeId: String): EpisodeProgress = error("unused")
+
+        override suspend fun getEpisode(episodeId: String) = EpisodeDetail(
+            id = episodeId,
+            animeId = "anime",
+            animeTitle = "Anime",
+            title = "Episode 3",
+            seasonNumber = 1,
+            number = 3,
+            hasMedia = true,
+            activeLearningSubtitleTrackId = "sub-ja",
+            learningCueCount = 12,
+            learning = de.juloc.jularr.core.model.LearningCoverage(
+                totalTerms = 100,
+                knownTerms = 60,
+                learningTerms = 20,
+                newTerms = 20,
+            ),
+        )
+
+        override suspend fun getProgress(episodeId: String) = EpisodeProgress(
+            positionMs = 444_000,
+            durationMs = 1_200_000,
+            percent = 37,
+            isCompleted = false,
+            updatedAtUtc = null,
+        )
         override suspend fun setProgress(
             episodeId: String,
             update: EpisodeProgressUpdate,
