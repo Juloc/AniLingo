@@ -372,6 +372,12 @@ builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Access.IAcquisitionRe
 builder.Services.AddScoped<Jularr.Web.Features.ReadingAcquisition.ReadingAcquisitionEngine>();
 builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Access.IAcquisitionRequestExecutor, Jularr.Web.Features.ReadingAcquisition.MangaAcquisitionRequestExecutor>();
 builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Access.IAcquisitionRequestExecutor, Jularr.Web.Features.ReadingAcquisition.LightNovelAcquisitionRequestExecutor>();
+builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Wanted.IWantedRequestHandler, Jularr.Web.Features.ReadingAcquisition.MangaWantedRequestHandler>();
+builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Wanted.IWantedRequestHandler, Jularr.Web.Features.ReadingAcquisition.LightNovelWantedRequestHandler>();
+builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Import.ICompletedDownloadImportAdapter, Jularr.Web.Features.ReadingAcquisition.MangaCompletedDownloadImportAdapter>();
+builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Import.ICompletedDownloadImportAdapter, Jularr.Web.Features.ReadingAcquisition.LightNovelCompletedDownloadImportAdapter>();
+builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Import.CompletedDownloadDispatcher>();
+builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Import.CompletedDownloadLocationResolver>();
 
 // Download clients: SABnzbd connections share the one canonical list (several can fail over to
 // each other). Jularr is usenet-only; torrent clients (qBittorrent) are intentionally
@@ -390,7 +396,7 @@ builder.Services.AddScoped<SabnzbdDownloadService>();
 builder.Services.AddScoped<SabnzbdAcquisitionService>();
 builder.Services.AddHostedService<SabnzbdOperationMonitorService>();
 builder.Services.AddHostedService<Jularr.Web.Features.Books.BookRequestSearchService>();
-builder.Services.AddHostedService<Jularr.Web.Features.ReadingAcquisition.ReadingRequestLifecycleService>();
+builder.Services.AddHostedService<Jularr.Web.Features.Acquisition.Wanted.WantedAcquisitionService>();
 
 builder.Services.AddSingleton<AnimeQualityProfileStore>();
 builder.Services.AddSingleton(_ => new AnimeMonitoringStore("/data"));
