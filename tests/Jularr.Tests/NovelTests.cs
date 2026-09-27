@@ -503,8 +503,15 @@ public sealed class NovelTests
             Assert.AreEqual(2, calls);
             Assert.IsTrue(
                 bodies[0].Contains("\"source_lang_code\":\"ja\"", StringComparison.Ordinal));
-            Assert.IsTrue(
-                bodies[1].Contains("<<<source>>>ja<<<target>>>de-DE<<<text>>>", StringComparison.Ordinal));
+            using var fallbackRequest = JsonDocument.Parse(bodies[1]);
+            var fallbackContent = fallbackRequest.RootElement
+                .GetProperty("messages")[0]
+                .GetProperty("content")
+                .GetString();
+            Assert.IsNotNull(fallbackContent);
+            StringAssert.StartsWith(
+                fallbackContent,
+                "<<<source>>>ja<<<target>>>de-DE<<<text>>>");
         }
         finally
         {
