@@ -28,7 +28,8 @@ public sealed record BookCatalogItem(
     string? TextSourceName,
     IReadOnlyList<string>? Isbns = null,
     string? Publisher = null,
-    string? PublishedDate = null)
+    string? PublishedDate = null,
+    string? ExternalListState = null)
 {
     public bool CanPreview => !string.IsNullOrWhiteSpace(TextUrl);
     public bool CanAcquire =>
