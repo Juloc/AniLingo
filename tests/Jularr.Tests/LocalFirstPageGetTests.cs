@@ -367,7 +367,8 @@ public sealed class LocalFirstPageGetTests
                 HttpClientFactory,
                 Operations,
                 ReviewStore,
-                AniListAccount());
+                AniListAccount(),
+                new FranchiseStore(Db));
 
         public DiscoverIndexModel DiscoverPage()
         {
