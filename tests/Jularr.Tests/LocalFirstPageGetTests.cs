@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Jularr.Web.Data;
+using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Books;
 using Jularr.Web.Features.Library;
@@ -146,7 +147,7 @@ public sealed class LocalFirstPageGetTests
         await fixture.ConnectAniListAsync();
         var page = fixture.Attach(fixture.DiscoverPage());
 
-        await page.OnGetAsync();
+        await page.OnGetAsync(CancellationToken.None);
 
         // Browse/search results come from the explicit, no-store Results
         // handler after first paint; the page GET itself stays local.
@@ -342,6 +343,12 @@ public sealed class LocalFirstPageGetTests
                 novelMetadata,
                 OwnerAccount,
                 Operations,
+                new AcquisitionRequestService(
+                    new AcquisitionAccessStore(Db),
+                    [],
+                    OwnerAccount,
+                    NullLogger<AcquisitionRequestService>.Instance),
+                new AcquisitionAccessStore(Db),
                 NullLogger<Jularr.Web.Features.Discovery.DiscoveryCoordinator>.Instance);
         }
 
