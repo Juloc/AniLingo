@@ -17,24 +17,65 @@ permissions:
   contents: write
   packages: write
 
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  NUGET_PACKAGES: ${{ github.workspace }}/.nuget/packages
+
 jobs:
-  build:
+  build-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+
     steps:
       - uses: actions/checkout@v5
+
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.NUGET_PACKAGES }}
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/*.props', '**/*.targets', '**/NuGet.Config') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
+
       - run: dotnet restore Jularr.sln
       - run: dotnet build Jularr.sln --no-restore --configuration Release
       - run: dotnet test Jularr.sln --no-build --configuration Release
+
       - name: Validate single-container Compose
         run: |
           test "$(docker compose config --services)" = "jularr"
           test "$(docker compose config --images)" = "ghcr.io/juloc/jularr:latest"
           ! docker compose config | grep -q '/media/anime'
+
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
       - name: Build Docker image
-        run: docker build -f src/Jularr.Web/Dockerfile -t ghcr.io/juloc/jularr:${{ github.sha }} .
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: src/Jularr.Web/Dockerfile
+          load: true
+          tags: ghcr.io/juloc/jularr:${{ github.sha }}
+          cache-from: type=gha,scope=jularr-docker
+          cache-to: type=gha,mode=max,scope=jularr-docker
+
       - name: Smoke test startup without NAS
         run: |
           docker run -d --name jularr-no-nas -p 127.0.0.1:18097:8080 ghcr.io/juloc/jularr:${{ github.sha }}
@@ -49,29 +90,89 @@ jobs:
 
           docker logs jularr-no-nas
           exit 1
+
       - name: Log in to GHCR
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-      - name: Publish Docker image
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish commit image
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: docker push ghcr.io/juloc/jularr:${{ github.sha }}
+
+  publish:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs:
+      - build-test
+      - image
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish latest image
         run: |
+          docker pull ghcr.io/juloc/jularr:${{ github.sha }}
           docker tag ghcr.io/juloc/jularr:${{ github.sha }} ghcr.io/juloc/jularr:latest
-          docker push ghcr.io/juloc/jularr:${{ github.sha }}
           docker push ghcr.io/juloc/jularr:latest
 
-          if [ "${{ startsWith(github.event.head_commit.message, 'release:') }}" = "true" ]; then
-            VERSION="$(dotnet msbuild src/Jularr.Web/Jularr.Web.csproj -nologo -getProperty:Version)"
-            docker tag ghcr.io/juloc/jularr:${{ github.sha }} "ghcr.io/juloc/jularr:${VERSION}"
-            docker push "ghcr.io/juloc/jularr:${VERSION}"
+      - name: Detect release commit
+        id: release_commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          SUBJECT="$(git log -1 --pretty=%s)"
+          if [[ "$SUBJECT" == release:* ]]; then
+            echo "is_release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_release=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Resolve release version
+        if: steps.release_commit.outputs.is_release == 'true'
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          root = ET.parse("src/Jularr.Web/Jularr.Web.csproj").getroot()
+          version = root.findtext(".//Version")
+          if not version:
+              raise SystemExit("Jularr.Web.csproj has no Version.")
+          print(version.strip())
+          PY
+          )"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish versioned image
+        if: steps.release_commit.outputs.is_release == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          docker tag ghcr.io/juloc/jularr:${{ github.sha }} "ghcr.io/juloc/jularr:${VERSION}"
+          docker push "ghcr.io/juloc/jularr:${VERSION}"
+
       - name: Create GitHub prerelease
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'release:')
+        if: steps.release_commit.outputs.is_release == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          VERSION="$(dotnet msbuild src/Jularr.Web/Jularr.Web.csproj -nologo -getProperty:Version)"
-          gh release create "v${VERSION}" \
+          gh release create "${RELEASE_TAG}" \
             --target "${GITHUB_SHA}" \
             --title "Jularr ${VERSION}" \
             --prerelease \
