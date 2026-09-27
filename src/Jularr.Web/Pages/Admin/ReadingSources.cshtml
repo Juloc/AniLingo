@@ -34,10 +34,19 @@
                         <p class="muted">@source.Definition.Description</p>
                     </div>
                     <label>
-                        <input type="checkbox"
-                               name="enabledProviders"
-                               value="@source.Definition.Key"
-                               checked="@source.Preference.Enabled" />
+                        @if (source.Preference.Enabled)
+                        {
+                            <input type="checkbox"
+                                   name="enabledProviders"
+                                   value="@source.Definition.Key"
+                                   checked />
+                        }
+                        else
+                        {
+                            <input type="checkbox"
+                                   name="enabledProviders"
+                                   value="@source.Definition.Key" />
+                        }
                         Enabled
                     </label>
                 </div>
