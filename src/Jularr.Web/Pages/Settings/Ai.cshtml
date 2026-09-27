@@ -21,6 +21,8 @@
         (AiTranslationMode.Maximum, ui["settings.ai.maximum"], ui["settings.ai.maximumHint"])
     };
     var discoverUrl = Url.Page("/Settings/Ai", "DiscoverModels");
+    var usageTotals = new AiUsagePanel(ui, Model.Usage, false, "/Settings/Ai", Sections: AiUsageSections.Totals);
+    var usageBreakdown = new AiUsagePanel(ui, Model.Usage, false, "/Settings/Ai", Sections: AiUsageSections.Breakdown);
 }
 @section Head {
     <link rel="stylesheet" href="~/css/ai.css" asp-append-version="true" />
@@ -308,7 +310,7 @@
             <div class="panel-heading">
                 <h2>@ui["settings.ai.usageTitle"]</h2>
             </div>
-            <partial name="_AiUsage" model="new AiUsagePanel(ui, Model.Usage, false, "/Settings/Ai", Sections: AiUsageSections.Totals)" />
+            <partial name="_AiUsage" model="usageTotals" />
         </section>
 
         @if (Model.SavedProviderId == AiProviderIds.Server)
@@ -342,7 +344,7 @@
 {
     <details class="panel ai-section ai-usage-details">
         <summary>@ui["ai.usage.details"]</summary>
-        <partial name="_AiUsage" model="new AiUsagePanel(ui, Model.Usage, false, "/Settings/Ai", Sections: AiUsageSections.Breakdown)" />
+        <partial name="_AiUsage" model="usageBreakdown" />
     </details>
 }
 

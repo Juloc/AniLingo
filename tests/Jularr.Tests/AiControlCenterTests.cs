@@ -68,6 +68,79 @@ public sealed class AiControlCenterTests
     }
 
     [TestMethod]
+    public async Task EmptyCatalogsAreRetriedAutomaticallyOnlyAfterTheRetryInterval()
+    {
+        var time = new ManualTime(Start);
+        var service = new AiModelCatalogService(new MemoryCatalogStore(), time);
+        var calls = 0;
+        Task<IReadOnlyList<AiModelDescriptor>> Failing(CancellationToken _)
+        {
+            calls++;
+            throw new HttpRequestException("offline");
+        }
+
+        Assert.IsTrue(AiModelCatalogService.NeedsDiscovery(AiModelCatalog.Empty("key"), Start), "Never asked: discover.");
+        await service.GetOrDiscoverAsync("key", Failing, CancellationToken.None);
+        await service.GetOrDiscoverAsync("key", Failing, CancellationToken.None);
+        Assert.AreEqual(1, calls, "A failed first attempt is not repeated on every page load.");
+
+        time.Advance(AiModelCatalogService.EmptyCatalogRetryInterval);
+        var recovered = await service.GetOrDiscoverAsync(
+            "key",
+            _ => Task.FromResult<IReadOnlyList<AiModelDescriptor>>([AiModelDescriptor.Basic("m1")]),
+            CancellationToken.None);
+        Assert.AreEqual("m1", recovered.Models.Single().Id);
+
+        time.Advance(TimeSpan.FromDays(3));
+        Assert.IsFalse(AiModelCatalogService.NeedsDiscovery(recovered, time.GetUtcNow()), "Catalogs with models refresh explicitly only.");
+    }
+
+    [TestMethod]
+    public async Task SlowDiscoveryTimesOutAndKeepsTheLastKnownModels()
+    {
+        var service = new AiModelCatalogService(new MemoryCatalogStore(), new ManualTime(Start));
+        await service.RefreshAsync("key", _ => Task.FromResult<IReadOnlyList<AiModelDescriptor>>([AiModelDescriptor.Basic("m1")]), CancellationToken.None);
+
+        var slow = await service.RefreshAsync(
+            "key",
+            async token =>
+            {
+                await Task.Delay(Timeout.Infinite, token);
+                return [];
+            },
+            CancellationToken.None,
+            TimeSpan.FromMilliseconds(50));
+
+        Assert.AreEqual("m1", slow.Models.Single().Id);
+        Assert.IsNotNull(slow.LastError);
+
+        using var cancelled = new CancellationTokenSource();
+        await cancelled.CancelAsync();
+        await Assert.ThrowsExactlyAsync<TaskCanceledException>(() => service.RefreshAsync(
+            "key",
+            token => Task.FromCanceled<IReadOnlyList<AiModelDescriptor>>(token),
+            cancelled.Token));
+    }
+
+    [TestMethod]
+    public void EffectiveServerModelIsAlwaysConcreteOrNull()
+    {
+        var catalog = new AiModelCatalog(
+            AiModelCatalogKeys.CodexServer,
+            [AiModelDescriptor.Basic("first"), AiModelDescriptor.Basic("marked") with { IsDefault = true }],
+            AiModelDiscovery.Supported,
+            Start,
+            Start,
+            null);
+
+        Assert.AreEqual("marked", AiOptionResolver.EffectiveServerModel(catalog, null), "The provider's marked default, by id.");
+        Assert.AreEqual("marked", AiOptionResolver.EffectiveServerModel(catalog, "retired"));
+        Assert.AreEqual("first", AiOptionResolver.EffectiveServerModel(catalog, " first "));
+        Assert.AreEqual("custom", AiOptionResolver.EffectiveServerModel(AiModelCatalog.Empty("x"), "custom"));
+        Assert.IsNull(AiOptionResolver.EffectiveServerModel(AiModelCatalog.Empty("x"), "  "), "No catalog and no model: nothing runs.");
+    }
+
+    [TestMethod]
     public async Task UnsupportedDiscoveryFallsBackToManualEntry()
     {
         var service = new AiModelCatalogService(new MemoryCatalogStore(), new ManualTime(Start));

@@ -54,11 +54,22 @@ public static class AiBookPreset
         var translationEffort = FirstListed(listed, "medium");
         var lightEffort = FirstListed(listed, "low", "minimal");
 
+        // A level is only stored where the task would not reach it anyway through the profile's
+        // default level or Jularr's automatic per-task level.
+        KeyValuePair<string, AiOperationOverride> Entry(string operation, string? effort) =>
+            KeyValuePair.Create(
+                operation,
+                new AiOperationOverride(
+                    null,
+                    effort is not null && effort != (current.ReasoningEffort ?? AiOperationDefaults.ReasoningEffort(operation))
+                        ? effort
+                        : null));
+
         var bookOperations = TranslationOperations.Concat(LightOperations).ToHashSet(StringComparer.Ordinal);
         var entries = current.Overrides.Items
             .Where(x => !bookOperations.Contains(x.Key))
-            .Concat(TranslationOperations.Select(x => KeyValuePair.Create(x, new AiOperationOverride(null, translationEffort))))
-            .Concat(LightOperations.Select(x => KeyValuePair.Create(x, new AiOperationOverride(null, lightEffort))));
+            .Concat(TranslationOperations.Select(x => Entry(x, translationEffort)))
+            .Concat(LightOperations.Select(x => Entry(x, lightEffort)));
 
         var settings = current with
         {

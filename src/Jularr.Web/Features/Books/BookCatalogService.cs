@@ -673,7 +673,7 @@ public sealed partial class BookCatalogService(
         {
             if (translator is IAiUsageReporter usageReporter)
             {
-                usageReporter.RecordCacheHit("book-chapter-translation");
+                usageReporter.RecordCacheHit(AiOperations.BookTranslation);
             }
 
             return cached;
@@ -691,7 +691,7 @@ public sealed partial class BookCatalogService(
             {
                 if (translator is IAiUsageReporter usageReporter)
                 {
-                    usageReporter.RecordCacheHit("book-chapter-translation");
+                    usageReporter.RecordCacheHit(AiOperations.BookTranslation);
                 }
 
                 return cached;
@@ -827,7 +827,7 @@ public sealed partial class BookCatalogService(
                     if (translator is IAiUsageReporter usageReporter)
                     {
                         usageReporter.RecordResumedChunk(
-                            "book-translation-chunk");
+                            AiOperations.BookTranslation);
                     }
 
                     translatedChunks.Add(cachedChunk);
