@@ -1034,6 +1034,9 @@ namespace Jularr.Web.Data.Migrations
                     b.Property<Guid>("AnimeId")
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("AverageScore")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("BannerImageUrl")
                         .HasMaxLength(2048)
                         .HasColumnType("TEXT");

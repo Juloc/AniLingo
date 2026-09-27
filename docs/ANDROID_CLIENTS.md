@@ -277,7 +277,9 @@ Temporary source outages are retryable and use the shared bounded recovery caden
 
 `file_missing` is not a Wake-on-LAN or codec-fallback state: the root is readable but the concrete media file is absent. `source_unreachable` is also not blindly retried forever.
 
-Normal users can query only the media availability information needed for playback. They never receive MAC addresses, mount paths or an implicit wake capability. Owners may receive a session-independent `wakeUrl` for the owning root when Wake-on-LAN is configured. Wake remains an explicit owner action; pressing Play never wakes storage automatically.
+The availability also carries the canonical storage `health` (`online`, `starting`, `offline_expected`, `offline_unexpected`, `error`) and a `diagnosticCode`. A root with Wake-on-LAN configured that cannot be reached is `offline_expected` (sleeping on purpose); without Wake-on-LAN it is `offline_unexpected`. `error` with `wake_timeout` or `wake_send_failed` means a start attempt failed: show the problem and offer a retry instead of polling on.
+
+Pressing Play wakes sleeping storage: the media requests (`/content`, `/hls`, `/fallback`, offline downloads) and `/media/{id}/availability?wake=true` start the owning Wake-on-LAN NAS and answer `source_starting` until it is readable; concurrent requests share one bounded start attempt on the server. Plain availability checks, library browsing, artwork and metadata never wake storage. Normal users never receive MAC addresses or mount paths; owners additionally receive the explicit `wakeUrl` of the owning root.
 
 The server keeps library state while a NAS is sleeping/offline and treats an unexpectedly empty previously-populated root as unavailable instead of a mass deletion. Native clients therefore keep library/detail navigation usable while playback storage is down.
 

@@ -25,27 +25,51 @@ public sealed record AdminLibraryRootRow(
     LibraryRootAvailabilitySnapshot Availability,
     int ReconciliationIntervalMinutes,
     AdminLibraryScanRow? ActiveScan,
-    AdminLibraryScanRow? LastScan)
+    AdminLibraryScanRow? LastScan,
+    StorageIntegritySummary Integrity)
 {
     public string AvailabilityLabel(UiTextBundle ui) =>
-        Availability.State switch
+        Availability.Health switch
         {
-            StorageAvailabilityState.Available => ui["admin.system.availability.online"],
-            StorageAvailabilityState.Starting => ui["admin.system.availability.starting"],
-            StorageAvailabilityState.Offline => ui["admin.system.availability.offline"],
-            StorageAvailabilityState.Unreachable => ui["admin.system.availability.unreachable"],
-            StorageAvailabilityState.FileMissing => ui["admin.system.availability.fileMissing"],
-            _ => ui["admin.system.availability.unknown"]
+            StorageHealthState.Online => ui["admin.system.health.online"],
+            StorageHealthState.Starting => ui["admin.system.health.starting"],
+            StorageHealthState.OfflineExpected => ui["admin.system.health.sleeping"],
+            StorageHealthState.OfflineUnexpected => ui["admin.system.health.unavailable"],
+            _ => ui["admin.system.health.error"]
+        };
+
+    // One short fact next to the state: free space, why it is offline, or what failed.
+    public string? AvailabilityDetail(UiTextBundle ui) =>
+        Availability.Health switch
+        {
+            StorageHealthState.Online => Availability.FreeSpaceBytes is { } free
+                ? ui.Format("admin.system.health.freeSpace", ("size", StorageHealth.FormatBytes(free)))
+                : null,
+            StorageHealthState.OfflineExpected => ui["admin.system.health.wakeConfigured"],
+            StorageHealthState.OfflineUnexpected => ui["admin.system.health.wakeNotConfigured"],
+            StorageHealthState.Error => Availability.DiagnosticCode switch
+            {
+                StorageDiagnosticCodes.WakeTimeout => ui["admin.system.health.wakeTimeout"],
+                StorageDiagnosticCodes.WakeSendFailed => ui["admin.system.health.wakeSendFailed"],
+                var code => ui.Format(
+                    "admin.system.storage.unreachable",
+                    ("code", code ?? ui["admin.system.storage.unreachableDefaultCode"]))
+            },
+            _ => null
         };
 
     public string AvailabilityCss =>
-        Availability.State switch
+        Availability.Health switch
         {
-            StorageAvailabilityState.Available => "status-ok",
-            StorageAvailabilityState.Starting => "status-warning",
-            StorageAvailabilityState.Unknown => "status-warning",
+            StorageHealthState.Online => "status-ok",
+            StorageHealthState.Starting or StorageHealthState.OfflineExpected => "status-warning",
             _ => "status-error"
         };
+
+    public bool CanWake =>
+        WakeOnLanEnabled &&
+        Availability.WakeConfigured &&
+        Availability.Health is not StorageHealthState.Online and not StorageHealthState.Starting;
 }
 
 [Authorize(Roles = AccountRoles.Owner)]
@@ -55,6 +79,7 @@ public sealed class SystemModel(
     CurrentAccountContext account,
     LibraryRootAvailabilityService availability,
     WakeOnLanService wakeOnLan,
+    StorageIntegrityService integrity,
     IndexerStore indexerStore,
     DownloadClientStore downloadClientStore,
     AcquisitionHealthStore acquisitionHealth) : PageModel
@@ -290,6 +315,7 @@ public sealed class SystemModel(
             .Where(row => row.Details is not null)
             .ToArray();
 
+        var integrityByRoot = await integrity.SummarizeAsync(cancellationToken);
         var rows = new List<AdminLibraryRootRow>(roots.Count);
         foreach (var root in roots)
         {
@@ -323,7 +349,8 @@ public sealed class SystemModel(
                 current,
                 root.ReconciliationIntervalMinutes,
                 activeScan,
-                lastScan));
+                lastScan,
+                integrityByRoot.GetValueOrDefault(root.Id, StorageIntegritySummary.Clean)));
         }
 
         Roots = rows;

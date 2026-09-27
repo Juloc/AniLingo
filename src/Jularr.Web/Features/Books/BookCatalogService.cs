@@ -1039,21 +1039,20 @@ public sealed partial class BookCatalogService(
             ?? throw new InvalidOperationException(
                 "Imported book was not found.");
 
+        var storedFiles = await StoredFilePathsAsync(workId, cancellationToken);
         db.NovelWorks.Remove(work);
         await db.SaveChangesAsync(cancellationToken);
 
         DeleteLocalCoverFiles(workId);
+        await DeleteStoredFilesAsync(storedFiles, cancellationToken);
         await CreateTranslationMemoryStore().DeleteWorkAsync(
             workId,
             cancellationToken);
     }
 
-    private static void DeleteLocalCoverFiles(Guid workId)
+    private void DeleteLocalCoverFiles(Guid workId)
     {
-        var directory = Path.Combine(
-            "/data",
-            "books",
-            "covers");
+        var directory = CoversPath;
 
         if (!Directory.Exists(directory))
         {
@@ -1213,60 +1212,7 @@ public sealed partial class BookCatalogService(
                 $"Books inbox '{inboxPath}' is not available.");
         }
 
-        return await ImportEpubsFromPathAsync(inboxPath, "inbox", cancellationToken);
-    }
-
-    /// <summary>
-    /// Imports every EPUB at <paramref name="path"/>: the file itself, or all EPUBs below the
-    /// folder including subfolders (SABnzbd puts each completed job in its own folder).
-    /// </summary>
-    public async Task<IReadOnlyList<Guid>> ImportEpubsFromPathAsync(
-        string path,
-        string sourceKind,
-        CancellationToken cancellationToken)
-    {
-        var files = File.Exists(path)
-            ? (path.EndsWith(".epub", StringComparison.OrdinalIgnoreCase) ? [path] : [])
-            : Directory.Exists(path)
-                ? Directory
-                    .EnumerateFiles(path, "*.epub", SearchOption.AllDirectories)
-                    .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
-                    .Take(200)
-                    .ToArray()
-                : throw new InvalidOperationException($"'{path}' is not available.");
-
-        var imported = new List<Guid>(files.Length);
-        foreach (var file in files)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            try
-            {
-                await using var stream = new FileStream(
-                    file,
-                    FileMode.Open,
-                    FileAccess.Read,
-                    FileShare.ReadWrite | FileShare.Delete,
-                    bufferSize: 81920,
-                    useAsync: true);
-
-                var fileName = Path.GetFileName(file);
-                imported.Add(await ImportEpubStreamAsync(
-                    stream,
-                    fileName,
-                    sourceKind,
-                    sourceKind + "://" + Uri.EscapeDataString(fileName),
-                    cancellationToken));
-            }
-            catch (IOException)
-            {
-                // A downloader may still be moving/writing this file; the next scan retries it.
-            }
-        }
-
-        return imported
-            .Distinct()
-            .ToArray();
+        return await ImportBooksFromPathAsync(inboxPath, "inbox", hint: null, singleBook: false, cancellationToken);
     }
 
     public async Task<string> GetReadableSampleAsync(
@@ -1487,7 +1433,7 @@ public sealed partial class BookCatalogService(
 
         await UpsertEditionAndFileAsync(
             work,
-            parsed,
+            BookEditionFacts.From(parsed),
             sourceKey,
             sourceUrl,
             metadataProvider,
@@ -1505,7 +1451,7 @@ public sealed partial class BookCatalogService(
 
     private async Task UpsertEditionAndFileAsync(
         NovelWork work,
-        ParsedEpubBook parsed,
+        BookEditionFacts parsed,
         string sourceKey,
         string sourceUrl,
         string? metadataProvider,
@@ -1516,7 +1462,8 @@ public sealed partial class BookCatalogService(
         long sizeBytes,
         string fileFormat,
         string fileMediaType,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? storagePath = null)
     {
         var editionKey = BuildEditionKey(
             parsed,
@@ -1612,13 +1559,14 @@ public sealed partial class BookCatalogService(
         file.SourceUrl = TruncateNullable(sourceUrl, 2048);
         file.ContentHash = Truncate(contentHash, 64);
         file.SizeBytes = Math.Max(0, sizeBytes);
+        file.StoragePath = TruncateNullable(storagePath, 2048);
         file.IsPrimary = true;
 
         await db.SaveChangesAsync(cancellationToken);
     }
 
     private static string BuildEditionKey(
-        ParsedEpubBook parsed,
+        BookEditionFacts parsed,
         string? metadataProvider,
         string? metadataExternalId,
         string sourceKey)
@@ -2546,10 +2494,7 @@ public sealed partial class BookCatalogService(
 
     public string? GetLocalCoverPath(Guid workId)
     {
-        var directory = Path.Combine(
-            "/data",
-            "books",
-            "covers");
+        var directory = CoversPath;
 
         if (!Directory.Exists(directory))
         {
@@ -2574,7 +2519,7 @@ public sealed partial class BookCatalogService(
             _ => "image/jpeg"
         };
 
-    private static async Task<string?> SaveLocalCoverAsync(
+    private async Task<string?> SaveLocalCoverAsync(
         Guid workId,
         byte[] bytes,
         string mediaType,
@@ -2599,10 +2544,7 @@ public sealed partial class BookCatalogService(
             return null;
         }
 
-        var directory = Path.Combine(
-            "/data",
-            "books",
-            "covers");
+        var directory = CoversPath;
         Directory.CreateDirectory(directory);
 
         foreach (var stale in Directory.EnumerateFiles(
@@ -2670,24 +2612,8 @@ public sealed partial class BookCatalogService(
                     + Uri.EscapeDataString(x.Value)));
 
     private static string GetSourceLanguage(
-        NovelWork work)
-    {
-        if (!string.IsNullOrWhiteSpace(work.Format)
-            && work.Format.StartsWith(
-                "EPUB:",
-                StringComparison.OrdinalIgnoreCase))
-        {
-            var language = work.Format[5..]
-                .Trim()
-                .ToLowerInvariant();
-            if (language.Length > 0)
-            {
-                return language;
-            }
-        }
-
-        return "en";
-    }
+        NovelWork work) =>
+        BookFileFormats.Language(work.Format) ?? "en";
 
     private static string NormalizeSourceLanguage(
         string? language)
