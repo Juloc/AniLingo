@@ -14,8 +14,11 @@ import de.juloc.jularr.core.model.EpisodeProgressUpdate
 import de.juloc.jularr.core.model.MediaAvailability
 import de.juloc.jularr.core.model.PlayerBootstrap
 import de.juloc.jularr.core.model.RootAvailability
+import de.juloc.jularr.core.model.SpeechModelsResponse
 import de.juloc.jularr.core.model.TermDetail
 import de.juloc.jularr.core.model.TermStateResult
+import de.juloc.jularr.core.model.TtsPreferences
+import de.juloc.jularr.core.model.TtsPreferencesUpdate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
@@ -135,6 +138,12 @@ class TvClientFlowTest {
         override suspend fun testRoot(rootId: String): RootAvailability =
             error("unused")
         override suspend fun wakeRoot(rootId: String): RootAvailability =
+            error("unused")
+        override suspend fun getTtsPreferences(): TtsPreferences =
+            error("unused")
+        override suspend fun updateTtsPreferences(update: TtsPreferencesUpdate): TtsPreferences =
+            error("unused")
+        override suspend fun getSpeechModels(): SpeechModelsResponse =
             error("unused")
     }
 

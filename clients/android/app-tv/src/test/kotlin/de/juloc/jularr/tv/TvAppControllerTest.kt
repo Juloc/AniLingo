@@ -14,8 +14,11 @@ import de.juloc.jularr.core.model.EpisodeProgressUpdate
 import de.juloc.jularr.core.model.MediaAvailability
 import de.juloc.jularr.core.model.PlayerBootstrap
 import de.juloc.jularr.core.model.RootAvailability
+import de.juloc.jularr.core.model.SpeechModelsResponse
 import de.juloc.jularr.core.model.TermDetail
 import de.juloc.jularr.core.model.TermStateResult
+import de.juloc.jularr.core.model.TtsPreferences
+import de.juloc.jularr.core.model.TtsPreferencesUpdate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -37,6 +40,26 @@ class TvAppControllerTest {
         assertEquals(TvRoute.Login, state.navigation.route)
         assertFalse(state.busy)
         assertNull(state.error)
+    }
+
+    @Test
+    fun busyActionsReturnTheSameIdleSnapshotTheyStore() {
+        // TvAppHost assigns the returned snapshot straight to UI state, so a
+        // returned busy = true would leave the TV UI stuck in its busy state (#497).
+        val store = FakeOriginStore("https://jularr.example")
+        val api = FakeApi()
+        val controller = TvAppController(store) { api }
+
+        val results = listOf(
+            runSuspend { controller.restoreConnection() },
+            runSuspend { controller.login("jessi", "password-password") },
+            runSuspend { controller.openEpisode(episodeId = "episode", animeId = "anime") },
+        )
+
+        for (result in results) {
+            assertFalse(result.busy)
+        }
+        assertEquals(controller.snapshot, results.last())
     }
 
     @Test
@@ -223,6 +246,10 @@ class TvAppControllerTest {
         override suspend fun getRootAvailability(rootId: String): RootAvailability = error("unused")
         override suspend fun testRoot(rootId: String): RootAvailability = error("unused")
         override suspend fun wakeRoot(rootId: String): RootAvailability = error("unused")
+        override suspend fun getTtsPreferences(): TtsPreferences = error("unused")
+        override suspend fun updateTtsPreferences(update: TtsPreferencesUpdate): TtsPreferences =
+            error("unused")
+        override suspend fun getSpeechModels(): SpeechModelsResponse = error("unused")
     }
 
     private fun <T> runSuspend(block: suspend () -> T): T {
