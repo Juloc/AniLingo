@@ -86,6 +86,9 @@ public sealed class AiProfileSettingsStore
                         ReasoningEffort = persisted.ReasoningEffort,
                         ServiceTier = persisted.ServiceTier,
                         MaxOutputTokens = persisted.MaxOutputTokens,
+                        DailyTokenBudget = persisted.DailyTokenBudget,
+                        BudgetWarningPercent = persisted.BudgetWarningPercent,
+                        MaxConcurrentJobs = persisted.MaxConcurrentJobs,
                         Overrides = AiOperationOverrides.From(
                             persisted.Overrides?
                                 .Select(x => KeyValuePair.Create(
@@ -146,7 +149,12 @@ public sealed class AiProfileSettingsStore
                     : validated.Overrides.Items.ToDictionary(
                         x => x.Key,
                         x => new PersistedAiOperationOverride(x.Value.Model, x.Value.ReasoningEffort),
-                        StringComparer.Ordinal));
+                        StringComparer.Ordinal))
+            {
+                DailyTokenBudget = validated.DailyTokenBudget,
+                BudgetWarningPercent = validated.BudgetWarningPercent,
+                MaxConcurrentJobs = validated.MaxConcurrentJobs
+            };
 
             try
             {
@@ -218,6 +226,23 @@ public sealed class AiProfileSettingsStore
         {
             throw new InvalidOperationException(
                 $"The output token limit must be between 1 and {AiProfileSettings.MaxOutputTokensLimit}.");
+        }
+
+        if (settings.DailyTokenBudget is < 1 or > AiProfileSettings.MaxDailyTokenBudget)
+        {
+            throw new InvalidOperationException(
+                $"The daily token limit must be between 1 and {AiProfileSettings.MaxDailyTokenBudget}.");
+        }
+
+        if (settings.BudgetWarningPercent is < 1 or > 99)
+        {
+            throw new InvalidOperationException("The warning threshold must be between 1 and 99 percent.");
+        }
+
+        if (settings.MaxConcurrentJobs is < 1 or > AiProfileSettings.MaxConcurrentJobsLimit)
+        {
+            throw new InvalidOperationException(
+                $"Parallel AI tasks must be between 1 and {AiProfileSettings.MaxConcurrentJobsLimit}.");
         }
 
         foreach (var (operation, value) in settings.Overrides.Items)
@@ -362,7 +387,14 @@ public sealed class AiProfileSettingsStore
         string? ReasoningEffort = null,
         string? ServiceTier = null,
         int? MaxOutputTokens = null,
-        Dictionary<string, PersistedAiOperationOverride>? Overrides = null);
+        Dictionary<string, PersistedAiOperationOverride>? Overrides = null)
+    {
+        public int? DailyTokenBudget { get; init; }
+
+        public int? BudgetWarningPercent { get; init; }
+
+        public int? MaxConcurrentJobs { get; init; }
+    }
 
     private sealed record PersistedAiOperationOverride(
         string? Model,

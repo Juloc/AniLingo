@@ -217,7 +217,9 @@ public sealed class LocalFirstPageGetTests
             codex,
             fixture.HttpClientFactory,
             new AiActivityRunner(tracker, usage, TimeProvider.System),
-            catalogs);
+            catalogs,
+            new AiUsageStore(fixture.Db),
+            TimeProvider.System);
 
         var settings = fixture.Attach(new AiSettingsModel(
             fixture.Db, fixture.OwnerAccount, settingsStore, router, new AiUsageStore(fixture.Db), tracker, codex, TimeProvider.System));

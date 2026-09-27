@@ -96,6 +96,18 @@ public sealed class AiModel(
     public int? MaxOutputTokens { get; set; }
 
     [BindProperty]
+    public int? DailyTokenBudget { get; set; }
+
+    [BindProperty]
+    public int? BudgetWarningPercent { get; set; }
+
+    [BindProperty]
+    public int? MaxConcurrentJobs { get; set; }
+
+    /// <summary>Today's usage against the saved daily limit.</summary>
+    public AiBudgetStatus Budget { get; private set; } = new(0, null, AiProfileSettings.DefaultBudgetWarningPercent);
+
+    [BindProperty]
     public Dictionary<string, string?> OverrideModels { get; set; } = new(StringComparer.Ordinal);
 
     [BindProperty]
@@ -262,6 +274,9 @@ public sealed class AiModel(
                     ReasoningEffort = isServer ? ReasoningEffort : null,
                     ServiceTier = isServer ? ServiceTier : null,
                     MaxOutputTokens = isServer ? null : MaxOutputTokens,
+                    DailyTokenBudget = DailyTokenBudget,
+                    BudgetWarningPercent = BudgetWarningPercent,
+                    MaxConcurrentJobs = MaxConcurrentJobs,
                     Overrides = overrides
                 },
                 cancellationToken);
@@ -293,6 +308,9 @@ public sealed class AiModel(
         ReasoningEffort = settings.ReasoningEffort;
         ServiceTier = settings.ServiceTier;
         MaxOutputTokens = settings.MaxOutputTokens;
+        DailyTokenBudget = settings.DailyTokenBudget;
+        BudgetWarningPercent = settings.BudgetWarningPercent;
+        MaxConcurrentJobs = settings.MaxConcurrentJobs;
         OverrideModels = settings.Overrides.Items
             .Where(x => x.Value.Model is not null)
             .ToDictionary(x => x.Key, x => x.Value.Model, StringComparer.Ordinal);
@@ -345,6 +363,8 @@ public sealed class AiModel(
             DateOnly.FromDateTime(Now.UtcDateTime),
             ParsePeriod(Period),
             cancellationToken);
+
+        Budget = AiBudgetStatus.For(settings, Usage.Today);
 
         Activity = new AiActivityPanel(
             Ui,
