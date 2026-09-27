@@ -7,6 +7,7 @@ using Jularr.Web.Features.Books;
 using Jularr.Web.Features.Localization;
 using Jularr.Web.Features.Operations;
 using Jularr.Web.Data;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
@@ -20,7 +21,8 @@ public sealed class IndexModel(
     SabnzbdDownloadService sabnzbd,
     OperationRunner operations,
     AcquisitionRequestService requests,
-    AcquisitionAccessStore requestStore) : PageModel
+    AcquisitionAccessStore requestStore,
+    IDataProtectionProvider dataProtectionProvider) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public string Query { get; private set; } = "";
@@ -291,6 +293,14 @@ public sealed class IndexModel(
             return new JsonResult(new { results = Array.Empty<object>(), error = ui["books.index.searchUnavailable"] });
         }
 
+        var hardcover = await new BookHardcoverAccountStore(
+                dataProtectionProvider)
+            .LoadAsync(account.ProfileId, cancellationToken);
+        found = await books.EnrichHardcoverStatesAsync(
+            found,
+            hardcover?.AccessToken,
+            cancellationToken);
+
         var items = found.Take(24).ToArray();
         var states = await new BookAddStateQuery(db, requestStore).GetAsync(
             items.Select(item => (item.Id, (string?)item.Title)).ToArray(),
@@ -306,6 +316,7 @@ public sealed class IndexModel(
                 item.CoverImageUrl,
                 item.FirstPublishYear,
                 item.Summary,
+                item.ExternalListState,
                 freeEdition = item.CanAcquire,
                 state = StateJson(states.GetValueOrDefault(item.Id) ?? BookAddState.None)
             })
