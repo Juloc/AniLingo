@@ -22,9 +22,10 @@ public sealed record AiUsageTotals(
     long Retries,
     long Failures,
     long Cancellations,
-    long DurationMs)
+    long DurationMs,
+    long FullContextTokens)
 {
-    public static AiUsageTotals Zero { get; } = new(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    public static AiUsageTotals Zero { get; } = new(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 
     /// <summary>Input tokens including the estimated share; see <see cref="HasEstimates"/>.</summary>
     public long AllInputTokens => InputTokens + EstimatedInputTokens;
@@ -51,7 +52,8 @@ public sealed record AiUsageTotals(
             Retries + other.Retries,
             Failures + other.Failures,
             Cancellations + other.Cancellations,
-            DurationMs + other.DurationMs);
+            DurationMs + other.DurationMs,
+            FullContextTokens + other.FullContextTokens);
 
     public static AiUsageTotals From(AiUsageMeasurement measurement)
     {
@@ -80,7 +82,8 @@ public sealed record AiUsageTotals(
             Retries: measurement.Retries,
             Failures: measurement.Outcome == AiUsageOutcome.Failed ? 1 : 0,
             Cancellations: measurement.Outcome == AiUsageOutcome.Cancelled ? 1 : 0,
-            DurationMs: Math.Max(0, measurement.DurationMs));
+            DurationMs: Math.Max(0, measurement.DurationMs),
+            FullContextTokens: Math.Max(measurement.ContextTokens, measurement.FullContextTokens));
     }
 }
 
@@ -156,14 +159,15 @@ public sealed record AiUsageReport(
     }
 }
 
-/// <summary>Daily usage aggregates (table from migration 20260928094213). Counters only.</summary>
+/// <summary>Daily usage aggregates (table from migrations 20260928094213 and 20260929003000). Counters only.</summary>
 public sealed class AiUsageStore(AppDbContext db)
 {
     private static readonly string[] CounterColumns =
     [
         "Requests", "EstimatedRequests", "InputTokens", "CachedInputTokens", "OutputTokens",
         "ReasoningOutputTokens", "EstimatedInputTokens", "EstimatedOutputTokens", "ContextTokens",
-        "CacheHits", "ResumedChunks", "Retries", "Failures", "Cancellations", "DurationMs"
+        "CacheHits", "ResumedChunks", "Retries", "Failures", "Cancellations", "DurationMs",
+        "FullContextTokens"
     ];
 
     public async Task AddAsync(
@@ -280,12 +284,13 @@ public sealed class AiUsageStore(AppDbContext db)
     [
         totals.Requests, totals.EstimatedRequests, totals.InputTokens, totals.CachedInputTokens, totals.OutputTokens,
         totals.ReasoningOutputTokens, totals.EstimatedInputTokens, totals.EstimatedOutputTokens, totals.ContextTokens,
-        totals.CacheHits, totals.ResumedChunks, totals.Retries, totals.Failures, totals.Cancellations, totals.DurationMs
+        totals.CacheHits, totals.ResumedChunks, totals.Retries, totals.Failures, totals.Cancellations, totals.DurationMs,
+        totals.FullContextTokens
     ];
 
     private static AiUsageTotals FromCounters(long[] values) =>
         new(values[0], values[1], values[2], values[3], values[4], values[5], values[6], values[7],
-            values[8], values[9], values[10], values[11], values[12], values[13], values[14]);
+            values[8], values[9], values[10], values[11], values[12], values[13], values[14], values[15]);
 
     private async Task<T> WithConnectionAsync<T>(Func<DbConnection, Task<T>> action, CancellationToken cancellationToken)
     {

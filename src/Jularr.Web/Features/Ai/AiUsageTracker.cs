@@ -31,6 +31,9 @@ public sealed record AiUsageMeasurement(
     /// <summary>Estimated share of the input that came from shared story/translation context (#412).</summary>
     public int ContextTokens { get; init; }
 
+    /// <summary>Estimated shared context before it was compacted for the request; at least <see cref="ContextTokens"/>.</summary>
+    public int FullContextTokens { get; init; }
+
     public long DurationMs { get; init; }
 
     public int Retries { get; init; }

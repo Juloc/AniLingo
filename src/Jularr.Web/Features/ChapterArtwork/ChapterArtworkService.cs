@@ -56,7 +56,7 @@ public sealed class ChapterArtworkService(
     IConfiguration configuration,
     ILogger<ChapterArtworkService>? logger = null)
 {
-    public const string Operation = "chapter-artwork";
+    public const string Operation = AiOperations.ChapterArtwork;
     private const int ContextExtractionChapters = 3;
 
     /// <summary>

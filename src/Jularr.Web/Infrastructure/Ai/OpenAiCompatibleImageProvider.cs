@@ -206,32 +206,47 @@ public sealed class OpenAiCompatibleImageProvider(
         string? Url);
 }
 
-/// <summary>Resolves the image provider of a profile; the server Codex provider cannot generate images.</summary>
+/// <summary>
+/// Resolves the image provider of a profile; the server Codex provider cannot generate images.
+/// Each generation runs as a tracked, cancellable activity that records exactly one usage
+/// measurement (the prompt size as an estimate, since image APIs report no text tokens).
+/// </summary>
 public sealed class ProfileAiImageRouter(
     AiProfileSettingsStore settingsStore,
-    AiUsageTracker usageTracker,
-    IHttpClientFactory httpClientFactory) : IAiImageGenerator
+    IHttpClientFactory httpClientFactory,
+    AiActivityRunner activityRunner) : IAiImageGenerator
 {
     public async Task<AiImageAvailability> GetAvailabilityAsync(
         string profileId,
         CancellationToken cancellationToken) =>
-        (await CreateAsync(profileId, cancellationToken)).GetAvailability();
+        (await CreateAsync(profileId, cancellationToken)).Provider.GetAvailability();
 
     public async Task<AiImageGenerationResult> GenerateAsync(
         string profileId,
         AiImageRequest request,
-        CancellationToken cancellationToken) =>
-        await (await CreateAsync(profileId, cancellationToken))
-            .GenerateAsync(request, cancellationToken);
+        CancellationToken cancellationToken)
+    {
+        var (provider, settings) = await CreateAsync(profileId, cancellationToken);
+        return await activityRunner.RunAsync(
+            new AiActivityStart(
+                profileId,
+                request.Operation,
+                provider.Id,
+                new AiInvocationOptions(settings.ImageModel?.Trim(), null, null, null),
+                AiUsageTracker.EstimateTokens(request.Prompt.Length)),
+            request.Prompt.Length,
+            token => provider.GenerateAsync(request, token),
+            _ => 0,
+            cancellationToken);
+    }
 
-    private async Task<OpenAiCompatibleImageProvider> CreateAsync(
+    private async Task<(OpenAiCompatibleImageProvider Provider, AiProfileSettings Settings)> CreateAsync(
         string profileId,
         CancellationToken cancellationToken)
     {
         var settings = await settingsStore.LoadAsync(profileId, cancellationToken);
-        return new OpenAiCompatibleImageProvider(
+        return (new OpenAiCompatibleImageProvider(
             httpClientFactory.CreateClient("ai-openai-compatible"),
-            settings,
-            measurement => usageTracker.Record(profileId, measurement));
+            settings), settings);
     }
 }

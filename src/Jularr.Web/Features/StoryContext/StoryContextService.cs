@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Jularr.Web.Data;
+using Jularr.Web.Features.Ai;
 using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Web.Features.StoryContext;
@@ -168,14 +169,23 @@ public sealed class StoryContextService(
                 },
                 cancellationToken);
 
-            var result = await extractor.ExtractChapterAsync(
-                new StoryChapterExtractionRequest(
-                    chapter.Number,
-                    chapter.Title,
-                    sourceLanguage,
-                    CompactSample(text, ExtractionSampleCharacters),
-                    StoryContextRenderer.Render(before, StoryContextBudgets.Extraction)),
-                cancellationToken);
+            // Progress over this run's chapters plus the context size before the extraction budget
+            // compacted it (#412), shown in AI activity and usage.
+            StoryChapterExtraction result;
+            using (AiWorkScope.Enter(
+                extracted + 1,
+                Math.Min(pending.Length, maxChapters),
+                StoryContextRenderer.Render(before, int.MaxValue).Length))
+            {
+                result = await extractor.ExtractChapterAsync(
+                    new StoryChapterExtractionRequest(
+                        chapter.Number,
+                        chapter.Title,
+                        sourceLanguage,
+                        CompactSample(text, ExtractionSampleCharacters),
+                        StoryContextRenderer.Render(before, StoryContextBudgets.Extraction)),
+                    cancellationToken);
+            }
 
             await ApplyExtractionAsync(
                 workId,
