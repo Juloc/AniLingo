@@ -1792,6 +1792,7 @@ public static class UiTranslationResources
         M("watchlist.type.manga", "Manga", "Watchlist", "Metadata", "Media type label for manga.", "very short label", 14),
         M("watchlist.type.light-novel", "Light novel", "Watchlist", "Metadata", "Media type label for light novels.", "short label", 18),
         M("watchlist.type.book", "Book", "Watchlist", "Metadata", "Media type label for books.", "very short label", 14),
+        M("franchise.sectionTitle", "Franchise", "Franchise", "Heading", "Compact heading on media detail pages linking to related franchise pages.", "short heading", 18),
         M("watchlist.format.tv", "TV", "Watchlist", "Metadata", "AniList format: a regular TV series.", "very short label", 14),
         M("watchlist.format.tvShort", "TV short", "Watchlist", "Metadata", "AniList format: a TV series with short episodes.", "very short label", 14),
         M("watchlist.format.movie", "Movie", "Watchlist", "Metadata", "AniList format: a film.", "very short label", 14),

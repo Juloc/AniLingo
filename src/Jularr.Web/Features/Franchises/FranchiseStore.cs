@@ -348,6 +348,60 @@ public sealed class FranchiseStore(AppDbContext db)
             return await command.ExecuteScalarAsync(cancellationToken) is not null;
         }, cancellationToken);
 
+    public async Task<IReadOnlyList<FranchiseSummary>> FindForMemberAsync(
+        WatchlistIdentity identity,
+        CancellationToken cancellationToken) =>
+        await WithConnectionAsync<IReadOnlyList<FranchiseSummary>>(async connection =>
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText =
+                """
+                SELECT f."Id", f."Title", f."SeedMediaType", f."SeedProvider", f."SeedExternalId",
+                       f."LastRefreshedAtUtc",
+                       (SELECT COUNT(*) FROM "FranchiseMembers" countMember WHERE countMember."FranchiseId" = f."Id")
+                FROM "Franchises" f
+                INNER JOIN "FranchiseMembers" m ON m."FranchiseId" = f."Id"
+                WHERE m."MediaType" = @mediaType
+                  AND m."Provider" = @provider
+                  AND m."ExternalId" = @externalId
+                ORDER BY f."Title";
+                """;
+            Add(command, "@mediaType", WatchlistMediaTypeNames.ToStorage(identity.MediaType));
+            Add(command, "@provider", identity.ProviderKey);
+            Add(command, "@externalId", identity.ExternalKey);
+
+            var result = new List<FranchiseSummary>();
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                if (!Guid.TryParse(reader.GetString(0), out var id) ||
+                    WatchlistMediaTypeNames.Parse(reader.GetString(2)) is not { } seedType)
+                {
+                    continue;
+                }
+
+                DateTime? refreshed = null;
+                if (!reader.IsDBNull(5) &&
+                    DateTime.TryParse(
+                        reader.GetString(5),
+                        CultureInfo.InvariantCulture,
+                        DateTimeStyles.RoundtripKind,
+                        out var parsed))
+                {
+                    refreshed = parsed;
+                }
+
+                result.Add(new FranchiseSummary(
+                    id,
+                    reader.GetString(1),
+                    new WatchlistIdentity(seedType, reader.GetString(3), reader.GetString(4)),
+                    refreshed,
+                    Convert.ToInt32(reader.GetValue(6), CultureInfo.InvariantCulture)));
+            }
+
+            return result.ToArray();
+        }, cancellationToken);
+
     public async Task<IReadOnlyList<FranchiseSummary>> ListFollowedAsync(string profileId, CancellationToken cancellationToken) =>
         await WithConnectionAsync(async connection =>
         {

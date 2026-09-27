@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
 using Jularr.Web.Data;
+using Jularr.Web.Features.Franchises;
 using Jularr.Web.Features.Library;
 using Jularr.Web.Features.Manga;
 using Jularr.Web.Features.MediaMapping;
@@ -593,7 +594,8 @@ public sealed class AniListExternalProgressTests
                 new SingleClientFactory(remote),
                 new OperationRunner(Db, new ServiceCollection().BuildServiceProvider()),
                 ReviewStore,
-                Service(profileId, remote));
+                Service(profileId, remote),
+                new FranchiseStore(Db));
             Attach(page);
             return page;
         }
@@ -607,7 +609,8 @@ public sealed class AniListExternalProgressTests
                 account,
                 new OperationRunner(Db, new ServiceCollection().BuildServiceProvider()),
                 new EpisodeProgressService(Db, account),
-                Service(profileId, remote));
+                Service(profileId, remote),
+                new FranchiseStore(Db));
             Attach(page);
             return page;
         }

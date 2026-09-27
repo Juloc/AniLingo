@@ -1,11 +1,13 @@
 using System.Text.Json;
 using Jularr.Web.Data;
 using Jularr.Web.Features.Auth;
+using Jularr.Web.Features.Franchises;
 using Jularr.Web.Features.Localization;
 using Jularr.Web.Features.Manga;
 using Jularr.Web.Features.MediaMapping;
 using Jularr.Web.Features.Operations;
 using Jularr.Web.Features.Tracking;
+using Jularr.Web.Features.Watchlist;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
@@ -17,7 +19,8 @@ public sealed class SeriesModel(
     IHttpClientFactory httpClientFactory,
     OperationRunner operations,
     MediaMappingReviewStore mappingReviewStore,
-    AniListAccountService aniListAccount) : PageModel
+    AniListAccountService aniListAccount,
+    FranchiseStore franchises) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public MangaSeriesDetail Series { get; private set; } = null!;
@@ -27,6 +30,7 @@ public sealed class SeriesModel(
     public string Query { get; private set; } = "";
     public string? SearchError { get; private set; }
     public bool IsOwner => account.IsOwner;
+    public IReadOnlyList<FranchiseSummary> Franchises { get; private set; } = [];
 
     public async Task<IActionResult> OnGetAsync(
         Guid id,
@@ -43,6 +47,17 @@ public sealed class SeriesModel(
         }
 
         Series = series;
+        var franchiseSource = await repository.GetAutoMatchSourceAsync(id, cancellationToken);
+        if (!string.IsNullOrWhiteSpace(franchiseSource?.MetadataExternalId))
+        {
+            Franchises = await franchises.FindForMemberAsync(
+                new WatchlistIdentity(
+                    WatchlistMediaType.Manga,
+                    "anilist",
+                    franchiseSource.MetadataExternalId),
+                cancellationToken);
+        }
+
         Progress = await repository.GetProgressAsync(
             account.ProfileId,
             id,
