@@ -25,7 +25,10 @@ public sealed record BookCatalogItem(
     string? EpubUrl,
     string SourceUrl,
     string SourceName,
-    string? TextSourceName)
+    string? TextSourceName,
+    IReadOnlyList<string>? Isbns = null,
+    string? Publisher = null,
+    string? PublishedDate = null)
 {
     public bool CanPreview => !string.IsNullOrWhiteSpace(TextUrl);
     public bool CanAcquire =>
@@ -1383,23 +1386,19 @@ public sealed partial class BookCatalogService(
             200);
         work.MetadataTitle = work.Title;
         work.MetadataDescription = work.Description;
-        work.CoverImageUrl = TruncateNullable(
-            coverImageUrl,
-            2048);
 
-        if (parsed.CoverBytes is { Length: > 0 }
-            && !string.IsNullOrWhiteSpace(parsed.CoverMediaType))
-        {
-            var localCover = await SaveLocalCoverAsync(
-                work.Id,
-                parsed.CoverBytes,
-                parsed.CoverMediaType,
-                cancellationToken);
-            if (localCover is not null)
-            {
-                work.CoverImageUrl = $"/Books/Cover/{work.Id}";
-            }
-        }
+        // Library artwork is always local once a book is imported. Prefer a
+        // current Google Books edition cover, then the actual EPUB cover, then
+        // the catalog fallback. Existing local artwork survives provider outages.
+        var hadLocalCover = GetLocalCoverPath(work.Id) is not null;
+        var storedCover = await TryPersistPreferredCoverAsync(
+            work.Id,
+            parsed,
+            coverImageUrl,
+            cancellationToken);
+        work.CoverImageUrl = storedCover || hadLocalCover
+            ? $"/Books/Cover/{work.Id}"
+            : null;
 
         work.Format = "EPUB:" + NormalizeSourceLanguage(
             parsed.Language);
@@ -1601,7 +1600,7 @@ public sealed partial class BookCatalogService(
         var uri = new Uri(
             "https://openlibrary.org/search.json"
             + "?q=" + Uri.EscapeDataString(query)
-            + "&fields=key,title,author_name,cover_i,first_publish_year,subject"
+            + "&fields=key,title,author_name,cover_i,first_publish_year,subject,isbn,publisher,publish_date"
             + $"&limit={SearchLimit}");
 
         var response = await GetJsonAsync<OpenLibrarySearchResponse>(
@@ -2226,7 +2225,7 @@ public sealed partial class BookCatalogService(
                 : author,
             null,
             book.CoverId is > 0
-                ? $"https://covers.openlibrary.org/b/id/{book.CoverId}-M.jpg"
+                ? $"https://covers.openlibrary.org/b/id/{book.CoverId}-L.jpg"
                 : null,
             (book.Subjects ?? [])
                 .Where(x => !string.IsNullOrWhiteSpace(x))
@@ -2238,7 +2237,17 @@ public sealed partial class BookCatalogService(
             null,
             $"https://openlibrary.org/works/{workKey}",
             "Open Library",
-            null);
+            null,
+            (book.Isbns ?? [])
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Select(NormalizeIsbn)
+                .Where(x => x is not null)
+                .Select(x => x!)
+                .Distinct(StringComparer.Ordinal)
+                .Take(24)
+                .ToArray(),
+            book.Publishers?.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x))?.Trim(),
+            book.PublishDates?.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x))?.Trim());
     }
 
     private static BookCatalogItem MapGutenberg(
@@ -2706,6 +2715,19 @@ public sealed partial class BookCatalogService(
             80);
     }
 
+    private static string? NormalizeIsbn(string? value)
+    {
+        var normalized = new string(
+            (value ?? "")
+                .Where(char.IsLetterOrDigit)
+                .Select(char.ToUpperInvariant)
+                .ToArray());
+
+        return normalized.Length is 10 or 13
+            ? normalized
+            : null;
+    }
+
     private static string NormalizeForMatch(string value) =>
         Regex.Replace(
                 value.ToLowerInvariant(),
@@ -2969,7 +2991,13 @@ public sealed partial class BookCatalogService(
         [property: JsonPropertyName("first_publish_year")]
         int? FirstPublishYear,
         [property: JsonPropertyName("subject")]
-        string[]? Subjects);
+        string[]? Subjects,
+        [property: JsonPropertyName("isbn")]
+        string[]? Isbns,
+        [property: JsonPropertyName("publisher")]
+        string[]? Publishers,
+        [property: JsonPropertyName("publish_date")]
+        string[]? PublishDates);
 
     private sealed record OpenLibraryWork(
         [property: JsonPropertyName("title")]
