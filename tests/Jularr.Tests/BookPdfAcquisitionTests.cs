@@ -96,7 +96,7 @@ public sealed class BookPdfAcquisitionTests
         Assert.AreEqual($"/Books/Library/{work.Id}", stored.ResultUrl);
         Assert.AreEqual("PDF:en", work.Format);
         Assert.AreEqual("Atomic Habits", work.Title, "A PDF is named after the requested book.");
-        Assert.AreEqual("https://covers.example/atomic-habits.jpg", work.CoverImageUrl, "The requested cover wins over page 1.");
+        Assert.AreEqual($"/Books/Cover/{work.Id}", work.CoverImageUrl, "Requested artwork is cached locally.");
         Assert.AreEqual(CatalogId, work.MetadataExternalId, "The work is linked to the requested catalog entry.");
 
         var file = await environment.Db.BookFiles.AsNoTracking().SingleAsync();
@@ -580,7 +580,7 @@ public sealed class BookPdfAcquisitionTests
                     CatalogId,
                     "Atomic Habits",
                     "James Clear",
-                    "https://covers.example/atomic-habits.jpg",
+                    "https://books.google.com/atomic-habits.jpg",
                     System.Text.Json.JsonSerializer.Serialize(
                         new BookRequestPayload(CatalogId, "Atomic Habits", "James Clear"),
                         System.Text.Json.JsonSerializerOptions.Web)),
@@ -647,7 +647,24 @@ public sealed class BookPdfAcquisitionTests
 
     private sealed class UnreachableHandler : HttpMessageHandler
     {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            if (request.RequestUri?.Host == "books.google.com")
+            {
+                var content = new ByteArrayContent(
+                    [0xFF, 0xD8, 0xFF, 0xE0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xD9]);
+                content.Headers.ContentType =
+                    new System.Net.Http.Headers.MediaTypeHeaderValue("image/jpeg");
+                return Task.FromResult(
+                    new HttpResponseMessage(HttpStatusCode.OK)
+                    {
+                        Content = content
+                    });
+            }
+
             throw new HttpRequestException("No network in tests.");
+        }
     }
 }
