@@ -5,6 +5,10 @@ sealed interface TvRoute {
     data object Login : TvRoute
     data object Library : TvRoute
     data class Anime(val animeId: String) : TvRoute
+    data class Episode(
+        val episodeId: String,
+        val animeId: String,
+    ) : TvRoute
     data class Player(
         val episodeId: String,
         val animeId: String,
@@ -34,6 +38,13 @@ object TvNavigation {
     ): TvNavigationState =
         state.push(TvRoute.Anime(animeId))
 
+    fun openEpisode(
+        state: TvNavigationState,
+        episodeId: String,
+        animeId: String,
+    ): TvNavigationState =
+        state.push(TvRoute.Episode(episodeId, animeId))
+
     fun openPlayer(
         state: TvNavigationState,
         episodeId: String,
@@ -56,8 +67,14 @@ object TvNavigation {
                 -> null
 
                 is TvRoute.Anime -> TvNavigationState(TvRoute.Library)
-                is TvRoute.Player -> TvNavigationState(
+                is TvRoute.Episode -> TvNavigationState(
                     TvRoute.Anime(state.route.animeId),
+                )
+                is TvRoute.Player -> TvNavigationState(
+                    TvRoute.Episode(
+                        episodeId = state.route.episodeId,
+                        animeId = state.route.animeId,
+                    ),
                 )
             }
         }
