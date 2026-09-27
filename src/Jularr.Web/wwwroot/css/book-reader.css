@@ -429,6 +429,239 @@
     background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
+/* PDF books ----------------------------------------------------------------------
+   books-reader-pdf.js lays each PDF page onto a paper sheet: the page is drawn
+   onto the paper (multiply) in light paper styles and inverted onto it (screen)
+   in dark ones, so no white page glares. Images are copied above the themed
+   page untouched and keep their colours; a page-sized image that looks like
+   paper (a scan) is themed like text. The text layer above carries selection,
+   search and read-aloud. */
+
+.book-reader-page[data-book-format="pdf"] .book-stage {
+    display: flex;
+    overflow: hidden;
+    padding: 18px 24px;
+}
+
+.book-reader-page[data-book-format="pdf"][data-book-layout="paged"] .book-stage {
+    overflow: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+}
+
+.book-reader-page[data-book-format="pdf"][data-pdf-overflow="both"] .book-stage {
+    touch-action: pan-x pan-y pinch-zoom;
+}
+
+.book-reader-page[data-book-format="pdf"][data-book-layout="scroll"] .book-stage {
+    overflow: visible;
+    padding-block: 22px 40px;
+}
+
+.book-pdf-spread {
+    display: flex;
+    margin: auto;
+    color: var(--paper-ink);
+}
+
+.book-reader-page[data-book-layout="scroll"] .book-pdf-spread {
+    flex-direction: column;
+    align-items: center;
+    gap: 18px;
+    margin: 0 auto;
+}
+
+.book-pdf-spread.is-turning-next {
+    animation: book-pdf-turn-next .3s cubic-bezier(.22, .7, .25, 1);
+}
+
+.book-pdf-spread.is-turning-back {
+    animation: book-pdf-turn-back .3s cubic-bezier(.22, .7, .25, 1);
+}
+
+.book-pdf-spread.is-fading {
+    animation: book-page-fade .3s ease-out;
+}
+
+@keyframes book-pdf-turn-next {
+    from { opacity: .35; transform: translate3d(28px, 0, 0); }
+    to { opacity: 1; transform: none; }
+}
+
+@keyframes book-pdf-turn-back {
+    from { opacity: .35; transform: translate3d(-28px, 0, 0); }
+    to { opacity: 1; transform: none; }
+}
+
+.book-pdf-page {
+    position: relative;
+    flex: none;
+    overflow: hidden;
+    isolation: isolate;
+    border-radius: 4px;
+    background: var(--paper);
+    box-shadow: var(--paper-shadow);
+}
+
+.book-pdf-page::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: url("/brand/washi.webp") center / cover;
+    opacity: calc(var(--paper-texture-opacity) * .7);
+    mix-blend-mode: var(--paper-texture-blend);
+    filter: var(--paper-texture-filter);
+    pointer-events: none;
+}
+
+/* The gutter of an open book: both pages darken towards the fold. */
+.book-pdf-page.is-left {
+    border-radius: 4px 1px 1px 4px;
+}
+
+.book-pdf-page.is-right {
+    border-radius: 1px 4px 4px 1px;
+}
+
+.book-pdf-page.is-left::after,
+.book-pdf-page.is-right::after {
+    content: "";
+    position: absolute;
+    z-index: 3;
+    inset: 0;
+    pointer-events: none;
+}
+
+.book-pdf-page.is-left::after {
+    background: linear-gradient(to left, var(--paper-gutter), transparent 7%);
+}
+
+.book-pdf-page.is-right::after {
+    background: linear-gradient(to right, var(--paper-gutter), transparent 7%);
+}
+
+.book-pdf-canvas,
+.book-pdf-image {
+    position: absolute;
+    display: block;
+    pointer-events: none;
+}
+
+.book-pdf-canvas {
+    z-index: 1;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    mix-blend-mode: multiply;
+}
+
+.book-pdf-image {
+    z-index: 2;
+}
+
+.book-reader-page[data-paper-style="midnight"] .book-pdf-canvas,
+.book-reader-page[data-paper-style="oled"] .book-pdf-canvas {
+    filter: invert(1) hue-rotate(180deg) brightness(.9);
+    mix-blend-mode: screen;
+}
+
+.book-reader-page[data-paper-style="midnight"] .book-pdf-image,
+.book-reader-page[data-paper-style="oled"] .book-pdf-image {
+    filter: brightness(.86);
+}
+
+.book-pdf-status {
+    margin: auto;
+    color: var(--muted);
+    font-size: 14px;
+}
+
+.book-pdf-status[hidden] {
+    display: none;
+}
+
+/* The pdf.js text layer (from pdf.js' pdf_viewer.css, trimmed to what the
+   reader uses); its text is transparent over the drawn page. */
+.book-pdf-page .textLayer {
+    --min-font-size: 1;
+    --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+    --min-font-size-inv: calc(1 / var(--min-font-size));
+    --scale-round-x: 1px;
+    --scale-round-y: 1px;
+    position: absolute;
+    z-index: 4;
+    inset: 0;
+    overflow: clip;
+    color-scheme: only light;
+    line-height: 1;
+    text-align: initial;
+    letter-spacing: normal;
+    word-spacing: normal;
+    text-size-adjust: none;
+    forced-color-adjust: none;
+    transform-origin: 0 0;
+    caret-color: CanvasText;
+}
+
+.book-pdf-page .textLayer :is(span, br) {
+    position: absolute;
+    color: transparent;
+    white-space: pre;
+    cursor: text;
+    transform-origin: 0% 0%;
+    user-select: text;
+}
+
+.book-pdf-page .textLayer > :not(.markedContent),
+.book-pdf-page .textLayer .markedContent span:not(.markedContent) {
+    --font-height: 0;
+    --scale-x: 1;
+    --rotate: 0deg;
+    z-index: 1;
+    font-size: calc(var(--text-scale-factor) * var(--font-height));
+    transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+}
+
+.book-pdf-page .textLayer .markedContent {
+    display: contents;
+}
+
+.book-pdf-page .textLayer ::selection {
+    background: color-mix(in srgb, var(--accent) 34%, transparent);
+    color: transparent;
+}
+
+.book-pdf-page .textLayer br::selection {
+    background: transparent;
+}
+
+/* Read-aloud marks the spoken word; the whole page is its paragraph. */
+.book-pdf-page .textLayer.reader-tts-active {
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+}
+
+::highlight(book-pdf-search) {
+    background-color: color-mix(in srgb, var(--accent) 42%, transparent);
+    color: transparent;
+}
+
+.book-reader-page[data-book-format="pdf"] .reader-contents-row {
+    padding-inline-start: calc(10px + var(--book-contents-depth, 0) * 14px);
+}
+
+.book-pdf-zoom output {
+    margin-inline-start: 6px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+}
+
+.book-pdf-zoom button:disabled {
+    opacity: .4;
+    cursor: default;
+}
+
 /* Contents: book details --------------------------------------------------------- */
 
 .book-details {
@@ -572,6 +805,14 @@
         padding: 0;
     }
 
+    .book-reader-page[data-book-format="pdf"] .book-stage {
+        padding: 8px;
+    }
+
+    .book-reader-page[data-book-format="pdf"][data-book-layout="scroll"] .book-pdf-spread {
+        gap: 10px;
+    }
+
     .book-reader-page[data-book-layout="scroll"] .book-spread {
         --pad-x: 22px;
         --pad-top: 30px;
@@ -594,6 +835,7 @@
 @media (prefers-reduced-motion: reduce) {
     .book-columns.is-turning,
     .book-columns.is-fading,
+    .book-pdf-spread,
     .book-paragraph-flash {
         transition: none !important;
         animation: none !important;

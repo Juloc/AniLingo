@@ -15,6 +15,12 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Jularr.Web.Pages.Books;
 
+/// <summary>
+/// The PDF of a PDF book for the reader: its authenticated file URL (null when the
+/// stored file is gone) and the chapter of every page, in page order.
+/// </summary>
+public sealed record BookPdfReaderDocument(string? FileUrl, IReadOnlyList<Guid> PageChapterIds);
+
 public sealed class ReadModel(
     BookCatalogService books,
     CurrentAccountContext account,
@@ -29,6 +35,22 @@ public sealed class ReadModel(
     public int? RequestedPositionPermille { get; private set; }
     public int? RequestedParagraph { get; private set; }
     public int ChapterCount { get; private set; }
+
+    /// <summary>
+    /// Where the chapter opens: the requested position, else the saved position
+    /// when the saved progress is in this chapter, else its start.
+    /// </summary>
+    public int InitialPositionPermille =>
+        RequestedPositionPermille
+        ?? (Reader.Progress is { } progress && progress.ChapterId == Reader.Chapter.Id
+            ? progress.PositionPermille
+            : 0);
+
+    /// <summary>
+    /// Set for PDF books: the reader renders the stored PDF's pages in the paper
+    /// frame instead of the chapter text.
+    /// </summary>
+    public BookPdfReaderDocument? Pdf { get; private set; }
 
     /// <summary>
     /// Other languages with a cached, current translation of this chapter.
@@ -82,20 +104,47 @@ public sealed class ReadModel(
             : Math.Clamp(pos.Value, 0, 1000);
         RequestedParagraph = p is >= 0 ? p : null;
         RequestedView = NormalizeRequestedView(view);
-        ChapterCount = await db.NovelChapters
-            .AsNoTracking()
-            .CountAsync(x => x.WorkId == reader.Work.Id, cancellationToken);
-        CachedTranslationLanguages = await GetCachedTranslationLanguagesAsync(reader, cancellationToken);
-        ReaderDocument = ReaderDocumentDescriptor.Create(
-            reader.Work.Id,
-            ReaderContentType.Book,
-            reader.Work.MetadataTitle ?? reader.Work.Title,
-            ReaderPreferenceRules.ParseGenres(reader.Work.MetadataGenresJson),
-            languages:
-            [
-                new(reader.SourceLanguage, BookLanguageCatalog.GetName(reader.SourceLanguage)),
-                new(reader.TargetLanguage, BookLanguageCatalog.GetName(reader.TargetLanguage))
-            ]);
+        var source = new ReaderDocumentLanguage(reader.SourceLanguage, BookLanguageCatalog.GetName(reader.SourceLanguage));
+        if (BookFileFormats.IsPdf(reader.Work))
+        {
+            // A PDF book is one document whose pages are the work's chapters; the
+            // reader shows the pages themselves, so it needs every page's chapter.
+            var pages = await db.NovelChapters
+                .AsNoTracking()
+                .Where(x => x.WorkId == reader.Work.Id)
+                .OrderBy(x => x.Number)
+                .Select(x => x.Id)
+                .ToListAsync(cancellationToken);
+            var file = await books.GetStoredFileAsync(reader.Work.Id, cancellationToken);
+            Pdf = new BookPdfReaderDocument(
+                file is null ? null : $"/Books/File/{reader.Work.Id}",
+                pages);
+            ChapterCount = pages.Count;
+            ReaderDocument = ReaderDocumentDescriptor.Create(
+                reader.Work.Id,
+                ReaderContentType.Book,
+                reader.Work.MetadataTitle ?? reader.Work.Title,
+                ReaderPreferenceRules.ParseGenres(reader.Work.MetadataGenresJson),
+                ReaderLayoutKind.FixedPages,
+                [source]);
+        }
+        else
+        {
+            ChapterCount = await db.NovelChapters
+                .AsNoTracking()
+                .CountAsync(x => x.WorkId == reader.Work.Id, cancellationToken);
+            CachedTranslationLanguages = await GetCachedTranslationLanguagesAsync(reader, cancellationToken);
+            ReaderDocument = ReaderDocumentDescriptor.Create(
+                reader.Work.Id,
+                ReaderContentType.Book,
+                reader.Work.MetadataTitle ?? reader.Work.Title,
+                ReaderPreferenceRules.ParseGenres(reader.Work.MetadataGenresJson),
+                languages:
+                [
+                    source,
+                    new(reader.TargetLanguage, BookLanguageCatalog.GetName(reader.TargetLanguage))
+                ]);
+        }
 
         ReaderSettings = await ReaderPreferenceStore.GetAsync(
             db,
@@ -104,6 +153,13 @@ public sealed class ReadModel(
             reader.Work.MetadataGenresJson,
             ReaderContentType.Book,
             cancellationToken);
+        if (Pdf is not null)
+        {
+            // Fixed pages have no paragraph text to anchor highlights to and are
+            // not translated in the reader.
+            return Page();
+        }
+
         CurrentHighlights = await BookReaderAnnotationStore.GetChapterHighlightsAsync(
             db,
             account.ProfileId,
