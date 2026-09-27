@@ -1,7 +1,11 @@
+using System.Net.Http.Json;
+using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using Jularr.Web.Data;
 using Jularr.Web.Features.Ai;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 
 namespace Jularr.Web.Features.Novels;
 
@@ -13,6 +17,20 @@ public interface INovelTranslator
         string japaneseText,
         string targetLanguage,
         CancellationToken cancellationToken);
+}
+
+public enum NovelTranslationEngine
+{
+    Ai,
+    TranslateGemma
+}
+
+public static class NovelTranslationProviders
+{
+    public const string TranslateGemmaPrefix = "translategemma:";
+
+    public static bool IsTranslateGemma(string providerId) =>
+        providerId.StartsWith(TranslateGemmaPrefix, StringComparison.Ordinal);
 }
 
 public sealed record NovelMappingChapter(int Number, string Title);
@@ -44,31 +62,72 @@ public interface INovelMappingSuggester
 public sealed class NovelTranslationService(
     AppDbContext db,
     NovelImportService imports,
-    INovelTranslator translator)
+    INovelTranslator translator,
+    IHttpClientFactory? httpClientFactory = null,
+    IConfiguration? configuration = null)
 {
     public const int PromptVersion = 1;
+    public const int TranslateGemmaPromptVersion = 1;
     private const int MaxChunkCharacters = 6500;
-    private static readonly SemaphoreSlim GenerateGate = new(1, 1);
+    private static readonly SemaphoreSlim AiGenerateGate = new(1, 1);
+    private static readonly SemaphoreSlim TranslateGemmaGenerateGate = new(1, 1);
+
+    public bool TranslateGemmaConfigured =>
+        TranslateGemmaOptions.FromConfiguration(configuration) is not null;
 
     public Task<NovelTranslation?> GetCachedAsync(
         Guid chapterId,
         string targetLanguage,
         CancellationToken cancellationToken) =>
-        (
+        GetCachedAsync(
+            chapterId,
+            targetLanguage,
+            NovelTranslationEngine.Ai,
+            cancellationToken);
+
+    public Task<NovelTranslation?> GetCachedAsync(
+        Guid chapterId,
+        string targetLanguage,
+        NovelTranslationEngine engine,
+        CancellationToken cancellationToken)
+    {
+        var promptVersion = engine == NovelTranslationEngine.TranslateGemma
+            ? TranslateGemmaPromptVersion
+            : PromptVersion;
+
+        var query =
             from translation in db.NovelTranslations.AsNoTracking()
             join chapter in db.NovelChapters.AsNoTracking()
                 on translation.ChapterId equals chapter.Id
             where translation.ChapterId == chapterId &&
                 translation.TargetLanguage == targetLanguage &&
-                translation.PromptVersion == PromptVersion &&
+                translation.PromptVersion == promptVersion &&
                 translation.SourceHash == chapter.SourceHash
-            orderby translation.CreatedAt descending
-            select translation
-        ).FirstOrDefaultAsync(cancellationToken);
+            select translation;
+
+        query = engine == NovelTranslationEngine.TranslateGemma
+            ? query.Where(x => x.ProviderId.StartsWith(NovelTranslationProviders.TranslateGemmaPrefix))
+            : query.Where(x => !x.ProviderId.StartsWith(NovelTranslationProviders.TranslateGemmaPrefix));
+
+        return query
+            .OrderByDescending(x => x.CreatedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    public Task<NovelTranslation> TranslateChapterAsync(
+        Guid chapterId,
+        string targetLanguage,
+        CancellationToken cancellationToken) =>
+        TranslateChapterAsync(
+            chapterId,
+            targetLanguage,
+            NovelTranslationEngine.Ai,
+            cancellationToken);
 
     public async Task<NovelTranslation> TranslateChapterAsync(
         Guid chapterId,
         string targetLanguage,
+        NovelTranslationEngine engine,
         CancellationToken cancellationToken)
     {
         var chapter = await imports.DownloadChapterContentAsync(
@@ -76,77 +135,12 @@ public sealed class NovelTranslationService(
             forceRefresh: false,
             cancellationToken);
 
-        var cached = await GetExactAsync(
-            chapter.Id,
-            chapter.SourceHash,
-            targetLanguage,
-            cancellationToken);
-
-        if (cached is not null)
+        return engine switch
         {
-            if (translator is IAiUsageReporter usageReporter)
-            {
-                usageReporter.RecordCacheHit("novel-chapter-translation");
-            }
-
-            return cached;
-        }
-
-        await GenerateGate.WaitAsync(cancellationToken);
-        try
-        {
-            cached = await GetExactAsync(
-                chapter.Id,
-                chapter.SourceHash,
-                targetLanguage,
-                cancellationToken);
-
-            if (cached is not null)
-            {
-                if (translator is IAiUsageReporter usageReporter)
-                {
-                    usageReporter.RecordCacheHit("novel-chapter-translation");
-                }
-
-                return cached;
-            }
-
-            var translatedChunks = new List<string>();
-            foreach (var chunk in ChunkText(chapter.OriginalText, MaxChunkCharacters))
-            {
-                var translated = (await translator.TranslateAsync(
-                    chunk,
-                    targetLanguage,
-                    cancellationToken)).Trim();
-
-                if (translated.Length == 0)
-                {
-                    throw new InvalidOperationException(
-                        "AI translation returned an empty chapter segment.");
-                }
-
-                translatedChunks.Add(translated);
-            }
-
-            var completed = new NovelTranslation
-            {
-                ChapterId = chapter.Id,
-                TargetLanguage = targetLanguage,
-                ProviderId = translator.Id,
-                PromptVersion = PromptVersion,
-                SourceHash = chapter.SourceHash,
-                Text = string.Join("\n\n", translatedChunks),
-                CreatedAt = DateTime.UtcNow
-            };
-
-            db.NovelTranslations.Add(completed);
-            await db.SaveChangesAsync(cancellationToken);
-            return completed;
-        }
-        finally
-        {
-            GenerateGate.Release();
-        }
+            NovelTranslationEngine.TranslateGemma =>
+                await TranslateWithTranslateGemmaAsync(chapter, targetLanguage, cancellationToken),
+            _ => await TranslateWithAiAsync(chapter, targetLanguage, cancellationToken)
+        };
     }
 
     public static IReadOnlyList<string> ChunkText(string text, int maxCharacters)
@@ -212,7 +206,166 @@ public sealed class NovelTranslationService(
         return chunks;
     }
 
-    private Task<NovelTranslation?> GetExactAsync(
+    private async Task<NovelTranslation> TranslateWithAiAsync(
+        NovelChapter chapter,
+        string targetLanguage,
+        CancellationToken cancellationToken)
+    {
+        var cached = await GetExactAiAsync(
+            chapter.Id,
+            chapter.SourceHash,
+            targetLanguage,
+            cancellationToken);
+
+        if (cached is not null)
+        {
+            if (translator is IAiUsageReporter usageReporter)
+            {
+                usageReporter.RecordCacheHit("novel-chapter-translation");
+            }
+
+            return cached;
+        }
+
+        await AiGenerateGate.WaitAsync(cancellationToken);
+        try
+        {
+            cached = await GetExactAiAsync(
+                chapter.Id,
+                chapter.SourceHash,
+                targetLanguage,
+                cancellationToken);
+
+            if (cached is not null)
+            {
+                if (translator is IAiUsageReporter usageReporter)
+                {
+                    usageReporter.RecordCacheHit("novel-chapter-translation");
+                }
+
+                return cached;
+            }
+
+            var translatedChunks = new List<string>();
+            foreach (var chunk in ChunkText(chapter.OriginalText, MaxChunkCharacters))
+            {
+                var translated = (await translator.TranslateAsync(
+                    chunk,
+                    targetLanguage,
+                    cancellationToken)).Trim();
+
+                if (translated.Length == 0)
+                {
+                    throw new InvalidOperationException(
+                        "AI translation returned an empty chapter segment.");
+                }
+
+                translatedChunks.Add(translated);
+            }
+
+            var completed = new NovelTranslation
+            {
+                ChapterId = chapter.Id,
+                TargetLanguage = targetLanguage,
+                ProviderId = translator.Id,
+                PromptVersion = PromptVersion,
+                SourceHash = chapter.SourceHash,
+                Text = string.Join("\n\n", translatedChunks),
+                CreatedAt = DateTime.UtcNow
+            };
+
+            db.NovelTranslations.Add(completed);
+            await db.SaveChangesAsync(cancellationToken);
+            return completed;
+        }
+        finally
+        {
+            AiGenerateGate.Release();
+        }
+    }
+
+    private async Task<NovelTranslation> TranslateWithTranslateGemmaAsync(
+        NovelChapter chapter,
+        string targetLanguage,
+        CancellationToken cancellationToken)
+    {
+        var options = TranslateGemmaOptions.FromConfiguration(configuration)
+            ?? throw new InvalidOperationException(
+                "TranslateGemma is not configured. Set TranslateGemma:Endpoint to an OpenAI-compatible local chat-completions endpoint.");
+
+        if (httpClientFactory is null)
+        {
+            throw new InvalidOperationException(
+                "TranslateGemma requires the configured HTTP client factory.");
+        }
+
+        var localTranslator = new TranslateGemmaNovelTranslator(httpClientFactory, options);
+        var cached = await GetExactTranslateGemmaAsync(
+            chapter.Id,
+            chapter.SourceHash,
+            targetLanguage,
+            localTranslator.Id,
+            cancellationToken);
+        if (cached is not null)
+        {
+            return cached;
+        }
+
+        await TranslateGemmaGenerateGate.WaitAsync(cancellationToken);
+        try
+        {
+            cached = await GetExactTranslateGemmaAsync(
+                chapter.Id,
+                chapter.SourceHash,
+                targetLanguage,
+                localTranslator.Id,
+                cancellationToken);
+            if (cached is not null)
+            {
+                return cached;
+            }
+
+            var paragraphs = NovelTextLayout.SplitParagraphs(chapter.OriginalText);
+            if (paragraphs.Count == 0)
+            {
+                throw new InvalidOperationException(
+                    "The chapter contains no text to translate.");
+            }
+
+            var translatedParagraphs = await localTranslator.TranslateParagraphsAsync(
+                paragraphs,
+                targetLanguage,
+                cancellationToken);
+
+            if (translatedParagraphs.Count != paragraphs.Count ||
+                translatedParagraphs.Any(string.IsNullOrWhiteSpace))
+            {
+                throw new InvalidOperationException(
+                    "TranslateGemma did not return a complete paragraph-aligned translation.");
+            }
+
+            var completed = new NovelTranslation
+            {
+                ChapterId = chapter.Id,
+                TargetLanguage = targetLanguage,
+                ProviderId = localTranslator.Id,
+                PromptVersion = TranslateGemmaPromptVersion,
+                SourceHash = chapter.SourceHash,
+                Text = string.Join("\n\n", translatedParagraphs),
+                CreatedAt = DateTime.UtcNow
+            };
+
+            db.NovelTranslations.Add(completed);
+            await db.SaveChangesAsync(cancellationToken);
+            return completed;
+        }
+        finally
+        {
+            TranslateGemmaGenerateGate.Release();
+        }
+    }
+
+    private Task<NovelTranslation?> GetExactAiAsync(
         Guid chapterId,
         string sourceHash,
         string targetLanguage,
@@ -222,6 +375,23 @@ public sealed class NovelTranslationService(
             .Where(x => x.ChapterId == chapterId &&
                 x.TargetLanguage == targetLanguage &&
                 x.PromptVersion == PromptVersion &&
+                x.SourceHash == sourceHash &&
+                !x.ProviderId.StartsWith(NovelTranslationProviders.TranslateGemmaPrefix))
+            .OrderByDescending(x => x.CreatedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+
+    private Task<NovelTranslation?> GetExactTranslateGemmaAsync(
+        Guid chapterId,
+        string sourceHash,
+        string targetLanguage,
+        string providerId,
+        CancellationToken cancellationToken) =>
+        db.NovelTranslations
+            .AsNoTracking()
+            .Where(x => x.ChapterId == chapterId &&
+                x.TargetLanguage == targetLanguage &&
+                x.ProviderId == providerId &&
+                x.PromptVersion == TranslateGemmaPromptVersion &&
                 x.SourceHash == sourceHash)
             .OrderByDescending(x => x.CreatedAt)
             .FirstOrDefaultAsync(cancellationToken);
@@ -238,6 +408,357 @@ public sealed class NovelTranslationService(
         }
 
         return maxCharacters;
+    }
+}
+
+public sealed record TranslateGemmaOptions(
+    Uri Endpoint,
+    string Model,
+    int MaxChunkCharacters,
+    TimeSpan RequestTimeout)
+{
+    public const string SectionName = "TranslateGemma";
+    private const string DefaultModel = "translategemma-12b-it";
+
+    public static TranslateGemmaOptions? FromConfiguration(IConfiguration? configuration)
+    {
+        var endpointValue = configuration?[$"{SectionName}:Endpoint"]?.Trim();
+        if (string.IsNullOrWhiteSpace(endpointValue))
+        {
+            return null;
+        }
+
+        if (!Uri.TryCreate(endpointValue, UriKind.Absolute, out var endpoint) ||
+            (endpoint.Scheme != Uri.UriSchemeHttp && endpoint.Scheme != Uri.UriSchemeHttps))
+        {
+            throw new InvalidOperationException(
+                "TranslateGemma:Endpoint must be an absolute HTTP or HTTPS URL.");
+        }
+
+        var model = configuration?[$"{SectionName}:Model"]?.Trim();
+        if (string.IsNullOrWhiteSpace(model))
+        {
+            model = DefaultModel;
+        }
+
+        if (model.Length > 200)
+        {
+            throw new InvalidOperationException(
+                "TranslateGemma:Model must not exceed 200 characters.");
+        }
+
+        var maxChunkCharacters = 3200;
+        if (int.TryParse(
+                configuration?[$"{SectionName}:MaxChunkCharacters"],
+                out var configuredChunkCharacters))
+        {
+            maxChunkCharacters = Math.Clamp(configuredChunkCharacters, 800, 6000);
+        }
+
+        var timeoutMinutes = 30;
+        if (int.TryParse(
+                configuration?[$"{SectionName}:TimeoutMinutes"],
+                out var configuredTimeoutMinutes))
+        {
+            timeoutMinutes = Math.Clamp(configuredTimeoutMinutes, 1, 120);
+        }
+
+        return new TranslateGemmaOptions(
+            endpoint,
+            model,
+            maxChunkCharacters,
+            TimeSpan.FromMinutes(timeoutMinutes));
+    }
+}
+
+public sealed class TranslateGemmaNovelTranslator
+{
+    private const string MarkerPrefix = "[[JULARR-P";
+    private readonly IHttpClientFactory httpClientFactory;
+    private readonly TranslateGemmaOptions options;
+
+    public TranslateGemmaNovelTranslator(
+        IHttpClientFactory httpClientFactory,
+        TranslateGemmaOptions options)
+    {
+        this.httpClientFactory = httpClientFactory;
+        this.options = options;
+        Id = BuildProviderId(options);
+    }
+
+    public string Id { get; }
+
+    public async Task<IReadOnlyList<string>> TranslateParagraphsAsync(
+        IReadOnlyList<string> paragraphs,
+        string targetLanguage,
+        CancellationToken cancellationToken)
+    {
+        var translated = new List<string>(paragraphs.Count);
+        string? previousSource = null;
+        string? previousTranslation = null;
+
+        var batch = new List<string>();
+        var batchCharacters = 0;
+
+        async Task FlushBatchAsync()
+        {
+            if (batch.Count == 0)
+            {
+                return;
+            }
+
+            var result = await TranslateBatchAsync(
+                batch,
+                targetLanguage,
+                previousSource,
+                previousTranslation,
+                cancellationToken);
+
+            if (result is null)
+            {
+                result = [];
+                foreach (var paragraph in batch)
+                {
+                    var single = await TranslateSingleAsync(
+                        paragraph,
+                        targetLanguage,
+                        previousSource,
+                        previousTranslation,
+                        cancellationToken);
+                    result.Add(single);
+                    previousSource = paragraph;
+                    previousTranslation = single;
+                }
+            }
+            else
+            {
+                previousSource = batch[^1];
+                previousTranslation = result[^1];
+            }
+
+            translated.AddRange(result);
+            batch.Clear();
+            batchCharacters = 0;
+        }
+
+        foreach (var paragraph in paragraphs)
+        {
+            if (paragraph.Length > options.MaxChunkCharacters)
+            {
+                await FlushBatchAsync();
+
+                var parts = NovelTranslationService.ChunkText(
+                    paragraph,
+                    options.MaxChunkCharacters);
+                var partTranslations = new List<string>(parts.Count);
+                foreach (var part in parts)
+                {
+                    var partTranslation = await TranslateSingleAsync(
+                        part,
+                        targetLanguage,
+                        previousSource,
+                        previousTranslation,
+                        cancellationToken);
+                    partTranslations.Add(partTranslation);
+                    previousSource = part;
+                    previousTranslation = partTranslation;
+                }
+
+                var joined = string.Join(" ", partTranslations);
+                translated.Add(joined);
+                previousSource = paragraph;
+                previousTranslation = joined;
+                continue;
+            }
+
+            var addedCharacters = paragraph.Length + (batch.Count == 0 ? 0 : 2);
+            if (batch.Count > 0 &&
+                batchCharacters + addedCharacters > options.MaxChunkCharacters)
+            {
+                await FlushBatchAsync();
+            }
+
+            batch.Add(paragraph);
+            batchCharacters += paragraph.Length + (batch.Count == 1 ? 0 : 2);
+        }
+
+        await FlushBatchAsync();
+        return translated;
+    }
+
+    private async Task<List<string>?> TranslateBatchAsync(
+        IReadOnlyList<string> paragraphs,
+        string targetLanguage,
+        string? previousSource,
+        string? previousTranslation,
+        CancellationToken cancellationToken)
+    {
+        var source = new StringBuilder();
+        for (var index = 0; index < paragraphs.Count; index++)
+        {
+            if (source.Length > 0)
+            {
+                source.AppendLine();
+            }
+
+            source.Append(Marker(index))
+                .AppendLine()
+                .Append(paragraphs[index]);
+        }
+
+        var content = await SendAsync(
+            BuildSystemPrompt(targetLanguage, preserveMarkers: true),
+            BuildUserPrompt(source.ToString(), previousSource, previousTranslation),
+            cancellationToken);
+
+        var result = new List<string>(paragraphs.Count);
+        for (var index = 0; index < paragraphs.Count; index++)
+        {
+            var marker = Marker(index);
+            var start = content.IndexOf(marker, StringComparison.Ordinal);
+            if (start < 0)
+            {
+                return null;
+            }
+
+            start += marker.Length;
+            var end = index + 1 < paragraphs.Count
+                ? content.IndexOf(Marker(index + 1), start, StringComparison.Ordinal)
+                : content.Length;
+            if (end < start)
+            {
+                return null;
+            }
+
+            var paragraph = content[start..end].Trim();
+            if (paragraph.Length == 0)
+            {
+                return null;
+            }
+
+            result.Add(paragraph);
+        }
+
+        return result;
+    }
+
+    private Task<string> TranslateSingleAsync(
+        string source,
+        string targetLanguage,
+        string? previousSource,
+        string? previousTranslation,
+        CancellationToken cancellationToken) =>
+        SendAsync(
+            BuildSystemPrompt(targetLanguage, preserveMarkers: false),
+            BuildUserPrompt(source, previousSource, previousTranslation),
+            cancellationToken);
+
+    private async Task<string> SendAsync(
+        string systemPrompt,
+        string userPrompt,
+        CancellationToken cancellationToken)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(options.RequestTimeout);
+
+        var client = httpClientFactory.CreateClient();
+        using var request = new HttpRequestMessage(HttpMethod.Post, options.Endpoint)
+        {
+            Content = JsonContent.Create(new
+            {
+                model = options.Model,
+                messages = new object[]
+                {
+                    new { role = "system", content = systemPrompt },
+                    new { role = "user", content = userPrompt }
+                },
+                temperature = 0,
+                stream = false
+            })
+        };
+
+        using var response = await client.SendAsync(
+            request,
+            HttpCompletionOption.ResponseHeadersRead,
+            timeout.Token);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new InvalidOperationException(
+                $"TranslateGemma request failed with HTTP {(int)response.StatusCode}.");
+        }
+
+        await using var stream = await response.Content.ReadAsStreamAsync(timeout.Token);
+        using var document = await JsonDocument.ParseAsync(
+            stream,
+            cancellationToken: timeout.Token);
+
+        if (!document.RootElement.TryGetProperty("choices", out var choices) ||
+            choices.ValueKind != JsonValueKind.Array ||
+            choices.GetArrayLength() == 0 ||
+            !choices[0].TryGetProperty("message", out var message) ||
+            !message.TryGetProperty("content", out var contentElement))
+        {
+            throw new InvalidOperationException(
+                "TranslateGemma returned an invalid OpenAI-compatible response.");
+        }
+
+        var content = contentElement.GetString()?.Trim();
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            throw new InvalidOperationException(
+                "TranslateGemma returned an empty translation.");
+        }
+
+        return content;
+    }
+
+    private static string BuildSystemPrompt(
+        string targetLanguage,
+        bool preserveMarkers) =>
+        $"Translate literary prose into {targetLanguage}. " +
+        "Preserve meaning, tone, dialogue, names, honorifics and paragraph order. " +
+        "Do not summarize, explain, censor, add facts or output commentary. " +
+        (preserveMarkers
+            ? $"Every marker beginning with {MarkerPrefix} must be copied exactly and each marker must be followed by exactly one translated paragraph. Do not merge, remove or reorder marked paragraphs."
+            : "Return only the translated passage.");
+
+    private static string BuildUserPrompt(
+        string source,
+        string? previousSource,
+        string? previousTranslation)
+    {
+        if (string.IsNullOrWhiteSpace(previousSource) ||
+            string.IsNullOrWhiteSpace(previousTranslation))
+        {
+            return source;
+        }
+
+        return "Context from the immediately preceding paragraph. Use it only for consistency; do not output it.\n" +
+            "PREVIOUS SOURCE:\n" + previousSource + "\n" +
+            "PREVIOUS TRANSLATION:\n" + previousTranslation + "\n\n" +
+            "TEXT TO TRANSLATE:\n" + source;
+    }
+
+    private static string Marker(int index) => $"{MarkerPrefix}{index:D4}]]";
+
+    private static string BuildProviderId(TranslateGemmaOptions options)
+    {
+        var safeModel = new string(options.Model
+            .Where(character => char.IsLetterOrDigit(character) || character is '-' or '_' or '.')
+            .Take(36)
+            .ToArray());
+        if (safeModel.Length == 0)
+        {
+            safeModel = "model";
+        }
+
+        var fingerprintSource = $"{options.Endpoint.AbsoluteUri}|{options.Model}";
+        var fingerprint = Convert.ToHexString(
+                SHA256.HashData(Encoding.UTF8.GetBytes(fingerprintSource)))
+            .ToLowerInvariant()[..12];
+
+        return $"{NovelTranslationProviders.TranslateGemmaPrefix}{safeModel}:{fingerprint}";
     }
 }
 
