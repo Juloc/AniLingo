@@ -46,19 +46,19 @@ public sealed class AcquisitionModel(
 
     public async Task OnGetAsync(CancellationToken cancellationToken) => await LoadAsync(cancellationToken);
 
-    public string ImportModeLabel(AnimeImportMode mode) => mode switch
+    public string ImportModeLabel(ImportMode mode) => mode switch
     {
-        AnimeImportMode.Move => Ui["settings.acquisition.importMode.move"],
-        AnimeImportMode.Copy => Ui["settings.acquisition.importMode.copy"],
-        AnimeImportMode.Hardlink => Ui["settings.acquisition.importMode.hardlink"],
-        AnimeImportMode.HardlinkOrCopy => Ui["settings.acquisition.importMode.hardlinkOrCopy"],
+        ImportMode.Move => Ui["settings.acquisition.importMode.move"],
+        ImportMode.Copy => Ui["settings.acquisition.importMode.copy"],
+        ImportMode.Hardlink => Ui["settings.acquisition.importMode.hardlink"],
+        ImportMode.HardlinkOrCopy => Ui["settings.acquisition.importMode.hardlinkOrCopy"],
         _ => mode.ToString()
     };
 
     public async Task<IActionResult> OnPostImportModeAsync(
-        AnimeImportMode defaultImportMode,
+        ImportMode defaultImportMode,
         Guid? rootId,
-        AnimeImportMode? rootImportMode,
+        ImportMode? rootImportMode,
         CancellationToken cancellationToken)
     {
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
@@ -66,7 +66,7 @@ public sealed class AcquisitionModel(
         await importSettings.UpdateAsync(
             state =>
             {
-                var roots = new Dictionary<Guid, AnimeImportMode>(state.RootImportModes);
+                var roots = new Dictionary<Guid, ImportMode>(state.RootImportModes);
                 if (rootId is { } id)
                 {
                     if (rootImportMode is { } mode)

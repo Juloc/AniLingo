@@ -34,7 +34,7 @@
             <label>
                 <span>@ui["settings.acquisition.defaultImportModeLabel"]</span>
                 <select name="defaultImportMode">
-                    @foreach (var mode in Enum.GetValues<AnimeImportMode>())
+                            @foreach (var mode in Enum.GetValues<ImportMode>())
                     {
                         <option value="@mode" selected="@(Model.ImportSettings.DefaultImportMode == mode)">@Model.ImportModeLabel(mode)</option>
                     }
@@ -59,7 +59,7 @@
                                     <input type="hidden" name="rootId" value="@root.Id" />
                                     <select name="rootImportMode">
                                         <option value="">@ui["settings.acquisition.usesDefault"]</option>
-                                        @foreach (var mode in Enum.GetValues<AnimeImportMode>())
+                                @foreach (var mode in Enum.GetValues<ImportMode>())
                                         {
                                             <option value="@mode" selected="@(Model.ImportSettings.RootImportModes.TryGetValue(root.Id, out var current) && current == mode)">@Model.ImportModeLabel(mode)</option>
                                         }

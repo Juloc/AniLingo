@@ -1,4 +1,5 @@
 using Jularr.Web.Features.Acquisition.DownloadClients;
+using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Acquisition.Indexers;
 using Jularr.Web.Features.Acquisition.Prowlarr;
 using Jularr.Web.Features.Acquisition.Sabnzbd;
@@ -98,6 +99,8 @@ public sealed class AcquisitionSettingsMigrationTests
             Assert.AreEqual("secret-key", entry.Secret);
             Assert.AreEqual("books", entry.Settings.BooksCategory);
             Assert.AreEqual("anime", entry.Settings.AnimeCategory);
+            Assert.IsNull(entry.Settings.CategoryFor(MediaAcquisitionKind.Manga));
+            Assert.IsNull(entry.Settings.CategoryFor(MediaAcquisitionKind.LightNovel));
         }
         finally
         {
