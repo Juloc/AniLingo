@@ -1,9 +1,5 @@
 /* Chapter artwork management page and the reader header image slot. */
 
-.chapter-art-message {
-    margin: 0 0 16px;
-}
-
 .chapter-art-check {
     display: flex;
     gap: 8px;

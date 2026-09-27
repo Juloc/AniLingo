@@ -31,7 +31,6 @@ public sealed class SubtitlesModel(
     [BindProperty]
     public string JimakuApiKey { get; set; } = "";
 
-    public string? StatusMessage => TempData["Status"] as string;
     public string? ErrorMessage => TempData["Error"] as string;
 
     public async Task<IActionResult> OnGetAsync(CancellationToken cancellationToken)

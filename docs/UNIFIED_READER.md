@@ -285,8 +285,16 @@ than separate reader chrome.
   (#487). Legacy readers without the frame get a generated "Sprache" action
   only when a `[data-reader-language-control]` exists; it toggles
   `.reader-language-expanded` and reports `aria-expanded`.
+- Pages mode lets paragraphs flow across pages (orphans/widows 2); headings,
+  scene breaks and illustrations stay whole (#501). The paged anchor is the
+  first paragraph visible on the page plus the character offset of its first
+  character on that page, so progress, bookmarks, resizes, font changes and
+  reopening land on the same page even inside a split paragraph.
 - Panels, menus and cards mark state with background, weight or an icon; they
-  do not use coloured left-edge stripes.
+  do not use coloured left-edge stripes (`CssAccentStripeTests` checks every
+  stylesheet).
+- The Sakura effect stays paused on every page with a reader frame
+  (`[data-reader-frame]`); navigation bursts only play outside the readers.
 - The appearance sheet shows the reading-mode, background, font & layout,
   colour-scheme and more-settings cards in one row from 1400 px; the background
   row scrolls sideways through the real `wwwroot/reader-backgrounds` themes.
