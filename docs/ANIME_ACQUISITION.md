@@ -59,14 +59,14 @@ monitored anime, recent decisions and recent imports.
 | Download status, progress, failure reason | the download client's Operation (`anime-sabnzbd-download`) |
 | Import plan, per-file result, manual-import state | `/data/acquisition/imports.json` (`AnimeImportStore`) |
 | Ownership (mode, Jularr/Sonarr jobs, owned paths) | `/data/acquisition/ownership.json` |
-| Import mode (global/per root), remote path mappings | `/data/acquisition/import-settings.json` (`AnimeImportSettingsStore`) |
+| Import mode (global/per root), remote path mappings, lossless playback optimization | `/data/acquisition/import-settings.json` (`AnimeImportSettingsStore`) |
 | Tag catalog, delay profiles, tag-scoped indexer restrictions | `/data/acquisition/acquisition-policy.json` (`AcquisitionPolicyStore`) |
 | Per-profile AniList Current/Planning auto-monitor opt-in | `/data/acquisition/anilist-auto-monitor.json` (`AniListAutoMonitorSettingsStore`) |
 | Per-episode grab/delay/import/upgrade history | the database (`AcquisitionHistoryEntry`, via `AcquisitionHistoryService`) |
 | Automation API keys (name, SHA-256 hash, created/last-used/revoked) — never the raw key | the database (`AcquisitionApiKey`, via `AcquisitionApiKeyService`) |
 | Episodes and files | the library database, updated only by the library scanner |
 
-`/Settings/Acquisition` is the one place to edit import mode, remote path mappings, tags, delay
+`/Settings/Acquisition` is the one place to edit import mode, playback optimization, remote path mappings, tags, delay
 profiles, indexer restrictions, the current profile's AniList auto-monitor rule, and to export or
 restore a JSON backup of every store above except `health.json` (runtime health state, not a
 setting, so it is never part of the backup). Indexer and download client API keys/passwords travel
@@ -161,6 +161,10 @@ When an anime download completes, the SABnzbd monitor hands it to `AnimeImportEx
    the new file is in place.
 7. Reconcile only that anime's folder with the library scanner, so the episode appears with the
    planned numbering.
+8. When *Lossless playback optimization* is enabled, queue one `media-optimization` operation for
+   the imported files. It runs after the import, remuxes to MP4 without re-encoding only when that
+   widens browser Direct Play and nothing is lost, and otherwise keeps the file as downloaded
+   (see [ADMIN_OPERATIONS.md](ADMIN_OPERATIONS.md#lossless-playback-optimization)).
 
 The result is kept as an import record and logged on an `anime-import` operation (module `Import`).
 

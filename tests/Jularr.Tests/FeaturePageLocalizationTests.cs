@@ -63,6 +63,7 @@ public sealed partial class FeaturePageLocalizationTests
     [
         "Library",
         "Novels",
+        "Calendar",
         Path.Combine("Settings", "DownloadClients"),
         Path.Combine("Settings", "Indexers")
     ];

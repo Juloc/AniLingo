@@ -5,6 +5,7 @@ using System.Text.Json.Serialization;
 using Jularr.Web.Features.Ai;
 using Jularr.Web.Features.Books;
 using Jularr.Web.Features.Novels;
+using Jularr.Web.Features.StoryContext;
 
 namespace Jularr.Web.Infrastructure.Ai;
 
@@ -12,7 +13,7 @@ public sealed class OpenAiCompatibleProvider(
     HttpClient httpClient,
     AiProfileSettings settings,
     Action<AiUsageMeasurement>? usageSink = null)
-    : IAiProvider, IAiSentenceExplainer, INovelTranslator, IBookTranslator, INovelMappingSuggester
+    : IAiProvider, IAiSentenceExplainer, INovelTranslator, IBookTranslator, INovelMappingSuggester, IStoryContextExtractor
 {
     private static readonly JsonSerializerOptions JsonOptions =
         new(JsonSerializerDefaults.Web)
@@ -179,6 +180,20 @@ public sealed class OpenAiCompatibleProvider(
             cancellationToken);
 
         return DeserializeJson<BookTranslationMemoryDelta>(json);
+    }
+
+    public async Task<StoryChapterExtraction> ExtractChapterAsync(
+        StoryChapterExtractionRequest request,
+        CancellationToken cancellationToken)
+    {
+        var json = await CompleteAsync(
+            StoryContextExtractionPrompt.Operation,
+            StoryContextExtractionPrompt.Instructions + " " + StoryContextExtractionPrompt.JsonShape,
+            StoryContextExtractionPrompt.BuildInput(request),
+            cancellationToken);
+
+        return StoryContextExtractionPrompt.Map(
+            DeserializeJson<StoryContextExtractionPrompt.Result>(json));
     }
 
     public async Task<IReadOnlyList<NovelMappingSuggestion>> SuggestMappingsAsync(
