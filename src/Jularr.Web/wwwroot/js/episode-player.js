@@ -514,7 +514,8 @@
         playbackSummary.textContent = plan ? compactStatus() : text["playback.status.checking"] || "";
         renderReasons();
         renderDiagnostics();
-        root.dataset.playbackMode = plan?.mode || "";
+        // Not "playbackMode": data-playback-mode is the mode selector inside this root.
+        root.dataset.playbackDelivery = plan?.mode || "";
     };
 
     const hideVideo = () => {
