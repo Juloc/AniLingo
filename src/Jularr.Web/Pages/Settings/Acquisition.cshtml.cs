@@ -8,6 +8,7 @@ using Jularr.Web.Features.Acquisition.Policy;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Library;
 using Jularr.Web.Features.Localization;
+using Jularr.Web.Features.Media.Optimization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -17,7 +18,7 @@ namespace Jularr.Web.Pages.Settings;
 
 /// <summary>
 /// The one settings page for the P1 import/policy backlog: import mode (global and per library
-/// root), remote path mappings, tags, delay profiles, tag-scoped indexer restrictions, the current
+/// root), post-import playback optimization, remote path mappings, tags, delay profiles, tag-scoped indexer restrictions, the current
 /// profile's AniList list auto-monitor rule, and acquisition settings backup/restore.
 /// </summary>
 [Authorize(Roles = AccountRoles.Owner)]
@@ -82,6 +83,30 @@ public sealed class AcquisitionModel(
             },
             cancellationToken);
         TempData["AcquisitionSettingsNotice"] = Ui["settings.acquisition.status.importModeSaved"];
+        return RedirectToPage();
+    }
+
+    public string PlaybackOptimizationLabel(LosslessPlaybackOptimizationMode mode) => mode switch
+    {
+        LosslessPlaybackOptimizationMode.Off => Ui["settings.acquisition.playbackOptimization.off"],
+        LosslessPlaybackOptimizationMode.SafeOnly => Ui["settings.acquisition.playbackOptimization.safeOnly"],
+        _ => mode.ToString()
+    };
+
+    public async Task<IActionResult> OnPostPlaybackOptimizationAsync(
+        LosslessPlaybackOptimizationMode playbackOptimization,
+        CancellationToken cancellationToken)
+    {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+        if (!Enum.IsDefined(playbackOptimization))
+        {
+            return BadRequest();
+        }
+
+        await importSettings.UpdateAsync(
+            state => state with { PlaybackOptimization = playbackOptimization },
+            cancellationToken);
+        TempData["AcquisitionSettingsNotice"] = Ui["settings.acquisition.status.playbackOptimizationSaved"];
         return RedirectToPage();
     }
 

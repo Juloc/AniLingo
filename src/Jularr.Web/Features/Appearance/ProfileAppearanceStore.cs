@@ -6,10 +6,13 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Web.Features.Appearance;
 
-/// <summary>A profile's appearance: theme mode and optional accent seed (null = Jularr red).</summary>
-public sealed record ProfileAppearance(string ThemeMode, string? AccentColor)
+/// <summary>
+/// A profile's appearance: theme mode, optional accent seed (null = Jularr red) and the Sakura
+/// particle effect density (#387).
+/// </summary>
+public sealed record ProfileAppearance(string ThemeMode, string? AccentColor, string SakuraMode)
 {
-    public static ProfileAppearance Default { get; } = new(AppTheme.System, null);
+    public static ProfileAppearance Default { get; } = new(AppTheme.System, null, AppSakura.Default);
 
     public AccentPalette Palette => AccentPalette.Build(AccentColor);
 }
@@ -33,7 +36,7 @@ public sealed class ProfileAppearanceStore(AppDbContext db)
             await using var command = connection.CreateCommand();
             command.CommandText =
                 """
-                SELECT "ThemeMode", "AccentColor"
+                SELECT "ThemeMode", "AccentColor", "SakuraMode"
                 FROM "UiProfileThemes"
                 WHERE "ProfileId" = $profileId
                 LIMIT 1;
@@ -48,9 +51,11 @@ public sealed class ProfileAppearanceStore(AppDbContext db)
 
             var mode = AppTheme.NormalizeOrSystem(reader.IsDBNull(0) ? null : reader.GetString(0));
             var accent = reader.IsDBNull(1) ? null : reader.GetString(1);
+            var sakura = AppSakura.NormalizeOrDefault(reader.IsDBNull(2) ? null : reader.GetString(2));
             return new ProfileAppearance(
                 mode,
-                AppAccent.TryNormalize(accent, out var normalized) ? normalized : null);
+                AppAccent.TryNormalize(accent, out var normalized) ? normalized : null,
+                sakura);
         }, cancellationToken);
     }
 
@@ -78,6 +83,36 @@ public sealed class ProfileAppearanceStore(AppDbContext db)
                 """;
             Add(command, "$profileId", profileId);
             Add(command, "$theme", normalized);
+            Add(command, "$updatedAt", DateTime.UtcNow);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+            return true;
+        }, cancellationToken);
+    }
+
+    public async Task SetSakuraAsync(
+        string profileId,
+        string sakuraMode,
+        CancellationToken cancellationToken)
+    {
+        RequireProfile(profileId);
+        if (!AppSakura.TryNormalize(sakuraMode, out var normalized))
+        {
+            throw new ArgumentException("Sakura mode must be off, subtle or full.", nameof(sakuraMode));
+        }
+
+        await WithConnectionAsync(async connection =>
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText =
+                """
+                INSERT INTO "UiProfileThemes" ("ProfileId", "ThemeMode", "SakuraMode", "UpdatedAt")
+                VALUES ($profileId, 'system', $sakura, $updatedAt)
+                ON CONFLICT("ProfileId") DO UPDATE SET
+                    "SakuraMode" = excluded."SakuraMode",
+                    "UpdatedAt" = excluded."UpdatedAt";
+                """;
+            Add(command, "$profileId", profileId);
+            Add(command, "$sakura", normalized);
             Add(command, "$updatedAt", DateTime.UtcNow);
             await command.ExecuteNonQueryAsync(cancellationToken);
             return true;

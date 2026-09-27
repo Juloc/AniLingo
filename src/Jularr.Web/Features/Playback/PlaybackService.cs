@@ -3,6 +3,7 @@ using Jularr.Web.Data;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Learning;
 using Jularr.Web.Features.Library;
+using Jularr.Web.Features.Media.Compatibility;
 using Jularr.Web.Features.MediaSegments;
 using Jularr.Web.Features.Storage;
 using Jularr.Web.Features.Subtitles;
@@ -889,38 +890,16 @@ public sealed class PlaybackService
                 x.LastWriteTimeUtc))
             .FirstOrDefaultAsync(cancellationToken);
 
-    private static bool IsUniversalDirect(string path, PlaybackProbeResult probe)
-    {
-        var extension = Path.GetExtension(path).ToLowerInvariant();
-
-        if (extension is ".mp4" or ".m4v" or ".mov")
-        {
-            return string.Equals(
-                       probe.VideoCodec,
-                       "h264",
-                       StringComparison.OrdinalIgnoreCase) &&
-                   (probe.PixelFormat is "yuv420p" or "yuvj420p") &&
-                   IsOneOf(probe.AudioCodec, null, "aac", "mp3");
-        }
-
-        if (extension == ".webm")
-        {
-            return IsOneOf(probe.VideoCodec, "vp8", "vp9", "av1") &&
-                   IsOneOf(probe.AudioCodec, null, "opus", "vorbis");
-        }
-
-        if (extension is ".ogg" or ".ogv")
-        {
-            return IsOneOf(probe.VideoCodec, "theora", "vp8") &&
-                   IsOneOf(probe.AudioCodec, null, "vorbis", "opus");
-        }
-
-        return false;
-    }
-
-    private static bool IsOneOf(string? value, params string?[] choices) =>
-        choices.Any(choice =>
-            string.Equals(value, choice, StringComparison.OrdinalIgnoreCase));
+    private static bool IsUniversalDirect(string path, PlaybackProbeResult probe) =>
+        MediaPlaybackCompatibility.Evaluate(
+                PlaybackClientProfiles.BrowserBaseline,
+                new MediaPlaybackCharacteristics(
+                    MediaContainers.FromPath(path),
+                    probe.VideoCodec,
+                    null,
+                    probe.PixelFormat,
+                    probe.AudioCodec))
+            .CanDirectPlay;
 
     private static bool IsHevc(string? codec) =>
         string.Equals(codec, "hevc", StringComparison.OrdinalIgnoreCase) ||

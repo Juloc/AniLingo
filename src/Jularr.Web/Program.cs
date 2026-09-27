@@ -21,6 +21,7 @@ using Jularr.Web.Features.ClientApi;
 using Jularr.Web.Features.Learning;
 using Jularr.Web.Features.Learning.LanguageAssistance;
 using Jularr.Web.Features.Library;
+using Jularr.Web.Features.Media.Optimization;
 using Jularr.Web.Features.MediaMapping;
 using Jularr.Web.Features.MediaSegments;
 using Jularr.Web.Features.Metadata;
@@ -34,6 +35,7 @@ using Jularr.Web.Features.ReaderThemes;
 using Jularr.Web.Features.Sonarr;
 using Jularr.Web.Features.Statistics;
 using Jularr.Web.Features.Storage;
+using Jularr.Web.Features.StoryContext;
 using Jularr.Web.Features.Subtitles;
 using Jularr.Web.Features.Tracking;
 using Jularr.Web.Features.Vocabulary;
@@ -224,6 +226,12 @@ builder.Services.AddSingleton<MediaProcessRunner>();
 builder.Services.AddScoped<LibraryScanner>();
 builder.Services.AddSingleton<IMediaProbeRunner, FfprobeMediaProbeRunner>();
 builder.Services.AddSingleton<MediaInventoryService>();
+builder.Services.AddSingleton<IMediaContainerRemuxer, FfmpegMediaContainerRemuxer>();
+builder.Services.AddSingleton(_ => new MediaOptimizationJournal("/data/media-optimization"));
+builder.Services.AddSingleton<MediaOptimizationQueue>();
+builder.Services.AddScoped<MediaContainerOptimizer>();
+builder.Services.AddScoped<IMediaFileReplacementParticipant, AcquisitionMediaReplacementParticipant>();
+builder.Services.AddHostedService<MediaOptimizationRecoveryService>();
 builder.Services.AddSingleton<LibraryScanCoordinator>();
 builder.Services.AddHostedService<LibraryStartupScanService>();
 builder.Services.AddHostedService<LibraryWatchService>();
@@ -438,6 +446,10 @@ builder.Services.AddScoped<IAiSentenceExplainer>(services => services.GetRequire
 builder.Services.AddScoped<INovelTranslator>(services => services.GetRequiredService<ProfileAiProviderRouter>());
 builder.Services.AddScoped<IBookTranslator>(services => services.GetRequiredService<ProfileAiProviderRouter>());
 builder.Services.AddScoped<INovelMappingSuggester>(services => services.GetRequiredService<ProfileAiProviderRouter>());
+builder.Services.AddScoped<IStoryContextExtractor>(services => services.GetRequiredService<ProfileAiProviderRouter>());
+builder.Services.AddSingleton(services => StoryContextStore.FromConfiguration(services.GetRequiredService<IConfiguration>()));
+builder.Services.AddSingleton<StoryContextSnapshotCache>();
+builder.Services.AddScoped<StoryContextService>();
 builder.Services.AddScoped<AiSentenceExplanationService>();
 
 builder.Services.AddSingleton<BackgroundJobQueue>();
@@ -489,6 +501,13 @@ try
     await DownloadClientSettingsMigration.RunAtStartupAsync(
         app.Services,
         message => Console.WriteLine($"[Jularr] {DateTimeOffset.UtcNow:O} {message}"));
+    var migratedBibles = await BookTranslationMemoryStore
+        .FromConfiguration(app.Configuration)
+        .MigrateLegacyAsync(CancellationToken.None);
+    if (migratedBibles > 0)
+    {
+        Console.WriteLine($"[Jularr] {DateTimeOffset.UtcNow:O} Moved {migratedBibles} translation bible(s) into the shared story context.");
+    }
     Console.WriteLine($"[Jularr] {DateTimeOffset.UtcNow:O} Database ready. Starting web server.");
 }
 catch (Exception ex)

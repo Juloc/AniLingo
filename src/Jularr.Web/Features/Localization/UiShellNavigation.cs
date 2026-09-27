@@ -60,6 +60,9 @@ public static class UiNavigationCatalog
         new("admin", "nav.admin", "/Admin", "admin", OwnerOnly: true)
     ];
 
+    /// <summary>Readers whose sidebar shows the open book, novel or manga with its progress.</summary>
+    public static readonly string[] CurrentReadingRoots = ["/Books/Read", "/Novels/Read", "/Manga/Read"];
+
     /// <summary>Phone bottom bar, in order; the first id that is present wins each slot.</summary>
     public static readonly string[][] MobilePrimarySlots =
     [
@@ -142,7 +145,8 @@ public sealed record UiShellNavigation(
     IReadOnlyList<UiNavigationItem> Secondary,
     IReadOnlyList<UiNavigationItem> MobilePrimary,
     IReadOnlyList<UiNavigationItem> MobileMore,
-    UiNavigationContext? Context = null)
+    UiNavigationContext? Context = null,
+    bool ShowCurrentReading = false)
 {
     public const int MaxMobilePrimaryItems = 4;
 
@@ -188,7 +192,8 @@ public sealed record UiShellNavigation(
                 ? BuildContext("settings", "nav.settings", UiNavigationCatalog.Settings, path, Visible)
                 : null;
 
-        return new UiShellNavigation(primary, secondary, mobilePrimary, mobileMore, context);
+        var showCurrentReading = context is null && IsUnder(path, UiNavigationCatalog.CurrentReadingRoots);
+        return new UiShellNavigation(primary, secondary, mobilePrimary, mobileMore, context, showCurrentReading);
     }
 
     private static UiNavigationContext BuildContext(
