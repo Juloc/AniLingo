@@ -49,7 +49,7 @@ public sealed record MediaArtworkAsset(
         (file.LastWriteTimeUtc - FileLastWriteTimeUtc).Duration() <= TimestampTolerance;
 }
 
-/// <summary>Persistence of <see cref="MediaArtworkAsset"/> rows (table from migration 20260927180000).</summary>
+/// <summary>Persistence of <see cref="MediaArtworkAsset"/> rows (table from migration 20260927190000).</summary>
 public sealed class MediaArtworkAssetStore(AppDbContext db)
 {
     public Task<IReadOnlyList<MediaArtworkAsset>> ListAsync(

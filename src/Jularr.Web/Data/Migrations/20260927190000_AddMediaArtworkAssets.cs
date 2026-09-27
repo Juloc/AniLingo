@@ -12,7 +12,7 @@ namespace Jularr.Web.Data.Migrations;
 /// renamed series folder keeps its rows.
 /// </summary>
 [DbContext(typeof(AppDbContext))]
-[Migration("20260927180000_AddMediaArtworkAssets")]
+[Migration("20260927190000_AddMediaArtworkAssets")]
 public sealed class AddMediaArtworkAssets : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)
