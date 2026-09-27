@@ -3,12 +3,18 @@ using Jularr.Web.Features.Novels;
 
 namespace Jularr.Web.Features.ReadingSources;
 
+/// <summary>
+/// One reading source. <see cref="Name"/> is the source's own brand name; its user-facing
+/// description lives in the UI catalog under <see cref="DescriptionKey"/>.
+/// </summary>
 public sealed record ReadingSourceDefinition(
     string Key,
     string Name,
-    string Description,
     bool SupportsDirectImport,
-    int DefaultPriority);
+    int DefaultPriority)
+{
+    public string DescriptionKey => $"readingSources.source.{Key}.description";
+}
 
 public sealed record ReadingSourcePreference(
     bool Enabled,
@@ -53,13 +59,11 @@ public static class ReadingSourceCatalog
         new(
             NcodeNovelSourceProvider.ProviderKey,
             "Shōsetsuka ni Narō",
-            "Public web novels · direct readable source",
             SupportsDirectImport: true,
             DefaultPriority: 10),
         new(
             NovelAniListProvider.ProviderKey,
             "AniList",
-            "Published light novels · canonical metadata and acquisition",
             SupportsDirectImport: false,
             DefaultPriority: 20)
     ];

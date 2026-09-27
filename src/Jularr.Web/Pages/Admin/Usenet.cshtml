@@ -1,5 +1,6 @@
 @page
 @model Jularr.Web.Pages.Admin.UsenetModel
+@using Jularr.Web.Features.Acquisition.Access
 @using Jularr.Web.Pages.Admin
 @{
     var ui = Model.Ui;
@@ -26,6 +27,13 @@
         _ => $"{bytes.Value / 1024d:0} KB"
     };
     var picked = Model.TestResult?.Picked;
+    string ClientCategoryLabel(MediaAcquisitionKind kind) => kind switch
+    {
+        MediaAcquisitionKind.Anime => ui["admin.usenet.animeCategory"],
+        MediaAcquisitionKind.Book => ui["admin.usenet.booksCategory"],
+        MediaAcquisitionKind.Manga => ui["settings.downloadClients.field.mangaCategory"],
+        _ => ui["settings.downloadClients.field.lightNovelCategory"]
+    };
 }
 @section Head {
     <link rel="stylesheet" href="~/css/acquisition.css" asp-append-version="true" />
@@ -102,8 +110,10 @@
                         <span class="status-pill @healthClass">@healthLabel</span>
                     </div>
                     <dl class="usenet-facts">
-                        <div><dt>@ui["admin.usenet.animeCategories"]</dt><dd>@string.Join(", ", card.Entry.Settings.Categories)</dd></div>
-                        <div><dt>@ui["admin.usenet.bookCategories"]</dt><dd>@string.Join(", ", card.Entry.Settings.EffectiveBookCategories)</dd></div>
+                        <div><dt>@ui["admin.usenet.animeCategories"]</dt><dd>@string.Join(", ", UsenetModel.SearchCategories(card.Entry, MediaAcquisitionKind.Anime))</dd></div>
+                        <div><dt>@ui["admin.usenet.bookCategories"]</dt><dd>@string.Join(", ", UsenetModel.SearchCategories(card.Entry, MediaAcquisitionKind.Book))</dd></div>
+                        <div><dt>@ui["admin.usenet.mangaCategories"]</dt><dd>@string.Join(", ", UsenetModel.SearchCategories(card.Entry, MediaAcquisitionKind.Manga))</dd></div>
+                        <div><dt>@ui["admin.usenet.lightNovelCategories"]</dt><dd>@string.Join(", ", UsenetModel.SearchCategories(card.Entry, MediaAcquisitionKind.LightNovel))</dd></div>
                         @if (card.Health is not null)
                         {
                             <div><dt>@ui["admin.usenet.lastChecked"]</dt><dd>@card.Health.LastCheckedUtc.ToLocalTime().ToString("g")</dd></div>
@@ -154,10 +164,10 @@
                     </div>
                     <dl class="usenet-facts">
                         <div><dt>@ui["admin.usenet.address"]</dt><dd>@card.Entry.Settings.BaseUrl</dd></div>
-                        <div><dt>@ui["admin.usenet.booksCategory"]</dt><dd>@(string.IsNullOrWhiteSpace(card.Entry.Settings.BooksCategory) ? ui["admin.usenet.defaultCategory"] : card.Entry.Settings.BooksCategory)</dd></div>
-                        <div><dt>@ui["admin.usenet.animeCategory"]</dt><dd>@(string.IsNullOrWhiteSpace(card.Entry.Settings.AnimeCategory) ? ui["admin.usenet.defaultCategory"] : card.Entry.Settings.AnimeCategory)</dd></div>
-                        <div><dt>@ui["settings.downloadClients.field.mangaCategory"]</dt><dd>@(string.IsNullOrWhiteSpace(card.Entry.Settings.MangaCategory) ? ui["admin.usenet.defaultCategory"] : card.Entry.Settings.MangaCategory)</dd></div>
-                        <div><dt>@ui["settings.downloadClients.field.lightNovelCategory"]</dt><dd>@(string.IsNullOrWhiteSpace(card.Entry.Settings.LightNovelCategory) ? ui["admin.usenet.defaultCategory"] : card.Entry.Settings.LightNovelCategory)</dd></div>
+                        @foreach (var kind in UsenetModel.DownloadKinds)
+                        {
+                            <div><dt>@ClientCategoryLabel(kind)</dt><dd>@(card.Entry.CategoryFor(kind) ?? ui["admin.usenet.defaultCategory"])</dd></div>
+                        }
                     </dl>
                     @if (card.Health is { IsHealthy: false, LastError: not null })
                     {
@@ -187,6 +197,13 @@
     </div>
     <p class="muted">@ui["admin.usenet.bookTestHelp"]</p>
     <form method="get" action="#book-test" class="usenet-booktest-form">
+        <select name="TestKind" aria-label="@ui["admin.usenet.searchTestKind"]">
+            @foreach (var kind in UsenetModel.TestKinds)
+            {
+                var value = AcquisitionAccessNames.Kind(kind);
+                <option value="@value" selected="@(kind == Model.TestMediaKind)">@ui[$"admin.requests.kind.{value}"]</option>
+            }
+        </select>
         <input name="TestTitle" value="@Model.TestTitle" placeholder="@ui["admin.usenet.bookTestTitle"]" aria-label="@ui["admin.usenet.bookTestTitle"]" required />
         <input name="TestAuthor" value="@Model.TestAuthor" placeholder="@ui["admin.usenet.bookTestAuthor"]" aria-label="@ui["admin.usenet.bookTestAuthor"]" />
         <button class="button button-primary" type="submit">@ui["admin.usenet.bookTestRun"]</button>

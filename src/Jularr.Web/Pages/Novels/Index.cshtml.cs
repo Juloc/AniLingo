@@ -449,8 +449,10 @@ public sealed class IndexModel(
         }
         catch (InvalidDataException exception)
         {
-            TempData["Status"] =
-                $"{exception.Message} Default source settings are being used.";
+            var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+            TempData["Status"] = ui.Format(
+                "novels.index.sourceSettingsInvalid",
+                ("error", exception.Message));
             return ReadingSourceSettingsState.Default;
         }
     }
