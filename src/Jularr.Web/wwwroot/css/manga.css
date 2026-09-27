@@ -103,7 +103,7 @@
 .manga-message {
     margin-bottom: 1rem;
     padding: .65rem .75rem;
-    border-left: 2px solid var(--accent);
+    border-radius: 8px;
     background: color-mix(in srgb, var(--accent) 6%, transparent);
     font-size: .82rem;
 }
@@ -382,7 +382,7 @@
 }
 
 .manga-chapter-row.current {
-    box-shadow: inset 2px 0 var(--accent);
+    background: color-mix(in srgb, var(--accent) 7%, transparent);
 }
 
 .manga-current-dot {
