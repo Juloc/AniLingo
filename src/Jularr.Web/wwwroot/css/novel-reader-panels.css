@@ -23,14 +23,6 @@
     border-bottom-left-radius: 0;
 }
 
-/* reader-themes.css lifts every direct child of a personalized reader with
-   position: relative; z-index: 1. Floating panels must keep their fixed
-   layer, otherwise they render in the document flow below the chapter. */
-.novel-reader-shell[data-reader-personalization] > .novel-drawer-backdrop {
-    position: fixed;
-    z-index: 75;
-}
-
 .novel-reader-shell[data-reader-personalization] > .novel-chapter-drawer,
 .novel-reader-shell[data-reader-personalization] > .novel-reader-notes {
     position: fixed;
@@ -45,18 +37,6 @@
 .novel-reader-shell[data-reader-personalization] > .novel-reader-toast {
     position: fixed;
     z-index: 110;
-}
-
-/* Reader drawers */
-.novel-drawer-lock {
-    overflow: hidden;
-}
-
-.novel-drawer-backdrop {
-    position: fixed;
-    z-index: 75;
-    inset: 0;
-    background: rgba(0, 0, 0, .42);
 }
 
 .novel-chapter-drawer,
@@ -82,7 +62,6 @@
     border-left: 1px solid var(--reader-border);
 }
 
-.novel-drawer-header,
 .novel-notes-header {
     min-height: 62px;
     display: flex;
@@ -100,32 +79,6 @@
 .novel-notes-nav {
     display: flex;
     gap: .15rem;
-}
-
-.novel-notes-tabs {
-    display: flex;
-    gap: .3rem;
-    overflow-x: auto;
-    padding: .6rem .85rem 0;
-}
-
-.novel-notes-tabs button {
-    flex: 0 0 auto;
-    padding: .35rem .65rem;
-    border: 1px solid var(--reader-border);
-    border-radius: 999px;
-    background: transparent;
-    color: var(--reader-muted);
-    font: inherit;
-    font-size: .74rem;
-    white-space: nowrap;
-    cursor: pointer;
-}
-
-.novel-notes-tabs button[aria-selected="true"] {
-    border-color: var(--reader-accent);
-    color: var(--reader-text);
-    background: color-mix(in srgb, var(--reader-accent) 12%, transparent);
 }
 
 .novel-notes-search {
@@ -148,79 +101,12 @@
     outline-offset: -1px;
 }
 
-.novel-drawer-header > strong,
 .novel-notes-header > strong {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     font-size: .88rem;
-}
-
-.novel-drawer-current {
-    min-height: 58px;
-    display: grid;
-    grid-template-columns: 32px minmax(0, 1fr) 32px;
-    align-items: center;
-    gap: .35rem;
-    padding: .55rem .75rem;
-    border-bottom: 1px solid var(--reader-border);
-}
-
-.novel-drawer-current > span {
-    width: 30px;
-    height: 30px;
-}
-
-.novel-drawer-current strong {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    text-align: center;
-    font-size: .8rem;
-}
-
-.novel-drawer-current a {
-    display: grid;
-    place-items: center;
-    width: 30px;
-    height: 30px;
-    border-radius: 6px;
-    color: var(--reader-muted);
-    text-decoration: none;
-}
-
-.novel-drawer-current a:hover {
-    background: var(--reader-surface-2);
-    color: var(--reader-text);
-}
-
-.novel-chapter-search {
-    height: 42px;
-    display: grid;
-    grid-template-columns: 18px minmax(0, 1fr);
-    align-items: center;
-    gap: .45rem;
-    margin: .65rem .75rem;
-    padding: 0 .65rem;
-    border: 1px solid var(--reader-border);
-    border-radius: 7px;
-    color: var(--reader-muted);
-}
-
-.novel-chapter-search svg {
-    width: 17px;
-    height: 17px;
-}
-
-.novel-chapter-search input {
-    min-width: 0;
-    border: 0;
-    outline: 0;
-    background: transparent;
-    color: var(--reader-text);
-    font: inherit;
 }
 
 .novel-drawer-list {
@@ -257,21 +143,6 @@
     background: color-mix(in srgb, var(--reader-accent) 7%, transparent);
 }
 
-.novel-drawer-number {
-    color: var(--reader-muted);
-    text-align: right;
-    font-size: .75rem;
-    font-variant-numeric: tabular-nums;
-}
-
-.novel-drawer-title {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-size: .79rem;
-}
-
 .novel-drawer-lang {
     color: var(--reader-muted);
     font-size: .6rem;
@@ -281,13 +152,6 @@
     margin-right: .4rem;
     color: var(--reader-muted);
     font-size: .68rem;
-}
-
-.novel-drawer-current-mark {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--reader-accent);
 }
 
 .novel-reader-notes {
@@ -355,10 +219,6 @@
 .novel-drawer-status:empty,
 .novel-notes-status:empty {
     display: none;
-}
-
-.novel-drawer-row.is-remote .novel-drawer-title {
-    color: var(--reader-muted);
 }
 
 .novel-notes-empty {

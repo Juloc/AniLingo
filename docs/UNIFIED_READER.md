@@ -266,6 +266,32 @@ chapter opening may render the first EPUB illustration as header artwork.
 In-work search and read-aloud stay adapters/extensions of the same shell rather
 than separate reader chrome.
 
+- Contents rows read like a printed table of contents: "Chapter N" over the
+  chapter title, grouped under EPUB volume headings. Titles that are not
+  numbered story chapters in the source (prologue, epilogue, interlude, side or
+  short story, extra, afterword; Japanese and western spellings) show only their
+  name. The data has no other groups; the reader invents none.
+- The chapter opening is a quiet chapter label, a large title and a drawn
+  ornament. Without an EPUB illustration, an accepted generated chapter artwork
+  (`_ChapterArtwork`, #451) is the header.
+- A paragraph that only holds a scene-break mark (`◇◇◇`, `＊ ＊ ＊`,
+  `NovelChapterDocument.IsSceneBreak`) renders as a section ornament with
+  `role="separator"`. Its text stays in the DOM (visually hidden) so paragraph
+  indexes and offsets are unchanged; read-aloud skips it.
+- The language menu holds Original/German/Both and the translate slot. The
+  TranslateGemma source switch (Local/AI/Both) is added there by
+  `novel-translation.js` only when the local track is configured or cached.
+  The mobile "Language" tool opens and closes the same menu as a bottom sheet
+  (#487). Legacy readers without the frame get a generated "Sprache" action
+  only when a `[data-reader-language-control]` exists; it toggles
+  `.reader-language-expanded` and reports `aria-expanded`.
+- Panels, menus and cards mark state with background, weight or an icon; they
+  do not use coloured left-edge stripes.
+- The appearance sheet shows the reading-mode, background, font & layout,
+  colour-scheme and more-settings cards in one row from 1400 px; the background
+  row scrolls sideways through the real `wwwroot/reader-backgrounds` themes.
+  "Comic" is not offered because no licensed comic typeface is bundled.
+
 Anchors and annotations resolve against the paragraph layout the reader
 renders: Japanese source text, or the selected German translation variant with
 the matching source/version identity.

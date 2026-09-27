@@ -146,14 +146,21 @@
             if (!theme?.genre || seen.has(theme.genre)) return false;
             seen.add(theme.genre);
             return true;
-        }).slice(0, 8);
+        });
+        const thumbOf = theme => chooseSource(
+            theme?.assets?.page || theme?.assets?.scrollStatic || theme?.assets?.parallaxBack);
+        // "Auto" previews the artwork that the work's genres select.
+        const suggested = catalog.find(theme => theme.id === suggestedId);
         backgroundChoices.replaceChildren(
-            choice(labels.none || "None", { genreArtworkEnabled: false }, null),
-            choice(labels.auto || "Auto", { genreArtworkEnabled: true, backgroundAssetId: "auto" }, null),
+            choice(labels.none || "Standard", { genreArtworkEnabled: false }, null),
+            choice(
+                labels.auto || "Auto",
+                { genreArtworkEnabled: true, backgroundAssetId: "auto" },
+                suggested ? thumbOf(suggested) : null),
             ...themes.map(theme => choice(
                 theme.genreLabel || theme.name || theme.genre,
                 { genreArtworkEnabled: true, backgroundAssetId: theme.id },
-                chooseSource(theme.assets?.page || theme.assets?.scrollStatic || theme.assets?.parallaxBack))));
+                thumbOf(theme))));
         shell.dispatchEvent(new CustomEvent("jularr:reader-proxies"));
     };
 

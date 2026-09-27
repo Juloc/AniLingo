@@ -330,8 +330,15 @@
                 if (scope === "work" || scope === "book") {
                     state.hasBookOverride = true;
                 }
+                // Apply the saved values, except for settings that changed again
+                // while this save was in flight (an appearance card sets several
+                // keys at once; each key's own save carries its newer value).
                 if (saved && state[changedKey] === snapshot[changedKey]) {
-                    state = { ...state, ...saved };
+                    const merged = { ...state };
+                    for (const [key, value] of Object.entries(saved)) {
+                        if (state[key] === snapshot[key]) merged[key] = value;
+                    }
+                    state = merged;
                     applySettings();
                 }
             })
@@ -552,9 +559,13 @@
         const percent = state.readingMode === "paged"
             ? Math.round(page / total * 100)
             : Math.round(value / 10);
-        const label = t("position", "{page} / {total} ({percent}%)", { page, total, percent });
+        const label = t("position", "{page} / {total}", { page, total });
+        const valueText = t(
+            "positionAria",
+            "Page {page} of {total}, {percent}% of the chapter",
+            { page, total, percent });
         shell.dispatchEvent(new CustomEvent("jularr:reader-location", {
-            detail: { value, max, text: label, valueText: label }
+            detail: { value, max, text: label, valueText }
         }));
         if (pageNumberOverlay) {
             pageNumberOverlay.textContent = state.readingMode === "paged" ? String(page) : "";

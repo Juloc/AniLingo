@@ -1543,13 +1543,33 @@ body:has([data-reader-frame]) .app-main {
 
 /* Appearance sheet (cards of quick settings bound through setting proxies) ---- */
 
+/* The sheet spans the reader frame (positioned against the top bar), so it
+   never runs past the frame's rounded clip. */
+.reader-menu-anchor:has(> .reader-sheet) {
+    position: static;
+}
+
 .reader-sheet {
-    width: min(920px, calc(100vw - 32px));
+    left: 10px;
+    right: 10px;
+    width: auto;
     max-width: none;
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     gap: 10px;
     padding: 10px;
     background: color-mix(in srgb, var(--surface) 96%, var(--bg));
+}
+
+/* Wide screens: one row of cards, like a control strip under the page. */
+@media (min-width: 1400px) {
+    .reader-sheet {
+        grid-template-columns:
+            minmax(196px, .9fr) minmax(214px, 1.1fr) minmax(226px, 1.15fr) minmax(206px, 1fr) minmax(186px, .9fr);
+    }
+
+    .reader-sheet:has(> .reader-sheet-card:nth-child(4):last-child) {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1.1fr) minmax(0, 1fr);
+    }
 }
 
 .reader-sheet-card {
@@ -1650,13 +1670,52 @@ body:has([data-reader-frame]) .app-main {
 }
 
 .reader-thumb-background {
-    width: 60px;
-    height: 76px;
+    width: 54px;
+    height: 72px;
+}
+
+/* Fixed-count rows: three reading modes, five paper colours. */
+.reader-sheet-modes {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.reader-sheet-papers {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 2px;
+}
+
+.reader-sheet-papers > button,
+.reader-sheet-modes > button {
+    padding-inline: 2px;
+    font-size: 11px;
+}
+
+/* Two-word mode names ("Light Novel") wrap instead of being cut. */
+.reader-sheet-modes > button > span:last-child {
+    white-space: normal;
+    line-height: 1.2;
+    text-align: center;
+}
+
+/* Background artwork scrolls sideways instead of growing the card. */
+.reader-sheet-backgrounds {
+    grid-template-columns: none;
+    grid-auto-flow: column;
+    grid-auto-columns: 64px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity;
+    padding-bottom: 4px;
+    scrollbar-width: thin;
+}
+
+.reader-sheet-backgrounds > button {
+    scroll-snap-align: start;
 }
 
 .reader-sheet-swatch {
-    width: 40px;
-    height: 40px;
+    width: 32px;
+    height: 32px;
     border: 1px solid color-mix(in srgb, var(--text) 22%, transparent);
     border-radius: 50%;
 }
