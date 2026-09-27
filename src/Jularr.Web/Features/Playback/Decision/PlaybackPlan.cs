@@ -155,7 +155,8 @@ public sealed record PlaybackPlan(
     PlaybackAudioOutput? Audio,
     PlaybackQualityResolution Quality,
     IReadOnlyList<PlaybackReason> Reasons,
-    PlaybackCapabilitySupport Confidence)
+    PlaybackCapabilitySupport Confidence,
+    string? SourceContainer = null)
 {
     public bool UsesServerProcessing =>
         Mode is PlaybackDeliveryMode.DirectStream or PlaybackDeliveryMode.Transcode;

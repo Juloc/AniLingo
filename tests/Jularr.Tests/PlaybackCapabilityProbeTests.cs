@@ -16,7 +16,7 @@ public sealed class PlaybackCapabilityProbeTests
     {
         var output = RunProbe(hevc: false);
         var lines = output.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-        Assert.AreEqual(3, lines.Length, output);
+        Assert.AreEqual(4, lines.Length, output);
 
         var capabilities = JsonSerializer.Deserialize<ClientPlaybackCapabilities>(
             lines[0],
@@ -40,6 +40,7 @@ public sealed class PlaybackCapabilityProbeTests
 
         Assert.AreEqual("cached", lines[1], "The second detect() reads the cache.");
         Assert.AreEqual("reprobed", lines[2], "A browser update invalidates the cache.");
+        Assert.AreEqual("reprobed", lines[3], "A Jularr update (data-app-version) invalidates the cache.");
 
         var h264Media = PlaybackMediaProfile.From("/media/a.mp4", 540_000_000, MediaProbeParser.Parse(MediaProbeFixtures.H264Stereo));
         var hevcMedia = PlaybackMediaProfile.From("/media/a.mkv", 3_200_000_000, MediaProbeParser.Parse(MediaProbeFixtures.HevcTenBitHdrMultiAudio));
@@ -187,6 +188,11 @@ public sealed class PlaybackCapabilityProbeTests
                 navigator.userAgent = "Probe/2";
                 await window.JularrPlaybackCapabilities.detect(env);
                 console.log(decodes > before ? "reprobed" : "cached");
+                const afterBrowserUpdate = decodes;
+                await window.JularrPlaybackCapabilities.detect(env);
+                document.querySelector = selector => selector === "[data-app-version]" ? { dataset: { appVersion: "9.9.9" } } : null;
+                await window.JularrPlaybackCapabilities.detect(env);
+                console.log(decodes > afterBrowserUpdate ? "reprobed" : "cached");
             })().catch(error => { console.error(error); process.exit(1); });
             """;
 

@@ -36,6 +36,15 @@ public static class PlaybackDecisionEngine
     public static PlaybackPlan Decide(PlaybackDecisionRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
+        // The source container travels with every plan so diagnostics can show source → delivered.
+        return DecideCore(request) with
+        {
+            SourceContainer = PlaybackContainerNames.Name(request.Media.Container)
+        };
+    }
+
+    private static PlaybackPlan DecideCore(PlaybackDecisionRequest request)
+    {
         var media = request.Media;
         var client = request.Client;
         var network = request.Network ?? new PlaybackNetworkConditions();

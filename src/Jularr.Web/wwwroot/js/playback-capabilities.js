@@ -43,10 +43,16 @@
     const supportFromCanPlay = (answer) =>
         answer === "probably" ? "inferred" : answer === "maybe" ? "unknown" : "unsupported";
 
+    // The Jularr build (a new server release may probe differently) as rendered by the page.
+    const appVersion = (env) =>
+        env.document?.documentElement?.dataset?.appVersion ||
+        env.document?.querySelector?.("[data-app-version]")?.dataset?.appVersion ||
+        "";
+
+    // Browser engine + version and Jularr build: a change of any of them measures again.
     const fingerprint = (env) => {
         const brands = env.navigator.userAgentData?.brands?.map(brand => `${brand.brand}/${brand.version}`).join(",") || "";
-        const app = env.document?.documentElement?.dataset?.appVersion || "";
-        return `${schemaVersion}.${probeVersion}|${env.navigator.userAgent || ""}|${brands}|${app}`;
+        return `${schemaVersion}.${probeVersion}|${env.navigator.userAgent || ""}|${brands}|${appVersion(env)}`;
     };
 
     const media = (env, query) => {
@@ -244,7 +250,7 @@
                 kind: clientKind(env),
                 name: name.name,
                 version: name.version,
-                appVersion: env.document?.documentElement?.dataset?.appVersion || null
+                appVersion: appVersion(env) || null
             },
             containers: result,
             hdr: await probeHdr(env, element),

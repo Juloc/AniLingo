@@ -118,6 +118,53 @@ public sealed class PlaybackStreamSession(
             return previous;
         }
     }
+
+    /// <summary>
+    /// Idempotent HLS start per position. The running output is reused when it started at
+    /// (about) the requested position and is still alive; otherwise the previous output is
+    /// stopped and exactly one new output is started, even when a player fires several
+    /// requests at once (probe, playlist reload, a quick double seek). <paramref name="start"/>
+    /// returns null when it cannot start (e.g. no free transcode slot).
+    /// </summary>
+    public async Task<Guid?> EnsureHlsAsync(
+        double startSeconds,
+        Func<Guid, bool> isActive,
+        Func<CancellationToken, Task<Guid?>> start,
+        Action<Guid> stop,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(isActive);
+        ArgumentNullException.ThrowIfNull(start);
+        ArgumentNullException.ThrowIfNull(stop);
+
+        await hlsStartGate.WaitAsync(cancellationToken);
+        try
+        {
+            if (HlsSessionAt(startSeconds) is { } running && isActive(running))
+            {
+                return running;
+            }
+
+            if (ReplaceHlsSession(null) is { } previous)
+            {
+                stop(previous);
+            }
+
+            var started = await start(cancellationToken);
+            if (started is { } id)
+            {
+                ReplaceHlsSession(id, startSeconds);
+            }
+
+            return started;
+        }
+        finally
+        {
+            hlsStartGate.Release();
+        }
+    }
+
+    private readonly SemaphoreSlim hlsStartGate = new(1, 1);
 }
 
 /// <summary>The session's selections, kept so a re-plan (fallback, quality change) starts from them.</summary>

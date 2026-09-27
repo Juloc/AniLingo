@@ -40,7 +40,7 @@ public sealed record ClientPlaybackPlanResponse(
 
 public static class ClientApiPlaybackPlanEndpoints
 {
-    public const string RateLimitPolicy = "playbackStart";
+    public const string RateLimitPolicy = PlaybackDecisionRegistration.RateLimitPolicy;
 
     public static IEndpointRouteBuilder MapClientApiPlaybackPlanV1(this IEndpointRouteBuilder endpoints)
     {
@@ -169,39 +169,39 @@ public static class ClientApiPlaybackPlanEndpoints
             }
 
             // Repeated requests for the same position reuse the running output; a new
-            // position replaces it.
-            if (session.HlsSessionAt(start) is { } running &&
-                HlsPlaybackSessionManager.Shared.IsActive(running, session.ProfileId))
-            {
-                return Results.Redirect(
-                    ClientApiRoutes.StreamSessionHlsAsset(session.Id, running, "index.m3u8"),
-                    permanent: false,
-                    preserveMethod: false);
-            }
-
-            if (session.ReplaceHlsSession(null) is { } previous)
-            {
-                HlsPlaybackSessionManager.Shared.Stop(previous, session.ProfileId);
-            }
-
-            IDisposable? lease = null;
-            if (session.Plan.TranscodesVideo && (lease = slots.TryAcquire()) is null)
-            {
-                return TranscoderBusy();
-            }
-
+            // position replaces it. Concurrent requests share one start.
+            var manager = HlsPlaybackSessionManager.Shared;
             try
             {
-                var hls = await HlsPlaybackSessionManager.Shared.StartAsync(
-                    session.EpisodeId,
-                    session.ProfileId,
+                var hlsSessionId = await session.EnsureHlsAsync(
                     start,
-                    directory => PlaybackDeliveryCommand.Hls(session.SourcePath, session.Plan, start, directory),
-                    lease,
+                    running => manager.IsActive(running, session.ProfileId),
+                    async token =>
+                    {
+                        IDisposable? lease = null;
+                        if (session.Plan.TranscodesVideo && (lease = slots.TryAcquire()) is null)
+                        {
+                            return null;
+                        }
+
+                        var hls = await manager.StartAsync(
+                            session.EpisodeId,
+                            session.ProfileId,
+                            start,
+                            directory => PlaybackDeliveryCommand.Hls(session.SourcePath, session.Plan, start, directory),
+                            lease,
+                            token);
+                        return hls.SessionId;
+                    },
+                    previous => manager.Stop(previous, session.ProfileId),
                     cancellationToken);
-                session.ReplaceHlsSession(hls.SessionId, start);
+                if (hlsSessionId is not { } started)
+                {
+                    return TranscoderBusy();
+                }
+
                 return Results.Redirect(
-                    ClientApiRoutes.StreamSessionHlsAsset(session.Id, hls.SessionId, "index.m3u8"),
+                    ClientApiRoutes.StreamSessionHlsAsset(session.Id, started, "index.m3u8"),
                     permanent: false,
                     preserveMethod: false);
             }

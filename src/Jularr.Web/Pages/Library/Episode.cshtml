@@ -46,6 +46,7 @@ else if (Model.Playback.Media is { } media)
              data-episode-player
              data-duration-seconds="@(media.DurationSeconds?.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) ?? "")"
              data-playback-plan-url="@ClientApiRoutes.PlaybackPlan(Model.EpisodeId)"
+             data-app-version="@Jularr.Web.Features.Appearance.AppBuildInfo.Version"
              data-stream-session-url-template="@ClientApiRoutes.StreamSession(Guid.Empty).Replace(Guid.Empty.ToString("D"), "__session__")"
              data-storage-state="@(media.Storage is { } storage ? ClientApiMappings.AvailabilityStateName(storage.State) : "unknown")"
              data-storage-availability-url="@ClientApiRoutes.MediaAvailability(media.MediaFileId)"
@@ -291,6 +292,11 @@ else if (Model.Playback.Media is { } media)
                             <strong data-playback-reasons-heading>@ui["playback.status.whyNotDirectPlay"]</strong>
                             <ul data-playback-reason-list></ul>
                         </div>
+                        @* Technical detail stays folded away inside the settings panel. *@
+                        <details class="player-diagnostics" data-playback-diagnostics hidden>
+                            <summary>@ui["playback.diagnostics.title"]</summary>
+                            <dl data-playback-diagnostics-list></dl>
+                        </details>
                     </div>
 
                     <label class="player-setting player-setting-toggle">

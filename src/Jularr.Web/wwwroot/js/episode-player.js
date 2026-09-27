@@ -26,6 +26,8 @@
     const modeSelect = root.querySelector("[data-playback-mode]");
     const reasonsBlock = root.querySelector("[data-playback-reasons]");
     const reasonList = root.querySelector("[data-playback-reason-list]");
+    const diagnosticsBlock = root.querySelector("[data-playback-diagnostics]");
+    const diagnosticsList = root.querySelector("[data-playback-diagnostics-list]");
     const capabilityProbe = window.JularrPlaybackCapabilities;
     const text = (() => {
         try {
@@ -142,6 +144,7 @@
     // The resolved plan of the current playback session. The server decides; this player
     // only follows the plan and reports failures and its selections back.
     let plan = null;
+    let planCapabilitiesInferred = false;
     let delivery = null;
     let streamSessionId = null;
     let planGeneration = 0;
@@ -394,10 +397,123 @@
         playbackBadge.textContent = modeLabel(plan.mode);
     };
 
+    // Folded "Playback details" in the settings panel: source → delivered, how sure the
+    // device support is, what the server does, and the live buffer/dropped frames.
+    const mbps = (kbps) => Number.isFinite(kbps) && kbps > 0
+        ? `${(kbps / 1000).toFixed(kbps >= 10000 ? 0 : 1)} Mbps`
+        : null;
+    const channelLayout = (channels) =>
+        ({ 1: "1.0", 2: "2.0", 6: "5.1", 8: "7.1" })[channels] || (channels ? `${channels} ch` : null);
+    const bitDepth = (pixelFormat) =>
+        /p12/.test(pixelFormat || "") ? "12-bit" : /p10|p010/.test(pixelFormat || "") ? "10-bit" : null;
+    const qualityLabel = (preset) => {
+        const step = /^mbps(\d+)$/.exec(preset || "");
+        return step
+            ? format("playback.quality.mbps", { value: step[1] })
+            : text[`playback.quality.${preset}`] || preset;
+    };
+    const joined = (...parts) => parts.filter(Boolean).join(" · ");
+
+    const diagnosticRows = () => {
+        const output = plan.video;
+        const audio = plan.audio;
+        const quality = plan.quality || {};
+        const hdr = output?.sourceDynamicRange && output.sourceDynamicRange !== "SDR" ? output.sourceDynamicRange : null;
+        const rows = [
+            ["mode", modeLabel(plan.mode)],
+            ["source", joined(
+                displayName(plan.sourceContainer),
+                output && joined(displayName(output.sourceCodec), bitDepth(output.sourcePixelFormat), hdr),
+                output?.sourceWidth && output?.sourceHeight ? `${output.sourceWidth}×${output.sourceHeight}` : null,
+                mbps(quality.sourceBitrateKbps))]
+        ];
+
+        if (plan.mode === "direct_play") {
+            rows.push(["delivered", text["playback.diagnostics.untouched"]]);
+        } else if (plan.mode !== "unavailable") {
+            const height = output && (output.copy ? output.sourceHeight : output.maxOutputHeight);
+            rows.push(["delivered", joined(
+                `${displayName(plan.container)}${plan.transport === "hls" ? " (HLS)" : ""}`,
+                output && displayName(output.outputCodec),
+                height ? `${height}p` : null,
+                mbps(quality.deliveredBitrateKbps))]);
+        }
+
+        if (audio) {
+            const source = joined(displayName(audio.sourceCodec), channelLayout(audio.sourceChannels));
+            rows.push(["audio", joined(
+                audio.copy ? source : `${source} → ${joined(displayName(audio.outputCodec), channelLayout(audio.outputChannels))}`,
+                audio.language)]);
+        }
+
+        rows.push(["quality", joined(
+            qualityLabel(quality.requested),
+            text[`playback.network.${quality.network}`],
+            quality.limitKbps ? `≤ ${mbps(quality.limitKbps)}` : null)]);
+        rows.push(["support", joined(
+            text[`playback.support.${plan.confidence}`] || plan.confidence,
+            planCapabilitiesInferred ? text["playback.diagnostics.inferredDocument"] : null)]);
+        rows.push(["processing", plan.mode === "direct_stream"
+            ? text["playback.diagnostics.processingRemux"]
+            : plan.mode === "transcode"
+                ? format("playback.diagnostics.processingTranscode", { encoder: output?.encoder || "ffmpeg" })
+                : text["playback.diagnostics.processingNone"]]);
+
+        if (!video.hidden) {
+            const now = video.currentTime;
+            let ahead = 0;
+            for (let index = 0; index < video.buffered.length; index++) {
+                if (video.buffered.start(index) <= now + 0.25 && video.buffered.end(index) > now) {
+                    ahead = video.buffered.end(index) - now;
+                }
+            }
+
+            rows.push(["buffer", format("playback.diagnostics.seconds", { value: Math.round(ahead) })]);
+            const frames = typeof video.getVideoPlaybackQuality === "function" ? video.getVideoPlaybackQuality() : null;
+            if (frames && frames.totalVideoFrames > 0) {
+                rows.push(["droppedFrames", `${frames.droppedVideoFrames} / ${frames.totalVideoFrames}`]);
+            }
+        }
+
+        return rows.filter(([, value]) => value);
+    };
+
+    const renderDiagnostics = () => {
+        if (!diagnosticsBlock || !diagnosticsList) {
+            return;
+        }
+
+        diagnosticsBlock.hidden = !plan;
+        if (!plan) {
+            diagnosticsList.replaceChildren();
+            return;
+        }
+
+        const items = [];
+        for (const [name, value] of diagnosticRows()) {
+            const term = document.createElement("dt");
+            term.textContent = text[`playback.diagnostics.${name}`] || name;
+            const detail = document.createElement("dd");
+            detail.textContent = value;
+            items.push(term, detail);
+        }
+
+        diagnosticsList.replaceChildren(...items);
+    };
+
+    // Buffer and dropped frames change while playing; refresh them only while the details are open.
+    let diagnosticsTimer = null;
+    diagnosticsBlock?.addEventListener("toggle", () => {
+        window.clearInterval(diagnosticsTimer);
+        diagnosticsTimer = diagnosticsBlock.open ? window.setInterval(renderDiagnostics, 2000) : null;
+        renderDiagnostics();
+    });
+
     const renderPlan = () => {
         setBadge();
         playbackSummary.textContent = plan ? compactStatus() : text["playback.status.checking"] || "";
         renderReasons();
+        renderDiagnostics();
         root.dataset.playbackMode = plan?.mode || "";
     };
 
@@ -792,6 +908,7 @@
         }
 
         plan = response.plan;
+        planCapabilitiesInferred = response.capabilitiesInferred === true;
         streamSessionId = response.sessionId || null;
         delivery = response.delivery || null;
         renderPlan();
