@@ -327,3 +327,25 @@ curl -i -H "X-Api-Key: $KEY" -X POST https://jularr.example/api/acquisition/v1/a
   Prowlarr entry's own sub-indexer aggregation; it does not choose which whole indexer entries
   (Prowlarr/Newznab) are searched. Only a tag-scoped indexer restriction operates at that entry
   level.
+
+## P2/P3 (issue #302): intentionally not implemented
+
+Every P1 item from #302 is done (hardlink imports, remote path mapping, delay profiles, richer
+upgrade scoring/history, multiple root folders, tags/per-series indexer restrictions, AniList
+list-driven monitor, backup/restore, Prowlarr/SABnzbd health checks and the automation API — see
+the sections above). The P2/P3 list is deliberately left unimplemented; no concrete home-server use
+case justifies the added surface, and the issue itself rules out Sonarr checkbox parity:
+
+- **Broad import-list compatibility** (Trakt, MyAnimeList, arbitrary custom lists, etc.) — the
+  AniList list auto-monitor already covers the one list a single-owner anime server actually needs;
+  adding other providers would duplicate that mechanism for no described benefit.
+- **Custom scripts** (arbitrary post-import/on-grab script execution) — this would let a settings
+  value execute arbitrary code with the Jularr process's filesystem access; without a concrete
+  requirement the risk is not worth taking.
+- **Generic webhooks/notifications** — the Operations log and the `/Acquisition` overview already
+  surface every grab/import/failure; nobody has described an external system to notify.
+- **Obscure Sonarr compatibility switches** — out of scope by the issue's own rule; would only be
+  added if a specific one becomes necessary.
+
+If a real need for one of these appears later, open a fresh, narrowly-scoped issue for it rather
+than reopening #302.
