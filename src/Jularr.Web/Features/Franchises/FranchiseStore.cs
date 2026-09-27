@@ -168,6 +168,72 @@ public sealed class FranchiseStore(AppDbContext db)
             return result.ToArray();
         }, cancellationToken);
 
+    public async Task<FranchiseSummary?> GetAsync(
+        Guid franchiseId,
+        CancellationToken cancellationToken) =>
+        await WithConnectionAsync<FranchiseSummary?>(async connection =>
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText =
+                """
+                SELECT f."Id", f."Title", f."SeedMediaType", f."SeedProvider", f."SeedExternalId",
+                       f."LastRefreshedAtUtc",
+                       (SELECT COUNT(*) FROM "FranchiseMembers" m WHERE m."FranchiseId" = f."Id")
+                FROM "Franchises" f
+                WHERE f."Id" = @id
+                LIMIT 1;
+                """;
+            Add(command, "@id", franchiseId.ToString("D"));
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken))
+            {
+                return null;
+            }
+
+            var mediaType = WatchlistMediaTypeNames.Parse(reader.GetString(2));
+            if (mediaType is null)
+            {
+                return null;
+            }
+
+            DateTime? refreshed = null;
+            if (!reader.IsDBNull(5) &&
+                DateTime.TryParse(
+                    reader.GetString(5),
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.RoundtripKind,
+                    out var parsed))
+            {
+                refreshed = parsed;
+            }
+
+            return new FranchiseSummary(
+                franchiseId,
+                reader.GetString(1),
+                new WatchlistIdentity(mediaType.Value, reader.GetString(3), reader.GetString(4)),
+                refreshed,
+                Convert.ToInt32(reader.GetValue(6), CultureInfo.InvariantCulture));
+        }, cancellationToken);
+
+    public async Task<bool> IsFollowedAsync(
+        string profileId,
+        Guid franchiseId,
+        CancellationToken cancellationToken) =>
+        await WithConnectionAsync(async connection =>
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText =
+                """
+                SELECT 1
+                FROM "ProfileFranchiseFollows"
+                WHERE "ProfileId" = @profile AND "FranchiseId" = @franchise
+                LIMIT 1;
+                """;
+            Add(command, "@profile", profileId);
+            Add(command, "@franchise", franchiseId.ToString("D"));
+            return await command.ExecuteScalarAsync(cancellationToken) is not null;
+        }, cancellationToken);
+
     public async Task<IReadOnlyList<FranchiseSummary>> ListFollowedAsync(string profileId, CancellationToken cancellationToken) =>
         await WithConnectionAsync(async connection =>
         {
