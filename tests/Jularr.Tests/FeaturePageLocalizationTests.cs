@@ -74,6 +74,7 @@ public sealed partial class FeaturePageLocalizationTests
         "_AnimeAcquisitionPanel.cshtml",
         "_ExternalProgress.cshtml",
         "_ExternalProgressState.cshtml",
+        "_MediaBannerCard.cshtml",
         "_OfflineLibraryAction.cshtml",
         "_ReaderSettingsPanel.cshtml",
         "_LanguageInspector.cshtml"
