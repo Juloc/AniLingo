@@ -305,7 +305,7 @@ public sealed class IndexModel(
                 item.Author,
                 item.CoverImageUrl,
                 item.FirstPublishYear,
-                item.SourceName,
+                item.Summary,
                 freeEdition = item.CanAcquire,
                 state = StateJson(states.GetValueOrDefault(item.Id) ?? BookAddState.None)
             })
