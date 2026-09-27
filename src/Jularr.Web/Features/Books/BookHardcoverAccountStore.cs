@@ -16,7 +16,7 @@ public sealed class BookHardcoverAccountStore
 
     private readonly IDataProtector protector;
     private readonly string accountDirectory;
-    private readonly SemaphoreSlim gate = new(1, 1);
+    private static readonly SemaphoreSlim AccountGate = new(1, 1);
 
     public BookHardcoverAccountStore(
         IDataProtectionProvider dataProtectionProvider,
@@ -35,7 +35,7 @@ public sealed class BookHardcoverAccountStore
         CancellationToken cancellationToken)
     {
         var path = AccountPath(profileId);
-        await gate.WaitAsync(cancellationToken);
+        await AccountGate.WaitAsync(cancellationToken);
         try
         {
             if (!File.Exists(path))
@@ -71,7 +71,7 @@ public sealed class BookHardcoverAccountStore
         }
         finally
         {
-            gate.Release();
+            AccountGate.Release();
         }
     }
 
@@ -81,7 +81,7 @@ public sealed class BookHardcoverAccountStore
         CancellationToken cancellationToken)
     {
         var path = AccountPath(profileId);
-        await gate.WaitAsync(cancellationToken);
+        await AccountGate.WaitAsync(cancellationToken);
         try
         {
             Directory.CreateDirectory(accountDirectory);
@@ -108,7 +108,7 @@ public sealed class BookHardcoverAccountStore
         }
         finally
         {
-            gate.Release();
+            AccountGate.Release();
         }
     }
 
@@ -117,14 +117,14 @@ public sealed class BookHardcoverAccountStore
         CancellationToken cancellationToken)
     {
         var path = AccountPath(profileId);
-        await gate.WaitAsync(cancellationToken);
+        await AccountGate.WaitAsync(cancellationToken);
         try
         {
             TryDelete(path);
         }
         finally
         {
-            gate.Release();
+            AccountGate.Release();
         }
     }
 
