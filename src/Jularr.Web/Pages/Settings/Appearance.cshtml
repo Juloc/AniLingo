@@ -87,6 +87,21 @@
                 <p class="appearance-note muted" data-accent-mono-note hidden>@ui["settings.appearance.monochromeNote"]</p>
             </form>
         </section>
+
+        <section class="panel">
+            <div class="panel-heading">
+                <h2>@ui["settings.appearance.sakuraHeading"]</h2>
+            </div>
+            <form method="post" asp-page="/Appearance/Sakura" class="appearance-mode" data-appearance-sakura-form>
+                @foreach (var option in new[] { AppSakura.Off, AppSakura.Subtle, AppSakura.Full })
+                {
+                    <label class="appearance-mode-option">
+                        <input type="radio" name="sakura" value="@option" checked="@(option == Model.Appearance.SakuraMode)" data-appearance-sakura />
+                        <span>@ui["settings.appearance.sakura." + option]</span>
+                    </label>
+                }
+            </form>
+        </section>
     </div>
 
     <section class="panel appearance-preview" aria-labelledby="appearance-preview-heading">
