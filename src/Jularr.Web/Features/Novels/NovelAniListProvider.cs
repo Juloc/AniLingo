@@ -564,6 +564,7 @@ public sealed partial class NovelAniListProvider(
     private static int? ReadInt(JsonElement element, string propertyName) =>
         element.ValueKind == JsonValueKind.Object &&
         element.TryGetProperty(propertyName, out var value) &&
+        value.ValueKind == JsonValueKind.Number &&
         value.TryGetInt32(out var number)
             ? number
             : null;

@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using Jularr.Web.Features.Discovery;
+using Jularr.Web.Features.Metadata;
 using Jularr.Web.Features.Novels;
 using Jularr.Web.Features.Tracking;
 
@@ -113,6 +114,79 @@ public sealed class DiscoveryTests
         Assert.AreEqual(1, manga.Count);
         Assert.IsFalse(manga[0].IsNovel);
         Assert.AreEqual("Manga B", manga[0].PreferredTitle);
+    }
+
+    [TestMethod]
+    public void AiringAnimeWithNullCountsStillParses()
+    {
+        // AniList sends null (not a missing field) for unknown episode counts, years and durations
+        // of airing shows; trending lists are mostly airing shows.
+        const string json = """
+        {
+          "data": {
+            "Page": {
+              "media": [
+                {
+                  "id": 7,
+                  "title": { "english": null, "romaji": "Airing Show", "native": null },
+                  "description": null,
+                  "coverImage": { "extraLarge": null, "large": "https://example.invalid/a.jpg" },
+                  "bannerImage": null,
+                  "format": "TV",
+                  "status": "RELEASING",
+                  "season": null,
+                  "seasonYear": null,
+                  "episodes": null,
+                  "duration": null,
+                  "isAdult": false
+                }
+              ]
+            }
+          }
+        }
+        """;
+
+        var rows = AniListMetadataProvider.ParseSearchResponse(json);
+
+        Assert.AreEqual(1, rows.Count);
+        Assert.AreEqual("Airing Show", rows[0].PreferredTitle);
+        Assert.IsNull(rows[0].EpisodeCount);
+        Assert.IsNull(rows[0].SeasonYear);
+    }
+
+    [TestMethod]
+    public void OngoingReadingMediaWithNullCountsStillParses()
+    {
+        const string json = """
+        {
+          "data": {
+            "Page": {
+              "media": [
+                {
+                  "id": 3,
+                  "title": { "english": null, "romaji": "Ongoing Novel", "native": null },
+                  "description": null,
+                  "coverImage": { "large": null },
+                  "bannerImage": null,
+                  "format": "NOVEL",
+                  "status": "RELEASING",
+                  "chapters": null,
+                  "volumes": null,
+                  "startDate": { "year": null },
+                  "genres": [],
+                  "isAdult": false
+                }
+              ]
+            }
+          }
+        }
+        """;
+
+        var rows = NovelAniListProvider.ParseReadingMediaResponse(json, includeNovels: true, includeManga: false);
+
+        Assert.AreEqual(1, rows.Count);
+        Assert.IsNull(rows[0].ChapterCount);
+        Assert.IsNull(rows[0].VolumeCount);
     }
 
     [TestMethod]

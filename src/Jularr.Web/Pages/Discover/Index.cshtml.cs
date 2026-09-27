@@ -21,7 +21,8 @@ public sealed class IndexModel(
     NovelImportService novels,
     NovelMetadataService novelMetadata,
     CurrentAccountContext account,
-    OperationRunner operations) : PageModel
+    OperationRunner operations,
+    ILogger<DiscoveryCoordinator> discoveryLogger) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public bool IsOwner => account.IsOwner;
@@ -46,7 +47,8 @@ public sealed class IndexModel(
             readingProvider,
             books,
             aniListAccount,
-            db);
+            db,
+            discoveryLogger);
 
         var normalizedSource = source?.Trim().ToLowerInvariant();
         var includeAniList = normalizedSource is not "books";
