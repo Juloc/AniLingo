@@ -17,6 +17,8 @@
     var episodeCode = $"S{Model.SeasonNumber:00} E{Model.EpisodeNumber:00}";
     var nativeTitle = Model.Metadata?.NativeTitle;
     var seekStep = PlayerDesign.SeekStepSeconds;
+    var isAndroidClient = Request.Headers.UserAgent.ToString()
+        .Contains("JularrAndroid/", StringComparison.OrdinalIgnoreCase);
 }
 
 @section Head {
@@ -494,6 +496,11 @@ else
     </section>
 
     <div class="watch-actions">
+        @if (isAndroidClient && Model.Playback.Media is not null)
+        {
+            <a class="button button-primary"
+               href="/Library/Episode/@Model.EpisodeId?native=1">@ui["player.play"]</a>
+        }
         <form method="post" asp-page-handler="Watched" asp-route-id="@Model.EpisodeId">
             <input type="hidden" name="watched" value="@(isWatched ? "false" : "true")" />
             <button class="button @(isWatched ? "" : "button-primary")" type="submit">@(isWatched ? ui["library.episode.markUnwatched"] : ui["library.episode.markWatched"])</button>
