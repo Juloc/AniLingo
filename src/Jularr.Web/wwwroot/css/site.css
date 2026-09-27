@@ -1186,3 +1186,12 @@ button, input { font: inherit; }
     .jularr-hero-lockup { position: absolute; top: 16px; left: 18px; margin: 0; font-size: 24px; }
     .jularr-hero-lockup .brand-mark { width: 44px; height: 44px; }
 }
+
+/* Client-side library filters (offline-library-ui.js and page filters) combine through classes. */
+.is-offline-hidden, .is-filter-hidden { display: none !important; }
+
+/* Acquisition request states, shared by Books, Discover and Admin → Requests. */
+.request-status-pending, .request-status-approved { background: var(--accent-soft); color: var(--accent-text); }
+.request-status-searching, .request-status-downloading { background: color-mix(in srgb, var(--info-text) 15%, transparent); color: var(--info-text); }
+.request-status-completed { background: color-mix(in srgb, var(--success-text) 15%, transparent); color: var(--success-text); }
+.request-status-failed, .request-status-rejected { background: color-mix(in srgb, var(--danger-text) 14%, transparent); color: var(--danger-text); }

@@ -33,6 +33,9 @@ public sealed class EditModel(AppDbContext db, IndexerStore store) : PageModel
     public string? Categories { get; set; }
 
     [BindProperty]
+    public string? BookCategories { get; set; }
+
+    [BindProperty]
     public string? IndexerIds { get; set; }
 
     [BindProperty]
@@ -52,6 +55,9 @@ public sealed class EditModel(AppDbContext db, IndexerStore store) : PageModel
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         if (Id is not { } id)
         {
+            var defaults = IndexerSettings.CreateDefault(string.Empty, Type);
+            Categories = string.Join(", ", defaults.Categories);
+            BookCategories = string.Join(", ", IndexerSettings.DefaultBookCategories);
             return;
         }
 
@@ -66,6 +72,7 @@ public sealed class EditModel(AppDbContext db, IndexerStore store) : PageModel
         Type = entry.Type;
         BaseUrl = entry.Settings.BaseUrl;
         Categories = string.Join(", ", entry.Settings.Categories);
+        BookCategories = string.Join(", ", entry.Settings.EffectiveBookCategories);
         IndexerIds = string.Join(", ", entry.Settings.IndexerIds);
         SearchLimit = entry.Settings.SearchLimit;
         Priority = entry.Priority;
@@ -77,7 +84,9 @@ public sealed class EditModel(AppDbContext db, IndexerStore store) : PageModel
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         try
         {
-            if (!TryParseIds(Categories, out var categories) || !TryParseIds(IndexerIds, out var indexerIds))
+            if (!TryParseIds(Categories, out var categories)
+                || !TryParseIds(IndexerIds, out var indexerIds)
+                || !TryParseIds(BookCategories, out var bookCategories))
             {
                 Error = Ui["settings.indexers.invalidIds"];
                 return Page();
@@ -98,12 +107,12 @@ public sealed class EditModel(AppDbContext db, IndexerStore store) : PageModel
                     Type,
                     Enabled,
                     Priority,
-                    new IndexerSettings(BaseUrl, categories, indexerIds, SearchLimit),
+                    new IndexerSettings(BaseUrl, categories, indexerIds, SearchLimit, bookCategories.Length == 0 ? null : bookCategories),
                     apiKey),
                 cancellationToken);
 
             TempData["IndexerNotice"] = Ui["settings.indexers.saved"];
-            return RedirectToPage("Index");
+            return RedirectToPage("/Admin/Usenet");
         }
         catch (Exception exception) when (
             exception is ArgumentException or ArgumentOutOfRangeException or InvalidDataException or IOException or UnauthorizedAccessException)

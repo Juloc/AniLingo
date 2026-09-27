@@ -1,6 +1,8 @@
 using System.IO.Compression;
 using System.Text;
 using Jularr.Web.Data;
+using Jularr.Web.Features.Acquisition.Access;
+using Jularr.Web.Features.Acquisition.Import;
 using Jularr.Web.Features.Acquisition.Sabnzbd;
 using Jularr.Web.Features.Books;
 using Jularr.Web.Features.Operations;
@@ -36,6 +38,7 @@ public sealed class BookInboxImportTests
                     Snapshot(BookInboxImport.SabnzbdDownloadKind, "owner"),
                     Snapshot(BookInboxImport.SabnzbdDownloadKind, "owner")
                 ],
+                NoStoragePaths,
                 CancellationToken.None);
 
             Assert.IsTrue(imported);
@@ -75,6 +78,7 @@ public sealed class BookInboxImportTests
             var imported = await BookInboxImport.ImportAfterDownloadsAsync(
                 services,
                 [Snapshot(SabnzbdAcquisitionService.OperationKind, "owner")],
+                NoStoragePaths,
                 CancellationToken.None);
 
             Assert.IsFalse(imported);
@@ -102,9 +106,96 @@ public sealed class BookInboxImportTests
             var imported = await BookInboxImport.ImportAfterDownloadsAsync(
                 services,
                 [Snapshot(BookInboxImport.SabnzbdDownloadKind, "owner")],
+                NoStoragePaths,
                 CancellationToken.None);
 
             Assert.IsFalse(imported);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private static readonly IReadOnlyDictionary<Guid, string?> NoStoragePaths = new Dictionary<Guid, string?>();
+
+    [TestMethod]
+    public async Task CompletedDownloadIsImportedFromItsOwnMappedJobFolderAndClosesTheRequest()
+    {
+        var root = TempDirectory();
+        // SABnzbd reports its own path; Jularr sees the same folder under a different mount.
+        var local = Directory.CreateDirectory(Path.Combine(root, "mnt", "complete", "books", "Dune.2021", "nested")).FullName;
+
+        try
+        {
+            await using (var file = File.Create(Path.Combine(local, "dune.epub")))
+            {
+                BuildTestEpub().CopyTo(file);
+            }
+
+            await using var services = await CreateServicesAsync(root, inboxPath: null);
+            var db = services.GetRequiredService<AppDbContext>();
+            await services.GetRequiredService<AnimeImportSettingsStore>().UpdateAsync(
+                state => state with { RemotePathMappings = [new RemotePathMapping("/downloads/complete", Path.Combine(root, "mnt", "complete"))] },
+                CancellationToken.None);
+
+            var download = Snapshot(BookInboxImport.SabnzbdDownloadKind, "alice");
+            var requests = services.GetRequiredService<AcquisitionAccessStore>();
+            var request = await requests.CreateAsync(
+                new AcquisitionRequestDraft(MediaAcquisitionKind.Book, "books-catalog", "ol:dune", "Something else entirely", null, null),
+                "alice",
+                AcquisitionRequestStatus.Approved,
+                "owner",
+                CancellationToken.None);
+            await requests.UpdateStatusAsync(request.Id, AcquisitionRequestStatus.Downloading, "Dune.2021", download.Id, null, null, CancellationToken.None);
+
+            var imported = await BookInboxImport.ImportAfterDownloadsAsync(
+                services,
+                [download],
+                new Dictionary<Guid, string?> { [download.Id] = "/downloads/complete/books/Dune.2021" },
+                CancellationToken.None);
+
+            Assert.IsTrue(imported);
+            var work = await db.NovelWorks.SingleAsync();
+            var stored = await requests.GetAsync(request.Id, CancellationToken.None);
+            Assert.AreEqual(AcquisitionRequestStatus.Completed, stored!.Status);
+            Assert.AreEqual($"/Books/Library/{work.Id}", stored.ResultUrl);
+            var operation = (await new OperationStore(db).ListAsync(new OperationListFilter(), CancellationToken.None))
+                .Single(item => item.Kind == BookInboxImport.DownloadImportOperationKind);
+            Assert.AreEqual(OperationStatus.Succeeded, operation.Status);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public async Task InboxScanFindsEpubsInJobSubfolders()
+    {
+        var root = TempDirectory();
+        var inbox = Directory.CreateDirectory(Path.Combine(root, "inbox")).FullName;
+        var job = Directory.CreateDirectory(Path.Combine(inbox, "Some.Book.EPUB-GROUP")).FullName;
+
+        try
+        {
+            await using (var file = File.Create(Path.Combine(job, "book.epub")))
+            {
+                BuildTestEpub().CopyTo(file);
+            }
+
+            await using var services = await CreateServicesAsync(root, inbox);
+
+            var imported = await BookInboxImport.ImportAfterDownloadsAsync(
+                services,
+                [Snapshot(BookInboxImport.SabnzbdDownloadKind, "owner")],
+                NoStoragePaths,
+                CancellationToken.None);
+
+            Assert.IsTrue(imported);
+            Assert.AreEqual(1, await services.GetRequiredService<AppDbContext>().NovelWorks.CountAsync());
         }
         finally
         {
@@ -141,6 +232,8 @@ public sealed class BookInboxImportTests
                 provider.GetRequiredService<IBookTranslator>(),
                 configuration))
             .AddSingleton(provider => new OperationRunner(db, provider))
+            .AddSingleton(new AnimeImportSettingsStore(root))
+            .AddSingleton(new AcquisitionAccessStore(db))
             .BuildServiceProvider();
     }
 

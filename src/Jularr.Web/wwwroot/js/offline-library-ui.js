@@ -226,7 +226,8 @@
     let offlineWorkIds = new Set();
     const applyFilter = (filter) => {
       for (const card of cards) {
-        card.hidden = filter === "offline" && !offlineWorkIds.has(card.dataset.workId);
+        // A class, not the hidden attribute, so page-level filters (tabs, genre, search) combine with it.
+        card.classList.toggle("is-offline-hidden", filter === "offline" && !offlineWorkIds.has(card.dataset.workId));
       }
     };
 
