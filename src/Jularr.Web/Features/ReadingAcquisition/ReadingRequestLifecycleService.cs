@@ -263,7 +263,8 @@ public sealed class ReadingRequestLifecycleService(
                 catch (Exception exception) when (
                     exception is InvalidOperationException or
                     HttpRequestException or
-                    TaskCanceledException)
+                    TaskCanceledException or
+                    System.Text.Json.JsonException)
                 {
                     metadataWarning =
                         $" Manga was imported, but AniList matching needs attention: {exception.Message}";
