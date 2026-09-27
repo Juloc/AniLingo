@@ -1,3 +1,5 @@
+using Jularr.Web.Features.Media.Optimization;
+
 namespace Jularr.Web.Features.Acquisition.Import;
 
 /// <summary>
@@ -27,7 +29,8 @@ public sealed record RemotePathMapping(string RemotePrefix, string LocalPrefix);
 
 /// <summary>
 /// The one canonical import-policy settings: default import mode, per-library-root overrides,
-/// remote path mappings and the per-anime target root for new imports. Stored at
+/// remote path mappings, the per-anime target root for new imports and the post-import playback
+/// optimization. Stored at
 /// <c>/data/acquisition/import-settings.json</c> next to the other acquisition stores.
 /// </summary>
 public sealed record AnimeImportSettingsState(
@@ -36,6 +39,10 @@ public sealed record AnimeImportSettingsState(
     Dictionary<Guid, AnimeImportMode> RootImportModes,
     List<RemotePathMapping> RemotePathMappings)
 {
+    // Post-import step for imported video: a lossless container remux when it widens browser
+    // Direct Play without losing anything (MediaContainerOptimizer). Off unless the owner opts in.
+    public LosslessPlaybackOptimizationMode PlaybackOptimization { get; init; } = LosslessPlaybackOptimizationMode.Off;
+
     public static AnimeImportSettingsState Empty() =>
         new(1, AnimeImportMode.Move, [], []);
 
