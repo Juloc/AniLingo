@@ -162,11 +162,37 @@ public sealed record DirectPlayEvaluation(
     bool CanDirectPlay,
     string? Reason);
 
+public enum MediaCompatibilityIssueKind
+{
+    Container,
+    VideoCodec,
+    PixelFormat,
+    CodecTag,
+    AudioCodec
+}
+
+// One reason a client cannot play the media untouched. Detail is the short technical phrase the
+// optimizer journal records; runtime playback maps Kind to a machine-readable reason code.
+public sealed record MediaCompatibilityIssue(
+    MediaCompatibilityIssueKind Kind,
+    string Detail);
+
 // The one Direct Play rule set: the post-download optimizer asks it whether a remux would widen
-// Direct Play, and playback asks it whether the untouched file plays as is.
+// Direct Play, and runtime playback (PlaybackDecisionEngine) asks it whether the untouched file,
+// or a lossless remux into another container, plays on the requesting client.
 public static class MediaPlaybackCompatibility
 {
     public static DirectPlayEvaluation Evaluate(
+        PlaybackClientProfile profile,
+        MediaPlaybackCharacteristics media)
+    {
+        var issues = Issues(profile, media);
+        return new(profile, issues.Count == 0, issues.Count == 0 ? null : issues[0].Detail);
+    }
+
+    // Every issue, not just the first, so playback can explain all reasons at once. A missing
+    // container stops the evaluation: codec support is only defined per container.
+    public static IReadOnlyList<MediaCompatibilityIssue> Issues(
         PlaybackClientProfile profile,
         MediaPlaybackCharacteristics media)
     {
@@ -176,34 +202,37 @@ public static class MediaPlaybackCompatibility
         var container = profile.Containers.FirstOrDefault(x => x.Container == media.Container);
         if (container is null)
         {
-            return new(profile, false, $"{media.Container} container");
+            return [new(MediaCompatibilityIssueKind.Container, $"{media.Container} container")];
         }
 
+        var issues = new List<MediaCompatibilityIssue>();
         var video = container.Video.FirstOrDefault(x =>
             string.Equals(x.Codec, media.VideoCodec, StringComparison.OrdinalIgnoreCase));
         if (video is null)
         {
-            return new(profile, false, $"{media.VideoCodec ?? "unknown"} video");
+            issues.Add(new(MediaCompatibilityIssueKind.VideoCodec, $"{media.VideoCodec ?? "unknown"} video"));
         }
-
-        if (video.PixelFormats is { } formats &&
-            (media.PixelFormat is null || !formats.Contains(media.PixelFormat)))
+        else if (video.PixelFormats is { } formats &&
+                 (media.PixelFormat is null || !formats.Contains(media.PixelFormat)))
         {
-            return new(profile, false, $"{media.VideoCodec} {media.PixelFormat ?? "unknown pixel format"}");
+            issues.Add(new(
+                MediaCompatibilityIssueKind.PixelFormat,
+                $"{media.VideoCodec} {media.PixelFormat ?? "unknown pixel format"}"));
         }
-
-        if (video.CodecTags is { } tags &&
-            (media.VideoCodecTag is null || !tags.Contains(media.VideoCodecTag)))
+        else if (video.CodecTags is { } tags &&
+                 (media.VideoCodecTag is null || !tags.Contains(media.VideoCodecTag)))
         {
-            return new(profile, false, $"{media.VideoCodec} tagged {media.VideoCodecTag ?? "unknown"}");
+            issues.Add(new(
+                MediaCompatibilityIssueKind.CodecTag,
+                $"{media.VideoCodec} tagged {media.VideoCodecTag ?? "unknown"}"));
         }
 
         if (media.AudioCodec is not null && !container.Audio.Contains(media.AudioCodec))
         {
-            return new(profile, false, $"{media.AudioCodec} audio");
+            issues.Add(new(MediaCompatibilityIssueKind.AudioCodec, $"{media.AudioCodec} audio"));
         }
 
-        return new(profile, true, null);
+        return issues;
     }
 
     public static IReadOnlyList<PlaybackClientProfile> DirectPlayProfiles(

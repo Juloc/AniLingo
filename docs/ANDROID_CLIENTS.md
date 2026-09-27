@@ -245,6 +245,24 @@ The existing browser fragmented-MP4 path may remain while native support is adde
 
 ## 5. Playback selection
 
+### 5.0 Playback plan (canonical, #403)
+
+Advertised by `playbackPlan`. Every client — web, installed PWA, phone, TV — asks the server how to play instead of deciding itself:
+
+```text
+POST   /api/client/v1/episodes/{episodeId}/playback-plan
+GET    /api/client/v1/stream-sessions/{sessionId}/stream?startSeconds={seconds}   (progressive fMP4)
+GET    /api/client/v1/stream-sessions/{sessionId}/hls?startSeconds={seconds}      (redirects to the fMP4 HLS playlist)
+DELETE /api/client/v1/stream-sessions/{sessionId}
+```
+
+Request body (every field optional):
+
+- `capabilities`: what the device measured, each claim `confirmed` (decoder API asked about that exact configuration), `inferred` (weaker signal), `unknown` or `unsupported`: per container (`mp4`, `matroska`, `webm`) the video codecs (`h264`, `hevc`, `av1`, `vp9`, … with `bitDepths`, `maxHeight`, optional `codecTags`) and audio codecs (with `maxChannels`); `hdr` (`display`, `hdr10`, `hdr10Plus`, `hlg`, `dolbyVision`); `delivery` (`progressiveMp4`, `hls`); `subtitles` (`text`, `styledAss`, `image`); `features` (`audioTrackSelection`, `pictureInPicture`, …); `client` (`kind` = `web|pwa|android|android_tv`). Media3 clients report their decoder list; omitting the document makes the server infer a conservative one.
+- `audioTrackId`, `subtitleTrackId` (canonical `stream:N`; a bitmap subtitle the client cannot draw is burned in), `quality` (`auto`, `original`, `20mbps` … `1mbps`; legacy `1080p/720p/low` are accepted), `mode` (`auto`, `direct_only`, `always_transcode`), `network` (`throughputKbps`, `bufferSeconds`, `recentStalls`, `saveData`, `connectionType`), `failedModes` (modes that just failed on this device), `replacesSessionId`, `wake` (default `true`: the request is a play intent and wakes sleeping Wake-on-LAN storage; send `false` to only decide, e.g. when a screen opens).
+
+The response carries `sessionId`, `plan` and `delivery`. `plan.mode` is `direct_play` (untouched file, no server processing), `direct_stream` (video copied into fMP4, audio copied or converted), `transcode` (H.264) or `unavailable`. `plan.reasons[]` is machine-readable (`code`, `severity`, `rulesOut`, `values`) and explains every mode that was ruled out — clients show them as "Why not Direct Play?". `delivery.url` is the stream to open; live transports restart at a position with `delivery.startParameter`. When playback fails, send the failed mode in `failedModes` and play the new plan; never pick a fallback locally. Server-side quality decisions (Automatic, home/remote defaults) are part of the plan.
+
 ### 5.1 Native algorithm
 
 For both phone and TV:
@@ -440,9 +458,9 @@ Rules:
 - no arbitrary remote origin inside the app shell
 - WebView cookies/session belong to the configured Jularr origin
 
-Jularr has one canonical episode Play route. The WebView shell intercepts that same-origin route and opens the native player using the episode ID. The website still handles the route normally in a regular browser.
+Normal episode/detail navigation stays inside the WebView so the user can see the episode information and episode list before playback. On the Android phone client, that page exposes an explicit native Play navigation (`/Library/Episode/{id}?native=1`). The WebView shell intercepts only that explicit same-origin Play request and opens the native player using the episode ID. A regular browser continues to use the normal web player and never needs the Android marker.
 
-When native playback closes, the user returns to the same WebView history/navigation state.
+When native playback closes, the user returns to the same episode/detail WebView history/navigation state.
 
 The Companion screen itself remains a normal responsive Jularr web page and therefore appears identically in a browser or inside the phone app.
 
@@ -513,6 +531,8 @@ machine directly (both are generic, not anime-specific).
 ## 9. Android TV interaction
 
 The TV app uses Compose for TV focus semantics and a native Media3 player. It is landscape-only.
+
+TV browse/navigation is deliberately layered: **Library → Anime → Episode → Player**. Selecting an episode must open its TV detail surface first; loading Media3/player bootstrap begins only after the user activates **Play/Resume**. Back from Player returns to that Episode surface, not directly to the season list.
 
 ### 9.1 Remote behavior
 
@@ -830,7 +850,8 @@ Implementation should remain mergeable and testable in these slices:
 ### Slice C — phone native playback
 
 - WebView shell
-- Play-route interception
+- episode/detail navigation remains in the WebView
+- explicit native Play-route interception
 - Media3 direct play
 - HLS fallback
 - native learning subtitle overlay

@@ -12,12 +12,20 @@ public static class AiOptionResolver
         string operation)
     {
         var model = requested.Model;
-        if (model is not null && catalog.HasModels && catalog.Find(model) is null)
+        if (catalog.HasModels)
         {
-            model = null;
+            if (model is null || catalog.Find(model) is null)
+            {
+                model = catalog.DefaultModel?.Id;
+            }
+        }
+        else if (model is null)
+        {
+            throw new InvalidOperationException(
+                "Select a server AI model or refresh the model list before running AI tasks.");
         }
 
-        var descriptor = catalog.Find(model) ?? (model is null ? catalog.DefaultModel : null);
+        var descriptor = catalog.Find(model);
         var fallbackEffort = AiOperationDefaults.ReasoningEffort(operation);
         string? effort;
 

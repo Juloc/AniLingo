@@ -21,6 +21,7 @@ import de.juloc.jularr.core.model.PlayerMedia
 import de.juloc.jularr.core.model.SubtitleCue
 import de.juloc.jularr.core.model.TermDetail
 import de.juloc.jularr.core.player.JularrMedia3Player
+import de.juloc.jularr.core.player.toPlaybackMetadata
 import de.juloc.jularr.core.player.DevicePlaybackSupport
 import de.juloc.jularr.core.player.PlaybackSelector
 import de.juloc.jularr.core.player.PlaybackTransport
@@ -485,6 +486,7 @@ class NativePlayerController(
             uri = Uri.fromFile(local.mediaFile),
             startPositionMs = resumePositionMs,
             playWhenReady = true,
+            metadata = playbackBootstrap.episode.toPlaybackMetadata(),
         )
 
         recoveryJob?.cancel()
@@ -604,6 +606,7 @@ class NativePlayerController(
             },
             playWhenReady = shouldPlay,
             requestHeaders = sessionHeaders(),
+            metadata = currentBootstrap.episode.toPlaybackMetadata(),
         )
 
         recoveryJob?.cancel()

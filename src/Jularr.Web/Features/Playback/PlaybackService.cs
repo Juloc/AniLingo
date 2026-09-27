@@ -219,19 +219,6 @@ public sealed record PlaybackStreamDecision(
     PlaybackPreparationPlan? Plan,
     int? AudioStreamIndex);
 
-/// <summary>
-/// Server-decided outcome of one web player request. <c>SatisfiesCap</c> is
-/// false only when the inventory proves the delivered video is taller than the
-/// cap (Device mode never converts video, so it cannot honour such a cap).
-/// </summary>
-public sealed record PlaybackStreamVariant(
-    string Mode,
-    string? AudioTrackId,
-    string Quality,
-    bool IsAvailable,
-    bool IsLive,
-    bool SatisfiesCap);
-
 /// <summary>Plain text cues of one embedded subtitle stream for display-only playback subtitles.</summary>
 public sealed record PlaybackEmbeddedSubtitleCues(
     string TrackId,
@@ -574,54 +561,6 @@ public sealed class PlaybackService
     private static bool CapForcesEncode(PlaybackStreamRequest request, int? sourceHeight) =>
         request.Mode == PlaybackRequestedMode.Server &&
         PlaybackQuality.RequiresTranscode(request.QualityCap, sourceHeight);
-
-    /// <summary>
-    /// Every (mode, audio track, quality cap) combination the web player can
-    /// request, decided once on the server with <see cref="Decide"/> so the
-    /// browser only reads the outcome (live or direct, cap satisfied) instead
-    /// of re-implementing codec rules.
-    /// </summary>
-    public static IReadOnlyList<PlaybackStreamVariant> DescribeVariants(PlaybackMedia media)
-    {
-        var probe = new PlaybackProbeResult(
-            media.VideoCodec,
-            media.PixelFormat,
-            media.AudioCodec,
-            media.DurationSeconds,
-            media.Tracks,
-            media.VideoHeight);
-        var audioIds = (media.Tracks ?? [])
-            .Where(x => x.Kind == PlaybackTrackKind.Audio)
-            .Select(x => (string?)PlaybackTrackIds.Format(x.StreamIndex))
-            .DefaultIfEmpty(null)
-            .ToArray();
-
-        var variants = new List<PlaybackStreamVariant>();
-        foreach (var mode in new[] { PlaybackRequestedMode.Device, PlaybackRequestedMode.Server })
-        {
-            foreach (var audioId in audioIds)
-            {
-                foreach (var cap in Enum.GetValues<PlaybackQualityCap>())
-                {
-                    var decision = Decide(
-                        media.SourcePath,
-                        probe,
-                        new PlaybackStreamRequest(mode, audioId, cap));
-                    var encodes = decision?.Plan?.VideoMode == PlaybackVideoMode.H264;
-                    variants.Add(new PlaybackStreamVariant(
-                        mode == PlaybackRequestedMode.Server ? "server" : "device",
-                        audioId,
-                        PlaybackQuality.Name(cap),
-                        decision is not null,
-                        decision?.Plan is not null,
-                        decision is not null &&
-                        (encodes || !PlaybackQuality.RequiresTranscode(cap, media.VideoHeight))));
-                }
-            }
-        }
-
-        return variants;
-    }
 
     /// <summary>
     /// Extracts one embedded text subtitle stream as plain cues so a client can

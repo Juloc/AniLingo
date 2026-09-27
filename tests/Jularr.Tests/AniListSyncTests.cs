@@ -86,6 +86,107 @@ public sealed class AniListSyncTests
     }
 
     [TestMethod]
+    public async Task PlanningAnimeStartsWatchingWithStartDateAsync()
+    {
+        await using var fixture = await SyncFixture.CreateAsync();
+        await fixture.ConnectAsync(Owner, 42, OwnerToken);
+        await fixture.EnableAsync(Owner, AniListSyncMode.OnCompletion);
+        var anime = await fixture.AddAnimeAsync("Planning Anime", 556, episodes: 12);
+        fixture.Remote.Put(OwnerToken, 556, progress: 0, status: "PLANNING");
+
+        await fixture.WatchAsync(Owner, anime, 3, completed: true, fixture.Time.Ago(TimeSpan.FromSeconds(5)));
+        var written = await fixture.RunAsync();
+        var today = fixture.Time.GetUtcNow();
+
+        Assert.AreEqual(1, written.Written);
+        Assert.AreEqual(3, fixture.Remote.Progress(OwnerToken, 556));
+        Assert.AreEqual("CURRENT", fixture.Remote.Status(OwnerToken, 556));
+        Assert.AreEqual(
+            new AniListFuzzyDate(today.Year, today.Month, today.Day),
+            fixture.Remote.StartedAt(OwnerToken, 556));
+        StringAssert.Contains(fixture.Remote.Mutations.Single(), "status: CURRENT");
+    }
+
+    [TestMethod]
+    public async Task PlanningAnimeStartDateUsesTheConfiguredLocalDayAsync()
+    {
+        await using var fixture = await SyncFixture.CreateAsync();
+        // A zone whose calendar day differs from the UTC day at the fixture's current time.
+        var utcHour = fixture.Time.GetUtcNow().Hour;
+        fixture.Time.Zone = TimeZoneInfo.CreateCustomTimeZone(
+            "jularr-test-shifted",
+            TimeSpan.FromHours(utcHour < 12 ? -12 : 14),
+            "Shifted",
+            "Shifted");
+        await fixture.ConnectAsync(Owner, 42, OwnerToken);
+        await fixture.EnableAsync(Owner, AniListSyncMode.OnCompletion);
+        var anime = await fixture.AddAnimeAsync("Late Night Anime", 558, episodes: 12);
+        fixture.Remote.Put(OwnerToken, 558, progress: 0, status: "PLANNING");
+
+        await fixture.WatchAsync(Owner, anime, 1, completed: true, fixture.Time.Ago(TimeSpan.FromSeconds(5)));
+        var written = await fixture.RunAsync();
+        var localToday = TimeZoneInfo.ConvertTime(fixture.Time.GetUtcNow(), fixture.Time.Zone);
+        var utcToday = fixture.Time.GetUtcNow();
+
+        Assert.AreEqual(1, written.Written);
+        Assert.AreEqual(
+            new AniListFuzzyDate(localToday.Year, localToday.Month, localToday.Day),
+            fixture.Remote.StartedAt(OwnerToken, 558));
+        Assert.AreNotEqual(
+            new AniListFuzzyDate(utcToday.Year, utcToday.Month, utcToday.Day),
+            fixture.Remote.StartedAt(OwnerToken, 558));
+    }
+
+    [TestMethod]
+    public async Task PlanningAnimePreservesExistingStartDateAsync()
+    {
+        await using var fixture = await SyncFixture.CreateAsync();
+        await fixture.ConnectAsync(Owner, 42, OwnerToken);
+        await fixture.EnableAsync(Owner, AniListSyncMode.OnCompletion);
+        var anime = await fixture.AddAnimeAsync("Planned Earlier", 557, episodes: 12);
+        var existingStart = new AniListFuzzyDate(2026, 8, 15);
+        fixture.Remote.Put(
+            OwnerToken,
+            557,
+            progress: 0,
+            status: "PLANNING",
+            startedAt: existingStart);
+
+        await fixture.WatchAsync(Owner, anime, 2, completed: true, fixture.Time.Ago(TimeSpan.FromSeconds(5)));
+        var written = await fixture.RunAsync();
+
+        Assert.AreEqual(1, written.Written);
+        Assert.AreEqual("CURRENT", fixture.Remote.Status(OwnerToken, 557));
+        Assert.AreEqual(existingStart, fixture.Remote.StartedAt(OwnerToken, 557));
+    }
+
+    [TestMethod]
+    public async Task PlanningMangaStartsReadingWithStartDateAsync()
+    {
+        await using var fixture = await SyncFixture.CreateAsync();
+        await fixture.ConnectAsync(Owner, 42, OwnerToken);
+        await fixture.EnableAsync(Owner, AniListSyncMode.OnCompletion);
+        var seriesId = await fixture.AddMangaAsync("Planning Manga", 322, chapters: 3);
+        fixture.Remote.Put(OwnerToken, 322, progress: 0, chapters: 50, status: "PLANNING");
+
+        await fixture.ReadMangaAsync(
+            Owner,
+            seriesId,
+            chapter: 2,
+            page: 9,
+            fixture.Time.Ago(TimeSpan.FromSeconds(30)));
+        var written = await fixture.RunAsync();
+        var today = fixture.Time.GetUtcNow();
+
+        Assert.AreEqual(1, written.Written);
+        Assert.AreEqual(2, fixture.Remote.Progress(OwnerToken, 322));
+        Assert.AreEqual("CURRENT", fixture.Remote.Status(OwnerToken, 322));
+        Assert.AreEqual(
+            new AniListFuzzyDate(today.Year, today.Month, today.Day),
+            fixture.Remote.StartedAt(OwnerToken, 322));
+    }
+
+    [TestMethod]
     public async Task OnCompletionWritesFinishedMangaChapterAsync()
     {
         await using var fixture = await SyncFixture.CreateAsync();
@@ -426,13 +527,31 @@ public sealed class AniListSyncTests
 
         public void Viewer(string token, int viewerId) => viewers[token] = viewerId;
 
-        public void Put(string token, int mediaId, int progress, int? chapters = null, string status = "CURRENT")
+        public void Put(
+            string token,
+            int mediaId,
+            int progress,
+            int? chapters = null,
+            string status = "CURRENT",
+            AniListFuzzyDate? startedAt = null)
         {
-            entries[(token, mediaId)] = new Entry(mediaId, viewers.GetValueOrDefault(token), progress, 0, status);
+            var effectiveStartedAt = startedAt ??
+                (string.Equals(status, "PLANNING", StringComparison.OrdinalIgnoreCase)
+                    ? null
+                    : new AniListFuzzyDate(2026, 1, 2));
+            entries[(token, mediaId)] = new Entry(
+                mediaId,
+                viewers.GetValueOrDefault(token),
+                progress,
+                0,
+                status,
+                effectiveStartedAt);
             chapterCounts[mediaId] = chapters;
         }
 
         public int Progress(string token, int mediaId) => entries[(token, mediaId)].Progress;
+        public string Status(string token, int mediaId) => entries[(token, mediaId)].Status;
+        public AniListFuzzyDate? StartedAt(string token, int mediaId) => entries[(token, mediaId)].StartedAt;
 
         public void FailNext(int count, Func<HttpResponseMessage> response)
         {
@@ -470,10 +589,18 @@ public sealed class AniListSyncTests
             {
                 var id = Variable(body, "id")!.Value;
                 var current = entries[(token, id)];
+                var startsTracking = body.Contains("status: CURRENT", StringComparison.Ordinal);
                 var updated = current with
                 {
                     Progress = Variable(body, "progress")!.Value,
-                    ProgressVolumes = Variable(body, "progressVolumes") ?? current.ProgressVolumes
+                    ProgressVolumes = Variable(body, "progressVolumes") ?? current.ProgressVolumes,
+                    Status = startsTracking ? "CURRENT" : current.Status,
+                    StartedAt = startsTracking
+                        ? new AniListFuzzyDate(
+                            Variable(body, "startYear"),
+                            Variable(body, "startMonth"),
+                            Variable(body, "startDay"))
+                        : current.StartedAt
                 };
                 entries[(token, id)] = updated;
                 return Json(HttpStatusCode.OK, EntryJson("SaveMediaListEntry", updated));
@@ -508,15 +635,32 @@ public sealed class AniListSyncTests
         }
 
         private static string EntryJson(string root, Entry entry) =>
-            $$$"""
-            {"data":{"{{{root}}}":{
-              "id":{{{entry.MediaId}}},"userId":{{{entry.UserId}}},"mediaId":{{{entry.MediaId}}},"status":"{{{entry.Status}}}",
-              "progress":{{{entry.Progress}}},"progressVolumes":{{{entry.ProgressVolumes}}},"score":0,"repeat":0,"priority":0,
-              "private":false,"notes":"keep me","hiddenFromStatusLists":false,"customLists":null,"advancedScores":null,
-              "startedAt":{"year":2026,"month":1,"day":2},"completedAt":{"year":null,"month":null,"day":null},"updatedAt":1} } }
-            """;
+            "{\"data\":{\"" + root + "\":{" +
+            "\"id\":" + entry.MediaId.ToString(CultureInfo.InvariantCulture) +
+            ",\"userId\":" + entry.UserId.ToString(CultureInfo.InvariantCulture) +
+            ",\"mediaId\":" + entry.MediaId.ToString(CultureInfo.InvariantCulture) +
+            ",\"status\":\"" + entry.Status + "\"" +
+            ",\"progress\":" + entry.Progress.ToString(CultureInfo.InvariantCulture) +
+            ",\"progressVolumes\":" + entry.ProgressVolumes.ToString(CultureInfo.InvariantCulture) +
+            ",\"score\":0,\"repeat\":0,\"priority\":0" +
+            ",\"private\":false,\"notes\":\"keep me\",\"hiddenFromStatusLists\":false" +
+            ",\"customLists\":null,\"advancedScores\":null" +
+            ",\"startedAt\":" + FuzzyDateJson(entry.StartedAt) +
+            ",\"completedAt\":{\"year\":null,\"month\":null,\"day\":null},\"updatedAt\":1}}}";
 
-        private sealed record Entry(int MediaId, int UserId, int Progress, int ProgressVolumes, string Status);
+        private static string FuzzyDateJson(AniListFuzzyDate? date) =>
+            $"{{\"year\":{JsonInt(date?.Year)},\"month\":{JsonInt(date?.Month)},\"day\":{JsonInt(date?.Day)}}}";
+
+        private static string JsonInt(int? value) =>
+            value?.ToString(CultureInfo.InvariantCulture) ?? "null";
+
+        private sealed record Entry(
+            int MediaId,
+            int UserId,
+            int Progress,
+            int ProgressVolumes,
+            string Status,
+            AniListFuzzyDate? StartedAt);
     }
 
     private sealed class SyncTime(DateTimeOffset start) : TimeProvider
@@ -524,6 +668,10 @@ public sealed class AniListSyncTests
         private DateTimeOffset now = start;
 
         public override DateTimeOffset GetUtcNow() => now;
+
+        public TimeZoneInfo Zone { get; set; } = TimeZoneInfo.Utc;
+
+        public override TimeZoneInfo LocalTimeZone => Zone;
 
         public void Advance(TimeSpan by) => now += by;
 
@@ -808,7 +956,8 @@ public sealed class AniListSyncTests
                 segmentStore,
                 ReviewStore,
                 AniListSyncReconciler.ProfileAccount(profileId),
-                NullLogger<AniListAccountService>.Instance);
+                NullLogger<AniListAccountService>.Instance,
+                Time);
 
         public async ValueTask DisposeAsync()
         {

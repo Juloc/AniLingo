@@ -18,6 +18,9 @@ public sealed class AiModel(
     CodexCliProvider codex,
     TimeProvider time) : PageModel
 {
+    [BindProperty]
+    public string? ImageModel { get; set; }
+
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public bool HasStoredApiKey { get; private set; }
     public bool IsOwner => currentAccount.IsOwner;
@@ -170,6 +173,7 @@ public sealed class AiModel(
                     key,
                     TranslationMode)
                 {
+                    ImageModel = ImageModel,
                     ReasoningEffort = isServer ? ReasoningEffort : null,
                     ServiceTier = isServer ? ServiceTier : null,
                     MaxOutputTokens = isServer ? null : MaxOutputTokens,
@@ -198,6 +202,7 @@ public sealed class AiModel(
         ModelName = settings.ProviderId == AiProviderIds.OpenAiCompatible ? settings.Model : null;
         ServerModel = settings.ProviderId == AiProviderIds.Server ? settings.Model : null;
         TranslationMode = settings.TranslationMode;
+        ImageModel = settings.ImageModel;
         ReasoningEffort = settings.ReasoningEffort;
         ServiceTier = settings.ServiceTier;
         MaxOutputTokens = settings.MaxOutputTokens;

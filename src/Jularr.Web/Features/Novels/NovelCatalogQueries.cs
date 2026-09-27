@@ -19,6 +19,7 @@ public sealed record NovelReaderChapter(
     string Title,
     string OriginalText,
     string? TranslationText,
+    string? TranslateGemmaTranslationText,
     Guid? PreviousChapterId,
     Guid? NextChapterId,
     Guid VolumeId,
@@ -29,6 +30,9 @@ public sealed record NovelReaderChapter(
 {
     public bool HasContent => OriginalText.Length > 0;
     public bool HasTranslation => !string.IsNullOrWhiteSpace(TranslationText);
+    public bool HasTranslateGemmaTranslation =>
+        !string.IsNullOrWhiteSpace(TranslateGemmaTranslationText);
+    public bool HasAnyTranslation => HasTranslation || HasTranslateGemmaTranslation;
     public bool IsEpubVolume => VolumeKind == NovelVolumeKinds.Epub;
 }
 
@@ -268,7 +272,18 @@ public sealed class NovelCatalogQueries(AppDbContext db)
                         translation.ChapterId == chapter.Id &&
                         translation.TargetLanguage == NovelReadingLanguage.German &&
                         translation.PromptVersion == NovelTranslationService.PromptVersion &&
-                        translation.SourceHash == chapter.SourceHash)
+                        translation.SourceHash == chapter.SourceHash &&
+                        !translation.ProviderId.StartsWith(NovelTranslationProviders.TranslateGemmaPrefix))
+                    .OrderByDescending(translation => translation.CreatedAt)
+                    .Select(translation => translation.Text)
+                    .FirstOrDefault(),
+                db.NovelTranslations
+                    .Where(translation =>
+                        translation.ChapterId == chapter.Id &&
+                        translation.TargetLanguage == NovelReadingLanguage.GermanTranslateGemma &&
+                        translation.PromptVersion == NovelTranslationService.TranslateGemmaPromptVersion &&
+                        translation.SourceHash == chapter.SourceHash &&
+                        translation.ProviderId.StartsWith(NovelTranslationProviders.TranslateGemmaPrefix))
                     .OrderByDescending(translation => translation.CreatedAt)
                     .Select(translation => translation.Text)
                     .FirstOrDefault(),

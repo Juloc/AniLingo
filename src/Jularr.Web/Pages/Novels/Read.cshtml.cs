@@ -45,7 +45,10 @@ public sealed class ReadModel(
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public NovelReaderChapter Chapter { get; private set; } = null!;
     public IReadOnlyList<string> JapaneseParagraphs { get; private set; } = [];
+    /// <summary>Cached German translation produced by the configured full AI pipeline.</summary>
     public IReadOnlyList<string> GermanParagraphs { get; private set; } = [];
+    /// <summary>Cached text-only German translation produced locally by TranslateGemma.</summary>
+    public IReadOnlyList<string> TranslateGemmaParagraphs { get; private set; } = [];
     /// <summary>Japanese content blocks: paragraphs, headings and illustrations.</summary>
     public IReadOnlyList<NovelReaderBlock> JapaneseBlocks { get; private set; } = [];
     public IReadOnlyList<NovelAnimeMapping> AnimeMappings { get; private set; } = [];
@@ -78,6 +81,14 @@ public sealed class ReadModel(
     /// with Learning off (#369).
     /// </summary>
     public bool TranslationEnabled { get; private set; }
+    public bool TranslateGemmaConfigured { get; private set; }
+
+    /// <summary>
+    /// The reader renders TranslateGemma controls only when the local track can be read or
+    /// generated; otherwise the chapter shows no trace of it (#487).
+    /// </summary>
+    public bool TranslateGemmaAvailable =>
+        TranslateGemmaConfigured || TranslateGemmaParagraphs.Count > 0;
 
     private static bool FuriganaToolkitSupportsReadings =>
         LearningLanguageToolkitRegistry.Supports(
@@ -129,6 +140,7 @@ public sealed class ReadModel(
             cancellationToken);
 
         FuriganaSupported = FuriganaToolkitSupportsReadings;
+        TranslateGemmaConfigured = translations.TranslateGemmaConfigured;
         TranslationEnabled = await ResolveTranslationEnabledAsync(
             chapter.WorkId,
             id,
@@ -142,6 +154,9 @@ public sealed class ReadModel(
         // TranslationEnabled below.
         GermanParagraphs = chapter.HasTranslation
             ? NovelTextLayout.SplitParagraphs(chapter.TranslationText)
+            : [];
+        TranslateGemmaParagraphs = chapter.HasTranslateGemmaTranslation
+            ? NovelTextLayout.SplitParagraphs(chapter.TranslateGemmaTranslationText)
             : [];
         JapaneseBlocks = NovelChapterDocument.BuildReaderBlocks(
             chapter.OriginalText,
@@ -422,6 +437,114 @@ public sealed class ReadModel(
         var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         TempData["Status"] = ui["novels.read.translationQueued"];
         return RedirectToPage(new { id });
+    }
+
+    public async Task<IActionResult> OnPostTranslateGemmaAsync(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        if (!account.IsOwner)
+        {
+            return Forbid();
+        }
+
+        var context = await catalog.GetChapterContextAsync(id, cancellationToken);
+        if (context is null)
+        {
+            return NotFound();
+        }
+
+        if (!await ResolveTranslationEnabledAsync(context.WorkId, id, cancellationToken))
+        {
+            return Forbid();
+        }
+
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+        if (!translations.TranslateGemmaConfigured)
+        {
+            return BadRequest(ui["novels.translation.localNotConfigured"]);
+        }
+
+        var cached = await translations.GetCachedAsync(
+            id,
+            NovelReadingLanguage.German,
+            NovelTranslationEngine.TranslateGemma,
+            cancellationToken);
+
+        if (cached is not null)
+        {
+            if (IsFetchRequest())
+            {
+                return new JsonResult(new
+                {
+                    status = "ready",
+                    paragraphs = NovelTextLayout.SplitParagraphs(cached.Text)
+                });
+            }
+
+            TempData["Status"] = ui["novels.translation.localAlreadyCached"];
+            return RedirectToPage(new { id });
+        }
+
+        await jobs.QueueTranslateGemmaAsync(
+            id,
+            $"{context.WorkTitle} · Chapter {context.Number}",
+            account.ProfileId,
+            cancellationToken);
+
+        if (IsFetchRequest())
+        {
+            return new JsonResult(new { status = "queued" });
+        }
+
+        TempData["Status"] = ui["novels.translation.localQueued"];
+        return RedirectToPage(new { id });
+    }
+
+    public async Task<IActionResult> OnGetTranslateGemmaStatusAsync(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var context = await catalog.GetChapterContextAsync(id, cancellationToken);
+        if (context is null)
+        {
+            return NotFound();
+        }
+
+        var cached = await translations.GetCachedAsync(
+            id,
+            NovelReadingLanguage.German,
+            NovelTranslationEngine.TranslateGemma,
+            cancellationToken);
+
+        if (cached is not null)
+        {
+            return new JsonResult(new
+            {
+                status = "ready",
+                paragraphs = NovelTextLayout.SplitParagraphs(cached.Text)
+            });
+        }
+
+        if (!translations.TranslateGemmaConfigured)
+        {
+            return new JsonResult(new
+            {
+                status = "unavailable",
+                canGenerate = false
+            });
+        }
+
+        if (!await ResolveTranslationEnabledAsync(context.WorkId, id, cancellationToken))
+        {
+            return Forbid();
+        }
+
+        return new JsonResult(new
+        {
+            status = "pending",
+            canGenerate = account.IsOwner
+        });
     }
 
     public async Task<IActionResult> OnGetTranslationStatusAsync(
@@ -917,6 +1040,7 @@ public sealed class ReadModel(
         string? requestedLanguage)
     {
         var hasTranslation = GermanParagraphs.Count > 0;
+        var hasTranslateGemmaTranslation = TranslateGemmaParagraphs.Count > 0;
 
         if (bookmarkId is Guid requestedBookmark &&
             Annotations.Bookmarks.FirstOrDefault(x => x.Id == requestedBookmark) is { } bookmark)
@@ -933,9 +1057,12 @@ public sealed class ReadModel(
         if (highlightId is Guid requestedHighlight &&
             Annotations.Highlights.FirstOrDefault(x => x.Id == requestedHighlight) is { } highlight)
         {
-            var paragraphs = highlight.Language == NovelReadingLanguage.German
-                ? GermanParagraphs
-                : JapaneseParagraphs;
+            var paragraphs = highlight.Language switch
+            {
+                NovelReadingLanguage.German => GermanParagraphs,
+                NovelReadingLanguage.GermanTranslateGemma => TranslateGemmaParagraphs,
+                _ => JapaneseParagraphs
+            };
             var anchorText = highlight.ParagraphIndex < paragraphs.Count
                 ? NovelTextLayout.CreateAnchorText(paragraphs[highlight.ParagraphIndex])
                 : null;
@@ -954,12 +1081,21 @@ public sealed class ReadModel(
         // saved bookmark/highlight.
         if (requestedParagraph is int index && index >= 0)
         {
-            var language = requestedLanguage == NovelReadingLanguage.German && hasTranslation
-                ? NovelReadingLanguage.German
-                : NovelReadingLanguage.Japanese;
-            var paragraphs = language == NovelReadingLanguage.German
-                ? GermanParagraphs
-                : JapaneseParagraphs;
+            var language = requestedLanguage switch
+            {
+                NovelReadingLanguage.German when hasTranslation =>
+                    NovelReadingLanguage.German,
+                NovelReadingLanguage.GermanTranslateGemma
+                    when hasTranslateGemmaTranslation =>
+                    NovelReadingLanguage.GermanTranslateGemma,
+                _ => NovelReadingLanguage.Japanese
+            };
+            var paragraphs = language switch
+            {
+                NovelReadingLanguage.German => GermanParagraphs,
+                NovelReadingLanguage.GermanTranslateGemma => TranslateGemmaParagraphs,
+                _ => JapaneseParagraphs
+            };
             var anchorText = index < paragraphs.Count
                 ? NovelTextLayout.CreateAnchorText(paragraphs[index])
                 : null;

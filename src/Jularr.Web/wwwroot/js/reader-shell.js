@@ -390,6 +390,14 @@
                 }
             });
 
+            // A document without controls for a section (fixed pages have no
+            // typography) gets no tab for it.
+            for (const [key] of tabDefinitions) {
+                if (key === "reading" || key === "defaults" || panels[key].childElementCount) continue;
+                tabs.querySelector(`[data-reader-settings-tab="${key}"]`)?.remove();
+                panels[key].remove();
+            }
+
             const modeControl = controlFor("readingMode");
             if (modeControl) {
                 const switcher = document.createElement("div");

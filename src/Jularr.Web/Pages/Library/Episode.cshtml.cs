@@ -214,7 +214,7 @@ public sealed class EpisodeModel(
             AnimeTitle = Metadata.PreferredTitle;
         }
 
-        CoverImageUrl = AnimeArtworkStore.ResolvePosterUrl(animeId, Metadata?.CoverImageUrl);
+        CoverImageUrl = AnimeArtworkStore.ResolveSeasonPosterUrl(animeId, SeasonNumber, Metadata?.CoverImageUrl);
 
         var rows = await db.Episodes
             .AsNoTracking()
@@ -441,64 +441,6 @@ public sealed class EpisodeModel(
             : ui["library.episode.subtitleSource.embedded"];
     }
 
-    public async Task<IActionResult> OnGetMediaAsync(
-        Guid id,
-        string? mode,
-        double? start,
-        string? audio,
-        string? quality,
-        CancellationToken cancellationToken)
-    {
-        if (!PlaybackQuality.TryParse(quality, out var qualityCap))
-        {
-            return BadRequest();
-        }
-
-        var stream = await playbackService.GetStreamAsync(
-            id,
-            new PlaybackStreamRequest(
-                ParsePlaybackMode(mode),
-                string.IsNullOrWhiteSpace(audio) ? null : audio.Trim(),
-                qualityCap),
-            cancellationToken);
-        if (stream is null || !System.IO.File.Exists(stream.SourcePath))
-        {
-            return NotFound();
-        }
-
-        if (!stream.IsLive)
-        {
-            return new PhysicalFileResult(stream.SourcePath, stream.ContentType)
-            {
-                EnableRangeProcessing = true,
-                LastModified = stream.LastModified
-            };
-        }
-
-        try
-        {
-            var startSeconds = NormalizePlaybackStart(start, stream.DurationSeconds);
-            var liveStream = LivePlaybackStream.Start(
-                stream.SourcePath,
-                stream.LivePlan!,
-                startSeconds,
-                stream.AudioStreamIndex,
-                stream.QualityCap);
-
-            return new FileStreamResult(liveStream, stream.ContentType)
-            {
-                EnableRangeProcessing = false,
-                LastModified = stream.LastModified
-            };
-        }
-        catch (Exception exception) when (
-            exception is InvalidOperationException or
-            System.ComponentModel.Win32Exception)
-        {
-            return StatusCode(StatusCodes.Status503ServiceUnavailable);
-        }
-    }
-
     public async Task<IActionResult> OnPostWatchedAsync(
         Guid id,
         bool watched,
@@ -629,32 +571,6 @@ public sealed class EpisodeModel(
             UserTermState.Learning,
             cancellationToken);
         return RedirectToPage(new { id });
-    }
-
-    private static PlaybackRequestedMode ParsePlaybackMode(string? mode) =>
-        string.Equals(mode, "server", StringComparison.OrdinalIgnoreCase)
-            ? PlaybackRequestedMode.Server
-            : PlaybackRequestedMode.Device;
-
-    private static double NormalizePlaybackStart(
-        double? requestedStart,
-        double? durationSeconds)
-    {
-        if (requestedStart is null ||
-            !double.IsFinite(requestedStart.Value) ||
-            requestedStart.Value <= 0)
-        {
-            return 0;
-        }
-
-        if (durationSeconds is > 0 && double.IsFinite(durationSeconds.Value))
-        {
-            return Math.Min(
-                requestedStart.Value,
-                Math.Max(0, durationSeconds.Value - 0.05));
-        }
-
-        return requestedStart.Value;
     }
 
     public async Task<IActionResult> OnPostPrepareAsync(

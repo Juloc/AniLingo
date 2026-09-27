@@ -3,13 +3,18 @@ using Jularr.Web.Features.Progress;
 
 namespace Jularr.Web.Features.Playback;
 
-/// <summary>One selectable audio or subtitle entry, keyed by its canonical track id.</summary>
+/// <summary>
+/// One selectable audio or subtitle entry, keyed by its canonical track id. An image
+/// (bitmap) subtitle is drawn into the video by the server when chosen, which the playback
+/// plan explains as a subtitle burn-in.
+/// </summary>
 public sealed record PlayerTrackOption(
     string Id,
     string Label,
     string? Language,
     bool IsSelectable,
-    bool IsLearningSource);
+    bool IsLearningSource,
+    bool IsImage = false);
 
 /// <summary>
 /// Server-resolved initial state of the web player controls. Initial values
@@ -26,7 +31,6 @@ public sealed record PlayerControls(
     IReadOnlyList<double> Speeds,
     double InitialSpeed,
     int? SourceHeight,
-    IReadOnlyList<PlaybackStreamVariant> Variants,
     PlaybackPreferencesSnapshot Preferences)
 {
     public const string SubtitleOff = "off";
@@ -58,10 +62,11 @@ public sealed record PlayerControls(
             .OrderBy(x => x.StreamIndex)
             .Select((track, position) => new PlayerTrackOption(
                 PlaybackTrackIds.Format(track.StreamIndex),
-                Label(track, $"Subtitle {position + 1}") + (track.IsText ? "" : " · image, not shown"),
+                Label(track, $"Subtitle {position + 1}") + (track.IsText ? "" : " · image"),
                 PlaybackLanguages.Normalize(track.Language),
-                track.IsText,
-                hasLearningCues && track.StreamIndex == learningSourceStreamIndex))
+                true,
+                hasLearningCues && track.StreamIndex == learningSourceStreamIndex,
+                IsImage: !track.IsText))
             .ToArray();
 
         var fileDefaultAudio = PlaybackTrackSelection.DefaultAudio(tracks);
@@ -89,7 +94,6 @@ public sealed record PlayerControls(
             PlaybackPreferenceRules.Speeds,
             preferences.DefaultPlaybackSpeed,
             media.VideoHeight,
-            PlaybackService.DescribeVariants(media),
             preferences);
     }
 
