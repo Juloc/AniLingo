@@ -239,7 +239,7 @@ public sealed partial class BookCatalogService
             Title = Truncate(title, 500),
             Author = TruncateNullable(FirstNonEmpty(hint?.Author, content.Author), 300),
             MetadataTitle = Truncate(title, 500),
-            CoverImageUrl = TruncateNullable(hint?.CoverImageUrl, 2048),
+            CoverImageUrl = null,
             Format = BookFileFormats.Pdf + ":" + NormalizeSourceLanguage(content.Language),
             MetadataStatus = "IMPORTED",
             ImportedAt = DateTime.UtcNow,
@@ -247,9 +247,16 @@ public sealed partial class BookCatalogService
         };
         db.NovelWorks.Add(work);
 
-        if (work.CoverImageUrl is null
-            && content.CoverJpeg is { } cover
-            && await SaveLocalCoverAsync(work.Id, cover, "image/jpeg", cancellationToken) is not null)
+        if (await TryPersistPreferredCoverAsync(
+                work.Id,
+                work.Title,
+                work.Author,
+                isbn10: null,
+                isbn13: null,
+                content.CoverJpeg,
+                content.CoverJpeg is null ? null : "image/jpeg",
+                hint?.CoverImageUrl,
+                cancellationToken))
         {
             work.CoverImageUrl = $"/Books/Cover/{work.Id}";
         }
@@ -336,9 +343,19 @@ public sealed partial class BookCatalogService
             work.Author = TruncateNullable(hint.Author, 300);
         }
 
-        if (string.IsNullOrWhiteSpace(work.CoverImageUrl))
+        if (string.IsNullOrWhiteSpace(work.CoverImageUrl)
+            && await TryPersistPreferredCoverAsync(
+                work.Id,
+                work.Title,
+                work.Author,
+                isbn10: null,
+                isbn13: null,
+                embeddedCover: null,
+                embeddedMediaType: null,
+                hint.CoverImageUrl,
+                cancellationToken))
         {
-            work.CoverImageUrl = TruncateNullable(hint.CoverImageUrl, 2048);
+            work.CoverImageUrl = $"/Books/Cover/{work.Id}";
         }
 
         work.UpdatedAt = DateTime.UtcNow;
