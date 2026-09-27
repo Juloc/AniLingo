@@ -26,6 +26,7 @@
 }
 @section Head {
     <link rel="stylesheet" href="~/css/novel-library.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/franchise-links.css" asp-append-version="true" />
 }
 
 <a class="back-link" href="/Novels">@ui["novels.work.backToNovels"]</a>
@@ -113,6 +114,8 @@
         <partial name="_OfflineLibraryAction" model="new Jularr.Web.Features.OfflineLibrary.OfflineLibraryActionViewModel(work.Id, work.MetadataTitle ?? work.Title)" />
     </div>
 </header>
+
+<partial name="_FranchiseLinks" model="new Jularr.Web.Features.Franchises.FranchiseLinksViewModel(ui, Model.Franchises)" />
 
 @await Component.InvokeAsync("UpcomingReleases", new { mediaType = Jularr.Web.Features.Calendar.ReleaseMediaType.LightNovel, mediaId = work.Id, ui })
 

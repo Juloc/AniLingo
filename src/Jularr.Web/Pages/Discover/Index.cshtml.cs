@@ -92,7 +92,8 @@ public sealed class IndexModel(
             .GroupBy(item => (item.Kind, item.ExternalId))
             .ToDictionary(group => group.Key, group => AcquisitionAccessNames.Status(group.First().Status));
 
-        var followed = await watchlist.GetEffectiveKeysAsync(account.ProfileId, cancellationToken);
+        var followed = (await watchlist.GetEffectiveAsync(account.ProfileId, cancellationToken))
+            .ToDictionary(item => item.Identity.Key, item => item.FranchiseId, StringComparer.Ordinal);
 
         return new JsonResult(result with
         {
@@ -105,14 +106,16 @@ public sealed class IndexModel(
                         ? item with { RequestStatus = status }
                         : item;
 
-                    return TryWatchIdentity(item.Category, item.Provider, item.ExternalId, out var identity)
-                        ? mapped with { IsFollowed = followed.Contains(identity.Key) }
+                    return TryWatchIdentity(item.Category, item.Provider, item.ExternalId, out var identity) &&
+                           followed.TryGetValue(identity.Key, out var franchiseId)
+                        ? mapped with { IsFollowed = true, FollowedFranchiseId = franchiseId }
                         : mapped;
                 })
                 .ToArray()
         });
     }
 
+    /// <summary>Follows or unfollows one work for this profile. Library state is never taken from the browser.</summary>
     public async Task<IActionResult> OnPostWatchlistAsync(
         string? category,
         string? provider,
@@ -123,8 +126,6 @@ public sealed class IndexModel(
         string? format,
         string? status,
         int? year,
-        Guid? localMediaId,
-        string? detailsUrl,
         bool follow,
         CancellationToken cancellationToken)
     {
@@ -138,8 +139,6 @@ public sealed class IndexModel(
                 format,
                 status,
                 year,
-                localMediaId,
-                detailsUrl,
                 out var draft))
         {
             return BadRequest();
@@ -157,47 +156,27 @@ public sealed class IndexModel(
         return new JsonResult(new { followed = follow });
     }
 
+    /// <summary>
+    /// Follows the franchise of an AniList title. Only the identity is taken from the browser;
+    /// the franchise's works are read from AniList in the background.
+    /// </summary>
     public async Task<IActionResult> OnPostFollowFranchiseAsync(
         string? category,
         string? provider,
         string? externalId,
-        string? title,
-        string? nativeTitle,
-        string? coverImageUrl,
-        string? format,
-        string? status,
-        int? year,
-        Guid? localMediaId,
-        string? detailsUrl,
         CancellationToken cancellationToken)
     {
-        if (!WatchlistDraftInput.TryCreate(
-                category,
-                provider,
-                externalId,
-                title,
-                nativeTitle,
-                coverImageUrl,
-                format,
-                status,
-                year,
-                localMediaId,
-                detailsUrl,
-                out var draft) ||
-            draft.Identity.MediaType is not (
-                WatchlistMediaType.Anime or
-                WatchlistMediaType.Manga or
-                WatchlistMediaType.LightNovel) ||
-            !draft.Identity.ProviderKey.Equals(AniListMetadataProvider.ProviderKey, StringComparison.Ordinal))
+        if (!WatchlistDraftInput.TryIdentity(category, provider, externalId, out var identity) ||
+            !FranchiseService.CanSeed(identity))
         {
             return BadRequest();
         }
 
         var franchiseId = await franchiseService.FollowFromSeedAsync(
             account.ProfileId,
-            draft,
+            identity,
             cancellationToken);
-        return new JsonResult(new { followed = true, franchiseId });
+        return new JsonResult(new { followed = true, franchiseId, franchiseUrl = $"/Franchises/{franchiseId}" });
     }
 
     private static bool TryWatchIdentity(

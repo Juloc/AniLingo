@@ -117,7 +117,8 @@
                                 </button>
                             </form>
                         }
-                        @if (request.Status == AcquisitionRequestStatus.Approved && request.Kind == MediaAcquisitionKind.Book)
+                        @if (request.Status == AcquisitionRequestStatus.Approved &&
+                             request.Kind is MediaAcquisitionKind.Book or MediaAcquisitionKind.Manga or MediaAcquisitionKind.LightNovel)
                         {
                             <form method="post" asp-page-handler="Approve" asp-route-id="@request.Id">
                                 <button class="button button-primary" type="submit">@ui["admin.requests.searchNow"]</button>

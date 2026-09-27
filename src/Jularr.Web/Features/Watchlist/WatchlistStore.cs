@@ -34,14 +34,71 @@ public sealed class WatchlistStore(AppDbContext db)
                     existing.CoverImageUrl,
                     existing.Format,
                     existing.Status,
-                    existing.Year,
-                    existing.LocalMediaId,
-                    existing.DetailsUrl);
+                    existing.Year);
             await UpsertPreferenceAsync(profileId, draft, WatchPreferenceState.Ignore, cancellationToken);
             return;
         }
 
+        await DeletePreferenceAsync(profileId, identity, cancellationToken);
+    }
+
+    /// <summary>
+    /// Undoes hiding a franchise work: the work is followed through its franchise again. Direct
+    /// follows are not touched.
+    /// </summary>
+    public async Task RestoreAsync(string profileId, WatchlistIdentity identity, CancellationToken cancellationToken)
+    {
+        ValidateProfile(profileId);
         await WithConnectionAsync(async connection =>
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText =
+                """
+                DELETE FROM "ProfileWatchlistPreferences"
+                WHERE "ProfileId" = @profile
+                  AND "MediaType" = @mediaType
+                  AND "Provider" = @provider
+                  AND "ExternalId" = @externalId
+                  AND "FollowState" = 'ignore';
+                """;
+            Add(command, "@profile", profileId);
+            Add(command, "@mediaType", WatchlistMediaTypeNames.ToStorage(identity.MediaType));
+            Add(command, "@provider", identity.ProviderKey);
+            Add(command, "@externalId", identity.ExternalKey);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }, cancellationToken);
+    }
+
+    /// <summary>Keys of the franchise works this profile has hidden.</summary>
+    public async Task<IReadOnlySet<string>> GetHiddenKeysAsync(string profileId, CancellationToken cancellationToken)
+    {
+        ValidateProfile(profileId);
+        return await WithConnectionAsync<IReadOnlySet<string>>(async connection =>
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText =
+                """
+                SELECT "MediaType", "Provider", "ExternalId"
+                FROM "ProfileWatchlistPreferences"
+                WHERE "ProfileId" = @profile AND "FollowState" = 'ignore';
+                """;
+            Add(command, "@profile", profileId);
+            var keys = new HashSet<string>(StringComparer.Ordinal);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                if (WatchlistMediaTypeNames.Parse(reader.GetString(0)) is { } type)
+                {
+                    keys.Add(new WatchlistIdentity(type, reader.GetString(1), reader.GetString(2)).Key);
+                }
+            }
+
+            return keys;
+        }, cancellationToken);
+    }
+
+    private Task DeletePreferenceAsync(string profileId, WatchlistIdentity identity, CancellationToken cancellationToken) =>
+        WithConnectionAsync(async connection =>
         {
             await using var command = connection.CreateCommand();
             command.CommandText =
@@ -58,7 +115,6 @@ public sealed class WatchlistStore(AppDbContext db)
             Add(command, "@externalId", identity.ExternalKey);
             await command.ExecuteNonQueryAsync(cancellationToken);
         }, cancellationToken);
-    }
 
     public async Task<IReadOnlyList<WatchlistItem>> GetEffectiveAsync(
         string profileId,
@@ -74,8 +130,7 @@ public sealed class WatchlistStore(AppDbContext db)
                 command.CommandText =
                     """
                     SELECT m."MediaType", m."Provider", m."ExternalId", m."Title", m."NativeTitle",
-                           m."CoverImageUrl", m."Format", m."Status", m."Year", m."LocalMediaId",
-                           m."DetailsUrl", f."Id", f."Title"
+                           m."CoverImageUrl", m."Format", m."Status", m."Year", f."Id", f."Title"
                     FROM "FranchiseMembers" m
                     INNER JOIN "ProfileFranchiseFollows" pf ON pf."FranchiseId" = m."FranchiseId"
                     INNER JOIN "Franchises" f ON f."Id" = m."FranchiseId"
@@ -96,8 +151,7 @@ public sealed class WatchlistStore(AppDbContext db)
                 command.CommandText =
                     """
                     SELECT "MediaType", "Provider", "ExternalId", "Title", "NativeTitle",
-                           "CoverImageUrl", "Format", "Status", "Year", "LocalMediaId",
-                           "DetailsUrl", NULL, NULL
+                           "CoverImageUrl", "Format", "Status", "Year", NULL, NULL
                     FROM "ProfileWatchlistPreferences"
                     WHERE "ProfileId" = @profile AND "FollowState" = 'follow'
                     ORDER BY "UpdatedAtUtc" DESC;
@@ -203,12 +257,10 @@ public sealed class WatchlistStore(AppDbContext db)
                 """
                 INSERT INTO "ProfileWatchlistPreferences"
                     ("ProfileId", "MediaType", "Provider", "ExternalId", "FollowState", "Title",
-                     "NativeTitle", "CoverImageUrl", "Format", "Status", "Year", "LocalMediaId",
-                     "DetailsUrl", "UpdatedAtUtc")
+                     "NativeTitle", "CoverImageUrl", "Format", "Status", "Year", "UpdatedAtUtc")
                 VALUES
                     (@profile, @mediaType, @provider, @externalId, @state, @title,
-                     @nativeTitle, @cover, @format, @status, @year, @localMediaId,
-                     @detailsUrl, @updated)
+                     @nativeTitle, @cover, @format, @status, @year, @updated)
                 ON CONFLICT ("ProfileId", "MediaType", "Provider", "ExternalId") DO UPDATE SET
                     "FollowState" = excluded."FollowState",
                     "Title" = excluded."Title",
@@ -217,8 +269,6 @@ public sealed class WatchlistStore(AppDbContext db)
                     "Format" = excluded."Format",
                     "Status" = excluded."Status",
                     "Year" = excluded."Year",
-                    "LocalMediaId" = COALESCE(excluded."LocalMediaId", "ProfileWatchlistPreferences"."LocalMediaId"),
-                    "DetailsUrl" = COALESCE(excluded."DetailsUrl", "ProfileWatchlistPreferences"."DetailsUrl"),
                     "UpdatedAtUtc" = excluded."UpdatedAtUtc";
                 """;
             Add(command, "@profile", profileId);
@@ -232,8 +282,6 @@ public sealed class WatchlistStore(AppDbContext db)
             Add(command, "@format", Clean(draft.Format));
             Add(command, "@status", Clean(draft.Status));
             Add(command, "@year", draft.Year);
-            Add(command, "@localMediaId", draft.LocalMediaId?.ToString("D"));
-            Add(command, "@detailsUrl", Clean(draft.DetailsUrl));
             Add(command, "@updated", DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture));
             await command.ExecuteNonQueryAsync(cancellationToken);
         }, cancellationToken);
@@ -269,13 +317,11 @@ public sealed class WatchlistStore(AppDbContext db)
         var type = WatchlistMediaTypeNames.Parse(reader.GetString(0))
             ?? throw new InvalidOperationException("Unknown watchlist media type.");
         var identity = new WatchlistIdentity(type, reader.GetString(1), reader.GetString(2));
-        Guid? localMediaId = reader.IsDBNull(9) || !Guid.TryParse(reader.GetString(9), out var parsedLocal)
-            ? null
-            : parsedLocal;
-        Guid? franchiseId = reader.IsDBNull(11) || !Guid.TryParse(reader.GetString(11), out var parsedFranchise)
+        Guid? franchiseId = reader.IsDBNull(9) || !Guid.TryParse(reader.GetString(9), out var parsedFranchise)
             ? null
             : parsedFranchise;
 
+        // Library entry and link are resolved by WatchlistLibraryResolver when the item is shown.
         return new WatchlistItem(
             identity,
             reader.GetString(3),
@@ -284,10 +330,10 @@ public sealed class WatchlistStore(AppDbContext db)
             reader.IsDBNull(6) ? null : reader.GetString(6),
             reader.IsDBNull(7) ? null : reader.GetString(7),
             reader.IsDBNull(8) ? null : reader.GetInt32(8),
-            localMediaId,
-            reader.IsDBNull(10) ? null : reader.GetString(10),
+            null,
+            null,
             franchiseId,
-            reader.IsDBNull(12) ? null : reader.GetString(12),
+            reader.IsDBNull(10) ? null : reader.GetString(10),
             isExplicit);
     }
 

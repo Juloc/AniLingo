@@ -7,24 +7,16 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Web.Features.Franchises;
 
-public enum MediaRelationReviewState
-{
-    Confirmed,
-    Pending,
-    Rejected
-}
-
+/// <summary>A directional provider relation: <see cref="To"/> is the <see cref="RelationType"/> of <see cref="From"/>.</summary>
 public sealed record MediaRelation(
-    Guid Id,
     WatchlistIdentity From,
     WatchlistIdentity To,
-    string RelationType,
-    string Source,
-    double Confidence,
-    MediaRelationReviewState ReviewState,
-    bool IsManual,
-    DateTime UpdatedAtUtc);
+    string RelationType);
 
+/// <summary>
+/// The provider relation graph between works (table MediaRelations), written by the franchise
+/// refresh. Rows that were rejected stay hidden.
+/// </summary>
 public sealed class MediaRelationStore(AppDbContext db)
 {
     public Task UpsertProviderAsync(
@@ -32,13 +24,10 @@ public sealed class MediaRelationStore(AppDbContext db)
         WatchlistIdentity to,
         string relationType,
         string source,
-        double confidence,
-        bool confirmed,
         CancellationToken cancellationToken)
     {
         var normalizedType = NormalizeRelationType(relationType);
         var normalizedSource = NormalizeSource(source);
-        var state = confirmed ? "confirmed" : "pending";
         var now = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture);
 
         return WithConnectionAsync(async connection =>
@@ -53,7 +42,7 @@ public sealed class MediaRelationStore(AppDbContext db)
                 VALUES
                     (@id, @fromType, @fromProvider, @fromId,
                      @toType, @toProvider, @toId, @relationType,
-                     @source, @confidence, @reviewState, 0, @updated)
+                     @source, 1.0, 'confirmed', 0, @updated)
                 ON CONFLICT (
                     "FromMediaType", "FromProvider", "FromExternalId",
                     "ToMediaType", "ToProvider", "ToExternalId", "RelationType"
@@ -62,15 +51,6 @@ public sealed class MediaRelationStore(AppDbContext db)
                         WHEN "MediaRelations"."IsManual" = 1 THEN "MediaRelations"."Source"
                         ELSE excluded."Source"
                     END,
-                    "Confidence" = CASE
-                        WHEN "MediaRelations"."IsManual" = 1 THEN "MediaRelations"."Confidence"
-                        ELSE excluded."Confidence"
-                    END,
-                    "ReviewState" = CASE
-                        WHEN "MediaRelations"."IsManual" = 1 THEN "MediaRelations"."ReviewState"
-                        WHEN "MediaRelations"."ReviewState" = 'rejected' THEN 'rejected'
-                        ELSE excluded."ReviewState"
-                    END,
                     "UpdatedAtUtc" = excluded."UpdatedAtUtc";
                 """;
             BindIdentity(command, "from", from);
@@ -78,172 +58,67 @@ public sealed class MediaRelationStore(AppDbContext db)
             Add(command, "@id", Guid.NewGuid().ToString("D"));
             Add(command, "@relationType", normalizedType);
             Add(command, "@source", normalizedSource);
-            Add(command, "@confidence", Math.Clamp(confidence, 0, 1));
-            Add(command, "@reviewState", state);
             Add(command, "@updated", now);
             await command.ExecuteNonQueryAsync(cancellationToken);
         }, cancellationToken);
     }
 
-    public Task UpsertManualAsync(
-        WatchlistIdentity from,
-        WatchlistIdentity to,
-        string relationType,
-        CancellationToken cancellationToken)
-    {
-        var normalizedType = NormalizeRelationType(relationType);
-        var now = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture);
-
-        return WithConnectionAsync(async connection =>
-        {
-            await using var command = connection.CreateCommand();
-            command.CommandText =
-                """
-                INSERT INTO "MediaRelations"
-                    ("Id", "FromMediaType", "FromProvider", "FromExternalId",
-                     "ToMediaType", "ToProvider", "ToExternalId", "RelationType",
-                     "Source", "Confidence", "ReviewState", "IsManual", "UpdatedAtUtc")
-                VALUES
-                    (@id, @fromType, @fromProvider, @fromId,
-                     @toType, @toProvider, @toId, @relationType,
-                     'manual', 1.0, 'confirmed', 1, @updated)
-                ON CONFLICT (
-                    "FromMediaType", "FromProvider", "FromExternalId",
-                    "ToMediaType", "ToProvider", "ToExternalId", "RelationType"
-                ) DO UPDATE SET
-                    "Source" = 'manual',
-                    "Confidence" = 1.0,
-                    "ReviewState" = 'confirmed',
-                    "IsManual" = 1,
-                    "UpdatedAtUtc" = excluded."UpdatedAtUtc";
-                """;
-            BindIdentity(command, "from", from);
-            BindIdentity(command, "to", to);
-            Add(command, "@id", Guid.NewGuid().ToString("D"));
-            Add(command, "@relationType", normalizedType);
-            Add(command, "@updated", now);
-            await command.ExecuteNonQueryAsync(cancellationToken);
-        }, cancellationToken);
-    }
-
-    public Task SetReviewStateAsync(
-        Guid relationId,
-        MediaRelationReviewState state,
+    /// <summary>Relations whose both ends are members of the franchise.</summary>
+    public async Task<IReadOnlyList<MediaRelation>> GetForFranchiseAsync(
+        Guid franchiseId,
         CancellationToken cancellationToken) =>
-        WithConnectionAsync(async connection =>
-        {
-            await using var command = connection.CreateCommand();
-            command.CommandText =
-                """
-                UPDATE "MediaRelations"
-                SET "ReviewState" = @state,
-                    "IsManual" = 1,
-                    "Source" = CASE WHEN @state = 'confirmed' THEN 'manual' ELSE "Source" END,
-                    "UpdatedAtUtc" = @updated
-                WHERE "Id" = @id;
-                """;
-            Add(command, "@state", ReviewStateName(state));
-            Add(command, "@updated", DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture));
-            Add(command, "@id", relationId.ToString("D"));
-            await command.ExecuteNonQueryAsync(cancellationToken);
-        }, cancellationToken);
-
-    public Task DeleteManualAsync(Guid relationId, CancellationToken cancellationToken) =>
-        WithConnectionAsync(async connection =>
-        {
-            await using var command = connection.CreateCommand();
-            command.CommandText =
-                """
-                DELETE FROM "MediaRelations"
-                WHERE "Id" = @id AND "IsManual" = 1;
-                """;
-            Add(command, "@id", relationId.ToString("D"));
-            await command.ExecuteNonQueryAsync(cancellationToken);
-        }, cancellationToken);
-
-    public async Task<IReadOnlyList<MediaRelation>> GetForMembersAsync(
-        IReadOnlyCollection<WatchlistIdentity> members,
-        CancellationToken cancellationToken)
-    {
-        if (members.Count == 0)
-        {
-            return [];
-        }
-
-        var keys = members.Select(item => item.Key).ToHashSet(StringComparer.Ordinal);
-        return await WithConnectionAsync<IReadOnlyList<MediaRelation>>(async connection =>
-        {
-            await using var command = connection.CreateCommand();
-            command.CommandText =
-                """
-                SELECT "Id",
-                       "FromMediaType", "FromProvider", "FromExternalId",
-                       "ToMediaType", "ToProvider", "ToExternalId",
-                       "RelationType", "Source", "Confidence", "ReviewState",
-                       "IsManual", "UpdatedAtUtc"
-                FROM "MediaRelations"
-                WHERE "ReviewState" <> 'rejected'
-                ORDER BY "RelationType", "UpdatedAtUtc" DESC;
-                """;
-
-            var result = new List<MediaRelation>();
-            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-            while (await reader.ReadAsync(cancellationToken))
-            {
-                var relation = Read(reader);
-                if (keys.Contains(relation.From.Key) && keys.Contains(relation.To.Key))
-                {
-                    result.Add(relation);
-                }
-            }
-
-            return result;
-        }, cancellationToken);
-    }
-
-    public async Task<IReadOnlyList<MediaRelation>> GetPendingAsync(CancellationToken cancellationToken) =>
         await WithConnectionAsync<IReadOnlyList<MediaRelation>>(async connection =>
         {
             await using var command = connection.CreateCommand();
             command.CommandText =
                 """
-                SELECT "Id",
-                       "FromMediaType", "FromProvider", "FromExternalId",
-                       "ToMediaType", "ToProvider", "ToExternalId",
-                       "RelationType", "Source", "Confidence", "ReviewState",
-                       "IsManual", "UpdatedAtUtc"
-                FROM "MediaRelations"
-                WHERE "ReviewState" = 'pending'
-                ORDER BY "Confidence" DESC, "UpdatedAtUtc" DESC;
+                SELECT r."FromMediaType", r."FromProvider", r."FromExternalId",
+                       r."ToMediaType", r."ToProvider", r."ToExternalId", r."RelationType"
+                FROM "MediaRelations" r
+                INNER JOIN "FranchiseMembers" a
+                    ON a."FranchiseId" = @franchise
+                   AND a."MediaType" = r."FromMediaType"
+                   AND a."Provider" = r."FromProvider"
+                   AND a."ExternalId" = r."FromExternalId"
+                INNER JOIN "FranchiseMembers" b
+                    ON b."FranchiseId" = @franchise
+                   AND b."MediaType" = r."ToMediaType"
+                   AND b."Provider" = r."ToProvider"
+                   AND b."ExternalId" = r."ToExternalId"
+                WHERE r."ReviewState" <> 'rejected'
+                ORDER BY r."UpdatedAtUtc";
                 """;
+            Add(command, "@franchise", franchiseId.ToString("D"));
 
             var result = new List<MediaRelation>();
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
             {
-                result.Add(Read(reader));
+                if (WatchlistMediaTypeNames.Parse(reader.GetString(0)) is not { } fromType ||
+                    WatchlistMediaTypeNames.Parse(reader.GetString(3)) is not { } toType)
+                {
+                    continue;
+                }
+
+                result.Add(new MediaRelation(
+                    new WatchlistIdentity(fromType, reader.GetString(1), reader.GetString(2)),
+                    new WatchlistIdentity(toType, reader.GetString(4), reader.GetString(5)),
+                    reader.GetString(6)));
             }
 
             return result;
         }, cancellationToken);
 
-    private static MediaRelation Read(DbDataReader reader)
+    /// <summary>Stored form of a relation type: lower case with dashes, for example "side-story".</summary>
+    public static string NormalizeRelationType(string relationType)
     {
-        var fromType = WatchlistMediaTypeNames.Parse(reader.GetString(1))
-            ?? throw new InvalidOperationException("Unknown relation media type.");
-        var toType = WatchlistMediaTypeNames.Parse(reader.GetString(4))
-            ?? throw new InvalidOperationException("Unknown relation media type.");
+        var value = relationType.Trim().ToLowerInvariant().Replace('_', '-');
+        if (string.IsNullOrWhiteSpace(value) || value.Length > 40)
+        {
+            throw new ArgumentException("Invalid relation type.", nameof(relationType));
+        }
 
-        return new MediaRelation(
-            Guid.Parse(reader.GetString(0)),
-            new WatchlistIdentity(fromType, reader.GetString(2), reader.GetString(3)),
-            new WatchlistIdentity(toType, reader.GetString(5), reader.GetString(6)),
-            reader.GetString(7),
-            reader.GetString(8),
-            reader.GetDouble(9),
-            ParseReviewState(reader.GetString(10)),
-            reader.GetInt32(11) != 0,
-            DateTime.Parse(reader.GetString(12), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind));
+        return value;
     }
 
     private async Task<T> WithConnectionAsync<T>(
@@ -294,17 +169,6 @@ public sealed class MediaRelationStore(AppDbContext db)
         command.Parameters.Add(parameter);
     }
 
-    private static string NormalizeRelationType(string relationType)
-    {
-        var value = relationType.Trim().ToLowerInvariant().Replace('_', '-');
-        if (string.IsNullOrWhiteSpace(value) || value.Length > 40)
-        {
-            throw new ArgumentException("Invalid relation type.", nameof(relationType));
-        }
-
-        return value;
-    }
-
     private static string NormalizeSource(string source)
     {
         var value = source.Trim().ToLowerInvariant();
@@ -315,20 +179,4 @@ public sealed class MediaRelationStore(AppDbContext db)
 
         return value;
     }
-
-    private static string ReviewStateName(MediaRelationReviewState state) => state switch
-    {
-        MediaRelationReviewState.Confirmed => "confirmed",
-        MediaRelationReviewState.Pending => "pending",
-        MediaRelationReviewState.Rejected => "rejected",
-        _ => throw new ArgumentOutOfRangeException(nameof(state))
-    };
-
-    private static MediaRelationReviewState ParseReviewState(string value) => value switch
-    {
-        "confirmed" => MediaRelationReviewState.Confirmed,
-        "pending" => MediaRelationReviewState.Pending,
-        "rejected" => MediaRelationReviewState.Rejected,
-        _ => throw new InvalidOperationException("Unknown relation review state.")
-    };
 }

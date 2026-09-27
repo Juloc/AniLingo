@@ -1,0 +1,367 @@
+using Jularr.Web.Data;
+using Jularr.Web.Features.Acquisition.Access;
+using Jularr.Web.Features.Acquisition.Import;
+using Jularr.Web.Features.Operations;
+
+namespace Jularr.Web.Features.Acquisition.Wanted;
+
+/// <summary>
+/// Media-specific Wanted policy behind the shared scheduler. The scheduler owns timing and
+/// download/import state transitions; handlers only interpret their target payload and tell
+/// the canonical request service how to continue after a bad release.
+/// </summary>
+public interface IWantedRequestHandler
+{
+    MediaAcquisitionKind Kind { get; }
+
+    bool IsSearchDue(
+        AcquisitionRequest request,
+        DateTime nowUtc);
+
+    Task ContinueAfterProblemAsync(
+        AcquisitionRequest request,
+        string problem,
+        CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// Generic durable Wanted lifecycle for request-backed media.
+///
+/// It deliberately does not talk to SABnzbd directly. The shared download monitor projects
+/// queue/history state onto Operations; Wanted consumes that canonical state, transitions
+/// requests through Downloading -> Importing -> Completed, dispatches imports once, and lets
+/// the media handler continue with another release only when the downloaded package itself
+/// is unsuitable.
+/// </summary>
+public sealed class WantedAcquisitionService(
+    IServiceScopeFactory scopes,
+    TimeProvider clock,
+    ILogger<WantedAcquisitionService> logger) : BackgroundService
+{
+    public static readonly TimeSpan Interval = TimeSpan.FromMinutes(2);
+    public const int MaxRequestsPerKindPerPass = 25;
+
+    /// <summary>
+    /// How long a finished download may wait for its files (a purged SABnzbd history entry,
+    /// an unmapped path, an offline share) before the request stops waiting and asks the owner
+    /// for attention. Without it such a request would stay open forever.
+    /// </summary>
+    public static readonly TimeSpan CompletedImportTimeout = TimeSpan.FromHours(24);
+
+    public const string CancelledMessage =
+        "The download was cancelled, so no other release was grabbed. Approve the request again to search.";
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        await Task.Yield();
+
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                await using var scope = scopes.CreateAsyncScope();
+                await ProcessOnceAsync(
+                    scope.ServiceProvider,
+                    clock.GetUtcNow().UtcDateTime,
+                    stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception exception)
+            {
+                logger.LogWarning(
+                    exception,
+                    "Could not advance Wanted acquisition requests.");
+            }
+
+            try
+            {
+                await Task.Delay(Interval, stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
+        }
+    }
+
+    public static async Task<int> ProcessOnceAsync(
+        IServiceProvider services,
+        DateTime nowUtc,
+        CancellationToken cancellationToken)
+    {
+        var handlers = services
+            .GetServices<IWantedRequestHandler>()
+            .GroupBy(handler => handler.Kind)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Count() == 1
+                    ? group.Single()
+                    : throw new InvalidOperationException(
+                        $"More than one Wanted handler is registered for {group.Key}."));
+
+        var advanced = 0;
+        foreach (var handler in handlers.Values)
+        {
+            advanced += await RecoverInFlightAsync(
+                services,
+                handler,
+                nowUtc,
+                cancellationToken);
+            advanced += await SearchDueAsync(
+                services,
+                handler,
+                nowUtc,
+                cancellationToken);
+        }
+
+        return advanced;
+    }
+
+    private static async Task<int> RecoverInFlightAsync(
+        IServiceProvider services,
+        IWantedRequestHandler handler,
+        DateTime nowUtc,
+        CancellationToken cancellationToken)
+    {
+        var store = services.GetRequiredService<AcquisitionAccessStore>();
+        var operations = new OperationStore(
+            services.GetRequiredService<AppDbContext>());
+        var dispatcher = services.GetRequiredService<CompletedDownloadDispatcher>();
+        var locations = services.GetRequiredService<ICompletedDownloadLocationResolver>();
+
+        var downloading = await store.ListByStatusAsync(
+            handler.Kind,
+            AcquisitionRequestStatus.Downloading,
+            cancellationToken);
+        var importing = await store.ListByStatusAsync(
+            handler.Kind,
+            AcquisitionRequestStatus.Importing,
+            cancellationToken);
+
+        var requests = downloading
+            .Concat(importing)
+            .GroupBy(request => request.Id)
+            .Select(group => group.First())
+            .OrderBy(request => request.UpdatedAt)
+            .Take(MaxRequestsPerKindPerPass)
+            .ToArray();
+
+        var advanced = 0;
+        foreach (var request in requests)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var operation = request.OperationId is { } operationId
+                ? await operations.GetAsync(operationId, cancellationToken)
+                : null;
+
+            if (operation is null)
+            {
+                await handler.ContinueAfterProblemAsync(
+                    request,
+                    "The download operation no longer exists.",
+                    cancellationToken);
+                advanced++;
+                continue;
+            }
+
+            if (operation.Status == OperationStatus.Cancelled)
+            {
+                // An owner cancelling a download means "stop", never "try the next release".
+                await store.UpdateStatusAsync(
+                    request.Id,
+                    AcquisitionRequestStatus.Failed,
+                    CancelledMessage,
+                    operation.Id,
+                    resultUrl: null,
+                    decidedByProfileId: null,
+                    cancellationToken);
+                advanced++;
+                continue;
+            }
+
+            if (operation.Status is
+                OperationStatus.Failed or
+                OperationStatus.Interrupted)
+            {
+                var problem = string.IsNullOrWhiteSpace(operation.Error)
+                    ? "The download failed."
+                    : $"The download failed: {operation.Error.Trim().TrimEnd('.')}.";
+                await handler.ContinueAfterProblemAsync(
+                    request,
+                    problem,
+                    cancellationToken);
+                advanced++;
+                continue;
+            }
+
+            if (operation.Status is OperationStatus.Queued or OperationStatus.Running)
+            {
+                if (request.Status == AcquisitionRequestStatus.Importing)
+                {
+                    await store.UpdateStatusAsync(
+                        request.Id,
+                        AcquisitionRequestStatus.Downloading,
+                        "Download is still in progress.",
+                        operation.Id,
+                        resultUrl: null,
+                        decidedByProfileId: null,
+                        cancellationToken);
+                    advanced++;
+                }
+
+                continue;
+            }
+
+            if (operation.Status != OperationStatus.Succeeded)
+            {
+                continue;
+            }
+
+            if (request.Status != AcquisitionRequestStatus.Importing)
+            {
+                await store.UpdateStatusAsync(
+                    request.Id,
+                    AcquisitionRequestStatus.Importing,
+                    "Download complete. Importing into the library.",
+                    operation.Id,
+                    resultUrl: null,
+                    decidedByProfileId: null,
+                    cancellationToken);
+                advanced++;
+            }
+
+            var location = await locations.ResolveAsync(
+                operation,
+                cancellationToken);
+            if (!location.Resolved ||
+                string.IsNullOrWhiteSpace(location.SourcePath))
+            {
+                advanced += await KeepImportingAsync(
+                    store,
+                    request,
+                    operation,
+                    location.Message,
+                    nowUtc,
+                    cancellationToken);
+                continue;
+            }
+
+            var result = await dispatcher.DispatchAsync(
+                new CompletedDownloadImportRequest(
+                    request,
+                    operation,
+                    location.SourcePath),
+                cancellationToken);
+
+            switch (result.Disposition)
+            {
+                case CompletedDownloadImportDisposition.Completed:
+                    await store.UpdateStatusAsync(
+                        request.Id,
+                        AcquisitionRequestStatus.Completed,
+                        result.Message,
+                        operation.Id,
+                        result.ResultUrl,
+                        decidedByProfileId: null,
+                        cancellationToken);
+                    advanced++;
+                    break;
+
+                case CompletedDownloadImportDisposition.RetryLater:
+                    advanced += await KeepImportingAsync(
+                        store,
+                        request,
+                        operation,
+                        result.Message,
+                        nowUtc,
+                        cancellationToken);
+                    break;
+
+                case CompletedDownloadImportDisposition.RejectedRelease:
+                    await handler.ContinueAfterProblemAsync(
+                        request,
+                        result.Message,
+                        cancellationToken);
+                    advanced++;
+                    break;
+
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
+        }
+
+        return advanced;
+    }
+
+    /// <summary>
+    /// A finished download whose files cannot be imported yet stays Importing (it is not the
+    /// release's fault, so no other release is grabbed) until <see cref="CompletedImportTimeout"/>
+    /// has passed since the download finished; then the request fails with the reason so the
+    /// owner can fix the path or approve it again. Returns 1 when the request was failed.
+    /// </summary>
+    private static async Task<int> KeepImportingAsync(
+        AcquisitionAccessStore store,
+        AcquisitionRequest request,
+        OperationSnapshot operation,
+        string message,
+        DateTime nowUtc,
+        CancellationToken cancellationToken)
+    {
+        var finishedAt = operation.FinishedAtUtc ?? operation.UpdatedAtUtc;
+        var timedOut = nowUtc - finishedAt >= CompletedImportTimeout;
+        var reason = string.IsNullOrWhiteSpace(message)
+            ? "The completed download could not be imported."
+            : message.Trim();
+
+        await store.UpdateStatusAsync(
+            request.Id,
+            timedOut
+                ? AcquisitionRequestStatus.Failed
+                : AcquisitionRequestStatus.Importing,
+            timedOut
+                ? $"{reason} Gave up importing {CompletedImportTimeout.TotalHours:0} hours after the download finished; fix the download path or approve the request again."
+                : reason,
+            operation.Id,
+            resultUrl: null,
+            decidedByProfileId: null,
+            cancellationToken);
+        return timedOut ? 1 : 0;
+    }
+
+    private static async Task<int> SearchDueAsync(
+        IServiceProvider services,
+        IWantedRequestHandler handler,
+        DateTime nowUtc,
+        CancellationToken cancellationToken)
+    {
+        var store = services.GetRequiredService<AcquisitionAccessStore>();
+
+        var due = (await store.ListByStatusAsync(
+                handler.Kind,
+                AcquisitionRequestStatus.Approved,
+                cancellationToken))
+            .Where(request => handler.IsSearchDue(request, nowUtc))
+            .OrderBy(request => request.UpdatedAt)
+            .Take(MaxRequestsPerKindPerPass)
+            .ToArray();
+
+        if (due.Length == 0)
+        {
+            return 0;
+        }
+
+        var requestService = services.GetRequiredService<AcquisitionRequestService>();
+        foreach (var request in due)
+        {
+            await requestService.ContinueAsync(
+                request.Id,
+                cancellationToken);
+        }
+
+        return due.Length;
+    }
+}

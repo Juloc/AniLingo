@@ -82,6 +82,36 @@ class TvPlayerInteractionTest {
     }
 
     @Test
+    fun autoHideOnlyClosesVisibleControlsWhilePlaying() {
+        val playing = TvPlayerInteraction.autoHide(
+            TvPlayerUiState(controlsVisible = true),
+            isPlaying = true,
+        )
+        val paused = TvPlayerInteraction.autoHide(
+            TvPlayerUiState(controlsVisible = true),
+            isPlaying = false,
+        )
+        val learning = TvPlayerInteraction.autoHide(
+            TvPlayerUiState(
+                controlsVisible = true,
+                learningLayer = TvLearningLayer.SENTENCE,
+            ),
+            isPlaying = true,
+        )
+
+        val companion = TvPlayerInteraction.autoHide(
+            TvPlayerUiState(controlsVisible = true),
+            isPlaying = true,
+            companionVisible = true,
+        )
+
+        assertEquals(false, playing.state.controlsVisible)
+        assertTrue(paused.state.controlsVisible)
+        assertTrue(learning.state.controlsVisible)
+        assertTrue(companion.state.controlsVisible)
+    }
+
+    @Test
     fun backHidesControlsBeforeLeavingPlayer() {
         val hide = TvPlayerInteraction.back(TvPlayerUiState(controlsVisible = true))
         val exit = TvPlayerInteraction.back(hide.state)

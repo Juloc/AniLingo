@@ -1,4 +1,7 @@
 using Jularr.Web.Features.Franchises;
+using Jularr.Web.Features.Metadata;
+using Jularr.Web.Features.Novels;
+using Jularr.Web.Features.Tracking;
 using Jularr.Web.Features.Watchlist;
 
 namespace Jularr.Web.Features.Calendar;
@@ -16,12 +19,20 @@ public static class ReleaseCalendarRegistration
             client.BaseAddress = new Uri("https://graphql.anilist.co/");
             client.Timeout = TimeSpan.FromSeconds(20);
             client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
-        });
+        }).AddHttpMessageHandler<AniListRateLimitHandler>();
+
+        // Franchise relations use the metadata clients; their 429s pause every background job.
+        services.AddHttpClient(nameof(AniListMetadataProvider)).AddHttpMessageHandler<AniListRateLimitHandler>();
+        services.AddHttpClient(nameof(NovelAniListProvider)).AddHttpMessageHandler<AniListRateLimitHandler>();
+        services.AddSingleton<AniListRequestLimiter>();
 
         services.AddScoped<WatchlistStore>();
+        services.AddScoped<WatchlistLibraryResolver>();
         services.AddScoped<FranchiseStore>();
         services.AddScoped<MediaRelationStore>();
+        services.AddScoped<IFranchiseRelationSource, AniListFranchiseRelationSource>();
         services.AddScoped<FranchiseService>();
+        services.AddSingleton<FranchiseRefreshSignal>();
         services.AddHostedService<FranchiseRefreshService>();
 
         services.AddScoped<ReleaseCalendarCacheStore>();

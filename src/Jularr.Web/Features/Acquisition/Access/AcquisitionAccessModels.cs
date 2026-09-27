@@ -39,6 +39,7 @@ public enum AcquisitionRequestStatus
 
     Searching,
     Downloading,
+    Importing,
     Completed,
     Rejected,
     Failed
@@ -100,7 +101,8 @@ public sealed record AcquisitionRequest(
     public bool IsOpen => Status is AcquisitionRequestStatus.Pending
         or AcquisitionRequestStatus.Approved
         or AcquisitionRequestStatus.Searching
-        or AcquisitionRequestStatus.Downloading;
+        or AcquisitionRequestStatus.Downloading
+        or AcquisitionRequestStatus.Importing;
 }
 
 /// <summary>What a page submits when a profile adds or requests a title found in search.</summary>
@@ -185,6 +187,7 @@ public static class AcquisitionAccessNames
         AcquisitionRequestStatus.Approved => "approved",
         AcquisitionRequestStatus.Searching => "searching",
         AcquisitionRequestStatus.Downloading => "downloading",
+        AcquisitionRequestStatus.Importing => "importing",
         AcquisitionRequestStatus.Completed => "completed",
         AcquisitionRequestStatus.Rejected => "rejected",
         AcquisitionRequestStatus.Failed => "failed",
@@ -197,6 +200,7 @@ public static class AcquisitionAccessNames
         "approved" => AcquisitionRequestStatus.Approved,
         "searching" => AcquisitionRequestStatus.Searching,
         "downloading" => AcquisitionRequestStatus.Downloading,
+        "importing" => AcquisitionRequestStatus.Importing,
         "completed" => AcquisitionRequestStatus.Completed,
         "rejected" => AcquisitionRequestStatus.Rejected,
         "failed" => AcquisitionRequestStatus.Failed,

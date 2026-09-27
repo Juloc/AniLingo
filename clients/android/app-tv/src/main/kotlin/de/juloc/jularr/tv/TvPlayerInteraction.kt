@@ -31,6 +31,21 @@ object TvPlayerInteraction {
     fun mediaPlayPause(state: TvPlayerUiState): TvPlayerTransition =
         TvPlayerTransition(state, listOf(TvPlayerEffect.TogglePlayback))
 
+    fun autoHide(
+        state: TvPlayerUiState,
+        isPlaying: Boolean,
+        companionVisible: Boolean = false,
+    ): TvPlayerTransition =
+        if (isPlaying &&
+            !companionVisible &&
+            state.controlsVisible &&
+            state.learningLayer == TvLearningLayer.CLOSED
+        ) {
+            TvPlayerTransition(state.copy(controlsVisible = false))
+        } else {
+            TvPlayerTransition(state)
+        }
+
     fun ok(
         state: TvPlayerUiState,
         wordCount: Int,
