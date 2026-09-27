@@ -33,7 +33,6 @@
 
 <header class="page-header">
     <div>
-        <span class="eyebrow">@ui["nav.admin"]</span>
         <h1>@ui["admin.usenet.title"]</h1>
         <p>@ui["admin.usenet.subtitle"]</p>
     </div>
@@ -85,7 +84,6 @@
             <h2 id="usenet-indexers-heading">@ui["admin.system.indexers"]</h2>
             <a class="button button-small" asp-page="/Settings/Indexers/Edit">@ui["settings.indexers.add"]</a>
         </div>
-        <p class="muted">@ui["admin.usenet.indexersHelp"]</p>
         @if (Model.Indexers.Count == 0)
         {
             <p class="usenet-empty">@ui["settings.indexers.empty"]</p>
@@ -137,7 +135,6 @@
             <h2 id="usenet-clients-heading">@ui["admin.system.downloadClients"]</h2>
             <a class="button button-small" asp-page="/Settings/DownloadClients/Edit">@ui["settings.downloadClients.add"]</a>
         </div>
-        <p class="muted">@ui["admin.usenet.clientsHelp"]</p>
         @if (Model.Clients.Count == 0)
         {
             <p class="usenet-empty">@ui["admin.usenet.clientsEmpty"]</p>
@@ -248,7 +245,6 @@
         }
     </div>
     <p class="muted">
-        @ui.Format("admin.usenet.downloadsHelp", ("count", Model.RemotePathMappingCount))
         <a asp-page="/Settings/Acquisition">@ui["admin.usenet.pathMappingsLink"]</a>
         @if (Model.BooksInboxPath is not null)
         {

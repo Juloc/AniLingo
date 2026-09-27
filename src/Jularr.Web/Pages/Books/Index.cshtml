@@ -13,7 +13,6 @@
 <header class="books-hero">
     <div class="books-hero-copy">
         <h1>@ui["books.index.title"]</h1>
-        <p>@ui["books.index.subtitle"]</p>
         <nav class="books-hero-links">
             <a href="/Books/ForYou?lang=@Model.TargetLanguage">@ui["books.index.forYouLink"] →</a>
             @if (Model.IsOwner)
@@ -244,11 +243,10 @@
         @if (access.CanAddManually)
         {
             <details class="books-manual" @(access.CanAdd ? "" : "open")>
-                <summary>@ui["books.add.manual"] <small>@ui["books.add.manualHint"]</small></summary>
+                <summary>@ui["books.add.manual"]</summary>
                 <div class="books-manual-grid">
                     <section>
                         <h3>@ui["books.index.importEpubTitle"]</h3>
-                        <p>@ui["books.index.importEpubDescription"]</p>
                         <form method="post" asp-page-handler="Upload" enctype="multipart/form-data" class="books-inline-form">
                             <input type="file" name="epub" accept=".epub,application/epub+zip" required />
                             <button class="button button-primary" type="submit">@ui["books.index.importFileButton"]</button>
