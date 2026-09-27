@@ -265,7 +265,7 @@
                     <div class="ai-limits-fields">
                         <label>
                             <span>@ui["ai.budget.daily"]</span>
-                            <input asp-for="DailyTokenBudget" type="number" min="1" max="@AiProfileSettings.MaxDailyTokenBudget" step="1000" inputmode="numeric" placeholder="@ui["ai.budget.noLimit"]" />
+                            <input asp-for="DailyTokenBudget" type="number" min="1" max="@AiProfileSettings.MaxDailyTokenBudget" inputmode="numeric" placeholder="@ui["ai.budget.noLimit"]" />
                         </label>
                         <label>
                             <span>@ui["ai.budget.warnAt"]</span>
