@@ -416,6 +416,8 @@ fun TvAppHost(
                 TvLibraryScreen(
                     account = account,
                     library = library,
+                    serverOrigin = settings.origin.orEmpty(),
+                    requestHeaders = cookies.requestHeaders(),
                     error = snapshot.error,
                     onAnime = { anime ->
                         launchSnapshot { controller.openAnime(anime.id) }
@@ -448,6 +450,8 @@ fun TvAppHost(
             } else {
                 TvAnimeScreen(
                     anime = anime,
+                    serverOrigin = settings.origin.orEmpty(),
+                    requestHeaders = cookies.requestHeaders(),
                     onEpisode = { episode ->
                         launchSnapshot {
                             controller.openEpisode(
@@ -479,6 +483,8 @@ fun TvAppHost(
                 TvEpisodeScreen(
                     anime = anime,
                     page = page,
+                    serverOrigin = settings.origin.orEmpty(),
+                    requestHeaders = cookies.requestHeaders(),
                     busy = snapshot.busy,
                     error = snapshot.error,
                     onPlay = {
