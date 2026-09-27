@@ -18,6 +18,7 @@ using Jularr.Web.Features.Acquisition.Prowlarr;
 using Jularr.Web.Features.Acquisition.Quality;
 using Jularr.Web.Features.Acquisition.Sabnzbd;
 using Jularr.Web.Features.Library;
+using Jularr.Web.Features.Media.Optimization;
 using Jularr.Web.Features.MediaMapping;
 using Jularr.Web.Features.Metadata;
 using Jularr.Web.Features.Operations;
@@ -86,6 +87,12 @@ internal sealed class AnimeAcquisitionEnvironment : IAsyncDisposable
     public AcquisitionPolicyStore Policy => services.GetRequiredService<AcquisitionPolicyStore>();
     public AniListAutoMonitorSettingsStore AniListAutoMonitorSettings => services.GetRequiredService<AniListAutoMonitorSettingsStore>();
     public AniListAccountStore AniListAccounts => services.GetRequiredService<AniListAccountStore>();
+
+    public async Task<T> WithScopeAsync<T>(Func<IServiceProvider, Task<T>> action)
+    {
+        await using var scope = services.CreateAsyncScope();
+        return await action(scope.ServiceProvider);
+    }
 
     /// <summary>Runs an action against a scoped <see cref="AcquisitionApiKeyService"/>.</summary>
     public async Task<T> WithApiKeysAsync<T>(Func<AcquisitionApiKeyService, Task<T>> action)
@@ -459,6 +466,9 @@ internal sealed class AnimeAcquisitionEnvironment : IAsyncDisposable
         collection.AddScoped<AnimeImportExecutor>();
         collection.AddSingleton<Jularr.Web.Features.Storage.StorageAvailabilityCoordinator>();
         collection.AddScoped<Jularr.Web.Features.Storage.LibraryRootAvailabilityService>();
+        collection.AddSingleton<BackgroundJobQueue>();
+        collection.AddSingleton(new MediaOptimizationJournal(Path.Combine(DataRoot, "media-optimization")));
+        collection.AddSingleton<MediaOptimizationQueue>();
         collection.AddSingleton<AnimeAcquisitionScheduler>();
         collection.AddScoped<AcquisitionApiKeyService>();
         collection.AddScoped<AcquisitionApiService>();
