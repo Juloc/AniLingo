@@ -1,0 +1,45 @@
+@page "{id:guid?}"
+@model Jularr.Web.Pages.Settings.DownloadClients.EditModel
+@{
+    var ui = Model.Ui;
+    ViewData["Title"] = Model.IsNew ? ui["settings.downloadClients.addTitle"] : ui["settings.downloadClients.editTitle"];
+}
+
+<h1>@(Model.IsNew ? ui["settings.downloadClients.addTitle"] : ui["settings.downloadClients.editTitle"])</h1>
+
+@if (Model.Error is not null)
+{
+    <p class="metadata-error">@Model.Error</p>
+}
+
+<form method="post">
+    <div class="field">
+        <label asp-for="Name">@ui["settings.downloadClients.field.name"]</label>
+        <input asp-for="Name" required />
+    </div>
+    <div class="field">
+        <label asp-for="BaseUrl">@ui["settings.downloadClients.field.baseUrl"]</label>
+        <input asp-for="BaseUrl" required placeholder="http://localhost:8080" />
+    </div>
+    <div class="field">
+        <label asp-for="Secret">@(Model.IsNew ? ui["settings.downloadClients.field.apiKey"] : ui["settings.downloadClients.field.apiKeyKeepCurrent"])</label>
+        <input asp-for="Secret" type="password" autocomplete="new-password" />
+    </div>
+    <div class="field">
+        <label asp-for="BooksCategory">@ui["settings.downloadClients.field.booksCategory"]</label>
+        <input asp-for="BooksCategory" />
+    </div>
+    <div class="field">
+        <label asp-for="AnimeCategory">@ui["settings.downloadClients.field.animeCategory"]</label>
+        <input asp-for="AnimeCategory" />
+    </div>
+    <div class="field">
+        <label asp-for="Priority">@ui["settings.downloadClients.field.priority"]</label>
+        <input asp-for="Priority" type="number" min="1" />
+    </div>
+    <div class="field">
+        <label><input asp-for="Enabled" type="checkbox" /> @ui["settings.connectionTable.enabled"]</label>
+    </div>
+    <button type="submit">@ui["common.save"]</button>
+    <a asp-page="/Settings/DownloadClients/Index">@ui["common.cancel"]</a>
+</form>

@@ -4,7 +4,7 @@ GitHub issue #226 is the umbrella backlog. This file describes durable architect
 
 ## Product rule
 
-AniLingo is a Watch / Read / Discover application first. Learning is optional and must not leak into normal media UX when it is disabled.
+Jularr is a Watch / Read / Discover application first. Learning is optional and must not leak into normal media UX when it is disabled.
 
 Learning assistance and active study are separate:
 
@@ -88,7 +88,7 @@ The Anime player, the readers (Novels, Books, later Manga/OCR) and Learning modu
 
 - `LanguageInspectorService` (Features/Learning/LanguageAssistance) behind `POST /api/language-inspector/{inspect|state|explain}` (signed-in profile, antiforgery header `RequestVerificationToken`);
 - the partial `Pages/Shared/_LanguageInspector.cshtml`, rendered by a host with one line, e.g. `<partial name="_LanguageInspector" model="LanguageInspectorHost.ForBookChapter(workId, chapterId, language)" />`;
-- `wwwroot/js/language-inspector.js`, which exposes `window.AniLingoLanguageInspector`.
+- `wwwroot/js/language-inspector.js`, which exposes `window.JularrLanguageInspector`.
 
 Every call resolves the capabilities of the inspected source through `LearningModuleResolver.ResolveAssistanceAsync` (profile → media type → work → content). The server derives the work from the content, so the client cannot choose a scope.
 
@@ -106,7 +106,7 @@ Language Tools therefore show readings, meanings and explanations without ever c
 ### Script contract
 
 ```js
-const inspector = window.AniLingoLanguageInspector; // undefined when the page did not render the partial
+const inspector = window.JularrLanguageInspector; // undefined when the page did not render the partial
 inspector?.available;                               // false when the scope has no language tools
 inspector?.open(text, context);                     // Promise<inspection | null>
 inspector?.close();

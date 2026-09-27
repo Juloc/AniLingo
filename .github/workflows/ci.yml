@@ -25,20 +25,20 @@ jobs:
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
-      - run: dotnet restore AniLingo.sln
-      - run: dotnet build AniLingo.sln --no-restore --configuration Release
-      - run: dotnet test AniLingo.sln --no-build --configuration Release
+      - run: dotnet restore Jularr.sln
+      - run: dotnet build Jularr.sln --no-restore --configuration Release
+      - run: dotnet test Jularr.sln --no-build --configuration Release
       - name: Validate single-container Compose
         run: |
-          test "$(docker compose config --services)" = "anilingo"
-          test "$(docker compose config --images)" = "ghcr.io/juloc/anilingo:latest"
+          test "$(docker compose config --services)" = "jularr"
+          test "$(docker compose config --images)" = "ghcr.io/juloc/jularr:latest"
           ! docker compose config | grep -q '/media/anime'
       - name: Build Docker image
-        run: docker build -f src/AniLingo.Web/Dockerfile -t ghcr.io/juloc/anilingo:${{ github.sha }} .
+        run: docker build -f src/Jularr.Web/Dockerfile -t ghcr.io/juloc/jularr:${{ github.sha }} .
       - name: Smoke test startup without NAS
         run: |
-          docker run -d --name anilingo-no-nas -p 127.0.0.1:18097:8080 ghcr.io/juloc/anilingo:${{ github.sha }}
-          trap 'docker rm -f anilingo-no-nas >/dev/null 2>&1 || true' EXIT
+          docker run -d --name jularr-no-nas -p 127.0.0.1:18097:8080 ghcr.io/juloc/jularr:${{ github.sha }}
+          trap 'docker rm -f jularr-no-nas >/dev/null 2>&1 || true' EXIT
 
           for attempt in {1..30}; do
             if curl -fsS http://127.0.0.1:18097/Account/Setup >/dev/null; then
@@ -47,7 +47,7 @@ jobs:
             sleep 1
           done
 
-          docker logs anilingo-no-nas
+          docker logs jularr-no-nas
           exit 1
       - name: Log in to GHCR
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -55,14 +55,14 @@ jobs:
       - name: Publish Docker image
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
-          docker tag ghcr.io/juloc/anilingo:${{ github.sha }} ghcr.io/juloc/anilingo:latest
-          docker push ghcr.io/juloc/anilingo:${{ github.sha }}
-          docker push ghcr.io/juloc/anilingo:latest
+          docker tag ghcr.io/juloc/jularr:${{ github.sha }} ghcr.io/juloc/jularr:latest
+          docker push ghcr.io/juloc/jularr:${{ github.sha }}
+          docker push ghcr.io/juloc/jularr:latest
 
           if [ "${{ startsWith(github.event.head_commit.message, 'release:') }}" = "true" ]; then
-            VERSION="$(dotnet msbuild src/AniLingo.Web/AniLingo.Web.csproj -nologo -getProperty:Version)"
-            docker tag ghcr.io/juloc/anilingo:${{ github.sha }} "ghcr.io/juloc/anilingo:${VERSION}"
-            docker push "ghcr.io/juloc/anilingo:${VERSION}"
+            VERSION="$(dotnet msbuild src/Jularr.Web/Jularr.Web.csproj -nologo -getProperty:Version)"
+            docker tag ghcr.io/juloc/jularr:${{ github.sha }} "ghcr.io/juloc/jularr:${VERSION}"
+            docker push "ghcr.io/juloc/jularr:${VERSION}"
           fi
 
       - name: Create GitHub prerelease
@@ -70,9 +70,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          VERSION="$(dotnet msbuild src/AniLingo.Web/AniLingo.Web.csproj -nologo -getProperty:Version)"
+          VERSION="$(dotnet msbuild src/Jularr.Web/Jularr.Web.csproj -nologo -getProperty:Version)"
           gh release create "v${VERSION}" \
             --target "${GITHUB_SHA}" \
-            --title "AniLingo ${VERSION}" \
+            --title "Jularr ${VERSION}" \
             --prerelease \
             --generate-notes

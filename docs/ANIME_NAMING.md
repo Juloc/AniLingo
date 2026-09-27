@@ -1,6 +1,6 @@
 # Anime naming and renaming
 
-AniLingo names anime folders and files with Sonarr-compatible templates. Naming is plain
+Jularr names anime folders and files with Sonarr-compatible templates. Naming is plain
 configuration: presets are only starting points, and any profile can be created or changed on
 `/Settings/Naming` without code changes. Renaming existing files is a separate, explicit action
 per anime on `/Library/Rename/{animeId}` (linked as **Rename files** from the anime page).
@@ -159,7 +159,7 @@ A file (or the whole plan) is blocked when:
 - **The target exists** — a different file or folder already has the target name, or two files of
   the plan would get the same name. On case-insensitive filesystems (SMB, NTFS, APFS) a case-only
   rename is not a conflict; it is executed through a temporary name.
-- **The move would cross filesystems** — AniLingo renames only within one filesystem, so a move can
+- **The move would cross filesystems** — Jularr renames only within one filesystem, so a move can
   never degrade into a partial copy.
 - **Identity would change** — the new path must scan back to the same season/episode and anime key
   (for example a template without `{season}`/`{episode}` in a later season would be scanned as a

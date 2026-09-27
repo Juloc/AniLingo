@@ -1,0 +1,33 @@
+@page "/Reading"
+@model Jularr.Web.Pages.Reading.IndexModel
+@{
+    var ui = Model.Ui;
+    ViewData["Title"] = ui["reading.title"];
+}
+@section Head {
+    <link rel="stylesheet" href="~/css/reading.css" asp-append-version="true" />
+}
+
+<header class="reading-header">
+    <h1>@ui["reading.title"]</h1>
+</header>
+
+<div class="reading-grid">
+    <a class="reading-card" href="/Novels">
+        <span class="reading-card-mark">文</span>
+        <div>
+            <strong>@ui["reading.novels.title"]</strong>
+            <span>@ui["reading.novels.description"]</span>
+        </div>
+        <span class="reading-arrow">→</span>
+    </a>
+
+    <a class="reading-card" href="/Manga">
+        <span class="reading-card-mark">漫</span>
+        <div>
+            <strong>@ui["reading.manga.title"]</strong>
+            <span>@ui["reading.manga.description"]</span>
+        </div>
+        <span class="reading-arrow">→</span>
+    </a>
+</div>

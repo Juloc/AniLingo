@@ -1,0 +1,96 @@
+@page
+@model Jularr.Web.Pages.Settings.MappingReviewModel
+@{
+    var ui = Model.Ui;
+    ViewData["Title"] = ui["settings.mappingReview.title"];
+}
+
+<header class="page-header">
+    <div>
+        <a class="back-link" asp-page="/Settings/Index">@ui["common.backToSettings"]</a>
+        <span class="eyebrow">@ui["settings.mappingReview.eyebrow"]</span>
+        <h1>@ui["settings.mappingReview.title"]</h1>
+        <p>@ui["settings.mappingReview.pageDescription"]</p>
+    </div>
+</header>
+
+@if (TempData["Status"] is string status)
+{
+    <div class="panel">
+        <p>@status</p>
+    </div>
+}
+
+@if (Model.Tasks.Count == 0)
+{
+    <section class="panel">
+        <div class="panel-heading">
+            <h2>@ui["settings.mappingReview.empty.title"]</h2>
+            <span>@ui["settings.mappingReview.clear"]</span>
+        </div>
+        <p class="muted">
+            @ui["settings.mappingReview.empty.body"]
+        </p>
+    </section>
+}
+else
+{
+    <div class="settings-grid">
+        @foreach (var task in Model.Tasks)
+        {
+            var targetUrl = Jularr.Web.Pages.Settings.MappingReviewModel.TargetUrl(task);
+
+            <section class="panel">
+                <div class="panel-heading">
+                    <h2>@task.LocalTitle</h2>
+                    <span>@task.MediaType · @task.Purpose</span>
+                </div>
+
+                <p>@task.Reason</p>
+
+                @if (task.Candidates.Count > 0)
+                {
+                    <div class="status-list">
+                        @foreach (var candidate in task.Candidates)
+                        {
+                            <div>
+                                <span>
+                                    @candidate.Provider:@candidate.ExternalId
+                                    @if (!string.IsNullOrWhiteSpace(candidate.Format))
+                                    {
+                                        <text> · @candidate.Format</text>
+                                    }
+                                </span>
+                                <strong>@candidate.Title</strong>
+                                @if (candidate.Score > 0)
+                                {
+                                    <small>@ui.Format("settings.mappingReview.confidenceScore", ("score", candidate.Score))</small>
+                                }
+                                @if (candidate.Evidence.Count > 0)
+                                {
+                                    <small>@string.Join(" · ", candidate.Evidence)</small>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+
+                <p class="muted">
+                    @ui.Format("settings.mappingReview.updatedAt", ("time", task.UpdatedAt.ToLocalTime().ToString("g")))
+                </p>
+
+                <div class="inline-actions">
+                    @if (targetUrl is not null)
+                    {
+                        <a class="button button-primary" href="@targetUrl">@ui["settings.mappingReview.reviewMapping"]</a>
+                    }
+
+                    <form method="post" asp-page-handler="Dismiss">
+                        <input type="hidden" name="id" value="@task.Id" />
+                        <button class="button" type="submit">@ui["settings.mappingReview.dismiss"]</button>
+                    </form>
+                </div>
+            </section>
+        }
+    </div>
+}

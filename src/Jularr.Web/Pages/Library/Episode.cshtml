@@ -1,0 +1,578 @@
+@page "/Library/Episode/{id:guid}"
+@using System.Text.Json
+@using Jularr.Web.Features.Playback
+@using Jularr.Web.Features.ClientApi
+@using Jularr.Web.Features.Storage
+@using Jularr.Web.Features.Subtitles
+@using Jularr.Web.Features.Learning
+@using Jularr.Web.Features.Learning.LanguageAssistance
+@using Jularr.Web.Features.Tracking
+@model Jularr.Web.Pages.Library.EpisodeModel
+@{
+    var ui = Model.Ui;
+    ViewData["Title"] = ui.Format("library.episode.pageTitle", ("anime", Model.AnimeTitle), ("episode", Model.EpisodeNumber));
+}
+
+@section Head {
+    <link rel="stylesheet" href="~/css/player.css" asp-append-version="true" />
+}
+
+<header class="page-header">
+    <div>
+        <a class="back-link" href="/Library/Anime/@Model.AnimeId">← @Model.AnimeTitle</a>
+        <span class="eyebrow">S@(Model.SeasonNumber.ToString("00")) · E@(Model.EpisodeNumber.ToString("00"))</span>
+        <h1>@Model.EpisodeTitle</h1>
+        @if (Model.ShowContentMetrics)
+        {
+            <p>
+                @ui.Format("library.episode.termSummary",
+                    ("distinct", Model.Preparation.DistinctTermCount),
+                    ("known", Model.Preparation.KnownTermCount),
+                    ("learning", Model.Preparation.LearningTermCount),
+                    ("new", Model.Preparation.NewTermCount),
+                    ("percent", Model.Preparation.PreparedPercent))
+            </p>
+        }
+    </div>
+    <a class="button"
+       href="@Url.Page("/Settings/LearningScope", new {
+           mediaType = LearningMediaType.Anime,
+           scope = "content",
+           workKey = Model.AnimeId.ToString(),
+           contentKey = Model.EpisodeId.ToString(),
+           label = $"{Model.AnimeTitle} · E{Model.EpisodeNumber}",
+           returnUrl = $"/Library/Episode/{Model.EpisodeId}"
+       })">
+        @ui["library.languageToolsAndLearning"]
+    </a>
+</header>
+
+@{
+    var isWatched = Model.LocalProgress?.IsCompleted == true;
+    var resumeMs = Model.LocalProgress?.ResumePositionMs ?? 0;
+    var resumeLabel = Jularr.Web.Features.Progress.EpisodeProgressService.FormatPosition(resumeMs);
+}
+<nav class="episode-flow" aria-label="@ui["library.episode.navigationAria"]" data-episode-flow>
+    @if (Model.Flow?.Previous is { } previous)
+    {
+        <a class="button"
+           href="@Model.PreviousEpisodeUrl"
+           aria-label="@ui.Format("library.episode.previousEpisodeAria", ("season", previous.SeasonNumber.ToString("00")), ("episode", previous.Number.ToString("00")))"
+           data-previous-episode>
+            ← S@(previous.SeasonNumber.ToString("00")) · E@(previous.Number.ToString("00"))
+        </a>
+    }
+    <div class="episode-flow-state">
+        @if (isWatched)
+        {
+            <span class="status-pill status-ok" data-watched-state>@ui["library.episode.watched"]</span>
+        }
+        else if (resumeMs > 0)
+        {
+            <span class="status-pill" data-watched-state>@ui.Format("library.episode.resumeAt", ("position", resumeLabel), ("percent", Model.LocalProgress!.Percent))</span>
+        }
+        else
+        {
+            <span class="status-pill" data-watched-state>@ui["library.episode.unwatched"]</span>
+        }
+        <form method="post"
+              asp-page-handler="Watched"
+              asp-route-id="@Model.EpisodeId">
+            <input type="hidden" name="watched" value="@(isWatched ? "false" : "true")" />
+            <button class="button" type="submit">@(isWatched ? ui["library.episode.markUnwatched"] : ui["library.episode.markWatched"])</button>
+        </form>
+    </div>
+    @if (Model.Flow?.Next is { } next)
+    {
+        <a class="button button-primary"
+           href="@Model.NextEpisodeUrl"
+           aria-label="@ui.Format("library.episode.nextEpisodeAria", ("season", next.SeasonNumber.ToString("00")), ("episode", next.Number.ToString("00")))"
+           data-next-episode>
+            S@(next.SeasonNumber.ToString("00")) · E@(next.Number.ToString("00")) →
+        </a>
+    }
+</nav>
+
+@if (Model.ExternalProgress is { } externalProgress)
+{
+    var externalPanel = new ExternalProgressPanel(
+        externalProgress,
+        Url.Page(null, "ExternalProgress", new { id = Model.EpisodeId })!,
+        MatchUrl: $"/Library/Anime/{Model.AnimeId}#anilist-match",
+        MappingUrl: $"/Library/Anime/{Model.AnimeId}#anilist-episode-mappings",
+        CanManageMapping: Model.IsOwner,
+        Ui: ui);
+    <partial name="_ExternalProgress" model="externalPanel" />
+}
+
+@if (Model.IsOwner && Model.NeedsLearningSource)
+{
+    <section class="panel subtitle-source-panel">
+        <div class="panel-heading">
+            <div>
+                <span class="eyebrow">@ui["library.episode.learningSourceEyebrow"]</span>
+                <h2>@ui["library.episode.japaneseSubtitlesHeading"]</h2>
+            </div>
+            @if (Model.ActiveSubtitle is { } activeBadge)
+            {
+                <span class="status-pill status-ok">@ui.Format("library.episode.cuesAndTerms", ("cues", activeBadge.CueCount), ("terms", Model.Terms.Count))</span>
+            }
+            else
+            {
+                <span class="status-pill status-warning">@ui["library.episode.notImported"]</span>
+            }
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(Model.SubtitleNotice))
+        {
+            <div class="subtitle-source-message status-ok">@Model.SubtitleNotice</div>
+        }
+        @if (!string.IsNullOrWhiteSpace(Model.SubtitleError))
+        {
+            <div class="subtitle-source-message status-error">@Model.SubtitleError</div>
+        }
+
+        @if (Model.ActiveSubtitle is null &&
+             Model.Transcription.Status is AudioTranscriptionStatus.Queued or AudioTranscriptionStatus.Processing)
+        {
+            <div class="subtitle-source-message status-warning">
+                @ui["library.episode.generatingTranscript"]
+            </div>
+        }
+        else if (Model.ActiveSubtitle is null &&
+                 Model.Transcription.Status == AudioTranscriptionStatus.Failed)
+        {
+            <div class="subtitle-source-message status-error">
+                @(Model.Transcription.Message ?? ui["library.episode.transcriptionFailed"])
+            </div>
+        }
+
+        @if (Model.ActiveSubtitle is { } active)
+        {
+            <div class="active-subtitle-source">
+                <span>@ui["library.episode.currentJapaneseSource"]</span>
+                <strong>@active.Label</strong>
+                <small>@(active.Format.ToUpperInvariant()) · @ui.Format("library.episode.importedCues", ("count", active.CueCount))</small>
+            </div>
+        }
+        else
+        {
+            <p class="muted subtitle-source-help">
+                @ui["library.episode.noAutoImportHelp"]
+            </p>
+        }
+
+        @if (Model.SubtitleSources.Count == 0)
+        {
+            <div class="subtitle-source-empty">
+                @ui["library.episode.noEmbeddedStreams"]
+            </div>
+        }
+        else
+        {
+            <div class="subtitle-source-list">
+                @foreach (var source in Model.SubtitleSources)
+                {
+                    <div class="subtitle-source-row">
+                        <div class="subtitle-source-copy">
+                            <strong>
+                                @(string.IsNullOrWhiteSpace(source.Title)
+                                    ? ui.Format("library.episode.streamNumber", ("index", source.StreamIndex))
+                                    : source.Title)
+                            </strong>
+                            <span>
+                                #@source.StreamIndex · @(source.Codec.ToUpperInvariant()) ·
+                                @(string.IsNullOrWhiteSpace(source.Language) ? ui["library.episode.unknownLanguage"] : source.Language)
+                                @if (source.IsDefault)
+                                {
+                                    <text> · @ui["library.episode.defaultTrack"]</text>
+                                }
+                                @if (source.IsForced)
+                                {
+                                    <text> · @ui["library.episode.forcedTrack"]</text>
+                                }
+                            </span>
+                        </div>
+
+                        @if (source.IsSelected)
+                        {
+                            <span class="status-pill status-ok">@ui.Format("library.episode.selectedSource", ("language", string.IsNullOrWhiteSpace(source.Language) ? ui["library.episode.learningLanguageFallback"] : source.Language))</span>
+                        }
+                        else if (source.IsText)
+                        {
+                            <form method="post"
+                                  asp-page-handler="UseSubtitle"
+                                  asp-route-id="@Model.EpisodeId">
+                                <input type="hidden" name="streamIndex" value="@source.StreamIndex" />
+                                <button class="button" type="submit">@ui.Format("library.episode.useAsSource", ("language", string.IsNullOrWhiteSpace(source.Language) ? ui["library.episode.learningSourceFallback"] : source.Language))</button>
+                            </form>
+                        }
+                        else
+                        {
+                            <span class="status-pill status-warning">@ui["library.episode.imageSubtitleFallback"]</span>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </section>
+
+
+}
+
+@if (Model.Playback.Media is { } media)
+{
+    <section class="player-panel"
+             data-episode-player
+             data-playback-refresh="@(media.IsPreparing ? "true" : "false")"
+             data-video-codec="@media.VideoCodec"
+             data-duration-seconds="@(media.DurationSeconds?.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) ?? "")"
+             data-device-availability="@(media.Device.Availability.ToString().ToLowerInvariant())"
+             data-device-status="@media.Device.StatusMessage"
+             data-device-live="@media.Device.UsesLiveStream.ToString().ToLowerInvariant()"
+             data-server-availability="@(media.Server.Availability.ToString().ToLowerInvariant())"
+             data-server-status="@media.Server.StatusMessage"
+             data-server-live="@media.Server.UsesLiveStream.ToString().ToLowerInvariant()"
+             data-storage-state="@(media.Storage is { } storage ? ClientApiMappings.AvailabilityStateName(storage.State) : "unknown")"
+             data-storage-availability-url="@ClientApiRoutes.MediaAvailability(media.MediaFileId)"
+             data-player-bootstrap-url="@ClientApiRoutes.Player(Model.EpisodeId)"
+             data-progress-url="@ClientApiRoutes.Progress(Model.EpisodeId)"
+             data-resume-seconds="@Model.ResumePositionSeconds.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)"
+             data-next-url="@(Model.NextEpisodeUrl ?? "")"
+             data-autoplay-next="@((Model.Flow?.AutoplayNext == true).ToString().ToLowerInvariant())"
+             data-playback-preferences-url="@ClientApiRoutes.PlaybackPreferences"
+             data-storage-wake-url="@(Model.IsOwner && media.Storage is { WakeConfigured: true } ownerStorage ? ClientApiRoutes.WakeRoot(ownerStorage.RootId) : "")"
+             data-media-url="@Url.Page("/Library/Episode", "Media", new { id = Model.EpisodeId })">
+        <div class="video-stage player-placeholder" data-video-stage>
+            <video controls preload="none" playsinline hidden data-playback-video></video>
+            <div class="player-subtitle-stack">
+                <div class="subtitle-overlay"
+                     data-subtitle-overlay
+                     lang="ja"
+                     aria-live="polite"
+                     hidden></div>
+                <div class="playback-subtitle-overlay"
+                     data-playback-subtitle
+                     aria-live="polite"
+                     hidden></div>
+            </div>
+
+            @if (Model.ShowPlayerTools)
+            {
+            <aside class="player-learning-sheet"
+                   data-word-inspector
+                   aria-label="@ui["library.episode.subtitleLearningAria"]"
+                   hidden>
+                <div class="player-learning-sheet-header">
+                    <div class="player-learning-copy">
+                        <span class="player-learning-kicker" data-learning-kicker>@ui["library.episode.word"]</span>
+                        <strong class="player-learning-word" data-word lang="ja"></strong>
+                        <span class="player-learning-reading" data-reading lang="ja"></span>
+                    </div>
+                    <button class="player-icon-button"
+                            type="button"
+                            data-close-learning
+                            data-player-action="closeOverlay"
+                            aria-label="@ui["library.episode.closeLearningOverlay"]">✕</button>
+                </div>
+                <p class="player-learning-meaning" data-meaning></p>
+                <div class="player-learning-actions">
+                    <button class="button player-action-button"
+                            type="button"
+                            data-replay
+                            data-player-action="repeatCurrentCue">↻ @ui["library.episode.repeatLine"]</button>
+                    <span class="status-pill" data-state></span>
+                </div>
+            </aside>
+            }
+
+            <div class="post-play" data-post-play role="dialog" aria-label="@ui["library.episode.episodeFinished"]" hidden>
+                <strong>@ui["library.episode.episodeFinished"]</strong>
+                <span class="post-play-countdown" data-post-play-countdown aria-live="polite" hidden></span>
+                <div class="post-play-actions">
+                    <button class="button" type="button" data-post-play-replay>↻ @ui["library.episode.replay"]</button>
+                    @if (Model.NextEpisodeUrl is { } postPlayNextUrl)
+                    {
+                        <a class="button button-primary" href="@postPlayNextUrl" data-post-play-next>@ui["library.episode.nextEpisode"]</a>
+                    }
+                    <a class="button" href="/Library/Anime/@Model.AnimeId" data-post-play-back>@ui["library.episode.backToEpisodes"]</a>
+                    <button class="button" type="button" data-post-play-cancel hidden>@ui["library.episode.cancelAutoplay"]</button>
+                </div>
+            </div>
+
+            <div class="playback-preparation" data-playback-placeholder>
+                <span class="eyebrow">@ui["library.episode.browserPlayback"]</span>
+                <strong data-playback-status>@ui["library.episode.startingPlayback"]</strong>
+                <div data-storage-actions hidden style="display:flex; gap:.5rem; flex-wrap:wrap; justify-content:center; margin-top:.75rem;">
+                    <button class="button" type="button" data-storage-retry>@ui["library.episode.tryAgain"]</button>
+                    <button class="button button-primary" type="button" data-storage-wake hidden>@ui["library.episode.wakeNas"]</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="player-meta">
+            <div>
+                <span class="eyebrow">@ui["library.episode.playerEyebrow"]</span>
+                <strong>@media.FileName</strong>
+                <span>@ui.Format("library.episode.syncedCues", ("count", Model.Playback.Cues.Count)) · <span data-playback-summary>@ui["library.episode.checkingDevice"]</span></span>
+            </div>
+            <div class="playback-mode-control">
+                <label>
+                    <span>@ui["library.episode.playbackLabel"]</span>
+                    <select data-playback-mode>
+                        <option value="auto">@ui["library.episode.playbackModeAuto"]</option>
+                        <option value="device">@ui["library.episode.playbackModeDevice"]</option>
+                        <option value="server">@ui["library.episode.playbackModeServer"]</option>
+                    </select>
+                </label>
+                <small data-playback-mode-hint></small>
+                <span class="status-pill" data-playback-badge>@ui["library.episode.checking"]</span>
+            </div>
+        </div>
+
+        <div class="player-meta" data-playback-timeline-row>
+            <div><span data-playback-current>0:00</span></div>
+            <input type="range"
+                   min="0"
+                   max="0"
+                   step="0.1"
+                   value="0"
+                   disabled
+                   aria-label="@ui["library.episode.seekTimelineAria"]"
+                   data-playback-timeline
+                   style="flex:1; width:100%; min-width:0;" />
+            <div><span data-playback-duration>--:--</span></div>
+        </div>
+
+        @if (Model.Controls is { } controls)
+        {
+            var seekStep = PlayerDesign.SeekStepSeconds;
+            <div class="player-controls" data-player-controls>
+                <div class="player-transport" role="group" aria-label="@ui["library.episode.playbackControlsAria"]">
+                    <button class="player-control-button"
+                            type="button"
+                            data-player-action="seekBack10"
+                            aria-label="@ui.Format("library.episode.seekBack", ("seconds", seekStep))"
+                            title="@ui.Format("library.episode.seekBack", ("seconds", seekStep))">
+                        <partial name="_PlayerIcon" model="@("seekBack")" />
+                        <span>@seekStep</span>
+                    </button>
+                    <button class="player-control-button"
+                            type="button"
+                            data-player-action="repeatCurrentCue"
+                            data-repeat-line
+                            aria-label="@ui["library.episode.repeatCurrentLine"]"
+                            title="@ui["library.episode.repeatCurrentLine"]">
+                        <partial name="_PlayerIcon" model="@("replay")" />
+                        <span>@ui["library.episode.line"]</span>
+                    </button>
+                    <button class="player-control-button"
+                            type="button"
+                            data-player-action="seekForward10"
+                            aria-label="@ui.Format("library.episode.seekForward", ("seconds", seekStep))"
+                            title="@ui.Format("library.episode.seekForward", ("seconds", seekStep))">
+                        <partial name="_PlayerIcon" model="@("seekForward")" />
+                        <span>@seekStep</span>
+                    </button>
+                </div>
+
+                <div class="player-selectors">
+                    <label class="player-select" title="@ui["library.episode.playbackSpeed"]">
+                        <partial name="_PlayerIcon" model="@("speed")" />
+                        <span class="player-select-label">@ui["library.episode.speed"]</span>
+                        <select data-playback-speed>
+                            @foreach (var speed in controls.Speeds)
+                            {
+                                <option value="@speed.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+                                        selected="@(Math.Abs(speed - controls.InitialSpeed) < 0.0001)">@PlayerDesign.FormatSpeed(speed)</option>
+                            }
+                        </select>
+                    </label>
+
+                    @if (controls.AudioTracks.Count > 1)
+                    {
+                        <label class="player-select" title="@ui["library.episode.audioTrack"]">
+                            <partial name="_PlayerIcon" model="@("audioTrack")" />
+                            <span class="player-select-label">@ui["library.episode.audio"]</span>
+                            <select data-audio-track>
+                                @foreach (var track in controls.AudioTracks)
+                                {
+                                    <option value="@track.Id"
+                                            data-language="@(track.Language ?? "")"
+                                            selected="@(track.Id == controls.InitialAudioTrackId)">@track.Label</option>
+                                }
+                            </select>
+                        </label>
+                    }
+
+                    <label class="player-select" title="@ui["library.episode.subtitles"]">
+                        <partial name="_PlayerIcon" model="@("subtitles")" />
+                        <span class="player-select-label">@ui["library.episode.subtitles"]</span>
+                        <select data-subtitle-track>
+                            <option value="@PlayerControls.SubtitleOff"
+                                    selected="@(controls.InitialSubtitle == PlayerControls.SubtitleOff)">@ui["library.episode.subtitlesOff"]</option>
+                            @if (controls.HasLearningCues)
+                            {
+                                <option value="@PlayerControls.SubtitleLearning"
+                                        data-language="ja"
+                                        selected="@(controls.InitialSubtitle == PlayerControls.SubtitleLearning)">@ui["library.episode.japaneseLearning"]</option>
+                            }
+                            @foreach (var track in controls.SubtitleTracks)
+                            {
+                                <option value="@track.Id"
+                                        data-language="@(track.Language ?? "")"
+                                        data-learning-source="@(track.IsLearningSource ? "true" : "false")"
+                                        disabled="@(!track.IsSelectable)"
+                                        selected="@(track.Id == controls.InitialSubtitle)">@track.Label</option>
+                            }
+                        </select>
+                    </label>
+
+                    <label class="player-select" title="@ui["library.episode.remoteQualityLimit"]">
+                        <partial name="_PlayerIcon" model="@("quality")" />
+                        <span class="player-select-label">@ui["library.episode.quality"]</span>
+                        <select data-quality-cap>
+                            <option value="auto">@ui["library.episode.qualityAutoOriginal"]</option>
+                            <option value="1080p">1080p</option>
+                            <option value="720p">720p</option>
+                            <option value="low">@ui["library.episode.lowerBandwidth"]</option>
+                        </select>
+                    </label>
+
+                    <button class="button player-save-defaults"
+                            type="button"
+                            data-save-playback-defaults
+                            title="@ui["library.episode.saveDefaultsHint"]">
+                        @ui["library.episode.saveAsMyDefaults"]
+                    </button>
+                </div>
+                <small class="player-controls-hint" data-quality-hint aria-live="polite"></small>
+                <script type="application/json" data-player-controls-data>@Html.Raw(JsonSerializer.Serialize(new
+                {
+                    fileDefaultAudioTrackId = controls.FileDefaultAudioTrackId,
+                    initialAudioTrackId = controls.InitialAudioTrackId,
+                    sourceHeight = controls.SourceHeight,
+                    seekStepSeconds = seekStep,
+                    capHeights = Enum.GetValues<PlaybackQualityCap>().ToDictionary(PlaybackQuality.Name, PlaybackQuality.MaxHeight),
+                    variants = controls.Variants,
+                    subtitleCuesUrlTemplate = ClientApiRoutes.SubtitleTrackCues(Model.EpisodeId, "__track__")
+                }, new JsonSerializerOptions(JsonSerializerDefaults.Web)))</script>
+            </div>
+        }
+
+        <div class="player-meta player-flow-row">
+            <div class="player-flow-actions">
+                <button class="button"
+                        type="button"
+                        data-restart
+                        hidden="@(Model.ResumePositionSeconds <= 0)">↺ @ui["library.episode.restartFromBeginning"]</button>
+                @if (Model.NextEpisodeUrl is { } playerNextUrl)
+                {
+                    <a class="button" href="@playerNextUrl" data-player-next>@ui["library.episode.nextEpisode"] →</a>
+                }
+            </div>
+            <label class="player-autoplay">
+                <input type="checkbox"
+                       data-autoplay-toggle
+                       checked="@(Model.Flow?.AutoplayNext == true)" />
+                <span>@ui["library.episode.autoplayNextEpisode"]</span>
+            </label>
+        </div>
+
+        <div class="player-error" data-player-error hidden></div>
+
+        <script type="application/json" data-cue-data>@Html.Raw(JsonSerializer.Serialize(Model.Playback.Cues, new JsonSerializerOptions(JsonSerializerDefaults.Web)))</script>
+    </section>
+    <partial name="_LanguageInspector" model='LanguageInspectorHost.ForAnimeEpisode(Model.AnimeId, Model.EpisodeId, "ja")' />
+    <script src="~/js/player-design.js" asp-append-version="true"></script>
+    <script src="~/js/episode-player.js" asp-append-version="true"></script>
+    <partial name="_EpisodeMediaNavigation" model="new Jularr.Web.Features.MediaSegments.EpisodeMediaNavigationView(Model.EpisodeId, Model.Playback.Navigation, Model.IsOwner, ui)" />
+}
+
+@if (Model.ShowVocabularyTools
+     || Model.ShowPreparationSuggestions
+     || Model.ShowContentMetrics)
+{
+    @if (Model.Terms.Count == 0)
+    {
+        <div class="empty-state">
+            <h3>@ui["library.episode.noVocabularyYet"]</h3>
+            <p>@ui["library.episode.noVocabularyHint"]</p>
+        </div>
+    }
+    else
+    {
+        @if (Model.ShowPreparationSuggestions || Model.ShowContentMetrics)
+        {
+            <section class="preparation-panel">
+                <div class="preparation-copy">
+                    <span class="eyebrow">@ui["library.episode.preparationEyebrow"]</span>
+                    <strong>@ui.Format("library.episode.lexicalCoverage", ("percent", Model.Preparation.PreparedPercent))</strong>
+                    <span>@ui.Format("library.episode.occurrencesKnownOrQueued", ("prepared", Model.Preparation.PreparedOccurrences), ("total", Model.Preparation.TotalOccurrences))</span>
+                    <div class="progress-track"><span style="width:@Model.Preparation.PreparedPercent%"></span></div>
+                    <small>@ui["library.episode.coverageHint"]</small>
+                </div>
+
+                @if (Model.ShowPreparationSuggestions)
+                {
+                    @if (Model.Preparation.RecommendedCount > 0)
+                    {
+                        <form method="post"
+                              asp-page-handler="Prepare"
+                              asp-route-id="@Model.EpisodeId">
+                            <button class="button button-primary" type="submit">
+                                @ui.Format("library.episode.prepareToTarget", ("target", Model.Preparation.TargetPercent), ("count", Model.Preparation.RecommendedCount))
+                            </button>
+                        </form>
+                    }
+                    else
+                    {
+                        <span class="status-pill status-ok">@ui.Format("library.episode.targetPrepared", ("percent", Model.Preparation.TargetPercent))</span>
+                    }
+                }
+            </section>
+        }
+
+        @if (Model.ShowVocabularyTools)
+        {
+            <div class="term-table">
+                <div class="term-table-head">
+                    <span>@ui["library.episode.termColumn"]</span><span>@ui["library.episode.seenColumn"]</span><span>@ui["library.episode.statusColumn"]</span>
+                </div>
+                @foreach (var term in Model.Terms)
+                {
+                    <div class="term-row">
+                        <div class="term-word">
+                            <strong lang="ja">@term.Canonical</strong>
+                            @if (!string.IsNullOrWhiteSpace(term.Reading))
+                            {
+                                <span>@term.Reading</span>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(term.Meaning))
+                            {
+                                <small>@term.Meaning</small>
+                            }
+                        </div>
+                        <span class="occurrence">@term.EpisodeOccurrences×</span>
+                        <div class="term-actions">
+                            <form method="post"
+                                  asp-page-handler="Learning"
+                                  asp-route-id="@Model.EpisodeId" hidden="@(!Model.ShowLearnAction)">
+                                <input type="hidden" name="termId" value="@term.TermId" />
+                                <button class="chip @(term.State == UserTermState.Learning ? "selected" : "")"
+                                        type="submit">@ui["library.episode.learn"]</button>
+                            </form>
+                            <form method="post"
+                                  asp-page-handler="Known"
+                                  asp-route-id="@Model.EpisodeId">
+                                <input type="hidden" name="termId" value="@term.TermId" />
+                                <button class="chip @(term.State == UserTermState.Known ? "selected" : "")"
+                                        type="submit">@ui["library.episode.known"]</button>
+                            </form>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    }
+}

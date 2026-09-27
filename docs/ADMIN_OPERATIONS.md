@@ -1,6 +1,6 @@
 # Admin operations
 
-AniLingo keeps personal user settings and server administration separate.
+Jularr keeps personal user settings and server administration separate.
 
 ## Routes
 
@@ -21,8 +21,8 @@ Owner-only administration:
 - `/Admin/Subtitles`
 - `/Admin/Sonarr`
 - `/Admin/Ai`
-- `/Settings/DownloadClients` — the canonical download client list (SABnzbd; AniLingo is usenet-only), shared by Books and Anime, with priority, enable/disable, test and health (linked from Admin → System and Books → Acquisition settings)
-- `/Settings/SonarrMigration` — per-anime Sonarr/AniLingo ownership (linked from Admin → Sonarr)
+- `/Settings/DownloadClients` — the canonical download client list (SABnzbd; Jularr is usenet-only), shared by Books and Anime, with priority, enable/disable, test and health (linked from Admin → System and Books → Acquisition settings)
+- `/Settings/SonarrMigration` — per-anime Sonarr/Jularr ownership (linked from Admin → Sonarr)
 - `/Settings/Naming` — anime naming profiles, default and per-library selection (linked from Admin → Sonarr); per-anime selection and the rename preview live on `/Library/Rename/{animeId}` (see [ANIME_NAMING.md](ANIME_NAMING.md))
 - `/Settings/Indexers` — the canonical indexer list (Prowlarr, direct Newznab) for anime acquisition, with priority, enable/disable, test and health (linked from Admin → System)
 - `/Acquisition` — anime acquisition overview: schedule, wanted episodes, downloads, imports that need a decision, interactive search and recent decisions (linked from Admin → System and each anime page; see [ANIME_ACQUISITION.md](ANIME_ACQUISITION.md))
@@ -56,9 +56,9 @@ Other terminal states:
 - `Cancelled`
 - `Interrupted`
 
-When AniLingo starts, local operations left in `Queued` or `Running` for a worker lane from the previous process are marked `Interrupted`. Anonymous .NET delegates are deliberately not serialized. This prevents phantom running jobs while preserving accurate history. Only operations created before the current process owned the queue are recovered, so work queued during startup (for example the startup library scan) is never mistaken for abandoned work.
+When Jularr starts, local operations left in `Queued` or `Running` for a worker lane from the previous process are marked `Interrupted`. Anonymous .NET delegates are deliberately not serialized. This prevents phantom running jobs while preserving accurate history. Only operations created before the current process owned the queue are recovered, so work queued during startup (for example the startup library scan) is never mistaken for abandoned work.
 
-External operations can persist an `ExternalProvider` + `ExternalId`. Those jobs are not marked interrupted by the local worker reconciliation because their authoritative work continues outside AniLingo. Provider monitors resume after restart and keep the same canonical operation record current.
+External operations can persist an `ExternalProvider` + `ExternalId`. Those jobs are not marked interrupted by the local worker reconciliation because their authoritative work continues outside Jularr. Provider monitors resume after restart and keep the same canonical operation record current.
 
 Retry is available while the current process still owns the original retryable local delegate. After a process restart, local history remains but that transient delegate is intentionally unavailable. Durable provider-backed jobs such as SABnzbd instead resume status monitoring from their persisted external reference, and library scans can be run again from their persisted `Details` (see below).
 
@@ -83,7 +83,7 @@ Tracked network/import work includes:
 
 Light-novel EPUB uploads on `/Novels` and on an EPUB series page accept up to 20 files of at most 100 MB each; the raised limits apply only to the owner's upload handlers.
 
-Manga uploads on `/Manga` and `/Discover/MangaImport` accept up to 200 CBZ/ZIP archives, at most 1 GB each and 4 GB in total. The raised request-body and multipart limits apply only to the owner's `Upload` handler on those two pages; every other request, including uploads attempted by non-owner accounts, keeps the ASP.NET Core defaults. A reverse proxy in front of AniLingo must not cap request bodies below roughly 4 GB for these uploads (Caddy has no body limit by default; nginx needs `client_max_body_size`).
+Manga uploads on `/Manga` and `/Discover/MangaImport` accept up to 200 CBZ/ZIP archives, at most 1 GB each and 4 GB in total. The raised request-body and multipart limits apply only to the owner's `Upload` handler on those two pages; every other request, including uploads attempted by non-owner accounts, keeps the ASP.NET Core defaults. A reverse proxy in front of Jularr must not cap request bodies below roughly 4 GB for these uploads (Caddy has no body limit by default; nginx needs `client_max_body_size`).
 
 Synchronous request-bound work uses the shared `OperationRunner`, which writes the same `Operations` / `OperationLogs` lifecycle as queued jobs. Long work that can safely outlive the HTTP request continues to use `BackgroundJobQueue`.
 
@@ -161,7 +161,7 @@ Exceptions are persisted as bounded type/message summaries rather than stack tra
 
 ## SABnzbd (download clients)
 
-AniLingo is usenet-only by owner decision: torrent download clients (qBittorrent or any other) are
+Jularr is usenet-only by owner decision: torrent download clients (qBittorrent or any other) are
 intentionally unsupported. Books and Anime submit downloads through one abstraction,
 `IDownloadClient` (`Features/Acquisition/DownloadClients`), with SABnzbd as its only
 implementation; `Features/Acquisition/Sabnzbd` keeps SABnzbd's own protocol client and the
@@ -176,7 +176,7 @@ key, categories (SABnzbd has separate Books and Anime categories), priority and 
 are stored in `/data/acquisition/download-clients.json`; the secret is protected with ASP.NET Core
 Data Protection. **Test** on each entry checks reachability and authentication and records the
 result for the periodic health check (see [ANIME_ACQUISITION.md](ANIME_ACQUISITION.md)) — use the
-full API key rather than the NZB-only key so AniLingo can also track progress.
+full API key rather than the NZB-only key so Jularr can also track progress.
 
 On startup, a SABnzbd connection from the earlier single-connection settings
 (`/data/acquisition/sabnzbd.json`, including the environment-variable overrides below and the

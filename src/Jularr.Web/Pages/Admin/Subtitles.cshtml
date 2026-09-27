@@ -1,0 +1,148 @@
+@page
+@using Jularr.Web.Features.Subtitles
+@model Jularr.Web.Pages.Admin.SubtitlesModel
+@{
+    var ui = Model.Ui;
+    ViewData["Title"] = ui["admin.subtitles.title"];
+
+    string PreparationStatusLabel(LearningTextPreparationStatus status) => status switch
+    {
+        LearningTextPreparationStatus.Queued => ui["admin.operations.status.queued"],
+        LearningTextPreparationStatus.Processing => ui["admin.subtitles.status.processing"],
+        LearningTextPreparationStatus.Failed => ui["admin.operations.status.failed"],
+        _ => ui["admin.subtitles.status.notPrepared"]
+    };
+}
+
+<header class="page-header">
+    <div>
+        <a class="back-link" asp-page="/Admin/System">← @ui["admin.nav.system"]</a>
+        <span class="eyebrow">@ui["admin.subtitles.eyebrow"]</span>
+        <h1>@ui.Format("admin.subtitles.heading", ("language", Model.ContentLanguageName))</h1>
+        <p>@ui["admin.subtitles.fallbackOrder"]</p>
+    </div>
+</header>
+
+<partial name="_AdminNavigation" model="Model.Ui" />
+
+@if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
+{
+    <div class="subtitle-source-message status-ok">@Model.StatusMessage</div>
+}
+@if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+{
+    <div class="subtitle-source-message status-error">@Model.ErrorMessage</div>
+}
+
+<div class="settings-grid">
+    <section class="panel">
+        <div class="panel-heading">
+            <h2>@ui["admin.subtitles.coverage"]</h2>
+            <span>@ui.Format("admin.subtitles.readyRatio", ("ready", Model.Coverage.ReadyEpisodes), ("total", Model.Coverage.TotalEpisodes))</span>
+        </div>
+
+        <p class="muted">
+            @ui.Format("admin.subtitles.coverage.ready", ("count", Model.Coverage.ReadyEpisodes)) ·
+            @ui.Format("admin.subtitles.coverage.queued", ("count", Model.Coverage.QueuedEpisodes)) ·
+            @ui.Format("admin.subtitles.coverage.processing", ("count", Model.Coverage.ProcessingEpisodes)) ·
+            @ui.Format("admin.subtitles.coverage.failed", ("count", Model.Coverage.FailedEpisodes)) ·
+            @ui.Format("admin.subtitles.coverage.notPrepared", ("count", Model.Coverage.MissingEpisodes))
+        </p>
+
+        @if (Model.Coverage.ReadyEpisodes < Model.Coverage.TotalEpisodes)
+        {
+            <form method="post" asp-page-handler="PrepareAll">
+                <button class="button button-primary" type="submit">
+                    @ui["admin.subtitles.prepareAllMissing"]
+                </button>
+            </form>
+        }
+        else
+        {
+            <span class="status-pill status-ok">@ui["admin.subtitles.allHaveLearningText"]</span>
+        }
+    </section>
+
+    <section class="panel">
+        <div class="panel-heading">
+            <h2>@ui["admin.subtitles.jimaku"]</h2>
+            <span>@(Model.Jimaku.Configured ? ui["admin.subtitles.connected"] : ui["admin.subtitles.optional"])</span>
+        </div>
+
+        <p class="muted">
+            @ui["admin.subtitles.jimakuDescription"]
+        </p>
+
+        @if (Model.Jimaku.Configured)
+        {
+            <p>
+                <span class="status-pill status-ok">@ui["admin.subtitles.apiKeyConfigured"]</span>
+                @if (Model.Jimaku.UpdatedAt is { } updatedAt)
+                {
+                    <small>@ui.Format("admin.subtitles.updatedAt", ("time", updatedAt.ToLocalTime().ToString("g")))</small>
+                }
+            </p>
+            <form method="post" asp-page-handler="DisconnectJimaku">
+                <button class="button" type="submit">@ui["admin.subtitles.removeJimakuKey"]</button>
+            </form>
+        }
+        else
+        {
+            <form method="post" asp-page-handler="SaveJimaku" class="form-stack">
+                <label>
+                    <span>@ui["admin.subtitles.jimakuApiKeyLabel"]</span>
+                    <input asp-for="JimakuApiKey"
+                           type="password"
+                           autocomplete="new-password"
+                           required />
+                </label>
+                <button class="button button-primary" type="submit">
+                    @ui["admin.subtitles.testAndSave"]
+                </button>
+            </form>
+        }
+    </section>
+</div>
+
+<section class="panel">
+    <div class="panel-heading">
+        <h2>@ui["admin.subtitles.episodesWithoutText"]</h2>
+        <span>@ui.Format("admin.subtitles.shownCount", ("count", Model.MissingEpisodes.Count))</span>
+    </div>
+
+    @if (Model.MissingEpisodes.Count == 0)
+    {
+        <p class="muted">@ui["admin.subtitles.noMissingEpisodes"]</p>
+    }
+    else
+    {
+        <div class="root-list">
+            @foreach (var episode in Model.MissingEpisodes)
+            {
+                <div class="root-row">
+                    <div>
+                        <strong>@episode.AnimeTitle · S@(episode.SeasonNumber.ToString("00"))E@(episode.EpisodeNumber.ToString("00"))</strong>
+                        <span>@episode.EpisodeTitle</span>
+                        <small>
+                            @if (episode.State.Status == LearningTextPreparationStatus.Failed)
+                            {
+                                @ui.Format("admin.subtitles.failedWithReason", ("reason", episode.State.Message ?? ui["admin.subtitles.unknownError"]))
+                            }
+                            else
+                            {
+                                @PreparationStatusLabel(episode.State.Status)
+                            }
+                        </small>
+                    </div>
+
+                    <form method="post" asp-page-handler="Retry">
+                        <input type="hidden" name="episodeId" value="@episode.EpisodeId" />
+                        <button class="button" type="submit">
+                            @(episode.State.Status == LearningTextPreparationStatus.Failed ? ui["admin.operation.retry"] : ui["admin.subtitles.prepare"])
+                        </button>
+                    </form>
+                </div>
+            }
+        </div>
+    }
+</section>

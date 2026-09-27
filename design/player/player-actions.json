@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "event": "anilingo:player-action",
+  "event": "jularr:player-action",
   "actions": [
     { "id": "playPause", "category": "transport" },
     { "id": "seekBack10", "category": "transport" },

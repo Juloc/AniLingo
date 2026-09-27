@@ -1,6 +1,6 @@
 # Media segments and seek previews
 
-AniLingo stores one canonical set of skip markers per episode and generates
+Jularr stores one canonical set of skip markers per episode and generates
 optional seek-preview thumbnails ("trickplay"). Web, PWA, Android and Android TV
 players consume the same server descriptor; clients never compute their own
 segment boundaries, confidence rules or thumbnails.
@@ -62,7 +62,7 @@ flag, so clients do not re-implement the rule.
 
 Sidecar files are read (never written) during every library scan by
 `MediaSegmentSidecarImporter`. They are the source of truth for `imported`
-markers: a marker removed from the file is removed from AniLingo; manual,
+markers: a marker removed from the file is removed from Jularr; manual,
 provider and detector markers are never touched. Re-scanning an unchanged file
 changes nothing.
 
@@ -143,7 +143,7 @@ overall loudness and stable across light re-encoding, which is what makes the
 same OP/ED audio comparable when muxed differently across episode files.
 
 **Why C# hashing instead of `ffmpeg -af chromaprint`:** the runtime image
-(`debian:bookworm-slim` + apt `ffmpeg`, see `src/AniLingo.Web/Dockerfile`) is
+(`debian:bookworm-slim` + apt `ffmpeg`, see `src/Jularr.Web/Dockerfile`) is
 not guaranteed to have been built with `--enable-chromaprint` — Debian's
 packaged `ffmpeg` does not consistently ship that filter, and confirming it
 would require probing the image every time it is rebuilt. Hashing bounded PCM
@@ -204,7 +204,7 @@ requires touching the library scanner, which is out of scope for this change.
 
 ## Seek previews (trickplay)
 
-When a player loads a playable episode, AniLingo queues a background operation
+When a player loads a playable episode, Jularr queues a background operation
 (**Admin → Operations**, kind `trickplay-generation`, maintenance lane) that
 extracts keyframe thumbnails with `ffmpeg` into JPEG sprite sheets. Playback
 never waits for it.

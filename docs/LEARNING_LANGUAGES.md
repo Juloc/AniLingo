@@ -6,7 +6,7 @@ Issue #252 replaced the original Japanese → German Term/UserTerm/Review learni
 
 These values are independent:
 
-- UI locale: which language AniLingo itself uses.
+- UI locale: which language Jularr itself uses.
 - content language: language of the watched/read source.
 - course source language: the language that is read, heard or written in a Learning course.
 - course target language: the other side of the course, used for meanings and prompts.
