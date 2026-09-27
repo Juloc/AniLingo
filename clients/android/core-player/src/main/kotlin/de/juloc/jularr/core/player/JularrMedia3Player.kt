@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
@@ -12,6 +13,13 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaSession
 import java.io.Closeable
+
+data class JularrPlaybackMetadata(
+    val mediaId: String,
+    val title: String,
+    val seriesTitle: String? = null,
+    val episodeLabel: String? = null,
+)
 
 @UnstableApi
 class JularrMedia3Player(context: Context) : Closeable {
@@ -40,9 +48,10 @@ class JularrMedia3Player(context: Context) : Closeable {
         startPositionMs: Long = 0,
         playWhenReady: Boolean = true,
         requestHeaders: Map<String, String> = emptyMap(),
+        metadata: JularrPlaybackMetadata? = null,
     ) {
         httpDataSourceFactory.setDefaultRequestProperties(requestHeaders)
-        exoPlayer.setMediaItem(MediaItem.fromUri(uri))
+        exoPlayer.setMediaItem(buildMediaItem(uri, metadata))
         exoPlayer.prepare()
 
         if (startPositionMs > 0) {
@@ -55,5 +64,26 @@ class JularrMedia3Player(context: Context) : Closeable {
     override fun close() {
         mediaSession.release()
         exoPlayer.release()
+    }
+
+    private fun buildMediaItem(
+        uri: Uri,
+        metadata: JularrPlaybackMetadata?,
+    ): MediaItem {
+        if (metadata == null) {
+            return MediaItem.fromUri(uri)
+        }
+
+        return MediaItem.Builder()
+            .setUri(uri)
+            .setMediaId(metadata.mediaId)
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setTitle(metadata.title)
+                    .setArtist(metadata.seriesTitle)
+                    .setSubtitle(metadata.episodeLabel)
+                    .build(),
+            )
+            .build()
     }
 }
