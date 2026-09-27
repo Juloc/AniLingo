@@ -77,7 +77,8 @@ public sealed class IndexModel(
         var (start, end) = Range();
         var filter = new ReleaseCalendarFilter(
             MediaType is { } selected ? new HashSet<ReleaseMediaType> { selected } : new HashSet<ReleaseMediaType>(),
-            State);
+            State,
+            account.ProfileId);
         Result = await calendar.GetAsync(start, end, zone, filter, now, View == CalendarView.Agenda, cancellationToken);
     }
 
