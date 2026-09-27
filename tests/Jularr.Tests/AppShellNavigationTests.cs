@@ -119,6 +119,21 @@ public sealed partial class AppShellNavigationTests
     }
 
     [TestMethod]
+    [DataRow("/Books", false)]
+    [DataRow("/Books/Read/7a4c", true)]
+    [DataRow("/Novels/Read/7a4c", true)]
+    [DataRow("/Manga/Read/7a4c", true)]
+    [DataRow("/Reading", false)]
+    [DataRow("/", false)]
+    [DataRow("/Library", false)]
+    [DataRow("/Settings/Appearance", false)]
+    [DataRow("/Admin/Usenet", false)]
+    public void CurrentReadingShowsOnlyInReaders(string path, bool expected)
+    {
+        Assert.AreEqual(expected, UiShellNavigation.Build(path, learningVisible: true, isOwner: true).ShowCurrentReading);
+    }
+
+    [TestMethod]
     public void EveryPageAppearsOnceInTheNavigationCatalog()
     {
         var entries = UiNavigationCatalog.App
