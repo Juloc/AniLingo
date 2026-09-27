@@ -3,6 +3,7 @@ using System.Data.Common;
 using System.Globalization;
 using Jularr.Web.Data;
 using Jularr.Web.Features.Watchlist;
+using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Web.Features.Franchises;
 
@@ -274,7 +275,7 @@ public sealed class FranchiseStore(AppDbContext db)
     }
 
     private Task WithConnectionAsync(Func<DbConnection, Task> action, CancellationToken cancellationToken) =>
-        WithConnectionAsync(async connection =>
+        WithConnectionAsync<bool>(async connection =>
         {
             await action(connection);
             return true;
