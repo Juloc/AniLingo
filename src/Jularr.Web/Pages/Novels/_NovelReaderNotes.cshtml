@@ -6,44 +6,32 @@
     var annotations = Model.Annotations;
     var settings = Model.ReaderSettings;
 }
-<aside class="novel-reader-notes"
-       id="novel-reader-notes"
-       data-reader-notes
-       tabindex="-1"
-       hidden
-       aria-label="@ui["novels.read.bookmarksAndHighlights"]">
+<section class="reader-contents-panel novel-reader-notes"
+         id="novel-reader-notes"
+         role="tabpanel"
+         data-reader-contents-panel="bookmarks notes"
+         data-reader-notes
+         aria-label="@ui["novels.read.bookmarksAndHighlights"]"
+         hidden>
     <div class="novel-notes-header">
-        <strong>@ui["novels.read.notes.heading"]</strong>
         <div class="novel-notes-nav">
-            <button class="novel-icon-button"
+            <button class="reader-frame-icon"
                     type="button"
                     data-bookmark-nav="prev"
                     aria-label="@ui["novels.read.notes.prevBookmarkAria"]"
                     title="@ui["novels.read.notes.prevBookmarkTitle"]">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg>
+                <partial name="_ReaderIcon" model="@("back")" />
             </button>
-            <button class="novel-icon-button"
+            <button class="reader-frame-icon"
                     type="button"
                     data-bookmark-nav="next"
                     aria-label="@ui["novels.read.notes.nextBookmarkAria"]"
                     title="@ui["novels.read.notes.nextBookmarkTitle"]">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
+                <partial name="_ReaderIcon" model="@("forward")" />
             </button>
         </div>
-        <button class="novel-icon-button" type="button" data-reader-notes-close aria-label="@ui["novels.read.close"]">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
-        </button>
-    </div>
-
-    <div class="novel-notes-tabs" role="tablist" aria-label="@ui["novels.read.notes.filterAria"]">
-        <button type="button" role="tab" aria-selected="true" data-notes-tab="current">@ui["novels.read.notes.tabCurrentChapter"]</button>
-        <button type="button" role="tab" aria-selected="false" data-notes-tab="all">@ui["novels.read.notes.tabAllChapters"]</button>
-        <button type="button" role="tab" aria-selected="false" data-notes-tab="bookmarks">@ui["novels.read.notes.tabBookmarks"]</button>
-        <button type="button" role="tab" aria-selected="false" data-notes-tab="highlights">@ui["novels.read.notes.tabHighlights"]</button>
-    </div>
-
-    <div class="novel-notes-search">
         <input type="search"
+               class="reader-contents-search"
                data-notes-search
                placeholder="@ui["novels.read.notes.searchPlaceholder"]"
                aria-label="@ui["novels.read.notes.searchAria"]" />
@@ -167,4 +155,4 @@
     </section>
 
     <p class="novel-notes-status" data-other-notes-status role="status" aria-live="polite"></p>
-</aside>
+</section>

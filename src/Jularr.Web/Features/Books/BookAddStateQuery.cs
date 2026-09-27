@@ -13,7 +13,8 @@ public sealed record BookAddState(
     Guid? LibraryWorkId,
     string? RequestStatus,
     string? RequestMessage,
-    int? ProgressPercent)
+    int? ProgressPercent,
+    string? RequestCatalogId = null)
 {
     /// <summary>Visible request states. <c>importing</c> is a finished download whose import has not closed the request yet.</summary>
     public const string Importing = "importing";
@@ -27,14 +28,24 @@ public sealed record BookAddState(
 }
 
 /// <summary>
+/// One catalog book to look up: its id, its title (for library matching) and the ids of the
+/// same work at other providers, which may carry the library link or the request.
+/// </summary>
+public sealed record BookAddLookup(string CatalogId, string? Title = null, IReadOnlyList<string>? Aliases = null)
+{
+    public IEnumerable<string> Ids => Aliases is null ? [CatalogId] : [CatalogId, .. Aliases.Where(alias => alias != CatalogId)];
+}
+
+/// <summary>
 /// Reads the canonical library and request state for catalog books, so a search result and
 /// the dialog's refresh always agree with the Books library: a book imported for a request is
-/// found by the catalog id its request linked, other books by their normalized title.
+/// found by the catalog id its request linked (at any provider of the work), other books by
+/// their normalized title.
 /// </summary>
 public sealed class BookAddStateQuery(AppDbContext db, AcquisitionAccessStore requests)
 {
     public async Task<IReadOnlyDictionary<string, BookAddState>> GetAsync(
-        IReadOnlyList<(string CatalogId, string? Title)> books,
+        IReadOnlyList<BookAddLookup> books,
         CancellationToken cancellationToken)
     {
         var result = new Dictionary<string, BookAddState>(StringComparer.Ordinal);
@@ -55,25 +66,38 @@ public sealed class BookAddStateQuery(AppDbContext db, AcquisitionAccessStore re
         var byTitle = works
             .GroupBy(work => NormalizeTitle(work.Title))
             .ToDictionary(group => group.Key, group => group.First().Id);
+        var byMainTitle = works
+            .GroupBy(work => NormalizeTitle(BookWorkSearch.MainTitle(work.Title)))
+            .ToDictionary(group => group.Key, group => group.First().Id);
         var workIds = works.Select(work => work.Id).ToHashSet();
+        Guid? LibraryByTitle(string? title) =>
+            title is null ? null
+            : byTitle.TryGetValue(NormalizeTitle(title), out var named) ? named
+            : byMainTitle.TryGetValue(NormalizeTitle(BookWorkSearch.MainTitle(title)), out var mainNamed) ? mainNamed
+            : null;
 
-        var catalogIds = books.Select(book => book.CatalogId).ToHashSet(StringComparer.Ordinal);
+        var catalogIds = books.SelectMany(book => book.Ids).ToHashSet(StringComparer.Ordinal);
         var latest = (await requests.ListAsync(MediaAcquisitionKind.Book, null, openOnly: false, limit: 500, cancellationToken))
             .Where(request => request.Provider == BookCatalogService.CatalogRequestProvider && catalogIds.Contains(request.ExternalId))
             .GroupBy(request => request.ExternalId, StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => group.OrderByDescending(request => request.UpdatedAt).First(), StringComparer.Ordinal);
         var operations = new OperationStore(db);
 
-        foreach (var (catalogId, title) in books)
+        foreach (var book in books)
         {
-            latest.TryGetValue(catalogId, out var request);
-            Guid? workId = byCatalogId.TryGetValue(catalogId, out var linked) ? linked
-                : ResultWorkId(request) is { } resulting && workIds.Contains(resulting) ? resulting
-                : title is not null && byTitle.TryGetValue(NormalizeTitle(title), out var named) ? named
-                : null;
-            result[catalogId] = workId is not null
+            // The newest request for any identity of this work is its request.
+            var request = book.Ids
+                .Select(id => latest.GetValueOrDefault(id))
+                .OfType<AcquisitionRequest>()
+                .OrderByDescending(candidate => candidate.IsOpen)
+                .ThenByDescending(candidate => candidate.UpdatedAt)
+                .FirstOrDefault();
+            Guid? workId = book.Ids.Select(id => byCatalogId.TryGetValue(id, out var linked) ? linked : (Guid?)null).FirstOrDefault(id => id is not null)
+                ?? (ResultWorkId(request) is { } resulting && workIds.Contains(resulting) ? resulting : (Guid?)null)
+                ?? LibraryByTitle(book.Title);
+            result[book.CatalogId] = workId is not null
                 ? new BookAddState(workId, null, null, null)
-                : await RequestStateAsync(request, operations, cancellationToken);
+                : (await RequestStateAsync(request, operations, cancellationToken)) with { RequestCatalogId = request?.ExternalId };
         }
 
         return result;

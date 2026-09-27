@@ -157,6 +157,38 @@ public sealed record BookChapterItem(
     string Title,
     bool HasTranslation);
 
+/// <summary>
+/// A run of a PDF book's pages (its chapters) for the book page: the first page's chapter to
+/// open, the page numbers it spans and how many of its pages are translated.
+/// </summary>
+public sealed record BookPageRange(
+    Guid FirstChapterId,
+    int FirstPage,
+    int LastPage,
+    int PageCount,
+    int TranslatedCount)
+{
+    private const int TargetRanges = 12;
+
+    /// <summary>
+    /// Groups pages into about a dozen ranges of a round size (10, 20, 30 …), so a long PDF is
+    /// a short list instead of one row per page.
+    /// </summary>
+    public static IReadOnlyList<BookPageRange> Group(IReadOnlyList<BookChapterItem> pages)
+    {
+        var size = Math.Max(10, (int)Math.Ceiling(pages.Count / (double)TargetRanges / 10) * 10);
+        return pages
+            .Chunk(size)
+            .Select(range => new BookPageRange(
+                range[0].Id,
+                range[0].Number,
+                range[^1].Number,
+                range.Length,
+                range.Count(page => page.HasTranslation)))
+            .ToArray();
+    }
+}
+
 public sealed record BookLibraryDetail(
     NovelWork Work,
     IReadOnlyList<string> Subjects,

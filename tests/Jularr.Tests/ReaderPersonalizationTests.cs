@@ -205,7 +205,10 @@ public sealed class ReaderPersonalizationTests
             root, "src", "Jularr.Web", "wwwroot", "js", "books-reader.js"));
 
         StringAssert.Contains(page, "data-reader-autoscroll-toggle");
-        StringAssert.Contains(page, "data-reader-page-controls");
+        StringAssert.Contains(page, "data-reader-frame");
+        StringAssert.Contains(page, "data-reader-progress-slider");
+        StringAssert.Contains(page, "data-reader-page-step");
+        StringAssert.Contains(page, "data-reader-settings-open=\"reading\"");
         StringAssert.Contains(page, "_ReaderSettingsPanel");
         StringAssert.Contains(page, "novels.read.chapterLabel");
         StringAssert.Contains(sharedSettings, "data-reader-genre-select");

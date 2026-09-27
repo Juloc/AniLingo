@@ -101,7 +101,7 @@
             }
             else
             {
-                <span>@ui.Format("books.library.chaptersTranslated", ("translated", translatedCount), ("total", Model.Book.Chapters.Count))</span>
+                <span>@ui.Format(Model.IsPdf ? "books.library.pagesTranslated" : "books.library.chaptersTranslated", ("translated", translatedCount), ("total", Model.Book.Chapters.Count))</span>
                 <div class="book-card-progress">
                     <span style="width:@(Model.Book.Chapters.Count == 0 ? 0 : translatedCount * 100 / Model.Book.Chapters.Count)%"></span>
                 </div>
@@ -168,28 +168,58 @@
 
 <section class="book-chapter-list">
     <div class="books-results-heading">
-        <strong>@ui["books.library.chaptersHeading"]</strong>
+        <strong>@(Model.IsPdf ? ui["books.library.pagesHeading"] : ui["books.library.chaptersHeading"])</strong>
         <span>@Model.Book.Chapters.Count</span>
     </div>
 
-    @foreach (var chapter in Model.Book.Chapters)
+    @if (Model.IsPdf)
     {
-        <a class="book-chapter-row"
-           href="/Books/Read/@chapter.Id?lang=@Model.TargetLanguage">
-            <span class="book-chapter-number">@chapter.Number</span>
-            <strong>@chapter.Title</strong>
-            @if (Model.SourceIsTarget)
-            {
-                <small>@ui["books.read.original"]</small>
-            }
-            else if (chapter.HasTranslation)
-            {
-                <small class="ready">@ui["books.library.translated"]</small>
-            }
-            else
-            {
-                <small>@ui["books.library.originalAvailable"]</small>
-            }
-        </a>
+        @* A PDF's chapters are its pages: listed as ranges, each opening at its first page. *@
+        @foreach (var range in Model.PageRanges)
+        {
+            <a class="book-chapter-row book-page-range"
+               href="/Books/Read/@range.FirstChapterId?lang=@Model.TargetLanguage">
+                <strong>@ui.Format("books.library.pageRange", ("from", range.FirstPage), ("to", range.LastPage))</strong>
+                @if (Model.SourceIsTarget)
+                {
+                    <small>@ui["books.read.original"]</small>
+                }
+                else if (range.TranslatedCount == range.PageCount)
+                {
+                    <small class="ready">@ui["books.library.translated"]</small>
+                }
+                else if (range.TranslatedCount > 0)
+                {
+                    <small>@ui.Format("books.library.pagesTranslated", ("translated", range.TranslatedCount), ("total", range.PageCount))</small>
+                }
+                else
+                {
+                    <small>@ui["books.library.originalAvailable"]</small>
+                }
+            </a>
+        }
+    }
+    else
+    {
+        @foreach (var chapter in Model.Book.Chapters)
+        {
+            <a class="book-chapter-row"
+               href="/Books/Read/@chapter.Id?lang=@Model.TargetLanguage">
+                <span class="book-chapter-number">@chapter.Number</span>
+                <strong>@chapter.Title</strong>
+                @if (Model.SourceIsTarget)
+                {
+                    <small>@ui["books.read.original"]</small>
+                }
+                else if (chapter.HasTranslation)
+                {
+                    <small class="ready">@ui["books.library.translated"]</small>
+                }
+                else
+                {
+                    <small>@ui["books.library.originalAvailable"]</small>
+                }
+            </a>
+        }
     }
 </section>

@@ -246,10 +246,14 @@ public sealed class NovelTranslationGatingTests
             "var hasTranslation = Model.GermanParagraphs.Count > 0;",
             "#369: the language switch (Original/German/Both) must be driven by the cache, not the capability.");
 
-        var switchIndex = view.IndexOf("novel-view-switch", StringComparison.Ordinal);
-        Assert.IsTrue(switchIndex > 0, "Language switch markup not found.");
-        var switchMarkupEnd = view.IndexOf("</div>", switchIndex, StringComparison.Ordinal);
+        // The reader frame's language menu: the Original/German/Both choices come
+        // before the translate slot, whose generate form is gated separately.
+        var switchIndex = view.IndexOf("data-reader-menu=\"language\"", StringComparison.Ordinal);
+        Assert.IsTrue(switchIndex > 0, "Language menu markup not found.");
+        var switchMarkupEnd = view.IndexOf("data-translation-slot", switchIndex, StringComparison.Ordinal);
+        Assert.IsTrue(switchMarkupEnd > switchIndex, "Translate slot not found inside the language menu.");
         var switchMarkup = view[switchIndex..switchMarkupEnd];
+        StringAssert.Contains(switchMarkup, "data-reader-view=\"de\" hidden=\"@(!hasTranslation)\"");
         Assert.IsFalse(
             switchMarkup.Contains("TranslationEnabled", StringComparison.Ordinal),
             "The language switch itself must not reference the resolved Learning capability.");
