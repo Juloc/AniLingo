@@ -10,6 +10,9 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import de.juloc.jularr.mobile.offline.DownloadState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -183,6 +186,23 @@ fun NativePlayerScreen(
             activity.lifecycle.addObserver(observer)
             onDispose {
                 activity.lifecycle.removeObserver(observer)
+            }
+        }
+    }
+
+    DisposableEffect(activity) {
+        if (activity == null) {
+            onDispose { }
+        } else {
+            val systemBars = WindowCompat.getInsetsController(
+                activity.window,
+                activity.window.decorView,
+            )
+            systemBars.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            systemBars.hide(WindowInsetsCompat.Type.systemBars())
+            onDispose {
+                systemBars.show(WindowInsetsCompat.Type.systemBars())
             }
         }
     }
@@ -494,8 +514,6 @@ private fun PlayerControls(
                 )
             }
 
-            PlaybackStatusPill(ui = ui, design = design)
-
             PlayerIconButton(
                 icon = Icons.Filled.Subtitles,
                 label = "Subtitles",
@@ -802,24 +820,6 @@ private fun PlayerSettingRow(
             modifier = Modifier.weight(1f),
         )
         content()
-    }
-}
-
-@Composable
-private fun PlaybackStatusPill(
-    ui: NativePlayerUiState,
-    design: MobilePlayerDesign,
-) {
-    Surface(
-        color = design.sheet,
-        shape = RoundedCornerShape(design.controlRadiusDp.dp),
-    ) {
-        Text(
-            text = playbackStatusLabel(ui),
-            color = design.subtitleText,
-            style = MaterialTheme.typography.labelMedium,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-        )
     }
 }
 
