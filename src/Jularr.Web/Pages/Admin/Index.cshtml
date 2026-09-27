@@ -1,9 +1,13 @@
 @page
 @model Jularr.Web.Pages.Admin.IndexModel
 @using Jularr.Web.Features.Operations
+@section Head {
+    <link rel="stylesheet" href="~/css/admin-overview.css" asp-append-version="true" />
+}
 @{
     var ui = Model.Ui;
     ViewData["Title"] = ui["nav.admin"];
+    var overview = Model.Overview;
 
     string OperationStatusLabel(OperationStatus status) => status switch
     {
@@ -15,6 +19,37 @@
         OperationStatus.Interrupted => ui["admin.operations.status.interrupted"],
         _ => status.ToString()
     };
+
+    string CountValue(int count) => count == 0 ? ui["admin.overview.ok"] : count.ToString("N0");
+    string Pill(int count, string problemClass) => count == 0 ? "status-ok" : problemClass;
+
+    string FormatBytes(long? bytes)
+    {
+        if (bytes is not { } value || value < 0)
+        {
+            return ui["admin.overview.unknown"];
+        }
+
+        double size = value;
+        string[] units = ["B", "KB", "MB", "GB", "TB"];
+        var unit = 0;
+        while (size >= 1024 && unit < units.Length - 1)
+        {
+            size /= 1024;
+            unit++;
+        }
+
+        return ui.Format("admin.overview.serverLoad.size", ("value", Math.Round(size, size < 10 ? 1 : 0)), ("unit", units[unit]));
+    }
+
+    var freeDiskText = overview.DataVolumeFreeBytes is { } free
+        ? ui.Format("admin.overview.serverLoad.free", ("free", FormatBytes(free)))
+        : ui["admin.overview.unknown"];
+    var serverLoadValue = ui.Format(
+        "admin.overview.serverLoad.value",
+        ("cpu", Math.Round(overview.ProcessCpuPercent)),
+        ("workingSet", FormatBytes(overview.ProcessWorkingSetBytes)),
+        ("free", freeDiskText));
 }
 
 <header class="page-header">
@@ -26,26 +61,50 @@
 
 <partial name="_AdminNavigation" model="Model.Ui" />
 
-<div class="metric-grid admin-metrics">
-    <a class="metric-card" asp-page="/Admin/Operations" asp-route-view="active">
-        <span class="metric-label">@ui["admin.operations.status.running"]</span>
-        <strong class="metric-value">@Model.Summary.Running</strong>
-        <span class="metric-hint">@ui.Format("admin.index.metric.queued", ("count", Model.Summary.Queued))</span>
+<div class="status-list admin-overview-list" aria-label="@ui["admin.overview.title"]">
+    <a asp-page="/Admin/Operations" asp-route-view="history" asp-route-status="Failed">
+        <span>@ui["admin.overview.broken.label"]</span>
+        <strong class="status-pill @Pill(overview.FailedOperations, "status-error")">@CountValue(overview.FailedOperations)</strong>
     </a>
-    <a class="metric-card" asp-page="/Admin/Operations" asp-route-view="downloads">
-        <span class="metric-label">@ui["admin.index.metric.downloads"]</span>
-        <strong class="metric-value">@Model.Summary.ActiveDownloads</strong>
-        <span class="metric-hint">@ui["admin.index.metric.activeHint"]</span>
+    <a asp-page="/Admin/Operations" asp-route-view="downloads">
+        <span>@ui["admin.overview.downloading.label"]</span>
+        <strong class="status-pill @Pill(overview.ActiveDownloads, "status-info")">@CountValue(overview.ActiveDownloads)</strong>
     </a>
-    <a class="metric-card" asp-page="/Admin/Operations" asp-route-view="history" asp-route-status="Failed">
-        <span class="metric-label">@ui["admin.operations.status.failed"]</span>
-        <strong class="metric-value">@Model.Summary.Failed</strong>
-        <span class="metric-hint">@ui.Format("admin.index.metric.interrupted", ("count", Model.Summary.Interrupted))</span>
+    <a asp-page="/Admin/Operations" asp-route-view="active">
+        <span>@ui["admin.overview.processing.label"]</span>
+        <strong class="status-pill @Pill(overview.ActiveProcessing, "status-info")">@CountValue(overview.ActiveProcessing)</strong>
     </a>
-    <a class="metric-card" asp-page="/Admin/Users">
-        <span class="metric-label">@ui["admin.nav.users"]</span>
-        <strong class="metric-value">@Model.UserCount</strong>
-        <span class="metric-hint">@ui["admin.index.metric.localAccounts"]</span>
+    <a asp-page="/Admin/Requests">
+        <span>@ui["admin.overview.missing.label"]</span>
+        <strong class="status-pill @Pill(overview.OpenAcquisitionRequests, "status-warning")">@CountValue(overview.OpenAcquisitionRequests)</strong>
+    </a>
+    <a asp-page="/Settings/MappingReview">
+        <span>@ui["admin.overview.mapping.label"]</span>
+        <strong class="status-pill @Pill(overview.UnresolvedMappings, "status-warning")">@CountValue(overview.UnresolvedMappings)</strong>
+    </a>
+    <a asp-page="/Admin/System">
+        <span>@ui["admin.overview.storage.label"]</span>
+        <strong class="status-pill @Pill(overview.StorageRootsOffline, "status-error")">@CountValue(overview.StorageRootsOffline)</strong>
+    </a>
+    <a asp-page="/Admin/Operations" asp-route-view="history" asp-route-status="Interrupted">
+        <span>@ui["admin.overview.blocked.label"]</span>
+        <strong class="status-pill @Pill(overview.BlockedJobs, "status-error")">@CountValue(overview.BlockedJobs)</strong>
+    </a>
+    <a asp-page="/Admin/Sessions">
+        <span>@ui["admin.overview.watching.label"]</span>
+        <strong class="status-pill @Pill(overview.WatchingNow, "status-info")">@CountValue(overview.WatchingNow)</strong>
+    </a>
+    <a asp-page="/Admin/Sessions">
+        <span>@ui["admin.overview.transcoding.label"]</span>
+        <strong class="status-pill @Pill(overview.TranscodingNow, "status-info")">@CountValue(overview.TranscodingNow)</strong>
+    </a>
+    <a asp-page="/Admin/Users">
+        <span>@ui["admin.overview.accounts.label"]</span>
+        <strong class="status-pill status-info">@Model.UserCount.ToString("N0")</strong>
+    </a>
+    <a asp-page="/Admin/System">
+        <span>@ui["admin.overview.serverLoad.label"]</span>
+        <strong class="status-pill status-info">@serverLoadValue</strong>
     </a>
 </div>
 

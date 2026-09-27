@@ -10,6 +10,7 @@
     <a class="admin-nav-item @(path.StartsWithSegments("/Admin/Requests") ? "active" : "")" asp-page="/Admin/Requests">@ui["admin.nav.requests"]</a>
     <a class="admin-nav-item @(path.StartsWithSegments("/Admin/Usenet") || path.StartsWithSegments("/Settings/Indexers") || path.StartsWithSegments("/Settings/DownloadClients") ? "active" : "")" asp-page="/Admin/Usenet">@ui["admin.nav.usenet"]</a>
     <a class="admin-nav-item @(path.StartsWithSegments("/Admin/Operations") || path.StartsWithSegments("/Admin/Operation") ? "active" : "")" asp-page="/Admin/Operations">@ui["admin.nav.operations"]</a>
+    <a class="admin-nav-item @(path.StartsWithSegments("/Admin/Sessions") ? "active" : "")" asp-page="/Admin/Sessions">@ui["admin.nav.sessions"]</a>
     <a class="admin-nav-item @(path.StartsWithSegments("/Admin/Scans") ? "active" : "")" asp-page="/Admin/Scans">@ui["admin.nav.scans"]</a>
     <a class="admin-nav-item @(path.StartsWithSegments("/Admin/Logs") ? "active" : "")" asp-page="/Admin/Logs">@ui["admin.nav.logs"]</a>
     <a class="admin-nav-item @(path.StartsWithSegments("/Admin/System") || path.StartsWithSegments("/Admin/Subtitles") || path.StartsWithSegments("/Admin/Sonarr") || path.StartsWithSegments("/Admin/Ai") ? "active" : "")" asp-page="/Admin/System">@ui["admin.nav.system"]</a>
