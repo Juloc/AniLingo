@@ -133,7 +133,9 @@ internal sealed class FakeSabnzbdClient : ISabnzbdClient
     public SabnzbdHistorySnapshot History { get; set; } = new([]);
     public List<SabnzbdGrabRequest> Grabs { get; } = [];
     public List<string> Cancelled { get; } = [];
+    public List<SabnzbdConnection> CancelConnections { get; } = [];
     public List<string> Retried { get; } = [];
+    public List<SabnzbdConnection> RetryConnections { get; } = [];
     public Queue<SabnzbdGrabResult> GrabResults { get; } = new();
 
     public Task<SabnzbdConnectionTestResult> TestAsync(
@@ -179,6 +181,7 @@ internal sealed class FakeSabnzbdClient : ISabnzbdClient
         CancellationToken cancellationToken)
     {
         Cancelled.Add(nzoId);
+        CancelConnections.Add(connection);
         return Task.FromResult(new SabnzbdActionResult(true));
     }
 
@@ -195,6 +198,7 @@ internal sealed class FakeSabnzbdClient : ISabnzbdClient
         CancellationToken cancellationToken)
     {
         Retried.Add(nzoId);
+        RetryConnections.Add(connection);
         return Task.FromResult(new SabnzbdActionResult(true, $"{nzoId}_retry"));
     }
 
