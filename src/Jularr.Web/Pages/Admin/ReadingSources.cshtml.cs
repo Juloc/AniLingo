@@ -45,6 +45,9 @@ public sealed class ReadingSourcesModel(
         Dictionary<string, int>? priority,
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(
+            HttpContext,
+            db);
         var enabled = new HashSet<string>(
             enabledProviders ?? [],
             StringComparer.OrdinalIgnoreCase);
@@ -66,7 +69,11 @@ public sealed class ReadingSourcesModel(
             {
                 ModelState.AddModelError(
                     definition.Key,
-                    $"Priority for {definition.Name} must be between 1 and 999.");
+                    Ui.Format(
+                        "admin.readingSources.priorityRange",
+                        ("source", definition.Name),
+                        ("min", 1),
+                        ("max", 999)));
                 continue;
             }
 
@@ -78,9 +85,6 @@ public sealed class ReadingSourcesModel(
 
         if (!ModelState.IsValid)
         {
-            Ui = await UiRequestLocalization.GetBundleAsync(
-                HttpContext,
-                db);
             Sources = ReadingSourceCatalog.Definitions
                 .Select(definition =>
                     new ReadingSourceRow(
@@ -102,7 +106,7 @@ public sealed class ReadingSourcesModel(
             new ReadingSourceSettingsState(preferences),
             cancellationToken);
 
-        TempData["Status"] = "Reading sources saved.";
+        TempData["Status"] = Ui["admin.readingSources.saved"];
         return RedirectToPage();
     }
 

@@ -491,7 +491,7 @@ public static class ReadingUsenetSearch
             fallback);
     }
 
-    private static IReadOnlyList<int> Categories(
+    public static IReadOnlyList<int> Categories(
         IndexerEntry entry,
         MediaAcquisitionKind kind)
     {

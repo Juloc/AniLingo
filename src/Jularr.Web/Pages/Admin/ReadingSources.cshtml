@@ -2,21 +2,16 @@
 @model Jularr.Web.Pages.Admin.ReadingSourcesModel
 @{
     var ui = Model.Ui;
-    ViewData["Title"] = ui["settings.title"];
+    ViewData["Title"] = ui["admin.readingSources.title"];
 }
 
 <header class="page-header">
     <div>
         <a class="muted" asp-page="/Admin/Index">← @ui["common.back"]</a>
-        <h1>@ui["settings.title"]</h1>
-        <p>Control which Light Novel sources appear in manual search and their order.</p>
+        <h1>@ui["admin.readingSources.title"]</h1>
+        <p>@ui["admin.readingSources.subtitle"]</p>
     </div>
 </header>
-
-@if (TempData["Status"] is string status)
-{
-    <div class="panel" role="status">@status</div>
-}
 
 @if (!string.IsNullOrWhiteSpace(Model.LoadError))
 {
@@ -31,7 +26,7 @@
                 <div class="panel-heading">
                     <div>
                         <h2>@source.Definition.Name</h2>
-                        <p class="muted">@source.Definition.Description</p>
+                        <p class="muted">@ui[source.Definition.DescriptionKey]</p>
                     </div>
                     <label>
                         @if (source.Preference.Enabled)
@@ -47,25 +42,25 @@
                                    name="enabledProviders"
                                    value="@source.Definition.Key" />
                         }
-                        Enabled
+                        @ui["admin.readingSources.enabled"]
                     </label>
                 </div>
 
                 <div class="form-field">
-                    <label for="priority-@source.Definition.Key">Priority</label>
+                    <label for="priority-@source.Definition.Key">@ui["admin.readingSources.priority"]</label>
                     <input id="priority-@source.Definition.Key"
                            type="number"
                            min="1"
                            max="999"
                            name="priority[@source.Definition.Key]"
                            value="@source.Preference.Priority" />
-                    <span class="muted">Lower numbers are shown first when matches are equally relevant.</span>
+                    <span class="muted">@ui["admin.readingSources.priorityHint"]</span>
                 </div>
 
                 <div class="muted">
                     @(source.Definition.SupportsDirectImport
-                        ? "Can be imported directly when the account has direct-add permission."
-                        : "Used for metadata and the normal acquisition/request flow.")
+                        ? ui["admin.readingSources.directImport"]
+                        : ui["admin.readingSources.requestFlow"])
                 </div>
 
                 @if (ViewData.ModelState.TryGetValue(source.Definition.Key, out var errorState) &&
