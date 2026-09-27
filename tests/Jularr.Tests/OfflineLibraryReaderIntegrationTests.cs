@@ -52,7 +52,7 @@ public sealed class OfflineLibraryReaderIntegrationTests
     {
         var view = ReadPage("Novels", "Read.cshtml");
         StringAssert.Contains(view, "js/offline-library-repository.js");
-        StringAssert.Contains(view, "data-work-id=\"@Model.Chapter.WorkId\"");
+        StringAssert.Contains(view, "data-work-id=\"@chapter.WorkId\"");
     }
 
     [TestMethod]

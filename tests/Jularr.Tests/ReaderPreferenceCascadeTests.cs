@@ -153,6 +153,91 @@ public sealed class ReaderPreferenceCascadeTests
     }
 
     [TestMethod]
+    public async Task SavingAScopeSnapshotDoesNotEraseExistingNullableLayoutOverrides()
+    {
+        var path = TempDatabasePath();
+
+        try
+        {
+            await using var db = await CreateDatabaseAsync(path);
+            var work = NewWork();
+            db.NovelWorks.Add(work);
+            await db.SaveChangesAsync();
+
+            var scope = ReaderPreferenceScopes.Type(ReaderContentType.LightNovel);
+            await ReaderPreferenceStore.SaveScopeFieldAsync(
+                db,
+                "profile",
+                scope,
+                "hyphenation",
+                new ReaderSettingsInput { Hyphenation = false },
+                CancellationToken.None);
+            await ReaderPreferenceStore.SaveScopeFieldAsync(
+                db,
+                "profile",
+                scope,
+                "showPageNumbers",
+                new ReaderSettingsInput { ShowPageNumbers = false },
+                CancellationToken.None);
+            await ReaderPreferenceStore.SaveScopeFieldAsync(
+                db,
+                "profile",
+                scope,
+                "showIllustrations",
+                new ReaderSettingsInput { ShowIllustrations = true },
+                CancellationToken.None);
+            await ReaderPreferenceStore.SaveScopeFieldAsync(
+                db,
+                "profile",
+                scope,
+                "paragraphIndent",
+                new ReaderSettingsInput { ParagraphIndent = false },
+                CancellationToken.None);
+            await ReaderPreferenceStore.SaveScopeFieldAsync(
+                db,
+                "profile",
+                scope,
+                "autoContinueChapters",
+                new ReaderSettingsInput { AutoContinueChapters = true },
+                CancellationToken.None);
+
+            // Scope-copy/save payloads created by older clients do not contain the
+            // newer nullable layout fields. Missing values must mean "leave the
+            // existing override alone", not false/reset.
+            await ReaderPreferenceStore.SaveTypeDefaultsAsync(
+                db,
+                "profile",
+                ReaderContentType.LightNovel,
+                new ReaderSettingsInput
+                {
+                    ReadingMode = "paged",
+                    ChapterStyle = "light-novel",
+                    PaperStyle = "cream"
+                },
+                CancellationToken.None);
+
+            var settings = await ReaderPreferenceStore.GetAsync(
+                db,
+                "profile",
+                work.Id,
+                null,
+                ReaderContentType.LightNovel,
+                CancellationToken.None);
+
+            Assert.IsFalse(settings.Hyphenation);
+            Assert.IsFalse(settings.ShowPageNumbers);
+            Assert.IsTrue(settings.ShowIllustrations);
+            Assert.IsFalse(settings.ParagraphIndent);
+            Assert.IsTrue(settings.AutoContinueChapters);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            File.Delete(path);
+        }
+    }
+
+    [TestMethod]
     public void ScopeKeysAreStableAndGenreSafe()
     {
         Assert.AreEqual("type:web-novel", ReaderPreferenceScopes.Type(ReaderContentType.WebNovel));
