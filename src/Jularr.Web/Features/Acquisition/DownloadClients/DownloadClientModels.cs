@@ -98,7 +98,11 @@ public enum DownloadImportState
     /// <summary>The downloaded package was unsuitable for the media type.</summary>
     Rejected,
     /// <summary>Waiting timed out; the owner has to fix the path or import by hand.</summary>
-    GaveUp
+    GaveUp,
+    /// <summary>Some files need an owner decision before they are imported (Anime manual review).</summary>
+    ManualReview,
+    /// <summary>The import failed; the result says why.</summary>
+    Failed
 }
 
 /// <summary>

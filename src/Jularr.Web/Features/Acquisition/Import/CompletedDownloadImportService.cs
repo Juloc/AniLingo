@@ -177,15 +177,31 @@ public sealed class CompletedDownloadImportService(
                 result.Placement is { } placement ? placement.Mode : previous?.Mode),
             cancellationToken);
 
-    private async Task WriteAsync(
+    private Task WriteAsync(
         OperationSnapshot operation,
+        Func<DownloadImportDetails?, DownloadImportDetails> build,
+        CancellationToken cancellationToken) =>
+        DownloadImportRecorder.RecordAsync(new OperationStore(db), operation.Id, build, cancellationToken);
+}
+
+/// <summary>
+/// Writes the import side of an external download onto its Operation (the one status store),
+/// for every media importer including Anime: reported path, mapped path, destination, import
+/// mode and result. Each change of state or result is also logged once.
+/// </summary>
+public static class DownloadImportRecorder
+{
+    public static async Task RecordAsync(
+        OperationStore store,
+        Guid downloadOperationId,
         Func<DownloadImportDetails?, DownloadImportDetails> build,
         CancellationToken cancellationToken)
     {
         // Downloads submitted before routing details existed have nowhere to record the import.
-        var store = new OperationStore(db);
-        var current = await store.GetAsync(operation.Id, cancellationToken) ?? operation;
-        if (!DownloadOperationDetails.TryParse(current.Details, out var details) || details is null)
+        var current = await store.GetAsync(downloadOperationId, cancellationToken);
+        if (current is null ||
+            !DownloadOperationDetails.TryParse(current.Details, out var details) ||
+            details is null)
         {
             return;
         }
@@ -193,7 +209,7 @@ public sealed class CompletedDownloadImportService(
         var previous = details.Import;
         var next = build(previous);
         await store.SetDetailsAsync(
-            operation.Id,
+            downloadOperationId,
             (details with { Import = next }).Serialize(),
             cancellationToken);
 
@@ -201,7 +217,7 @@ public sealed class CompletedDownloadImportService(
         if (previous is null || previous.State != next.State || previous.Result != next.Result)
         {
             await store.AppendLogAsync(
-                operation.Id,
+                downloadOperationId,
                 next.State switch
                 {
                     DownloadImportState.Completed => OperationLogLevel.Information,

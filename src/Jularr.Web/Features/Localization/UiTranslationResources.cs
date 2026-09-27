@@ -1333,6 +1333,8 @@ public static class UiTranslationResources
         M("admin.operation.importState.completed", "Imported", "Admin", "Status", "Import state: the download was imported.", "compact status", 14),
         M("admin.operation.importState.rejected", "Release rejected", "Admin", "Status", "Import state: the downloaded release was unsuitable for its media type.", "compact status", 22),
         M("admin.operation.importState.gaveUp", "Gave up", "Admin", "Status", "Import state: waiting for the files timed out.", "compact status", 14),
+        M("admin.operation.importState.manualReview", "Needs review", "Admin", "Status", "Import state: some files wait for an owner decision.", "compact status", 18),
+        M("admin.operation.importState.failed", "Import failed", "Admin", "Status", "Import state: the import failed; the result explains why.", "compact status", 18),
         M("admin.operation.reportedPath", "Reported path", "Admin", "Label", "Label for the completed path as the download client reported it.", "short field label", 20),
         M("admin.operation.localPath", "Mapped local path", "Admin", "Label", "Label for the completed path Jularr read after the remote path mapping.", "short field label", 24),
         M("admin.operation.destination", "Destination", "Admin", "Label", "Label for where the importer put the media (library folder or Jularr store).", "short field label", 16),
