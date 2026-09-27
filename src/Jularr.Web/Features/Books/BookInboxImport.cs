@@ -7,8 +7,8 @@ using Microsoft.EntityFrameworkCore;
 namespace Jularr.Web.Features.Books;
 
 /// <summary>
-/// The one operation that imports completed EPUB files from the Books inbox.
-/// It runs when the owner requests it or when a Books SABnzbd download
+/// The one operation that imports completed book files (EPUB and PDF) from the Books inbox or a
+/// finished download. It runs when the owner requests it or when a Books SABnzbd download
 /// completes, never as a side effect of opening a page.
 /// </summary>
 public static class BookInboxImport
@@ -16,6 +16,9 @@ public static class BookInboxImport
     public const string OperationKind = "book-inbox-import";
     public const string SabnzbdDownloadKind = "sabnzbd-download";
     public const string DownloadImportOperationKind = "book-download-import";
+
+    /// <summary>Why a finished download did not become a book; the next release is tried.</summary>
+    public const string NoBookFileReason = "The download contained no readable EPUB or PDF.";
 
     public static Task<IReadOnlyList<Guid>> RunAsync(
         OperationRunner operations,
@@ -46,7 +49,8 @@ public static class BookInboxImport
     /// Imports completed Books SABnzbd downloads. Each job's own storage folder (as SABnzbd reports
     /// it, translated with the canonical remote path mappings) is imported directly, including
     /// subfolders; the Books inbox is only a fallback for jobs without a readable storage path.
-    /// Returns whether anything was imported.
+    /// Every request waiting for one of these downloads is closed or moved on afterwards, so it
+    /// never stays "Downloading". Returns whether anything was imported.
     /// </summary>
     public static async Task<bool> ImportAfterDownloadsAsync(
         IServiceProvider services,
@@ -63,6 +67,8 @@ public static class BookInboxImport
         var books = services.GetRequiredService<BookCatalogService>();
         var operations = services.GetRequiredService<OperationRunner>();
         var mappings = await services.GetRequiredService<AnimeImportSettingsStore>().LoadAsync(cancellationToken);
+        var waiting = await services.GetRequiredService<AcquisitionAccessStore>()
+            .ListDownloadingAsync(MediaAcquisitionKind.Book, cancellationToken);
         var needsInbox = new List<OperationSnapshot>();
         var importedAny = false;
 
@@ -76,6 +82,7 @@ public static class BookInboxImport
                 continue;
             }
 
+            var request = waiting.FirstOrDefault(candidate => candidate.OperationId == download.Id);
             var imported = await operations.RunAsync(
                 new OperationDescriptor(
                     DownloadImportOperationKind,
@@ -87,8 +94,13 @@ public static class BookInboxImport
                     Retryable: false),
                 async (operation, token) =>
                 {
-                    await operation.ReportAsync(10, "Importing EPUB files from the completed download.", cancellationToken: token);
-                    return await books.ImportEpubsFromPathAsync(local, "download", token);
+                    await operation.ReportAsync(10, "Importing EPUB and PDF files from the completed download.", cancellationToken: token);
+                    return await books.ImportBooksFromPathAsync(
+                        local,
+                        "download",
+                        request is null ? null : Hint(request),
+                        singleBook: true,
+                        token);
                 },
                 "Downloaded book imported.",
                 cancellationToken);
@@ -99,14 +111,14 @@ public static class BookInboxImport
 
         if (needsInbox.Count > 0 && books.IsInboxConfigured)
         {
-            // One inbox scan imports every EPUB there, so several jobs need only one scan.
+            // One inbox scan imports every book there, so several jobs need only one scan.
             var imported = await RunAsync(operations, books, needsInbox[0].ProfileId, cancellationToken);
             importedAny |= imported.Count > 0;
-            await CompleteBookRequestsAsync(services, needsInbox, imported, cancellationToken);
+            await CompleteBookRequestsAsync(services, needsInbox, imported, cancellationToken, UnreadableReason(needsInbox, storagePaths));
         }
         else if (needsInbox.Count > 0)
         {
-            await CompleteBookRequestsAsync(services, needsInbox, [], cancellationToken);
+            await CompleteBookRequestsAsync(services, needsInbox, [], cancellationToken, UnreadableReason(needsInbox, storagePaths));
         }
 
         return importedAny;
@@ -114,13 +126,17 @@ public static class BookInboxImport
 
     /// <summary>
     /// Closes the Books acquisition requests whose SABnzbd download just finished, linking each to
-    /// the imported work with the matching title (or the only import of this scan).
+    /// the imported work with the matching title (or the only import of this scan). A download
+    /// without a matching book marks its release unsuitable and continues with the next one;
+    /// with <paramref name="unreadableReason"/> (Jularr could not read the download at all) the
+    /// request fails instead, because every further release would end the same way.
     /// </summary>
     public static async Task CompleteBookRequestsAsync(
         IServiceProvider services,
         IReadOnlyList<OperationSnapshot> completed,
         IReadOnlyList<Guid> importedWorkIds,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? unreadableReason = null)
     {
         var finished = completed.Where(IsBookDownload).Select(operation => operation.Id).ToHashSet();
         if (finished.Count == 0)
@@ -138,28 +154,58 @@ public static class BookInboxImport
         }
 
         var db = services.GetRequiredService<AppDbContext>();
+        var books = services.GetRequiredService<BookCatalogService>();
         var imported = await db.NovelWorks
             .AsNoTracking()
             .Where(work => importedWorkIds.Contains(work.Id))
             .Select(work => new { work.Id, Title = work.MetadataTitle ?? work.Title })
             .ToListAsync(cancellationToken);
 
+        var unsuitable = new List<Guid>();
         foreach (var request in waiting)
         {
             var match = imported.FirstOrDefault(work => SameTitle(work.Title, request.Title))
                 ?? (imported.Count == 1 || waiting.Length == 1 ? imported.FirstOrDefault() : null);
-            await store.UpdateStatusAsync(
-                request.Id,
-                match is null ? AcquisitionRequestStatus.Failed : AcquisitionRequestStatus.Completed,
-                match is null ? "The download finished but no matching EPUB was imported." : null,
-                null,
-                match is null ? null : $"/Books/Library/{match.Id}",
-                null,
-                cancellationToken);
+            if (match is not null)
+            {
+                await books.LinkRequestedWorkAsync(match.Id, Hint(request), cancellationToken);
+                await store.UpdateStatusAsync(
+                    request.Id,
+                    AcquisitionRequestStatus.Completed,
+                    null,
+                    null,
+                    $"/Books/Library/{match.Id}",
+                    null,
+                    cancellationToken);
+            }
+            else if (unreadableReason is not null)
+            {
+                await store.UpdateStatusAsync(request.Id, AcquisitionRequestStatus.Failed, unreadableReason, null, null, null, cancellationToken);
+            }
+            else
+            {
+                unsuitable.Add(request.Id);
+            }
         }
+
+        await BookRequestSearchService.ContinueAfterUnsuitableDownloadsAsync(services, unsuitable, NoBookFileReason, cancellationToken);
     }
 
-    private static bool SameTitle(string imported, string requested)
+    /// <summary>What a request knows about its book, for naming and linking the import.</summary>
+    public static BookImportHint Hint(AcquisitionRequest request)
+    {
+        var payload = BookAcquisitionExecutor.ReadPayload(request);
+        return new BookImportHint(payload.CatalogId, payload.Title, payload.Author, request.CoverImageUrl);
+    }
+
+    private static string UnreadableReason(
+        IReadOnlyList<OperationSnapshot> downloads,
+        IReadOnlyDictionary<Guid, string?> storagePaths) =>
+        downloads.Select(download => storagePaths.GetValueOrDefault(download.Id)).FirstOrDefault(path => !string.IsNullOrWhiteSpace(path)) is { } path
+            ? $"The download finished in '{path}', but Jularr cannot read that folder. Check the remote path mappings."
+            : "The download finished, but SABnzbd reported no folder Jularr can read.";
+
+    public static bool SameTitle(string imported, string requested)
     {
         static string Normalize(string value) =>
             new(value.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());

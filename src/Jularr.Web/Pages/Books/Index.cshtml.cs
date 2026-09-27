@@ -58,7 +58,7 @@ public sealed class IndexModel(
     }
 
     public async Task<IActionResult> OnPostUploadAsync(
-        IFormFile? epub,
+        IFormFile? book,
         CancellationToken cancellationToken)
     {
         var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
@@ -68,28 +68,28 @@ public sealed class IndexModel(
             return Forbid();
         }
 
-        if (epub is null || epub.Length == 0)
+        if (book is null || book.Length == 0)
         {
             TempData["Status"] = ui["books.index.chooseEpubFirst"];
             return RedirectToPage();
         }
 
-        if (!epub.FileName.EndsWith(
-                ".epub",
-                StringComparison.OrdinalIgnoreCase))
+        var format = BookFileFormats.FromPath(book.FileName);
+        if (format is null)
         {
             TempData["Status"] = ui["books.index.epubOnly"];
             return RedirectToPage();
         }
 
+        var isPdf = format == BookFileFormats.Pdf;
         try
         {
             var workId = await operations.RunAsync(
                 new OperationDescriptor(
-                    "book-epub-upload-import",
+                    isPdf ? "book-pdf-upload-import" : "book-epub-upload-import",
                     "Books",
-                    "Import uploaded EPUB",
-                    epub.FileName,
+                    isPdf ? "Import uploaded PDF" : "Import uploaded EPUB",
+                    book.FileName,
                     account.ProfileId,
                     OperationLane.Normal,
                     Retryable: false),
@@ -97,16 +97,15 @@ public sealed class IndexModel(
                 {
                     await operation.ReportAsync(
                         10,
-                        "Parsing uploaded EPUB.",
+                        isPdf ? "Storing uploaded PDF." : "Parsing uploaded EPUB.",
                         cancellationToken: token);
 
-                    await using var stream = epub.OpenReadStream();
-                    return await books.ImportUploadedEpubAsync(
-                        stream,
-                        epub.FileName,
-                        token);
+                    await using var stream = book.OpenReadStream();
+                    return isPdf
+                        ? await books.ImportUploadedPdfAsync(stream, book.FileName, token)
+                        : await books.ImportUploadedEpubAsync(stream, book.FileName, token);
                 },
-                "Uploaded EPUB imported.",
+                isPdf ? "Uploaded PDF imported." : "Uploaded EPUB imported.",
                 cancellationToken);
 
             return RedirectToPage(
@@ -292,15 +291,14 @@ public sealed class IndexModel(
             return new JsonResult(new { results = Array.Empty<object>(), error = ui["books.index.searchUnavailable"] });
         }
 
-        var libraryTitles = (await books.GetLibraryAsync(account.ProfileId, BookLanguageCatalog.Normalize(null), cancellationToken))
-            .GroupBy(book => NormalizeTitle(book.Title))
-            .ToDictionary(group => group.Key, group => (Guid?)group.First().WorkId);
-        var open = (await requestStore.ListAsync(MediaAcquisitionKind.Book, null, openOnly: true, limit: 500, cancellationToken))
-            .ToDictionary(request => request.ExternalId, request => request);
+        var items = found.Take(24).ToArray();
+        var states = await new BookAddStateQuery(db, requestStore).GetAsync(
+            items.Select(item => (item.Id, (string?)item.Title)).ToArray(),
+            cancellationToken);
 
         return new JsonResult(new
         {
-            results = found.Take(24).Select(item => new
+            results = items.Select(item => new
             {
                 item.Id,
                 item.Title,
@@ -309,9 +307,29 @@ public sealed class IndexModel(
                 item.FirstPublishYear,
                 item.SourceName,
                 freeEdition = item.CanAcquire,
-                libraryWorkId = libraryTitles.GetValueOrDefault(NormalizeTitle(item.Title)),
-                requestStatus = open.TryGetValue(item.Id, out var request) ? AcquisitionAccessNames.Status(request.Status) : null
+                state = StateJson(states.GetValueOrDefault(item.Id) ?? BookAddState.None)
             })
+        });
+    }
+
+    /// <summary>
+    /// The current state of catalog books the open Add book dialog shows, so in-flight requests
+    /// move on (searching, downloading, importing, in library) without reopening it.
+    /// </summary>
+    public async Task<IActionResult> OnGetStatusAsync(string[]? ids, CancellationToken cancellationToken)
+    {
+        var catalogIds = (ids ?? [])
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Select(id => id.Trim())
+            .Distinct(StringComparer.Ordinal)
+            .Take(50)
+            .ToArray();
+        var states = await new BookAddStateQuery(db, requestStore).GetAsync(
+            catalogIds.Select(id => (id, (string?)null)).ToArray(),
+            cancellationToken);
+        return new JsonResult(new
+        {
+            states = catalogIds.ToDictionary(id => id, id => StateJson(states.GetValueOrDefault(id) ?? BookAddState.None))
         });
     }
 
@@ -330,28 +348,34 @@ public sealed class IndexModel(
 
         try
         {
-            var request = await requests.SubmitAsync(
+            await requests.SubmitAsync(
                 new AcquisitionRequestDraft(
                     MediaAcquisitionKind.Book,
-                    "books-catalog",
+                    BookCatalogService.CatalogRequestProvider,
                     catalogId.Trim(),
                     title.Trim(),
                     string.IsNullOrWhiteSpace(author) ? null : author.Trim(),
                     string.IsNullOrWhiteSpace(coverImageUrl) ? null : coverImageUrl.Trim(),
                     JsonSerializer.Serialize(new BookRequestPayload(catalogId.Trim(), title.Trim(), author?.Trim()), JsonSerializerOptions.Web)),
                 cancellationToken);
-            return new JsonResult(new
-            {
-                status = AcquisitionAccessNames.Status(request.Status),
-                message = request.StatusMessage,
-                resultUrl = request.ResultUrl
-            });
         }
         catch (AcquisitionAccessDeniedException)
         {
             return Forbid();
         }
+
+        var states = await new BookAddStateQuery(db, requestStore).GetAsync([(catalogId.Trim(), null)], cancellationToken);
+        return new JsonResult(StateJson(states.GetValueOrDefault(catalogId.Trim()) ?? BookAddState.None));
     }
+
+    private static object StateJson(BookAddState state) => new
+    {
+        libraryWorkId = state.LibraryWorkId,
+        requestStatus = state.RequestStatus,
+        message = state.RequestMessage,
+        progress = state.ProgressPercent,
+        inFlight = state.IsInFlight
+    };
 
     public async Task<IActionResult> OnPostCancelRequestAsync(Guid id, CancellationToken cancellationToken)
     {
@@ -369,9 +393,6 @@ public sealed class IndexModel(
 
     private async Task<bool> CanAddManuallyAsync(CancellationToken cancellationToken) =>
         (await requests.GetCapabilitiesAsync(MediaAcquisitionKind.Book, cancellationToken)).CanAddManually;
-
-    private static string NormalizeTitle(string value) =>
-        new(value.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
 
     private SabnzbdSubmission BookSabnzbdSubmission(string name) =>
         new(

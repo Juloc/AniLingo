@@ -9,8 +9,8 @@ namespace Jularr.Web.Features.Books;
 
 /// <summary>
 /// What the Books add dialog stores with a request so it can be executed later, plus the Usenet
-/// search state: releases already sent to SABnzbd (never sent twice) and when to search again
-/// while no release exists yet.
+/// search state: releases already sent to SABnzbd (never sent twice), when to search again
+/// while no release exists yet and why the last release did not work out.
 /// </summary>
 public sealed record BookRequestPayload(
     string CatalogId,
@@ -18,13 +18,14 @@ public sealed record BookRequestPayload(
     string? Author,
     IReadOnlyList<string>? TriedReleases = null,
     int Searches = 0,
-    DateTime? NextSearchUtc = null);
+    DateTime? NextSearchUtc = null,
+    string? LastProblem = null);
 
 /// <summary>
 /// Automatic Books acquisition, Readarr-style but on the same Usenet path as anime: a free
 /// catalog edition is imported directly; otherwise every indexer is searched in the Newznab
-/// Books categories, the best EPUB release goes to SABnzbd (Books category) and the existing
-/// inbox import brings it into the library when the download completes.
+/// Books categories, the best EPUB (or else PDF) release goes to SABnzbd (Books category) and
+/// the download import brings it into the library when the download completes.
 /// </summary>
 public sealed class BookAcquisitionExecutor(
     BookCatalogService books,
@@ -90,21 +91,21 @@ public sealed class BookAcquisitionExecutor(
                 : search.FailureMessage;
             if (searches >= MaxSearches)
             {
-                await SavePayloadAsync(request, payload with { Searches = searches, NextSearchUtc = null }, cancellationToken);
-                return new AcquisitionExecution(AcquisitionRequestStatus.Failed, $"{reason} Gave up after {searches} searches.");
+                await SavePayloadAsync(request, payload with { Searches = searches, NextSearchUtc = null, LastProblem = null }, cancellationToken);
+                return new AcquisitionExecution(AcquisitionRequestStatus.Failed, WithProblem(payload, $"{reason} Gave up after {searches} searches."));
             }
 
             // Readarr-style: keep the request and look again later; new uploads appear all the time.
             var next = (clock ?? TimeProvider.System).GetUtcNow().UtcDateTime + SearchBackoff(searches);
-            await SavePayloadAsync(request, payload with { Searches = searches, NextSearchUtc = next }, cancellationToken);
+            await SavePayloadAsync(request, payload with { Searches = searches, NextSearchUtc = next, LastProblem = null }, cancellationToken);
             return new AcquisitionExecution(
                 AcquisitionRequestStatus.Approved,
-                $"{reason} Searching again {next:yyyy-MM-dd HH:mm} UTC.");
+                WithProblem(payload, $"{reason} Searching again {next:yyyy-MM-dd HH:mm} UTC."));
         }
 
         await SavePayloadAsync(
             request,
-            payload with { TriedReleases = [.. tried, release.Title], Searches = searches, NextSearchUtc = null },
+            payload with { TriedReleases = [.. tried, release.Title], Searches = searches, NextSearchUtc = null, LastProblem = null },
             cancellationToken);
 
         var outcome = await sabnzbd.SubmitUrlAsync(
@@ -119,9 +120,16 @@ public sealed class BookAcquisitionExecutor(
             cancellationToken);
 
         return outcome.Accepted
-            ? new AcquisitionExecution(AcquisitionRequestStatus.Downloading, release.Title, outcome.OperationId)
+            ? new AcquisitionExecution(
+                AcquisitionRequestStatus.Downloading,
+                payload.LastProblem is null ? release.Title : $"{payload.LastProblem} Trying {release.Title}.",
+                outcome.OperationId)
             : new AcquisitionExecution(AcquisitionRequestStatus.Failed, outcome.Message);
     }
+
+    /// <summary>Keeps the reason the previous release was dropped visible in the request status.</summary>
+    private static string WithProblem(BookRequestPayload payload, string message) =>
+        payload.LastProblem is null ? message : $"{payload.LastProblem} {message}";
 
     private Task SavePayloadAsync(AcquisitionRequest request, BookRequestPayload payload, CancellationToken cancellationToken) =>
         requests.UpdatePayloadAsync(request.Id, JsonSerializer.Serialize(payload, JsonSerializerOptions.Web), cancellationToken);
@@ -150,7 +158,7 @@ public sealed record BookUsenetSearchResult(
             ? Warnings.Count > 0
                 ? $"No release found on the indexers ({Warnings[0].IndexerName}: {Warnings[0].Message})."
                 : "No release found on the indexers."
-            : "No suitable EPUB release found on the indexers.";
+            : "No suitable EPUB or PDF release found on the indexers.";
 }
 
 /// <summary>
@@ -206,10 +214,10 @@ public static class BookUsenetSearch
     }
 }
 
-/// <summary>Ranks indexer results for one book: Usenet only, EPUB first, title words must match.</summary>
+/// <summary>Ranks indexer results for one book: Usenet only, EPUB first, then PDF, title words must match.</summary>
 public static class BookReleaseSelector
 {
-    private static readonly string[] RejectedFormats = ["pdf", "mobi", "azw3", "azw", "djvu", "cbr", "cbz", "mp3", "m4b", "audiobook", "hörbuch"];
+    private static readonly string[] UnsupportedFormats = ["mobi", "azw3", "azw", "djvu", "cbr", "cbz", "mp3", "m4b", "audiobook", "hörbuch"];
 
     public static ProwlarrReleaseCandidate? Pick(
         IReadOnlyList<ProwlarrReleaseCandidate> releases,
@@ -275,18 +283,25 @@ public static class BookReleaseSelector
             return new RankedBookRelease(release, 0, "title does not match");
         }
 
-        var formatWords = words.Where(word => RejectedFormats.Contains(word)).ToArray();
+        var formatWords = words.Where(word => UnsupportedFormats.Contains(word)).ToArray();
         var isEpub = words.Contains("epub");
-        if (!isEpub && formatWords.Length > 0)
+        var isPdf = words.Contains("pdf");
+        if (!isEpub && !isPdf && formatWords.Length > 0)
         {
-            return new RankedBookRelease(release, 0, $"{formatWords[0].ToUpperInvariant()}, not EPUB");
+            return new RankedBookRelease(release, 0, $"{formatWords[0].ToUpperInvariant()}, not EPUB or PDF");
         }
 
+        // EPUB is preferred, PDF accepted; a name without a format may still hold either, which
+        // the download import checks.
         var score = 10 + matchedTitle;
         score += authorWords.Count(words.Contains) * 2;
         if (isEpub)
         {
             score += 8;
+        }
+        else if (isPdf)
+        {
+            score += 3;
         }
 
         if (words.Contains("retail"))

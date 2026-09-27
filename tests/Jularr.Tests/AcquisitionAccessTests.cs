@@ -153,7 +153,7 @@ public sealed class AcquisitionAccessTests
     }
 
     [TestMethod]
-    public void BookReleaseSelectorPrefersMatchingEpubAndRejectsOtherFormats()
+    public void BookReleaseSelectorPrefersMatchingEpubThenAcceptsPdf()
     {
         ProwlarrReleaseCandidate Release(string title, string protocol = "usenet", long size = 5_000_000) =>
             new(title, "idx", 1, protocol, size, null, null, DateTimeOffset.UtcNow, 1, 1, Guid.NewGuid().ToString(), null,
@@ -165,15 +165,35 @@ public sealed class AcquisitionAccessTests
             Release("Frank Herbert - Dune Messiah EPUB"),
             Release("Frank Herbert - Dune (1965) retail EPUB"),
             Release("Frank Herbert - Dune EPUB", protocol: "torrent"),
-            Release("Some Other Book EPUB")
+            Release("Some Other Book EPUB"),
+            Release("Frank Herbert - Dune MOBI")
         };
 
         var best = BookReleaseSelector.Pick(releases, "Dune", "Frank Herbert");
 
         Assert.IsNotNull(best);
         Assert.AreEqual("Frank Herbert - Dune (1965) retail EPUB", best.Title);
-        Assert.IsNull(BookReleaseSelector.Pick([releases[0], releases[3]], "Dune", "Frank Herbert"),
-            "PDF-only and torrent results are never picked.");
+        Assert.AreEqual("Frank Herbert - Dune (1965) PDF", BookReleaseSelector.Pick([releases[0], releases[3], releases[5]], "Dune", "Frank Herbert")?.Title,
+            "Without an EPUB the PDF is taken; torrent and MOBI results never are.");
+        Assert.IsNull(BookReleaseSelector.Pick([releases[3], releases[5]], "Dune", "Frank Herbert"));
+    }
+
+    [TestMethod]
+    public void BookReleaseSelectorRanksEpubOverPdfOverUnknownFormat()
+    {
+        ProwlarrReleaseCandidate Release(string title) =>
+            new(title, "idx", 1, "usenet", 3_000_000, null, null, DateTimeOffset.UtcNow, 1, 1, Guid.NewGuid().ToString(), null,
+                Jularr.Web.Features.Acquisition.AnimeReleaseParser.Parse(title), [], new Uri("https://indexer.example/get/" + Guid.NewGuid()), null);
+
+        var ranked = BookReleaseSelector.Rank(
+            [Release("James Clear - Atomic Habits"), Release("James Clear - Atomic Habits PDF"), Release("James Clear - Atomic Habits EPUB")],
+            "Atomic Habits",
+            "James Clear");
+
+        CollectionAssert.AreEqual(
+            new[] { "James Clear - Atomic Habits EPUB", "James Clear - Atomic Habits PDF", "James Clear - Atomic Habits" },
+            ranked.Select(release => release.Release.Title).ToArray());
+        Assert.IsTrue(ranked.All(release => release.Score > 0), "A name without a format is allowed; the download import checks it.");
     }
 
     [TestMethod]
@@ -185,7 +205,7 @@ public sealed class AcquisitionAccessTests
 
         var ranked = BookReleaseSelector.Rank(
             [
-                Release("Mary Shelley - Frankenstein PDF"),
+                Release("Mary Shelley - Frankenstein AZW3"),
                 Release("Mary Shelley - Frankenstein EPUB"),
                 Release("Frankenstein EPUB", protocol: "torrent"),
                 Release("Dracula EPUB")
@@ -197,7 +217,7 @@ public sealed class AcquisitionAccessTests
         Assert.IsNull(ranked[0].RejectedBecause);
         Assert.AreEqual(1, ranked.Count(release => release.Score > 0));
         CollectionAssert.AreEquivalent(
-            new[] { "PDF, not EPUB", "not a Usenet release", "title does not match" },
+            new[] { "AZW3, not EPUB or PDF", "not a Usenet release", "title does not match" },
             ranked.Where(release => release.Score == 0).Select(release => release.RejectedBecause).ToArray());
     }
 
@@ -242,7 +262,7 @@ public sealed class AcquisitionAccessTests
         var failedOperation = request.OperationId!.Value;
         Assert.AreEqual(1, executor.Runs);
 
-        var services = Services(store, owner);
+        var services = Services(store, owner, fixture.Db);
         Assert.AreEqual(0, await BookRequestSearchService.ContinueAfterFailedDownloadsAsync(services, [Guid.NewGuid()], CancellationToken.None));
         Assert.AreEqual(1, await BookRequestSearchService.ContinueAfterFailedDownloadsAsync(services, [failedOperation], CancellationToken.None));
         Assert.AreEqual(2, executor.Runs);
@@ -257,11 +277,18 @@ public sealed class AcquisitionAccessTests
         Assert.AreEqual(TimeSpan.FromHours(24), BookAcquisitionExecutor.SearchBackoff(7));
     }
 
-    private static IServiceProvider Services(AcquisitionAccessStore store, AcquisitionRequestService service) =>
-        new ServiceCollection()
+    private static IServiceProvider Services(AcquisitionAccessStore store, AcquisitionRequestService service, AppDbContext? db = null)
+    {
+        var services = new ServiceCollection()
             .AddSingleton(store)
-            .AddSingleton(service)
-            .BuildServiceProvider();
+            .AddSingleton(service);
+        if (db is not null)
+        {
+            services.AddSingleton(db);
+        }
+
+        return services.BuildServiceProvider();
+    }
 
     private static AcquisitionRequestDraft BookDraft(string id, DateTime nextSearchUtc) =>
         new(MediaAcquisitionKind.Book, "test", id, id.ToUpperInvariant(), "Author", null,
