@@ -1,4 +1,5 @@
 using Jularr.Web.Data;
+using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Acquisition.DownloadClients;
 using Jularr.Web.Features.Operations;
 
@@ -75,7 +76,7 @@ public sealed class SabnzbdDownloadService(
                 submission.ProfileId,
                 nzbUrl,
                 submission.JobName,
-                IsBooks: submission.Purpose == SabnzbdPurpose.Books),
+                MediaKind: ToMediaKind(submission.Purpose)),
             cancellationToken);
 
         return ToSubmissionOutcome(outcome);
@@ -104,7 +105,7 @@ public sealed class SabnzbdDownloadService(
                 submission.ProfileId,
                 Url: null,
                 submission.JobName ?? fileName,
-                IsBooks: submission.Purpose == SabnzbdPurpose.Books,
+                MediaKind: ToMediaKind(submission.Purpose),
                 File: nzb,
                 FileName: fileName),
             cancellationToken);
@@ -240,6 +241,14 @@ public sealed class SabnzbdDownloadService(
 
     private static SabnzbdSubmissionOutcome ToSubmissionOutcome(DownloadSubmissionOutcome outcome) =>
         new(outcome.Accepted, outcome.OperationId, outcome.ExternalId, outcome.Message);
+
+    private static MediaAcquisitionKind ToMediaKind(SabnzbdPurpose purpose) =>
+        purpose switch
+        {
+            SabnzbdPurpose.Books => MediaAcquisitionKind.Book,
+            SabnzbdPurpose.Anime => MediaAcquisitionKind.Anime,
+            _ => throw new ArgumentOutOfRangeException(nameof(purpose))
+        };
 
     private static bool IsTransportFailure(Exception exception) =>
         exception is HttpRequestException

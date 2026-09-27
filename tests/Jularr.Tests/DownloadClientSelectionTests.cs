@@ -1,4 +1,5 @@
 using Jularr.Web.Data;
+using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Acquisition.DownloadClients;
 using Jularr.Web.Features.Acquisition.Health;
 using Jularr.Web.Features.Operations;
@@ -59,6 +60,11 @@ public sealed class DownloadClientSelectionTests
         Assert.IsTrue(outcome.Accepted);
         Assert.AreEqual(second.Id, outcome.ClientEntryId);
         Assert.AreEqual(2, client.SubmitCalls, "Both the rejected first attempt and the accepted second attempt were tried.");
+        var operation = await new OperationStore(environment.Db).GetAsync(outcome.OperationId);
+        Assert.IsTrue(DownloadOperationDetails.TryParse(operation!.Details, out var details));
+        Assert.AreEqual(second.Id, details!.ClientEntryId);
+        Assert.AreEqual(MediaAcquisitionKind.Anime, details.MediaKind);
+        Assert.AreEqual("anime", details.Category);
     }
 
     [TestMethod]
@@ -101,7 +107,8 @@ public sealed class DownloadClientSelectionTests
             "subject",
             null,
             new Uri("https://indexer.example/a.nzb"),
-            "release-name");
+            "release-name",
+            MediaAcquisitionKind.Anime);
 
     private static DownloadClientEntry Entry(
         string name,
@@ -115,6 +122,17 @@ public sealed class DownloadClientSelectionTests
             priority,
             new DownloadClientSettings("http://client.example:8080", "books", "anime"),
             "secret");
+
+    [TestMethod]
+    public void DefaultClientCategoriesCoverEverySupportedMediaKind()
+    {
+        var settings = DownloadClientSettings.CreateDefault("http://client.example:8080");
+
+        Assert.AreEqual("anime", settings.CategoryFor(MediaAcquisitionKind.Anime));
+        Assert.AreEqual("manga", settings.CategoryFor(MediaAcquisitionKind.Manga));
+        Assert.AreEqual("lightnovels", settings.CategoryFor(MediaAcquisitionKind.LightNovel));
+        Assert.AreEqual("books", settings.CategoryFor(MediaAcquisitionKind.Book));
+    }
 
     private sealed class FakeDownloadClient(
         string providerId,

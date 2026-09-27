@@ -73,7 +73,7 @@ public sealed class AnimeImportSettingsStore
                         ?? AnimeImportSettingsState.Empty();
             return state with
             {
-                RootImportModes = new Dictionary<Guid, AnimeImportMode>(state.RootImportModes),
+                RootImportModes = new Dictionary<Guid, ImportMode>(state.RootImportModes),
                 RemotePathMappings = state.RemotePathMappings ?? []
             };
         }

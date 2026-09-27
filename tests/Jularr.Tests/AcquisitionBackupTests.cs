@@ -13,7 +13,7 @@ public sealed class AcquisitionBackupTests
     {
         await using var environment = await AnimeAcquisitionEnvironment.CreateAsync();
         await environment.SeedFrierenAsync();
-        await environment.ImportSettings.UpdateAsync(state => state with { DefaultImportMode = AnimeImportMode.Copy });
+        await environment.ImportSettings.UpdateAsync(state => state with { DefaultImportMode = ImportMode.Copy });
         await environment.Policy.UpdateAsync(state => state with { Tags = [new AcquisitionTag("t1", "Tag 1")] });
 
         var bundle = await environment.ExportBackupAsync();
@@ -25,14 +25,14 @@ public sealed class AcquisitionBackupTests
         Assert.IsFalse(bundle.Files.ContainsKey("health.json"), "Runtime health state is not a setting and is never backed up.");
 
         // Change settings after the export.
-        await environment.ImportSettings.UpdateAsync(state => state with { DefaultImportMode = AnimeImportMode.Move });
+        await environment.ImportSettings.UpdateAsync(state => state with { DefaultImportMode = ImportMode.Move });
         await environment.Policy.UpdateAsync(state => state with { Tags = [] });
 
         var restored = await environment.RestoreBackupAsync(bundle);
 
         Assert.IsTrue(restored.Success, string.Join(" ", restored.Errors));
         Assert.AreEqual(bundle.Files.Count, restored.FilesWritten);
-        Assert.AreEqual(AnimeImportMode.Copy, (await environment.ImportSettings.LoadAsync()).DefaultImportMode);
+        Assert.AreEqual(ImportMode.Copy, (await environment.ImportSettings.LoadAsync()).DefaultImportMode);
         Assert.AreEqual("Tag 1", (await environment.Policy.LoadAsync()).Tags.Single().Name);
     }
 
@@ -41,16 +41,16 @@ public sealed class AcquisitionBackupTests
     {
         await using var environment = await AnimeAcquisitionEnvironment.CreateAsync();
         await environment.SeedFrierenAsync();
-        await environment.ImportSettings.UpdateAsync(state => state with { DefaultImportMode = AnimeImportMode.Copy });
+        await environment.ImportSettings.UpdateAsync(state => state with { DefaultImportMode = ImportMode.Copy });
         var bundle = await environment.ExportBackupAsync();
-        await environment.ImportSettings.UpdateAsync(state => state with { DefaultImportMode = AnimeImportMode.Move });
+        await environment.ImportSettings.UpdateAsync(state => state with { DefaultImportMode = ImportMode.Move });
 
         var preview = await environment.PreviewRestoreAsync(bundle);
 
         Assert.IsTrue(preview.CanRestore);
         var importFile = preview.Files.Single(file => file.FileName == "import-settings.json");
         Assert.IsTrue(importFile.WouldChange, "The preview reports what would change...");
-        Assert.AreEqual(AnimeImportMode.Move, (await environment.ImportSettings.LoadAsync()).DefaultImportMode, "...without applying it.");
+        Assert.AreEqual(ImportMode.Move, (await environment.ImportSettings.LoadAsync()).DefaultImportMode, "...without applying it.");
     }
 
     [TestMethod]
@@ -58,7 +58,7 @@ public sealed class AcquisitionBackupTests
     {
         await using var environment = await AnimeAcquisitionEnvironment.CreateAsync();
         await environment.SeedFrierenAsync();
-        await environment.ImportSettings.UpdateAsync(state => state with { DefaultImportMode = AnimeImportMode.Copy });
+        await environment.ImportSettings.UpdateAsync(state => state with { DefaultImportMode = ImportMode.Copy });
 
         var badBundle = new AcquisitionBackupBundle(99, DateTimeOffset.UtcNow, new Dictionary<string, string>
         {
@@ -69,7 +69,7 @@ public sealed class AcquisitionBackupTests
 
         Assert.IsFalse(result.Success);
         Assert.AreEqual(0, result.FilesWritten);
-        Assert.AreEqual(AnimeImportMode.Copy, (await environment.ImportSettings.LoadAsync()).DefaultImportMode, "Nothing was written.");
+        Assert.AreEqual(ImportMode.Copy, (await environment.ImportSettings.LoadAsync()).DefaultImportMode, "Nothing was written.");
     }
 
     [TestMethod]
@@ -77,7 +77,7 @@ public sealed class AcquisitionBackupTests
     {
         await using var environment = await AnimeAcquisitionEnvironment.CreateAsync();
         await environment.SeedFrierenAsync();
-        await environment.ImportSettings.UpdateAsync(state => state with { DefaultImportMode = AnimeImportMode.Copy });
+        await environment.ImportSettings.UpdateAsync(state => state with { DefaultImportMode = ImportMode.Copy });
 
         var badBundle = new AcquisitionBackupBundle(AcquisitionBackupService.CurrentVersion, DateTimeOffset.UtcNow, new Dictionary<string, string>
         {
@@ -89,7 +89,7 @@ public sealed class AcquisitionBackupTests
 
         var result = await environment.RestoreBackupAsync(badBundle);
         Assert.IsFalse(result.Success);
-        Assert.AreEqual(AnimeImportMode.Copy, (await environment.ImportSettings.LoadAsync()).DefaultImportMode);
+        Assert.AreEqual(ImportMode.Copy, (await environment.ImportSettings.LoadAsync()).DefaultImportMode);
     }
 
     [TestMethod]

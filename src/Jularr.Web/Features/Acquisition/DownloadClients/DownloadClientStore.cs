@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Jularr.Web.Features.Acquisition.Access;
 using Microsoft.AspNetCore.DataProtection;
 
 namespace Jularr.Web.Features.Acquisition.DownloadClients;
@@ -179,10 +180,7 @@ public sealed class DownloadClientStore
                     item.Type,
                     item.Enabled,
                     item.Priority,
-                    new DownloadClientSettings(
-                        item.BaseUrl,
-                        item.BooksCategory,
-                        item.AnimeCategory),
+                    new DownloadClientSettings(item.BaseUrl, ReadCategories(item)),
                     secret));
         }
 
@@ -205,8 +203,12 @@ public sealed class DownloadClientStore
                 entry.Enabled,
                 entry.Priority,
                 entry.Settings.BaseUrl,
-                entry.Settings.BooksCategory,
-                entry.Settings.AnimeCategory,
+                entry.Settings.Categories.ToDictionary(
+                    pair => AcquisitionAccessNames.Kind(pair.Key),
+                    pair => pair.Value,
+                    StringComparer.OrdinalIgnoreCase),
+                null,
+                null,
                 entry.Secret is null ? null : protector.Protect(entry.Secret)))
             .ToArray();
 
@@ -251,6 +253,40 @@ public sealed class DownloadClientStore
         }
     }
 
+    private static IReadOnlyDictionary<MediaAcquisitionKind, string?> ReadCategories(
+        PersistedDownloadClientEntry persisted)
+    {
+        var categories = new Dictionary<MediaAcquisitionKind, string?>();
+        if (persisted.Categories is not null)
+        {
+            foreach (var (name, category) in persisted.Categories)
+            {
+                try
+                {
+                    categories[AcquisitionAccessNames.ParseKind(name)] = category;
+                }
+                catch (ArgumentException)
+                {
+                    // Unknown future media kinds are intentionally ignored by this version.
+                }
+            }
+        }
+
+        // One-time shape migration for pre-#389 client settings. Writing this entry next persists
+        // the canonical map and removes these legacy fields; no runtime fallback is retained.
+        if (!categories.ContainsKey(MediaAcquisitionKind.Book))
+        {
+            categories[MediaAcquisitionKind.Book] = persisted.BooksCategory;
+        }
+
+        if (!categories.ContainsKey(MediaAcquisitionKind.Anime))
+        {
+            categories[MediaAcquisitionKind.Anime] = persisted.AnimeCategory;
+        }
+
+        return categories;
+    }
+
     private sealed record PersistedDownloadClientEntry(
         Guid Id,
         string Name,
@@ -258,6 +294,7 @@ public sealed class DownloadClientStore
         bool Enabled,
         int Priority,
         string BaseUrl,
+        Dictionary<string, string?>? Categories,
         string? BooksCategory,
         string? AnimeCategory,
         string? ProtectedSecret);
