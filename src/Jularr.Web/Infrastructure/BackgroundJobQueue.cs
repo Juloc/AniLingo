@@ -279,10 +279,10 @@ public abstract class BackgroundJobWorkerBase<TQueue>(
             var context = new OperationExecutionContext(
                 queued.OperationId,
                 scope.ServiceProvider);
-            var operationProfile =
-                scope.ServiceProvider.GetRequiredService<OperationProfileContext>();
             using var operationProfileScope =
-                operationProfile.Enter(operation.ProfileId);
+                scope.ServiceProvider
+                    .GetService<OperationProfileContext>()
+                    ?.Enter(operation.ProfileId);
 
             try
             {
