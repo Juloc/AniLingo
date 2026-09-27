@@ -17,6 +17,11 @@
         ].join("|") + ")(?![a-z])",
         "i");
     const isSpecialChapter = title => specialChapterPattern.test(title || "");
+    // A title that is only a numbering ("Chapter 3", "第三章") would sit under a second,
+    // differently numbered "Chapter N" label (NovelTextLayout.IsNumberingTitle).
+    const numberingPattern =
+        /^(?:(?:chapter|chap\.|kapitel|chapitre|cap[ií]tulo|part|teil)\s*[0-9ivxlcdm]+|第[0-9０-９一二三四五六七八九十百千〇零]+[章話部]|[0-9０-９]+)\.?$/i;
+    const japanesePattern = /[぀-ヿ㐀-䶿一-鿿]/;
 
     registry.chapterDrawer = reader => {
         const { shell, normalizeText, t } = reader;
@@ -86,7 +91,7 @@
             const titleText = normalizeText(chapter.title);
             const text = document.createElement("span");
             text.className = "novel-drawer-text";
-            if (!isSpecialChapter(titleText)) {
+            if (!isSpecialChapter(titleText) && !numberingPattern.test(titleText)) {
                 const number = document.createElement("span");
                 number.className = "novel-drawer-label";
                 number.textContent = t("chapterNumber", "Chapter {number}", { number: chapter.number });
@@ -95,7 +100,7 @@
 
             const title = document.createElement("span");
             title.className = "reader-contents-title";
-            title.lang = "ja";
+            if (japanesePattern.test(titleText)) title.lang = "ja";
             title.textContent = titleText;
             text.append(title);
 

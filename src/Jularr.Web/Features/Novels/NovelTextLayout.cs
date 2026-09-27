@@ -45,6 +45,31 @@ public static partial class NovelTextLayout
             ? ""
             : Whitespace().Replace(text.Trim(), " ");
 
+    /// <summary>
+    /// True when a chapter title is only a numbering ("Chapter 3", "第三章", "12"). The
+    /// reader then shows it alone instead of under a second "Chapter N" label.
+    /// </summary>
+    public static bool IsNumberingTitle(string? title) =>
+        !string.IsNullOrWhiteSpace(title) && NumberingTitle().IsMatch(title.Trim());
+
+    /// <summary>
+    /// True when a paragraph only repeats the chapter title (sources start the body with the
+    /// heading the chapter opening already shows).
+    /// </summary>
+    public static bool IsTitleEcho(string? paragraph, string? title)
+    {
+        static string Key(string? value) =>
+            Whitespace().Replace(value ?? "", "").Trim('.', '。', ':', '：').ToUpperInvariant();
+
+        var key = Key(title);
+        return key.Length > 0 && key == Key(paragraph);
+    }
+
+    [GeneratedRegex(
+        @"^(?:(?:chapter|chap\.|kapitel|chapitre|cap[ií]tulo|part|teil)\s*[0-9ivxlcdm]+|第[0-9０-９一二三四五六七八九十百千〇零]+[章話部]|[0-9０-９]+)\.?$",
+        RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
+    private static partial Regex NumberingTitle();
+
     [GeneratedRegex(@"\n\s*\n+", RegexOptions.CultureInvariant)]
     private static partial Regex ParagraphSeparator();
 

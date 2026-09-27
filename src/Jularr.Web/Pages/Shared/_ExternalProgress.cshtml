@@ -102,7 +102,20 @@
             headers: { Accept: "text/html" }
         })
             .then(response => response.ok ? response.text() : Promise.reject(response.status))
-            .then(html => { slot.innerHTML = html; })
+            .then(html => {
+                slot.innerHTML = html;
+                // The local half already shows the mapping status and its reason; drop
+                // the remote copy of the same pill and sentence instead of showing both.
+                const same = (a, b) => a && b && a.textContent.trim() === b.textContent.trim();
+                const localPill = panel.querySelector(".external-progress-match .status-pill");
+                const localReason = panel.querySelector(":scope > p.muted");
+                slot.querySelectorAll(".external-progress-state-heading .status-pill").forEach(pill => {
+                    if (same(pill, localPill)) pill.remove();
+                });
+                slot.querySelectorAll(".external-progress-state > p.muted").forEach(reason => {
+                    if (same(reason, localReason)) reason.remove();
+                });
+            })
             .catch(() => slot.replaceChildren(failed.content.cloneNode(true)));
     })();
 </script>

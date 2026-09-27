@@ -9,8 +9,11 @@
     <link rel="stylesheet" href="~/css/reading.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/reading-catalog.css" asp-append-version="true" />
 }
+@section Scripts {
+    <script src="~/js/novel-file-picker.js" asp-append-version="true"></script>
+}
 
-<header class="novel-library-header">
+<header class="novel-library-header novel-library-hero">
     <div class="novel-library-title-block">
         <div class="reading-type-switch" aria-label="@ui["novels.nav.readingTypeAria"]">
             <a class="active" href="/Novels">@ui["reading.novels.title"]</a>
@@ -30,7 +33,7 @@
             </summary>
             <div class="novel-import-panel">
                 <form method="get" class="reading-catalog-form">
-                    <label for="novelCatalogQuery">@ui["discover.search.srLabel"]</label>
+                    <label class="novel-visually-hidden" for="novelCatalogQuery">@ui["discover.search.srLabel"]</label>
                     <input id="novelCatalogQuery"
                            name="q"
                            type="search"
@@ -146,7 +149,7 @@
                                required
                                inputmode="url"
                                placeholder="https://ncode.syosetu.com/n9669bk/" />
-                        <button class="button button-primary" type="submit">@ui["novels.index.importSubmit"]</button>
+                        <button class="button" type="submit">@ui["novels.index.importSubmit"]</button>
                     </form>
                 }
 
@@ -157,13 +160,20 @@
                           enctype="multipart/form-data"
                           class="novel-import-form">
                         <label for="epubs">@ui["novels.index.epubLabel"]</label>
-                        <input id="epubs"
-                               type="file"
-                               name="epubs"
-                               accept=".epub,application/epub+zip"
-                               multiple
-                               required />
-                        <button class="button button-primary" type="submit">@ui["novels.index.uploadSubmit"]</button>
+                        <div class="novel-file-picker" data-novel-file-picker>
+                            <input id="epubs"
+                                   type="file"
+                                   name="epubs"
+                                   accept=".epub,application/epub+zip"
+                                   multiple
+                                   required />
+                            <label class="button" for="epubs">@ui["novels.index.chooseEpubs"]</label>
+                            <span class="novel-file-names"
+                                  data-novel-file-names
+                                  data-empty="@ui["novels.index.noEpubChosen"]"
+                                  data-several="@ui["novels.index.epubsChosen"]"></span>
+                        </div>
+                        <button class="button" type="submit">@ui["novels.index.uploadSubmit"]</button>
                     </form>
                     @if (Model.IsInboxConfigured)
                     {
@@ -204,11 +214,14 @@
                         <span>@(work.CurrentVolumeNumber is int currentVolume
                             ? ui.Format("novels.card.volumeChapterLocation", ("volume", currentVolume), ("chapter", work.CurrentChapterNumber), ("title", work.CurrentChapterTitle))
                             : ui.Format("novels.card.chapterLocation", ("chapter", work.CurrentChapterNumber), ("title", work.CurrentChapterTitle)))</span>
-                        <div class="novel-progress-track" aria-label="@ui["novels.card.progressAria"]">
-                            <span style="width:@(work.ProgressPermille / 10)%"></span>
+                        @* The percentage sits at the end of its short bar, not at the far edge of the row. *@
+                        <div class="novel-continue-progress">
+                            <div class="novel-progress-track" aria-label="@ui["novels.card.progressAria"]">
+                                <span style="width:@(work.ProgressPermille / 10)%"></span>
+                            </div>
+                            <span class="novel-continue-percent">@(work.ProgressPermille / 10)%</span>
                         </div>
                     </div>
-                    <span class="novel-continue-percent">@(work.ProgressPermille / 10)%</span>
                     <svg class="novel-row-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7" /></svg>
                 </a>
             }
@@ -245,7 +258,8 @@
                         }
                         else
                         {
-                            <span>文</span>
+                            @* Like the Books shelf: a paper tile with the title, not a black block. *@
+                            <span class="novel-cover-placeholder">@work.Title</span>
                         }
 
                         @if (work.HasProgress)

@@ -307,7 +307,7 @@ public sealed class NovelReaderDesignTests
         var partial = File.ReadAllText(Path.Combine(root, "src", "Jularr.Web", "Pages", "Novels", "_NovelChapterDrawer.cshtml"));
 
         StringAssert.Contains(drawer, "t(\"chapterNumber\", \"Chapter {number}\", { number: chapter.number })");
-        StringAssert.Contains(drawer, "if (!isSpecialChapter(titleText))");
+        StringAssert.Contains(drawer, "if (!isSpecialChapter(titleText) && !numberingPattern.test(titleText))");
         StringAssert.Contains(drawer, "\"prolog(?:ue)?\"");
         StringAssert.Contains(drawer, "\"プロローグ\"");
         StringAssert.Contains(drawer, "link.setAttribute(\"aria-current\", \"page\")");
