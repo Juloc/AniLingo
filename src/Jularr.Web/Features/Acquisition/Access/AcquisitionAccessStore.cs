@@ -75,7 +75,7 @@ public sealed class AcquisitionAccessStore(AppDbContext db)
             $"""
             SELECT {Columns} FROM "AcquisitionRequests"
             WHERE "Kind" = $kind AND "Provider" = $provider AND "ExternalId" = $externalId
-              AND "Status" IN ('pending', 'approved', 'searching', 'downloading')
+              AND "Status" IN ('pending', 'approved', 'searching', 'downloading', 'importing')
             LIMIT 1;
             """,
             command =>
@@ -103,7 +103,7 @@ public sealed class AcquisitionAccessStore(AppDbContext db)
             SELECT {Columns} FROM "AcquisitionRequests"
             WHERE ($kind IS NULL OR "Kind" = $kind)
               AND ($profile IS NULL OR "RequestedByProfileId" = $profile)
-              AND ($openOnly = 0 OR "Status" IN ('pending', 'approved', 'searching', 'downloading'))
+              AND ($openOnly = 0 OR "Status" IN ('pending', 'approved', 'searching', 'downloading', 'importing'))
             ORDER BY CASE "Status" WHEN 'pending' THEN 0 ELSE 1 END, "UpdatedAt" DESC
             LIMIT $limit;
             """,
