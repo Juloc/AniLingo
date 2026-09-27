@@ -3,6 +3,7 @@ using System.Net;
 using System.Text;
 using Jularr.Web.Data;
 using Jularr.Web.Features.Books;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -964,6 +965,129 @@ public sealed class BookCatalogServiceTests
                 Directory.Delete(
                     directory,
                     recursive: true);
+            }
+        }
+    }
+
+    [TestMethod]
+    public async Task HardcoverListStateIsProfileEnrichmentNotASecondCatalog()
+    {
+        var path = TempDatabasePath();
+
+        try
+        {
+            await using var db = await CreateDatabaseAsync(path);
+            using var client = new HttpClient(new DelegateHttpMessageHandler(request =>
+            {
+                Assert.AreEqual("api.hardcover.app", request.RequestUri?.Host);
+                return JsonResponse("""
+                    {
+                      "data": {
+                        "me": {
+                          "user_books": [
+                            {
+                              "status_id": 2,
+                              "book": {
+                                "title": "Dune",
+                                "contributions": [
+                                  {"author": {"name": "Frank Herbert"}}
+                                ],
+                                "editions": [
+                                  {"isbn_13": "9780593099322", "isbn_10": null}
+                                ]
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                    """);
+            }))
+            {
+                BaseAddress = new Uri("https://gutendex.com/")
+            };
+
+            var service = NewService(db, client);
+            var result = await service.EnrichHardcoverStatesAsync(
+                [
+                    new BookCatalogItem(
+                        "ol-OL45804W",
+                        "Dune",
+                        "Frank Herbert",
+                        null,
+                        "https://books.google.com/dune.jpg",
+                        [],
+                        1965,
+                        null,
+                        null,
+                        "https://openlibrary.org/works/OL45804W",
+                        "Open Library",
+                        null,
+                        ["9780593099322"])
+                ],
+                "hc_pat_test_token_123456",
+                CancellationToken.None);
+
+            Assert.AreEqual(1, result.Count);
+            Assert.AreEqual("Reading", result[0].ExternalListState);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            File.Delete(path);
+        }
+    }
+
+    [TestMethod]
+    public async Task HardcoverAccountStoreProtectsTokenAndIsolatesProfiles()
+    {
+        var root = new DirectoryInfo(Path.Combine(
+            Path.GetTempPath(),
+            "jularr-hardcover-" + Guid.NewGuid().ToString("N")));
+        var keys = Directory.CreateDirectory(Path.Combine(root.FullName, "keys"));
+        var integrations = Directory.CreateDirectory(Path.Combine(root.FullName, "integrations"));
+        const string token = "hc_pat_private_token_123456789";
+
+        try
+        {
+            var store = new BookHardcoverAccountStore(
+                DataProtectionProvider.Create(keys),
+                integrations);
+
+            await store.SaveAsync(
+                "profile-a",
+                new StoredHardcoverAccount(
+                    "reader",
+                    token,
+                    DateTimeOffset.UtcNow),
+                CancellationToken.None);
+
+            var loaded = await store.LoadAsync(
+                "profile-a",
+                CancellationToken.None);
+            var other = await store.LoadAsync(
+                "profile-b",
+                CancellationToken.None);
+
+            Assert.IsNotNull(loaded);
+            Assert.AreEqual("reader", loaded.Username);
+            Assert.AreEqual(token, loaded.AccessToken);
+            Assert.IsNull(other);
+
+            var persisted = await File.ReadAllTextAsync(
+                Path.Combine(
+                    integrations.FullName,
+                    "hardcover",
+                    "accounts",
+                    "profile-a.json"));
+            Assert.IsFalse(
+                persisted.Contains(token, StringComparison.Ordinal));
+        }
+        finally
+        {
+            if (root.Exists)
+            {
+                root.Delete(recursive: true);
             }
         }
     }
