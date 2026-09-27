@@ -111,7 +111,7 @@ public static class NovelEpubUploads
 
 /// <summary>
 /// The one import path for user-provided EPUB light-novel volumes, used by
-/// uploads and by the reading inbox. It parses with the shared
+/// uploads, completed downloads and the Light Novel inbox folder. It parses with the shared
 /// <see cref="EpubBookParser"/>, groups volumes into a series, caches
 /// normalized assets under Jularr data and writes chapters through
 /// <see cref="NovelVolumeContent"/>. Source files are only ever read.
@@ -124,9 +124,6 @@ public sealed partial class NovelEpubImportService(
     NovelMetadataService? metadata = null)
 {
     public const string Provider = "epub";
-
-    /// <summary>Subfolder of the reading inbox that holds light-novel EPUBs.</summary>
-    public const string InboxFolder = "light-novels";
 
     private const long MaxEpubBytes = 100L * 1024 * 1024;
     private const int MaxInboxFiles = 500;
@@ -157,7 +154,7 @@ public sealed partial class NovelEpubImportService(
     }
 
     /// <summary>
-    /// Imports every EPUB from a completed-download directory. Files directly
+    /// Imports every EPUB from the Light Novel inbox folder. Files directly
     /// in the directory resolve their series from metadata; files in a
     /// subfolder belong to the series named by that folder. Unchanged files
     /// are skipped.
@@ -328,16 +325,6 @@ public sealed partial class NovelEpubImportService(
             FileShare.ReadWrite | FileShare.Delete,
             bufferSize: 81920,
             useAsync: true);
-
-    /// <summary>
-    /// Compatibility entry point for the historical Books-inbox layout.
-    /// New acquisition settings should call <see cref="ImportDirectoryAsync"/>
-    /// with the Light-Novel completed-download directory directly.
-    /// </summary>
-    public Task<IReadOnlyList<NovelEpubImportOutcome>> ImportInboxAsync(
-        string inboxPath,
-        CancellationToken cancellationToken) =>
-        ImportDirectoryAsync(Path.Combine(inboxPath, InboxFolder), cancellationToken);
 
     /// <summary>
     /// Removes one EPUB volume with its chapters (and their notes) and cached

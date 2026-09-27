@@ -309,23 +309,18 @@ public sealed class NovelEpubVolumeTests
     }
 
     [TestMethod]
-    public async Task InboxImportReadsTheLightNovelsSubfolderOfTheInbox()
+    public async Task InboxImportReadsTheLightNovelInboxFolder()
     {
         await using var fixture = await Fixture.CreateAsync();
-        var inbox = Path.Combine(fixture.Root, "books-inbox");
-        var seriesFolder = Path.Combine(inbox, NovelEpubImportService.InboxFolder, "Inbox Series");
+        // The Light Novel inbox folder is its own setting, not a subfolder of the Books inbox.
+        var inbox = Path.Combine(fixture.Root, "downloads", "complete", "lightnovels");
+        var seriesFolder = Path.Combine(inbox, "Inbox Series");
         Directory.CreateDirectory(seriesFolder);
         await File.WriteAllBytesAsync(
             Path.Combine(seriesFolder, "one.epub"),
             new EpubTestBuilder { Title = "Unrelated", Identifier = "urn:x:inbox-1" }
                 .Chapter("text/a.xhtml", "一", "受信箱の一巻です。").BuildBytes());
-        // Books in the inbox root are not light novels.
-        await File.WriteAllBytesAsync(
-            Path.Combine(inbox, "book.epub"),
-            new EpubTestBuilder { Title = "A Book", Identifier = "urn:x:book" }
-                .Chapter("text/a.xhtml", "本", "本です。").BuildBytes());
-
-        var outcomes = await fixture.Imports.ImportInboxAsync(inbox, CancellationToken.None);
+        var outcomes = await fixture.Imports.ImportDirectoryAsync(inbox, CancellationToken.None);
 
         Assert.AreEqual(1, outcomes.Count, NovelEpubImportOutcome.Summarize(outcomes));
         Assert.IsTrue(outcomes[0].Succeeded, outcomes[0].Message);

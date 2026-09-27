@@ -44,7 +44,10 @@ public sealed class IndexModel(
             false);
     public string SearchQuery { get; private set; } = "";
     public bool IsOwner => account.IsOwner;
-    public bool IsInboxConfigured { get; private set; }
+    /// <summary>The Light Novel inbox folder (Settings → Acquisition → Media folders), or null.</summary>
+    public string? InboxPath { get; private set; }
+
+    public bool IsInboxConfigured => InboxPath is not null;
 
     public async Task OnGetAsync(
         string? q,
@@ -52,7 +55,7 @@ public sealed class IndexModel(
     {
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         Works = await catalog.GetLibraryAsync(account.ProfileId, cancellationToken);
-        IsInboxConfigured = await inboxes.InboxAsync(MediaAcquisitionKind.LightNovel, cancellationToken) is not null;
+        InboxPath = await inboxes.InboxAsync(MediaAcquisitionKind.LightNovel, cancellationToken);
         ContinueReading = Works
             .Where(x => x.HasProgress)
             .OrderByDescending(x => x.LastReadAt)
