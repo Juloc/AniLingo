@@ -9,16 +9,20 @@
     <link rel="stylesheet" href="~/css/media-card.css" asp-append-version="true" />
 }
 
+<partial name="_LibraryTypeTabs" model="ui" />
+
 <header class="page-header">
     <div>
-        <span class="eyebrow">@ui["nav.library"]</span>
         <h1>@ui["library.index.title"]</h1>
         <p>@ui["library.index.subtitle"]</p>
     </div>
-    <div class="inline-actions">
-        <a class="button" href="/Settings/Sonarr">@ui["library.index.importFromSonarr"]</a>
-        <a class="button" href="/Settings">@ui["library.index.manageRoots"]</a>
-    </div>
+    @if (User.IsInRole(Jularr.Web.Features.Auth.AccountRoles.Owner))
+    {
+        <div class="inline-actions">
+            <a class="button" href="/Settings/Sonarr">@ui["library.index.importFromSonarr"]</a>
+            <a class="button" href="/Settings">@ui["library.index.manageRoots"]</a>
+        </div>
+    }
 </header>
 
 @if (Model.Cards.Count == 0)
