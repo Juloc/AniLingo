@@ -1,4 +1,5 @@
 using Jularr.Web.Data;
+using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Operations;
 
 namespace Jularr.Web.Features.Acquisition.DownloadClients;
@@ -10,7 +11,7 @@ public sealed record DownloadSubmissionSpec(
     string? ProfileId,
     Uri? Url,
     string? Name,
-    bool IsBooks = false,
+    MediaAcquisitionKind MediaKind,
     Stream? File = null,
     string? FileName = null);
 
@@ -83,7 +84,7 @@ public sealed class DownloadClientSubmissionService(
             {
                 result = await client.SubmitAsync(
                     entry,
-                    new DownloadClientSubmitRequest(spec.Url, spec.Name, spec.IsBooks, spec.File, spec.FileName),
+                    new DownloadClientSubmitRequest(spec.Url, spec.Name, spec.MediaKind, spec.File, spec.FileName),
                     cancellationToken);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -99,6 +100,13 @@ public sealed class DownloadClientSubmissionService(
             if (result.Success && !string.IsNullOrWhiteSpace(result.ExternalId))
             {
                 await store.SetExternalReferenceAsync(operationId, client.ProviderId, result.ExternalId, cancellationToken);
+                await store.SetDetailsAsync(
+                    operationId,
+                    new DownloadOperationDetails(
+                        entry.Id,
+                        spec.MediaKind,
+                        entry.CategoryFor(spec.MediaKind)).Serialize(),
+                    cancellationToken);
                 await store.ReportProgressAsync(
                     operationId,
                     0,
