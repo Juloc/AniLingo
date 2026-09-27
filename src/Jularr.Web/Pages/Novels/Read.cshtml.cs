@@ -1025,6 +1025,7 @@ public sealed class ReadModel(
         string? requestedLanguage)
     {
         var hasTranslation = GermanParagraphs.Count > 0;
+        var hasTranslateGemmaTranslation = TranslateGemmaParagraphs.Count > 0;
 
         if (bookmarkId is Guid requestedBookmark &&
             Annotations.Bookmarks.FirstOrDefault(x => x.Id == requestedBookmark) is { } bookmark)
@@ -1041,9 +1042,12 @@ public sealed class ReadModel(
         if (highlightId is Guid requestedHighlight &&
             Annotations.Highlights.FirstOrDefault(x => x.Id == requestedHighlight) is { } highlight)
         {
-            var paragraphs = highlight.Language == NovelReadingLanguage.German
-                ? GermanParagraphs
-                : JapaneseParagraphs;
+            var paragraphs = highlight.Language switch
+            {
+                NovelReadingLanguage.German => GermanParagraphs,
+                NovelReadingLanguage.GermanTranslateGemma => TranslateGemmaParagraphs,
+                _ => JapaneseParagraphs
+            };
             var anchorText = highlight.ParagraphIndex < paragraphs.Count
                 ? NovelTextLayout.CreateAnchorText(paragraphs[highlight.ParagraphIndex])
                 : null;
@@ -1062,12 +1066,21 @@ public sealed class ReadModel(
         // saved bookmark/highlight.
         if (requestedParagraph is int index && index >= 0)
         {
-            var language = requestedLanguage == NovelReadingLanguage.German && hasTranslation
-                ? NovelReadingLanguage.German
-                : NovelReadingLanguage.Japanese;
-            var paragraphs = language == NovelReadingLanguage.German
-                ? GermanParagraphs
-                : JapaneseParagraphs;
+            var language = requestedLanguage switch
+            {
+                NovelReadingLanguage.German when hasTranslation =>
+                    NovelReadingLanguage.German,
+                NovelReadingLanguage.GermanTranslateGemma
+                    when hasTranslateGemmaTranslation =>
+                    NovelReadingLanguage.GermanTranslateGemma,
+                _ => NovelReadingLanguage.Japanese
+            };
+            var paragraphs = language switch
+            {
+                NovelReadingLanguage.German => GermanParagraphs,
+                NovelReadingLanguage.GermanTranslateGemma => TranslateGemmaParagraphs,
+                _ => JapaneseParagraphs
+            };
             var anchorText = index < paragraphs.Count
                 ? NovelTextLayout.CreateAnchorText(paragraphs[index])
                 : null;
