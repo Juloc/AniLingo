@@ -448,9 +448,30 @@ public sealed partial class BookCatalogService
         return normalized;
     }
 
-    private async Task<bool> TryPersistPreferredCoverAsync(
+    private Task<bool> TryPersistPreferredCoverAsync(
         Guid workId,
         ParsedEpubBook parsed,
+        string? catalogFallback,
+        CancellationToken cancellationToken) =>
+        TryPersistPreferredCoverAsync(
+            workId,
+            parsed.Title,
+            parsed.Author,
+            parsed.Isbn10,
+            parsed.Isbn13,
+            parsed.CoverBytes,
+            parsed.CoverMediaType,
+            catalogFallback,
+            cancellationToken);
+
+    private async Task<bool> TryPersistPreferredCoverAsync(
+        Guid workId,
+        string title,
+        string? author,
+        string? isbn10,
+        string? isbn13,
+        byte[]? embeddedCover,
+        string? embeddedMediaType,
         string? catalogFallback,
         CancellationToken cancellationToken)
     {
@@ -458,7 +479,10 @@ public sealed partial class BookCatalogService
         try
         {
             googleCover = await FindPreferredGoogleCoverAsync(
-                parsed,
+                title,
+                author,
+                isbn10,
+                isbn13,
                 cancellationToken);
         }
         catch (Exception exception) when (
@@ -477,12 +501,12 @@ public sealed partial class BookCatalogService
             return true;
         }
 
-        if (parsed.CoverBytes is { Length: > 0 }
-            && !string.IsNullOrWhiteSpace(parsed.CoverMediaType)
+        if (embeddedCover is { Length: > 0 }
+            && !string.IsNullOrWhiteSpace(embeddedMediaType)
             && await SaveLocalCoverAsync(
                 workId,
-                parsed.CoverBytes,
-                parsed.CoverMediaType,
+                embeddedCover,
+                embeddedMediaType,
                 cancellationToken) is not null)
         {
             return true;
@@ -504,10 +528,13 @@ public sealed partial class BookCatalogService
     }
 
     private async Task<string?> FindPreferredGoogleCoverAsync(
-        ParsedEpubBook parsed,
+        string title,
+        string? author,
+        string? isbn10,
+        string? isbn13,
         CancellationToken cancellationToken)
     {
-        foreach (var isbn in new[] { parsed.Isbn13, parsed.Isbn10 }
+        foreach (var isbn in new[] { isbn13, isbn10 }
                      .Select(NormalizeIsbn)
                      .Where(x => x is not null)
                      .Select(x => x!))
@@ -530,20 +557,20 @@ public sealed partial class BookCatalogService
             }
         }
 
-        var title = parsed.Title?.Trim();
+        title = title.Trim();
         if (string.IsNullOrWhiteSpace(title))
         {
             return null;
         }
 
         var query = "intitle:" + title;
-        if (!string.IsNullOrWhiteSpace(parsed.Author))
+        if (!string.IsNullOrWhiteSpace(author))
         {
-            query += " inauthor:" + parsed.Author.Trim();
+            query += " inauthor:" + author.Trim();
         }
 
         var expectedTitle = NormalizeForMatch(title);
-        var expectedAuthor = NormalizeForMatch(parsed.Author ?? "");
+        var expectedAuthor = NormalizeForMatch(author ?? "");
         return (await SearchGoogleVolumesAsync(
                 query,
                 24,
