@@ -3,6 +3,7 @@ using Jularr.Web.Features.Ai;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Books;
 using Jularr.Web.Features.Novels;
+using Jularr.Web.Features.StoryContext;
 
 namespace Jularr.Web.Infrastructure.Ai;
 
@@ -17,6 +18,7 @@ public sealed class ProfileAiProviderRouter(
       INovelTranslator,
       IBookTranslator,
       INovelMappingSuggester,
+      IStoryContextExtractor,
       IAiUsageReporter
 {
     public string Id => "profile-ai-v1";
@@ -226,6 +228,29 @@ public sealed class ProfileAiProviderRouter(
             request.SourceText.Length
                 + request.FinalTranslation.Length
                 + request.ExistingContext.Length,
+            JsonSerializer.Serialize(result).Length);
+        return result;
+    }
+
+    public async Task<StoryChapterExtraction> ExtractChapterAsync(
+        StoryChapterExtractionRequest request,
+        CancellationToken cancellationToken)
+    {
+        var settings = await LoadSettingsAsync(cancellationToken);
+        if (settings.ProviderId == AiProviderIds.OpenAiCompatible)
+        {
+            return await CreatePersonal(settings)
+                .ExtractChapterAsync(request, cancellationToken);
+        }
+
+        var result = await codex.ExtractChapterAsync(
+            request,
+            cancellationToken);
+        RecordEstimated(
+            StoryContextExtractionPrompt.Operation,
+            request.SourceText.Length
+                + request.ExistingContext.Length
+                + request.ChapterTitle.Length,
             JsonSerializer.Serialize(result).Length);
         return result;
     }

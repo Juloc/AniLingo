@@ -17,7 +17,8 @@ public sealed record ClientPlaybackPlanRequest(
     string? Mode = null,
     PlaybackNetworkReport? Network = null,
     IReadOnlyList<PlaybackDeliveryMode>? FailedModes = null,
-    Guid? ReplacesSessionId = null);
+    Guid? ReplacesSessionId = null,
+    bool Wake = true);
 
 /// <summary>
 /// Where and how to fetch the plan's stream. Live transports restart at a position by adding
@@ -359,7 +360,8 @@ public static class ClientApiPlaybackPlanEndpoints
             mode,
             request.Network,
             request.FailedModes is { Count: > 0 } failed ? failed.Take(4).ToHashSet() : null,
-            request.ReplacesSessionId);
+            request.ReplacesSessionId,
+            request.Wake);
         return true;
     }
 

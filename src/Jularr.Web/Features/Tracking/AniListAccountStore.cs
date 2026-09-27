@@ -285,6 +285,20 @@ public sealed class AniListAccountStore
         }
     }
 
+    public async Task<IReadOnlyList<AnimeEpisodeMetadataMapping>> LoadAllEpisodeMappingsAsync(
+        CancellationToken cancellationToken)
+    {
+        await episodeMappingsGate.WaitAsync(cancellationToken);
+        try
+        {
+            return (await ReadEpisodeMappingsUnsafeAsync(cancellationToken)).ToArray();
+        }
+        finally
+        {
+            episodeMappingsGate.Release();
+        }
+    }
+
     public async Task<bool> TryAddEpisodeMappingAsync(
         AnimeEpisodeMetadataMapping mapping,
         CancellationToken cancellationToken)

@@ -179,6 +179,11 @@
     let storageRetryAttempt = 0;
     let storageRetryTimer = null;
     let storageRecoveryActive = false;
+    // Canonical storage health from the server; a sleeping (Wake-on-LAN) NAS is only started
+    // once playback is requested, never by merely opening the page.
+    let storageHealth = root.dataset.storageHealth || "";
+    let storageDiagnostic = "";
+    let storageWakeRequested = false;
     modeSelect.value = preference;
 
     const clampToDuration = (seconds) => {
@@ -477,8 +482,20 @@
         storageRetryAttempt = 0;
     };
 
+    const storageStartFailed = () =>
+        storageHealth === "error" &&
+        (storageDiagnostic === "wake_timeout" || storageDiagnostic === "wake_send_failed");
+
+    const storageSleeping = () =>
+        storageHealth === "offline_expected" && !storageWakeRequested;
+
     const showStorageState = (availability, exhausted = false) => {
         storageState = availability?.state || storageState || "unknown";
+        if (availability?.health) {
+            storageHealth = availability.health;
+            storageDiagnostic = availability.diagnosticCode || "";
+        }
+
         const retryable = availability?.retryable !== false &&
             storageState !== "file_missing" &&
             storageState !== "source_unreachable";
@@ -494,18 +511,33 @@
         hideVideo();
         playbackBadge.classList.remove("status-ok", "status-warning", "status-error");
 
+        const sleeping = storageSleeping();
+        const startFailed = storageStartFailed();
+
         if (storageState === "file_missing") {
             playbackStatus.textContent = "This media file is missing.";
             playbackSummary.textContent = "Media file missing";
             playbackBadge.classList.add("status-error");
             playbackBadge.textContent = "Missing";
+        } else if (startFailed) {
+            playbackStatus.textContent = storageDiagnostic === "wake_send_failed"
+                ? "Wake-on-LAN could not be sent to the media storage."
+                : "Media storage did not start.";
+            playbackSummary.textContent = "Storage did not start";
+            playbackBadge.classList.add("status-error");
+            playbackBadge.textContent = "Storage";
         } else if (storageState === "source_unreachable") {
             playbackStatus.textContent = "Media storage cannot currently be read.";
             playbackSummary.textContent = "Storage unreachable";
             playbackBadge.classList.add("status-error");
             playbackBadge.textContent = "Storage";
-        } else if (storageState === "source_starting") {
-            playbackStatus.textContent = "Starting NAS… waiting for media storage.";
+        } else if (sleeping) {
+            playbackStatus.textContent = "Media storage is asleep.";
+            playbackSummary.textContent = "Storage asleep";
+            playbackBadge.classList.add("status-warning");
+            playbackBadge.textContent = "Asleep";
+        } else if (storageState === "source_starting" || (storageWakeRequested && storageHealth === "offline_expected")) {
+            playbackStatus.textContent = "Starting storage…";
             playbackSummary.textContent = "Storage starting";
             playbackBadge.classList.add("status-warning");
             playbackBadge.textContent = "Starting";
@@ -526,14 +558,11 @@
         }
 
         if (storageRetry) {
-            storageRetry.hidden = !exhausted && retryable;
+            storageRetry.hidden = sleeping || (!exhausted && !startFailed && retryable);
         }
 
         if (storageWake) {
-            const wakeableState = storageState === "source_offline" ||
-                storageState === "source_starting" ||
-                storageState === "unknown";
-            storageWake.hidden = !root.dataset.storageWakeUrl || !wakeableState;
+            storageWake.hidden = !sleeping;
         }
     };
 
@@ -546,6 +575,9 @@
         try {
             const probeUrl = new URL(url, window.location.origin);
             probeUrl.searchParams.set("fresh", "true");
+            if (storageWakeRequested) {
+                probeUrl.searchParams.set("wake", "true");
+            }
             const response = await fetch(probeUrl, {
                 credentials: "same-origin",
                 headers: { "Accept": "application/json" }
@@ -586,7 +618,7 @@
 
             if (bootstrap.media.availability) {
                 storageState = bootstrap.media.availability.state || "unknown";
-                root.dataset.storageWakeUrl = bootstrap.media.availability.wakeUrl || "";
+                storageHealth = bootstrap.media.availability.health || storageHealth;
             }
 
             failedModes.clear();
@@ -621,7 +653,10 @@
         const startedAt = storageRetryStartedAt ?? Date.now();
         storageRetryStartedAt = startedAt;
 
-        if (Date.now() - startedAt >= 60000) {
+        // A NAS that is starting gets the server's bounded start window; the server reports
+        // the failure itself when it gives up.
+        const windowMs = storageState === "source_starting" ? 180000 : 60000;
+        if (Date.now() - startedAt >= windowMs) {
             storageRetryTimer = null;
             showStorageState({ state: storageState, retryable: true }, true);
             return;
@@ -643,9 +678,15 @@
 
         if (availability) {
             showStorageState(availability, false);
-            if (availability.retryable === false) {
+            if (availability.retryable === false || storageStartFailed()) {
                 storageRetryTimer = null;
                 showStorageState(availability, true);
+                return;
+            }
+
+            if (storageSleeping()) {
+                // Waits for Play instead of polling a NAS that sleeps on purpose.
+                storageRetryTimer = null;
                 return;
             }
         }
@@ -703,7 +744,9 @@
                 mode: preference,
                 network: capabilityProbe?.networkReport() || null,
                 failedModes: [...failedModes],
-                replacesSessionId: streamSessionId
+                replacesSessionId: streamSessionId,
+                // Opening the page never wakes sleeping storage; pressing Play does.
+                wake: storageWakeRequested || playbackWasRequested
             })
         });
 
@@ -754,9 +797,15 @@
         renderPlan();
 
         if (plan.mode === "unavailable" || !delivery) {
+            // Storage is not readable: the canonical storage flow (#411) takes over — asleep
+            // storage waits for Play, starting storage is polled until playback can continue.
             if (response.availability && response.availability.state !== "available") {
                 storageState = response.availability.state || "unknown";
-                root.dataset.storageWakeUrl = response.availability.wakeUrl || "";
+                if (response.availability.health) {
+                    storageHealth = response.availability.health;
+                    storageDiagnostic = response.availability.diagnosticCode || "";
+                }
+
                 startStorageRetry(false);
                 return;
             }
@@ -1399,6 +1448,7 @@
     });
 
     video.addEventListener("error", async () => {
+        storageWakeRequested = storageWakeRequested || playbackWasRequested;
         const availability = await readStorageAvailability();
         if (availability && availability.state !== "available") {
             storageState = availability.state || "unknown";
@@ -1430,6 +1480,8 @@
     });
 
     storageRetry?.addEventListener("click", () => {
+        storageWakeRequested = true;
+        storageDiagnostic = "";
         playbackWasRequested = true;
         resumeShouldPlay = true;
         stopStorageRetry();
@@ -1440,51 +1492,20 @@
         scheduleStorageRetry(0);
     });
 
-    storageWake?.addEventListener("click", async () => {
+    // Play on sleeping storage: the next availability poll carries wake=true, the server
+    // starts the NAS and playback continues on its own once the storage is readable.
+    storageWake?.addEventListener("click", () => {
+        storageWakeRequested = true;
+        storageDiagnostic = "";
         playbackWasRequested = true;
         resumeShouldPlay = true;
-        const wakeUrl = root.dataset.storageWakeUrl;
-        if (!wakeUrl) {
-            return;
-        }
-
-        storageWake.disabled = true;
-        try {
-            const response = await fetch(wakeUrl, {
-                method: "POST",
-                credentials: "same-origin",
-                headers: { "Accept": "application/json" }
-            });
-
-            if (!response.ok) {
-                if (error) {
-                    error.hidden = false;
-                    error.textContent = "Wake-on-LAN could not be sent.";
-                }
-                return;
-            }
-
-            const availability = await response.json();
-            storageState = availability.state || "source_starting";
-            stopStorageRetry();
-            storageRecoveryActive = true;
-            storageRetryStartedAt = Date.now();
-            storageRetryAttempt = 1;
-            showStorageState(
-                {
-                    state: storageState,
-                    retryable: availability.retryable !== false
-                },
-                false);
-            scheduleStorageRetry(0);
-        } catch {
-            if (error) {
-                error.hidden = false;
-                error.textContent = "Wake-on-LAN request failed.";
-            }
-        } finally {
-            storageWake.disabled = false;
-        }
+        stopStorageRetry();
+        storageRecoveryActive = true;
+        storageRetryStartedAt = Date.now();
+        storageRetryAttempt = 1;
+        storageState = "source_starting";
+        showStorageState({ state: storageState, retryable: true }, false);
+        scheduleStorageRetry(0);
     });
 
     window.addEventListener("pagehide", () => {

@@ -20,7 +20,8 @@ public sealed record PlaybackPlanInput(
     PlaybackModePreference ModePreference = PlaybackModePreference.Auto,
     PlaybackNetworkReport? Network = null,
     IReadOnlySet<PlaybackDeliveryMode>? FailedModes = null,
-    Guid? ReplacesSessionId = null);
+    Guid? ReplacesSessionId = null,
+    bool Wake = true);
 
 /// <summary>
 /// The client's own view of its connection. Only measured values count as throughput;
@@ -143,11 +144,13 @@ public sealed class PlaybackPlanService(
         var quality = input.Quality ?? PlaybackQualityPresets.DefaultFor(networkClass);
         var previous = input.ReplacesSessionId is { } replaced ? sessions.Get(replaced, profileId) : null;
 
-        // Hook for storage wake (#411): when a wake-and-wait API exists, it belongs here so
-        // playback start wakes WOL storage and continues automatically once it is online.
+        // Playing is what wakes sleeping Wake-on-LAN storage (#411): a plan requested to play
+        // starts the NAS through the coalesced start attempt; a plan requested only to
+        // decide (a page opening) never does. Unreadable storage returns an Unavailable plan
+        // with the availability state so the client waits and re-plans once it is online.
         var availability = mediaAvailability is null
             ? null
-            : await mediaAvailability.CheckMediaAsync(row.Id, force: false, cancellationToken);
+            : await mediaAvailability.CheckMediaAsync(row.Id, force: false, cancellationToken, wake: input.Wake);
         if (availability is { IsAvailable: false })
         {
             return new PlaybackPlanOutcome(

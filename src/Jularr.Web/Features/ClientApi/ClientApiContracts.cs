@@ -540,7 +540,9 @@ public sealed record ClientMediaAvailability(
     bool CanWake,
     Guid? RootId,
     string AvailabilityUrl,
-    string? WakeUrl);
+    string? WakeUrl,
+    string? Health = null,
+    string? DiagnosticCode = null);
 
 public sealed record ClientRootAvailability(
     Guid RootId,
@@ -549,7 +551,8 @@ public sealed record ClientRootAvailability(
     DateTimeOffset CheckedAtUtc,
     DateTimeOffset? LastAvailableAtUtc,
     bool WakeConfigured,
-    string? DiagnosticCode);
+    string? DiagnosticCode,
+    string? Health = null);
 
 public sealed record ClientMediaTrack(
     string Id,
@@ -740,7 +743,9 @@ public static class ClientApiMappings
             ClientApiRoutes.MediaAvailability(availability.MediaFileId),
             isOwner && availability.WakeConfigured
                 ? ClientApiRoutes.WakeRoot(availability.RootId)
-                : null);
+                : null,
+            StorageHealth.Name(availability.Health),
+            availability.DiagnosticCode);
 
     public static ClientRootAvailability ToClientRootAvailability(
         LibraryRootAvailabilitySnapshot availability) =>
@@ -751,7 +756,8 @@ public static class ClientApiMappings
             availability.CheckedAtUtc,
             availability.LastAvailableAtUtc,
             availability.WakeConfigured,
-            availability.DiagnosticCode);
+            availability.DiagnosticCode,
+            StorageHealth.Name(availability.Health));
 
     public static string AvailabilityStateName(StorageAvailabilityState state) =>
         state switch

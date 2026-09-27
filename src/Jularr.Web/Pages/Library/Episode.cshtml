@@ -41,7 +41,7 @@
              data-next-url="@(Model.NextEpisodeUrl ?? "")"
              data-autoplay-next="@((Model.Flow?.AutoplayNext == true).ToString().ToLowerInvariant())"
              data-playback-preferences-url="@ClientApiRoutes.PlaybackPreferences"
-             data-storage-wake-url="@(Model.IsOwner && media.Storage is { WakeConfigured: true } ownerStorage ? ClientApiRoutes.WakeRoot(ownerStorage.RootId) : "")">
+             data-storage-health="@(media.Storage is { } health ? StorageHealth.Name(health.Health) : "")">
         @* The whole player lives in the stage: one timeline, one control bar and every setting in
            the player menu, so it behaves the same inline and in full screen. *@
         <div class="video-stage player-placeholder"
@@ -68,7 +68,7 @@
                 <strong data-playback-status>@ui["library.episode.startingPlayback"]</strong>
                 <div class="playback-preparation-actions" data-storage-actions hidden>
                     <button class="button" type="button" data-storage-retry>@ui["library.episode.tryAgain"]</button>
-                    <button class="button button-primary" type="button" data-storage-wake hidden>@ui["library.episode.wakeNas"]</button>
+                    <button class="button button-primary" type="button" data-storage-wake hidden>@ui["player.play"]</button>
                 </div>
             </div>
 

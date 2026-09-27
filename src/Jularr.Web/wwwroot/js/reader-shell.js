@@ -58,6 +58,29 @@
         let accumulatedScroll = 0;
         let activeSettingsTab = "reading";
 
+        // Reader frame (docs/UNIFIED_READER.md "Reader frame"): pages that render
+        // the shared top bar, contents panel, bottom bar and mobile tool row opt
+        // in with data-reader-frame. The shell then owns their menus, contents
+        // panel, settings openers, progress slider, fullscreen, timer and share
+        // instead of generating its own mobile action bar and overflow menu.
+        const frame = root.hasAttribute("data-reader-frame");
+        let frameText = {};
+        try {
+            frameText = JSON.parse(
+                root.querySelector("[data-reader-frame-text]")?.textContent || "{}") || {};
+        } catch {
+            frameText = {};
+        }
+        const ft = (key, fallback, values = {}) => {
+            let value = frameText["reader.frame." + key] || fallback;
+            for (const [name, replacement] of Object.entries(values)) {
+                value = value.replaceAll("{" + name + "}", String(replacement));
+            }
+            return value;
+        };
+        const compactQuery = window.matchMedia("(max-width: 720px)");
+        const inlineContentsQuery = window.matchMedia("(min-width: 1100px)");
+
         root.classList.remove("reader-chrome-hidden");
         root.dataset.readerChrome = "visible";
 
@@ -67,7 +90,9 @@
             return Boolean(root.querySelector(
                 "[data-reader-notes]:not([hidden])," +
                 "[data-chapter-drawer]:not([hidden])," +
-                "[data-book-drawer][open]"));
+                "[data-book-drawer][open]," +
+                "[data-reader-menu]:not([hidden])," +
+                "[data-reader-contents].is-overlay:not([hidden])"));
         };
 
         const showChrome = () => {
@@ -75,7 +100,14 @@
             root.dataset.readerChrome = "visible";
         };
 
+        // In the frame the bars are part of the layout; they only slide away on
+        // phones in Scroll mode, where the page scrolls underneath them.
+        const frameChromeCanHide = () =>
+            compactQuery.matches &&
+            (root.dataset.readingMode || settings.readingMode) !== "paged";
+
         const hideChrome = () => {
+            if (frame && !frameChromeCanHide()) return;
             if (restoring || overlayOpen()) return;
             root.classList.add("reader-chrome-hidden");
             root.dataset.readerChrome = "hidden";
@@ -493,7 +525,7 @@
         };
 
         const buildMobileActions = () => {
-            if (root.querySelector("[data-reader-mobile-actions]")) return;
+            if (frame || root.querySelector("[data-reader-mobile-actions]")) return;
 
             const nav = document.createElement("nav");
             nav.className = "reader-mobile-actions";
@@ -538,6 +570,7 @@
         };
 
         const ensureOverflow = () => {
+            if (frame) return root.querySelector('[data-reader-menu="more"]');
             if (!topChrome) return null;
             const existing = topChrome.querySelector("[data-reader-overflow]");
             if (existing) return existing.querySelector(".reader-overflow-menu");
@@ -565,6 +598,14 @@
             const button = document.createElement("button");
             button.type = "button";
             button.textContent = label;
+            if (frame) {
+                // role=menuitem: the frame closes the menu after activation.
+                button.setAttribute("role", "menuitem");
+                const settingsItem = menu.querySelector('[data-reader-settings-open]:last-child');
+                menu.insertBefore(button, settingsItem || null);
+                button.addEventListener("click", onClick);
+                return button;
+            }
             button.addEventListener("click", () => {
                 onClick();
                 const wrap = menu.closest("details");
@@ -575,6 +616,8 @@
         };
 
         const addMobileAction = (label, onClick) => {
+            // The frame renders its own mobile tool row (with read aloud).
+            if (frame) return null;
             let nav = root.querySelector("[data-reader-mobile-actions]");
             if (!nav) {
                 nav = document.createElement("nav");
@@ -619,9 +662,478 @@
         if (surface) surface.dataset.readerSurface = "";
         settingsContainer?.setAttribute("data-reader-settings-container", "");
 
+        // ---- Reader frame -------------------------------------------------------
+
+        const focusableSelector =
+            "button:not([disabled]):not([hidden]),a[href],input:not([disabled]):not([type='hidden'])," +
+            "select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex='-1'])";
+        const isShown = element =>
+            Boolean(element) && element.isConnected &&
+            (typeof element.checkVisibility === "function"
+                ? element.checkVisibility()
+                : element.getClientRects().length > 0);
+        const focusablesIn = container =>
+            Array.from(container?.querySelectorAll(focusableSelector) || []).filter(isShown);
+
+        const toastElement = () =>
+            root.querySelector("[data-reader-toast],[data-book-toast]");
+        const toast = message => {
+            const element = toastElement();
+            if (!element || !message) return;
+            element.textContent = message;
+            element.hidden = false;
+            window.clearTimeout(toast.timer);
+            toast.timer = window.setTimeout(() => {
+                element.hidden = true;
+            }, 2600);
+        };
+
+        let openMenu = null;
+        let menuTrigger = null;
+        let menuScrim = null;
+
+        const menuToggles = name =>
+            root.querySelectorAll(`[data-reader-menu-toggle="${CSS.escape(name)}"]`);
+
+        const closeMenus = (restoreFocus = false) => {
+            if (!openMenu) return;
+            const name = openMenu.dataset.readerMenu;
+            openMenu.hidden = true;
+            menuToggles(name).forEach(button => button.setAttribute("aria-expanded", "false"));
+            if (menuScrim) menuScrim.hidden = true;
+            const trigger = menuTrigger;
+            openMenu = null;
+            menuTrigger = null;
+            delete root.dataset.readerMenuOpen;
+            root.dispatchEvent(new CustomEvent("jularr:reader-menu", {
+                detail: { name, open: false }
+            }));
+            if (restoreFocus && isShown(trigger)) trigger.focus();
+        };
+
+        const openMenuNamed = (name, trigger) => {
+            const menu = root.querySelector(`[data-reader-menu="${CSS.escape(name)}"]`);
+            if (!menu) return;
+            if (openMenu === menu) {
+                closeMenus(true);
+                return;
+            }
+            // A trigger inside another menu (More → Search) hands over focus.
+            const origin = trigger?.closest("[data-reader-menu]") ? null : trigger;
+            closeMenus(false);
+            if (settingsContainer?.open) settingsContainer.open = false;
+            menu.hidden = false;
+            openMenu = menu;
+            menuTrigger = origin || root.querySelector(
+                `[data-reader-menu-toggle="${CSS.escape(name)}"]:not([role])`);
+            root.dataset.readerMenuOpen = name;
+            menuToggles(name).forEach(button => button.setAttribute("aria-expanded", "true"));
+            if (menuScrim) menuScrim.hidden = !compactQuery.matches;
+            showChrome();
+            root.dispatchEvent(new CustomEvent("jularr:reader-menu", {
+                detail: { name, open: true }
+            }));
+            requestAnimationFrame(() => {
+                const preferred = menu.querySelector("input[type='search'],[aria-checked='true']");
+                (isShown(preferred) ? preferred : focusablesIn(menu)[0])?.focus();
+            });
+        };
+
+        let contentsTrigger = null;
+        const contents = root.querySelector("[data-reader-contents]");
+        const contentsBackdrop = root.querySelector("[data-reader-contents-backdrop]");
+        const contentsKey = "jularr:reader-contents-open";
+        let activeContentsTab =
+            contents?.querySelector("[data-reader-contents-tab][aria-selected='true']")
+                ?.dataset.readerContentsTab || "chapters";
+
+        const activateContentsTab = (name, focus = false) => {
+            if (!contents) return;
+            const tab = contents.querySelector(
+                `[data-reader-contents-tab="${CSS.escape(name)}"]`);
+            if (!tab) return;
+            activeContentsTab = name;
+            contents.querySelectorAll("[data-reader-contents-tab]").forEach(button => {
+                const active = button === tab;
+                button.setAttribute("aria-selected", active ? "true" : "false");
+                button.tabIndex = active ? 0 : -1;
+            });
+            contents.querySelectorAll("[data-reader-contents-panel]").forEach(panel => {
+                panel.hidden = panel.dataset.readerContentsPanel !== name;
+            });
+            if (focus) tab.focus();
+            if (!contents.hidden) {
+                root.dispatchEvent(new CustomEvent("jularr:reader-contents", {
+                    detail: { open: true, tab: name }
+                }));
+            }
+        };
+
+        const setContents = (open, { tab = null, focus = true, remember = true } = {}) => {
+            if (!contents) return;
+            const overlay = !inlineContentsQuery.matches;
+            if (open) closeMenus(false);
+            contents.hidden = !open;
+            contents.classList.toggle("is-overlay", open && overlay);
+            if (open && overlay) {
+                contents.setAttribute("role", "dialog");
+                contents.setAttribute("aria-modal", "true");
+            } else {
+                contents.removeAttribute("role");
+                contents.removeAttribute("aria-modal");
+            }
+            if (contentsBackdrop) contentsBackdrop.hidden = !(open && overlay);
+            root.classList.toggle("reader-contents-open", open);
+            root.querySelectorAll("[data-reader-contents-toggle]").forEach(button => {
+                button.setAttribute("aria-expanded", open ? "true" : "false");
+            });
+            if (tab) activateContentsTab(tab);
+            if (open) {
+                showChrome();
+                root.dispatchEvent(new CustomEvent("jularr:reader-contents", {
+                    detail: { open: true, tab: activeContentsTab }
+                }));
+                if (focus) {
+                    contents.querySelector(
+                        `[data-reader-contents-tab="${CSS.escape(activeContentsTab)}"]`)?.focus();
+                }
+            } else if (focus && isShown(contentsTrigger)) {
+                contentsTrigger.focus();
+            }
+            if (remember && !overlay) {
+                try {
+                    window.localStorage.setItem(contentsKey, open ? "1" : "0");
+                } catch {
+                }
+            }
+            root.dispatchEvent(new CustomEvent("jularr:reader-layout"));
+        };
+
+        const openSettings = tab => {
+            if (!settingsContainer) return;
+            closeMenus(false);
+            if (contents?.classList.contains("is-overlay")) setContents(false, { focus: false });
+            settingsContainer.open = true;
+            const available = root.querySelector(
+                `[data-reader-settings-tab="${CSS.escape(tab || "reading")}"]`);
+            activateTab(available ? tab : "reading");
+            requestAnimationFrame(() => {
+                root.querySelector(
+                    `[data-reader-settings-tab="${CSS.escape(activeSettingsTab)}"]`)?.focus();
+            });
+        };
+
+        const fullscreenSupported = () =>
+            Boolean(document.fullscreenEnabled && root.requestFullscreen);
+
+        const syncFullscreen = () => {
+            const active = document.fullscreenElement === root;
+            root.classList.toggle("reader-fullscreen", active);
+            root.querySelectorAll("[data-reader-fullscreen-toggle]").forEach(button => {
+                button.setAttribute("aria-pressed", active ? "true" : "false");
+                const label = button.querySelector("[data-reader-fullscreen-label]");
+                const text = active
+                    ? ft("exitFullscreen", "Exit fullscreen")
+                    : ft("fullscreen", "Fullscreen");
+                if (label) label.textContent = text;
+                else button.setAttribute("aria-label", text);
+            });
+        };
+
+        const toggleFullscreen = async () => {
+            try {
+                if (document.fullscreenElement) await document.exitFullscreen();
+                else await root.requestFullscreen();
+            } catch (error) {
+                console.warn(error);
+            }
+        };
+
+        let timerEnd = 0;
+        let timerTick = 0;
+        const timerLabel = root.querySelector("[data-reader-timer-label]");
+        const setTimer = minutes => {
+            window.clearInterval(timerTick);
+            timerEnd = minutes > 0 ? Date.now() + minutes * 60000 : 0;
+            root.querySelectorAll("[data-reader-timer]").forEach(button => {
+                button.setAttribute(
+                    "aria-pressed",
+                    Number(button.dataset.readerTimer) === minutes ? "true" : "false");
+            });
+            const render = () => {
+                if (!timerLabel) return;
+                timerLabel.textContent = timerEnd
+                    ? ft("timerLeft", "{minutes} min left", {
+                        minutes: Math.max(1, Math.ceil((timerEnd - Date.now()) / 60000))
+                    })
+                    : ft("timer", "Reading timer");
+            };
+            render();
+            if (!timerEnd) return;
+            timerTick = window.setInterval(() => {
+                if (Date.now() < timerEnd) {
+                    render();
+                    return;
+                }
+                if (root.dataset.readerTts && root.dataset.readerTts !== "idle") {
+                    root.querySelector("[data-reader-tts-stop]")?.click();
+                }
+                root.dispatchEvent(new CustomEvent("jularr:reader-timer-end"));
+                setTimer(0);
+                toast(ft("timerDone", "Reading timer ended."));
+            }, 15000);
+        };
+
+        const shareUrl = () => {
+            const url = new URL(window.location.href);
+            for (const key of ["pos", "p", "handler"]) url.searchParams.delete(key);
+            return url.toString();
+        };
+
+        const share = async () => {
+            const url = shareUrl();
+            try {
+                if (navigator.share) {
+                    await navigator.share({ title: document.title, url });
+                    return;
+                }
+                await navigator.clipboard.writeText(url);
+                toast(ft("linkCopied", "Link copied."));
+            } catch (error) {
+                if (error?.name !== "AbortError") console.warn(error);
+            }
+        };
+
+        const progressSlider = root.querySelector("[data-reader-progress-slider]");
+        const progressText = root.querySelector("[data-reader-progress-text]");
+        let sliderDragging = false;
+
+        const paintSlider = () => {
+            if (!progressSlider) return;
+            const max = Number(progressSlider.max) || 0;
+            const fraction = max > 0 ? Number(progressSlider.value) / max : 0;
+            progressSlider.style.setProperty("--reader-progress", (fraction * 100).toFixed(2) + "%");
+        };
+
+        const setupFrame = () => {
+            if (!frame) return;
+
+            menuScrim = document.createElement("div");
+            menuScrim.className = "reader-menu-scrim";
+            menuScrim.hidden = true;
+            menuScrim.addEventListener("click", () => closeMenus(true));
+            root.append(menuScrim);
+
+            // Settings: the page opens them at a tab; the <summary> stays hidden.
+            const heading = settingsForm?.querySelector(".reader-settings-heading");
+            if (heading && !heading.querySelector("[data-reader-settings-close]")) {
+                const close = document.createElement("button");
+                close.type = "button";
+                close.className = "reader-settings-close";
+                close.dataset.readerSettingsClose = "";
+                close.setAttribute("aria-label", ft("close", "Close"));
+                close.title = ft("close", "Close");
+                close.textContent = "×";
+                close.addEventListener("click", () => {
+                    settingsContainer.open = false;
+                });
+                heading.append(close);
+            }
+
+            if (!fullscreenSupported()) {
+                root.querySelectorAll("[data-reader-fullscreen-toggle]").forEach(button => {
+                    button.hidden = true;
+                });
+            }
+            if (!navigator.share && !navigator.clipboard?.writeText) {
+                root.querySelectorAll("[data-reader-share]").forEach(button => {
+                    button.hidden = true;
+                });
+            }
+
+            root.addEventListener("click", event => {
+                const target = event.target instanceof Element ? event.target : null;
+                if (!target) return;
+
+                const menuToggle = target.closest("[data-reader-menu-toggle]");
+                if (menuToggle) {
+                    event.preventDefault();
+                    openMenuNamed(menuToggle.dataset.readerMenuToggle, menuToggle);
+                    return;
+                }
+
+                const contentsToggle = target.closest("[data-reader-contents-toggle]");
+                if (contentsToggle) {
+                    contentsTrigger = contentsToggle;
+                    setContents(Boolean(contents?.hidden));
+                    return;
+                }
+
+                const contentsOpen = target.closest("[data-reader-contents-open]");
+                if (contentsOpen) {
+                    contentsTrigger = menuTrigger;
+                    setContents(true, { tab: contentsOpen.dataset.readerContentsOpen });
+                    return;
+                }
+
+                if (target.closest("[data-reader-contents-close]") ||
+                    target.closest("[data-reader-contents-backdrop]")) {
+                    setContents(false);
+                    return;
+                }
+
+                const tab = target.closest("[data-reader-contents-tab]");
+                if (tab) {
+                    activateContentsTab(tab.dataset.readerContentsTab);
+                    return;
+                }
+
+                const settingsOpener = target.closest("[data-reader-settings-open]");
+                if (settingsOpener) {
+                    openSettings(settingsOpener.dataset.readerSettingsOpen);
+                    return;
+                }
+
+                if (target.closest("[data-reader-fullscreen-toggle]")) {
+                    void toggleFullscreen();
+                    closeMenus(false);
+                    return;
+                }
+
+                if (target.closest("[data-reader-share]")) {
+                    void share();
+                    closeMenus(false);
+                    return;
+                }
+
+                const timer = target.closest("[data-reader-timer]");
+                if (timer) {
+                    setTimer(Number(timer.dataset.readerTimer) || 0);
+                    return;
+                }
+
+                const step = target.closest("[data-reader-page-step]");
+                if (step) {
+                    dispatchPage(Number(step.dataset.readerPageStep) || 0);
+                    return;
+                }
+
+                // Activating a menu item closes its menu (after its own handler ran).
+                if (openMenu && openMenu.contains(target) &&
+                    target.closest("[role='menuitem'],[role='menuitemradio']")) {
+                    closeMenus(true);
+                }
+            });
+
+            document.addEventListener("pointerdown", event => {
+                const target = event.target instanceof Element ? event.target : null;
+                if (openMenu && target && !openMenu.contains(target) &&
+                    !target.closest("[data-reader-menu-toggle]")) {
+                    closeMenus(false);
+                }
+                if (settingsContainer?.open && target &&
+                    !settingsContainer.contains(target) &&
+                    !target.closest("[data-reader-settings-open]")) {
+                    settingsContainer.open = false;
+                }
+            }, true);
+
+            root.addEventListener("keydown", event => {
+                if (openMenu && openMenu.contains(event.target) &&
+                    ["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key) &&
+                    !(event.target instanceof HTMLInputElement)) {
+                    const items = focusablesIn(openMenu);
+                    const index = items.indexOf(document.activeElement);
+                    const next = event.key === "Home" ? 0
+                        : event.key === "End" ? items.length - 1
+                            : (index + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
+                    items[next]?.focus();
+                    event.preventDefault();
+                    return;
+                }
+
+                const tab = event.target instanceof Element
+                    ? event.target.closest("[data-reader-contents-tab]")
+                    : null;
+                if (tab && (event.key === "ArrowRight" || event.key === "ArrowLeft")) {
+                    const tabs = Array.from(contents.querySelectorAll("[data-reader-contents-tab]"));
+                    const index = tabs.indexOf(tab);
+                    const next = tabs[(index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length];
+                    activateContentsTab(next.dataset.readerContentsTab, true);
+                    event.preventDefault();
+                    return;
+                }
+
+                // Keep focus inside the contents overlay while it is modal.
+                if (event.key === "Tab" && contents?.classList.contains("is-overlay") &&
+                    !contents.hidden) {
+                    const items = focusablesIn(contents);
+                    if (!items.length) return;
+                    const first = items[0];
+                    const last = items.at(-1);
+                    if (event.shiftKey && document.activeElement === first) {
+                        last.focus();
+                        event.preventDefault();
+                    } else if (!event.shiftKey && document.activeElement === last) {
+                        first.focus();
+                        event.preventDefault();
+                    }
+                }
+            });
+
+            if (progressSlider) {
+                progressSlider.addEventListener("pointerdown", () => {
+                    sliderDragging = true;
+                });
+                const release = () => {
+                    sliderDragging = false;
+                };
+                progressSlider.addEventListener("pointerup", release);
+                progressSlider.addEventListener("pointercancel", release);
+                progressSlider.addEventListener("change", release);
+                progressSlider.addEventListener("input", () => {
+                    paintSlider();
+                    root.dispatchEvent(new CustomEvent("jularr:reader-seek", {
+                        detail: { value: Number(progressSlider.value) }
+                    }));
+                });
+            }
+
+            root.addEventListener("jularr:reader-location", event => {
+                const detail = event.detail || {};
+                if (progressSlider) {
+                    progressSlider.max = String(Math.max(0, Number(detail.max) || 0));
+                    if (!sliderDragging) progressSlider.value = String(Number(detail.value) || 0);
+                    if (detail.valueText) progressSlider.setAttribute("aria-valuetext", detail.valueText);
+                    paintSlider();
+                }
+                if (progressText && detail.text != null) progressText.textContent = detail.text;
+            });
+
+            document.addEventListener("fullscreenchange", () => {
+                syncFullscreen();
+                root.dispatchEvent(new CustomEvent("jularr:reader-layout"));
+            });
+            syncFullscreen();
+
+            inlineContentsQuery.addEventListener?.("change", () => {
+                if (contents && !contents.hidden) setContents(false, { focus: false, remember: false });
+            });
+
+            let remembered = false;
+            try {
+                remembered = window.localStorage.getItem(contentsKey) === "1";
+            } catch {
+            }
+            if (remembered && inlineContentsQuery.matches) {
+                setContents(true, { focus: false, remember: false });
+            }
+        };
+
         enhanceSettings();
         buildMobileActions();
         buildOverflow();
+        setupFrame();
         updateModeVisibility();
 
         // Integration seam for shared Reader extensions such as reader-tts.js.
@@ -636,7 +1148,12 @@
             addResetButton,
             updateSourceBadges,
             addOverflowAction,
-            addMobileAction
+            addMobileAction,
+            isFrame: frame,
+            openSettings,
+            openContents: tab => setContents(true, { tab }),
+            closeMenus,
+            toast
         });
         root.readerShell = api;
         window.JularrReaderTts?.mount(api);
@@ -745,6 +1262,16 @@
 
         document.addEventListener("keydown", event => {
             if (event.key !== "Escape") return;
+            if (frame && openMenu) {
+                closeMenus(true);
+                event.preventDefault();
+                return;
+            }
+            if (frame && contents?.classList.contains("is-overlay") && !contents.hidden) {
+                setContents(false);
+                event.preventDefault();
+                return;
+            }
             if (settingsContainer?.open) {
                 settingsContainer.open = false;
                 showChrome();

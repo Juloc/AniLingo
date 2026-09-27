@@ -16,20 +16,50 @@
     const PARAGRAPH_SELECTOR = "[data-reader-paragraph],[data-book-paragraph]";
     const WORD_HIGHLIGHT = "reader-tts-word";
 
-    const unavailableText = (reason, label) => ({
-        "unsupported": "Dieser Browser bietet keine Sprachausgabe an.",
-        "no-provider": "Keine Sprachausgabe verfügbar.",
-        "provider-unavailable": "Die Gerätestimme ist gerade nicht verfügbar.",
-        "no-voice-for-language": `Keine Stimme für ${label} verfügbar.`
-    }[reason] || "Vorlesen ist nicht verfügbar.");
+    // UI text comes from the catalog (reader.tts.*, rendered by the shared
+    // settings partial); the English fallbacks only cover a missing bundle.
+    const textFor = root => {
+        let bundle = {};
+        try {
+            bundle = JSON.parse(root.querySelector("[data-reader-tts-text]")?.textContent || "{}") || {};
+        } catch {
+            bundle = {};
+        }
+        return (key, fallback, values = {}) => {
+            let value = bundle["reader.tts." + key] || fallback;
+            for (const [name, replacement] of Object.entries(values)) {
+                value = value.replaceAll("{" + name + "}", String(replacement));
+            }
+            return value;
+        };
+    };
+
+    const unavailableText = (tt, reason, label) => {
+        switch (reason) {
+            case "unsupported":
+                return tt("unsupported", "This browser cannot read aloud.");
+            case "no-provider":
+                return tt("noProvider", "No read-aloud voice is available.");
+            case "provider-unavailable":
+                return tt("providerUnavailable", "The device voice is not available right now.");
+            case "no-voice-for-language":
+                return tt("noVoiceForLanguage", "No voice for {language} is available.", { language: label });
+            default:
+                return tt("notAvailable", "Read aloud is not available.");
+        }
+    };
 
     const mount = api => {
         const root = api?.root;
         if (!root || root.dataset.readerTtsMounted === "true") return;
-        const toggle = root.querySelector("[data-reader-tts-toggle]");
+        // Every read-aloud entry point (toolbar toggle, a reader frame's play button
+        // and mobile tool) shares one state.
+        const toggles = Array.from(root.querySelectorAll("[data-reader-tts-toggle]"));
+        const toggle = toggles[0];
         const bar = root.querySelector("[data-reader-tts-bar]");
         if (!toggle || !bar) return;
         root.dataset.readerTtsMounted = "true";
+        const tt = textFor(root);
 
         const speech = window.JularrTts;
         const provider = speech?.createDeviceProvider?.() || null;
@@ -118,16 +148,16 @@
         const describeVoice = (language, label, storedVoice) => {
             const outcome = resolveFor(language);
             const resolution = outcome.resolution;
-            if (!resolution) return unavailableText(outcome.unavailableReason, label);
+            if (!resolution) return unavailableText(tt, outcome.unavailableReason, label);
             if (storedVoice && resolution.voiceId !== storedVoice) {
-                return "Gewählte Stimme fehlt auf diesem Gerät – " +
-                    (resolution.voice ? resolution.voice.name : "der Gerätestandard") +
-                    " liest vor.";
+                return tt("voiceMissing", "The chosen voice is missing on this device – {voice} reads instead.", {
+                    voice: resolution.voice ? resolution.voice.name : tt("deviceDefault", "the device default")
+                });
             }
             if (resolution.usesProviderDefaultVoice) {
-                return `Keine Stimme für ${label} installiert – der Gerätestandard liest vor.`;
+                return tt("noVoiceInstalled", "No voice for {language} is installed – the device default reads instead.", { language: label });
             }
-            return storedVoice ? "" : `Automatisch: ${resolution.voice.name}`;
+            return storedVoice ? "" : tt("automaticVoice", "Automatic: {voice}", { voice: resolution.voice.name });
         };
 
         const renderVoices = () => {
@@ -138,14 +168,14 @@
                 const stored = voiceIdFor(map, language);
                 const matching = voices.filter(voice =>
                     baseOf(voice.language) === baseOf(language));
-                const options = [new Option("Automatisch", "auto")];
+                const options = [new Option(tt("automatic", "Automatic"), "auto")];
                 for (const voice of matching) {
                     options.push(new Option(
-                        voice.name + (voice.isLocal ? "" : " · Online"),
+                        voice.name + (voice.isLocal ? "" : " · " + tt("onlineVoice", "Online")),
                         voice.voiceId));
                 }
                 if (stored && !matching.some(voice => voice.voiceId === stored)) {
-                    options.push(new Option(`${stored} (nicht auf diesem Gerät)`, stored));
+                    options.push(new Option(tt("voiceNotOnDevice", "{voice} (not on this device)", { voice: stored }), stored));
                 }
                 select.replaceChildren(...options);
                 select.value = stored || "auto";
@@ -156,7 +186,7 @@
             }
 
             if (statusLine) {
-                statusLine.textContent = supported ? "" : unavailableText("unsupported");
+                statusLine.textContent = supported ? "" : unavailableText(tt, "unsupported");
                 statusLine.hidden = supported;
             }
         };
@@ -494,37 +524,44 @@
 
         const progressText = () =>
             plan && plan.segments.length > 1
-                ? ` · Absatz ${plan.index + 1} von ${plan.segments.length}`
+                ? " · " + tt("paragraphProgress", "Paragraph {index} of {total}", {
+                    index: plan.index + 1,
+                    total: plan.segments.length
+                })
                 : "";
 
         const render = () => {
             const active = state !== "idle";
             root.dataset.readerTts = state;
-            toggle.setAttribute("aria-pressed", active ? "true" : "false");
-            const label = state === "speaking"
-                ? "Vorlesen pausieren"
-                : active ? "Vorlesen fortsetzen" : "Vorlesen";
-            toggle.setAttribute("aria-label", label);
-            toggle.title = label;
+            for (const button of toggles) {
+                button.setAttribute("aria-pressed", active ? "true" : "false");
+                const label = state === "speaking"
+                    ? tt("pauseAria", "Pause reading aloud")
+                    : active
+                        ? tt("resumeAria", "Resume reading aloud")
+                        : tt("play", "Read aloud");
+                button.setAttribute("aria-label", label);
+                button.title = label;
+            }
             if (mobileButton) {
                 mobileButton.textContent = state === "speaking"
-                    ? "Pause"
-                    : active ? "Weiter" : "Vorlesen";
+                    ? tt("pause", "Pause")
+                    : active ? tt("resume", "Resume") : tt("play", "Read aloud");
             }
 
             window.clearTimeout(flashTimer);
             bar.hidden = !active;
             if (pauseButton) {
                 pauseButton.hidden = false;
-                pauseButton.textContent = state === "speaking" ? "Pause" : "Weiter";
+                pauseButton.textContent = state === "speaking" ? tt("pause", "Pause") : tt("resume", "Resume");
             }
-            if (stopButton) stopButton.textContent = "Stopp";
+            if (stopButton) stopButton.textContent = tt("stop", "Stop");
             if (barStatus) {
                 barStatus.textContent = state === "speaking"
-                    ? "Liest vor" + progressText()
+                    ? tt("speaking", "Reading aloud") + progressText()
                     : state === "paused"
-                        ? "Pausiert" + progressText()
-                        : state === "blocked" ? "Zum Vorlesen auf Weiter tippen" : "";
+                        ? tt("paused", "Paused") + progressText()
+                        : state === "blocked" ? tt("blocked", "Tap Resume to start reading aloud") : "";
             }
         };
 
@@ -537,7 +574,7 @@
             setState("idle");
             if (barStatus) barStatus.textContent = message;
             if (pauseButton) pauseButton.hidden = true;
-            if (stopButton) stopButton.textContent = "Schließen";
+            if (stopButton) stopButton.textContent = tt("close", "Close");
             bar.hidden = false;
             flashTimer = window.setTimeout(() => {
                 if (state === "idle") bar.hidden = true;
@@ -579,8 +616,8 @@
 
             stopPlayback();
             flash(next
-                ? "Kapitelende – automatisches Weiterlesen ist ausgeschaltet."
-                : "Ende erreicht.");
+                ? tt("chapterEnd", "End of chapter – automatic continue is off.")
+                : tt("end", "End reached."));
         };
 
         const failed = error => {
@@ -594,7 +631,7 @@
             }
             plan = null;
             clearMarks();
-            flash("Vorlesen wurde vom Gerät abgebrochen.");
+            flash(tt("failed", "The device stopped reading aloud."));
         };
 
         play = (nextPlan, index, offset, { guarded = false } = {}) => {
@@ -654,7 +691,7 @@
                 ? { mode: "selection", segments: selection, index: 0, offset: 0 }
                 : buildPlan(mode);
             if (!nextPlan || !nextPlan.segments.length) {
-                flash("Kein Text zum Vorlesen gefunden.");
+                flash(tt("noText", "No text to read aloud."));
                 return;
             }
             play(nextPlan, 0, nextPlan.segments[0].start);
@@ -708,18 +745,20 @@
             follow(range?.getBoundingClientRect(), segment.element);
         });
 
-        toggle.hidden = false;
-        toggle.addEventListener("pointerdown", captureSelection);
-        toggle.addEventListener("click", () => primary(takeSelection()));
+        for (const button of toggles) {
+            button.hidden = false;
+            button.addEventListener("pointerdown", captureSelection);
+            button.addEventListener("click", () => primary(takeSelection()));
+        }
 
-        mobileButton = api.addMobileAction("Vorlesen", () => primary(takeSelection()));
+        mobileButton = api.addMobileAction(tt("play", "Read aloud"), () => primary(takeSelection()));
         mobileButton?.addEventListener("pointerdown", captureSelection);
 
-        api.addOverflowAction("Absatz vorlesen", () => {
+        api.addOverflowAction(tt("readParagraph", "Read this paragraph"), () => {
             stopPlayback();
             start("paragraph");
         });
-        api.addOverflowAction("Seite vorlesen", () => {
+        api.addOverflowAction(tt("readPage", "Read this page"), () => {
             stopPlayback();
             start("page");
         });
