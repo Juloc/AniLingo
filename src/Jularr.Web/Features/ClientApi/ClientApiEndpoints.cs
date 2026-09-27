@@ -443,14 +443,18 @@ public static class ClientApiEndpoints
         group.MapGet("/media/{mediaFileId:guid}/availability", async (
             Guid mediaFileId,
             bool fresh,
+            bool? wake,
             MediaAvailabilityService mediaAvailability,
             CurrentAccountContext currentAccount,
             CancellationToken cancellationToken) =>
         {
+            // wake=true: the client is about to play or open the media, so sleeping storage
+            // is started; plain checks never wake it.
             var availability = await mediaAvailability.CheckMediaAsync(
                 mediaFileId,
                 force: fresh,
-                cancellationToken);
+                cancellationToken,
+                wake: wake == true);
 
             return availability is null
                 ? NotFound("media_not_found", "The requested media file does not exist.")
@@ -469,7 +473,8 @@ public static class ClientApiEndpoints
             var availability = await mediaAvailability.CheckMediaAsync(
                 mediaFileId,
                 force: false,
-                cancellationToken);
+                cancellationToken,
+                wake: true);
 
             if (availability is null)
             {
@@ -535,7 +540,8 @@ public static class ClientApiEndpoints
             var availability = await mediaAvailability.CheckEpisodeAsync(
                 episodeId,
                 force: false,
-                cancellationToken);
+                cancellationToken,
+                wake: true);
 
             if (availability is null)
             {
@@ -664,7 +670,8 @@ public static class ClientApiEndpoints
             var availability = await mediaAvailability.CheckEpisodeAsync(
                 episodeId,
                 force: false,
-                cancellationToken);
+                cancellationToken,
+                wake: true);
 
             if (availability is null)
             {

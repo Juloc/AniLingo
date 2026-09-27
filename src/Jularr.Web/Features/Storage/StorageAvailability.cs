@@ -31,6 +31,12 @@ public sealed record LibraryRootAvailabilitySnapshot(
         State is StorageAvailabilityState.Unknown
             or StorageAvailabilityState.Starting
             or StorageAvailabilityState.Offline;
+
+    public StorageHealthState Health =>
+        StorageHealth.Resolve(State, WakeConfigured, DiagnosticCode);
+
+    // Free space of the volume behind the root, measured by the last successful probe.
+    public long? FreeSpaceBytes { get; init; }
 }
 
 public sealed record MediaAvailabilitySnapshot(
@@ -43,6 +49,12 @@ public sealed record MediaAvailabilitySnapshot(
     DateTimeOffset CheckedAtUtc)
 {
     public bool IsAvailable => State == StorageAvailabilityState.Available;
+
+    // The root's diagnostic code (for example a failed start attempt).
+    public string? DiagnosticCode { get; init; }
+
+    public StorageHealthState Health =>
+        StorageHealth.Resolve(State, WakeConfigured, DiagnosticCode);
 }
 
 public sealed record WakeOnLanResult(
@@ -77,7 +89,7 @@ public sealed class StorageAvailabilityCoordinator
     private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan OnlineCache = TimeSpan.FromSeconds(8);
     private static readonly TimeSpan OfflineCache = TimeSpan.FromSeconds(2);
-    private static readonly TimeSpan WakeStartingWindow = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan DefaultWakeStartingWindow = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan WakeDebounce = TimeSpan.FromSeconds(10);
 
     private readonly ConcurrentDictionary<Guid, RootRuntimeState> roots = new();
@@ -130,7 +142,7 @@ public sealed class StorageAvailabilityCoordinator
                     now,
                     runtime.LastAvailableAtUtc,
                     wakeConfigured,
-                    "probe_timeout");
+                    runtime.StartFailureCode ?? "probe_timeout");
 
                 runtime.Last = timedOut;
                 runtime.CacheUntilUtc = now + OfflineCache;
@@ -143,14 +155,22 @@ public sealed class StorageAvailabilityCoordinator
             now = DateTimeOffset.UtcNow;
             var state = result.State;
 
+            var diagnosticCode = result.DiagnosticCode;
             if (state == StorageAvailabilityState.Available)
             {
                 runtime.LastAvailableAtUtc = now;
                 runtime.StartingUntilUtc = null;
+                runtime.LastWakeAtUtc = null;
+                runtime.StartFailureCode = null;
             }
             else if (runtime.StartingUntilUtc is { } startingUntil && startingUntil > now)
             {
                 state = StorageAvailabilityState.Starting;
+            }
+            else if (runtime.StartFailureCode is { } failure)
+            {
+                // A failed start is the actual problem until the storage is readable again.
+                diagnosticCode = failure;
             }
 
             var snapshot = new LibraryRootAvailabilitySnapshot(
@@ -159,7 +179,10 @@ public sealed class StorageAvailabilityCoordinator
                 now,
                 runtime.LastAvailableAtUtc,
                 wakeConfigured,
-                result.DiagnosticCode);
+                diagnosticCode)
+            {
+                FreeSpaceBytes = result.FreeSpaceBytes
+            };
 
             runtime.Last = snapshot;
             runtime.CacheUntilUtc = now +
@@ -169,7 +192,9 @@ public sealed class StorageAvailabilityCoordinator
         }
     }
 
-    public bool TryMarkWakeStarting(Guid rootId)
+    // Marks the root as starting; false when a wake packet was sent moments ago (the caller
+    // then waits for that one instead of sending another).
+    public bool TryMarkWakeStarting(Guid rootId, TimeSpan? startingWindow = null)
     {
         var runtime = roots.GetOrAdd(rootId, _ => new RootRuntimeState());
         var now = DateTimeOffset.UtcNow;
@@ -183,15 +208,21 @@ public sealed class StorageAvailabilityCoordinator
             }
 
             runtime.LastWakeAtUtc = now;
-            runtime.StartingUntilUtc = now + WakeStartingWindow;
+            runtime.StartingUntilUtc = now + (startingWindow ?? DefaultWakeStartingWindow);
+            runtime.StartFailureCode = null;
             runtime.CacheUntilUtc = DateTimeOffset.MinValue;
             return true;
         }
     }
 
-    public void MarkWakeFailed(Guid rootId)
+    // Ends the starting state. With a failure code (see StorageDiagnosticCodes) the root
+    // reports that error until it is readable again or a new start attempt begins.
+    public void MarkWakeFailed(Guid rootId, string? failureCode = null)
     {
-        if (!roots.TryGetValue(rootId, out var runtime))
+        var runtime = failureCode is null
+            ? roots.GetValueOrDefault(rootId)
+            : roots.GetOrAdd(rootId, _ => new RootRuntimeState());
+        if (runtime is null)
         {
             return;
         }
@@ -200,6 +231,7 @@ public sealed class StorageAvailabilityCoordinator
         {
             runtime.StartingUntilUtc = null;
             runtime.LastWakeAtUtc = null;
+            runtime.StartFailureCode = failureCode;
             runtime.CacheUntilUtc = DateTimeOffset.MinValue;
         }
     }
@@ -213,16 +245,29 @@ public sealed class StorageAvailabilityCoordinator
 
         lock (runtime.Gate)
         {
-            if (runtime.Last is null)
+            var now = DateTimeOffset.UtcNow;
+            var last = runtime.Last;
+            if (last is null)
             {
-                return null;
+                // Starting before the first probe finished.
+                if (runtime.StartingUntilUtc is not { } startingUntil || startingUntil <= now)
+                {
+                    return null;
+                }
+
+                last = new LibraryRootAvailabilitySnapshot(
+                    rootId,
+                    StorageAvailabilityState.Starting,
+                    now,
+                    runtime.LastAvailableAtUtc,
+                    wakeConfigured);
             }
 
             return DecorateStarting(
                 runtime,
-                runtime.Last,
+                last,
                 wakeConfigured,
-                DateTimeOffset.UtcNow);
+                now);
         }
     }
 
@@ -240,6 +285,22 @@ public sealed class StorageAvailabilityCoordinator
             {
                 State = StorageAvailabilityState.Starting,
                 WakeConfigured = wakeConfigured
+            };
+        }
+
+        if (snapshot.State == StorageAvailabilityState.Starting)
+        {
+            // The start window passed since this snapshot was taken.
+            snapshot = snapshot with { State = StorageAvailabilityState.Offline };
+        }
+
+        if (snapshot.State != StorageAvailabilityState.Available &&
+            runtime.StartFailureCode is { } failure)
+        {
+            return snapshot with
+            {
+                WakeConfigured = wakeConfigured,
+                DiagnosticCode = failure
             };
         }
 
@@ -274,7 +335,8 @@ public sealed class StorageAvailabilityCoordinator
 
             return new RootProbeResult(
                 StorageAvailabilityState.Available,
-                hasEntries ? null : "root_empty");
+                hasEntries ? null : "root_empty",
+                TryGetFreeSpace(fullPath));
         }
         catch (UnauthorizedAccessException)
         {
@@ -297,9 +359,28 @@ public sealed class StorageAvailabilityCoordinator
         }
     }
 
+    // Unix reports the volume of any path; Windows only of a drive root (UNC shares: none).
+    private static long? TryGetFreeSpace(string fullPath)
+    {
+        try
+        {
+            var drive = new DriveInfo(
+                OperatingSystem.IsWindows()
+                    ? Path.GetPathRoot(fullPath) ?? fullPath
+                    : fullPath);
+            return drive.IsReady ? drive.AvailableFreeSpace : null;
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            return null;
+        }
+    }
+
     private sealed record RootProbeResult(
         StorageAvailabilityState State,
-        string? DiagnosticCode);
+        string? DiagnosticCode,
+        long? FreeSpaceBytes = null);
 
     private sealed class RootRuntimeState
     {
@@ -310,16 +391,90 @@ public sealed class StorageAvailabilityCoordinator
         public DateTimeOffset? LastAvailableAtUtc { get; set; }
         public DateTimeOffset? StartingUntilUtc { get; set; }
         public DateTimeOffset? LastWakeAtUtc { get; set; }
+        public string? StartFailureCode { get; set; }
     }
 }
 
+// CheckAsync only observes storage and never wakes it: browsing, cached artwork, metadata
+// pages, health polling and background maintenance use it. RequireAsync is for work that
+// needs the media now (play, open, download-dependent import) and may start a sleeping NAS.
 public sealed class LibraryRootAvailabilityService(
     AppDbContext db,
-    StorageAvailabilityCoordinator coordinator)
+    StorageAvailabilityCoordinator coordinator,
+    StorageWakeCoordinator? wake = null)
 {
     public async Task<LibraryRootAvailabilitySnapshot?> CheckAsync(
         Guid rootId,
         bool force,
+        CancellationToken cancellationToken)
+    {
+        var root = await LoadAsync(rootId, cancellationToken);
+        return root is null
+            ? null
+            : await coordinator.ProbeAsync(
+                root.Id,
+                root.Path,
+                root.WakeConfigured,
+                force,
+                cancellationToken,
+                root.ExpectedNonEmpty);
+    }
+
+    // Returns the root's state for a media-dependent operation. A readable root is returned as
+    // is; a Wake-on-LAN root that is not readable is woken through the shared start attempt of
+    // StorageWakeCoordinator (concurrent callers join one attempt). With waitForStart the call
+    // returns once the storage is online or the bounded start attempt gave up; otherwise it
+    // returns the Starting state at once and the caller polls.
+    public async Task<LibraryRootAvailabilitySnapshot?> RequireAsync(
+        Guid rootId,
+        bool waitForStart,
+        CancellationToken cancellationToken)
+    {
+        var root = await LoadAsync(rootId, cancellationToken);
+        if (root is null)
+        {
+            return null;
+        }
+
+        // A cached "online" is trusted (every range request of a stream lands here); a cached
+        // "offline" is re-checked because the storage may have come back meanwhile.
+        var current = await coordinator.ProbeAsync(
+            root.Id,
+            root.Path,
+            root.WakeConfigured,
+            force: false,
+            cancellationToken,
+            root.ExpectedNonEmpty);
+        if (!current.IsAvailable && current.State != StorageAvailabilityState.Starting)
+        {
+            current = await coordinator.ProbeAsync(
+                root.Id,
+                root.Path,
+                root.WakeConfigured,
+                force: true,
+                cancellationToken,
+                root.ExpectedNonEmpty);
+        }
+
+        if (current.IsAvailable ||
+            current.State == StorageAvailabilityState.Unreachable ||
+            wake is null ||
+            root.WakeTarget is not { } target)
+        {
+            return current;
+        }
+
+        var attempt = wake.StartAsync(target);
+        if (waitForStart)
+        {
+            return await attempt.WaitAsync(cancellationToken);
+        }
+
+        return coordinator.GetCached(root.Id, root.WakeConfigured) ?? current;
+    }
+
+    private async Task<RootAccess?> LoadAsync(
+        Guid rootId,
         CancellationToken cancellationToken)
     {
         var root = await db.LibraryRoots
@@ -330,7 +485,8 @@ public sealed class LibraryRootAvailabilityService(
                 x.Id,
                 x.Path,
                 x.WakeOnLanEnabled,
-                x.WakeMacAddress
+                x.WakeMacAddress,
+                x.WakeBroadcastAddress
             })
             .SingleOrDefaultAsync(cancellationToken);
 
@@ -339,11 +495,12 @@ public sealed class LibraryRootAvailabilityService(
             return null;
         }
 
+        string? mac = null;
         var wakeConfigured =
             root.WakeOnLanEnabled &&
             WakeOnLanService.TryNormalizeMacAddress(
                 root.WakeMacAddress,
-                out _);
+                out mac);
 
         var expectedNonEmpty = await db.MediaFiles
             .AsNoTracking()
@@ -351,14 +508,22 @@ public sealed class LibraryRootAvailabilityService(
                 x => x.LibraryRootId == root.Id,
                 cancellationToken);
 
-        return await coordinator.ProbeAsync(
-            root.Id,
-            root.Path,
-            wakeConfigured,
-            force,
-            cancellationToken,
-            expectedNonEmpty);
+        var target = wakeConfigured &&
+            WakeOnLanService.TryResolveBroadcastAddress(
+                root.WakeBroadcastAddress,
+                out var broadcast)
+            ? new StorageWakeTarget(root.Id, root.Path, mac!, broadcast!, expectedNonEmpty)
+            : null;
+
+        return new RootAccess(root.Id, root.Path, wakeConfigured, expectedNonEmpty, target);
     }
+
+    private sealed record RootAccess(
+        Guid Id,
+        string Path,
+        bool WakeConfigured,
+        bool ExpectedNonEmpty,
+        StorageWakeTarget? WakeTarget);
 
     public LibraryRootAvailabilitySnapshot? GetCached(
         LibraryRoot root) =>
@@ -374,10 +539,13 @@ public sealed class MediaAvailabilityService(
     AppDbContext db,
     LibraryRootAvailabilityService roots)
 {
+    // wake: the caller needs the media now (play, open, download), so a sleeping
+    // Wake-on-LAN root is started; the result is Starting until it is readable.
     public async Task<MediaAvailabilitySnapshot?> CheckMediaAsync(
         Guid mediaFileId,
         bool force,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool wake = false)
     {
         var media = await db.MediaFiles
             .AsNoTracking()
@@ -395,10 +563,15 @@ public sealed class MediaAvailabilityService(
             return null;
         }
 
-        var root = await roots.CheckAsync(
-            media.LibraryRootId,
-            force,
-            cancellationToken);
+        var root = wake
+            ? await roots.RequireAsync(
+                media.LibraryRootId,
+                waitForStart: false,
+                cancellationToken)
+            : await roots.CheckAsync(
+                media.LibraryRootId,
+                force,
+                cancellationToken);
 
         if (root is null)
         {
@@ -421,7 +594,10 @@ public sealed class MediaAvailabilityService(
                 root.IsRetryable,
                 root.State == StorageAvailabilityState.Starting ? 1000 : 2000,
                 root.WakeConfigured,
-                root.CheckedAtUtc);
+                root.CheckedAtUtc)
+            {
+                DiagnosticCode = root.DiagnosticCode
+            };
         }
 
         var exists = false;
@@ -448,7 +624,8 @@ public sealed class MediaAvailabilityService(
     public async Task<MediaAvailabilitySnapshot?> CheckEpisodeAsync(
         Guid episodeId,
         bool force,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool wake = false)
     {
         var mediaFileId = await db.MediaFiles
             .AsNoTracking()
@@ -462,15 +639,17 @@ public sealed class MediaAvailabilityService(
             : await CheckMediaAsync(
                 mediaFileId.Value,
                 force,
-                cancellationToken);
+                cancellationToken,
+                wake);
     }
 }
 
+// The owner's explicit "Wake NAS" action. It joins the same coalesced start attempt as
+// on-demand wakes from playback, so it never sends a second packet beside one.
 public sealed class WakeOnLanService(
     AppDbContext db,
-    StorageAvailabilityCoordinator coordinator,
     LibraryRootAvailabilityService availability,
-    ILogger<WakeOnLanService> logger)
+    StorageWakeCoordinator wake)
 {
     public async Task<WakeOnLanResult> WakeAsync(
         Guid rootId,
@@ -490,7 +669,7 @@ public sealed class WakeOnLanService(
         }
 
         if (!root.WakeOnLanEnabled ||
-            !TryNormalizeMacAddress(root.WakeMacAddress, out var mac))
+            !TryNormalizeMacAddress(root.WakeMacAddress, out _))
         {
             return new WakeOnLanResult(
                 false,
@@ -501,7 +680,7 @@ public sealed class WakeOnLanService(
 
         if (!TryResolveBroadcastAddress(
                 root.WakeBroadcastAddress,
-                out var broadcast))
+                out _))
         {
             return new WakeOnLanResult(
                 false,
@@ -510,57 +689,36 @@ public sealed class WakeOnLanService(
                 await availability.CheckAsync(rootId, false, cancellationToken));
         }
 
-        if (!coordinator.TryMarkWakeStarting(rootId))
+        var alreadyStarting = wake.IsStarting(rootId);
+        var current = await availability.RequireAsync(
+            rootId,
+            waitForStart: false,
+            cancellationToken);
+
+        if (current is { IsAvailable: true })
         {
             return new WakeOnLanResult(
                 true,
-                true,
-                "Wake-on-LAN was already requested recently.",
-                await availability.CheckAsync(rootId, false, cancellationToken));
+                false,
+                "Media storage is already online.",
+                current);
         }
 
-        var packet = BuildMagicPacket(mac!);
-
-        try
+        if (current is { DiagnosticCode: StorageDiagnosticCodes.WakeSendFailed })
         {
-            using var udp = new UdpClient(AddressFamily.InterNetwork)
-            {
-                EnableBroadcast = true
-            };
-
-            await udp.SendAsync(
-                packet,
-                packet.Length,
-                new IPEndPoint(broadcast!, 9));
-        }
-        catch (SocketException exception)
-        {
-            coordinator.MarkWakeFailed(rootId);
-            logger.LogWarning(
-                exception,
-                "Wake-on-LAN packet could not be sent for library root {RootId}.",
-                rootId);
-
             return new WakeOnLanResult(
                 false,
                 false,
                 "Wake-on-LAN could not be sent from the Jularr container. Check the configured LAN broadcast address and Docker networking.",
-                await availability.CheckAsync(rootId, true, cancellationToken));
+                current);
         }
-
-        logger.LogInformation(
-            "Wake-on-LAN packet sent for library root {RootId}.",
-            rootId);
-
-        var current = await availability.CheckAsync(
-            rootId,
-            true,
-            cancellationToken);
 
         return new WakeOnLanResult(
             true,
-            false,
-            "Wake-on-LAN sent. Waiting for media storage.",
+            alreadyStarting,
+            alreadyStarting
+                ? "Wake-on-LAN was already requested recently."
+                : "Wake-on-LAN sent. Waiting for media storage.",
             current);
     }
 

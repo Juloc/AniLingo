@@ -45,7 +45,8 @@ public static class ClientApiOfflineEndpoints
             var availability = await mediaAvailability.CheckMediaAsync(
                 mediaFileId,
                 force: false,
-                cancellationToken);
+                cancellationToken,
+                wake: true);
 
             if (availability is null)
             {
