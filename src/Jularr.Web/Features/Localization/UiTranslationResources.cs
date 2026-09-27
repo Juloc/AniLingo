@@ -2039,6 +2039,7 @@ public static class UiTranslationResources
         M("requests.status.approved", "Approved", "Requests", "Status", "Request approved; waiting for acquisition or the owner.", "compact status", 14),
         M("requests.status.searching", "Searching", "Requests", "Status", "Acquisition is searching for a release.", "compact status", 14),
         M("requests.status.downloading", "Downloading", "Requests", "Status", "Acquisition is downloading the title.", "compact status", 16),
+        M("requests.status.importing", "Importing", "Requests", "Status", "The download is complete and Jularr is importing it into the library.", "compact status", 16, null, ["Jularr"]),
         M("requests.status.completed", "Available", "Requests", "Status", "The requested title is in the library.", "compact status", 14),
         M("requests.status.rejected", "Rejected", "Requests", "Status", "The owner rejected or the requester withdrew the request.", "compact status", 14),
         M("requests.status.failed", "Failed", "Requests", "Status", "Acquisition failed; the owner can retry.", "compact status", 14),
