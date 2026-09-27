@@ -123,10 +123,9 @@ public sealed class BookCatalogServiceTests
                 books[0].Subjects.Contains(
                     "Fantasy",
                     StringComparer.OrdinalIgnoreCase));
-            Assert.IsTrue(
-                books[0].CoverImageUrl?.StartsWith(
-                    "https://",
-                    StringComparison.OrdinalIgnoreCase));
+            Assert.AreEqual(
+                "https://books.google.com/cover.jpg",
+                books[0].CoverImageUrl);
             Assert.IsFalse(books[0].CanAcquire);
         }
         finally
@@ -356,7 +355,7 @@ public sealed class BookCatalogServiceTests
     }
 
     [TestMethod]
-    public async Task EmptySearchReturnsPopularGutenbergBooks()
+    public async Task EmptySearchReturnsOpenLibraryDailyTrending()
     {
         var path = TempDatabasePath();
 
@@ -366,26 +365,24 @@ public sealed class BookCatalogServiceTests
 
             using var client = new HttpClient(new DelegateHttpMessageHandler(request =>
             {
-                Assert.AreEqual("gutendex.com", request.RequestUri?.Host);
+                Assert.AreEqual("openlibrary.org", request.RequestUri?.Host);
                 StringAssert.Contains(
-                    request.RequestUri?.Query ?? "",
-                    "sort=popular");
+                    request.RequestUri?.AbsolutePath ?? "",
+                    "/trending/daily.json");
 
                 return JsonResponse("""
                     {
-                      "count": 1,
-                      "results": [
+                      "works": [
                         {
-                          "id": 2701,
-                          "title": "Moby Dick; Or, The Whale",
-                          "subjects": ["Sea stories"],
-                          "authors": [{"name": "Melville, Herman"}],
-                          "summaries": ["A whaling voyage."],
-                          "formats": {
-                            "application/epub+zip": "https://www.gutenberg.org/ebooks/2701.epub3.images",
-                            "image/jpeg": "https://www.gutenberg.org/cache/epub/2701/pg2701.cover.medium.jpg"
-                          },
-                          "download_count": 12345
+                          "key": "/works/OL45804W",
+                          "title": "Dune",
+                          "author_name": ["Frank Herbert"],
+                          "cover_i": 15194431,
+                          "first_publish_year": 1965,
+                          "subject": ["Science fiction"],
+                          "isbn": ["9780593099322"],
+                          "publisher": ["Ace"],
+                          "publish_date": ["2019"]
                         }
                       ]
                     }
@@ -401,8 +398,10 @@ public sealed class BookCatalogServiceTests
                 CancellationToken.None);
 
             Assert.AreEqual(1, books.Count);
-            Assert.AreEqual("2701", books[0].Id);
-            Assert.IsTrue(books[0].CanAcquire);
+            Assert.AreEqual("ol-OL45804W", books[0].Id);
+            Assert.AreEqual("Dune", books[0].Title);
+            Assert.AreEqual("Frank Herbert", books[0].Author);
+            Assert.IsFalse(books[0].CanAcquire);
         }
         finally
         {
@@ -625,6 +624,101 @@ public sealed class BookCatalogServiceTests
         {
             SqliteConnection.ClearAllPools();
             File.Delete(path);
+        }
+    }
+
+    [TestMethod]
+    public async Task UploadedEpubCachesCurrentGoogleEditionCoverLocally()
+    {
+        var path = TempDatabasePath();
+        var covers = Path.Combine(
+            Path.GetTempPath(),
+            "jularr-book-covers-" + Guid.NewGuid().ToString("N"));
+
+        try
+        {
+            await using var db = await CreateDatabaseAsync(path);
+            using var client = new HttpClient(new DelegateHttpMessageHandler(request =>
+            {
+                var uri = request.RequestUri
+                    ?? throw new AssertFailedException("Missing request URI.");
+
+                if (uri.Host == "www.googleapis.com")
+                {
+                    StringAssert.Contains(
+                        Uri.UnescapeDataString(uri.Query),
+                        "isbn:9780306406157");
+
+                    return JsonResponse("""
+                        {
+                          "items": [
+                            {
+                              "id": "current-edition",
+                              "volumeInfo": {
+                                "title": "Test Book",
+                                "authors": ["Test Author"],
+                                "publisher": "Modern Publisher",
+                                "publishedDate": "2026",
+                                "industryIdentifiers": [
+                                  {"type": "ISBN_13", "identifier": "9780306406157"}
+                                ],
+                                "imageLinks": {
+                                  "extraLarge": "https://books.google.com/current-cover.png"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                        """);
+                }
+
+                if (uri.Host == "books.google.com")
+                {
+                    return ImageResponse(
+                        Convert.FromBase64String(
+                            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="),
+                        "image/png");
+                }
+
+                throw new AssertFailedException(
+                    $"Unexpected request: {uri}");
+            }))
+            {
+                BaseAddress = new Uri("https://gutendex.com/")
+            };
+
+            var service = NewService(
+                db,
+                client,
+                configuration: new Dictionary<string, string?>
+                {
+                    ["Books:CoversPath"] = covers
+                });
+
+            await using var epub = BuildTestEpub();
+            var workId = await service.ImportUploadedEpubAsync(
+                epub,
+                "test.epub",
+                CancellationToken.None);
+
+            var work = await db.NovelWorks
+                .AsNoTracking()
+                .SingleAsync(x => x.Id == workId);
+
+            Assert.AreEqual(
+                $"/Books/Cover/{workId}",
+                work.CoverImageUrl);
+            Assert.IsNotNull(service.GetLocalCoverPath(workId));
+            Assert.IsTrue(File.Exists(service.GetLocalCoverPath(workId)!));
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            File.Delete(path);
+            if (Directory.Exists(covers))
+            {
+                Directory.Delete(covers, recursive: true);
+            }
         }
     }
 
@@ -1040,6 +1134,19 @@ public sealed class BookCatalogServiceTests
                 Encoding.UTF8,
                 "application/json")
         };
+
+    private static HttpResponseMessage ImageResponse(
+        byte[] bytes,
+        string mediaType)
+    {
+        var content = new ByteArrayContent(bytes);
+        content.Headers.ContentType =
+            new System.Net.Http.Headers.MediaTypeHeaderValue(mediaType);
+        return new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = content
+        };
+    }
 
     private static string TempDatabasePath() =>
         Path.Combine(
