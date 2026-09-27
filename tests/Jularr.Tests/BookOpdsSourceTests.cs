@@ -181,6 +181,12 @@ public sealed class BookOpdsSourceTests
                             epub.ToArray());
                     }
 
+                    // The imported EPUB has no cover: Jularr asks Google Books for one.
+                    if (uri.Host == "www.googleapis.com")
+                    {
+                        throw new HttpRequestException("Metadata providers are offline in tests.");
+                    }
+
                     throw new AssertFailedException(
                         $"Unexpected request: {uri}");
                 }))

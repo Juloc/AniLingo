@@ -1,3 +1,4 @@
+using System.Net;
 using System.IO.Compression;
 using System.Security.Claims;
 using System.Text;
@@ -96,7 +97,7 @@ public sealed class BookPdfAcquisitionTests
         Assert.AreEqual($"/Books/Library/{work.Id}", stored.ResultUrl);
         Assert.AreEqual("PDF:en", work.Format);
         Assert.AreEqual("Atomic Habits", work.Title, "A PDF is named after the requested book.");
-        Assert.AreEqual("https://covers.example/atomic-habits.jpg", work.CoverImageUrl, "The requested cover wins over page 1.");
+        Assert.AreEqual($"/Books/Cover/{work.Id}", work.CoverImageUrl, "Requested artwork is cached locally.");
         Assert.AreEqual(CatalogId, work.MetadataExternalId, "The work is linked to the requested catalog entry.");
 
         var file = await environment.Db.BookFiles.AsNoTracking().SingleAsync();
@@ -281,6 +282,61 @@ public sealed class BookPdfAcquisitionTests
         await books.DeleteImportedBookAsync(workId, CancellationToken.None);
         Assert.IsFalse(File.Exists(file.Path), "Removing the book removes Jularr's copy of the PDF.");
         Assert.IsNull(books.GetLocalCoverPath(workId));
+    }
+
+    [TestMethod]
+    public async Task PdfTitleDropsLibraryLabelsAndTakesTheRequestedCatalogTitle()
+    {
+        Assert.AreEqual("Pride and Prejudice", BookCatalogService.UsablePdfTitle("The Project Gutenberg eBook #1342: Pride and Prejudice"));
+        Assert.AreEqual("Emma", BookCatalogService.UsablePdfTitle("The Project Gutenberg EBook of Emma, by Jane Austen"));
+        Assert.AreEqual("Deep Work", BookCatalogService.UsablePdfTitle("Deep Work"));
+        Assert.IsNull(BookCatalogService.UsablePdfTitle("Microsoft Word - draft.docx"));
+
+        await using var environment = await BookAcquisitionEnvironment.CreateAsync();
+        var source = Path.Combine(environment.Root, "pg33283.pdf");
+        await File.WriteAllBytesAsync(source, TestPdf(pages: 2, title: "The Project Gutenberg eBook #33283: A Tale of Two Cities, by Charles Dickens"));
+        var workId = await environment.Books.ImportPdfFileAsync(source, "pg33283.pdf", "inbox", hint: null, CancellationToken.None);
+        Assert.AreEqual("A Tale of Two Cities", (await environment.Db.NovelWorks.AsNoTracking().SingleAsync()).Title);
+
+        // The inbox import is then linked to the request it answers: the catalog names the book.
+        await environment.Books.LinkRequestedWorkAsync(
+            workId,
+            new BookImportHint("ol-OL118421W", "A Tale of Two Cities: A Story of the French Revolution", "Charles Dickens", "https://covers.openlibrary.org/b/id/12345-L.jpg?default=false"),
+            CancellationToken.None);
+        var linked = await environment.Db.NovelWorks.AsNoTracking().SingleAsync();
+        Assert.AreEqual("A Tale of Two Cities: A Story of the French Revolution", linked.Title);
+        Assert.AreEqual(linked.Title, linked.MetadataTitle);
+        Assert.AreEqual("ol-OL118421W", linked.MetadataExternalId);
+        Assert.AreEqual($"/Books/Cover/{workId}", linked.CoverImageUrl, "Open Library artwork served by the Internet Archive is cached locally.");
+
+        // A cover URL that ends up outside the cover providers is not stored.
+        var other = Path.Combine(environment.Root, "other.pdf");
+        await File.WriteAllBytesAsync(other, TestPdf(pages: 1, title: "Another Book"));
+        var otherId = await environment.Books.ImportPdfFileAsync(other, "other.pdf", "inbox", hint: null, CancellationToken.None);
+        await environment.Books.LinkRequestedWorkAsync(
+            otherId,
+            new BookImportHint("ol-OTHER", "Another Book", null, "https://covers.openlibrary.org/b/id/666-L.jpg?default=false"),
+            CancellationToken.None);
+        Assert.IsNull((await environment.Db.NovelWorks.AsNoTracking().SingleAsync(x => x.Id == otherId)).CoverImageUrl);
+        Assert.IsNull(environment.Books.GetLocalCoverPath(otherId));
+    }
+
+    [TestMethod]
+    public void PdfPagesAreListedAsAboutADozenRoundRanges()
+    {
+        static IReadOnlyList<BookChapterItem> Pages(int count, int translated) =>
+            Enumerable.Range(1, count).Select(page => new BookChapterItem(Guid.NewGuid(), page, $"Page {page}", page <= translated)).ToArray();
+
+        var book = Pages(312, translated: 45);
+        var ranges = BookPageRange.Group(book);
+        Assert.AreEqual(11, ranges.Count, "312 pages in ranges of 30.");
+        Assert.AreEqual((1, 30, 30, 30), (ranges[0].FirstPage, ranges[0].LastPage, ranges[0].PageCount, ranges[0].TranslatedCount));
+        Assert.AreEqual((31, 60, 15), (ranges[1].FirstPage, ranges[1].LastPage, ranges[1].TranslatedCount));
+        Assert.AreEqual((301, 312), (ranges[^1].FirstPage, ranges[^1].LastPage));
+        Assert.AreEqual(book[0].Id, ranges[0].FirstChapterId, "A range opens at its first page.");
+
+        CollectionAssert.AreEqual(new[] { 1, 11 }, BookPageRange.Group(Pages(12, 0)).Select(range => range.FirstPage).ToArray(), "Short PDFs use ranges of ten.");
+        Assert.AreEqual(0, BookPageRange.Group([]).Count);
     }
 
     [TestMethod]
@@ -580,7 +636,7 @@ public sealed class BookPdfAcquisitionTests
                     CatalogId,
                     "Atomic Habits",
                     "James Clear",
-                    "https://covers.example/atomic-habits.jpg",
+                    "https://books.google.com/atomic-habits.jpg",
                     System.Text.Json.JsonSerializer.Serialize(
                         new BookRequestPayload(CatalogId, "Atomic Habits", "James Clear"),
                         System.Text.Json.JsonSerializerOptions.Web)),
@@ -591,7 +647,7 @@ public sealed class BookPdfAcquisitionTests
 
         public async Task<BookAddState> AddStateAsync() =>
             (await new BookAddStateQuery(Db, services.GetRequiredService<AcquisitionAccessStore>())
-                .GetAsync([(CatalogId, null)], CancellationToken.None))[CatalogId];
+                .GetAsync([new BookAddLookup(CatalogId)], CancellationToken.None))[CatalogId];
 
         /// <summary>The job folder as Jularr sees it (under the mapped mount).</summary>
         public string CompletedFolder(string job) =>
@@ -645,9 +701,36 @@ public sealed class BookPdfAcquisitionTests
             Task.FromResult(sourceText);
     }
 
+    /// <summary>
+    /// No metadata network; cover hosts answer with a picture. Open Library covers redirect
+    /// (as the real service does) to the Internet Archive, cover 666 to a host that is not a
+    /// cover provider.
+    /// </summary>
     private sealed class UnreachableHandler : HttpMessageHandler
     {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            var uri = request.RequestUri!;
+            if (uri.Host is "books.google.com" or "covers.openlibrary.org")
+            {
+                var content = new ByteArrayContent(
+                    [0xFF, 0xD8, 0xFF, 0xE0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xD9]);
+                content.Headers.ContentType =
+                    new System.Net.Http.Headers.MediaTypeHeaderValue("image/jpeg");
+                var final = uri.Host != "covers.openlibrary.org" ? uri
+                    : uri.AbsolutePath.Contains("/666-", StringComparison.Ordinal) ? new Uri("https://intranet.example/cover.jpg")
+                    : new Uri("https://ia800500.us.archive.org/view_archive.php?file=12345-L.jpg");
+                return Task.FromResult(
+                    new HttpResponseMessage(HttpStatusCode.OK)
+                    {
+                        Content = content,
+                        RequestMessage = new HttpRequestMessage(HttpMethod.Get, final)
+                    });
+            }
+
             throw new HttpRequestException("No network in tests.");
+        }
     }
 }
