@@ -915,7 +915,7 @@
     .books-shelf[data-view="list"] .book-tile-copy { grid-template-columns: 1fr; gap: 2px; }
     .books-add-dialog {
         width: 100vw; max-width: none; height: 100dvh; max-height: 100dvh; margin: 0;
-        border-width: 0; border-radius: 0;
+        border-width: 0; border-radius: 0; overflow-y: auto;
     }
     .books-add-header { padding: 16px 16px 12px; }
     .books-add-search { position: sticky; top: 72px; z-index: 1; padding: 12px 16px; background: var(--surface); }
