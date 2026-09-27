@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Web.Features.ChapterArtwork;
 
-/// <summary>Persistence of chapter artwork metadata and settings (tables from migration 20260927150000).</summary>
+/// <summary>Persistence of chapter artwork metadata and settings (tables from migration 20260927200000).</summary>
 public sealed class ChapterArtworkStore(AppDbContext db)
 {
     private const string Columns =

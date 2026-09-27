@@ -520,10 +520,15 @@ public sealed class ChapterArtworkService(
         string profileId,
         CancellationToken cancellationToken)
     {
-        var availability = await GetAvailabilityAsync(profileId, workId, cancellationToken);
-        return availability.CanView
-            ? await store.GetAcceptedAsync(workId, chapterNumber, cancellationToken)
-            : null;
+        // Viewing needs no AI provider or reachable storage (derivatives are cached locally).
+        if (!globalSettings.Load().Enabled
+            || !(await store.GetPreferencesAsync(profileId, cancellationToken)).Enabled
+            || (await store.GetWorkSettingsAsync(workId, cancellationToken)).Enabled == false)
+        {
+            return null;
+        }
+
+        return await store.GetAcceptedAsync(workId, chapterNumber, cancellationToken);
     }
 
     public async Task<ChapterArtworkImageFile?> OpenImageAsync(

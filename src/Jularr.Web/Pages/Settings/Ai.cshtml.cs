@@ -1,7 +1,6 @@
 using Jularr.Web.Data;
 using Jularr.Web.Features.Ai;
 using Jularr.Web.Features.Auth;
-using Jularr.Web.Features.ChapterArtwork;
 using Jularr.Web.Features.Localization;
 using Jularr.Web.Infrastructure.Ai;
 using Microsoft.AspNetCore.Mvc;
@@ -14,13 +13,8 @@ public sealed class AiModel(
     CurrentAccountContext currentAccount,
     AiProfileSettingsStore settingsStore,
     ProfileAiProviderRouter providerRouter,
-    AiUsageTracker usageTracker,
-    ChapterArtworkStore artworkStore,
-    ChapterArtworkGlobalSettingsStore artworkGlobal) : PageModel
+    AiUsageTracker usageTracker) : PageModel
 {
-    public ChapterArtworkPreferences Artwork { get; private set; } = ChapterArtworkPreferences.Default;
-    public ChapterArtworkGlobalSettings ArtworkGlobal { get; private set; } = ChapterArtworkGlobalSettings.Default;
-
     [BindProperty]
     public string? ImageModel { get; set; }
 
@@ -151,50 +145,5 @@ public sealed class AiModel(
             currentAccount.ProfileId,
             cancellationToken);
         Usage = usageTracker.GetSnapshot(currentAccount.ProfileId);
-        Artwork = await artworkStore.GetPreferencesAsync(currentAccount.ProfileId, cancellationToken);
-        ArtworkGlobal = artworkGlobal.Load();
-    }
-
-    public async Task<IActionResult> OnPostArtworkAsync(
-        bool enabled,
-        bool autoGenerate,
-        string? style,
-        string? quality,
-        int variations,
-        bool globalEnabled,
-        string? storageRoot,
-        CancellationToken cancellationToken)
-    {
-        var current = await artworkStore.GetPreferencesAsync(currentAccount.ProfileId, cancellationToken);
-
-        // Generation choices write to shared media storage and stay owner-only.
-        var preferences = currentAccount.IsOwner
-            ? new ChapterArtworkPreferences(
-                enabled,
-                autoGenerate,
-                ChapterArtworkNames.ParseStyle(style),
-                ChapterArtworkNames.ParseQuality(quality),
-                Math.Clamp(variations, 1, ChapterArtworkPreferences.MaxVariations))
-            : current with { Enabled = enabled };
-
-        await artworkStore.SavePreferencesAsync(currentAccount.ProfileId, preferences, cancellationToken);
-
-        if (currentAccount.IsOwner)
-        {
-            try
-            {
-                await artworkGlobal.SaveAsync(
-                    new ChapterArtworkGlobalSettings(globalEnabled, storageRoot),
-                    cancellationToken);
-            }
-            catch (InvalidOperationException exception)
-            {
-                TempData["Status"] = exception.Message;
-                return RedirectToPage();
-            }
-        }
-
-        TempData["Status"] = "AI settings updated.";
-        return RedirectToPage();
     }
 }
