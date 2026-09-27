@@ -106,6 +106,15 @@ public sealed class WatchlistStore(AppDbContext db)
                 while (await reader.ReadAsync(cancellationToken))
                 {
                     var item = ReadItem(reader, isExplicit: true);
+                    if (items.TryGetValue(item.Identity.Key, out var inherited))
+                    {
+                        item = item with
+                        {
+                            FranchiseId = inherited.FranchiseId,
+                            FranchiseTitle = inherited.FranchiseTitle
+                        };
+                    }
+
                     items[item.Identity.Key] = item;
                 }
             }
@@ -259,10 +268,10 @@ public sealed class WatchlistStore(AppDbContext db)
         var type = WatchlistMediaTypeNames.Parse(reader.GetString(0))
             ?? throw new InvalidOperationException("Unknown watchlist media type.");
         var identity = new WatchlistIdentity(type, reader.GetString(1), reader.GetString(2));
-        var localMediaId = reader.IsDBNull(9) || !Guid.TryParse(reader.GetString(9), out var parsedLocal)
+        Guid? localMediaId = reader.IsDBNull(9) || !Guid.TryParse(reader.GetString(9), out var parsedLocal)
             ? null
             : parsedLocal;
-        var franchiseId = reader.IsDBNull(11) || !Guid.TryParse(reader.GetString(11), out var parsedFranchise)
+        Guid? franchiseId = reader.IsDBNull(11) || !Guid.TryParse(reader.GetString(11), out var parsedFranchise)
             ? null
             : parsedFranchise;
 
