@@ -463,6 +463,39 @@ fun TvAppHost(
             }
         }
 
+        is TvRoute.Episode -> {
+            val anime = snapshot.anime
+            val page = snapshot.episodePage
+            if (anime == null || page == null) {
+                TvMessageScreen(
+                    title = "Episode unavailable",
+                    message = snapshot.error ?: "Could not load this episode.",
+                    action = "Back",
+                    onAction = {
+                        controller.back()?.let { snapshot = it }
+                    },
+                )
+            } else {
+                TvEpisodeScreen(
+                    anime = anime,
+                    page = page,
+                    busy = snapshot.busy,
+                    error = snapshot.error,
+                    onPlay = {
+                        launchSnapshot {
+                            controller.playEpisode(
+                                episodeId = route.episodeId,
+                                animeId = route.animeId,
+                            )
+                        }
+                    },
+                    onBack = {
+                        controller.back()?.let { snapshot = it }
+                    },
+                )
+            }
+        }
+
         is TvRoute.Player -> {
             val bundle = episodeBundle
             if (bundle == null) {
