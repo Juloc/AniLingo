@@ -235,8 +235,9 @@
             }
             const copy = element("div", "books-add-copy");
             copy.append(element("strong", null, item.title));
-            const meta = [item.author, item.firstPublishYear, item.sourceName].filter(Boolean).join(" · ");
-            if (meta) copy.append(element("span", null, meta));
+            const meta = [item.author, item.firstPublishYear].filter(Boolean).join(" · ");
+            if (meta) copy.append(element("span", "books-add-meta", meta));
+            if (item.summary) copy.append(element("p", "books-add-summary", item.summary));
             if (item.freeEdition) copy.append(element("small", "books-add-free", text("textFree")));
             const slot = element("div", "books-add-action");
             rows.set(item.id, { item, slot });
