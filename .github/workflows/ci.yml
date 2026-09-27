@@ -93,6 +93,8 @@ jobs:
           for _ in {1..30}; do
             if curl -fsS http://127.0.0.1:18097/Account/Setup >/dev/null; then
               test "$(docker exec jularr-no-nas id -un)" = "jularr"
+              test "$(docker exec jularr-no-nas id -u)" = "1654"
+              test "$(docker exec jularr-no-nas id -g)" = "1654"
               exit 0
             fi
             sleep 1
@@ -115,10 +117,13 @@ jobs:
           docker run --rm --user 0:0 --entrypoint sh -v jularr-legacy-data:/data "${IMAGE}:${GITHUB_SHA}" \
             -c 'mkdir -p /data/keys && touch /data/keys/legacy-root-file && chown -R 0:0 /data && chmod 0755 /data'
 
-          # The jularr user/group are created with --system, so their UID/GID
-          # come from the image itself rather than being fixed by Jularr.
+          # The jularr user/group are fixed at UID/GID 1654:1654 (renamed
+          # from, or matching, the aspnet base image's own "app" user), so an
+          # operator's existing `chown -R 1654:1654` fix keeps working.
           JULARR_UID="$(docker run --rm --entrypoint id "${IMAGE}:${GITHUB_SHA}" -u jularr)"
           JULARR_GID="$(docker run --rm --entrypoint id "${IMAGE}:${GITHUB_SHA}" -g jularr)"
+          test "${JULARR_UID}" = "1654"
+          test "${JULARR_GID}" = "1654"
 
           if docker run --rm -v jularr-legacy-data:/data "${IMAGE}:${GITHUB_SHA}" > "${RUNNER_TEMP}/legacy.log" 2>&1; then
             cat "${RUNNER_TEMP}/legacy.log"
@@ -127,10 +132,10 @@ jobs:
           fi
           cat "${RUNNER_TEMP}/legacy.log"
           grep -q "Jularr startup aborted" "${RUNNER_TEMP}/legacy.log"
-          grep -qF "chown -v <jularr-data>:/data ghcr.io/juloc/jularr:latest -R ${JULARR_UID}:${JULARR_GID} /data" "${RUNNER_TEMP}/legacy.log"
+          grep -qF "chown -v <jularr-data>:/data ghcr.io/juloc/jularr:latest -R 1654:1654 /data" "${RUNNER_TEMP}/legacy.log"
 
           # The documented one-time fix (with the image under test instead of :latest).
-          docker run --rm --user 0:0 --entrypoint chown -v jularr-legacy-data:/data "${IMAGE}:${GITHUB_SHA}" -R "${JULARR_UID}:${JULARR_GID}" /data
+          docker run --rm --user 0:0 --entrypoint chown -v jularr-legacy-data:/data "${IMAGE}:${GITHUB_SHA}" -R 1654:1654 /data
 
           docker run -d --name jularr-legacy \
             --cap-drop ALL --security-opt no-new-privileges:true \

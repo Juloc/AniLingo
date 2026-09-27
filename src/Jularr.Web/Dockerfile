@@ -112,13 +112,23 @@ RUN set -eux; \
     ffmpeg -version >/dev/null; \
     ffprobe -version >/dev/null; \
     rm -rf /var/lib/apt/lists/*; \
-    groupadd --system jularr; \
-    useradd --system --gid jularr --home-dir /data --shell /usr/sbin/nologin jularr; \
+    if getent passwd app >/dev/null 2>&1; then \
+        groupmod -n jularr app; \
+        usermod -l jularr -g jularr -d /data -s /usr/sbin/nologin app; \
+    else \
+        groupadd --gid 1654 jularr; \
+        useradd --uid 1654 --gid 1654 --home-dir /data --shell /usr/sbin/nologin jularr; \
+    fi; \
     mkdir -p /data/codex /data/whisper /data/transcription-cache; \
     chown -R jularr:jularr /data
-# Jularr runs as the dedicated non-root "jularr" system user created above.
-# Only /data (persistent state) and /tmp (scratch) are writable for it; the
-# application, tools and dictionaries stay root-owned and read-only.
+# Jularr runs as the dedicated non-root "jularr" user, fixed at UID/GID
+# 1654:1654 (renamed from the aspnet base image's own "app" user, which
+# already has that UID/GID; a fresh groupadd/useradd with the same fixed
+# 1654:1654 is the fallback if a future base image drops "app"). The UID/GID
+# are pinned so that a `chown` an operator has already run against them stays
+# correct across rebuilds. Only /data (persistent state) and /tmp (scratch)
+# are writable for it; the application, tools and dictionaries stay
+# root-owned and read-only.
 # Data volumes created by earlier root-based images are root-owned. The
 # entrypoint refuses to start until /data is writable and prints the one-time
 # ownership fix documented in docs/ADMIN_OPERATIONS.md; it never chowns itself.
@@ -133,11 +143,11 @@ runtime_gid="$(id -g)"
 fail_data_access() {
     cat >&2 <<MSG
 Jularr startup aborted: $1
-Jularr runs as the non-root user uid=${runtime_uid} gid=${runtime_gid} and needs read/write access to everything under ${data_root}.
+Jularr runs as the non-root user uid=${runtime_uid} gid=${runtime_gid} (jularr, fixed at 1654:1654) and needs read/write access to everything under ${data_root}.
 Data volumes created by Jularr/AniLingo images that still ran as root are owned by root and must be handed over once.
 Stop Jularr and run (replace <jularr-data> with the data volume name or host path mounted at ${data_root}):
 
-  docker run --rm --user 0:0 --entrypoint chown -v <jularr-data>:/data ghcr.io/juloc/jularr:latest -R ${runtime_uid}:${runtime_gid} /data
+  docker run --rm --user 0:0 --entrypoint chown -v <jularr-data>:/data ghcr.io/juloc/jularr:latest -R 1654:1654 /data
 
 Then start Jularr again.
 See "Non-root container runtime and /data ownership" in docs/ADMIN_OPERATIONS.md.

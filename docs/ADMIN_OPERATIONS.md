@@ -219,37 +219,51 @@ The operation detail page (`/Admin/Operation/{id}`) cancels an active SABnzbd jo
 
 ## Non-root container runtime and /data ownership
 
-The Jularr image runs as a dedicated, unprivileged system user and group, both named `jularr` (created with `groupadd --system` / `useradd --system`, so their UID/GID are assigned by the base image rather than fixed by Jularr). It needs no privileged mode and no added Linux capabilities, so it can run with `cap_drop: [ALL]` and `security_opt: [no-new-privileges:true]`.
+The Jularr image runs as a dedicated, unprivileged user and group, both named `jularr` and fixed at UID/GID **1654:1654** (the same fixed value the aspnet base image's own `app` user already has; the image renames `app` to `jularr`, or creates it fresh with that same UID/GID if a future base image drops `app`). Because the UID/GID are fixed rather than assigned per build, a `chown` an operator has already run against `1654:1654` keeps working across image upgrades. The container needs no privileged mode and no added Linux capabilities, so it can run with `cap_drop: [ALL]` and `security_opt: [no-new-privileges:true]`.
 
 Writable locations:
 
 - `/data` holds all persistent state: SQLite database, Data Protection keys (`/data/keys`), protected integration settings, Codex credentials (`CODEX_HOME=/data/codex`), Whisper model, transcription/playback/artwork caches, manga, novel and book data, and acquisition state.
 - `/tmp` is scratch space, for example temporary Codex work directories and audio fingerprint windows.
-- Media paths Jularr changes: library roots that receive imported downloads, file renames or artwork stored beside the media, and the completed-download folder (after remote path mapping) when the import mode is **Move**. These must be writable by the `jularr` user, either through ownership or through a group added with `group_add: ["jularr"]` (or the container's numeric `jularr` GID). **Copy** imports only need read access to the download folder. **Hardlink** imports also need the downloaded files to be readable and writable by the `jularr` user, because most Linux hosts enable `fs.protected_hardlinks`.
+- Media paths Jularr changes: library roots that receive imported downloads, file renames or artwork stored beside the media, and the completed-download folder (after remote path mapping) when the import mode is **Move**. These must be writable by UID `1654`, either through ownership or through a group added with `group_add: ["1654"]` (or `group_add: ["jularr"]`). **Copy** imports only need read access to the download folder. **Hardlink** imports also need the downloaded files to be readable and writable by UID `1654`, because most Linux hosts enable `fs.protected_hardlinks`.
 
-The application under `/app`, the bundled `codex`, `whisper-cli`, `ffmpeg`/`ffprobe`, the MeCab dictionary and the JMdict data are root-owned and read-only for the runtime user. Read-only media mounts such as `/media/anime:ro` only need to be readable by it (world-readable, or a matching `group_add` group). Jularr already reports read-only or unwritable libraries as failed imports or refused renames. It writes to `/data` and `/tmp`, plus any media path you let it change, and needs no privileged mode or extra Linux capabilities.
+The application under `/app`, the bundled `codex`, `whisper-cli`, `ffmpeg`/`ffprobe`, the MeCab dictionary and the JMdict data are root-owned and read-only for the runtime user. Read-only media mounts such as `/media/anime:ro` only need to be readable by UID `1654` (world-readable, or a matching `group_add` group). Jularr already reports read-only or unwritable libraries as failed imports or refused renames.
 
 ### Startup ownership check
 
-Before the application starts, the entrypoint (`/usr/local/bin/jularr-entrypoint`) checks that every directory and file under `/data` is readable and writable by the runtime user. If one is not, the container exits with code 1 and logs the first offending path plus the exact fix command, using the container's actual runtime UID/GID (`id -u` / `id -g`, i.e. the `jularr` user's assigned values). It never changes ownership itself and never falls back to running as root.
+Before the application starts, the entrypoint (`/usr/local/bin/jularr-entrypoint`) checks that every directory and file under `/data` is readable and writable by the runtime user. If one is not, the container exits with code 1 and logs the first offending path plus the exact fix command below. It never changes ownership itself and never falls back to running as root.
 
 ### Fresh installations
 
-A new, empty named volume is initialized from the image with the correct `jularr:jularr` ownership, so no action is needed. A bind-mounted host directory must be owned by (or writable for) the `jularr` user; find its UID/GID with `docker run --rm --entrypoint id ghcr.io/juloc/jularr:latest jularr`, then for example `sudo chown -R <uid>:<gid> /srv/jularr-data`.
+A new, empty named volume is initialized from the image with `1654:1654` ownership, so no action is needed. A bind-mounted host directory must be owned by (or writable for) UID/GID `1654:1654`, for example:
+
+```bash
+sudo chown -R 1654:1654 /srv/jularr-data
+```
 
 ### Upgrading from a root-based image
 
-Images released before the non-root runtime, including all AniLingo images, wrote `/data` as root. After upgrading, Jularr refuses to start and `docker logs` shows `Jularr startup aborted: ... is not readable and writable by the Jularr runtime user.` Hand the existing data over once, with Jularr stopped:
+Images released before the non-root runtime, including all AniLingo images, wrote `/data` as root. After upgrading, Jularr refuses to start and `docker logs` shows `Jularr startup aborted: ... is not readable and writable by the Jularr runtime user.` Hand the existing data over once, with Jularr stopped.
+
+For a named volume:
 
 ```bash
 docker compose stop jularr
 docker volume ls   # find the data volume, e.g. <project>_anilingo-data
-docker run --rm --user 0:0 --entrypoint chown -v <project>_anilingo-data:/data ghcr.io/juloc/jularr:latest -R jularr:jularr /data
+docker run --rm --user 0:0 --entrypoint chown -v <project>_anilingo-data:/data ghcr.io/juloc/jularr:latest -R 1654:1654 /data
 docker compose up -d
 ```
 
-For a bind mount, pass the host path instead of the volume name, or run `chown -R jularr:jularr` on the host from inside a container that has the `jularr` user (or resolve its UID/GID as above and `chown` by number). The command only changes ownership, not data. Rolling back to an older root-based image keeps working, but files it creates are root-owned again, so repeat the command before returning to the current image.
+For a bind mount, run the equivalent `chown` directly on the host path instead of through a throwaway container:
+
+```bash
+docker compose stop jularr
+sudo chown -R 1654:1654 /path/on/host/jularr-data
+docker compose up -d
+```
+
+The command only changes ownership, not data. Rolling back to an older root-based image keeps working, but files it creates are root-owned again, so repeat the command before returning to the current image.
 
 ### Custom runtime user
 
-If the deployment sets `user: "<uid>:<gid>"` in Compose (for example to match NAS permissions), `/data` and the writable media paths must be owned by that UID/GID instead. The startup check and its fix command use the effective UID/GID of the container.
+If the deployment sets `user: "<uid>:<gid>"` in Compose (for example to match NAS permissions), `/data` and the writable media paths must be owned by that UID/GID instead of `1654:1654`. The startup check and its fix command use the effective UID/GID of the container, whatever that is set to.
