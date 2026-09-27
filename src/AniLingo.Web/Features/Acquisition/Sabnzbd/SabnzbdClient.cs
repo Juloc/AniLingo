@@ -123,7 +123,7 @@ public sealed class SabnzbdClient(HttpClient httpClient) : ISabnzbdClient
                     false,
                     version,
                     $"SABnzbd {version} is reachable but rejected the API key for queue access ({queueError}). "
-                    + "Use the full API key, not the NZB key, so AniLingo can track progress.");
+                    + "Use the full API key, not the NZB key, so Jularr can track progress.");
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

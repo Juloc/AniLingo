@@ -20,7 +20,7 @@ public sealed record AnimeMigrationPlan(
     bool? SetSonarrMonitored);
 
 // Per-anime owner migration controls: keep Sonarr, stage parallel acquisition, hand over to
-// AniLingo, revert. Plans are pure and idempotent: applying the same request to the resulting
+// Jularr, revert. Plans are pure and idempotent: applying the same request to the resulting
 // state is a no-op.
 public static class SonarrMigration
 {
@@ -60,7 +60,7 @@ public static class SonarrMigration
             requested != linked &&
             unmonitoredByAniLingo)
         {
-            return Deny("AniLingo unmonitored the previously linked Sonarr series. Revert with the Sonarr monitoring option before linking another series.");
+            return Deny("Jularr unmonitored the previously linked Sonarr series. Revert with the Sonarr monitoring option before linking another series.");
         }
 
         if (request.Action == AnimeMigrationAction.Revert && existing is null)
@@ -104,7 +104,7 @@ public static class SonarrMigration
                 }
                 else
                 {
-                    notes.Add($"Sonarr still monitors '{series.Title}'; AniLingo grabs and renames stay blocked until it is unmonitored in Sonarr.");
+                    notes.Add($"Sonarr still monitors '{series.Title}'; Jularr grabs and renames stay blocked until it is unmonitored in Sonarr.");
                 }
             }
         }
@@ -135,7 +135,7 @@ public static class SonarrMigration
         }
         else if (to != AnimeManagementMode.AniLingoManaged && unmonitoredByAniLingo)
         {
-            notes.Add("AniLingo previously unmonitored the Sonarr series; re-enable monitoring in Sonarr or use the Sonarr monitoring option.");
+            notes.Add("Jularr previously unmonitored the Sonarr series; re-enable monitoring in Sonarr or use the Sonarr monitoring option.");
         }
 
         var changed = existing is null ||

@@ -1221,7 +1221,7 @@ public sealed class SubtitleImportService
         using var request = new HttpRequestMessage(HttpMethod.Get, relativeUrl);
         request.Headers.TryAddWithoutValidation("Authorization", apiKey);
         request.Headers.UserAgent.ParseAdd(
-            "AniLingo/0.1 (+https://github.com/Juloc/AniLingo)");
+            "Jularr/0.1 (+https://github.com/Juloc/AniLingo)");
         request.Headers.Accept.ParseAdd("application/json");
 
         return await client.SendAsync(

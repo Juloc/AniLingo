@@ -51,7 +51,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using System.Security.Claims;
 
-Console.WriteLine($"[AniLingo] {DateTimeOffset.UtcNow:O} Process starting.");
+Console.WriteLine($"[Jularr] {DateTimeOffset.UtcNow:O} Process starting.");
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -62,6 +62,9 @@ builder.Services.Configure<MediaOptions>(builder.Configuration.GetSection(MediaO
 var dataProtectionDirectory = new DirectoryInfo("/data/keys");
 Directory.CreateDirectory(dataProtectionDirectory.FullName);
 builder.Services.AddDataProtection()
+    // Stays "AniLingo" after the Jularr rebrand: the application name isolates the Data Protection
+    // key ring, and changing it would invalidate every sign-in cookie and every secret already
+    // protected with it (download-client passwords, indexer/Prowlarr/SABnzbd/AI API keys, AniList tokens).
     .SetApplicationName("AniLingo")
     .PersistKeysToFileSystem(dataProtectionDirectory);
 
@@ -132,7 +135,7 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
                 await context.Response.WriteAsJsonAsync(
                     new ClientErrorResponse(
                         "authentication_required",
-                        "Authentication is required for this AniLingo client API endpoint."),
+                        "Authentication is required for this Jularr client API endpoint."),
                     context.HttpContext.RequestAborted);
                 return;
             }
@@ -290,7 +293,7 @@ builder.Services.AddScoped<AnimeRepairService>();
 builder.Services.AddHttpClient<NcodeNovelSourceProvider>(client =>
 {
     client.Timeout = TimeSpan.FromSeconds(20);
-    client.DefaultRequestHeaders.UserAgent.ParseAdd("AniLingo/0.1 (+https://github.com/Juloc/AniLingo)");
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("Jularr/0.1 (+https://github.com/Juloc/AniLingo)");
 });
 builder.Services.AddScoped<INovelSourceProvider>(
     services => services.GetRequiredService<NcodeNovelSourceProvider>());
@@ -318,7 +321,7 @@ builder.Services.AddHttpClient<BookCatalogService>(client =>
 {
     client.BaseAddress = new Uri("https://gutendex.com/");
     client.Timeout = TimeSpan.FromSeconds(20);
-    client.DefaultRequestHeaders.UserAgent.ParseAdd("AniLingo/0.1 (+https://github.com/Juloc/AniLingo)");
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("Jularr/0.1 (+https://github.com/Juloc/AniLingo)");
     client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
 });
 
@@ -338,7 +341,7 @@ builder.Services.AddHttpClient<IProwlarrClient, ProwlarrClient>(client =>
     client.Timeout = TimeSpan.FromSeconds(60);
 });
 
-// Indexers: Prowlarr and direct Newznab connections share the one canonical list. AniLingo is
+// Indexers: Prowlarr and direct Newznab connections share the one canonical list. Jularr is
 // usenet-only; torrent indexers (Torznab) are intentionally unsupported.
 builder.Services.AddSingleton<IndexerStore>();
 builder.Services.AddHttpClient<NewznabIndexer>(client => client.Timeout = TimeSpan.FromSeconds(60));
@@ -351,7 +354,7 @@ builder.Services.AddSingleton<IReadOnlyDictionary<IndexerType, IIndexer>>(servic
 builder.Services.AddScoped<IndexerSearchCoordinator>();
 
 // Download clients: SABnzbd connections share the one canonical list (several can fail over to
-// each other). AniLingo is usenet-only; torrent clients (qBittorrent) are intentionally
+// each other). Jularr is usenet-only; torrent clients (qBittorrent) are intentionally
 // unsupported. The pipeline and Books submission only depend on IDownloadClient, never on
 // SabnzbdDownloadClient directly.
 builder.Services.AddSingleton<DownloadClientStore>();
@@ -464,24 +467,24 @@ app.MapRazorPages();
 
 try
 {
-    Console.WriteLine($"[AniLingo] {DateTimeOffset.UtcNow:O} Initializing persistent database.");
+    Console.WriteLine($"[Jularr] {DateTimeOffset.UtcNow:O} Initializing persistent database.");
     await InitializeDatabaseAsync(
         app.Services,
-        message => Console.WriteLine($"[AniLingo] {DateTimeOffset.UtcNow:O} {message}"));
+        message => Console.WriteLine($"[Jularr] {DateTimeOffset.UtcNow:O} {message}"));
     await SabnzbdSettingsMigration.RunAtStartupAsync(
         app.Services,
-        message => Console.WriteLine($"[AniLingo] {DateTimeOffset.UtcNow:O} {message}"));
+        message => Console.WriteLine($"[Jularr] {DateTimeOffset.UtcNow:O} {message}"));
     await IndexerSettingsMigration.RunAtStartupAsync(
         app.Services,
-        message => Console.WriteLine($"[AniLingo] {DateTimeOffset.UtcNow:O} {message}"));
+        message => Console.WriteLine($"[Jularr] {DateTimeOffset.UtcNow:O} {message}"));
     await DownloadClientSettingsMigration.RunAtStartupAsync(
         app.Services,
-        message => Console.WriteLine($"[AniLingo] {DateTimeOffset.UtcNow:O} {message}"));
-    Console.WriteLine($"[AniLingo] {DateTimeOffset.UtcNow:O} Database ready. Starting web server.");
+        message => Console.WriteLine($"[Jularr] {DateTimeOffset.UtcNow:O} {message}"));
+    Console.WriteLine($"[Jularr] {DateTimeOffset.UtcNow:O} Database ready. Starting web server.");
 }
 catch (Exception ex)
 {
-    Console.Error.WriteLine($"[AniLingo] {DateTimeOffset.UtcNow:O} Startup database initialization failed.");
+    Console.Error.WriteLine($"[Jularr] {DateTimeOffset.UtcNow:O} Startup database initialization failed.");
     Console.Error.WriteLine(ex);
     throw;
 }

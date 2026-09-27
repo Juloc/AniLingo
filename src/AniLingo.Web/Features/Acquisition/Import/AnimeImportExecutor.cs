@@ -85,7 +85,7 @@ public sealed class AnimeImportExecutor(
             return null;
         }
 
-        // The download client may report its storage path under a different mount than AniLingo
+        // The download client may report its storage path under a different mount than Jularr
         // sees the same folder (#301/#302): translate it once here, at the one place every
         // completed-download path enters the import pipeline (a fresh completion and restart
         // recovery both call this method).
@@ -340,7 +340,7 @@ public sealed class AnimeImportExecutor(
 
     /// <summary>
     /// Restart recovery: resumes imports interrupted mid-way and imports anime downloads that
-    /// completed while AniLingo was not running (their storage path is read from SABnzbd history).
+    /// completed while Jularr was not running (their storage path is read from SABnzbd history).
     /// </summary>
     public async Task<int> RecoverAsync(CancellationToken cancellationToken)
     {
@@ -927,7 +927,7 @@ public sealed class AnimeImportExecutor(
 
             if (!Directory.Exists(downloadPath))
             {
-                error = $"The completed download path does not exist or is not mounted in AniLingo: {downloadPath}";
+                error = $"The completed download path does not exist or is not mounted in Jularr: {downloadPath}";
                 return [];
             }
 

@@ -6,7 +6,7 @@ namespace AniLingo.Web.Features.Library;
 // would block automatic matching. NFO stays an input source, never a second state store: it does
 // not replace or duplicate AnimeMetadata, and it is never treated as if it came from a provider.
 //
-// Display precedence: manual (an explicit user edit, if AniLingo ever adds one) > provider
+// Display precedence: manual (an explicit user edit, if Jularr ever adds one) > provider
 // metadata (AnimeMetadata) > this local NFO fallback > folder-derived title/no value.
 public sealed class AnimeLocalMetadata
 {

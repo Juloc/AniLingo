@@ -1,10 +1,10 @@
 namespace AniLingo.Web.Features.Acquisition.Ownership;
 
-// Decisions that combine persisted AniLingo ownership with the read-only Sonarr observation.
-// Every AniLingo grab, import and rename seam consults these before acting.
+// Decisions that combine persisted Jularr ownership with the read-only Sonarr observation.
+// Every Jularr grab, import and rename seam consults these before acting.
 public static partial class SonarrParallelSafety
 {
-    // A Sonarr grab this recent may not be imported/rescanned yet, so AniLingo must not grab the
+    // A Sonarr grab this recent may not be imported/rescanned yet, so Jularr must not grab the
     // same episode again.
     public static readonly TimeSpan RecentSonarrActivityWindow = TimeSpan.FromHours(24);
 
@@ -42,7 +42,7 @@ public static partial class SonarrParallelSafety
         {
             return new(
                 false,
-                $"Sonarr still monitors '{series.Title}'. Unmonitor it in Sonarr (or hand over with the Sonarr monitoring option) before AniLingo grabs, otherwise both managers grab the same episode.");
+                $"Sonarr still monitors '{series.Title}'. Unmonitor it in Sonarr (or hand over with the Sonarr monitoring option) before Jularr grabs, otherwise both managers grab the same episode.");
         }
 
         var queued = sonarr.Queue.FirstOrDefault(item =>
@@ -71,7 +71,7 @@ public static partial class SonarrParallelSafety
                 $"Sonarr grabbed '{recentGrab.SourceTitle}' for this episode at {recentGrab.AtUtc:u}; wait for Sonarr's import and a library rescan.");
         }
 
-        return new(true, "Release and episode are not owned by Sonarr or another AniLingo job.");
+        return new(true, "Release and episode are not owned by Sonarr or another Jularr job.");
     }
 
     public static OwnershipDecision CanImport(
@@ -107,7 +107,7 @@ public static partial class SonarrParallelSafety
         {
             return job is null
                 ? new(false, "Download is tracked by Sonarr; Sonarr imports it.")
-                : new(false, "Sonarr is also tracking this AniLingo download (shared download-client category?); refusing a conflicting import.");
+                : new(false, "Sonarr is also tracking this Jularr download (shared download-client category?); refusing a conflicting import.");
         }
 
         if (!string.IsNullOrWhiteSpace(request.SourcePath))
@@ -121,14 +121,14 @@ public static partial class SonarrParallelSafety
 
         if (mode == AnimeManagementMode.ParallelAcquisition && job is null)
         {
-            return new(false, "Parallel acquisition imports only downloads registered as AniLingo jobs.");
+            return new(false, "Parallel acquisition imports only downloads registered as Jularr jobs.");
         }
 
         var unverified = RequireVerifiedSonarr(
             sonarr,
             mode,
             SonarrOwnershipRecognizer.GetLinkedSeriesId(state, request.AnimeKey));
-        return unverified ?? new(true, "Download is owned by AniLingo and not tracked by Sonarr.");
+        return unverified ?? new(true, "Download is owned by Jularr and not tracked by Sonarr.");
     }
 
     public static OwnershipDecision CanMutateLibraryPath(
@@ -215,7 +215,7 @@ public static partial class SonarrParallelSafety
                 $"Sonarr {recentSonarrChange.EventType} this file at {recentSonarrChange.AtUtc:u}; renaming it now would start a rename loop.");
         }
 
-        return new(true, "Source and target are owned by AniLingo for this anime and Sonarr is not acting on them.");
+        return new(true, "Source and target are owned by Jularr for this anime and Sonarr is not acting on them.");
     }
 
     private static OwnershipDecision? RequireVerifiedSonarr(
@@ -228,7 +228,7 @@ public static partial class SonarrParallelSafety
             return null;
         }
 
-        // Without a current observation AniLingo cannot prove Sonarr is idle. Parallel mode and
+        // Without a current observation Jularr cannot prove Sonarr is idle. Parallel mode and
         // every Sonarr-linked anime therefore fail closed; only unlinked AniLingo-managed anime continue.
         if (linkedSeriesId is null && mode == AnimeManagementMode.AniLingoManaged)
         {
@@ -237,7 +237,7 @@ public static partial class SonarrParallelSafety
 
         return new(
             false,
-            $"Sonarr could not be observed ({sonarr.StatusDetail ?? "unavailable"}); AniLingo pauses this action until Sonarr ownership can be verified.");
+            $"Sonarr could not be observed ({sonarr.StatusDetail ?? "unavailable"}); Jularr pauses this action until Sonarr ownership can be verified.");
     }
 
     private static IEnumerable<OwnershipConflict> DetectSonarrConflicts(
@@ -254,7 +254,7 @@ public static partial class SonarrParallelSafety
                 "download",
                 job.AnimeKey,
                 job.DownloadId!,
-                "Sonarr is tracking an AniLingo download. Give AniLingo its own download-client category so only one manager imports it.");
+                "Sonarr is tracking an Jularr download. Give Jularr its own download-client category so only one manager imports it.");
         }
 
         foreach (var assignment in state.Anime.Values)
@@ -271,7 +271,7 @@ public static partial class SonarrParallelSafety
                     "unverified",
                     assignment.AnimeKey,
                     seriesId.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                    "Sonarr cannot be observed; AniLingo grabs, imports and renames for this Sonarr-linked anime are paused.");
+                    "Sonarr cannot be observed; Jularr grabs, imports and renames for this Sonarr-linked anime are paused.");
                 continue;
             }
 
@@ -289,7 +289,7 @@ public static partial class SonarrParallelSafety
                         "monitoring",
                         assignment.AnimeKey,
                         series.Title,
-                        "AniLingo manages this anime but Sonarr still monitors the series. AniLingo grabs and renames stay blocked until Sonarr stops monitoring it.");
+                        "Jularr manages this anime but Sonarr still monitors the series. Jularr grabs and renames stay blocked until Sonarr stops monitoring it.");
                 }
 
                 foreach (var activity in sonarr.History.Where(item =>
@@ -302,7 +302,7 @@ public static partial class SonarrParallelSafety
                         "sonarr-activity",
                         assignment.AnimeKey,
                         activity.SourceTitle ?? activity.Path ?? activity.EventType,
-                        $"Sonarr {activity.EventType} after the anime was handed over to AniLingo.");
+                        $"Sonarr {activity.EventType} after the anime was handed over to Jularr.");
                 }
             }
             else if (assignment.SonarrUnmonitoredByAniLingo && !series.Monitored)
@@ -311,7 +311,7 @@ public static partial class SonarrParallelSafety
                     "monitoring",
                     assignment.AnimeKey,
                     series.Title,
-                    "Sonarr owns this anime again but AniLingo left the Sonarr series unmonitored. Re-enable monitoring in Sonarr or revert with the Sonarr monitoring option.");
+                    "Sonarr owns this anime again but Jularr left the Sonarr series unmonitored. Re-enable monitoring in Sonarr or revert with the Sonarr monitoring option.");
             }
         }
 
@@ -327,7 +327,7 @@ public static partial class SonarrParallelSafety
                     "rename-loop",
                     owned.AnimeKey,
                     owned.Path,
-                    "Sonarr renamed an AniLingo-owned file. AniLingo will not rename it back; stop Sonarr from managing this series.");
+                    "Sonarr renamed an AniLingo-owned file. Jularr will not rename it back; stop Sonarr from managing this series.");
             }
         }
     }

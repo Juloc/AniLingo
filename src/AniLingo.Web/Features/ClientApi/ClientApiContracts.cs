@@ -462,7 +462,7 @@ public sealed record ClientTrickplayDescriptor(
 /// <summary>
 /// Server-resolved initial selection for this profile: file defaults
 /// overridden by the profile's language preferences. <c>subtitleMode</c> is
-/// <c>off</c>, <c>learning</c> (the AniLingo cue overlay) or <c>embedded</c>
+/// <c>off</c>, <c>learning</c> (the Jularr cue overlay) or <c>embedded</c>
 /// (with <c>subtitleTrackId</c>).
 /// </summary>
 public sealed record ClientPlayerDefaults(

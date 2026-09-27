@@ -112,7 +112,7 @@ public static class IndexerSettingsMigration
     }
 
     /// <summary>
-    /// One-time, idempotent cleanup: AniLingo is usenet-only, so a Torznab (torrent) indexer entry
+    /// One-time, idempotent cleanup: Jularr is usenet-only, so a Torznab (torrent) indexer entry
     /// persisted by an earlier build is no longer readable as a supported <see cref="IndexerType"/>
     /// value and must be dropped rather than silently reinterpreted. Named entries are logged so the
     /// owner knows what was removed and can reconfigure a usenet replacement if needed. Usenet
@@ -131,7 +131,7 @@ public static class IndexerSettingsMigration
         foreach (var entry in unsupported)
         {
             await indexerStore.DeleteAsync(entry.Id, cancellationToken);
-            log($"Removed indexer '{entry.Name}': torrent indexers (Torznab) are no longer supported; AniLingo is usenet-only.");
+            log($"Removed indexer '{entry.Name}': torrent indexers (Torznab) are no longer supported; Jularr is usenet-only.");
         }
 
         return unsupported.Length;

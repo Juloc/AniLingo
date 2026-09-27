@@ -3,10 +3,10 @@
     --player-sheet-bg: rgba(22, 25, 31, .95);
     --player-subtitle-text: #fff8e8;
     --player-subtitle-bg: rgba(0, 0, 0, .65);
-    --player-accent: #e7a91b;
-    --player-accent-soft: rgba(231, 169, 27, .22);
+    --player-accent: var(--accent);
+    --player-accent-soft: color-mix(in srgb, var(--accent) 22%, transparent);
     --player-muted: #aeb6c2;
-    --player-focus: #ffd36b;
+    --player-focus: var(--focus-ring);
     --player-control-size: 44px;
     --player-control-radius: 10px;
     --player-sheet-radius: 18px;
@@ -94,7 +94,7 @@
     margin: 0;
     padding: 0 2px;
     border: 0;
-    border-bottom: 2px solid rgba(231, 169, 27, .78);
+    border-bottom: 2px solid color-mix(in srgb, var(--accent) 78%, transparent);
     border-radius: 6px;
     background: transparent;
     color: inherit;
@@ -209,7 +209,7 @@
     outline: none;
     background: var(--player-accent-soft);
     color: var(--player-focus);
-    border-color: rgba(231, 169, 27, .45);
+    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
 }
 
 .player-action-button {

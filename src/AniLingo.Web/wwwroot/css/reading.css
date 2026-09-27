@@ -3,21 +3,21 @@
     gap: .2rem;
     padding: 2px;
     border-radius: 8px;
-    background: var(--panel, #12161d);
+    background: var(--surface);
 }
 
 .reading-type-switch a {
     padding: .36rem .65rem;
     border-radius: 6px;
-    color: var(--muted, #9aa4b2);
+    color: var(--muted);
     text-decoration: none;
     font-size: .8rem;
     font-weight: 650;
 }
 
 .reading-type-switch a.active {
-    background: color-mix(in srgb, var(--accent, #e9aa18) 12%, transparent);
-    color: var(--accent, #e9aa18);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    color: var(--accent);
 }
 
 .novel-library-title-block {
@@ -37,7 +37,7 @@
 .reading-grid {
     display: grid;
     gap: 0;
-    border-top: 1px solid var(--border, #252d36);
+    border-top: 1px solid var(--border);
 }
 
 .reading-card {
@@ -47,13 +47,13 @@
     align-items: center;
     min-height: 76px;
     padding: .75rem .15rem;
-    border-bottom: 1px solid var(--border, #252d36);
+    border-bottom: 1px solid var(--border);
     color: inherit;
     text-decoration: none;
 }
 
 .reading-card:hover strong {
-    color: var(--accent, #e9aa18);
+    color: var(--accent);
 }
 
 .reading-card-mark {
@@ -62,7 +62,7 @@
     display: grid;
     place-items: center;
     border-radius: 5px;
-    background: var(--panel, #171c23);
+    background: var(--surface);
     font-size: 1.2rem;
 }
 
@@ -77,12 +77,12 @@
 }
 
 .reading-card > div span {
-    color: var(--muted, #9aa4b2);
+    color: var(--muted);
     font-size: .8rem;
 }
 
 .reading-arrow {
-    color: var(--muted, #9aa4b2);
+    color: var(--muted);
 }
 
 @media (min-width: 760px) {
@@ -94,7 +94,7 @@
 
     .reading-card {
         padding: .9rem;
-        border: 1px solid var(--border, #252d36);
+        border: 1px solid var(--border);
         border-radius: 9px;
     }
 }
