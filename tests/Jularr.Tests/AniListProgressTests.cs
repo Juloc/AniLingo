@@ -39,6 +39,43 @@ public sealed class AniListProgressTests
     }
 
     [TestMethod]
+    public void StartingProgressMutationContainsOnlyTrackingStartFields()
+    {
+        var variables = AniListAccountService.BuildStartingProgressMutationVariables(
+            listEntryId: 123,
+            progress: 7,
+            startedAt: new AniListFuzzyDate(2026, 9, 27));
+
+        Assert.AreEqual(5, variables.Count);
+        Assert.AreEqual(123, variables["id"]);
+        Assert.AreEqual(7, variables["progress"]);
+        Assert.AreEqual(2026, variables["startYear"]);
+        Assert.AreEqual(9, variables["startMonth"]);
+        Assert.AreEqual(27, variables["startDay"]);
+        CollectionAssert.AreEquivalent(
+            new[] { "id", "progress", "startYear", "startMonth", "startDay" },
+            variables.Keys.ToArray());
+    }
+
+    [TestMethod]
+    public void StartingReadingProgressMutationContainsOnlyTrackingStartFields()
+    {
+        var variables = AniListAccountService.BuildStartingReadingProgressMutationVariables(
+            listEntryId: 123,
+            progress: 18,
+            progressVolumes: 2,
+            startedAt: new AniListFuzzyDate(2026, 9, 27));
+
+        Assert.AreEqual(6, variables.Count);
+        Assert.AreEqual(123, variables["id"]);
+        Assert.AreEqual(18, variables["progress"]);
+        Assert.AreEqual(2, variables["progressVolumes"]);
+        Assert.AreEqual(2026, variables["startYear"]);
+        Assert.AreEqual(9, variables["startMonth"]);
+        Assert.AreEqual(27, variables["startDay"]);
+    }
+
+    [TestMethod]
     public void AlreadyHigherRemoteProgressIsNoOpAndNeverMovesBackward()
     {
         var preview = AniListAccountService.EvaluateRemoteProgressSafety(
@@ -129,6 +166,39 @@ public sealed class AniListProgressTests
     }
 
     [TestMethod]
+    public void PlanningEpisodeStartsTrackingWithoutLoweringRemoteProgress()
+    {
+        var preview = AniListAccountService.EvaluateRemoteProgressSafety(
+            Remote(status: "PLANNING", progress: 5),
+            requestedProgress: 3,
+            aniListEpisodeCount: 12,
+            mediaTitle: "Test Anime");
+
+        Assert.IsTrue(preview.CanSync);
+        Assert.IsFalse(preview.IsNoOp);
+        Assert.AreEqual("PLANNING", preview.RemoteStatus);
+        Assert.AreEqual(5, preview.RequestedProgress);
+        StringAssert.Contains(preview.Message, "start AniList tracking");
+    }
+
+    [TestMethod]
+    public void PlanningChapterStartsTrackingWithoutLoweringRemoteProgress()
+    {
+        var preview = AniListAccountService.EvaluateRemoteChapterProgressSafety(
+            Remote(status: "PLANNING", progress: 8),
+            requestedProgress: 4,
+            aniListChapterCount: 20,
+            mediaTitle: "Test Manga",
+            mediaKind: "manga");
+
+        Assert.IsTrue(preview.CanSync);
+        Assert.IsFalse(preview.IsNoOp);
+        Assert.AreEqual("PLANNING", preview.RemoteStatus);
+        Assert.AreEqual(8, preview.RequestedProgress);
+        StringAssert.Contains(preview.Message, "start AniList tracking");
+    }
+
+    [TestMethod]
     public void ProtectedFieldsDetectUnexpectedAniListChanges()
     {
         var before = Remote(status: "CURRENT", progress: 3);
@@ -143,6 +213,19 @@ public sealed class AniListProgressTests
         Assert.IsTrue(before.ProtectedFieldsEqual(progressOnly));
         Assert.IsTrue(before.ProtectedFieldsEqual(readingProgressOnly));
         Assert.IsFalse(before.ProtectedFieldsEqual(scoreChanged));
+
+        var planning = before with
+        {
+            Status = "PLANNING",
+            StartedAt = null
+        };
+        var started = planning with
+        {
+            Status = "CURRENT",
+            StartedAt = new AniListFuzzyDate(2026, 9, 27),
+            Progress = 4
+        };
+        Assert.IsTrue(planning.ProtectedFieldsEqualExceptTrackingStart(started));
     }
 
     [TestMethod]
