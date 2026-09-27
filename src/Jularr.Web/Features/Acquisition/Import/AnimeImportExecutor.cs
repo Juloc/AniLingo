@@ -98,10 +98,11 @@ public sealed class AnimeImportExecutor(
         // sees the same folder (#301/#302): translate it once here, at the one place every
         // completed-download path enters the import pipeline (a fresh completion and restart
         // recovery both call this method).
-        if (!string.IsNullOrWhiteSpace(storagePath))
+        var reportedPath = string.IsNullOrWhiteSpace(storagePath) ? null : storagePath.Trim();
+        if (reportedPath is not null)
         {
             var settings = await importSettings.LoadAsync(cancellationToken);
-            storagePath = settings.TranslatePath(storagePath);
+            storagePath = settings.TranslatePath(reportedPath);
         }
 
         var existing = await imports.FindByDownloadAsync(download.Id, cancellationToken);
@@ -109,6 +110,20 @@ public sealed class AnimeImportExecutor(
         {
             return existing;
         }
+
+        // The download Operation shows the same import details as every other media type.
+        await DownloadImportRecorder.RecordAsync(
+            new OperationStore(db),
+            download.Id,
+            previous => new DownloadImportDetails(
+                DownloadImportState.Waiting,
+                "Importing the completed anime download.",
+                DateTime.UtcNow,
+                reportedPath ?? previous?.ReportedPath,
+                storagePath ?? previous?.LocalPath,
+                previous?.Destination,
+                previous?.Mode),
+            cancellationToken);
 
         var now = DateTimeOffset.UtcNow;
         var acquisition = (await acquisitions.FindByOperationAsync(download.Id, cancellationToken))?.Acquisition;
@@ -963,7 +978,52 @@ public sealed class AnimeImportExecutor(
             }
         }
 
+        await RecordOnDownloadAsync(finished, cancellationToken);
         return finished;
+    }
+
+    /// <summary>
+    /// Shows the anime import on its download Operation like every other media import: where the
+    /// files went (the imported files' folder), with which import mode and the result.
+    /// </summary>
+    private async Task RecordOnDownloadAsync(AnimeImportRecord record, CancellationToken cancellationToken)
+    {
+        var imported = record.Files
+            .Select(file => file.ImportedPath)
+            .OfType<string>()
+            .ToArray();
+        string? destination = imported.Length == 0 ? null : Path.GetDirectoryName(imported[0]);
+        ImportMode? mode = null;
+        if (destination is not null)
+        {
+            var full = Path.GetFullPath(destination);
+            var roots = await db.LibraryRoots.AsNoTracking().ToListAsync(cancellationToken);
+            var root = roots
+                .Where(candidate => full.StartsWith(Path.GetFullPath(candidate.Path), StringComparison.Ordinal))
+                .OrderByDescending(candidate => candidate.Path.Length)
+                .FirstOrDefault();
+            mode = (await importSettings.LoadAsync(cancellationToken)).ModeFor(root?.Id);
+        }
+
+        var state = record.Status switch
+        {
+            AnimeImportStatus.Imported => DownloadImportState.Completed,
+            AnimeImportStatus.ManualRequired => DownloadImportState.ManualReview,
+            AnimeImportStatus.Importing => DownloadImportState.Waiting,
+            _ => DownloadImportState.Failed
+        };
+        await DownloadImportRecorder.RecordAsync(
+            new OperationStore(db),
+            record.DownloadOperationId,
+            previous => new DownloadImportDetails(
+                state,
+                string.IsNullOrWhiteSpace(record.Message) ? "Anime import finished." : record.Message,
+                DateTime.UtcNow,
+                previous?.ReportedPath,
+                record.DownloadPath ?? previous?.LocalPath,
+                destination ?? previous?.Destination,
+                destination is null ? previous?.Mode : mode),
+            CancellationToken.None);
     }
 
     private async Task ReleasePathAsync(string path, string jobId, CancellationToken cancellationToken)

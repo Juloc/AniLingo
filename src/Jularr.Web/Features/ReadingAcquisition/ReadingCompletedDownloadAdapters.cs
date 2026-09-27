@@ -7,6 +7,12 @@ using Jularr.Web.Features.Novels;
 
 namespace Jularr.Web.Features.ReadingAcquisition;
 
+/// <summary>
+/// The Manga importer behind the shared completed-download dispatcher and the Manga inbox scan.
+/// With a Manga library folder the release is placed there with the owner's import mode and
+/// read from the library; without one it is read in place. A request matched to AniList adds the
+/// release to the series already matched to that entry.
+/// </summary>
 public sealed class MangaCompletedDownloadImportAdapter(
     AppDbContext db,
     IHttpClientFactory httpClientFactory,
@@ -16,7 +22,7 @@ public sealed class MangaCompletedDownloadImportAdapter(
     IHardLinkCreator hardLinks,
     ILogger<MangaCompletedDownloadImportAdapter> logger,
     string? mangaCacheRoot = null)
-    : ICompletedDownloadImportAdapter
+    : ICompletedDownloadImportAdapter, IMediaInboxImportAdapter
 {
     public MediaAcquisitionKind Kind =>
         MediaAcquisitionKind.Manga;
@@ -25,20 +31,33 @@ public sealed class MangaCompletedDownloadImportAdapter(
         CompletedDownloadImportRequest request,
         CancellationToken cancellationToken)
     {
+        CompletedDownloadPlacement? placement = null;
         try
         {
             var repository = new MangaRepository(db);
+            var aniListId = request.Request is { } answered &&
+                            answered.Provider.Equals(
+                                NovelAniListProvider.ProviderKey,
+                                StringComparison.OrdinalIgnoreCase)
+                ? answered.ExternalId
+                : null;
 
             // One series per AniList entry: a new volume of a series that is already matched is
             // added to that series instead of creating another one per release (#485 item 7).
-            var existing = request.Request.Provider.Equals(
-                    NovelAniListProvider.ProviderKey,
-                    StringComparison.OrdinalIgnoreCase)
+            var existing = aniListId is not null
                 ? await repository.FindByMetadataAsync(
                     NovelAniListProvider.ProviderKey,
-                    request.Request.ExternalId,
+                    aniListId,
                     cancellationToken)
                 : null;
+
+            var releaseName = Path.GetFileName(request.SourcePath.TrimEnd(
+                Path.DirectorySeparatorChar,
+                Path.AltDirectorySeparatorChar));
+            var title = request.Request?.Title ??
+                        (File.Exists(request.SourcePath)
+                            ? Path.GetFileNameWithoutExtension(releaseName)
+                            : releaseName);
 
             var settings = await importSettings.LoadAsync(cancellationToken);
             var library = settings.LibraryFor(MediaAcquisitionKind.Manga);
@@ -48,10 +67,12 @@ public sealed class MangaCompletedDownloadImportAdapter(
             if (library is null)
             {
                 // No Manga library configured: the completed download is read in place.
+                placement = new CompletedDownloadPlacement(request.SourcePath, Mode: null);
                 if (!sourceExists)
                 {
                     return CompletedDownloadImportResult.RetryLater(
-                        "The completed Manga files are not currently available.");
+                        "The completed Manga files are not currently available.",
+                        placement);
                 }
 
                 importSource = request.SourcePath;
@@ -59,27 +80,27 @@ public sealed class MangaCompletedDownloadImportAdapter(
             else
             {
                 var seriesFolder = MangaLibraryPlacement.SeriesFolder(
-                    library.LibraryRoot,
+                    library.LibraryRoot!,
                     existing,
-                    request.Request.Title);
+                    title);
                 var releaseTarget = Path.Combine(
                     seriesFolder,
-                    MangaLibraryPlacement.SafeName(
-                        Path.GetFileName(request.SourcePath.TrimEnd(
-                            Path.DirectorySeparatorChar,
-                            Path.AltDirectorySeparatorChar))));
+                    MangaLibraryPlacement.SafeName(releaseName));
+                var mode = settings.ModeFor(MediaAcquisitionKind.Manga);
+                placement = new CompletedDownloadPlacement(releaseTarget, mode);
 
                 if (sourceExists)
                 {
                     new MangaLibraryPlacement(new ImportFileTransfer(hardLinks)).Place(
                         request.SourcePath,
                         releaseTarget,
-                        settings.ModeFor(MediaAcquisitionKind.Manga));
+                        mode);
                 }
                 else if (!File.Exists(releaseTarget) && !Directory.Exists(releaseTarget))
                 {
                     return CompletedDownloadImportResult.RetryLater(
-                        "The completed Manga files are not currently available.");
+                        "The completed Manga files are not currently available.",
+                        placement);
                 }
 
                 // A series living elsewhere keeps its folder; only the new release is added.
@@ -96,10 +117,7 @@ public sealed class MangaCompletedDownloadImportAdapter(
                 existing?.Id);
 
             string? metadataWarning = null;
-            if (existing is null &&
-                request.Request.Provider.Equals(
-                    NovelAniListProvider.ProviderKey,
-                    StringComparison.OrdinalIgnoreCase))
+            if (existing is null && aniListId is not null)
             {
                 try
                 {
@@ -110,7 +128,7 @@ public sealed class MangaCompletedDownloadImportAdapter(
                         segmentMappings);
                     await metadata.MatchAsync(
                         imported.SeriesId,
-                        request.Request.ExternalId,
+                        aniListId,
                         cancellationToken);
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -126,7 +144,7 @@ public sealed class MangaCompletedDownloadImportAdapter(
                     logger.LogWarning(
                         exception,
                         "AniList reconciliation failed after Manga request {RequestId} imported.",
-                        request.Request.Id);
+                        request.Request?.Id);
                     metadataWarning =
                         " Manga was imported, but AniList reconciliation needs attention.";
                 }
@@ -134,7 +152,8 @@ public sealed class MangaCompletedDownloadImportAdapter(
 
             return CompletedDownloadImportResult.Completed(
                 $"Imported {imported.ChapterCount} Manga chapter(s).{metadataWarning}",
-                $"/Manga/Series/{imported.SeriesId}");
+                $"/Manga/Series/{imported.SeriesId}",
+                placement);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -144,10 +163,11 @@ public sealed class MangaCompletedDownloadImportAdapter(
         {
             logger.LogWarning(
                 exception,
-                "Manga hardlink import crosses filesystems for request {RequestId}.",
-                request.Request.Id);
+                "Manga hardlink import crosses filesystems for '{SourcePath}'.",
+                request.SourcePath);
             return CompletedDownloadImportResult.RetryLater(
-                "The download and the Manga library are on different filesystems, so a hardlink is impossible. Choose \"Hardlink or copy\", Copy or Move for Manga.");
+                "The download and the Manga library are on different filesystems, so a hardlink is impossible. Choose \"Hardlink or copy\", Copy or Move for Manga.",
+                placement);
         }
         catch (Exception exception) when (
             exception is IOException or
@@ -155,10 +175,11 @@ public sealed class MangaCompletedDownloadImportAdapter(
         {
             logger.LogWarning(
                 exception,
-                "Manga import is waiting for storage for request {RequestId}.",
-                request.Request.Id);
+                "Manga import is waiting for storage for '{SourcePath}'.",
+                request.SourcePath);
             return CompletedDownloadImportResult.RetryLater(
-                "Manga import is waiting for storage.");
+                "Manga import is waiting for storage.",
+                placement);
         }
         catch (Exception exception) when (
             exception is InvalidOperationException or
@@ -166,20 +187,77 @@ public sealed class MangaCompletedDownloadImportAdapter(
         {
             logger.LogWarning(
                 exception,
-                "Downloaded Manga release was unsuitable for request {RequestId}.",
-                request.Request.Id);
+                "Downloaded Manga release '{SourcePath}' was unsuitable.",
+                request.SourcePath);
             return CompletedDownloadImportResult.RejectRelease(
-                "Downloaded release could not be imported as Manga.");
+                "Downloaded release could not be imported as Manga.",
+                placement);
         }
+    }
+
+    /// <summary>
+    /// Every folder or CBZ/ZIP archive directly in the inbox is one series, named after it, and
+    /// goes through the same placement and import as a download.
+    /// </summary>
+    public async Task<MediaInboxImportResult> ImportInboxAsync(
+        string inboxRoot,
+        IReadOnlyCollection<string> excludedFolders,
+        CancellationToken cancellationToken)
+    {
+        var entries = Directory
+            .EnumerateFileSystemEntries(inboxRoot)
+            .Where(entry => Directory.Exists(entry) || MangaImportService.IsImportableFile(entry))
+            .Where(entry => !excludedFolders.Any(folder =>
+                MangaLibraryPlacement.SamePath(entry, folder) ||
+                MediaInboxImportService.IsBelow(folder, entry)))
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        var imported = 0;
+        var problems = new List<string>();
+        string? lastUrl = null;
+        foreach (var entry in entries)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var result = await ImportAsync(
+                new CompletedDownloadImportRequest(null, null, entry, MediaAcquisitionKind.Manga),
+                cancellationToken);
+            if (result.Disposition == CompletedDownloadImportDisposition.Completed)
+            {
+                imported++;
+                lastUrl = result.ResultUrl;
+            }
+            else
+            {
+                problems.Add($"{Path.GetFileName(entry)}: {result.Message}");
+            }
+        }
+
+        var message = imported == 0 && problems.Count == 0
+            ? "No Manga in the inbox."
+            : $"Imported {imported} Manga series from the inbox.";
+        if (problems.Count > 0)
+        {
+            message += " " + string.Join(" ", problems);
+        }
+
+        return new MediaInboxImportResult(imported, message, imported == 1 ? lastUrl : null);
     }
 }
 
+/// <summary>
+/// The Light Novel importer behind the shared completed-download dispatcher and the Light Novel
+/// inbox scan. EPUBs are read (never moved) and stored in Jularr's Light Novel library.
+/// </summary>
 public sealed class LightNovelCompletedDownloadImportAdapter(
     NovelEpubImportService importer,
     NovelMetadataService metadata,
     ILogger<LightNovelCompletedDownloadImportAdapter> logger)
-    : ICompletedDownloadImportAdapter
+    : ICompletedDownloadImportAdapter, IMediaInboxImportAdapter
 {
+    private static readonly CompletedDownloadPlacement Placement =
+        new(NovelVolumeAssetStore.RootPath, ImportMode.Copy);
+
     public MediaAcquisitionKind Kind =>
         MediaAcquisitionKind.LightNovel;
 
@@ -231,7 +309,8 @@ public sealed class LightNovelCompletedDownloadImportAdapter(
             }
 
             string? metadataWarning = null;
-            if (request.Request.Provider.Equals(
+            if (request.Request is { } answered &&
+                answered.Provider.Equals(
                     NovelAniListProvider.ProviderKey,
                     StringComparison.OrdinalIgnoreCase))
             {
@@ -239,8 +318,8 @@ public sealed class LightNovelCompletedDownloadImportAdapter(
                 {
                     await metadata.MatchAsync(
                         workIds[0],
-                        request.Request.Provider,
-                        request.Request.ExternalId,
+                        answered.Provider,
+                        answered.ExternalId,
                         cancellationToken);
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -257,7 +336,7 @@ public sealed class LightNovelCompletedDownloadImportAdapter(
                     logger.LogWarning(
                         exception,
                         "AniList reconciliation failed after Light Novel request {RequestId} imported.",
-                        request.Request.Id);
+                        answered.Id);
                     metadataWarning =
                         " Light Novel was imported, but AniList reconciliation needs attention.";
                 }
@@ -265,7 +344,8 @@ public sealed class LightNovelCompletedDownloadImportAdapter(
 
             return CompletedDownloadImportResult.Completed(
                 $"{NovelEpubImportOutcome.Summarize(outcomes)}{metadataWarning}",
-                $"/Novels/Work/{workIds[0]}");
+                $"/Novels/Work/{workIds[0]}",
+                Placement);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -277,8 +357,8 @@ public sealed class LightNovelCompletedDownloadImportAdapter(
         {
             logger.LogWarning(
                 exception,
-                "Light Novel import is waiting for storage for request {RequestId}.",
-                request.Request.Id);
+                "Light Novel import is waiting for storage for '{SourcePath}'.",
+                request.SourcePath);
             return CompletedDownloadImportResult.RetryLater(
                 "Light Novel import is waiting for storage.");
         }
@@ -288,11 +368,35 @@ public sealed class LightNovelCompletedDownloadImportAdapter(
         {
             logger.LogWarning(
                 exception,
-                "Downloaded Light Novel release was unsuitable for request {RequestId}.",
-                request.Request.Id);
+                "Downloaded Light Novel release '{SourcePath}' was unsuitable.",
+                request.SourcePath);
             return CompletedDownloadImportResult.RejectRelease(
                 "Downloaded release could not be imported as a Light Novel.");
         }
+    }
+
+    /// <summary>
+    /// The inbox keeps its layout: EPUBs directly in the folder resolve their series from
+    /// metadata, EPUBs in a subfolder belong to the series named by that folder. Unchanged files
+    /// are skipped, so a rescan never duplicates volumes.
+    /// </summary>
+    public async Task<MediaInboxImportResult> ImportInboxAsync(
+        string inboxRoot,
+        IReadOnlyCollection<string> excludedFolders,
+        CancellationToken cancellationToken)
+    {
+        var outcomes = await importer.ImportDirectoryAsync(inboxRoot, cancellationToken);
+        var works = outcomes
+            .Where(outcome => outcome.Succeeded && outcome.WorkId is not null)
+            .Select(outcome => outcome.WorkId!.Value)
+            .Distinct()
+            .ToArray();
+        return new MediaInboxImportResult(
+            works.Length,
+            outcomes.Count == 0
+                ? "No Light Novel EPUBs in the inbox."
+                : NovelEpubImportOutcome.Summarize(outcomes),
+            works.Length == 1 ? $"/Novels/Work/{works[0]}" : null);
     }
 }
 

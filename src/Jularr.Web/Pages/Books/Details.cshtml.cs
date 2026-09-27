@@ -95,7 +95,7 @@ public sealed class DetailsModel(
         {
             var outcome = await sabnzbd.SubmitUrlAsync(
                 new SabnzbdSubmission(
-                    BookInboxImport.SabnzbdDownloadKind,
+                    Jularr.Web.Features.Acquisition.Import.CompletedDownloadImportService.ManualDownloadOperationKind,
                     "SABnzbd download",
                     title,
                     account.ProfileId,

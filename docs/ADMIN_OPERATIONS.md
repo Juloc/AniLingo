@@ -21,7 +21,7 @@ Owner-only administration:
 - `/Admin/Subtitles`
 - `/Admin/Sonarr`
 - `/Admin/Ai`
-- `/Settings/DownloadClients` — the canonical download client list (SABnzbd; Jularr is usenet-only), shared by Books and Anime, with priority, enable/disable, test and health (linked from Admin → System and Books → Acquisition settings)
+- `/Settings/DownloadClients` — the canonical download client list (SABnzbd; Jularr is usenet-only), shared by every media type, with priority, enable/disable, test and health (linked from Admin → System and Books → Acquisition settings)
 - `/Settings/SonarrMigration` — per-anime Sonarr/Jularr ownership (linked from Admin → Sonarr)
 - `/Settings/Naming` — anime naming profiles, default and per-library selection (linked from Admin → Sonarr); per-anime selection and the rename preview live on `/Library/Rename/{animeId}` (see [ANIME_NAMING.md](ANIME_NAMING.md))
 - `/Settings/Indexers` — the canonical indexer list (Prowlarr, direct Newznab) for anime acquisition, with priority, enable/disable, test and health (linked from Admin → System)
@@ -76,9 +76,10 @@ Tracked network/import work includes:
 - anime metadata match, episode-range match and refresh
 - Manga CBZ/ZIP upload, mounted-path import, source refresh and AniList metadata match
 - Discover handoffs for novel and Manga imports
-- local EPUB upload, Books inbox import and remote EPUB import
-- light-novel EPUB volume uploads and light-novel inbox imports (`<Books inbox>/light-novels`)
-- SABnzbd downloads for Books and Anime, including live queue/post-processing state when a full SABnzbd API key allows queue/history access
+- local EPUB upload and remote EPUB import
+- light-novel EPUB volume uploads
+- inbox scans of the Books, Light Novel and Manga inbox folders (`media-inbox-import`, see [READING_ACQUISITION.md](READING_ACQUISITION.md#inbox-folders))
+- SABnzbd downloads for every media type, including live queue/post-processing state when a full SABnzbd API key allows queue/history access
 - Sonarr artwork downloads
 
 Light-novel EPUB uploads on `/Novels` and on an EPUB series page accept up to 20 files of at most 100 MB each; the raised limits apply only to the owner's upload handlers.
@@ -175,17 +176,17 @@ Exceptions are persisted as bounded type/message summaries rather than stack tra
 ## SABnzbd (download clients)
 
 Jularr is usenet-only by owner decision: torrent download clients (qBittorrent or any other) are
-intentionally unsupported. Books and Anime submit downloads through one abstraction,
+intentionally unsupported. Every media type submits downloads through one abstraction,
 `IDownloadClient` (`Features/Acquisition/DownloadClients`), with SABnzbd as its only
 implementation; `Features/Acquisition/Sabnzbd` keeps SABnzbd's own protocol client and the
-anime-specific attempt/blocklist relation. The pipeline and Books submissions pick the
+anime-specific attempt/blocklist relation. Submissions pick the
 highest-priority enabled, healthy client and fail over to the next one if a submission is
 rejected, so several SABnzbd connections can be configured for redundancy.
 
 ### Configuration
 
 The owner configures every download client under `/Settings/DownloadClients`: name, base URL, API
-key, categories (SABnzbd has separate Books and Anime categories), priority and enabled. Settings
+key, one SABnzbd category per media type (Anime, Manga, Light Novels, Books), priority and enabled. Settings
 are stored in `/data/acquisition/download-clients.json`; the secret is protected with ASP.NET Core
 Data Protection. **Test** on each entry checks reachability and authentication and records the
 result for the periodic health check (see [ANIME_ACQUISITION.md](ANIME_ACQUISITION.md)) — use the
@@ -203,11 +204,11 @@ remove.
 
 ### Jobs and state
 
-Every submission — Books NZB URL/file or an Anime release — goes through `SabnzbdDownloadService` and creates one canonical operation (`IsDownload`, `ExternalProvider = sabnzbd`, `ExternalId = nzo_id` returned by SABnzbd). Books uses kind `sabnzbd-download`, Anime uses `anime-sabnzbd-download`.
+Every submission goes through `DownloadClientSubmissionService` and creates one canonical operation (`IsDownload`, `ExternalProvider = sabnzbd`, `ExternalId = nzo_id` returned by SABnzbd). The job id and the routing details (download client, media type, category) are written in one statement. Anime uses kind `anime-sabnzbd-download`, Books requests `book-usenet-download`, Manga and Light Novel requests `reading-usenet-download`, and an NZB the owner sends by hand `sabnzbd-download`.
 
 One hosted monitor projects SABnzbd queue/history onto those operations: progress, bytes, queue speed (when a single job is downloading), ETA, post-processing state, completion and failure. Failures are classified (incomplete download, corrupt/repair failed, extraction failed, password-protected, script failure) and the operation error states the reason. A job that disappears from both queue and history for 15 minutes fails. After a restart the monitor continues from the persisted external references.
 
-When a Books download completes, the Books inbox import runs once. Anime completions do not touch the Books inbox.
+A completed Books, Manga or Light Novel download is imported by the shared completed-download import (`CompletedDownloadImportService`, see [READING_ACQUISITION.md](READING_ACQUISITION.md#completed-downloads)); Anime completions go to the anime import. The monitor itself imports nothing. The operation detail page shows the reported path, the mapped local path, the destination, the import mode and the result.
 
 The acquisition store (`/data/acquisition/sabnzbd-acquisitions.json`) keeps only the durable relation of an anime acquisition (anime, episodes, attempts with their operation IDs and release identities, untried accepted candidates) and the blocklist of failed release identities. Candidate NZB URLs are stored protected because indexer URLs can carry credentials. It never stores job status; that is always read from the operation.
 

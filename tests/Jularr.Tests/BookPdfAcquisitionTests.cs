@@ -11,6 +11,7 @@ using Jularr.Web.Features.Acquisition.Import;
 using Jularr.Web.Features.Acquisition.Indexers;
 using Jularr.Web.Features.Acquisition.Prowlarr;
 using Jularr.Web.Features.Acquisition.Sabnzbd;
+using Jularr.Web.Features.Acquisition.Wanted;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Books;
 using Jularr.Web.Features.Operations;
@@ -153,7 +154,7 @@ public sealed class BookPdfAcquisitionTests
         var next = await environment.RequestAsync(request.Id);
         Assert.AreEqual(AcquisitionRequestStatus.Downloading, next.Status, "The next release is on its way.");
         Assert.AreNotEqual(request.OperationId, next.OperationId);
-        StringAssert.Contains(next.StatusMessage, BookInboxImport.NoBookFileReason);
+        StringAssert.Contains(next.StatusMessage, BookCompletedDownloadImportAdapter.NoBookFileReason);
         Assert.AreEqual(2, environment.Sabnzbd.Grabs.Count);
         StringAssert.Contains(environment.Sabnzbd.Grabs[1].NzbUrl.ToString(), "pdf");
         CollectionAssert.AreEquivalent(
@@ -169,7 +170,7 @@ public sealed class BookPdfAcquisitionTests
         var waiting = await environment.RequestAsync(request.Id);
         Assert.AreEqual(AcquisitionRequestStatus.Approved, waiting.Status);
         Assert.IsNotNull(BookAcquisitionExecutor.ReadPayload(waiting).NextSearchUtc);
-        StringAssert.Contains(waiting.StatusMessage, BookInboxImport.NoBookFileReason);
+        StringAssert.Contains(waiting.StatusMessage, BookCompletedDownloadImportAdapter.NoBookFileReason);
         Assert.AreEqual(2, environment.Sabnzbd.Grabs.Count, "A tried release is never submitted again.");
         Assert.AreEqual(0, await environment.Db.NovelWorks.CountAsync());
 
@@ -179,7 +180,7 @@ public sealed class BookPdfAcquisitionTests
     }
 
     [TestMethod]
-    public async Task UnreadableDownloadPathFailsWithTheReasonInsteadOfBurningReleases()
+    public async Task UnreadableDownloadPathWaitsWithTheReasonAndFailsWithoutBurningReleases()
     {
         await using var environment = await BookAcquisitionEnvironment.CreateAsync();
         environment.Prowlarr.Releases.Add(Release("James Clear - Atomic Habits EPUB", "epub"));
@@ -188,11 +189,38 @@ public sealed class BookPdfAcquisitionTests
 
         await environment.CompleteDownloadAsync(request, "/elsewhere/Atomic Habits");
 
+        // Not the release's fault: the request waits (the share may come back) and says why.
+        var waiting = await environment.RequestAsync(request.Id);
+        Assert.AreEqual(AcquisitionRequestStatus.Importing, waiting.Status);
+        StringAssert.Contains(waiting.StatusMessage, "/elsewhere/Atomic Habits");
+
+        await environment.RecoverAsync(DateTime.UtcNow + WantedAcquisitionService.CompletedImportTimeout + TimeSpan.FromMinutes(1));
+
         var failed = await environment.RequestAsync(request.Id);
         Assert.AreEqual(AcquisitionRequestStatus.Failed, failed.Status);
         StringAssert.Contains(failed.StatusMessage, "/elsewhere/Atomic Habits");
-        Assert.AreEqual(1, environment.Sabnzbd.Grabs.Count);
+        StringAssert.Contains(failed.StatusMessage, "Gave up importing");
+        Assert.AreEqual(1, environment.Sabnzbd.Grabs.Count, "No other release is grabbed for a path problem.");
         Assert.AreEqual("failed", (await environment.AddStateAsync()).RequestStatus);
+    }
+
+    [TestMethod]
+    public async Task CancelledBookDownloadStopsWithoutGrabbingTheNextRelease()
+    {
+        await using var environment = await BookAcquisitionEnvironment.CreateAsync();
+        environment.Prowlarr.Releases.Add(Release("James Clear - Atomic Habits EPUB", "epub"));
+        environment.Prowlarr.Releases.Add(Release("James Clear - Atomic Habits PDF", "pdf"));
+        var request = await environment.AddAsync();
+
+        await environment.Operations.MarkCancelledAsync(request.OperationId!.Value, "Cancelled in SABnzbd by the owner.");
+        await environment.RecoverAsync(DateTime.UtcNow);
+        await environment.RecoverAsync(DateTime.UtcNow.AddDays(2));
+
+        var stored = await environment.RequestAsync(request.Id);
+        Assert.AreEqual(AcquisitionRequestStatus.Failed, stored.Status);
+        Assert.AreEqual(WantedAcquisitionService.CancelledMessage, stored.StatusMessage);
+        Assert.AreEqual(request.OperationId, stored.OperationId);
+        Assert.AreEqual(1, environment.Sabnzbd.Grabs.Count, "Cancel means stop, never the next release.");
     }
 
     [TestMethod]
@@ -212,12 +240,19 @@ public sealed class BookPdfAcquisitionTests
         Assert.AreEqual(BookAddState.Importing, importing.RequestStatus);
         Assert.IsTrue(importing.IsInFlight);
 
-        Assert.AreEqual(0, await environment.RecoverAsync(DateTime.UtcNow), "A fresh completion is left to the SABnzbd monitor.");
-        Assert.AreEqual(1, await environment.RecoverAsync(DateTime.UtcNow + BookRequestSearchService.MissedImportAfter + TimeSpan.FromMinutes(1)));
+        // The next Wanted pass after the restart imports it from the job's own folder.
+        Assert.IsTrue(await environment.RecoverAsync(DateTime.UtcNow) > 0);
 
         var stored = await environment.RequestAsync(request.Id);
         Assert.AreEqual(AcquisitionRequestStatus.Completed, stored.Status);
         Assert.AreEqual(1, await environment.Db.NovelWorks.CountAsync());
+
+        var importedOperation = await environment.Operations.GetAsync(request.OperationId!.Value);
+        Assert.IsTrue(DownloadOperationDetails.TryParse(importedOperation!.Details, out var details));
+        Assert.AreEqual(DownloadImportState.Completed, details!.Import!.State);
+        Assert.AreEqual("/data/downloads/complete/books/Atomic Habits", details.Import.ReportedPath);
+        Assert.AreEqual(environment.CompletedFolder("Atomic Habits").Replace('\\', '/'), details.Import.LocalPath!.Replace('\\', '/'));
+        Assert.AreEqual(ImportMode.Copy, details.Import.Mode);
     }
 
     [TestMethod]
@@ -601,8 +636,16 @@ public sealed class BookPdfAcquisitionTests
             collection.AddSingleton<DownloadClientSubmissionService>();
             collection.AddSingleton<SabnzbdDownloadService>();
             collection.AddSingleton(owner);
+            collection.AddSingleton(TimeProvider.System);
+            collection.AddSingleton<ReleaseRequestTracker>();
             collection.AddSingleton<IAcquisitionRequestExecutor, BookAcquisitionExecutor>();
             collection.AddSingleton<AcquisitionRequestService>();
+            // The shared Wanted lifecycle with the Book adapter behind the dispatcher.
+            collection.AddSingleton<IWantedRequestHandler, BookWantedRequestHandler>();
+            collection.AddSingleton<ICompletedDownloadImportAdapter, BookCompletedDownloadImportAdapter>();
+            collection.AddSingleton<CompletedDownloadDispatcher>();
+            collection.AddSingleton<ICompletedDownloadLocationResolver, CompletedDownloadLocationResolver>();
+            collection.AddSingleton<CompletedDownloadImportService>();
             var services = collection.BuildServiceProvider();
 
             await services.GetRequiredService<IndexerStore>().SaveAsync(new IndexerEntry(
@@ -619,7 +662,7 @@ public sealed class BookPdfAcquisitionTests
                 DownloadClientType.Sabnzbd,
                 Enabled: true,
                 Priority: 1,
-                new DownloadClientSettings("http://sabnzbd:8080", "books", "anime"),
+                new DownloadClientSettings("http://sabnzbd:8080", new Dictionary<MediaAcquisitionKind, string?> { [MediaAcquisitionKind.Book] = "books", [MediaAcquisitionKind.Anime] = "anime" }),
                 "secret-key"));
             await services.GetRequiredService<AnimeImportSettingsStore>().UpdateAsync(
                 state => state with { RemotePathMappings = [new RemotePathMapping("/data/downloads/complete", Path.Combine(root, "mnt", "complete"))] },
@@ -653,23 +696,23 @@ public sealed class BookPdfAcquisitionTests
         public string CompletedFolder(string job) =>
             Directory.CreateDirectory(Path.Combine(Root, "mnt", "complete", "books", job)).FullName;
 
-        /// <summary>What the SABnzbd monitor does when the request's job completes.</summary>
+        /// <summary>
+        /// SABnzbd finishes the request's job at <paramref name="reportedPath"/> (the monitor
+        /// marks the operation done) and the shared Wanted lifecycle imports it.
+        /// </summary>
         public async Task CompleteDownloadAsync(AcquisitionRequest request, string reportedPath)
         {
             var operationId = request.OperationId!.Value;
             await Operations.MarkSucceededAsync(operationId, "SABnzbd download and post-processing completed.");
             var operation = (await Operations.GetAsync(operationId))!;
-            await BookInboxImport.ImportAfterDownloadsAsync(
-                services,
-                [operation],
-                new Dictionary<Guid, string?> { [operationId] = reportedPath },
-                CancellationToken.None);
-            Db.ChangeTracker.Clear();
+            Sabnzbd.History = History(operation.ExternalId!, reportedPath);
+            await RecoverAsync(DateTime.UtcNow);
         }
 
+        /// <summary>One pass of the shared Wanted lifecycle, as after a restart.</summary>
         public async Task<int> RecoverAsync(DateTime nowUtc)
         {
-            var moved = await BookRequestSearchService.RecoverDownloadsAsync(services, nowUtc, CancellationToken.None);
+            var moved = await WantedAcquisitionService.ProcessOnceAsync(services, nowUtc, CancellationToken.None);
             Db.ChangeTracker.Clear();
             return moved;
         }

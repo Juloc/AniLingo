@@ -435,6 +435,37 @@ public sealed class OperationStore(AppDbContext db)
             cancellationToken);
     }
 
+    /// <summary>
+    /// Records the external job and its routing details in one statement, so a crash can never
+    /// leave a tracked job without the client it was sent to.
+    /// </summary>
+    public Task SetExternalReferenceAsync(
+        Guid id,
+        string provider,
+        string externalId,
+        string? details,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(provider);
+        ArgumentException.ThrowIfNullOrWhiteSpace(externalId);
+
+        return UpdateAsync(
+            id,
+            """
+            ExternalProvider = @provider,
+            ExternalId = @externalId,
+            Details = @details,
+            UpdatedAtUtc = @now
+            """,
+            [
+                ("@provider", Trim(provider, MaxExternalProviderLength)),
+                ("@externalId", Trim(externalId, MaxExternalIdLength)),
+                ("@details", Trim(details, MaxDetailsLength)),
+                ("@now", Format(DateTime.UtcNow))
+            ],
+            cancellationToken);
+    }
+
     public async Task<IReadOnlyList<OperationSnapshot>> ListActiveExternalAsync(
         string provider,
         CancellationToken cancellationToken = default)

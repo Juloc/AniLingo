@@ -481,6 +481,8 @@ public sealed class WantedAcquisitionTests
                 .AddSingleton<ICompletedDownloadImportAdapter>(adapter)
                 .AddSingleton<ICompletedDownloadLocationResolver>(resolver)
                 .AddSingleton<CompletedDownloadDispatcher>()
+                .AddSingleton<CompletedDownloadImportService>()
+                .AddSingleton(typeof(Microsoft.Extensions.Logging.ILogger<>), typeof(Microsoft.Extensions.Logging.Abstractions.NullLogger<>))
                 .BuildServiceProvider();
 
         public async ValueTask DisposeAsync()

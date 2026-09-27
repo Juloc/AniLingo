@@ -124,6 +124,6 @@ public sealed class SabnzbdDownloadClient(ISabnzbdClient client) : IDownloadClie
 
     public static SabnzbdConnection ToConnection(DownloadClientEntry entry) =>
         new(
-            new SabnzbdSettings(entry.Settings.BaseUrl, entry.Settings.BooksCategory, entry.Settings.AnimeCategory),
+            new SabnzbdSettings(entry.Settings.BaseUrl),
             entry.Secret ?? throw new InvalidOperationException("SABnzbd API key is not configured."));
 }

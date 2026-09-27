@@ -1,6 +1,9 @@
 @page "{id:guid}"
 @model Jularr.Web.Pages.Admin.OperationModel
 @using Jularr.Web.Features.Operations
+@using Jularr.Web.Features.Acquisition.Access
+@using Jularr.Web.Features.Acquisition.DownloadClients
+@using Jularr.Web.Features.Acquisition.Import
 @{
     var ui = Model.Ui;
     ViewData["Title"] = Model.Operation.Title;
@@ -16,6 +19,36 @@
         OperationStatus.Cancelled => ui["admin.operations.status.cancelled"],
         OperationStatus.Interrupted => ui["admin.operations.status.interrupted"],
         _ => status.ToString()
+    };
+
+    string MediaLabel(MediaAcquisitionKind kind) => kind switch
+    {
+        MediaAcquisitionKind.Anime => ui["admin.operation.media.anime"],
+        MediaAcquisitionKind.Manga => ui["admin.operation.media.manga"],
+        MediaAcquisitionKind.LightNovel => ui["admin.operation.media.lightNovel"],
+        MediaAcquisitionKind.Book => ui["admin.operation.media.book"],
+        _ => kind.ToString()
+    };
+
+    string ImportStateLabel(DownloadImportState state) => state switch
+    {
+        DownloadImportState.Waiting => ui["admin.operation.importState.waiting"],
+        DownloadImportState.Completed => ui["admin.operation.importState.completed"],
+        DownloadImportState.Rejected => ui["admin.operation.importState.rejected"],
+        DownloadImportState.GaveUp => ui["admin.operation.importState.gaveUp"],
+        DownloadImportState.ManualReview => ui["admin.operation.importState.manualReview"],
+        DownloadImportState.Failed => ui["admin.operation.importState.failed"],
+        _ => state.ToString()
+    };
+
+    string ImportModeLabel(ImportMode? mode) => mode switch
+    {
+        null => ui["admin.operation.readInPlace"],
+        ImportMode.Move => ui["settings.acquisition.importMode.move"],
+        ImportMode.Copy => ui["settings.acquisition.importMode.copy"],
+        ImportMode.Hardlink => ui["settings.acquisition.importMode.hardlink"],
+        ImportMode.HardlinkOrCopy => ui["settings.acquisition.importMode.hardlinkOrCopy"],
+        _ => mode.Value.ToString()
     };
 
     string LogLevelLabel(OperationLogLevel level) => level switch
@@ -128,9 +161,43 @@
                 {
                     <div><span>@ui["admin.operation.sabnzbdJob"]</span><strong>@operation.ExternalId</strong></div>
                 }
+                @if (Model.DownloadDetails is { } routing)
+                {
+                    <div><span>@ui["admin.operation.mediaType"]</span><strong>@MediaLabel(routing.MediaKind)</strong></div>
+                    <div><span>@ui["admin.operation.downloadCategory"]</span><strong>@(routing.Category ?? dash)</strong></div>
+                }
             </div>
         }
     </section>
+
+    @if (Model.DownloadDetails is { } download && (download.Import is not null || operation.Status == OperationStatus.Succeeded))
+    {
+        var import = download.Import;
+        <section class="panel">
+            <div class="panel-heading">
+                <h2>@ui["admin.operation.import"]</h2>
+                @if (import is not null)
+                {
+                    <span>@ImportStateLabel(import.State)</span>
+                }
+            </div>
+            @if (import is null)
+            {
+                <p class="muted">@ui["admin.operation.notImportedYet"]</p>
+            }
+            else
+            {
+                <div class="status-list">
+                    <div><span>@ui["admin.operation.reportedPath"]</span><strong>@(import.ReportedPath ?? dash)</strong></div>
+                    <div><span>@ui["admin.operation.localPath"]</span><strong>@(import.LocalPath ?? dash)</strong></div>
+                    <div><span>@ui["admin.operation.destination"]</span><strong>@(import.Destination ?? dash)</strong></div>
+                    <div><span>@ui["admin.operation.importMode"]</span><strong>@(import.Destination is null ? dash : ImportModeLabel(import.Mode))</strong></div>
+                    <div><span>@ui["admin.operation.importUpdated"]</span><strong>@import.UpdatedAtUtc.ToLocalTime().ToString("g")</strong></div>
+                </div>
+                <p>@import.Result</p>
+            }
+        </section>
+    }
 
     @if (Model.Acquisition is { } acquisition && Model.AcquisitionAttempt is { } attempt)
     {

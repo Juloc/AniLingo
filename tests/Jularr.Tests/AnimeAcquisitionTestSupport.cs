@@ -199,7 +199,7 @@ internal sealed class AnimeAcquisitionEnvironment : IAsyncDisposable
                 DownloadClientType.Sabnzbd,
                 Enabled: true,
                 Priority: 1,
-                new DownloadClientSettings("http://sabnzbd:8080", "books", "anime"),
+                new DownloadClientSettings("http://sabnzbd:8080", new Dictionary<MediaAcquisitionKind, string?> { [MediaAcquisitionKind.Book] = "books", [MediaAcquisitionKind.Anime] = "anime" }),
                 "secret-key"));
 
         // A simple naming profile keeps the expected library paths readable in assertions.

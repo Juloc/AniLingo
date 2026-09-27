@@ -2,11 +2,16 @@ using System.Text.Json;
 using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Acquisition.DownloadClients;
 using Jularr.Web.Features.Acquisition.Indexers;
+using Jularr.Web.Features.Acquisition.Wanted;
 using Jularr.Web.Features.Novels;
 using Jularr.Web.Features.ReadingDiscovery;
 
 namespace Jularr.Web.Features.ReadingAcquisition;
 
+/// <summary>
+/// What a Manga or Light Novel request searches for. The Usenet search state (tried releases,
+/// searches, next search, last problem) is the shared <see cref="ReleaseRequestPayload"/>.
+/// </summary>
 public sealed record ReadingRequestPayload(
     string Title,
     IReadOnlyList<string> Aliases,
@@ -14,29 +19,15 @@ public sealed record ReadingRequestPayload(
     int? RequestedVolume = null,
     double? RequestedChapterStart = null,
     double? RequestedChapterEnd = null,
-    IReadOnlyList<string>? PreferredLanguages = null,
-    IReadOnlyList<string>? TriedReleaseIds = null,
-    int Searches = 0,
-    DateTime? NextSearchUtc = null,
-    string? LastProblem = null);
+    IReadOnlyList<string>? PreferredLanguages = null) : ReleaseRequestPayload;
 
 public sealed class ReadingAcquisitionEngine(
     IndexerSearchCoordinator indexers,
     DownloadClientStore downloadClients,
     DownloadClientSubmissionService downloads,
-    AcquisitionAccessStore requests,
-    TimeProvider clock)
+    ReleaseRequestTracker tracker)
 {
     public const string OperationKind = "reading-usenet-download";
-    public const int MaxSearches = 12;
-
-    public static TimeSpan SearchBackoff(int searches) =>
-        TimeSpan.FromHours(searches switch
-        {
-            <= 1 => 6,
-            2 => 12,
-            _ => 24
-        });
 
     public async Task<AcquisitionExecution> ExecuteAsync(
         AcquisitionRequest request,
@@ -72,136 +63,49 @@ public sealed class ReadingAcquisitionEngine(
             indexers,
             target,
             cancellationToken);
-        var searches = payload.Searches + 1;
-        var tried = new HashSet<string>(
-            payload.TriedReleaseIds ?? [],
-            StringComparer.OrdinalIgnoreCase);
-        var ranked = PickNextUntried(search, tried);
 
-        if (ranked?.Release.InternalDownloadUri is not { } downloadUri)
-        {
-            var reason = search.Ranked.Any(candidate =>
-                    candidate.Score > 0 &&
-                    tried.Contains(candidate.Release.Identity))
-                ? "Every matching release was tried already."
-                : search.FailureMessage;
-
-            // Like Books: the previous problem is shown once in this message and then
-            // consumed, so repeated searches never stack "No release found… No release found…".
-            if (searches >= MaxSearches)
+        return await tracker.ContinueAsync(
+            request,
+            payload,
+            Candidates(search),
+            search.FailureMessage,
+            async release =>
             {
-                await SavePayloadAsync(
-                    request,
-                    payload with
-                    {
-                        Searches = searches,
-                        NextSearchUtc = null,
-                        LastProblem = null
-                    },
+                var outcome = await downloads.SubmitAsync(
+                    new DownloadSubmissionSpec(
+                        OperationKind,
+                        request.Kind == MediaAcquisitionKind.Manga
+                            ? "Download Manga"
+                            : "Download Light Novel",
+                        payload.Title,
+                        request.RequestedByProfileId,
+                        release.DownloadUri,
+                        release.Title,
+                        request.Kind),
                     cancellationToken);
-                return new AcquisitionExecution(
-                    AcquisitionRequestStatus.Failed,
-                    WithProblem(payload, $"{reason} Gave up after {searches} searches."));
-            }
-
-            var next = clock.GetUtcNow().UtcDateTime + SearchBackoff(searches);
-            await SavePayloadAsync(
-                request,
-                payload with
-                {
-                    Searches = searches,
-                    NextSearchUtc = next,
-                    LastProblem = null
-                },
-                cancellationToken);
-            return new AcquisitionExecution(
-                AcquisitionRequestStatus.Approved,
-                WithProblem(payload, $"{reason} Searching again {next:yyyy-MM-dd HH:mm} UTC."));
-        }
-
-        tried.Add(ranked.Release.Identity);
-        await SavePayloadAsync(
-            request,
-            payload with
-            {
-                TriedReleaseIds = tried.Order(StringComparer.OrdinalIgnoreCase).ToArray(),
-                Searches = searches,
-                NextSearchUtc = null,
-                LastProblem = null
+                return new ReleaseRequestSubmission(
+                    outcome.Accepted,
+                    outcome.OperationId,
+                    outcome.Message);
             },
             cancellationToken);
-
-        var outcome = await downloads.SubmitAsync(
-            new DownloadSubmissionSpec(
-                OperationKind,
-                request.Kind == MediaAcquisitionKind.Manga
-                    ? "Download Manga"
-                    : "Download Light Novel",
-                payload.Title,
-                request.RequestedByProfileId,
-                downloadUri,
-                ranked.Release.Title,
-                request.Kind),
-            cancellationToken);
-
-        if (outcome.Accepted)
-        {
-            return new AcquisitionExecution(
-                AcquisitionRequestStatus.Downloading,
-                payload.LastProblem is null
-                    ? ranked.Release.Title
-                    : $"{payload.LastProblem} Trying {ranked.Release.Title}.",
-                outcome.OperationId);
-        }
-
-        var retryProblem = outcome.Message;
-        if (searches >= MaxSearches)
-        {
-            await SavePayloadAsync(
-                request,
-                payload with
-                {
-                    TriedReleaseIds = tried.Order(StringComparer.OrdinalIgnoreCase).ToArray(),
-                    Searches = searches,
-                    NextSearchUtc = null,
-                    LastProblem = retryProblem
-                },
-                cancellationToken);
-            return new AcquisitionExecution(
-                AcquisitionRequestStatus.Failed,
-                retryProblem,
-                outcome.OperationId);
-        }
-
-        var retryAt = clock.GetUtcNow().UtcDateTime + SearchBackoff(searches);
-        await SavePayloadAsync(
-            request,
-            payload with
-            {
-                TriedReleaseIds = tried.Order(StringComparer.OrdinalIgnoreCase).ToArray(),
-                Searches = searches,
-                NextSearchUtc = retryAt,
-                LastProblem = retryProblem
-            },
-            cancellationToken);
-        return new AcquisitionExecution(
-            AcquisitionRequestStatus.Approved,
-            $"{retryProblem} Searching again {retryAt:yyyy-MM-dd HH:mm} UTC.",
-            outcome.OperationId);
     }
 
-    public static RankedReadingRelease? PickNextUntried(
-        ReadingUsenetSearchResult search,
-        IReadOnlyCollection<string> triedReleaseIds)
+    /// <summary>The releases the reading matcher accepted, best first; each is tried once by its identity.</summary>
+    public static IReadOnlyList<ReleaseRequestCandidate> Candidates(
+        ReadingUsenetSearchResult search)
     {
         ArgumentNullException.ThrowIfNull(search);
-        ArgumentNullException.ThrowIfNull(triedReleaseIds);
 
-        var tried = triedReleaseIds.ToHashSet(
-            StringComparer.OrdinalIgnoreCase);
-        return search.Ranked.FirstOrDefault(candidate =>
-            candidate.Score > 0 &&
-            !tried.Contains(candidate.Release.Identity));
+        return search.Ranked
+            .Where(candidate =>
+                candidate.Score > 0 &&
+                candidate.Release.InternalDownloadUri is not null)
+            .Select(candidate => new ReleaseRequestCandidate(
+                candidate.Release.Identity,
+                candidate.Release.Title,
+                candidate.Release.InternalDownloadUri!))
+            .ToArray();
     }
 
     public static ReadingRequestPayload ReadPayload(
@@ -266,22 +170,6 @@ public sealed class ReadingAcquisitionEngine(
             payload.RequestedChapterStart,
             payload.RequestedChapterEnd,
             payload.PreferredLanguages);
-
-    private Task SavePayloadAsync(
-        AcquisitionRequest request,
-        ReadingRequestPayload payload,
-        CancellationToken cancellationToken) =>
-        requests.UpdatePayloadAsync(
-            request.Id,
-            JsonSerializer.Serialize(payload, JsonSerializerOptions.Web),
-            cancellationToken);
-
-    private static string WithProblem(
-        ReadingRequestPayload payload,
-        string message) =>
-        payload.LastProblem is null
-            ? message
-            : $"{payload.LastProblem} {message}";
 }
 
 public sealed class MangaAcquisitionRequestExecutor(

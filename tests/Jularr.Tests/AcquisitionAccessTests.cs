@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Jularr.Web.Data;
 using Jularr.Web.Features.Acquisition.Access;
+using Jularr.Web.Features.Acquisition.Wanted;
 using Jularr.Web.Features.Acquisition.Prowlarr;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Books;
@@ -242,12 +243,12 @@ public sealed class AcquisitionAccessTests
 
         var due = await store.CreateAsync(BookDraft("dune", now.AddMinutes(-1)), "owner", AcquisitionRequestStatus.Approved, "owner", CancellationToken.None);
         var later = await store.CreateAsync(BookDraft("emma", now.AddHours(3)), "owner", AcquisitionRequestStatus.Approved, "owner", CancellationToken.None);
-        var services = Services(store, owner);
+        var handler = new BookWantedRequestHandler(store, owner);
 
-        Assert.AreEqual(1, await BookRequestSearchService.SearchDueAsync(services, now, CancellationToken.None));
-        Assert.AreEqual(1, executor.Runs);
-        Assert.AreEqual(AcquisitionRequestStatus.Downloading, (await store.GetAsync(due.Id, CancellationToken.None))!.Status);
-        Assert.AreEqual(AcquisitionRequestStatus.Approved, (await store.GetAsync(later.Id, CancellationToken.None))!.Status);
+        Assert.IsTrue(handler.IsSearchDue(due, now));
+        Assert.IsFalse(handler.IsSearchDue(later, now));
+        Assert.IsTrue(handler.IsSearchDue(later, now.AddHours(3)));
+        Assert.AreEqual(0, executor.Runs, "Wanted decides when to search; the handler only answers whether it is due.");
     }
 
     [TestMethod]
@@ -262,38 +263,28 @@ public sealed class AcquisitionAccessTests
         var failedOperation = request.OperationId!.Value;
         Assert.AreEqual(1, executor.Runs);
 
-        var services = Services(store, owner, fixture.Db);
-        Assert.AreEqual(0, await BookRequestSearchService.ContinueAfterFailedDownloadsAsync(services, [Guid.NewGuid()], CancellationToken.None));
-        Assert.AreEqual(1, await BookRequestSearchService.ContinueAfterFailedDownloadsAsync(services, [failedOperation], CancellationToken.None));
+        await new BookWantedRequestHandler(store, owner).ContinueAfterProblemAsync(
+            request,
+            "The download failed: Repair failed.",
+            CancellationToken.None);
         Assert.AreEqual(2, executor.Runs);
-        Assert.AreNotEqual(failedOperation, (await store.GetAsync(request.Id, CancellationToken.None))!.OperationId);
+        var continued = (await store.GetAsync(request.Id, CancellationToken.None))!;
+        Assert.AreNotEqual(failedOperation, continued.OperationId);
+        Assert.AreEqual("The download failed: Repair failed.", BookAcquisitionExecutor.ReadPayload(continued).LastProblem);
     }
 
     [TestMethod]
     public void BookSearchBackoffGrowsToDaily()
     {
-        Assert.AreEqual(TimeSpan.FromHours(6), BookAcquisitionExecutor.SearchBackoff(1));
-        Assert.AreEqual(TimeSpan.FromHours(12), BookAcquisitionExecutor.SearchBackoff(2));
-        Assert.AreEqual(TimeSpan.FromHours(24), BookAcquisitionExecutor.SearchBackoff(7));
-    }
-
-    private static IServiceProvider Services(AcquisitionAccessStore store, AcquisitionRequestService service, AppDbContext? db = null)
-    {
-        var services = new ServiceCollection()
-            .AddSingleton(store)
-            .AddSingleton(service);
-        if (db is not null)
-        {
-            services.AddSingleton(db);
-        }
-
-        return services.BuildServiceProvider();
+        Assert.AreEqual(TimeSpan.FromHours(6), ReleaseRequestTracker.SearchBackoff(1));
+        Assert.AreEqual(TimeSpan.FromHours(12), ReleaseRequestTracker.SearchBackoff(2));
+        Assert.AreEqual(TimeSpan.FromHours(24), ReleaseRequestTracker.SearchBackoff(7));
     }
 
     private static AcquisitionRequestDraft BookDraft(string id, DateTime nextSearchUtc) =>
         new(MediaAcquisitionKind.Book, "test", id, id.ToUpperInvariant(), "Author", null,
             System.Text.Json.JsonSerializer.Serialize(
-                new BookRequestPayload(id, id, "Author", NextSearchUtc: nextSearchUtc),
+                new BookRequestPayload(id, id, "Author") { NextSearchUtc = nextSearchUtc },
                 System.Text.Json.JsonSerializerOptions.Web));
 
     private static AcquisitionRequestDraft Draft(string id, MediaAcquisitionKind kind = MediaAcquisitionKind.Book) =>

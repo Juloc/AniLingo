@@ -1,3 +1,4 @@
+using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Acquisition.Sabnzbd;
 
 namespace Jularr.Web.Features.Acquisition.DownloadClients;
@@ -57,8 +58,11 @@ public static class DownloadClientSettingsMigration
                 Priority: 1,
                 new DownloadClientSettings(
                     resolved.Connection.Settings.BaseUrl,
-                    resolved.Connection.Settings.BooksCategory,
-                    resolved.Connection.Settings.AnimeCategory),
+                    new Dictionary<MediaAcquisitionKind, string?>
+                    {
+                        [MediaAcquisitionKind.Book] = resolved.Connection.Settings.BooksCategory,
+                        [MediaAcquisitionKind.Anime] = resolved.Connection.Settings.AnimeCategory
+                    }),
                 resolved.Connection.ApiKey),
             cancellationToken);
 

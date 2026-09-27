@@ -182,15 +182,14 @@ public sealed class SabnzbdDownloadService(
                 "A newer release already replaced this download for the same episodes.");
         }
 
-        // Request-backed Manga/Light Novel downloads: once Wanted moved the request on to a newer
-        // release, retrying this one would start a download nobody imports.
+        // Request-backed Books, Manga and Light Novel downloads: once Wanted moved the request on to
+        // a newer release, retrying this one would start a download nobody imports.
         var requests = new AcquisitionAccessStore(db);
         var request = await requests.FindByOperationAsync(operation.Id, cancellationToken);
-        var readingDownload = string.Equals(
-            operation.Kind,
-            ReadingAcquisitionEngine.OperationKind,
-            StringComparison.Ordinal);
-        if (readingDownload && request is null)
+        var requestDownload = operation.Kind is
+            ReadingAcquisitionEngine.OperationKind or
+            Books.BookAcquisitionExecutor.OperationKind;
+        if (requestDownload && request is null)
         {
             return new SabnzbdActionOutcome(
                 false,
@@ -234,7 +233,7 @@ public sealed class SabnzbdDownloadService(
             "Retry accepted by SABnzbd; waiting for download progress.",
             cancellationToken: cancellationToken);
 
-        if (readingDownload
+        if (requestDownload
             && request is { Status: AcquisitionRequestStatus.Approved or AcquisitionRequestStatus.Failed })
         {
             // The request stopped waiting for this download (no other release, or it gave up);

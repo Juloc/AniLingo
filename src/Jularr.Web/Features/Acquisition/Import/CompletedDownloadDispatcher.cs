@@ -17,27 +17,53 @@ public enum CompletedDownloadImportDisposition
     RejectedRelease
 }
 
+/// <summary>
+/// Where an importer put the media and how: the library folder or Jularr store it went to,
+/// and the import mode used (null: the files are read in place and stay where they are).
+/// </summary>
+public sealed record CompletedDownloadPlacement(
+    string Destination,
+    ImportMode? Mode);
+
 public sealed record CompletedDownloadImportResult(
     CompletedDownloadImportDisposition Disposition,
     string Message,
-    string? ResultUrl = null)
+    string? ResultUrl = null,
+    CompletedDownloadPlacement? Placement = null)
 {
     public static CompletedDownloadImportResult Completed(
         string message,
-        string resultUrl) =>
-        new(CompletedDownloadImportDisposition.Completed, message, resultUrl);
+        string resultUrl,
+        CompletedDownloadPlacement? placement = null) =>
+        new(CompletedDownloadImportDisposition.Completed, message, resultUrl, placement);
 
-    public static CompletedDownloadImportResult RetryLater(string message) =>
-        new(CompletedDownloadImportDisposition.RetryLater, message);
+    public static CompletedDownloadImportResult RetryLater(
+        string message,
+        CompletedDownloadPlacement? placement = null) =>
+        new(CompletedDownloadImportDisposition.RetryLater, message, Placement: placement);
 
-    public static CompletedDownloadImportResult RejectRelease(string message) =>
-        new(CompletedDownloadImportDisposition.RejectedRelease, message);
+    public static CompletedDownloadImportResult RejectRelease(
+        string message,
+        CompletedDownloadPlacement? placement = null) =>
+        new(CompletedDownloadImportDisposition.RejectedRelease, message, Placement: placement);
 }
 
+/// <summary>
+/// One completed download (or one inbox entry) to import. <see cref="Request"/> is the
+/// acquisition request it answers and <see cref="Operation"/> the download operation; both are
+/// absent for content Jularr did not request, such as a manual NZB or a file in an inbox
+/// folder, which then names its media type in <c>MediaKind</c>.
+/// </summary>
 public sealed record CompletedDownloadImportRequest(
-    AcquisitionRequest Request,
-    OperationSnapshot Operation,
-    string SourcePath);
+    AcquisitionRequest? Request,
+    OperationSnapshot? Operation,
+    string SourcePath,
+    MediaAcquisitionKind? MediaKind = null)
+{
+    public MediaAcquisitionKind Kind =>
+        MediaKind ?? Request?.Kind ??
+        throw new InvalidOperationException("A completed-download import needs a request or a media type.");
+}
 
 /// <summary>
 /// One media-specific adapter behind the single completed-download dispatcher.
@@ -49,6 +75,28 @@ public interface ICompletedDownloadImportAdapter
 
     Task<CompletedDownloadImportResult> ImportAsync(
         CompletedDownloadImportRequest request,
+        CancellationToken cancellationToken);
+}
+
+/// <summary>What one scan of a media type's inbox folder imported.</summary>
+public sealed record MediaInboxImportResult(
+    int Imported,
+    string Message,
+    string? ResultUrl = null);
+
+/// <summary>
+/// The inbox side of a completed-download adapter: imports content that appeared in the media
+/// type's configured inbox folder without a Jularr download, with the same importer.
+/// <paramref name="excludedFolders"/> are other media types' inbox folders nested inside this
+/// one, which the scan must leave alone.
+/// </summary>
+public interface IMediaInboxImportAdapter
+{
+    MediaAcquisitionKind Kind { get; }
+
+    Task<MediaInboxImportResult> ImportInboxAsync(
+        string inboxRoot,
+        IReadOnlyCollection<string> excludedFolders,
         CancellationToken cancellationToken);
 }
 
@@ -69,27 +117,35 @@ public sealed class CompletedDownloadDispatcher(
                     : throw new InvalidOperationException(
                         $"More than one completed-download adapter is registered for {group.Key}."));
 
+    public bool Supports(MediaAcquisitionKind kind) =>
+        adaptersByKind.ContainsKey(kind);
+
     public Task<CompletedDownloadImportResult> DispatchAsync(
         CompletedDownloadImportRequest request,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        if (!adaptersByKind.TryGetValue(request.Request.Kind, out var adapter))
+        if (!adaptersByKind.TryGetValue(request.Kind, out var adapter))
         {
             return Task.FromResult(
                 CompletedDownloadImportResult.RetryLater(
-                    $"No completed-download importer is registered for {request.Request.Kind}."));
+                    $"No completed-download importer is registered for {request.Kind}."));
         }
 
         return adapter.ImportAsync(request, cancellationToken);
     }
 }
 
+/// <summary>
+/// Where a completed download is: the path the download client reported and, after the one
+/// canonical remote-path mapping, the path Jularr reads (<see cref="SourcePath"/>).
+/// </summary>
 public sealed record CompletedDownloadLocation(
     bool Resolved,
     string? SourcePath,
-    string Message);
+    string Message,
+    string? ReportedPath = null);
 
 public interface ICompletedDownloadLocationResolver
 {
@@ -181,7 +237,8 @@ public sealed class CompletedDownloadLocationResolver(
                 localPath,
                 string.Equals(localPath, reportedPath, StringComparison.Ordinal)
                     ? "Completed path resolved."
-                    : "Completed path resolved through the configured remote-path mapping.");
+                    : "Completed path resolved through the configured remote-path mapping.",
+                reportedPath.Trim());
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

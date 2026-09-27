@@ -399,10 +399,11 @@ volume chapters — used by the Books import (implicit volume) and by
 ### EPUB light-novel import
 
 `NovelEpubImportService` is the one import path for uploads (Novels → Add
-novel, or "Add or replace volumes" on an EPUB series) and for the reading
-inbox: the Books inbox path (Books → Integrations / `Books:InboxPath`) with a
-`light-novels` subfolder. EPUBs directly in `light-novels` resolve their series
-from metadata; EPUBs in `light-novels/<Series>/` belong to that series.
+novel, or "Add or replace volumes" on an EPUB series), for completed Light
+Novel downloads and for the Light Novel inbox folder (Settings → Acquisition →
+Media folders, see [READING_ACQUISITION.md](READING_ACQUISITION.md#inbox-folders)).
+EPUBs directly in the inbox folder resolve their series from metadata; EPUBs in
+`<inbox>/<Series>/` belong to that series.
 
 - Series: explicit target series, else inbox folder name, else calibre
   `series` / EPUB 3 `belongs-to-collection`, else the title without its volume

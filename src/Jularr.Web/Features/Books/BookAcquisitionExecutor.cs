@@ -3,46 +3,38 @@ using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Acquisition.DownloadClients;
 using Jularr.Web.Features.Acquisition.Indexers;
 using Jularr.Web.Features.Acquisition.Prowlarr;
-using Jularr.Web.Features.Acquisition.Sabnzbd;
+using Jularr.Web.Features.Acquisition.Wanted;
 
 namespace Jularr.Web.Features.Books;
 
 /// <summary>
-/// What the Books add dialog stores with a request so it can be executed later, plus the Usenet
-/// search state: releases already sent to SABnzbd (never sent twice), when to search again
-/// while no release exists yet and why the last release did not work out.
+/// What the Books add dialog stores with a request so it can be executed later. The Usenet
+/// search state (tried releases, searches, next search, last problem) is the shared
+/// <see cref="ReleaseRequestPayload"/>.
 /// </summary>
 public sealed record BookRequestPayload(
     string CatalogId,
     string Title,
-    string? Author,
-    IReadOnlyList<string>? TriedReleases = null,
-    int Searches = 0,
-    DateTime? NextSearchUtc = null,
-    string? LastProblem = null);
+    string? Author) : ReleaseRequestPayload;
 
 /// <summary>
-/// Automatic Books acquisition, Readarr-style but on the same Usenet path as anime: a free
-/// catalog edition is imported directly; otherwise every indexer is searched in the Newznab
-/// Books categories, the best EPUB (or else PDF) release goes to SABnzbd (Books category) and
-/// the download import brings it into the library when the download completes.
+/// Automatic Books acquisition, Readarr-style but on the same Usenet path as every other media
+/// type: a free catalog edition is imported directly; otherwise every indexer is searched in the
+/// Newznab Books categories, the best EPUB (or else PDF) release goes to the download client with
+/// the Books category, and the shared completed-download dispatcher imports it (see
+/// <see cref="BookCompletedDownloadImportAdapter"/>).
 /// </summary>
 public sealed class BookAcquisitionExecutor(
     BookCatalogService books,
     IndexerSearchCoordinator indexers,
     DownloadClientStore downloadClients,
-    SabnzbdDownloadService sabnzbd,
-    AcquisitionAccessStore requests,
-    TimeProvider? clock = null) : IAcquisitionRequestExecutor
+    DownloadClientSubmissionService downloads,
+    ReleaseRequestTracker tracker) : IAcquisitionRequestExecutor
 {
-    /// <summary>After this many searches without a release the request fails and waits for the owner.</summary>
-    public const int MaxSearches = 12;
+    /// <summary>Operation kind of a request-backed Books download.</summary>
+    public const string OperationKind = "book-usenet-download";
 
     public MediaAcquisitionKind Kind => MediaAcquisitionKind.Book;
-
-    /// <summary>Wait before the next search while no release exists: 6 h, 12 h, then daily.</summary>
-    public static TimeSpan SearchBackoff(int searches) =>
-        TimeSpan.FromHours(searches switch { <= 1 => 6, 2 => 12, _ => 24 });
 
     public async Task<AcquisitionExecution> ExecuteAsync(AcquisitionRequest request, CancellationToken cancellationToken)
     {
@@ -77,68 +69,72 @@ public sealed class BookAcquisitionExecutor(
             return new AcquisitionExecution(AcquisitionRequestStatus.Failed, $"No free edition ({freeEditionNote}) and SABnzbd is not configured.");
         }
 
-        var tried = new HashSet<string>(payload.TriedReleases ?? [], StringComparer.OrdinalIgnoreCase);
         var search = await BookUsenetSearch.SearchAsync(indexers, payload.Title, payload.Author, cancellationToken);
-        var searches = payload.Searches + 1;
-        var release = search.Ranked
-            .Where(candidate => candidate.Score > 0 && !tried.Contains(candidate.Release.Title))
-            .Select(candidate => candidate.Release)
-            .FirstOrDefault();
-        if (release?.InternalDownloadUri is not { } downloadUri)
-        {
-            var reason = tried.Count > 0 && search.Picked is not null
-                ? "Every matching release was tried already."
-                : search.FailureMessage;
-            if (searches >= MaxSearches)
-            {
-                await SavePayloadAsync(request, payload with { Searches = searches, NextSearchUtc = null, LastProblem = null }, cancellationToken);
-                return new AcquisitionExecution(AcquisitionRequestStatus.Failed, WithProblem(payload, $"{reason} Gave up after {searches} searches."));
-            }
-
-            // Readarr-style: keep the request and look again later; new uploads appear all the time.
-            var next = (clock ?? TimeProvider.System).GetUtcNow().UtcDateTime + SearchBackoff(searches);
-            await SavePayloadAsync(request, payload with { Searches = searches, NextSearchUtc = next, LastProblem = null }, cancellationToken);
-            return new AcquisitionExecution(
-                AcquisitionRequestStatus.Approved,
-                WithProblem(payload, $"{reason} Searching again {next:yyyy-MM-dd HH:mm} UTC."));
-        }
-
-        await SavePayloadAsync(
+        return await tracker.ContinueAsync(
             request,
-            payload with { TriedReleases = [.. tried, release.Title], Searches = searches, NextSearchUtc = null, LastProblem = null },
+            payload,
+            Candidates(search),
+            search.FailureMessage,
+            async release =>
+            {
+                var outcome = await downloads.SubmitAsync(
+                    new DownloadSubmissionSpec(
+                        OperationKind,
+                        "Download Book",
+                        payload.Title,
+                        request.RequestedByProfileId,
+                        release.DownloadUri,
+                        payload.Title,
+                        MediaAcquisitionKind.Book),
+                    cancellationToken);
+                return new ReleaseRequestSubmission(outcome.Accepted, outcome.OperationId, outcome.Message);
+            },
             cancellationToken);
-
-        var outcome = await sabnzbd.SubmitUrlAsync(
-            new SabnzbdSubmission(
-                BookInboxImport.SabnzbdDownloadKind,
-                "SABnzbd download",
-                payload.Title,
-                request.RequestedByProfileId,
-                SabnzbdPurpose.Books,
-                JobName: payload.Title),
-            downloadUri,
-            cancellationToken);
-
-        return outcome.Accepted
-            ? new AcquisitionExecution(
-                AcquisitionRequestStatus.Downloading,
-                payload.LastProblem is null ? release.Title : $"{payload.LastProblem} Trying {release.Title}.",
-                outcome.OperationId)
-            : new AcquisitionExecution(AcquisitionRequestStatus.Failed, outcome.Message);
     }
 
-    /// <summary>Keeps the reason the previous release was dropped visible in the request status.</summary>
-    private static string WithProblem(BookRequestPayload payload, string message) =>
-        payload.LastProblem is null ? message : $"{payload.LastProblem} {message}";
+    /// <summary>
+    /// The releases the book selector accepted, best first. A Books release is remembered by its
+    /// title, as it always was, so requests created before the shared state keep their history.
+    /// </summary>
+    public static IReadOnlyList<ReleaseRequestCandidate> Candidates(BookUsenetSearchResult search) =>
+        search.Ranked
+            .Where(candidate => candidate.Score > 0 && candidate.Release.InternalDownloadUri is not null)
+            .Select(candidate => new ReleaseRequestCandidate(
+                candidate.Release.Title,
+                candidate.Release.Title,
+                candidate.Release.InternalDownloadUri!))
+            .ToArray();
 
-    private Task SavePayloadAsync(AcquisitionRequest request, BookRequestPayload payload, CancellationToken cancellationToken) =>
-        requests.UpdatePayloadAsync(request.Id, JsonSerializer.Serialize(payload, JsonSerializerOptions.Web), cancellationToken);
+    public static BookRequestPayload ReadPayload(AcquisitionRequest request)
+    {
+        if (!string.IsNullOrWhiteSpace(request.PayloadJson))
+        {
+            try
+            {
+                if (JsonSerializer.Deserialize<BookRequestPayload>(request.PayloadJson, JsonSerializerOptions.Web) is { } persisted
+                    && !string.IsNullOrWhiteSpace(persisted.Title))
+                {
+                    return persisted;
+                }
+            }
+            catch (JsonException)
+            {
+            }
+        }
 
-    public static BookRequestPayload ReadPayload(AcquisitionRequest request) =>
-        (string.IsNullOrWhiteSpace(request.PayloadJson)
-            ? null
-            : JsonSerializer.Deserialize<BookRequestPayload>(request.PayloadJson, JsonSerializerOptions.Web))
-        ?? new BookRequestPayload(request.ExternalId, request.Title, request.Subtitle);
+        return new BookRequestPayload(request.ExternalId, request.Title, request.Subtitle);
+    }
+}
+
+/// <summary>Books requests on the shared release-request Wanted policy.</summary>
+public sealed class BookWantedRequestHandler(
+    AcquisitionAccessStore store,
+    AcquisitionRequestService requests) : ReleaseRequestWantedHandler(store, requests)
+{
+    public override MediaAcquisitionKind Kind => MediaAcquisitionKind.Book;
+
+    protected override ReleaseRequestPayload ReadPayload(AcquisitionRequest request) =>
+        BookAcquisitionExecutor.ReadPayload(request);
 }
 
 /// <summary>One indexer result as the book selector judged it; <see cref="Score"/> 0 means rejected.</summary>
