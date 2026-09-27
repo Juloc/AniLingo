@@ -50,6 +50,7 @@ public static class UiNavigationCatalog
         new("library", "nav.library", "/Library", "library"),
         new("reading", "nav.reading", "/Reading", "reading", ["/Reading", "/Novels", "/Manga"]),
         new("books", "nav.books", "/Books", "books"),
+        new("calendar", "nav.calendar", "/Calendar", "calendar"),
         new("learn", "nav.learn", "/Learn", "learn", ["/Learn", "/Statistics", "/Kana"], RequiresLearning: true)
     ];
 
