@@ -59,6 +59,9 @@ public sealed record ScanResult(int Discovered, int Updated, int Skipped, int Su
 {
     public int Removed { get; init; }
 
+    // Known files found again under a new path (moved or renamed outside Jularr).
+    public int Relinked { get; init; }
+
     // NFO files that were present but rejected (malformed, oversized, unreadable or unsupported).
     public int MetadataWarnings { get; init; }
 
@@ -89,6 +92,7 @@ public sealed record ScanResult(int Discovered, int Updated, int Skipped, int Su
             results.Sum(x => x.SubtitleFiles))
         {
             Removed = results.Sum(x => x.Removed),
+            Relinked = results.Sum(x => x.Relinked),
             MetadataWarnings = results.Sum(x => x.MetadataWarnings),
             MediaInventory = new MediaInventoryReconciliation(
                 results.Sum(x => x.MediaInventory.Unchanged),

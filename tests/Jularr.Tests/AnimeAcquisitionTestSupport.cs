@@ -457,6 +457,8 @@ internal sealed class AnimeAcquisitionEnvironment : IAsyncDisposable
         collection.AddScoped<AnimeAcquisitionInventory>();
         collection.AddScoped<AnimeAcquisitionPipeline>();
         collection.AddScoped<AnimeImportExecutor>();
+        collection.AddSingleton<Jularr.Web.Features.Storage.StorageAvailabilityCoordinator>();
+        collection.AddScoped<Jularr.Web.Features.Storage.LibraryRootAvailabilityService>();
         collection.AddSingleton<AnimeAcquisitionScheduler>();
         collection.AddScoped<AcquisitionApiKeyService>();
         collection.AddScoped<AcquisitionApiService>();

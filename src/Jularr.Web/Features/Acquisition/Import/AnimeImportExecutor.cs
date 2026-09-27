@@ -10,6 +10,7 @@ using Jularr.Web.Features.Acquisition.Sabnzbd;
 using Jularr.Web.Features.Library;
 using Jularr.Web.Features.Operations;
 using Jularr.Web.Features.Sonarr;
+using Jularr.Web.Features.Storage;
 using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Web.Features.Acquisition.Import;
@@ -40,7 +41,8 @@ public sealed class AnimeImportExecutor(
     LibraryScanner scanner,
     DownloadClientStore downloadClients,
     IDownloadClient downloadClient,
-    ILogger<AnimeImportExecutor> logger)
+    ILogger<AnimeImportExecutor> logger,
+    LibraryRootAvailabilityService? storage = null)
 {
     public const string OperationKind = "anime-import";
     public const string OperationCategory = "Library";
@@ -266,6 +268,11 @@ public sealed class AnimeImportExecutor(
             ? monitorSettings.TargetRootId
             : null;
         var location = await inventory.GetLibraryLocationAsync(target.Anime.Id, cancellationToken, preferredRootId);
+        if (await WaitForLibraryStorageAsync(location, cancellationToken) is { } storageWaiting)
+        {
+            return new(false, storageWaiting);
+        }
+
         var (importAction, allowHardlinkFallback) = await ResolveImportActionAsync(location?.RootId, cancellationToken);
 
         var file = record.Files[index];
@@ -487,6 +494,15 @@ public sealed class AnimeImportExecutor(
             ? monitorSettings.TargetRootId
             : null;
         var location = await inventory.GetLibraryLocationAsync(target.Anime.Id, cancellationToken, preferredRootId);
+        if (await WaitForLibraryStorageAsync(location, cancellationToken) is { } storageWaiting)
+        {
+            // Nothing was moved yet; stays Importing and the scheduler resumes it on its next run.
+            var deferred = record with { Message = storageWaiting, UpdatedAtUtc = DateTimeOffset.UtcNow };
+            await imports.UpsertAsync(deferred, cancellationToken);
+            await new OperationStore(db).ReportProgressAsync(operationId, null, storageWaiting, cancellationToken: cancellationToken);
+            return deferred;
+        }
+
         var (importAction, allowHardlinkFallback) = await ResolveImportActionAsync(location?.RootId, cancellationToken);
         var plan = CompletedDownloadImportPlanner.Plan(
             new CompletedDownloadImportContext(
@@ -794,6 +810,24 @@ public sealed class AnimeImportExecutor(
                 operation.Kind != OperationKind)
             .Select(operation => $"Waiting for '{operation.Title}' to finish before importing.")
             .FirstOrDefault();
+    }
+
+    // An import needs its destination library storage now: a sleeping Wake-on-LAN NAS is started
+    // and the import waits for the bounded start attempt. Returns the reason to defer when the
+    // storage is still not readable, so no file is moved towards an offline mount.
+    private async Task<string?> WaitForLibraryStorageAsync(
+        AnimeLibraryLocation? location,
+        CancellationToken cancellationToken)
+    {
+        if (location is null || storage is null)
+        {
+            return null;
+        }
+
+        var status = await storage.RequireAsync(location.RootId, waitForStart: true, cancellationToken);
+        return status is null or { IsAvailable: true }
+            ? null
+            : "Waiting for the library's media storage to come online before importing.";
     }
 
     private async Task<string> ReconcileAsync(
