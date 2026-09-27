@@ -11,4 +11,4 @@ Vendored renamed:
 
 Used only by the Books reader (Pages/Books/Read.cshtml, wwwroot/js/books-reader-pdf.js).
 To update: replace these files from the new pdfjs-dist package, keep the renames,
-and update the version above and PdfJsVersion in books-reader-pdf.js' tests.
+and update the version above and PdfJsVersion in tests/Jularr.Tests/BookReaderPdfTests.cs.
