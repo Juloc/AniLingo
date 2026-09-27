@@ -341,7 +341,8 @@ public sealed class LocalFirstPageGetTests
                 new NovelImportService(Db, [], novelMetadata),
                 novelMetadata,
                 OwnerAccount,
-                Operations);
+                Operations,
+                NullLogger<Jularr.Web.Features.Discovery.DiscoveryCoordinator>.Instance);
         }
 
         public async Task<(Guid SeriesId, IReadOnlyList<Guid> ChapterIds)> AddMangaAsync(
