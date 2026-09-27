@@ -377,7 +377,7 @@ builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Wanted.IWantedRequest
 builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Import.ICompletedDownloadImportAdapter, Jularr.Web.Features.ReadingAcquisition.MangaCompletedDownloadImportAdapter>();
 builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Import.ICompletedDownloadImportAdapter, Jularr.Web.Features.ReadingAcquisition.LightNovelCompletedDownloadImportAdapter>();
 builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Import.CompletedDownloadDispatcher>();
-builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Import.CompletedDownloadLocationResolver>();
+builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Import.ICompletedDownloadLocationResolver, Jularr.Web.Features.Acquisition.Import.CompletedDownloadLocationResolver>();
 
 // Download clients: SABnzbd connections share the one canonical list (several can fail over to
 // each other). Jularr is usenet-only; torrent clients (qBittorrent) are intentionally
