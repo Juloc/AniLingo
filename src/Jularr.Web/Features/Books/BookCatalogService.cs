@@ -718,7 +718,7 @@ public sealed partial class BookCatalogService(
                         work.Id,
                         token);
 
-                    return await translator.AnalyzeBookAsync(
+                    var seed = await translator.AnalyzeBookAsync(
                         new BookTranslationAnalysisRequest(
                             work.MetadataTitle ?? work.Title,
                             work.Author,
@@ -728,6 +728,18 @@ public sealed partial class BookCatalogService(
                             targetLanguage,
                             sample),
                         token);
+
+                    // The sample covers the opening chapters only; spoiler-safe
+                    // story context uses the analysis after that point.
+                    return seed with
+                    {
+                        AnalysisThroughChapter = await db.NovelChapters
+                            .AsNoTracking()
+                            .Where(x => x.WorkId == work.Id)
+                            .OrderBy(x => x.Number)
+                            .Take(3)
+                            .MaxAsync(x => (int?)x.Number, token)
+                    };
                 },
                 cancellationToken);
 
@@ -752,7 +764,8 @@ public sealed partial class BookCatalogService(
                     BookTranslationMemoryStore.RenderRelevantContext(
                         bible,
                         chunk,
-                        4200);
+                        4200,
+                        chapter.Number);
 
                 var localContext = bookContext
                     + "\nCurrent segment: "
@@ -875,7 +888,8 @@ public sealed partial class BookCatalogService(
                 BookTranslationMemoryStore.RenderRelevantContext(
                     bible,
                     chapter.OriginalText,
-                    5000);
+                    5000,
+                    chapter.Number);
 
             var delta = await translator.ExtractTranslationMemoryAsync(
                 new BookTranslationMemoryRequest(
@@ -894,7 +908,8 @@ public sealed partial class BookCatalogService(
                 chapter.Number,
                 chapter.Title,
                 delta,
-                cancellationToken);
+                cancellationToken,
+                chapter.SourceHash);
 
             var completed = new NovelTranslation
             {
@@ -1028,6 +1043,9 @@ public sealed partial class BookCatalogService(
         await db.SaveChangesAsync(cancellationToken);
 
         DeleteLocalCoverFiles(workId);
+        await CreateTranslationMemoryStore().DeleteWorkAsync(
+            workId,
+            cancellationToken);
     }
 
     private static void DeleteLocalCoverFiles(Guid workId)
@@ -2386,16 +2404,8 @@ public sealed partial class BookCatalogService(
                         StringComparer.Ordinal));
     }
 
-    private BookTranslationMemoryStore CreateTranslationMemoryStore()
-    {
-        var configured = configuration[
-            "Books:Translation:MemoryPath"]?.Trim();
-
-        return new BookTranslationMemoryStore(
-            string.IsNullOrWhiteSpace(configured)
-                ? BookTranslationMemoryStore.DefaultRoot
-                : configured);
-    }
+    private BookTranslationMemoryStore CreateTranslationMemoryStore() =>
+        BookTranslationMemoryStore.FromConfiguration(configuration);
 
     private static string TranslationCacheIdentity(
         AiTranslationMode mode) =>
