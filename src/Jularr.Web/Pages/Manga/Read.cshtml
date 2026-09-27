@@ -361,7 +361,7 @@
                 <div class="reader-menu reader-menu-up" id="manga-menu-view" data-reader-menu="view" role="menu" aria-label="@ui["reader.frame.view"]" hidden>
                     @foreach (var (mode, labelKey) in modes)
                     {
-                        <button type="button" role="menuitemradio" aria-checked="false" data-manga-mode="@mode">
+                        <button type="button" role="menuitemradio" aria-checked="false" data-manga-view="@mode">
                             @{ ModeIcon(mode); }
                             <span>@ui[labelKey]</span>
                             <partial name="_ReaderIcon" model="@("check")" />
@@ -388,7 +388,7 @@
                         <div class="manga-sheet-choices">
                             @foreach (var (mode, labelKey) in modes)
                             {
-                                <button type="button" aria-pressed="false" data-manga-mode="@mode">
+                                <button type="button" aria-pressed="false" data-manga-view="@mode">
                                     <span class="manga-sheet-thumb">@{ ModeIcon(mode); }</span>
                                     <span>@ui[labelKey]</span>
                                 </button>

@@ -512,9 +512,9 @@
     // ---- Chrome -----------------------------------------------------------------
 
     const syncControls = () => {
-        root.querySelectorAll("[data-manga-mode]").forEach(button => {
+        root.querySelectorAll("[data-manga-view]").forEach(button => {
             const attribute = button.getAttribute("role") === "menuitemradio" ? "aria-checked" : "aria-pressed";
-            button.setAttribute(attribute, button.dataset.mangaMode === mode ? "true" : "false");
+            button.setAttribute(attribute, button.dataset.mangaView === mode ? "true" : "false");
         });
         root.querySelectorAll("[data-manga-scheme]").forEach(button => {
             const attribute = button.getAttribute("role") === "menuitemradio" ? "aria-checked" : "aria-pressed";
@@ -583,6 +583,7 @@
         root.dataset.scheme = settings.scheme;
         root.dataset.sharpen = settings.sharpen ? "true" : "false";
         root.style.setProperty("--manga-zoom", String(settings.zoomPercent / 100));
+        root.toggleAttribute("data-zoomed", settings.zoomPercent !== 100);
         root.style.setProperty("--manga-gap", `${settings.gap}px`);
     };
 
@@ -601,7 +602,7 @@
                 if (continueLink.parentElement !== strip) strip.append(continueLink);
                 continueLink.hidden = false;
             }
-            requestAnimationFrame(() => scrollToPage(page, "auto"));
+            scrollToPage(page, "auto");
         }
         syncControls();
         updateLocation();
@@ -712,7 +713,7 @@
             updateLocation();
             prefetch();
         } else if (!isPaged() && ["zoom", "gap", "fitWidth"].includes(key)) {
-            requestAnimationFrame(() => scrollToPage(page, "auto"));
+            scrollToPage(page, "auto");
         }
     };
 
@@ -730,9 +731,9 @@
         const target = event.target instanceof Element ? event.target : null;
         if (!target) return;
 
-        const modeButton = target.closest("[data-manga-mode]");
+        const modeButton = target.closest("[data-manga-view]");
         if (modeButton) {
-            setMode(modeButton.dataset.mangaMode);
+            setMode(modeButton.dataset.mangaView);
             return;
         }
 
