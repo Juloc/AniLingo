@@ -253,10 +253,10 @@ public sealed partial class BookCatalogService
                 work.Author,
                 isbn10: null,
                 isbn13: null,
-                content.CoverJpeg,
-                content.CoverJpeg is null ? null : "image/jpeg",
-                hint?.CoverImageUrl,
-                cancellationToken))
+                embeddedCover: content.CoverJpeg,
+                embeddedMediaType: content.CoverJpeg is null ? null : "image/jpeg",
+                catalogFallback: hint?.CoverImageUrl,
+                cancellationToken: cancellationToken))
         {
             work.CoverImageUrl = $"/Books/Cover/{work.Id}";
         }
@@ -352,8 +352,8 @@ public sealed partial class BookCatalogService
                 isbn13: null,
                 embeddedCover: null,
                 embeddedMediaType: null,
-                hint.CoverImageUrl,
-                cancellationToken))
+                catalogFallback: hint.CoverImageUrl,
+                cancellationToken: cancellationToken))
         {
             work.CoverImageUrl = $"/Books/Cover/{work.Id}";
         }
