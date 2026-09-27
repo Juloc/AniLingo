@@ -22,12 +22,33 @@
         <partial name="_AppBrandMark" />
     </a>
 
-    <nav class="nav-list" aria-label="@ui["nav.primaryAria"]">
-        @foreach (var item in nav.Primary)
-        {
-            <partial name="_AppNavLink" model="item" />
-        }
-    </nav>
+    @if (nav.Context is { } context)
+    {
+        <nav class="nav-list nav-context" aria-label="@ui[context.TitleKey]" data-nav-context="@context.Id">
+            <a class="nav-item nav-back" href="@context.Back.Href">
+                <partial name="_AppIcon" model="context.Back.Icon" />
+                <span class="nav-label">@ui[context.Back.LabelKey]</span>
+            </a>
+            <p class="nav-context-title">@ui[context.TitleKey]</p>
+            @foreach (var group in context.Groups)
+            {
+                <p class="nav-group-title">@ui[group.TitleKey]</p>
+                @foreach (var item in group.Items)
+                {
+                    <partial name="_AppNavLink" model="item" />
+                }
+            }
+        </nav>
+    }
+    @if (nav.Context is null)
+    {
+        <nav class="nav-list" aria-label="@ui["nav.primaryAria"]">
+            @foreach (var item in nav.Primary)
+            {
+                <partial name="_AppNavLink" model="item" />
+            }
+        </nav>
+    }
 
     <nav class="nav-list nav-list-secondary" aria-label="@ui["nav.secondaryAria"]">
         @foreach (var item in nav.Secondary)
