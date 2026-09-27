@@ -3,6 +3,9 @@
     if (!shell) return;
 
     const genreSelect = shell.querySelector("[data-reader-genre-select]");
+    // Optional visual picker (appearance sheet): buttons that set the background
+    // through the shared setting proxies (reader-shell.js).
+    const backgroundChoices = shell.querySelector("[data-reader-background-choices]");
     const backgroundSelect = shell.querySelector("[data-reader-background-select]");
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
@@ -113,6 +116,52 @@
             }
             backgroundSelect.value = selected;
         }
+    };
+
+    const renderBackgroundChoices = () => {
+        if (!backgroundChoices) return;
+        const labels = (() => {
+            try {
+                return JSON.parse(backgroundChoices.dataset.labels || "{}");
+            } catch {
+                return {};
+            }
+        })();
+        const choice = (label, values, image) => {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.dataset.values = JSON.stringify(values);
+            button.setAttribute("aria-pressed", "false");
+            const thumb = document.createElement("span");
+            thumb.className = "reader-sheet-thumb reader-thumb-background";
+            thumb.setAttribute("aria-hidden", "true");
+            if (image) thumb.style.backgroundImage = cssUrl(image);
+            const name = document.createElement("span");
+            name.textContent = label;
+            button.append(thumb, name);
+            return button;
+        };
+        const seen = new Set();
+        const themes = catalog.filter(theme => {
+            if (!theme?.genre || seen.has(theme.genre)) return false;
+            seen.add(theme.genre);
+            return true;
+        });
+        const thumbOf = theme => chooseSource(
+            theme?.assets?.page || theme?.assets?.scrollStatic || theme?.assets?.parallaxBack);
+        // "Auto" previews the artwork that the work's genres select.
+        const suggested = catalog.find(theme => theme.id === suggestedId);
+        backgroundChoices.replaceChildren(
+            choice(labels.none || "Standard", { genreArtworkEnabled: false }, null),
+            choice(
+                labels.auto || "Auto",
+                { genreArtworkEnabled: true, backgroundAssetId: "auto" },
+                suggested ? thumbOf(suggested) : null),
+            ...themes.map(theme => choice(
+                theme.genreLabel || theme.name || theme.genre,
+                { genreArtworkEnabled: true, backgroundAssetId: theme.id },
+                thumbOf(theme))));
+        shell.dispatchEvent(new CustomEvent("jularr:reader-proxies"));
     };
 
     const resolveMotion = theme => {
@@ -290,6 +339,7 @@
         }
 
         populateControls();
+        renderBackgroundChoices();
 
         const requested = state.backgroundAssetId || "auto";
         const id = requested === "auto" ? suggestedId : requested;

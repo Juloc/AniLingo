@@ -115,9 +115,10 @@ Structure (markup classes live in `reader-shell.css`, icons in
 `Pages/Shared/_ReaderIcon.cshtml`, text in `reader.frame.*`):
 
 - top bar (`.reader-frame-top`, `data-reader-chrome-primary`): back, title and
-  subtitle, then language, font & layout, colour scheme, bookmark, search and
-  More. On phones only back, title and More stay; the rest moves into More and
-  the tool row.
+  subtitle, then the reader's primary actions. On phones back, title and More
+  stay in the top bar; contents, read-aloud, appearance and, when more than one
+  readable language/view exists, language remain directly reachable in the
+  primary mobile reader controls. Secondary actions stay in More.
 - contents panel (`[data-reader-contents]`) inside the reader area with tabs
   (`data-reader-contents-tab` / `data-reader-contents-panel`). From 1100 px it is
   a collapsible side panel whose open state is a device convenience in
@@ -133,6 +134,11 @@ Structure (markup classes live in `reader-shell.css`, icons in
   closes the menu. Phones show menus as bottom sheets over a scrim.
 - settings sheet: `[data-reader-settings-open="tab"]` opens the shared
   `_ReaderSettingsPanel` at `reading`, `text`, `appearance`, `tts` or `defaults`.
+- quick controls in the frame are preference proxies, not a second settings
+  implementation. `data-reader-proxy="field"` mirrors one canonical setting;
+  `data-values` can change a small coherent set such as reading mode + chapter
+  style. `reader-shell.js` synchronizes those controls with the shared settings
+  form and persists through the same ReaderPreferences command path.
 - `[data-reader-fullscreen-toggle]`, `[data-reader-share]`,
   `[data-reader-timer="minutes"]` and `[data-reader-page-step="±1"]` are handled
   by the shell. The reading timer stops read-aloud and dispatches
@@ -149,6 +155,10 @@ Source adapter contract:
   `jularr:reader-layout` when the reader area changes size.
 - chrome only auto-hides on phones in Scroll mode; elsewhere the bars are part
   of the layout so the page area never jumps.
+- language/view availability is supplied by the source adapter. A cached
+  readable translation remains selectable even when translation generation or
+  Learning capabilities are disabled; generation capability only controls the
+  action that creates a missing translation.
 
 ### Books adapter
 
@@ -212,7 +222,12 @@ pdf.js, vendored in `wwwroot/lib/pdfjs` (version and licence in `VERSION` and
 ## State ownership
 
 Durable typography, paper, theme, mode and layout settings belong to
-`ReaderPreferenceStore`.
+`ReaderPreferenceStore`. Layout preferences include hyphenation, page-number
+visibility, illustration visibility, paragraph indentation and automatic
+chapter continuation. They participate in the same field-level
+system → global → content-type → genre → work cascade as the older settings.
+Nullable input means "not supplied" during a scope copy/save and must not erase
+an existing override.
 
 Legacy Novel localStorage ownership for font size, line height, text width and
 theme is removed. Local storage may still hold ephemeral/device conveniences
@@ -244,9 +259,42 @@ Razor PageModels orchestrate them:
 | Chapter download, AI translation and AI episode mapping jobs (Operations queue) | `NovelJobs` |
 | AI translation cache, AniList metadata, episode mappings | `NovelTranslationService`, `NovelMetadataService`, `NovelMappingService` |
 
+The Light Novel page uses the shared Reader frame: its contents surface combines
+chapter navigation, bookmarks and notes; the bottom frame owns progress/page
+transport; the appearance sheet uses canonical preference proxies; and the
+chapter opening may render the first EPUB illustration as header artwork.
+In-work search and read-aloud stay adapters/extensions of the same shell rather
+than separate reader chrome.
+
+- Contents rows read like a printed table of contents: "Chapter N" over the
+  chapter title, grouped under EPUB volume headings. Titles that are not
+  numbered story chapters in the source (prologue, epilogue, interlude, side or
+  short story, extra, afterword; Japanese and western spellings) show only their
+  name. The data has no other groups; the reader invents none.
+- The chapter opening is a quiet chapter label, a large title and a drawn
+  ornament. Without an EPUB illustration, an accepted generated chapter artwork
+  (`_ChapterArtwork`, #451) is the header.
+- A paragraph that only holds a scene-break mark (`◇◇◇`, `＊ ＊ ＊`,
+  `NovelChapterDocument.IsSceneBreak`) renders as a section ornament with
+  `role="separator"`. Its text stays in the DOM (visually hidden) so paragraph
+  indexes and offsets are unchanged; read-aloud skips it.
+- The language menu holds Original/German/Both and the translate slot. The
+  TranslateGemma source switch (Local/AI/Both) is added there by
+  `novel-translation.js` only when the local track is configured or cached.
+  The mobile "Language" tool opens and closes the same menu as a bottom sheet
+  (#487). Legacy readers without the frame get a generated "Sprache" action
+  only when a `[data-reader-language-control]` exists; it toggles
+  `.reader-language-expanded` and reports `aria-expanded`.
+- Panels, menus and cards mark state with background, weight or an icon; they
+  do not use coloured left-edge stripes.
+- The appearance sheet shows the reading-mode, background, font & layout,
+  colour-scheme and more-settings cards in one row from 1400 px; the background
+  row scrolls sideways through the real `wwwroot/reader-backgrounds` themes.
+  "Comic" is not offered because no licensed comic typeface is bundled.
+
 Anchors and annotations resolve against the paragraph layout the reader
-renders: Japanese source text, or the current German translation (same prompt
-version and source hash).
+renders: Japanese source text, or the selected German translation variant with
+the matching source/version identity.
 
 ### Bounded reader load
 

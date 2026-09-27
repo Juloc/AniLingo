@@ -55,6 +55,14 @@ public sealed record NovelReaderBlock(
 {
     public bool IsImage => ImageAsset is not null;
     public bool IsHeading => HeadingLevel > 0;
+
+    /// <summary>
+    /// A paragraph that only holds a scene-break mark such as "◇◇◇" or "＊ ＊ ＊".
+    /// The reader draws it as a section ornament; it keeps its paragraph index.
+    /// </summary>
+    public bool IsSceneBreak =>
+        !IsImage && !IsHeading &&
+        NovelChapterDocument.IsSceneBreak(string.Concat(Runs.Select(run => run.Text)));
 }
 
 public static partial class NovelChapterDocument
@@ -67,6 +75,37 @@ public static partial class NovelChapterDocument
 
     // Encodes every HTML-significant character but keeps Japanese text readable.
     private static readonly HtmlEncoder ReaderEncoder = HtmlEncoder.Create(UnicodeRanges.All);
+
+    // Marks that Japanese and western novels use on their own line between
+    // scenes. Ellipses, dashes and middle dots are left out: alone on a line
+    // they are usually a pause in the text, not a section break.
+    private const string SceneBreakMarks = "◇◆◎○●〇□■☆★♢♦◈❖✦✧✽❃*＊※♪#＃§⁂";
+
+    public static bool IsSceneBreak(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text) || text.Length > 24)
+        {
+            return false;
+        }
+
+        var marks = 0;
+        foreach (var character in text)
+        {
+            if (char.IsWhiteSpace(character))
+            {
+                continue;
+            }
+
+            if (!SceneBreakMarks.Contains(character))
+            {
+                return false;
+            }
+
+            marks++;
+        }
+
+        return marks > 0;
+    }
 
     public static string Serialize(IReadOnlyList<NovelContentBlock> blocks) =>
         JsonSerializer.Serialize(blocks, JsonOptions);

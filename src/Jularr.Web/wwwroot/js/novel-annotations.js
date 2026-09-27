@@ -53,14 +53,13 @@
     registry.buildHighlightSegments = buildHighlightSegments;
 
     registry.annotations = reader => {
-        const { shell, clamp, normalizeText } = reader;
+        const { shell, clamp, normalizeText, t } = reader;
         const highlightForm = shell.querySelector("[data-highlight-form]");
         const removeHighlightEndpoint = shell.querySelector("[data-remove-highlight-endpoint]");
         const bookmarkLabelEndpoint = shell.querySelector("[data-bookmark-label-endpoint]");
         const highlightNoteEndpoint = shell.querySelector("[data-highlight-note-endpoint]");
         const selectionMenu = shell.querySelector("[data-selection-menu]");
         const notes = shell.querySelector("[data-reader-notes]");
-        const notesToggle = shell.querySelector("[data-reader-notes-toggle]");
         const bookmarkList = shell.querySelector("[data-bookmark-list]");
         const highlightList = shell.querySelector("[data-highlight-list]");
         const otherNotesStatus = shell.querySelector("[data-other-notes-status]");
@@ -87,13 +86,25 @@
         // Heading shown on every bookmark/highlight note card for the current
         // chapter, matching the label the server attaches to other chapters'
         // notes (chapter number/title and volume, when the work has volumes).
-        const currentChapterHeading = () => {
-            const volumeNumber = shell.dataset.volumeNumber;
-            const chapterNumber = shell.dataset.chapterNumber || "";
-            const chapterTitle = shell.dataset.chapterTitle || "";
-            const volumePrefix = volumeNumber ? `Band ${volumeNumber} · ` : "";
-            return `${volumePrefix}Kapitel ${chapterNumber} · ${chapterTitle}`;
+        const chapterHeading = (volumeNumber, chapterNumber, chapterTitle) => {
+            const label = volumeNumber
+                ? t("volumeChapter", "Volume {volume} · Chapter {number}", {
+                    volume: volumeNumber,
+                    number: chapterNumber
+                })
+                : t("chapterNumber", "Chapter {number}", { number: chapterNumber });
+            return chapterTitle ? label + " · " + chapterTitle : label;
         };
+
+        const currentChapterHeading = () => chapterHeading(
+            shell.dataset.volumeNumber,
+            shell.dataset.chapterNumber || "",
+            shell.dataset.chapterTitle || "");
+
+        const bookmarkTitle = (positionPermille, anchorText) =>
+            t("bookmarkAt", "Bookmark · {position}", {
+                position: anchorText || Math.round((positionPermille || 0) / 10) + "%"
+            });
 
         const bookmarkCardSelector = id =>
             `[data-note-kind="bookmarks"][data-note-id="${id}"]`;
@@ -123,7 +134,6 @@
         };
 
         let pendingSelection = null;
-        let notesOpener = null;
 
         // ---- counts --------------------------------------------------------
 
@@ -342,9 +352,7 @@
                 }
 
                 marker.append(document.createElement("span"));
-                marker.title = bookmark.anchorText
-                    ? `Lesezeichen · ${bookmark.anchorText}`
-                    : `Lesezeichen · ${Math.round(bookmark.positionPermille / 10)}%`;
+                marker.title = bookmarkTitle(bookmark.positionPermille, bookmark.anchorText);
                 marker.setAttribute("aria-label", marker.title);
                 track.append(marker);
             }
@@ -386,8 +394,8 @@
                 edit.className = "novel-note-edit";
                 edit.setAttribute(editAttribute, "");
                 edit.dataset.noteId = id;
-                edit.textContent = "Bearbeiten";
-                edit.setAttribute("aria-label", editLabel || "Bearbeiten");
+                edit.textContent = t("edit", "Edit");
+                edit.setAttribute("aria-label", editLabel || t("edit", "Edit"));
                 actions.append(edit);
             }
 
@@ -396,7 +404,7 @@
             remove.className = "novel-note-remove";
             remove.setAttribute(removeAttribute, "");
             remove.dataset.noteId = id;
-            remove.textContent = "Entfernen";
+            remove.textContent = t("remove", "Remove");
             remove.setAttribute("aria-label", removeLabel);
             actions.append(remove);
 
@@ -413,12 +421,12 @@
             const { card, link, remove, edit } = createNoteCard({
                 href: `/Novels/Read/${encodeURIComponent(bookmark.chapterId)}?bookmark=${encodeURIComponent(bookmark.id)}`,
                 heading: bookmark.chapterId === chapterId ? currentChapterHeading() : undefined,
-                title: bookmark.label || `Lesezeichen · ${Math.round(bookmark.positionPermille / 10)}%`,
+                title: bookmark.label || bookmarkTitle(bookmark.positionPermille),
                 detail: bookmark.anchorText,
                 removeAttribute: "data-remove-bookmark-button",
-                removeLabel: "Lesezeichen entfernen",
+                removeLabel: t("removeBookmark", "Remove bookmark"),
                 editAttribute: "data-edit-bookmark-button",
-                editLabel: "Lesezeichen umbenennen",
+                editLabel: t("renameBookmark", "Rename bookmark"),
                 id: bookmark.id
             });
             card.dataset.bookmarkCard = "";
@@ -445,12 +453,12 @@
             const { card, link, remove, edit } = createNoteCard({
                 href: `/Novels/Read/${encodeURIComponent(highlight.chapterId || chapterId)}?highlight=${encodeURIComponent(highlight.id)}`,
                 heading: currentChapterHeading(),
-                title: highlight.text || "Markierung",
+                title: highlight.text || t("highlight", "Highlight"),
                 detail: highlight.note,
                 removeAttribute: "data-remove-highlight-button",
-                removeLabel: "Markierung entfernen",
+                removeLabel: t("removeHighlight", "Remove highlight"),
                 editAttribute: "data-edit-highlight-button",
-                editLabel: "Notiz bearbeiten",
+                editLabel: t("editNote", "Edit note"),
                 id: highlight.id
             });
             card.dataset.highlightCard = "";
@@ -492,10 +500,10 @@
             try {
                 await repository.queueBookmarkRemove(bookmarkId, { chapterId });
                 removeBookmarkUi(bookmarkId);
-                reader.showToast("Lesezeichen entfernt");
+                reader.showToast(t("bookmarkRemoved", "Bookmark removed"));
                 return true;
             } catch (error) {
-                reader.showToast(error.message || "Lesezeichen konnte nicht entfernt werden");
+                reader.showToast(t("bookmarkRemoveFailed", "The bookmark could not be removed"));
                 return false;
             }
         };
@@ -507,10 +515,10 @@
                     data.set("highlightId", highlightId);
                 });
                 removeHighlightUi(highlightId);
-                reader.showToast("Markierung entfernt");
+                reader.showToast(t("highlightRemoved", "Highlight removed"));
                 return true;
             } catch (error) {
-                reader.showToast(error.message || "Markierung konnte nicht entfernt werden");
+                reader.showToast(t("highlightRemoveFailed", "The highlight could not be removed"));
                 return false;
             }
         };
@@ -535,7 +543,7 @@
                     label: ""
                 });
 
-                if (!saved?.id) throw new Error("Lesezeichen konnte nicht gespeichert werden");
+                if (!saved?.id) throw new Error(t("bookmarkSaveFailed", "The bookmark could not be saved"));
 
                 const bookmark = {
                     ...saved,
@@ -550,9 +558,9 @@
                     renderBookmarkMarker(bookmark);
                 }
                 syncCounts();
-                reader.showToast("Lesezeichen gespeichert");
+                reader.showToast(t("bookmarkSaved", "Bookmark saved"));
             } catch (error) {
-                reader.showToast(error.message || "Lesezeichen konnte nicht gespeichert werden");
+                reader.showToast(t("bookmarkSaveFailed", "The bookmark could not be saved"));
             }
         };
 
@@ -561,7 +569,7 @@
 
             let note = "";
             if (withNote) {
-                const answer = window.prompt("Notiz zu dieser Markierung:", "");
+                const answer = window.prompt(t("highlightNotePrompt", "Note for this highlight:"), "");
                 if (answer === null) return;
                 note = answer;
             }
@@ -577,7 +585,7 @@
                 });
 
                 const highlight = rememberHighlight(saved);
-                if (!highlight) throw new Error("Markierung konnte nicht gespeichert werden");
+                if (!highlight) throw new Error(t("highlightSaveFailed", "The highlight could not be saved"));
 
                 renderHighlightsFor(highlight.language, highlight.paragraph);
                 renderHighlightCard(saved);
@@ -585,53 +593,55 @@
 
                 window.getSelection()?.removeAllRanges();
                 hideSelectionMenu();
-                reader.showToast(note ? "Markierung und Notiz gespeichert" : "Markierung gespeichert");
+                reader.showToast(note
+                    ? t("highlightNoteSaved", "Highlight and note saved")
+                    : t("highlightSaved", "Highlight saved"));
             } catch (error) {
                 // Keep the selection so the reader can retry after a failed save.
-                reader.showToast(error.message || "Markierung konnte nicht gespeichert werden");
+                reader.showToast(t("highlightSaveFailed", "The highlight could not be saved"));
             }
         };
 
         // ---- notes panel ---------------------------------------------------
 
-        const setNotesOpen = (open, restoreFocus = true) => {
-            if (!notes) return;
-            if (open === !notes.hidden) return;
+        const notesVisible = () => Boolean(notes && !notes.hidden && reader.frame()?.contentsOpen());
 
-            notes.hidden = !open;
-            shell.classList.toggle("notes-open", open);
-            notesToggle?.setAttribute("aria-expanded", open ? "true" : "false");
-
-            if (open) {
-                notesOpener = document.activeElement;
-                reader.announcePanel("notes");
-                notes.focus({ preventScroll: true });
-            } else if (restoreFocus && notesOpener instanceof HTMLElement) {
-                notesOpener.focus({ preventScroll: true });
-                notesOpener = null;
-            }
+        const setNotesOpen = open => {
+            const frame = reader.frame();
+            if (!notes || !frame) return;
+            if (open) frame.openContents(activeTab === "bookmarks" ? "bookmarks" : "notes");
+            else if (notesVisible()) frame.closeContents();
         };
+
+        shell.addEventListener("jularr:reader-contents", event => {
+            if (!event.detail?.open) return;
+            if (event.detail.tab === "bookmarks") applyTab("bookmarks");
+            if (event.detail.tab === "notes") applyTab("highlights");
+        });
 
         // Shared card builder for notes belonging to another chapter, used both
         // for the "other chapters" toggle lists and for search results (which
         // reuse the same removal/edit wiring via [data-other-note-card]).
         const remoteNoteCard = (kind, note, variant) => {
             const isBookmark = kind === "bookmarks";
-            const volumePrefix = note.volumeNumber ? `Band ${note.volumeNumber} · ` : "";
-            const heading = `${volumePrefix}Kapitel ${note.chapterNumber}${note.chapterTitle ? ` · ${note.chapterTitle}` : ""}`;
+            const heading = chapterHeading(note.volumeNumber, note.chapterNumber, note.chapterTitle);
             const { card, remove, edit } = createNoteCard({
                 href: isBookmark
                     ? `/Novels/Read/${encodeURIComponent(note.chapterId)}?bookmark=${encodeURIComponent(note.id)}`
                     : `/Novels/Read/${encodeURIComponent(note.chapterId)}?highlight=${encodeURIComponent(note.id)}`,
                 heading,
                 title: note.title || (isBookmark
-                    ? `Lesezeichen · ${Math.round((note.positionPermille || 0) / 10)}%`
-                    : "Markierung"),
+                    ? bookmarkTitle(note.positionPermille)
+                    : t("highlight", "Highlight")),
                 detail: note.detail,
                 removeAttribute: "data-remove-other-note",
-                removeLabel: isBookmark ? "Lesezeichen entfernen" : "Markierung entfernen",
+                removeLabel: isBookmark
+                    ? t("removeBookmark", "Remove bookmark")
+                    : t("removeHighlight", "Remove highlight"),
                 editAttribute: "data-edit-other-note",
-                editLabel: isBookmark ? "Lesezeichen umbenennen" : "Notiz bearbeiten",
+                editLabel: isBookmark
+                    ? t("renameBookmark", "Rename bookmark")
+                    : t("editNote", "Edit note"),
                 id: note.id
             });
             card.classList.add("novel-other-note");
@@ -662,7 +672,7 @@
 
             state.loading = true;
             if (more) more.disabled = true;
-            if (otherNotesStatus) otherNotesStatus.textContent = "Notizen werden geladen …";
+            if (otherNotesStatus) otherNotesStatus.textContent = t("notesLoading", "Loading notes…");
 
             try {
                 const page = await reader.getJson(
@@ -679,7 +689,7 @@
                 if (otherNotesStatus) otherNotesStatus.textContent = "";
             } catch {
                 if (otherNotesStatus) {
-                    otherNotesStatus.textContent = "Notizen konnten nicht geladen werden.";
+                    otherNotesStatus.textContent = t("notesFailed", "Notes could not be loaded.");
                 }
             } finally {
                 state.loading = false;
@@ -740,7 +750,7 @@
             if (!bookmarkId || !card) return;
 
             const currentLabel = card.dataset.bookmarkLabel || "";
-            const answer = window.prompt("Name des Lesezeichens:", currentLabel);
+            const answer = window.prompt(t("bookmarkNamePrompt", "Bookmark name:"), currentLabel);
             if (answer === null) return;
             const nextLabel = answer.trim();
             if (nextLabel === currentLabel) return;
@@ -780,7 +790,7 @@
 
                 const label = saved?.label ?? nextLabel;
                 const position = Number(card.dataset.positionPermille || 0);
-                const displayTitle = label || `Lesezeichen · ${Math.round(position / 10)}%`;
+                const displayTitle = label || bookmarkTitle(position);
 
                 shell.querySelectorAll(bookmarkCardSelector(bookmarkId)).forEach(match => {
                     match.dataset.bookmarkLabel = label;
@@ -794,9 +804,9 @@
                     renderBookmarkMarker(known);
                 }
 
-                reader.showToast("Lesezeichen umbenannt");
+                reader.showToast(t("bookmarkRenamed", "Bookmark renamed"));
             } catch (error) {
-                reader.showToast(error.message || "Lesezeichen konnte nicht umbenannt werden");
+                reader.showToast(t("bookmarkRenameFailed", "The bookmark could not be renamed"));
             }
         };
 
@@ -807,7 +817,7 @@
             if (!highlightId || !card) return;
 
             const currentNote = card.dataset.highlightNote || "";
-            const answer = window.prompt("Notiz zu dieser Markierung:", currentNote);
+            const answer = window.prompt(t("highlightNotePrompt", "Note for this highlight:"), currentNote);
             if (answer === null) return;
             const nextNote = answer.trim();
             if (nextNote === currentNote) return;
@@ -824,9 +834,9 @@
                     setCardDetailText(match, note);
                 });
 
-                reader.showToast("Notiz gespeichert");
+                reader.showToast(t("noteSaved", "Note saved"));
             } catch (error) {
-                reader.showToast(error.message || "Notiz konnte nicht gespeichert werden");
+                reader.showToast(t("noteSaveFailed", "The note could not be saved"));
             }
         };
 
@@ -849,7 +859,7 @@
                     label: ""
                 });
 
-                if (!saved?.id) throw new Error("Lesezeichen konnte nicht gespeichert werden");
+                if (!saved?.id) throw new Error(t("bookmarkSaveFailed", "The bookmark could not be saved"));
 
                 const bookmark = {
                     ...saved,
@@ -867,9 +877,9 @@
 
                 window.getSelection()?.removeAllRanges();
                 hideSelectionMenu();
-                reader.showToast("Auswahl als Lesezeichen gespeichert");
+                reader.showToast(t("selectionBookmarkSaved", "Selection saved as bookmark"));
             } catch (error) {
-                reader.showToast(error.message || "Lesezeichen konnte nicht gespeichert werden");
+                reader.showToast(t("bookmarkSaveFailed", "The bookmark could not be saved"));
             }
         };
 
@@ -883,7 +893,7 @@
                 }));
 
                 if (!result?.found) {
-                    reader.showToast("Keine Lesezeichen vorhanden");
+                    reader.showToast(t("noBookmarks", "No bookmarks yet"));
                     return;
                 }
 
@@ -893,7 +903,7 @@
                         reader.position.scrollTo(local);
                         reader.showToast(
                             local.anchorText || local.label ||
-                            `Lesezeichen · ${Math.round(local.positionPermille / 10)}%`);
+                            bookmarkTitle(local.positionPermille));
                     } else {
                         reader.position.scrollTo({
                             language: reader.anchorLanguage(),
@@ -901,14 +911,14 @@
                             characterOffset: 0,
                             positionPermille: result.positionPermille
                         });
-                        reader.showToast(result.label || "Lesezeichen");
+                        reader.showToast(result.label || t("bookmark", "Bookmark"));
                     }
                 } else {
                     window.location.href =
                         `/Novels/Read/${encodeURIComponent(result.chapterId)}?bookmark=${encodeURIComponent(result.id)}`;
                 }
             } catch {
-                reader.showToast("Lesezeichen konnte nicht geladen werden");
+                reader.showToast(t("bookmarkLoadFailed", "The bookmark could not be loaded"));
             }
         };
 
@@ -1014,7 +1024,7 @@
 
             if (searchList) searchList.replaceChildren();
             if (searchMoreButton) searchMoreButton.hidden = true;
-            if (searchStatus) searchStatus.textContent = "Suche läuft …";
+            if (searchStatus) searchStatus.textContent = t("searching", "Searching…");
 
             try {
                 const pages = await Promise.all(kinds.map(kind =>
@@ -1036,11 +1046,11 @@
                     searchMoreButton.hidden = !kinds.some(kind => searchState.hasMore[kind]);
                 }
                 if (searchStatus) {
-                    searchStatus.textContent = total === 0 ? "Keine Treffer." : "";
+                    searchStatus.textContent = total === 0 ? t("noMatches", "No matches.") : "";
                 }
             } catch {
                 if (requestId !== searchRequestId) return;
-                if (searchStatus) searchStatus.textContent = "Suche fehlgeschlagen.";
+                if (searchStatus) searchStatus.textContent = t("searchFailed", "Search failed.");
             }
         };
 
@@ -1177,16 +1187,6 @@
                 return;
             }
 
-            if (event.target.closest("[data-reader-notes-toggle]")) {
-                setNotesOpen(notes?.hidden !== false);
-                return;
-            }
-
-            if (event.target.closest("[data-reader-notes-close]")) {
-                setNotesOpen(false);
-                return;
-            }
-
             if (event.target.closest("[data-save-highlight-note]")) {
                 void saveHighlight(true);
                 return;
@@ -1225,11 +1225,6 @@
         });
 
         document.addEventListener("keydown", event => {
-            if (event.key === "Escape" && notes && !notes.hidden) {
-                setNotesOpen(false);
-                return;
-            }
-
             if (event.ctrlKey || event.metaKey || event.altKey) return;
             if (event.target?.closest?.('input, textarea, select, [contenteditable=""], [contenteditable="true"]')) {
                 return;
@@ -1243,7 +1238,7 @@
                     break;
                 case registry.shortcutKeys.notes:
                     event.preventDefault();
-                    setNotesOpen(notes?.hidden !== false);
+                    setNotesOpen(!notesVisible());
                     break;
                 case registry.shortcutKeys.previousBookmark:
                     event.preventDefault();
@@ -1262,7 +1257,6 @@
         document.addEventListener("touchend", () => setTimeout(captureSelection, 40), { passive: true });
 
         shell.addEventListener("jularr:novel-translation-ready", renderAllHighlights);
-        reader.onOtherPanelOpened("notes", setNotesOpen.bind(null, false));
 
         // ---- initial render ------------------------------------------------
 
