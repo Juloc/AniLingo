@@ -91,10 +91,14 @@ RUN set -eux; \
     ffmpeg -version >/dev/null; \
     ffprobe -version >/dev/null; \
     rm -rf /var/lib/apt/lists/*; \
-    mkdir -p /data/codex /data/whisper /data/transcription-cache
+    groupadd --system jularr; \
+    useradd --system --gid jularr --home-dir /data --shell /usr/sbin/nologin jularr; \
+    mkdir -p /data/codex /data/whisper /data/transcription-cache; \
+    chown -R jularr:jularr /data
 COPY --from=codex /codex /usr/local/bin/codex
 COPY --from=whisper /src/whisper/build/bin/whisper-cli /usr/local/bin/whisper-cli
 COPY --from=japanese-data /var/lib/mecab/dic/open-jtalk/naist-jdic /var/lib/mecab/dic/open-jtalk/naist-jdic
 COPY --from=japanese-data /dictionary ./dictionary
 COPY --from=build /app/publish .
+USER jularr
 ENTRYPOINT ["dotnet", "Jularr.Web.dll"]
