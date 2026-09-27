@@ -1,9 +1,47 @@
 using Jularr.Web.Data;
+using Jularr.Web.Features.Books;
 using Jularr.Web.Features.Novels;
 using Jularr.Web.Features.ReaderPreferences;
 using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Web.Features.OfflineLibrary;
+
+/// <summary>
+/// Distinguishes Book- from Novel-typed <see cref="NovelWork"/>s for offline
+/// sync reconciliation (#374): both share the same table set, but Books have
+/// an arbitrary <see cref="BookLanguageCatalog"/> target language instead of
+/// the Novel-specific bilingual ja/de model, so the two need different
+/// language-normalization and anchor-resolution rules on the one shared
+/// write path below.
+/// </summary>
+internal static class OfflineLibraryWorkKind
+{
+    public static async Task<bool> IsBookAsync(
+        AppDbContext db,
+        Guid workId,
+        CancellationToken cancellationToken)
+    {
+        var sourceProvider = await db.NovelWorks
+            .AsNoTracking()
+            .Where(x => x.Id == workId)
+            .Select(x => x.SourceProvider)
+            .SingleOrDefaultAsync(cancellationToken);
+
+        return sourceProvider == BookCatalogService.ImportedBookProvider;
+    }
+
+    /// <summary>
+    /// Normalizes a Book anchor language, preserving the literal "original"
+    /// marker (untranslated text, as opposed to any of <see cref="BookLanguageCatalog"/>'s
+    /// arbitrary target languages) the same way <c>BookReaderAnnotationStore.NormalizeLanguage</c>
+    /// does for highlights, instead of letting <see cref="BookLanguageCatalog.Normalize"/>
+    /// silently fall back to its "id" default for that non-BCP-47 value.
+    /// </summary>
+    public static string NormalizeBookLanguage(string? value) =>
+        string.Equals(value?.Trim(), "original", StringComparison.OrdinalIgnoreCase)
+            ? "original"
+            : BookLanguageCatalog.Normalize(value);
+}
 
 public sealed record OfflineLibraryProgressCheckpoint(
     Guid ClientEventId,
@@ -155,9 +193,11 @@ public static class OfflineLibrarySyncRules
 
 /// <summary>
 /// Replays offline reading-progress checkpoints through the canonical
-/// <see cref="NovelProgressService"/>. Mirrors <c>OfflineProgressReconciler</c>
-/// (episode playback, #341): the decision is pure and the write path is the
-/// same one the online reader uses, so there is no second progress writer.
+/// <see cref="NovelProgressService"/> for Novel-typed works (see
+/// <see cref="OfflineLibraryWorkKind"/> for Book-typed works, #374). Mirrors
+/// <c>OfflineProgressReconciler</c> (episode playback, #341): the decision is
+/// pure and the write path is the same one the online reader uses, so there
+/// is no second progress writer.
 /// </summary>
 public sealed class OfflineLibraryProgressReconciler(AppDbContext db, NovelProgressService progressService)
 {
@@ -208,14 +248,27 @@ public sealed class OfflineLibraryProgressReconciler(AppDbContext db, NovelProgr
                 continue;
             }
 
-            await progressService.SaveProgressAsync(
-                profileId,
-                checkpoint.ChapterId,
-                positionPermille,
-                checkpoint.AnchorLanguage,
-                checkpoint.AnchorParagraphIndex,
-                checkpoint.AnchorOffset,
-                cancellationToken);
+            if (await OfflineLibraryWorkKind.IsBookAsync(db, checkpoint.WorkId, cancellationToken))
+            {
+                // Books have an arbitrary BookLanguageCatalog target language
+                // (default "id"), not the Novel-specific bilingual ja/de
+                // model, so this skips NovelProgressService (which resolves
+                // anchors via NovelChapterText's ja/de translation lookup)
+                // and instead writes the checkpoint through unchanged, same
+                // as BookCatalogService.SaveProgressAsync's online write.
+                await SaveBookProgressAsync(profileId, checkpoint, positionPermille, cancellationToken);
+            }
+            else
+            {
+                await progressService.SaveProgressAsync(
+                    profileId,
+                    checkpoint.ChapterId,
+                    positionPermille,
+                    checkpoint.AnchorLanguage,
+                    checkpoint.AnchorParagraphIndex,
+                    checkpoint.AnchorOffset,
+                    cancellationToken);
+            }
 
             var updated = await db.NovelProgress
                 .AsNoTracking()
@@ -227,6 +280,46 @@ public sealed class OfflineLibraryProgressReconciler(AppDbContext db, NovelProgr
         }
 
         return results;
+    }
+
+    /// <summary>
+    /// Book-typed equivalent of <see cref="NovelProgressService.SaveProgressAsync"/>:
+    /// same upsert-by-(profile, work) shape, but the anchor language is
+    /// normalized through <see cref="BookLanguageCatalog"/> (arbitrary target
+    /// language, default "id") instead of <see cref="NovelReadingLanguage"/>'s
+    /// ja/de rule, and the paragraph anchor the client already resolved is
+    /// stored as-is rather than re-resolved against a ja/de translation.
+    /// </summary>
+    private async Task SaveBookProgressAsync(
+        string profileId,
+        OfflineLibraryProgressCheckpoint checkpoint,
+        int positionPermille,
+        CancellationToken cancellationToken)
+    {
+        var progress = await db.NovelProgress
+            .SingleOrDefaultAsync(
+                x => x.ProfileId == profileId && x.WorkId == checkpoint.WorkId,
+                cancellationToken);
+
+        if (progress is null)
+        {
+            progress = new NovelProgress
+            {
+                ProfileId = profileId,
+                WorkId = checkpoint.WorkId
+            };
+            db.NovelProgress.Add(progress);
+        }
+
+        progress.ChapterId = checkpoint.ChapterId;
+        progress.PositionPermille = positionPermille;
+        progress.AnchorLanguage = OfflineLibraryWorkKind.NormalizeBookLanguage(checkpoint.AnchorLanguage);
+        progress.AnchorParagraphIndex = checkpoint.AnchorParagraphIndex;
+        progress.AnchorOffset = Math.Max(0, checkpoint.AnchorOffset);
+        progress.AnchorText = null;
+        progress.UpdatedAt = DateTime.UtcNow;
+
+        await db.SaveChangesAsync(cancellationToken);
     }
 }
 
@@ -298,11 +391,33 @@ public sealed class OfflineLibraryBookmarkReconciler(AppDbContext db)
         OfflineBookmarkEvent bookmarkEvent,
         CancellationToken cancellationToken)
     {
-        var language = NovelReadingLanguage.Normalize(bookmarkEvent.Language);
-        var text = await NovelChapterText.LoadAsync(db, bookmarkEvent.ChapterId, language, cancellationToken);
-        var (paragraphIndex, offset, resolvedAnchorText) = text is null
-            ? (bookmarkEvent.ParagraphIndex, Math.Max(0, bookmarkEvent.CharacterOffset), (string?)null)
-            : NovelChapterText.ResolveAnchor(text.Paragraphs, bookmarkEvent.ParagraphIndex, bookmarkEvent.CharacterOffset);
+        string language;
+        int? paragraphIndex;
+        int offset;
+        string? resolvedAnchorText;
+
+        if (await OfflineLibraryWorkKind.IsBookAsync(db, bookmarkEvent.WorkId, cancellationToken))
+        {
+            // Books have an arbitrary BookLanguageCatalog target language
+            // (default "id"), not the Novel-specific bilingual ja/de model,
+            // so this skips NovelChapterText's ja/de translation lookup and
+            // anchor re-resolution entirely and stores the client-supplied
+            // anchor as-is (falls back to the client's own anchor text below,
+            // same as the "chapter text unavailable" case already does for
+            // Novels).
+            language = OfflineLibraryWorkKind.NormalizeBookLanguage(bookmarkEvent.Language);
+            paragraphIndex = bookmarkEvent.ParagraphIndex;
+            offset = Math.Max(0, bookmarkEvent.CharacterOffset);
+            resolvedAnchorText = null;
+        }
+        else
+        {
+            language = NovelReadingLanguage.Normalize(bookmarkEvent.Language);
+            var text = await NovelChapterText.LoadAsync(db, bookmarkEvent.ChapterId, language, cancellationToken);
+            (paragraphIndex, offset, resolvedAnchorText) = text is null
+                ? (bookmarkEvent.ParagraphIndex, Math.Max(0, bookmarkEvent.CharacterOffset), (string?)null)
+                : NovelChapterText.ResolveAnchor(text.Paragraphs, bookmarkEvent.ParagraphIndex, bookmarkEvent.CharacterOffset);
+        }
 
         if (bookmark is null)
         {
