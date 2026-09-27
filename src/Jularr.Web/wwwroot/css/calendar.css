@@ -376,133 +376,17 @@
 }
 .calendar-more:hover { color: var(--text); }
 
-/* Month side panel */
+/* Month side panel: the next releases of the shown month. */
+.calendar-month-layout.is-single {
+    grid-template-columns: minmax(0, 1fr);
+}
 .calendar-sidebar-card {
     padding: 14px;
 }
-.calendar-mini-header,
-.calendar-sidebar-heading {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-}
-.calendar-mini-header {
-    margin-bottom: 10px;
-}
-.calendar-mini-header strong {
-    font-size: 14px;
-}
-.calendar-mini-header > span {
-    display: inline-flex;
-    gap: 3px;
-}
-.calendar-mini-header a {
-    width: 28px;
-    height: 28px;
-    display: grid;
-    place-items: center;
-    border-radius: 7px;
-    color: var(--muted);
-    font-size: 18px;
-}
-.calendar-mini-header a:hover {
-    background: var(--surface-2);
-    color: var(--text);
-}
-.calendar-mini-weekdays,
-.calendar-mini-grid {
-    display: grid;
-    grid-template-columns: repeat(7, 1fr);
-}
-.calendar-mini-weekdays span {
-    padding: 4px 0;
-    color: var(--muted);
-    font-size: 9px;
-    font-weight: 800;
-    text-align: center;
-    text-transform: uppercase;
-}
-.calendar-mini-day {
-    position: relative;
-    aspect-ratio: 1;
-    display: grid;
-    place-items: center;
-    border-radius: 999px;
-    color: var(--text-secondary);
-    font-size: 10px;
-    font-weight: 650;
-}
-.calendar-mini-day:hover {
-    background: var(--surface-2);
-}
-.calendar-mini-day.is-outside {
-    color: color-mix(in srgb, var(--muted) 45%, transparent);
-}
-.calendar-mini-day.is-today {
-    background: var(--accent);
-    color: var(--on-accent);
-    font-weight: 850;
-}
-.calendar-mini-day.has-events::after {
-    content: "";
-    position: absolute;
-    bottom: 2px;
-    width: 3px;
-    height: 3px;
-    border-radius: 999px;
-    background: currentColor;
-    opacity: .75;
-}
-.calendar-mini-day.is-today.has-events::after {
-    background: var(--on-accent);
-}
-
-.calendar-sidebar-section {
-    margin-top: 14px;
-    padding-top: 14px;
-    border-top: 1px solid var(--border);
-}
-.calendar-sidebar-section h3 {
-    margin: 0 0 8px;
+.calendar-sidebar-card h3 {
+    margin: 0;
     font-size: 12px;
     font-weight: 800;
-}
-.calendar-sidebar-heading h3 { margin: 0; }
-.calendar-sidebar-heading a {
-    color: var(--accent-text);
-    font-size: 10px;
-    font-weight: 750;
-}
-.calendar-legend {
-    display: grid;
-    gap: 2px;
-}
-.calendar-legend-row {
-    min-width: 0;
-    padding: 6px 5px;
-    display: grid;
-    grid-template-columns: 10px minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 7px;
-    border-radius: 7px;
-    color: var(--text-secondary);
-    font-size: 11px;
-}
-.calendar-legend-row:hover,
-.calendar-legend-row.selected {
-    background: var(--surface-2);
-    color: var(--text);
-}
-.calendar-legend-swatch {
-    width: 9px;
-    height: 9px;
-    border-radius: 3px;
-    background: var(--calendar-type);
-}
-.calendar-legend-row strong {
-    color: var(--muted);
-    font-size: 10px;
 }
 
 .calendar-sidebar-upcoming {
@@ -560,12 +444,6 @@
 .calendar-sidebar-copy small {
     color: var(--muted);
     font-size: 9px;
-}
-.calendar-sidebar-empty {
-    margin: 8px 0 0;
-    color: var(--muted);
-    font-size: 11px;
-    line-height: 1.4;
 }
 
 /* Shared event rows for week, agenda and detail-page upcoming blocks. */
@@ -704,23 +582,8 @@
     .calendar-month-layout {
         grid-template-columns: minmax(0, 1fr);
     }
-    .calendar-sidebar-card {
-        display: grid;
-        grid-template-columns: minmax(220px, .8fr) minmax(220px, 1fr) minmax(260px, 1.2fr);
-        gap: 16px;
-        align-items: start;
-    }
-    .calendar-mini-header {
-        grid-column: 1;
-    }
-    .calendar-mini-weekdays,
-    .calendar-mini-grid {
-        grid-column: 1;
-    }
-    .calendar-sidebar-section {
-        margin: 0;
-        padding: 0;
-        border: 0;
+    .calendar-sidebar-upcoming {
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
     }
 }
 
@@ -740,18 +603,6 @@
         margin: 0 0 0 6px;
         min-width: 0;
         text-align: start;
-    }
-    .calendar-sidebar-card {
-        grid-template-columns: 1fr 1fr;
-    }
-    .calendar-mini-header,
-    .calendar-mini-weekdays,
-    .calendar-mini-grid {
-        grid-column: 1;
-    }
-    .calendar-sidebar-section:last-child {
-        grid-column: 2;
-        grid-row: 1 / span 3;
     }
     .calendar-cell {
         min-height: 116px;

@@ -68,8 +68,21 @@ public sealed record WatchlistIdentity(
             return new Guid(bytes);
         }
     }
+
+    /// <summary>The provider's public page of the work, built from the identity only.</summary>
+    public string? ProviderUrl => ProviderKey switch
+    {
+        "anilist" when MediaType == WatchlistMediaType.Anime => $"https://anilist.co/anime/{Uri.EscapeDataString(ExternalKey)}",
+        "anilist" when MediaType is WatchlistMediaType.Manga or WatchlistMediaType.LightNovel =>
+            $"https://anilist.co/manga/{Uri.EscapeDataString(ExternalKey)}",
+        _ => null
+    };
 }
 
+/// <summary>
+/// Display data of a followed work. Library membership and links are never part of it: they
+/// are resolved when the work is shown (<see cref="WatchlistLibraryResolver"/>).
+/// </summary>
 public sealed record WatchlistDraft(
     WatchlistIdentity Identity,
     string Title,
@@ -77,10 +90,10 @@ public sealed record WatchlistDraft(
     string? CoverImageUrl = null,
     string? Format = null,
     string? Status = null,
-    int? Year = null,
-    Guid? LocalMediaId = null,
-    string? DetailsUrl = null);
+    int? Year = null);
 
+/// <param name="LocalMediaId">The library entry of the work, resolved at read time.</param>
+/// <param name="DetailsUrl">The library page when the work is in the library, else the provider page.</param>
 public sealed record WatchlistItem(
     WatchlistIdentity Identity,
     string Title,
@@ -100,7 +113,7 @@ public sealed record WatchlistItem(
     public bool IsFromFranchise => FranchiseId is not null;
 }
 
-
+/// <summary>Validates follow requests from the browser.</summary>
 public static class WatchlistDraftInput
 {
     public static bool TryCreate(
@@ -113,21 +126,11 @@ public static class WatchlistDraftInput
         string? format,
         string? status,
         int? year,
-        Guid? localMediaId,
-        string? detailsUrl,
         out WatchlistDraft draft)
     {
         draft = null!;
-        var type = WatchlistMediaTypeNames.Parse(mediaType);
-        var normalizedProvider = provider?.Trim().ToLowerInvariant();
-        var normalizedId = externalId?.Trim();
         var normalizedTitle = title?.Trim();
-
-        if (type is null ||
-            string.IsNullOrWhiteSpace(normalizedProvider) ||
-            normalizedProvider.Length > 80 ||
-            string.IsNullOrWhiteSpace(normalizedId) ||
-            normalizedId.Length > 200 ||
+        if (!TryIdentity(mediaType, provider, externalId, out var identity) ||
             string.IsNullOrWhiteSpace(normalizedTitle) ||
             normalizedTitle.Length > 500 ||
             year is < 1800 or > 3000)
@@ -136,15 +139,13 @@ public static class WatchlistDraftInput
         }
 
         draft = new WatchlistDraft(
-            new WatchlistIdentity(type.Value, normalizedProvider, normalizedId),
+            identity,
             normalizedTitle,
             Limit(nativeTitle, 500),
-            SafeUrl(coverImageUrl),
+            SafeImageUrl(coverImageUrl),
             Limit(format, 80),
             Limit(status, 80),
-            year,
-            localMediaId,
-            SafeUrl(detailsUrl));
+            year);
         return true;
     }
 
@@ -177,22 +178,13 @@ public static class WatchlistDraftInput
         return normalized is null ? null : normalized[..Math.Min(max, normalized.Length)];
     }
 
-    private static string? SafeUrl(string? value)
+    private static string? SafeImageUrl(string? value)
     {
         var normalized = string.IsNullOrWhiteSpace(value) ? null : value.Trim();
-        if (normalized is null)
-        {
-            return null;
-        }
-
-        if (normalized.StartsWith('/') && !normalized.StartsWith("//", StringComparison.Ordinal))
-        {
-            return normalized.Length <= 2048 ? normalized : null;
-        }
-
-        return Uri.TryCreate(normalized, UriKind.Absolute, out var uri) &&
-               uri.Scheme is "https" or "http" &&
-               normalized.Length <= 2048
+        return normalized is not null &&
+               normalized.Length <= 2048 &&
+               Uri.TryCreate(normalized, UriKind.Absolute, out var uri) &&
+               uri.Scheme is "https" or "http"
             ? normalized
             : null;
     }

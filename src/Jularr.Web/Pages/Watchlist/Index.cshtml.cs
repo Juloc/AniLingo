@@ -2,8 +2,6 @@ using Jularr.Web.Data;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Franchises;
 using Jularr.Web.Features.Localization;
-using Jularr.Web.Features.Metadata;
-using Jularr.Web.Features.Novels;
 using Jularr.Web.Features.Watchlist;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -14,6 +12,7 @@ public sealed class IndexModel(
     AppDbContext db,
     CurrentAccountContext account,
     WatchlistStore watchlist,
+    WatchlistLibraryResolver library,
     FranchiseStore franchises,
     FranchiseService franchiseService) : PageModel
 {
@@ -26,7 +25,9 @@ public sealed class IndexModel(
     public async Task OnGetAsync(CancellationToken cancellationToken)
     {
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
-        Items = await watchlist.GetEffectiveAsync(account.ProfileId, cancellationToken);
+        Items = await library.ApplyAsync(
+            await watchlist.GetEffectiveAsync(account.ProfileId, cancellationToken),
+            cancellationToken);
         Franchises = await franchises.ListFollowedAsync(account.ProfileId, cancellationToken);
     }
 
@@ -36,7 +37,7 @@ public sealed class IndexModel(
         string externalId,
         CancellationToken cancellationToken)
     {
-        if (!TryIdentity(mediaType, provider, externalId, out var identity))
+        if (!WatchlistDraftInput.TryIdentity(mediaType, provider, externalId, out var identity))
         {
             return BadRequest();
         }
@@ -49,34 +50,15 @@ public sealed class IndexModel(
         string mediaType,
         string provider,
         string externalId,
-        string title,
-        string? nativeTitle,
-        string? coverImageUrl,
-        string? format,
-        string? status,
-        int? year,
-        Guid? localMediaId,
-        string? detailsUrl,
         CancellationToken cancellationToken)
     {
-        if (!TryDraft(
-                mediaType,
-                provider,
-                externalId,
-                title,
-                nativeTitle,
-                coverImageUrl,
-                format,
-                status,
-                year,
-                localMediaId,
-                detailsUrl,
-                out var draft))
+        if (!WatchlistDraftInput.TryIdentity(mediaType, provider, externalId, out var identity) ||
+            !FranchiseService.CanSeed(identity))
         {
             return BadRequest();
         }
 
-        await franchiseService.FollowFromSeedAsync(account.ProfileId, draft, cancellationToken);
+        await franchiseService.FollowFromSeedAsync(account.ProfileId, identity, cancellationToken);
         return RedirectToPage();
     }
 
@@ -92,105 +74,18 @@ public sealed class IndexModel(
         Guid franchiseId,
         CancellationToken cancellationToken)
     {
-        try
+        var result = await franchiseService.RequestRefreshAsync(
+            franchiseId,
+            account.ProfileId,
+            account.IsOwner,
+            cancellationToken);
+        if (FranchiseRefreshStatus.MessageKey(result) is not { } key)
         {
-            await franchiseService.RefreshAsync(franchiseId, cancellationToken);
-        }
-        catch (Exception exception) when (
-            exception is MetadataProviderException or NovelMetadataProviderException)
-        {
-            TempData["Status"] = "Franchise metadata could not be refreshed. The local follow remains active.";
+            return result == FranchiseRefreshRequest.NotFound ? NotFound() : Forbid();
         }
 
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+        TempData["Status"] = ui[key];
         return RedirectToPage();
-    }
-
-    internal static bool TryDraft(
-        string? mediaType,
-        string? provider,
-        string? externalId,
-        string? title,
-        string? nativeTitle,
-        string? coverImageUrl,
-        string? format,
-        string? status,
-        int? year,
-        Guid? localMediaId,
-        string? detailsUrl,
-        out WatchlistDraft draft)
-    {
-        draft = null!;
-        if (!TryIdentity(mediaType, provider, externalId, out var identity) ||
-            string.IsNullOrWhiteSpace(title) ||
-            title.Trim().Length > 500)
-        {
-            return false;
-        }
-
-        if (year is < 1800 or > 3000)
-        {
-            return false;
-        }
-
-        draft = new WatchlistDraft(
-            identity,
-            title.Trim(),
-            Limit(nativeTitle, 500),
-            SafeUrl(coverImageUrl),
-            Limit(format, 80),
-            Limit(status, 80),
-            year,
-            localMediaId,
-            SafeUrl(detailsUrl));
-        return true;
-    }
-
-    private static bool TryIdentity(
-        string? mediaType,
-        string? provider,
-        string? externalId,
-        out WatchlistIdentity identity)
-    {
-        identity = null!;
-        var type = WatchlistMediaTypeNames.Parse(mediaType);
-        var normalizedProvider = provider?.Trim().ToLowerInvariant();
-        var normalizedId = externalId?.Trim();
-        if (type is null ||
-            string.IsNullOrWhiteSpace(normalizedProvider) ||
-            normalizedProvider.Length > 80 ||
-            string.IsNullOrWhiteSpace(normalizedId) ||
-            normalizedId.Length > 200)
-        {
-            return false;
-        }
-
-        identity = new WatchlistIdentity(type.Value, normalizedProvider, normalizedId);
-        return true;
-    }
-
-    private static string? Limit(string? value, int max)
-    {
-        var normalized = string.IsNullOrWhiteSpace(value) ? null : value.Trim();
-        return normalized is null ? null : normalized[..Math.Min(max, normalized.Length)];
-    }
-
-    private static string? SafeUrl(string? value)
-    {
-        var normalized = string.IsNullOrWhiteSpace(value) ? null : value.Trim();
-        if (normalized is null)
-        {
-            return null;
-        }
-
-        if (normalized.StartsWith('/') && !normalized.StartsWith("//", StringComparison.Ordinal))
-        {
-            return normalized.Length <= 2048 ? normalized : null;
-        }
-
-        return Uri.TryCreate(normalized, UriKind.Absolute, out var uri) &&
-               uri.Scheme is "https" or "http" &&
-               normalized.Length <= 2048
-            ? normalized
-            : null;
     }
 }
