@@ -988,3 +988,11 @@
         padding: 16px 16px 14px;
     }
 }
+
+/* Missing work or volume covers: paper tiles like the library shelf, not black blocks. */
+.novel-work-cover:has(> span),
+.novel-volume-cover:has(> span) {
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    color: var(--text);
+}
