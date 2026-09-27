@@ -409,6 +409,7 @@
         {
             var tts = Model.Settings;
             <section class="reader-tts-settings" data-reader-tts-settings aria-label="@ui["reader.settings.readAloudAria"]">
+                <script type="application/json" data-reader-tts-text>@Json.Serialize(ui.WithPrefix("reader.tts."))</script>
                 <input type="hidden"
                        name="TtsVoiceIds"
                        value="@(SpeechVoiceMap.Serialize(tts.TtsVoiceIds) ?? "")"

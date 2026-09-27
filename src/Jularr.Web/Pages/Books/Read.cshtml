@@ -1,19 +1,23 @@
 @page "/Books/Read/{id:guid}"
 @model Jularr.Web.Pages.Books.ReadModel
+@using Jularr.Web.Features.Books
 @{
     var ui = Model.Ui;
-    ViewData["Title"] = Model.Reader.Chapter.Title;
-    var sourceIsTarget = Model.Reader.SourceLanguage.Equals(
-        Model.Reader.TargetLanguage,
-        StringComparison.OrdinalIgnoreCase);
+    var work = Model.Reader.Work;
+    var chapter = Model.Reader.Chapter;
+    var bookTitle = work.MetadataTitle ?? work.Title;
+    ViewData["Title"] = chapter.Title;
+    var target = Model.Reader.TargetLanguage;
+    var sourceIsTarget = Model.Reader.SourceLanguage.Equals(target, StringComparison.OrdinalIgnoreCase);
     // Cached translated text is always readable (#369): reading an existing
     // translated variant is core reader behaviour and must not depend on the
     // Learning Translation capability. Only generating a *new* translation
-    // (the slot below) stays gated on Model.TranslationEnabled.
-    var translatedParagraphs = sourceIsTarget
-        ? Array.Empty<string>()
-        : Model.Reader.TranslatedParagraphs;
+    // (the "Translate into" menu entry) stays gated on Model.TranslationEnabled.
+    var translatedParagraphs = sourceIsTarget ? Array.Empty<string>() : Model.Reader.TranslatedParagraphs;
     var hasAlternate = translatedParagraphs.Count > 0;
+    var canTranslate = Model.TranslationEnabled && !sourceIsTarget && !hasAlternate;
+    // The language menu only exists when there is something to switch to.
+    var hasLanguageChoice = hasAlternate || canTranslate || Model.CachedTranslationLanguages.Count > 0;
     var defaultView = Model.RequestedView switch
     {
         "original" => "original",
@@ -21,32 +25,39 @@
         "both" when hasAlternate => "both",
         _ => hasAlternate ? "translated" : "original"
     };
-    var initialProgress = Model.RequestedPositionPermille
-        ?? Model.Reader.Progress?.PositionPermille
-        ?? 0;
-    var jsonOptions = new System.Text.Json.JsonSerializerOptions(
-        System.Text.Json.JsonSerializerDefaults.Web);
-    var settingsJson = System.Text.Json.JsonSerializer.Serialize(
-        Model.ReaderSettings,
-        jsonOptions);
-    var highlightsJson = System.Text.Json.JsonSerializer.Serialize(
-        Model.CurrentHighlights,
+    var initialProgress = Model.RequestedPositionPermille ?? Model.Reader.Progress?.PositionPermille ?? 0;
+    var jsonOptions = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web);
+    var settingsJson = System.Text.Json.JsonSerializer.Serialize(Model.ReaderSettings, jsonOptions);
+    var highlightsJson = System.Text.Json.JsonSerializer.Serialize(Model.CurrentHighlights, jsonOptions);
+    var bookmarksJson = System.Text.Json.JsonSerializer.Serialize(
+        Model.Reader.Bookmarks.Select(x => new { x.Id, x.PositionPermille, x.Language }),
         jsonOptions);
     var bookBibleUrl = Model.IsOwner && !sourceIsTarget
-        ? $"/Books/TranslationMemory/{Model.Reader.Work.Id}?lang={Model.Reader.TargetLanguage}"
+        ? $"/Books/TranslationMemory/{work.Id}?lang={target}"
         : null;
     var readerSettingsPanel = new Jularr.Web.Features.ReaderCore.ReaderSettingsPanelModel(
-        Model.Reader.Chapter.Id,
+        chapter.Id,
         Model.ReaderDocument,
         Model.ReaderSettings,
-        Model.Reader.TargetLanguage,
+        target,
         bookBibleUrl,
         bookBibleUrl is null ? null : ui["books.bible.title"]);
+    var supportsTts = Model.ReaderDocument.Capabilities.SupportsTts;
+    // Many EPUB chapters start with their own heading; the opening then shows
+    // only the number and ornament and keeps the title for screen readers.
+    var titleRepeatsInText = Model.Reader.OriginalParagraphs.Count > 0
+        && string.Equals(Model.Reader.OriginalParagraphs[0].Trim(), chapter.Title.Trim(), StringComparison.OrdinalIgnoreCase);
+    var sourceName = BookLanguageCatalog.GetName(Model.Reader.SourceLanguage);
+    var targetName = BookLanguageCatalog.GetName(target);
+    var chapterLabel = ui.Format("books.chapter.number", ("number", chapter.Number));
+    var bookUrl = $"/Books/Library/{work.Id}?lang={target}";
+    var viewQuery = defaultView == "original" ? "" : $"&view={defaultView}";
+    var paperStyles = new[] { ("white", "reader.frame.paper.white"), ("cream", "reader.frame.paper.cream"), ("sepia", "reader.frame.paper.sepia"), ("old-paper", "reader.frame.paper.oldPaper"), ("midnight", "reader.frame.paper.midnight"), ("oled", "reader.frame.paper.oled") };
 }
 @section Head {
-    <link rel="stylesheet" href="~/css/books.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/reader-themes.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/reader-shell.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/book-reader.css" asp-append-version="true" />
 }
 @section Scripts {
     <script src="~/js/reader-themes.js" asp-append-version="true"></script>
@@ -57,187 +68,451 @@
     <script src="~/js/reader-tts.js" asp-append-version="true"></script>
 }
 
-<div class="book-reader-page"
+<div class="book-reader-page reader-frame"
      data-book-reader
      data-unified-reader
+     data-reader-frame
      data-reader-content-type="@Model.ReaderDocument.ContentTypeKey"
      data-reader-layout="@Model.ReaderDocument.LayoutKind.ToString().ToLowerInvariant()"
      data-reader-personalization
      data-view="@defaultView"
-     data-target-language="@Model.Reader.TargetLanguage"
+     data-target-language="@target"
      data-work-id="@Model.Reader.Work.Id"
-     data-chapter-id="@Model.Reader.Chapter.Id"
+     data-chapter-id="@chapter.Id"
+     data-chapter-count="@Model.ChapterCount"
      data-has-translation="@(hasAlternate ? "true" : "false")"
      data-progress="@initialProgress"
+     data-anchor-paragraph="@(Model.RequestedParagraph?.ToString() ?? "")"
      data-reading-mode="@Model.ReaderSettings.ReadingMode"
      data-paper-style="@Model.ReaderSettings.PaperStyle"
      data-chapter-style="@Model.ReaderSettings.ChapterStyle">
 
     <script type="application/json" data-book-settings-json>@Html.Raw(settingsJson)</script>
     <script type="application/json" data-book-highlights-json>@Html.Raw(highlightsJson)</script>
+    <script type="application/json" data-book-bookmarks-json>@Html.Raw(bookmarksJson)</script>
+    <script type="application/json" data-reader-frame-text>@Json.Serialize(ui.WithPrefix("reader.frame."))</script>
+    <script type="application/json" data-book-reader-text>@Json.Serialize(ui.WithPrefix("books.read."))</script>
 
-    <div class="book-reading-progress" aria-hidden="true">
-        <span data-book-progress-bar style="width:@(initialProgress / 10)%"></span>
-    </div>
-
-    <nav class="book-reader-toolbar" data-reader-chrome data-reader-chrome-primary aria-label="@ui["books.read.controlsAria"]">
-        <a class="book-reader-back"
-           href="/Books/Library/@Model.Reader.Work.Id?lang=@Model.Reader.TargetLanguage"
-           aria-label="@ui["books.read.backToBook"]">
-            ←
+    <header class="reader-frame-top" data-reader-chrome-primary>
+        <a class="reader-frame-icon" href="@bookUrl" aria-label="@ui["reader.frame.back"]" title="@ui["reader.frame.back"]">
+            <partial name="_ReaderIcon" model="@("back")" />
         </a>
 
-        <div class="book-reader-location">
-            <strong>@Model.Reader.Chapter.Title</strong>
-            <span>@(Model.Reader.Work.MetadataTitle ?? Model.Reader.Work.Title)</span>
+        <div class="reader-frame-title">
+            <strong data-book-chapter-title>@chapter.Title</strong>
+            <span>@bookTitle</span>
         </div>
 
-        <button class="book-reader-navigation"
-                type="button"
-                data-book-drawer-open
-                aria-label="@ui["books.read.chaptersAndAnnotations"]"
-                title="@ui["books.read.chaptersAndAnnotations"]">
-            ☰
-        </button>
+        <div class="reader-frame-actions">
+            @if (hasLanguageChoice)
+            {
+            <div class="reader-menu-anchor">
+                <button class="reader-frame-icon reader-frame-desktop" type="button"
+                        data-reader-menu-toggle="language"
+                        aria-haspopup="menu" aria-expanded="false" aria-controls="book-menu-language"
+                        aria-label="@ui["reader.frame.language"]" title="@ui["reader.frame.language"]">
+                    <partial name="_ReaderIcon" model="@("translate")" />
+                </button>
+                <div class="reader-menu" id="book-menu-language" data-reader-menu="language" role="menu" aria-label="@ui["reader.frame.language"]" hidden>
+                    <button type="button" role="menuitemradio" data-book-view="original" aria-checked="false">
+                        <span>@ui.Format("books.read.viewOriginal", ("language", sourceName))</span>
+                        <partial name="_ReaderIcon" model="@("check")" />
+                    </button>
+                    @if (!sourceIsTarget && (hasAlternate || canTranslate))
+                    {
+                        <button type="button" role="menuitemradio" data-book-view="translated" aria-checked="false" hidden="@(!hasAlternate)">
+                            <span>@targetName</span>
+                            <partial name="_ReaderIcon" model="@("check")" />
+                        </button>
+                        <button type="button" role="menuitemradio" data-book-view="both" aria-checked="false" hidden="@(!hasAlternate)">
+                            <span>@ui.Format("books.read.viewBoth", ("language", targetName))</span>
+                            <partial name="_ReaderIcon" model="@("check")" />
+                        </button>
+                    }
+                    @if (canTranslate)
+                    {
+                        <form method="post" asp-page-handler="Translate" asp-route-id="@chapter.Id" data-book-translate-form>
+                            <input type="hidden" name="lang" value="@target" />
+                            <button type="submit" role="menuitem" data-translation-state>
+                                @ui.Format("books.read.translateInto", ("language", targetName))
+                            </button>
+                        </form>
+                    }
+                    @foreach (var language in Model.CachedTranslationLanguages)
+                    {
+                        <a role="menuitem" href="/Books/Read/@chapter.Id?lang=@language&view=translated">
+                            @BookLanguageCatalog.GetName(language)
+                        </a>
+                    }
+                </div>
+            </div>
+            }
 
-        <div class="book-reader-view-switch" data-reader-language-control role="group" aria-label="@ui["books.read.readingTextAria"]">
-            @if (!sourceIsTarget)
-            {
-                <button type="button"
-                        data-book-view="translated"
-                        disabled="@(!hasAlternate)">
-                    @Jularr.Web.Features.Books.BookLanguageCatalog.GetName(Model.Reader.TargetLanguage)
+            <button class="reader-frame-icon reader-frame-glyph reader-frame-desktop" type="button"
+                    data-reader-settings-open="text"
+                    aria-label="@ui["reader.frame.fontLayout"]" title="@ui["reader.frame.fontLayout"]">
+                <span class="reader-frame-glyph-inline" aria-hidden="true"></span>
+            </button>
+
+            <div class="reader-menu-anchor">
+                <button class="reader-frame-icon reader-frame-desktop" type="button"
+                        data-reader-menu-toggle="palette"
+                        aria-haspopup="menu" aria-expanded="false" aria-controls="book-menu-palette"
+                        aria-label="@ui["reader.frame.colorScheme"]" title="@ui["reader.frame.colorScheme"]">
+                    <partial name="_ReaderIcon" model="@("palette")" />
                 </button>
-            }
-            <button type="button" data-book-view="original">@ui["books.read.original"]</button>
-            @if (!sourceIsTarget)
-            {
-                <button type="button"
-                        data-book-view="both"
-                        disabled="@(!hasAlternate)">
-                    @ui["books.read.both"]
+                <div class="reader-menu reader-menu-palette" id="book-menu-palette" data-reader-menu="palette" role="menu" aria-label="@ui["reader.frame.colorScheme"]" hidden>
+                    <div class="reader-swatches">
+                        @foreach (var (paper, paperKey) in paperStyles)
+                        {
+                            <button type="button" role="menuitemradio" aria-checked="false"
+                                    data-book-paper="@paper"
+                                    aria-label="@ui[paperKey]"
+                                    title="@ui[paperKey]"></button>
+                        }
+                    </div>
+                    <button type="button" role="menuitem" data-reader-settings-open="appearance">@ui["reader.frame.moreAppearance"]</button>
+                </div>
+            </div>
+
+            <button class="reader-frame-icon reader-frame-desktop" type="button"
+                    data-bookmark-button
+                    aria-pressed="false"
+                    aria-label="@ui["books.read.bookmarkPage"]" title="@ui["books.read.bookmarkPage"]">
+                <partial name="_ReaderIcon" model="@("bookmark")" />
+            </button>
+
+            <div class="reader-menu-anchor">
+                <button class="reader-frame-icon reader-frame-desktop" type="button"
+                        data-reader-menu-toggle="search"
+                        aria-haspopup="dialog" aria-expanded="false" aria-controls="book-menu-search"
+                        aria-label="@ui["reader.frame.search"]" title="@ui["reader.frame.search"]">
+                    <partial name="_ReaderIcon" model="@("search")" />
                 </button>
-            }
+                <div class="reader-menu reader-menu-search" id="book-menu-search" data-reader-menu="search" role="dialog" aria-label="@ui["reader.frame.search"]" hidden>
+                    <form class="reader-search-form" data-book-search-form role="search">
+                        <input type="search" name="q" autocomplete="off" maxlength="120"
+                               placeholder="@ui["books.read.searchPlaceholder"]"
+                               aria-label="@ui["books.read.searchPlaceholder"]"
+                               data-book-search-input />
+                    </form>
+                    <p class="reader-menu-status" data-book-search-status role="status">@ui["books.read.searchHint"]</p>
+                    <ol class="reader-search-results" data-book-search-results></ol>
+                </div>
+            </div>
+
+            <div class="reader-menu-anchor">
+                <button class="reader-frame-icon" type="button"
+                        data-reader-menu-toggle="more"
+                        aria-haspopup="menu" aria-expanded="false" aria-controls="book-menu-more"
+                        aria-label="@ui["reader.frame.more"]" title="@ui["reader.frame.more"]">
+                    <partial name="_ReaderIcon" model="@("more")" />
+                </button>
+                <div class="reader-menu reader-menu-more" id="book-menu-more" data-reader-menu="more" role="menu" aria-label="@ui["reader.frame.more"]" hidden>
+                    <button type="button" role="menuitem" class="reader-frame-mobile" data-book-bookmark-proxy>
+                        <partial name="_ReaderIcon" model="@("bookmark")" />
+                        <span>@ui["books.read.bookmarkPage"]</span>
+                    </button>
+                    <button type="button" role="menuitem" class="reader-frame-mobile" data-reader-menu-toggle="search">
+                        <partial name="_ReaderIcon" model="@("search")" />
+                        <span>@ui["reader.frame.search"]</span>
+                    </button>
+                    <button type="button" role="menuitem" class="reader-frame-mobile" data-reader-menu-toggle="palette">
+                        <partial name="_ReaderIcon" model="@("palette")" />
+                        <span>@ui["reader.frame.colorScheme"]</span>
+                    </button>
+                    <button type="button" role="menuitem" data-reader-contents-open="notes">
+                        <partial name="_ReaderIcon" model="@("notes")" />
+                        <span>@ui["books.read.tabNotes"]</span>
+                    </button>
+                    <div class="reader-menu-row" role="group" aria-label="@ui["reader.frame.readingMode"]">
+                        <partial name="_ReaderIcon" model="@("reading-mode")" />
+                        <span>@ui["reader.frame.readingMode"]</span>
+                        <div class="reader-segmented">
+                            <button type="button" data-book-mode="continuous" aria-pressed="false">@ui["reader.frame.modeScroll"]</button>
+                            <button type="button" data-book-mode="paged" aria-pressed="false">@ui["reader.frame.modePages"]</button>
+                        </div>
+                    </div>
+                    <button type="button" role="menuitem" data-book-autoscroll-toggle aria-pressed="false" data-reader-mode-only="continuous">
+                        <partial name="_ReaderIcon" model="@("auto-scroll")" />
+                        <span>@ui["reader.frame.autoScroll"]</span>
+                    </button>
+                    <div class="reader-menu-row" role="group" aria-label="@ui["reader.frame.timer"]">
+                        <partial name="_ReaderIcon" model="@("timer")" />
+                        <span data-reader-timer-label>@ui["reader.frame.timer"]</span>
+                        <div class="reader-segmented">
+                            @foreach (var minutes in new[] { 15, 30, 60 })
+                            {
+                                <button type="button" data-reader-timer="@minutes" aria-pressed="false">@ui.Format("reader.frame.timerMinutes", ("minutes", minutes))</button>
+                            }
+                            <button type="button" data-reader-timer="0" aria-pressed="true">@ui["reader.frame.timerOff"]</button>
+                        </div>
+                    </div>
+                    <div class="reader-menu-offline" data-offline-save="@work.Id">
+                        <partial name="_ReaderIcon" model="@("download")" />
+                        <button type="button" role="menuitem" data-offline-save-button disabled>@ui["offlineLibrary.action.saveButton"]</button>
+                        <small data-offline-save-status>@ui["offlineLibrary.action.checking"]</small>
+                    </div>
+                    <button type="button" role="menuitem" data-reader-share>
+                        <partial name="_ReaderIcon" model="@("share")" />
+                        <span>@ui["reader.frame.share"]</span>
+                    </button>
+                    <button type="button" role="menuitem" data-reader-settings-open="reading">
+                        <partial name="_ReaderIcon" model="@("settings")" />
+                        <span>@ui["reader.frame.settings"]</span>
+                    </button>
+                </div>
+            </div>
         </div>
-
-        <button class="book-reader-bookmark"
-                type="button"
-                data-bookmark-button
-                aria-label="@ui["books.read.addBookmarkAria"]"
-                title="@ui["books.read.addBookmarkAria"]">
-            ♡
-            <span data-bookmark-count>@Model.Reader.Bookmarks.Count</span>
-        </button>
-
-        <button class="book-reader-auto"
-                type="button"
-                data-book-autoscroll
-                aria-pressed="false"
-                title="@ui["books.read.autoScroll"]">
-            ▶
-        </button>
-
-        <partial name="_ReaderSettingsPanel" model="@readerSettingsPanel" />
-    </nav>
-
-    <header class="book-reader-chapter-title">
-        <span>@ui.Format("books.chapter.number", ("number", Model.Reader.Chapter.Number))</span>
-        <h1>@Model.Reader.Chapter.Title</h1>
     </header>
 
-    @if (Model.TranslationEnabled
-        && !Model.Reader.SourceLanguage.Equals(
-            Model.Reader.TargetLanguage,
-            StringComparison.OrdinalIgnoreCase)
-        && !hasAlternate)
-    {
-        <div class="book-translation-slot" data-translation-slot>
-            <span data-translation-state>
-                @ui.Format("books.read.translationNotReady", ("language", Jularr.Web.Features.Books.BookLanguageCatalog.GetName(Model.Reader.TargetLanguage)))
-            </span>
-            <form method="post"
-                  asp-page-handler="Translate"
-                  asp-route-id="@Model.Reader.Chapter.Id"
-                  data-book-translate-form>
-                <input type="hidden" name="lang" value="@Model.Reader.TargetLanguage" />
-                <button class="button button-primary" type="submit">
-                    @ui["books.read.translateChapter"]
+    <div class="reader-frame-body">
+        <aside class="reader-contents" id="book-reader-contents" data-reader-contents aria-label="@ui["reader.frame.contents"]" hidden>
+            <div class="reader-contents-head">
+                <div class="reader-contents-tabs" role="tablist" aria-label="@ui["reader.frame.contentsTabsAria"]">
+                    <button type="button" role="tab" id="book-tab-chapters" aria-controls="book-panel-chapters" aria-selected="true" data-reader-contents-tab="chapters">@ui["books.read.tabChapters"]</button>
+                    <button type="button" role="tab" id="book-tab-bookmarks" aria-controls="book-panel-bookmarks" aria-selected="false" tabindex="-1" data-reader-contents-tab="bookmarks">@ui["books.read.tabBookmarks"]</button>
+                    <button type="button" role="tab" id="book-tab-notes" aria-controls="book-panel-notes" aria-selected="false" tabindex="-1" data-reader-contents-tab="notes">@ui["books.read.tabNotes"]</button>
+                    <button type="button" role="tab" id="book-tab-details" aria-controls="book-panel-details" aria-selected="false" tabindex="-1" data-reader-contents-tab="details">@ui["books.read.tabDetails"]</button>
+                </div>
+                <button class="reader-frame-icon" type="button" data-reader-contents-close
+                        aria-label="@ui["reader.frame.closeContents"]" title="@ui["reader.frame.closeContents"]">
+                    <partial name="_ReaderIcon" model="@("close")" />
                 </button>
-            </form>
-        </div>
-    }
+            </div>
 
-    <main class="book-reader-content" data-book-reader-content data-reader-surface>
-        <article class="book-reader-column original"
-                 data-book-original
-                 data-book-language="original"
-                 lang="@Model.Reader.SourceLanguage">
-            @for (var index = 0; index < Model.Reader.OriginalParagraphs.Count; index++)
-            {
-                <p data-book-paragraph="@index">@Model.Reader.OriginalParagraphs[index]</p>
-            }
-        </article>
+            <section class="reader-contents-panel" id="book-panel-chapters" role="tabpanel" aria-labelledby="book-tab-chapters" data-reader-contents-panel="chapters">
+                <input class="reader-contents-search" type="search" autocomplete="off"
+                       placeholder="@ui["books.read.searchChapters"]"
+                       aria-label="@ui["books.read.searchChapters"]"
+                       data-book-chapter-search />
+                <ol class="reader-contents-list" data-book-chapter-list></ol>
+            </section>
+            <section class="reader-contents-panel" id="book-panel-bookmarks" role="tabpanel" aria-labelledby="book-tab-bookmarks" data-reader-contents-panel="bookmarks" hidden>
+                <ol class="reader-contents-list" data-book-bookmark-list></ol>
+            </section>
+            <section class="reader-contents-panel" id="book-panel-notes" role="tabpanel" aria-labelledby="book-tab-notes" data-reader-contents-panel="notes" hidden>
+                <ol class="reader-contents-list" data-book-highlight-list></ol>
+            </section>
+            <section class="reader-contents-panel" id="book-panel-details" role="tabpanel" aria-labelledby="book-tab-details" data-reader-contents-panel="details" hidden>
+                <div class="book-details">
+                    <img src="/Books/Cover/@work.Id" alt="" width="120" height="180" loading="lazy" decoding="async" />
+                    <div>
+                        <strong>@bookTitle</strong>
+                        <dl>
+                            @if (!string.IsNullOrWhiteSpace(work.Author))
+                            {
+                                <dt>@ui["books.read.author"]</dt>
+                                <dd>@work.Author</dd>
+                            }
+                            <dt>@ui["books.read.languageLabel"]</dt>
+                            <dd>@sourceName</dd>
+                            <dt>@ui["books.read.chapterCount"]</dt>
+                            <dd>@Model.ChapterCount</dd>
+                        </dl>
+                    </div>
+                </div>
+                <a class="reader-contents-link" href="@bookUrl">@ui["books.read.openBookPage"]</a>
+            </section>
+        </aside>
+        <div class="reader-contents-backdrop" data-reader-contents-backdrop hidden></div>
 
-        <article class="book-reader-column translated"
-                 data-book-translated
-                 data-book-language="@Model.Reader.TargetLanguage"
-                 lang="@Model.Reader.TargetLanguage"
-                 hidden="@(!hasAlternate || defaultView == "original")">
-            @for (var index = 0; index < translatedParagraphs.Count; index++)
-            {
-                <p data-book-paragraph="@index">@translatedParagraphs[index]</p>
-            }
-        </article>
-    </main>
+        <main class="book-stage" data-reader-surface aria-label="@chapter.Title">
+            <div class="book-spread" data-book-spread>
+                <div class="book-sheet book-sheet-left" aria-hidden="true">
+                    <span class="book-art-mountains"></span>
+                    <span class="book-page-number" data-book-page-number="left"></span>
+                </div>
+                <div class="book-sheet book-sheet-right" aria-hidden="true">
+                    <span class="book-art-mountains"></span>
+                    <span class="book-page-number" data-book-page-number="right"></span>
+                </div>
+                <span class="book-art-branch book-art-branch-top art-tint" aria-hidden="true"></span>
+                <span class="book-art-branch book-art-branch-side art-tint" aria-hidden="true"></span>
 
-    <div class="book-page-controls" data-book-page-controls data-reader-chrome hidden>
-        <button type="button" data-book-page-prev aria-label="@ui["books.read.previousPageAria"]">←</button>
-        <output data-book-page-number>1 / 1</output>
-        <button type="button" data-book-page-next aria-label="@ui["books.read.nextPageAria"]">→</button>
+                <div class="book-flow" data-book-flow>
+                    <div class="book-columns" data-book-columns data-book-reader-content>
+                    <header class="book-opening">
+                        <span class="book-opening-number" data-book-chapter-number>@chapter.Number</span>
+                        <svg class="book-opening-art" viewBox="0 0 160 52" aria-hidden="true" focusable="false">
+                            <circle class="book-opening-sun" cx="82" cy="26" r="12" />
+                            <path class="book-opening-hill" d="M18 42c10-5 20-7 30-4 7-7 16-10 24-6 9-8 22-9 32-1 9-3 19-2 26 5 5 1 9 3 12 6z" />
+                            <path class="book-opening-mist" d="M10 44h44M64 47h58M112 43h38M36 50h40" />
+                        </svg>
+                        <h1 class="@(titleRepeatsInText ? "sr-only" : null)" data-book-opening-title>@chapter.Title</h1>
+                    </header>
+
+                    <article class="book-text" data-book-original data-book-language="original" lang="@Model.Reader.SourceLanguage"
+                             hidden="@(defaultView == "translated")">
+                        @for (var index = 0; index < Model.Reader.OriginalParagraphs.Count; index++)
+                        {
+                            <p data-book-paragraph="@index">@Model.Reader.OriginalParagraphs[index]</p>
+                        }
+                    </article>
+
+                    <article class="book-text" data-book-translated data-book-language="@target" lang="@target"
+                             hidden="@(!hasAlternate || defaultView == "original")">
+                        @for (var index = 0; index < translatedParagraphs.Count; index++)
+                        {
+                            <p data-book-paragraph="@index">@translatedParagraphs[index]</p>
+                        }
+                    </article>
+                    </div>
+                </div>
+            </div>
+        </main>
     </div>
 
-    <footer class="book-reader-footer">
-        @if (Model.Reader.PreviousChapterId is Guid previous)
-        {
-            <a href="/Books/Read/@previous?lang=@Model.Reader.TargetLanguage">← @ui["books.read.previousChapter"]</a>
-        }
-        else
-        {
-            <span></span>
-        }
+    <footer class="reader-frame-bottom" data-reader-chrome>
+        <button class="reader-frame-icon reader-frame-desktop" type="button"
+                data-reader-contents-toggle aria-controls="book-reader-contents" aria-expanded="false"
+                aria-label="@ui["reader.frame.contents"]" title="@ui["reader.frame.contents"]">
+            <partial name="_ReaderIcon" model="@("contents")" />
+        </button>
 
-        @if (Model.Reader.NextChapterId is Guid next)
-        {
-            <a href="/Books/Read/@next?lang=@Model.Reader.TargetLanguage"
-               data-reader-next-chapter="@next">@ui["books.read.nextChapter"] →</a>
-        }
+        <div class="reader-progress">
+            <button class="reader-frame-icon reader-frame-mobile" type="button" data-reader-page-step="-1"
+                    aria-label="@ui["reader.frame.previousPage"]" title="@ui["reader.frame.previousPage"]">
+                <partial name="_ReaderIcon" model="@("back")" />
+            </button>
+            <label class="reader-progress-track">
+                <span class="reader-progress-label reader-frame-desktop" data-book-chapter-label>@chapterLabel</span>
+                <input type="range" min="0" max="0" step="1" value="0"
+                       data-reader-progress-slider
+                       aria-label="@ui["reader.frame.progressAria"]" />
+            </label>
+            <button class="reader-frame-icon reader-frame-mobile" type="button" data-reader-page-step="1"
+                    aria-label="@ui["reader.frame.nextPage"]" title="@ui["reader.frame.nextPage"]">
+                <partial name="_ReaderIcon" model="@("forward")" />
+            </button>
+            <output class="reader-progress-text" data-reader-progress-text aria-live="off"></output>
+        </div>
+
+        <div class="reader-frame-transport reader-frame-desktop">
+            @if (Model.Reader.PreviousChapterId is Guid previous)
+            {
+                <a class="reader-frame-icon" href="/Books/Read/@previous?lang=@target@viewQuery"
+                   data-book-chapter-link="previous"
+                   aria-label="@ui["reader.frame.previousChapter"]" title="@ui["reader.frame.previousChapter"]">
+                    <partial name="_ReaderIcon" model="@("previous")" />
+                </a>
+            }
+            else
+            {
+                <button class="reader-frame-icon" type="button" disabled aria-label="@ui["reader.frame.previousChapter"]">
+                    <partial name="_ReaderIcon" model="@("previous")" />
+                </button>
+            }
+
+            @if (supportsTts)
+            {
+                <button class="reader-frame-play" type="button"
+                        data-reader-tts-toggle
+                        aria-pressed="false"
+                        aria-label="@ui["reader.frame.readAloud"]" title="@ui["reader.frame.readAloud"]"
+                        hidden>
+                    <span class="reader-play-icon"><partial name="_ReaderIcon" model="@("play")" /></span>
+                    <span class="reader-pause-icon"><partial name="_ReaderIcon" model="@("pause")" /></span>
+                </button>
+            }
+
+            @if (Model.Reader.NextChapterId is Guid next)
+            {
+                <a class="reader-frame-icon" href="/Books/Read/@next?lang=@target@viewQuery"
+                   data-book-chapter-link="next"
+                   data-reader-next-chapter="@next"
+                   aria-label="@ui["reader.frame.nextChapter"]" title="@ui["reader.frame.nextChapter"]">
+                    <partial name="_ReaderIcon" model="@("next")" />
+                </a>
+            }
+            else
+            {
+                <button class="reader-frame-icon" type="button" disabled aria-label="@ui["reader.frame.nextChapter"]">
+                    <partial name="_ReaderIcon" model="@("next")" />
+                </button>
+            }
+        </div>
+
+        <div class="reader-frame-tail reader-frame-desktop">
+            @if (supportsTts)
+            {
+                <button class="reader-frame-icon" type="button" data-reader-settings-open="tts"
+                        aria-label="@ui["reader.frame.audioSettings"]" title="@ui["reader.frame.audioSettings"]">
+                    <partial name="_ReaderIcon" model="@("headphones")" />
+                </button>
+            }
+            <div class="reader-menu-anchor">
+                <button class="reader-frame-icon" type="button"
+                        data-reader-menu-toggle="view"
+                        aria-haspopup="menu" aria-expanded="false" aria-controls="book-menu-view"
+                        aria-label="@ui["reader.frame.view"]" title="@ui["reader.frame.view"]">
+                    <partial name="_ReaderIcon" model="@("view")" />
+                </button>
+                <div class="reader-menu reader-menu-up" id="book-menu-view" data-reader-menu="view" role="menu" aria-label="@ui["reader.frame.view"]" hidden>
+                    <button type="button" role="menuitemradio" aria-checked="false" data-book-spread-choice="false" data-reader-mode-only="paged">
+                        <partial name="_ReaderIcon" model="@("single-page")" />
+                        <span>@ui["reader.frame.singlePage"]</span>
+                    </button>
+                    <button type="button" role="menuitemradio" aria-checked="false" data-book-spread-choice="true" data-reader-mode-only="paged">
+                        <partial name="_ReaderIcon" model="@("view")" />
+                        <span>@ui["reader.frame.twoPages"]</span>
+                    </button>
+                    <button type="button" role="menuitem" data-reader-fullscreen-toggle aria-pressed="false">
+                        <partial name="_ReaderIcon" model="@("fullscreen")" />
+                        <span data-reader-fullscreen-label>@ui["reader.frame.fullscreen"]</span>
+                    </button>
+                </div>
+            </div>
+            <button class="reader-frame-icon" type="button" data-reader-settings-open="reading"
+                    aria-label="@ui["reader.frame.settings"]" title="@ui["reader.frame.settings"]">
+                <partial name="_ReaderIcon" model="@("settings")" />
+            </button>
+        </div>
+
+        <nav class="reader-frame-tools reader-frame-mobile" aria-label="@ui["reader.frame.toolsAria"]">
+            <button type="button" data-reader-contents-toggle aria-controls="book-reader-contents" aria-expanded="false">
+                <partial name="_ReaderIcon" model="@("contents")" />
+                <span>@ui["reader.frame.contents"]</span>
+            </button>
+            @if (supportsTts)
+            {
+                <button type="button"
+                        data-reader-tts-toggle
+                        aria-pressed="false"
+                        hidden>
+                    <span class="reader-play-icon"><partial name="_ReaderIcon" model="@("headphones")" /></span>
+                    <span class="reader-pause-icon"><partial name="_ReaderIcon" model="@("pause")" /></span>
+                    <span>@ui["reader.frame.readAloud"]</span>
+                </button>
+            }
+            <button type="button" data-reader-settings-open="text">
+                <span class="reader-frame-glyph-inline" aria-hidden="true"></span>
+                <span>@ui["reader.frame.appearance"]</span>
+            </button>
+            @if (hasLanguageChoice)
+            {
+                <button type="button" data-reader-menu-toggle="language" aria-haspopup="menu" aria-expanded="false" aria-controls="book-menu-language">
+                    <partial name="_ReaderIcon" model="@("translate")" />
+                    <span>@ui["reader.frame.language"]</span>
+                </button>
+            }
+            <button type="button" data-reader-menu-toggle="more" aria-haspopup="menu" aria-expanded="false" aria-controls="book-menu-more">
+                <partial name="_ReaderIcon" model="@("more")" />
+                <span>@ui["reader.frame.more"]</span>
+            </button>
+        </nav>
     </footer>
 
-    <form method="post"
-          asp-page-handler="Progress"
-          asp-route-id="@Model.Reader.Chapter.Id"
-          data-book-progress-form
-          hidden>
-        <input type="hidden" name="positionPermille" value="@initialProgress" />
-        <input type="hidden" name="lang" value="@Model.Reader.TargetLanguage" />
-    </form>
-
-    <form method="post"
-          asp-page-handler="Bookmark"
-          asp-route-id="@Model.Reader.Chapter.Id"
-          data-book-bookmark-form
-          hidden>
-        <input type="hidden" name="positionPermille" value="@initialProgress" />
-        <input type="hidden" name="lang" value="@Model.Reader.TargetLanguage" />
-        <input type="hidden" name="anchorLanguage" value="@defaultView" />
-    </form>
+    <div class="reader-frame-settings">
+        <partial name="_ReaderSettingsPanel" model="@readerSettingsPanel" />
+    </div>
 
     <form method="post"
           asp-page-handler="Highlight"
-          asp-route-id="@Model.Reader.Chapter.Id"
+          asp-route-id="@chapter.Id"
           data-book-highlight-form
           hidden>
-        <input type="hidden" name="lang" value="@Model.Reader.TargetLanguage" />
+        <input type="hidden" name="lang" value="@target" />
         <input type="hidden" name="anchorLanguage" value="original" />
         <input type="hidden" name="paragraphIndex" value="0" />
         <input type="hidden" name="startOffset" value="0" />
@@ -246,53 +521,24 @@
     </form>
 
     <div class="book-selection-toolbar" data-book-selection-toolbar hidden>
-        <button type="button" data-book-highlight-button>@ui["books.read.highlight"]</button>
-    </div>
-
-    <dialog class="book-reader-drawer" data-book-drawer>
-        <div class="book-reader-drawer-shell">
-            <header>
-                <div>
-                    <strong>@(Model.Reader.Work.MetadataTitle ?? Model.Reader.Work.Title)</strong>
-                    <span>@ui.Format("books.chapter.number", ("number", Model.Reader.Chapter.Number)) · @Model.Reader.Chapter.Title</span>
-                </div>
-                <button type="button"
-                        data-book-drawer-close
-                        aria-label="@ui["books.read.closeDrawer"]">×</button>
-            </header>
-
-            <div class="book-reader-drawer-tabs" role="tablist" aria-label="@ui["books.read.drawerNavigationAria"]">
-                <button type="button" class="active" data-book-drawer-tab="chapters">@ui["books.read.tabChapters"]</button>
-                <button type="button" data-book-drawer-tab="bookmarks">@ui["books.read.tabBookmarks"]</button>
-                <button type="button" data-book-drawer-tab="highlights">@ui["books.read.tabHighlights"]</button>
-            </div>
-
-            <section data-book-drawer-panel="chapters">
-                <label class="book-reader-drawer-search">
-                    <span class="sr-only">@ui["books.read.searchChapters"]</span>
-                    <input type="search"
-                           placeholder="@ui["books.read.searchChapters"]"
-                           data-book-chapter-search />
-                </label>
-                <div class="book-reader-drawer-list" data-book-chapter-list>
-                    <span class="books-muted">@ui["books.read.loadingChapters"]</span>
-                </div>
-            </section>
-
-            <section data-book-drawer-panel="bookmarks" hidden>
-                <div class="book-reader-drawer-list" data-book-bookmark-list>
-                    <span class="books-muted">@ui["books.read.loadingBookmarks"]</span>
-                </div>
-            </section>
-
-            <section data-book-drawer-panel="highlights" hidden>
-                <div class="book-reader-drawer-list" data-book-highlight-list>
-                    <span class="books-muted">@ui["books.read.loadingHighlights"]</span>
-                </div>
-            </section>
+        <div class="book-selection-actions">
+            <button type="button" data-book-highlight-button>
+                <partial name="_ReaderIcon" model="@("highlight")" />
+                <span>@ui["books.read.highlight"]</span>
+            </button>
+            <button type="button" data-book-note-button>
+                <partial name="_ReaderIcon" model="@("notes")" />
+                <span>@ui["books.read.note"]</span>
+            </button>
         </div>
-    </dialog>
+        <form class="book-selection-note" data-book-note-form hidden>
+            <textarea rows="3" maxlength="1000" data-book-note-input
+                      placeholder="@ui["books.read.notePlaceholder"]"
+                      aria-label="@ui["books.read.notePlaceholder"]"></textarea>
+            <button type="submit">@ui["books.read.saveNote"]</button>
+        </form>
+    </div>
 
     <div class="book-reader-toast" data-book-toast hidden role="status" aria-live="polite"></div>
 </div>
-<partial name="_LanguageInspector" model="Jularr.Web.Features.Learning.LanguageAssistance.LanguageInspectorHost.ForBookChapter(Model.Reader.Work.Id, Model.Reader.Chapter.Id, Model.Reader.SourceLanguage)" />
+<partial name="_LanguageInspector" model="Jularr.Web.Features.Learning.LanguageAssistance.LanguageInspectorHost.ForBookChapter(work.Id, chapter.Id, Model.Reader.SourceLanguage)" />

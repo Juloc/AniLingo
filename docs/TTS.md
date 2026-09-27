@@ -39,6 +39,8 @@ The shared Reader owns the UI integration; the speech engine stays Reader-agnost
 
 Controls:
 - toolbar Read button (mobile: `Vorlesen` in the bottom action bar): reads the current text selection, otherwise continues from the first paragraph on screen; while active it toggles Pause/Resume
+- readers using the shared reader frame (`data-reader-frame`, see docs/UNIFIED_READER.md) render their own entry points with `data-reader-tts-toggle`: the accent Play button in the bottom bar and "Read aloud" in the mobile tool row. Every toggle shares one state; the Play button swaps to Pause while speaking, and "Voice and speed" opens the `Vorlesen` settings tab
+- all read-aloud text comes from the UI catalog (`reader.tts.*`, rendered by the shared settings partial)
 - a player bar with Pause/Resume and Stop stays visible while reading, independent of the auto-hiding chrome
 - low-frequency actions in the overflow menu: read the current paragraph or the visible page
 
