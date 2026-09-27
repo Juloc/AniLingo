@@ -286,7 +286,7 @@ public sealed class LightNovelAcquisitionRequestExecutor(
         CancellationToken cancellationToken)
     {
         var aliases = new List<string>();
-        string? canonicalTitle = request.Title;
+        var canonicalTitle = request.Title;
 
         if (request.Provider.Equals(
                 NovelAniListProvider.ProviderKey,
