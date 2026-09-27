@@ -24,9 +24,9 @@ public sealed class IndexModel(
     OperationRunner operations,
     IHttpClientFactory httpClientFactory,
     MediaMappingReviewStore mappingReviewStore,
-    NovelAniListProvider readingProvider,
-    AcquisitionRequestService requests,
-    AcquisitionAccessStore requestStore) : PageModel
+    NovelAniListProvider? readingProvider = null,
+    AcquisitionRequestService? requests = null,
+    AcquisitionAccessStore? requestStore = null) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public IReadOnlyList<MangaSeriesItem> Series { get; private set; } = [];
@@ -40,8 +40,8 @@ public sealed class IndexModel(
     public bool IsOwner => account.IsOwner;
 
     public async Task OnGetAsync(
-        string? q,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? q = null)
     {
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         var repository = new MangaRepository(db);
@@ -54,10 +54,17 @@ public sealed class IndexModel(
             .Take(8)
             .ToArray();
 
+        SearchQuery = ReadingCatalogSearch.NormalizeQuery(q);
+        if (readingProvider is null ||
+            requests is null ||
+            requestStore is null)
+        {
+            return;
+        }
+
         Access = await requests.GetCapabilitiesAsync(
             MediaAcquisitionKind.Manga,
             cancellationToken);
-        SearchQuery = ReadingCatalogSearch.NormalizeQuery(q);
 
         if (SearchQuery.Length == 0)
         {
@@ -130,6 +137,11 @@ public sealed class IndexModel(
             string.IsNullOrWhiteSpace(title))
         {
             return BadRequest();
+        }
+
+        if (requests is null)
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable);
         }
 
         try
