@@ -114,5 +114,4 @@ object WebNavigationPolicy {
                     parts[0] == "native" &&
                     parts[1] == "1"
             } == true
-    }
 }
