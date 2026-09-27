@@ -1,53 +1,66 @@
 (() => {
+    "use strict";
+
+    // Books reader (reader frame, see docs/UNIFIED_READER.md "Reader frame").
+    // reader-shell.js owns the shared chrome (menus, contents panel, settings
+    // sheet, progress slider, fullscreen, timer, share); this adapter owns the
+    // book: pagination into a paper spread, scroll mode, language views,
+    // bookmarks, highlights/notes, in-book search and chapter navigation.
+
     const root = document.querySelector("[data-book-reader]");
     if (!root) return;
 
+    const readJson = (selector, fallback) => {
+        try {
+            return JSON.parse(root.querySelector(selector)?.textContent || "") ?? fallback;
+        } catch {
+            return fallback;
+        }
+    };
+
+    const text = Object.assign(
+        {},
+        readJson("[data-reader-frame-text]", {}),
+        readJson("[data-book-reader-text]", {}));
+    const t = (key, fallback, values = {}) => {
+        let value = text[key] || fallback;
+        for (const [name, replacement] of Object.entries(values)) {
+            value = value.replaceAll("{" + name + "}", String(replacement));
+        }
+        return value;
+    };
+
     const original = root.querySelector("[data-book-original]");
     const translated = root.querySelector("[data-book-translated]");
-    const content = root.querySelector("[data-book-reader-content]");
-    const progressForm = root.querySelector("[data-book-progress-form]");
-    const bookmarkForm = root.querySelector("[data-book-bookmark-form]");
+    const stage = root.querySelector(".book-stage");
+    const spread = root.querySelector("[data-book-spread]");
+    const flow = root.querySelector("[data-book-flow]");
+    const columns = root.querySelector("[data-book-columns]");
     const translateForm = root.querySelector("[data-book-translate-form]");
     const settingsForm = root.querySelector("[data-book-settings-form]");
-    const resetForm = root.querySelector("[data-book-reset-form]");
-    const settingsJson = root.querySelector("[data-book-settings-json]");
-    const progressBar = root.querySelector("[data-book-progress-bar]");
-    const toast = root.querySelector("[data-book-toast]");
-    const pageControls = root.querySelector("[data-book-page-controls]");
-    const pageNumber = root.querySelector("[data-book-page-number]");
-    const pagePrev = root.querySelector("[data-book-page-prev]");
-    const pageNext = root.querySelector("[data-book-page-next]");
-    const autoScrollButton = root.querySelector("[data-book-autoscroll]");
-    const overrideState = root.querySelector("[data-book-override-state]");
+    const toastElement = root.querySelector("[data-book-toast]");
+    const pageNumbers = {
+        left: root.querySelector('[data-book-page-number="left"]'),
+        right: root.querySelector('[data-book-page-number="right"]')
+    };
+    const bookmarkButton = root.querySelector("[data-bookmark-button]");
+    const autoScrollButton = root.querySelector("[data-book-autoscroll-toggle]");
     const targetLanguage = root.dataset.targetLanguage || "id";
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const compactQuery = window.matchMedia("(max-width: 720px)");
 
-    // #374: Book reading progress and bookmark add always go through the same
+    // #374: Book reading progress and bookmarks always go through the same
     // offline-first sync queue the Novel reader uses (offline-library-repository.js's
-    // forWork(workId).queueProgress/queueBookmarkUpsert, wrapping
-    // manager.queueSyncEvent) — online and offline alike, one canonical write
-    // path instead of the Progress/Bookmark POST handlers below. Those
-    // handlers are left in place server-side (harmless, unused by this
-    // client) rather than removed, matching the Novel reader's #221 part 2A
-    // change. See docs/OFFLINE_LIBRARY.md.
+    // forWork(workId).queueProgress/queueBookmarkUpsert/queueBookmarkRemove,
+    // wrapping manager.queueSyncEvent) — online and offline alike, one canonical
+    // write path. See docs/OFFLINE_LIBRARY.md.
     const workId = root.dataset.workId || "";
     const repository = workId && window.JularrOfflineLibraryRepository
         ? window.JularrOfflineLibraryRepository.forWork(workId)
         : null;
 
-    let view = root.dataset.view || "original";
-    let saveTimer = 0;
-    let pollTimer = 0;
-    let settingsSave = Promise.resolve();
-    let autoScrollFrame = 0;
-    let autoScrollLast = 0;
-    let autoScrollRunning = false;
-    let currentPage = 0;
-    let pageCount = 1;
-    let restoringPage = false;
-
-    let settings = {
-        readingMode: "continuous",
+    let settings = Object.assign({
+        readingMode: "paged",
         pageTransition: "curl",
         twoPageSpread: true,
         autoScrollSpeed: 36,
@@ -57,8 +70,8 @@
         paragraphSpacingEm: 0.85,
         textWidthPx: 760,
         textAlignment: "start",
-        chapterStyle: "light-novel",
-        paperStyle: "midnight",
+        chapterStyle: "classic",
+        paperStyle: "cream",
         genreArtworkEnabled: true,
         genreTheme: "auto",
         backgroundAssetId: "auto",
@@ -77,14 +90,7 @@
         bookmarkStyle: "fabric",
         bookmarkColor: "#b04455",
         hasBookOverride: false
-    };
-
-    if (settingsJson) {
-        try {
-            settings = Object.assign(settings, JSON.parse(settingsJson.textContent || "{}"));
-        } catch {
-        }
-    }
+    }, readJson("[data-book-settings-json]", {}));
 
     const fontStacks = {
         "system-serif": 'Georgia, "Times New Roman", serif',
@@ -96,77 +102,665 @@
         "noto-sans-jp": '"Noto Sans JP", system-ui, sans-serif'
     };
 
-    function activeColumn() {
+    const numericSettings = new Set([
+        "autoScrollSpeed", "fontSizeRem", "lineHeight", "paragraphSpacingEm",
+        "textWidthPx", "backgroundIntensity", "themeEffectStrength", "themeBrightness",
+        "themeContrast", "themeSaturation", "themeBlurPx", "themeVignetteStrength",
+        "themeGrainStrength", "themeTextBackdropStrength", "themeParallaxStrength",
+        "themeTintStrength"
+    ]);
+
+    let view = root.dataset.view || "original";
+    let restoring = true;
+
+    const toast = message => {
+        if (!toastElement || !message) return;
+        toastElement.textContent = message;
+        toastElement.hidden = false;
+        window.clearTimeout(toast.timer);
+        toast.timer = window.setTimeout(() => {
+            toastElement.hidden = true;
+        }, 2400);
+    };
+
+    const failed = error => {
+        console.warn(error);
+        toast(t("books.read.actionFailed", "That did not work. Please try again."));
+    };
+
+    // ---- Language views ---------------------------------------------------------
+
+    const activeColumn = () => {
         if (view === "translated" && translated && !translated.hidden) return translated;
-        if (view === "original" && original && !original.hidden) return original;
-        return null;
-    }
+        return original;
+    };
 
-    function setView(next) {
-        if (next === "translated" && root.dataset.hasTranslation !== "true") return;
-        if (next === "both" && root.dataset.hasTranslation !== "true") return;
+    const paragraphsOf = column =>
+        column ? Array.from(column.querySelectorAll("p[data-book-paragraph]")) : [];
 
+    const currentAnchorLanguage = () => view === "original" ? "original" : targetLanguage;
+
+    const syncViewControls = () => {
+        root.querySelectorAll("[data-book-view]").forEach(button => {
+            button.setAttribute("aria-checked", button.dataset.bookView === view ? "true" : "false");
+        });
+        // Chapter links keep the chosen language view.
+        root.querySelectorAll("a[data-book-chapter-link]").forEach(link => {
+            const url = new URL(link.href, window.location.origin);
+            if (view === "original") url.searchParams.delete("view");
+            else url.searchParams.set("view", view);
+            link.href = url.pathname + url.search;
+        });
+    };
+
+    const setView = next => {
+        if ((next === "translated" || next === "both") && root.dataset.hasTranslation !== "true") return;
+        if (next === view && !restoring) return;
         stopAutoScroll();
+        const anchor = captureAnchor();
         view = next;
         root.dataset.view = next;
-
         if (original) original.hidden = next === "translated";
         if (translated) translated.hidden = next === "original";
+        syncViewControls();
+        scheduleLayout(anchor);
+    };
 
-        root.querySelectorAll("[data-book-view]").forEach((button) => {
-            button.classList.toggle("active", button.dataset.bookView === next);
+    // ---- Settings -----------------------------------------------------------------
+
+    const syncQuickControls = () => {
+        root.querySelectorAll("[data-book-mode]").forEach(button => {
+            button.setAttribute(
+                "aria-pressed",
+                button.dataset.bookMode === settings.readingMode ? "true" : "false");
         });
+        root.querySelectorAll("[data-book-spread-choice]").forEach(button => {
+            const spreadChoice = button.dataset.bookSpreadChoice === "true";
+            button.setAttribute(
+                "aria-checked",
+                spreadChoice === Boolean(settings.twoPageSpread) ? "true" : "false");
+        });
+        root.querySelectorAll("[data-book-paper]").forEach(button => {
+            button.setAttribute(
+                "aria-checked",
+                button.dataset.bookPaper === settings.paperStyle ? "true" : "false");
+        });
+    };
 
-        requestAnimationFrame(() => configurePaging(true));
+    const formatSetting = (key, value) => {
+        if (key === "autoScrollSpeed") return Math.round(Number(value)) + " px/s";
+        if (key === "fontSizeRem") return Number(value).toFixed(2) + " rem";
+        if (key === "lineHeight") return Number(value).toFixed(2);
+        if (key === "paragraphSpacingEm") return Number(value).toFixed(1) + " em";
+        if (key === "textWidthPx") return Math.round(Number(value)) + " px";
+        if (key === "backgroundIntensity") return Math.round(Number(value) * 100) + "%";
+        if (key === "themeBlurPx") return Number(value).toFixed(1) + " px";
+        if (numericSettings.has(key)) return Math.round(Number(value) * 100) + "%";
+        return String(value == null ? "" : value);
+    };
+
+    const syncSettingControls = () => {
+        if (!settingsForm) return;
+        settingsForm.querySelectorAll("[data-book-setting]").forEach(control => {
+            const key = control.dataset.bookSetting;
+            if (!(key in settings)) return;
+            if (control.type === "checkbox") control.checked = Boolean(settings[key]);
+            else control.value = String(settings[key]);
+        });
+        settingsForm.querySelectorAll("[data-book-setting-output]").forEach(output => {
+            const key = output.dataset.bookSettingOutput;
+            output.textContent = formatSetting(key, settings[key]);
+        });
+    };
+
+    const applySettings = () => {
+        const anchor = relayoutAnchor();
+        root.dataset.readingMode = settings.readingMode;
+        root.dataset.paperStyle = settings.paperStyle;
+        root.dataset.chapterStyle = settings.chapterStyle;
+        root.dataset.pageTransition = settings.pageTransition;
+        root.dataset.twoPageSpread = settings.twoPageSpread ? "true" : "false";
+
+        root.style.setProperty("--book-reader-font-size", Number(settings.fontSizeRem) + "rem");
+        root.style.setProperty("--book-reader-line-height", String(settings.lineHeight));
+        root.style.setProperty("--book-reader-paragraph-spacing", Number(settings.paragraphSpacingEm) + "em");
+        root.style.setProperty("--book-reader-text-width", Math.round(Number(settings.textWidthPx)) + "px");
+        root.style.setProperty("--book-reader-font", fontStacks[settings.fontFamily] || fontStacks["literary-serif"]);
+        root.style.setProperty("--book-reader-align", settings.textAlignment === "justify" ? "justify" : "start");
+        root.style.setProperty("--book-bookmark-color", settings.bookmarkColor || "#b04455");
+
+        syncSettingControls();
+        syncQuickControls();
+
+        root.dispatchEvent(new CustomEvent("jularr:reader-settings", {
+            detail: { settings }
+        }));
+
+        if (settings.readingMode !== "continuous") stopAutoScroll();
+        scheduleLayout(anchor);
+    };
+
+    let settingsSave = Promise.resolve();
+
+    const saveSettings = async (scope, changedKey) => {
+        if (!settingsForm) return;
+        const data = new FormData(settingsForm);
+        const names = {
+            readingMode: "ReadingMode", pageTransition: "PageTransition",
+            twoPageSpread: "TwoPageSpread", autoScrollSpeed: "AutoScrollSpeed",
+            fontFamily: "FontFamily", fontSizeRem: "FontSizeRem", lineHeight: "LineHeight",
+            paragraphSpacingEm: "ParagraphSpacingEm", textWidthPx: "TextWidthPx",
+            textAlignment: "TextAlignment", chapterStyle: "ChapterStyle",
+            paperStyle: "PaperStyle", genreArtworkEnabled: "GenreArtworkEnabled",
+            genreTheme: "GenreTheme", backgroundAssetId: "BackgroundAssetId",
+            backgroundIntensity: "BackgroundIntensity", backgroundMotionMode: "BackgroundMotionMode",
+            themeEffectStrength: "ThemeEffectStrength", themeBrightness: "ThemeBrightness",
+            themeContrast: "ThemeContrast", themeSaturation: "ThemeSaturation",
+            themeBlurPx: "ThemeBlurPx", themeVignetteStrength: "ThemeVignetteStrength",
+            themeGrainStrength: "ThemeGrainStrength",
+            themeTextBackdropStrength: "ThemeTextBackdropStrength",
+            themeParallaxStrength: "ThemeParallaxStrength", themeTintStrength: "ThemeTintStrength",
+            bookmarkStyle: "BookmarkStyle", bookmarkColor: "BookmarkColor"
+        };
+        for (const [key, name] of Object.entries(names)) data.set(name, String(settings[key]));
+        data.set("scope", scope);
+        data.set("changedKey", changedKey || "");
+
+        const response = await fetch(settingsForm.action, {
+            method: "POST",
+            body: data,
+            credentials: "same-origin",
+            headers: { "X-Requested-With": "fetch" }
+        });
+        if (!response.ok) throw new Error(await response.text());
+        const result = await response.json();
+        if (result?.settings) applyServerSettings(result.settings);
+    };
+
+    // Edits not yet confirmed by their own save win over older server
+    // responses, so two quick changes (mode, then paper) never undo each other.
+    const unsavedEdits = new Map();
+    function applyServerSettings(next) {
+        settings = Object.assign(settings, next);
+        for (const [key, value] of unsavedEdits) settings[key] = value;
+        applySettings();
     }
 
-    function scrollPermille() {
-        if (settings.readingMode === "paged" && view !== "both") {
-            return pageCount <= 1
-                ? 0
-                : Math.round(currentPage / (pageCount - 1) * 1000);
-        }
+    const scheduleSettingSave = changedKey => {
+        const scope = settingsForm?.querySelector('[name="scope"]')?.value || "work";
+        if (scope === "work") settings.hasBookOverride = true;
+        const value = settings[changedKey];
+        unsavedEdits.set(changedKey, value);
+        settingsSave = settingsSave
+            .then(() => saveSettings(scope, changedKey))
+            .catch(failed)
+            .finally(() => {
+                if (unsavedEdits.get(changedKey) === value) unsavedEdits.delete(changedKey);
+            });
+    };
 
+    settingsForm?.querySelectorAll("[data-book-setting]").forEach(control => {
+        const eventName = control.type === "range" ? "input" : "change";
+        control.addEventListener(eventName, () => {
+            const key = control.dataset.bookSetting;
+            let value = control.type === "checkbox" ? control.checked : control.value;
+            if (numericSettings.has(key)) value = Number(value);
+            settings[key] = value;
+            applySettings();
+            window.clearTimeout(control._bookSaveTimer);
+            control._bookSaveTimer = window.setTimeout(
+                () => scheduleSettingSave(key),
+                control.type === "range" ? 300 : 0);
+        });
+    });
+
+    // Quick controls change the canonical settings controls, so they persist
+    // through the same ReaderPreferences path as the settings sheet.
+    const setSettingControl = (key, value) => {
+        const control = settingsForm?.querySelector(`[data-book-setting="${key}"]`);
+        if (!control) return;
+        if (control.type === "checkbox") control.checked = Boolean(value);
+        else control.value = String(value);
+        control.dispatchEvent(new Event("change", { bubbles: true }));
+    };
+
+    root.querySelectorAll("[data-book-mode]").forEach(button => {
+        button.addEventListener("click", () => setSettingControl("readingMode", button.dataset.bookMode));
+    });
+    root.querySelectorAll("[data-book-spread-choice]").forEach(button => {
+        button.addEventListener("click", () =>
+            setSettingControl("twoPageSpread", button.dataset.bookSpreadChoice === "true"));
+    });
+    root.querySelectorAll("[data-book-paper]").forEach(button => {
+        button.addEventListener("click", () => setSettingControl("paperStyle", button.dataset.bookPaper));
+    });
+
+    root.addEventListener("jularr:reader-settings-response", event => {
+        if (!event.detail?.settings) return;
+        applyServerSettings(event.detail.settings);
+    });
+
+    // ---- Layout and pagination ---------------------------------------------------
+
+    const layout = {
+        paged: false,
+        pages: 1,
+        stride: 1,
+        columnStride: 1,
+        pageCount: 1,
+        viewCount: 1
+    };
+    let currentView = 0;
+    let layoutFrame = 0;
+    let pendingAnchor = null;
+    let turnTimer = 0;
+
+    const isPaged = () => settings.readingMode === "paged" && view !== "both";
+
+    const topBarBottom = () =>
+        root.querySelector("[data-reader-chrome-primary]")?.getBoundingClientRect().bottom || 0;
+
+    const scrollPermille = () => {
         const max = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
         return Math.max(0, Math.min(1000, Math.round(window.scrollY / max * 1000)));
+    };
+
+    const currentPermille = () => {
+        if (!layout.paged) return scrollPermille();
+        return layout.viewCount <= 1
+            ? 0
+            : Math.round(currentView / (layout.viewCount - 1) * 1000);
+    };
+
+    const viewForPermille = permille =>
+        layout.viewCount <= 1
+            ? 0
+            : Math.max(0, Math.min(
+                layout.viewCount - 1,
+                Math.round(Number(permille) / 1000 * (layout.viewCount - 1))));
+
+    // First paragraph of the active language on screen; used to keep the
+    // reading position when the layout changes (mode, font, window size).
+    function captureAnchor() {
+        const list = paragraphsOf(activeColumn());
+        if (!list.length) return null;
+        if (layout.paged) {
+            // Positions relative to the column box and the current page window,
+            // independent of any running transform.
+            const origin = columns.getBoundingClientRect().left;
+            const start = currentView * layout.stride;
+            const end = start + flow.clientWidth;
+            const inside = rect =>
+                rect.right - origin > start + 1 && rect.left - origin < end - 1;
+            for (let index = 0; index < list.length; index++) {
+                const rects = Array.from(list[index].getClientRects());
+                const part = rects.findIndex(inside);
+                if (part < 0) continue;
+                // A paragraph continued from the previous page is a weak anchor;
+                // prefer the next one when it starts on this page.
+                const next = list[index + 1]?.getClientRects()[0];
+                if (part > 0 && next && inside(next)) {
+                    return { index: Number(list[index + 1].dataset.bookParagraph), part: 0 };
+                }
+                return { index: Number(list[index].dataset.bookParagraph), part };
+            }
+            return null;
+        }
+        const line = topBarBottom() + 8;
+        const found = list.find(paragraph => paragraph.getBoundingClientRect().bottom > line);
+        return found ? { index: Number(found.dataset.bookParagraph) } : null;
     }
 
-    function updateProgress() {
-        const value = scrollPermille();
-        if (progressBar) progressBar.style.width = String(value / 10) + "%";
+    const paragraphAt = index =>
+        activeColumn()?.querySelector(`p[data-book-paragraph="${Number(index)}"]`) || null;
 
-        for (const form of [progressForm, bookmarkForm]) {
-            if (!form) continue;
-            const field = form.querySelector('[name="positionPermille"]');
-            if (field) field.value = String(value);
+    // Measured against the column box itself, so a running page-turn
+    // transform cannot skew the result.
+    const viewForParagraph = (paragraph, part = 0) => {
+        const rects = paragraph ? paragraph.getClientRects() : [];
+        const rect = rects[Math.min(part, rects.length - 1)];
+        if (!rect) return 0;
+        const x = rect.left - columns.getBoundingClientRect().left;
+        const page = Math.floor((x + 2) / layout.columnStride);
+        return Math.max(0, Math.min(layout.viewCount - 1, Math.floor(page / layout.pages)));
+    };
+
+    const flash = paragraph => {
+        if (!paragraph || reduceMotion.matches) return;
+        paragraph.classList.remove("book-paragraph-flash");
+        void paragraph.offsetWidth;
+        paragraph.classList.add("book-paragraph-flash");
+    };
+
+    const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+
+    function scheduleLayout(anchor) {
+        if (anchor && !pendingAnchor) pendingAnchor = anchor;
+        cancelAnimationFrame(layoutFrame);
+        layoutFrame = requestAnimationFrame(layoutNow);
+    }
+
+    function layoutNow() {
+        const anchor = pendingAnchor;
+        pendingAnchor = null;
+        const paged = isPaged();
+        layout.paged = paged;
+        root.dataset.bookLayout = paged ? "paged" : "scroll";
+        root.classList.toggle("reader-frame-fixed", paged);
+
+        if (!paged) {
+            columns.style.transform = "";
+            spread.style.cssText = "";
+            layout.pages = 1;
+            layout.viewCount = 1;
+            layout.pageCount = 1;
+            currentView = 0;
+            if (anchor) {
+                const paragraph = paragraphAt(anchor.index);
+                if (paragraph) {
+                    window.scrollTo({
+                        top: window.scrollY + paragraph.getBoundingClientRect().top - topBarBottom() - 16,
+                        behavior: "auto"
+                    });
+                    if (anchor.flash) flash(paragraph);
+                }
+            } else if (anchor === null && restoring) {
+                const initial = Number(root.dataset.progress || "0");
+                const max = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+                window.scrollTo({ top: max * initial / 1000, behavior: "auto" });
+            }
+            renderPageNumbers();
+            emitLocation();
+            finishRestore();
+            return;
         }
 
-        return value;
+        window.clearTimeout(turnTimer);
+        columns.classList.remove("is-turning", "is-fading");
+        const styles = getComputedStyle(stage);
+        const width = stage.clientWidth - parseFloat(styles.paddingLeft) - parseFloat(styles.paddingRight);
+        const height = stage.clientHeight - parseFloat(styles.paddingTop) - parseFloat(styles.paddingBottom);
+        const compact = compactQuery.matches;
+        const pages = settings.twoPageSpread !== false && width >= 860 && height >= 420 ? 2 : 1;
+        const sheetHeight = Math.max(280, Math.floor(height));
+        const provisionalPad = compact ? 22 : 48;
+        const sheetWidth = Math.max(240, Math.floor(pages === 2
+            ? Math.min(width / 2, sheetHeight * 0.74)
+            : Math.min(width, compact ? width : Number(settings.textWidthPx) + provisionalPad * 2)));
+        const padX = compact ? 22 : clamp(Math.round(sheetWidth * 0.09), 28, 60);
+        const padTop = compact ? 28 : clamp(Math.round(sheetHeight * 0.08), 36, 64);
+        const padBottom = compact ? 44 : clamp(Math.round(sheetHeight * 0.09), 50, 74);
+        const artWidth = Math.round(Math.min(sheetWidth * 0.46, 230));
+
+        spread.style.setProperty("--pages", String(pages));
+        spread.style.setProperty("--sheet-w", sheetWidth + "px");
+        spread.style.setProperty("--sheet-h", sheetHeight + "px");
+        spread.style.setProperty("--pad-x", padX + "px");
+        spread.style.setProperty("--pad-top", padTop + "px");
+        spread.style.setProperty("--pad-bottom", padBottom + "px");
+        spread.style.setProperty("--art-w", artWidth + "px");
+        spread.style.setProperty("--art-h", Math.round(artWidth * 1.5) + "px");
+        root.dataset.pages = String(pages);
+
+        const columnWidth = sheetWidth - padX * 2;
+        const gap = padX * 2;
+        layout.pages = pages;
+        layout.columnStride = columnWidth + gap;
+        layout.stride = sheetWidth * pages;
+
+        columns.style.transform = "translate3d(0,0,0)";
+        const contentWidth = columns.scrollWidth;
+        layout.pageCount = Math.max(1, Math.round((contentWidth + gap) / layout.columnStride));
+        layout.viewCount = Math.max(1, Math.ceil(layout.pageCount / pages));
+
+        let target;
+        currentView = 0;
+        if (anchor) {
+            target = viewForParagraph(paragraphAt(anchor.index), anchor.part || 0);
+        } else {
+            target = viewForPermille(Number(root.dataset.progress || "0"));
+        }
+        goToView(target, { animate: false, save: false });
+        if (anchor?.flash) flash(paragraphAt(anchor.index));
+        finishRestore();
     }
 
-    async function postForm(form) {
-        const response = await fetch(form.action, {
-            method: "POST",
-            body: new FormData(form),
-            headers: { "X-Requested-With": "fetch" },
-            credentials: "same-origin"
+    const renderPageNumbers = () => {
+        if (!layout.paged) {
+            if (pageNumbers.left) pageNumbers.left.textContent = "";
+            if (pageNumbers.right) pageNumbers.right.textContent = "";
+            return;
+        }
+        const first = currentView * layout.pages + 1;
+        if (pageNumbers.left) pageNumbers.left.textContent = String(first);
+        if (pageNumbers.right) {
+            pageNumbers.right.textContent = layout.pages === 2 && first + 1 <= layout.pageCount
+                ? String(first + 1)
+                : "";
+        }
+    };
+
+    function emitLocation() {
+        let page;
+        let total;
+        let value;
+        let max;
+        if (layout.paged) {
+            page = Math.min(layout.pageCount, currentView * layout.pages + 1);
+            total = layout.pageCount;
+            value = currentView;
+            max = layout.viewCount - 1;
+        } else {
+            const viewport = Math.max(1, window.innerHeight);
+            total = Math.max(1, Math.ceil(document.documentElement.scrollHeight / viewport));
+            page = Math.min(total, Math.floor(window.scrollY / viewport) + 1);
+            value = scrollPermille();
+            max = 1000;
+        }
+        const percent = layout.paged
+            ? Math.round(page / total * 100)
+            : Math.round(scrollPermille() / 10);
+        const label = t("reader.frame.position", "{page} / {total} ({percent}%)", {
+            page,
+            total,
+            percent
         });
+        root.dispatchEvent(new CustomEvent("jularr:reader-location", {
+            detail: { value, max, text: label, valueText: label }
+        }));
+        syncBookmarkButton();
+    }
 
-        if (!response.ok) {
-            const message = await response.text();
-            throw new Error(message || ("Request failed (" + response.status + ")"));
+    function goToView(target, { animate = true, save = true } = {}) {
+        const next = clamp(target, 0, layout.viewCount - 1);
+        const direction = Math.sign(next - currentView);
+        currentView = next;
+        const transition = reduceMotion.matches ? "none" : settings.pageTransition;
+        const animated = animate && direction !== 0 && transition !== "none";
+
+        window.clearTimeout(turnTimer);
+        columns.classList.remove("is-turning", "is-fading");
+        if (animated && transition === "fade") {
+            columns.classList.add("is-fading");
+        } else if (animated) {
+            columns.classList.add("is-turning");
+        }
+        columns.style.transform = `translate3d(${-next * layout.stride}px,0,0)`;
+        if (animated) {
+            turnTimer = window.setTimeout(() => {
+                columns.classList.remove("is-turning", "is-fading");
+            }, 360);
         }
 
-        const type = response.headers.get("content-type") || "";
-        return type.includes("application/json") ? response.json() : null;
+        renderPageNumbers();
+        emitLocation();
+        if (save) {
+            readerMoved = true;
+            queueProgressSave();
+        }
     }
 
-    function currentAnchorLanguage() {
-        return view === "original" ? "original" : targetLanguage;
+    const chapterLink = which => root.querySelector(`a[data-book-chapter-link="${which}"]`);
+
+    const openChapter = (which, atEnd) => {
+        const link = chapterLink(which);
+        if (!link) return false;
+        const url = new URL(link.href, window.location.origin);
+        if (atEnd) url.searchParams.set("pos", "1000");
+        // Offline navigation (offline-library-repository.js) intercepts link clicks.
+        if (!navigator.onLine) {
+            link.click();
+            return true;
+        }
+        window.location.assign(url.pathname + url.search);
+        return true;
+    };
+
+    const turn = (direction, { fromUser = true } = {}) => {
+        if (!layout.paged) {
+            window.scrollBy({
+                top: direction * window.innerHeight * 0.85,
+                behavior: reduceMotion.matches ? "auto" : "smooth"
+            });
+            return;
+        }
+        const next = currentView + direction;
+        if (next < 0) {
+            if (fromUser) openChapter("previous", true);
+            return;
+        }
+        if (next >= layout.viewCount) {
+            if (fromUser) openChapter("next", false);
+            return;
+        }
+        goToView(next);
+    };
+
+    const jumpToParagraph = index => {
+        const paragraph = paragraphAt(index);
+        if (!paragraph) return;
+        if (layout.paged) {
+            goToView(viewForParagraph(paragraph), { animate: false });
+        } else {
+            window.scrollTo({
+                top: window.scrollY + paragraph.getBoundingClientRect().top - topBarBottom() - 16,
+                behavior: reduceMotion.matches ? "auto" : "smooth"
+            });
+        }
+        flash(paragraph);
+    };
+
+    const jumpToPermille = permille => {
+        if (layout.paged) {
+            goToView(viewForPermille(permille), { animate: false });
+            return;
+        }
+        const max = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+        window.scrollTo({ top: max * Number(permille) / 1000, behavior: "auto" });
+    };
+
+    function finishRestore() {
+        if (!restoring) return;
+        restoring = false;
+        requestAnimationFrame(() => {
+            root.classList.remove("reader-chrome-hidden");
+            root.dispatchEvent(new CustomEvent("jularr:reader-restoring", {
+                detail: { active: false }
+            }));
+        });
     }
 
+    root.addEventListener("jularr:reader-page-edge", event => {
+        const direction = Number(event.detail?.direction || 0);
+        if (!direction) return;
+        // Read-aloud follows the voice within the chapter; it never changes chapters.
+        turn(direction, { fromUser: !(root.dataset.readerTts && root.dataset.readerTts !== "idle") });
+    });
+
+    root.addEventListener("jularr:reader-seek", event => {
+        const value = Number(event.detail?.value || 0);
+        if (layout.paged) goToView(value, { animate: false });
+        else jumpToPermille(value);
+    });
+
+    // Keep the paragraph on screen when fonts load, the window resizes or the
+    // contents panel opens; the initial restore owns the first layout.
+    // Repeated relayouts without reader movement (panel toggles, resizes) keep
+    // one anchor, so the position does not drift a page at a time.
+    let stickyAnchor = null;
+    let readerMoved = true;
+    function relayoutAnchor() {
+        if (restoring) return null;
+        if (readerMoved || !stickyAnchor) stickyAnchor = captureAnchor();
+        readerMoved = false;
+        return stickyAnchor;
+    }
+    const relayout = () => scheduleLayout(relayoutAnchor());
+    new ResizeObserver(relayout).observe(stage);
+    root.addEventListener("jularr:reader-layout", relayout);
+    document.fonts?.ready?.then(relayout);
+
+    let scrollFrame = 0;
+    window.addEventListener("scroll", () => {
+        if (layout.paged) return;
+        if (scrollFrame) return;
+        scrollFrame = requestAnimationFrame(() => {
+            scrollFrame = 0;
+            readerMoved = true;
+            emitLocation();
+            if (!restoring) queueProgressSave();
+        });
+    }, { passive: true });
+
+    document.addEventListener("keydown", event => {
+        if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
+        const target = event.target;
+        if (target instanceof HTMLElement &&
+            (target.matches("input, textarea, select") || target.isContentEditable ||
+             target.closest("[data-reader-menu],[data-reader-contents],[data-reader-settings-container],[role='dialog']"))) {
+            return;
+        }
+        const key = event.key;
+        if (key === "b" || key === "B") {
+            event.preventDefault();
+            toggleBookmark();
+            return;
+        }
+        if (key === "n" || key === "N") {
+            event.preventDefault();
+            root.querySelector("[data-reader-contents-toggle]")?.click();
+            return;
+        }
+        if (key === "/") {
+            event.preventDefault();
+            root.querySelector('[data-reader-menu-toggle="search"]')?.click();
+            return;
+        }
+        if (!layout.paged) return;
+        const onControl = target instanceof HTMLElement && target.closest("button, a, summary");
+        if (key === " " && onControl) return;
+        if (key === "ArrowRight" || key === "PageDown" || (key === " " && !event.shiftKey)) {
+            event.preventDefault();
+            turn(1);
+        } else if (key === "ArrowLeft" || key === "PageUp" || (key === " " && event.shiftKey)) {
+            event.preventDefault();
+            turn(-1);
+        } else if (key === "Home") {
+            event.preventDefault();
+            goToView(0);
+        } else if (key === "End") {
+            event.preventDefault();
+            goToView(layout.viewCount - 1);
+        }
+    });
+
+    // ---- Progress -----------------------------------------------------------------
+
+    let saveTimer = 0;
     function queueProgressSave() {
-        const position = updateProgress();
+        if (restoring) return;
+        const position = currentPermille();
+        root.dataset.progress = String(position);
         window.clearTimeout(saveTimer);
         saveTimer = window.setTimeout(async () => {
             if (!repository) return;
@@ -181,381 +775,237 @@
         }, 900);
     }
 
-    function showToast(message) {
-        if (!toast) return;
-        toast.textContent = message;
-        toast.hidden = false;
-        window.clearTimeout(showToast.timer);
-        showToast.timer = window.setTimeout(() => {
-            toast.hidden = true;
-        }, 2200);
-    }
+    // ---- Auto-scroll (Scroll mode) --------------------------------------------------
 
-    function renderTranslation(paragraphs) {
-        if (!translated) return;
-        translated.replaceChildren();
-
-        for (const value of paragraphs || []) {
-            const paragraph = document.createElement("p");
-            paragraph.textContent = value;
-            translated.append(paragraph);
-        }
-
-        root.dataset.hasTranslation = "true";
-        root.querySelectorAll('[data-book-view="translated"], [data-book-view="both"]')
-            .forEach((button) => {
-                button.disabled = false;
-            });
-
-        const slot = root.querySelector("[data-translation-slot]");
-        if (slot) slot.remove();
-
-        setView("translated");
-    }
-
-    async function pollTranslation() {
-        window.clearTimeout(pollTimer);
-
-        try {
-            const url = new URL(window.location.href);
-            url.searchParams.set("handler", "TranslationStatus");
-            url.searchParams.set("lang", targetLanguage);
-
-            const response = await fetch(url, {
-                credentials: "same-origin",
-                headers: { "X-Requested-With": "fetch" }
-            });
-            if (!response.ok) return;
-
-            const result = await response.json();
-            if (result.status === "ready") {
-                renderTranslation(result.paragraphs);
-                showToast("Translation ready.");
-                return;
-            }
-        } catch {
-        }
-
-        pollTimer = window.setTimeout(pollTranslation, 2500);
-    }
-
-    function formatSetting(key, value) {
-        if (key === "autoScrollSpeed") return Math.round(Number(value)) + " px/s";
-        if (key === "fontSizeRem") return Number(value).toFixed(2) + " rem";
-        if (key === "lineHeight") return Number(value).toFixed(2);
-        if (key === "paragraphSpacingEm") return Number(value).toFixed(1) + " em";
-        if (key === "textWidthPx") return Math.round(Number(value)) + " px";
-        if (key === "backgroundIntensity") return Math.round(Number(value) * 100) + "%";
-        if (key === "themeBlurPx") return Number(value).toFixed(1) + " px";
-        if ([
-            "themeEffectStrength",
-            "themeBrightness",
-            "themeContrast",
-            "themeSaturation",
-            "themeVignetteStrength",
-            "themeGrainStrength",
-            "themeTextBackdropStrength",
-            "themeParallaxStrength",
-            "themeTintStrength"
-        ].includes(key)) {
-            return Math.round(Number(value) * 100) + "%";
-        }
-        return String(value == null ? "" : value);
-    }
-
-    function syncSettingControls() {
-        if (!settingsForm) return;
-
-        settingsForm.querySelectorAll("[data-book-setting]").forEach((control) => {
-            const key = control.dataset.bookSetting;
-            if (!(key in settings)) return;
-
-            if (control.type === "checkbox") {
-                control.checked = Boolean(settings[key]);
-            } else {
-                control.value = String(settings[key]);
-            }
-        });
-
-        settingsForm.querySelectorAll("[data-book-setting-output]").forEach((output) => {
-            const key = output.dataset.bookSettingOutput;
-            output.textContent = formatSetting(key, settings[key]);
-        });
-
-        if (overrideState) {
-            overrideState.textContent = settings.hasBookOverride
-                ? "Customized for this book"
-                : settings.hasGenreOverride
-                    ? "Genre default"
-                    : settings.hasTypeOverride
-                        ? "Type default"
-                        : "My default";
-        }
-    }
-
-    function setSettingsFormState(data) {
-        const names = {
-            readingMode: "ReadingMode",
-            pageTransition: "PageTransition",
-            twoPageSpread: "TwoPageSpread",
-            autoScrollSpeed: "AutoScrollSpeed",
-            fontFamily: "FontFamily",
-            fontSizeRem: "FontSizeRem",
-            lineHeight: "LineHeight",
-            paragraphSpacingEm: "ParagraphSpacingEm",
-            textWidthPx: "TextWidthPx",
-            textAlignment: "TextAlignment",
-            chapterStyle: "ChapterStyle",
-            paperStyle: "PaperStyle",
-            genreArtworkEnabled: "GenreArtworkEnabled",
-            genreTheme: "GenreTheme",
-            backgroundAssetId: "BackgroundAssetId",
-            backgroundIntensity: "BackgroundIntensity",
-            backgroundMotionMode: "BackgroundMotionMode",
-            themeEffectStrength: "ThemeEffectStrength",
-            themeBrightness: "ThemeBrightness",
-            themeContrast: "ThemeContrast",
-            themeSaturation: "ThemeSaturation",
-            themeBlurPx: "ThemeBlurPx",
-            themeVignetteStrength: "ThemeVignetteStrength",
-            themeGrainStrength: "ThemeGrainStrength",
-            themeTextBackdropStrength: "ThemeTextBackdropStrength",
-            themeParallaxStrength: "ThemeParallaxStrength",
-            themeTintStrength: "ThemeTintStrength",
-            bookmarkStyle: "BookmarkStyle",
-            bookmarkColor: "BookmarkColor"
-        };
-
-        for (const [key, name] of Object.entries(names)) {
-            data.set(name, String(settings[key]));
-        }
-    }
-
-    async function saveSettings(scope, changedKey) {
-        if (!settingsForm) return null;
-
-        const data = new FormData(settingsForm);
-        setSettingsFormState(data);
-        data.set("scope", scope);
-        data.set("changedKey", changedKey || "");
-
-        const response = await fetch(settingsForm.action, {
-            method: "POST",
-            body: data,
-            credentials: "same-origin",
-            headers: { "X-Requested-With": "fetch" }
-        });
-
-        if (!response.ok) {
-            throw new Error((await response.text()) || "Reader settings could not be saved.");
-        }
-
-        const result = await response.json();
-        if (result && result.settings) {
-            settings = Object.assign(settings, result.settings);
-            applySettings(false);
-        }
-
-        return result;
-    }
-
-    function activePreferenceTarget() {
-        return settingsForm?.querySelector('[name="scope"]')?.value || "work";
-    }
-
-    function scheduleSettingSave(changedKey) {
-        const scope = activePreferenceTarget();
-        if (scope === "work" || scope === "book") {
-            settings.hasBookOverride = true;
-        }
-        syncSettingControls();
-
-        settingsSave = settingsSave
-            .then(() => saveSettings(scope, changedKey))
-            .catch((error) => showToast(error.message));
-    }
-
-    function applySettings(keepPage) {
-        root.dataset.readingMode = settings.readingMode;
-        root.dataset.paperStyle = settings.paperStyle;
-        root.dataset.chapterStyle = settings.chapterStyle;
-        root.dataset.pageTransition = settings.pageTransition;
-        root.dataset.twoPageSpread = settings.twoPageSpread ? "true" : "false";
-
-        root.style.setProperty("--book-reader-font-size", Number(settings.fontSizeRem) + "rem");
-        root.style.setProperty("--book-reader-line-height", String(settings.lineHeight));
-        root.style.setProperty("--book-reader-paragraph-spacing", Number(settings.paragraphSpacingEm) + "em");
-        root.style.setProperty("--book-reader-text-width", Math.round(Number(settings.textWidthPx)) + "px");
-        root.style.setProperty("--book-reader-font", fontStacks[settings.fontFamily] || fontStacks["literary-serif"]);
-        root.style.setProperty("--book-bookmark-color", settings.bookmarkColor || "#b04455");
-
-        if (content) {
-            content.style.textAlign = settings.textAlignment === "justify" ? "justify" : "start";
-        }
-
-        syncSettingControls();
-
-        root.dispatchEvent(new CustomEvent("jularr:reader-settings", {
-            detail: { settings }
-        }));
-
-        if (settings.readingMode !== "continuous") {
-            stopAutoScroll();
-        }
-
-        requestAnimationFrame(() => configurePaging(Boolean(keepPage)));
-    }
-
-    function configurePaging(keepPage) {
-        if (!pageControls) return;
-
-        const paged = settings.readingMode === "paged" && view !== "both";
-        pageControls.hidden = !paged;
-
-        if (!paged) {
-            currentPage = 0;
-            pageCount = 1;
-            updateProgress();
-            return;
-        }
-
-        const column = activeColumn();
-        if (!column) {
-            pageControls.hidden = true;
-            return;
-        }
-
-        const oldProgress = keepPage ? scrollPermille() : Number(root.dataset.progress || "0");
-        const width = Math.max(1, column.clientWidth);
-        pageCount = Math.max(1, Math.ceil(column.scrollWidth / width));
-
-        const targetPage = pageCount <= 1
-            ? 0
-            : Math.max(0, Math.min(pageCount - 1, Math.round(oldProgress / 1000 * (pageCount - 1))));
-
-        restoringPage = true;
-        column.scrollLeft = targetPage * width;
-        currentPage = targetPage;
-        updatePageNumber();
-        updateProgress();
-
-        requestAnimationFrame(() => {
-            restoringPage = false;
-        });
-    }
-
-    function updatePageNumber() {
-        if (pageNumber) pageNumber.textContent = String(currentPage + 1) + " / " + String(pageCount);
-        if (pagePrev) pagePrev.disabled = currentPage <= 0;
-        if (pageNext) pageNext.disabled = currentPage >= pageCount - 1;
-    }
-
-    function turnPage(direction) {
-        const column = activeColumn();
-        if (!column || settings.readingMode !== "paged") return;
-
-        const width = Math.max(1, column.clientWidth);
-        const target = Math.max(0, Math.min(pageCount - 1, currentPage + direction));
-        if (target === currentPage) return;
-
-        if (!reduceMotion.matches && settings.pageTransition === "curl") {
-            root.classList.add(direction > 0 ? "book-turn-next" : "book-turn-prev");
-            window.setTimeout(() => {
-                root.classList.remove("book-turn-next", "book-turn-prev");
-            }, 260);
-        }
-
-        column.scrollTo({
-            left: target * width,
-            behavior: reduceMotion.matches || settings.pageTransition === "none" ? "auto" : "smooth"
-        });
-
-        currentPage = target;
-        updatePageNumber();
-        queueProgressSave();
-    }
+    let autoScrollFrame = 0;
+    let autoScrollLast = 0;
+    let autoScrollRunning = false;
 
     function stopAutoScroll() {
         if (autoScrollFrame) cancelAnimationFrame(autoScrollFrame);
         autoScrollFrame = 0;
         autoScrollLast = 0;
         autoScrollRunning = false;
-        if (autoScrollButton) {
-            autoScrollButton.setAttribute("aria-pressed", "false");
-            autoScrollButton.textContent = "▶";
-        }
+        autoScrollButton?.setAttribute("aria-pressed", "false");
     }
 
-    function autoScrollTick(time) {
+    const autoScrollTick = time => {
         if (!autoScrollRunning) return;
         if (!autoScrollLast) autoScrollLast = time;
-
         const delta = Math.min(60, time - autoScrollLast);
         autoScrollLast = time;
         window.scrollBy(0, Number(settings.autoScrollSpeed) * delta / 1000);
-        updateProgress();
-
         if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2) {
             stopAutoScroll();
             return;
         }
-
         autoScrollFrame = requestAnimationFrame(autoScrollTick);
-    }
+    };
 
-    function toggleAutoScroll() {
-        if (settings.readingMode !== "continuous") {
-            showToast("Auto-scroll is available in Continuous mode.");
-            return;
-        }
-
+    autoScrollButton?.addEventListener("click", () => {
+        if (settings.readingMode !== "continuous") return;
         if (autoScrollRunning) {
             stopAutoScroll();
             return;
         }
-
         autoScrollRunning = true;
-        if (autoScrollButton) {
-            autoScrollButton.setAttribute("aria-pressed", "true");
-            autoScrollButton.textContent = "Ⅱ";
-        }
+        autoScrollButton.setAttribute("aria-pressed", "true");
         autoScrollFrame = requestAnimationFrame(autoScrollTick);
-    }
+    });
 
-    root.querySelectorAll("[data-book-view]").forEach((button) => {
+    root.addEventListener("jularr:reader-timer-end", stopAutoScroll);
+    document.addEventListener("selectionchange", () => {
+        if (autoScrollRunning && !window.getSelection()?.isCollapsed) stopAutoScroll();
+    });
+
+    // ---- Translation --------------------------------------------------------------
+
+    let pollTimer = 0;
+
+    const renderTranslation = paragraphs => {
+        if (!translated) return;
+        translated.replaceChildren(...(paragraphs || []).map((value, index) => {
+            const paragraph = document.createElement("p");
+            paragraph.dataset.bookParagraph = String(index);
+            paragraph.textContent = value;
+            return paragraph;
+        }));
+        root.dataset.hasTranslation = "true";
+        root.querySelectorAll('[data-book-view="translated"], [data-book-view="both"]')
+            .forEach(button => {
+                button.hidden = false;
+            });
+        translateForm?.remove();
+        setView("translated");
+        toast(t("books.read.translationReady", "Translation ready."));
+    };
+
+    const pollTranslation = async () => {
+        window.clearTimeout(pollTimer);
+        try {
+            const url = new URL(window.location.href);
+            url.searchParams.set("handler", "TranslationStatus");
+            url.searchParams.set("lang", targetLanguage);
+            const response = await fetch(url, {
+                credentials: "same-origin",
+                headers: { "X-Requested-With": "fetch" }
+            });
+            if (response.ok) {
+                const result = await response.json();
+                if (result.status === "ready") {
+                    renderTranslation(result.paragraphs);
+                    return;
+                }
+            } else if (response.status === 403) {
+                return;
+            }
+        } catch {
+        }
+        pollTimer = window.setTimeout(pollTranslation, 2500);
+    };
+
+    translateForm?.addEventListener("submit", async event => {
+        event.preventDefault();
+        const button = translateForm.querySelector("button");
+        if (button) {
+            button.disabled = true;
+            button.textContent = t("books.read.translationQueued", "Translation queued…");
+        }
+        try {
+            const response = await fetch(translateForm.action, {
+                method: "POST",
+                body: new FormData(translateForm),
+                credentials: "same-origin",
+                headers: { "X-Requested-With": "fetch" }
+            });
+            if (!response.ok) throw new Error(await response.text());
+            void pollTranslation();
+        } catch (error) {
+            if (button) button.disabled = false;
+            failed(error);
+        }
+    });
+
+    root.querySelectorAll("[data-book-view]").forEach(button => {
         button.addEventListener("click", () => setView(button.dataset.bookView));
     });
 
-    if (translateForm) {
-        translateForm.addEventListener("submit", async (event) => {
-            event.preventDefault();
-            const button = translateForm.querySelector("button");
-            if (button) button.disabled = true;
+    // ---- Server helpers -------------------------------------------------------------
 
-            const state = root.querySelector("[data-translation-state]");
-            if (state) state.textContent = "Translation queued…";
+    const antiforgeryToken = () =>
+        root.querySelector('input[name="__RequestVerificationToken"]')?.value || "";
 
-            try {
-                const result = await postForm(translateForm);
-                if (result && result.status === "ready") {
-                    await pollTranslation();
-                    return;
-                }
-                showToast("Translation queued.");
-                pollTranslation();
-            } catch (error) {
-                if (button) button.disabled = false;
-                if (state) state.textContent = error.message || "Translation failed.";
-            }
+    const handlerUrl = (handler, extra) => {
+        const url = new URL(window.location.href);
+        for (const key of ["pos", "p", "view"]) url.searchParams.delete(key);
+        url.searchParams.set("handler", handler);
+        url.searchParams.set("lang", targetLanguage);
+        for (const [key, value] of Object.entries(extra || {})) {
+            if (value == null || value === "") url.searchParams.delete(key);
+            else url.searchParams.set(key, String(value));
+        }
+        return url;
+    };
+
+    const getJson = async (handler, extra) => {
+        const response = await fetch(handlerUrl(handler, extra), {
+            credentials: "same-origin",
+            headers: { "X-Requested-With": "fetch" }
+        });
+        if (!response.ok) throw new Error(await response.text());
+        return response.json();
+    };
+
+    const postHandler = async (handler, values) => {
+        const data = new FormData();
+        const token = antiforgeryToken();
+        if (token) data.set("__RequestVerificationToken", token);
+        data.set("lang", targetLanguage);
+        for (const [key, value] of Object.entries(values || {})) {
+            if (value != null) data.set(key, String(value));
+        }
+        const response = await fetch(handlerUrl(handler), {
+            method: "POST",
+            body: data,
+            credentials: "same-origin",
+            headers: { "X-Requested-With": "fetch" }
+        });
+        if (!response.ok) throw new Error(await response.text());
+        const type = response.headers.get("content-type") || "";
+        return type.includes("application/json") ? response.json() : null;
+    };
+
+    const prop = (value, name) =>
+        value ? value[name] ?? value[name.charAt(0).toUpperCase() + name.slice(1)] : undefined;
+
+    const currentChapterId = () => (root.dataset.chapterId || "").toLowerCase();
+
+    const readerUrl = (chapterId, { position = null, paragraph = null, requestedView = view } = {}) => {
+        const url = new URL("/Books/Read/" + chapterId, window.location.origin);
+        url.searchParams.set("lang", targetLanguage);
+        if (position != null) url.searchParams.set("pos", String(clamp(Math.round(position), 0, 1000)));
+        if (paragraph != null) url.searchParams.set("p", String(paragraph));
+        if (requestedView && requestedView !== "original") url.searchParams.set("view", requestedView);
+        return url.pathname + url.search;
+    };
+
+    const viewForLanguage = language =>
+        language === "original" ? "original" : "translated";
+
+    const ensureViewForLanguage = language => {
+        const wanted = viewForLanguage(language);
+        if (wanted === "original" && view === "translated") setView("original");
+        if (wanted === "translated" && view === "original") setView("translated");
+    };
+
+    // ---- Bookmarks ------------------------------------------------------------------
+
+    let chapterBookmarks = (readJson("[data-book-bookmarks-json]", []) || []).map(item => ({
+        id: String(prop(item, "id")),
+        positionPermille: Number(prop(item, "positionPermille") || 0)
+    }));
+    let allAnnotations = null;
+
+    const bookmarkHere = () => {
+        if (layout.paged) {
+            return chapterBookmarks.find(item => viewForPermille(item.positionPermille) === currentView) || null;
+        }
+        const position = scrollPermille();
+        return chapterBookmarks.find(item => Math.abs(item.positionPermille - position) <= 12) || null;
+    };
+
+    function syncBookmarkButton() {
+        const active = Boolean(bookmarkHere());
+        const label = active
+            ? t("books.read.removePageBookmark", "Remove bookmark")
+            : t("books.read.bookmarkPage", "Bookmark this page");
+        if (bookmarkButton) {
+            bookmarkButton.setAttribute("aria-pressed", active ? "true" : "false");
+            bookmarkButton.setAttribute("aria-label", label);
+            bookmarkButton.title = label;
+        }
+        root.querySelectorAll("[data-book-bookmark-proxy]").forEach(button => {
+            button.setAttribute("aria-pressed", active ? "true" : "false");
+            const span = button.querySelector("span");
+            if (span) span.textContent = label;
         });
     }
 
-    const bookmarkButton = root.querySelector("[data-bookmark-button]");
-    if (bookmarkButton && repository) {
-        bookmarkButton.addEventListener("click", async () => {
-            const position = updateProgress();
-            try {
-                await repository.queueBookmarkUpsert({
+    async function toggleBookmark() {
+        if (!repository) return;
+        const existing = bookmarkHere();
+        try {
+            if (existing) {
+                await repository.queueBookmarkRemove(existing.id, { chapterId: root.dataset.chapterId });
+                chapterBookmarks = chapterBookmarks.filter(item => item.id !== existing.id);
+                if (allAnnotations) {
+                    allAnnotations.bookmarks = (prop(allAnnotations, "bookmarks") || [])
+                        .filter(item => String(prop(item, "id")) !== existing.id);
+                }
+                toast(t("books.read.bookmarkRemoved", "Bookmark removed."));
+            } else {
+                const position = currentPermille();
+                const created = await repository.queueBookmarkUpsert({
                     chapterId: root.dataset.chapterId,
                     positionPermille: position,
                     language: currentAnchorLanguage(),
@@ -564,885 +1014,597 @@
                     anchorText: null,
                     label: null
                 });
-                const count = bookmarkButton.querySelector("[data-bookmark-count]");
-                if (count) count.textContent = String((Number(count.textContent) || 0) + 1);
-                bookmarkButton.classList.add("active");
-                bookmarkButton.style.setProperty("--bookmark-color", settings.bookmarkColor || "#b04455");
-                showToast("Bookmark added at " + Math.round(position / 10) + "%.");
-            } catch (error) {
-                showToast(error.message || "Could not add bookmark.");
+                chapterBookmarks.push({ id: String(created.id), positionPermille: position });
+                if (allAnnotations) {
+                    allAnnotations.bookmarks = (prop(allAnnotations, "bookmarks") || []).concat([{
+                        id: created.id,
+                        chapterId: root.dataset.chapterId,
+                        chapterNumber: Number(root.querySelector("[data-book-chapter-number]")?.textContent || 0),
+                        chapterTitle: root.querySelector("[data-book-chapter-title]")?.textContent || "",
+                        positionPermille: position,
+                        language: currentAnchorLanguage()
+                    }]);
+                }
+                toast(t("books.read.bookmarkAdded", "Bookmark added."));
             }
-        });
-    }
-
-    if (settingsForm) {
-        settingsForm.querySelectorAll("[data-book-setting]").forEach((control) => {
-            const eventName = control.type === "range" ? "input" : "change";
-            control.addEventListener(eventName, () => {
-                const key = control.dataset.bookSetting;
-                let value = control.type === "checkbox" ? control.checked : control.value;
-
-                if ([
-                    "autoScrollSpeed",
-                    "fontSizeRem",
-                    "lineHeight",
-                    "paragraphSpacingEm",
-                    "textWidthPx",
-                    "backgroundIntensity",
-                    "themeEffectStrength",
-                    "themeBrightness",
-                    "themeContrast",
-                    "themeSaturation",
-                    "themeBlurPx",
-                    "themeVignetteStrength",
-                    "themeGrainStrength",
-                    "themeTextBackdropStrength",
-                    "themeParallaxStrength",
-                    "themeTintStrength"
-                ].includes(key)) {
-                    value = Number(value);
-                }
-
-                settings[key] = value;
-                applySettings(true);
-
-                window.clearTimeout(control._bookSaveTimer);
-                control._bookSaveTimer = window.setTimeout(() => {
-                    scheduleSettingSave(key);
-                }, control.type === "range" ? 300 : 0);
-            });
-        });
-
-        const saveDefaults = root.querySelector("[data-book-save-defaults]");
-        if (saveDefaults) {
-            saveDefaults.addEventListener("click", async () => {
-                try {
-                    await saveSettings("default", "");
-                    showToast("Saved as your reader defaults.");
-                } catch (error) {
-                    showToast(error.message);
-                }
-            });
+            renderBookmarks();
+            syncBookmarkButton();
+        } catch (error) {
+            failed(error);
         }
     }
 
-    const resetButton = root.querySelector("[data-book-reset-settings]");
-    if (resetButton && resetForm) {
-        resetButton.addEventListener("click", async () => {
-            try {
-                const result = await postForm(resetForm);
-                if (result && result.settings) {
-                    settings = Object.assign(settings, result.settings);
-                    applySettings(false);
-                    showToast("Book reader reset to your defaults.");
-                }
-            } catch (error) {
-                showToast(error.message || "Could not reset reader settings.");
-            }
-        });
-    }
-
-    if (autoScrollButton) {
-        autoScrollButton.addEventListener("click", toggleAutoScroll);
-    }
-
-    if (pagePrev) pagePrev.addEventListener("click", () => turnPage(-1));
-    if (pageNext) pageNext.addEventListener("click", () => turnPage(1));
-
-    root.addEventListener("jularr:reader-settings-response", (event) => {
-        if (!event.detail?.settings) return;
-        settings = Object.assign(settings, event.detail.settings);
-        applySettings(false);
+    bookmarkButton?.addEventListener("click", toggleBookmark);
+    root.querySelectorAll("[data-book-bookmark-proxy]").forEach(button => {
+        button.addEventListener("click", toggleBookmark);
     });
 
-    root.addEventListener("jularr:reader-page-edge", (event) => {
-        const direction = Number(event.detail?.direction || 0);
-        if (!direction || settings.readingMode !== "paged") return;
-        turnPage(direction);
-    });
+    // ---- Contents panel ---------------------------------------------------------------
 
-    for (const column of [original, translated]) {
-        if (!column) continue;
-        column.addEventListener("scroll", () => {
-            if (restoringPage || settings.readingMode !== "paged" || column !== activeColumn()) return;
-            const width = Math.max(1, column.clientWidth);
-            currentPage = Math.max(0, Math.min(pageCount - 1, Math.round(column.scrollLeft / width)));
-            updatePageNumber();
-            queueProgressSave();
-        }, { passive: true });
-    }
-
-    window.addEventListener("scroll", () => {
-        if (settings.readingMode === "continuous") queueProgressSave();
-    }, { passive: true });
-
-    window.addEventListener("resize", () => {
-        window.clearTimeout(window._bookReaderResize);
-        window._bookReaderResize = window.setTimeout(() => configurePaging(true), 150);
-    });
-
-    document.addEventListener("selectionchange", () => {
-        if (autoScrollRunning && !window.getSelection()?.isCollapsed) stopAutoScroll();
-    });
-
-    setView(view);
-    applySettings(false);
-
-    const initial = Number(root.dataset.progress || "0");
-    if (initial > 0 && settings.readingMode === "continuous") {
-        root.dispatchEvent(new CustomEvent("jularr:reader-restoring", {
-            detail: { active: true }
-        }));
-        requestAnimationFrame(() => {
-            const max = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
-            window.scrollTo({ top: max * initial / 1000, behavior: "auto" });
-            requestAnimationFrame(() => {
-                root.classList.remove("reader-chrome-hidden");
-                root.dispatchEvent(new CustomEvent("jularr:reader-restoring", {
-                    detail: { active: false }
-                }));
-            });
-        });
-    } else {
-        root.dispatchEvent(new CustomEvent("jularr:reader-restoring", {
-            detail: { active: false }
-        }));
-    }
-
-    if (root.dataset.hasTranslation !== "true" && translateForm) {
-        pollTimer = window.setTimeout(pollTranslation, 2500);
-    }
-})();
-
-
-(() => {
-    const root = document.querySelector("[data-book-reader]");
-    if (!root || root.dataset.navigationAnnotationsReady === "true") return;
-    root.dataset.navigationAnnotationsReady = "true";
-
-    const drawer = root.querySelector("[data-book-drawer]");
-    const openDrawerButton = root.querySelector("[data-book-drawer-open]");
-    const closeDrawerButton = root.querySelector("[data-book-drawer-close]");
     const chapterList = root.querySelector("[data-book-chapter-list]");
     const bookmarkList = root.querySelector("[data-book-bookmark-list]");
     const highlightList = root.querySelector("[data-book-highlight-list]");
     const chapterSearch = root.querySelector("[data-book-chapter-search]");
-    const selectionToolbar = root.querySelector("[data-book-selection-toolbar]");
-    const highlightButton = root.querySelector("[data-book-highlight-button]");
-    const highlightForm = root.querySelector("[data-book-highlight-form]");
-    const bookmarkButton = root.querySelector("[data-bookmark-button]");
-    const highlightsJson = root.querySelector("[data-book-highlights-json]");
-    const original = root.querySelector("[data-book-original]");
-    const translated = root.querySelector("[data-book-translated]");
-    const targetLanguage = root.dataset.targetLanguage || "id";
-    const currentChapterId = (root.dataset.chapterId || "").toLowerCase();
-
-    // Bookmark removal always goes through the offline-first sync queue
-    // (#374), same as the add path in the module above; see
-    // docs/OFFLINE_LIBRARY.md.
-    const workId = root.dataset.workId || "";
-    const repository = workId && window.JularrOfflineLibraryRepository
-        ? window.JularrOfflineLibraryRepository.forWork(workId)
-        : null;
-
-    let currentHighlights = [];
-    let allAnnotations = null;
     let chaptersLoaded = false;
     let annotationLoading = null;
-    let chapterTimer = 0;
-    let selectionState = null;
 
-    if (highlightsJson) {
-        try {
-            currentHighlights = JSON.parse(highlightsJson.textContent || "[]") || [];
-        } catch {
-            currentHighlights = [];
+    const message = value => {
+        const item = document.createElement("li");
+        item.className = "reader-contents-empty";
+        item.textContent = value;
+        return item;
+    };
+
+    const closeOverlayContents = () => {
+        const contents = root.querySelector("[data-reader-contents]");
+        if (contents?.classList.contains("is-overlay")) {
+            root.querySelector("[data-reader-contents-close]")?.click();
         }
-    }
+    };
 
-    function prop(value, name) {
-        if (!value) return undefined;
-        return value[name] ?? value[name.charAt(0).toUpperCase() + name.slice(1)];
-    }
-
-    function antiforgeryToken() {
-        return root.querySelector('input[name="__RequestVerificationToken"]')?.value || "";
-    }
-
-    function handlerUrl(handler, extra) {
-        const url = new URL(window.location.href);
-        url.searchParams.delete("pos");
-        url.searchParams.delete("view");
-        url.searchParams.set("handler", handler);
-        url.searchParams.set("lang", targetLanguage);
-
-        for (const [key, value] of Object.entries(extra || {})) {
-            if (value == null || value === "") {
-                url.searchParams.delete(key);
-            } else {
-                url.searchParams.set(key, String(value));
-            }
-        }
-
-        return url;
-    }
-
-    async function getJson(handler, extra) {
-        const response = await fetch(handlerUrl(handler, extra), {
-            method: "GET",
-            credentials: "same-origin",
-            headers: { "X-Requested-With": "fetch" }
-        });
-
-        if (!response.ok) {
-            throw new Error((await response.text()) || "Could not load reader data.");
-        }
-
-        return response.json();
-    }
-
-    async function postHandler(handler, values) {
-        const data = new FormData();
-        const token = antiforgeryToken();
-        if (token) data.set("__RequestVerificationToken", token);
-        data.set("lang", targetLanguage);
-
-        for (const [key, value] of Object.entries(values || {})) {
-            if (value != null) data.set(key, String(value));
-        }
-
-        const response = await fetch(handlerUrl(handler), {
-            method: "POST",
-            body: data,
-            credentials: "same-origin",
-            headers: { "X-Requested-With": "fetch" }
-        });
-
-        if (!response.ok) {
-            throw new Error((await response.text()) || "Reader action failed.");
-        }
-
-        const type = response.headers.get("content-type") || "";
-        return type.includes("application/json")
-            ? response.json()
-            : null;
-    }
-
-    function showToast(message) {
-        const toast = root.querySelector("[data-book-toast]");
-        if (!toast) return;
-        toast.textContent = message;
-        toast.hidden = false;
-        window.clearTimeout(showToast.timer);
-        showToast.timer = window.setTimeout(() => {
-            toast.hidden = true;
-        }, 2200);
-    }
-
-    function readerUrl(chapterId, positionPermille, requestedView) {
-        const url = new URL("/Books/Read/" + chapterId, window.location.origin);
-        url.searchParams.set("lang", targetLanguage);
-
-        if (Number.isFinite(Number(positionPermille))) {
-            url.searchParams.set(
-                "pos",
-                String(Math.max(0, Math.min(1000, Math.round(Number(positionPermille)))))
-            );
-        }
-
-        const view = requestedView || root.dataset.view;
-        if (view === "original" || view === "translated" || view === "both") {
-            url.searchParams.set("view", view);
-        }
-
-        return url.toString();
-    }
-
-    function elementButton(label, className) {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.textContent = label;
-        if (className) button.className = className;
-        return button;
-    }
-
-    function emptyMessage(text) {
-        const value = document.createElement("span");
-        value.className = "books-muted";
-        value.textContent = text;
-        return value;
-    }
-
-    async function loadChapters(query) {
+    const loadChapters = async query => {
         if (!chapterList) return;
-
-        chapterList.replaceChildren(emptyMessage("Loading chapters…"));
-
+        chapterList.replaceChildren(message(t("books.read.loading", "Loading…")));
         try {
             const result = await getJson("Chapters", { q: query || "" });
             const chapters = prop(result, "chapters") || [];
-
             chapterList.replaceChildren();
-
-            if (chapters.length === 0) {
-                chapterList.append(emptyMessage("No chapters found."));
-                chaptersLoaded = true;
+            if (!chapters.length) {
+                chapterList.append(message(t("books.read.noChapters", "No chapters found.")));
                 return;
             }
-
+            let current = null;
             for (const chapter of chapters) {
                 const id = String(prop(chapter, "id") || "");
-                const number = prop(chapter, "number");
-                const title = prop(chapter, "title") || ("Chapter " + number);
-
+                const item = document.createElement("li");
                 const link = document.createElement("a");
-                link.className = "book-drawer-row";
-                if (id.toLowerCase() === currentChapterId) {
-                    link.classList.add("current");
+                link.className = "reader-contents-row";
+                link.href = readerUrl(id);
+                const number = document.createElement("span");
+                number.className = "reader-contents-index";
+                number.textContent = String(prop(chapter, "number"));
+                const title = document.createElement("span");
+                title.className = "reader-contents-title";
+                title.textContent = prop(chapter, "title") ||
+                    t("books.chapter.number", "Chapter {number}", { number: prop(chapter, "number") });
+                link.append(number, title);
+                if (id.toLowerCase() === currentChapterId()) {
                     link.setAttribute("aria-current", "page");
+                    current = link;
                 }
-                link.href = readerUrl(id, null, root.dataset.view);
-
-                const index = document.createElement("span");
-                index.className = "book-drawer-row-index";
-                index.textContent = String(number);
-
-                const name = document.createElement("strong");
-                name.textContent = title;
-
-                link.append(index, name);
-                chapterList.append(link);
+                item.append(link);
+                chapterList.append(item);
             }
-
             chaptersLoaded = true;
+            current?.scrollIntoView({ block: "center" });
         } catch (error) {
-            chapterList.replaceChildren(
-                emptyMessage(error.message || "Could not load chapters.")
-            );
+            chapterList.replaceChildren(message(t("books.read.actionFailed", "That did not work. Please try again.")));
+            console.warn(error);
         }
-    }
+    };
 
-    async function ensureAnnotations() {
-        if (allAnnotations) return allAnnotations;
+    const ensureAnnotations = () => {
+        if (allAnnotations) return Promise.resolve(allAnnotations);
         if (annotationLoading) return annotationLoading;
-
         annotationLoading = getJson("Annotations")
-            .then((value) => {
+            .then(value => {
                 allAnnotations = value || {};
                 renderBookmarks();
                 renderHighlightsList();
-                const totalBookmarks = (prop(allAnnotations, "bookmarks") || []).length;
-                const count = bookmarkButton?.querySelector("[data-bookmark-count]");
-                if (count) count.textContent = String(totalBookmarks);
                 return allAnnotations;
             })
             .finally(() => {
                 annotationLoading = null;
             });
-
         return annotationLoading;
-    }
+    };
+
+    const chapterHeading = item =>
+        t("books.chapter.number", "Chapter {number}", { number: prop(item, "chapterNumber") }) +
+        (prop(item, "chapterTitle") ? " · " + prop(item, "chapterTitle") : "");
+
+    const deleteButton = onDelete => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "reader-contents-delete";
+        button.textContent = t("books.read.delete", "Delete");
+        button.addEventListener("click", async () => {
+            button.disabled = true;
+            try {
+                await onDelete();
+            } catch (error) {
+                button.disabled = false;
+                failed(error);
+            }
+        });
+        return button;
+    };
 
     function renderBookmarks() {
         if (!bookmarkList || !allAnnotations) return;
-
         const bookmarks = prop(allAnnotations, "bookmarks") || [];
         bookmarkList.replaceChildren();
-
-        if (bookmarks.length === 0) {
-            bookmarkList.append(emptyMessage("No bookmarks yet."));
+        if (!bookmarks.length) {
+            bookmarkList.append(message(t("books.read.noBookmarks", "No bookmarks yet.")));
             return;
         }
-
         for (const bookmark of bookmarks) {
-            const row = document.createElement("div");
-            row.className = "book-drawer-annotation-row";
-
-            const jump = document.createElement("a");
-            jump.className = "book-drawer-annotation-main";
+            const id = String(prop(bookmark, "id"));
+            const chapterId = String(prop(bookmark, "chapterId") || "");
+            const position = Number(prop(bookmark, "positionPermille") || 0);
             const language = prop(bookmark, "language");
-            jump.href = readerUrl(
-                prop(bookmark, "chapterId"),
-                prop(bookmark, "positionPermille"),
-                language === "original" ? "original" : "translated"
-            );
-
-            const title = document.createElement("strong");
-            title.textContent =
-                "Chapter " + prop(bookmark, "chapterNumber") + " · "
-                + (prop(bookmark, "chapterTitle") || "");
-
-            const meta = document.createElement("span");
-            meta.textContent =
-                Math.round(Number(prop(bookmark, "positionPermille") || 0) / 10)
-                + "% · "
-                + (language === "original"
-                    ? "Original"
-                    : language || targetLanguage);
-
-            jump.append(title, meta);
-
-            const remove = elementButton("Delete", "book-drawer-delete");
-            remove.addEventListener("click", async () => {
-                remove.disabled = true;
-                try {
-                    const bookmarkId = prop(bookmark, "id");
-                    if (repository) {
-                        await repository.queueBookmarkRemove(bookmarkId, {
-                            chapterId: root.dataset.chapterId
-                        });
-                    } else {
-                        await postHandler("RemoveBookmark", { bookmarkId });
-                    }
-
-                    const items = prop(allAnnotations, "bookmarks") || [];
-                    allAnnotations.bookmarks = items.filter(
-                        (item) => prop(item, "id") !== prop(bookmark, "id")
-                    );
-                    renderBookmarks();
-
-                    const count = bookmarkButton?.querySelector("[data-bookmark-count]");
-                    if (count) {
-                        count.textContent = String(allAnnotations.bookmarks.length);
-                    }
-                    showToast("Bookmark removed.");
-                } catch (error) {
-                    remove.disabled = false;
-                    showToast(error.message || "Could not remove bookmark.");
-                }
+            const item = document.createElement("li");
+            item.className = "reader-contents-note";
+            const link = document.createElement("a");
+            link.className = "reader-contents-row";
+            link.href = readerUrl(chapterId, { position, requestedView: viewForLanguage(language) });
+            const title = document.createElement("span");
+            title.className = "reader-contents-title";
+            title.textContent = chapterHeading(bookmark);
+            const meta = document.createElement("small");
+            meta.textContent = Math.round(position / 10) + "%";
+            link.append(title, meta);
+            link.addEventListener("click", event => {
+                if (chapterId.toLowerCase() !== currentChapterId()) return;
+                event.preventDefault();
+                ensureViewForLanguage(language);
+                requestAnimationFrame(() => jumpToPermille(position));
+                closeOverlayContents();
             });
-
-            row.append(jump, remove);
-            bookmarkList.append(row);
+            item.append(link, deleteButton(async () => {
+                if (repository) {
+                    await repository.queueBookmarkRemove(id, { chapterId: root.dataset.chapterId });
+                } else {
+                    await postHandler("RemoveBookmark", { bookmarkId: id });
+                }
+                allAnnotations.bookmarks = bookmarks.filter(entry => String(prop(entry, "id")) !== id);
+                chapterBookmarks = chapterBookmarks.filter(entry => entry.id !== id);
+                renderBookmarks();
+                syncBookmarkButton();
+                toast(t("books.read.bookmarkRemoved", "Bookmark removed."));
+            }));
+            bookmarkList.append(item);
         }
     }
 
     function renderHighlightsList() {
         if (!highlightList || !allAnnotations) return;
-
         const highlights = prop(allAnnotations, "highlights") || [];
         highlightList.replaceChildren();
-
-        if (highlights.length === 0) {
-            highlightList.append(emptyMessage("No highlights yet."));
+        if (!highlights.length) {
+            highlightList.append(message(t("books.read.noHighlights", "Select text to highlight it or add a note.")));
             return;
         }
-
         for (const highlight of highlights) {
-            const row = document.createElement("div");
-            row.className = "book-drawer-annotation-row";
-
-            const jump = document.createElement("a");
-            jump.className = "book-drawer-annotation-main";
-            const language = prop(highlight, "language");
+            const id = String(prop(highlight, "id"));
+            const chapterId = String(prop(highlight, "chapterId") || "");
             const paragraphIndex = Number(prop(highlight, "paragraphIndex") || 0);
-            jump.href = readerUrl(
-                prop(highlight, "chapterId"),
-                Math.max(0, Math.min(1000, paragraphIndex * 8)),
-                language === "original" ? "original" : "translated"
-            );
+            const language = prop(highlight, "language");
+            const item = document.createElement("li");
+            item.className = "reader-contents-note";
+            const link = document.createElement("a");
+            link.className = "reader-contents-row";
+            link.href = readerUrl(chapterId, {
+                paragraph: paragraphIndex,
+                requestedView: viewForLanguage(language)
+            });
+            const title = document.createElement("span");
+            title.className = "reader-contents-title";
+            title.textContent = chapterHeading(highlight);
+            const quote = document.createElement("q");
+            quote.textContent = prop(highlight, "text") || "";
+            link.append(title, quote);
+            const note = prop(highlight, "note");
+            if (note) {
+                const noteText = document.createElement("small");
+                noteText.textContent = note;
+                link.append(noteText);
+            }
+            link.addEventListener("click", event => {
+                if (chapterId.toLowerCase() !== currentChapterId()) return;
+                event.preventDefault();
+                ensureViewForLanguage(language);
+                requestAnimationFrame(() => jumpToParagraph(paragraphIndex));
+                closeOverlayContents();
+            });
+            item.append(link, deleteButton(async () => {
+                await postHandler("RemoveHighlight", { highlightId: id });
+                allAnnotations.highlights = highlights.filter(entry => String(prop(entry, "id")) !== id);
+                currentHighlights = currentHighlights.filter(entry => String(prop(entry, "id")) !== id);
+                renderHighlightsList();
+                applyHighlights();
+                toast(t("books.read.highlightRemoved", "Highlight removed."));
+            }));
+            highlightList.append(item);
+        }
+    }
 
-            const title = document.createElement("strong");
-            title.textContent =
-                "Chapter " + prop(highlight, "chapterNumber") + " · "
-                + (prop(highlight, "chapterTitle") || "");
+    root.addEventListener("jularr:reader-contents", event => {
+        const tab = event.detail?.tab;
+        if (!event.detail?.open) return;
+        if (tab === "chapters" && !chaptersLoaded) void loadChapters("");
+        if (tab === "bookmarks" || tab === "notes") {
+            const list = tab === "bookmarks" ? bookmarkList : highlightList;
+            if (!allAnnotations && list && !list.childElementCount) {
+                list.append(message(t("books.read.loading", "Loading…")));
+            }
+            ensureAnnotations().catch(error => {
+                list?.replaceChildren(message(t("books.read.actionFailed", "That did not work. Please try again.")));
+                console.warn(error);
+            });
+        }
+    });
 
+    let chapterTimer = 0;
+    chapterSearch?.addEventListener("input", () => {
+        window.clearTimeout(chapterTimer);
+        chapterTimer = window.setTimeout(() => loadChapters(chapterSearch.value || ""), 200);
+    });
+
+    // ---- In-book search ---------------------------------------------------------------
+
+    const searchForm = root.querySelector("[data-book-search-form]");
+    const searchInput = root.querySelector("[data-book-search-input]");
+    const searchStatus = root.querySelector("[data-book-search-status]");
+    const searchResults = root.querySelector("[data-book-search-results]");
+    let searchTimer = 0;
+    let searchRun = 0;
+
+    const renderSearch = hits => {
+        searchResults.replaceChildren();
+        searchStatus.textContent = hits.length ? "" : t("books.read.searchEmpty", "No matches.");
+        searchStatus.hidden = hits.length > 0;
+        for (const hit of hits) {
+            const chapterId = String(prop(hit, "chapterId"));
+            const paragraphIndex = Number(prop(hit, "paragraphIndex") || 0);
+            const language = prop(hit, "language");
+            const snippet = String(prop(hit, "snippet") || "");
+            const start = Number(prop(hit, "matchStart") || 0);
+            const length = Number(prop(hit, "matchLength") || 0);
+            const item = document.createElement("li");
+            const link = document.createElement("a");
+            link.href = readerUrl(chapterId, {
+                paragraph: paragraphIndex,
+                requestedView: viewForLanguage(language)
+            });
+            const heading = document.createElement("strong");
+            heading.textContent = t("books.chapter.number", "Chapter {number}", {
+                number: prop(hit, "chapterNumber")
+            }) + " · " + (prop(hit, "chapterTitle") || "");
             const quote = document.createElement("span");
-            quote.className = "book-drawer-highlight-quote";
-            quote.textContent = "“" + (prop(highlight, "text") || "") + "”";
-
-            jump.append(title, quote);
-
-            const remove = elementButton("Delete", "book-drawer-delete");
-            remove.addEventListener("click", async () => {
-                remove.disabled = true;
-                try {
-                    const id = prop(highlight, "id");
-                    await postHandler("RemoveHighlight", {
-                        highlightId: id
-                    });
-
-                    const items = prop(allAnnotations, "highlights") || [];
-                    allAnnotations.highlights = items.filter(
-                        (item) => prop(item, "id") !== id
-                    );
-                    currentHighlights = currentHighlights.filter(
-                        (item) => prop(item, "id") !== id
-                    );
-                    renderHighlightsList();
-                    applyHighlights();
-                    showToast("Highlight removed.");
-                } catch (error) {
-                    remove.disabled = false;
-                    showToast(error.message || "Could not remove highlight.");
-                }
+            const mark = document.createElement("mark");
+            mark.textContent = snippet.slice(start, start + length);
+            quote.append(snippet.slice(0, start), mark, snippet.slice(start + length));
+            link.append(heading, quote);
+            link.addEventListener("click", event => {
+                if (chapterId.toLowerCase() !== currentChapterId()) return;
+                event.preventDefault();
+                root.readerShell?.closeMenus(false);
+                ensureViewForLanguage(language);
+                requestAnimationFrame(() => jumpToParagraph(paragraphIndex));
             });
-
-            row.append(jump, remove);
-            highlightList.append(row);
+            item.append(link);
+            searchResults.append(item);
         }
-    }
+    };
 
-    function setDrawerTab(name) {
-        root.querySelectorAll("[data-book-drawer-tab]").forEach((button) => {
-            button.classList.toggle(
-                "active",
-                button.dataset.bookDrawerTab === name
-            );
-        });
-
-        root.querySelectorAll("[data-book-drawer-panel]").forEach((panel) => {
-            panel.hidden = panel.dataset.bookDrawerPanel !== name;
-        });
-
-        if (name === "chapters") {
-            if (!chaptersLoaded) loadChapters("");
-        } else {
-            ensureAnnotations().catch((error) => {
-                const target = name === "bookmarks" ? bookmarkList : highlightList;
-                if (target) {
-                    target.replaceChildren(
-                        emptyMessage(error.message || "Could not load annotations.")
-                    );
-                }
-            });
+    const runSearch = async () => {
+        const query = (searchInput?.value || "").trim();
+        const run = ++searchRun;
+        if (query.length < 2) {
+            searchResults.replaceChildren();
+            searchStatus.hidden = false;
+            searchStatus.textContent = t("books.read.searchHint", "Type at least two characters.");
+            return;
         }
-    }
-
-    function openDrawer(tab) {
-        if (!drawer) return;
-
-        setDrawerTab(tab || "chapters");
-
-        if (typeof drawer.showModal === "function") {
-            if (!drawer.open) drawer.showModal();
-        } else {
-            drawer.setAttribute("open", "");
+        searchStatus.hidden = false;
+        searchStatus.textContent = t("books.read.loading", "Loading…");
+        try {
+            const result = await getJson("Search", { q: query });
+            if (run !== searchRun) return;
+            renderSearch(prop(result, "hits") || []);
+        } catch (error) {
+            if (run !== searchRun) return;
+            searchStatus.textContent = t("books.read.actionFailed", "That did not work. Please try again.");
+            console.warn(error);
         }
-    }
+    };
 
-    function closeDrawer() {
-        if (!drawer) return;
-        if (typeof drawer.close === "function" && drawer.open) {
-            drawer.close();
-        } else {
-            drawer.removeAttribute("open");
-        }
-    }
+    searchInput?.addEventListener("input", () => {
+        window.clearTimeout(searchTimer);
+        searchTimer = window.setTimeout(runSearch, 300);
+    });
+    searchForm?.addEventListener("submit", event => {
+        event.preventDefault();
+        window.clearTimeout(searchTimer);
+        void runSearch();
+    });
 
-    function paragraphForNode(node) {
-        const element = node?.nodeType === Node.ELEMENT_NODE
-            ? node
-            : node?.parentElement;
+    // ---- Highlights and notes ------------------------------------------------------
+
+    const selectionToolbar = root.querySelector("[data-book-selection-toolbar]");
+    const highlightButton = root.querySelector("[data-book-highlight-button]");
+    const noteButton = root.querySelector("[data-book-note-button]");
+    const noteForm = root.querySelector("[data-book-note-form]");
+    const noteInput = root.querySelector("[data-book-note-input]");
+    const highlightForm = root.querySelector("[data-book-highlight-form]");
+    let currentHighlights = readJson("[data-book-highlights-json]", []) || [];
+    let selectionState = null;
+
+    const paragraphForNode = node => {
+        const element = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement;
         return element?.closest?.("p[data-book-paragraph]") || null;
-    }
+    };
 
-    function offsetWithin(paragraph, node, offset) {
+    const offsetWithin = (paragraph, node, offset) => {
         const range = document.createRange();
         range.selectNodeContents(paragraph);
         range.setEnd(node, offset);
         return range.toString().length;
-    }
+    };
 
-    function hideSelectionToolbar() {
+    const hideSelectionToolbar = () => {
         selectionState = null;
         if (selectionToolbar) selectionToolbar.hidden = true;
-    }
+        if (noteForm) noteForm.hidden = true;
+    };
 
-    function inspectSelection() {
-        if (!selectionToolbar) return;
-
+    const inspectSelection = () => {
+        if (!selectionToolbar || (noteForm && !noteForm.hidden)) return;
         const selection = window.getSelection();
-        if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
+        if (!selection || selection.isCollapsed || !selection.rangeCount) {
             hideSelectionToolbar();
             return;
         }
-
         const range = selection.getRangeAt(0);
         const startParagraph = paragraphForNode(range.startContainer);
         const endParagraph = paragraphForNode(range.endContainer);
-
-        if (!startParagraph || startParagraph !== endParagraph) {
+        const column = startParagraph?.closest("[data-book-language]");
+        if (!startParagraph || startParagraph !== endParagraph || !column || !root.contains(column)) {
             hideSelectionToolbar();
             return;
         }
-
-        const column = startParagraph.closest("[data-book-language]");
-        if (!column || !root.contains(column)) {
-            hideSelectionToolbar();
-            return;
-        }
-
-        const start = offsetWithin(
-            startParagraph,
-            range.startContainer,
-            range.startOffset
-        );
-        const end = offsetWithin(
-            startParagraph,
-            range.endContainer,
-            range.endOffset
-        );
-
+        const start = offsetWithin(startParagraph, range.startContainer, range.startOffset);
+        const end = offsetWithin(startParagraph, range.endContainer, range.endOffset);
         if (end <= start) {
             hideSelectionToolbar();
             return;
         }
-
         selectionState = {
             language: column.dataset.bookLanguage || "original",
             paragraphIndex: Number(startParagraph.dataset.bookParagraph || "0"),
             startOffset: start,
             endOffset: end
         };
-
         const rect = range.getBoundingClientRect();
-        const width = selectionToolbar.offsetWidth || 96;
-        const left = Math.max(
-            8,
-            Math.min(
-                window.innerWidth - width - 8,
-                rect.left + rect.width / 2 - width / 2
-            )
-        );
-        const top = Math.max(8, rect.top - 44);
-
-        selectionToolbar.style.left = left + "px";
-        selectionToolbar.style.top = top + "px";
         selectionToolbar.hidden = false;
-    }
+        const width = selectionToolbar.offsetWidth || 180;
+        selectionToolbar.style.left =
+            clamp(rect.left + rect.width / 2 - width / 2, 8, window.innerWidth - width - 8) + "px";
+        selectionToolbar.style.top = Math.max(8, rect.top - selectionToolbar.offsetHeight - 10) + "px";
+    };
 
-    function rangesFor(language, paragraphIndex) {
-        return currentHighlights
-            .filter((item) =>
-                String(prop(item, "language") || "") === language
-                && Number(prop(item, "paragraphIndex")) === paragraphIndex
-            )
-            .map((item) => ({
+    const rangesFor = (language, paragraphIndex) =>
+        currentHighlights
+            .filter(item =>
+                String(prop(item, "language") || "") === language &&
+                Number(prop(item, "paragraphIndex")) === paragraphIndex)
+            .map(item => ({
                 id: prop(item, "id"),
                 start: Number(prop(item, "startOffset") || 0),
                 end: Number(prop(item, "endOffset") || 0),
                 note: prop(item, "note")
             }))
             .sort((a, b) => a.start - b.start);
-    }
 
-    function renderParagraphHighlights(paragraph, language, paragraphIndex) {
-        const text = paragraph.textContent || "";
+    const renderParagraphHighlights = (paragraph, language, paragraphIndex) => {
+        const content = paragraph.textContent || "";
         const ranges = rangesFor(language, paragraphIndex);
-
-        if (ranges.length === 0) {
-            if (paragraph.querySelector("mark[data-book-highlight]")) {
-                paragraph.textContent = text;
-            }
+        if (!ranges.length) {
+            if (paragraph.querySelector("mark[data-book-highlight]")) paragraph.textContent = content;
             return;
         }
-
         const fragment = document.createDocumentFragment();
         let cursor = 0;
-
         for (const item of ranges) {
-            const start = Math.max(cursor, Math.min(text.length, item.start));
-            const end = Math.max(start, Math.min(text.length, item.end));
+            const start = Math.max(cursor, Math.min(content.length, item.start));
+            const end = Math.max(start, Math.min(content.length, item.end));
             if (end <= start) continue;
-
-            if (start > cursor) {
-                fragment.append(document.createTextNode(text.slice(cursor, start)));
-            }
-
+            if (start > cursor) fragment.append(document.createTextNode(content.slice(cursor, start)));
             const mark = document.createElement("mark");
             mark.dataset.bookHighlight = String(item.id || "");
-            mark.textContent = text.slice(start, end);
-            if (item.note) mark.title = item.note;
+            mark.textContent = content.slice(start, end);
+            if (item.note) {
+                mark.title = item.note;
+                mark.classList.add("has-note");
+            }
             fragment.append(mark);
             cursor = end;
         }
-
-        if (cursor < text.length) {
-            fragment.append(document.createTextNode(text.slice(cursor)));
-        }
-
+        if (cursor < content.length) fragment.append(document.createTextNode(content.slice(cursor)));
         paragraph.replaceChildren(fragment);
-    }
+    };
 
-    function ensureParagraphMetadata(column) {
-        if (!column) return;
-        column.querySelectorAll("p").forEach((paragraph, index) => {
+    const ensureParagraphMetadata = column => {
+        column?.querySelectorAll("p").forEach((paragraph, index) => {
             paragraph.dataset.bookParagraph = String(index);
         });
-    }
+    };
 
     function applyHighlights() {
-        ensureParagraphMetadata(original);
-        ensureParagraphMetadata(translated);
-
         for (const column of [original, translated]) {
             if (!column) continue;
+            ensureParagraphMetadata(column);
             const language = column.dataset.bookLanguage || "original";
-            column.querySelectorAll("p[data-book-paragraph]").forEach((paragraph) => {
-                renderParagraphHighlights(
-                    paragraph,
-                    language,
-                    Number(paragraph.dataset.bookParagraph || "0")
-                );
+            column.querySelectorAll("p[data-book-paragraph]").forEach(paragraph => {
+                renderParagraphHighlights(paragraph, language, Number(paragraph.dataset.bookParagraph || "0"));
             });
         }
     }
 
-    async function createHighlight() {
+    const createHighlight = async note => {
         if (!selectionState || !highlightForm) return;
-
         const data = new FormData(highlightForm);
         data.set("anchorLanguage", selectionState.language);
         data.set("paragraphIndex", String(selectionState.paragraphIndex));
         data.set("startOffset", String(selectionState.startOffset));
         data.set("endOffset", String(selectionState.endOffset));
-        data.set("note", "");
-
+        data.set("note", note || "");
         const response = await fetch(highlightForm.action, {
             method: "POST",
             body: data,
             credentials: "same-origin",
             headers: { "X-Requested-With": "fetch" }
         });
-
-        if (!response.ok) {
-            throw new Error((await response.text()) || "Could not create highlight.");
-        }
-
+        if (!response.ok) throw new Error(await response.text());
         const item = await response.json();
         currentHighlights.push(item);
-
         if (allAnnotations) {
-            const existing = prop(allAnnotations, "highlights") || [];
-            allAnnotations.highlights = existing.concat([item]);
+            allAnnotations.highlights = (prop(allAnnotations, "highlights") || []).concat([item]);
             renderHighlightsList();
         }
-
         window.getSelection()?.removeAllRanges();
         hideSelectionToolbar();
         applyHighlights();
-        showToast("Highlight saved.");
-    }
-
-    if (openDrawerButton) {
-        openDrawerButton.addEventListener("click", () => openDrawer("chapters"));
-    }
-
-    if (closeDrawerButton) {
-        closeDrawerButton.addEventListener("click", closeDrawer);
-    }
-
-    if (drawer) {
-        drawer.addEventListener("click", (event) => {
-            if (event.target === drawer) closeDrawer();
-        });
-    }
-
-    root.querySelectorAll("[data-book-drawer-tab]").forEach((button) => {
-        button.addEventListener("click", () => {
-            setDrawerTab(button.dataset.bookDrawerTab || "chapters");
-        });
-    });
-
-    if (chapterSearch) {
-        chapterSearch.addEventListener("input", () => {
-            window.clearTimeout(chapterTimer);
-            chapterTimer = window.setTimeout(() => {
-                loadChapters(chapterSearch.value || "");
-            }, 180);
-        });
-    }
+        toast(t("books.read.highlightSaved", "Highlight saved."));
+    };
 
     document.addEventListener("selectionchange", () => {
         window.clearTimeout(inspectSelection.timer);
-        inspectSelection.timer = window.setTimeout(inspectSelection, 40);
+        inspectSelection.timer = window.setTimeout(inspectSelection, 60);
     });
 
-    if (highlightButton) {
-        highlightButton.addEventListener("click", async () => {
-            highlightButton.disabled = true;
+    // Keep the selection while a toolbar button is pressed.
+    selectionToolbar?.addEventListener("pointerdown", event => {
+        if (event.target.closest("button") && !event.target.closest("form")) event.preventDefault();
+    });
+
+    highlightButton?.addEventListener("click", async () => {
+        highlightButton.disabled = true;
+        try {
+            await createHighlight("");
+        } catch (error) {
+            failed(error);
+        } finally {
+            highlightButton.disabled = false;
+        }
+    });
+
+    noteButton?.addEventListener("click", () => {
+        if (!noteForm || !selectionState) return;
+        noteForm.hidden = false;
+        noteInput.value = "";
+        noteInput.focus();
+    });
+
+    noteForm?.addEventListener("submit", async event => {
+        event.preventDefault();
+        const submit = noteForm.querySelector("button");
+        if (submit) submit.disabled = true;
+        try {
+            await createHighlight((noteInput.value || "").trim());
+        } catch (error) {
+            failed(error);
+        } finally {
+            if (submit) submit.disabled = false;
+        }
+    });
+
+    noteForm?.addEventListener("keydown", event => {
+        if (event.key === "Escape") {
+            event.stopPropagation();
+            hideSelectionToolbar();
+        }
+    });
+
+    // ---- Offline chapter navigation (#221 part 2) -------------------------------------
+
+    if (workId && window.JularrOfflineLibraryRepository) {
+        // While offline, following a previous/next chapter link to a downloaded
+        // chapter renders it locally into the original column instead of a
+        // failing full-page navigation; see docs/OFFLINE_LIBRARY.md.
+        window.JularrOfflineLibraryRepository.initializeOfflineChapterNavigation({
+            shell: root,
+            workId,
+            linkSelector: "a[data-book-chapter-link]",
+            contentSelector: "[data-book-original]",
+            renderer: "book"
+        });
+
+        root.addEventListener("jularr:offline-chapter-changed", event => {
+            const payload = event.detail?.payload || {};
+            if (translated) translated.replaceChildren();
+            root.dataset.hasTranslation = "false";
+            root.querySelectorAll('[data-book-view="translated"], [data-book-view="both"]')
+                .forEach(button => {
+                    button.hidden = true;
+                });
+            const title = payload.title || "";
+            root.querySelectorAll("[data-book-chapter-title],[data-book-opening-title]").forEach(node => {
+                node.textContent = title;
+            });
+            if (payload.number !== undefined) {
+                const number = root.querySelector("[data-book-chapter-number]");
+                if (number) number.textContent = String(payload.number);
+                const label = root.querySelector("[data-book-chapter-label]");
+                if (label) label.textContent = t("books.chapter.number", "Chapter {number}", { number: payload.number });
+            }
+            currentHighlights = [];
+            chapterBookmarks = [];
+            chaptersLoaded = false;
+            root.dataset.progress = "0";
+            view = "original";
+            root.dataset.view = "original";
+            if (original) original.hidden = false;
+            if (translated) translated.hidden = true;
+            syncViewControls();
+            ensureParagraphMetadata(original);
+            scheduleLayout(null);
+        });
+
+        root.addEventListener("jularr:offline-chapter-missing", () => {
+            let offlineText = {};
             try {
-                await createHighlight();
-            } catch (error) {
-                showToast(error.message || "Could not create highlight.");
-            } finally {
-                highlightButton.disabled = false;
+                offlineText = JSON.parse(document.getElementById("offline-library-text")?.textContent || "{}");
+            } catch {
             }
+            toast(offlineText["offlineLibrary.chapter.offlineMissing"] ||
+                t("books.read.actionFailed", "That did not work. Please try again."));
         });
     }
 
-    document.addEventListener("keydown", (event) => {
-        if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) {
-            return;
-        }
+    // ---- Start ---------------------------------------------------------------------
 
-        const target = event.target;
-        if (target instanceof HTMLElement
-            && (target.matches("input, textarea, select")
-                || target.isContentEditable)) {
-            return;
-        }
+    root.dispatchEvent(new CustomEvent("jularr:reader-restoring", { detail: { active: true } }));
 
-        if (event.key.toLowerCase() === "b" && bookmarkButton) {
-            event.preventDefault();
-            bookmarkButton.click();
-        }
-
-        if (event.key.toLowerCase() === "n" && drawer) {
-            event.preventDefault();
-            if (drawer.open) {
-                closeDrawer();
-            } else {
-                openDrawer("chapters");
-            }
-        }
-    });
-
-    const translatedObserver = translated
-        ? new MutationObserver(() => {
-            ensureParagraphMetadata(translated);
-            applyHighlights();
-        })
-        : null;
-
-    if (translated && translatedObserver) {
-        translatedObserver.observe(translated, {
-            childList: true,
-            subtree: false
-        });
-    }
-
-    ensureParagraphMetadata(original);
-    ensureParagraphMetadata(translated);
+    if (original) original.hidden = view === "translated";
+    if (translated) translated.hidden = view === "original" || root.dataset.hasTranslation !== "true";
+    syncViewControls();
     applyHighlights();
-})();
 
-(() => {
-    // #221 part 2: while offline, following the previous/next chapter footer
-    // link to a downloaded chapter renders it locally instead of a failing
-    // full-page navigation; to an undownloaded chapter shows a clear notice.
-    // Online, this never engages and the existing full-page navigation is
-    // unchanged. Progress/bookmark writes for Books now go through the same
-    // offline-first sync queue as chapter navigation here (#374); see
-    // docs/OFFLINE_LIBRARY.md.
-    const root = document.querySelector("[data-book-reader]");
-    if (!root || !root.dataset.workId || !window.JularrOfflineLibraryRepository) return;
-
-    window.JularrOfflineLibraryRepository.initializeOfflineChapterNavigation({
-        shell: root,
-        workId: root.dataset.workId,
-        linkSelector: ".book-reader-footer a[href^=\"/Books/Read/\"]",
-        contentSelector: "[data-book-reader-content]",
-        renderer: "book"
-    });
-
-    const toast = root.querySelector("[data-book-toast]");
-    root.addEventListener("jularr:offline-chapter-missing", () => {
-        if (!toast) return;
-        toast.textContent = "This chapter has not been downloaded for offline reading.";
-        toast.hidden = false;
-        window.clearTimeout(toast._offlineMissingTimer);
-        toast._offlineMissingTimer = window.setTimeout(() => { toast.hidden = true; }, 2200);
-    });
+    const requestedParagraph = root.dataset.anchorParagraph;
+    if (requestedParagraph !== undefined && requestedParagraph !== "") {
+        pendingAnchor = { index: Number(requestedParagraph), flash: true };
+    }
+    applySettings();
 })();
