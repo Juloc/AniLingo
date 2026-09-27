@@ -3,7 +3,7 @@ plugins {
 }
 
 android {
-    namespace = "de.juloc.anilingo.core.tts"
+    namespace = "de.juloc.jularr.core.tts"
     compileSdk = 36
 
     defaultConfig {

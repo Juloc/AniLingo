@@ -14,7 +14,7 @@
         android:banner="@drawable/tv_banner"
         android:hardwareAccelerated="true"
         android:usesCleartextTraffic="true"
-        android:label="AniLingo TV"
+        android:label="Jularr TV"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.NoActionBar">
         <activity
