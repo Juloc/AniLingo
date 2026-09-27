@@ -345,7 +345,8 @@ public sealed class DiscoveryCoordinator(
                     return item with
                     {
                         IsLocal = true,
-                        LocalUrl = $"/Library/Anime/{animeId}"
+                        LocalUrl = $"/Library/Anime/{animeId}",
+                        LocalMediaId = animeId
                     };
                 }
 
@@ -355,7 +356,8 @@ public sealed class DiscoveryCoordinator(
                     return item with
                     {
                         IsLocal = true,
-                        LocalUrl = $"/Novels/Work/{workId}"
+                        LocalUrl = $"/Novels/Work/{workId}",
+                        LocalMediaId = workId
                     };
                 }
 
@@ -365,7 +367,8 @@ public sealed class DiscoveryCoordinator(
                     return item with
                     {
                         IsLocal = true,
-                        LocalUrl = $"/Manga/Series/{seriesId}"
+                        LocalUrl = $"/Manga/Series/{seriesId}",
+                        LocalMediaId = seriesId
                     };
                 }
 
