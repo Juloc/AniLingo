@@ -14,7 +14,8 @@ public sealed class DiscoveryCoordinator(
     NovelAniListProvider readingProvider,
     BookCatalogService books,
     AniListAccountService aniListAccount,
-    AppDbContext db)
+    AppDbContext db,
+    ILogger<DiscoveryCoordinator> logger)
 {
     private const int AnimeLimit = 10;
     private const int ReadingLimit = 14;
@@ -495,7 +496,7 @@ public sealed class DiscoveryCoordinator(
         $"/Discover/MangaImport?anilistId={Uri.EscapeDataString(externalId)}" +
         $"&title={Uri.EscapeDataString(title)}";
 
-    private static async Task<IReadOnlyList<DiscoveryItem>> CaptureAsync(
+    private async Task<IReadOnlyList<DiscoveryItem>> CaptureAsync(
         Func<Task<IReadOnlyList<DiscoveryItem>>> action,
         string warning,
         ICollection<string> warnings,
@@ -517,6 +518,9 @@ public sealed class DiscoveryCoordinator(
             TaskCanceledException or
             InvalidOperationException)
         {
+            // The page only shows a generic warning; the cause belongs in the log.
+            logger.LogWarning(exception, "Discovery provider failed: {Warning}", warning);
+
             lock (warnings)
             {
                 warnings.Add(warning);
