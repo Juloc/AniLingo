@@ -2,6 +2,7 @@ using System.Globalization;
 using Jularr.Web.Data;
 using Jularr.Web.Features.Metadata;
 using Jularr.Web.Features.Tracking;
+using Jularr.Web.Features.Watchlist;
 using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Web.Features.Calendar;
@@ -184,6 +185,20 @@ public sealed class ReleaseCalendarRefresher(
             {
                 targets.Add(new AniListReleaseTarget(id, reading.Status, true));
             }
+        }
+
+        foreach (var followed in await new WatchlistStore(db).GetEffectiveAcrossProfilesAsync(cancellationToken))
+        {
+            if (!followed.Identity.ProviderKey.Equals(AniListReleaseNormalizer.Provider, StringComparison.OrdinalIgnoreCase) ||
+                !TryId(followed.Identity.ExternalKey, out var id))
+            {
+                continue;
+            }
+
+            targets.Add(new AniListReleaseTarget(
+                id,
+                followed.Status,
+                followed.Identity.MediaType is WatchlistMediaType.Manga or WatchlistMediaType.LightNovel));
         }
 
         return targets;

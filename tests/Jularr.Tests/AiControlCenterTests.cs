@@ -191,12 +191,23 @@ public sealed class AiControlCenterTests
         var noEfforts = AiOptionResolver.ResolveServer(new AiInvocationOptions("gpt-b", "high", "fast", null), catalog, AiOperations.BookTranslation);
         Assert.AreEqual(new AiInvocationOptions("gpt-b", null, null, null), noEfforts, "Unsupported options are dropped, not guessed.");
 
-        var unknownModel = AiOptionResolver.ResolveServer(new AiInvocationOptions("retired", "xhigh", null, null), catalog, AiOperations.SentenceExplanation);
-        Assert.IsNull(unknownModel.Model);
-        Assert.AreEqual("low", unknownModel.ReasoningEffort, "The default model applies with the operation default effort.");
+        var providerDefault = AiOptionResolver.ResolveServer(AiInvocationOptions.Default, catalog, AiOperations.BookQa);
+        Assert.AreEqual("gpt-a", providerDefault.Model, "The catalog default is passed explicitly instead of delegating to an unknown CLI default.");
+        Assert.AreEqual("medium", providerDefault.ReasoningEffort);
 
-        var noCatalog = AiOptionResolver.ResolveServer(AiInvocationOptions.Default, AiModelCatalog.Empty("x"), AiOperations.BookQa);
-        Assert.AreEqual("medium", noCatalog.ReasoningEffort);
+        var unknownModel = AiOptionResolver.ResolveServer(new AiInvocationOptions("retired", "xhigh", null, null), catalog, AiOperations.SentenceExplanation);
+        Assert.AreEqual("gpt-a", unknownModel.Model);
+        Assert.AreEqual("low", unknownModel.ReasoningEffort, "A retired model falls back to the known catalog default.");
+
+        Assert.ThrowsExactly<InvalidOperationException>(() =>
+            AiOptionResolver.ResolveServer(AiInvocationOptions.Default, AiModelCatalog.Empty("x"), AiOperations.BookQa));
+
+        var manualWithoutCatalog = AiOptionResolver.ResolveServer(
+            new AiInvocationOptions("gpt-manual", null, null, null),
+            AiModelCatalog.Empty("x"),
+            AiOperations.BookQa);
+        Assert.AreEqual("gpt-manual", manualWithoutCatalog.Model, "Manual selection still works when discovery is unavailable.");
+        Assert.AreEqual("medium", manualWithoutCatalog.ReasoningEffort);
 
         CollectionAssert.AreEqual(new[] { "low", "medium", "high" }, AiOptionResolver.ReasoningOptions(catalog, null).Select(x => x.Effort).ToArray());
         Assert.AreEqual(0, AiOptionResolver.ReasoningOptions(catalog, "gpt-b").Count);

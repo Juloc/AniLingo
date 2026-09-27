@@ -88,7 +88,7 @@ public sealed class NovelLearningTests
             Path.Combine(RepositoryRoot(), "src", "Jularr.Web", "wwwroot", "css", "novels.css"));
 
         StringAssert.Contains(view, "data-reader-segment=\"@index\"");
-        StringAssert.Contains(css, ".novel-reader-shell[data-view=\"both\"] .novel-reader-segment {");
+        StringAssert.Contains(css, ".novel-reader-shell[data-view=\"both\"] .novel-reader-segment,");
         StringAssert.Contains(css, "display: grid;");
     }
 

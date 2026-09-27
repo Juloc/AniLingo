@@ -81,6 +81,26 @@ public sealed class AnimeNamingRenameTests
     }
 
     [TestMethod]
+    public async Task SeasonArtworkFollowsARenamedSeasonFolder()
+    {
+        await using var fixture = await RenameFixture.CreateAsync();
+        var episode = await fixture.AddEpisodeFileAsync(1, "Frieren - S01E01 - Episode 1.mkv");
+        var oldSeason = Path.GetDirectoryName(episode.MediaPath)!;
+        await File.WriteAllTextAsync(Path.Combine(oldSeason, "poster.jpg"), "season poster");
+        await File.WriteAllTextAsync(Path.Combine(fixture.SeriesFolder, "poster.jpg"), "series poster");
+        await fixture.Naming.UpsertAsync(RenameFixture.SimpleProfile() with { SeasonFolderFormat = "Season {season:00}" });
+
+        var plan = await fixture.PlanAsync();
+        var result = await fixture.ExecuteAsync(plan);
+
+        Assert.IsTrue(result.Success, result.Message);
+        var newSeason = Path.Combine(fixture.SeriesFolder, "Season 01");
+        Assert.AreEqual("season poster", await File.ReadAllTextAsync(Path.Combine(newSeason, "poster.jpg")));
+        Assert.IsFalse(Directory.Exists(oldSeason), "The old season folder no longer holds anything and is removed.");
+        Assert.AreEqual("series poster", await File.ReadAllTextAsync(Path.Combine(fixture.SeriesFolder, "poster.jpg")), "Series artwork stays in the series folder.");
+    }
+
+    [TestMethod]
     public async Task SonarrOwnedAnimeIsNeverRenamed()
     {
         await using var fixture = await RenameFixture.CreateAsync(managed: false);

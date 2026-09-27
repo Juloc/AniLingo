@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using Jularr.Web.Data;
 using Jularr.Web.Features.Artwork;
 using Jularr.Web.Features.Library;
+using Jularr.Web.Features.Storage;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 
@@ -58,34 +59,6 @@ public static class SonarrArtworkCache
         return string.IsNullOrWhiteSpace(image.RemoteUrl)
             ? null
             : image.RemoteUrl.Trim();
-    }
-
-    public static bool ShouldDownload(
-        string? previousIdentity,
-        string? currentIdentity,
-        bool cacheExists)
-    {
-        if (!cacheExists)
-        {
-            return true;
-        }
-
-        if (string.IsNullOrWhiteSpace(currentIdentity))
-        {
-            return false;
-        }
-
-        // Existing manifests predate source identities. Adopt the current identity
-        // without rewriting an already valid persistent cache entry.
-        if (string.IsNullOrWhiteSpace(previousIdentity))
-        {
-            return false;
-        }
-
-        return !string.Equals(
-            previousIdentity,
-            currentIdentity,
-            StringComparison.Ordinal);
     }
 }
 
@@ -359,8 +332,13 @@ public sealed class SonarrArtworkManifestStore
 public sealed class SonarrArtworkImportService(
     AppDbContext db,
     IHttpClientFactory httpClientFactory,
-    ILogger<SonarrArtworkImportService> logger)
+    ILogger<SonarrArtworkImportService> logger,
+    AnimeArtworkLibrary? artworkLibrary = null,
+    LibraryRootAvailabilityService? availability = null)
 {
+    private readonly AnimeArtworkLibrary artwork =
+        artworkLibrary ?? new AnimeArtworkLibrary(db, Microsoft.Extensions.Logging.Abstractions.NullLogger<AnimeArtworkLibrary>.Instance);
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         PropertyNameCaseInsensitive = true
@@ -442,6 +420,8 @@ public sealed class SonarrArtworkImportService(
         var previousMappings = await manifestStore.LoadAsync(cancellationToken);
         var matches = SonarrSeriesMatcher.Match(localAnime, sonarrSeries, previousMappings);
 
+        var folders = await AnimeMediaFolders.ResolveAsync(db, null, cancellationToken);
+        var availableRoots = new Dictionary<Guid, bool>();
         var posterCount = 0;
         var fanartCount = 0;
         var failedCount = 0;
@@ -454,90 +434,63 @@ public sealed class SonarrArtworkImportService(
                 continue;
             }
 
-            var previous = previousMappings.FirstOrDefault(
-                x => x.AnimeId == local.Id && x.SonarrSeriesId == series.Id);
+            var poster = FindImage(series, "poster");
+            var fanart = FindImage(series, "fanart");
+            var banner = FindImage(series, "banner");
 
-            string? posterIdentity = null;
-            var poster = series.Images.FirstOrDefault(
-                x => x.CoverType.Equals("poster", StringComparison.OrdinalIgnoreCase));
-            if (poster is not null)
+            // Sonarr artwork is persisted beside the media, so it needs the anime's folder on
+            // reachable storage; otherwise it simply waits for a later sync.
+            if (folders.TryGetValue(local.Id, out var folder) &&
+                await IsStorageAvailableAsync(folder, availableRoots, cancellationToken))
             {
-                posterIdentity = SonarrArtworkCache.GetImageIdentity(poster);
-                await AnimeArtworkStore.EnsureOptimizedAsync(
-                    local.Id,
-                    AnimeArtworkKind.Poster,
-                    cancellationToken);
-                var cacheReady =
-                    AnimeArtworkStore.IsOptimizedDerivative(
-                        local.Id,
-                        AnimeArtworkKind.Poster);
-
-                if (SonarrArtworkCache.ShouldDownload(
-                        previous?.PosterIdentity,
-                        posterIdentity,
-                        cacheReady))
+                foreach (var (kind, image) in new[]
+                         {
+                             (AnimeArtworkKind.Poster, poster),
+                             (AnimeArtworkKind.Fanart, fanart),
+                             (AnimeArtworkKind.Banner, banner)
+                         })
                 {
-                    if (await TryImportImageAsync(
-                            client,
-                            baseUri,
-                            settings.ApiKey,
+                    if (image is null ||
+                        !await artwork.ShouldPersistAsync(
                             local.Id,
-                            AnimeArtworkKind.Poster,
-                            poster,
+                            folder.SeriesDirectory,
+                            kind,
+                            MediaArtworkSources.Sonarr,
+                            SonarrArtworkCache.GetImageIdentity(image),
                             cancellationToken))
                     {
-                        posterCount++;
+                        continue;
                     }
-                    else
+
+                    var outcome = await TryImportImageAsync(
+                        client,
+                        baseUri,
+                        settings.ApiKey,
+                        local.Id,
+                        folder.SeriesDirectory,
+                        kind,
+                        image,
+                        cancellationToken);
+                    if (outcome == AnimeArtworkPersistOutcome.Saved)
+                    {
+                        if (kind == AnimeArtworkKind.Poster)
+                        {
+                            posterCount++;
+                        }
+                        else
+                        {
+                            fanartCount++;
+                        }
+                    }
+                    else if (outcome is not (AnimeArtworkPersistOutcome.Current or AnimeArtworkPersistOutcome.KeptCustom))
                     {
                         failedCount++;
-                        posterIdentity = previous?.PosterIdentity;
                     }
                 }
             }
 
-            string? fanartIdentity = null;
-            var fanart = series.Images.FirstOrDefault(
-                             x => x.CoverType.Equals("fanart", StringComparison.OrdinalIgnoreCase))
-                         ?? series.Images.FirstOrDefault(
-                             x => x.CoverType.Equals("banner", StringComparison.OrdinalIgnoreCase));
-
-            if (fanart is not null)
-            {
-                fanartIdentity = SonarrArtworkCache.GetImageIdentity(fanart);
-                await AnimeArtworkStore.EnsureOptimizedAsync(
-                    local.Id,
-                    AnimeArtworkKind.Fanart,
-                    cancellationToken);
-                var cacheReady =
-                    AnimeArtworkStore.IsOptimizedDerivative(
-                        local.Id,
-                        AnimeArtworkKind.Fanart);
-
-                if (SonarrArtworkCache.ShouldDownload(
-                        previous?.FanartIdentity,
-                        fanartIdentity,
-                        cacheReady))
-                {
-                    if (await TryImportImageAsync(
-                            client,
-                            baseUri,
-                            settings.ApiKey,
-                            local.Id,
-                            AnimeArtworkKind.Fanart,
-                            fanart,
-                            cancellationToken))
-                    {
-                        fanartCount++;
-                    }
-                    else
-                    {
-                        failedCount++;
-                        fanartIdentity = previous?.FanartIdentity;
-                    }
-                }
-            }
-
+            var posterIdentity = poster is null ? null : SonarrArtworkCache.GetImageIdentity(poster);
+            var fanartIdentity = (fanart ?? banner) is { } wide ? SonarrArtworkCache.GetImageIdentity(wide) : null;
             mappings.Add(new SonarrArtworkMapping(
                 local.Id,
                 series.Id,
@@ -603,15 +556,36 @@ public sealed class SonarrArtworkImportService(
             .ToArray();
     }
 
-    private static async Task<bool> TryImportImageAsync(
+    private static SonarrImage? FindImage(SonarrSeriesItem series, string coverType) =>
+        series.Images.FirstOrDefault(
+            x => x.CoverType.Equals(coverType, StringComparison.OrdinalIgnoreCase));
+
+    private async Task<bool> IsStorageAvailableAsync(
+        AnimeMediaFolder folder,
+        Dictionary<Guid, bool> availableRoots,
+        CancellationToken cancellationToken)
+    {
+        if (!availableRoots.TryGetValue(folder.RootId, out var available))
+        {
+            available = availability is null ||
+                        (await availability.CheckAsync(folder.RootId, force: false, cancellationToken))?.IsAvailable == true;
+            availableRoots[folder.RootId] = available;
+        }
+
+        return available && Directory.Exists(folder.SeriesDirectory);
+    }
+
+    private async Task<AnimeArtworkPersistOutcome> TryImportImageAsync(
         HttpClient client,
         Uri baseUri,
         string apiKey,
         Guid animeId,
+        string seriesDirectory,
         AnimeArtworkKind kind,
         SonarrImage image,
         CancellationToken cancellationToken)
     {
+        var outcome = AnimeArtworkPersistOutcome.Failed;
         foreach (var candidate in BuildImageCandidates(baseUri, image))
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, candidate);
@@ -634,18 +608,27 @@ public sealed class SonarrArtworkImportService(
             }
 
             await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            if (await AnimeArtworkStore.SaveAsync(
-                    animeId,
-                    kind,
-                    stream,
-                    response.Content.Headers.ContentType.MediaType,
-                    cancellationToken))
+            var bytes = await AnimeArtworkFiles.ReadLimitedAsync(stream, cancellationToken);
+            if (bytes is null)
             {
-                return true;
+                continue;
+            }
+
+            outcome = await artwork.PersistProviderAsync(
+                animeId,
+                seriesDirectory,
+                kind,
+                bytes,
+                MediaArtworkSources.Sonarr,
+                SonarrArtworkCache.GetImageIdentity(image),
+                cancellationToken);
+            if (outcome != AnimeArtworkPersistOutcome.Rejected)
+            {
+                return outcome;
             }
         }
 
-        return false;
+        return outcome;
     }
 
     private static IEnumerable<Uri> BuildImageCandidates(Uri baseUri, SonarrImage image)

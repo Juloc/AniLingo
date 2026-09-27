@@ -48,6 +48,7 @@ public static class UiNavigationCatalog
         new("home", "nav.home", "/", "home", Exact: true),
         new("discover", "nav.discover", "/Discover", "discover"),
         new("library", "nav.library", "/Library", "library"),
+        new("watchlist", "nav.watchlist", "/Watchlist", "watchlist"),
         new("reading", "nav.reading", "/Reading", "reading", ["/Reading", "/Novels", "/Manga"]),
         new("books", "nav.books", "/Books", "books"),
         new("calendar", "nav.calendar", "/Calendar", "calendar"),

@@ -1,9 +1,7 @@
 // Novel reader bootstrap. Feature modules (novel-position.js, novel-annotations.js,
 // novel-chapter-drawer.js, novel-translation.js, novel-learning.js) register
 // factories on window.JularrNovelReader; this file owns the shared reader
-// context, the language view state and the restore lifecycle, then starts
-// every module once. Chrome visibility, settings and paged mode stay in
-// reader-shell.js and reader-personalization.js.
+// context, language/translation view state and the restore lifecycle.
 (() => {
     const shell = document.querySelector("[data-novel-reader]");
     if (!shell) return;
@@ -12,16 +10,64 @@
     const profileId = document.body?.dataset.profileId || "unknown";
     const storagePrefix = `anilingo.profile.${profileId}.novel`;
     const storage = {
-        view: `${storagePrefix}.view`
+        view: `${storagePrefix}.view`,
+        translationSource: `${storagePrefix}.translationSource`
     };
 
     const toast = shell.querySelector("[data-reader-toast]");
     let toastTimer = null;
-    let hasTranslation = shell.dataset.hasTranslation === "true";
+    let hasAiTranslation = shell.dataset.hasTranslation === "true";
+    let hasTranslateGemma = false;
+    let preferredTranslationSource = localStorage.getItem(storage.translationSource) || "";
+    let requestedView = "ja";
+    let viewInteracted = false;
 
     const focusableSelector =
         "a[href], button:not([disabled]), input:not([disabled]), " +
         "select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex=\"-1\"])";
+
+    const effectiveTranslationSource = () => {
+        if (preferredTranslationSource === "both" &&
+            hasAiTranslation &&
+            hasTranslateGemma) {
+            return "both";
+        }
+
+        if (preferredTranslationSource === "gemma" && hasTranslateGemma) {
+            return "gemma";
+        }
+
+        if (preferredTranslationSource === "ai" && hasAiTranslation) {
+            return "ai";
+        }
+
+        if (hasAiTranslation) return "ai";
+        if (hasTranslateGemma) return "gemma";
+        return "none";
+    };
+
+    const hasAnyTranslation = () => hasAiTranslation || hasTranslateGemma;
+
+    const syncLanguageControls = () => {
+        const anyTranslation = hasAnyTranslation();
+        shell.querySelectorAll("[data-reader-view]").forEach(button => {
+            if (button.dataset.readerView !== "ja") {
+                button.disabled = !anyTranslation;
+            }
+        });
+
+        const source = effectiveTranslationSource();
+        shell.dataset.translationSource = source;
+
+        shell.querySelectorAll("[data-reader-translation-source]").forEach(button => {
+            const value = button.dataset.readerTranslationSource;
+            button.disabled =
+                (value === "ai" && !hasAiTranslation) ||
+                (value === "gemma" && !hasTranslateGemma) ||
+                (value === "both" && !(hasAiTranslation && hasTranslateGemma));
+            button.setAttribute("aria-pressed", value === source ? "true" : "false");
+        });
+    };
 
     const reader = {
         shell,
@@ -83,12 +129,26 @@
             return target.pathname + target.search;
         },
 
-        hasTranslation: () => hasTranslation,
+        // Backward-compatible name: "translation" means the existing full AI
+        // translation. TranslateGemma is a separate text-only track.
+        hasTranslation: () => hasAiTranslation,
+        hasAiTranslation: () => hasAiTranslation,
+        hasTranslateGemma: () => hasTranslateGemma,
+        hasAnyTranslation,
+        translationSource: effectiveTranslationSource,
 
         currentView: () => shell.dataset.view || "ja",
 
-        anchorLanguage: () =>
-            reader.currentView() === "de" && hasTranslation ? "de" : "ja",
+        anchorLanguage: () => {
+            if (reader.currentView() !== "de") return "ja";
+
+            const source = effectiveTranslationSource();
+            if ((source === "gemma" || source === "both") && hasTranslateGemma) {
+                return "de-gemma";
+            }
+
+            return hasAiTranslation ? "de" : "ja";
+        },
 
         paragraphsFor: language =>
             Array.from(shell.querySelectorAll(
@@ -98,7 +158,6 @@
             shell.querySelector(
                 `[data-reader-paragraph][data-language="${language}"][data-index="${Number(index)}"]`),
 
-        // Side panels (chapter drawer, notes) are mutually exclusive.
         announcePanel: name => {
             shell.dispatchEvent(new CustomEvent("jularr:novel-panel-open", {
                 detail: { name }
@@ -134,15 +193,35 @@
         },
 
         setHasTranslation: value => {
-            hasTranslation = Boolean(value);
-            shell.dataset.hasTranslation = hasTranslation ? "true" : "false";
+            hasAiTranslation = Boolean(value);
+            shell.dataset.hasTranslation = hasAiTranslation ? "true" : "false";
             syncLanguageControls();
+            reader.applyView(viewInteracted ? reader.currentView() : requestedView);
+        },
+
+        setHasTranslateGemma: value => {
+            hasTranslateGemma = Boolean(value);
+            shell.dataset.hasTranslateGemma = hasTranslateGemma ? "true" : "false";
+            syncLanguageControls();
+            reader.applyView(viewInteracted ? reader.currentView() : requestedView);
+        },
+
+        applyTranslationSource: source => {
+            if (!["ai", "gemma", "both"].includes(source)) return;
+            preferredTranslationSource = source;
+            localStorage.setItem(storage.translationSource, source);
+            syncLanguageControls();
+            reader.applyView(reader.currentView());
+            shell.dispatchEvent(new CustomEvent("jularr:novel-translation-source-changed", {
+                detail: { source: effectiveTranslationSource() }
+            }));
         },
 
         applyView: view => {
-            const allowed = hasTranslation ? ["ja", "de", "both"] : ["ja"];
+            const allowed = hasAnyTranslation() ? ["ja", "de", "both"] : ["ja"];
             const next = allowed.includes(view) ? view : "ja";
             shell.dataset.view = next;
+            shell.dataset.translationSource = effectiveTranslationSource();
             localStorage.setItem(storage.view, next);
 
             shell.querySelectorAll("[data-reader-view]").forEach(button => {
@@ -150,25 +229,38 @@
                     "aria-pressed",
                     button.dataset.readerView === next ? "true" : "false");
             });
-        }
-    };
 
-    const syncLanguageControls = () => {
-        shell.querySelectorAll("[data-reader-view]").forEach(button => {
-            if (button.dataset.readerView !== "ja") {
-                button.disabled = !hasTranslation;
-            }
-        });
+            syncLanguageControls();
+            shell.dispatchEvent(new CustomEvent("jularr:novel-view-changed", {
+                detail: {
+                    view: next,
+                    translationSource: effectiveTranslationSource()
+                }
+            }));
+        }
     };
 
     const initialAnchorLanguage = shell.dataset.anchorLanguage || "ja";
     const forcedAnchor = shell.dataset.forceAnchor === "true";
     const storedView = localStorage.getItem(storage.view);
 
+    if (forcedAnchor && initialAnchorLanguage === "de-gemma") {
+        preferredTranslationSource = "gemma";
+    } else if (forcedAnchor && initialAnchorLanguage === "de") {
+        preferredTranslationSource = "ai";
+    }
+
+    const anchorView =
+        initialAnchorLanguage === "de" || initialAnchorLanguage === "de-gemma"
+            ? "de"
+            : "ja";
+
+    requestedView = forcedAnchor
+        ? anchorView
+        : (storedView || anchorView);
+
     syncLanguageControls();
-    reader.applyView(forcedAnchor
-        ? initialAnchorLanguage
-        : (storedView || initialAnchorLanguage));
+    reader.applyView(requestedView);
 
     reader.position = modules.position(reader);
     reader.annotations = modules.annotations(reader);
@@ -176,11 +268,6 @@
     modules.translation(reader);
     modules.learning?.(reader);
 
-    // #221 part 2: while offline, following the previous/next chapter footer
-    // link to a downloaded chapter renders it locally instead of a failing
-    // full-page navigation; to an undownloaded chapter shows a clear notice.
-    // Online, this never engages and the existing full-page navigation is
-    // unchanged. See offline-library-repository.js.
     if (shell.dataset.workId && window.JularrOfflineLibraryRepository) {
         window.JularrOfflineLibraryRepository.initializeOfflineChapterNavigation({
             shell,
@@ -197,12 +284,18 @@
     shell.addEventListener("click", event => {
         const viewButton = event.target.closest("[data-reader-view]");
         if (viewButton) {
-            reader.applyView(viewButton.dataset.readerView);
+            viewInteracted = true;
+            requestedView = viewButton.dataset.readerView;
+            reader.applyView(requestedView);
+            return;
+        }
+
+        const sourceButton = event.target.closest("[data-reader-translation-source]");
+        if (sourceButton && !sourceButton.disabled) {
+            reader.applyTranslationSource(sourceButton.dataset.readerTranslationSource);
         }
     });
 
-    // Resume/jump restoration must not count as a user scroll for the shared
-    // chrome (reader-shell.js listens for jularr:reader-restoring).
     const restore = () => {
         shell.dispatchEvent(new CustomEvent("jularr:reader-restoring", {
             detail: { active: true }

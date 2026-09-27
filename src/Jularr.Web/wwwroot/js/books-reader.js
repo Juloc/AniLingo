@@ -6,6 +6,8 @@
     // sheet, progress slider, fullscreen, timer, share); this adapter owns the
     // book: pagination into a paper spread, scroll mode, language views,
     // bookmarks, highlights/notes, in-book search and chapter navigation.
+    // PDF books render their pages through books-reader-pdf.js in the same
+    // frame; `pdf` is that page adapter, null for EPUB chapters.
 
     const root = document.querySelector("[data-book-reader]");
     if (!root) return;
@@ -48,6 +50,8 @@
     const targetLanguage = root.dataset.targetLanguage || "id";
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
     const compactQuery = window.matchMedia("(max-width: 720px)");
+    const pdfContainer = root.querySelector("[data-book-pdf]");
+    let pdf = null;
 
     // #374: Book reading progress and bookmarks always go through the same
     // offline-first sync queue the Novel reader uses (offline-library-repository.js's
@@ -214,7 +218,7 @@
     };
 
     const applySettings = () => {
-        const anchor = relayoutAnchor();
+        const anchor = pdfContainer ? null : relayoutAnchor();
         root.dataset.readingMode = settings.readingMode;
         root.dataset.paperStyle = settings.paperStyle;
         root.dataset.chapterStyle = settings.chapterStyle;
@@ -237,6 +241,10 @@
         }));
 
         if (settings.readingMode !== "continuous") stopAutoScroll();
+        if (pdfContainer) {
+            pdf?.apply(settings);
+            return;
+        }
         scheduleLayout(anchor);
     };
 
@@ -540,28 +548,13 @@
         }
     };
 
-    function emitLocation() {
-        let page;
-        let total;
-        let value;
-        let max;
-        if (layout.paged) {
-            page = Math.min(layout.pageCount, currentView * layout.pages + 1);
-            total = layout.pageCount;
-            value = currentView;
-            max = layout.viewCount - 1;
-        } else {
-            const viewport = Math.max(1, window.innerHeight);
-            total = Math.max(1, Math.ceil(document.documentElement.scrollHeight / viewport));
-            page = Math.min(total, Math.floor(window.scrollY / viewport) + 1);
-            value = scrollPermille();
-            max = 1000;
-        }
-        const percent = layout.paged
-            ? Math.round(page / total * 100)
-            : Math.round(scrollPermille() / 10);
+    // The slider and the label show one fraction: in Pages mode the slider runs
+    // from 0 to the page count and its value is the last page on screen, the same
+    // page the percentage is computed from; in Scroll mode both use the scroll
+    // position.
+    const dispatchLocation = ({ first, last, total, value, max, percent }) => {
         const label = t("reader.frame.position", "{page} / {total} ({percent}%)", {
-            page,
+            page: first === last ? first : first + "–" + last,
             total,
             percent
         });
@@ -569,7 +562,39 @@
             detail: { value, max, text: label, valueText: label }
         }));
         syncBookmarkButton();
+    };
+
+    function emitLocation() {
+        if (layout.paged) {
+            const first = Math.min(layout.pageCount, currentView * layout.pages + 1);
+            const last = Math.min(layout.pageCount, first + layout.pages - 1);
+            dispatchLocation({
+                first,
+                last,
+                total: layout.pageCount,
+                value: last,
+                max: layout.pageCount,
+                percent: Math.round(last / layout.pageCount * 100)
+            });
+            return;
+        }
+        const viewport = Math.max(1, window.innerHeight);
+        const total = Math.max(1, Math.ceil(document.documentElement.scrollHeight / viewport));
+        const page = Math.min(total, Math.floor(window.scrollY / viewport) + 1);
+        const position = scrollPermille();
+        dispatchLocation({
+            first: page,
+            last: page,
+            total,
+            value: position,
+            max: 1000,
+            percent: Math.round(position / 10)
+        });
     }
+
+    // A slider value is a page number (Pages mode) or a permille (Scroll mode).
+    const viewForSliderPage = value =>
+        Math.floor((Math.max(1, Math.round(Number(value) || 0)) - 1) / Math.max(1, layout.pages));
 
     function goToView(target, { animate = true, save = true } = {}) {
         const next = clamp(target, 0, layout.viewCount - 1);
@@ -673,14 +698,27 @@
     root.addEventListener("jularr:reader-page-edge", event => {
         const direction = Number(event.detail?.direction || 0);
         if (!direction) return;
+        if (pdfContainer) {
+            pdf?.turn(direction);
+            return;
+        }
         // Read-aloud follows the voice within the chapter; it never changes chapters.
         turn(direction, { fromUser: !(root.dataset.readerTts && root.dataset.readerTts !== "idle") });
     });
 
     root.addEventListener("jularr:reader-seek", event => {
         const value = Number(event.detail?.value || 0);
-        if (layout.paged) goToView(value, { animate: false });
+        if (pdfContainer) pdf?.seek(value);
+        else if (layout.paged) goToView(viewForSliderPage(value), { animate: false });
         else jumpToPermille(value);
+    });
+
+    // After a drag the slider snaps to the page actually shown.
+    root.querySelector("[data-reader-progress-slider]")?.addEventListener("change", () => {
+        requestAnimationFrame(() => {
+            if (pdfContainer) pdf?.refresh();
+            else emitLocation();
+        });
     });
 
     // Keep the paragraph on screen when fonts load, the window resizes or the
@@ -696,13 +734,18 @@
         return stickyAnchor;
     }
     const relayout = () => scheduleLayout(relayoutAnchor());
-    new ResizeObserver(relayout).observe(stage);
-    root.addEventListener("jularr:reader-layout", relayout);
-    document.fonts?.ready?.then(relayout);
+    if (pdfContainer) {
+        // The page adapter watches its own stage size.
+        root.addEventListener("jularr:reader-layout", () => pdf?.relayout());
+    } else {
+        new ResizeObserver(relayout).observe(stage);
+        root.addEventListener("jularr:reader-layout", relayout);
+        document.fonts?.ready?.then(relayout);
+    }
 
     let scrollFrame = 0;
     window.addEventListener("scroll", () => {
-        if (layout.paged) return;
+        if (pdfContainer || layout.paged) return;
         if (scrollFrame) return;
         scrollFrame = requestAnimationFrame(() => {
             scrollFrame = 0;
@@ -736,6 +779,10 @@
             root.querySelector('[data-reader-menu-toggle="search"]')?.click();
             return;
         }
+        if (pdfContainer) {
+            if (pdf) handlePdfKey(event, target);
+            return;
+        }
         if (!layout.paged) return;
         const onControl = target instanceof HTMLElement && target.closest("button, a, summary");
         if (key === " " && onControl) return;
@@ -754,20 +801,59 @@
         }
     });
 
+    function handlePdfKey(event, target) {
+        const key = event.key;
+        if (key === "+" || key === "=") {
+            event.preventDefault();
+            pdf.zoom(1);
+            return;
+        }
+        if (key === "-") {
+            event.preventDefault();
+            pdf.zoom(-1);
+            return;
+        }
+        if (!pdf.isPaged()) return;
+        const onControl = target instanceof HTMLElement && target.closest("button, a, summary");
+        if (key === " " && onControl) return;
+        if (key === "ArrowRight" || key === "PageDown" || (key === " " && !event.shiftKey)) {
+            event.preventDefault();
+            pdf.turn(1);
+        } else if (key === "ArrowLeft" || key === "PageUp" || (key === " " && event.shiftKey)) {
+            event.preventDefault();
+            pdf.turn(-1);
+        } else if (key === "Home") {
+            event.preventDefault();
+            pdf.first();
+        } else if (key === "End") {
+            event.preventDefault();
+            pdf.last();
+        }
+    }
+
     // ---- Progress -----------------------------------------------------------------
+
+    // A PDF position is the page's chapter (one chapter per page); an EPUB
+    // position is the place in the open chapter.
+    const currentProgress = () => pdf
+        ? pdf.currentPosition()
+        : { chapterId: root.dataset.chapterId, positionPermille: currentPermille() };
 
     let saveTimer = 0;
     function queueProgressSave() {
         if (restoring) return;
-        const position = currentPermille();
-        root.dataset.progress = String(position);
+        const { chapterId, positionPermille } = currentProgress();
+        if (!chapterId) return;
+        root.dataset.progress = String(positionPermille);
         window.clearTimeout(saveTimer);
         saveTimer = window.setTimeout(async () => {
+            // Reloading or sharing a PDF book opens the page on screen.
+            if (pdf) history.replaceState(history.state, "", readerUrl(chapterId));
             if (!repository) return;
             try {
                 await repository.queueProgress({
-                    chapterId: root.dataset.chapterId,
-                    positionPermille: position,
+                    chapterId,
+                    positionPermille,
                     anchorLanguage: currentAnchorLanguage()
                 });
             } catch {
@@ -960,13 +1046,26 @@
 
     // ---- Bookmarks ------------------------------------------------------------------
 
-    let chapterBookmarks = (readJson("[data-book-bookmarks-json]", []) || []).map(item => ({
+    // EPUB: the open chapter's bookmarks. PDF: every bookmark of the book, since
+    // all pages are open at once (loaded with the annotations).
+    const bookmarkItem = item => ({
         id: String(prop(item, "id")),
+        chapterId: String(prop(item, "chapterId") || root.dataset.chapterId || ""),
         positionPermille: Number(prop(item, "positionPermille") || 0)
-    }));
+    });
+    let chapterBookmarks = (readJson("[data-book-bookmarks-json]", []) || []).map(bookmarkItem);
     let allAnnotations = null;
 
+    const pdfPageOf = item => pdf?.pageForPosition(prop(item, "chapterId"), Number(prop(item, "positionPermille") || 0));
+
     const bookmarkHere = () => {
+        if (pdf) {
+            const [first, last] = pdf.visiblePages();
+            return chapterBookmarks.find(item => {
+                const page = pdfPageOf(item);
+                return page >= first && page <= last;
+            }) || null;
+        }
         if (layout.paged) {
             return chapterBookmarks.find(item => viewForPermille(item.positionPermille) === currentView) || null;
         }
@@ -996,7 +1095,7 @@
         const existing = bookmarkHere();
         try {
             if (existing) {
-                await repository.queueBookmarkRemove(existing.id, { chapterId: root.dataset.chapterId });
+                await repository.queueBookmarkRemove(existing.id, { chapterId: existing.chapterId });
                 chapterBookmarks = chapterBookmarks.filter(item => item.id !== existing.id);
                 if (allAnnotations) {
                     allAnnotations.bookmarks = (prop(allAnnotations, "bookmarks") || [])
@@ -1004,9 +1103,9 @@
                 }
                 toast(t("books.read.bookmarkRemoved", "Bookmark removed."));
             } else {
-                const position = currentPermille();
+                const { chapterId, positionPermille: position } = currentProgress();
                 const created = await repository.queueBookmarkUpsert({
-                    chapterId: root.dataset.chapterId,
+                    chapterId,
                     positionPermille: position,
                     language: currentAnchorLanguage(),
                     paragraphIndex: null,
@@ -1014,13 +1113,15 @@
                     anchorText: null,
                     label: null
                 });
-                chapterBookmarks.push({ id: String(created.id), positionPermille: position });
+                chapterBookmarks.push({ id: String(created.id), chapterId, positionPermille: position });
                 if (allAnnotations) {
                     allAnnotations.bookmarks = (prop(allAnnotations, "bookmarks") || []).concat([{
                         id: created.id,
-                        chapterId: root.dataset.chapterId,
-                        chapterNumber: Number(root.querySelector("[data-book-chapter-number]")?.textContent || 0),
-                        chapterTitle: root.querySelector("[data-book-chapter-title]")?.textContent || "",
+                        chapterId,
+                        chapterNumber: pdf
+                            ? pdf.visiblePages()[0]
+                            : Number(root.querySelector("[data-book-chapter-number]")?.textContent || 0),
+                        chapterTitle: pdf ? "" : root.querySelector("[data-book-chapter-title]")?.textContent || "",
                         positionPermille: position,
                         language: currentAnchorLanguage()
                     }]);
@@ -1062,10 +1163,55 @@
         }
     };
 
+    // PDF: the document outline, or page ranges when it has none.
+    const loadPdfContents = async query => {
+        const items = await pdf.contents(query);
+        chapterList.replaceChildren();
+        if (!items.length) {
+            chapterList.append(message(t("books.read.noChapters", "No chapters found.")));
+            return;
+        }
+        const [first] = pdf.visiblePages();
+        const section = pdf.sectionFor(first);
+        let current = null;
+        for (const entry of items) {
+            const item = document.createElement("li");
+            const link = document.createElement("a");
+            link.className = "reader-contents-row";
+            link.href = readerUrl(pdf.positionForPage(entry.page).chapterId);
+            if (entry.depth) link.style.setProperty("--book-contents-depth", String(entry.depth));
+            const number = document.createElement("span");
+            number.className = "reader-contents-index";
+            number.textContent = String(entry.page);
+            const title = document.createElement("span");
+            title.className = "reader-contents-title";
+            title.textContent = entry.title;
+            link.append(number, title);
+            if (entry === section) {
+                link.setAttribute("aria-current", "page");
+                current = link;
+            }
+            link.addEventListener("click", event => {
+                event.preventDefault();
+                void pdf.goToPage(entry.page, { animate: true });
+                closeOverlayContents();
+            });
+            item.append(link);
+            chapterList.append(item);
+        }
+        chaptersLoaded = true;
+        current?.scrollIntoView({ block: "center" });
+    };
+
     const loadChapters = async query => {
         if (!chapterList) return;
         chapterList.replaceChildren(message(t("books.read.loading", "Loading…")));
         try {
+            if (pdfContainer) {
+                if (pdf?.isReady()) await loadPdfContents(query);
+                else chapterList.replaceChildren();
+                return;
+            }
             const result = await getJson("Chapters", { q: query || "" });
             const chapters = prop(result, "chapters") || [];
             chapterList.replaceChildren();
@@ -1109,6 +1255,10 @@
         annotationLoading = getJson("Annotations")
             .then(value => {
                 allAnnotations = value || {};
+                if (pdf) {
+                    chapterBookmarks = (prop(allAnnotations, "bookmarks") || []).map(bookmarkItem);
+                    syncBookmarkButton();
+                }
                 renderBookmarks();
                 renderHighlightsList();
                 return allAnnotations;
@@ -1160,11 +1310,26 @@
             link.href = readerUrl(chapterId, { position, requestedView: viewForLanguage(language) });
             const title = document.createElement("span");
             title.className = "reader-contents-title";
-            title.textContent = chapterHeading(bookmark);
             const meta = document.createElement("small");
-            meta.textContent = Math.round(position / 10) + "%";
+            const page = pdf ? pdfPageOf(bookmark) : null;
+            if (pdf) {
+                title.textContent = page
+                    ? t("books.read.pageNumber", "Page {number}", { number: page })
+                    : chapterHeading(bookmark);
+                meta.textContent = (page && pdf.sectionFor(page)?.title) || "";
+            } else {
+                title.textContent = chapterHeading(bookmark);
+                meta.textContent = Math.round(position / 10) + "%";
+            }
             link.append(title, meta);
             link.addEventListener("click", event => {
+                if (pdf) {
+                    if (!page) return;
+                    event.preventDefault();
+                    void pdf.goToPage(page, { animate: true });
+                    closeOverlayContents();
+                    return;
+                }
                 if (chapterId.toLowerCase() !== currentChapterId()) return;
                 event.preventDefault();
                 ensureViewForLanguage(language);
@@ -1173,7 +1338,7 @@
             });
             item.append(link, deleteButton(async () => {
                 if (repository) {
-                    await repository.queueBookmarkRemove(id, { chapterId: root.dataset.chapterId });
+                    await repository.queueBookmarkRemove(id, { chapterId: chapterId || root.dataset.chapterId });
                 } else {
                     await postHandler("RemoveBookmark", { bookmarkId: id });
                 }
@@ -1308,6 +1473,38 @@
         }
     };
 
+    // PDF hits come from the pdf.js text of each page; a hit opens its page and
+    // marks the match in the text layer.
+    const renderPdfSearch = hits => {
+        searchResults.replaceChildren();
+        searchStatus.textContent = hits.length ? "" : t("books.read.searchEmpty", "No matches.");
+        searchStatus.hidden = hits.length > 0;
+        for (const hit of hits) {
+            const item = document.createElement("li");
+            const link = document.createElement("a");
+            link.href = readerUrl(pdf.positionForPage(hit.page).chapterId);
+            const heading = document.createElement("strong");
+            const section = pdf.sectionFor(hit.page)?.title;
+            heading.textContent = t("books.read.pageNumber", "Page {number}", { number: hit.page }) +
+                (section ? " · " + section : "");
+            const quote = document.createElement("span");
+            const mark = document.createElement("mark");
+            mark.textContent = hit.snippet.slice(hit.matchStart, hit.matchStart + hit.matchLength);
+            quote.append(
+                hit.snippet.slice(0, hit.matchStart),
+                mark,
+                hit.snippet.slice(hit.matchStart + hit.matchLength));
+            link.append(heading, quote);
+            link.addEventListener("click", event => {
+                event.preventDefault();
+                root.readerShell?.closeMenus(false);
+                pdf.showHit(hit);
+            });
+            item.append(link);
+            searchResults.append(item);
+        }
+    };
+
     const runSearch = async () => {
         const query = (searchInput?.value || "").trim();
         const run = ++searchRun;
@@ -1320,6 +1517,12 @@
         searchStatus.hidden = false;
         searchStatus.textContent = t("books.read.loading", "Loading…");
         try {
+            if (pdfContainer) {
+                const hits = pdf?.isReady() ? await pdf.search(query) : [];
+                if (run !== searchRun || !hits) return;
+                renderPdfSearch(hits);
+                return;
+            }
             const result = await getJson("Search", { q: query });
             if (run !== searchRun) return;
             renderSearch(prop(result, "hits") || []);
@@ -1539,7 +1742,8 @@
 
     // ---- Offline chapter navigation (#221 part 2) -------------------------------------
 
-    if (workId && window.JularrOfflineLibraryRepository) {
+    // A PDF book has all its pages open; there is no chapter to navigate to.
+    if (workId && window.JularrOfflineLibraryRepository && !pdfContainer) {
         // While offline, following a previous/next chapter link to a downloaded
         // chapter renders it locally into the original column instead of a
         // failing full-page navigation; see docs/OFFLINE_LIBRARY.md.
@@ -1593,9 +1797,91 @@
         });
     }
 
+    // ---- PDF pages -------------------------------------------------------------------
+
+    function startPdf() {
+        const status = root.querySelector("[data-book-pdf-status]");
+        const sectionLabels = root.querySelectorAll("[data-book-chapter-label]");
+        const sectionSteps = root.querySelectorAll("[data-book-pdf-section]");
+        const pages = (readJson("[data-book-pdf-pages-json]", []) || []).map(String);
+        const source = pdfContainer.dataset;
+        if (!window.JularrBookPdf || !source.pdfFile || !pages.length) {
+            if (status) {
+                status.hidden = false;
+                status.textContent = t("books.read.pdfFailed", "This book could not be opened.");
+            }
+            finishRestore();
+            return;
+        }
+
+        pdf = window.JularrBookPdf.create({
+            root,
+            stage,
+            container: pdfContainer,
+            status,
+            settings,
+            t,
+            pageChapters: pages,
+            startChapterId: root.dataset.chapterId,
+            startPermille: Number(root.dataset.progress || "0"),
+            urls: {
+                file: source.pdfFile,
+                lib: source.pdfLib,
+                worker: source.pdfWorker,
+                cmaps: source.pdfCmaps,
+                fonts: source.pdfFonts,
+                wasm: source.pdfWasm
+            },
+            onLocation: ({ first, last, total, section }) => {
+                dispatchLocation({
+                    first,
+                    last,
+                    total,
+                    value: last,
+                    max: total,
+                    percent: Math.round(last / total * 100)
+                });
+                sectionLabels.forEach(label => {
+                    label.textContent = section?.title || "";
+                });
+                if (!restoring) queueProgressSave();
+            },
+            // Without an outline the transport buttons step through pages.
+            onOutline: items => {
+                const chapters = items.length > 0;
+                sectionSteps.forEach(button => {
+                    const next = Number(button.dataset.bookPdfSection) > 0;
+                    const label = chapters
+                        ? next
+                            ? t("reader.frame.nextChapter", "Next chapter")
+                            : t("reader.frame.previousChapter", "Previous chapter")
+                        : next
+                            ? t("reader.frame.nextPage", "Next page")
+                            : t("reader.frame.previousPage", "Previous page");
+                    button.setAttribute("aria-label", label);
+                    button.title = label;
+                });
+            },
+            onReady: ready => {
+                finishRestore();
+                if (ready) ensureAnnotations().catch(error => console.warn(error));
+            }
+        });
+
+        sectionSteps.forEach(button => {
+            button.addEventListener("click", () => pdf.stepSection(Number(button.dataset.bookPdfSection)));
+        });
+    }
+
     // ---- Start ---------------------------------------------------------------------
 
     root.dispatchEvent(new CustomEvent("jularr:reader-restoring", { detail: { active: true } }));
+
+    if (pdfContainer) {
+        startPdf();
+        applySettings();
+        return;
+    }
 
     if (original) original.hidden = view === "translated";
     if (translated) translated.hidden = view === "original" || root.dataset.hasTranslation !== "true";
