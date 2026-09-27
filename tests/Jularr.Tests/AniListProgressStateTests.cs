@@ -25,6 +25,40 @@ public sealed class AniListProgressStateTests
     }
 
     [TestMethod]
+    public void EqualProgressWithPendingWriteIsNotSynced()
+    {
+        // A PLANNING entry at the same episode still offers "start tracking".
+        var state = AniListAccountService.ClassifyProgressState(
+            "Example",
+            localProgress: 3,
+            remoteProgress: 3,
+            message: "Ready to start AniList tracking and set progress to 3.",
+            canSync: true,
+            remoteStatus: "PLANNING");
+
+        Assert.AreNotEqual(AniListExternalProgressStateKind.Synced, state.Kind);
+        Assert.IsFalse(state.IsSynced);
+        Assert.IsTrue(state.CanSync);
+        Assert.AreEqual(
+            "Ready to start AniList tracking and set progress to 3.",
+            state.Message);
+    }
+
+    [TestMethod]
+    public void TrackingStartDateUsesTheViewersCalendarDay()
+    {
+        var berlin = TimeZoneInfo.FindSystemTimeZoneById("Europe/Berlin");
+        var justAfterMidnightInBerlin = new DateTimeOffset(2026, 9, 27, 22, 30, 0, TimeSpan.Zero);
+
+        Assert.AreEqual(
+            new AniListFuzzyDate(2026, 9, 28),
+            AniListAccountService.TrackingStartDate(justAfterMidnightInBerlin, berlin));
+        Assert.AreEqual(
+            new AniListFuzzyDate(2026, 9, 27),
+            AniListAccountService.TrackingStartDate(justAfterMidnightInBerlin, TimeZoneInfo.Utc));
+    }
+
+    [TestMethod]
     public void HigherLocalChapterProgressIsLocalAhead()
     {
         var state = AniListAccountService.ClassifyProgressState(

@@ -65,9 +65,7 @@
 
                                     <div class="reading-catalog-copy">
                                         <span class="reading-catalog-title">@result.Item.Title</span>
-                                        <span class="reading-catalog-native">
-                                            @result.Source.Name · @result.Source.Description
-                                        </span>
+                                        <span class="reading-catalog-source" title="@ui[result.Source.DescriptionKey]">@result.Source.Name</span>
                                         @if (!string.IsNullOrWhiteSpace(result.Item.NativeTitle) &&
                                              !string.Equals(result.Item.NativeTitle, result.Item.Title, StringComparison.OrdinalIgnoreCase))
                                         {
@@ -132,8 +130,8 @@
 
                 @if (Model.IsOwner)
                 {
-                    <div class="reading-catalog-divider">Sources</div>
-                    <a class="button" asp-page="/Admin/ReadingSources">Configure reading sources</a>
+                    <div class="reading-catalog-divider">@ui["novels.index.sourcesHeading"]</div>
+                    <a class="button" asp-page="/Admin/ReadingSources">@ui["novels.index.configureSources"]</a>
                 }
 
                 @if (Model.Access.CanAdd && !Model.Access.AddCreatesRequest)
@@ -179,12 +177,6 @@
         </details>
     }
 </header>
-
-@if (TempData["Status"] is string status)
-{
-    <div class="reading-catalog-empty" role="status">@status</div>
-}
-
 
 @if (Model.ContinueReading.Count > 0)
 {
