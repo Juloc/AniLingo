@@ -13,6 +13,7 @@ data class TvAppSnapshot(
     val account: ClientAccount? = null,
     val library: ClientLibrary? = null,
     val anime: AnimeDetail? = null,
+    val episodePage: TvEpisodePageData? = null,
     val episode: TvEpisodeBundle? = null,
     val storageDecision: TvStorageDecision? = null,
     val busy: Boolean = false,
@@ -55,6 +56,7 @@ class TvAppController(
                 account = signedIn.account,
                 library = signedIn.library,
                 anime = null,
+                episodePage = null,
                 episode = null,
                 storageDecision = null,
                 error = null,
@@ -90,6 +92,7 @@ class TvAppController(
             copy(
                 navigation = TvNavigation.openAnime(navigation, animeId),
                 anime = loaded,
+                episodePage = null,
                 episode = null,
                 storageDecision = null,
                 error = null,
@@ -97,6 +100,24 @@ class TvAppController(
         }
 
     suspend fun openEpisode(
+        episodeId: String,
+        animeId: String,
+    ): TvAppSnapshot =
+        runBusy {
+            copy(
+                navigation = TvNavigation.openEpisode(
+                    navigation,
+                    episodeId,
+                    animeId,
+                ),
+                episodePage = flow.loadEpisodePage(episodeId),
+                episode = null,
+                storageDecision = null,
+                error = null,
+            )
+        }
+
+    suspend fun playEpisode(
         episodeId: String,
         animeId: String,
     ): TvAppSnapshot =
@@ -225,6 +246,7 @@ class TvAppController(
                 account = null,
                 library = null,
                 anime = null,
+                episodePage = null,
                 episode = null,
                 storageDecision = null,
                 error = null,
@@ -251,6 +273,12 @@ class TvAppController(
                 TvRoute.Setup,
                 -> null
                 else -> snapshot.anime
+            },
+            episodePage = when (nextNavigation.route) {
+                is TvRoute.Episode,
+                is TvRoute.Player,
+                -> snapshot.episodePage
+                else -> null
             },
             episode = if (nextNavigation.route is TvRoute.Player) {
                 snapshot.episode
