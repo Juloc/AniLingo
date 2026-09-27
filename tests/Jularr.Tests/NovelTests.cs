@@ -244,14 +244,17 @@ public sealed class NovelTests
             await db.SaveChangesAsync();
 
             var calls = 0;
-            var handler = new DelegateHttpMessageHandler(_ =>
+            var requestBodies = new List<string>();
+            var handler = new DelegateHttpMessageHandler(request =>
             {
                 calls++;
+                requestBodies.Add(request.Content!.ReadAsStringAsync().GetAwaiter().GetResult());
+                var translation = calls == 1 ? "Das ist eins." : "Das ist zwei.";
                 return new HttpResponseMessage(HttpStatusCode.OK)
                 {
                     Content = new StringContent(
-                        """
-                        {"choices":[{"message":{"content":"[[JULARR-P0000]]\nDas ist eins.\n[[JULARR-P0001]]\nDas ist zwei."}}]}
+                        $"""
+                        {"choices":[{"message":{"content":"{{translation}}"}}]}
                         """,
                         System.Text.Encoding.UTF8,
                         "application/json")
@@ -300,7 +303,11 @@ public sealed class NovelTests
             Assert.IsFalse(ai.ProviderId.StartsWith(
                 NovelTranslationProviders.TranslateGemmaPrefix,
                 StringComparison.Ordinal));
-            Assert.AreEqual(1, calls);
+            Assert.AreEqual(2, calls);
+            Assert.IsTrue(requestBodies.All(body =>
+                body.Contains("\"source_lang_code\":\"ja\"", StringComparison.Ordinal) &&
+                body.Contains("\"target_lang_code\":\"de-DE\"", StringComparison.Ordinal) &&
+                !body.Contains("\"role\":\"system\"", StringComparison.Ordinal)));
             Assert.AreEqual(1, aiTranslator.Calls);
             Assert.AreEqual(2, await db.NovelTranslations.CountAsync());
 
@@ -362,7 +369,7 @@ public sealed class NovelTests
                 {
                     Content = new StringContent(
                         """
-                        {"choices":[{"message":{"content":"[[JULARR-P0000]]\nDas ist ein Test."}}]}
+                        {"choices":[{"message":{"content":"Das ist ein Test."}}]}
                         """,
                         System.Text.Encoding.UTF8,
                         "application/json")
@@ -401,6 +408,92 @@ public sealed class NovelTests
             Assert.AreNotEqual(first.ProviderId, second.ProviderId);
             Assert.AreEqual(2, calls);
             Assert.AreEqual(2, await db.NovelTranslations.CountAsync());
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            File.Delete(path);
+        }
+    }
+
+    [TestMethod]
+    public async Task TranslateGemmaRetriesWithVllmDelimiterWhenStructuredContentIsRejected()
+    {
+        var path = TempDatabasePath();
+
+        try
+        {
+            await using var db = await CreateDatabaseAsync(path);
+            var work = new NovelWork
+            {
+                SourceProvider = "fake",
+                SourceKey = "work",
+                SourceUrl = "https://example.invalid/work",
+                Title = "Test"
+            };
+            var chapter = new NovelChapter
+            {
+                WorkId = work.Id,
+                VolumeId = AddWebVolume(db, work).Id,
+                Number = 1,
+                SourceUrl = "https://example.invalid/work/1",
+                Title = "One",
+                OriginalText = "これはテストです。",
+                SourceHash = "SOURCE-VLLM"
+            };
+            db.Add(work);
+            db.Add(chapter);
+            await db.SaveChangesAsync();
+
+            var calls = 0;
+            var bodies = new List<string>();
+            var handler = new DelegateHttpMessageHandler(request =>
+            {
+                calls++;
+                var body = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+                bodies.Add(body);
+
+                if (calls == 1)
+                {
+                    return new HttpResponseMessage(HttpStatusCode.BadRequest);
+                }
+
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
+                        """
+                        {"choices":[{"message":{"content":"Das ist ein Test."}}]}
+                        """,
+                        System.Text.Encoding.UTF8,
+                        "application/json")
+                };
+            });
+
+            var service = new NovelTranslationService(
+                db,
+                new NovelImportService(db, [new FakeNovelSourceProvider()]),
+                new FakeNovelTranslator(),
+                new FixedHttpClientFactory(handler),
+                new ConfigurationBuilder()
+                    .AddInMemoryCollection(new Dictionary<string, string?>
+                    {
+                        ["TranslateGemma:Endpoint"] = "http://localhost:8000/v1/chat/completions",
+                        ["TranslateGemma:Model"] = "translategemma-12b-it"
+                    })
+                    .Build());
+
+            var translation = await service.TranslateChapterAsync(
+                chapter.Id,
+                "de",
+                NovelTranslationEngine.TranslateGemma,
+                CancellationToken.None);
+
+            Assert.AreEqual("Das ist ein Test.", translation.Text);
+            Assert.AreEqual(2, calls);
+            Assert.IsTrue(
+                bodies[0].Contains("\"source_lang_code\":\"ja\"", StringComparison.Ordinal));
+            Assert.IsTrue(
+                bodies[1].Contains("<<<source>>>ja<<<target>>>de-DE<<<text>>>", StringComparison.Ordinal));
         }
         finally
         {
