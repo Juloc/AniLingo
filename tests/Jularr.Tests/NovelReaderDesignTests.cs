@@ -23,7 +23,9 @@ public sealed class NovelReaderDesignTests
             "Novels",
             "_NovelChapterDrawer.cshtml"));
 
-        StringAssert.Contains(page, "data-reader-chapters-toggle");
+        // The chapter list is the "Contents" tab of the frame's contents panel.
+        StringAssert.Contains(page, "data-reader-contents-toggle aria-controls=\"novel-reader-contents\"");
+        StringAssert.Contains(page, "data-reader-contents-tab=\"chapters\"");
         StringAssert.Contains(page, "_NovelChapterDrawer");
         StringAssert.Contains(page, "data-chapters-url");
         StringAssert.Contains(drawer, "data-chapter-drawer");
@@ -143,43 +145,50 @@ public sealed class NovelReaderDesignTests
     }
 
     [TestMethod]
-    public void ReaderKeepsProgressOutsideReadingMeasureAndHidesAppNavigation()
+    public void ReaderUsesTheFrameProgressBarAndKeepsTheAppSidebar()
     {
         var root = FindRepositoryRoot();
-        var css = File.ReadAllText(Path.Combine(
-            root,
-            "src",
-            "Jularr.Web",
-            "wwwroot",
-            "css",
-            "novels.css"));
+        var css = File.ReadAllText(Path.Combine(root, "src", "Jularr.Web", "wwwroot", "css", "novels.css"));
+        var shellCss = File.ReadAllText(Path.Combine(root, "src", "Jularr.Web", "wwwroot", "css", "reader-shell.css"));
+        var view = File.ReadAllText(Path.Combine(root, "src", "Jularr.Web", "Pages", "Novels", "Read.cshtml"));
 
-        StringAssert.Contains(css, ".novel-reader-progress-rail");
-        StringAssert.Contains(css, "right: 12px;");
-        StringAssert.Contains(css, ".novel-mobile-bookmark-track");
-        StringAssert.Contains(css, "body:has(.novel-reader-shell) .mobile-nav");
-        StringAssert.Contains(css, "body:has(.novel-reader-shell) .sidebar");
+        // Progress lives in the frame's bottom bar, not in a rail over the text.
+        StringAssert.Contains(view, "data-reader-progress-slider");
+        Assert.IsFalse(css.Contains(".novel-reader-progress-rail", StringComparison.Ordinal));
+
+        // The Jularr sidebar (with its Current card) stays next to the reader;
+        // only the phone bottom navigation gives way to the reader's tool row.
+        Assert.IsFalse(css.Contains("body:has(.novel-reader-shell) .sidebar", StringComparison.Ordinal));
+        StringAssert.Contains(shellCss, "body:has([data-reader-frame]) .mobile-nav");
     }
 
     [TestMethod]
-    public void MobileReaderKeepsThePrimaryLanguageControlVisible()
+    public void MobileLanguageSwitchOpensAndClosesInsteadOfCoveringTheText()
     {
+        // #487 item 6: the #460 rule pinned the switch over the text permanently
+        // and left a "Sprache" button toggling a class without effect.
         var root = FindRepositoryRoot();
-        var css = File.ReadAllText(Path.Combine(
-            root,
-            "src",
-            "Jularr.Web",
-            "wwwroot",
-            "css",
-            "reader-shell.css"));
+        var css = File.ReadAllText(Path.Combine(root, "src", "Jularr.Web", "wwwroot", "css", "reader-shell.css"));
+        var js = File.ReadAllText(Path.Combine(root, "src", "Jularr.Web", "wwwroot", "js", "reader-shell.js"));
+        var view = File.ReadAllText(Path.Combine(root, "src", "Jularr.Web", "Pages", "Novels", "Read.cshtml"));
 
+        Assert.IsFalse(
+            css.Contains(".novel-reader-toolbar .novel-view-switch {", StringComparison.Ordinal),
+            "No permanently pinned language switch.");
+        const string expanded = "[data-unified-reader].reader-language-expanded [data-reader-language-control]";
+        Assert.AreEqual(1, css.Split(expanded).Length - 1, "One expanded-panel rule, no duplicated selectors.");
         StringAssert.Contains(
             css,
-            "[data-unified-reader] .novel-reader-toolbar .novel-view-switch {",
-            "The mobile shared reader must retain a direct language control.");
-        Assert.IsFalse(
-            css.Contains("[data-unified-reader] .novel-reader-toolbar .novel-view-switch,", StringComparison.Ordinal),
-            "The mobile language control must not be hidden with the overflow-only toolbar actions.");
+            "[data-unified-reader]:has([data-reader-mobile-actions]):not(.reader-language-expanded) [data-reader-language-control]");
+
+        // The generated button exists only with its control and reports its state.
+        StringAssert.Contains(js, "if (!source) return null;");
+        StringAssert.Contains(js, "button.setAttribute(\"aria-expanded\", expanded ? \"true\" : \"false\");");
+
+        // The Novel frame's mobile "Language" tool opens the language menu itself.
+        StringAssert.Contains(
+            view,
+            "<button type=\"button\" data-reader-menu-toggle=\"language\" aria-haspopup=\"menu\" aria-expanded=\"false\" aria-controls=\"novel-menu-language\">");
     }
 
     [TestMethod]
@@ -234,6 +243,122 @@ public sealed class NovelReaderDesignTests
             "Manual mappings are authoritative",
             StringComparison.Ordinal));
         StringAssert.Contains(work, "isEarlier");
+    }
+
+    [TestMethod]
+    [DataRow("◇◇◇")]
+    [DataRow("＊　＊　＊")]
+    [DataRow(" * * * ")]
+    [DataRow("◆")]
+    [DataRow("※※※")]
+    public void SceneBreakLinesAreRecognised(string text)
+    {
+        Assert.IsTrue(Jularr.Web.Features.Novels.NovelChapterDocument.IsSceneBreak(text));
+    }
+
+    [TestMethod]
+    [DataRow("")]
+    [DataRow("……")]
+    [DataRow("――――")]
+    [DataRow("・・・")]
+    [DataRow("「……」")]
+    [DataRow("◇ 第二章 ◇")]
+    [DataRow("◇◇◇◇◇◇◇◇◇◇◇◇◇◇◇◇◇◇◇◇◇◇◇◇◇")]
+    public void PausesAndTextAreNotSceneBreaks(string text)
+    {
+        Assert.IsFalse(Jularr.Web.Features.Novels.NovelChapterDocument.IsSceneBreak(text));
+    }
+
+    [TestMethod]
+    public void SceneBreakBlocksKeepTheirParagraphIndex()
+    {
+        var blocks = Jularr.Web.Features.Novels.NovelChapterDocument.BuildReaderBlocks(
+            "最初の段落。\n\n◇◇◇\n\n次の場面。",
+            null);
+
+        Assert.AreEqual(3, blocks.Count);
+        Assert.IsFalse(blocks[0].IsSceneBreak);
+        Assert.IsTrue(blocks[1].IsSceneBreak);
+        Assert.AreEqual(1, blocks[1].ParagraphIndex);
+        Assert.AreEqual(2, blocks[2].ParagraphIndex);
+    }
+
+    [TestMethod]
+    public void ReaderDrawsSceneBreaksAsSeparatorsThatReadAloudSkips()
+    {
+        var root = FindRepositoryRoot();
+        var view = File.ReadAllText(Path.Combine(root, "src", "Jularr.Web", "Pages", "Novels", "Read.cshtml"));
+        var css = File.ReadAllText(Path.Combine(root, "src", "Jularr.Web", "wwwroot", "css", "novel-reader-frame.css"));
+        var tts = File.ReadAllText(Path.Combine(root, "src", "Jularr.Web", "wwwroot", "js", "reader-tts.js"));
+
+        StringAssert.Contains(view, "block.IsSceneBreak ? \" is-scene-break\" : \"\"");
+        StringAssert.Contains(view, "role=\"@(block.IsSceneBreak ? \"separator\" : null)\"");
+        // The mark stays in the DOM (paragraph offsets) but is only visually hidden.
+        StringAssert.Contains(css, ".novel-reader-segment.is-scene-break .novel-reader-paragraph {");
+        StringAssert.Contains(css, "clip-path: inset(50%);");
+        StringAssert.Contains(tts, "!element.closest('[role=\"separator\"]')");
+    }
+
+    [TestMethod]
+    public void ContentsRowsReadLikeATableOfContents()
+    {
+        var root = FindRepositoryRoot();
+        var drawer = File.ReadAllText(Path.Combine(root, "src", "Jularr.Web", "wwwroot", "js", "novel-chapter-drawer.js"));
+        var partial = File.ReadAllText(Path.Combine(root, "src", "Jularr.Web", "Pages", "Novels", "_NovelChapterDrawer.cshtml"));
+
+        StringAssert.Contains(drawer, "t(\"chapterNumber\", \"Chapter {number}\", { number: chapter.number })");
+        StringAssert.Contains(drawer, "if (!isSpecialChapter(titleText))");
+        StringAssert.Contains(drawer, "\"prolog(?:ue)?\"");
+        StringAssert.Contains(drawer, "\"プロローグ\"");
+        StringAssert.Contains(drawer, "link.setAttribute(\"aria-current\", \"page\")");
+        // The current chapter is marked in the list; no extra strip above it.
+        Assert.IsFalse(partial.Contains("novel-drawer-current", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void ReaderPanelsUseNoColouredLeftStripes()
+    {
+        var root = FindRepositoryRoot();
+        var css = Path.Combine(root, "src", "Jularr.Web", "wwwroot", "css");
+        foreach (var file in new[] { "novels.css", "novel-reader-panels.css", "novel-reader-frame.css", "reader-shell.css" })
+        {
+            var text = File.ReadAllText(Path.Combine(css, file));
+            Assert.IsFalse(
+                System.Text.RegularExpressions.Regex.IsMatch(text, @"border-left:\s*[23]px solid"),
+                file + " must mark state with background, weight or an icon, not a left stripe.");
+        }
+
+        var shell = File.ReadAllText(Path.Combine(css, "reader-shell.css"));
+        Assert.IsFalse(shell.Contains(".reader-contents-row[aria-current=\"page\"]::before", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void LanguageMenuHostsTheTranslateGemmaTrackOnlyWhenAvailable()
+    {
+        var root = FindRepositoryRoot();
+        var view = File.ReadAllText(Path.Combine(root, "src", "Jularr.Web", "Pages", "Novels", "Read.cshtml"));
+
+        StringAssert.Contains(
+            view,
+            "var hasLanguageChoice = hasTranslation || canTranslate || Model.TranslateGemmaAvailable;");
+        // The slot always exists inside the menu, so novel-translation.js adds the
+        // AI / local source switch there instead of above the text.
+        var menu = view.IndexOf("data-reader-menu=\"language\"", StringComparison.Ordinal);
+        var slot = view.IndexOf("<div class=\"reader-menu-translate\" data-translation-slot>", StringComparison.Ordinal);
+        var gate = view.IndexOf("@if (canTranslate)", slot, StringComparison.Ordinal);
+        Assert.IsTrue(menu > 0 && slot > menu && gate > slot);
+    }
+
+    [TestMethod]
+    public void AppearanceCardsSettingSeveralKeysKeepEveryValue()
+    {
+        // A reading-mode card sets readingMode and chapterStyle at once; the first
+        // save's response must not reset the second value.
+        var root = FindRepositoryRoot();
+        var js = File.ReadAllText(Path.Combine(root, "src", "Jularr.Web", "wwwroot", "js", "reader-personalization.js"));
+
+        StringAssert.Contains(js, "if (state[key] === snapshot[key]) merged[key] = value;");
+        Assert.IsFalse(js.Contains("state = { ...state, ...saved };", StringComparison.Ordinal));
     }
 
     private static string FindRepositoryRoot()

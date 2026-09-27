@@ -11,8 +11,8 @@ public sealed class ReaderImmersiveTests
             root, "src", "Jularr.Web", "Pages", "Novels", "Read.cshtml"));
         var script = File.ReadAllText(Path.Combine(
             root, "src", "Jularr.Web", "wwwroot", "js", "reader-personalization.js"));
-        var css = File.ReadAllText(Path.Combine(
-            root, "src", "Jularr.Web", "wwwroot", "css", "novels.css"));
+        var shellCss = File.ReadAllText(Path.Combine(
+            root, "src", "Jularr.Web", "wwwroot", "css", "reader-shell.css"));
 
         StringAssert.Contains(page, "data-reader-autoscroll-toggle");
         StringAssert.Contains(page, "data-reader-wake-lock-toggle");
@@ -28,9 +28,8 @@ public sealed class ReaderImmersiveTests
         StringAssert.Contains(script, "reader-immersive-fallback");
         StringAssert.Contains(script, "fullscreenchange");
 
-        StringAssert.Contains(css, ".novel-reader-shell:fullscreen");
-        StringAssert.Contains(css, "env(safe-area-inset-top)");
-        StringAssert.Contains(css, ".novel-icon-button.is-active");
+        StringAssert.Contains(shellCss, ".reader-frame:fullscreen");
+        StringAssert.Contains(shellCss, ".reader-frame-icon[aria-pressed=\"true\"]");
     }
 
     private static string FindRepositoryRoot()
