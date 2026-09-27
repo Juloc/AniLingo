@@ -390,6 +390,64 @@
         return card;
     }
 
+    function renderWatchlistAction(item, actions) {
+        if (!root.dataset.watchlistUrl) return;
+
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = item.isFollowed
+            ? root.dataset.textFollowed
+            : root.dataset.textFollow;
+        button.title = item.isFollowed
+            ? root.dataset.textUnfollow
+            : root.dataset.textFollow;
+
+        button.addEventListener("click", async () => {
+            const follow = !item.isFollowed;
+            button.disabled = true;
+
+            const body = new FormData();
+            body.set("category", item.category || "");
+            body.set("provider", item.provider || "");
+            body.set("externalId", item.externalId || "");
+            body.set("title", item.title || "");
+            if (item.nativeTitle) body.set("nativeTitle", item.nativeTitle);
+            if (item.coverImageUrl) body.set("coverImageUrl", item.coverImageUrl);
+            if (item.format) body.set("format", item.format);
+            if (item.status) body.set("status", item.status);
+            if (item.year) body.set("year", String(item.year));
+            if (item.localMediaId) body.set("localMediaId", item.localMediaId);
+            const detailsUrl = item.localUrl || item.detailsUrl;
+            if (detailsUrl) body.set("detailsUrl", detailsUrl);
+            body.set("follow", String(follow));
+            body.set("__RequestVerificationToken", token);
+
+            try {
+                const response = await fetch(root.dataset.watchlistUrl, {
+                    method: "POST",
+                    body,
+                    credentials: "same-origin",
+                    headers: { Accept: "application/json" }
+                });
+                if (!response.ok) throw new Error(String(response.status));
+                const payload = await response.json();
+                item.isFollowed = payload.followed === true;
+                button.textContent = item.isFollowed
+                    ? root.dataset.textFollowed
+                    : root.dataset.textFollow;
+                button.title = item.isFollowed
+                    ? root.dataset.textUnfollow
+                    : root.dataset.textFollow;
+            } catch {
+                button.title = root.dataset.textAddFailed || button.title;
+            } finally {
+                button.disabled = false;
+            }
+        });
+
+        actions.append(button);
+    }
+
     function renderAddAction(item, actions) {
         const slot = document.createElement("span");
         slot.className = "discover-add";
