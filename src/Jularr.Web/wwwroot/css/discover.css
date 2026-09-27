@@ -341,6 +341,7 @@
 }
 
 .discover-empty strong { color: var(--text); }
+.discover-empty[hidden], .discover-warning[hidden] { display: none; }
 
 .discover-import {
     margin-top: 24px;

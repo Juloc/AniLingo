@@ -1498,6 +1498,7 @@ public static class UiTranslationResources
         M("discover.categories.aria", "Category", "Discover", "Accessibility", "Discover UI text (categories) shown as: \"Category\".", "concise accessible name", 16, null, null),
         M("discover.categories.lightNovel", "Light novels", "Discover", "Label", "Discover UI text (categories) shown as: \"Light novels\".", "short field label", 16, null, null),
         M("discover.card.add", "Add", "Discover", "Button", "Adds the anime to the library and starts the Usenet search.", "very short action", 10),
+        M("discover.card.inLibrary", "In library", "Discover", "Status", "Shown on a Discover card once the title was added to the library; downloads follow through monitoring.", "compact status", 16),
         M("discover.card.request", "Request", "Discover", "Button", "Requests the title from the owner.", "very short action", 12),
         M("discover.card.addFailed", "Failed, retry", "Discover", "Button", "Shown on the add button when adding or requesting failed; clicking retries.", "very short status", 16),
         M("discover.import.clearMatch", "Clear match", "Discover", "Label", "Discover UI text (import) shown as: \"Clear match\".", "short field label", 16, null, null),
