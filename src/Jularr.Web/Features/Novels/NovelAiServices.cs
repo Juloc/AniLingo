@@ -473,7 +473,6 @@ public sealed record TranslateGemmaOptions(
 
 public sealed class TranslateGemmaNovelTranslator
 {
-    private const string MarkerPrefix = "[[JULARR-P";
     private readonly IHttpClientFactory httpClientFactory;
     private readonly TranslateGemmaOptions options;
 
@@ -494,168 +493,72 @@ public sealed class TranslateGemmaNovelTranslator
         CancellationToken cancellationToken)
     {
         var translated = new List<string>(paragraphs.Count);
-        string? previousSource = null;
-        string? previousTranslation = null;
-
-        var batch = new List<string>();
-        var batchCharacters = 0;
-
-        async Task FlushBatchAsync()
-        {
-            if (batch.Count == 0)
-            {
-                return;
-            }
-
-            var result = await TranslateBatchAsync(
-                batch,
-                targetLanguage,
-                previousSource,
-                previousTranslation,
-                cancellationToken);
-
-            if (result is null)
-            {
-                result = [];
-                foreach (var paragraph in batch)
-                {
-                    var single = await TranslateSingleAsync(
-                        paragraph,
-                        targetLanguage,
-                        previousSource,
-                        previousTranslation,
-                        cancellationToken);
-                    result.Add(single);
-                    previousSource = paragraph;
-                    previousTranslation = single;
-                }
-            }
-            else
-            {
-                previousSource = batch[^1];
-                previousTranslation = result[^1];
-            }
-
-            translated.AddRange(result);
-            batch.Clear();
-            batchCharacters = 0;
-        }
+        var targetLanguageCode = NormalizeTargetLanguage(targetLanguage);
 
         foreach (var paragraph in paragraphs)
         {
-            if (paragraph.Length > options.MaxChunkCharacters)
-            {
-                await FlushBatchAsync();
-
-                var parts = NovelTranslationService.ChunkText(
+            var parts = paragraph.Length <= options.MaxChunkCharacters
+                ? [paragraph]
+                : NovelTranslationService.ChunkText(
                     paragraph,
                     options.MaxChunkCharacters);
-                var partTranslations = new List<string>(parts.Count);
-                foreach (var part in parts)
-                {
-                    var partTranslation = await TranslateSingleAsync(
-                        part,
-                        targetLanguage,
-                        previousSource,
-                        previousTranslation,
-                        cancellationToken);
-                    partTranslations.Add(partTranslation);
-                    previousSource = part;
-                    previousTranslation = partTranslation;
-                }
 
-                var joined = string.Join(" ", partTranslations);
-                translated.Add(joined);
-                previousSource = paragraph;
-                previousTranslation = joined;
-                continue;
-            }
-
-            var addedCharacters = paragraph.Length + (batch.Count == 0 ? 0 : 2);
-            if (batch.Count > 0 &&
-                batchCharacters + addedCharacters > options.MaxChunkCharacters)
+            var translatedParts = new List<string>(parts.Count);
+            foreach (var part in parts)
             {
-                await FlushBatchAsync();
+                var sourceLanguageCode = DetectSourceLanguage(part);
+                translatedParts.Add(await TranslateTextAsync(
+                    part,
+                    sourceLanguageCode,
+                    targetLanguageCode,
+                    cancellationToken));
             }
 
-            batch.Add(paragraph);
-            batchCharacters += paragraph.Length + (batch.Count == 1 ? 0 : 2);
+            translated.Add(string.Join(" ", translatedParts));
         }
 
-        await FlushBatchAsync();
         return translated;
     }
 
-    private async Task<List<string>?> TranslateBatchAsync(
-        IReadOnlyList<string> paragraphs,
-        string targetLanguage,
-        string? previousSource,
-        string? previousTranslation,
+    private async Task<string> TranslateTextAsync(
+        string source,
+        string sourceLanguageCode,
+        string targetLanguageCode,
         CancellationToken cancellationToken)
     {
-        var source = new StringBuilder();
-        for (var index = 0; index < paragraphs.Count; index++)
+        // TranslateGemma's official chat template requires exactly one user
+        // content item with type/source_lang_code/target_lang_code/text and no
+        // system message. Some OpenAI-compatible vLLM wrappers cannot pass the
+        // custom structured content through; for those we retry once using the
+        // delimiter format used by vLLM-compatible TranslateGemma model cards.
+        var structuredContent = new object[]
         {
-            if (source.Length > 0)
+            new
             {
-                source.AppendLine();
+                type = "text",
+                source_lang_code = sourceLanguageCode,
+                target_lang_code = targetLanguageCode,
+                text = source
             }
+        };
 
-            source.Append(Marker(index))
-                .AppendLine()
-                .Append(paragraphs[index]);
-        }
-
-        var content = await SendAsync(
-            BuildSystemPrompt(targetLanguage, preserveMarkers: true),
-            BuildUserPrompt(source.ToString(), previousSource, previousTranslation),
+        var structured = await SendAsync(
+            structuredContent,
+            allowTemplateFallback: true,
+            source,
+            sourceLanguageCode,
+            targetLanguageCode,
             cancellationToken);
 
-        var result = new List<string>(paragraphs.Count);
-        for (var index = 0; index < paragraphs.Count; index++)
-        {
-            var marker = Marker(index);
-            var start = content.IndexOf(marker, StringComparison.Ordinal);
-            if (start < 0)
-            {
-                return null;
-            }
-
-            start += marker.Length;
-            var end = index + 1 < paragraphs.Count
-                ? content.IndexOf(Marker(index + 1), start, StringComparison.Ordinal)
-                : content.Length;
-            if (end < start)
-            {
-                return null;
-            }
-
-            var paragraph = content[start..end].Trim();
-            if (paragraph.Length == 0)
-            {
-                return null;
-            }
-
-            result.Add(paragraph);
-        }
-
-        return result;
+        return structured;
     }
 
-    private Task<string> TranslateSingleAsync(
-        string source,
-        string targetLanguage,
-        string? previousSource,
-        string? previousTranslation,
-        CancellationToken cancellationToken) =>
-        SendAsync(
-            BuildSystemPrompt(targetLanguage, preserveMarkers: false),
-            BuildUserPrompt(source, previousSource, previousTranslation),
-            cancellationToken);
-
     private async Task<string> SendAsync(
-        string systemPrompt,
-        string userPrompt,
+        object userContent,
+        bool allowTemplateFallback,
+        string source,
+        string sourceLanguageCode,
+        string targetLanguageCode,
         CancellationToken cancellationToken)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -669,8 +572,7 @@ public sealed class TranslateGemmaNovelTranslator
                 model = options.Model,
                 messages = new object[]
                 {
-                    new { role = "system", content = systemPrompt },
-                    new { role = "user", content = userPrompt }
+                    new { role = "user", content = userContent }
                 },
                 temperature = 0,
                 stream = false
@@ -684,6 +586,20 @@ public sealed class TranslateGemmaNovelTranslator
 
         if (!response.IsSuccessStatusCode)
         {
+            if (allowTemplateFallback &&
+                ((int)response.StatusCode == 400 || (int)response.StatusCode == 422))
+            {
+                var delimited =
+                    $"<<<source>>>{sourceLanguageCode}<<<target>>>{targetLanguageCode}<<<text>>>{source}";
+                return await SendAsync(
+                    delimited,
+                    allowTemplateFallback: false,
+                    source,
+                    sourceLanguageCode,
+                    targetLanguageCode,
+                    cancellationToken);
+            }
+
             throw new InvalidOperationException(
                 $"TranslateGemma request failed with HTTP {(int)response.StatusCode}.");
         }
@@ -713,34 +629,30 @@ public sealed class TranslateGemmaNovelTranslator
         return content;
     }
 
-    private static string BuildSystemPrompt(
-        string targetLanguage,
-        bool preserveMarkers) =>
-        $"Translate literary prose into {targetLanguage}. " +
-        "Preserve meaning, tone, dialogue, names, honorifics and paragraph order. " +
-        "Do not summarize, explain, censor, add facts or output commentary. " +
-        (preserveMarkers
-            ? $"Every marker beginning with {MarkerPrefix} must be copied exactly and each marker must be followed by exactly one translated paragraph. Do not merge, remove or reorder marked paragraphs."
-            : "Return only the translated passage.");
-
-    private static string BuildUserPrompt(
-        string source,
-        string? previousSource,
-        string? previousTranslation)
-    {
-        if (string.IsNullOrWhiteSpace(previousSource) ||
-            string.IsNullOrWhiteSpace(previousTranslation))
+    private static string NormalizeTargetLanguage(string language) =>
+        language.Trim().ToLowerInvariant() switch
         {
-            return source;
+            "de" or "de-de" => "de-DE",
+            "en" or "en-us" => "en-US",
+            "en-gb" => "en-GB",
+            var value when value.Length is 2 => value,
+            var value => value
+        };
+
+    private static string DetectSourceLanguage(string text)
+    {
+        foreach (var character in text)
+        {
+            if (character is >= '\u3040' and <= '\u30ff' ||
+                character is >= '\u3400' and <= '\u4dbf' ||
+                character is >= '\u4e00' and <= '\u9fff')
+            {
+                return "ja";
+            }
         }
 
-        return "Context from the immediately preceding paragraph. Use it only for consistency; do not output it.\n" +
-            "PREVIOUS SOURCE:\n" + previousSource + "\n" +
-            "PREVIOUS TRANSLATION:\n" + previousTranslation + "\n\n" +
-            "TEXT TO TRANSLATE:\n" + source;
+        return "en";
     }
-
-    private static string Marker(int index) => $"{MarkerPrefix}{index:D4}]]";
 
     private static string BuildProviderId(TranslateGemmaOptions options)
     {
@@ -753,7 +665,8 @@ public sealed class TranslateGemmaNovelTranslator
             safeModel = "model";
         }
 
-        var fingerprintSource = $"{options.Endpoint.AbsoluteUri}|{options.Model}";
+        var fingerprintSource =
+            $"{options.Endpoint.AbsoluteUri}|{options.Model}|official-structured-v1";
         var fingerprint = Convert.ToHexString(
                 SHA256.HashData(Encoding.UTF8.GetBytes(fingerprintSource)))
             .ToLowerInvariant()[..12];
