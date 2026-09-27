@@ -7,8 +7,18 @@ using Jularr.Web.Features.Acquisition.Sabnzbd;
 
 namespace Jularr.Web.Features.Books;
 
-/// <summary>What the Books add dialog stores with a request so it can be executed later.</summary>
-public sealed record BookRequestPayload(string CatalogId, string Title, string? Author);
+/// <summary>
+/// What the Books add dialog stores with a request so it can be executed later, plus the Usenet
+/// search state: releases already sent to SABnzbd (never sent twice) and when to search again
+/// while no release exists yet.
+/// </summary>
+public sealed record BookRequestPayload(
+    string CatalogId,
+    string Title,
+    string? Author,
+    IReadOnlyList<string>? TriedReleases = null,
+    int Searches = 0,
+    DateTime? NextSearchUtc = null);
 
 /// <summary>
 /// Automatic Books acquisition, Readarr-style but on the same Usenet path as anime: a free
@@ -20,9 +30,18 @@ public sealed class BookAcquisitionExecutor(
     BookCatalogService books,
     IndexerSearchCoordinator indexers,
     DownloadClientStore downloadClients,
-    SabnzbdDownloadService sabnzbd) : IAcquisitionRequestExecutor
+    SabnzbdDownloadService sabnzbd,
+    AcquisitionAccessStore requests,
+    TimeProvider? clock = null) : IAcquisitionRequestExecutor
 {
+    /// <summary>After this many searches without a release the request fails and waits for the owner.</summary>
+    public const int MaxSearches = 12;
+
     public MediaAcquisitionKind Kind => MediaAcquisitionKind.Book;
+
+    /// <summary>Wait before the next search while no release exists: 6 h, 12 h, then daily.</summary>
+    public static TimeSpan SearchBackoff(int searches) =>
+        TimeSpan.FromHours(searches switch { <= 1 => 6, 2 => 12, _ => 24 });
 
     public async Task<AcquisitionExecution> ExecuteAsync(AcquisitionRequest request, CancellationToken cancellationToken)
     {
@@ -57,11 +76,36 @@ public sealed class BookAcquisitionExecutor(
             return new AcquisitionExecution(AcquisitionRequestStatus.Failed, $"No free edition ({freeEditionNote}) and SABnzbd is not configured.");
         }
 
+        var tried = new HashSet<string>(payload.TriedReleases ?? [], StringComparer.OrdinalIgnoreCase);
         var search = await BookUsenetSearch.SearchAsync(indexers, payload.Title, payload.Author, cancellationToken);
-        if (search.Picked is not { InternalDownloadUri: { } downloadUri } release)
+        var searches = payload.Searches + 1;
+        var release = search.Ranked
+            .Where(candidate => candidate.Score > 0 && !tried.Contains(candidate.Release.Title))
+            .Select(candidate => candidate.Release)
+            .FirstOrDefault();
+        if (release?.InternalDownloadUri is not { } downloadUri)
         {
-            return new AcquisitionExecution(AcquisitionRequestStatus.Failed, search.FailureMessage);
+            var reason = tried.Count > 0 && search.Picked is not null
+                ? "Every matching release was tried already."
+                : search.FailureMessage;
+            if (searches >= MaxSearches)
+            {
+                await SavePayloadAsync(request, payload with { Searches = searches, NextSearchUtc = null }, cancellationToken);
+                return new AcquisitionExecution(AcquisitionRequestStatus.Failed, $"{reason} Gave up after {searches} searches.");
+            }
+
+            // Readarr-style: keep the request and look again later; new uploads appear all the time.
+            var next = (clock ?? TimeProvider.System).GetUtcNow().UtcDateTime + SearchBackoff(searches);
+            await SavePayloadAsync(request, payload with { Searches = searches, NextSearchUtc = next }, cancellationToken);
+            return new AcquisitionExecution(
+                AcquisitionRequestStatus.Approved,
+                $"{reason} Searching again {next:yyyy-MM-dd HH:mm} UTC.");
         }
+
+        await SavePayloadAsync(
+            request,
+            payload with { TriedReleases = [.. tried, release.Title], Searches = searches, NextSearchUtc = null },
+            cancellationToken);
 
         var outcome = await sabnzbd.SubmitUrlAsync(
             new SabnzbdSubmission(
@@ -78,6 +122,9 @@ public sealed class BookAcquisitionExecutor(
             ? new AcquisitionExecution(AcquisitionRequestStatus.Downloading, release.Title, outcome.OperationId)
             : new AcquisitionExecution(AcquisitionRequestStatus.Failed, outcome.Message);
     }
+
+    private Task SavePayloadAsync(AcquisitionRequest request, BookRequestPayload payload, CancellationToken cancellationToken) =>
+        requests.UpdatePayloadAsync(request.Id, JsonSerializer.Serialize(payload, JsonSerializerOptions.Web), cancellationToken);
 
     public static BookRequestPayload ReadPayload(AcquisitionRequest request) =>
         (string.IsNullOrWhiteSpace(request.PayloadJson)

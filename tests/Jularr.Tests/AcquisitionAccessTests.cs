@@ -7,6 +7,7 @@ using Jularr.Web.Features.Books;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Jularr.Tests;
@@ -209,6 +210,64 @@ public sealed class AcquisitionAccessTests
         CollectionAssert.AreEqual(new[] { "Dune" }, BookUsenetSearch.Queries(" Dune ", null).ToArray());
         Assert.AreEqual("Dune", BookReleaseSelector.MainTitle("Dune - Deluxe Edition"));
     }
+
+    [TestMethod]
+    public async Task WaitingBookRequestsAreSearchedAgainOnlyWhenDue()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var store = new AcquisitionAccessStore(fixture.Db);
+        var executor = new RecordingExecutor(MediaAcquisitionKind.Book);
+        var owner = fixture.Service("owner", isOwner: true, executor);
+        var now = new DateTime(2026, 9, 27, 12, 0, 0, DateTimeKind.Utc);
+
+        var due = await store.CreateAsync(BookDraft("dune", now.AddMinutes(-1)), "owner", AcquisitionRequestStatus.Approved, "owner", CancellationToken.None);
+        var later = await store.CreateAsync(BookDraft("emma", now.AddHours(3)), "owner", AcquisitionRequestStatus.Approved, "owner", CancellationToken.None);
+        var services = Services(store, owner);
+
+        Assert.AreEqual(1, await BookRequestSearchService.SearchDueAsync(services, now, CancellationToken.None));
+        Assert.AreEqual(1, executor.Runs);
+        Assert.AreEqual(AcquisitionRequestStatus.Downloading, (await store.GetAsync(due.Id, CancellationToken.None))!.Status);
+        Assert.AreEqual(AcquisitionRequestStatus.Approved, (await store.GetAsync(later.Id, CancellationToken.None))!.Status);
+    }
+
+    [TestMethod]
+    public async Task FailedBookDownloadContinuesTheRequestWithTheNextRelease()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var store = new AcquisitionAccessStore(fixture.Db);
+        var executor = new RecordingExecutor(MediaAcquisitionKind.Book);
+        var owner = fixture.Service("owner", isOwner: true, executor);
+
+        var request = await owner.SubmitAsync(Draft("dune"), CancellationToken.None);
+        var failedOperation = request.OperationId!.Value;
+        Assert.AreEqual(1, executor.Runs);
+
+        var services = Services(store, owner);
+        Assert.AreEqual(0, await BookRequestSearchService.ContinueAfterFailedDownloadsAsync(services, [Guid.NewGuid()], CancellationToken.None));
+        Assert.AreEqual(1, await BookRequestSearchService.ContinueAfterFailedDownloadsAsync(services, [failedOperation], CancellationToken.None));
+        Assert.AreEqual(2, executor.Runs);
+        Assert.AreNotEqual(failedOperation, (await store.GetAsync(request.Id, CancellationToken.None))!.OperationId);
+    }
+
+    [TestMethod]
+    public void BookSearchBackoffGrowsToDaily()
+    {
+        Assert.AreEqual(TimeSpan.FromHours(6), BookAcquisitionExecutor.SearchBackoff(1));
+        Assert.AreEqual(TimeSpan.FromHours(12), BookAcquisitionExecutor.SearchBackoff(2));
+        Assert.AreEqual(TimeSpan.FromHours(24), BookAcquisitionExecutor.SearchBackoff(7));
+    }
+
+    private static IServiceProvider Services(AcquisitionAccessStore store, AcquisitionRequestService service) =>
+        new ServiceCollection()
+            .AddSingleton(store)
+            .AddSingleton(service)
+            .BuildServiceProvider();
+
+    private static AcquisitionRequestDraft BookDraft(string id, DateTime nextSearchUtc) =>
+        new(MediaAcquisitionKind.Book, "test", id, id.ToUpperInvariant(), "Author", null,
+            System.Text.Json.JsonSerializer.Serialize(
+                new BookRequestPayload(id, id, "Author", NextSearchUtc: nextSearchUtc),
+                System.Text.Json.JsonSerializerOptions.Web));
 
     private static AcquisitionRequestDraft Draft(string id, MediaAcquisitionKind kind = MediaAcquisitionKind.Book) =>
         new(kind, "test", id, id.ToUpperInvariant(), "Author", null);
