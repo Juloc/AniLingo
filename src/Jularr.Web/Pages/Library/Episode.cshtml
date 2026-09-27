@@ -1,6 +1,7 @@
 @page "/Library/Episode/{id:guid}"
 @using System.Text.Json
 @using Jularr.Web.Features.Playback
+@using Jularr.Web.Features.Playback.Decision
 @using Jularr.Web.Features.ClientApi
 @using Jularr.Web.Features.Storage
 @using Jularr.Web.Features.Subtitles
@@ -29,15 +30,9 @@
 {
     <section class="player-panel"
              data-episode-player
-             data-playback-refresh="@(media.IsPreparing ? "true" : "false")"
-             data-video-codec="@media.VideoCodec"
              data-duration-seconds="@(media.DurationSeconds?.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) ?? "")"
-             data-device-availability="@(media.Device.Availability.ToString().ToLowerInvariant())"
-             data-device-status="@media.Device.StatusMessage"
-             data-device-live="@media.Device.UsesLiveStream.ToString().ToLowerInvariant()"
-             data-server-availability="@(media.Server.Availability.ToString().ToLowerInvariant())"
-             data-server-status="@media.Server.StatusMessage"
-             data-server-live="@media.Server.UsesLiveStream.ToString().ToLowerInvariant()"
+             data-playback-plan-url="@ClientApiRoutes.PlaybackPlan(Model.EpisodeId)"
+             data-stream-session-url-template="@ClientApiRoutes.StreamSession(Guid.Empty).Replace(Guid.Empty.ToString("D"), "__session__")"
              data-storage-state="@(media.Storage is { } storage ? ClientApiMappings.AvailabilityStateName(storage.State) : "unknown")"
              data-storage-availability-url="@ClientApiRoutes.MediaAvailability(media.MediaFileId)"
              data-player-bootstrap-url="@ClientApiRoutes.Player(Model.EpisodeId)"
@@ -46,8 +41,7 @@
              data-next-url="@(Model.NextEpisodeUrl ?? "")"
              data-autoplay-next="@((Model.Flow?.AutoplayNext == true).ToString().ToLowerInvariant())"
              data-playback-preferences-url="@ClientApiRoutes.PlaybackPreferences"
-             data-storage-wake-url="@(Model.IsOwner && media.Storage is { WakeConfigured: true } ownerStorage ? ClientApiRoutes.WakeRoot(ownerStorage.RootId) : "")"
-             data-media-url="@Url.Page("/Library/Episode", "Media", new { id = Model.EpisodeId })">
+             data-storage-wake-url="@(Model.IsOwner && media.Storage is { WakeConfigured: true } ownerStorage ? ClientApiRoutes.WakeRoot(ownerStorage.RootId) : "")">
         @* The whole player lives in the stage: one timeline, one control bar and every setting in
            the player menu, so it behaves the same inline and in full screen. *@
         <div class="video-stage player-placeholder"
@@ -230,6 +224,7 @@
                                     <option value="@track.Id"
                                             data-language="@(track.Language ?? "")"
                                             data-learning-source="@(track.IsLearningSource ? "true" : "false")"
+                                            data-image="@(track.IsImage ? "true" : "false")"
                                             disabled="@(!track.IsSelectable)"
                                             selected="@(track.Id == controls.InitialSubtitle)">@track.Label</option>
                                 }
@@ -254,10 +249,12 @@
                         <label class="player-setting">
                             <span><partial name="_PlayerIcon" model="@("quality")" /> @ui["library.episode.quality"]</span>
                             <select data-quality-cap>
-                                <option value="auto">@ui["library.episode.qualityAutoOriginal"]</option>
-                                <option value="1080p">1080p</option>
-                                <option value="720p">720p</option>
-                                <option value="low">@ui["library.episode.lowerBandwidth"]</option>
+                                <option value="auto">@ui["playback.quality.auto"]</option>
+                                <option value="original">@ui["playback.quality.original"]</option>
+                                @foreach (var step in PlaybackQualityPresets.Ladder)
+                                {
+                                    <option value="@step.Name">@ui.Format("playback.quality.mbps", ("value", step.BitrateKbps / 1000))</option>
+                                }
                             </select>
                         </label>
                         <small class="player-setting-hint" data-quality-hint aria-live="polite"></small>
@@ -266,15 +263,20 @@
                     <label class="player-setting">
                         <span>@ui["library.episode.playbackLabel"]</span>
                         <select data-playback-mode>
-                            <option value="auto">@ui["library.episode.playbackModeAuto"]</option>
-                            <option value="device">@ui["library.episode.playbackModeDevice"]</option>
-                            <option value="server">@ui["library.episode.playbackModeServer"]</option>
+                            <option value="auto">@ui["playback.preference.auto"]</option>
+                            <option value="direct_only">@ui["playback.preference.direct_only"]</option>
+                            <option value="always_transcode">@ui["playback.preference.always_transcode"]</option>
                         </select>
                     </label>
+                    @* Compact status for everyone ("Direct Play · HEVC · 1080p · AAC"); the reasons only
+                       appear when the original is not played untouched. *@
                     <div class="player-setting-status">
                         <span class="status-pill" data-playback-badge>@ui["library.episode.checking"]</span>
-                        <small data-playback-mode-hint></small>
-                        <small><span data-playback-summary>@ui["library.episode.checkingDevice"]</span></small>
+                        <small data-playback-summary>@ui["playback.status.checking"]</small>
+                        <div class="player-playback-reasons" data-playback-reasons hidden>
+                            <strong data-playback-reasons-heading>@ui["playback.status.whyNotDirectPlay"]</strong>
+                            <ul data-playback-reason-list></ul>
+                        </div>
                     </div>
 
                     <label class="player-setting player-setting-toggle">
@@ -354,16 +356,16 @@
                 initialAudioTrackId = controlsData.InitialAudioTrackId,
                 sourceHeight = controlsData.SourceHeight,
                 seekStepSeconds = seekStep,
-                capHeights = Enum.GetValues<PlaybackQualityCap>().ToDictionary(PlaybackQuality.Name, PlaybackQuality.MaxHeight),
-                variants = controlsData.Variants,
                 subtitleCuesUrlTemplate = ClientApiRoutes.SubtitleTrackCues(Model.EpisodeId, "__track__")
             }, new JsonSerializerOptions(JsonSerializerDefaults.Web)))</script>
         }
         <script type="application/json" data-player-icons>@Html.Raw(JsonSerializer.Serialize(new[] { "play", "pause", "volume", "volumeMuted", "fullscreen", "fullscreenExit" }.ToDictionary(name => name, name => new { viewBox = PlayerDesign.Icon(name).ViewBox, path = PlayerDesign.Icon(name).Path })))</script>
         <script type="application/json" data-cue-data>@Html.Raw(JsonSerializer.Serialize(Model.Playback.Cues, new JsonSerializerOptions(JsonSerializerDefaults.Web)))</script>
+        <script type="application/json" data-player-text>@Html.Raw(JsonSerializer.Serialize(ui.WithPrefix("playback.")))</script>
     </section>
     <partial name="_LanguageInspector" model='LanguageInspectorHost.ForAnimeEpisode(Model.AnimeId, Model.EpisodeId, "ja")' />
     <script src="~/js/player-design.js" asp-append-version="true"></script>
+    <script src="~/js/playback-capabilities.js" asp-append-version="true"></script>
     <script src="~/js/episode-player.js" asp-append-version="true"></script>
     <script src="~/js/player-chrome.js" asp-append-version="true" defer></script>
     <partial name="_EpisodeMediaNavigation" model="new Jularr.Web.Features.MediaSegments.EpisodeMediaNavigationView(Model.EpisodeId, Model.Playback.Navigation, CanEdit: false, ui)" />

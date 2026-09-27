@@ -50,6 +50,30 @@ public sealed class HlsPlaybackSessionManager : IDisposable
         int? audioStreamIndex = null,
         PlaybackQualityCap qualityCap = PlaybackQualityCap.Auto)
     {
+        var session = await StartAsync(
+            episodeId,
+            profileId,
+            startSeconds,
+            directory => BuildArguments(sourcePath, directory, startSeconds, audioStreamIndex, qualityCap),
+            lease: null,
+            cancellationToken);
+        return session with { AudioStreamIndex = audioStreamIndex, QualityCap = qualityCap };
+    }
+
+    /// <summary>
+    /// Starts one bounded HLS session whose ffmpeg arguments the caller builds for the
+    /// session directory (a playback plan's remux or transcode). The optional lease (a
+    /// transcode slot) is released when the session ends.
+    /// </summary>
+    public async Task<HlsPlaybackSession> StartAsync(
+        Guid episodeId,
+        string profileId,
+        double startSeconds,
+        Func<string, IReadOnlyList<string>> buildArguments,
+        IDisposable? lease,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(buildArguments);
         if (string.IsNullOrWhiteSpace(profileId))
         {
             throw new ArgumentException("Profile ID is required.", nameof(profileId));
@@ -64,37 +88,41 @@ public sealed class HlsPlaybackSessionManager : IDisposable
         CleanupExpired();
 
         Entry entry;
-        lock (gate)
+        try
         {
-            EvictForProfileCapacity(profileId);
-
-            if (sessions.Count >= MaxSessions)
+            lock (gate)
             {
-                throw new InvalidOperationException(
-                    "HLS fallback capacity is currently full.");
+                EvictForProfileCapacity(profileId);
+
+                if (sessions.Count >= MaxSessions)
+                {
+                    throw new InvalidOperationException(
+                        "HLS fallback capacity is currently full.");
+                }
+
+                Directory.CreateDirectory(RootPath);
+                var sessionId = Guid.NewGuid();
+                var directory = Path.Combine(RootPath, sessionId.ToString("N"));
+                Directory.CreateDirectory(directory);
+
+                var process = StartProcess(buildArguments(directory));
+
+                entry = new Entry(
+                    sessionId,
+                    episodeId,
+                    profileId,
+                    directory,
+                    process,
+                    startSeconds,
+                    DateTimeOffset.UtcNow,
+                    lease);
+                sessions[sessionId] = entry;
             }
-
-            Directory.CreateDirectory(RootPath);
-            var sessionId = Guid.NewGuid();
-            var directory = Path.Combine(RootPath, sessionId.ToString("N"));
-            Directory.CreateDirectory(directory);
-
-            var process = StartProcess(
-                sourcePath,
-                directory,
-                startSeconds,
-                audioStreamIndex,
-                qualityCap);
-
-            entry = new Entry(
-                sessionId,
-                episodeId,
-                profileId,
-                directory,
-                process,
-                startSeconds,
-                DateTimeOffset.UtcNow);
-            sessions[sessionId] = entry;
+        }
+        catch
+        {
+            lease?.Dispose();
+            throw;
         }
 
         try
@@ -112,9 +140,64 @@ public sealed class HlsPlaybackSessionManager : IDisposable
             entry.EpisodeId,
             entry.ProfileId,
             entry.StartSeconds,
-            entry.CreatedAtUtc,
-            audioStreamIndex,
-            qualityCap);
+            entry.CreatedAtUtc);
+    }
+
+    /// <summary>Segments kept behind the most recently requested one (32 s at 4 s segments).</summary>
+    public const int SegmentsKeptBehind = 8;
+
+    /// <summary>
+    /// Deletes the segments well behind the one a player just requested. Players of a
+    /// playback plan restart the stream to seek, so only the recent past is ever read again;
+    /// this bounds the disk use of an append-only (EVENT) playlist.
+    /// </summary>
+    public int PruneBehind(Guid sessionId, string profileId, string fileName)
+    {
+        if (!sessions.TryGetValue(sessionId, out var entry) ||
+            !string.Equals(entry.ProfileId, profileId, StringComparison.Ordinal) ||
+            !SegmentPattern.IsMatch(fileName) ||
+            !int.TryParse(fileName.AsSpan(8, 5), NumberStyles.None, CultureInfo.InvariantCulture, out var requested))
+        {
+            return 0;
+        }
+
+        var deleted = 0;
+        for (var number = requested - SegmentsKeptBehind; number >= 0; number--)
+        {
+            var path = Path.Combine(
+                entry.DirectoryPath,
+                $"segment-{number.ToString("00000", CultureInfo.InvariantCulture)}.m4s");
+            if (!File.Exists(path))
+            {
+                break;
+            }
+
+            try
+            {
+                File.Delete(path);
+                deleted++;
+            }
+            catch (IOException)
+            {
+                break;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                break;
+            }
+        }
+
+        return deleted;
+    }
+
+    /// <summary>Ends a session early (a client stopped or switched streams).</summary>
+    public void Stop(Guid sessionId, string profileId)
+    {
+        if (sessions.TryGetValue(sessionId, out var entry) &&
+            string.Equals(entry.ProfileId, profileId, StringComparison.Ordinal))
+        {
+            Remove(sessionId);
+        }
     }
 
     public HlsPlaybackAsset? GetAsset(
@@ -261,11 +344,7 @@ public sealed class HlsPlaybackSessionManager : IDisposable
         };
 
     private Process StartProcess(
-        string sourcePath,
-        string directory,
-        double startSeconds,
-        int? audioStreamIndex,
-        PlaybackQualityCap qualityCap)
+        IReadOnlyList<string> arguments)
     {
         var process = new Process
         {
@@ -280,12 +359,7 @@ public sealed class HlsPlaybackSessionManager : IDisposable
             EnableRaisingEvents = true
         };
 
-        foreach (var argument in BuildArguments(
-                     sourcePath,
-                     directory,
-                     startSeconds,
-                     audioStreamIndex,
-                     qualityCap))
+        foreach (var argument in arguments)
         {
             process.StartInfo.ArgumentList.Add(argument);
         }
@@ -391,6 +465,7 @@ public sealed class HlsPlaybackSessionManager : IDisposable
         finally
         {
             entry.Process.Dispose();
+            entry.Lease?.Dispose();
         }
 
         try
@@ -420,8 +495,10 @@ public sealed class HlsPlaybackSessionManager : IDisposable
         string directoryPath,
         Process process,
         double startSeconds,
-        DateTimeOffset createdAtUtc)
+        DateTimeOffset createdAtUtc,
+        IDisposable? lease)
     {
+        public IDisposable? Lease { get; } = lease;
         public Guid SessionId { get; } = sessionId;
         public Guid EpisodeId { get; } = episodeId;
         public string ProfileId { get; } = profileId;

@@ -86,7 +86,10 @@ public sealed class PlayerControlsTests
         Assert.AreEqual(PlayerControls.SubtitleLearning, controls.InitialSubtitle);
         Assert.AreEqual(1.25, controls.InitialSpeed);
         Assert.IsTrue(controls.SubtitleTracks.Single(x => x.Id == "stream:5").IsLearningSource);
-        Assert.IsFalse(controls.SubtitleTracks.Single(x => x.Id == "stream:6").IsSelectable);
+        var image = controls.SubtitleTracks.Single(x => x.Id == "stream:6");
+        Assert.IsTrue(image.IsImage, "Picture subtitles are marked so the player asks for a burn-in.");
+        Assert.IsTrue(image.IsSelectable);
+        Assert.IsFalse(controls.SubtitleTracks.Single(x => x.Id == "stream:5").IsImage);
         Assert.AreEqual("English 5.1", controls.AudioTracks.Single(x => x.Id == "stream:2").Label);
 
         var embeddedJapanese = PlayerControls.Build(
@@ -257,17 +260,6 @@ public sealed class PlayerControlsTests
             fullHd,
             new PlaybackStreamRequest(PlaybackRequestedMode.Device, null, PlaybackQualityCap.P720));
         Assert.IsNull(device?.Plan, "Device mode never video-transcodes.");
-
-        var variants = PlaybackService.DescribeVariants(Media("episode.mp4", "h264", "yuv420p", "aac", 1080));
-        var deviceVariant = variants.Single(x => x.Mode == "device" && x.AudioTrackId == "stream:1" && x.Quality == "720p");
-        var serverVariant = variants.Single(x => x.Mode == "server" && x.AudioTrackId == "stream:1" && x.Quality == "720p");
-        var original = variants.Single(x => x.Mode == "device" && x.AudioTrackId == "stream:1" && x.Quality == "auto");
-        Assert.IsFalse(deviceVariant.SatisfiesCap);
-        Assert.IsFalse(deviceVariant.IsLive);
-        Assert.IsTrue(serverVariant.SatisfiesCap);
-        Assert.IsTrue(serverVariant.IsLive);
-        Assert.IsTrue(original.SatisfiesCap);
-        Assert.IsFalse(original.IsLive);
     }
 
     [TestMethod]

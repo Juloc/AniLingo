@@ -655,6 +655,10 @@
 .player-setting-hint:empty { display: none; }
 .player-setting-status { display: grid; gap: 4px; justify-items: start; padding: 8px 10px; border-radius: 9px; background: rgba(255,255,255,.05); }
 .player-setting-status .status-pill { background: rgba(255,255,255,.1); color: #fff; }
+.player-playback-reasons { display: grid; gap: 2px; font-size: 11px; line-height: 1.4; color: rgba(255,255,255,.72); }
+.player-playback-reasons[hidden], .player-playback-reasons [hidden] { display: none; }
+.player-playback-reasons strong { font-size: 11px; font-weight: 600; color: rgba(255,255,255,.86); }
+.player-playback-reasons ul { margin: 0; padding-left: 16px; display: grid; gap: 2px; }
 .player-settings-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .player-settings-actions .button { background: rgba(255,255,255,.1); border-color: rgba(255,255,255,.16); color: #fff; }
 .player-settings-actions .button[hidden] { display: none; }

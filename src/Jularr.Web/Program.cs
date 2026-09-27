@@ -29,6 +29,7 @@ using Jularr.Web.Features.Novels;
 using Jularr.Web.Features.OfflineLibrary;
 using Jularr.Web.Features.Operations;
 using Jularr.Web.Features.Playback;
+using Jularr.Web.Features.Playback.Decision;
 using Jularr.Web.Features.PlaybackSessions;
 using Jularr.Web.Features.Progress;
 using Jularr.Web.Features.ReaderThemes;
@@ -196,6 +197,20 @@ builder.Services.AddRateLimiter(options =>
                 QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
                 QueueLimit = 0
             }));
+    // Playback plans and stream starts (every seek of a live stream restarts it) per account.
+    options.AddPolicy(ClientApiPlaybackPlanEndpoints.RateLimitPolicy, httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier)
+                ?? httpContext.Connection.RemoteIpAddress?.ToString()
+                ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                AutoReplenishment = true,
+                PermitLimit = 120,
+                Window = TimeSpan.FromMinutes(1),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0
+            }));
     // Scoped by API key id when the request authenticated with one, otherwise by IP (a cookie
     // owner session sharing the browser's normal traffic does not need its own partition).
     options.AddPolicy("acquisitionApi", httpContext =>
@@ -254,6 +269,22 @@ builder.Services.AddSingleton<PlaybackCueProjector>();
 builder.Services.AddSingleton<PlaybackPreparationTracker>();
 builder.Services.AddScoped<PlaybackPreparationService>();
 builder.Services.AddScoped<PlaybackService>();
+builder.Services.AddSingleton(_ => new PlaybackTranscodeSlots());
+builder.Services.AddSingleton<PlaybackServerCapabilityProvider>();
+builder.Services.AddSingleton(services =>
+{
+    var store = new PlaybackStreamSessionStore(services.GetRequiredService<TimeProvider>());
+    // A replaced, expired or ended playback session takes its HLS output with it.
+    store.Removed += session =>
+    {
+        if (session.HlsSessionId is { } hlsSessionId)
+        {
+            HlsPlaybackSessionManager.Shared.Stop(hlsSessionId, session.ProfileId);
+        }
+    };
+    return store;
+});
+builder.Services.AddScoped<PlaybackPlanService>();
 builder.Services.Configure<MediaSegmentOptions>(builder.Configuration.GetSection(MediaSegmentOptions.SectionName));
 // Single canonical opt-in: cross-episode audio fingerprint detection is CPU heavy (it decodes and
 // hashes several minutes of audio per episode), so it stays off unless explicitly enabled.
@@ -468,6 +499,7 @@ app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapClientApiV1();
+app.MapClientApiPlaybackPlanV1();
 app.MapAcquisitionApiV1();
 app.MapClientApiOfflineV1();
 app.MapClientApiOfflineLibraryV1();

@@ -10,10 +10,12 @@
     }
 
     const profileId = document.body?.dataset.profileId || "unknown";
-    // Device-local facts (decoder/network capability) live in this browser only.
+    // Device-local choices (mode override, quality) live in this browser only.
     const preferenceKey = `anilingo.profile.${profileId}.playbackMode`;
-    const qualityKey = `anilingo.profile.${profileId}.qualityCap`;
+    const legacyQualityKey = `anilingo.profile.${profileId}.qualityCap`;
+    const qualityKey = `anilingo.profile.${profileId}.qualityPreset`;
     const progressUrl = root.dataset.progressUrl || "";
+    const planUrl = root.dataset.playbackPlanUrl || "";
     const persistedResumeSeconds = Number(root.dataset.resumeSeconds);
     const video = root.querySelector("[data-playback-video]");
     const stage = root.querySelector("[data-video-stage]");
@@ -22,10 +24,16 @@
     const playbackSummary = root.querySelector("[data-playback-summary]");
     const playbackBadge = root.querySelector("[data-playback-badge]");
     const modeSelect = root.querySelector("[data-playback-mode]");
-    const modeHint = root.querySelector("[data-playback-mode-hint]");
-    const working = root.querySelector("[data-playback-working]");
-    const deviceForm = root.querySelector('[data-prepare-form="device"]');
-    const serverForm = root.querySelector('[data-prepare-form="server"]');
+    const reasonsBlock = root.querySelector("[data-playback-reasons]");
+    const reasonList = root.querySelector("[data-playback-reason-list]");
+    const capabilityProbe = window.JularrPlaybackCapabilities;
+    const text = (() => {
+        try {
+            return JSON.parse(root.querySelector("[data-player-text]")?.textContent || "{}");
+        } catch {
+            return {};
+        }
+    })();
 
     const overlay = root.querySelector("[data-subtitle-overlay]");
     const data = root.querySelector("[data-cue-data]");
@@ -74,10 +82,6 @@
     const seekStepSeconds = Number(controlsData.seekStepSeconds) > 0
         ? Number(controlsData.seekStepSeconds)
         : 10;
-    const variants = new Map((controlsData.variants || []).map(variant => [
-        `${variant.mode}|${variant.audioTrackId || ""}|${variant.quality}`,
-        variant
-    ]));
 
     if (!video || !stage || !placeholder || !playbackStatus ||
         !playbackSummary || !playbackBadge || !modeSelect || !overlay || !data ||
@@ -91,81 +95,58 @@
         inspector && learningKicker && word && reading && meaning && state &&
         replay && closeLearning);
 
-    let videoCodec = (root.dataset.videoCodec || "").toLowerCase();
-    let isHevc = videoCodec === "hevc" || videoCodec === "h265";
     let durationSeconds = Number(root.dataset.durationSeconds);
     let hasKnownDuration = Number.isFinite(durationSeconds) && durationSeconds > 0;
-    const capabilityProbe = document.createElement("video");
-    const supportsHevc =
-        capabilityProbe.canPlayType('video/mp4; codecs="hvc1"') !== "" ||
-        capabilityProbe.canPlayType('video/mp4; codecs="hev1"') !== "";
 
-    const options = {
-        device: {
-            availability: root.dataset.deviceAvailability || "unsupported",
-            status: root.dataset.deviceStatus || "Device playback is unavailable.",
-            live: root.dataset.deviceLive === "true"
-        },
-        server: {
-            availability: root.dataset.serverAvailability || "unsupported",
-            status: root.dataset.serverStatus || "Server playback is unavailable.",
-            live: root.dataset.serverLive === "true"
+    const readStored = (key) => {
+        try {
+            return window.localStorage.getItem(key);
+        } catch {
+            return null;
         }
     };
 
+    const store = (key, value) => {
+        try {
+            window.localStorage.setItem(key, value);
+        } catch {
+        }
+    };
+
+    // Earlier player versions stored "device"/"server"; device-only maps onto Direct only.
+    const modePreferences = ["auto", "direct_only", "always_transcode"];
     const readPreference = () => {
-        try {
-            const value = window.localStorage.getItem(preferenceKey);
-            return value === "device" || value === "server" ? value : "auto";
-        } catch {
-            return "auto";
-        }
+        const value = readStored(preferenceKey);
+        return value === "device" ? "direct_only" : modePreferences.includes(value) ? value : "auto";
     };
 
-    const storePreference = (value) => {
-        try {
-            window.localStorage.setItem(preferenceKey, value);
-        } catch {
-        }
-    };
-
-    const qualityCaps = ["auto", "1080p", "720p", "low"];
-    const readQualityCap = () => {
-        try {
-            const value = window.localStorage.getItem(qualityKey);
-            return qualityCaps.includes(value) ? value : "auto";
-        } catch {
-            return "auto";
-        }
-    };
-
-    const storeQualityCap = (value) => {
-        try {
-            window.localStorage.setItem(qualityKey, value);
-        } catch {
-        }
+    const qualityPresets = ["auto", "original", "20mbps", "12mbps", "8mbps", "4mbps", "2mbps", "1mbps"];
+    const legacyQuality = { "1080p": "8mbps", "720p": "4mbps", low: "2mbps" };
+    // No stored choice means the server's network default (Original at home, Automatic away).
+    const readQualityPreset = () => {
+        const value = readStored(qualityKey) ?? legacyQuality[readStored(legacyQualityKey)] ?? null;
+        return qualityPresets.includes(value) ? value : null;
     };
 
     // Session-only selections: they survive fallback and stream restarts of
     // this page but are never stored; "Save as my defaults" writes the
     // profile-scoped preference instead.
     let selectedAudioTrackId = audioSelect?.value || controlsData.initialAudioTrackId || null;
-    let qualityCap = readQualityCap();
+    let qualityPreset = readQualityPreset();
     let playbackSpeed = Number(speedSelect?.value) > 0 ? Number(speedSelect.value) : 1;
     let subtitleChoice = subtitleSelect?.value || "learning";
     if (qualitySelect) {
-        qualitySelect.value = qualityCap;
+        qualitySelect.value = qualityPreset || "auto";
     }
 
-    const variantFor = (mode) =>
-        variants.get(`${mode}|${selectedAudioTrackId || ""}|${qualityCap}`) || null;
-
-    // Liveness of the requested stream comes from the server decision for
-    // this exact (mode, audio, quality) combination.
-    const streamIsLive = (mode) => {
-        const variant = variantFor(mode);
-        return variant ? variant.isLive === true : options[mode]?.live === true;
-    };
+    // The resolved plan of the current playback session. The server decides; this player
+    // only follows the plan and reports failures and its selections back.
+    let plan = null;
+    let delivery = null;
+    let streamSessionId = null;
+    let planGeneration = 0;
+    const failedModes = new Set();
+    const streamIsLive = () => delivery !== null && delivery.transport !== "file";
 
     const readSceneStartSeconds = () => {
         const value = new URL(window.location.href).searchParams.get("at");
@@ -182,8 +163,6 @@
     };
 
     let preference = readPreference();
-    let runtimeDeviceFailed = false;
-    let effectiveMode = "device";
     const sceneStartSeconds = readSceneStartSeconds();
     let pendingResumeTime = sceneStartSeconds !== null
         ? sceneStartSeconds
@@ -299,127 +278,122 @@
         }).catch(() => {});
     };
 
-    const deviceAllowed = () =>
-        options.device.availability !== "unsupported" &&
-        (!isHevc || supportsHevc) &&
-        !runtimeDeviceFailed;
-
-    const chooseMode = () => {
-        if (preference === "server") {
-            return "server";
-        }
-
-        if (preference === "device") {
-            return "device";
-        }
-
-        if (!deviceAllowed()) {
-            return "server";
-        }
-
-        // Auto honours a remote quality cap only when the server proved the
-        // device stream exceeds it; otherwise device-first direct play wins.
-        const device = variantFor("device");
-        const server = variantFor("server");
-        const deviceExceedsCap = device?.isAvailable === true && device.satisfiesCap === false;
-        const serverHonoursCap = server?.isAvailable === true && server.satisfiesCap === true &&
-            options.server.availability === "ready";
-        if (device?.isAvailable === false || (deviceExceedsCap && serverHonoursCap)) {
-            return "server";
-        }
-
-        return "device";
-    };
-
     // A new source resets playbackRate to defaultPlaybackRate, so both are set.
     const applySpeed = () => {
         video.defaultPlaybackRate = playbackSpeed;
         video.playbackRate = playbackSpeed;
     };
 
-    const updateQualityHint = () => {
-        if (!qualityHint) {
+    const format = (key, values = {}) =>
+        (text[key] || "").replace(/\{([A-Za-z0-9_]+)\}/g, (_, name) =>
+            name in values ? displayName(String(values[name])) : "?");
+
+    const codecNames = {
+        h264: "H.264", hevc: "HEVC", av1: "AV1", vp9: "VP9", vp8: "VP8", mpeg4: "MPEG-4",
+        aac: "AAC", mp3: "MP3", opus: "Opus", flac: "FLAC", ac3: "AC-3", eac3: "E-AC-3",
+        dts: "DTS", truehd: "TrueHD", vorbis: "Vorbis", alac: "ALAC",
+        matroska: "MKV", mp4: "MP4", webm: "WebM", mpegts: "MPEG-TS", avi: "AVI"
+    };
+    const displayName = (value) => codecNames[value?.toLowerCase?.()] || value;
+
+    const modeLabel = (mode) => text[`playback.mode.${mode}`] || mode;
+
+    // Compact status for normal users: "Direct Play · HEVC · 1080p · AAC".
+    const compactStatus = () => {
+        if (!plan || plan.mode === "unavailable") {
+            return modeLabel("unavailable");
+        }
+
+        const parts = [modeLabel(plan.mode)];
+        const output = plan.video;
+        if (output) {
+            parts.push(output.copy || !output.sourceCodec || output.sourceCodec === output.outputCodec
+                ? displayName(output.outputCodec)
+                : `${displayName(output.sourceCodec)} → ${displayName(output.outputCodec)}`);
+            const height = output.copy
+                ? output.sourceHeight
+                : Math.min(output.sourceHeight || Infinity, output.maxOutputHeight || Infinity);
+            if (Number.isFinite(height)) {
+                parts.push(`${height}p`);
+            }
+        }
+
+        if (plan.audio) {
+            parts.push(displayName(plan.audio.outputCodec));
+        }
+
+        return parts.join(" · ");
+    };
+
+    // "Why not Direct Play?": the reasons that ruled out the untouched file (and, for a
+    // transcode, the remux), then at most two notes. Never a text wall.
+    const renderReasons = () => {
+        if (!reasonsBlock || !reasonList) {
             return;
         }
 
-        const limit = Number(controlsData.capHeights?.[qualityCap]) || null;
-        const source = Number(controlsData.sourceHeight) || null;
-        const variant = variantFor(effectiveMode);
-        if (!limit || !variant) {
-            qualityHint.textContent = "";
-        } else if (variant.satisfiesCap === false) {
-            qualityHint.textContent =
-                `Device playback keeps the original ${source}p video. Choose Server playback to limit it to ${limit}p.`;
-        } else if (source && source > limit) {
-            qualityHint.textContent = `The server converts this stream to at most ${limit}p.`;
-        } else {
-            qualityHint.textContent = source
-                ? `The original ${source}p already fits this limit, so nothing extra is converted.`
-                : "Nothing extra is converted because the source resolution is unknown.";
+        reasonList.replaceChildren();
+        if (!plan) {
+            reasonsBlock.hidden = true;
+            return;
         }
+
+        const shown = new Set();
+        const lines = [];
+        const add = (reason) => {
+            const key = `${reason.code}|${JSON.stringify(reason.values || {})}`;
+            if (shown.has(reason.code) || shown.has(key) || !text[`playback.reason.${reason.code}`]) {
+                return;
+            }
+
+            shown.add(reason.code);
+            lines.push(format(`playback.reason.${reason.code}`, reason.values || {}));
+        };
+
+        const reasons = plan.reasons || [];
+        reasons.filter(x => x.rulesOut === "direct_play").forEach(add);
+        if (plan.mode === "transcode" || plan.mode === "unavailable") {
+            reasons.filter(x => x.rulesOut === "direct_stream" || x.rulesOut === "transcode").forEach(add);
+        }
+
+        const blockers = lines.length;
+        reasons.filter(x => !x.rulesOut && x.severity !== "info").slice(0, 2).forEach(add);
+        if (plan.mode !== "direct_play") {
+            reasons.filter(x => !x.rulesOut && x.severity === "info").slice(0, 2).forEach(add);
+        }
+
+        for (const line of lines.slice(0, 6)) {
+            const item = document.createElement("li");
+            item.textContent = line;
+            reasonList.append(item);
+        }
+
+        const heading = reasonsBlock.querySelector("[data-playback-reasons-heading]");
+        if (heading) {
+            heading.hidden = blockers === 0;
+        }
+
+        reasonsBlock.hidden = lines.length === 0;
     };
 
-    const buildMediaUrl = (mode, startSeconds = 0) => {
-        const url = new URL(root.dataset.mediaUrl || window.location.href, window.location.origin);
-        url.searchParams.set("mode", mode);
-
-        if (streamIsLive(mode) && startSeconds > 0) {
-            url.searchParams.set("start", String(startSeconds));
-        } else {
-            url.searchParams.delete("start");
-        }
-
-        if (selectedAudioTrackId && selectedAudioTrackId !== controlsData.fileDefaultAudioTrackId) {
-            url.searchParams.set("audio", selectedAudioTrackId);
-        } else {
-            url.searchParams.delete("audio");
-        }
-
-        if (qualityCap !== "auto") {
-            url.searchParams.set("quality", qualityCap);
-        } else {
-            url.searchParams.delete("quality");
-        }
-
-        return url.toString();
-    };
-
-    const setBadge = (availability, mode) => {
+    const setBadge = () => {
         playbackBadge.classList.remove("status-ok", "status-warning", "status-error");
-
-        if (availability === "ready") {
-            playbackBadge.classList.add("status-ok");
-            playbackBadge.textContent = mode === "device" ? "Device" : "Server";
-        } else if (availability === "preparing" || availability === "canprepare") {
+        if (!plan) {
             playbackBadge.classList.add("status-warning");
-            playbackBadge.textContent = availability === "preparing" ? "Working…" : "Preparation needed";
-        } else {
-            playbackBadge.classList.add("status-error");
-            playbackBadge.textContent = availability === "failed" ? "Failed" : "Unavailable";
+            playbackBadge.textContent = text["playback.status.checking"] || "…";
+            return;
         }
+
+        playbackBadge.classList.add(
+            plan.mode === "direct_play" ? "status-ok" : plan.mode === "unavailable" ? "status-error" : "status-warning");
+        playbackBadge.textContent = modeLabel(plan.mode);
     };
 
-    const setModeHint = () => {
-        if (preference === "device") {
-            modeHint.textContent = isHevc && !supportsHevc
-                ? "This browser does not report HEVC MP4 support. Device-only will not use server transcoding."
-                : "Device only never video-transcodes on the server.";
-            return;
-        }
-
-        if (preference === "server") {
-            modeHint.textContent = "Server mode streams H.264 from ffmpeg immediately when conversion is required.";
-            return;
-        }
-
-        if (isHevc) {
-            modeHint.textContent = supportsHevc
-                ? "Auto detected HEVC support: keep HEVC and let this device decode it."
-                : "Auto did not detect HEVC support: use the server H.264 fallback.";
-            return;
-        }
-
-        modeHint.textContent = "Auto prefers direct play or live remux and only uses live server transcoding when required.";
+    const renderPlan = () => {
+        setBadge();
+        playbackSummary.textContent = plan ? compactStatus() : text["playback.status.checking"] || "";
+        renderReasons();
+        root.dataset.playbackMode = plan?.mode || "";
     };
 
     const hideVideo = () => {
@@ -429,13 +403,25 @@
         stage.classList.add("player-placeholder");
     };
 
-    const loadSource = (mode, requestedStart = 0) => {
-        const live = streamIsLive(mode);
+    const buildMediaUrl = (startSeconds) => {
+        const url = new URL(delivery.url, window.location.origin);
+        if (streamIsLive() && delivery.startParameter && startSeconds > 0) {
+            url.searchParams.set(delivery.startParameter, startSeconds.toFixed(3));
+        }
+
+        return url.toString();
+    };
+
+    const loadSource = (requestedStart = 0) => {
+        if (!delivery) {
+            return false;
+        }
+
+        const live = streamIsLive();
         const start = live ? clampToDuration(requestedStart) : 0;
-        const selection = `${mode}|${selectedAudioTrackId || ""}|${qualityCap}`;
         const sourceKey = live
-            ? `${selection}:${start.toFixed(3)}`
-            : selection;
+            ? `${streamSessionId}:${start.toFixed(3)}`
+            : `${streamSessionId}`;
 
         if (video.dataset.playbackSource === sourceKey) {
             return false;
@@ -443,20 +429,19 @@
 
         streamStartSeconds = start;
         loadedStreamLive = live;
-        video.dataset.playbackMode = mode;
         video.dataset.playbackSource = sourceKey;
-        video.src = buildMediaUrl(mode, streamStartSeconds);
+        video.src = buildMediaUrl(streamStartSeconds);
         video.load();
         applySpeed();
         return true;
     };
 
-    const showVideo = (mode) => {
+    const showVideo = () => {
         placeholder.hidden = true;
         video.hidden = false;
         stage.classList.remove("player-placeholder");
 
-        const live = streamIsLive(mode);
+        const live = streamIsLive();
         const requestedStart = pendingResumeTime !== null && Number.isFinite(pendingResumeTime)
             ? clampToDuration(pendingResumeTime)
             : 0;
@@ -465,7 +450,7 @@
             pendingResumeTime = null;
         }
 
-        const changed = loadSource(mode, live ? requestedStart : 0);
+        const changed = loadSource(live ? requestedStart : 0);
         if (!changed && !live && pendingResumeTime !== null && video.readyState >= 1) {
             video.currentTime = requestedStart;
             pendingResumeTime = null;
@@ -596,19 +581,6 @@
                 return false;
             }
 
-            options.device = {
-                availability: bootstrap.media.device?.availability || "unsupported",
-                status: bootstrap.media.device?.message || "Device playback is unavailable.",
-                live: bootstrap.media.device?.usesLiveStream === true
-            };
-            options.server = {
-                availability: bootstrap.media.server?.availability || "unsupported",
-                status: bootstrap.media.server?.message || "Server playback is unavailable.",
-                live: bootstrap.media.server?.usesLiveStream === true
-            };
-
-            videoCodec = (bootstrap.media.videoCodec || "").toLowerCase();
-            isHevc = videoCodec === "hevc" || videoCodec === "h265";
             durationSeconds = Number(bootstrap.media.durationMs) / 1000;
             hasKnownDuration = Number.isFinite(durationSeconds) && durationSeconds > 0;
 
@@ -617,7 +589,7 @@
                 root.dataset.storageWakeUrl = bootstrap.media.availability.wakeUrl || "";
             }
 
-            runtimeDeviceFailed = false;
+            failedModes.clear();
             video.removeAttribute("src");
             delete video.dataset.playbackSource;
             video.load();
@@ -701,71 +673,114 @@
         scheduleStorageRetry(0);
     };
 
-    const applyPlayback = () => {
+    // Picture (bitmap) subtitles cannot be drawn by this player; choosing one asks the
+    // server to render it into the video. Text subtitles stay client-side cues.
+    const burnInSubtitleTrackId = () => {
+        const option = subtitleSelect?.selectedOptions[0];
+        return option?.dataset.image === "true" ? option.value : null;
+    };
+
+    const requestPlan = async () => {
+        let capabilities = null;
+        try {
+            capabilities = capabilityProbe ? await capabilityProbe.detect() : null;
+        } catch {
+            capabilities = null;
+        }
+
+        const response = await fetch(planUrl, {
+            method: "POST",
+            credentials: "same-origin",
+            headers: {
+                "Accept": "application/json",
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                capabilities,
+                audioTrackId: selectedAudioTrackId,
+                subtitleTrackId: burnInSubtitleTrackId(),
+                quality: qualityPreset,
+                mode: preference,
+                network: capabilityProbe?.networkReport() || null,
+                failedModes: [...failedModes],
+                replacesSessionId: streamSessionId
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error(`Playback plan failed with ${response.status}.`);
+        }
+
+        return response.json();
+    };
+
+    const showPlayerError = (message) => {
+        if (error) {
+            error.hidden = !message;
+            error.textContent = message || "";
+        }
+    };
+
+    const applyPlayback = async () => {
         if (!storageIsAvailable()) {
             startStorageRetry(false);
             return;
         }
 
-        effectiveMode = chooseMode();
-        let option = options[effectiveMode];
+        const generation = ++planGeneration;
+        plan = null;
+        renderPlan();
 
-        if (effectiveMode === "device" && isHevc && !supportsHevc) {
-            option = {
-                availability: "unsupported",
-                status: "This browser does not report HEVC MP4 support."
-            };
-        }
-
-        setModeHint();
-        updateQualityHint();
-        playbackStatus.textContent = option.status;
-        playbackSummary.textContent = option.status;
-        setBadge(option.availability, effectiveMode);
-
-        if (deviceForm) {
-            deviceForm.hidden =
-                effectiveMode !== "device" ||
-                !["canprepare", "failed"].includes(option.availability);
-        }
-
-        if (serverForm) {
-            serverForm.hidden =
-                effectiveMode !== "server" ||
-                !["canprepare", "failed"].includes(option.availability);
-        }
-
-        if (working) {
-            working.hidden = option.availability !== "preparing";
-        }
-
-        if (option.availability === "ready") {
-            if (error) {
-                error.hidden = true;
+        let response;
+        try {
+            response = await requestPlan();
+        } catch {
+            if (generation === planGeneration) {
+                hideVideo();
+                playbackStatus.textContent = text["playback.status.planFailed"] || "";
+                showPlayerError(text["playback.status.planFailed"]);
             }
-            showVideo(effectiveMode);
             return;
         }
 
-        hideVideo();
+        // A newer selection (quality, audio, mode) superseded this request.
+        if (generation !== planGeneration) {
+            return;
+        }
 
+        plan = response.plan;
+        streamSessionId = response.sessionId || null;
+        delivery = response.delivery || null;
+        renderPlan();
+
+        if (plan.mode === "unavailable" || !delivery) {
+            if (response.availability && response.availability.state !== "available") {
+                storageState = response.availability.state || "unknown";
+                root.dataset.storageWakeUrl = response.availability.wakeUrl || "";
+                startStorageRetry(false);
+                return;
+            }
+
+            hideVideo();
+            playbackStatus.textContent = text["playback.status.failed"] || "";
+            return;
+        }
+
+        showPlayerError(null);
+        showVideo();
     };
 
     modeSelect.addEventListener("change", () => {
         const resumeAt = absoluteCurrentTime();
         const shouldResume = !video.paused && !video.ended;
 
-        preference = modeSelect.value;
-        runtimeDeviceFailed = false;
+        preference = modePreferences.includes(modeSelect.value) ? modeSelect.value : "auto";
+        failedModes.clear();
         pendingResumeTime = resumeAt;
         resumeShouldPlay = shouldResume;
-        storePreference(preference);
-
-        if (error) {
-            error.hidden = true;
-        }
-
-        applyPlayback();
+        store(preferenceKey, preference);
+        showPlayerError(null);
+        void applyPlayback();
     });
 
     let cues = [];
@@ -1081,9 +1096,15 @@
         sync();
     };
 
+    let plannedBurnIn = null;
     subtitleSelect?.addEventListener("change", () => {
         subtitleChoice = subtitleSelect.value;
         void applySubtitleChoice();
+        // Picture subtitles change the stream itself, so they need a new plan.
+        if (burnInSubtitleTrackId() !== plannedBurnIn) {
+            plannedBurnIn = burnInSubtitleTrackId();
+            restartWithSelection();
+        }
     });
 
     speedSelect?.addEventListener("change", () => {
@@ -1092,23 +1113,23 @@
         applySpeed();
     });
 
-    const restartWithSelection = () => {
+    function restartWithSelection() {
         pendingResumeTime = absoluteCurrentTime();
         resumeShouldPlay = !video.paused && !video.ended;
-        if (error) {
-            error.hidden = true;
-        }
-        applyPlayback();
-    };
+        failedModes.clear();
+        showPlayerError(null);
+        void applyPlayback();
+    }
 
     audioSelect?.addEventListener("change", () => {
         selectedAudioTrackId = audioSelect.value || null;
         restartWithSelection();
     });
 
+    // A quality picked here overrides the network default for this device.
     qualitySelect?.addEventListener("change", () => {
-        qualityCap = qualityCaps.includes(qualitySelect.value) ? qualitySelect.value : "auto";
-        storeQualityCap(qualityCap);
+        qualityPreset = qualityPresets.includes(qualitySelect.value) ? qualitySelect.value : "auto";
+        store(qualityKey, qualityPreset);
         restartWithSelection();
     });
 
@@ -1163,7 +1184,7 @@
         if (loadedStreamLive) {
             pendingResumeTime = null;
             resumeShouldPlay = shouldPlay;
-            loadSource(effectiveMode, target);
+            loadSource(target);
         } else if (video.readyState >= 1) {
             video.currentTime = target;
             if (shouldPlay) {
@@ -1394,23 +1415,18 @@
             return;
         }
 
-        if (preference === "auto" && effectiveMode === "device") {
+        // Report the failed mode and let the server choose the next one (Direct Play →
+        // Direct Stream → Transcode) instead of deciding a fallback here.
+        if (plan && plan.mode !== "unavailable" && !failedModes.has(plan.mode)) {
+            failedModes.add(plan.mode);
             pendingResumeTime = absoluteCurrentTime();
             resumeShouldPlay = playbackWasRequested;
-            runtimeDeviceFailed = true;
-            if (error) {
-                error.hidden = false;
-                error.textContent = "Device playback failed. Switching to the server fallback.";
-            }
-
-            applyPlayback();
+            showPlayerError(text["playback.status.retrying"]);
+            void applyPlayback();
             return;
         }
 
-        if (error) {
-            error.hidden = false;
-            error.textContent = "The selected playback stream could not be played by this browser.";
-        }
+        showPlayerError(text["playback.status.failed"]);
     });
 
     storageRetry?.addEventListener("click", () => {
@@ -1475,10 +1491,30 @@
         if (absoluteCurrentTime() > 0) {
             persistProgress(false, true);
         }
+
+        // Ending the stream session stops its server remux/transcode right away instead of
+        // waiting for the idle cleanup.
+        if (streamSessionId && root.dataset.streamSessionUrlTemplate) {
+            void fetch(root.dataset.streamSessionUrlTemplate.replace("__session__", streamSessionId), {
+                method: "DELETE",
+                credentials: "same-origin",
+                keepalive: true
+            }).catch(() => {});
+        }
+    });
+
+    // Back from the page cache: the stream session was ended on pagehide, so plan again.
+    window.addEventListener("pageshow", event => {
+        if (event.persisted && streamSessionId) {
+            pendingResumeTime = absoluteCurrentTime();
+            streamSessionId = null;
+            delete video.dataset.playbackSource;
+            void applyPlayback();
+        }
     });
 
     updateTimeline();
     applySpeed();
-    applyPlayback();
+    void applyPlayback();
     void applySubtitleChoice();
 })();

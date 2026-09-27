@@ -54,7 +54,8 @@ public static class ClientApiContract
                 MediaSegments: true,
                 Trickplay: true,
                 OfflineLibrary: true,
-                TtsPreferences: true));
+                TtsPreferences: true,
+                PlaybackPlan: true));
     }
 }
 
@@ -146,6 +147,21 @@ public static class ClientApiRoutes
         string fileName) =>
         $"{Hls(episodeId)}/{sessionId:D}/{fileName}";
 
+    public static string PlaybackPlan(Guid episodeId) =>
+        $"{Episode(episodeId)}/playback-plan";
+
+    public static string StreamSession(Guid sessionId) =>
+        $"{ClientApiContract.BasePath}/stream-sessions/{sessionId:D}";
+
+    public static string StreamSessionStream(Guid sessionId) =>
+        $"{StreamSession(sessionId)}/stream";
+
+    public static string StreamSessionHls(Guid sessionId) =>
+        $"{StreamSession(sessionId)}/hls";
+
+    public static string StreamSessionHlsAsset(Guid sessionId, Guid hlsSessionId, string fileName) =>
+        $"{StreamSessionHls(sessionId)}/{hlsSessionId:D}/{fileName}";
+
     public static string PlaybackSessions =>
         $"{ClientApiContract.BasePath}/playback-sessions";
 
@@ -206,7 +222,8 @@ public sealed record ClientFeatureFlags(
     bool MediaSegments,
     bool Trickplay,
     bool OfflineLibrary,
-    bool TtsPreferences = false);
+    bool TtsPreferences = false,
+    bool PlaybackPlan = false);
 
 public sealed record ClientErrorResponse(
     string Code,
