@@ -3,7 +3,10 @@ using Jularr.Web.Features.Acquisition.Import;
 using Jularr.Web.Features.Acquisition.Monitoring;
 using Jularr.Web.Features.Acquisition.Ownership;
 using Jularr.Web.Features.Acquisition.Pipeline;
+using Jularr.Web.Features.Media.Optimization;
 using Jularr.Web.Features.Operations;
+using Jularr.Web.Features.Sonarr;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Jularr.Tests;
 
@@ -120,6 +123,79 @@ public sealed class AnimeAcquisitionPipelineTests
         Assert.AreEqual(1, environment.Sabnzbd.Grabs.Count);
         Assert.AreEqual(1, (await environment.Acquisitions.LoadAsync()).Acquisitions.Count);
         Assert.AreEqual(AnimeAcquisitionAttemptStatus.Grabbed, (await environment.MonitoringStateAsync()).Attempts["frieren:S01E02"].Status);
+    }
+
+    [TestMethod]
+    [DataRow(LosslessPlaybackOptimizationMode.Off, 0)]
+    [DataRow(LosslessPlaybackOptimizationMode.SafeOnly, 1)]
+    public async Task ImportQueuesPlaybackOptimizationOnlyWhenEnabled(LosslessPlaybackOptimizationMode mode, int expectedOperations)
+    {
+        await using var environment = await AnimeAcquisitionEnvironment.CreateAsync();
+        await environment.SeedFrierenAsync();
+        await environment.ImportSettings.UpdateAsync(state => state with { PlaybackOptimization = mode });
+        AddStandardReleases(environment);
+        await environment.Scheduler.RunNowAsync(null, AnimeSearchTrigger.PeriodicMissing, CancellationToken.None);
+
+        var download = environment.AddCompletedDownload(Best, $"{Best}.mkv");
+        var completed = await environment.CompleteLatestDownloadAsync(download);
+        var record = await environment.ImportCompletedAsync(completed, download);
+
+        Assert.AreEqual(AnimeImportStatus.Imported, record!.Status, record.Message);
+        var optimizations = await environment.Operations.ListAsync(
+            new OperationListFilter(Kind: MediaContainerOptimizer.OperationKind));
+        Assert.AreEqual(expectedOperations, optimizations.Count);
+        if (expectedOperations > 0)
+        {
+            Assert.AreEqual(OperationStatus.Queued, optimizations[0].Status, "The import does not wait for the optimization.");
+            Assert.AreEqual(OperationLane.Maintenance, optimizations[0].Lane);
+            var importLog = (await environment.LogsAsync(AnimeImportExecutor.LogModule)).Select(entry => entry.Message);
+            CollectionAssert.Contains(importLog.ToList(), "Queued lossless playback optimization for 1 file(s).");
+        }
+    }
+
+    [TestMethod]
+    public async Task OptimizedReplacementWaitsForImportsAndMovesAcquisitionPathRecords()
+    {
+        await using var environment = await AnimeAcquisitionEnvironment.CreateAsync();
+        await environment.SeedFrierenAsync();
+        AddStandardReleases(environment);
+        await environment.Scheduler.RunNowAsync(null, AnimeSearchTrigger.PeriodicMissing, CancellationToken.None);
+        var download = environment.AddCompletedDownload(Best, $"{Best}.mkv");
+        var record = await environment.ImportCompletedAsync(await environment.CompleteLatestDownloadAsync(download), download);
+        Assert.AreEqual(AnimeImportStatus.Imported, record!.Status, record.Message);
+        var media = (await environment.MediaFileAsync(1, 2))!;
+        var replacement = new MediaFileReplacement(media.Id, media.Path, Path.ChangeExtension(media.Path, ".mp4"));
+
+        await environment.WithScopeAsync(async services =>
+        {
+            var participant = new AcquisitionMediaReplacementParticipant(
+                environment.Db,
+                environment.Ownership,
+                services.GetRequiredService<SonarrObservationService>(),
+                environment.Imports);
+
+            using (AnimeImportExecutor.TryEnterExecution())
+            {
+                var busy = await participant.CheckAsync(replacement, CancellationToken.None);
+                Assert.AreEqual(MediaReplacementVerdict.Wait, busy.Verdict, "A moving import keeps the file in place.");
+            }
+
+            var allowed = await participant.CheckAsync(replacement, CancellationToken.None);
+            Assert.AreEqual(MediaReplacementVerdict.Allowed, allowed.Verdict, allowed.Reason);
+            Assert.IsNull(AnimeImportExecutor.TryEnterExecution(), "The lease excludes imports until the path is recorded.");
+            allowed.Lease!.Dispose();
+
+            File.Move(replacement.SourcePath, replacement.TargetPath);
+            await participant.OnReplacedAsync(replacement, CancellationToken.None);
+            await participant.OnReplacedAsync(replacement, CancellationToken.None);
+            return true;
+        });
+
+        var paths = (await environment.Ownership.LoadAsync()).Paths.Values.Select(path => path.Path).ToArray();
+        CollectionAssert.Contains(paths, SonarrParallelSafety.NormalizePath(replacement.TargetPath));
+        CollectionAssert.DoesNotContain(paths, SonarrParallelSafety.NormalizePath(replacement.SourcePath));
+        var imported = (await environment.Imports.LoadAsync()).Imports.Single().Files.Single(file => file.Status == AnimeImportFileStatus.Imported);
+        Assert.AreEqual(replacement.TargetPath, imported.ImportedPath);
     }
 
     [TestMethod]

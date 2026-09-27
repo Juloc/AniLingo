@@ -79,6 +79,16 @@
         </form>
     </section>
 
+    <section class="panel">
+        <div class="panel-heading">
+            <h2>@ui["library.animeRepair.optimizeHeading"]</h2>
+        </div>
+        <p class="muted">@ui["library.animeRepair.optimizeDescription"]</p>
+        <form method="post" asp-page-handler="Optimize" asp-route-id="@Model.AnimeId">
+            <button class="button" type="submit" @(Model.Folder is null ? "disabled" : "")>@ui["library.animeRepair.optimizeHeading"]</button>
+        </form>
+    </section>
+
     @if (Model.Metadata is { } metadata)
     {
         <section class="panel">
