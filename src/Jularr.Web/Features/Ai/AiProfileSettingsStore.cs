@@ -82,6 +82,7 @@ public sealed class AiProfileSettingsStore
                         apiKey,
                         persisted.TranslationMode)
                     {
+                        ImageModel = persisted.ImageModel,
                         ReasoningEffort = persisted.ReasoningEffort,
                         ServiceTier = persisted.ServiceTier,
                         MaxOutputTokens = persisted.MaxOutputTokens,
@@ -136,6 +137,7 @@ public sealed class AiProfileSettingsStore
                     ? null
                     : protector.Protect(validated.ApiKey),
                 validated.TranslationMode,
+                validated.ImageModel,
                 validated.ReasoningEffort,
                 validated.ServiceTier,
                 validated.MaxOutputTokens,
@@ -242,11 +244,19 @@ public sealed class AiProfileSettingsStore
                 BaseUrl = null,
                 Model = serverModel,
                 ApiKey = null,
+                ImageModel = null,
                 ReasoningEffort = effort,
                 ServiceTier = serviceTier,
                 MaxOutputTokens = null,
                 Overrides = AiOperationOverrides.From(settings.Overrides.Items, serverModel, effort)
             };
+        }
+
+        var imageModel = settings.ImageModel?.Trim();
+        if (imageModel?.Length > 120)
+        {
+            throw new InvalidOperationException(
+                "Enter a valid image model name.");
         }
 
         var baseUrl = settings.BaseUrl?.Trim();
@@ -277,6 +287,7 @@ public sealed class AiProfileSettingsStore
             BaseUrl = baseUrl.TrimEnd('/'),
             Model = model,
             ApiKey = string.IsNullOrWhiteSpace(apiKey) ? null : apiKey,
+            ImageModel = string.IsNullOrWhiteSpace(imageModel) ? null : imageModel,
             ReasoningEffort = effort,
             ServiceTier = serviceTier,
             Overrides = AiOperationOverrides.From(settings.Overrides.Items, model, effort)
@@ -346,6 +357,7 @@ public sealed class AiProfileSettingsStore
         string? Model,
         string? ProtectedApiKey,
         AiTranslationMode TranslationMode,
+        string? ImageModel = null,
         string? ReasoningEffort = null,
         string? ServiceTier = null,
         int? MaxOutputTokens = null,
