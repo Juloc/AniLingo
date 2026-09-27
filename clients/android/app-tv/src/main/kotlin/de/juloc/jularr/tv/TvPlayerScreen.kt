@@ -4,6 +4,7 @@ import android.view.SurfaceView
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,11 +31,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -86,6 +90,9 @@ fun TvPlayerScreen(
     val context = LocalContext.current
     val design = remember { TvPlayerDesignLoader.load(context) }
     var uiState by remember { mutableStateOf(TvPlayerUiState()) }
+    var controlsInteractionRevision by remember { mutableIntStateOf(0) }
+    val playerFocus = remember { FocusRequester() }
+    val primaryControlFocus = remember { FocusRequester() }
     var isPlaying by remember { mutableStateOf(player.player.isPlaying) }
     var positionMs by remember { mutableStateOf(player.player.currentPosition.coerceAtLeast(0)) }
     var durationMs by remember { mutableStateOf(player.player.duration.takeIf { it > 0 } ?: 0L) }
@@ -143,6 +150,39 @@ fun TvPlayerScreen(
             focusedWordIndex = transition.state.focusedWordIndex,
             onOpenOnPhone = onOpenOnPhone,
         )
+    }
+
+    // Keep remote focus inside the player: the primary transport control while the
+    // control bar is shown, otherwise the player surface itself. Hiding the controls
+    // (Back or auto-hide) removes the focused button; without this the D-pad keys
+    // would no longer reach the player key handler.
+    LaunchedEffect(uiState.controlsVisible, uiState.learningLayer, companionVisible) {
+        if (companionVisible) return@LaunchedEffect
+        val target = if (uiState.controlsVisible &&
+            uiState.learningLayer == TvLearningLayer.CLOSED
+        ) {
+            primaryControlFocus
+        } else {
+            playerFocus
+        }
+        runCatching { target.requestFocus() }
+    }
+
+    LaunchedEffect(
+        uiState.controlsVisible,
+        uiState.learningLayer,
+        isPlaying,
+        companionVisible,
+        controlsInteractionRevision,
+    ) {
+        if (uiState.controlsVisible &&
+            uiState.learningLayer == TvLearningLayer.CLOSED &&
+            !companionVisible &&
+            isPlaying
+        ) {
+            delay(design.controlsAutoHideMs)
+            apply(TvPlayerInteraction.autoHide(uiState, isPlaying, companionVisible))
+        }
     }
 
     LaunchedEffect(remoteCommand?.commandId) {
@@ -249,6 +289,12 @@ fun TvPlayerScreen(
                     return@onPreviewKeyEvent false
                 }
 
+                if (uiState.controlsVisible &&
+                    uiState.learningLayer == TvLearningLayer.CLOSED
+                ) {
+                    controlsInteractionRevision += 1
+                }
+
                 val transition = when (event.key) {
                     Key.MediaPlayPause,
                     Key.MediaPlay,
@@ -299,7 +345,9 @@ fun TvPlayerScreen(
 
                 apply(transition)
                 true
-            },
+            }
+            .focusRequester(playerFocus)
+            .focusable(),
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             VideoSurface(player)
@@ -334,6 +382,7 @@ fun TvPlayerScreen(
                     selectedAudioTrackId = selectedAudioTrackId,
                     selectedSubtitleTrackId = selectedSubtitleTrackId,
                     design = design,
+                    primaryControlFocus = primaryControlFocus,
                     onSelectAudioTrack = onSelectAudioTrack,
                     onSelectSubtitleTrack = onSelectSubtitleTrack,
                     onBackTen = {
@@ -458,6 +507,7 @@ private fun PlayerControls(
     selectedAudioTrackId: String?,
     selectedSubtitleTrackId: String?,
     design: TvPlayerDesign,
+    primaryControlFocus: FocusRequester,
     onSelectAudioTrack: (String) -> Unit,
     onSelectSubtitleTrack: (String?) -> Unit,
     onBackTen: () -> Unit,
@@ -510,7 +560,10 @@ private fun PlayerControls(
                     modifier = Modifier.size(30.dp),
                 )
             }
-            Button(onClick = onPlayPause) {
+            Button(
+                onClick = onPlayPause,
+                modifier = Modifier.focusRequester(primaryControlFocus),
+            ) {
                 Icon(
                     imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                     contentDescription = if (isPlaying) "Pause" else "Play",
