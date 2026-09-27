@@ -6,6 +6,10 @@
     ViewData["Title"] = Model.Ui["nav.home"];
 }
 
+@section Head {
+    <link rel="stylesheet" href="~/css/home.css" asp-append-version="true" />
+}
+
 <header class="jularr-hero">
     <div class="jularr-hero-art art-tint ink-night" aria-hidden="true"></div>
     <img class="jularr-hero-heroine" src="~/brand/heroine.webp" alt="" aria-hidden="true" width="720" height="900" />
@@ -25,14 +29,21 @@
     </div>
 </header>
 
+<nav class="home-filter-chips" aria-label="@Model.Ui["home.filter.aria"]" data-home-filter>
+    @foreach (var chip in IndexModel.TypeChips)
+    {
+        var isActive = chip.Category == Model.ActiveType;
+        <a class="home-filter-chip@(isActive ? " active" : "")"
+           href="@IndexModel.ChipHref(chip)"
+           aria-current="@(isActive ? "true" : null)">@Model.Ui[chip.LabelKey]</a>
+    }
+</nav>
+
 @if (Model.ContinueWatching.Count > 0)
 {
     <section class="section section-first" data-continue-watching>
         <div class="section-heading">
-            <div>
-                <span class="eyebrow">@Model.Ui["home.continueWatching.eyebrow"]</span>
-                <h2>@Model.Ui["home.continueWatching"]</h2>
-            </div>
+            <h2><a href="@Model.ContinueWatchingDiscoverUrl">@Model.Ui["home.continueWatching"]</a></h2>
         </div>
 
         <div class="media-grid">
@@ -69,10 +80,7 @@
 {
     <section class="section section-first" data-continue-reading>
         <div class="section-heading">
-            <div>
-                <span class="eyebrow">@Model.Ui["home.continueReading.eyebrow"]</span>
-                <h2>@Model.Ui["home.continueReading"]</h2>
-            </div>
+            <h2><a href="@Model.ContinueReadingDiscoverUrl">@Model.Ui["home.continueReading"]</a></h2>
         </div>
 
         <div class="media-grid">
@@ -127,10 +135,9 @@
                  Model.Ui["home.metric.discovered"])' />
 </section>
 
-<section class="section">
+<section class="section section-secondary">
     <div class="section-heading">
         <div>
-            <span class="eyebrow">@Model.Ui["home.library.eyebrow"]</span>
             <h2>@Model.Ui["home.library.recent"]</h2>
         </div>
         <a class="text-link" href="/Library">@Model.Ui["home.library.view"]</a>

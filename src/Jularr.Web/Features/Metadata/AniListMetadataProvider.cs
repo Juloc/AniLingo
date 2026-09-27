@@ -15,9 +15,9 @@ public sealed class AniListMetadataProvider(
     private const int MaximumBrowseLimit = 24;
 
     private const string SearchQuery = """
-        query ($search: String!, $perPage: Int!) {
+        query ($search: String!, $perPage: Int!, $genre: [String]) {
           Page(page: 1, perPage: $perPage) {
-            media(search: $search, type: ANIME, isAdult: false) {
+            media(search: $search, type: ANIME, isAdult: false, genre_in: $genre) {
               id
               title { romaji english native }
               description(asHtml: false)
@@ -37,9 +37,9 @@ public sealed class AniListMetadataProvider(
         """;
 
     private const string BrowseQuery = """
-        query ($perPage: Int!, $sort: [MediaSort!]) {
+        query ($perPage: Int!, $sort: [MediaSort!], $genre: [String]) {
           Page(page: 1, perPage: $perPage) {
-            media(type: ANIME, isAdult: false, sort: $sort) {
+            media(type: ANIME, isAdult: false, sort: $sort, genre_in: $genre) {
               id
               title { romaji english native }
               description(asHtml: false)
@@ -144,6 +144,13 @@ public sealed class AniListMetadataProvider(
     public async Task<IReadOnlyList<AnimeMetadataCandidate>> SearchAsync(
         string query,
         int limit,
+        CancellationToken cancellationToken) =>
+        await SearchAsync(query, limit, null, cancellationToken);
+
+    public async Task<IReadOnlyList<AnimeMetadataCandidate>> SearchAsync(
+        string query,
+        int limit,
+        string? genre,
         CancellationToken cancellationToken)
     {
         var normalized = query.Trim();
@@ -157,7 +164,8 @@ public sealed class AniListMetadataProvider(
             new
             {
                 search = normalized,
-                perPage = Math.Clamp(limit, 1, MaximumSearchLimit)
+                perPage = Math.Clamp(limit, 1, MaximumSearchLimit),
+                genre = GenreVariable(genre)
             },
             cancellationToken);
 
@@ -167,6 +175,13 @@ public sealed class AniListMetadataProvider(
     public async Task<IReadOnlyList<AnimeMetadataCandidate>> BrowseAsync(
         bool trending,
         int limit,
+        CancellationToken cancellationToken) =>
+        await BrowseAsync(trending, limit, null, cancellationToken);
+
+    public async Task<IReadOnlyList<AnimeMetadataCandidate>> BrowseAsync(
+        bool trending,
+        int limit,
+        string? genre,
         CancellationToken cancellationToken)
     {
         var response = await SendAsync(
@@ -176,12 +191,17 @@ public sealed class AniListMetadataProvider(
                 perPage = Math.Clamp(limit, 1, MaximumBrowseLimit),
                 sort = trending
                     ? new[] { "TRENDING_DESC", "POPULARITY_DESC" }
-                    : new[] { "SCORE_DESC", "POPULARITY_DESC" }
+                    : new[] { "SCORE_DESC", "POPULARITY_DESC" },
+                genre = GenreVariable(genre)
             },
             cancellationToken);
 
         return ParseSearchResponse(response);
     }
+
+    // AniList treats a null genre_in as "no filter"; an empty array would match nothing.
+    private static string[]? GenreVariable(string? genre) =>
+        string.IsNullOrWhiteSpace(genre) ? null : [genre];
 
     public async Task<AnimeMetadataCandidate?> GetAsync(
         string externalId,
