@@ -183,15 +183,18 @@ public sealed class ReleaseCalendarPresenter
     };
 
     /// <summary>The canonical page of the event: the local episode when it exists, else the media page.</summary>
-    public static string? Href(ReleaseEvent release) => release.MediaType switch
-    {
-        ReleaseMediaType.Anime when release.UnitId is { } episodeId && release.Local.IsAvailable => $"/Library/Episode/{episodeId}",
-        ReleaseMediaType.Anime => $"/Library/Anime/{release.MediaId}",
-        ReleaseMediaType.Manga => $"/Manga/Series/{release.MediaId}",
-        ReleaseMediaType.LightNovel => $"/Novels/Work/{release.MediaId}",
-        ReleaseMediaType.Book => $"/Books/Library/{release.MediaId}",
-        _ => null
-    };
+    public static string? Href(ReleaseEvent release) =>
+        !string.IsNullOrWhiteSpace(release.DetailsUrl)
+            ? release.DetailsUrl
+            : release.MediaType switch
+            {
+                ReleaseMediaType.Anime when release.UnitId is { } episodeId && release.Local.IsAvailable => $"/Library/Episode/{episodeId}",
+                ReleaseMediaType.Anime => $"/Library/Anime/{release.MediaId}",
+                ReleaseMediaType.Manga => $"/Manga/Series/{release.MediaId}",
+                ReleaseMediaType.LightNovel => $"/Novels/Work/{release.MediaId}",
+                ReleaseMediaType.Book => $"/Books/Library/{release.MediaId}",
+                _ => null
+            };
 
     public static string FilterValue(ReleaseMediaType type) => type switch
     {
