@@ -1,6 +1,7 @@
 using Jularr.Web.Data;
 using Jularr.Web.Features.Artwork;
 using Jularr.Web.Features.Auth;
+using Jularr.Web.Features.Franchises;
 using Jularr.Web.Features.Learning;
 using Jularr.Web.Features.Library;
 using Jularr.Web.Features.Localization;
@@ -8,6 +9,7 @@ using Jularr.Web.Features.Metadata;
 using Jularr.Web.Features.Operations;
 using Jularr.Web.Features.Progress;
 using Jularr.Web.Features.Tracking;
+using Jularr.Web.Features.Watchlist;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
@@ -20,7 +22,8 @@ public sealed class AnimeModel(
     CurrentAccountContext currentAccount,
     OperationRunner operations,
     EpisodeProgressService episodeProgressService,
-    AniListAccountService aniListAccountService) : PageModel
+    AniListAccountService aniListAccountService,
+    FranchiseStore franchises) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public Guid AnimeId { get; private set; }
@@ -41,6 +44,7 @@ public sealed class AnimeModel(
     public bool IsOwner => currentAccount.IsOwner;
     public bool ShowContentMetrics { get; private set; }
     public ExternalProgressSummary? ExternalProgress { get; private set; }
+    public IReadOnlyList<FranchiseSummary> Franchises { get; private set; } = [];
 
     public async Task<IActionResult> OnGetAsync(
         Guid id,
@@ -61,6 +65,17 @@ public sealed class AnimeModel(
         LocalAnimeTitle = anime.Title;
         Metadata = await metadataService.GetAsync(id, cancellationToken);
         AnimeTitle = Metadata?.PreferredTitle ?? anime.Title;
+        if (Metadata is { } franchiseMetadata &&
+            !string.IsNullOrWhiteSpace(franchiseMetadata.Provider) &&
+            !string.IsNullOrWhiteSpace(franchiseMetadata.ExternalId))
+        {
+            Franchises = await franchises.FindForMemberAsync(
+                new WatchlistIdentity(
+                    WatchlistMediaType.Anime,
+                    franchiseMetadata.Provider,
+                    franchiseMetadata.ExternalId),
+                cancellationToken);
+        }
 
         // Local NFO plot/year is a display fallback only: it is never shown once provider
         // metadata exists, matching the manual > provider > NFO > folder precedence.

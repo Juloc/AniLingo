@@ -1,9 +1,11 @@
 using Jularr.Web.Data;
 using Jularr.Web.Features.Auth;
+using Jularr.Web.Features.Franchises;
 using Jularr.Web.Features.Localization;
 using Jularr.Web.Features.Novels;
 using Jularr.Web.Features.Operations;
 using Jularr.Web.Features.Tracking;
+using Jularr.Web.Features.Watchlist;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
@@ -21,7 +23,8 @@ public sealed class WorkModel(
     NovelJobs jobs,
     NovelEpubImportService epubImports,
     CurrentAccountContext account,
-    OperationRunner operations) : PageModel
+    OperationRunner operations,
+    FranchiseStore franchises) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public NovelWorkDetail? Detail { get; private set; }
@@ -32,6 +35,7 @@ public sealed class WorkModel(
     public string SearchQuery { get; private set; } = "";
     public bool IsSearching { get; private set; }
     public bool IsOwner => account.IsOwner;
+    public IReadOnlyList<FranchiseSummary> Franchises { get; private set; } = [];
 
     public async Task<IActionResult> OnGetAsync(
         Guid id,
@@ -43,6 +47,17 @@ public sealed class WorkModel(
         if (Detail is null)
         {
             return NotFound();
+        }
+
+        if (!string.IsNullOrWhiteSpace(Detail.Work.MetadataProvider) &&
+            !string.IsNullOrWhiteSpace(Detail.Work.MetadataExternalId))
+        {
+            Franchises = await franchises.FindForMemberAsync(
+                new WatchlistIdentity(
+                    WatchlistMediaType.LightNovel,
+                    Detail.Work.MetadataProvider,
+                    Detail.Work.MetadataExternalId),
+                cancellationToken);
         }
 
         Progress = await progress.GetProgressAsync(

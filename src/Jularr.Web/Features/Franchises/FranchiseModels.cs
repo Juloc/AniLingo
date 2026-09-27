@@ -1,4 +1,5 @@
 using Jularr.Web.Features.Watchlist;
+using Jularr.Web.Features.Localization;
 
 namespace Jularr.Web.Features.Franchises;
 
@@ -18,3 +19,7 @@ public sealed record FranchiseMember(
     string? RelationType,
     bool IsSeed,
     DateTime? RelationsCheckedAtUtc = null);
+
+public sealed record FranchiseLinksViewModel(
+    UiTextBundle Ui,
+    IReadOnlyList<FranchiseSummary> Franchises);
