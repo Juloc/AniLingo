@@ -40,7 +40,8 @@ public sealed class FranchiseService(
         {
             await RefreshAsync(franchiseId, cancellationToken);
         }
-        catch (MetadataProviderException exception)
+        catch (Exception exception) when (
+            exception is MetadataProviderException or NovelMetadataProviderException)
         {
             logger.LogInformation(
                 exception,
