@@ -69,7 +69,10 @@ public sealed class AcquisitionRequestService(
     public async Task<AcquisitionRequest> ContinueAsync(Guid id, CancellationToken cancellationToken)
     {
         var request = await RequireAsync(id, cancellationToken);
-        if (request.Status is not (AcquisitionRequestStatus.Approved or AcquisitionRequestStatus.Downloading))
+        if (request.Status is not (
+                AcquisitionRequestStatus.Approved or
+                AcquisitionRequestStatus.Downloading or
+                AcquisitionRequestStatus.Importing))
         {
             return request;
         }

@@ -200,6 +200,38 @@ public sealed class ReadingAcquisitionTests
     }
 
     [TestMethod]
+    public void TriedReleaseIsNeverSelectedAgain()
+    {
+        var first = Candidate("Frieren Vol 1 CBZ");
+        var second = Candidate("Frieren Vol 1 Digital CBZ");
+        var search = new ReadingUsenetSearchResult(
+            [],
+            [
+                new RankedReadingRelease(
+                    first,
+                    ReadingReleaseParser.Parse(first.Title),
+                    150,
+                    null),
+                new RankedReadingRelease(
+                    second,
+                    ReadingReleaseParser.Parse(second.Title),
+                    140,
+                    null)
+            ],
+            [],
+            UsedCategoryFallback: false);
+
+        var picked = ReadingAcquisitionEngine.PickNextUntried(
+            search,
+            [first.Identity]);
+
+        Assert.IsNotNull(picked);
+        Assert.AreEqual(
+            second.Identity,
+            picked.Release.Identity);
+    }
+
+    [TestMethod]
     public void RetryBackoffMatchesBookStyleCadence()
     {
         Assert.AreEqual(TimeSpan.FromHours(6), ReadingAcquisitionEngine.SearchBackoff(1));
