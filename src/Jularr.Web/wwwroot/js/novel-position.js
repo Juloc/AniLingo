@@ -115,9 +115,12 @@
         // The saved paragraph index is trusted only while its text still starts
         // with the stored anchor text; otherwise the anchor text is searched.
         const findResumeParagraph = () => {
-            const language = shell.dataset.anchorLanguage === "de" && reader.hasTranslation()
-                ? "de"
-                : "ja";
+            const requestedLanguage = shell.dataset.anchorLanguage;
+            const language = requestedLanguage === "de-gemma" && reader.hasTranslateGemma()
+                ? "de-gemma"
+                : requestedLanguage === "de" && reader.hasTranslation()
+                    ? "de"
+                    : "ja";
             const paragraphs = reader.paragraphsFor(language);
             const requestedIndex = shell.dataset.anchorParagraph === ""
                 ? NaN
@@ -159,12 +162,20 @@
         // Jump to a bookmark/highlight anchor of the current chapter.
         const scrollTo = target => {
             if (!target) return;
-            const language = target.language === "de" && reader.hasTranslation()
-                ? "de"
-                : "ja";
+            const language = target.language === "de-gemma" && reader.hasTranslateGemma()
+                ? "de-gemma"
+                : target.language === "de" && reader.hasTranslation()
+                    ? "de"
+                    : "ja";
+
+            if (language === "de-gemma") {
+                reader.applyTranslationSource("gemma");
+            } else if (language === "de") {
+                reader.applyTranslationSource("ai");
+            }
 
             if (reader.currentView() !== "both") {
-                reader.applyView(language);
+                reader.applyView(language === "ja" ? "ja" : "de");
             }
 
             requestAnimationFrame(() => {

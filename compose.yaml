@@ -7,6 +7,11 @@ services:
       - default
     ports:
       - "8097:8080"
+    environment:
+      TranslateGemma__Endpoint: ${TRANSLATEGEMMA_ENDPOINT:-}
+      TranslateGemma__Model: ${TRANSLATEGEMMA_MODEL:-translategemma-12b-it}
+      TranslateGemma__MaxChunkCharacters: ${TRANSLATEGEMMA_MAX_CHUNK_CHARACTERS:-1200}
+      TranslateGemma__TimeoutMinutes: ${TRANSLATEGEMMA_TIMEOUT_MINUTES:-30}
 
 volumes:
   # Legacy key kept after the Jularr rename: it determines the Docker volume name that holds /data.

@@ -11,6 +11,7 @@ public sealed class NovelJobs(BackgroundJobQueue jobs)
 {
     public const string ChapterDownloadKind = "novel-chapter-download";
     public const string ChapterTranslationKind = "novel-chapter-translation";
+    public const string TranslateGemmaChapterTranslationKind = "novel-chapter-translation-translategemma";
     public const string EpisodeMappingKind = "novel-episode-mapping";
 
     public async Task<Guid> QueueChapterDownloadAsync(
@@ -90,6 +91,41 @@ public sealed class NovelJobs(BackgroundJobQueue jobs)
                 await operation.ReportAsync(
                     100,
                     "German chapter translation completed.",
+                    cancellationToken: workerToken);
+            },
+            cancellationToken);
+
+    public async Task<Guid> QueueTranslateGemmaAsync(
+        Guid chapterId,
+        string subject,
+        string profileId,
+        CancellationToken cancellationToken) =>
+        await jobs.QueueAsync(
+            new OperationDescriptor(
+                TranslateGemmaChapterTranslationKind,
+                "Translation",
+                "Translate novel chapter locally",
+                subject,
+                profileId,
+                OperationLane.Normal,
+                Retryable: true),
+            async (operation, services, workerToken) =>
+            {
+                await operation.ReportAsync(
+                    5,
+                    "Translating chapter locally with TranslateGemma.",
+                    cancellationToken: workerToken);
+
+                var service = services.GetRequiredService<NovelTranslationService>();
+                await service.TranslateChapterAsync(
+                    chapterId,
+                    NovelReadingLanguage.German,
+                    NovelTranslationEngine.TranslateGemma,
+                    workerToken);
+
+                await operation.ReportAsync(
+                    100,
+                    "Local German chapter translation completed.",
                     cancellationToken: workerToken);
             },
             cancellationToken);
