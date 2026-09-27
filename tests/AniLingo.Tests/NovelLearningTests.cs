@@ -9,7 +9,11 @@ using AniLingo.Web.Features.Vocabulary;
 using AniLingo.Web.Infrastructure;
 using AniLingo.Web.Pages.Learn;
 using AniLingo.Web.Pages.Novels;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
+using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -382,7 +386,7 @@ public sealed class NovelLearningTests
         public ReadModel CreateReadModel(string profileId)
         {
             var imports = new NovelImportService(Db, []);
-            return new ReadModel(
+            return AttachPageContext(new ReadModel(
                 new NovelCatalogQueries(Db),
                 new NovelAnnotationService(Db),
                 new NovelProgressService(Db),
@@ -395,7 +399,7 @@ public sealed class NovelLearningTests
                     new JapaneseDictionary(directory)),
                 Db,
                 TestAccounts.Context(profileId),
-                new OperationRunner(Db, services));
+                new OperationRunner(Db, services)));
         }
 
         public ReviewModel CreateReviewModel(string profileId) =>
@@ -405,6 +409,42 @@ public sealed class NovelLearningTests
                 new AiSentenceExplanationService(Db, new UnusedExplainer()),
                 new NovelCatalogQueries(Db),
                 TestAccounts.Context(profileId));
+
+        /// <summary>
+        /// The Ui bundle (localization issue #185) is resolved from
+        /// <see cref="PageModel.HttpContext"/>, so a page model built for a
+        /// direct handler call (not through the MVC pipeline) needs a bare
+        /// PageContext for that property to be non-null.
+        /// </summary>
+        private static TPage AttachPageContext<TPage>(TPage page)
+            where TPage : PageModel
+        {
+            var httpContext = new DefaultHttpContext
+            {
+                RequestServices = new ServiceCollection()
+                    .AddSingleton<IModelMetadataProvider, EmptyModelMetadataProvider>()
+                    .BuildServiceProvider()
+            };
+            page.PageContext = new PageContext
+            {
+                HttpContext = httpContext,
+                ViewData = new ViewDataDictionary<TPage>(
+                    new EmptyModelMetadataProvider(),
+                    new ModelStateDictionary())
+            };
+            page.TempData = new TempDataDictionary(httpContext, new NoTempDataProvider());
+            return page;
+        }
+
+        private sealed class NoTempDataProvider : ITempDataProvider
+        {
+            public IDictionary<string, object> LoadTempData(HttpContext context) =>
+                new Dictionary<string, object>();
+
+            public void SaveTempData(HttpContext context, IDictionary<string, object> values)
+            {
+            }
+        }
 
         public async ValueTask DisposeAsync()
         {
