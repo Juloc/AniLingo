@@ -1195,3 +1195,21 @@ button, input { font: inherit; }
 .request-status-searching, .request-status-downloading { background: color-mix(in srgb, var(--info-text) 15%, transparent); color: var(--info-text); }
 .request-status-completed { background: color-mix(in srgb, var(--success-text) 15%, transparent); color: var(--success-text); }
 .request-status-failed, .request-status-rejected { background: color-mix(in srgb, var(--danger-text) 14%, transparent); color: var(--danger-text); }
+
+/* Sidebar context (Admin, Settings): back link, area title, grouped pages. */
+.nav-context { gap: 1px; }
+.nav-context .nav-item { padding-block: 7px; font-size: 13px; }
+.nav-context .app-icon { width: 18px; height: 18px; }
+.nav-back { color: var(--muted); margin-bottom: 4px; }
+.nav-context-title { margin: 4px 11px 6px; font-size: 20px; font-weight: 800; letter-spacing: -.02em; color: var(--text); }
+.nav-group-title {
+    margin: 12px 11px 4px; color: var(--accent-label); font-size: 10.5px; font-weight: 800;
+    text-transform: uppercase; letter-spacing: .1em;
+}
+.nav-context .nav-group-title:first-of-type { margin-top: 4px; }
+/* The sidebar lists the admin pages on desktop; the tab row stays for phones and tablets. */
+@media (min-width: 821px) {
+    .admin-nav { display: none; }
+}
+/* Long context lists run over the blossom art; keep the labels readable. */
+.sidebar:has(.nav-context)::after { opacity: calc(var(--blossom-opacity) * .3); }
