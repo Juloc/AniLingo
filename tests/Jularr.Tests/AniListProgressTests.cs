@@ -54,7 +54,7 @@ public sealed class AniListProgressTests
     }
 
     [TestMethod]
-    public void NonCurrentAniListEntryIsNeverModified()
+    public void InactiveAniListEntryIsNeverModified()
     {
         var preview = AniListAccountService.EvaluateRemoteProgressSafety(
             Remote(status: "PAUSED", progress: 3),
@@ -65,6 +65,7 @@ public sealed class AniListProgressTests
         Assert.IsFalse(preview.CanSync);
         Assert.IsFalse(preview.IsNoOp);
         StringAssert.Contains(preview.Message, "CURRENT");
+        StringAssert.Contains(preview.Message, "REPEATING");
     }
 
     [TestMethod]
@@ -94,6 +95,37 @@ public sealed class AniListProgressTests
         Assert.IsFalse(preview.IsNoOp);
         Assert.AreEqual(3, preview.RemoteProgress);
         Assert.AreEqual(4, preview.RequestedProgress);
+    }
+
+    [TestMethod]
+    public void RepeatingMiddleEpisodeMayIncreaseProgress()
+    {
+        var preview = AniListAccountService.EvaluateRemoteProgressSafety(
+            Remote(status: "REPEATING", progress: 3),
+            requestedProgress: 4,
+            aniListEpisodeCount: 12,
+            mediaTitle: "Test Anime");
+
+        Assert.IsTrue(preview.CanSync);
+        Assert.IsFalse(preview.IsNoOp);
+        Assert.AreEqual("REPEATING", preview.RemoteStatus);
+        Assert.AreEqual(4, preview.RequestedProgress);
+    }
+
+    [TestMethod]
+    public void RepeatingMiddleChapterMayIncreaseProgress()
+    {
+        var preview = AniListAccountService.EvaluateRemoteChapterProgressSafety(
+            Remote(status: "REPEATING", progress: 8),
+            requestedProgress: 9,
+            aniListChapterCount: 20,
+            mediaTitle: "Test Manga",
+            mediaKind: "manga");
+
+        Assert.IsTrue(preview.CanSync);
+        Assert.IsFalse(preview.IsNoOp);
+        Assert.AreEqual("REPEATING", preview.RemoteStatus);
+        Assert.AreEqual(9, preview.RequestedProgress);
     }
 
     [TestMethod]
