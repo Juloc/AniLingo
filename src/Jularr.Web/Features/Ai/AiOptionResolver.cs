@@ -6,24 +6,35 @@ namespace Jularr.Web.Features.Ai;
 /// </summary>
 public static class AiOptionResolver
 {
+    public const string MissingServerModelMessage =
+        "Select a server AI model or refresh the model list before running AI tasks.";
+
+    /// <summary>
+    /// The concrete server model a request runs with: the requested model when the catalog lists it,
+    /// otherwise the catalog's default. Without a catalog only an explicitly entered model is used;
+    /// null means no model is known and AI work must not start (the provider's implicit default is
+    /// never delegated to).
+    /// </summary>
+    public static string? EffectiveServerModel(AiModelCatalog catalog, string? requested)
+    {
+        var model = string.IsNullOrWhiteSpace(requested) ? null : requested.Trim();
+        if (!catalog.HasModels)
+        {
+            return model;
+        }
+
+        return model is not null && catalog.Find(model) is not null
+            ? model
+            : catalog.DefaultModel?.Id;
+    }
+
     public static AiInvocationOptions ResolveServer(
         AiInvocationOptions requested,
         AiModelCatalog catalog,
         string operation)
     {
-        var model = requested.Model;
-        if (catalog.HasModels)
-        {
-            if (model is null || catalog.Find(model) is null)
-            {
-                model = catalog.DefaultModel?.Id;
-            }
-        }
-        else if (model is null)
-        {
-            throw new InvalidOperationException(
-                "Select a server AI model or refresh the model list before running AI tasks.");
-        }
+        var model = EffectiveServerModel(catalog, requested.Model)
+            ?? throw new InvalidOperationException(MissingServerModelMessage);
 
         var descriptor = catalog.Find(model);
         var fallbackEffort = AiOperationDefaults.ReasoningEffort(operation);

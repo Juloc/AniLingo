@@ -1,9 +1,58 @@
 /* AI control center (#422): Settings → AI and Admin → AI. */
 [data-ai-settings] [hidden] { display: none !important; }
 
+.ai-settings-layout { align-items: start; }
+.ai-section { margin-top: 16px; }
+[data-ai-settings] select {
+    width: 100%; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--field-bg); color: var(--text); padding: 9px 10px; font: inherit; font-weight: 500;
+}
+[data-ai-settings] select:focus { outline: none; border-color: color-mix(in srgb, var(--accent) 50%, transparent); }
+[data-ai-settings] :is(select, input, button, summary):focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+
+.ai-provider-row { display: flex; align-items: flex-end; gap: 12px; }
+.ai-provider-row > label { flex: 1; min-width: 0; }
+.ai-connection { padding-bottom: 9px; }
+
+.ai-model-field { display: grid; gap: 6px; }
+.ai-model-status { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ai-model-status small { flex: 1; min-width: 0; }
+.ai-button-small { padding: 5px 10px; font-size: 12px; }
+.ai-note { font-size: 12px; color: var(--text-secondary); }
+.ai-note-warn { color: var(--warning-text); font-weight: 700; }
+
+/* Translation mode: the same selectable-card pattern as Settings → Appearance. */
+.ai-mode { border: 0; margin: 0; padding: 0; display: grid; gap: 8px; min-width: 0; }
+.ai-mode legend { padding: 0; margin-bottom: 6px; color: var(--text-secondary); font-size: 12px; font-weight: 700; }
+.ai-mode-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.form-stack .ai-mode-option {
+    position: relative; display: grid; align-content: start; gap: 3px;
+    padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px;
+    background: var(--surface-2); cursor: pointer; font-weight: 500;
+}
+.ai-mode-option:hover { border-color: var(--accent-border); }
+.ai-mode-option input { position: absolute; opacity: 0; pointer-events: none; }
+.ai-mode-option strong { color: var(--text); font-size: 13px; }
+.ai-mode-option span { color: var(--muted); font-size: 12px; line-height: 1.4; }
+.ai-mode-option:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
+.ai-mode-option:has(input:checked) strong { color: var(--accent-text); }
+.ai-mode-option:has(input:focus-visible) { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+
+.ai-preset {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--row-bg);
+}
+.ai-preset > div { display: grid; gap: 2px; min-width: 0; font-size: 13px; }
+.ai-preset .muted { font-size: 12px; line-height: 1.4; }
+.ai-preset .button { flex-shrink: 0; }
+
 .ai-advanced { border-top: 1px solid var(--border); padding-top: 12px; display: grid; gap: 13px; }
 .ai-advanced > summary { cursor: pointer; color: var(--text-secondary); font-size: 13px; font-weight: 700; }
 .ai-advanced[open] > summary { margin-bottom: 4px; }
+.ai-overrides-block > p { margin: 0 0 4px; font-size: 12px; }
+
+.ai-usage-details > summary { cursor: pointer; font-size: 15px; font-weight: 700; }
+.ai-usage-details[open] > summary { margin-bottom: 12px; }
 
 .ai-table { width: 100%; border-collapse: collapse; margin: 6px 0 14px; font-size: 13px; }
 .ai-table th, .ai-table td { padding: 8px 6px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: middle; }
@@ -39,3 +88,23 @@
 .ai-model-list li > div { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
 .ai-model-list code { font-size: 12px; color: var(--muted); }
 .ai-model-list p { margin: 0; font-size: 12px; }
+
+@media (max-width: 720px) {
+    .ai-mode-options { grid-template-columns: 1fr; }
+    .ai-preset { flex-direction: column; align-items: stretch; }
+    .ai-preset .button { width: 100%; }
+    .ai-provider-row { flex-direction: column; align-items: stretch; gap: 6px; }
+    .ai-connection { padding-bottom: 0; }
+
+    /* Per-task overrides stack into one card per task instead of scrolling sideways. */
+    .ai-overrides, .ai-overrides tbody, .ai-overrides tr { display: block; width: 100%; }
+    .ai-overrides thead { display: none; }
+    .ai-overrides tr {
+        display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px;
+        padding: 10px 0; border-bottom: 1px solid var(--border);
+    }
+    .ai-overrides tbody th { grid-column: 1 / -1; padding: 0; border: 0; }
+    .ai-overrides td { display: grid; gap: 4px; padding: 0; border: 0; }
+    .ai-overrides td::before { content: attr(data-label); color: var(--muted); font-size: 11px; font-weight: 700; }
+    .ai-overrides select, .ai-overrides input { max-width: none; }
+}

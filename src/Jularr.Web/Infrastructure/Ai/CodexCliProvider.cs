@@ -32,13 +32,16 @@ public sealed partial class CodexCliProvider(CodexAppServerGateway appServer)
     public string Id => "codex-cli";
     public string DisplayName => "OpenAI Codex CLI";
 
+    /// <summary>Result of the last status check, so pages can show it without running the CLI again.</summary>
+    public AiProviderStatus? LastStatus { get; private set; }
+
     public async Task<AiProviderStatus> GetStatusAsync(CancellationToken cancellationToken)
     {
         var versionResult = await RunAsync(["--version"], TimeSpan.FromSeconds(10), cancellationToken);
         execAvailable = versionResult.ExitCode == 0;
         if (versionResult.ExitCode != 0)
         {
-            return new AiProviderStatus(
+            return LastStatus = new AiProviderStatus(
                 Id,
                 DisplayName,
                 IsAvailable: false,
@@ -53,7 +56,7 @@ public sealed partial class CodexCliProvider(CodexAppServerGateway appServer)
         var authenticated = statusResult.ExitCode == 0
             && statusText.Contains("Logged in", StringComparison.OrdinalIgnoreCase);
 
-        return new AiProviderStatus(
+        return LastStatus = new AiProviderStatus(
             Id,
             DisplayName,
             IsAvailable: true,
@@ -566,7 +569,8 @@ public sealed partial class CodexCliProvider(CodexAppServerGateway appServer)
 
     /// <summary>
     /// Runs one structured job. Model, reasoning effort and service tier come from the ambient
-    /// activity (already resolved against the model catalog); direct callers get the operation default.
+    /// activity (already resolved against the model catalog). A job without a concrete model is
+    /// refused before anything starts, so Codex never falls back to its own implicit default model.
     /// </summary>
     private async Task<T> RunStructuredAsync<T>(
         string operation,
@@ -578,9 +582,12 @@ public sealed partial class CodexCliProvider(CodexAppServerGateway appServer)
     {
         var activity = AiActivityScope.Current;
         var options = activity?.Options ?? AiInvocationOptions.Default;
-        var effort = activity is null
-            ? AiOperationDefaults.ReasoningEffort(operation)
-            : options.ReasoningEffort;
+        if (!AiProfileSettings.IsValidModelId(options.Model))
+        {
+            throw new InvalidOperationException(AiOptionResolver.MissingServerModelMessage);
+        }
+
+        var effort = options.ReasoningEffort;
 
         var root = Path.Combine(Path.GetTempPath(), "jularr-ai");
         var workDirectory = Path.Combine(root, "work");

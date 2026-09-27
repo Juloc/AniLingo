@@ -73,11 +73,37 @@ public sealed class ProfileAiProviderRouter(
         CancellationToken cancellationToken) =>
         await catalogs.GetCachedAsync(CatalogKey(settings), cancellationToken);
 
+    /// <summary>Upper bound for the automatic first discovery that runs after the settings page loaded.</summary>
+    public static readonly TimeSpan AutomaticDiscoveryTimeout = TimeSpan.FromSeconds(25);
+
+    private static readonly TimeSpan ExplicitDiscoveryTimeout = TimeSpan.FromSeconds(60);
+
+    /// <summary>
+    /// Whether the profile's provider can be asked for models: the shared server connection always
+    /// can; a personal provider needs its base URL and API key.
+    /// </summary>
+    public static bool CanDiscover(AiProfileSettings settings) =>
+        settings.ProviderId != AiProviderIds.OpenAiCompatible
+        || (!string.IsNullOrWhiteSpace(settings.BaseUrl) && !string.IsNullOrWhiteSpace(settings.ApiKey));
+
     /// <summary>Explicitly asks the profile's provider for its models (never on a page GET).</summary>
-    public Task<AiModelCatalog> RefreshCatalogAsync(
+    public async Task<AiModelCatalog> RefreshCatalogAsync(
         AiProfileSettings settings,
         CancellationToken cancellationToken) =>
-        catalogs.RefreshAsync(CatalogKey(settings), ModelFetcher(settings), cancellationToken);
+        CanDiscover(settings)
+            ? await catalogs.RefreshAsync(CatalogKey(settings), ModelFetcher(settings), cancellationToken, ExplicitDiscoveryTimeout)
+            : await GetCachedCatalogAsync(settings, cancellationToken);
+
+    /// <summary>
+    /// The one automatic discovery after the settings page rendered (never during the GET itself):
+    /// asks the provider only while <see cref="AiModelCatalogService.NeedsDiscovery"/>.
+    /// </summary>
+    public async Task<AiModelCatalog> GetOrDiscoverCatalogAsync(
+        AiProfileSettings settings,
+        CancellationToken cancellationToken) =>
+        CanDiscover(settings)
+            ? await catalogs.GetOrDiscoverAsync(CatalogKey(settings), ModelFetcher(settings), cancellationToken, AutomaticDiscoveryTimeout)
+            : await GetCachedCatalogAsync(settings, cancellationToken);
 
     public Task<AiSentenceExplanation> ExplainSentenceAsync(
         AiSentenceExplainRequest request,
@@ -270,8 +296,8 @@ public sealed class ProfileAiProviderRouter(
             cancellationToken);
 
     private string CatalogKey(AiProfileSettings settings) =>
-        settings.ProviderId == AiProviderIds.OpenAiCompatible && !string.IsNullOrWhiteSpace(settings.BaseUrl)
-            ? AiModelCatalogKeys.OpenAiCompatible(currentAccount.ProfileId, settings.BaseUrl)
+        settings.ProviderId == AiProviderIds.OpenAiCompatible
+            ? AiModelCatalogKeys.OpenAiCompatible(currentAccount.ProfileId, settings.BaseUrl ?? string.Empty)
             : AiModelCatalogKeys.CodexServer;
 
     private Func<CancellationToken, Task<IReadOnlyList<AiModelDescriptor>>> ModelFetcher(AiProfileSettings settings) =>

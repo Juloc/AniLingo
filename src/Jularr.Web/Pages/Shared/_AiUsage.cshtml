@@ -14,16 +14,21 @@
         (AiUsagePeriod.Last7Days, "7d", ui["ai.usage.last7Days"], report.Last7Days),
         (AiUsagePeriod.Last30Days, "30d", ui["ai.usage.last30Days"], report.Last30Days)
     };
+    var showTotals = Model.Sections != AiUsageSections.Breakdown;
+    var showBreakdown = Model.Sections != AiUsageSections.Totals;
 }
-<nav class="ai-period-tabs" aria-label="@ui["ai.usage.periodAria"]">
-    @foreach (var (period, value, label, totals) in periods)
-    {
-        <a href="@(Model.PagePath)?period=@value" aria-current="@(period == report.Period ? "page" : null)">
-            <span>@label</span>
-            <strong>@AiViewFormat.Tokens(totals.InputTokens + totals.OutputTokens, totals.EstimatedInputTokens + totals.EstimatedOutputTokens)</strong>
-        </a>
-    }
-</nav>
+@if (showTotals)
+{
+    <nav class="ai-period-tabs" aria-label="@ui["ai.usage.periodAria"]">
+        @foreach (var (period, value, label, totals) in periods)
+        {
+            <a href="@(Model.PagePath)?period=@value" aria-current="@(period == report.Period ? "page" : null)">
+                <span>@label</span>
+                <strong>@AiViewFormat.Tokens(totals.InputTokens + totals.OutputTokens, totals.EstimatedInputTokens + totals.EstimatedOutputTokens)</strong>
+            </a>
+        }
+    </nav>
+}
 
 @if (selected.IsEmpty)
 {
@@ -31,6 +36,8 @@
 }
 else
 {
+    if (showTotals)
+    {
     <div class="status-list">
         <div><span>@ui["settings.ai.requests"]</span><strong>@AiViewFormat.Tokens(selected.Requests)</strong></div>
         <div><span>@ui["settings.ai.inputTokens"]</span><strong>@AiViewFormat.Tokens(selected.InputTokens, selected.EstimatedInputTokens)</strong></div>
@@ -58,7 +65,10 @@ else
     {
         <p class="muted">@ui["settings.ai.usageNote"]</p>
     }
+    }
 
+    if (showBreakdown)
+    {
     <table class="ai-table">
         <thead>
             <tr>
@@ -130,5 +140,6 @@ else
                 }
             </tbody>
         </table>
+    }
     }
 }
