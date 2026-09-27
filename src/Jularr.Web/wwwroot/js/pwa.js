@@ -545,70 +545,6 @@
     });
   };
 
-  const createPlayerAction = (label, text, handler) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "pwa-player-action";
-    button.setAttribute("aria-label", label);
-    button.title = label;
-    button.textContent = text;
-    button.addEventListener("click", handler);
-    return button;
-  };
-
-  const supportsPictureInPicture = video =>
-    (document.pictureInPictureEnabled === true
-      && typeof video.requestPictureInPicture === "function")
-    || typeof video.webkitSetPresentationMode === "function";
-
-  const togglePictureInPicture = async video => {
-    try {
-      if (document.pictureInPictureElement) {
-        await document.exitPictureInPicture();
-        return;
-      }
-
-      if (document.pictureInPictureEnabled === true
-          && typeof video.requestPictureInPicture === "function") {
-        await video.requestPictureInPicture();
-        return;
-      }
-
-      if (typeof video.webkitSetPresentationMode === "function") {
-        const mode = video.webkitPresentationMode === "picture-in-picture"
-          ? "inline"
-          : "picture-in-picture";
-        video.webkitSetPresentationMode(mode);
-      }
-    } catch {
-      showToast(shellLabel("pwa.player.pictureInPictureUnavailable"));
-    }
-  };
-
-  const supportsFullscreen = (stage, video) =>
-    typeof stage?.requestFullscreen === "function"
-    || typeof video.webkitEnterFullscreen === "function";
-
-  const enterFullscreen = async (stage, video) => {
-    try {
-      if (document.fullscreenElement) {
-        await document.exitFullscreen();
-        return;
-      }
-
-      if (typeof stage?.requestFullscreen === "function") {
-        await stage.requestFullscreen();
-        return;
-      }
-
-      if (typeof video.webkitEnterFullscreen === "function") {
-        video.webkitEnterFullscreen();
-      }
-    } catch {
-      showToast(shellLabel("pwa.player.fullscreenUnavailable"));
-    }
-  };
-
   const enhanceEpisodePlayer = root => {
     if (!(root instanceof HTMLElement) || root.dataset.pwaEnhanced === "true") {
       return;
@@ -624,42 +560,7 @@
     enhanceMediaSession(root, video);
     enhanceWakeLock(video);
 
-    const actions = document.createElement("div");
-    actions.className = "pwa-player-actions";
-    actions.setAttribute("aria-label", shellLabel("pwa.player.actionsAria"));
-
-    if (supportsPictureInPicture(video)) {
-      const pictureInPicture = createPlayerAction(
-        shellLabel("pwa.player.pictureInPicture"),
-        shellLabel("pwa.player.pictureInPictureShort"),
-        () => void togglePictureInPicture(video));
-      pictureInPicture.disabled = video.readyState < 1;
-      video.addEventListener("loadedmetadata", () => {
-        pictureInPicture.disabled = false;
-      });
-      actions.appendChild(pictureInPicture);
-    }
-
-    if (supportsFullscreen(stage, video)) {
-      actions.appendChild(createPlayerAction(
-        shellLabel("pwa.player.fullscreen"),
-        "⛶",
-        () => void enterFullscreen(stage, video)));
-    }
-
-    if (navigator.share || navigator.clipboard?.writeText) {
-      actions.appendChild(createPlayerAction(
-        shellLabel("pwa.player.share"),
-        "↗",
-        () => void shareCurrentPage({
-          title: document.querySelector(".page-header h1")?.textContent?.trim()
-            || document.title
-        })));
-    }
-
-    if (actions.childElementCount > 0) {
-      stage.appendChild(actions);
-    }
+    // Picture-in-picture and full screen belong to the player chrome (player-chrome.js).
   };
 
   const enhanceExistingPlayers = () => {
