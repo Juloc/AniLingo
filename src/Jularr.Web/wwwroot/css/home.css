@@ -1,0 +1,50 @@
+/* #520: Home media-type filter chips and Discover heading links. */
+
+.home-filter-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 0 0 22px;
+}
+
+.home-filter-chip {
+    display: inline-flex;
+    align-items: center;
+    min-height: 34px;
+    padding: 6px 14px;
+    border: 1px solid var(--border-strong);
+    border-radius: 999px;
+    background: var(--surface-2);
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 700;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.home-filter-chip:hover {
+    color: var(--text);
+    background: var(--surface);
+}
+
+.home-filter-chip.active {
+    color: var(--accent-text);
+    border-color: color-mix(in srgb, var(--accent) 18%, transparent);
+    background: color-mix(in srgb, var(--accent) 12%, var(--surface-2));
+}
+
+/* Row headings double as Discover links; keep the heading's own size/weight. */
+.section-heading h2 a {
+    color: inherit;
+    text-decoration: none;
+}
+
+.section-heading h2 a:hover,
+.section-heading h2 a:focus-visible {
+    text-decoration: underline;
+}
+
+/* Recently added is a secondary row: below Continue Watching/Reading, quieter heading. */
+.section-secondary .section-heading h2 {
+    font-size: 18px;
+}

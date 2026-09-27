@@ -44,6 +44,33 @@ public sealed class DiscoveryTests
     }
 
     [TestMethod]
+    public void GenreIsTrimmedAndTitleCasedForAniListGenreIn()
+    {
+        var request = DiscoveryRequest.Parse(null, "anime", "trending", "  sci-fi  ");
+
+        Assert.AreEqual("Sci-Fi", request.Genre);
+    }
+
+    [TestMethod]
+    public void MissingOrBlankGenreNormalizesToEmpty()
+    {
+        Assert.AreEqual("", DiscoveryRequest.Parse(null, "anime", "trending").Genre);
+        Assert.AreEqual("", DiscoveryRequest.Parse(null, "anime", "trending", "   ").Genre);
+        Assert.AreEqual("", DiscoveryRequest.Parse(null, "anime", "trending", null).Genre);
+    }
+
+    [TestMethod]
+    public void GenreParticipatesInTheDiscoveryCacheKey()
+    {
+        var withoutGenre = DiscoveryRequest.Parse(null, "anime", "trending");
+        var withGenre = DiscoveryRequest.Parse(null, "anime", "trending", "Horror");
+
+        Assert.AreNotEqual(
+            withoutGenre.CacheKey("profile"),
+            withGenre.CacheKey("profile"));
+    }
+
+    [TestMethod]
     public void PersonalDiscoveryCacheKeyIsProfileScoped()
     {
         var request = DiscoveryRequest.Parse(

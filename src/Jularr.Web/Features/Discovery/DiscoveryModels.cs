@@ -20,23 +20,27 @@ public enum DiscoveryMode
 public sealed record DiscoveryRequest(
     string Query,
     DiscoveryCategory Category,
-    DiscoveryMode Mode)
+    DiscoveryMode Mode,
+    string Genre = "")
 {
     public static DiscoveryRequest Parse(
         string? query,
         string? category,
-        string? mode)
+        string? mode,
+        string? genre = null)
     {
         var normalizedQuery = NormalizeQuery(query);
         var normalizedCategory = ParseCategory(category);
         var normalizedMode = normalizedQuery.Length > 0
             ? DiscoveryMode.Search
             : ParseMode(mode);
+        var normalizedGenre = NormalizeGenre(genre);
 
         return new DiscoveryRequest(
             normalizedQuery,
             normalizedCategory,
-            normalizedMode);
+            normalizedMode,
+            normalizedGenre);
     }
 
     public bool RequiresPersonalAniListAccount =>
@@ -48,7 +52,25 @@ public sealed record DiscoveryRequest(
             profileId,
             Mode.ToString().ToLowerInvariant(),
             Category.ToString().ToLowerInvariant(),
+            Genre.ToLowerInvariant(),
             Query.ToLowerInvariant());
+
+    /// <summary>
+    /// Trims and title-cases a genre so casual input ("sci-fi", "SLICE OF LIFE")
+    /// still matches AniList's genre strings ("Sci-Fi", "Slice of Life") closely
+    /// enough for <c>genre_in</c>. Empty when no genre was requested.
+    /// </summary>
+    public static string NormalizeGenre(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "";
+        }
+
+        var trimmed = value.Trim().Truncate(40);
+        return System.Globalization.CultureInfo.InvariantCulture.TextInfo.ToTitleCase(
+            trimmed.ToLowerInvariant());
+    }
 
     public static string NormalizeQuery(string? value)
     {
@@ -67,7 +89,7 @@ public sealed record DiscoveryRequest(
             .Truncate(120);
     }
 
-    private static DiscoveryCategory ParseCategory(string? value) =>
+    public static DiscoveryCategory ParseCategory(string? value) =>
         value?.Trim().ToLowerInvariant() switch
         {
             "anime" => DiscoveryCategory.Anime,
@@ -119,6 +141,7 @@ public sealed record DiscoveryResponse(
     string Query,
     string Category,
     string Mode,
+    string Genre,
     bool AniListConnected,
     IReadOnlyList<DiscoveryItem> Items,
     IReadOnlyList<string> Warnings);
