@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Jularr.Web.Data;
 using Jularr.Web.Features.Acquisition.DownloadClients;
 using Jularr.Web.Features.Acquisition.Import;
@@ -135,7 +136,7 @@ public static class SabnzbdOperationProjector
 }
 
 /// <summary>
-/// The one SABnzbd monitor loop for Books and Anime downloads. It resumes
+/// The one SABnzbd monitor loop for every media type's downloads. It resumes
 /// after a restart from the persisted external references on Operations.
 /// </summary>
 public sealed class SabnzbdOperationMonitorService(
@@ -160,7 +161,11 @@ public sealed class SabnzbdOperationMonitorService(
 
             try
             {
-                hasActiveJobs = await PollOnceAsync(stoppingToken);
+                await using var scope = scopeFactory.CreateAsyncScope();
+                hasActiveJobs = await PollOnceAsync(
+                    scope.ServiceProvider,
+                    DateTime.UtcNow,
+                    stoppingToken);
             }
             catch (OperationCanceledException)
                 when (stoppingToken.IsCancellationRequested)
@@ -190,10 +195,25 @@ public sealed class SabnzbdOperationMonitorService(
         }
     }
 
-    private async Task<bool> PollOnceAsync(CancellationToken cancellationToken)
+    /// <summary>How often the same "client unavailable" warning may be logged.</summary>
+    public static readonly TimeSpan WarningInterval = TimeSpan.FromMinutes(15);
+
+    public const string RemovedClientMessage =
+        "The SABnzbd connection used by this download was removed.";
+
+    private readonly ConcurrentDictionary<string, DateTime> lastWarnings = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// One monitor pass. Each download client is polled on its own: an unreachable client only
+    /// delays its own downloads. Downloads pinned to a disabled client stay active (the owner may
+    /// re-enable it) with a rate-limited warning; downloads pinned to a removed client can never
+    /// be resolved and fail, so the media workflows move on.
+    /// </summary>
+    public async Task<bool> PollOnceAsync(
+        IServiceProvider services,
+        DateTime nowUtc,
+        CancellationToken cancellationToken)
     {
-        await using var scope = scopeFactory.CreateAsyncScope();
-        var services = scope.ServiceProvider;
         var store = new OperationStore(services.GetRequiredService<AppDbContext>());
         var operations = await store.ListActiveExternalAsync(
             SabnzbdClient.ProviderId,
@@ -204,61 +224,138 @@ public sealed class SabnzbdOperationMonitorService(
             return false;
         }
 
-        var entries = (await downloadClients.LoadAllAsync(cancellationToken))
-            .Where(item => item.Type == DownloadClientType.Sabnzbd && item.Enabled)
+        var configured = (await downloadClients.LoadAllAsync(cancellationToken))
+            .Where(item => item.Type == DownloadClientType.Sabnzbd)
+            .ToDictionary(item => item.Id);
+        var enabled = configured.Values
+            .Where(item => item.Enabled)
             .OrderBy(item => item.Priority)
             .ToArray();
-        if (entries.Length == 0)
-        {
-            logger.LogWarning(
-                "{Count} SABnzbd downloads are active but no SABnzbd download client is configured.",
-                operations.Count);
-            return true;
-        }
 
-        var client = services.GetRequiredService<ISabnzbdClient>();
-        var entriesById = entries.ToDictionary(entry => entry.Id);
         foreach (var group in operations.GroupBy(SelectedClientId))
         {
             DownloadClientEntry entry;
             if (group.Key is { } selectedClientId)
             {
-                if (!entriesById.TryGetValue(selectedClientId, out entry!))
+                if (!configured.TryGetValue(selectedClientId, out entry!))
                 {
-                    logger.LogWarning(
-                        "SABnzbd download operations reference the unavailable client {ClientId}; they remain active until that client is restored or an owner intervenes.",
-                        selectedClientId);
+                    await FailRemovedClientDownloadsAsync(services, store, group.ToArray(), cancellationToken);
                     continue;
                 }
+
+                if (!entry.Enabled)
+                {
+                    if (ShouldWarn($"disabled:{selectedClientId}", nowUtc))
+                    {
+                        logger.LogWarning(
+                            "{Count} SABnzbd downloads use the disabled download client {ClientName}; they stay active until it is enabled again or an owner cancels them.",
+                            group.Count(),
+                            entry.Name);
+                    }
+
+                    continue;
+                }
+            }
+            else if (enabled.Length == 0)
+            {
+                if (ShouldWarn("no-client", nowUtc))
+                {
+                    logger.LogWarning(
+                        "{Count} SABnzbd downloads are active but no SABnzbd download client is enabled.",
+                        group.Count());
+                }
+
+                continue;
             }
             else
             {
                 // Pre-#389 operations did not persist a client ID. Preserve their historical
                 // behavior instead of guessing a new mapping for completed jobs.
-                entry = entries[0];
+                entry = enabled[0];
             }
 
-            var groupOperations = group.ToArray();
-            var connection = SabnzbdDownloadClient.ToConnection(entry);
-            var queue = await client.GetQueueAsync(connection, cancellationToken);
-            var history = await client.GetHistoryAsync(
-                connection,
-                groupOperations.Select(operation => operation.ExternalId!).ToArray(),
-                cancellationToken);
-
-            var result = await SabnzbdOperationProjector.ApplyAsync(
-                store,
-                groupOperations,
-                queue,
-                history,
-                DateTime.UtcNow,
-                cancellationToken);
-
-            await ImportCompletedBookDownloadsAsync(services, result.Completed, history, cancellationToken);
-            await ImportCompletedAnimeDownloadsAsync(services, result.Completed, history, cancellationToken);
-            await ContinueFailedAnimeAcquisitionsAsync(services, result.Failed, cancellationToken);
-            await ContinueFailedBookRequestsAsync(services, result.Failed, cancellationToken);
+            try
+            {
+                await PollClientAsync(services, store, entry, group.ToArray(), nowUtc, cancellationToken);
+                lastWarnings.TryRemove($"poll:{entry.Id}", out _);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                if (ShouldWarn($"poll:{entry.Id}", nowUtc))
+                {
+                    logger.LogWarning(
+                        exception,
+                        "Could not refresh SABnzbd downloads on {ClientName}; other download clients are still monitored.",
+                        entry.Name);
+                }
+            }
         }
+
+        return true;
+    }
+
+    private async Task PollClientAsync(
+        IServiceProvider services,
+        OperationStore store,
+        DownloadClientEntry entry,
+        IReadOnlyList<OperationSnapshot> groupOperations,
+        DateTime nowUtc,
+        CancellationToken cancellationToken)
+    {
+        var client = services.GetRequiredService<ISabnzbdClient>();
+        var connection = SabnzbdDownloadClient.ToConnection(entry);
+        var queue = await client.GetQueueAsync(connection, cancellationToken);
+        var history = await client.GetHistoryAsync(
+            connection,
+            groupOperations.Select(operation => operation.ExternalId!).ToArray(),
+            cancellationToken);
+
+        var result = await SabnzbdOperationProjector.ApplyAsync(
+            store,
+            groupOperations,
+            queue,
+            history,
+            nowUtc,
+            cancellationToken);
+
+        await ImportCompletedBookDownloadsAsync(services, result.Completed, history, cancellationToken);
+        await ImportCompletedAnimeDownloadsAsync(services, result.Completed, history, cancellationToken);
+        await ContinueFailedAnimeAcquisitionsAsync(services, result.Failed, cancellationToken);
+        await ContinueFailedBookRequestsAsync(services, result.Failed, cancellationToken);
+    }
+
+    private async Task FailRemovedClientDownloadsAsync(
+        IServiceProvider services,
+        OperationStore store,
+        IReadOnlyList<OperationSnapshot> groupOperations,
+        CancellationToken cancellationToken)
+    {
+        var failed = new List<SabnzbdProjectedFailure>();
+        foreach (var operation in groupOperations)
+        {
+            await store.MarkFailedAsync(operation.Id, RemovedClientMessage, cancellationToken);
+            failed.Add(new SabnzbdProjectedFailure(operation, SabnzbdFailureKind.Unknown, RemovedClientMessage));
+        }
+
+        logger.LogWarning(
+            "Failed {Count} SABnzbd downloads because their download client was removed.",
+            failed.Count);
+        await ContinueFailedAnimeAcquisitionsAsync(services, failed, cancellationToken);
+        await ContinueFailedBookRequestsAsync(services, failed, cancellationToken);
+    }
+
+    private bool ShouldWarn(string key, DateTime nowUtc)
+    {
+        if (lastWarnings.TryGetValue(key, out var last) && nowUtc - last < WarningInterval)
+        {
+            return false;
+        }
+
+        lastWarnings[key] = nowUtc;
         return true;
     }
 
@@ -351,9 +448,16 @@ public sealed class SabnzbdOperationMonitorService(
         IReadOnlyList<SabnzbdProjectedFailure> failures,
         CancellationToken cancellationToken)
     {
+        var animeFailures = failures
+            .Where(failure => failure.Operation.Kind == SabnzbdAcquisitionService.OperationKind)
+            .ToArray();
+        if (animeFailures.Length == 0)
+        {
+            return;
+        }
+
         var acquisitions = services.GetRequiredService<SabnzbdAcquisitionService>();
-        foreach (var failure in failures.Where(failure =>
-                     failure.Operation.Kind == SabnzbdAcquisitionService.OperationKind))
+        foreach (var failure in animeFailures)
         {
             try
             {

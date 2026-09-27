@@ -12,7 +12,10 @@ public sealed class MangaCompletedDownloadImportAdapter(
     IHttpClientFactory httpClientFactory,
     MediaMappingReviewStore mappingReviewStore,
     ReadingSegmentMappingStore segmentMappings,
-    ILogger<MangaCompletedDownloadImportAdapter> logger)
+    AnimeImportSettingsStore importSettings,
+    IHardLinkCreator hardLinks,
+    ILogger<MangaCompletedDownloadImportAdapter> logger,
+    string? mangaCacheRoot = null)
     : ICompletedDownloadImportAdapter
 {
     public MediaAcquisitionKind Kind =>
@@ -22,23 +25,79 @@ public sealed class MangaCompletedDownloadImportAdapter(
         CompletedDownloadImportRequest request,
         CancellationToken cancellationToken)
     {
-        if (!File.Exists(request.SourcePath) &&
-            !Directory.Exists(request.SourcePath))
-        {
-            return CompletedDownloadImportResult.RetryLater(
-                "The completed Manga files are not currently available.");
-        }
-
         try
         {
             var repository = new MangaRepository(db);
-            var importer = new MangaImportService(repository);
+
+            // One series per AniList entry: a new volume of a series that is already matched is
+            // added to that series instead of creating another one per release (#485 item 7).
+            var existing = request.Request.Provider.Equals(
+                    NovelAniListProvider.ProviderKey,
+                    StringComparison.OrdinalIgnoreCase)
+                ? await repository.FindByMetadataAsync(
+                    NovelAniListProvider.ProviderKey,
+                    request.Request.ExternalId,
+                    cancellationToken)
+                : null;
+
+            var settings = await importSettings.LoadAsync(cancellationToken);
+            var library = settings.LibraryFor(MediaAcquisitionKind.Manga);
+            var sourceExists = File.Exists(request.SourcePath) || Directory.Exists(request.SourcePath);
+
+            string importSource;
+            if (library is null)
+            {
+                // No Manga library configured: the completed download is read in place.
+                if (!sourceExists)
+                {
+                    return CompletedDownloadImportResult.RetryLater(
+                        "The completed Manga files are not currently available.");
+                }
+
+                importSource = request.SourcePath;
+            }
+            else
+            {
+                var seriesFolder = MangaLibraryPlacement.SeriesFolder(
+                    library.LibraryRoot,
+                    existing,
+                    request.Request.Title);
+                var releaseTarget = Path.Combine(
+                    seriesFolder,
+                    MangaLibraryPlacement.SafeName(
+                        Path.GetFileName(request.SourcePath.TrimEnd(
+                            Path.DirectorySeparatorChar,
+                            Path.AltDirectorySeparatorChar))));
+
+                if (sourceExists)
+                {
+                    new MangaLibraryPlacement(new ImportFileTransfer(hardLinks)).Place(
+                        request.SourcePath,
+                        releaseTarget,
+                        settings.ModeFor(MediaAcquisitionKind.Manga));
+                }
+                else if (!File.Exists(releaseTarget) && !Directory.Exists(releaseTarget))
+                {
+                    return CompletedDownloadImportResult.RetryLater(
+                        "The completed Manga files are not currently available.");
+                }
+
+                // A series living elsewhere keeps its folder; only the new release is added.
+                importSource = existing is not null &&
+                               !MangaLibraryPlacement.SamePath(existing.SourcePath, seriesFolder)
+                    ? releaseTarget
+                    : seriesFolder;
+            }
+
+            var importer = new MangaImportService(repository, mangaCacheRoot);
             var imported = await importer.ImportAsync(
-                request.SourcePath,
-                cancellationToken);
+                importSource,
+                cancellationToken,
+                existing?.Id);
 
             string? metadataWarning = null;
-            if (request.Request.Provider.Equals(
+            if (existing is null &&
+                request.Request.Provider.Equals(
                     NovelAniListProvider.ProviderKey,
                     StringComparison.OrdinalIgnoreCase))
             {
@@ -80,6 +139,15 @@ public sealed class MangaCompletedDownloadImportAdapter(
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             throw;
+        }
+        catch (CrossDeviceLinkException exception)
+        {
+            logger.LogWarning(
+                exception,
+                "Manga hardlink import crosses filesystems for request {RequestId}.",
+                request.Request.Id);
+            return CompletedDownloadImportResult.RetryLater(
+                "The download and the Manga library are on different filesystems, so a hardlink is impossible. Choose \"Hardlink or copy\", Copy or Move for Manga.");
         }
         catch (Exception exception) when (
             exception is IOException or
@@ -128,35 +196,17 @@ public sealed class LightNovelCompletedDownloadImportAdapter(
 
         try
         {
-            IReadOnlyList<NovelEpubImportOutcome> outcomes;
-            if (File.Exists(request.SourcePath))
+            // Recursive, no folder hints, validated before anything is stored (#485 item 8).
+            var import = await importer.ImportDownloadAsync(
+                request.SourcePath,
+                cancellationToken);
+            if (import.RejectedBecause is { } rejected)
             {
-                if (!Path.GetExtension(request.SourcePath)
-                    .Equals(".epub", StringComparison.OrdinalIgnoreCase))
-                {
-                    return CompletedDownloadImportResult.RejectRelease(
-                        "Downloaded Light Novel release did not contain an importable EPUB.");
-                }
-
-                await using var stream = new FileStream(
-                    request.SourcePath,
-                    FileMode.Open,
-                    FileAccess.Read,
-                    FileShare.ReadWrite | FileShare.Delete,
-                    bufferSize: 81920,
-                    useAsync: true);
-                outcomes = await importer.ImportUploadsAsync(
-                    [(stream, Path.GetFileName(request.SourcePath))],
-                    targetWorkId: null,
-                    cancellationToken);
-            }
-            else
-            {
-                outcomes = await importer.ImportDirectoryAsync(
-                    request.SourcePath,
-                    cancellationToken);
+                return CompletedDownloadImportResult.RejectRelease(
+                    $"Downloaded Light Novel release was refused: {rejected}");
             }
 
+            var outcomes = import.Outcomes;
             var successes = outcomes
                 .Where(outcome =>
                     outcome.Succeeded &&
@@ -243,5 +293,159 @@ public sealed class LightNovelCompletedDownloadImportAdapter(
             return CompletedDownloadImportResult.RejectRelease(
                 "Downloaded release could not be imported as a Light Novel.");
         }
+    }
+}
+
+/// <summary>
+/// Puts a completed Manga download into the configured Manga library folder with the owner's
+/// import mode (shared <see cref="ImportFileTransfer"/>). Only CBZ/ZIP archives and page images
+/// are placed; the release keeps its own subfolder below the series folder so two releases never
+/// collide. Existing files are never overwritten: an identical file is skipped (idempotent retry),
+/// a different one gets a numbered name.
+/// </summary>
+public sealed class MangaLibraryPlacement(ImportFileTransfer transfer)
+{
+    private static readonly HashSet<char> InvalidNameCharacters = Path.GetInvalidFileNameChars()
+        .Concat(['/', '\\', ':', '*', '?', '"', '<', '>', '|'])
+        .ToHashSet();
+
+    /// <summary>
+    /// The series folder in the library: the matched series' own folder when it already lives
+    /// in the library, otherwise a folder named after the requested title.
+    /// </summary>
+    public static string SeriesFolder(
+        string libraryRoot,
+        MangaSeriesLocation? existing,
+        string title)
+    {
+        var root = Path.GetFullPath(libraryRoot);
+        if (existing is not null &&
+            Directory.Exists(existing.SourcePath) &&
+            IsBelow(existing.SourcePath, root))
+        {
+            return Path.GetFullPath(existing.SourcePath);
+        }
+
+        return Path.Combine(root, SafeName(title));
+    }
+
+    public static string SafeName(string? value)
+    {
+        var cleaned = new string((value ?? string.Empty)
+                .Select(character => InvalidNameCharacters.Contains(character) || char.IsControl(character) ? '_' : character)
+                .ToArray())
+            .Trim(' ', '.', '_');
+        return cleaned.Length == 0 ? "Manga" : cleaned;
+    }
+
+    public static bool SamePath(string left, string right) =>
+        string.Equals(
+            Path.GetFullPath(left).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+            Path.GetFullPath(right).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+            StringComparison.Ordinal);
+
+    /// <summary>Returns how many files were placed now (skipped identical files excluded).</summary>
+    public int Place(string source, string destination, ImportMode mode)
+    {
+        if (File.Exists(source))
+        {
+            if (!MangaImportService.IsImportableFile(source))
+            {
+                throw new InvalidOperationException("A Manga download file must be CBZ or ZIP.");
+            }
+
+            return PlaceFile(source, destination, mode) ? 1 : 0;
+        }
+
+        var root = Path.GetFullPath(source);
+        var placed = 0;
+        foreach (var file in Directory
+                     .EnumerateFiles(root, "*", SearchOption.AllDirectories)
+                     .Where(MangaImportService.IsImportableFile)
+                     .Order(StringComparer.Ordinal))
+        {
+            var relative = Path.GetRelativePath(root, file);
+            if (relative.StartsWith("..", StringComparison.Ordinal) || Path.IsPathRooted(relative))
+            {
+                continue;
+            }
+
+            if (PlaceFile(file, Path.Combine(destination, relative), mode))
+            {
+                placed++;
+            }
+        }
+
+        if (mode == ImportMode.Move)
+        {
+            DeleteEmptyDirectories(root);
+        }
+
+        return placed;
+    }
+
+    private bool PlaceFile(string source, string destination, ImportMode mode)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+        if (File.Exists(destination))
+        {
+            if (new FileInfo(destination).Length == new FileInfo(source).Length)
+            {
+                if (mode == ImportMode.Move)
+                {
+                    File.Delete(source);
+                }
+
+                return false;
+            }
+
+            destination = UniqueName(destination);
+        }
+
+        transfer.Transfer(source, destination, mode);
+        return true;
+    }
+
+    private static string UniqueName(string path)
+    {
+        var directory = Path.GetDirectoryName(path)!;
+        var name = Path.GetFileNameWithoutExtension(path);
+        var extension = Path.GetExtension(path);
+        for (var index = 2; ; index++)
+        {
+            var candidate = Path.Combine(directory, $"{name} ({index}){extension}");
+            if (!File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+    }
+
+    private static void DeleteEmptyDirectories(string root)
+    {
+        try
+        {
+            foreach (var directory in Directory
+                         .EnumerateDirectories(root, "*", SearchOption.AllDirectories)
+                         .OrderByDescending(path => path.Length))
+            {
+                if (!Directory.EnumerateFileSystemEntries(directory).Any())
+                {
+                    Directory.Delete(directory);
+                }
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // Leftover empty download folders are harmless.
+        }
+    }
+
+    private static bool IsBelow(string path, string root)
+    {
+        var full = Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var parent = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        return full.StartsWith(parent + Path.DirectorySeparatorChar, StringComparison.Ordinal) ||
+               full.StartsWith(parent + Path.AltDirectorySeparatorChar, StringComparison.Ordinal);
     }
 }

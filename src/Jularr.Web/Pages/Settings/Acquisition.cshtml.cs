@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Jularr.Web.Data;
+using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Acquisition.AniListAutoMonitor;
 using Jularr.Web.Features.Acquisition.Backup;
 using Jularr.Web.Features.Acquisition.Import;
@@ -83,6 +84,47 @@ public sealed class AcquisitionModel(
             },
             cancellationToken);
         TempData["AcquisitionSettingsNotice"] = Ui["settings.acquisition.status.importModeSaved"];
+        return RedirectToPage();
+    }
+
+    public MediaLibraryTarget? MangaLibrary => ImportSettings.LibraryFor(MediaAcquisitionKind.Manga);
+
+    /// <summary>Sets (or, with an empty folder, clears) the Manga library folder and its import mode.</summary>
+    public async Task<IActionResult> OnPostMangaLibraryAsync(
+        string? libraryRoot,
+        ImportMode? importMode,
+        CancellationToken cancellationToken)
+    {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+        var root = libraryRoot?.Trim();
+        if (!string.IsNullOrEmpty(root) && !root.StartsWith('/') && !Path.IsPathFullyQualified(root))
+        {
+            TempData["AcquisitionSettingsError"] = Ui["settings.acquisition.validation.libraryRootAbsolute"];
+            return RedirectToPage();
+        }
+
+        if (importMode is { } mode && !Enum.IsDefined(mode))
+        {
+            return BadRequest();
+        }
+
+        await importSettings.UpdateAsync(
+            state =>
+            {
+                var libraries = new Dictionary<MediaAcquisitionKind, MediaLibraryTarget>(state.MediaLibraries ?? []);
+                if (string.IsNullOrEmpty(root))
+                {
+                    libraries.Remove(MediaAcquisitionKind.Manga);
+                }
+                else
+                {
+                    libraries[MediaAcquisitionKind.Manga] = new MediaLibraryTarget(root, importMode);
+                }
+
+                return state with { MediaLibraries = libraries };
+            },
+            cancellationToken);
+        TempData["AcquisitionSettingsNotice"] = Ui["settings.acquisition.status.mangaLibrarySaved"];
         return RedirectToPage();
     }
 
