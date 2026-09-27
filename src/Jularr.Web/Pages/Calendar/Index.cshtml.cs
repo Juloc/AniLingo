@@ -1,5 +1,6 @@
 using System.Globalization;
 using Jularr.Web.Data;
+using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Calendar;
 using Jularr.Web.Features.Localization;
 using Microsoft.AspNetCore.Mvc;
@@ -17,6 +18,7 @@ public enum CalendarView
 public sealed class IndexModel(
     AppDbContext db,
     ReleaseCalendarService calendar,
+    CurrentAccountContext account,
     TimeProvider clock) : PageModel
 {
     public const int AgendaDays = 28;
