@@ -413,6 +413,23 @@ public sealed partial class BookCatalogService
             info.PublishedDate?.Trim());
     }
 
+    private static string? FirstNonEmpty(
+        string? first,
+        string? second,
+        string? third,
+        params string?[] remaining)
+    {
+        foreach (var value in new[] { first, second, third }.Concat(remaining))
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                return value.Trim();
+            }
+        }
+
+        return null;
+    }
+
     private static string? NormalizeGoogleCoverUrl(string? cover)
     {
         if (string.IsNullOrWhiteSpace(cover))
