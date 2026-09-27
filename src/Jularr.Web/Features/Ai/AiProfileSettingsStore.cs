@@ -260,7 +260,8 @@ public sealed class AiProfileSettingsStore
         }
 
         var baseUrl = settings.BaseUrl?.Trim();
-        var model = settings.Model?.Trim();
+        // The model may stay empty until the provider's models were loaded; AI work waits for it.
+        var model = string.IsNullOrWhiteSpace(settings.Model) ? null : settings.Model.Trim();
         var apiKey = settings.ApiKey?.Trim();
 
         if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri)
@@ -270,7 +271,7 @@ public sealed class AiProfileSettingsStore
                 "Enter a valid HTTP(S) base URL for the OpenAI-compatible provider.");
         }
 
-        if (!AiProfileSettings.IsValidModelId(model))
+        if (model is not null && !AiProfileSettings.IsValidModelId(model))
         {
             throw new InvalidOperationException(
                 "Enter a valid model name.");

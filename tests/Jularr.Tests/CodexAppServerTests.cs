@@ -71,6 +71,31 @@ public sealed class CodexAppServerTests
     }
 
     [TestMethod]
+    public async Task JobsWithoutAConcreteModelNeverReachCodex()
+    {
+        var server = new FakeCodexServer();
+        await using var fixture = new Fixture(server);
+        var provider = new CodexCliProvider(fixture.Gateway);
+
+        // No activity (a direct caller) and an activity without a model: both are refused before
+        // anything starts, so neither thread/start nor codex exec can pick an implicit default.
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+            () => provider.TranslateAsync("こんにちは", "de", CancellationToken.None));
+
+        var tracker = new AiActivityTracker(TimeProvider.System);
+        using var activity = tracker.Start(
+            new AiActivityStart("alice", AiOperations.NovelTranslation, "codex-cli", new AiInvocationOptions(null, "low", null, null)),
+            CancellationToken.None);
+        using (AiActivityScope.Enter(activity))
+        {
+            await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+                () => provider.TranslateAsync("こんにちは", "de", CancellationToken.None));
+        }
+
+        Assert.IsFalse(server.Received.Any(x => x["method"]?.GetValue<string>() == "thread/start"));
+    }
+
+    [TestMethod]
     public async Task TurnRunsLeastPrivilegedAndReportsExactTokenUsage()
     {
         var server = new FakeCodexServer();
@@ -128,6 +153,7 @@ public sealed class CodexAppServerTests
         Assert.AreEqual(0.6, snapshot.ContextWindowPercent!.Value, 0.001);
 
         var threadStart = server.Received.Single(x => x["method"]?.GetValue<string>() == "thread/start")["params"]!;
+        Assert.AreEqual("gpt-a", threadStart["model"]!.GetValue<string>(), "The selected model is sent explicitly.");
         Assert.AreEqual("read-only", threadStart["sandbox"]!.GetValue<string>());
         Assert.AreEqual("never", threadStart["approvalPolicy"]!.GetValue<string>());
         Assert.IsTrue(threadStart["ephemeral"]!.GetValue<bool>());
