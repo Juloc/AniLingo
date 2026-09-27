@@ -20,6 +20,7 @@ public static class ReleaseCalendarRegistration
 
         services.AddScoped<WatchlistStore>();
         services.AddScoped<FranchiseStore>();
+        services.AddScoped<MediaRelationStore>();
         services.AddScoped<FranchiseService>();
         services.AddHostedService<FranchiseRefreshService>();
 
