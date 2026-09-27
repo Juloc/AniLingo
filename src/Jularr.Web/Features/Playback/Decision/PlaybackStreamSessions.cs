@@ -81,6 +81,7 @@ public sealed class PlaybackStreamSession(
     public DateTimeOffset CreatedAtUtc { get; } = createdAtUtc;
     public DateTimeOffset LastSeenUtc { get; private set; } = createdAtUtc;
     public Guid? HlsSessionId { get; private set; }
+    public double? HlsStartSeconds { get; private set; }
 
     public void Touch(DateTimeOffset now)
     {
@@ -90,12 +91,30 @@ public sealed class PlaybackStreamSession(
         }
     }
 
-    public Guid? ReplaceHlsSession(Guid? hlsSessionId)
+    /// <summary>
+    /// The running HLS output when it started at (about) the requested position. Players
+    /// request the stream URL more than once (probing, playlist reloads); only a new
+    /// position may restart ffmpeg.
+    /// </summary>
+    public Guid? HlsSessionAt(double startSeconds)
+    {
+        lock (gate)
+        {
+            return HlsSessionId is { } id &&
+                   HlsStartSeconds is { } start &&
+                   Math.Abs(start - startSeconds) < 0.5
+                ? id
+                : null;
+        }
+    }
+
+    public Guid? ReplaceHlsSession(Guid? hlsSessionId, double? startSeconds = null)
     {
         lock (gate)
         {
             var previous = HlsSessionId;
             HlsSessionId = hlsSessionId;
+            HlsStartSeconds = hlsSessionId is null ? null : startSeconds;
             return previous;
         }
     }

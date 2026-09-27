@@ -167,7 +167,17 @@ public static class ClientApiPlaybackPlanEndpoints
                     "The media file of this playback session is unavailable."));
             }
 
-            // A restart at a new position replaces the session's previous HLS output.
+            // Repeated requests for the same position reuse the running output; a new
+            // position replaces it.
+            if (session.HlsSessionAt(start) is { } running &&
+                HlsPlaybackSessionManager.Shared.IsActive(running, session.ProfileId))
+            {
+                return Results.Redirect(
+                    ClientApiRoutes.StreamSessionHlsAsset(session.Id, running, "index.m3u8"),
+                    permanent: false,
+                    preserveMethod: false);
+            }
+
             if (session.ReplaceHlsSession(null) is { } previous)
             {
                 HlsPlaybackSessionManager.Shared.Stop(previous, session.ProfileId);
@@ -188,7 +198,7 @@ public static class ClientApiPlaybackPlanEndpoints
                     directory => PlaybackDeliveryCommand.Hls(session.SourcePath, session.Plan, start, directory),
                     lease,
                     cancellationToken);
-                session.ReplaceHlsSession(hls.SessionId);
+                session.ReplaceHlsSession(hls.SessionId, start);
                 return Results.Redirect(
                     ClientApiRoutes.StreamSessionHlsAsset(session.Id, hls.SessionId, "index.m3u8"),
                     permanent: false,

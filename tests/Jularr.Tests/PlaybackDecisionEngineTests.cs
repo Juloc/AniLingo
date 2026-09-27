@@ -681,6 +681,75 @@ public sealed class PlaybackDecisionEngineTests
     }
 
     [TestMethod]
+    public void HlsOutputIsReusedForTheSamePositionOnly()
+    {
+        var store = new PlaybackStreamSessionStore(TimeProvider.System);
+        var plan = PlaybackDecisionEngine.Decide(Request(HevcHdrMkv, Safari));
+        var session = store.Create(
+            "reader",
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "/media/a.mkv",
+            1420,
+            plan,
+            new PlaybackStreamSelections(null, null, false, PlaybackQualityPreset.Auto, PlaybackModePreference.Auto, "pwa"));
+        var hls = Guid.NewGuid();
+
+        Assert.IsNull(session.HlsSessionAt(0));
+        session.ReplaceHlsSession(hls, 120);
+        Assert.AreEqual(hls, session.HlsSessionAt(120.2), "A playlist reload or probe keeps the running output.");
+        Assert.IsNull(session.HlsSessionAt(300), "A seek starts a new output.");
+        Assert.AreEqual(hls, session.ReplaceHlsSession(null));
+        Assert.IsNull(session.HlsSessionAt(120));
+    }
+
+    [TestMethod]
+    public async Task PlanServiceResolvesTheInventoryAndOpensAProfileScopedSession()
+    {
+        await using var fixture = await MediaInventoryFixture.CreateAsync();
+        var media = await fixture.AddMediaAsync("episode.mkv", new byte[4096]);
+        fixture.Runner.Returns(media.Path, MediaProbeFixtures.HevcTenBitHdrMultiAudio);
+        var store = new PlaybackStreamSessionStore(TimeProvider.System);
+        var service = new PlaybackPlanService(
+            fixture.Db,
+            fixture.Inventory,
+            store,
+            new PlaybackServerCapabilityProvider(new PlaybackTranscodeSlots()));
+        var input = new PlaybackPlanInput(null, "web", ChromeAgent, IPAddress.Parse("192.168.1.2"));
+
+        var outcome = await service.PlanAsync(media.EpisodeId, "reader", input, CancellationToken.None);
+
+        Assert.IsNotNull(outcome);
+        Assert.IsTrue(outcome.CapabilitiesInferred, "Without a document the user agent picks an inferred baseline.");
+        Assert.AreEqual(PlaybackDeliveryMode.Transcode, outcome.Plan.Mode);
+        Assert.AreEqual(PlaybackNetworkClass.Local, outcome.Plan.Quality.Network);
+        Assert.AreEqual(PlaybackQualityPreset.Original, outcome.Plan.Quality.Requested, "Home network defaults to Original.");
+        Assert.AreEqual(media.Path, store.Get(outcome.Session!.Id, "reader")!.SourcePath, "The server resolves the path.");
+        Assert.IsNull(store.Get(outcome.Session.Id, "other"));
+
+        var retry = await service.PlanAsync(
+            media.EpisodeId,
+            "reader",
+            input with
+            {
+                FailedModes = new HashSet<PlaybackDeliveryMode> { PlaybackDeliveryMode.Transcode },
+                ReplacesSessionId = outcome.Session.Id
+            },
+            CancellationToken.None);
+        Assert.AreEqual(PlaybackDeliveryMode.Unavailable, retry!.Plan.Mode);
+        Assert.IsNull(retry.Session, "No session is opened for a plan that cannot play.");
+
+        var remote = await service.PlanAsync(
+            media.EpisodeId,
+            "reader",
+            input with { RemoteAddress = IPAddress.Parse("203.0.113.9") },
+            CancellationToken.None);
+        Assert.AreEqual(PlaybackQualityPreset.Auto, remote!.Plan.Quality.Requested, "Away from home defaults to Automatic.");
+
+        Assert.IsNull(await service.PlanAsync(Guid.NewGuid(), "reader", input, CancellationToken.None));
+    }
+
+    [TestMethod]
     public void PlanRequestModesAcceptLegacyNames()
     {
         Assert.IsTrue(ClientApiPlaybackPlanEndpoints.TryParseMode(null, out var auto));

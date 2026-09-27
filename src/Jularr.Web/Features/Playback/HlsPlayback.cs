@@ -190,6 +190,10 @@ public sealed class HlsPlaybackSessionManager : IDisposable
         return deleted;
     }
 
+    public bool IsActive(Guid sessionId, string profileId) =>
+        sessions.TryGetValue(sessionId, out var entry) &&
+        string.Equals(entry.ProfileId, profileId, StringComparison.Ordinal);
+
     /// <summary>Ends a session early (a client stopped or switched streams).</summary>
     public void Stop(Guid sessionId, string profileId)
     {
