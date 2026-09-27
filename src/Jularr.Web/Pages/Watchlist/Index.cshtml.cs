@@ -2,6 +2,7 @@ using Jularr.Web.Data;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Franchises;
 using Jularr.Web.Features.Localization;
+using Jularr.Web.Features.Metadata;
 using Jularr.Web.Features.Watchlist;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -94,7 +95,7 @@ public sealed class IndexModel(
         {
             await franchiseService.RefreshAsync(franchiseId, cancellationToken);
         }
-        catch
+        catch (MetadataProviderException)
         {
             TempData["Status"] = "Franchise metadata could not be refreshed. The local follow remains active.";
         }
