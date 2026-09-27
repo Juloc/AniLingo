@@ -734,7 +734,7 @@ body:has([data-reader-frame]) .app-main {
     gap: 4px;
     min-width: 0;
     padding: 7px 10px;
-    /* No backdrop-filter: it would become the containing block of the
+    /* No backdrop blur here: it would become the containing block of the
        fixed mobile menu sheets inside the bars. */
     background: color-mix(in srgb, var(--surface) 97%, var(--bg));
 }
