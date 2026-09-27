@@ -2832,6 +2832,7 @@ public static class UiTranslationResources
         M("novels.translation.aiSource", "AI", "Novels", "Button", "Reader switch option that shows the German translation made by the AI provider.", "very short option label", 10),
         M("novels.translation.bothSources", "Both", "Novels", "Button", "Reader switch option that shows the local and the AI German translation together.", "very short option label", 10),
         M("novels.translation.localTranslateButton", "Translate locally", "Novels", "Button", "Queues a German translation of the current chapter with the local translation model; distinct from the AI Translate button.", "concise action", 22),
+        M("novels.translation.localRetranslateButton", "Translate again locally", "Novels", "Button", "Queues a new local German translation of the current chapter because the local translation model or its settings changed since the cached one was made.", "concise action", 28),
         M("novels.translation.localNotCreated", "No local translation yet", "Novels", "Status", "Shown when the chapter has no German translation from the local translation model yet.", "compact status", 32),
         M("novels.translation.localReady", "Local translation ready", "Novels", "Status", "Status and notification when the local German translation of the chapter can be read.", "compact status", 32),
         M("novels.translation.localRunning", "Local translation running", "Novels", "Status", "Status while the local translation model translates the chapter.", "compact status", 32),

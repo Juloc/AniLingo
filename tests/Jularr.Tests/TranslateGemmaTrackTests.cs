@@ -240,6 +240,77 @@ public sealed class TranslateGemmaTrackTests
             "The paragraph finished before the failure must not be requested again.");
     }
 
+    [TestMethod]
+    public async Task GroupedParagraphsAreHalvedUntilTheAnswerKeepsTheParagraphCount()
+    {
+        var requests = new List<string>();
+        var translator = new TranslateGemmaNovelTranslator(
+            new RecordingFactory(new DelegateHandler(request =>
+            {
+                var source = SourceText(request);
+                requests.Add(source);
+                var parts = source[(source.LastIndexOf(":\n\n\n", StringComparison.Ordinal) + 4)..]
+                    .Split("\n\n");
+                // This model merges any group of more than two paragraphs into one.
+                return Completion(parts.Length > 2
+                    ? string.Join(" ", parts.Select(Translate))
+                    : string.Join("\n\n", parts.Select(Translate)));
+            })),
+            new TranslateGemmaOptions(new Uri(Endpoint), "model", 1200, TimeSpan.FromMinutes(1)));
+
+        string[] source = ["「一」", "「二」", "「三」", "「四」"];
+        var translated = new string?[source.Length];
+        await translator.TranslateParagraphsAsync(source, "de", translated, CancellationToken.None);
+
+        CollectionAssert.AreEqual(new[] { "Eins", "Zwei", "Drei", "Vier" }, translated);
+        Assert.AreEqual(3, requests.Count, "One group of four, then two accepted halves.");
+        StringAssert.StartsWith(requests[0], "You are a professional Japanese (ja) to German (de-DE) translator.");
+
+        static string Translate(string paragraph) => paragraph switch
+        {
+            "「一」" => "Eins",
+            "「二」" => "Zwei",
+            "「三」" => "Drei",
+            _ => "Vier"
+        };
+    }
+
+    [TestMethod]
+    public async Task SceneBreaksAreCopiedAndAnswersNeverAddParagraphs()
+    {
+        var requests = new List<string>();
+        var translator = new TranslateGemmaNovelTranslator(
+            new RecordingFactory(new DelegateHandler(request =>
+            {
+                requests.Add(SourceText(request));
+                return Completion("Erster Satz.\n\nZweiter Satz.");
+            })),
+            new TranslateGemmaOptions(new Uri(Endpoint), "model", 1200, TimeSpan.FromMinutes(1)));
+
+        string[] source = ["◇◇◇", "長い段落です。"];
+        var translated = new string?[source.Length];
+        await translator.TranslateParagraphsAsync(source, "de", translated, CancellationToken.None);
+
+        Assert.AreEqual("◇◇◇", translated[0], "A scene break has nothing to translate.");
+        Assert.AreEqual("Erster Satz.\nZweiter Satz.", translated[1]);
+        Assert.AreEqual(1, requests.Count);
+        Assert.AreEqual("en", TranslateGemmaNovelTranslator.DetectSourceLanguage("Hello there."));
+        Assert.IsNull(TranslateGemmaNovelTranslator.DetectSourceLanguage("……！？"));
+    }
+
+    [TestMethod]
+    public void ProviderIdChangesWithModelAndEndpoint()
+    {
+        var baseline = TranslateGemmaNovelTranslator.BuildProviderId(
+            new TranslateGemmaOptions(new Uri(Endpoint), "translategemma-12b-it", 1200, TimeSpan.FromMinutes(1)));
+
+        StringAssert.StartsWith(baseline, NovelTranslationProviders.TranslateGemmaPrefix + "translategemma-12b-it:");
+        Assert.AreNotEqual(baseline, TranslateGemmaNovelTranslator.BuildProviderId(
+            new TranslateGemmaOptions(new Uri(Endpoint), "translategemma-4b-it", 1200, TimeSpan.FromMinutes(1))));
+        Assert.AreNotEqual(baseline, TranslateGemmaNovelTranslator.BuildProviderId(
+            new TranslateGemmaOptions(new Uri("http://translategemma:11434/v1/chat/completions"), "translategemma-12b-it", 1200, TimeSpan.FromMinutes(1))));
+    }
+
     private static string SourceText(HttpRequestMessage request)
     {
         using var body = JsonDocument.Parse(request.Content!.ReadAsStringAsync().GetAwaiter().GetResult());

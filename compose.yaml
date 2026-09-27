@@ -8,11 +8,41 @@ services:
     ports:
       - "8097:8080"
     environment:
+      # Optional local Light Novel translation (docs/TRANSLATEGEMMA.md). Empty endpoint = off.
+      # With the bundled model server: TRANSLATEGEMMA_ENDPOINT=http://translategemma:11434/v1/chat/completions
       TranslateGemma__Endpoint: ${TRANSLATEGEMMA_ENDPOINT:-}
       TranslateGemma__Model: ${TRANSLATEGEMMA_MODEL:-translategemma-12b-it}
       TranslateGemma__MaxChunkCharacters: ${TRANSLATEGEMMA_MAX_CHUNK_CHARACTERS:-1200}
       TranslateGemma__TimeoutMinutes: ${TRANSLATEGEMMA_TIMEOUT_MINUTES:-30}
 
+  # Local TranslateGemma model server (Ollama, CPU, quantized Q4_K_M). Only started with
+  #   docker compose --profile translategemma up -d
+  # Not published on a host port: only Jularr reaches it on the compose network.
+  translategemma:
+    image: ollama/ollama:latest
+    profiles: ["translategemma"]
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "-c"]
+    # Pulls the model once (kept in the volume) and names it like Jularr's TranslateGemma__Model.
+    command:
+      - |
+        ollama serve &
+        server=$$!
+        until ollama list >/dev/null 2>&1; do sleep 1; done
+        ollama pull "$$OLLAMA_TAG" && ollama cp "$$OLLAMA_TAG" "$$JULARR_MODEL"
+        wait $$server
+    environment:
+      OLLAMA_TAG: ${TRANSLATEGEMMA_OLLAMA_TAG:-translategemma:12b}
+      JULARR_MODEL: ${TRANSLATEGEMMA_MODEL:-translategemma-12b-it}
+      OLLAMA_KEEP_ALIVE: "-1"
+      OLLAMA_NUM_PARALLEL: "1"
+      OLLAMA_MAX_LOADED_MODELS: "1"
+      OLLAMA_CONTEXT_LENGTH: "4096"
+    volumes:
+      - translategemma-models:/root/.ollama
+    mem_limit: ${TRANSLATEGEMMA_MEMORY_LIMIT:-12g}
+
 volumes:
   # Legacy key kept after the Jularr rename: it determines the Docker volume name that holds /data.
   anilingo-data:
+  translategemma-models:

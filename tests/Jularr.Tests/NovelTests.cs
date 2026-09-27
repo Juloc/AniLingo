@@ -249,8 +249,16 @@ public sealed class NovelTests
             var handler = new DelegateHttpMessageHandler(request =>
             {
                 calls++;
-                requestBodies.Add(request.Content!.ReadAsStringAsync().GetAwaiter().GetResult());
-                var translation = calls == 1 ? "Das ist eins." : "Das ist zwei.";
+                var raw = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+                requestBodies.Add(raw);
+                using var parsed = JsonDocument.Parse(raw);
+                var body = parsed.RootElement.GetProperty("messages")[0].GetProperty("content").GetString()!;
+                // Both short paragraphs go out as one group and come back paragraph by paragraph.
+                var translation = string.Join("\n\n", new[]
+                {
+                    body.Contains("これは一つです。", StringComparison.Ordinal) ? "Das ist eins." : null,
+                    body.Contains("これは二つです。", StringComparison.Ordinal) ? "Das ist zwei." : null
+                }.Where(x => x is not null));
                 return new HttpResponseMessage(HttpStatusCode.OK)
                 {
                     Content = new StringContent(
@@ -314,11 +322,16 @@ public sealed class NovelTests
             Assert.IsFalse(ai.ProviderId.StartsWith(
                 NovelTranslationProviders.TranslateGemmaPrefix,
                 StringComparison.Ordinal));
-            Assert.AreEqual(2, calls);
-            Assert.IsTrue(requestBodies.All(body =>
-                body.Contains("\"source_lang_code\":\"ja\"", StringComparison.Ordinal) &&
-                body.Contains("\"target_lang_code\":\"de-DE\"", StringComparison.Ordinal) &&
-                !body.Contains("\"role\":\"system\"", StringComparison.Ordinal)));
+            Assert.AreEqual(1, calls);
+            using var request = JsonDocument.Parse(requestBodies[0]);
+            var messages = request.RootElement.GetProperty("messages");
+            Assert.AreEqual(1, messages.GetArrayLength(), "TranslateGemma takes one user message and no system prompt.");
+            Assert.AreEqual("user", messages[0].GetProperty("role").GetString());
+            var prompt = messages[0].GetProperty("content").GetString()!;
+            StringAssert.StartsWith(
+                prompt,
+                "You are a professional Japanese (ja) to German (de-DE) translator.");
+            StringAssert.EndsWith(prompt, "into German:\n\n\nこれは一つです。\n\nこれは二つです。");
             Assert.AreEqual(1, aiTranslator.Calls);
             Assert.AreEqual(2, await db.NovelTranslations.CountAsync());
 
@@ -428,7 +441,7 @@ public sealed class NovelTests
     }
 
     [TestMethod]
-    public async Task TranslateGemmaRetriesWithVllmDelimiterWhenStructuredContentIsRejected()
+    public async Task TranslateGemmaFallsBackToStructuredThenDelimitedContentWhenRejected()
     {
         var path = TempDatabasePath();
 
@@ -464,7 +477,8 @@ public sealed class NovelTests
                 var body = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
                 bodies.Add(body);
 
-                if (calls == 1)
+                // Plain instruction text and the structured item are both rejected by this server.
+                if (calls <= 2)
                 {
                     return new HttpResponseMessage(HttpStatusCode.BadRequest);
                 }
@@ -500,10 +514,18 @@ public sealed class NovelTests
                 CancellationToken.None);
 
             Assert.AreEqual("Das ist ein Test.", translation.Text);
-            Assert.AreEqual(2, calls);
-            Assert.IsTrue(
-                bodies[0].Contains("\"source_lang_code\":\"ja\"", StringComparison.Ordinal));
-            using var fallbackRequest = JsonDocument.Parse(bodies[1]);
+            Assert.AreEqual(3, calls);
+            using var promptRequest = JsonDocument.Parse(bodies[0]);
+            Assert.AreEqual(
+                JsonValueKind.String,
+                promptRequest.RootElement.GetProperty("messages")[0].GetProperty("content").ValueKind);
+            using var structuredRequest = JsonDocument.Parse(bodies[1]);
+            var item = structuredRequest.RootElement.GetProperty("messages")[0].GetProperty("content")[0];
+            Assert.AreEqual("text", item.GetProperty("type").GetString());
+            Assert.AreEqual("ja", item.GetProperty("source_lang_code").GetString());
+            Assert.AreEqual("de-DE", item.GetProperty("target_lang_code").GetString());
+            Assert.AreEqual("これはテストです。", item.GetProperty("text").GetString());
+            using var fallbackRequest = JsonDocument.Parse(bodies[2]);
             var fallbackContent = fallbackRequest.RootElement
                 .GetProperty("messages")[0]
                 .GetProperty("content")
