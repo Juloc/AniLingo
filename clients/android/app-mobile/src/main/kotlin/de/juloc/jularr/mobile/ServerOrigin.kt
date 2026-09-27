@@ -95,7 +95,7 @@ object WebNavigationPolicy {
         }
 
         val match = episodePath.matchEntire(uri.path ?: "")
-        if (match != null) {
+        if (match != null && isNativePlaybackRequest(uri)) {
             val episodeId = match.groupValues[1]
             if (runCatching { UUID.fromString(episodeId) }.isSuccess) {
                 return WebNavigationDecision.OpenNativeEpisode(episodeId)
@@ -103,5 +103,16 @@ object WebNavigationPolicy {
         }
 
         return WebNavigationDecision.AllowInWebView
+    }
+
+    private fun isNativePlaybackRequest(uri: URI): Boolean =
+        uri.rawQuery
+            ?.split('&')
+            ?.any { parameter ->
+                val parts = parameter.split('=', limit = 2)
+                parts.size == 2 &&
+                    parts[0] == "native" &&
+                    parts[1] == "1"
+            } == true
     }
 }
