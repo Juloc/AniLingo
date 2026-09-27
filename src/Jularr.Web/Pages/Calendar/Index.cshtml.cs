@@ -64,7 +64,7 @@ public sealed class IndexModel(
         var now = clock.GetUtcNow();
         Presenter = new ReleaseCalendarPresenter(Ui, zone, now);
 
-        View = Enum.TryParse<CalendarView>(ViewName, ignoreCase: true, out var view) ? view : CalendarView.Agenda;
+        View = Enum.TryParse<CalendarView>(ViewName, ignoreCase: true, out var view) ? view : CalendarView.Month;
         Anchor = DateOnly.TryParseExact(DateText, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var anchor)
             ? anchor
             : Presenter.Today;
@@ -145,7 +145,7 @@ public sealed class IndexModel(
     {
         var values = new List<string>();
         var targetView = view ?? View;
-        if (targetView != CalendarView.Agenda)
+        if (targetView != CalendarView.Month)
         {
             values.Add("view=" + targetView.ToString().ToLowerInvariant());
         }
