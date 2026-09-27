@@ -61,13 +61,18 @@ public sealed partial class BookCatalogService
 
         if (daily.Count > 0)
         {
-            return daily;
+            return await EnrichTrendingWithGoogleAsync(
+                daily,
+                cancellationToken);
         }
 
         // Still preserve trending semantics when the daily window happens to be
         // unavailable. Do not silently substitute all-time Gutenberg downloads.
-        return await CaptureCatalogAsync(
+        var weekly = await CaptureCatalogAsync(
             token => BrowseOpenLibraryTrendingAsync("weekly", token),
+            cancellationToken);
+        return await EnrichTrendingWithGoogleAsync(
+            weekly,
             cancellationToken);
     }
 
@@ -90,6 +95,80 @@ public sealed partial class BookCatalogService
             .Select(MapOpenLibrarySearch)
             .Take(SearchLimit)
             .ToArray();
+    }
+
+    private async Task<IReadOnlyList<BookCatalogItem>> EnrichTrendingWithGoogleAsync(
+        IReadOnlyList<BookCatalogItem> items,
+        CancellationToken cancellationToken)
+    {
+        if (items.Count == 0)
+        {
+            return items;
+        }
+
+        using var timeout =
+            CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(5));
+        using var gate = new SemaphoreSlim(8, 8);
+
+        var tasks = items.Select(async item =>
+        {
+            try
+            {
+                await gate.WaitAsync(timeout.Token);
+                try
+                {
+                    var isbn = (item.Isbns ?? [])
+                        .FirstOrDefault(x => x.Length == 13)
+                        ?? (item.Isbns ?? []).FirstOrDefault();
+                    var query = isbn is not null
+                        ? "isbn:" + isbn
+                        : "intitle:" + item.Title
+                            + (string.IsNullOrWhiteSpace(item.Author)
+                                ? ""
+                                : " inauthor:" + item.Author);
+
+                    var candidates = (await SearchGoogleVolumesAsync(
+                            query,
+                            5,
+                            timeout.Token))
+                        .Select(MapGoogleBook)
+                        .Where(candidate =>
+                            !string.IsNullOrWhiteSpace(candidate.CoverImageUrl))
+                        .ToArray();
+
+                    var exact = isbn is null
+                        ? candidates.FirstOrDefault(candidate =>
+                            StrongBookMatch(
+                                NormalizeForMatch(item.Title),
+                                NormalizeForMatch(item.Author ?? ""),
+                                candidate))
+                        : candidates.FirstOrDefault(candidate =>
+                            (candidate.Isbns ?? []).Contains(
+                                isbn,
+                                StringComparer.Ordinal));
+
+                    return exact is null
+                        ? item
+                        : MergeCatalogItem(item, exact);
+                }
+                finally
+                {
+                    gate.Release();
+                }
+            }
+            catch (Exception exception) when (
+                !cancellationToken.IsCancellationRequested
+                && exception is HttpRequestException
+                    or TaskCanceledException
+                    or InvalidOperationException
+                    or OperationCanceledException)
+            {
+                return item;
+            }
+        }).ToArray();
+
+        return await Task.WhenAll(tasks);
     }
 
     private async Task<IReadOnlyList<BookCatalogItem>> BrowsePopularGutenbergAsync(
