@@ -1,0 +1,11 @@
+@using Jularr.Web.Features.Localization
+@{
+    var ui = ViewData["UiTextBundle"] as UiTextBundle ?? UiTextBundle.English;
+}
+@* Global search. Discover reads ?q= and runs the search on load. *@
+<form class="app-search" role="search" method="get" action="/Discover">
+    <partial name="_AppIcon" model="@("search")" />
+    <input type="search" name="q" autocomplete="off" spellcheck="false" enterkeyhint="search"
+           aria-label="@ui["nav.search"]"
+           placeholder="@ui["nav.searchPlaceholder"]" />
+</form>
