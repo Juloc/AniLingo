@@ -157,6 +157,8 @@ fun TvLoginScreen(
 fun TvLibraryScreen(
     account: ClientAccount,
     library: ClientLibrary,
+    serverOrigin: String,
+    requestHeaders: Map<String, String>,
     error: String?,
     onAnime: (AnimeSummary) -> Unit,
     onRefresh: () -> Unit,
@@ -166,8 +168,8 @@ fun TvLibraryScreen(
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 48.dp, vertical = 36.dp),
-            verticalArrangement = Arrangement.spacedBy(24.dp),
+                .padding(horizontal = 48.dp, vertical = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(22.dp),
         ) {
             item {
                 Row(
@@ -175,11 +177,12 @@ fun TvLibraryScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("Jularr", style = MaterialTheme.typography.headlineMedium)
+                    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text("Library", style = MaterialTheme.typography.headlineLarge)
                         Text(
-                            "Signed in as ${account.userName ?: account.role}",
+                            "Jularr · ${account.userName ?: account.role}",
                             style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
                         )
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -200,22 +203,23 @@ fun TvLibraryScreen(
             }
 
             item {
-                Text("Library", style = MaterialTheme.typography.titleLarge)
-            }
-
-            item {
                 if (library.anime.isEmpty()) {
                     Text(
                         "No anime in the library yet.",
                         style = MaterialTheme.typography.bodyLarge,
                     )
                 } else {
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
                         items(
                             items = library.anime,
                             key = { it.id },
                         ) { anime ->
-                            AnimeButton(anime, onClick = { onAnime(anime) })
+                            AnimeButton(
+                                anime = anime,
+                                serverOrigin = serverOrigin,
+                                requestHeaders = requestHeaders,
+                                onClick = { onAnime(anime) },
+                            )
                         }
                     }
                 }
@@ -227,6 +231,8 @@ fun TvLibraryScreen(
 @Composable
 fun TvAnimeScreen(
     anime: AnimeDetail,
+    serverOrigin: String,
+    requestHeaders: Map<String, String>,
     onEpisode: (EpisodeSummary) -> Unit,
     onBack: () -> Unit,
 ) {
@@ -234,30 +240,65 @@ fun TvAnimeScreen(
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 48.dp, vertical = 36.dp),
-            verticalArrangement = Arrangement.spacedBy(22.dp),
+                .padding(horizontal = 48.dp, vertical = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
             item {
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(24.dp),
+                    verticalAlignment = Alignment.Top,
                 ) {
-                    Button(onClick = onBack) { Text("Back") }
-                    Column {
-                        Text(anime.title, style = MaterialTheme.typography.headlineMedium)
+                    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        Button(onClick = onBack) { Text("Back") }
+                        TvArtwork(
+                            url = anime.coverImageUrl,
+                            serverOrigin = serverOrigin,
+                            requestHeaders = requestHeaders,
+                            contentDescription = anime.title,
+                            modifier = Modifier
+                                .width(170.dp)
+                                .aspectRatio(2f / 3f)
+                                .clip(MaterialTheme.shapes.medium),
+                        )
+                    }
+
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Text(anime.title, style = MaterialTheme.typography.headlineLarge)
+                        anime.nativeTitle?.takeIf { it.isNotBlank() }?.let {
+                            Text(
+                                text = it,
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.74f),
+                            )
+                        }
                         if (anime.localTitle != anime.title) {
-                            Text(anime.localTitle, style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                anime.localTitle,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
+                            )
+                        }
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            anime.seasonYear?.let { TvInfoPill(it.toString()) }
+                            anime.format?.takeIf { it.isNotBlank() }?.let { TvInfoPill(it) }
+                            TvInfoPill(
+                                "${anime.seasons.sumOf { it.episodes.size }} episodes",
+                            )
+                        }
+
+                        anime.description?.takeIf { it.isNotBlank() }?.let { description ->
+                            Text(
+                                text = description,
+                                style = MaterialTheme.typography.bodyLarge,
+                                maxLines = 5,
+                            )
                         }
                     }
-                }
-            }
-
-            anime.description?.takeIf { it.isNotBlank() }?.let { description ->
-                item {
-                    Text(
-                        text = description,
-                        style = MaterialTheme.typography.bodyLarge,
-                    )
                 }
             }
 
@@ -290,6 +331,8 @@ fun TvAnimeScreen(
 fun TvEpisodeScreen(
     anime: AnimeDetail,
     page: TvEpisodePageData,
+    serverOrigin: String,
+    requestHeaders: Map<String, String>,
     busy: Boolean,
     error: String?,
     onPlay: () -> Unit,
@@ -297,24 +340,22 @@ fun TvEpisodeScreen(
 ) {
     val episode = page.detail
     val progress = page.progress
-    val progressFraction = (progress.percent.coerceIn(0, 100) / 100f)
+    val progressFraction = progress.percent.coerceIn(0, 100) / 100f
 
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 56.dp, vertical = 40.dp),
-            verticalArrangement = Arrangement.spacedBy(24.dp),
+                .padding(horizontal = 52.dp, vertical = 34.dp),
+            verticalArrangement = Arrangement.spacedBy(22.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(18.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Button(onClick = onBack) {
-                    Text("Back")
-                }
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Button(onClick = onBack) { Text("Back") }
+                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Text(
                         text = anime.title,
                         style = MaterialTheme.typography.titleLarge,
@@ -326,94 +367,120 @@ fun TvEpisodeScreen(
                 }
             }
 
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                    .padding(28.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(28.dp),
+                verticalAlignment = Alignment.Top,
             ) {
-                Text(
-                    text = episode.title,
-                    style = MaterialTheme.typography.headlineLarge,
+                TvArtwork(
+                    url = anime.coverImageUrl,
+                    serverOrigin = serverOrigin,
+                    requestHeaders = requestHeaders,
+                    contentDescription = anime.title,
+                    modifier = Modifier
+                        .width(180.dp)
+                        .aspectRatio(2f / 3f)
+                        .clip(MaterialTheme.shapes.medium),
                 )
 
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    TvInfoPill(
-                        text = if (episode.hasMedia) "Ready to play" else "Media unavailable",
-                    )
-                    if (episode.activeLearningSubtitleTrackId != null) {
-                        TvInfoPill(text = "Japanese learning subtitles")
-                    }
-                    if (progress.isCompleted) {
-                        TvInfoPill(text = "Watched")
-                    }
-                }
-
-                if (progress.percent > 0 && !progress.isCompleted) {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                        ) {
-                            Text(
-                                "Continue at ${formatEpisodePosition(progress.positionMs)}",
-                                style = MaterialTheme.typography.bodyLarge,
-                            )
-                            Text(
-                                "${progress.percent}%",
-                                style = MaterialTheme.typography.bodyMedium,
-                            )
-                        }
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(6.dp)
-                                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.20f)),
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth(progressFraction)
-                                    .height(6.dp)
-                                    .background(MaterialTheme.colorScheme.primary),
-                            )
-                        }
-                    }
-                }
-
-                val learning = episode.learning
-                Text(
-                    text = "Vocabulary · ${learning.knownTerms} known · " +
-                        "${learning.learningTerms} learning · ${learning.newTerms} new",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-
-                error?.let {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .background(
+                            MaterialTheme.colorScheme.surfaceVariant,
+                            MaterialTheme.shapes.medium,
+                        )
+                        .padding(28.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
                     Text(
-                        text = it,
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodyMedium,
+                        text = episode.title,
+                        style = MaterialTheme.typography.headlineLarge,
                     )
-                }
 
-                Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    Button(
-                        enabled = episode.hasMedia && !busy,
-                        onClick = onPlay,
-                    ) {
-                        Text(
-                            when {
-                                busy -> "Loading…"
-                                progress.positionMs > 0 && !progress.isCompleted -> "Resume"
-                                else -> "Play"
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        TvInfoPill(
+                            text = if (episode.hasMedia) {
+                                "Ready to play"
+                            } else {
+                                "Media unavailable"
                             },
                         )
+                        if (episode.activeLearningSubtitleTrackId != null) {
+                            TvInfoPill(text = "Japanese learning subtitles")
+                        }
+                        if (progress.isCompleted) {
+                            TvInfoPill(text = "Watched")
+                        }
                     }
-                    Button(
-                        enabled = !busy,
-                        onClick = onBack,
-                    ) {
-                        Text("Episodes")
+
+                    if (progress.percent > 0 && !progress.isCompleted) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                            ) {
+                                Text(
+                                    "Continue at ${formatEpisodePosition(progress.positionMs)}",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                )
+                                Text(
+                                    "${progress.percent}%",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(6.dp)
+                                    .background(
+                                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.20f),
+                                    ),
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth(progressFraction)
+                                        .height(6.dp)
+                                        .background(MaterialTheme.colorScheme.primary),
+                                )
+                            }
+                        }
+                    }
+
+                    val learning = episode.learning
+                    Text(
+                        text = "Vocabulary · ${learning.knownTerms} known · " +
+                            "${learning.learningTerms} learning · ${learning.newTerms} new",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+
+                    error?.let {
+                        Text(
+                            text = it,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        Button(
+                            enabled = episode.hasMedia && !busy,
+                            onClick = onPlay,
+                        ) {
+                            Text(
+                                when {
+                                    busy -> "Loading…"
+                                    progress.positionMs > 0 && !progress.isCompleted -> "Resume"
+                                    else -> "Play"
+                                },
+                            )
+                        }
+                        Button(
+                            enabled = !busy,
+                            onClick = onBack,
+                        ) {
+                            Text("Episodes")
+                        }
                     }
                 }
             }
@@ -422,7 +489,7 @@ fun TvEpisodeScreen(
 }
 
 @Composable
-private fun TvInfoPill(text: String) {
+private fun TvInfoPill(private fun TvInfoPill(text: String) {
     Box(
         modifier = Modifier
             .background(
@@ -453,23 +520,43 @@ private fun formatEpisodePosition(valueMs: Long): String {
 @Composable
 private fun AnimeButton(
     anime: AnimeSummary,
+    serverOrigin: String,
+    requestHeaders: Map<String, String>,
     onClick: () -> Unit,
 ) {
     Button(
         onClick = onClick,
         modifier = Modifier
-            .width(260.dp)
-            .height(110.dp),
+            .width(210.dp)
+            .height(330.dp),
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(anime.title, style = MaterialTheme.typography.titleMedium)
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            TvArtwork(
+                url = anime.coverImageUrl,
+                serverOrigin = serverOrigin,
+                requestHeaders = requestHeaders,
+                contentDescription = anime.title,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(225.dp)
+                    .clip(MaterialTheme.shapes.small),
+            )
             Text(
-                "${anime.episodeCount} episodes",
+                text = anime.title,
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 2,
+            )
+            Text(
+                text = buildString {
+                    anime.seasonYear?.let { append(it).append(" · ") }
+                    anime.format?.takeIf { it.isNotBlank() }?.let { append(it).append(" · ") }
+                    append(anime.episodeCount).append(" ep.")
+                },
                 style = MaterialTheme.typography.bodySmall,
             )
-            anime.seasonYear?.let {
-                Text(it.toString(), style = MaterialTheme.typography.bodySmall)
-            }
         }
     }
 }
@@ -483,25 +570,145 @@ private fun EpisodeButton(
         enabled = episode.hasMedia,
         onClick = onClick,
         modifier = Modifier
-            .width(210.dp)
-            .height(92.dp),
+            .width(240.dp)
+            .height(112.dp),
     ) {
-        Column {
-            Text(
-                "S${episode.seasonNumber} · E${episode.number}",
-                style = MaterialTheme.typography.titleMedium,
-            )
+        Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    "E${episode.number}",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                if (episode.hasJapaneseLearningSubtitle) {
+                    Text(
+                        "日本語",
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                }
+            }
             Text(
                 episode.title,
                 maxLines = 2,
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodyMedium,
             )
+            if (!episode.hasMedia) {
+                Text(
+                    "Media unavailable",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
         }
     }
 }
 
+private data class TvArtworkSource(
+    val url: String,
+    val authenticated: Boolean,
+)
+
 @Composable
-private fun TvCenteredPanel(
+private fun TvArtwork(
+    url: String?,
+    serverOrigin: String,
+    requestHeaders: Map<String, String>,
+    contentDescription: String?,
+    modifier: Modifier = Modifier,
+    contentScale: ContentScale = ContentScale.Crop,
+) {
+    val context = LocalContext.current
+    val source = remember(url, serverOrigin) {
+        resolveArtworkSource(serverOrigin, url)
+    }
+
+    Box(
+        modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (source == null) {
+            Text(
+                text = contentDescription
+                    ?.trim()
+                    ?.take(1)
+                    ?.uppercase()
+                    .orEmpty(),
+                style = MaterialTheme.typography.headlineLarge,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f),
+            )
+            return@Box
+        }
+
+        val request = remember(source, requestHeaders) {
+            val builder = ImageRequest.Builder(context)
+                .data(source.url)
+
+            if (source.authenticated && requestHeaders.isNotEmpty()) {
+                val headers = NetworkHeaders.Builder().also { network ->
+                    requestHeaders.forEach { (name, value) ->
+                        network.set(name, value)
+                    }
+                }.build()
+                builder.httpHeaders(headers)
+            }
+
+            builder.build()
+        }
+
+        AsyncImage(
+            model = request,
+            contentDescription = contentDescription,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = contentScale,
+        )
+    }
+}
+
+private fun resolveArtworkSource(
+    serverOrigin: String,
+    rawUrl: String?,
+): TvArtworkSource? {
+    val value = rawUrl?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    return runCatching {
+        val candidate = URI(value)
+        val base = serverOrigin
+            .trim()
+            .takeIf { it.isNotEmpty() }
+            ?.let { URI(it.trimEnd('/') + "/") }
+
+        val resolved = when {
+            candidate.isAbsolute -> candidate
+            base != null -> base.resolve(candidate)
+            else -> return null
+        }
+
+        TvArtworkSource(
+            url = resolved.toString(),
+            authenticated = base != null && sameOrigin(base, resolved),
+        )
+    }.getOrNull()
+}
+
+private fun sameOrigin(
+    left: URI,
+    right: URI,
+): Boolean =
+    left.scheme.equals(right.scheme, ignoreCase = true) &&
+        left.host.equals(right.host, ignoreCase = true) &&
+        effectivePort(left) == effectivePort(right)
+
+private fun effectivePort(uri: URI): Int =
+    when {
+        uri.port >= 0 -> uri.port
+        uri.scheme.equals("https", ignoreCase = true) -> 443
+        uri.scheme.equals("http", ignoreCase = true) -> 80
+        else -> -1
+}
+
+@Composable
+@Composable
+private fun TvCenteredPanel(private fun TvCenteredPanel(
     title: String,
     description: String,
     content: @Composable () -> Unit,
