@@ -1,10 +1,10 @@
-package de.juloc.jularr.mobile
+package de.juloc.jularr.tv
 
 import android.content.Context
 import androidx.compose.ui.graphics.Color
 import de.juloc.jularr.core.design.PlayerDesignConfigLoader
 
-data class MobilePlayerDesign(
+data class TvPlayerDesign(
     val overlay: Color,
     val sheet: Color,
     val subtitleText: Color,
@@ -17,14 +17,14 @@ data class MobilePlayerDesign(
     val spacingSmallDp: Int,
     val spacingMediumDp: Int,
     val spacingLargeDp: Int,
+    val controlSizeDp: Int,
     val subtitlePreferredSp: Int,
-    val controlsAutoHideMs: Long,
 )
 
-object MobilePlayerDesignLoader {
-    fun load(context: Context): MobilePlayerDesign {
+object TvPlayerDesignLoader {
+    fun load(context: Context): TvPlayerDesign {
         val config = PlayerDesignConfigLoader.load(context)
-        return MobilePlayerDesign(
+        return TvPlayerDesign(
             overlay = Color(config.overlayColor),
             sheet = Color(config.sheetColor),
             subtitleText = Color(config.subtitleTextColor),
@@ -37,8 +37,8 @@ object MobilePlayerDesignLoader {
             spacingSmallDp = config.spacingSmallDp,
             spacingMediumDp = config.spacingMediumDp,
             spacingLargeDp = config.spacingLargeDp,
+            controlSizeDp = config.tvControlSizeDp,
             subtitlePreferredSp = config.subtitlePreferredSp,
-            controlsAutoHideMs = config.controlsAutoHideMs,
         )
     }
 }
