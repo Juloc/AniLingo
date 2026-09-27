@@ -1,5 +1,7 @@
+using Jularr.Web.Data;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.ChapterArtwork;
+using Jularr.Web.Features.Localization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
@@ -9,7 +11,8 @@ namespace Jularr.Web.Pages.Settings;
 public sealed class ChapterArtworkModel(
     CurrentAccountContext account,
     ChapterArtworkStore store,
-    ChapterArtworkGlobalSettingsStore globalSettings) : PageModel
+    ChapterArtworkGlobalSettingsStore globalSettings,
+    AppDbContext db) : PageModel
 {
     public IActionResult OnGet() => Redirect("/Settings/Ai");
 
@@ -36,7 +39,8 @@ public sealed class ChapterArtworkModel(
             : current with { Enabled = enabled };
 
         await store.SavePreferencesAsync(account.ProfileId, preferences, cancellationToken);
-        TempData["Status"] = "AI settings updated.";
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+        TempData["Status"] = ui["settings.chapterArtwork.saved"];
 
         if (account.IsOwner)
         {
@@ -46,9 +50,10 @@ public sealed class ChapterArtworkModel(
                     new ChapterArtworkGlobalSettings(globalEnabled, storageRoot),
                     cancellationToken);
             }
-            catch (InvalidOperationException exception)
+            catch (InvalidOperationException)
             {
-                TempData["Status"] = exception.Message;
+                // The only rejected value is a storage folder that is not an absolute path.
+                TempData["Status"] = ui["settings.chapterArtwork.storageRootNotAbsolute"];
             }
         }
 

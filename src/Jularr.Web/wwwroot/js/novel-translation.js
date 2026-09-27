@@ -223,12 +223,14 @@
             }
         };
 
-        const waitForGemmaTranslation = async () => {
+        // While a new local translation replaces one from an older configuration, the status
+        // keeps answering "ready" with the old text; wait for the current one.
+        const waitForGemmaTranslation = async regenerating => {
             for (let attempt = 0; attempt < 60; attempt++) {
                 await new Promise(resolve => setTimeout(resolve, 5000));
                 try {
                     const result = await fetchGemmaStatus();
-                    if (result?.status === "ready") {
+                    if (result?.status === "ready" && (!regenerating || result.current !== false)) {
                         installGemmaParagraphs(result.paragraphs);
                         reader.showToast(t("localReady", "Local translation ready"));
                         return;
@@ -275,7 +277,7 @@
             }
         };
 
-        const createGemmaForm = () => {
+        const createGemmaForm = (label = t("localTranslateButton", "Translate locally")) => {
             const form = document.createElement("form");
             form.method = "post";
             form.action = gemmaPostUrl;
@@ -290,7 +292,7 @@
             const button = document.createElement("button");
             button.type = "submit";
             button.className = "novel-text-action";
-            button.textContent = t("localTranslateButton", "Translate locally");
+            button.textContent = label;
             form.append(button);
             return form;
         };
@@ -298,6 +300,10 @@
         const renderGemmaStatus = result => {
             if (result?.status === "ready") {
                 installGemmaParagraphs(result.paragraphs);
+                if (result.canRegenerate) {
+                    localStatusElement()?.append(
+                        createGemmaForm(t("localRetranslateButton", "Translate again locally")));
+                }
                 return;
             }
 
@@ -329,11 +335,11 @@
             const previous = button.textContent;
             button.textContent = t("starting", "Starting…");
 
+            const regenerating = reader.hasTranslateGemma();
             try {
                 const result = await reader.postForm(form);
                 if (result?.status === "ready") {
-                    const status = await fetchGemmaStatus();
-                    installGemmaParagraphs(status.paragraphs);
+                    installGemmaParagraphs(result.paragraphs);
                     return;
                 }
 
@@ -343,7 +349,7 @@
                 }
 
                 reader.showToast(t("localStarted", "Local translation started"));
-                void waitForGemmaTranslation();
+                void waitForGemmaTranslation(regenerating);
             } catch (error) {
                 button.disabled = false;
                 button.textContent = previous;

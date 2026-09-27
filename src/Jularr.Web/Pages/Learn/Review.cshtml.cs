@@ -42,6 +42,11 @@ public sealed class ReviewModel(
         Enum.GetValues<LearningCardMode>()
             .ToDictionary(mode => mode.ToString(), ModeLabel);
 
+    private Task<UiTextBundle> LoadUiAsync(CancellationToken cancellationToken) =>
+        new UiTranslationCatalogStore(db).LoadProfileBundleAsync(
+            currentAccount.ProfileId,
+            cancellationToken);
+
     public async Task<IActionResult> OnGetAsync(CancellationToken cancellationToken)
     {
         if (!await ReviewsEnabledAsync(cancellationToken))
@@ -126,7 +131,7 @@ public sealed class ReviewModel(
             ? $"/Novels/Read/{chapterId}?paragraph={paragraph}&lang=ja"
             : $"/Novels/Read/{chapterId}";
         return new ReviewSourceLink(
-            $"{chapter.WorkTitle} · Kapitel {chapter.Number}",
+            Ui.Format("learn.review.sourceChapter", ("title", chapter.WorkTitle), ("number", chapter.Number)),
             url,
             learningContext.Text);
     }
@@ -143,7 +148,7 @@ public sealed class ReviewModel(
         var context = await learningService.GetReviewContextAsync(termId, cancellationToken);
         if (context is null)
         {
-            TempData["Status"] = "No anime sentence is available for this term.";
+            TempData["Status"] = (await LoadUiAsync(cancellationToken))["learn.review.status.noSentence"];
             return RedirectToPage();
         }
 
@@ -152,11 +157,13 @@ public sealed class ReviewModel(
             await aiExplanationService.ExplainAsync(
                 context.Sentence,
                 cancellationToken);
-            TempData["Status"] = "AI explanation ready.";
+            TempData["Status"] = (await LoadUiAsync(cancellationToken))["learn.review.status.explanationReady"];
         }
         catch (InvalidOperationException exception)
         {
-            TempData["Status"] = exception.Message;
+            TempData["Status"] = (await LoadUiAsync(cancellationToken)).Format(
+                "learn.review.status.explanationFailed",
+                ("reason", exception.Message));
         }
 
         return RedirectToPage();
@@ -183,7 +190,7 @@ public sealed class ReviewModel(
         }
         catch (InvalidOperationException)
         {
-            TempData["Status"] = "This card is no longer due.";
+            TempData["Status"] = (await LoadUiAsync(cancellationToken))["learn.review.status.cardNotDue"];
         }
 
         return RedirectToPage();
