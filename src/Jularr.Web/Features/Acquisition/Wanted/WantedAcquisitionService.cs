@@ -280,7 +280,6 @@ public sealed class WantedAcquisitionService(
         CancellationToken cancellationToken)
     {
         var store = services.GetRequiredService<AcquisitionAccessStore>();
-        var requestService = services.GetRequiredService<AcquisitionRequestService>();
 
         var due = (await store.ListByStatusAsync(
                 handler.Kind,
@@ -291,6 +290,12 @@ public sealed class WantedAcquisitionService(
             .Take(MaxRequestsPerKindPerPass)
             .ToArray();
 
+        if (due.Length == 0)
+        {
+            return 0;
+        }
+
+        var requestService = services.GetRequiredService<AcquisitionRequestService>();
         foreach (var request in due)
         {
             await requestService.ContinueAsync(
