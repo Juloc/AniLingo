@@ -23,8 +23,15 @@ public sealed record IndexerSettings(
     string BaseUrl,
     int[] Categories,
     int[] IndexerIds,
-    int SearchLimit)
+    int SearchLimit,
+    int[]? BookCategories = null)
 {
+    /// <summary>Newznab categories 7020 (EBook) and 7000 (Books) unless the owner set others.</summary>
+    public static readonly int[] DefaultBookCategories = [7020, 7000];
+
+    public int[] EffectiveBookCategories =>
+        BookCategories is { Length: > 0 } configured ? configured : DefaultBookCategories;
+
     public static IndexerSettings CreateDefault(string baseUrl, IndexerType type) =>
         new(
             baseUrl,

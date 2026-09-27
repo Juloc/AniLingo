@@ -1,3 +1,5 @@
+using System.Text.Json;
+using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Acquisition.DownloadClients;
 using Jularr.Web.Features.Acquisition.Sabnzbd;
 using Jularr.Web.Features.Auth;
@@ -16,15 +18,20 @@ public sealed class IndexModel(
     AppDbContext db,
     DownloadClientStore downloadClients,
     SabnzbdDownloadService sabnzbd,
-    OperationRunner operations) : PageModel
+    OperationRunner operations,
+    AcquisitionRequestService requests,
+    AcquisitionAccessStore requestStore) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public string Query { get; private set; } = "";
     public string TargetLanguage { get; private set; } = "id";
-    public IReadOnlyList<BookCatalogItem> Results { get; private set; } = [];
     public IReadOnlyList<BookLibraryItem> Library { get; private set; } = [];
-    public string? Error { get; private set; }
     public bool IsOwner => account.IsOwner;
+    public AcquisitionCapabilities Access { get; private set; } =
+        AcquisitionCapabilities.Resolve(AcquisitionAccessPolicy.Default(MediaAcquisitionKind.Book), false);
+    /// <summary>The current profile's own book requests, newest first.</summary>
+    public IReadOnlyList<AcquisitionRequest> MyRequests { get; private set; } = [];
+    public IReadOnlyList<string> Genres => Library.SelectMany(book => book.Subjects).Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase).Take(40).ToArray();
     public bool IsSabnzbdConfigured { get; private set; }
     public bool IsInboxConfigured => books.IsInboxConfigured;
 
@@ -36,7 +43,9 @@ public sealed class IndexModel(
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         Query = q?.Trim() ?? "";
         TargetLanguage = BookLanguageCatalog.Normalize(lang);
-        IsSabnzbdConfigured = account.IsOwner
+        Access = await requests.GetCapabilitiesAsync(MediaAcquisitionKind.Book, cancellationToken);
+        MyRequests = await requestStore.ListAsync(MediaAcquisitionKind.Book, account.ProfileId, openOnly: false, limit: 50, cancellationToken);
+        IsSabnzbdConfigured = Access.CanAddManually
             && (await downloadClients.LoadAllAsync(cancellationToken))
                 .Any(entry => entry.Enabled && entry.Type == DownloadClientType.Sabnzbd);
 
@@ -45,29 +54,7 @@ public sealed class IndexModel(
             TargetLanguage,
             cancellationToken);
 
-        if (Query.Length == 0)
-        {
-            return;
-        }
-
-        try
-        {
-            Results = await books.SearchAsync(
-                Query,
-                cancellationToken);
-        }
-        catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            Error = Ui["books.index.searchTimeout"];
-        }
-        catch (HttpRequestException)
-        {
-            Error = Ui["books.index.searchUnavailable"];
-        }
-        catch (InvalidOperationException exception)
-        {
-            Error = exception.Message;
-        }
+        // Catalog search runs in the Add book dialog (OnGetSearchAsync); ?q= only pre-fills it.
     }
 
     public async Task<IActionResult> OnPostUploadAsync(
@@ -76,7 +63,7 @@ public sealed class IndexModel(
     {
         var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
 
-        if (!account.IsOwner)
+        if (!await CanAddManuallyAsync(cancellationToken))
         {
             return Forbid();
         }
@@ -137,7 +124,7 @@ public sealed class IndexModel(
         string? epubUrl,
         CancellationToken cancellationToken)
     {
-        if (!account.IsOwner)
+        if (!await CanAddManuallyAsync(cancellationToken))
         {
             return Forbid();
         }
@@ -190,7 +177,7 @@ public sealed class IndexModel(
     {
         var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
 
-        if (!account.IsOwner)
+        if (!await CanAddManuallyAsync(cancellationToken))
         {
             return Forbid();
         }
@@ -225,7 +212,7 @@ public sealed class IndexModel(
     {
         var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
 
-        if (!account.IsOwner)
+        if (!await CanAddManuallyAsync(cancellationToken))
         {
             return Forbid();
         }
@@ -256,7 +243,7 @@ public sealed class IndexModel(
     {
         var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
 
-        if (!account.IsOwner)
+        if (!await CanAddManuallyAsync(cancellationToken))
         {
             return Forbid();
         }
@@ -284,6 +271,107 @@ public sealed class IndexModel(
 
         return RedirectToPage();
     }
+
+    /// <summary>Catalog search for the add dialog (JSON), annotated with library and request state.</summary>
+    public async Task<IActionResult> OnGetSearchAsync(string? q, CancellationToken cancellationToken)
+    {
+        var query = q?.Trim() ?? "";
+        if (query.Length < 2)
+        {
+            return new JsonResult(new { results = Array.Empty<object>() });
+        }
+
+        IReadOnlyList<BookCatalogItem> found;
+        try
+        {
+            found = await books.SearchAsync(query, cancellationToken);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or InvalidOperationException)
+        {
+            var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+            return new JsonResult(new { results = Array.Empty<object>(), error = ui["books.index.searchUnavailable"] });
+        }
+
+        var libraryTitles = (await books.GetLibraryAsync(account.ProfileId, BookLanguageCatalog.Normalize(null), cancellationToken))
+            .GroupBy(book => NormalizeTitle(book.Title))
+            .ToDictionary(group => group.Key, group => (Guid?)group.First().WorkId);
+        var open = (await requestStore.ListAsync(MediaAcquisitionKind.Book, null, openOnly: true, limit: 500, cancellationToken))
+            .ToDictionary(request => request.ExternalId, request => request);
+
+        return new JsonResult(new
+        {
+            results = found.Take(24).Select(item => new
+            {
+                item.Id,
+                item.Title,
+                item.Author,
+                item.CoverImageUrl,
+                item.FirstPublishYear,
+                item.SourceName,
+                freeEdition = item.CanAcquire,
+                libraryWorkId = libraryTitles.GetValueOrDefault(NormalizeTitle(item.Title)),
+                requestStatus = open.TryGetValue(item.Id, out var request) ? AcquisitionAccessNames.Status(request.Status) : null
+            })
+        });
+    }
+
+    /// <summary>Adds (automatic) or requests a catalog book according to the Books access policy.</summary>
+    public async Task<IActionResult> OnPostAddAsync(
+        string? catalogId,
+        string? title,
+        string? author,
+        string? coverImageUrl,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(catalogId) || string.IsNullOrWhiteSpace(title))
+        {
+            return BadRequest();
+        }
+
+        try
+        {
+            var request = await requests.SubmitAsync(
+                new AcquisitionRequestDraft(
+                    MediaAcquisitionKind.Book,
+                    "books-catalog",
+                    catalogId.Trim(),
+                    title.Trim(),
+                    string.IsNullOrWhiteSpace(author) ? null : author.Trim(),
+                    string.IsNullOrWhiteSpace(coverImageUrl) ? null : coverImageUrl.Trim(),
+                    JsonSerializer.Serialize(new BookRequestPayload(catalogId.Trim(), title.Trim(), author?.Trim()), JsonSerializerOptions.Web)),
+                cancellationToken);
+            return new JsonResult(new
+            {
+                status = AcquisitionAccessNames.Status(request.Status),
+                message = request.StatusMessage,
+                resultUrl = request.ResultUrl
+            });
+        }
+        catch (AcquisitionAccessDeniedException)
+        {
+            return Forbid();
+        }
+    }
+
+    public async Task<IActionResult> OnPostCancelRequestAsync(Guid id, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await requests.CancelAsync(id, cancellationToken);
+        }
+        catch (AcquisitionAccessDeniedException)
+        {
+            return Forbid();
+        }
+
+        return RedirectToPage();
+    }
+
+    private async Task<bool> CanAddManuallyAsync(CancellationToken cancellationToken) =>
+        (await requests.GetCapabilitiesAsync(MediaAcquisitionKind.Book, cancellationToken)).CanAddManually;
+
+    private static string NormalizeTitle(string value) =>
+        new(value.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
 
     private SabnzbdSubmission BookSabnzbdSubmission(string name) =>
         new(

@@ -89,7 +89,7 @@ public sealed class EditModel(AppDbContext db, DownloadClientStore store) : Page
                 cancellationToken);
 
             TempData["DownloadClientNotice"] = Ui["settings.downloadClients.saved"];
-            return RedirectToPage("Index");
+            return RedirectToPage("/Admin/Usenet");
         }
         catch (Exception exception) when (
             exception is ArgumentException or InvalidDataException or IOException or UnauthorizedAccessException)

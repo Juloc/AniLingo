@@ -151,7 +151,10 @@ public sealed class IndexerStore
         {
             BaseUrl = uri.GetLeftPart(UriPartial.Path).TrimEnd('/'),
             Categories = (settings.Categories ?? []).Where(value => value > 0).Distinct().Order().ToArray(),
-            IndexerIds = (settings.IndexerIds ?? []).Where(value => value > 0).Distinct().Order().ToArray()
+            IndexerIds = (settings.IndexerIds ?? []).Where(value => value > 0).Distinct().Order().ToArray(),
+            BookCategories = settings.BookCategories is null
+                ? null
+                : settings.BookCategories.Where(value => value > 0).Distinct().Order().ToArray()
         };
 
         return entry with
@@ -201,7 +204,8 @@ public sealed class IndexerStore
                         item.BaseUrl,
                         item.Categories ?? [],
                         item.IndexerIds ?? [],
-                        item.SearchLimit),
+                        item.SearchLimit,
+                        item.BookCategories),
                     apiKey));
         }
 
@@ -227,7 +231,8 @@ public sealed class IndexerStore
                 entry.Settings.Categories,
                 entry.Settings.IndexerIds,
                 entry.Settings.SearchLimit,
-                protector.Protect(entry.ApiKey)))
+                protector.Protect(entry.ApiKey),
+                entry.Settings.BookCategories))
             .ToArray();
 
         var temporaryPath = $"{storePath}.tmp-{Guid.NewGuid():N}";
@@ -281,5 +286,6 @@ public sealed class IndexerStore
         int[]? Categories,
         int[]? IndexerIds,
         int SearchLimit,
-        string ProtectedApiKey);
+        string ProtectedApiKey,
+        int[]? BookCategories = null);
 }

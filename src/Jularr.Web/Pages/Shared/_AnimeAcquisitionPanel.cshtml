@@ -25,7 +25,7 @@
             <span>@ui.Format("library.acquisitionPanel.activeDownloads", ("count", panel.ActiveDownloads))</span>
             @if (!panel.ProwlarrConfigured)
             {
-                <a asp-page="/Settings/Indexers/Index">@ui["library.acquisitionPanel.noIndexerConfigured"]</a>
+                <a asp-page="/Admin/Usenet">@ui["library.acquisitionPanel.noIndexerConfigured"]</a>
             }
             @if (!panel.CanAcquire)
             {
