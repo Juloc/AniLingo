@@ -15,7 +15,7 @@ public static class UiTranslationResources
         M("nav.profile", "Profile", "Shell", "Navigation", "Navigation entry and heading of the profile page: account, activity, downloads, settings and admin. A phone bottom-bar tab.", "short navigation label", 18),
         M("nav.devices", "Devices", "Shell", "Navigation", "Profile entry that opens the signed-in user's devices.", "short navigation label", 18),
         M("nav.search", "Search", "Shell", "Accessibility", "Accessible name of the global search field at the top of every page; it opens Discover.", "concise accessible name", 24),
-        M("nav.searchPlaceholder", "Search anime, manga, books", "Shell", "Placeholder", "Placeholder of the global search field that opens Discover with the typed query.", "short placeholder", 32),
+        M("nav.searchPlaceholder", "Search titles", "Shell", "Placeholder", "Placeholder of the global search field that opens Discover with the typed query. Keep it short: the desktop sidebar field is narrow.", "short placeholder", 18),
         M("nav.libraryTab.anime", "Anime", "Shell", "Navigation", "Library tab for anime.", "short tab label", 18, null, ["Anime"]),
         M("nav.libraryTab.reading", "Manga & light novels", "Shell", "Navigation", "Library tab for manga and light novels.", "short tab label", 24),
         M("nav.libraryTabsAria", "Media type", "Shell", "Accessibility", "Accessible name of the Library tab row: Anime, Manga and light novels, Books.", "concise accessible name", 32),
