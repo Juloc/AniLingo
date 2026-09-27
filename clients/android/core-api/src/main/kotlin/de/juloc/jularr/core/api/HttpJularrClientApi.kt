@@ -8,6 +8,7 @@ import de.juloc.jularr.core.model.ClientFeatureFlags
 import de.juloc.jularr.core.model.ClientLibrary
 import de.juloc.jularr.core.model.ClientLogin
 import de.juloc.jularr.core.model.CompatibilityFallback
+import de.juloc.jularr.core.model.ContinueWatchingItem
 import de.juloc.jularr.core.model.CueResponse
 import de.juloc.jularr.core.model.CueToken
 import de.juloc.jularr.core.model.EpisodeDetail
@@ -18,6 +19,7 @@ import de.juloc.jularr.core.model.LearningCoverage
 import de.juloc.jularr.core.model.LearningSubtitle
 import de.juloc.jularr.core.model.MediaAvailability
 import de.juloc.jularr.core.model.MediaTrack
+import de.juloc.jularr.core.model.PlaybackHistoryItem
 import de.juloc.jularr.core.model.OfflineDownloadPackage
 import de.juloc.jularr.core.model.OfflineLibraryBookmarkEvent
 import de.juloc.jularr.core.model.OfflineLibraryChapterPackage
@@ -82,6 +84,16 @@ class HttpJularrClientApi(
 
     override suspend fun getLibrary(): ClientLibrary =
         requestJson("GET", ClientApiRoutes.Library).toLibrary()
+
+    override suspend fun getContinueWatching(): List<ContinueWatchingItem> =
+        requestJson("GET", ClientApiRoutes.ContinueWatching)
+            .getJSONArray("items")
+            .mapObjects { it.toContinueWatchingItem() }
+
+    override suspend fun getPlaybackHistory(): List<PlaybackHistoryItem> =
+        requestJson("GET", ClientApiRoutes.PlaybackHistory)
+            .getJSONArray("items")
+            .mapObjects { it.toPlaybackHistoryItem() }
 
     override suspend fun getAnime(animeId: String): AnimeDetail =
         requestJson("GET", ClientApiRoutes.anime(animeId)).toAnimeDetail()
@@ -313,7 +325,9 @@ class HttpJularrClientApi(
                 if (name == "nativeSessionAuth" ||
                     name == "offlineDownloads" ||
                     name == "offlineLibrary" ||
-                    name == "ttsPreferences"
+                    name == "ttsPreferences" ||
+                    name == "continueWatching" ||
+                    name == "playbackHistory"
                 ) {
                     features.optBoolean(name, false)
                 } else {
@@ -344,6 +358,36 @@ class HttpJularrClientApi(
         seasonCount = getInt("seasonCount"),
         seasonYear = intOrNull("seasonYear"),
         format = stringOrNull("format"),
+    )
+
+    private fun JSONObject.toContinueWatchingItem() = ContinueWatchingItem(
+        kind = getString("kind"),
+        episodeId = getString("episodeId"),
+        animeId = getString("animeId"),
+        animeTitle = getString("animeTitle"),
+        seasonNumber = getInt("seasonNumber"),
+        episodeNumber = getInt("episodeNumber"),
+        episodeTitle = getString("episodeTitle"),
+        resumePositionMs = getLong("resumePositionMs"),
+        durationMs = longOrNull("durationMs"),
+        percent = getInt("percent"),
+        updatedAtUtc = getString("updatedAtUtc"),
+        coverImageUrl = stringOrNull("coverImageUrl"),
+    )
+
+    private fun JSONObject.toPlaybackHistoryItem() = PlaybackHistoryItem(
+        id = getString("id"),
+        episodeId = getString("episodeId"),
+        animeId = getString("animeId"),
+        animeTitle = getString("animeTitle"),
+        seasonNumber = getInt("seasonNumber"),
+        episodeNumber = getInt("episodeNumber"),
+        episodeTitle = getString("episodeTitle"),
+        startedAtUtc = getString("startedAtUtc"),
+        lastPlayedAtUtc = getString("lastPlayedAtUtc"),
+        positionMs = getLong("positionMs"),
+        durationMs = longOrNull("durationMs"),
+        reachedEnd = getBoolean("reachedEnd"),
     )
 
     private fun JSONObject.toAnimeDetail() = AnimeDetail(
@@ -658,5 +702,7 @@ internal object ClientFeatureFlagParser {
         offlineDownloads = readBoolean("offlineDownloads"),
         offlineLibrary = readBoolean("offlineLibrary"),
         ttsPreferences = readBoolean("ttsPreferences"),
+        continueWatching = readBoolean("continueWatching"),
+        playbackHistory = readBoolean("playbackHistory"),
     )
 }

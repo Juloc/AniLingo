@@ -5,7 +5,10 @@ import android.os.SystemClock
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
@@ -18,6 +21,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Button
 import androidx.tv.material3.MaterialTheme
@@ -372,6 +376,8 @@ fun TvAppHost(
         }
     }
 
+    val focusMemory = remember { TvFocusMemory() }
+
     when (val route = snapshot.navigation.route) {
         TvRoute.Setup -> TvSetupScreen(
             initialOrigin = settings.origin.orEmpty(),
@@ -400,39 +406,125 @@ fun TvAppHost(
             },
         )
 
-        TvRoute.Library -> {
-            val account = snapshot.account
-            val library = snapshot.library
-            if (account == null || library == null) {
-                TvMessageScreen(
-                    title = "Library unavailable",
-                    message = snapshot.error
-                        ?: "Sign in again to load your Jularr library.",
-                    action = "Sign in",
-                    onAction = {
-                        cookies.clear()
-                        snapshot = controller.changeServer()
+        TvRoute.Home, TvRoute.Watchlist, TvRoute.Activity, TvRoute.Profile -> {
+            Row(modifier = Modifier.fillMaxSize()) {
+                TvSidebar(
+                    selected = route,
+                    focusMemory = focusMemory,
+                    onSelect = { selected ->
+                        if (selected != route) {
+                            launchSnapshot { controller.selectSidebarRoute(selected) }
+                        }
                     },
                 )
+                Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                    when (route) {
+                        TvRoute.Home -> {
+                            val library = snapshot.library
+                            if (library == null) {
+                                TvMessageScreen(
+                                    title = stringResource(R.string.tv_message_home_unavailable_title),
+                                    message = snapshot.error
+                                        ?: stringResource(R.string.tv_message_home_unavailable_body),
+                                    action = stringResource(R.string.tv_action_sign_in),
+                                    onAction = {
+                                        cookies.clear()
+                                        snapshot = controller.changeServer()
+                                    },
+                                )
+                            } else {
+                                TvHomeScreen(
+                                    library = library,
+                                    continueWatching = snapshot.continueWatching,
+                                    serverOrigin = settings.origin.orEmpty(),
+                                    requestHeaders = cookies.requestHeaders(),
+                                    error = snapshot.error,
+                                    focusMemory = focusMemory,
+                                    onOpenSearch = { snapshot = controller.openSearch() },
+                                    onAnime = { anime ->
+                                        launchSnapshot { controller.openAnime(anime.id) }
+                                    },
+                                    onContinueWatching = { item ->
+                                        launchSnapshot {
+                                            controller.playEpisode(
+                                                episodeId = item.episodeId,
+                                                animeId = item.animeId,
+                                            )
+                                        }
+                                    },
+                                )
+                            }
+                        }
+
+                        TvRoute.Watchlist -> TvWatchlistScreen()
+
+                        TvRoute.Activity -> TvActivityScreen(
+                            history = snapshot.activity,
+                            continueWatchingFallback = snapshot.continueWatching,
+                            usesContinueWatchingFallback = snapshot.activityUsesContinueWatchingFallback,
+                            serverOrigin = settings.origin.orEmpty(),
+                            requestHeaders = cookies.requestHeaders(),
+                            focusMemory = focusMemory,
+                            onOpenEpisode = { episodeId, animeId ->
+                                launchSnapshot {
+                                    controller.openEpisode(episodeId = episodeId, animeId = animeId)
+                                }
+                            },
+                        )
+
+                        TvRoute.Profile -> {
+                            val account = snapshot.account
+                            if (account == null) {
+                                TvMessageScreen(
+                                    title = stringResource(R.string.tv_message_home_unavailable_title),
+                                    message = snapshot.error
+                                        ?: stringResource(R.string.tv_message_home_unavailable_body),
+                                    action = stringResource(R.string.tv_action_sign_in),
+                                    onAction = {
+                                        cookies.clear()
+                                        snapshot = controller.changeServer()
+                                    },
+                                )
+                            } else {
+                                TvProfileScreen(
+                                    account = account,
+                                    serverOrigin = settings.origin.orEmpty(),
+                                    onSignOut = {
+                                        launchSnapshot {
+                                            val next = controller.signOut()
+                                            cookies.clear()
+                                            next
+                                        }
+                                    },
+                                    onChangeServer = {
+                                        cookies.clear()
+                                        snapshot = controller.changeServer()
+                                    },
+                                )
+                            }
+                        }
+
+                        else -> Unit
+                    }
+                }
+            }
+        }
+
+        TvRoute.Search -> {
+            val library = snapshot.library
+            if (library == null) {
+                controller.back()?.let { snapshot = it }
             } else {
-                TvLibraryScreen(
-                    account = account,
+                TvSearchScreen(
                     library = library,
                     serverOrigin = settings.origin.orEmpty(),
                     requestHeaders = cookies.requestHeaders(),
-                    error = snapshot.error,
+                    focusMemory = focusMemory,
                     onAnime = { anime ->
                         launchSnapshot { controller.openAnime(anime.id) }
                     },
-                    onRefresh = {
-                        launchSnapshot { controller.refreshLibrary() }
-                    },
-                    onSignOut = {
-                        launchSnapshot {
-                            val next = controller.signOut()
-                            cookies.clear()
-                            next
-                        }
+                    onBack = {
+                        controller.back()?.let { snapshot = it }
                     },
                 )
             }
@@ -442,9 +534,10 @@ fun TvAppHost(
             val anime = snapshot.anime
             if (anime == null) {
                 TvMessageScreen(
-                    title = "Anime unavailable",
-                    message = snapshot.error ?: "Could not load this anime.",
-                    action = "Back",
+                    title = stringResource(R.string.tv_message_anime_unavailable_title),
+                    message = snapshot.error
+                        ?: stringResource(R.string.tv_message_anime_unavailable_body),
+                    action = stringResource(R.string.tv_action_back),
                     onAction = {
                         controller.back()?.let { snapshot = it }
                     },
@@ -474,9 +567,10 @@ fun TvAppHost(
             val page = snapshot.episodePage
             if (anime == null || page == null) {
                 TvMessageScreen(
-                    title = "Episode unavailable",
-                    message = snapshot.error ?: "Could not load this episode.",
-                    action = "Back",
+                    title = stringResource(R.string.tv_message_episode_unavailable_title),
+                    message = snapshot.error
+                        ?: stringResource(R.string.tv_message_episode_unavailable_body),
+                    action = stringResource(R.string.tv_action_back),
                     onAction = {
                         controller.back()?.let { snapshot = it }
                     },
@@ -508,9 +602,10 @@ fun TvAppHost(
             val bundle = episodeBundle
             if (bundle == null) {
                 TvMessageScreen(
-                    title = "Episode unavailable",
-                    message = snapshot.error ?: "Could not load this episode.",
-                    action = "Back",
+                    title = stringResource(R.string.tv_message_episode_unavailable_title),
+                    message = snapshot.error
+                        ?: stringResource(R.string.tv_message_episode_unavailable_body),
+                    action = stringResource(R.string.tv_action_back),
                     onAction = {
                         controller.back()?.let { snapshot = it }
                     },

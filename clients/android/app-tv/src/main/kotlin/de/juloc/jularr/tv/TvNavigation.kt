@@ -1,9 +1,19 @@
 package de.juloc.jularr.tv
 
+/**
+ * TV screens. The sidebar (#522, docs/INFORMATION_ARCHITECTURE.md "TV sidebar") only ever
+ * shows [Home], [Watchlist], [Activity] and [Profile] as peer destinations; there is no
+ * dedicated Library, Discover or per-media-type screen. [Search] is Home's full browse/
+ * discover surface, reached only by activating the search field at the top of Home.
+ */
 sealed interface TvRoute {
     data object Setup : TvRoute
     data object Login : TvRoute
-    data object Library : TvRoute
+    data object Home : TvRoute
+    data object Search : TvRoute
+    data object Watchlist : TvRoute
+    data object Activity : TvRoute
+    data object Profile : TvRoute
     data class Anime(val animeId: String) : TvRoute
     data class Episode(
         val episodeId: String,
@@ -21,6 +31,14 @@ data class TvNavigationState(
 )
 
 object TvNavigation {
+    /** Top-level destinations selectable directly from the sidebar. */
+    val sidebarRoutes: List<TvRoute> = listOf(
+        TvRoute.Home,
+        TvRoute.Watchlist,
+        TvRoute.Activity,
+        TvRoute.Profile,
+    )
+
     fun initial(hasServerOrigin: Boolean): TvNavigationState =
         TvNavigationState(
             route = if (hasServerOrigin) TvRoute.Login else TvRoute.Setup,
@@ -30,7 +48,24 @@ object TvNavigation {
         state.replace(TvRoute.Login)
 
     fun signedIn(state: TvNavigationState): TvNavigationState =
-        state.replace(TvRoute.Library)
+        state.replace(TvRoute.Home)
+
+    /**
+     * Sidebar destinations are peers, not a drill-in stack: switching between Home,
+     * Watchlist, Activity and Profile replaces the current top-level screen instead of
+     * growing the back stack, so repeated tab switching cannot pile up. Back from a
+     * top-level screen leaves the app (the existing empty-stack behavior below), while
+     * content pushed from within a tab (Search, Anime, Episode, Player) still restores
+     * that tab on Back because it is `push`ed on top of it.
+     */
+    fun openSidebarRoute(
+        state: TvNavigationState,
+        route: TvRoute,
+    ): TvNavigationState =
+        if (state.route == route) state else TvNavigationState(route)
+
+    fun openSearch(state: TvNavigationState): TvNavigationState =
+        state.push(TvRoute.Search)
 
     fun openAnime(
         state: TvNavigationState,
@@ -63,10 +98,14 @@ object TvNavigation {
             return when (state.route) {
                 TvRoute.Setup,
                 TvRoute.Login,
-                TvRoute.Library,
+                TvRoute.Home,
+                TvRoute.Search,
+                TvRoute.Watchlist,
+                TvRoute.Activity,
+                TvRoute.Profile,
                 -> null
 
-                is TvRoute.Anime -> TvNavigationState(TvRoute.Library)
+                is TvRoute.Anime -> TvNavigationState(TvRoute.Home)
                 is TvRoute.Episode -> TvNavigationState(
                     TvRoute.Anime(state.route.animeId),
                 )
@@ -84,6 +123,25 @@ object TvNavigation {
             previous = state.previous.dropLast(1),
         )
     }
+
+    /**
+     * Stable per-screen key for [TvFocusMemory]: identifies "the screen" independent of
+     * which instance of it is showing, so remembering the focused row on Home or the
+     * focused card in Search survives navigating away and back.
+     */
+    fun screenKey(route: TvRoute): String =
+        when (route) {
+            TvRoute.Setup -> "setup"
+            TvRoute.Login -> "login"
+            TvRoute.Home -> "home"
+            TvRoute.Search -> "search"
+            TvRoute.Watchlist -> "watchlist"
+            TvRoute.Activity -> "activity"
+            TvRoute.Profile -> "profile"
+            is TvRoute.Anime -> "anime:${route.animeId}"
+            is TvRoute.Episode -> "episode:${route.episodeId}"
+            is TvRoute.Player -> "player:${route.episodeId}"
+        }
 
     private fun TvNavigationState.push(route: TvRoute): TvNavigationState =
         TvNavigationState(

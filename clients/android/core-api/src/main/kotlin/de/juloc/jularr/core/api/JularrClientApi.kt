@@ -5,11 +5,13 @@ import de.juloc.jularr.core.model.ClientAccount
 import de.juloc.jularr.core.model.ClientCapabilities
 import de.juloc.jularr.core.model.ClientLibrary
 import de.juloc.jularr.core.model.ClientLogin
+import de.juloc.jularr.core.model.ContinueWatchingItem
 import de.juloc.jularr.core.model.CueResponse
 import de.juloc.jularr.core.model.EpisodeDetail
 import de.juloc.jularr.core.model.EpisodeProgress
 import de.juloc.jularr.core.model.EpisodeProgressUpdate
 import de.juloc.jularr.core.model.MediaAvailability
+import de.juloc.jularr.core.model.PlaybackHistoryItem
 import de.juloc.jularr.core.model.PlayerBootstrap
 import de.juloc.jularr.core.model.RootAvailability
 import de.juloc.jularr.core.model.SpeechModelsResponse
@@ -24,6 +26,13 @@ interface JularrClientApi {
     suspend fun logout()
     suspend fun getMe(): ClientAccount
     suspend fun getLibrary(): ClientLibrary
+
+    /** `GET /continue-watching`: in-progress episodes, most recently played first. */
+    suspend fun getContinueWatching(): List<ContinueWatchingItem>
+
+    /** `GET /me/playback-history`: past playback entries, most recent first. */
+    suspend fun getPlaybackHistory(): List<PlaybackHistoryItem>
+
     suspend fun getAnime(animeId: String): AnimeDetail
     suspend fun getEpisode(episodeId: String): EpisodeDetail
     suspend fun getProgress(episodeId: String): EpisodeProgress
