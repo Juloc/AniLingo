@@ -3,10 +3,6 @@ using Jularr.Web.Features.Watchlist;
 
 namespace Jularr.Web.Features.Franchises;
 
-/// <summary>
-/// Local franchise follow is authoritative. Provider relations only discover/update members and
-/// may fail without losing the local follow.
-/// </summary>
 public sealed class FranchiseService(
     FranchiseStore franchises,
     AniListMetadataProvider aniList,
@@ -61,25 +57,38 @@ public sealed class FranchiseService(
     public async Task RefreshAsync(Guid franchiseId, CancellationToken cancellationToken)
     {
         var members = (await franchises.GetMembersAsync(franchiseId, cancellationToken)).ToList();
-        var queue = new Queue<FranchiseMember>(members.Where(IsAniListMember));
-        var seen = members.Select(member => member.Media.Identity.Key).ToHashSet(StringComparer.Ordinal);
+        var queue = new Queue<FranchiseMember>(members.Where(IsAniListAnime));
+        var seen = members
+            .Select(member => member.Media.Identity.Key)
+            .ToHashSet(StringComparer.Ordinal);
 
         while (queue.Count > 0 && seen.Count < MaxMembersPerRefresh)
         {
             var current = queue.Dequeue();
-            var rootType = current.Media.Identity.MediaType == WatchlistMediaType.Anime ? "ANIME" : "MANGA";
-            var relations = await aniList.GetRelatedMediaAsync(
+            var relations = await aniList.GetRelatedAnimeAsync(
                 current.Media.Identity.ExternalKey,
-                rootType,
                 cancellationToken);
 
             foreach (var relation in relations)
             {
-                if (!StrongRelationTypes.Contains(relation.RelationType) ||
-                    !TryMapRelation(relation, out var media))
+                if (!StrongRelationTypes.Contains(relation.RelationType))
                 {
                     continue;
                 }
+
+                var candidate = relation.Candidate;
+                var media = new WatchlistDraft(
+                    new WatchlistIdentity(
+                        WatchlistMediaType.Anime,
+                        AniListMetadataProvider.ProviderKey,
+                        candidate.ExternalId),
+                    candidate.PreferredTitle,
+                    candidate.NativeTitle,
+                    candidate.CoverImageUrl,
+                    candidate.Format,
+                    candidate.Status,
+                    candidate.SeasonYear,
+                    DetailsUrl: "/Watchlist");
 
                 await franchises.UpsertMemberAsync(
                     franchiseId,
@@ -90,7 +99,11 @@ public sealed class FranchiseService(
 
                 if (seen.Add(media.Identity.Key) && seen.Count < MaxMembersPerRefresh)
                 {
-                    queue.Enqueue(new FranchiseMember(franchiseId, media, relation.RelationType, false));
+                    queue.Enqueue(new FranchiseMember(
+                        franchiseId,
+                        media,
+                        relation.RelationType,
+                        false));
                 }
             }
         }
@@ -98,40 +111,7 @@ public sealed class FranchiseService(
         await franchises.MarkRefreshedAsync(franchiseId, cancellationToken);
     }
 
-    private static bool IsAniListMember(FranchiseMember member) =>
+    private static bool IsAniListAnime(FranchiseMember member) =>
         member.Media.Identity.ProviderKey == AniListMetadataProvider.ProviderKey &&
-        member.Media.Identity.MediaType is
-            WatchlistMediaType.Anime or
-            WatchlistMediaType.Manga or
-            WatchlistMediaType.LightNovel;
-
-    private static bool TryMapRelation(AniListMediaRelation relation, out WatchlistDraft media)
-    {
-        var mediaType = relation.MediaType.Equals("ANIME", StringComparison.OrdinalIgnoreCase)
-            ? WatchlistMediaType.Anime
-            : relation.MediaType.Equals("MANGA", StringComparison.OrdinalIgnoreCase)
-                ? relation.Format?.Equals("NOVEL", StringComparison.OrdinalIgnoreCase) == true
-                    ? WatchlistMediaType.LightNovel
-                    : WatchlistMediaType.Manga
-                : (WatchlistMediaType?)null;
-
-        if (mediaType is null)
-        {
-            media = null!;
-            return false;
-        }
-
-        media = new WatchlistDraft(
-            new WatchlistIdentity(mediaType.Value, AniListMetadataProvider.ProviderKey, relation.ExternalId),
-            relation.Title,
-            relation.NativeTitle,
-            relation.CoverImageUrl,
-            relation.Format,
-            relation.Status,
-            relation.Year,
-            DetailsUrl: mediaType == WatchlistMediaType.Anime
-                ? $"https://anilist.co/anime/{relation.ExternalId}"
-                : $"https://anilist.co/manga/{relation.ExternalId}");
-        return true;
-    }
+        member.Media.Identity.MediaType == WatchlistMediaType.Anime;
 }
