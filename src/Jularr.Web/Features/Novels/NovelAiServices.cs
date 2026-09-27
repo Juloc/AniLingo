@@ -447,6 +447,8 @@ public sealed record TranslateGemmaOptions(
                 "TranslateGemma:Model must not exceed 200 characters.");
         }
 
+        // TranslateGemma is tuned for roughly 2K input tokens. Keep the
+        // default conservative for Japanese text; operators can override it.
         var maxChunkCharacters = 1200;
         if (int.TryParse(
                 configuration?[$"{SectionName}:MaxChunkCharacters"],
