@@ -17,11 +17,6 @@
     </div>
 </header>
 
-@if (TempData["Status"] is string status)
-{
-    <p class="chapter-art-message">@status</p>
-}
-
 @if (!Model.Availability.CanGenerate)
 {
     <p class="muted">@Jularr.Web.Pages.Books.ChapterArtModel.ReasonText(ui, Model.Availability.Reason)</p>

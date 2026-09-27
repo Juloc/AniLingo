@@ -15,11 +15,6 @@
     <p>@(Model.IsOwner ? ui["books.integrations.subtitle"] : ui["books.integrations.subtitleProfile"])</p>
 </header>
 
-@if (TempData["Status"] is string status)
-{
-    <div class="books-message">@status</div>
-}
-
 <section class="books-integration-settings">
     <section>
         <h2>@ui["books.integrations.hardcoverTitle"]</h2>

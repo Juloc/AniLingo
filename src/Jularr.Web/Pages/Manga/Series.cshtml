@@ -81,11 +81,6 @@
 
 @await Component.InvokeAsync("UpcomingReleases", new { mediaType = Jularr.Web.Features.Calendar.ReleaseMediaType.Manga, mediaId = series.Id, ui })
 
-@if (TempData["Status"] is string status)
-{
-    <div class="manga-message">@status</div>
-}
-
 @if (Model.ExternalProgress is { } externalProgress)
 {
     var externalPanel = new Jularr.Web.Features.Tracking.ExternalProgressPanel(

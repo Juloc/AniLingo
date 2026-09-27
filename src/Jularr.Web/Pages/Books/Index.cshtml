@@ -36,11 +36,6 @@
     </div>
 </header>
 
-@if (TempData["Status"] is string status)
-{
-    <div class="books-message">@status</div>
-}
-
 <section class="books-library-section" data-books-library data-offline-library-filter>
     <div class="books-toolbar">
         <div class="books-tabs" role="tablist" aria-label="@ui["books.index.myBooksHeading"]">

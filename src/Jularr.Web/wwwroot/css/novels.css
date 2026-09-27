@@ -861,9 +861,25 @@ body.novel-paged-body {
     column-count: 2;
 }
 
+/* Paragraphs flow across pages like a printed book (#501); the paged anchor in
+   reader-personalization.js stores a character offset for a paragraph that
+   continues from the previous page. Headings and scene breaks stay whole, and a
+   heading is never left alone at the foot of a page. */
 .novel-reader-shell[data-reading-mode="paged"] .novel-reader-segment,
 .novel-reader-shell[data-reading-mode="paged"] .novel-reader-paragraph {
+    break-inside: auto;
+    orphans: 2;
+    widows: 2;
+}
+
+.novel-reader-shell[data-reading-mode="paged"] .novel-reader-segment.is-scene-break,
+.novel-reader-shell[data-reading-mode="paged"] .novel-reader-segment:has(> .is-heading),
+.novel-reader-shell[data-reading-mode="paged"] .novel-reader-paragraph.is-heading {
     break-inside: avoid;
+}
+
+.novel-reader-shell[data-reading-mode="paged"] .novel-reader-segment:has(> .is-heading) {
+    break-after: avoid;
 }
 
 .novel-reader-shell[data-reading-mode="paged"] .novel-reader-footer {

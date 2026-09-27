@@ -13,13 +13,6 @@
     </div>
 </header>
 
-@if (TempData["Status"] is string status)
-{
-    <div class="panel">
-        <p>@status</p>
-    </div>
-}
-
 @if (Model.Tasks.Count == 0)
 {
     <section class="panel">

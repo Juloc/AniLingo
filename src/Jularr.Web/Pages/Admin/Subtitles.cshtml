@@ -24,10 +24,6 @@
 
 <partial name="_AdminNavigation" model="Model.Ui" />
 
-@if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
-{
-    <div class="subtitle-source-message status-ok">@Model.StatusMessage</div>
-}
 @if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
 {
     <div class="subtitle-source-message status-error">@Model.ErrorMessage</div>

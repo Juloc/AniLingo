@@ -318,18 +318,50 @@ public sealed class NovelReaderDesignTests
     [TestMethod]
     public void ReaderPanelsUseNoColouredLeftStripes()
     {
+        // Border and inset-shadow stripes are caught for every stylesheet by CssAccentStripeTests;
+        // this guards the pseudo-element marker the contents list used to draw.
         var root = FindRepositoryRoot();
-        var css = Path.Combine(root, "src", "Jularr.Web", "wwwroot", "css");
-        foreach (var file in new[] { "novels.css", "novel-reader-panels.css", "novel-reader-frame.css", "reader-shell.css" })
-        {
-            var text = File.ReadAllText(Path.Combine(css, file));
-            Assert.IsFalse(
-                System.Text.RegularExpressions.Regex.IsMatch(text, @"border-left:\s*[23]px solid"),
-                file + " must mark state with background, weight or an icon, not a left stripe.");
-        }
-
-        var shell = File.ReadAllText(Path.Combine(css, "reader-shell.css"));
+        var shell = File.ReadAllText(Path.Combine(root, "src", "Jularr.Web", "wwwroot", "css", "reader-shell.css"));
         Assert.IsFalse(shell.Contains(".reader-contents-row[aria-current=\"page\"]::before", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void PagedModeSplitsLongParagraphsAndAnchorsByCharacter()
+    {
+        var root = FindRepositoryRoot();
+        var web = Path.Combine(root, "src", "Jularr.Web", "wwwroot");
+        var css = File.ReadAllText(Path.Combine(web, "css", "novels.css")).ReplaceLineEndings("\n");
+        var js = File.ReadAllText(Path.Combine(web, "js", "reader-personalization.js"));
+
+        StringAssert.Contains(
+            css,
+            ".novel-reader-shell[data-reading-mode=\"paged\"] .novel-reader-paragraph {\n    break-inside: auto;");
+        StringAssert.Contains(css, ".novel-reader-paragraph.is-heading {");
+        StringAssert.Contains(css, ".novel-reader-segment.is-scene-break,");
+
+        // Progress and bookmarks keep the offset of a paragraph that continues from the previous page.
+        StringAssert.Contains(js, "setFormValue(data, \"anchorOffset\", anchor?.offset ?? 0);");
+        StringAssert.Contains(js, "setFormValue(data, \"characterOffset\", anchor?.offset ?? 0);");
+        StringAssert.Contains(js, "offset: Math.max(0, Number(shell.dataset.anchorOffset) || 0)");
+        Assert.IsFalse(js.Contains("setFormValue(data, \"anchorOffset\", 0);", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void SakuraEffectStaysPausedInsideTheReaders()
+    {
+        var root = FindRepositoryRoot();
+        var web = Path.Combine(root, "src", "Jularr.Web");
+        var sakura = File.ReadAllText(Path.Combine(web, "wwwroot", "js", "sakura.js"));
+
+        StringAssert.Contains(sakura, "const inReader = document.querySelector('[data-reader-frame]') !== null;");
+        StringAssert.Contains(sakura, "const isDisabled = () => mode === 'off' || reducedMotion.matches || inReader;");
+        foreach (var reader in new[] { "Books", "Novels", "Manga" })
+        {
+            var page = File.ReadAllText(Path.Combine(web, "Pages", reader, "Read.cshtml"));
+            Assert.IsTrue(
+                System.Text.RegularExpressions.Regex.IsMatch(page, @"\sdata-reader-frame[\s>]"),
+                $"{reader}/Read must mark its reader frame so Sakura pauses.");
+        }
     }
 
     [TestMethod]
