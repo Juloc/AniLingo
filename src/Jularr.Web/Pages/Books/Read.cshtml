@@ -332,6 +332,7 @@
 
                 <div class="book-flow" data-book-flow>
                     <div class="book-columns" data-book-columns data-book-reader-content>
+                    <partial name="_ChapterArtwork" model='new Jularr.Web.Features.ChapterArtwork.ChapterArtworkSlot(work.Id, chapter.Number, ui["chapterArt.aiGenerated"])' />
                     <header class="book-opening">
                         <span class="book-opening-number" data-book-chapter-number>@chapter.Number</span>
                         <svg class="book-opening-art" viewBox="0 0 160 52" aria-hidden="true" focusable="false">

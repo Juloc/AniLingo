@@ -14,4 +14,25 @@ public sealed class CurrentAccountContext(
 
     public bool IsOwner =>
         accessor.HttpContext?.User.IsInRole(AccountRoles.Owner) == true;
+
+    /// <summary>
+    /// Account context for background work on behalf of one profile. It is
+    /// instance-bound, so concurrent jobs for different profiles never mix.
+    /// </summary>
+    public static CurrentAccountContext ForProfile(string profileId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(profileId);
+        return new CurrentAccountContext(new ProfileAccessor(profileId));
+    }
+
+    private sealed class ProfileAccessor(string profileId) : IHttpContextAccessor
+    {
+        public HttpContext? HttpContext { get; set; } = new DefaultHttpContext
+        {
+            User = new ClaimsPrincipal(
+                new ClaimsIdentity(
+                    [new Claim(ClaimTypes.NameIdentifier, profileId)],
+                    "background"))
+        };
+    }
 }

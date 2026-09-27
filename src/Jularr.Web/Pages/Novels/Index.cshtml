@@ -65,6 +65,9 @@
 
                                     <div class="reading-catalog-copy">
                                         <span class="reading-catalog-title">@result.Item.Title</span>
+                                        <span class="reading-catalog-native">
+                                            @result.Source.Name · @result.Source.Description
+                                        </span>
                                         @if (!string.IsNullOrWhiteSpace(result.Item.NativeTitle) &&
                                              !string.Equals(result.Item.NativeTitle, result.Item.Title, StringComparison.OrdinalIgnoreCase))
                                         {
@@ -129,6 +132,12 @@
 
                 @if (Model.IsOwner)
                 {
+                    <div class="reading-catalog-divider">Sources</div>
+                    <a class="button" asp-page="/Admin/ReadingSources">Configure reading sources</a>
+                }
+
+                @if (Model.Access.CanAdd && !Model.Access.AddCreatesRequest)
+                {
                     <div class="reading-catalog-divider">@ui["books.add.manual"]</div>
 
                     <form method="post" asp-page-handler="Import" class="novel-import-form">
@@ -141,6 +150,10 @@
                                placeholder="https://ncode.syosetu.com/n9669bk/" />
                         <button class="button button-primary" type="submit">@ui["novels.index.importSubmit"]</button>
                     </form>
+                }
+
+                @if (Model.IsOwner)
+                {
                     <form method="post"
                           asp-page-handler="UploadEpub"
                           enctype="multipart/form-data"
