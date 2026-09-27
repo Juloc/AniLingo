@@ -84,6 +84,70 @@ public sealed partial class AppShellNavigationTests
     }
 
     [TestMethod]
+    [DataRow("/Admin", "admin-overview")]
+    [DataRow("/Admin/Users", "admin-users")]
+    [DataRow("/Admin/User/42", "admin-users")]
+    [DataRow("/Admin/Usenet", "admin-usenet")]
+    [DataRow("/Settings/Indexers/Edit", "admin-usenet")]
+    [DataRow("/Settings/Acquisition", "admin-import")]
+    [DataRow("/Settings/MappingSegments", "admin-mapping")]
+    [DataRow("/LocalizationAdmin", "admin-localization")]
+    public void AdminPagesShowTheAdminSidebarWithExactlyOneActivePage(string path, string expectedId)
+    {
+        var nav = UiShellNavigation.Build(path, learningVisible: true, isOwner: true);
+
+        Assert.IsNotNull(nav.Context);
+        Assert.AreEqual("admin", nav.Context.Id);
+        var active = nav.Context.Groups.SelectMany(group => group.Items).Where(item => item.IsActive).ToArray();
+        Assert.AreEqual(1, active.Length, path);
+        Assert.AreEqual(expectedId, active[0].Id);
+        Assert.AreEqual("admin", nav.Secondary.Single(item => item.IsActive).Id, "Admin pages under /Settings still mark Admin.");
+    }
+
+    [TestMethod]
+    public void SettingsPagesShowTheSettingsSidebarAndUsersNeverSeeAdminPages()
+    {
+        var owner = UiShellNavigation.Build("/Settings/Appearance", learningVisible: true, isOwner: true);
+        Assert.AreEqual("settings", owner.Context?.Id);
+        Assert.AreEqual("settings-appearance", owner.Context!.Groups.SelectMany(group => group.Items).Single(item => item.IsActive).Id);
+
+        var user = UiShellNavigation.Build("/Settings/Acquisition", learningVisible: false, isOwner: false);
+        Assert.AreEqual("settings", user.Context?.Id, "Without the owner role an admin path is not an admin context.");
+        Assert.IsFalse(user.Context!.Groups.SelectMany(group => group.Items).Any(item => item.Id.StartsWith("admin", StringComparison.Ordinal)));
+
+        Assert.IsNull(UiShellNavigation.Build("/Books", learningVisible: true, isOwner: true).Context);
+    }
+
+    [TestMethod]
+    public void EveryPageAppearsOnceInTheNavigationCatalog()
+    {
+        var entries = UiNavigationCatalog.App
+            .Concat(UiNavigationCatalog.Secondary)
+            .Concat(UiNavigationCatalog.Admin.SelectMany(section => section.Entries))
+            .Concat(UiNavigationCatalog.Settings.SelectMany(section => section.Entries))
+            .ToArray();
+        var icons = File.ReadAllText(Path.Combine(RepositoryRoot(), "src", "Jularr.Web", "Pages", "Shared", "_AppIcon.cshtml"));
+
+        Assert.AreEqual(entries.Length, entries.Select(entry => entry.Id).Distinct().Count(), "Duplicate navigation id.");
+        var contextHrefs = UiNavigationCatalog.Admin.Concat(UiNavigationCatalog.Settings)
+            .SelectMany(section => section.Entries)
+            .Select(entry => entry.Href)
+            .ToArray();
+        Assert.AreEqual(contextHrefs.Length, contextHrefs.Distinct(StringComparer.OrdinalIgnoreCase).Count(), "A page is listed twice.");
+        foreach (var entry in entries)
+        {
+            Assert.IsTrue(UiTranslationResources.TryGet(entry.LabelKey, out var message), $"Missing catalog key {entry.LabelKey}.");
+            Assert.IsTrue(message.MaxLength is > 0 and <= 18, entry.LabelKey);
+            StringAssert.Contains(icons, $"case \"{entry.Icon}\":", $"Missing icon {entry.Icon}.");
+        }
+
+        foreach (var section in UiNavigationCatalog.Admin.Concat(UiNavigationCatalog.Settings))
+        {
+            Assert.IsTrue(UiTranslationResources.TryGet(section.TitleKey, out _), $"Missing catalog key {section.TitleKey}.");
+        }
+    }
+
+    [TestMethod]
     public void NavigationLabelsAreCatalogKeysWithShortLengthGuidance()
     {
         var nav = UiShellNavigation.Build("/", learningVisible: true, isOwner: true);
