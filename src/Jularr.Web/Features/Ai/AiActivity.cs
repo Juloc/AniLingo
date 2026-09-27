@@ -70,6 +70,9 @@ public sealed record AiActivityStart(
 {
     /// <summary>Estimated size of the shared context before compaction; 0 when unknown.</summary>
     public int FullContextTokens { get; init; }
+
+    /// <summary>Parallel requests allowed for this profile; further ones stay queued. Null means no limit.</summary>
+    public int? ConcurrencyLimit { get; init; }
 }
 
 public enum AiActivityCancelResult

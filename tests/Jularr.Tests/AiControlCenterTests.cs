@@ -486,6 +486,7 @@ public sealed class AiControlCenterTests
     [TestMethod]
     public async Task ChapterArtworkImagesRunAsTrackedActivitiesWithOneUsageRecord()
     {
+        await using var fixture = await Fixture.CreateAsync();
         var root = Path.Combine(Path.GetTempPath(), "jularr-ai-images", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
         try
@@ -508,7 +509,9 @@ public sealed class AiControlCenterTests
             var router = new ProfileAiImageRouter(
                 settings,
                 new SingleClientFactory(handler),
-                new AiActivityRunner(tracker, usage, TimeProvider.System));
+                new AiActivityRunner(tracker, usage, TimeProvider.System),
+                new AiUsageStore(fixture.Db),
+                TimeProvider.System);
 
             await router.GenerateAsync(
                 "alice",
@@ -524,6 +527,84 @@ public sealed class AiControlCenterTests
             Assert.IsTrue(measurement.Estimated);
             Assert.IsTrue(AiOperations.IsKnown(AiOperations.ChapterArtwork));
             Assert.IsFalse(AiOperations.AcceptsOverride(AiOperations.ChapterArtwork), "Images use the separate image model.");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public async Task ParallelLimitKeepsFurtherRequestsQueuedAndCancellable()
+    {
+        var usage = new AiUsageTracker();
+        var tracker = new AiActivityTracker(TimeProvider.System);
+        var runner = new AiActivityRunner(tracker, usage, TimeProvider.System);
+        var start = new AiActivityStart("alice", AiOperations.BookTranslation, "codex-cli", AiInvocationOptions.Default) { ConcurrencyLimit = 1 };
+        var release = new TaskCompletionSource();
+
+        var first = runner.RunAsync(start, 10, async _ => { await release.Task; return "one"; }, x => x.Length, CancellationToken.None);
+        var second = runner.RunAsync(start, 10, _ => Task.FromResult("two"), x => x.Length, CancellationToken.None);
+        var third = runner.RunAsync(start, 10, _ => Task.FromResult("three"), x => x.Length, CancellationToken.None);
+        var other = await runner.RunAsync(start with { ProfileId = "bob" }, 10, _ => Task.FromResult("bob"), x => x.Length, CancellationToken.None);
+
+        Assert.AreEqual("bob", other, "Limits are per profile.");
+        var waiting = tracker.List("alice").Where(x => x.IsActive).ToArray();
+        Assert.AreEqual(1, waiting.Count(x => x.State == AiActivityState.Running));
+        Assert.AreEqual(2, waiting.Count(x => x.State == AiActivityState.Queued));
+
+        var queuedThird = waiting.Last(x => x.State == AiActivityState.Queued);
+        Assert.AreEqual(AiActivityCancelResult.Cancelled, tracker.Cancel(queuedThird.Id, "alice", isOwner: false));
+        await Assert.ThrowsAsync<OperationCanceledException>(() => third);
+
+        release.SetResult();
+        Assert.AreEqual("one", await first);
+        Assert.AreEqual("two", await second);
+        Assert.AreEqual(AiActivityState.Cancelled, tracker.List("alice").Single(x => x.Id == queuedThird.Id).State);
+    }
+
+    [TestMethod]
+    public void BudgetStatusSeparatesOkWarningAndReached()
+    {
+        var settings = AiProfileSettings.Default with { DailyTokenBudget = 1000 };
+        AiUsageTotals Used(long input, long estimatedOutput) =>
+            AiUsageTotals.Zero with { InputTokens = input, EstimatedOutputTokens = estimatedOutput };
+
+        Assert.AreEqual(AiBudgetState.Unlimited, AiBudgetStatus.For(AiProfileSettings.Default, Used(5000, 0)).State);
+        Assert.AreEqual(AiBudgetState.Ok, AiBudgetStatus.For(settings, Used(700, 99)).State);
+        Assert.AreEqual(AiBudgetState.Warning, AiBudgetStatus.For(settings, Used(700, 100)).State, "Estimates count against the limit.");
+        Assert.AreEqual(AiBudgetState.Reached, AiBudgetStatus.For(settings, Used(1000, 0)).State);
+        Assert.AreEqual(AiBudgetState.Warning, AiBudgetStatus.For(settings with { BudgetWarningPercent = 50 }, Used(500, 0)).State);
+        Assert.AreEqual(100, AiBudgetStatus.For(settings, Used(4000, 0)).Percent);
+    }
+
+    [TestMethod]
+    public async Task LimitsPersistAndOutOfRangeValuesAreRejected()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "jularr-ai-limits", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var store = new AiProfileSettingsStore(
+                new EphemeralDataProtectionProvider(),
+                NullLogger<AiProfileSettingsStore>.Instance,
+                new DirectoryInfo(root));
+            await store.SaveAsync("alice", AiProfileSettings.Default with { DailyTokenBudget = 50_000, BudgetWarningPercent = 90, MaxConcurrentJobs = 2 }, CancellationToken.None);
+
+            var loaded = await store.LoadAsync("alice", CancellationToken.None);
+            Assert.AreEqual(50_000, loaded.DailyTokenBudget);
+            Assert.AreEqual(90, loaded.EffectiveWarningPercent);
+            Assert.AreEqual(2, loaded.MaxConcurrentJobs);
+
+            foreach (var invalid in new[]
+            {
+                AiProfileSettings.Default with { DailyTokenBudget = 0 },
+                AiProfileSettings.Default with { BudgetWarningPercent = 100 },
+                AiProfileSettings.Default with { MaxConcurrentJobs = AiProfileSettings.MaxConcurrentJobsLimit + 1 }
+            })
+            {
+                await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => store.SaveAsync("alice", invalid, CancellationToken.None));
+            }
         }
         finally
         {

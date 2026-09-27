@@ -231,6 +231,38 @@ public sealed class AiControlCenterPageTests
     }
 
     [TestMethod]
+    public async Task DailyTokenLimitStopsAiWorkBeforeARequestIsSent()
+    {
+        await using var fixture = await PageFixture.CreateAsync(_ => Json("""{"choices":[{"message":{"content":"Hallo"}}]}"""));
+        await fixture.Settings.SaveAsync(Profile, Personal("model-a") with { DailyTokenBudget = 1000, BudgetWarningPercent = 50 }, CancellationToken.None);
+        var usage = new AiUsageStore(fixture.Db);
+        await usage.AddAsync(
+            [(Profile, new AiUsageMeasurement(DateTimeOffset.UtcNow, AiOperations.BookTranslation, AiProviderIds.OpenAiCompatible, "model-a", 0, 0, 400, 200, false, false, false))],
+            CancellationToken.None);
+
+        var warned = fixture.Page();
+        await warned.OnGetAsync(CancellationToken.None);
+        Assert.AreEqual(AiBudgetState.Warning, warned.Budget.State);
+        Assert.AreEqual(600, warned.Budget.UsedTokens);
+
+        await fixture.Router().TranslateAsync("こんにちは", "de", CancellationToken.None);
+        Assert.AreEqual(1, fixture.Requests, "Below the limit AI work runs.");
+
+        await usage.AddAsync(
+            [(Profile, new AiUsageMeasurement(DateTimeOffset.UtcNow, AiOperations.BookTranslation, AiProviderIds.OpenAiCompatible, "model-a", 0, 0, 300, 100, false, false, false))],
+            CancellationToken.None);
+        await Assert.ThrowsExactlyAsync<AiBudgetExceededException>(
+            () => fixture.Router().TranslateAsync("こんにちは", "de", CancellationToken.None));
+        Assert.AreEqual(1, fixture.Requests, "Nothing is sent once the limit is used up.");
+
+        var reached = fixture.Page();
+        await reached.OnGetAsync(CancellationToken.None);
+        Assert.AreEqual(AiBudgetState.Reached, reached.Budget.State);
+        Assert.AreEqual(1000, reached.DailyTokenBudget);
+        Assert.AreEqual(50, reached.BudgetWarningPercent);
+    }
+
+    [TestMethod]
     public void BookPresetOnlyUsesReasoningLevelsTheModelLists()
     {
         var catalog = new AiModelCatalog(
@@ -332,7 +364,9 @@ public sealed class AiControlCenterPageTests
                 codex,
                 new FixedHttpClientFactory(handler),
                 new AiActivityRunner(tracker, usage, TimeProvider.System),
-                new AiModelCatalogService(new AiModelCatalogStore(Db), TimeProvider.System));
+                new AiModelCatalogService(new AiModelCatalogStore(Db), TimeProvider.System),
+                new AiUsageStore(Db),
+                TimeProvider.System);
 
         public AiSettingsModel Page()
         {

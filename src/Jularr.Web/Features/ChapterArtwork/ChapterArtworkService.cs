@@ -73,7 +73,9 @@ public sealed class ChapterArtworkService(
             services.GetRequiredService<CodexCliProvider>(),
             services.GetRequiredService<IHttpClientFactory>(),
             services.GetRequiredService<AiActivityRunner>(),
-            services.GetRequiredService<AiModelCatalogService>());
+            services.GetRequiredService<AiModelCatalogService>(),
+            services.GetRequiredService<AiUsageStore>(),
+            services.GetRequiredService<TimeProvider>());
 
         return new ChapterArtworkService(
             db,
