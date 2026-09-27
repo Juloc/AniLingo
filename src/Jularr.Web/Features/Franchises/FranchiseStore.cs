@@ -144,7 +144,7 @@ public sealed class FranchiseStore(AppDbContext db)
                 var type = WatchlistMediaTypeNames.Parse(reader.GetString(0));
                 if (type is null) continue;
 
-                var localId = reader.IsDBNull(9) || !Guid.TryParse(reader.GetString(9), out var parsed)
+                Guid? localId = reader.IsDBNull(9) || !Guid.TryParse(reader.GetString(9), out var parsed)
                     ? null
                     : parsed;
                 var draft = new WatchlistDraft(
