@@ -1,8 +1,34 @@
 # Jularr
 
+![Docker](https://img.shields.io/badge/Docker-single%20container-2496ED?logo=docker&logoColor=white)
+![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
+![Platforms](https://img.shields.io/badge/Platforms-Web%20%7C%20PWA%20%7C%20Android%20%7C%20Android%20TV-2E7D32)
+![Acquisition](https://img.shields.io/badge/Acquisition-Usenet%20only-4A148C)
+
+![Jularr](src/Jularr.Web/wwwroot/brand/hero-fuji.webp)
+
 Jularr is in prerelease. The canonical version is the `<Version>` property in `src/Jularr.Web/Jularr.Web.csproj`; published builds are listed under [GitHub Releases](https://github.com/Juloc/Jularr/releases), and the running build shows its exact version to the Owner in the app sidebar.
 
-Jularr is a Docker-first Japanese learning companion for an existing anime library. It scans media from a read-only NAS mount, imports nearby Japanese subtitles, builds episode vocabulary, and lets you mark terms as known or review them before watching.
+Jularr is a self-hosted Japanese learning companion and personal media library. It brings your anime, manga, light novels and books together with reader state, vocabulary, subtitles, acquisitions and optional AniList progress sync — while your library stays on your own storage.
+
+It is Docker-first, runs as one container, and keeps media mounts read-only by default. Jularr can scan an existing NAS library, import nearby Japanese subtitles, build episode vocabulary and let every local profile learn at its own pace.
+
+## What you can do
+
+- Watch anime with synced Japanese subtitles, vocabulary lookup and learning state.
+- Read manga, web/light novels and books with per-profile progress, bookmarks and reader preferences.
+- Keep a local library on your NAS while Jularr handles metadata, artwork, scans and safe imports.
+- Use usenet-only acquisition through SABnzbd, with durable operations and import diagnostics.
+- Optionally connect AniList or an AI provider without making either a requirement for the core library.
+
+## Quick start
+
+1. Copy [compose.yaml](compose.yaml) to your server and run `docker compose up -d`.
+2. Open `http://localhost:8097` and create the owner account.
+3. Add a read-only library mount, then configure its library root in Jularr.
+4. Start with **Library** for anime, **Novels** or **Manga** for reading, and **Settings** for personal preferences and integrations.
+
+The detailed configuration, media layout and operational guidance follow below.
 
 ## v0.1
 
