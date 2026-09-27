@@ -61,8 +61,14 @@ public static class AiOptionResolver
         return new AiInvocationOptions(model, effort, tier, null);
     }
 
+    public const string MissingPersonalModelMessage =
+        "Choose a model for your AI provider in Settings → AI before running AI tasks.";
+
+    /// <summary>Personal providers get no reasoning options; a request without a model never starts.</summary>
     public static AiInvocationOptions ResolvePersonal(AiInvocationOptions requested) =>
-        new(requested.Model, null, null, requested.MaxOutputTokens);
+        string.IsNullOrWhiteSpace(requested.Model)
+            ? throw new InvalidOperationException(MissingPersonalModelMessage)
+            : new(requested.Model, null, null, requested.MaxOutputTokens);
 
     /// <summary>Reasoning options to offer for a model, or none when the model lists none.</summary>
     public static IReadOnlyList<AiReasoningOption> ReasoningOptions(AiModelCatalog catalog, string? modelId) =>

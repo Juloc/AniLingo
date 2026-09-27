@@ -69,7 +69,10 @@ public static class AiViewFormat
     /// <summary>Catalog freshness: updated, stale (with the last good time), unsupported or failed.</summary>
     public static string CatalogStatus(UiTextBundle ui, AiModelCatalog catalog, DateTimeOffset now) =>
         catalog.Discovery == AiModelDiscovery.Unsupported
-            ? ui["ai.models.unsupported"]
+            ? catalog.ProviderKey == AiModelCatalogKeys.CodexServer
+                // The shared connection lists models once Codex runs; until then it is unavailable.
+                ? ui["ai.models.serverUnavailable"]
+                : ui["ai.models.unsupported"]
             : catalog.FetchedAt is { } fetched
                 ? catalog.IsStale(now)
                     ? ui.Format("ai.models.stale", ("time", Timestamp(fetched)))

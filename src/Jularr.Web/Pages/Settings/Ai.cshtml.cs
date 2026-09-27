@@ -58,6 +58,9 @@ public sealed class AiModel(
     public bool ServerModelMissing =>
         !ServerCatalog.HasModels && string.IsNullOrWhiteSpace(ServerModel);
 
+    /// <summary>Personal provider without a model: AI tasks wait until one is chosen.</summary>
+    public bool PersonalModelMissing => string.IsNullOrWhiteSpace(ModelName);
+
     [BindProperty]
     public string ProviderId { get; set; } = AiProviderIds.Server;
 
@@ -209,7 +212,7 @@ public sealed class AiModel(
         catalog.LastError is null
             ? Ui.Format("settings.ai.modelsRefreshed", ("count", catalog.Models.Count))
             : catalog.Discovery == AiModelDiscovery.Unsupported
-                ? Ui["ai.models.unsupported"]
+                ? AiViewFormat.CatalogStatus(Ui, catalog, time.GetUtcNow())
                 : Ui["ai.models.refreshFailed"];
 
     private async Task<bool> SaveAsync(

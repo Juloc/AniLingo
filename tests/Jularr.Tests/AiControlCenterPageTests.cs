@@ -62,6 +62,33 @@ public sealed class AiControlCenterPageTests
     }
 
     [TestMethod]
+    public async Task PersonalProviderCanLoadModelsBeforeAModelIsChosen()
+    {
+        await using var fixture = await PageFixture.CreateAsync(request =>
+            request.RequestUri!.AbsolutePath.EndsWith("/models", StringComparison.Ordinal)
+                ? Json("""{"data":[{"id":"model-a"}]}""")
+                : Json("""{"choices":[{"message":{"content":"Hallo"}}]}"""));
+
+        var page = fixture.Page();
+        await page.OnGetAsync(CancellationToken.None);
+        page.ProviderId = AiProviderIds.OpenAiCompatible;
+        page.BaseUrl = "https://api.example.invalid/v1";
+        page.ApiKey = "test-key";
+        page.ModelName = null;
+        Assert.IsInstanceOfType<RedirectToPageResult>(await page.OnPostRefreshModelsAsync(CancellationToken.None));
+        Assert.AreEqual(1, fixture.Requests, "Base URL and key are enough to list the models.");
+
+        var loaded = fixture.Page();
+        await loaded.OnGetAsync(CancellationToken.None);
+        Assert.AreEqual("model-a", loaded.PersonalCatalog.Models.Single().Id);
+        Assert.IsTrue(loaded.PersonalModelMissing);
+
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+            () => fixture.Router().TranslateAsync("こんにちは", "de", CancellationToken.None));
+        Assert.AreEqual(1, fixture.Requests, "No request without a model.");
+    }
+
+    [TestMethod]
     public async Task UnsupportedDiscoveryKeepsManualEntryWithAClearWarning()
     {
         await using var fixture = await PageFixture.CreateAsync(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
@@ -286,17 +313,19 @@ public sealed class AiControlCenterPageTests
                     null),
                 CancellationToken.None);
 
-        public AiSettingsModel Page()
-        {
-            var catalogs = new AiModelCatalogService(new AiModelCatalogStore(Db), TimeProvider.System);
-            var router = new ProfileAiProviderRouter(
+        public ProfileAiProviderRouter Router() =>
+            new(
                 account,
                 Settings,
                 usage,
                 codex,
                 new FixedHttpClientFactory(handler),
                 new AiActivityRunner(tracker, usage, TimeProvider.System),
-                catalogs);
+                new AiModelCatalogService(new AiModelCatalogStore(Db), TimeProvider.System));
+
+        public AiSettingsModel Page()
+        {
+            var router = Router();
             var page = new AiSettingsModel(Db, account, Settings, router, new AiUsageStore(Db), tracker, codex, TimeProvider.System);
 
             var httpContext = new DefaultHttpContext

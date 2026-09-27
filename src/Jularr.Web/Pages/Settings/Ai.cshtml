@@ -150,6 +150,10 @@
                         <small class="muted" data-ai-catalog-status="@AiProviderIds.OpenAiCompatible">@AiViewFormat.CatalogStatus(ui, personalCatalog, Model.Now)</small>
                         <button class="button ai-button-small" type="submit" asp-page-handler="RefreshModels">@ui["ai.models.refresh"]</button>
                     </div>
+                    @if (Model.PersonalModelMissing)
+                    {
+                        <small class="ai-note ai-note-warn" data-ai-personal-model-warning>@ui[personalCatalog.HasModels ? "ai.models.choose" : "ai.models.required"]</small>
+                    }
                 </div>
             </div>
 
