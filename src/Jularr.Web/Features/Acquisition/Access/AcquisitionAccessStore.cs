@@ -127,6 +127,35 @@ public sealed class AcquisitionAccessStore(AppDbContext db)
             command => Add(command, "$kind", AcquisitionAccessNames.Kind(kind)),
             cancellationToken);
 
+    public Task<IReadOnlyList<AcquisitionRequest>> ListByStatusAsync(
+        MediaAcquisitionKind kind,
+        AcquisitionRequestStatus status,
+        CancellationToken cancellationToken) =>
+        QueryAsync(
+            $"""
+            SELECT {Columns} FROM "AcquisitionRequests"
+            WHERE "Kind" = $kind AND "Status" = $status
+            ORDER BY "UpdatedAt";
+            """,
+            command =>
+            {
+                Add(command, "$kind", AcquisitionAccessNames.Kind(kind));
+                Add(command, "$status", AcquisitionAccessNames.Status(status));
+            },
+            cancellationToken);
+
+    /// <summary>Replaces the media-specific payload (for example which releases were already tried).</summary>
+    public Task UpdatePayloadAsync(Guid id, string? payloadJson, CancellationToken cancellationToken) =>
+        WithConnectionAsync(async connection =>
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = """UPDATE "AcquisitionRequests" SET "PayloadJson" = $payload WHERE "Id" = $id;""";
+            Add(command, "$id", id.ToString());
+            Add(command, "$payload", payloadJson);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+            return true;
+        }, cancellationToken);
+
     public async Task<int> CountPendingAsync(CancellationToken cancellationToken) =>
         await WithConnectionAsync(async connection =>
         {
