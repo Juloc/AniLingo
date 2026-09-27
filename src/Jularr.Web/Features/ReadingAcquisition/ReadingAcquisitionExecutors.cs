@@ -75,10 +75,7 @@ public sealed class ReadingAcquisitionEngine(
         var tried = new HashSet<string>(
             payload.TriedReleaseIds ?? [],
             StringComparer.OrdinalIgnoreCase);
-        var ranked = search.Ranked
-            .FirstOrDefault(candidate =>
-                candidate.Score > 0 &&
-                !tried.Contains(candidate.Release.Identity));
+        var ranked = PickNextUntried(search, tried);
 
         if (ranked?.Release.InternalDownloadUri is not { } downloadUri)
         {
@@ -88,6 +85,8 @@ public sealed class ReadingAcquisitionEngine(
                 ? "Every matching release was tried already."
                 : search.FailureMessage;
 
+            // Like Books: the previous problem is shown once in this message and then
+            // consumed, so repeated searches never stack "No release found… No release found…".
             if (searches >= MaxSearches)
             {
                 await SavePayloadAsync(
@@ -96,7 +95,7 @@ public sealed class ReadingAcquisitionEngine(
                     {
                         Searches = searches,
                         NextSearchUtc = null,
-                        LastProblem = reason
+                        LastProblem = null
                     },
                     cancellationToken);
                 return new AcquisitionExecution(
@@ -111,7 +110,7 @@ public sealed class ReadingAcquisitionEngine(
                 {
                     Searches = searches,
                     NextSearchUtc = next,
-                    LastProblem = reason
+                    LastProblem = null
                 },
                 cancellationToken);
             return new AcquisitionExecution(
@@ -188,6 +187,20 @@ public sealed class ReadingAcquisitionEngine(
             AcquisitionRequestStatus.Approved,
             $"{retryProblem} Searching again {retryAt:yyyy-MM-dd HH:mm} UTC.",
             outcome.OperationId);
+    }
+
+    public static RankedReadingRelease? PickNextUntried(
+        ReadingUsenetSearchResult search,
+        IReadOnlyCollection<string> triedReleaseIds)
+    {
+        ArgumentNullException.ThrowIfNull(search);
+        ArgumentNullException.ThrowIfNull(triedReleaseIds);
+
+        var tried = triedReleaseIds.ToHashSet(
+            StringComparer.OrdinalIgnoreCase);
+        return search.Ranked.FirstOrDefault(candidate =>
+            candidate.Score > 0 &&
+            !tried.Contains(candidate.Release.Identity));
     }
 
     public static ReadingRequestPayload ReadPayload(
