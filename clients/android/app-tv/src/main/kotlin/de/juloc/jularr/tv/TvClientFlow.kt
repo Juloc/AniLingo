@@ -9,6 +9,7 @@ import de.juloc.jularr.core.model.ClientCapabilities
 import de.juloc.jularr.core.model.ClientLibrary
 import de.juloc.jularr.core.model.ClientLogin
 import de.juloc.jularr.core.model.CueResponse
+import de.juloc.jularr.core.model.EpisodeDetail
 import de.juloc.jularr.core.model.EpisodeProgress
 import de.juloc.jularr.core.model.EpisodeProgressUpdate
 import de.juloc.jularr.core.model.MediaAvailability
@@ -73,6 +74,14 @@ class TvClientFlow(
 
     suspend fun loadAnime(animeId: String): AnimeDetail =
         requireApi().getAnime(animeId)
+
+    suspend fun loadEpisodePage(episodeId: String): TvEpisodePageData {
+        val client = requireApi()
+        return TvEpisodePageData(
+            detail = client.getEpisode(episodeId),
+            progress = client.getProgress(episodeId),
+        )
+    }
 
     suspend fun loadEpisode(episodeId: String): TvEpisodeBundle {
         val client = requireApi()
@@ -176,6 +185,11 @@ class TvClientFlow(
 data class TvSignedInData(
     val account: ClientAccount,
     val library: ClientLibrary,
+)
+
+data class TvEpisodePageData(
+    val detail: EpisodeDetail,
+    val progress: EpisodeProgress,
 )
 
 data class TvEpisodeBundle(
