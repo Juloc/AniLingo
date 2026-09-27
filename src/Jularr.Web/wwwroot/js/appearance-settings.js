@@ -11,6 +11,7 @@
     const accentForm = host.querySelector('[data-appearance-accent-form]');
     const accentValue = host.querySelector('[data-appearance-accent-value]');
     const modeForm = host.querySelector('[data-appearance-mode-form]');
+    const sakuraForm = host.querySelector('[data-appearance-sakura-form]');
     const picker = host.querySelector('[data-accent-picker]');
     const hexField = host.querySelector('[data-accent-hex]');
     const custom = host.querySelector('[data-accent-custom]');
@@ -203,6 +204,38 @@
                 setStatus(host.dataset.textFailed, 'error');
             }
         });
+    }
+
+    // --- sakura effect ---------------------------------------------------------------------------
+    if (sakuraForm) {
+        const sakuraRadios = Array.from(sakuraForm.querySelectorAll('[data-appearance-sakura]'));
+        let savedSakura = sakuraRadios.find((input) => input.checked)?.value;
+
+        for (const radio of sakuraRadios) {
+            radio.addEventListener('change', async () => {
+                if (!radio.checked) return;
+                const previous = savedSakura;
+                window.JularrSakura?.apply(radio.value);
+                setStatus(host.dataset.textSaving, 'busy');
+                try {
+                    const response = await fetch(sakuraForm.action, {
+                        method: 'POST',
+                        body: new FormData(sakuraForm),
+                        credentials: 'same-origin',
+                        headers: { Accept: 'application/json' }
+                    });
+                    if (!response.ok) throw new Error(`Sakura save failed: ${response.status}`);
+                    savedSakura = radio.value;
+                    setStatus(host.dataset.textSaved, 'ok');
+                } catch {
+                    if (previous) {
+                        window.JularrSakura?.apply(previous);
+                        sakuraForm.querySelector(`[value="${previous}"]`).checked = true;
+                    }
+                    setStatus(host.dataset.textFailed, 'error');
+                }
+            });
+        }
     }
 
     // Keep the page's radios in sync when the sidebar theme button is used.

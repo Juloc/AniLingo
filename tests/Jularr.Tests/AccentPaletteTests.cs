@@ -176,11 +176,11 @@ public sealed class AccentPaletteTests
                 await store.SetThemeAsync("alice", AppTheme.Dark, CancellationToken.None);
                 await store.SetThemeAsync("bob", AppTheme.Light, CancellationToken.None);
 
-                Assert.AreEqual(new ProfileAppearance(AppTheme.Dark, "#2c55a8"), await store.GetAsync("alice", CancellationToken.None));
-                Assert.AreEqual(new ProfileAppearance(AppTheme.Light, null), await store.GetAsync("bob", CancellationToken.None));
+                Assert.AreEqual(new ProfileAppearance(AppTheme.Dark, "#2c55a8", AppSakura.Subtle), await store.GetAsync("alice", CancellationToken.None));
+                Assert.AreEqual(new ProfileAppearance(AppTheme.Light, null, AppSakura.Subtle), await store.GetAsync("bob", CancellationToken.None));
 
                 Assert.IsNull(await store.SetAccentAsync("alice", "", CancellationToken.None));
-                Assert.AreEqual(new ProfileAppearance(AppTheme.Dark, null), await store.GetAsync("alice", CancellationToken.None));
+                Assert.AreEqual(new ProfileAppearance(AppTheme.Dark, null, AppSakura.Subtle), await store.GetAsync("alice", CancellationToken.None));
 
                 await Assert.ThrowsExactlyAsync<ArgumentException>(
                     () => store.SetAccentAsync("alice", "blue", CancellationToken.None));
@@ -194,6 +194,65 @@ public sealed class AccentPaletteTests
             SqliteConnection.ClearAllPools();
             Directory.Delete(directory, recursive: true);
         }
+    }
+
+    [TestMethod]
+    public async Task StorePersistsSakuraModeIndependentlyOfThemeAndAccent()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"jularr-appearance-sakura-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var options = new DbContextOptionsBuilder<AppDbContext>()
+                .UseSqlite($"Data Source={Path.Combine(directory, "app.db")};Foreign Keys=True")
+                .Options;
+            await using (var db = new AppDbContext(options))
+            {
+                await DatabaseMigrationBridge.UpgradeAsync(db);
+                var store = new ProfileAppearanceStore(db);
+
+                // A profile with no row yet defaults to the recommended "subtle" density.
+                Assert.AreEqual(AppSakura.Subtle, (await store.GetAsync("alice", CancellationToken.None)).SakuraMode);
+
+                await store.SetAccentAsync("alice", "#2c55a8", CancellationToken.None);
+                await store.SetSakuraAsync("alice", AppSakura.Full, CancellationToken.None);
+                await store.SetSakuraAsync("bob", AppSakura.Off, CancellationToken.None);
+
+                Assert.AreEqual(
+                    new ProfileAppearance(AppTheme.System, "#2c55a8", AppSakura.Full),
+                    await store.GetAsync("alice", CancellationToken.None));
+                Assert.AreEqual(
+                    new ProfileAppearance(AppTheme.System, null, AppSakura.Off),
+                    await store.GetAsync("bob", CancellationToken.None));
+
+                // Changing theme/accent afterwards must not reset the Sakura choice.
+                await store.SetThemeAsync("alice", AppTheme.Dark, CancellationToken.None);
+                Assert.AreEqual(AppSakura.Full, (await store.GetAsync("alice", CancellationToken.None)).SakuraMode);
+
+                await Assert.ThrowsExactlyAsync<ArgumentException>(
+                    () => store.SetSakuraAsync("alice", "extreme", CancellationToken.None));
+
+                await Assert.ThrowsExactlyAsync<SqliteException>(() => db.Database.ExecuteSqlRawAsync(
+                    "UPDATE \"UiProfileThemes\" SET \"SakuraMode\" = 'extreme' WHERE \"ProfileId\" = 'bob'"));
+            }
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    [DataRow("off", true, "off")]
+    [DataRow("Subtle", true, "subtle")]
+    [DataRow(" full ", true, "full")]
+    [DataRow("", false, "subtle")]
+    [DataRow("extreme", false, "subtle")]
+    public void SakuraModeIsNormalised(string input, bool valid, string expected)
+    {
+        Assert.AreEqual(valid, AppSakura.TryNormalize(input, out var normalized));
+        Assert.AreEqual(expected, normalized);
     }
 
     private static void AssertContrast(

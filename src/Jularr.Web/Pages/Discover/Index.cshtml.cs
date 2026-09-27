@@ -1,4 +1,5 @@
 using Jularr.Web.Data;
+using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Books;
 using Jularr.Web.Features.Discovery;
@@ -22,15 +23,35 @@ public sealed class IndexModel(
     NovelMetadataService novelMetadata,
     CurrentAccountContext account,
     OperationRunner operations,
+    AcquisitionRequestService requests,
+    AcquisitionAccessStore requestStore,
     ILogger<DiscoveryCoordinator> discoveryLogger) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public bool IsOwner => account.IsOwner;
 
-    public async Task OnGetAsync()
+    /// <summary>The card action per AniList category: "add", "request" or "" (none).</summary>
+    public IReadOnlyDictionary<string, string> AddActions { get; private set; } = new Dictionary<string, string>();
+
+    public async Task OnGetAsync(CancellationToken cancellationToken)
     {
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+        var actions = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (category, kind) in Categories)
+        {
+            actions[category] = AddAction(kind, await requests.GetCapabilitiesAsync(kind, cancellationToken));
+        }
+
+        AddActions = actions;
     }
+
+    // Anime is added like in Sonarr. Manga and light novels have no automatic acquisition, so
+    // other profiles request them; the owner keeps the import flows of the card.
+    public static string AddAction(MediaAcquisitionKind kind, AcquisitionCapabilities access) =>
+        !access.CanAdd ? ""
+        : kind == MediaAcquisitionKind.Anime ? (access.AddCreatesRequest ? "request" : "add")
+        : access.IsOwner ? ""
+        : "request";
 
     public async Task<IActionResult> OnGetResultsAsync(
         string? q,
@@ -62,8 +83,72 @@ public sealed class IndexModel(
             includeBooks,
             cancellationToken);
 
-        return new JsonResult(result);
+        var open = (await requestStore.ListAsync(null, null, openOnly: true, limit: 500, cancellationToken))
+            .Where(item => item.Provider == AniListMetadataProvider.ProviderKey)
+            .GroupBy(item => (item.Kind, item.ExternalId))
+            .ToDictionary(group => group.Key, group => AcquisitionAccessNames.Status(group.First().Status));
+
+        return new JsonResult(result with
+        {
+            Items = result.Items
+                .Select(item => !item.IsLocal &&
+                                Categories.TryGetValue(item.Category, out var kind) &&
+                                open.TryGetValue((kind, item.ExternalId), out var status)
+                    ? item with { RequestStatus = status }
+                    : item)
+                .ToArray()
+        });
     }
+
+    /// <summary>Adds (anime, automatic) or requests an AniList title according to its access policy.</summary>
+    public async Task<IActionResult> OnPostAddAsync(
+        string? category,
+        string? externalId,
+        string? title,
+        string? subtitle,
+        string? coverImageUrl,
+        CancellationToken cancellationToken)
+    {
+        if (category is null ||
+            !Categories.TryGetValue(category, out var kind) ||
+            !int.TryParse(externalId, out var id) ||
+            id <= 0 ||
+            string.IsNullOrWhiteSpace(title))
+        {
+            return BadRequest();
+        }
+
+        try
+        {
+            var request = await requests.SubmitAsync(
+                new AcquisitionRequestDraft(
+                    kind,
+                    AniListMetadataProvider.ProviderKey,
+                    id.ToString(),
+                    title.Trim(),
+                    string.IsNullOrWhiteSpace(subtitle) ? null : subtitle.Trim(),
+                    string.IsNullOrWhiteSpace(coverImageUrl) ? null : coverImageUrl.Trim()),
+                cancellationToken);
+            return new JsonResult(new
+            {
+                status = AcquisitionAccessNames.Status(request.Status),
+                message = request.StatusMessage,
+                resultUrl = request.ResultUrl
+            });
+        }
+        catch (AcquisitionAccessDeniedException)
+        {
+            return Forbid();
+        }
+    }
+
+    private static readonly IReadOnlyDictionary<string, MediaAcquisitionKind> Categories =
+        new Dictionary<string, MediaAcquisitionKind>(StringComparer.Ordinal)
+        {
+            ["anime"] = MediaAcquisitionKind.Anime,
+            ["manga"] = MediaAcquisitionKind.Manga,
+            ["light-novel"] = MediaAcquisitionKind.LightNovel
+        };
 
     public async Task<IActionResult> OnPostImportSourceAsync(
         string sourceUrl,

@@ -107,7 +107,9 @@ public sealed record DiscoveryItem(
     bool IsLocal,
     string? LocalUrl,
     string DetailsUrl,
-    bool CanImportSource);
+    bool CanImportSource,
+    // Status of the open add request for this title; set per response, never cached.
+    string? RequestStatus = null);
 
 public sealed record DiscoveryResponse(
     string Query,

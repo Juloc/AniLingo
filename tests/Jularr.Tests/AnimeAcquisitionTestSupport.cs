@@ -1,5 +1,6 @@
 using Jularr.Web.Data;
 using Jularr.Web.Features.Acquisition;
+using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Acquisition.Api;
 using Jularr.Web.Features.Acquisition.AniListAutoMonitor;
 using Jularr.Web.Features.Acquisition.Backup;
@@ -71,6 +72,7 @@ internal sealed class AnimeAcquisitionEnvironment : IAsyncDisposable
     public IDataProtectionProvider Protection { get; } = new EphemeralDataProtectionProvider();
     public IHardLinkCreator HardLinkCreator { get; }
     public HttpMessageHandler AniListHandler { get; set; } = new NotConnectedAniListHandler();
+    public FakeAnimeMetadataProvider AniListMetadata { get; } = new();
     public Guid AnimeId { get; private set; }
     public Guid ProwlarrIndexerEntryId { get; private set; }
 
@@ -123,6 +125,19 @@ internal sealed class AnimeAcquisitionEnvironment : IAsyncDisposable
     {
         await using var scope = services.CreateAsyncScope();
         return await scope.ServiceProvider.GetRequiredService<AcquisitionBackupService>().RestoreAsync(bundle, CancellationToken.None);
+    }
+
+    /// <summary>What an approved or automatic anime request from Discover runs.</summary>
+    public async Task<AcquisitionExecution> ExecuteAnimeRequestAsync(string aniListId)
+    {
+        await using var scope = services.CreateAsyncScope();
+        var execution = await scope.ServiceProvider.GetRequiredService<AnimeAcquisitionRequestExecutor>().ExecuteAsync(
+            new AcquisitionRequest(
+                Guid.NewGuid(), MediaAcquisitionKind.Anime, AniListMetadataProvider.ProviderKey, aniListId, "Requested", null, null, null,
+                "owner", AcquisitionRequestStatus.Searching, null, null, null, DateTime.UtcNow, DateTime.UtcNow, "owner", DateTime.UtcNow),
+            CancellationToken.None);
+        Db.ChangeTracker.Clear();
+        return execution;
     }
 
     public async Task<AniListAutoMonitorRunResult> RunAniListAutoMonitorAsync(string profileId)
@@ -432,7 +447,9 @@ internal sealed class AnimeAcquisitionEnvironment : IAsyncDisposable
         collection.AddScoped<AcquisitionBackupService>(_ => new AcquisitionBackupService(DataRoot));
         collection.AddScoped<AniListAutoMonitorService>();
 
+        collection.AddSingleton<IAnimeMetadataProvider>(AniListMetadata);
         collection.AddScoped<AnimeMetadataService>();
+        collection.AddScoped<AnimeAcquisitionRequestExecutor>();
         collection.AddScoped<SabnzbdConnectionResolver>();
         collection.AddScoped<SabnzbdDownloadService>();
         collection.AddScoped<SabnzbdAcquisitionService>();
@@ -496,6 +513,23 @@ internal sealed class AnimeAcquisitionEnvironment : IAsyncDisposable
         public Task<IReadOnlyList<SonarrObservedQueueItem>> GetQueueAsync(SonarrConnectionSettings settings, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<IReadOnlyList<SonarrObservedHistoryEvent>> GetRecentHistoryAsync(SonarrConnectionSettings settings, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
+}
+
+/// <summary>AniList entries by id; unknown ids are not found. Search returns nothing.</summary>
+internal sealed class FakeAnimeMetadataProvider : IAnimeMetadataProvider
+{
+    public Dictionary<string, AnimeMetadataCandidate> Entries { get; } = new(StringComparer.Ordinal);
+    public string Key => AniListMetadataProvider.ProviderKey;
+
+    public Task<IReadOnlyList<AnimeMetadataCandidate>> SearchAsync(string query, int limit, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<AnimeMetadataCandidate>>([]);
+
+    public Task<AnimeMetadataCandidate?> GetAsync(string externalId, CancellationToken cancellationToken) =>
+        Task.FromResult(Entries.GetValueOrDefault(externalId));
+
+    public void Add(string id, string title, int? episodeCount, int? year = null) =>
+        Entries[id] = new AnimeMetadataCandidate(
+            AniListMetadataProvider.ProviderKey, id, title, title, null, null, null, null, null, "TV", "RELEASING", null, year, episodeCount, 24);
 }
 
 /// <summary>Returns the configured releases for every query and counts the queries.</summary>
