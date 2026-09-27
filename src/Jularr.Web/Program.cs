@@ -77,6 +77,7 @@ var connectionString = builder.Configuration.GetConnectionString("Default")
 builder.Services.AddDbContext<AppDbContext>(options => options.UseSqlite(connectionString));
 
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<OperationProfileContext>();
 builder.Services.AddScoped<CurrentAccountContext>();
 builder.Services.AddScoped<OwnerAuthService>();
 builder.Services.AddScoped<AdminUserProgressService>();
@@ -399,6 +400,7 @@ builder.Services.AddScoped<AnimeAcquisitionPipeline>();
 builder.Services.AddScoped<AnimeImportExecutor>();
 builder.Services.AddSingleton<AnimeAcquisitionScheduler>();
 builder.Services.AddHostedService(services => services.GetRequiredService<AnimeAcquisitionScheduler>());
+Jularr.Web.Features.Calendar.ReleaseCalendarRegistration.AddReleaseCalendar(builder.Services);
 
 builder.Services.AddScoped<AcquisitionApiKeyService>();
 builder.Services.AddScoped<AcquisitionApiService>();
