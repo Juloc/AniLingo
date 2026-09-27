@@ -43,6 +43,52 @@ public sealed class IndexerSearchCoordinator(
             .ToArray();
 
         var queries = IndexerSearchPlanner.Build(target);
+        return await SearchCoreAsync(
+            entries,
+            queries,
+            entry => entry.Type == IndexerType.Prowlarr && prowlarrIndexerIdOverride is { Count: > 0 }
+                ? entry with { Settings = entry.Settings with { IndexerIds = prowlarrIndexerIdOverride.ToArray() } }
+                : entry,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Searches every enabled, healthy indexer with free-text queries in the given Newznab
+    /// categories (for example 7000/7020 for books) instead of each entry's anime categories.
+    /// Same health handling, de-duplication and ordering as the anime search.
+    /// </summary>
+    public async Task<IndexerAnimeSearchResult> SearchCategoriesAsync(
+        IReadOnlyList<string> queries,
+        Func<IndexerEntry, IReadOnlyList<int>> categoriesFor,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(queries);
+        ArgumentNullException.ThrowIfNull(categoriesFor);
+
+        var entries = (await store.LoadAllAsync(cancellationToken))
+            .Where(entry => entry.Enabled)
+            .OrderBy(entry => entry.Priority)
+            .ToArray();
+        var planned = queries
+            .Select(query => query.Trim())
+            .Where(query => query.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Select(query => new IndexerSearchQuery(query))
+            .ToArray();
+
+        return await SearchCoreAsync(
+            entries,
+            planned,
+            entry => entry with { Settings = entry.Settings with { Categories = categoriesFor(entry).ToArray() } },
+            cancellationToken);
+    }
+
+    private async Task<IndexerAnimeSearchResult> SearchCoreAsync(
+        IReadOnlyList<IndexerEntry> entries,
+        IReadOnlyList<IndexerSearchQuery> queries,
+        Func<IndexerEntry, IndexerEntry> effective,
+        CancellationToken cancellationToken)
+    {
         var warnings = new List<IndexerSearchWarning>();
         var aggregated = new Dictionary<string, AggregatedCandidate>(StringComparer.OrdinalIgnoreCase);
 
@@ -62,9 +108,7 @@ public sealed class IndexerSearchCoordinator(
                 continue;
             }
 
-            var effectiveEntry = entry.Type == IndexerType.Prowlarr && prowlarrIndexerIdOverride is { Count: > 0 }
-                ? entry with { Settings = entry.Settings with { IndexerIds = prowlarrIndexerIdOverride.ToArray() } }
-                : entry;
+            var effectiveEntry = effective(entry);
 
             foreach (var query in queries)
             {

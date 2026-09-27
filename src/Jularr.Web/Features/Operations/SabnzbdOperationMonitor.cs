@@ -232,7 +232,7 @@ public sealed class SabnzbdOperationMonitorService(
             DateTime.UtcNow,
             cancellationToken);
 
-        await ImportCompletedBookDownloadsAsync(services, result.Completed, cancellationToken);
+        await ImportCompletedBookDownloadsAsync(services, result.Completed, history, cancellationToken);
         await ImportCompletedAnimeDownloadsAsync(services, result.Completed, history, cancellationToken);
         await ContinueFailedAnimeAcquisitionsAsync(services, result.Failed, cancellationToken);
         return true;
@@ -329,13 +329,18 @@ public sealed class SabnzbdOperationMonitorService(
     private async Task ImportCompletedBookDownloadsAsync(
         IServiceProvider services,
         IReadOnlyList<OperationSnapshot> completed,
+        SabnzbdHistorySnapshot history,
         CancellationToken cancellationToken)
     {
         try
         {
+            var storagePaths = completed.ToDictionary(
+                operation => operation.Id,
+                operation => history.Jobs.FirstOrDefault(job => job.NzoId == operation.ExternalId)?.StoragePath);
             await BookInboxImport.ImportAfterDownloadsAsync(
                 services,
                 completed,
+                storagePaths,
                 cancellationToken);
         }
         catch (Exception exception) when (
@@ -346,7 +351,7 @@ public sealed class SabnzbdOperationMonitorService(
             // The runner already recorded the failed import operation.
             logger.LogWarning(
                 exception,
-                "Could not import the Books inbox after a completed SABnzbd download.");
+                "Could not import a completed Books SABnzbd download.");
         }
     }
 }

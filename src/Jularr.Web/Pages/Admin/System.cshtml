@@ -228,7 +228,7 @@
         <p class="muted">
             @ui.Format("admin.system.downloadClientsDescription", ("healthy", Model.HealthyDownloadClients), ("total", Model.TotalDownloadClients))
         </p>
-        <a class="button" asp-page="/Settings/DownloadClients/Index">@ui["admin.system.manageDownloadClients"]</a>
+        <a class="button" asp-page="/Admin/Usenet">@ui["admin.system.manageDownloadClients"]</a>
     </section>
 
     <section class="panel">
@@ -236,7 +236,7 @@
         <p class="muted">
             @ui.Format("admin.system.indexersDescription", ("healthy", Model.HealthyIndexers), ("total", Model.TotalIndexers))
         </p>
-        <a class="button" asp-page="/Settings/Indexers/Index">@ui["admin.system.manageIndexers"]</a>
+        <a class="button" asp-page="/Admin/Usenet">@ui["admin.system.manageIndexers"]</a>
     </section>
 
     <section class="panel">

@@ -55,3 +55,116 @@
     .acquisition-inline-form button { width: 100%; }
 }
 .acquisition-owner-actions { margin-top: 12px; }
+
+/* Admin → Requests & access */
+.access-policies, .access-requests { margin-bottom: 16px; }
+.access-policy-table { width: 100%; border-collapse: collapse; margin: 10px 0 14px; font-size: 13px; }
+.access-policy-table th, .access-policy-table td { padding: 10px 8px; border-bottom: 1px solid var(--border); text-align: left; }
+.access-policy-table thead th { color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
+.access-policy-table select { width: 100%; max-width: 280px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--field-bg); color: var(--text); font: inherit; }
+.request-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.request-row {
+    display: grid; grid-template-columns: 44px minmax(0, 1fr) auto auto; align-items: center; gap: 12px;
+    padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--row-bg);
+}
+.request-cover { width: 44px; aspect-ratio: 2 / 3; overflow: hidden; border-radius: 6px; background: var(--surface-2); }
+.request-cover img { width: 100%; height: 100%; object-fit: cover; }
+.request-copy { min-width: 0; display: grid; gap: 2px; }
+.request-copy span, .request-copy small { color: var(--muted); font-size: 12px; }
+.request-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.request-actions form { margin: 0; }
+@media (max-width: 720px) {
+    .request-row { grid-template-columns: 44px minmax(0, 1fr); }
+    .request-row .status-pill, .request-actions { grid-column: 1 / -1; justify-content: flex-start; }
+}
+
+/* Admin → Usenet hub */
+.usenet-checklist, .usenet-booktest, .usenet-downloads { margin-bottom: 16px; }
+.usenet-steps { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; }
+.usenet-step {
+    display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; align-items: center; gap: 12px;
+    padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--row-bg);
+}
+.usenet-step-icon {
+    width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%;
+    font-weight: 900; font-size: 14px; background: var(--surface-2); color: var(--muted);
+}
+.usenet-step.is-ok .usenet-step-icon { background: color-mix(in srgb, var(--success-text) 18%, transparent); color: var(--success-text); }
+.usenet-step.is-warn .usenet-step-icon { background: color-mix(in srgb, var(--warning-text) 18%, transparent); color: var(--warning-text); }
+.usenet-step.is-missing { border-color: color-mix(in srgb, var(--danger-text) 40%, var(--border)); }
+.usenet-step.is-missing .usenet-step-icon { background: color-mix(in srgb, var(--danger-text) 16%, transparent); color: var(--danger-text); }
+.usenet-step-copy { min-width: 0; display: grid; gap: 2px; }
+.usenet-step-copy span { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+
+.usenet-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-bottom: 16px; }
+.usenet-columns > .panel { margin: 0; }
+.usenet-cards { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 10px; }
+.usenet-card { padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--row-bg); display: grid; gap: 10px; }
+.usenet-card.is-disabled { opacity: .62; }
+.usenet-card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.usenet-card-head > div { display: grid; gap: 2px; min-width: 0; }
+.usenet-card-head .muted { font-size: 12px; }
+.usenet-facts { margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
+.usenet-facts div { min-width: 0; }
+.usenet-facts dt { color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; }
+.usenet-facts dd { margin: 2px 0 0; font-size: 13px; overflow-wrap: anywhere; }
+.usenet-card-error { margin: 0; color: var(--danger-text); font-size: 12px; overflow-wrap: anywhere; }
+.usenet-card-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.usenet-card-actions form { margin: 0; }
+.button.button-small { padding: 6px 10px; font-size: 12px; border-radius: 8px; }
+.button.button-quiet { background: transparent; }
+.button.button-quiet:hover { background: var(--surface-2); }
+.button.button-danger { background: transparent; color: var(--danger-text); border-color: color-mix(in srgb, var(--danger-text) 35%, var(--border)); }
+.button.button-danger:hover { background: color-mix(in srgb, var(--danger-text) 12%, transparent); }
+.usenet-empty { color: var(--muted); font-size: 13px; padding: 14px; border: 1px dashed var(--border); border-radius: 12px; text-align: center; }
+
+.usenet-booktest-form { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1.4fr) auto; gap: 8px; margin: 10px 0; }
+.usenet-booktest-form input {
+    padding: 9px 12px; border: 1px solid var(--border); border-radius: 9px; background: var(--field-bg); color: var(--text); font: inherit; min-width: 0;
+}
+.usenet-booktest-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; margin: 6px 0; }
+.usenet-releases, .usenet-downloads-list { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; }
+.usenet-release {
+    display: grid; grid-template-columns: 38px minmax(0, 1fr) auto; align-items: center; gap: 10px;
+    padding: 8px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--row-bg);
+}
+.usenet-release.is-picked { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.usenet-release.is-rejected { opacity: .6; }
+.usenet-release-score { font-weight: 900; font-size: 15px; text-align: center; color: var(--accent-text); }
+.usenet-release-copy, .usenet-download-copy { min-width: 0; display: grid; gap: 2px; }
+.usenet-release-copy strong, .usenet-download-copy strong { overflow-wrap: anywhere; font-size: 13px; }
+.usenet-release-copy span, .usenet-download-copy > span { color: var(--muted); font-size: 12px; }
+.usenet-download {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px;
+    padding: 9px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--row-bg);
+}
+.usenet-download.is-active { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.usenet-download-progress { width: 120px; height: 6px; border-radius: 99px; background: var(--surface-2); overflow: hidden; }
+.usenet-download-progress span { display: block; height: 100%; background: var(--accent); }
+@media (max-width: 900px) {
+    .usenet-columns { grid-template-columns: minmax(0, 1fr); }
+    .usenet-booktest-form { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 600px) {
+    .usenet-step { grid-template-columns: 30px minmax(0, 1fr); }
+    .usenet-step .button { grid-column: 2; justify-self: start; }
+    .usenet-release { grid-template-columns: 32px minmax(0, 1fr); }
+    .usenet-release .status-pill { grid-column: 2; justify-self: start; }
+}
+
+/* Indexer / SABnzbd edit forms */
+.usenet-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 16px; max-width: 760px; }
+.usenet-form > label { display: grid; gap: 6px; min-width: 0; }
+.usenet-form > label > span { color: var(--text-secondary); font-size: 12px; font-weight: 700; }
+.usenet-form > label > small { color: var(--muted); font-size: 11px; }
+.usenet-form input:not([type="checkbox"]), .usenet-form select {
+    width: 100%; padding: 9px 12px; border: 1px solid var(--border); border-radius: 9px;
+    background: var(--field-bg); color: var(--text); font: inherit; min-width: 0;
+}
+.usenet-form input:focus, .usenet-form select:focus { outline: none; border-color: color-mix(in srgb, var(--accent) 55%, transparent); }
+.usenet-form .is-wide { grid-column: 1 / -1; }
+.usenet-form > p { margin: 0; font-size: 12px; }
+.usenet-form-check { display: flex !important; align-items: center; gap: 8px; grid-column: 1 / -1; }
+.usenet-form-check span { color: var(--text) !important; font-size: 13px !important; }
+.usenet-form-actions { display: flex; gap: 8px; }
+@media (max-width: 640px) { .usenet-form { grid-template-columns: minmax(0, 1fr); } }

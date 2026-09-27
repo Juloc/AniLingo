@@ -1195,42 +1195,54 @@ public sealed partial class BookCatalogService(
                 $"Books inbox '{inboxPath}' is not available.");
         }
 
-        var files = Directory
-            .EnumerateFiles(
-                inboxPath,
-                "*.epub",
-                SearchOption.TopDirectoryOnly)
-            .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
-            .Take(200)
-            .ToArray();
+        return await ImportEpubsFromPathAsync(inboxPath, "inbox", cancellationToken);
+    }
+
+    /// <summary>
+    /// Imports every EPUB at <paramref name="path"/>: the file itself, or all EPUBs below the
+    /// folder including subfolders (SABnzbd puts each completed job in its own folder).
+    /// </summary>
+    public async Task<IReadOnlyList<Guid>> ImportEpubsFromPathAsync(
+        string path,
+        string sourceKind,
+        CancellationToken cancellationToken)
+    {
+        var files = File.Exists(path)
+            ? (path.EndsWith(".epub", StringComparison.OrdinalIgnoreCase) ? [path] : [])
+            : Directory.Exists(path)
+                ? Directory
+                    .EnumerateFiles(path, "*.epub", SearchOption.AllDirectories)
+                    .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+                    .Take(200)
+                    .ToArray()
+                : throw new InvalidOperationException($"'{path}' is not available.");
 
         var imported = new List<Guid>(files.Length);
-        foreach (var path in files)
+        foreach (var file in files)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
             try
             {
                 await using var stream = new FileStream(
-                    path,
+                    file,
                     FileMode.Open,
                     FileAccess.Read,
                     FileShare.ReadWrite | FileShare.Delete,
                     bufferSize: 81920,
                     useAsync: true);
 
-                var fileName = Path.GetFileName(path);
+                var fileName = Path.GetFileName(file);
                 imported.Add(await ImportEpubStreamAsync(
                     stream,
                     fileName,
-                    "inbox",
-                    "inbox://" + Uri.EscapeDataString(fileName),
+                    sourceKind,
+                    sourceKind + "://" + Uri.EscapeDataString(fileName),
                     cancellationToken));
             }
             catch (IOException)
             {
-                // A downloader may still be moving/writing this file.
-                // The next inbox scan can retry it safely.
+                // A downloader may still be moving/writing this file; the next scan retries it.
             }
         }
 
@@ -1651,7 +1663,7 @@ public sealed partial class BookCatalogService(
         var response = await GetJsonAsync<GutendexListResponse>(
             new Uri(
                 httpClient.BaseAddress!,
-                "books?languages=en&search="
+                "books?search="
                     + Uri.EscapeDataString(query)),
             cancellationToken)
             ?? throw new InvalidOperationException(
@@ -1800,20 +1812,85 @@ public sealed partial class BookCatalogService(
             ? title
             : $"{title} {author}";
 
-        var response = await GetJsonAsync<GutendexListResponse>(
-            new Uri(
-                httpClient.BaseAddress!,
-                "books?languages=en&search="
-                    + Uri.EscapeDataString(query)),
-            cancellationToken);
+        try
+        {
+            // Gutendex is often slow; do not let it hold up adding a book for long.
+            using var gutendexTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            gutendexTimeout.CancelAfter(TimeSpan.FromSeconds(5));
+            var response = await GetJsonAsync<GutendexListResponse>(
+                new Uri(
+                    httpClient.BaseAddress!,
+                    "books?search="
+                        + Uri.EscapeDataString(query)),
+                gutendexTimeout.Token);
 
-        return response?.Results
-            .Where(x => IsLikelyMatch(
-                x,
-                title,
-                author))
-            .Select(MapGutenberg)
-            .FirstOrDefault(x => x.CanAcquire);
+            return response?.Results
+                .Where(x => IsLikelyMatch(
+                    x,
+                    title,
+                    author))
+                .Select(MapGutenberg)
+                .FirstOrDefault(x => x.CanAcquire);
+        }
+        catch (Exception exception) when (
+            !cancellationToken.IsCancellationRequested
+            && exception is HttpRequestException or TaskCanceledException or InvalidOperationException or JsonException)
+        {
+            // Gutendex is a third-party mirror of the Gutenberg catalog; fall back to Project
+            // Gutenberg's own OPDS search when it is slow or down.
+            return await FindGutenbergOpdsMatchAsync(title, author, cancellationToken);
+        }
+    }
+
+    private async Task<BookCatalogItem?> FindGutenbergOpdsMatchAsync(
+        string title,
+        string? author,
+        CancellationToken cancellationToken)
+    {
+        // Gutenberg's search matches every word, so use the main title and the author's surname only.
+        var mainTitle = title.Split([';', ':'], 2)[0].Trim();
+        var surname = author?.Split([' ', ','], StringSplitOptions.RemoveEmptyEntries).LastOrDefault();
+        var query = string.IsNullOrWhiteSpace(surname) ? mainTitle : $"{mainTitle} {surname}";
+        using var response = await SendAsyncWithTimeout(
+            new HttpRequestMessage(
+                HttpMethod.Get,
+                new Uri("https://www.gutenberg.org/ebooks/search.opds/?query=" + Uri.EscapeDataString(query))),
+            cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            return null;
+        }
+
+        var document = System.Xml.Linq.XDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
+        System.Xml.Linq.XNamespace atom = "http://www.w3.org/2005/Atom";
+        var wanted = GutenbergOpds.NormalizeTitle(title);
+        foreach (var entry in document.Descendants(atom + "entry"))
+        {
+            var entryTitle = entry.Element(atom + "title")?.Value ?? "";
+            var id = GutenbergOpds.EbookId(entry, atom);
+            var normalized = GutenbergOpds.NormalizeTitle(entryTitle);
+            if (id is null || normalized.Length == 0
+                || !(normalized.StartsWith(wanted, StringComparison.Ordinal) || wanted.StartsWith(normalized, StringComparison.Ordinal)))
+            {
+                continue;
+            }
+
+            return new BookCatalogItem(
+                $"gutenberg-{id}",
+                entryTitle.Trim(),
+                author,
+                null,
+                $"https://www.gutenberg.org/cache/epub/{id}/pg{id}.cover.medium.jpg",
+                [],
+                null,
+                $"https://www.gutenberg.org/ebooks/{id}.txt.utf-8",
+                $"https://www.gutenberg.org/ebooks/{id}.epub3.images",
+                $"https://www.gutenberg.org/ebooks/{id}",
+                "Project Gutenberg",
+                "Project Gutenberg");
+        }
+
+        return null;
     }
 
     private async Task<T?> GetJsonAsync<T>(
@@ -2983,4 +3060,32 @@ public sealed partial class BookCatalogService(
     private sealed record OpenLibraryAuthor(
         [property: JsonPropertyName("name")]
         string? Name);
+}
+
+/// <summary>Helpers for Project Gutenberg's own OPDS search feed.</summary>
+public static class GutenbergOpds
+{
+    public static string NormalizeTitle(string value)
+    {
+        // Gutenberg titles carry subtitles after ';' or ':' ("Frankenstein; or, the modern prometheus").
+        var main = value.Split([';', ':'], 2)[0];
+        return new string(main.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
+    }
+
+    public static int? EbookId(System.Xml.Linq.XElement entry, System.Xml.Linq.XNamespace atom)
+    {
+        foreach (var link in entry.Elements(atom + "link"))
+        {
+            var href = link.Attribute("href")?.Value ?? "";
+            var match = System.Text.RegularExpressions.Regex.Match(href, @"/ebooks/(d+).opds$");
+            if (match.Success)
+            {
+                return int.Parse(match.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
+            }
+        }
+
+        var id = entry.Element(atom + "id")?.Value ?? "";
+        var fromId = System.Text.RegularExpressions.Regex.Match(id, @"/ebooks/(d+).opds$");
+        return fromId.Success ? int.Parse(fromId.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture) : null;
+    }
 }

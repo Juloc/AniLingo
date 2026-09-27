@@ -110,9 +110,9 @@
     <section class="panel">
         <div class="panel-heading"><h2>@ui["acquisition.connectionsHeading"]</h2></div>
         <div class="acquisition-connection-list">
-            <a asp-page="/Settings/Indexers/Index">@ui["acquisition.indexersLink"]</a>
+            <a asp-page="/Admin/Usenet">@ui["acquisition.indexersLink"]</a>
             <span class="status-pill @(Model.ProwlarrConfigured ? "status-ok" : "status-warn")">@(Model.ProwlarrConfigured ? ui["acquisition.configured"] : ui["acquisition.notConfigured"])</span>
-            <a asp-page="/Settings/DownloadClients/Index">@ui["acquisition.downloadClientsLink"]</a>
+            <a asp-page="/Admin/Usenet">@ui["acquisition.downloadClientsLink"]</a>
             <span class="status-pill @(Model.SabnzbdConfigured ? "status-ok" : "status-warn")">@(Model.SabnzbdConfigured ? ui["acquisition.configured"] : ui["acquisition.notConfigured"])</span>
             <a asp-page="/Settings/SonarrMigration">@ui["settings.sonarrMigration.title"]</a>
             <span class="muted">@ui["acquisition.perAnimeManagementModeNote"]</span>

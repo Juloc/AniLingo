@@ -4,42 +4,54 @@
     var ui = Model.Ui;
     ViewData["Title"] = Model.IsNew ? ui["settings.downloadClients.addTitle"] : ui["settings.downloadClients.editTitle"];
 }
+@section Head {
+    <link rel="stylesheet" href="~/css/acquisition.css" asp-append-version="true" />
+}
 
-<h1>@(Model.IsNew ? ui["settings.downloadClients.addTitle"] : ui["settings.downloadClients.editTitle"])</h1>
+<header class="page-header">
+    <div>
+        <a class="back-link" asp-page="/Admin/Usenet">← @ui["admin.usenet.title"]</a>
+        <h1>@(Model.IsNew ? ui["settings.downloadClients.addTitle"] : ui["settings.downloadClients.editTitle"])</h1>
+    </div>
+</header>
 
 @if (Model.Error is not null)
 {
-    <p class="metadata-error">@Model.Error</p>
+    <p class="metadata-error" role="alert">@Model.Error</p>
 }
 
-<form method="post">
-    <div class="field">
-        <label asp-for="Name">@ui["settings.downloadClients.field.name"]</label>
+<form method="post" class="panel usenet-form">
+    <label>
+        <span>@ui["settings.downloadClients.field.name"]</span>
         <input asp-for="Name" required />
-    </div>
-    <div class="field">
-        <label asp-for="BaseUrl">@ui["settings.downloadClients.field.baseUrl"]</label>
-        <input asp-for="BaseUrl" required placeholder="http://localhost:8080" />
-    </div>
-    <div class="field">
-        <label asp-for="Secret">@(Model.IsNew ? ui["settings.downloadClients.field.apiKey"] : ui["settings.downloadClients.field.apiKeyKeepCurrent"])</label>
-        <input asp-for="Secret" type="password" autocomplete="new-password" />
-    </div>
-    <div class="field">
-        <label asp-for="BooksCategory">@ui["settings.downloadClients.field.booksCategory"]</label>
-        <input asp-for="BooksCategory" />
-    </div>
-    <div class="field">
-        <label asp-for="AnimeCategory">@ui["settings.downloadClients.field.animeCategory"]</label>
-        <input asp-for="AnimeCategory" />
-    </div>
-    <div class="field">
-        <label asp-for="Priority">@ui["settings.downloadClients.field.priority"]</label>
+    </label>
+    <label>
+        <span>@ui["settings.downloadClients.field.priority"]</span>
         <input asp-for="Priority" type="number" min="1" />
+    </label>
+    <label class="is-wide">
+        <span>@ui["settings.downloadClients.field.baseUrl"]</span>
+        <input asp-for="BaseUrl" required placeholder="http://sabnzbd:8080" />
+    </label>
+    <label class="is-wide">
+        <span>@(Model.IsNew ? ui["settings.downloadClients.field.apiKey"] : ui["settings.downloadClients.field.apiKeyKeepCurrent"])</span>
+        <input asp-for="Secret" type="password" autocomplete="new-password" />
+    </label>
+    <label>
+        <span>@ui["settings.downloadClients.field.booksCategory"]</span>
+        <input asp-for="BooksCategory" placeholder="books" />
+    </label>
+    <label>
+        <span>@ui["settings.downloadClients.field.animeCategory"]</span>
+        <input asp-for="AnimeCategory" placeholder="anime" />
+    </label>
+    <p class="muted is-wide">@ui["settings.downloadClients.categoriesHint"]</p>
+    <label class="usenet-form-check">
+        <input asp-for="Enabled" type="checkbox" />
+        <span>@ui["settings.connectionTable.enabled"]</span>
+    </label>
+    <div class="usenet-form-actions is-wide">
+        <button class="button button-primary" type="submit">@ui["common.save"]</button>
+        <a class="button button-quiet" asp-page="/Admin/Usenet">@ui["common.cancel"]</a>
     </div>
-    <div class="field">
-        <label><input asp-for="Enabled" type="checkbox" /> @ui["settings.connectionTable.enabled"]</label>
-    </div>
-    <button type="submit">@ui["common.save"]</button>
-    <a asp-page="/Settings/DownloadClients/Index">@ui["common.cancel"]</a>
 </form>

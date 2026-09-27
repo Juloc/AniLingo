@@ -1,35 +1,40 @@
 @page "/Books"
 @model Jularr.Web.Pages.Books.IndexModel
+@using Jularr.Web.Features.Acquisition.Access
 @{
     var ui = Model.Ui;
     ViewData["Title"] = ui["books.index.title"];
+    var access = Model.Access;
 }
 @section Head {
     <link rel="stylesheet" href="~/css/books.css" asp-append-version="true" />
 }
 
-<header class="books-header">
-    <div>
+<header class="books-hero">
+    <div class="books-hero-copy">
         <h1>@ui["books.index.title"]</h1>
         <p>@ui["books.index.subtitle"]</p>
-        <a class="books-settings-link" href="/Books/ForYou?lang=@Model.TargetLanguage">@ui["books.index.forYouLink"] →</a>
-        @if (Model.IsOwner)
+        <nav class="books-hero-links">
+            <a href="/Books/ForYou?lang=@Model.TargetLanguage">@ui["books.index.forYouLink"] →</a>
+            @if (Model.IsOwner)
+            {
+                <a href="/Books/Sources">@ui["books.sources.title"]</a>
+                <a href="/Books/Integrations">@ui["books.index.acquisitionLink"]</a>
+            }
+        </nav>
+    </div>
+    <div class="books-hero-actions">
+        <label class="books-filter-search">
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"/></svg>
+            <input type="search" placeholder="@ui["books.page.filterPlaceholder"]" aria-label="@ui["books.page.filterPlaceholder"]" data-books-filter-text />
+        </label>
+        @if (access.CanAdd || access.CanAddManually)
         {
-            <div class="books-owner-links">
-                <a class="books-settings-link" href="/Books/Sources">@ui["books.sources.title"]</a>
-                <a class="books-settings-link" href="/Books/Integrations">@ui["books.index.acquisitionLink"]</a>
-            </div>
+            <button class="button button-primary books-add-button" type="button" data-open-dialog="books-add" data-books-add-open>
+                <span aria-hidden="true">+</span> @ui["books.page.addBook"]
+            </button>
         }
     </div>
-    <form method="get" action="/Books" class="books-search" role="search">
-        <input type="search"
-               name="q"
-               value="@Model.Query"
-               placeholder="@ui["books.index.searchPlaceholder"]"
-               aria-label="@ui["books.index.searchAria"]" />
-        <input type="hidden" name="lang" value="@Model.TargetLanguage" />
-        <button class="button button-primary" type="submit">@ui["common.search"]</button>
-    </form>
 </header>
 
 @if (TempData["Status"] is string status)
@@ -37,206 +42,264 @@
     <div class="books-message">@status</div>
 }
 
-@if (!string.IsNullOrWhiteSpace(Model.Error))
-{
-    <div class="books-message">@Model.Error</div>
-}
-
-<section class="books-library-section">
-    <div class="books-results-heading">
-        <strong>@ui["books.index.myBooksHeading"]</strong>
-        <span>@Model.Library.Count</span>
-    </div>
-
-    @if (Model.Library.Count == 0)
-    {
-        <div class="books-empty">
-            <p>@ui["books.index.emptyTitle"]</p>
-            @if (Model.IsOwner)
+<section class="books-library-section" data-books-library data-offline-library-filter>
+    <div class="books-toolbar">
+        <div class="books-tabs" role="tablist" aria-label="@ui["books.index.myBooksHeading"]">
+            <button type="button" role="tab" class="active" aria-selected="true" data-books-tab="all" data-library-filter-option="all">@ui["books.page.tab.all"] <span>@Model.Library.Count</span></button>
+            <button type="button" role="tab" aria-selected="false" data-books-tab="reading" data-library-filter-option="all">@ui["books.page.tab.reading"]</button>
+            <button type="button" role="tab" aria-selected="false" data-books-tab="finished" data-library-filter-option="all">@ui["books.page.tab.finished"]</button>
+            <button type="button" role="tab" aria-selected="false" data-books-tab="offline" data-library-filter-option="offline">@ui["offlineLibrary.library.filterOffline"]</button>
+            @if (Model.MyRequests.Count > 0 || access.AddCreatesRequest)
             {
-                <span>@ui["books.index.emptyHint"]</span>
+                <button type="button" role="tab" aria-selected="false" data-books-tab="requests" data-library-filter-option="all">@ui["books.page.tab.requests"] <span>@Model.MyRequests.Count(request => request.IsOpen)</span></button>
             }
         </div>
-    }
-    else
-    {
-        @* Offline is purely client-side, browser-local state (#221): the filter only shows/hides
-           already-rendered cards, it never asks the server what is downloaded on this device. *@
-        <div data-offline-library-filter>
-            <div class="books-library-filter" role="group" aria-label="@ui["offlineLibrary.library.filterAll"] / @ui["offlineLibrary.library.filterOffline"]">
-                <button type="button" class="active" data-library-filter-option="all">@ui["offlineLibrary.library.filterAll"]</button>
-                <button type="button" data-library-filter-option="offline">@ui["offlineLibrary.library.filterOffline"]</button>
+        <div class="books-filters" data-books-filters>
+            @if (Model.Genres.Count > 0)
+            {
+                <select data-books-genre aria-label="@ui["books.page.genreAria"]">
+                    <option value="">@ui["books.page.genreAll"]</option>
+                    @foreach (var genre in Model.Genres)
+                    {
+                        <option value="@genre">@genre</option>
+                    }
+                </select>
+            }
+            <select data-books-sort aria-label="@ui["books.page.sortAria"]">
+                <option value="recent">@ui["books.page.sort.recent"]</option>
+                <option value="title">@ui["books.page.sort.title"]</option>
+                <option value="author">@ui["books.page.sort.author"]</option>
+                <option value="progress">@ui["books.page.sort.progress"]</option>
+            </select>
+            <div class="books-view-toggle" role="group">
+                <button type="button" class="active" data-books-view="grid" aria-pressed="true" aria-label="@ui["books.page.viewGrid"]" title="@ui["books.page.viewGrid"]">
+                    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M3 3h8v8H3zm10 0h8v8h-8zM3 13h8v8H3zm10 0h8v8h-8z"/></svg>
+                </button>
+                <button type="button" data-books-view="list" aria-pressed="false" aria-label="@ui["books.page.viewList"]" title="@ui["books.page.viewList"]">
+                    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M3 5h18v2H3zm0 6h18v2H3zm0 6h18v2H3z"/></svg>
+                </button>
             </div>
-            <div class="books-grid">
+        </div>
+    </div>
+
+    <div data-books-panel="library">
+        @if (Model.Library.Count == 0)
+        {
+            <div class="books-empty">
+                <p>@ui["books.index.emptyTitle"]</p>
+                @if (access.CanAdd)
+                {
+                    <button class="button button-primary" type="button" data-open-dialog="books-add">@ui["books.page.addBook"]</button>
+                }
+            </div>
+        }
+        else
+        {
+            <div class="books-shelf" data-books-grid data-view="grid">
                 @foreach (var book in Model.Library)
                 {
-                    <a class="book-card"
-                       data-work-id="@book.WorkId"
-                       href="/Books/Library/@book.WorkId?lang=@Model.TargetLanguage">
-                        <div class="book-cover">
+                    var percent = Math.Clamp(book.ProgressPermille / 10, 0, 100);
+                    var finished = book.ProgressPermille >= 990;
+                    <article class="book-tile"
+                             data-work-id="@book.WorkId"
+                             data-title="@book.Title"
+                             data-author="@(book.Author ?? "")"
+                             data-genres="@string.Join("|", book.Subjects)"
+                             data-progress="@book.ProgressPermille"
+                             data-last-read="@(book.LastReadAt?.ToString("O") ?? "")">
+                        <a class="book-tile-cover" href="/Books/Library/@book.WorkId?lang=@Model.TargetLanguage">
                             @if (!string.IsNullOrWhiteSpace(book.CoverImageUrl))
                             {
-                                <img src="@book.CoverImageUrl"
-                                     alt=""
-                                     loading="lazy"
-                                     referrerpolicy="no-referrer" />
+                                <img src="@book.CoverImageUrl" alt="" loading="lazy" referrerpolicy="no-referrer" />
                             }
                             else
                             {
-                                <span>B</span>
+                                <span class="book-tile-placeholder">@book.Title</span>
                             }
-                        </div>
-                        <div class="book-card-copy">
-                            <strong>@book.Title</strong>
+                        </a>
+                        <div class="book-tile-copy">
+                            <a class="book-tile-title" href="/Books/Library/@book.WorkId?lang=@Model.TargetLanguage">@book.Title</a>
                             @if (!string.IsNullOrWhiteSpace(book.Author))
                             {
-                                <span>@book.Author</span>
+                                <span class="book-tile-author">@book.Author</span>
                             }
-                            <small>
-                                @ui.Format("books.index.chapterSummary", ("count", book.ChapterCount), ("translated", book.TranslatedChapterCount))
-                            </small>
-                            @if (book.ProgressPermille > 0)
-                            {
-                                <div class="book-card-progress">
-                                    <span style="width:@(book.ProgressPermille / 10)%"></span>
-                                </div>
-                            }
+                            <div class="book-tile-meta">
+                                <span class="book-tile-percent">@percent%</span>
+                                <div class="book-tile-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@percent"
+                                     aria-label="@ui.Format("books.page.progressAria", ("percent", percent))"><span style="width:@percent%"></span></div>
+                                @if (finished)
+                                {
+                                    <span class="book-tile-finished" title="@ui["books.page.tab.finished"]">✓</span>
+                                }
+                                else
+                                {
+                                    <details class="book-tile-menu">
+                                        <summary aria-label="@ui["books.page.menu"]">⋮</summary>
+                                        <div>
+                                            @if (book.CurrentChapterId is { } chapterId)
+                                            {
+                                                <a href="/Books/Read/@chapterId?lang=@Model.TargetLanguage">@ui["books.page.menu.continue"]</a>
+                                            }
+                                            <a href="/Books/Library/@book.WorkId?lang=@Model.TargetLanguage">@ui["books.page.menu.details"]</a>
+                                        </div>
+                                    </details>
+                                }
+                            </div>
                         </div>
-                    </a>
+                    </article>
                 }
             </div>
-        </div>
-    }
+            <p class="books-empty books-no-matches" data-books-no-matches hidden>@ui["books.page.noMatches"]</p>
+        }
+    </div>
+
+    <div data-books-panel="requests" hidden>
+        @if (Model.MyRequests.Count == 0)
+        {
+            <p class="books-empty">@ui["books.page.requestsEmpty"]</p>
+        }
+        else
+        {
+            <ul class="books-request-list">
+                @foreach (var request in Model.MyRequests)
+                {
+                    var requestStatus = AcquisitionAccessNames.Status(request.Status);
+                    <li>
+                        @if (!string.IsNullOrWhiteSpace(request.CoverImageUrl))
+                        {
+                            <img src="@request.CoverImageUrl" alt="" loading="lazy" referrerpolicy="no-referrer" />
+                        }
+                        <div>
+                            <strong>@request.Title</strong>
+                            @if (!string.IsNullOrWhiteSpace(request.Subtitle))
+                            {
+                                <span>@request.Subtitle</span>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(request.StatusMessage))
+                            {
+                                <small>@request.StatusMessage</small>
+                            }
+                        </div>
+                        <span class="status-pill request-status-@requestStatus">@ui["requests.status." + requestStatus]</span>
+                        @if (request.ResultUrl is { } resultUrl)
+                        {
+                            <a class="button" href="@resultUrl">@ui["requests.open"]</a>
+                        }
+                        else if (request.Status == AcquisitionRequestStatus.Pending)
+                        {
+                            <form method="post" asp-page-handler="CancelRequest" asp-route-id="@request.Id">
+                                <button class="button" type="submit">@ui["books.page.withdraw"]</button>
+                            </form>
+                        }
+                    </li>
+                }
+            </ul>
+        }
+    </div>
 </section>
 
-@if (Model.IsOwner)
+@if (access.CanAdd || access.CanAddManually)
 {
-    <section class="books-tools">
-        <div>
-            <h2>@ui["books.index.importEpubTitle"]</h2>
-            <p>@ui["books.index.importEpubDescription"]</p>
-            <form method="post"
-                  asp-page-handler="Upload"
-                  enctype="multipart/form-data"
-                  class="books-inline-form">
-                <input type="file"
-                       name="epub"
-                       accept=".epub,application/epub+zip"
-                       required />
-                <button class="button button-primary" type="submit">@ui["books.index.importFileButton"]</button>
-            </form>
-            <form method="post"
-                  asp-page-handler="RemoteEpub"
-                  class="books-stack-form">
-                <input type="url"
-                       name="epubUrl"
-                       placeholder="https://publisher.example/book.epub"
-                       inputmode="url"
-                       required />
-                <button class="button" type="submit">@ui["books.index.importEpubUrlButton"]</button>
-            </form>
+    <dialog class="books-add-dialog" id="books-add" aria-labelledby="books-add-title"
+            data-books-add
+            data-search-url="@Url.Page("/Books/Index", "Search")"
+            data-add-url="@Url.Page("/Books/Index", "Add")"
+            data-can-add="@(access.CanAdd ? "true" : "false")"
+            data-creates-request="@(access.AddCreatesRequest ? "true" : "false")"
+            data-text-add="@ui["books.add.add"]"
+            data-text-request="@ui["books.add.request"]"
+            data-text-in-library="@ui["books.add.inLibrary"]"
+            data-text-free="@ui["books.add.freeEdition"]"
+            data-text-searching="@ui["books.add.searching"]"
+            data-text-no-results="@ui["books.add.noResults"]"
+            data-text-failed="@ui["books.add.failed"]"
+            data-text-open="@ui["requests.open"]"
+            data-status-pending="@ui["requests.status.pending"]"
+            data-status-approved="@ui["requests.status.approved"]"
+            data-status-searching="@ui["requests.status.searching"]"
+            data-status-downloading="@ui["requests.status.downloading"]"
+            data-status-completed="@ui["requests.status.completed"]"
+            data-status-failed="@ui["requests.status.failed"]"
+            data-status-rejected="@ui["requests.status.rejected"]">
+        <div class="books-add-header">
+            <div>
+                <h2 id="books-add-title">@ui["books.page.addBook"]</h2>
+                <p>@(access.AddCreatesRequest ? ui["books.add.requestSubtitle"] : ui["books.add.subtitle"])</p>
+            </div>
+            <form method="dialog"><button class="button" type="submit">@ui["books.add.close"]</button></form>
         </div>
 
-        @if (Model.IsInboxConfigured)
+        @if (access.CanAdd)
         {
-            <div>
-                <h2>@ui["books.index.inboxTitle"]</h2>
-                <p>@ui["books.index.inboxDescription"]</p>
-                <form method="post" asp-page-handler="ImportInbox">
-                    <button class="button" type="submit">@ui["books.index.importInboxButton"]</button>
-                </form>
-            </div>
+            <form class="books-add-search" role="search" data-books-add-search>
+                <input type="search" name="q" autocomplete="off" required minlength="2"
+                       placeholder="@ui["books.add.searchPlaceholder"]" aria-label="@ui["books.add.searchPlaceholder"]" data-books-add-query />
+                <button class="button button-primary" type="submit">@ui["common.search"]</button>
+            </form>
+            @Html.AntiForgeryToken()
+            <p class="books-add-state" data-books-add-state aria-live="polite"></p>
+            <ul class="books-add-results" data-books-add-results></ul>
         }
 
-        @if (Model.IsSabnzbdConfigured)
+        @if (access.CanAddManually)
         {
-            <div>
-                <h2>@ui["books.index.sabTransportTitle"]</h2>
-                <p>@ui["books.index.sabDescription"]</p>
-                <form method="post"
-                      asp-page-handler="SabUrl"
-                      class="books-stack-form">
-                    <input type="url"
-                           name="nzbUrl"
-                           placeholder="https://…/book.nzb"
-                           required />
-                    <input type="text"
-                           name="displayName"
-                           placeholder="@ui["books.index.sabQueueNamePlaceholder"]" />
-                    <button class="button" type="submit">@ui["books.index.sabSendUrlButton"]</button>
-                </form>
-                <form method="post"
-                      asp-page-handler="SabFile"
-                      enctype="multipart/form-data"
-                      class="books-inline-form">
-                    <input type="file"
-                           name="nzb"
-                           accept=".nzb,application/x-nzb"
-                           required />
-                    <button class="button" type="submit">@ui["books.index.sabSendFileButton"]</button>
-                </form>
-            </div>
+            <details class="books-manual" @(access.CanAdd ? "" : "open")>
+                <summary>@ui["books.add.manual"] <small>@ui["books.add.manualHint"]</small></summary>
+                <div class="books-manual-grid">
+                    <section>
+                        <h3>@ui["books.index.importEpubTitle"]</h3>
+                        <p>@ui["books.index.importEpubDescription"]</p>
+                        <form method="post" asp-page-handler="Upload" enctype="multipart/form-data" class="books-inline-form">
+                            <input type="file" name="epub" accept=".epub,application/epub+zip" required />
+                            <button class="button button-primary" type="submit">@ui["books.index.importFileButton"]</button>
+                        </form>
+                        <form method="post" asp-page-handler="RemoteEpub" class="books-inline-form">
+                            <input type="url" name="epubUrl" placeholder="https://publisher.example/book.epub" inputmode="url" required />
+                            <button class="button" type="submit">@ui["books.index.importEpubUrlButton"]</button>
+                        </form>
+                    </section>
+
+                    @if (Model.IsSabnzbdConfigured)
+                    {
+                        <section>
+                            <h3>@ui["books.index.sabTransportTitle"]</h3>
+                            <p>@ui["books.index.sabDescription"]</p>
+                            <form method="post" asp-page-handler="SabUrl" class="books-stack-form">
+                                <input type="url" name="nzbUrl" placeholder="https://…/book.nzb" required />
+                                <input type="text" name="displayName" placeholder="@ui["books.index.sabQueueNamePlaceholder"]" />
+                                <button class="button" type="submit">@ui["books.index.sabSendUrlButton"]</button>
+                            </form>
+                            <form method="post" asp-page-handler="SabFile" enctype="multipart/form-data" class="books-inline-form">
+                                <input type="file" name="nzb" accept=".nzb,application/x-nzb" required />
+                                <button class="button" type="submit">@ui["books.index.sabSendFileButton"]</button>
+                            </form>
+                        </section>
+                    }
+                    else if (Model.IsOwner)
+                    {
+                        <section>
+                            <h3>@ui["books.index.sabTransportTitle"]</h3>
+                            <p>@ui["books.index.sabNotConfigured"]</p>
+                            <a class="button" href="/Admin/Usenet">@ui["books.index.sabConfigureLink"]</a>
+                        </section>
+                    }
+
+                    @if (Model.IsInboxConfigured)
+                    {
+                        <section>
+                            <h3>@ui["books.index.inboxTitle"]</h3>
+                            <p>@ui["books.index.inboxDescription"]</p>
+                            <form method="post" asp-page-handler="ImportInbox">
+                                <button class="button" type="submit">@ui["books.index.importInboxButton"]</button>
+                            </form>
+                        </section>
+                    }
+                </div>
+            </details>
         }
-        else
-        {
-            <div>
-                <h2>@ui["books.index.sabTransportTitle"]</h2>
-                <p>@ui["books.index.sabNotConfigured"]</p>
-                <a class="button" href="/Settings/DownloadClients/Index">@ui["books.index.sabConfigureLink"]</a>
-            </div>
-        }
-    </section>
+    </dialog>
 }
 
-@if (Model.Query.Length > 0 && string.IsNullOrWhiteSpace(Model.Error))
-{
-    <section class="books-search-results">
-        <div class="books-results-heading">
-            <strong>@ui["books.index.resultsForPrefix"] “@Model.Query”</strong>
-            <span>@ui.Format("books.index.resultsShown", ("count", Model.Results.Count))</span>
-        </div>
-
-        @if (Model.Results.Count == 0)
-        {
-            <div class="books-empty">@ui["books.index.noResults"]</div>
-        }
-        else
-        {
-            <div class="books-grid">
-                @foreach (var book in Model.Results)
-                {
-                    <a class="book-card" href="/Books/@book.Id">
-                        <div class="book-cover">
-                            @if (!string.IsNullOrWhiteSpace(book.CoverImageUrl))
-                            {
-                                <img src="@book.CoverImageUrl"
-                                     alt=""
-                                     loading="lazy"
-                                     referrerpolicy="no-referrer" />
-                            }
-                            else
-                            {
-                                <span>B</span>
-                            }
-                        </div>
-                        <div class="book-card-copy">
-                            <strong>@book.Title</strong>
-                            @if (!string.IsNullOrWhiteSpace(book.Author))
-                            {
-                                <span>@book.Author</span>
-                            }
-                            @if (book.FirstPublishYear is not null)
-                            {
-                                <small>@book.FirstPublishYear</small>
-                            }
-                            else
-                            {
-                                <small>@book.SourceName</small>
-                            }
-                        </div>
-                    </a>
-                }
-            </div>
-        }
-    </section>
+@section Scripts {
+    <script src="~/js/books-library.js" asp-append-version="true" defer></script>
 }

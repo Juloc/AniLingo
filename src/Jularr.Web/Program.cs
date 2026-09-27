@@ -352,6 +352,10 @@ builder.Services.AddSingleton<IReadOnlyDictionary<IndexerType, IIndexer>>(servic
         [IndexerType.Newznab] = services.GetRequiredService<NewznabIndexer>()
     });
 builder.Services.AddScoped<IndexerSearchCoordinator>();
+builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Access.AcquisitionAccessStore>();
+builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Access.AcquisitionRequestService>();
+builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Access.IAcquisitionRequestExecutor, Jularr.Web.Features.Books.BookAcquisitionExecutor>();
+builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Access.IAcquisitionRequestExecutor, Jularr.Web.Features.Acquisition.Access.AnimeAcquisitionRequestExecutor>();
 
 // Download clients: SABnzbd connections share the one canonical list (several can fail over to
 // each other). Jularr is usenet-only; torrent clients (qBittorrent) are intentionally
