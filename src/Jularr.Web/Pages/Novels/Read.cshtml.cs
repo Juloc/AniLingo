@@ -83,6 +83,13 @@ public sealed class ReadModel(
     public bool TranslationEnabled { get; private set; }
     public bool TranslateGemmaConfigured { get; private set; }
 
+    /// <summary>
+    /// The reader renders TranslateGemma controls only when the local track can be read or
+    /// generated; otherwise the chapter shows no trace of it (#487).
+    /// </summary>
+    public bool TranslateGemmaAvailable =>
+        TranslateGemmaConfigured || TranslateGemmaParagraphs.Count > 0;
+
     private static bool FuriganaToolkitSupportsReadings =>
         LearningLanguageToolkitRegistry.Supports(
             NovelReadingLanguage.Japanese,
@@ -452,10 +459,10 @@ public sealed class ReadModel(
             return Forbid();
         }
 
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         if (!translations.TranslateGemmaConfigured)
         {
-            return BadRequest(
-                "TranslateGemma is not configured for this Jularr instance.");
+            return BadRequest(ui["novels.translation.localNotConfigured"]);
         }
 
         var cached = await translations.GetCachedAsync(
@@ -475,7 +482,7 @@ public sealed class ReadModel(
                 });
             }
 
-            TempData["Status"] = "Local German translation is already available.";
+            TempData["Status"] = ui["novels.translation.localAlreadyCached"];
             return RedirectToPage(new { id });
         }
 
@@ -490,7 +497,7 @@ public sealed class ReadModel(
             return new JsonResult(new { status = "queued" });
         }
 
-        TempData["Status"] = "Local German translation queued.";
+        TempData["Status"] = ui["novels.translation.localQueued"];
         return RedirectToPage(new { id });
     }
 

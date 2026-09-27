@@ -7,7 +7,8 @@ public static class NovelReadingLanguage
 {
     public const string Japanese = "ja";
     public const string German = "de";
-    public const string GermanTranslateGemma = "de-gemma";
+    /// <summary>Reader view and stored track language of the local TranslateGemma text.</summary>
+    public const string GermanTranslateGemma = German + NovelTranslationProviders.TranslateGemmaTrackSuffix;
 
     public static string Normalize(string? language)
     {
@@ -72,7 +73,7 @@ internal static class NovelChapterText
                         ? db.NovelTranslations
                             .Where(translation =>
                                 translation.ChapterId == chapter.Id &&
-                                translation.TargetLanguage == NovelReadingLanguage.German &&
+                                translation.TargetLanguage == NovelReadingLanguage.GermanTranslateGemma &&
                                 translation.PromptVersion ==
                                     NovelTranslationService.TranslateGemmaPromptVersion &&
                                 translation.SourceHash == chapter.SourceHash &&

@@ -115,9 +115,12 @@ public sealed class LivePlaybackStream : Stream
     private readonly Task stderrDrain;
     private bool disposed;
 
-    private LivePlaybackStream(Process process)
+    private readonly IDisposable? lease;
+
+    private LivePlaybackStream(Process process, IDisposable? lease)
     {
         this.process = process;
+        this.lease = lease;
         output = process.StandardOutput.BaseStream;
         stderrDrain = process.StandardError.ReadToEndAsync();
     }
@@ -127,7 +130,21 @@ public sealed class LivePlaybackStream : Stream
         PlaybackPreparationPlan plan,
         double startSeconds = 0,
         int? audioStreamIndex = null,
-        PlaybackQualityCap qualityCap = PlaybackQualityCap.Auto)
+        PlaybackQualityCap qualityCap = PlaybackQualityCap.Auto) =>
+        Start(LivePlaybackCommand.BuildArguments(
+            sourcePath,
+            plan,
+            startSeconds,
+            audioStreamIndex,
+            qualityCap));
+
+    /// <summary>
+    /// Starts ffmpeg with prepared arguments writing fragmented MP4 to stdout. The optional
+    /// lease (a transcode slot) is released when the response stream is disposed.
+    /// </summary>
+    public static LivePlaybackStream Start(
+        IReadOnlyList<string> arguments,
+        IDisposable? lease = null)
     {
         var process = new Process
         {
@@ -141,12 +158,7 @@ public sealed class LivePlaybackStream : Stream
             }
         };
 
-        foreach (var argument in LivePlaybackCommand.BuildArguments(
-                     sourcePath,
-                     plan,
-                     startSeconds,
-                     audioStreamIndex,
-                     qualityCap))
+        foreach (var argument in arguments)
         {
             process.StartInfo.ArgumentList.Add(argument);
         }
@@ -157,7 +169,7 @@ public sealed class LivePlaybackStream : Stream
             throw new InvalidOperationException("Could not start ffmpeg playback stream.");
         }
 
-        return new LivePlaybackStream(process);
+        return new LivePlaybackStream(process, lease);
     }
 
     public override bool CanRead => true;
@@ -228,6 +240,7 @@ public sealed class LivePlaybackStream : Stream
 
             process.Dispose();
             _ = stderrDrain;
+            lease?.Dispose();
         }
 
         base.Dispose(disposing);

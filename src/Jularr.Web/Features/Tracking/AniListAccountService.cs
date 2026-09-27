@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Jularr.Web.Data;
 using Jularr.Web.Features.Auth;
+using Jularr.Web.Features.Calendar;
 using Jularr.Web.Features.Metadata;
 using Jularr.Web.Features.Manga;
 using Jularr.Web.Features.MediaMapping;
@@ -223,7 +224,8 @@ public sealed partial class AniListAccountService(
     MediaMappingReviewStore mappingReviewStore,
     CurrentAccountContext currentAccount,
     ILogger<AniListAccountService> logger,
-    TimeProvider? timeProvider = null)
+    TimeProvider? timeProvider = null,
+    IHttpContextAccessor? httpContextAccessor = null)
 {
     private const string ViewerQuery = """
         query {
@@ -681,6 +683,13 @@ public sealed partial class AniListAccountService(
                 remoteProgress,
                 localVolumeProgress,
                 remoteVolumeProgress);
+
+        // Equal numbers are not "synchronized" while a write is still offered, for example a
+        // PLANNING entry that the sync button would switch to CURRENT.
+        if (kind == AniListExternalProgressStateKind.Synced && canSync)
+        {
+            kind = AniListExternalProgressStateKind.LocalAhead;
+        }
 
         var resolvedMessage = kind == AniListExternalProgressStateKind.Synced
             ? "Local and AniList progress are synchronized."
@@ -1934,8 +1943,28 @@ public sealed partial class AniListAccountService(
             return remote.StartedAt;
         }
 
-        var today = (timeProvider ?? TimeProvider.System).GetUtcNow();
-        return new AniListFuzzyDate(today.Year, today.Month, today.Day);
+        var clock = timeProvider ?? TimeProvider.System;
+        return TrackingStartDate(clock.GetUtcNow(), ResolveTrackingTimeZone(clock));
+    }
+
+    /// <summary>
+    /// AniList start dates are calendar days, so "today" is the viewer's day, not the UTC day:
+    /// an episode watched just after midnight in Germany starts tracking on that new day.
+    /// </summary>
+    public static AniListFuzzyDate TrackingStartDate(DateTimeOffset now, TimeZoneInfo zone)
+    {
+        var local = TimeZoneInfo.ConvertTime(now, zone);
+        return new AniListFuzzyDate(local.Year, local.Month, local.Day);
+    }
+
+    // The browser zone the calendar already reports (jularr-tz cookie) on interactive syncs;
+    // background syncs have no request and use the server's configured zone (TZ).
+    private TimeZoneInfo ResolveTrackingTimeZone(TimeProvider clock)
+    {
+        var browserZone = httpContextAccessor?.HttpContext?.Request.Cookies[CalendarTimeZone.CookieName];
+        return string.IsNullOrWhiteSpace(browserZone)
+            ? clock.LocalTimeZone
+            : CalendarTimeZone.Resolve(browserZone);
     }
 
     private void ValidateProgressOnlyUpdate(

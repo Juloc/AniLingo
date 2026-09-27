@@ -610,26 +610,28 @@ private fun PlayerControls(
                     }
                 }
 
-                Button(
-                    onClick = {
-                        onSelectSubtitleTrack(
-                            nextSubtitleTrackId(
-                                subtitleTracks,
-                                selectedSubtitleTrackId,
-                            ),
+                if (subtitleTracks.isNotEmpty()) {
+                    Button(
+                        onClick = {
+                            onSelectSubtitleTrack(
+                                nextSubtitleTrackId(
+                                    subtitleTracks,
+                                    selectedSubtitleTrackId,
+                                ),
+                            )
+                        },
+                        modifier = Modifier.widthIn(max = 360.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Subtitles,
+                            contentDescription = "Subtitles",
+                            modifier = Modifier.size(22.dp),
                         )
-                    },
-                    modifier = Modifier.widthIn(max = 360.dp),
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Subtitles,
-                        contentDescription = "Subtitles",
-                        modifier = Modifier.size(22.dp),
-                    )
-                    Text(
-                        "  ${trackLabel(subtitleTracks, selectedSubtitleTrackId, "Off")}",
-                        maxLines = 1,
-                    )
+                        Text(
+                            "  ${trackLabel(subtitleTracks, selectedSubtitleTrackId, "Off")}",
+                            maxLines = 1,
+                        )
+                    }
                 }
             }
         }

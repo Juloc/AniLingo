@@ -105,6 +105,11 @@
                 </datalist>
                 <small class="muted">@AiViewFormat.CatalogStatus(ui, personalCatalog, Model.Now)</small>
             </label>
+
+            <label>
+                <span>@ui["settings.ai.imageModel"]</span>
+                <input asp-for="ImageModel" autocomplete="off" placeholder="gpt-image-1" />
+            </label>
         </div>
 
         <label>
@@ -207,6 +212,8 @@
         </div>
     </form>
 </section>
+
+<partial name="_ChapterArtworkPreferences" model="Model.Ui" />
 
 <div class="settings-grid">
     <section class="panel">
