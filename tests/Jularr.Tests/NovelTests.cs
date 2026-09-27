@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using System.Net;
+using System.Text.Json;
 
 namespace Jularr.Tests;
 
@@ -253,9 +254,13 @@ public sealed class NovelTests
                 return new HttpResponseMessage(HttpStatusCode.OK)
                 {
                     Content = new StringContent(
-                        $"""
-                        {"choices":[{"message":{"content":"{{translation}}"}}]}
-                        """,
+                        JsonSerializer.Serialize(new
+                        {
+                            choices = new[]
+                            {
+                                new { message = new { content = translation } }
+                            }
+                        }),
                         System.Text.Encoding.UTF8,
                         "application/json")
                 };
