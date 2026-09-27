@@ -27,6 +27,8 @@ data class ClientFeatureFlags(
     val offlineDownloads: Boolean = false,
     val offlineLibrary: Boolean = false,
     val ttsPreferences: Boolean = false,
+    val continueWatching: Boolean = false,
+    val playbackHistory: Boolean = false,
 )
 
 data class ClientAccount(
@@ -56,6 +58,44 @@ data class AnimeSummary(
     val seasonCount: Int,
     val seasonYear: Int?,
     val format: String?,
+)
+
+/**
+ * One row of `GET /continue-watching` (docs/ANDROID_CLIENTS.md, "Playback continuity
+ * endpoints"): the profile's in-progress episodes, most recently played first.
+ */
+data class ContinueWatchingItem(
+    val kind: String,
+    val episodeId: String,
+    val animeId: String,
+    val animeTitle: String,
+    val seasonNumber: Int,
+    val episodeNumber: Int,
+    val episodeTitle: String,
+    val resumePositionMs: Long,
+    val durationMs: Long?,
+    val percent: Int,
+    val updatedAtUtc: String,
+    val coverImageUrl: String?,
+)
+
+/**
+ * One row of `GET /me/playback-history`: a past playback entry, most recent first. The
+ * server bounds the number of rows it keeps (`EpisodeProgressService.HistoryLimit`).
+ */
+data class PlaybackHistoryItem(
+    val id: String,
+    val episodeId: String,
+    val animeId: String,
+    val animeTitle: String,
+    val seasonNumber: Int,
+    val episodeNumber: Int,
+    val episodeTitle: String,
+    val startedAtUtc: String,
+    val lastPlayedAtUtc: String,
+    val positionMs: Long,
+    val durationMs: Long?,
+    val reachedEnd: Boolean,
 )
 
 data class AnimeDetail(

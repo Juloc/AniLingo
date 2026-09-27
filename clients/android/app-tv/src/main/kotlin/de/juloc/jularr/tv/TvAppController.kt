@@ -5,13 +5,23 @@ import de.juloc.jularr.core.model.AnimeDetail
 import de.juloc.jularr.core.model.ClientAccount
 import de.juloc.jularr.core.model.ClientCapabilities
 import de.juloc.jularr.core.model.ClientLibrary
+import de.juloc.jularr.core.model.ContinueWatchingItem
 import de.juloc.jularr.core.model.CueResponse
+import de.juloc.jularr.core.model.PlaybackHistoryItem
 
 data class TvAppSnapshot(
     val navigation: TvNavigationState,
     val capabilities: ClientCapabilities? = null,
     val account: ClientAccount? = null,
     val library: ClientLibrary? = null,
+    val continueWatching: List<ContinueWatchingItem> = emptyList(),
+    val activity: List<PlaybackHistoryItem> = emptyList(),
+    /**
+     * True when the server has no `/me/playback-history` data (older server, or the
+     * feature flag is off): Activity then shows Continue Watching instead of a dead
+     * screen, and the UI notes why (#522 item 4).
+     */
+    val activityUsesContinueWatchingFallback: Boolean = false,
     val anime: AnimeDetail? = null,
     val episodePage: TvEpisodePageData? = null,
     val episode: TvEpisodeBundle? = null,
@@ -49,15 +59,18 @@ class TvAppController(
         password: String,
     ): TvAppSnapshot =
         runBusy {
-            ensureConnected()
-            val signedIn = flow.login(userName, password)
+            val resolvedCapabilities = ensureConnected()
+            val signedIn = flow.login(userName, password, resolvedCapabilities)
             copy(
                 navigation = TvNavigation.signedIn(navigation),
                 account = signedIn.account,
                 library = signedIn.library,
+                continueWatching = signedIn.continueWatching,
                 anime = null,
                 episodePage = null,
                 episode = null,
+                activity = emptyList(),
+                activityUsesContinueWatchingFallback = false,
                 storageDecision = null,
                 error = null,
             )
@@ -78,13 +91,53 @@ class TvAppController(
             )
         }
 
-    suspend fun refreshLibrary(): TvAppSnapshot =
+    /**
+     * Switches to one of the four sidebar destinations (#522). Home and Activity reload
+     * their data on the way in (Home's library/continue-watching, Activity's playback
+     * history or its Continue Watching fallback) rather than needing a manual refresh
+     * control.
+     */
+    suspend fun selectSidebarRoute(route: TvRoute): TvAppSnapshot =
         runBusy {
-            copy(
-                library = flow.refreshLibrary(),
+            val withContent = when (route) {
+                TvRoute.Home -> copy(
+                    library = flow.refreshLibrary(),
+                    continueWatching = if (capabilities?.features?.continueWatching == true) {
+                        flow.loadContinueWatching()
+                    } else {
+                        emptyList()
+                    },
+                )
+
+                TvRoute.Activity -> if (capabilities?.features?.playbackHistory == true) {
+                    copy(
+                        activity = flow.loadPlaybackHistory(),
+                        activityUsesContinueWatchingFallback = false,
+                    )
+                } else {
+                    copy(activityUsesContinueWatchingFallback = true)
+                }
+
+                else -> this
+            }
+
+            withContent.copy(
+                navigation = TvNavigation.openSidebarRoute(navigation, route),
+                anime = null,
+                episodePage = null,
+                episode = null,
+                storageDecision = null,
                 error = null,
             )
         }
+
+    fun openSearch(): TvAppSnapshot {
+        snapshot = snapshot.copy(
+            navigation = TvNavigation.openSearch(snapshot.navigation),
+            error = null,
+        )
+        return snapshot
+    }
 
     suspend fun openAnime(animeId: String): TvAppSnapshot =
         runBusy {
@@ -251,6 +304,9 @@ class TvAppController(
                 navigation = TvNavigation.signOut(navigation),
                 account = null,
                 library = null,
+                continueWatching = emptyList(),
+                activity = emptyList(),
+                activityUsesContinueWatchingFallback = false,
                 anime = null,
                 episodePage = null,
                 episode = null,
@@ -271,15 +327,13 @@ class TvAppController(
         val nextNavigation = TvNavigation.back(snapshot.navigation)
             ?: return null
 
+        val stillBrowsingAnime = nextNavigation.route is TvRoute.Anime ||
+            nextNavigation.route is TvRoute.Episode ||
+            nextNavigation.route is TvRoute.Player
+
         snapshot = snapshot.copy(
             navigation = nextNavigation,
-            anime = when (nextNavigation.route) {
-                TvRoute.Library,
-                TvRoute.Login,
-                TvRoute.Setup,
-                -> null
-                else -> snapshot.anime
-            },
+            anime = if (stillBrowsingAnime) snapshot.anime else null,
             episodePage = when (nextNavigation.route) {
                 is TvRoute.Episode,
                 is TvRoute.Player,
@@ -338,12 +392,12 @@ class TvAppController(
             },
         )
 
-    private suspend fun ensureConnected() {
-        if (flow.origin == null) {
-            val origin = settings.origin
-                ?: error("Configure an Jularr server first.")
-            val capabilities = flow.connect(origin)
-            snapshot = snapshot.copy(capabilities = capabilities)
-        }
+    private suspend fun TvAppSnapshot.ensureConnected(): ClientCapabilities {
+        capabilities?.let { return it }
+        val origin = settings.origin
+            ?: error("Configure an Jularr server first.")
+        val resolved = flow.connect(origin)
+        snapshot = snapshot.copy(capabilities = resolved)
+        return resolved
     }
 }

@@ -532,7 +532,18 @@ machine directly (both are generic, not anime-specific).
 
 The TV app uses Compose for TV focus semantics and a native Media3 player. It is landscape-only.
 
-TV browse/navigation is deliberately layered: **Library → Anime → Episode → Player**. Selecting an episode must open its TV detail surface first; loading Media3/player bootstrap begins only after the user activates **Play/Resume**. Back from Player returns to that Episode surface, not directly to the season list.
+The sidebar is exactly **Home, Watchlist, Activity, Profile/Settings** (#522); there is no
+Library, Discover or per-media-type destination. Home carries a search field at the very
+top (activating it opens the full search/browse screen, which reuses Home's card/grid
+components) followed by an All/Anime content filter — Movies/TV are omitted because the
+client API has no Movie/TV entity yet (#396) — then content rows: Continue Watching (when
+`continueWatching` is advertised) and the library. Activity shows
+`GET /me/playback-history` when the server advertises `playbackHistory`, falling back to
+Continue Watching with an on-screen note otherwise. Selecting a title still drills in
+**Anime → Episode → Player**: selecting an episode opens its TV detail surface first;
+loading Media3/player bootstrap begins only after the user activates **Play/Resume**. Back
+restores the previous screen (its sidebar tab, or Search) and Player's Back returns to that
+Episode surface, not directly to the season list.
 
 ### 9.1 Remote behavior
 
