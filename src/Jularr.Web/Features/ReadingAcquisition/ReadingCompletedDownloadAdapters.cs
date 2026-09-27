@@ -128,35 +128,17 @@ public sealed class LightNovelCompletedDownloadImportAdapter(
 
         try
         {
-            IReadOnlyList<NovelEpubImportOutcome> outcomes;
-            if (File.Exists(request.SourcePath))
+            // Recursive, no folder hints, validated before anything is stored (#485 item 8).
+            var import = await importer.ImportDownloadAsync(
+                request.SourcePath,
+                cancellationToken);
+            if (import.RejectedBecause is { } rejected)
             {
-                if (!Path.GetExtension(request.SourcePath)
-                    .Equals(".epub", StringComparison.OrdinalIgnoreCase))
-                {
-                    return CompletedDownloadImportResult.RejectRelease(
-                        "Downloaded Light Novel release did not contain an importable EPUB.");
-                }
-
-                await using var stream = new FileStream(
-                    request.SourcePath,
-                    FileMode.Open,
-                    FileAccess.Read,
-                    FileShare.ReadWrite | FileShare.Delete,
-                    bufferSize: 81920,
-                    useAsync: true);
-                outcomes = await importer.ImportUploadsAsync(
-                    [(stream, Path.GetFileName(request.SourcePath))],
-                    targetWorkId: null,
-                    cancellationToken);
-            }
-            else
-            {
-                outcomes = await importer.ImportDirectoryAsync(
-                    request.SourcePath,
-                    cancellationToken);
+                return CompletedDownloadImportResult.RejectRelease(
+                    $"Downloaded Light Novel release was refused: {rejected}");
             }
 
+            var outcomes = import.Outcomes;
             var successes = outcomes
                 .Where(outcome =>
                     outcome.Succeeded &&
