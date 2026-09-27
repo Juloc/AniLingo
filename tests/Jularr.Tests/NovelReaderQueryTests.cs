@@ -205,6 +205,63 @@ public sealed class NovelReaderQueryTests
     }
 
     [TestMethod]
+    public async Task TranslateGemmaAnchorsStayOnTheLocalGermanTrack()
+    {
+        using var fixture = await NovelFixture.CreateAsync();
+        var work = await fixture.SeedWorkAsync("gemma-anchors", chapterCount: 1);
+        var chapter = work.Chapters[0];
+
+        await fixture.AddTranslationAsync(
+            chapter,
+            "AI erster Absatz.\n\nAI zweiter Absatz.",
+            providerId: "fake-ai");
+        await fixture.AddTranslationAsync(
+            chapter,
+            "Lokal erster Absatz.\n\nLokal zweiter Absatz.",
+            promptVersion: NovelTranslationService.TranslateGemmaPromptVersion,
+            providerId: NovelTranslationProviders.TranslateGemmaPrefix + "test:model");
+
+        var progress = new NovelProgressService(fixture.Db);
+        await progress.SaveProgressAsync(
+            ReaderA,
+            chapter.Id,
+            500,
+            NovelReadingLanguage.GermanTranslateGemma,
+            1,
+            6,
+            CancellationToken.None);
+
+        var saved = await progress.GetProgressAsync(
+            ReaderA,
+            work.Id,
+            CancellationToken.None);
+        Assert.IsNotNull(saved);
+        Assert.AreEqual(NovelReadingLanguage.GermanTranslateGemma, saved.AnchorLanguage);
+        Assert.AreEqual("Lokal zweiter Absatz.", saved.AnchorText);
+
+        var reader = fixture.CreateReadModel(ReaderA);
+        await reader.OnGetAsync(
+            chapter.Id,
+            null,
+            null,
+            null,
+            null,
+            null,
+            CancellationToken.None);
+
+        Assert.AreEqual(
+            "AI erster Absatz.",
+            reader.GermanParagraphs[0]);
+        Assert.AreEqual(
+            "Lokal erster Absatz.",
+            reader.TranslateGemmaParagraphs[0]);
+        Assert.AreEqual(
+            NovelReadingLanguage.GermanTranslateGemma,
+            reader.InitialAnchor.Language);
+        Assert.AreEqual("Lokal zweiter Absatz.", reader.InitialAnchor.AnchorText);
+    }
+
+    [TestMethod]
     public async Task HighlightValidationAllowsOverlapAndRejectsInvalidRanges()
     {
         using var fixture = await NovelFixture.CreateAsync();
@@ -475,13 +532,14 @@ public sealed class NovelReaderQueryTests
             NovelChapter chapter,
             string text,
             string? sourceHash = null,
-            int promptVersion = NovelTranslationService.PromptVersion)
+            int promptVersion = NovelTranslationService.PromptVersion,
+            string? providerId = null)
         {
             Db.Add(new NovelTranslation
             {
                 ChapterId = chapter.Id,
                 TargetLanguage = "de",
-                ProviderId = $"fake-{promptVersion}-{sourceHash}",
+                ProviderId = providerId ?? $"fake-{promptVersion}-{sourceHash}",
                 PromptVersion = promptVersion,
                 SourceHash = sourceHash ?? chapter.SourceHash,
                 Text = text
