@@ -20,6 +20,41 @@
     <div class="books-message">@status</div>
 }
 
+
+<section class="books-integration-settings books-hardcover-settings">
+    <section>
+        <h2>Hardcover</h2>
+        <p>Optional personal reading-list connection. It is used only to show your book status; book search and your local library work without it.</p>
+
+        @if (Model.HardcoverAccount is not null)
+        {
+            <div class="books-integration-status">
+                <span class="ready">Connected as @Model.HardcoverAccount.Username</span>
+                <form method="post" asp-page-handler="DisconnectHardcover">
+                    <button class="button" type="submit">Disconnect</button>
+                </form>
+            </div>
+        }
+        else
+        {
+            <form method="post" asp-page-handler="ConnectHardcover" class="books-stack-form">
+                <label>
+                    API token
+                    <input type="password"
+                           asp-for="HardcoverAccessToken"
+                           autocomplete="new-password"
+                           placeholder="hc_pat_…" />
+                </label>
+                <div>
+                    <button class="button button-primary" type="submit">Connect</button>
+                </div>
+            </form>
+        }
+    </section>
+</section>
+
+@if (Model.IsOwner)
+{
 <form method="post"
       asp-page-handler="Save"
       class="books-integration-settings">
@@ -75,3 +110,5 @@
         <button class="button button-primary" type="submit">@ui["books.integrations.saveSettings"]</button>
     </div>
 </form>
+
+}
