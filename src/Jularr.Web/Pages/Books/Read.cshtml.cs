@@ -10,6 +10,7 @@ using Jularr.Web.Data;
 using Jularr.Web.Infrastructure;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Jularr.Web.Pages.Books;
@@ -26,6 +27,14 @@ public sealed class ReadModel(
     public ReaderSettingsSnapshot ReaderSettings { get; private set; } = null!;
     public IReadOnlyList<BookReaderHighlightItem> CurrentHighlights { get; private set; } = [];
     public int? RequestedPositionPermille { get; private set; }
+    public int? RequestedParagraph { get; private set; }
+    public int ChapterCount { get; private set; }
+
+    /// <summary>
+    /// Other languages with a cached, current translation of this chapter.
+    /// Reading them is always allowed (#369); the language menu links to them.
+    /// </summary>
+    public IReadOnlyList<string> CachedTranslationLanguages { get; private set; } = [];
     public string? RequestedView { get; private set; }
     public bool IsOwner => account.IsOwner;
 
@@ -50,6 +59,7 @@ public sealed class ReadModel(
         Guid id,
         string? lang,
         int? pos,
+        int? p,
         string? view,
         CancellationToken cancellationToken)
     {
@@ -70,7 +80,12 @@ public sealed class ReadModel(
         RequestedPositionPermille = pos is null
             ? null
             : Math.Clamp(pos.Value, 0, 1000);
+        RequestedParagraph = p is >= 0 ? p : null;
         RequestedView = NormalizeRequestedView(view);
+        ChapterCount = await db.NovelChapters
+            .AsNoTracking()
+            .CountAsync(x => x.WorkId == reader.Work.Id, cancellationToken);
+        CachedTranslationLanguages = await GetCachedTranslationLanguagesAsync(reader, cancellationToken);
         ReaderDocument = ReaderDocumentDescriptor.Create(
             reader.Work.Id,
             ReaderContentType.Book,
@@ -533,6 +548,74 @@ public sealed class ReadModel(
             cancellationToken);
 
         return new OkResult();
+    }
+
+    /// <summary>
+    /// In-book search (reader top bar). Bounded and profile independent: it only
+    /// reads the work's chapter text and the translations the reader could show.
+    /// </summary>
+    public async Task<IActionResult> OnGetSearchAsync(
+        Guid id,
+        string? q,
+        string? lang,
+        CancellationToken cancellationToken)
+    {
+        var reader = await books.GetReaderChapterAsync(
+            id,
+            account.ProfileId,
+            BookLanguageCatalog.Normalize(lang),
+            cancellationToken);
+
+        if (reader is null)
+        {
+            return NotFound();
+        }
+
+        var translationLanguage = reader.SourceLanguage.Equals(
+            reader.TargetLanguage,
+            StringComparison.OrdinalIgnoreCase)
+            ? null
+            : reader.TargetLanguage;
+
+        var hits = await ReaderTextSearch.SearchWorkAsync(
+            db,
+            reader.Work.Id,
+            q,
+            translationLanguage,
+            cancellationToken);
+
+        return new JsonResult(new { hits });
+    }
+
+    private async Task<IReadOnlyList<string>> GetCachedTranslationLanguagesAsync(
+        BookReaderChapter reader,
+        CancellationToken cancellationToken)
+    {
+        var candidates = await db.NovelTranslations
+            .AsNoTracking()
+            .Where(x => x.ChapterId == reader.Chapter.Id
+                && x.SourceHash == reader.Chapter.SourceHash)
+            .Select(x => x.TargetLanguage)
+            .Distinct()
+            .Take(12)
+            .ToListAsync(cancellationToken);
+
+        var languages = new List<string>();
+        foreach (var candidate in candidates
+                     .Select(x => x.Trim().ToLowerInvariant())
+                     .Where(x => x.Length > 0
+                         && !x.Equals(reader.TargetLanguage, StringComparison.OrdinalIgnoreCase)
+                         && !x.Equals(reader.SourceLanguage, StringComparison.OrdinalIgnoreCase))
+                     .Distinct(StringComparer.OrdinalIgnoreCase)
+                     .Order(StringComparer.Ordinal))
+        {
+            if (await books.GetCachedTranslationAsync(reader.Chapter.Id, candidate, cancellationToken) is not null)
+            {
+                languages.Add(candidate);
+            }
+        }
+
+        return languages;
     }
 
     private static string? NormalizeRequestedView(string? value)
