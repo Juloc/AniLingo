@@ -300,6 +300,7 @@ fun NativePlayerScreen(
                     onPlayPause = controller::togglePlayPause,
                     onBack10 = { controller.seekBy(-10_000) },
                     onForward10 = { controller.seekBy(10_000) },
+                    onRepeatCurrentCue = controller::repeatCurrentCue,
                     audioMenuOpen = audioMenuOpen,
                     onAudioMenuOpen = { audioMenuOpen = it },
                     subtitleMenuOpen = subtitleMenuOpen,
@@ -427,6 +428,7 @@ private fun PlayerControls(
     onPlayPause: () -> Unit,
     onBack10: () -> Unit,
     onForward10: () -> Unit,
+    onRepeatCurrentCue: () -> Unit,
     audioMenuOpen: Boolean,
     onAudioMenuOpen: (Boolean) -> Unit,
     subtitleMenuOpen: Boolean,
@@ -494,25 +496,16 @@ private fun PlayerControls(
 
             PlaybackStatusPill(ui = ui, design = design)
 
-            Box {
-                PlayerIconButton(
-                    icon = Icons.Filled.Subtitles,
-                    label = "Subtitles",
-                    design = design,
-                    selected = ui.selectedSubtitleTrackId != null,
-                    onClick = {
-                        onSubtitleMenuOpen(!subtitleMenuOpen)
-                        onSettingsOpen(false)
-                    },
-                )
-                SubtitleMenu(
-                    expanded = subtitleMenuOpen,
-                    tracks = bootstrap?.subtitleTracks.orEmpty(),
-                    selectedTrackId = ui.selectedSubtitleTrackId,
-                    onDismiss = { onSubtitleMenuOpen(false) },
-                    onSelect = onSubtitleTrack,
-                )
-            }
+            PlayerIconButton(
+                icon = Icons.Filled.Subtitles,
+                label = "Subtitles",
+                design = design,
+                selected = ui.selectedSubtitleTrackId != null,
+                onClick = {
+                    onSettingsOpen(true)
+                    onSubtitleMenuOpen(true)
+                },
+            )
 
             PlayerIconButton(
                 icon = Icons.Filled.Settings,
@@ -588,11 +581,7 @@ private fun PlayerControls(
                         icon = Icons.Filled.Replay,
                         label = "Repeat line",
                         design = design,
-                        onClick = {
-                            // The parent keeps this control intentionally visual-only here;
-                            // tapping the Japanese subtitle opens the learning/repeat surface.
-                        },
-                        enabled = false,
+                        onClick = onRepeatCurrentCue,
                     )
                 }
                 PlayerIconButton(
