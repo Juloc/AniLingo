@@ -13,7 +13,7 @@
     <script src="~/js/novel-file-picker.js" asp-append-version="true"></script>
 }
 
-<header class="novel-library-header">
+<header class="novel-library-header novel-library-hero">
     <div class="novel-library-title-block">
         <div class="reading-type-switch" aria-label="@ui["novels.nav.readingTypeAria"]">
             <a class="active" href="/Novels">@ui["reading.novels.title"]</a>
@@ -214,11 +214,14 @@
                         <span>@(work.CurrentVolumeNumber is int currentVolume
                             ? ui.Format("novels.card.volumeChapterLocation", ("volume", currentVolume), ("chapter", work.CurrentChapterNumber), ("title", work.CurrentChapterTitle))
                             : ui.Format("novels.card.chapterLocation", ("chapter", work.CurrentChapterNumber), ("title", work.CurrentChapterTitle)))</span>
-                        <div class="novel-progress-track" aria-label="@ui["novels.card.progressAria"]">
-                            <span style="width:@(work.ProgressPermille / 10)%"></span>
+                        @* The percentage sits at the end of its short bar, not at the far edge of the row. *@
+                        <div class="novel-continue-progress">
+                            <div class="novel-progress-track" aria-label="@ui["novels.card.progressAria"]">
+                                <span style="width:@(work.ProgressPermille / 10)%"></span>
+                            </div>
+                            <span class="novel-continue-percent">@(work.ProgressPermille / 10)%</span>
                         </div>
                     </div>
-                    <span class="novel-continue-percent">@(work.ProgressPermille / 10)%</span>
                     <svg class="novel-row-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7" /></svg>
                 </a>
             }
@@ -255,7 +258,8 @@
                         }
                         else
                         {
-                            <span>文</span>
+                            @* Like the Books shelf: a paper tile with the title, not a black block. *@
+                            <span class="novel-cover-placeholder">@work.Title</span>
                         }
 
                         @if (work.HasProgress)
