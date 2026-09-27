@@ -7,7 +7,7 @@ namespace AniLingo.Tests;
 [TestClass]
 public sealed partial class AppShellNavigationTests
 {
-    private static readonly string[] AllowedLiteralText = ["AniLingo"];
+    private static readonly string[] AllowedLiteralText = ["Jularr"];
 
     [TestMethod]
     [DataRow(false, false)]

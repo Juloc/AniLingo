@@ -1,12 +1,12 @@
 const CACHE_PREFIX = "anilingo-static-";
-const CACHE_VERSION = CACHE_PREFIX + "v4";
+const CACHE_VERSION = CACHE_PREFIX + "v5";
 const PRECACHE = [
   "/offline.html",
   "/js/offline-review.js",
-  "/icons/anilingo.svg",
-  "/icons/anilingo-192.png",
-  "/icons/anilingo-512.png",
-  "/icons/anilingo-maskable-512.png",
+  "/brand/jularr-mark.svg",
+  "/icons/jularr-192.png",
+  "/icons/jularr-512.png",
+  "/icons/jularr-maskable-512.png",
   "/icons/apple-touch-icon.png",
   "/manifest.webmanifest"
 ];

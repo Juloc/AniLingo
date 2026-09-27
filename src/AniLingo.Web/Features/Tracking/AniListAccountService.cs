@@ -946,7 +946,7 @@ public sealed partial class AniListAccountService(
         {
             return ReadingProgressContext.Blocked(
                 AniListReadingProgressPreview.Blocked(
-                    "Read part of the manga in AniLingo before syncing progress."),
+                    "Read part of the manga in Jularr before syncing progress."),
                 AniListExternalProgressStateKind.NoLocalProgress);
         }
 
@@ -1148,7 +1148,7 @@ public sealed partial class AniListAccountService(
                     StringComparison.OrdinalIgnoreCase))
             {
                 preview = AniListReadingProgressPreview.Blocked(
-                    $"AniList status is {remote.Status ?? "unknown"}. For safety, AniLingo only writes reading progress while the entry is CURRENT.",
+                    $"AniList status is {remote.Status ?? "unknown"}. For safety, Jularr only writes reading progress while the entry is CURRENT.",
                     requestedProgress,
                     displayTitle,
                     remote.Progress,
@@ -1162,7 +1162,7 @@ public sealed partial class AniListAccountService(
                      remote.Progress >= chapterCount.Value)
             {
                 preview = AniListReadingProgressPreview.Blocked(
-                    "AniLingo will not update volume progress while the remote chapter state is final or cannot be verified safely.",
+                    "Jularr will not update volume progress while the remote chapter state is final or cannot be verified safely.",
                     requestedProgress,
                     displayTitle,
                     remote.Progress,
@@ -1238,7 +1238,7 @@ public sealed partial class AniListAccountService(
         {
             return ReadingProgressContext.Blocked(
                 AniListReadingProgressPreview.Blocked(
-                    "Read part of the novel in AniLingo before syncing progress.",
+                    "Read part of the novel in Jularr before syncing progress.",
                     mediaTitle: work.Title,
                     aniListChapterCount: work.MetadataChapterCount),
                 AniListExternalProgressStateKind.NoLocalProgress);
@@ -1568,7 +1568,7 @@ public sealed partial class AniListAccountService(
         {
             return ProgressContext.Blocked(
                 AniListProgressPreview.Blocked(
-                    "This anime is not on your AniList list. AniLingo will not create a list entry automatically.",
+                    "This anime is not on your AniList list. Jularr will not create a list entry automatically.",
                     resolved.RemoteEpisodeNumber,
                     resolved.PreferredTitle,
                     aniListEpisodeCount: resolved.EpisodeCount),
@@ -1611,7 +1611,7 @@ public sealed partial class AniListAccountService(
             return new AniListProgressPreview(
                 CanSync: false,
                 IsNoOp: true,
-                $"AniList already has progress {remote.Progress}; AniLingo never lowers progress.",
+                $"AniList already has progress {remote.Progress}; Jularr never lowers progress.",
                 mediaTitle,
                 requestedProgress,
                 remote.Progress,
@@ -1622,7 +1622,7 @@ public sealed partial class AniListAccountService(
         if (!string.Equals(remote.Status, "CURRENT", StringComparison.OrdinalIgnoreCase))
         {
             return AniListProgressPreview.Blocked(
-                $"AniList status is {remote.Status ?? "unknown"}. For safety, AniLingo only writes progress while the entry is CURRENT (Watching). Change the status in AniList first.",
+                $"AniList status is {remote.Status ?? "unknown"}. For safety, Jularr only writes progress while the entry is CURRENT (Watching). Change the status in AniList first.",
                 requestedProgress,
                 mediaTitle,
                 remote.Progress,
@@ -1634,7 +1634,7 @@ public sealed partial class AniListAccountService(
             requestedProgress >= aniListEpisodeCount.Value)
         {
             return AniListProgressPreview.Blocked(
-                "This is the final AniList episode. AniLingo does not sync the last episode automatically because AniList may also change completion status/date. Finish the entry in AniList itself.",
+                "This is the final AniList episode. Jularr does not sync the last episode automatically because AniList may also change completion status/date. Finish the entry in AniList itself.",
                 requestedProgress,
                 mediaTitle,
                 remote.Progress,
@@ -1665,7 +1665,7 @@ public sealed partial class AniListAccountService(
             return new AniListReadingProgressPreview(
                 CanSync: false,
                 IsNoOp: true,
-                $"AniList already has chapter progress {remote.Progress}; AniLingo never lowers progress.",
+                $"AniList already has chapter progress {remote.Progress}; Jularr never lowers progress.",
                 mediaTitle,
                 requestedProgress,
                 remote.Progress,
@@ -1676,7 +1676,7 @@ public sealed partial class AniListAccountService(
         if (aniListChapterCount is not > 0)
         {
             return AniListReadingProgressPreview.Blocked(
-                $"AniList does not expose a reliable chapter count for this {mediaKind}, so AniLingo cannot safely assume the local chapter numbering matches.",
+                $"AniList does not expose a reliable chapter count for this {mediaKind}, so Jularr cannot safely assume the local chapter numbering matches.",
                 requestedProgress,
                 mediaTitle,
                 remote.Progress,
@@ -1687,7 +1687,7 @@ public sealed partial class AniListAccountService(
         if (!string.Equals(remote.Status, "CURRENT", StringComparison.OrdinalIgnoreCase))
         {
             return AniListReadingProgressPreview.Blocked(
-                $"AniList status is {remote.Status ?? "unknown"}. For safety, AniLingo only writes chapter progress while the entry is CURRENT (Reading).",
+                $"AniList status is {remote.Status ?? "unknown"}. For safety, Jularr only writes chapter progress while the entry is CURRENT (Reading).",
                 requestedProgress,
                 mediaTitle,
                 remote.Progress,
@@ -1699,7 +1699,7 @@ public sealed partial class AniListAccountService(
             requestedProgress >= aniListChapterCount.Value)
         {
             return AniListReadingProgressPreview.Blocked(
-                "This would reach the final AniList chapter. AniLingo leaves completion status/date to AniList.",
+                "This would reach the final AniList chapter. Jularr leaves completion status/date to AniList.",
                 requestedProgress,
                 mediaTitle,
                 remote.Progress,

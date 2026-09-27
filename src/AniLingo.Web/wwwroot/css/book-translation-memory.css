@@ -45,7 +45,7 @@
     padding: 12px 14px;
     border: 1px solid var(--border);
     border-radius: 10px;
-    background: var(--surface, rgba(127, 127, 127, .06));
+    background: var(--surface);
 }
 
 .book-bible-section,
@@ -54,7 +54,7 @@
     padding: 18px;
     border: 1px solid var(--border);
     border-radius: 12px;
-    background: var(--surface, rgba(127, 127, 127, .04));
+    background: var(--surface);
 }
 
 .book-bible-section-heading,
@@ -109,7 +109,7 @@
     padding: 8px 9px;
     border: 1px solid var(--border);
     border-radius: 8px;
-    background: var(--background, #0b0d10);
+    background: var(--bg);
     color: inherit;
     font: inherit;
     resize: vertical;
@@ -236,7 +236,7 @@
 
 .book-bible-remove button:hover,
 .book-bible-danger-button {
-    color: #d13438;
+    color: var(--danger-text);
 }
 
 .book-bible-chapter p {
@@ -254,7 +254,7 @@
 }
 
 .book-bible-danger-button {
-    border-color: color-mix(in srgb, #d13438 70%, var(--border));
+    border-color: color-mix(in srgb, var(--danger-text) 70%, var(--border));
 }
 
 @media (max-width: 760px) {

@@ -5,7 +5,7 @@ namespace AniLingo.Web.Features.Acquisition.Indexers;
 
 /// <summary>
 /// Kind of indexer connection. Prowlarr aggregates other indexers itself;
-/// Newznab is a direct connection to a single usenet indexer. AniLingo is
+/// Newznab is a direct connection to a single usenet indexer. Jularr is
 /// usenet-only: torrent indexers (Torznab) are intentionally unsupported.
 /// </summary>
 public enum IndexerType
