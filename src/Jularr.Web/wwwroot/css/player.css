@@ -624,6 +624,12 @@
     .player-bottom { padding: 0 8px 6px; }
     .player-chrome .player-icon-button { width: 36px; height: 36px; }
     .player-bar [data-chrome-pip] { display: none; }
+    .player-bar { gap: 6px; }
     .player-time { font-size: 12px; }
     .watch-main .player-subtitle-stack { bottom: 84px; }
+}
+/* Very narrow phones: the hardware keys set the volume, so the bar keeps full screen in view. */
+@media (max-width: 380px) {
+    .player-bar .player-volume { display: none; }
+    .player-bar-group { gap: 2px; }
 }
