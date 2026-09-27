@@ -47,6 +47,14 @@ public sealed record NovelEpubImportOutcome(
     }
 }
 
+/// <summary>
+/// Result of importing one completed download. <see cref="RejectedBecause"/> is set when the
+/// package was refused before anything was stored.
+/// </summary>
+public sealed record NovelEpubDownloadImport(
+    IReadOnlyList<NovelEpubImportOutcome> Outcomes,
+    string? RejectedBecause);
+
 /// <summary>Runs an owner EPUB upload through Operations.</summary>
 public static class NovelEpubUploads
 {
@@ -217,6 +225,109 @@ public sealed partial class NovelEpubImportService(
         await AutoMatchAsync(outcomes, cancellationToken);
         return outcomes;
     }
+
+    /// <summary>
+    /// Imports one completed download (an EPUB file or a job folder) as volumes of one series.
+    /// Unlike the inbox, folder names are no series hints: the series comes from each EPUB's
+    /// metadata, and EPUBs are found at any depth. Every file is parsed first; a package that
+    /// holds no importable EPUB, or EPUBs of more than one series, is rejected before anything
+    /// is stored.
+    /// </summary>
+    public async Task<NovelEpubDownloadImport> ImportDownloadAsync(
+        string sourcePath,
+        CancellationToken cancellationToken)
+    {
+        var source = Path.GetFullPath(sourcePath);
+        string[] paths;
+        if (File.Exists(source))
+        {
+            paths = [source];
+        }
+        else if (Directory.Exists(source))
+        {
+            paths = Directory
+                .EnumerateFiles(source, "*.epub", SearchOption.AllDirectories)
+                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                .Take(MaxInboxFiles)
+                .ToArray();
+        }
+        else
+        {
+            throw new IOException($"The completed download '{source}' does not exist.");
+        }
+
+        var outcomes = new List<NovelEpubImportOutcome>();
+        var valid = new List<string>();
+        var seriesKeys = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var path in paths)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var fileName = Path.GetFileName(path);
+            if (!fileName.EndsWith(".epub", StringComparison.OrdinalIgnoreCase))
+            {
+                outcomes.Add(NovelEpubImportOutcome.Failed(fileName, "Only .epub files can be imported."));
+                continue;
+            }
+
+            try
+            {
+                await using var stream = OpenShared(path);
+                var bytes = await ReadBoundedAsync(stream, cancellationToken);
+                using var memory = new MemoryStream(bytes, writable: false);
+                var parsed = EpubBookParser.Parse(memory, fileName, includeAssets: false);
+                seriesKeys.Add(SeriesKey(FirstNonEmpty(
+                    parsed.SeriesTitle,
+                    StripVolumeMarker(parsed.Title),
+                    Path.GetFileNameWithoutExtension(fileName))!));
+                valid.Add(path);
+            }
+            catch (Exception exception) when (
+                exception is InvalidOperationException or IOException or UnauthorizedAccessException)
+            {
+                outcomes.Add(NovelEpubImportOutcome.Failed(fileName, exception.Message));
+            }
+        }
+
+        if (valid.Count == 0)
+        {
+            return new NovelEpubDownloadImport(
+                outcomes,
+                paths.Length == 0
+                    ? "The download contains no EPUB files."
+                    : $"The download contains no usable EPUB: {NovelEpubImportOutcome.Summarize(outcomes)}");
+        }
+
+        if (seriesKeys.Count > 1)
+        {
+            return new NovelEpubDownloadImport(
+                outcomes,
+                $"The download contains EPUBs of {seriesKeys.Count} different series.");
+        }
+
+        foreach (var path in valid)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await using var stream = OpenShared(path);
+            outcomes.Add(await ImportFileAsync(
+                stream,
+                Path.GetFileName(path),
+                targetWorkId: null,
+                seriesHint: null,
+                cancellationToken));
+        }
+
+        await AutoMatchAsync(outcomes, cancellationToken);
+        return new NovelEpubDownloadImport(outcomes, null);
+    }
+
+    private static FileStream OpenShared(string path) =>
+        new(
+            path,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.ReadWrite | FileShare.Delete,
+            bufferSize: 81920,
+            useAsync: true);
 
     /// <summary>
     /// Compatibility entry point for the historical Books-inbox layout.

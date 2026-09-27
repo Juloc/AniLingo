@@ -3,6 +3,7 @@ using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Acquisition.DownloadClients;
 using Jularr.Web.Features.Acquisition.Indexers;
 using Jularr.Web.Features.Novels;
+using Jularr.Web.Features.ReadingDiscovery;
 
 namespace Jularr.Web.Features.ReadingAcquisition;
 
@@ -235,6 +236,24 @@ public sealed class ReadingAcquisitionEngine(
             fallback.PreferredLanguages);
     }
 
+    /// <summary>
+    /// The payload a Light Novel request starts with: the native title is a search alias and
+    /// the author stays the author, so neither is mistaken for the other later.
+    /// </summary>
+    public static string LightNovelDraftPayload(
+        string title,
+        string? nativeTitle,
+        string? author) =>
+        JsonSerializer.Serialize(
+            new ReadingRequestPayload(
+                title.Trim(),
+                string.IsNullOrWhiteSpace(nativeTitle) ||
+                nativeTitle.Trim().Equals(title.Trim(), StringComparison.OrdinalIgnoreCase)
+                    ? []
+                    : [nativeTitle.Trim()],
+                string.IsNullOrWhiteSpace(author) ? null : author.Trim()),
+            JsonSerializerOptions.Web);
+
     public static ReadingAcquisitionTarget ToTarget(
         MediaAcquisitionKind kind,
         ReadingRequestPayload payload) =>
@@ -290,7 +309,8 @@ public sealed class MangaAcquisitionRequestExecutor(
 
 public sealed class LightNovelAcquisitionRequestExecutor(
     ReadingAcquisitionEngine engine,
-    NovelAniListProvider aniList) : IAcquisitionRequestExecutor
+    NovelAniListProvider aniList,
+    NovelImportService webNovels) : IAcquisitionRequestExecutor
 {
     public MediaAcquisitionKind Kind => MediaAcquisitionKind.LightNovel;
 
@@ -298,8 +318,50 @@ public sealed class LightNovelAcquisitionRequestExecutor(
         AcquisitionRequest request,
         CancellationToken cancellationToken)
     {
-        var aliases = new List<string>();
-        var canonicalTitle = request.Title;
+        // A public Syosetu (ncode) work is a legal web source: import it directly, never
+        // search Usenet for it (#485 item 3).
+        if (request.Provider.Equals(
+                NcodeNovelSourceProvider.ProviderKey,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return await ImportWebNovelAsync(request, cancellationToken);
+        }
+
+        var payload = ReadingAcquisitionEngine.ReadPayload(
+            request,
+            new ReadingAcquisitionTarget(
+                MediaAcquisitionKind.LightNovel,
+                request.Title,
+                [],
+                request.Subtitle));
+
+        if (payload.Searches == 0)
+        {
+            payload = await EnrichAsync(request, payload, cancellationToken);
+            request = request with
+            {
+                PayloadJson = JsonSerializer.Serialize(payload, JsonSerializerOptions.Web)
+            };
+        }
+
+        return await engine.ExecuteAsync(
+            request,
+            ReadingAcquisitionEngine.ToTarget(MediaAcquisitionKind.LightNovel, payload),
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// First search only: AniList gives the canonical title and the native title as an alias.
+    /// Older requests stored the native title as the author; it is dropped as author here.
+    /// </summary>
+    private async Task<ReadingRequestPayload> EnrichAsync(
+        AcquisitionRequest request,
+        ReadingRequestPayload payload,
+        CancellationToken cancellationToken)
+    {
+        var aliases = new List<string>(payload.Aliases ?? []);
+        var canonicalTitle = payload.Title;
+        var author = payload.Author;
 
         if (request.Provider.Equals(
                 NovelAniListProvider.ProviderKey,
@@ -316,6 +378,10 @@ public sealed class LightNovelAcquisitionRequestExecutor(
                     if (!string.IsNullOrWhiteSpace(candidate.NativeTitle))
                     {
                         aliases.Add(candidate.NativeTitle);
+                        if (string.Equals(author?.Trim(), candidate.NativeTitle.Trim(), StringComparison.OrdinalIgnoreCase))
+                        {
+                            author = null;
+                        }
                     }
                 }
             }
@@ -338,13 +404,51 @@ public sealed class LightNovelAcquisitionRequestExecutor(
             aliases.Add(request.Title);
         }
 
-        return await engine.ExecuteAsync(
-            request,
-            new ReadingAcquisitionTarget(
-                MediaAcquisitionKind.LightNovel,
-                canonicalTitle,
-                aliases.Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
-                request.Subtitle),
-            cancellationToken);
+        return payload with
+        {
+            Title = canonicalTitle,
+            Aliases = aliases
+                .Where(alias => !string.IsNullOrWhiteSpace(alias))
+                .Select(alias => alias.Trim())
+                .Where(alias => !alias.Equals(canonicalTitle, StringComparison.OrdinalIgnoreCase))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray(),
+            Author = string.IsNullOrWhiteSpace(author) ? null : author.Trim()
+        };
+    }
+
+    private async Task<AcquisitionExecution> ImportWebNovelAsync(
+        AcquisitionRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!SyosetuCatalogClient.IsValidNcode(request.ExternalId))
+        {
+            return new AcquisitionExecution(
+                AcquisitionRequestStatus.Failed,
+                "This Syosetu request has no valid ncode.");
+        }
+
+        var sourceUrl = $"https://ncode.syosetu.com/{request.ExternalId.Trim().ToLowerInvariant()}/";
+        try
+        {
+            var workId = await webNovels.ImportWorkAsync(sourceUrl, cancellationToken);
+            return new AcquisitionExecution(
+                AcquisitionRequestStatus.Completed,
+                "Imported from Syosetu.",
+                ResultUrl: $"/Novels/Work/{workId}");
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception) when (
+            exception is InvalidOperationException or
+            HttpRequestException or
+            TaskCanceledException)
+        {
+            return new AcquisitionExecution(
+                AcquisitionRequestStatus.Failed,
+                $"The Syosetu import failed: {exception.Message.Trim().TrimEnd('.')}. Approve the request again to retry.");
+        }
     }
 }

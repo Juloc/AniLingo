@@ -1,3 +1,4 @@
+using Jularr.Web.Features.Acquisition.Access;
 using System.Text.Json;
 
 namespace Jularr.Web.Features.Acquisition.Import;
@@ -74,7 +75,8 @@ public sealed class AnimeImportSettingsStore
             return state with
             {
                 RootImportModes = new Dictionary<Guid, ImportMode>(state.RootImportModes),
-                RemotePathMappings = state.RemotePathMappings ?? []
+                RemotePathMappings = state.RemotePathMappings ?? [],
+                MediaLibraries = new Dictionary<MediaAcquisitionKind, MediaLibraryTarget>(state.MediaLibraries ?? [])
             };
         }
         catch (JsonException exception)

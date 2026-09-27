@@ -34,9 +34,22 @@ public sealed partial class MangaImportService
             ".cbz", ".zip"
         };
 
+    /// <summary>A file a completed Manga download may contribute: a CBZ/ZIP archive or a page image.</summary>
+    public static bool IsImportableFile(string path) =>
+        ArchiveExtensions.Contains(Path.GetExtension(path)) ||
+        ImageExtensions.Contains(Path.GetExtension(path));
+
+    /// <summary>
+    /// Imports a CBZ/ZIP file or a directory as one series, identified by its path. With
+    /// <paramref name="intoSeriesId"/> the chapters are added to that existing series instead (for
+    /// example a newly downloaded volume of a series already matched to the same AniList entry);
+    /// the series row itself is left unchanged. Either way only chapters below
+    /// <paramref name="source"/> that disappeared are removed, never chapters from other folders.
+    /// </summary>
     public async Task<MangaImportResult> ImportAsync(
         string source,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Guid? intoSeriesId = null)
     {
         if (string.IsNullOrWhiteSpace(source))
         {
@@ -55,22 +68,26 @@ public sealed partial class MangaImportService
             throw new InvalidOperationException("A manga file import must be CBZ or ZIP.");
         }
 
-        var seriesId = DeterministicGuid("series:" + sourcePath);
-        var title = File.Exists(sourcePath)
-            ? CleanTitle(Path.GetFileNameWithoutExtension(sourcePath))
-            : new DirectoryInfo(sourcePath).Name;
-
-        await repository.UpsertSeriesAsync(
-            seriesId,
-            title,
-            sourcePath,
-            cancellationToken);
-
+        // Validate before anything is stored, so an unusable package leaves no empty series.
         var sources = DiscoverChapterSources(sourcePath);
         if (sources.Count == 0)
         {
             throw new InvalidOperationException(
                 "No CBZ/ZIP archives or image chapters were found in this manga source.");
+        }
+
+        var seriesId = intoSeriesId ?? DeterministicGuid("series:" + sourcePath);
+        if (intoSeriesId is null)
+        {
+            var title = File.Exists(sourcePath)
+                ? CleanTitle(Path.GetFileNameWithoutExtension(sourcePath))
+                : new DirectoryInfo(sourcePath).Name;
+
+            await repository.UpsertSeriesAsync(
+                seriesId,
+                title,
+                sourcePath,
+                cancellationToken);
         }
 
         var existing = await repository.GetChapterSourcesAsync(
@@ -143,7 +160,9 @@ public sealed partial class MangaImportService
             }
         }
 
-        foreach (var stale in existing.Where(x => !observed.Contains(x.SourcePath)))
+        foreach (var stale in existing.Where(x =>
+                     !observed.Contains(x.SourcePath) &&
+                     IsSameOrBelow(x.SourcePath, sourcePath)))
         {
             await repository.RemoveChapterAsync(stale.Id, cancellationToken);
             var staleCache = GetChapterCacheDirectory(seriesId, stale.Id);
@@ -516,6 +535,15 @@ public sealed partial class MangaImportService
             ".gif" => "image/gif",
             _ => "application/octet-stream"
         };
+
+    private static bool IsSameOrBelow(string path, string root)
+    {
+        var full = Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var parent = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        return full.Equals(parent, StringComparison.Ordinal) ||
+               full.StartsWith(parent + Path.DirectorySeparatorChar, StringComparison.Ordinal) ||
+               full.StartsWith(parent + Path.AltDirectorySeparatorChar, StringComparison.Ordinal);
+    }
 
     private static Guid DeterministicGuid(string value)
     {

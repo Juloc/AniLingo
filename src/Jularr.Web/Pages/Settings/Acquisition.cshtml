@@ -75,6 +75,28 @@
     </section>
 
     <section class="panel">
+        <div class="panel-heading"><h2>@ui["settings.acquisition.mangaLibraryHeading"]</h2></div>
+        <p class="muted">@ui["settings.acquisition.mangaLibraryDescription"]</p>
+        <form method="post" asp-page-handler="MangaLibrary" class="form-stack">
+            <label>
+                <span>@ui["settings.acquisition.mangaLibraryRootLabel"]</span>
+                <input type="text" name="libraryRoot" value="@Model.MangaLibrary?.LibraryRoot" placeholder="/data/media/manga" />
+            </label>
+            <label>
+                <span>@ui["settings.acquisition.mangaImportModeLabel"]</span>
+                <select name="importMode">
+                    <option value="">@ui["settings.acquisition.usesDefault"]</option>
+                    @foreach (var mode in Enum.GetValues<ImportMode>())
+                    {
+                        <option value="@mode" selected="@(Model.MangaLibrary?.ImportMode == mode)">@Model.ImportModeLabel(mode)</option>
+                    }
+                </select>
+            </label>
+            <button class="button" type="submit">@ui["common.save"]</button>
+        </form>
+    </section>
+
+    <section class="panel">
         <div class="panel-heading"><h2>@ui["settings.acquisition.playbackOptimizationHeading"]</h2></div>
         <p class="muted">@ui["settings.acquisition.playbackOptimizationDescription"]</p>
         <form method="post" asp-page-handler="PlaybackOptimization" class="form-stack">

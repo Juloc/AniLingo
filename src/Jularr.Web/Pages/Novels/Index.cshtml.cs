@@ -4,6 +4,7 @@ using Jularr.Web.Features.Books;
 using Jularr.Web.Features.Localization;
 using Jularr.Web.Features.Novels;
 using Jularr.Web.Features.Operations;
+using Jularr.Web.Features.ReadingAcquisition;
 using Jularr.Web.Features.ReadingDiscovery;
 using Jularr.Web.Features.ReadingSources;
 using Jularr.Web.Data;
@@ -268,14 +269,18 @@ public sealed class IndexModel(
                     normalizedProvider,
                     normalizedId,
                     title.Trim(),
+                    // Subtitle is the author only; the native title is a search alias in the
+                    // payload, never an author (#485 item 4).
                     string.IsNullOrWhiteSpace(author)
-                        ? string.IsNullOrWhiteSpace(nativeTitle)
-                            ? null
-                            : nativeTitle.Trim()
+                        ? null
                         : author.Trim(),
                     string.IsNullOrWhiteSpace(coverImageUrl)
                         ? null
-                        : coverImageUrl.Trim()),
+                        : coverImageUrl.Trim(),
+                    ReadingAcquisitionEngine.LightNovelDraftPayload(
+                        title,
+                        nativeTitle,
+                        author)),
                 cancellationToken);
 
             if (request.Status == AcquisitionRequestStatus.Completed &&
