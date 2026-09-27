@@ -332,11 +332,11 @@ public sealed class MangaTests
             "Manga",
             "Index.cshtml"));
 
-        StringAssert.Contains(reader, "data-mode=\"single\"");
-        StringAssert.Contains(reader, "data-mode=\"double\"");
-        StringAssert.Contains(reader, "data-mode=\"continuous\"");
-        StringAssert.Contains(reader, "data-direction-toggle");
-        StringAssert.Contains(reader, "data-page-scrubber");
+        StringAssert.Contains(reader, "(\"single\", \"reader.frame.singlePage\")");
+        StringAssert.Contains(reader, "(\"double\", \"reader.frame.twoPages\")");
+        StringAssert.Contains(reader, "(\"continuous\", \"manga.reader.mode.vertical\")");
+        StringAssert.Contains(reader, "data-manga-setting=\"rightToLeft\"");
+        StringAssert.Contains(reader, "data-reader-progress-slider");
         StringAssert.Contains(script, "direction === \"rtl\"");
         StringAssert.Contains(script, "prefetch");
         StringAssert.Contains(script, "toggleBookmark");
