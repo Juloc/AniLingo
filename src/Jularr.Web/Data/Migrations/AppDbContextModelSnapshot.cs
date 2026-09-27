@@ -1761,6 +1761,21 @@ namespace Jularr.Web.Data.Migrations
                     b.Property<bool?>("FuriganaEnabled")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool?>("AutoContinueChapters")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool?>("Hyphenation")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool?>("ParagraphIndent")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool?>("ShowIllustrations")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool?>("ShowPageNumbers")
+                        .HasColumnType("INTEGER");
+
                     b.Property<bool?>("GenreArtworkEnabled")
                         .HasColumnType("INTEGER");
 

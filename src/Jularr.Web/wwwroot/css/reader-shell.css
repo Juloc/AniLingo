@@ -1545,6 +1545,237 @@ body:has([data-reader-frame]) .app-main {
     bottom: calc(84px + var(--safe-bottom, 0px));
 }
 
+/* Appearance sheet (cards of quick settings bound through setting proxies) ---- */
+
+.reader-sheet {
+    width: min(920px, calc(100vw - 32px));
+    max-width: none;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 10px;
+    padding: 10px;
+    background: color-mix(in srgb, var(--surface) 96%, var(--bg));
+}
+
+.reader-sheet-card {
+    display: grid;
+    align-content: start;
+    gap: 10px;
+    min-width: 0;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface);
+}
+
+.reader-sheet-card h2 {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.reader-sheet-choices {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+    gap: 8px;
+}
+
+.reader-sheet-choices > button {
+    min-width: 0;
+    display: grid;
+    justify-items: center;
+    gap: 6px;
+    padding: 6px 4px;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--text-secondary, var(--text));
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.reader-sheet-choices > button > span:last-child {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.reader-sheet-choices > button:hover {
+    background: var(--surface-2);
+}
+
+.reader-sheet-choices > button[aria-pressed="true"],
+.reader-sheet-choices > button[aria-checked="true"] {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--accent-text, var(--accent));
+    font-weight: 650;
+}
+
+.reader-sheet-thumb {
+    width: 52px;
+    height: 68px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background-color: var(--surface-2);
+    background-position: center;
+    background-size: cover;
+}
+
+/* Page thumbnails drawn with gradients: text lines, an illustration, a long scroll. */
+.reader-thumb-standard,
+.reader-thumb-light-novel,
+.reader-thumb-scroll {
+    background-color: var(--surface);
+    background-repeat: no-repeat;
+    background-image: repeating-linear-gradient(
+        to bottom,
+        color-mix(in srgb, var(--text) 35%, transparent) 0 2px,
+        transparent 2px 7px);
+    background-size: 36px 52px;
+    background-position: center 8px;
+}
+
+.reader-thumb-light-novel {
+    background-image:
+        linear-gradient(color-mix(in srgb, var(--accent) 38%, var(--surface-2)), color-mix(in srgb, var(--accent) 38%, var(--surface-2))),
+        repeating-linear-gradient(
+            to bottom,
+            color-mix(in srgb, var(--text) 35%, transparent) 0 2px,
+            transparent 2px 7px);
+    background-size: 36px 22px, 36px 26px;
+    background-position: center 6px, center 34px;
+}
+
+.reader-thumb-scroll {
+    background-size: 36px 100%;
+    background-position: center 4px;
+}
+
+.reader-thumb-background {
+    width: 60px;
+    height: 76px;
+}
+
+.reader-sheet-swatch {
+    width: 40px;
+    height: 40px;
+    border: 1px solid color-mix(in srgb, var(--text) 22%, transparent);
+    border-radius: 50%;
+}
+
+.reader-sheet-swatch[data-paper="auto"],
+.reader-paper-swatches [data-paper="auto"] {
+    background: linear-gradient(135deg, #f7f0df 0 50%, #11161d 50% 100%);
+}
+
+.reader-sheet-swatch[data-paper="white"] { background: #fffdf9; }
+.reader-sheet-swatch[data-paper="cream"] { background: #f5ecda; }
+.reader-sheet-swatch[data-paper="sepia"] { background: #ead9b8; }
+.reader-sheet-swatch[data-paper="old-paper"] { background: #d9c49b; }
+.reader-sheet-swatch[data-paper="midnight"] { background: #2a2e35; }
+.reader-sheet-swatch[data-paper="oled"] { background: #0b0f18; }
+
+.reader-sheet-range {
+    display: grid;
+    grid-template-columns: minmax(80px, auto) minmax(0, 1fr) 44px;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+}
+
+.reader-sheet-range output {
+    color: var(--muted);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    text-align: end;
+}
+
+.reader-sheet-range input[type="range"] {
+    width: 100%;
+    accent-color: var(--accent);
+}
+
+.reader-sheet-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 13px;
+}
+
+.reader-sheet-toggle[hidden] {
+    display: none;
+}
+
+.reader-sheet-toggle input[type="checkbox"] {
+    position: relative;
+    flex: 0 0 auto;
+    width: 38px;
+    height: 22px;
+    margin: 0;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--text) 20%, transparent);
+    cursor: pointer;
+    transition: background-color .15s ease;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.reader-sheet-toggle input[type="checkbox"]::after {
+    content: "";
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .3);
+    transition: transform .15s ease;
+}
+
+.reader-sheet-toggle input[type="checkbox"]:checked {
+    background: var(--accent);
+}
+
+.reader-sheet-toggle input[type="checkbox"]:checked::after {
+    transform: translateX(16px);
+}
+
+.reader-sheet-toggle input[type="checkbox"]:focus-visible,
+.reader-sheet-range input:focus-visible,
+.reader-sheet-choices > button:focus-visible {
+    outline: 2px solid var(--focus-ring, var(--accent));
+    outline-offset: 2px;
+}
+
+.reader-sheet-link {
+    justify-self: start;
+    padding: 6px 0;
+    border: 0;
+    background: transparent;
+    color: var(--accent-text, var(--accent));
+    font: inherit;
+    font-size: 13px;
+    font-weight: 650;
+    cursor: pointer;
+}
+
+@media (max-width: 720px) {
+    .reader-sheet {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .reader-sheet-toggle input[type="checkbox"],
+    .reader-sheet-toggle input[type="checkbox"]::after {
+        transition: none;
+    }
+}
+
 /* Desktop / mobile variants ------------------------------------------------- */
 
 @media (min-width: 721px) {

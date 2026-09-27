@@ -637,16 +637,6 @@
     }
 }
 
-body:has(.novel-reader-shell) .sidebar,
-body:has(.novel-reader-shell) .mobile-nav {
-    display: none !important;
-}
-
-body:has(.novel-reader-shell) .app-main {
-    margin-left: 0;
-    padding: 0;
-}
-
 @media (max-width: 820px) {
     .novel-reader-toolbar {
         top: .3rem;

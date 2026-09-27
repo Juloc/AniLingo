@@ -16,6 +16,15 @@
     };
 
     const toast = shell.querySelector("[data-reader-toast]");
+
+    // UI text from the catalog (novels.reader.*); English fallbacks only cover a
+    // missing bundle.
+    let text = {};
+    try {
+        text = JSON.parse(shell.querySelector("[data-novel-reader-text]")?.textContent || "{}") || {};
+    } catch {
+        text = {};
+    }
     let toastTimer = null;
     let hasTranslation = shell.dataset.hasTranslation === "true";
 
@@ -25,6 +34,17 @@
 
     const reader = {
         shell,
+
+        t: (key, fallback, values = {}) => {
+            let value = text["novels.reader." + key] || fallback;
+            for (const [name, replacement] of Object.entries(values)) {
+                value = value.replaceAll("{" + name + "}", String(replacement));
+            }
+            return value;
+        },
+
+        // The shared reader frame (reader-shell.js) owns the contents panel.
+        frame: () => shell.readerShell || null,
 
         clamp: (value, min, max) => Math.min(max, Math.max(min, value)),
 
@@ -146,9 +166,10 @@
             localStorage.setItem(storage.view, next);
 
             shell.querySelectorAll("[data-reader-view]").forEach(button => {
+                const active = button.dataset.readerView === next ? "true" : "false";
                 button.setAttribute(
-                    "aria-pressed",
-                    button.dataset.readerView === next ? "true" : "false");
+                    button.getAttribute("role") === "menuitemradio" ? "aria-checked" : "aria-pressed",
+                    active);
             });
         }
     };
@@ -157,6 +178,7 @@
         shell.querySelectorAll("[data-reader-view]").forEach(button => {
             if (button.dataset.readerView !== "ja") {
                 button.disabled = !hasTranslation;
+                button.hidden = !hasTranslation;
             }
         });
     };
@@ -175,6 +197,7 @@
     modules.chapterDrawer(reader);
     modules.translation(reader);
     modules.learning?.(reader);
+    modules.search?.(reader);
 
     // #221 part 2: while offline, following the previous/next chapter footer
     // link to a downloaded chapter renders it locally instead of a failing
@@ -185,12 +208,12 @@
         window.JularrOfflineLibraryRepository.initializeOfflineChapterNavigation({
             shell,
             workId: shell.dataset.workId,
-            linkSelector: ".novel-reader-footer a[href^=\"/Novels/Read/\"]",
+            linkSelector: "a[data-novel-chapter-link]",
             contentSelector: "[data-reader-content]",
             renderer: "novel"
         });
         shell.addEventListener("jularr:offline-chapter-missing", () => {
-            reader.showToast("Dieses Kapitel wurde nicht für den Offline-Zugriff heruntergeladen.");
+            reader.showToast(reader.t("offlineMissing", "This chapter has not been downloaded for offline reading."));
         });
     }
 

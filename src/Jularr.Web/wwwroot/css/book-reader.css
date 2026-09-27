@@ -27,6 +27,35 @@
     --art-h: 330px;
 }
 
+/* "Auto" paper follows the app theme: cream in light, dark paper in dark. */
+:root[data-app-theme="dark"] .book-reader-page[data-paper-style="auto"] {
+    --paper: #18202a;
+    --paper-ink: #dbe0e7;
+    --paper-ink-soft: #8d97a4;
+    --paper-texture-opacity: .06;
+    --paper-texture-blend: screen;
+    --paper-texture-filter: invert(1);
+    --paper-art-opacity: .42;
+    --paper-art-filter: invert(.85) hue-rotate(180deg);
+    --paper-gutter: rgba(0, 0, 0, .42);
+    --paper-shadow: 0 18px 40px -18px rgba(0, 0, 0, .8);
+}
+
+@media (prefers-color-scheme: dark) {
+    :root[data-app-theme="system"] .book-reader-page[data-paper-style="auto"] {
+        --paper: #18202a;
+        --paper-ink: #dbe0e7;
+        --paper-ink-soft: #8d97a4;
+        --paper-texture-opacity: .06;
+        --paper-texture-blend: screen;
+        --paper-texture-filter: invert(1);
+        --paper-art-opacity: .42;
+        --paper-art-filter: invert(.85) hue-rotate(180deg);
+        --paper-gutter: rgba(0, 0, 0, .42);
+        --paper-shadow: 0 18px 40px -18px rgba(0, 0, 0, .8);
+    }
+}
+
 .book-reader-page[data-paper-style="white"] {
     --paper: #fffdf9;
     --paper-ink: #1f1d1b;

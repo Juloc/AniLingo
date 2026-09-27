@@ -5,7 +5,7 @@
     const registry = window.JularrNovelReader = window.JularrNovelReader || {};
 
     registry.translation = reader => {
-        const { shell } = reader;
+        const { shell, t } = reader;
         const translationSlot = shell.querySelector("[data-translation-slot]");
         const statusUrl = shell.dataset.translationStatusUrl || "";
 
@@ -47,7 +47,7 @@
             const state = stateLabel();
             if (state) {
                 state.classList.add("ready");
-                state.textContent = "Deutsch bereit";
+                state.textContent = t("germanReady", "German ready");
             }
 
             translationSlot?.querySelector("[data-translate-form]")?.remove();
@@ -63,7 +63,7 @@
                     const result = await fetchTranslationStatus();
                     if (result?.status === "ready") {
                         installGermanParagraphs(result.paragraphs);
-                        reader.showToast("Deutsche Übersetzung ist bereit");
+                        reader.showToast(t("germanReady", "German ready"));
                         return;
                     }
                 } catch {
@@ -72,7 +72,7 @@
             }
 
             const state = stateLabel();
-            if (state) state.textContent = "Übersetzung läuft noch – später erneut öffnen";
+            if (state) state.textContent = t("translationStillRunning", "Translation still running – open the chapter again later");
         };
 
         const queueTranslation = async form => {
@@ -81,7 +81,7 @@
 
             button.disabled = true;
             const previous = button.textContent;
-            button.textContent = "Startet…";
+            button.textContent = t("translationStarting", "Starting…");
 
             try {
                 const result = await reader.postForm(form);
@@ -93,15 +93,14 @@
                 }
 
                 const state = stateLabel();
-                if (state) state.textContent = "Übersetzung läuft";
+                if (state) state.textContent = t("translationRunning", "Translating…");
 
-                button.textContent = "Läuft";
-                reader.showToast("Übersetzung gestartet");
+                reader.showToast(t("translationStarted", "Translation started"));
                 void waitForTranslation();
             } catch (error) {
                 button.disabled = false;
                 button.textContent = previous;
-                reader.showToast(error.message || "Übersetzung konnte nicht gestartet werden");
+                reader.showToast(t("translationStartFailed", "The translation could not be started"));
             }
         };
 

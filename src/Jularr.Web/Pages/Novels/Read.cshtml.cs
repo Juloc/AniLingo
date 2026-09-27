@@ -193,6 +193,32 @@ public sealed class ReadModel(
         return new JsonResult(window);
     }
 
+    /// <summary>
+    /// In-work text search (reader top bar), shared with the Books reader through
+    /// <see cref="ReaderTextSearch"/>: Japanese source text plus German translations
+    /// that still match their chapter source.
+    /// </summary>
+    public async Task<IActionResult> OnGetSearchAsync(
+        Guid id,
+        string? q,
+        CancellationToken cancellationToken)
+    {
+        var context = await catalog.GetChapterContextAsync(id, cancellationToken);
+        if (context is null)
+        {
+            return NotFound();
+        }
+
+        var hits = await ReaderTextSearch.SearchWorkAsync(
+            db,
+            context.WorkId,
+            q,
+            NovelReadingLanguage.German,
+            cancellationToken);
+
+        return new JsonResult(new { hits });
+    }
+
     public async Task<IActionResult> OnGetWorkNotesAsync(
         Guid id,
         string? kind,

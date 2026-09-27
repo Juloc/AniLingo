@@ -1,32 +1,22 @@
 @model Jularr.Web.Pages.Novels.ReadModel
 @* Chapter navigation is loaded on demand in bounded windows (see ReadModel.OnGetChaptersAsync);
-   the reader response never embeds the work's full chapter index. *@
+   the reader response never embeds the work's full chapter index. Rendered as the "Contents"
+   tab of the reader frame's contents panel. *@
 @{
     var ui = Model.Ui;
 }
-<div class="novel-drawer-backdrop"
-     data-chapter-drawer-backdrop
-     hidden></div>
-<aside class="novel-chapter-drawer"
-       id="novel-chapter-drawer"
-       data-chapter-drawer
-       tabindex="-1"
-       hidden
-       aria-label="@ui["manga.chapters.title"]">
-    <header class="novel-drawer-header">
-        <strong>@Model.Chapter.WorkTitle</strong>
-        <button class="novel-icon-button"
-                type="button"
-                data-chapter-drawer-close
-                aria-label="@ui["novels.read.drawer.closeAria"]">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
-        </button>
-    </header>
-
+<section class="reader-contents-panel novel-chapter-drawer"
+         id="novel-chapter-drawer"
+         role="tabpanel"
+         aria-labelledby="novel-tab-chapters"
+         data-reader-contents-panel="chapters"
+         data-chapter-drawer>
     <div class="novel-drawer-current">
         @if (Model.Chapter.PreviousChapterId is Guid drawerPrevious)
         {
-            <a href="/Novels/Read/@drawerPrevious" aria-label="@ui["novels.read.drawer.previousChapterAria"]">←</a>
+            <a class="reader-frame-icon" href="/Novels/Read/@drawerPrevious" aria-label="@ui["novels.read.drawer.previousChapterAria"]" title="@ui["novels.read.drawer.previousChapterAria"]">
+                <partial name="_ReaderIcon" model="@("back")" />
+            </a>
         }
         else
         {
@@ -37,7 +27,9 @@
 
         @if (Model.Chapter.NextChapterId is Guid drawerNext)
         {
-            <a href="/Novels/Read/@drawerNext" aria-label="@ui["novels.read.drawer.nextChapterAria"]">→</a>
+            <a class="reader-frame-icon" href="/Novels/Read/@drawerNext" aria-label="@ui["novels.read.drawer.nextChapterAria"]" title="@ui["novels.read.drawer.nextChapterAria"]">
+                <partial name="_ReaderIcon" model="@("forward")" />
+            </a>
         }
         else
         {
@@ -45,17 +37,12 @@
         }
     </div>
 
-    <label class="novel-chapter-search">
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-            <circle cx="11" cy="11" r="6" />
-            <path d="m16 16 4 4" />
-        </svg>
-        <input type="search"
-               data-chapter-filter
-               placeholder="@ui["manga.reader.chapterSearchPlaceholder"]"
-               aria-label="@ui["novels.read.drawer.searchAria"]"
-               autocomplete="off" />
-    </label>
+    <input class="reader-contents-search"
+           type="search"
+           data-chapter-filter
+           placeholder="@ui["manga.reader.chapterSearchPlaceholder"]"
+           aria-label="@ui["novels.read.drawer.searchAria"]"
+           autocomplete="off" />
 
     <div class="novel-drawer-list" data-chapter-list-scroll>
         <button type="button" class="novel-drawer-more" data-chapter-load-before hidden>@ui["novels.read.drawer.loadEarlier"]</button>
@@ -63,4 +50,4 @@
         <button type="button" class="novel-drawer-more" data-chapter-load-after hidden>@ui["novels.read.drawer.loadMore"]</button>
         <p class="novel-drawer-status" data-chapter-status role="status" aria-live="polite"></p>
     </div>
-</aside>
+</section>
