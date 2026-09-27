@@ -17,6 +17,8 @@
     var episodeCode = $"S{Model.SeasonNumber:00} E{Model.EpisodeNumber:00}";
     var nativeTitle = Model.Metadata?.NativeTitle;
     var seekStep = PlayerDesign.SeekStepSeconds;
+    var isAndroidClient = Request.Headers.UserAgent.ToString()
+        .Contains("JularrAndroid/", StringComparison.OrdinalIgnoreCase);
 }
 
 @section Head {
@@ -25,7 +27,19 @@
 
 <div class="watch-layout">
 <div class="watch-main">
-@if (Model.Playback.Media is { } media)
+@if (isAndroidClient && Model.Playback.Media is not null)
+{
+    <section class="preparation-panel">
+        <div class="preparation-copy">
+            <span class="eyebrow">@episodeCode</span>
+            <strong>@Model.EpisodeTitle</strong>
+            <span>@Model.AnimeTitle</span>
+        </div>
+        <a class="button button-primary"
+           href="/Library/Episode/@Model.EpisodeId?native=1">@ui["player.play"]</a>
+    </section>
+}
+else if (Model.Playback.Media is { } media)
 {
     <section class="player-panel"
              data-episode-player
@@ -46,7 +60,7 @@
              data-next-url="@(Model.NextEpisodeUrl ?? "")"
              data-autoplay-next="@((Model.Flow?.AutoplayNext == true).ToString().ToLowerInvariant())"
              data-playback-preferences-url="@ClientApiRoutes.PlaybackPreferences"
-             data-storage-wake-url="@(Model.IsOwner && media.Storage is { WakeConfigured: true } ownerStorage ? ClientApiRoutes.WakeRoot(ownerStorage.RootId) : "")"
+             data-storage-health="@(media.Storage is { } health ? StorageHealth.Name(health.Health) : "")"
              data-media-url="@Url.Page("/Library/Episode", "Media", new { id = Model.EpisodeId })">
         @* The whole player lives in the stage: one timeline, one control bar and every setting in
            the player menu, so it behaves the same inline and in full screen. *@
@@ -74,7 +88,7 @@
                 <strong data-playback-status>@ui["library.episode.startingPlayback"]</strong>
                 <div class="playback-preparation-actions" data-storage-actions hidden>
                     <button class="button" type="button" data-storage-retry>@ui["library.episode.tryAgain"]</button>
-                    <button class="button button-primary" type="button" data-storage-wake hidden>@ui["library.episode.wakeNas"]</button>
+                    <button class="button button-primary" type="button" data-storage-wake hidden>@ui["player.play"]</button>
                 </div>
             </div>
 

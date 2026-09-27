@@ -204,11 +204,11 @@ public sealed class SabnzbdOperationMonitorService(
             return false;
         }
 
-        var entry = (await downloadClients.LoadAllAsync(cancellationToken))
+        var entries = (await downloadClients.LoadAllAsync(cancellationToken))
             .Where(item => item.Type == DownloadClientType.Sabnzbd && item.Enabled)
             .OrderBy(item => item.Priority)
-            .FirstOrDefault();
-        if (entry is null)
+            .ToArray();
+        if (entries.Length == 0)
         {
             logger.LogWarning(
                 "{Count} SABnzbd downloads are active but no SABnzbd download client is configured.",
@@ -216,28 +216,56 @@ public sealed class SabnzbdOperationMonitorService(
             return true;
         }
 
-        var connection = SabnzbdDownloadClient.ToConnection(entry);
         var client = services.GetRequiredService<ISabnzbdClient>();
-        var queue = await client.GetQueueAsync(connection, cancellationToken);
-        var history = await client.GetHistoryAsync(
-            connection,
-            operations.Select(operation => operation.ExternalId!).ToArray(),
-            cancellationToken);
+        var entriesById = entries.ToDictionary(entry => entry.Id);
+        foreach (var group in operations.GroupBy(SelectedClientId))
+        {
+            DownloadClientEntry entry;
+            if (group.Key is { } selectedClientId)
+            {
+                if (!entriesById.TryGetValue(selectedClientId, out entry!))
+                {
+                    logger.LogWarning(
+                        "SABnzbd download operations reference the unavailable client {ClientId}; they remain active until that client is restored or an owner intervenes.",
+                        selectedClientId);
+                    continue;
+                }
+            }
+            else
+            {
+                // Pre-#389 operations did not persist a client ID. Preserve their historical
+                // behavior instead of guessing a new mapping for completed jobs.
+                entry = entries[0];
+            }
 
-        var result = await SabnzbdOperationProjector.ApplyAsync(
-            store,
-            operations,
-            queue,
-            history,
-            DateTime.UtcNow,
-            cancellationToken);
+            var groupOperations = group.ToArray();
+            var connection = SabnzbdDownloadClient.ToConnection(entry);
+            var queue = await client.GetQueueAsync(connection, cancellationToken);
+            var history = await client.GetHistoryAsync(
+                connection,
+                groupOperations.Select(operation => operation.ExternalId!).ToArray(),
+                cancellationToken);
 
-        await ImportCompletedBookDownloadsAsync(services, result.Completed, history, cancellationToken);
-        await ImportCompletedAnimeDownloadsAsync(services, result.Completed, history, cancellationToken);
-        await ContinueFailedAnimeAcquisitionsAsync(services, result.Failed, cancellationToken);
-        await ContinueFailedBookRequestsAsync(services, result.Failed, cancellationToken);
+            var result = await SabnzbdOperationProjector.ApplyAsync(
+                store,
+                groupOperations,
+                queue,
+                history,
+                DateTime.UtcNow,
+                cancellationToken);
+
+            await ImportCompletedBookDownloadsAsync(services, result.Completed, history, cancellationToken);
+            await ImportCompletedAnimeDownloadsAsync(services, result.Completed, history, cancellationToken);
+            await ContinueFailedAnimeAcquisitionsAsync(services, result.Failed, cancellationToken);
+            await ContinueFailedBookRequestsAsync(services, result.Failed, cancellationToken);
+        }
         return true;
     }
+
+    private static Guid? SelectedClientId(OperationSnapshot operation) =>
+        DownloadOperationDetails.TryParse(operation.Details, out var details)
+            ? details!.ClientEntryId
+            : null;
 
     private async Task ContinueFailedBookRequestsAsync(
         IServiceProvider services,

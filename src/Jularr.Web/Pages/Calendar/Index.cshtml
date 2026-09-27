@@ -14,15 +14,31 @@
     };
     var weekdays = Enumerable.Range(0, 7).Select(offset => (DayOfWeek)(((int)presenter.FirstDayOfWeek + offset) % 7)).ToArray();
     var imprecise = Model.Imprecise;
+    var typeCounts = Model.Result.Days
+        .SelectMany(day => day.Events)
+        .GroupBy(release => release.MediaType)
+        .ToDictionary(group => group.Key, group => group.Count());
+    var sidebarUpcoming = Model.Result.Days
+        .Where(day => day.Date >= presenter.Today)
+        .SelectMany(day => day.Events.Select(release => (Date: day.Date, Event: release)))
+        .Take(5)
+        .ToArray();
+    var activeTypeLabel = Model.MediaType is null ? ui["calendar.filter.all"] : presenter.FilterLabel(Model.MediaType.Value);
+    var activeStateLabel = presenter.StateFilterLabel(Model.State);
 }
 @section Head {
     <link rel="stylesheet" href="~/css/calendar.css" asp-append-version="true" />
 }
 
 <div class="calendar-page" data-calendar-zone="@Model.ZoneId">
-    <header class="calendar-header">
-        <h1>@ui["calendar.title"]</h1>
-        <nav class="calendar-views" aria-label="@ui["calendar.viewsAria"]">
+    <header class="calendar-hero">
+        <div class="calendar-hero-copy">
+            <h1>@ui["calendar.title"]</h1>
+        </div>
+    </header>
+
+    <section class="calendar-controls" aria-label="@ui["calendar.viewsAria"]">
+        <nav class="calendar-views">
             @foreach (var item in views)
             {
                 <a class="@(Model.View == item.View ? "active" : null)"
@@ -30,34 +46,42 @@
                    href="@Model.Link(view: item.View)">@item.Label</a>
             }
         </nav>
-    </header>
 
-    <div class="calendar-toolbar">
-        <div class="calendar-period">
-            <a class="calendar-step" href="@Model.Link(date: Model.Previous)" aria-label="@ui["calendar.previous"]">&lsaquo;</a>
-            <a class="calendar-step" href="@Model.Link(date: Model.Next)" aria-label="@ui["calendar.next"]">&rsaquo;</a>
-            <h2>@Model.Title</h2>
-            @if (!Model.ShowsToday)
-            {
-                <a class="chip" href="@Model.Link(today: true)">@ui["calendar.today"]</a>
-            }
-        </div>
-        <div class="calendar-filters">
-            <nav class="calendar-filter-row" aria-label="@ui["calendar.filter.typeAria"]">
-                <a class="chip@(Model.MediaType is null ? " selected" : "")" href="@Model.Link(allTypes: true)">@ui["calendar.filter.all"]</a>
-                @foreach (var type in Model.MediaTypes)
+        <div class="calendar-toolbar">
+            <div class="calendar-filter-group">
+                <details class="calendar-filter-menu">
+                    <summary>@activeTypeLabel</summary>
+                    <nav class="calendar-filter-popover" aria-label="@ui["calendar.filter.typeAria"]">
+                        <a class="@(Model.MediaType is null ? "selected" : null)" href="@Model.Link(allTypes: true)">@ui["calendar.filter.all"]</a>
+                        @foreach (var type in Model.MediaTypes)
+                        {
+                            <a class="@(Model.MediaType == type ? "selected" : null)" href="@Model.Link(type: type)">@presenter.FilterLabel(type)</a>
+                        }
+                    </nav>
+                </details>
+
+                <details class="calendar-filter-menu">
+                    <summary>@activeStateLabel</summary>
+                    <nav class="calendar-filter-popover" aria-label="@ui["calendar.filter.stateAria"]">
+                        @foreach (var state in Enum.GetValues<ReleaseStateFilter>())
+                        {
+                            <a class="@(Model.State == state ? "selected" : null)" href="@Model.Link(state: state)">@presenter.StateFilterLabel(state)</a>
+                        }
+                    </nav>
+                </details>
+            </div>
+
+            <div class="calendar-period">
+                @if (!Model.ShowsToday)
                 {
-                    <a class="chip@(Model.MediaType == type ? " selected" : "")" href="@Model.Link(type: type)">@presenter.FilterLabel(type)</a>
+                    <a class="calendar-today" href="@Model.Link(today: true)">@ui["calendar.today"]</a>
                 }
-            </nav>
-            <nav class="calendar-filter-row" aria-label="@ui["calendar.filter.stateAria"]">
-                @foreach (var state in Enum.GetValues<ReleaseStateFilter>())
-                {
-                    <a class="chip@(Model.State == state ? " selected" : "")" href="@Model.Link(state: state)">@presenter.StateFilterLabel(state)</a>
-                }
-            </nav>
+                <a class="calendar-step" href="@Model.Link(date: Model.Previous)" aria-label="@ui["calendar.previous"]">&lsaquo;</a>
+                <a class="calendar-step" href="@Model.Link(date: Model.Next)" aria-label="@ui["calendar.next"]">&rsaquo;</a>
+                <h2>@Model.Title</h2>
+            </div>
         </div>
-    </div>
+    </section>
 
     @if (Model.Result.FailedSources.Count > 0)
     {
@@ -67,78 +91,180 @@
     @switch (Model.View)
     {
         case CalendarView.Month:
-            <div class="calendar-month">
-                <div class="calendar-weekdays" aria-hidden="true">
-                    @foreach (var weekday in weekdays)
-                    {
-                        <span>@presenter.WeekdayShort(weekday)</span>
-                    }
-                </div>
-                <ol class="calendar-month-grid">
-                    @foreach (var day in Model.Result.Days)
-                    {
-                        var outside = day.Date < Model.PeriodStart || day.Date > Model.PeriodEnd;
-                        var classes = "calendar-cell"
-                            + (outside ? " is-outside" : "")
-                            + (day.Date == presenter.Today ? " is-today" : "")
-                            + (day.Events.Count == 0 ? " is-empty" : "");
-                        <li class="@classes">
-                            <a class="calendar-cell-date" href="@Model.Link(view: CalendarView.Week, date: day.Date)" aria-label="@presenter.DayHeading(day.Date)">
-                                <span class="calendar-cell-weekday">@presenter.WeekdayShort(day.Date.DayOfWeek)</span>
+            <div class="calendar-month-layout">
+                <section class="calendar-main-card">
+                    <div class="calendar-weekdays" aria-hidden="true">
+                        @foreach (var weekday in weekdays)
+                        {
+                            <span>@presenter.WeekdayShort(weekday)</span>
+                        }
+                    </div>
+                    <ol class="calendar-month-grid">
+                        @foreach (var day in Model.Result.Days)
+                        {
+                            var outside = day.Date < Model.PeriodStart || day.Date > Model.PeriodEnd;
+                            var classes = "calendar-cell"
+                                + (outside ? " is-outside" : "")
+                                + (day.Date == presenter.Today ? " is-today" : "")
+                                + (day.Events.Count == 0 ? " is-empty" : "");
+                            <li class="@classes">
+                                <a class="calendar-cell-date" href="@Model.Link(view: CalendarView.Week, date: day.Date)" aria-label="@presenter.DayHeading(day.Date)">
+                                    <span class="calendar-cell-weekday">@presenter.WeekdayShort(day.Date.DayOfWeek)</span>
+                                    <span>@day.Date.Day</span>
+                                </a>
+                                @if (day.Events.Count > 0)
+                                {
+                                    <ul class="calendar-cell-events">
+                                        @foreach (var release in day.Events.Take(monthCellLimit))
+                                        {
+                                            var href = ReleaseCalendarPresenter.Href(release);
+                                            var unit = presenter.UnitLabel(release);
+                                            var time = presenter.TimeLabel(release.Date);
+                                            var typeClass = "calendar-type-" + ReleaseCalendarPresenter.FilterValue(release.MediaType).ToLowerInvariant();
+                                            <li class="calendar-month-event @typeClass">
+                                                <a href="@(href ?? Model.Link(view: CalendarView.Week, date: day.Date))" title="@release.Title · @unit">
+                                                    <span class="calendar-month-event-cover" aria-hidden="true">
+                                                        @if (!string.IsNullOrWhiteSpace(release.CoverImageUrl))
+                                                        {
+                                                            <img src="@release.CoverImageUrl" alt="" loading="lazy" referrerpolicy="no-referrer" />
+                                                        }
+                                                    </span>
+                                                    <span class="calendar-month-event-copy">
+                                                        <strong>@release.Title</strong>
+                                                        @if (!string.IsNullOrEmpty(unit))
+                                                        {
+                                                            <span>@unit</span>
+                                                        }
+                                                        @if (time is not null)
+                                                        {
+                                                            <small>@time</small>
+                                                        }
+                                                    </span>
+                                                </a>
+                                            </li>
+                                        }
+                                    </ul>
+                                    @if (day.Events.Count > monthCellLimit)
+                                    {
+                                        <a class="calendar-more" href="@Model.Link(view: CalendarView.Week, date: day.Date)">@ui.Format("calendar.more", ("count", day.Events.Count - monthCellLimit))</a>
+                                    }
+                                }
+                            </li>
+                        }
+                    </ol>
+                </section>
+
+                <aside class="calendar-sidebar-card" aria-label="@Model.Title">
+                    <div class="calendar-mini-header">
+                        <strong>@Model.Title</strong>
+                        <span>
+                            <a href="@Model.Link(date: Model.Previous)" aria-label="@ui["calendar.previous"]">&lsaquo;</a>
+                            <a href="@Model.Link(date: Model.Next)" aria-label="@ui["calendar.next"]">&rsaquo;</a>
+                        </span>
+                    </div>
+
+                    <div class="calendar-mini-weekdays" aria-hidden="true">
+                        @foreach (var weekday in weekdays)
+                        {
+                            <span>@presenter.WeekdayShort(weekday)</span>
+                        }
+                    </div>
+                    <div class="calendar-mini-grid">
+                        @foreach (var day in Model.Result.Days)
+                        {
+                            var outside = day.Date < Model.PeriodStart || day.Date > Model.PeriodEnd;
+                            var miniClass = "calendar-mini-day"
+                                + (outside ? " is-outside" : "")
+                                + (day.Date == presenter.Today ? " is-today" : "")
+                                + (day.Events.Count > 0 ? " has-events" : "");
+                            <a class="@miniClass" href="@Model.Link(view: CalendarView.Week, date: day.Date)" aria-label="@presenter.DayHeading(day.Date)">
                                 <span>@day.Date.Day</span>
                             </a>
-                            @if (day.Events.Count > 0)
+                        }
+                    </div>
+
+                    <div class="calendar-sidebar-section">
+                        <h3>@ui["calendar.filter.typeAria"]</h3>
+                        <div class="calendar-legend">
+                            @foreach (var type in Model.MediaTypes)
                             {
-                                <ul class="calendar-cell-events">
-                                    @foreach (var release in day.Events.Take(monthCellLimit))
-                                    {
-                                        var href = ReleaseCalendarPresenter.Href(release);
-                                        var unit = presenter.UnitLabel(release);
-                                        var time = presenter.TimeLabel(release.Date);
-                                        <li class="calendar-pill calendar-type-@ReleaseCalendarPresenter.FilterValue(release.MediaType).ToLowerInvariant()">
-                                            <a href="@(href ?? Model.Link(view: CalendarView.Week, date: day.Date))" title="@release.Title · @unit">
-                                                @if (time is not null)
+                                var filterValue = ReleaseCalendarPresenter.FilterValue(type).ToLowerInvariant();
+                                var count = typeCounts.TryGetValue(type, out var visibleCount) ? visibleCount : 0;
+                                <a class="calendar-legend-row calendar-type-@filterValue@(Model.MediaType == type ? " selected" : "")"
+                                   href="@Model.Link(type: type)">
+                                    <span class="calendar-legend-swatch" aria-hidden="true"></span>
+                                    <span>@presenter.FilterLabel(type)</span>
+                                    <strong>@count</strong>
+                                </a>
+                            }
+                        </div>
+                    </div>
+
+                    <div class="calendar-sidebar-section">
+                        <div class="calendar-sidebar-heading">
+                            <h3>@ui["calendar.upcoming.heading"]</h3>
+                            <a href="@Model.Link(view: CalendarView.Agenda)">@ui["calendar.upcoming.open"]</a>
+                        </div>
+                        @if (sidebarUpcoming.Length == 0)
+                        {
+                            <p class="calendar-sidebar-empty">@ui["calendar.empty"]</p>
+                        }
+                        else
+                        {
+                            <ul class="calendar-sidebar-upcoming">
+                                @foreach (var item in sidebarUpcoming)
+                                {
+                                    var release = item.Event;
+                                    var href = ReleaseCalendarPresenter.Href(release);
+                                    var unit = presenter.UnitLabel(release);
+                                    var time = presenter.TimeLabel(release.Date);
+                                    var typeClass = "calendar-type-" + ReleaseCalendarPresenter.FilterValue(release.MediaType).ToLowerInvariant();
+                                    <li class="@typeClass">
+                                        <a href="@(href ?? Model.Link(view: CalendarView.Week, date: item.Date))">
+                                            <span class="calendar-sidebar-cover" aria-hidden="true">
+                                                @if (!string.IsNullOrWhiteSpace(release.CoverImageUrl))
                                                 {
-                                                    <span class="calendar-pill-time">@time</span>
+                                                    <img src="@release.CoverImageUrl" alt="" loading="lazy" referrerpolicy="no-referrer" />
                                                 }
-                                                <span class="calendar-pill-title">@release.Title</span>
+                                            </span>
+                                            <span class="calendar-sidebar-copy">
+                                                <strong>@release.Title</strong>
                                                 @if (!string.IsNullOrEmpty(unit))
                                                 {
-                                                    <span class="calendar-pill-unit">@unit</span>
+                                                    <span>@unit</span>
                                                 }
-                                            </a>
-                                        </li>
-                                    }
-                                </ul>
-                                @if (day.Events.Count > monthCellLimit)
-                                {
-                                    <a class="calendar-more" href="@Model.Link(view: CalendarView.Week, date: day.Date)">@ui.Format("calendar.more", ("count", day.Events.Count - monthCellLimit))</a>
+                                                <small>@presenter.DayHeading(item.Date)@(time is null ? "" : " · " + time)</small>
+                                            </span>
+                                        </a>
+                                    </li>
                                 }
-                            }
-                        </li>
-                    }
-                </ol>
+                            </ul>
+                        }
+                    </div>
+                </aside>
             </div>
             break;
 
         case CalendarView.Week:
-            <ol class="calendar-week">
-                @foreach (var day in Model.Result.Days)
-                {
-                    <li class="calendar-week-day@(day.Date == presenter.Today ? " is-today" : "")@(day.Events.Count == 0 ? " is-empty" : "")">
-                        <h3>@presenter.DayHeading(day.Date)</h3>
-                        @if (day.Events.Count > 0)
-                        {
-                            <ul class="calendar-events">
-                                @foreach (var release in day.Events)
-                                {
-                                    <partial name="_ReleaseEventRow" model="new ReleaseEventRowModel(release, presenter, ShowDate: false)" />
-                                }
-                            </ul>
-                        }
-                    </li>
-                }
-            </ol>
+            <section class="calendar-list-card">
+                <ol class="calendar-week">
+                    @foreach (var day in Model.Result.Days)
+                    {
+                        <li class="calendar-week-day@(day.Date == presenter.Today ? " is-today" : "")@(day.Events.Count == 0 ? " is-empty" : "")">
+                            <h3>@presenter.DayHeading(day.Date)</h3>
+                            @if (day.Events.Count > 0)
+                            {
+                                <ul class="calendar-events">
+                                    @foreach (var release in day.Events)
+                                    {
+                                        <partial name="_ReleaseEventRow" model="new ReleaseEventRowModel(release, presenter, ShowDate: false)" />
+                                    }
+                                </ul>
+                            }
+                        </li>
+                    }
+                </ol>
+            </section>
             break;
 
         default:
@@ -147,20 +273,22 @@
             {
                 <p class="calendar-empty">@ui["calendar.empty"]</p>
             }
-            <div class="calendar-agenda">
-                @foreach (var day in agendaDays)
-                {
-                    <section class="calendar-day@(day.Date == presenter.Today ? " is-today" : "")">
-                        <h3>@presenter.DayHeading(day.Date)</h3>
-                        <ul class="calendar-events">
-                            @foreach (var release in day.Events)
-                            {
-                                <partial name="_ReleaseEventRow" model="new ReleaseEventRowModel(release, presenter, ShowDate: false)" />
-                            }
-                        </ul>
-                    </section>
-                }
-            </div>
+            <section class="calendar-list-card">
+                <div class="calendar-agenda">
+                    @foreach (var day in agendaDays)
+                    {
+                        <section class="calendar-day@(day.Date == presenter.Today ? " is-today" : "")">
+                            <h3>@presenter.DayHeading(day.Date)</h3>
+                            <ul class="calendar-events">
+                                @foreach (var release in day.Events)
+                                {
+                                    <partial name="_ReleaseEventRow" model="new ReleaseEventRowModel(release, presenter, ShowDate: false)" />
+                                }
+                            </ul>
+                        </section>
+                    }
+                </div>
+            </section>
             break;
     }
 
@@ -171,7 +299,7 @@
 
     @if (imprecise.Count > 0)
     {
-        <section class="calendar-imprecise">
+        <section class="calendar-imprecise calendar-list-card">
             <h2>@ui["calendar.imprecise.heading"]</h2>
             <ul class="calendar-events">
                 @foreach (var release in imprecise)

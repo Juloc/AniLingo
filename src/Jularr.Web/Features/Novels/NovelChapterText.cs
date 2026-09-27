@@ -7,11 +7,23 @@ public static class NovelReadingLanguage
 {
     public const string Japanese = "ja";
     public const string German = "de";
+    public const string GermanTranslateGemma = "de-gemma";
 
-    public static string Normalize(string? language) =>
-        string.Equals(language?.Trim(), German, StringComparison.OrdinalIgnoreCase)
+    public static string Normalize(string? language)
+    {
+        var normalized = language?.Trim();
+        if (string.Equals(
+                normalized,
+                GermanTranslateGemma,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return GermanTranslateGemma;
+        }
+
+        return string.Equals(normalized, German, StringComparison.OrdinalIgnoreCase)
             ? German
             : Japanese;
+    }
 }
 
 /// <summary>
@@ -32,7 +44,11 @@ internal static class NovelChapterText
         string language,
         CancellationToken cancellationToken)
     {
-        var german = language == NovelReadingLanguage.German;
+        var normalizedLanguage = NovelReadingLanguage.Normalize(language);
+        var aiGerman = normalizedLanguage == NovelReadingLanguage.German;
+        var translateGemmaGerman =
+            normalizedLanguage == NovelReadingLanguage.GermanTranslateGemma;
+
         var row = await db.NovelChapters
             .AsNoTracking()
             .Where(chapter => chapter.Id == chapterId)
@@ -40,17 +56,32 @@ internal static class NovelChapterText
             {
                 chapter.Id,
                 chapter.WorkId,
-                Text = german
+                Text = aiGerman
                     ? db.NovelTranslations
                         .Where(translation =>
                             translation.ChapterId == chapter.Id &&
                             translation.TargetLanguage == NovelReadingLanguage.German &&
                             translation.PromptVersion == NovelTranslationService.PromptVersion &&
-                            translation.SourceHash == chapter.SourceHash)
+                            translation.SourceHash == chapter.SourceHash &&
+                            !translation.ProviderId.StartsWith(
+                                NovelTranslationProviders.TranslateGemmaPrefix))
                         .OrderByDescending(translation => translation.CreatedAt)
                         .Select(translation => translation.Text)
                         .FirstOrDefault()
-                    : chapter.OriginalText
+                    : translateGemmaGerman
+                        ? db.NovelTranslations
+                            .Where(translation =>
+                                translation.ChapterId == chapter.Id &&
+                                translation.TargetLanguage == NovelReadingLanguage.German &&
+                                translation.PromptVersion ==
+                                    NovelTranslationService.TranslateGemmaPromptVersion &&
+                                translation.SourceHash == chapter.SourceHash &&
+                                translation.ProviderId.StartsWith(
+                                    NovelTranslationProviders.TranslateGemmaPrefix))
+                            .OrderByDescending(translation => translation.CreatedAt)
+                            .Select(translation => translation.Text)
+                            .FirstOrDefault()
+                        : chapter.OriginalText
             })
             .SingleOrDefaultAsync(cancellationToken);
 

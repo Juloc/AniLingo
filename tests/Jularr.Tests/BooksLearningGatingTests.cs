@@ -40,7 +40,7 @@ public sealed class BooksLearningGatingTests
         await using var fixture = await Fixture.CreateAsync();
 
         var reader = fixture.CreateReadModel(Profile);
-        await reader.OnGetAsync(fixture.ChapterId, "de", null, null, CancellationToken.None);
+        await reader.OnGetAsync(fixture.ChapterId, "de", null, null, null, CancellationToken.None);
         Assert.IsFalse(reader.TranslationEnabled, "Off must not offer *generating* a chapter translation.");
 
         var postResult = await fixture.CreateReadModel(Profile).OnPostTranslateAsync(
@@ -69,7 +69,7 @@ public sealed class BooksLearningGatingTests
         await fixture.SeedCachedTranslationAsync("de", "Hallo Welt.");
 
         var reader = fixture.CreateReadModel(Profile);
-        await reader.OnGetAsync(fixture.ChapterId, "de", null, null, CancellationToken.None);
+        await reader.OnGetAsync(fixture.ChapterId, "de", null, null, null, CancellationToken.None);
 
         Assert.IsFalse(reader.TranslationEnabled);
         Assert.IsNotNull(reader.Reader.Translation, "The cached translation must still be loaded.");
@@ -90,12 +90,12 @@ public sealed class BooksLearningGatingTests
 
         await fixture.SetModeAsync(Profile, LearningMode.LanguageTools);
         var languageTools = fixture.CreateReadModel(Profile);
-        await languageTools.OnGetAsync(fixture.ChapterId, "de", null, null, CancellationToken.None);
+        await languageTools.OnGetAsync(fixture.ChapterId, "de", null, null, null, CancellationToken.None);
         Assert.IsTrue(languageTools.TranslationEnabled, "Language Tools offers translation by default.");
 
         await fixture.SetModeAsync(Profile, LearningMode.Study);
         var study = fixture.CreateReadModel(Profile);
-        await study.OnGetAsync(fixture.ChapterId, "de", null, null, CancellationToken.None);
+        await study.OnGetAsync(fixture.ChapterId, "de", null, null, null, CancellationToken.None);
         Assert.IsTrue(study.TranslationEnabled, "Study offers translation by default.");
     }
 
@@ -106,14 +106,14 @@ public sealed class BooksLearningGatingTests
         await fixture.SetModeAsync(Profile, LearningMode.Custom);
 
         var withoutOverride = fixture.CreateReadModel(Profile);
-        await withoutOverride.OnGetAsync(fixture.ChapterId, "de", null, null, CancellationToken.None);
+        await withoutOverride.OnGetAsync(fixture.ChapterId, "de", null, null, null, CancellationToken.None);
         Assert.IsFalse(
             withoutOverride.TranslationEnabled,
             "Custom starts with every capability off until the profile opts in.");
 
         await fixture.SetCapabilityAsync(Profile, LearningCapability.Translation, true);
         var withOverride = fixture.CreateReadModel(Profile);
-        await withOverride.OnGetAsync(fixture.ChapterId, "de", null, null, CancellationToken.None);
+        await withOverride.OnGetAsync(fixture.ChapterId, "de", null, null, null, CancellationToken.None);
         Assert.IsTrue(withOverride.TranslationEnabled);
     }
 
@@ -131,11 +131,11 @@ public sealed class BooksLearningGatingTests
             CancellationToken.None);
 
         var overridden = fixture.CreateReadModel(Profile);
-        await overridden.OnGetAsync(fixture.ChapterId, "de", null, null, CancellationToken.None);
+        await overridden.OnGetAsync(fixture.ChapterId, "de", null, null, null, CancellationToken.None);
         Assert.IsTrue(overridden.TranslationEnabled, "The overridden work must resolve Study.");
 
         var unrelated = otherFixture.CreateReadModel(Profile);
-        await unrelated.OnGetAsync(otherFixture.ChapterId, "de", null, null, CancellationToken.None);
+        await unrelated.OnGetAsync(otherFixture.ChapterId, "de", null, null, null, CancellationToken.None);
         Assert.IsFalse(
             unrelated.TranslationEnabled,
             "A different book on the same (globally Off) profile must not inherit the override.");

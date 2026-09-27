@@ -98,9 +98,9 @@ Duplicate requests for a root are coalesced while a scan is queued or running. A
 
 Jularr treats temporary media-storage outages separately from deleted files. A sleeping or unavailable NAS does not remove the persisted Library, and an unexpectedly empty previously-populated root is rejected as unsafe reconciliation rather than interpreted as a mass deletion.
 
-Under **Admin → System**, the owner can test each configured root without running a library scan. Wake-on-LAN can optionally be configured per root with a MAC address and, when needed from Docker networking, the LAN broadcast IPv4 address such as `192.168.178.255`. Wake actions are owner-only and rate-limited. Pressing Play as a normal user never sends a magic packet automatically.
+Under **Admin → System**, each root shows one state — Online (with free space), Starting storage…, Sleeping (Wake-on-LAN configured), Unavailable (no Wake-on-LAN) or Error — plus a compact **Needs attention** line for duplicate, empty or unreadable media. The owner can test a root without running a library scan. Wake-on-LAN can optionally be configured per root with a MAC address and, when needed from Docker networking, the LAN broadcast IPv4 address such as `192.168.178.255`. A root with Wake-on-LAN that cannot be reached is treated as sleeping on purpose; without Wake-on-LAN it is reported as a problem.
 
-Playback checks the owning storage before codec selection. If storage is temporarily unavailable, the player preserves playback intent/position and retries with bounded backoff for up to about one minute. It resumes automatically when storage returns; after the automatic window it offers **Try again**. An owner also gets an explicit **Wake NAS** action in the player when Wake-on-LAN is configured. A root that is online while one concrete file is absent is reported as a real missing-file condition instead of being retried as a NAS outage.
+Playback checks the owning storage before codec selection. Pressing Play on sleeping storage sends Wake-on-LAN, shows **Starting storage…** and continues playback automatically once the NAS is readable; concurrent requests share one start attempt, and a start that times out (two minutes) is shown as an error with **Try again**. Completed downloads wait for their library storage the same way before anything is moved. Browsing, cached artwork, metadata pages, background health checks and scans never wake a sleeping NAS; a startup reconciliation skipped because storage was offline runs once the storage is back. Scans remove missing media only while the root is readable, relink files that were moved or renamed outside Jularr when size, time and content fingerprint identify them, and log uncertain cases as needing attention. A root that is online while one concrete file is absent is reported as a real missing-file condition instead of being retried as a NAS outage.
 
 ### Playback continuity
 
@@ -127,6 +127,7 @@ Runtime paths are fixed and intentionally simple:
 
 - `/data` stores the SQLite database, protected integration settings, Codex authentication state, the persistent Whisper model and generated transcription cache.
 - `/media/anime` is the optional conventional read-only anime library mount; Jularr also starts without it.
+- Anime artwork lives beside the media: `poster.*`, `fanart.*` and `banner.*` in the series folder, season posters in the season's own folder (or `season01-poster.*` / `season-specials-poster.*` in the series folder). `/data/cache/artwork` only holds rebuildable WebP derivatives. On a writable library Jularr persists Sonarr and AniList artwork there once the anime is in the library and moves artwork from the former `/data/artwork/anime` store beside the media; it never replaces artwork files it did not write.
 
 For an existing Docker stack, replace `default` with that stack's network if needed. No connection string, database password, media environment variable or second service is required.
 
@@ -176,11 +177,15 @@ Novel metadata is separate from anime metadata. Jularr searches AniList's novel 
 
 The image includes the Codex CLI, but Jularr does not require AI to scan media or learn vocabulary.
 
-Open **Settings → AI** and choose **Connect with ChatGPT**. Jularr starts the Codex device-code flow inside the container and shows the OpenAI login link and one-time code. The resulting Codex credentials are kept under `/data/codex`, so they survive normal container recreation as part of the existing data volume.
+Open **Admin → AI** and choose **Connect with ChatGPT**. Jularr starts the Codex device-code flow inside the container and shows the OpenAI login link and one-time code. The resulting Codex credentials are kept under `/data/codex`, so they survive normal container recreation as part of the existing data volume.
 
 Device-code authorization may need to be enabled in the ChatGPT security settings or workspace permissions. Jularr never reads or displays the stored credential file itself; status and logout are delegated to the Codex CLI.
 
-The initial integration deliberately exposes no generic prompt or agent execution endpoint. AI capabilities will be added only for narrow learning tasks where they are useful. The provider boundary allows later API-key or other-engine providers without coupling them to the learning pages.
+Jobs run through the public Codex **app-server** protocol (JSON-RPC over stdio) when the installed Codex supports it, and fall back to `codex exec --json` otherwise. Both paths use ephemeral, read-only threads with shell, web search, plugins and tool suggestions disabled and approvals off, so translation, analysis and story-memory jobs never gain tool access. Supported surfaces are detected, not assumed: **Admin → AI** shows the detected capabilities, the discovered model catalog (cached, marked stale when a refresh fails, refreshed on demand), the provider's quota buckets exactly as reported (unavailable when not reported; buckets are only tied to a model when the protocol says so), live activity of every profile and usage per profile, task and model.
+
+Each profile chooses its provider under **Settings → AI**: the shared server Codex connection or a personal OpenAI-compatible API (models are discovered via `GET {base}/models` when the provider supports it; manual entry always works). The page only offers options the selected model lists (reasoning effort, speed tier) plus per-task overrides that inherit the defaults and store only differences. Usage is kept as daily aggregates in SQLite (counters only, never prompts or responses); exact provider token counts are used when reported and estimates are marked with `~`. Active requests are shown live over server-sent events and can be cancelled. Page loads never contact Codex or a provider; discovery and quota reads are explicit refresh actions.
+
+The integration deliberately exposes no generic prompt or agent execution endpoint.
 
 ## Playback
 

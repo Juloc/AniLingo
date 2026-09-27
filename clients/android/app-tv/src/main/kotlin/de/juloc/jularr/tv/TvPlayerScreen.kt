@@ -13,9 +13,19 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material.Icon
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Forward10
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Replay
+import androidx.compose.material.icons.filled.Replay10
+import androidx.compose.material.icons.filled.Subtitles
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
@@ -25,6 +35,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -32,6 +43,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
@@ -71,6 +83,8 @@ fun TvPlayerScreen(
     onOpenOnPhone: (cueId: Long?, termId: String?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
+    val design = remember { TvPlayerDesignLoader.load(context) }
     var uiState by remember { mutableStateOf(TvPlayerUiState()) }
     var isPlaying by remember { mutableStateOf(player.player.isPlaying) }
     var positionMs by remember { mutableStateOf(player.player.currentPosition.coerceAtLeast(0)) }
@@ -296,9 +310,11 @@ fun TvPlayerScreen(
                         text = cue.text,
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
-                            .padding(bottom = if (uiState.controlsVisible) 132.dp else 48.dp)
-                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.82f))
+                            .padding(bottom = if (uiState.controlsVisible) 148.dp else 48.dp)
+                            .background(design.subtitleBackground)
                             .padding(horizontal = 20.dp, vertical = 10.dp),
+                        color = design.subtitleText,
+                        fontSize = design.subtitlePreferredSp.sp,
                         style = MaterialTheme.typography.headlineSmall,
                     )
                 }
@@ -317,6 +333,7 @@ fun TvPlayerScreen(
                     subtitleTracks = subtitleTracks,
                     selectedAudioTrackId = selectedAudioTrackId,
                     selectedSubtitleTrackId = selectedSubtitleTrackId,
+                    design = design,
                     onSelectAudioTrack = onSelectAudioTrack,
                     onSelectSubtitleTrack = onSelectSubtitleTrack,
                     onBackTen = {
@@ -334,6 +351,12 @@ fun TvPlayerScreen(
                             if (duration > 0) target.coerceAtMost(duration) else target,
                         )
                     },
+                    onRepeatLine = {
+                        currentCue?.let { cue ->
+                            player.player.seekTo(cue.startMs.toLong())
+                            player.player.play()
+                        }
+                    },
                     onLearn = {
                         apply(
                             TvPlayerInteraction.learnCurrentLine(
@@ -343,7 +366,7 @@ fun TvPlayerScreen(
                             ),
                         )
                     },
-                    modifier = Modifier.align(Alignment.BottomCenter),
+                    modifier = Modifier.fillMaxSize(),
                 )
             }
 
@@ -434,100 +457,156 @@ private fun PlayerControls(
     subtitleTracks: List<MediaTrack>,
     selectedAudioTrackId: String?,
     selectedSubtitleTrackId: String?,
+    design: TvPlayerDesign,
     onSelectAudioTrack: (String) -> Unit,
     onSelectSubtitleTrack: (String?) -> Unit,
     onBackTen: () -> Unit,
     onPlayPause: () -> Unit,
     onForwardTen: () -> Unit,
+    onRepeatLine: () -> Unit,
     onLearn: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(
+    val progress = if (durationMs > 0) {
+        (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
+    } else {
+        0f
+    }
+
+    Box(
         modifier = modifier
-            .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.90f))
-            .padding(horizontal = 40.dp, vertical = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+            .background(design.overlay)
+            .padding(horizontal = 48.dp, vertical = 32.dp),
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(text = episodeTitle, style = MaterialTheme.typography.titleLarge)
+            Text(
+                text = episodeTitle,
+                color = design.subtitleText,
+                style = MaterialTheme.typography.titleLarge,
+                maxLines = 1,
+                modifier = Modifier.weight(1f),
+            )
             Text(
                 text = "${formatTime(positionMs)} / ${formatTime(durationMs)}",
+                color = design.muted,
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
 
-        val progress = if (durationMs > 0) {
-            (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
-        } else {
-            0f
-        }
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(5.dp)
-                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.25f)),
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(progress)
-                    .height(5.dp)
-                    .background(MaterialTheme.colorScheme.primary),
-            )
-        }
-
         Row(
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.align(Alignment.Center),
+            horizontalArrangement = Arrangement.spacedBy(20.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Button(onClick = onBackTen) { Text("−10 s") }
-            Button(onClick = onPlayPause) { Text(if (isPlaying) "Pause" else "Play") }
-            Button(onClick = onForwardTen) { Text("+10 s") }
-            if (canLearn) {
-                Button(onClick = onLearn) { Text("Learn this line") }
+            Button(onClick = onBackTen) {
+                Icon(
+                    imageVector = Icons.Filled.Replay10,
+                    contentDescription = "Back 10 seconds",
+                    modifier = Modifier.size(30.dp),
+                )
+            }
+            Button(onClick = onPlayPause) {
+                Icon(
+                    imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                    contentDescription = if (isPlaying) "Pause" else "Play",
+                    modifier = Modifier.size(38.dp),
+                )
+            }
+            Button(onClick = onForwardTen) {
+                Icon(
+                    imageVector = Icons.Filled.Forward10,
+                    contentDescription = "Forward 10 seconds",
+                    modifier = Modifier.size(30.dp),
+                )
             }
         }
 
-        if (audioTracks.isNotEmpty() || subtitleTracks.isNotEmpty()) {
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(6.dp)
+                    .background(design.muted.copy(alpha = 0.34f)),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(progress)
+                        .height(6.dp)
+                        .background(design.accent),
+                )
+            }
+
             Row(
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                if (canLearn) {
+                    Button(onClick = onRepeatLine) {
+                        Icon(
+                            imageVector = Icons.Filled.Replay,
+                            contentDescription = "Repeat line",
+                            modifier = Modifier.size(24.dp),
+                        )
+                        Text("  Repeat line")
+                    }
+                    Button(onClick = onLearn) {
+                        Text("Learn this line")
+                    }
+                }
+
+                Spacer(Modifier.weight(1f))
+
                 if (audioTracks.isNotEmpty()) {
                     Button(
                         onClick = {
                             nextTrackId(audioTracks, selectedAudioTrackId)
                                 ?.let(onSelectAudioTrack)
                         },
-                        modifier = Modifier.widthIn(max = 300.dp),
+                        modifier = Modifier.widthIn(max = 320.dp),
                     ) {
+                        Icon(
+                            imageVector = Icons.Filled.VolumeUp,
+                            contentDescription = "Audio",
+                            modifier = Modifier.size(22.dp),
+                        )
                         Text(
-                            "Audio: ${trackLabel(audioTracks, selectedAudioTrackId, "Default")}",
+                            "  ${trackLabel(audioTracks, selectedAudioTrackId, "Default")}",
                             maxLines = 1,
                         )
                     }
                 }
-                if (subtitleTracks.isNotEmpty()) {
-                    Button(
-                        onClick = {
-                            onSelectSubtitleTrack(
-                                nextSubtitleTrackId(
-                                    subtitleTracks,
-                                    selectedSubtitleTrackId,
-                                ),
-                            )
-                        },
-                        modifier = Modifier.widthIn(max = 340.dp),
-                    ) {
-                        Text(
-                            "Subtitles: ${trackLabel(subtitleTracks, selectedSubtitleTrackId, "Off")}",
-                            maxLines = 1,
+
+                Button(
+                    onClick = {
+                        onSelectSubtitleTrack(
+                            nextSubtitleTrackId(
+                                subtitleTracks,
+                                selectedSubtitleTrackId,
+                            ),
                         )
-                    }
+                    },
+                    modifier = Modifier.widthIn(max = 360.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Subtitles,
+                        contentDescription = "Subtitles",
+                        modifier = Modifier.size(22.dp),
+                    )
+                    Text(
+                        "  ${trackLabel(subtitleTracks, selectedSubtitleTrackId, "Off")}",
+                        maxLines = 1,
+                    )
                 }
             }
         }

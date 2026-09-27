@@ -1,4 +1,5 @@
 using Jularr.Web.Data;
+using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Acquisition.DownloadClients;
 using Jularr.Web.Features.Operations;
 
@@ -75,7 +76,7 @@ public sealed class SabnzbdDownloadService(
                 submission.ProfileId,
                 nzbUrl,
                 submission.JobName,
-                IsBooks: submission.Purpose == SabnzbdPurpose.Books),
+                MediaKind: ToMediaKind(submission.Purpose)),
             cancellationToken);
 
         return ToSubmissionOutcome(outcome);
@@ -104,7 +105,7 @@ public sealed class SabnzbdDownloadService(
                 submission.ProfileId,
                 Url: null,
                 submission.JobName ?? fileName,
-                IsBooks: submission.Purpose == SabnzbdPurpose.Books,
+                MediaKind: ToMediaKind(submission.Purpose),
                 File: nzb,
                 FileName: fileName),
             cancellationToken);
@@ -128,7 +129,7 @@ public sealed class SabnzbdDownloadService(
             return new SabnzbdActionOutcome(false, "This download is no longer active.");
         }
 
-        var entry = await RequireSabnzbdEntryAsync(cancellationToken);
+        var entry = await RequireSabnzbdEntryAsync(operation, cancellationToken);
         var nzoId = operation.ExternalId!;
 
         bool cancelled;
@@ -180,7 +181,7 @@ public sealed class SabnzbdDownloadService(
                 "A newer release already replaced this download for the same episodes.");
         }
 
-        var entry = await RequireSabnzbdEntryAsync(cancellationToken);
+        var entry = await RequireSabnzbdEntryAsync(operation, cancellationToken);
         var connection = SabnzbdDownloadClient.ToConnection(entry);
 
         SabnzbdActionResult result;
@@ -226,10 +227,28 @@ public sealed class SabnzbdDownloadService(
         return new SabnzbdActionOutcome(true, "Retry queued in SABnzbd.");
     }
 
-    private async Task<DownloadClientEntry> RequireSabnzbdEntryAsync(CancellationToken cancellationToken)
+    private async Task<DownloadClientEntry> RequireSabnzbdEntryAsync(
+        OperationSnapshot operation,
+        CancellationToken cancellationToken)
     {
-        var entry = (await clientStore.LoadAllAsync(cancellationToken))
-            .Where(item => item.Type == DownloadClientType.Sabnzbd && item.Enabled)
+        var entries = (await clientStore.LoadAllAsync(cancellationToken))
+            .Where(item => item.Type == DownloadClientType.Sabnzbd)
+            .ToArray();
+
+        if (DownloadOperationDetails.TryParse(operation.Details, out var details))
+        {
+            var selected = entries.SingleOrDefault(item => item.Id == details!.ClientEntryId);
+            if (selected is null || !selected.Enabled)
+            {
+                throw new InvalidOperationException(
+                    "The SABnzbd connection selected for this download is no longer enabled. Re-enable it before cancelling or retrying this job.");
+            }
+
+            return selected;
+        }
+
+        var entry = entries
+            .Where(item => item.Enabled)
             .OrderBy(item => item.Priority)
             .FirstOrDefault();
 
@@ -240,6 +259,14 @@ public sealed class SabnzbdDownloadService(
 
     private static SabnzbdSubmissionOutcome ToSubmissionOutcome(DownloadSubmissionOutcome outcome) =>
         new(outcome.Accepted, outcome.OperationId, outcome.ExternalId, outcome.Message);
+
+    private static MediaAcquisitionKind ToMediaKind(SabnzbdPurpose purpose) =>
+        purpose switch
+        {
+            SabnzbdPurpose.Books => MediaAcquisitionKind.Book,
+            SabnzbdPurpose.Anime => MediaAcquisitionKind.Anime,
+            _ => throw new ArgumentOutOfRangeException(nameof(purpose))
+        };
 
     private static bool IsTransportFailure(Exception exception) =>
         exception is HttpRequestException

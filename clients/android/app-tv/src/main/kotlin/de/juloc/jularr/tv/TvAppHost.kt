@@ -416,6 +416,8 @@ fun TvAppHost(
                 TvLibraryScreen(
                     account = account,
                     library = library,
+                    serverOrigin = settings.origin.orEmpty(),
+                    requestHeaders = cookies.requestHeaders(),
                     error = snapshot.error,
                     onAnime = { anime ->
                         launchSnapshot { controller.openAnime(anime.id) }
@@ -448,11 +450,48 @@ fun TvAppHost(
             } else {
                 TvAnimeScreen(
                     anime = anime,
+                    serverOrigin = settings.origin.orEmpty(),
+                    requestHeaders = cookies.requestHeaders(),
                     onEpisode = { episode ->
                         launchSnapshot {
                             controller.openEpisode(
                                 episodeId = episode.id,
                                 animeId = anime.id,
+                            )
+                        }
+                    },
+                    onBack = {
+                        controller.back()?.let { snapshot = it }
+                    },
+                )
+            }
+        }
+
+        is TvRoute.Episode -> {
+            val anime = snapshot.anime
+            val page = snapshot.episodePage
+            if (anime == null || page == null) {
+                TvMessageScreen(
+                    title = "Episode unavailable",
+                    message = snapshot.error ?: "Could not load this episode.",
+                    action = "Back",
+                    onAction = {
+                        controller.back()?.let { snapshot = it }
+                    },
+                )
+            } else {
+                TvEpisodeScreen(
+                    anime = anime,
+                    page = page,
+                    serverOrigin = settings.origin.orEmpty(),
+                    requestHeaders = cookies.requestHeaders(),
+                    busy = snapshot.busy,
+                    error = snapshot.error,
+                    onPlay = {
+                        launchSnapshot {
+                            controller.playEpisode(
+                                episodeId = route.episodeId,
+                                animeId = route.animeId,
                             )
                         }
                     },

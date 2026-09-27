@@ -82,7 +82,16 @@ public sealed class AiProfileSettingsStore
                         apiKey,
                         persisted.TranslationMode)
                     {
-                        ImageModel = persisted.ImageModel
+                        ImageModel = persisted.ImageModel,
+                        ReasoningEffort = persisted.ReasoningEffort,
+                        ServiceTier = persisted.ServiceTier,
+                        MaxOutputTokens = persisted.MaxOutputTokens,
+                        Overrides = AiOperationOverrides.From(
+                            persisted.Overrides?
+                                .Select(x => KeyValuePair.Create(
+                                    x.Key,
+                                    new AiOperationOverride(x.Value.Model, x.Value.ReasoningEffort)))
+                            ?? [])
                     },
                     requireSecret: false);
             }
@@ -128,7 +137,16 @@ public sealed class AiProfileSettingsStore
                     ? null
                     : protector.Protect(validated.ApiKey),
                 validated.TranslationMode,
-                validated.ImageModel);
+                validated.ImageModel,
+                validated.ReasoningEffort,
+                validated.ServiceTier,
+                validated.MaxOutputTokens,
+                validated.Overrides.Count == 0
+                    ? null
+                    : validated.Overrides.Items.ToDictionary(
+                        x => x.Key,
+                        x => new PersistedAiOperationOverride(x.Value.Model, x.Value.ReasoningEffort),
+                        StringComparer.Ordinal));
 
             try
             {
@@ -194,14 +212,43 @@ public sealed class AiProfileSettingsStore
             throw new InvalidOperationException("Unsupported AI translation mode.");
         }
 
+        var effort = CleanOption(settings.ReasoningEffort, "reasoning effort");
+        var serviceTier = CleanOption(settings.ServiceTier, "service tier");
+        if (settings.MaxOutputTokens is < 1 or > AiProfileSettings.MaxOutputTokensLimit)
+        {
+            throw new InvalidOperationException(
+                $"The output token limit must be between 1 and {AiProfileSettings.MaxOutputTokensLimit}.");
+        }
+
+        foreach (var (operation, value) in settings.Overrides.Items)
+        {
+            if ((value.Model is not null && !AiProfileSettings.IsValidModelId(value.Model))
+                || (value.ReasoningEffort is not null && !AiProfileSettings.IsValidOptionId(value.ReasoningEffort)))
+            {
+                throw new InvalidOperationException($"The override for {operation} is not valid.");
+            }
+        }
+
         if (settings.ProviderId == AiProviderIds.Server)
         {
+            // The server's Codex connection is shared: a profile may pick a catalog model and
+            // reasoning effort, but never an endpoint, key or output limit.
+            var serverModel = string.IsNullOrWhiteSpace(settings.Model) ? null : settings.Model.Trim();
+            if (serverModel is not null && !AiProfileSettings.IsValidModelId(serverModel))
+            {
+                throw new InvalidOperationException("Enter a valid model name.");
+            }
+
             return settings with
             {
                 BaseUrl = null,
-                Model = null,
+                Model = serverModel,
                 ApiKey = null,
-                ImageModel = null
+                ImageModel = null,
+                ReasoningEffort = effort,
+                ServiceTier = serviceTier,
+                MaxOutputTokens = null,
+                Overrides = AiOperationOverrides.From(settings.Overrides.Items, serverModel, effort)
             };
         }
 
@@ -223,7 +270,7 @@ public sealed class AiProfileSettingsStore
                 "Enter a valid HTTP(S) base URL for the OpenAI-compatible provider.");
         }
 
-        if (string.IsNullOrWhiteSpace(model) || model.Length > 120)
+        if (!AiProfileSettings.IsValidModelId(model))
         {
             throw new InvalidOperationException(
                 "Enter a valid model name.");
@@ -240,8 +287,24 @@ public sealed class AiProfileSettingsStore
             BaseUrl = baseUrl.TrimEnd('/'),
             Model = model,
             ApiKey = string.IsNullOrWhiteSpace(apiKey) ? null : apiKey,
-            ImageModel = string.IsNullOrWhiteSpace(imageModel) ? null : imageModel
+            ImageModel = string.IsNullOrWhiteSpace(imageModel) ? null : imageModel,
+            ReasoningEffort = effort,
+            ServiceTier = serviceTier,
+            Overrides = AiOperationOverrides.From(settings.Overrides.Items, model, effort)
         };
+    }
+
+    private static string? CleanOption(string? value, string name)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var clean = value.Trim().ToLowerInvariant();
+        return AiProfileSettings.IsValidOptionId(clean)
+            ? clean
+            : throw new InvalidOperationException($"Unsupported {name}.");
     }
 
     private static string ValidateProfileId(string profileId)
@@ -294,5 +357,13 @@ public sealed class AiProfileSettingsStore
         string? Model,
         string? ProtectedApiKey,
         AiTranslationMode TranslationMode,
-        string? ImageModel = null);
+        string? ImageModel = null,
+        string? ReasoningEffort = null,
+        string? ServiceTier = null,
+        int? MaxOutputTokens = null,
+        Dictionary<string, PersistedAiOperationOverride>? Overrides = null);
+
+    private sealed record PersistedAiOperationOverride(
+        string? Model,
+        string? ReasoningEffort);
 }

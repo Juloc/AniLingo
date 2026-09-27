@@ -162,6 +162,27 @@ public sealed class NovelReaderDesignTests
     }
 
     [TestMethod]
+    public void MobileReaderKeepsThePrimaryLanguageControlVisible()
+    {
+        var root = FindRepositoryRoot();
+        var css = File.ReadAllText(Path.Combine(
+            root,
+            "src",
+            "Jularr.Web",
+            "wwwroot",
+            "css",
+            "reader-shell.css"));
+
+        StringAssert.Contains(
+            css,
+            "[data-unified-reader] .novel-reader-toolbar .novel-view-switch {",
+            "The mobile shared reader must retain a direct language control.");
+        Assert.IsFalse(
+            css.Contains("[data-unified-reader] .novel-reader-toolbar .novel-view-switch,", StringComparison.Ordinal),
+            "The mobile language control must not be hidden with the overflow-only toolbar actions.");
+    }
+
+    [TestMethod]
     public void ReaderDefersChapterDomAndActivatesTranslationWithoutReload()
     {
         var root = FindRepositoryRoot();

@@ -1,13 +1,21 @@
 using Jularr.Web.Data;
+using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Localization;
 using Jularr.Web.Features.Manga;
 using Jularr.Web.Features.MediaMapping;
+using Jularr.Web.Features.Novels;
 using Jularr.Web.Features.Operations;
+using Jularr.Web.Features.ReadingDiscovery;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
 namespace Jularr.Web.Pages.Manga;
+
+public sealed record MangaCatalogResult(
+    ReadingCatalogCandidate Item,
+    string? LocalUrl,
+    string? RequestStatus);
 
 [MangaUploadRequestLimits("Upload")]
 public sealed class IndexModel(
@@ -15,14 +23,25 @@ public sealed class IndexModel(
     CurrentAccountContext account,
     OperationRunner operations,
     IHttpClientFactory httpClientFactory,
-    MediaMappingReviewStore mappingReviewStore) : PageModel
+    MediaMappingReviewStore mappingReviewStore,
+    NovelAniListProvider? readingProvider = null,
+    AcquisitionRequestService? requests = null,
+    AcquisitionAccessStore? requestStore = null) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public IReadOnlyList<MangaSeriesItem> Series { get; private set; } = [];
     public IReadOnlyList<MangaSeriesItem> ContinueReading { get; private set; } = [];
+    public IReadOnlyList<MangaCatalogResult> SearchResults { get; private set; } = [];
+    public AcquisitionCapabilities Access { get; private set; } =
+        AcquisitionCapabilities.Resolve(
+            AcquisitionAccessPolicy.Default(MediaAcquisitionKind.Manga),
+            false);
+    public string SearchQuery { get; private set; } = "";
     public bool IsOwner => account.IsOwner;
 
-    public async Task OnGetAsync(CancellationToken cancellationToken)
+    public async Task OnGetAsync(
+        CancellationToken cancellationToken,
+        string? q = null)
     {
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         var repository = new MangaRepository(db);
@@ -34,8 +53,139 @@ public sealed class IndexModel(
             .OrderByDescending(x => x.LastReadAt)
             .Take(8)
             .ToArray();
+
+        SearchQuery = ReadingCatalogSearch.NormalizeQuery(q);
+        if (readingProvider is null ||
+            requests is null ||
+            requestStore is null)
+        {
+            return;
+        }
+
+        Access = await requests.GetCapabilitiesAsync(
+            MediaAcquisitionKind.Manga,
+            cancellationToken);
+
+        if (SearchQuery.Length == 0)
+        {
+            return;
+        }
+
+        var candidates = await ReadingCatalogSearch.SearchMangaAsync(
+            readingProvider,
+            SearchQuery,
+            18,
+            cancellationToken);
+
+        var localMatches = await repository.GetAniListMatchesAsync(
+            candidates
+                .Where(candidate =>
+                    candidate.Provider.Equals(
+                        NovelAniListProvider.ProviderKey,
+                        StringComparison.OrdinalIgnoreCase))
+                .Select(candidate => candidate.ExternalId)
+                .ToArray(),
+            cancellationToken);
+
+        var openRequests = (await requestStore.ListAsync(
+                MediaAcquisitionKind.Manga,
+                requestedByProfileId: null,
+                openOnly: true,
+                limit: 500,
+                cancellationToken))
+            .Where(request =>
+                request.Provider.Equals(
+                    NovelAniListProvider.ProviderKey,
+                    StringComparison.OrdinalIgnoreCase))
+            .GroupBy(request => request.ExternalId, StringComparer.Ordinal)
+            .ToDictionary(
+                group => group.Key,
+                group => AcquisitionAccessNames.Status(group.First().Status),
+                StringComparer.Ordinal);
+
+        SearchResults = candidates
+            .Select(candidate =>
+            {
+                var localUrl = localMatches.TryGetValue(
+                    candidate.ExternalId,
+                    out var seriesId)
+                        ? $"/Manga/Series/{seriesId}"
+                        : null;
+
+                openRequests.TryGetValue(
+                    candidate.ExternalId,
+                    out var requestStatus);
+
+                return new MangaCatalogResult(
+                    candidate,
+                    localUrl,
+                    requestStatus);
+            })
+            .ToArray();
     }
 
+    public async Task<IActionResult> OnPostAddAsync(
+        string? externalId,
+        string? title,
+        string? nativeTitle,
+        string? coverImageUrl,
+        string? q,
+        CancellationToken cancellationToken)
+    {
+        if (!int.TryParse(externalId, out var id) ||
+            id <= 0 ||
+            string.IsNullOrWhiteSpace(title))
+        {
+            return BadRequest();
+        }
+
+        if (requests is null)
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable);
+        }
+
+        try
+        {
+            var request = await requests.SubmitAsync(
+                new AcquisitionRequestDraft(
+                    MediaAcquisitionKind.Manga,
+                    NovelAniListProvider.ProviderKey,
+                    id.ToString(),
+                    title.Trim(),
+                    string.IsNullOrWhiteSpace(nativeTitle)
+                        ? null
+                        : nativeTitle.Trim(),
+                    string.IsNullOrWhiteSpace(coverImageUrl)
+                        ? null
+                        : coverImageUrl.Trim()),
+                cancellationToken);
+
+            if (request.Status == AcquisitionRequestStatus.Completed &&
+                request.ResultUrl is { Length: > 0 } resultUrl &&
+                resultUrl.StartsWith("/", StringComparison.Ordinal))
+            {
+                return LocalRedirect(resultUrl);
+            }
+
+            var ui = await UiRequestLocalization.GetBundleAsync(
+                HttpContext,
+                db);
+            TempData["Status"] = request.StatusMessage
+                ?? ui[
+                    "requests.status."
+                    + AcquisitionAccessNames.Status(request.Status)];
+
+            return RedirectToPage(
+                new
+                {
+                    q = ReadingCatalogSearch.NormalizeQuery(q)
+                });
+        }
+        catch (AcquisitionAccessDeniedException)
+        {
+            return Forbid();
+        }
+    }
 
     public async Task<IActionResult> OnPostUploadAsync(
         string? seriesTitle,

@@ -106,6 +106,8 @@
         opener.addEventListener("click", () => {
             dialog.showModal();
             dialog.querySelector("[data-books-add-query]")?.focus();
+            // Results kept from before show their current state right away.
+            poll();
         });
     }
 
@@ -116,7 +118,13 @@
     const token = dialog.querySelector("input[name='__RequestVerificationToken']")?.value || "";
     const text = (key) => dialog.dataset[key] || "";
     const statusText = (status) => dialog.dataset[`status${status.charAt(0).toUpperCase()}${status.slice(1)}`] || status;
+    const pollInterval = 4000;
+    // Rows on screen by catalog id; each keeps its item (with the canonical state) and action slot.
+    const rows = new Map();
     let controller = null;
+    let searchNumber = 0;
+    let pollTimer = null;
+    let libraryChanged = false;
 
     const element = (tag, className, content) => {
         const node = document.createElement(tag);
@@ -125,60 +133,95 @@
         return node;
     };
 
+    const add = async (item, slot, button) => {
+        button.disabled = true;
+        // Adding looks for a free edition and then searches the indexers; show that it is working.
+        slot.prepend(element("span", "status-pill request-status-searching", statusText("searching")));
+        const body = new FormData();
+        body.set("catalogId", item.id);
+        body.set("title", item.title);
+        if (item.author) body.set("author", item.author);
+        if (item.coverImageUrl) body.set("coverImageUrl", item.coverImageUrl);
+        body.set("__RequestVerificationToken", token);
+        try {
+            const response = await fetch(dialog.dataset.addUrl, {
+                method: "POST",
+                body,
+                credentials: "same-origin",
+                headers: { Accept: "application/json" }
+            });
+            if (!response.ok) throw new Error(String(response.status));
+            update(item, await response.json());
+        } catch {
+            renderAction(item, slot);
+            state.textContent = text("textFailed");
+        }
+    };
+
     const renderAction = (item, slot) => {
         slot.replaceChildren();
-        if (item.libraryWorkId) {
+        const current = item.state || {};
+        if (current.libraryWorkId) {
             const link = element("a", "button", text("textInLibrary"));
-            link.href = `/Books/Library/${item.libraryWorkId}`;
+            link.href = `/Books/Library/${current.libraryWorkId}`;
             slot.append(link);
             return;
         }
-        if (item.requestStatus) {
-            slot.append(element("span", `status-pill request-status-${item.requestStatus}`, statusText(item.requestStatus)));
-            if (item.resultUrl) {
-                const link = element("a", "button", text("textOpen"));
-                link.href = item.resultUrl;
-                slot.append(link);
-            }
-            return;
+        const failed = current.requestStatus === "failed";
+        if (current.requestStatus) {
+            const label = current.requestStatus === "downloading" && current.progress > 0
+                ? `${statusText("downloading")} ${current.progress}%`
+                : statusText(current.requestStatus);
+            slot.append(element("span", `status-pill request-status-${current.requestStatus}`, label));
         }
-        const button = element("button", "button button-primary", dialog.dataset.createsRequest === "true" ? text("textRequest") : text("textAdd"));
-        button.type = "button";
-        button.addEventListener("click", async () => {
-            button.disabled = true;
-            // Adding looks for a free edition and then searches the indexers; show that it is working.
-            const busy = element("span", "status-pill request-status-searching", statusText("searching"));
-            slot.prepend(busy);
-            const body = new FormData();
-            body.set("catalogId", item.id);
-            body.set("title", item.title);
-            if (item.author) body.set("author", item.author);
-            if (item.coverImageUrl) body.set("coverImageUrl", item.coverImageUrl);
-            body.set("__RequestVerificationToken", token);
-            try {
-                const response = await fetch(dialog.dataset.addUrl, {
-                    method: "POST",
-                    body,
-                    credentials: "same-origin",
-                    headers: { Accept: "application/json" }
-                });
-                if (!response.ok) throw new Error(String(response.status));
+        if (!current.requestStatus || failed) {
+            const label = failed ? text("textRetry")
+                : dialog.dataset.createsRequest === "true" ? text("textRequest") : text("textAdd");
+            const button = element("button", failed ? "button" : "button button-primary", label);
+            button.type = "button";
+            button.addEventListener("click", () => add(item, slot, button));
+            slot.append(button);
+        }
+        if (current.message) slot.append(element("small", "books-add-note", current.message));
+    };
+
+    const update = (item, next) => {
+        if (next.libraryWorkId && !item.state?.libraryWorkId) libraryChanged = true;
+        item.state = next;
+        const row = rows.get(item.id);
+        if (row) renderAction(item, row.slot);
+        schedulePoll();
+    };
+
+    // While the dialog is open, in-flight requests follow their canonical state on their own.
+    const schedulePoll = () => {
+        if (pollTimer || !dialog.open) return;
+        if (![...rows.values()].some(row => row.item.state?.inFlight)) return;
+        pollTimer = window.setTimeout(poll, pollInterval);
+    };
+
+    const poll = async () => {
+        pollTimer = null;
+        const pending = [...rows.values()].filter(row => row.item.state?.inFlight);
+        if (!dialog.open || pending.length === 0) return;
+        try {
+            const url = new URL(dialog.dataset.statusUrl, window.location.origin);
+            for (const row of pending) url.searchParams.append("ids", row.item.id);
+            const response = await fetch(url, { credentials: "same-origin", headers: { Accept: "application/json" } });
+            if (response.ok) {
                 const payload = await response.json();
-                item.requestStatus = payload.status;
-                item.resultUrl = payload.resultUrl;
-                renderAction(item, slot);
-                if (payload.message) slot.append(element("small", "books-add-note", payload.message));
-            } catch {
-                busy.remove();
-                button.disabled = false;
-                state.textContent = text("textFailed");
+                for (const row of pending) {
+                    const next = payload.states?.[row.item.id];
+                    if (next) update(row.item, next);
+                }
             }
-        });
-        slot.append(button);
+        } catch { /* offline for a moment: the next poll catches up */ }
+        schedulePoll();
     };
 
     const render = (items) => {
         results.replaceChildren();
+        rows.clear();
         for (const item of items) {
             const row = element("li", "books-add-result");
             const cover = element("div", "books-add-cover");
@@ -196,10 +239,12 @@
             if (meta) copy.append(element("span", null, meta));
             if (item.freeEdition) copy.append(element("small", "books-add-free", text("textFree")));
             const slot = element("div", "books-add-action");
+            rows.set(item.id, { item, slot });
             renderAction(item, slot);
             row.append(cover, copy, slot);
             results.append(row);
         }
+        schedulePoll();
     };
 
     form?.addEventListener("submit", async event => {
@@ -208,18 +253,29 @@
         if (value.length < 2) return;
         controller?.abort();
         controller = new AbortController();
+        const number = ++searchNumber;
         state.textContent = text("textSearching");
         results.replaceChildren();
+        rows.clear();
         try {
             const url = new URL(dialog.dataset.searchUrl, window.location.origin);
             url.searchParams.set("q", value);
             const response = await fetch(url, { credentials: "same-origin", signal: controller.signal, headers: { Accept: "application/json" } });
             const payload = await response.json();
+            // A slower answer for an older query never replaces the newer one.
+            if (number !== searchNumber) return;
             state.textContent = payload.error || (payload.results.length === 0 ? text("textNoResults") : "");
             render(payload.results);
         } catch (error) {
-            if (error.name !== "AbortError") state.textContent = text("textFailed");
+            if (error.name !== "AbortError" && number === searchNumber) state.textContent = text("textFailed");
         }
+    });
+
+    dialog.addEventListener("close", () => {
+        window.clearTimeout(pollTimer);
+        pollTimer = null;
+        // A book arrived while the dialog was open: show it on the shelf.
+        if (libraryChanged) window.location.reload();
     });
 
     // Deep links like /Books?q=dune open the dialog with the query.
@@ -230,3 +286,4 @@
         form.requestSubmit();
     }
 })();
+

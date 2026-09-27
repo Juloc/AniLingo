@@ -22,10 +22,14 @@ class TvNavigationTest {
     }
 
     @Test
-    fun libraryAnimePlayerBackStackIsRemoteFriendly() {
+    fun libraryAnimeEpisodePlayerBackStackIsRemoteFriendly() {
         var state = TvNavigationState(TvRoute.Library)
         state = TvNavigation.openAnime(state, "anime")
+        state = TvNavigation.openEpisode(state, "episode", "anime")
         state = TvNavigation.openPlayer(state, "episode", "anime")
+
+        state = TvNavigation.back(state)!!
+        assertEquals(TvRoute.Episode("episode", "anime"), state.route)
 
         state = TvNavigation.back(state)!!
         assertEquals(TvRoute.Anime("anime"), state.route)

@@ -4,8 +4,10 @@ using Jularr.Web.Features.Metadata;
 using Jularr.Web.Features.Novels;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using System.Net;
+using System.Text.Json;
 
 namespace Jularr.Tests;
 
@@ -205,6 +207,311 @@ public sealed class NovelTests
             Assert.AreEqual(first.Id, second.Id);
             Assert.AreEqual(1, translator.Calls);
             Assert.AreEqual(1, await db.NovelTranslations.CountAsync());
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            File.Delete(path);
+        }
+    }
+
+    [TestMethod]
+    public async Task TranslateGemmaCacheIsSeparateAndParagraphAligned()
+    {
+        var path = TempDatabasePath();
+
+        try
+        {
+            await using var db = await CreateDatabaseAsync(path);
+            var work = new NovelWork
+            {
+                SourceProvider = "fake",
+                SourceKey = "work",
+                SourceUrl = "https://example.invalid/work",
+                Title = "Test"
+            };
+            var chapter = new NovelChapter
+            {
+                WorkId = work.Id,
+                VolumeId = AddWebVolume(db, work).Id,
+                Number = 1,
+                SourceUrl = "https://example.invalid/work/1",
+                Title = "One",
+                OriginalText = "これは一つです。\n\nこれは二つです。",
+                SourceHash = "SOURCE-GEMMA"
+            };
+            db.Add(work);
+            db.Add(chapter);
+            await db.SaveChangesAsync();
+
+            var calls = 0;
+            var requestBodies = new List<string>();
+            var handler = new DelegateHttpMessageHandler(request =>
+            {
+                calls++;
+                requestBodies.Add(request.Content!.ReadAsStringAsync().GetAwaiter().GetResult());
+                var translation = calls == 1 ? "Das ist eins." : "Das ist zwei.";
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
+                        JsonSerializer.Serialize(new
+                        {
+                            choices = new[]
+                            {
+                                new
+                                {
+                                    message = new
+                                    {
+                                        content = translation
+                                    }
+                                }
+                            }
+                        }),
+                        System.Text.Encoding.UTF8,
+                        "application/json")
+                };
+            });
+            var configuration = new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["TranslateGemma:Endpoint"] = "http://localhost:11434/v1/chat/completions",
+                    ["TranslateGemma:Model"] = "translategemma-12b-it"
+                })
+                .Build();
+
+            var source = new FakeNovelSourceProvider();
+            var aiTranslator = new FakeNovelTranslator();
+            var imports = new NovelImportService(db, [source]);
+            var service = new NovelTranslationService(
+                db,
+                imports,
+                aiTranslator,
+                new FixedHttpClientFactory(handler),
+                configuration);
+
+            var local = await service.TranslateChapterAsync(
+                chapter.Id,
+                "de",
+                NovelTranslationEngine.TranslateGemma,
+                CancellationToken.None);
+            var localCached = await service.TranslateChapterAsync(
+                chapter.Id,
+                "de",
+                NovelTranslationEngine.TranslateGemma,
+                CancellationToken.None);
+            var ai = await service.TranslateChapterAsync(
+                chapter.Id,
+                "de",
+                CancellationToken.None);
+
+            CollectionAssert.AreEqual(
+                new[] { "Das ist eins.", "Das ist zwei." },
+                NovelTextLayout.SplitParagraphs(local.Text).ToArray());
+            Assert.AreEqual(local.Id, localCached.Id);
+            Assert.IsTrue(local.ProviderId.StartsWith(
+                NovelTranslationProviders.TranslateGemmaPrefix,
+                StringComparison.Ordinal));
+            Assert.IsFalse(ai.ProviderId.StartsWith(
+                NovelTranslationProviders.TranslateGemmaPrefix,
+                StringComparison.Ordinal));
+            Assert.AreEqual(2, calls);
+            Assert.IsTrue(requestBodies.All(body =>
+                body.Contains("\"source_lang_code\":\"ja\"", StringComparison.Ordinal) &&
+                body.Contains("\"target_lang_code\":\"de-DE\"", StringComparison.Ordinal) &&
+                !body.Contains("\"role\":\"system\"", StringComparison.Ordinal)));
+            Assert.AreEqual(1, aiTranslator.Calls);
+            Assert.AreEqual(2, await db.NovelTranslations.CountAsync());
+
+            var readableAi = await service.GetCachedAsync(
+                chapter.Id,
+                "de",
+                NovelTranslationEngine.Ai,
+                CancellationToken.None);
+            var readableLocal = await service.GetCachedAsync(
+                chapter.Id,
+                "de",
+                NovelTranslationEngine.TranslateGemma,
+                CancellationToken.None);
+
+            Assert.AreEqual(ai.Id, readableAi?.Id);
+            Assert.AreEqual(local.Id, readableLocal?.Id);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            File.Delete(path);
+        }
+    }
+
+    [TestMethod]
+    public async Task TranslateGemmaModelChangeCreatesNewCacheEntry()
+    {
+        var path = TempDatabasePath();
+
+        try
+        {
+            await using var db = await CreateDatabaseAsync(path);
+            var work = new NovelWork
+            {
+                SourceProvider = "fake",
+                SourceKey = "work",
+                SourceUrl = "https://example.invalid/work",
+                Title = "Test"
+            };
+            var chapter = new NovelChapter
+            {
+                WorkId = work.Id,
+                VolumeId = AddWebVolume(db, work).Id,
+                Number = 1,
+                SourceUrl = "https://example.invalid/work/1",
+                Title = "One",
+                OriginalText = "これはテストです。",
+                SourceHash = "SOURCE-MODEL"
+            };
+            db.Add(work);
+            db.Add(chapter);
+            await db.SaveChangesAsync();
+
+            var calls = 0;
+            var handler = new DelegateHttpMessageHandler(_ =>
+            {
+                calls++;
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
+                        """
+                        {"choices":[{"message":{"content":"Das ist ein Test."}}]}
+                        """,
+                        System.Text.Encoding.UTF8,
+                        "application/json")
+                };
+            });
+            var factory = new FixedHttpClientFactory(handler);
+            var imports = new NovelImportService(db, [new FakeNovelSourceProvider()]);
+
+            NovelTranslationService CreateService(string model) =>
+                new(
+                    db,
+                    imports,
+                    new FakeNovelTranslator(),
+                    factory,
+                    new ConfigurationBuilder()
+                        .AddInMemoryCollection(new Dictionary<string, string?>
+                        {
+                            ["TranslateGemma:Endpoint"] = "http://localhost:11434/v1/chat/completions",
+                            ["TranslateGemma:Model"] = model
+                        })
+                        .Build());
+
+            var first = await CreateService("translategemma-12b-it")
+                .TranslateChapterAsync(
+                    chapter.Id,
+                    "de",
+                    NovelTranslationEngine.TranslateGemma,
+                    CancellationToken.None);
+            var second = await CreateService("translategemma-4b-it")
+                .TranslateChapterAsync(
+                    chapter.Id,
+                    "de",
+                    NovelTranslationEngine.TranslateGemma,
+                    CancellationToken.None);
+
+            Assert.AreNotEqual(first.ProviderId, second.ProviderId);
+            Assert.AreEqual(2, calls);
+            Assert.AreEqual(2, await db.NovelTranslations.CountAsync());
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            File.Delete(path);
+        }
+    }
+
+    [TestMethod]
+    public async Task TranslateGemmaRetriesWithVllmDelimiterWhenStructuredContentIsRejected()
+    {
+        var path = TempDatabasePath();
+
+        try
+        {
+            await using var db = await CreateDatabaseAsync(path);
+            var work = new NovelWork
+            {
+                SourceProvider = "fake",
+                SourceKey = "work",
+                SourceUrl = "https://example.invalid/work",
+                Title = "Test"
+            };
+            var chapter = new NovelChapter
+            {
+                WorkId = work.Id,
+                VolumeId = AddWebVolume(db, work).Id,
+                Number = 1,
+                SourceUrl = "https://example.invalid/work/1",
+                Title = "One",
+                OriginalText = "これはテストです。",
+                SourceHash = "SOURCE-VLLM"
+            };
+            db.Add(work);
+            db.Add(chapter);
+            await db.SaveChangesAsync();
+
+            var calls = 0;
+            var bodies = new List<string>();
+            var handler = new DelegateHttpMessageHandler(request =>
+            {
+                calls++;
+                var body = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+                bodies.Add(body);
+
+                if (calls == 1)
+                {
+                    return new HttpResponseMessage(HttpStatusCode.BadRequest);
+                }
+
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
+                        """
+                        {"choices":[{"message":{"content":"Das ist ein Test."}}]}
+                        """,
+                        System.Text.Encoding.UTF8,
+                        "application/json")
+                };
+            });
+
+            var service = new NovelTranslationService(
+                db,
+                new NovelImportService(db, [new FakeNovelSourceProvider()]),
+                new FakeNovelTranslator(),
+                new FixedHttpClientFactory(handler),
+                new ConfigurationBuilder()
+                    .AddInMemoryCollection(new Dictionary<string, string?>
+                    {
+                        ["TranslateGemma:Endpoint"] = "http://localhost:8000/v1/chat/completions",
+                        ["TranslateGemma:Model"] = "translategemma-12b-it"
+                    })
+                    .Build());
+
+            var translation = await service.TranslateChapterAsync(
+                chapter.Id,
+                "de",
+                NovelTranslationEngine.TranslateGemma,
+                CancellationToken.None);
+
+            Assert.AreEqual("Das ist ein Test.", translation.Text);
+            Assert.AreEqual(2, calls);
+            Assert.IsTrue(
+                bodies[0].Contains("\"source_lang_code\":\"ja\"", StringComparison.Ordinal));
+            using var fallbackRequest = JsonDocument.Parse(bodies[1]);
+            var fallbackContent = fallbackRequest.RootElement
+                .GetProperty("messages")[0]
+                .GetProperty("content")
+                .GetString();
+            Assert.IsNotNull(fallbackContent);
+            StringAssert.StartsWith(
+                fallbackContent,
+                "<<<source>>>ja<<<target>>>de-DE<<<text>>>");
         }
         finally
         {
@@ -575,6 +882,12 @@ public sealed class NovelTests
             HttpRequestMessage request,
             CancellationToken cancellationToken) =>
             Task.FromResult(handler(request));
+    }
+
+    private sealed class FixedHttpClientFactory(HttpMessageHandler handler) : IHttpClientFactory
+    {
+        public HttpClient CreateClient(string name) =>
+            new(handler, disposeHandler: false);
     }
 
     private sealed class FakeNovelSourceProvider : INovelSourceProvider

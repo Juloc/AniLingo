@@ -277,7 +277,9 @@ Temporary source outages are retryable and use the shared bounded recovery caden
 
 `file_missing` is not a Wake-on-LAN or codec-fallback state: the root is readable but the concrete media file is absent. `source_unreachable` is also not blindly retried forever.
 
-Normal users can query only the media availability information needed for playback. They never receive MAC addresses, mount paths or an implicit wake capability. Owners may receive a session-independent `wakeUrl` for the owning root when Wake-on-LAN is configured. Wake remains an explicit owner action; pressing Play never wakes storage automatically.
+The availability also carries the canonical storage `health` (`online`, `starting`, `offline_expected`, `offline_unexpected`, `error`) and a `diagnosticCode`. A root with Wake-on-LAN configured that cannot be reached is `offline_expected` (sleeping on purpose); without Wake-on-LAN it is `offline_unexpected`. `error` with `wake_timeout` or `wake_send_failed` means a start attempt failed: show the problem and offer a retry instead of polling on.
+
+Pressing Play wakes sleeping storage: the media requests (`/content`, `/hls`, `/fallback`, offline downloads) and `/media/{id}/availability?wake=true` start the owning Wake-on-LAN NAS and answer `source_starting` until it is readable; concurrent requests share one bounded start attempt on the server. Plain availability checks, library browsing, artwork and metadata never wake storage. Normal users never receive MAC addresses or mount paths; owners additionally receive the explicit `wakeUrl` of the owning root.
 
 The server keeps library state while a NAS is sleeping/offline and treats an unexpectedly empty previously-populated root as unavailable instead of a mass deletion. Native clients therefore keep library/detail navigation usable while playback storage is down.
 
@@ -438,9 +440,9 @@ Rules:
 - no arbitrary remote origin inside the app shell
 - WebView cookies/session belong to the configured Jularr origin
 
-Jularr has one canonical episode Play route. The WebView shell intercepts that same-origin route and opens the native player using the episode ID. The website still handles the route normally in a regular browser.
+Normal episode/detail navigation stays inside the WebView so the user can see the episode information and episode list before playback. On the Android phone client, that page exposes an explicit native Play navigation (`/Library/Episode/{id}?native=1`). The WebView shell intercepts only that explicit same-origin Play request and opens the native player using the episode ID. A regular browser continues to use the normal web player and never needs the Android marker.
 
-When native playback closes, the user returns to the same WebView history/navigation state.
+When native playback closes, the user returns to the same episode/detail WebView history/navigation state.
 
 The Companion screen itself remains a normal responsive Jularr web page and therefore appears identically in a browser or inside the phone app.
 
@@ -511,6 +513,8 @@ machine directly (both are generic, not anime-specific).
 ## 9. Android TV interaction
 
 The TV app uses Compose for TV focus semantics and a native Media3 player. It is landscape-only.
+
+TV browse/navigation is deliberately layered: **Library → Anime → Episode → Player**. Selecting an episode must open its TV detail surface first; loading Media3/player bootstrap begins only after the user activates **Play/Resume**. Back from Player returns to that Episode surface, not directly to the season list.
 
 ### 9.1 Remote behavior
 
@@ -828,7 +832,8 @@ Implementation should remain mergeable and testable in these slices:
 ### Slice C — phone native playback
 
 - WebView shell
-- Play-route interception
+- episode/detail navigation remains in the WebView
+- explicit native Play-route interception
 - Media3 direct play
 - HLS fallback
 - native learning subtitle overlay

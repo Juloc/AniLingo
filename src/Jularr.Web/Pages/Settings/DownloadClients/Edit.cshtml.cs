@@ -1,4 +1,5 @@
 using Jularr.Web.Data;
+using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Acquisition.DownloadClients;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Localization;
@@ -33,6 +34,12 @@ public sealed class EditModel(AppDbContext db, DownloadClientStore store) : Page
     public string? AnimeCategory { get; set; }
 
     [BindProperty]
+    public string? MangaCategory { get; set; }
+
+    [BindProperty]
+    public string? LightNovelCategory { get; set; }
+
+    [BindProperty]
     public int Priority { get; set; } = 1;
 
     [BindProperty]
@@ -60,6 +67,8 @@ public sealed class EditModel(AppDbContext db, DownloadClientStore store) : Page
         BaseUrl = entry.Settings.BaseUrl;
         BooksCategory = entry.Settings.BooksCategory;
         AnimeCategory = entry.Settings.AnimeCategory;
+        MangaCategory = entry.Settings.MangaCategory;
+        LightNovelCategory = entry.Settings.LightNovelCategory;
         Priority = entry.Priority;
         Enabled = entry.Enabled;
     }
@@ -84,7 +93,15 @@ public sealed class EditModel(AppDbContext db, DownloadClientStore store) : Page
                     DownloadClientType.Sabnzbd,
                     Enabled,
                     Priority,
-                    new DownloadClientSettings(BaseUrl, BooksCategory, AnimeCategory),
+                    new DownloadClientSettings(
+                        BaseUrl,
+                        new Dictionary<MediaAcquisitionKind, string?>
+                        {
+                            [MediaAcquisitionKind.Anime] = AnimeCategory,
+                            [MediaAcquisitionKind.Manga] = MangaCategory,
+                            [MediaAcquisitionKind.LightNovel] = LightNovelCategory,
+                            [MediaAcquisitionKind.Book] = BooksCategory
+                        }),
                     secret),
                 cancellationToken);
 

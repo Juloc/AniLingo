@@ -4,7 +4,7 @@ using SkiaSharp;
 namespace Jularr.Tests;
 
 [TestClass]
-public sealed class LocalArtworkImportTests
+public sealed class AnimeArtworkFilesTests
 {
     [TestMethod]
     public void PosterPrefersPosterBeforeFolderAndCover()
@@ -14,7 +14,7 @@ public sealed class LocalArtworkImportTests
         File.WriteAllText(Path.Combine(directory.Path, "folder.png"), "folder");
         File.WriteAllText(Path.Combine(directory.Path, "poster.webp"), "poster");
 
-        var result = LocalAnimeArtworkImporter.FindCandidate(
+        var result = AnimeArtworkFiles.FindCandidate(
             directory.Path,
             AnimeArtworkKind.Poster);
 
@@ -30,7 +30,7 @@ public sealed class LocalArtworkImportTests
         File.WriteAllText(Path.Combine(directory.Path, "backdrop.png"), "backdrop");
         File.WriteAllText(Path.Combine(directory.Path, "fanart.webp"), "fanart");
 
-        var result = LocalAnimeArtworkImporter.FindCandidate(
+        var result = AnimeArtworkFiles.FindCandidate(
             directory.Path,
             AnimeArtworkKind.Fanart);
 
@@ -44,10 +44,10 @@ public sealed class LocalArtworkImportTests
         File.WriteAllText(Path.Combine(directory.Path, "Poster.JPG"), "poster");
         File.WriteAllText(Path.Combine(directory.Path, "FanArt.PNG"), "fanart");
 
-        var poster = LocalAnimeArtworkImporter.FindCandidate(
+        var poster = AnimeArtworkFiles.FindCandidate(
             directory.Path,
             AnimeArtworkKind.Poster);
-        var fanart = LocalAnimeArtworkImporter.FindCandidate(
+        var fanart = AnimeArtworkFiles.FindCandidate(
             directory.Path,
             AnimeArtworkKind.Fanart);
 
@@ -62,7 +62,7 @@ public sealed class LocalArtworkImportTests
         var season = Directory.CreateDirectory(Path.Combine(directory.Path, "Season 01"));
         File.WriteAllText(Path.Combine(season.FullName, "poster.jpg"), "season-poster");
 
-        var result = LocalAnimeArtworkImporter.FindCandidate(
+        var result = AnimeArtworkFiles.FindCandidate(
             directory.Path,
             AnimeArtworkKind.Poster);
 

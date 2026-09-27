@@ -941,6 +941,7 @@ public sealed class AnimeMetadataService(
         metadata.SeasonYear = candidate.SeasonYear;
         metadata.EpisodeCount = candidate.EpisodeCount;
         metadata.EpisodeDurationMinutes = candidate.EpisodeDurationMinutes;
+        metadata.AverageScore = candidate.AverageScore;
         metadata.UpdatedAt = DateTime.UtcNow;
     }
 }

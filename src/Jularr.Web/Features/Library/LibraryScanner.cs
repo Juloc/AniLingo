@@ -17,8 +17,12 @@ public sealed class LibraryScanner(
     SonarrArtworkSyncService sonarrArtworkSync,
     ILogger<LibraryScanner> logger,
     AnimeMetadataService? metadataService = null,
-    MediaSegmentSidecarImporter? segmentSidecars = null)
+    MediaSegmentSidecarImporter? segmentSidecars = null,
+    AnimeArtworkLibrary? artworkLibrary = null)
 {
+    private readonly AnimeArtworkLibrary artwork =
+        artworkLibrary ?? new AnimeArtworkLibrary(db, Microsoft.Extensions.Logging.Abstractions.NullLogger<AnimeArtworkLibrary>.Instance);
+
     internal static readonly HashSet<string> MediaExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".mkv", ".mp4", ".m4v", ".webm"
@@ -141,6 +145,22 @@ public sealed class LibraryScanner(
         var errors = 0;
         var processed = 0;
 
+        var relinkPlan = await PlanRelinksAsync(
+            existingFiles.Values
+                .Where(mediaFile => !observedMediaPaths.Contains(mediaFile.Path))
+                .ToArray(),
+            candidates
+                .Where(file => !existingFiles.ContainsKey(Path.GetFullPath(file.FullName)))
+                .ToArray(),
+            cancellationToken);
+        foreach (var path in relinkPlan.Ambiguous)
+        {
+            AddWarning(warnings, ref warningCount, rootPath, path, "Needs attention: possibly moved media");
+        }
+
+        var relinked = 0;
+        var relinkedFromEpisodeIds = new HashSet<Guid>();
+
         var animeByKey = await db.Anime.ToDictionaryAsync(x => x.Key, StringComparer.Ordinal, cancellationToken);
         var episodes = await db.Episodes.ToListAsync(cancellationToken);
         var episodeByKey = episodes.ToDictionary(
@@ -152,6 +172,7 @@ public sealed class LibraryScanner(
         var skipped = 0;
         var subtitleCandidates = new List<SubtitleCandidate>();
         var artworkDirectories = new Dictionary<Guid, string>();
+        var artworkSeasons = new Dictionary<Guid, Dictionary<int, string?>>();
         var newlyDiscoveredAnimeIds = new HashSet<Guid>();
         var nfoAniListIds = new Dictionary<Guid, string>();
         var nfoMalIds = new Dictionary<Guid, string>();
@@ -186,6 +207,19 @@ public sealed class LibraryScanner(
             }
 
             var animeDirectory = TryGetAnimeDirectory(rootPath, normalizedPath);
+            if (animeDirectory is not null)
+            {
+                // A season's artwork belongs in its own folder; null means the season's episodes
+                // sit directly in the series folder.
+                var mediaDirectory = Path.GetDirectoryName(normalizedPath);
+                var seasons = artworkSeasons.TryGetValue(anime.Id, out var known)
+                    ? known
+                    : artworkSeasons[anime.Id] = [];
+                seasons.TryAdd(
+                    descriptor.SeasonNumber,
+                    string.Equals(mediaDirectory, animeDirectory, StringComparison.Ordinal) ? null : mediaDirectory);
+            }
+
             if (animeDirectory is not null &&
                 artworkDirectories.TryAdd(anime.Id, animeDirectory) &&
                 nfoFiles.FindShow(animeDirectory) is { } showNfoPath)
@@ -299,6 +333,11 @@ public sealed class LibraryScanner(
                 updated++;
             }
 
+            if (file.Length == 0)
+            {
+                AddWarning(warnings, ref warningCount, rootPath, normalizedPath, "Empty media file");
+            }
+
             var lastWrite = file.LastWriteTimeUtc;
             if (existingFiles.TryGetValue(normalizedPath, out var mediaFile))
             {
@@ -308,6 +347,21 @@ public sealed class LibraryScanner(
                     mediaFile.LastWriteTimeUtc = lastWrite;
                     updated++;
                 }
+            }
+            else if (relinkPlan.Moves.TryGetValue(normalizedPath, out var moved))
+            {
+                // The same file moved or renamed outside Jularr: keep its identity (analysis,
+                // segments, history) instead of removing it and discovering a new one.
+                existingFiles.Remove(moved.Path);
+                moved.Path = normalizedPath;
+                if (moved.EpisodeId != episode.Id)
+                {
+                    relinkedFromEpisodeIds.Add(moved.EpisodeId);
+                    moved.EpisodeId = episode.Id;
+                }
+
+                existingFiles.Add(normalizedPath, moved);
+                relinked++;
             }
             else
             {
@@ -336,6 +390,12 @@ public sealed class LibraryScanner(
 
         if (staleMediaFiles.Length > 0)
         {
+            // Missing files are removed only while the root is still demonstrably readable: a
+            // mount that dropped during the scan must never look like deleted media.
+            EnsureRootStillReadable(rootPath);
+            staleMediaFiles = staleMediaFiles
+                .Where(mediaFile => !File.Exists(mediaFile.Path))
+                .ToArray();
             db.MediaFiles.RemoveRange(staleMediaFiles);
         }
 
@@ -437,10 +497,11 @@ public sealed class LibraryScanner(
         }
 
         var removed = staleMediaFiles.Length;
-        if (removed > 0)
+        if (removed > 0 || relinkedFromEpisodeIds.Count > 0)
         {
             var staleEpisodeIds = staleMediaFiles
                 .Select(x => x.EpisodeId)
+                .Concat(relinkedFromEpisodeIds)
                 .Distinct()
                 .ToArray();
 
@@ -478,15 +539,36 @@ public sealed class LibraryScanner(
         var localArtworkImported = 0;
         var localArtworkUnchanged = 0;
         var artworkProcessed = 0;
+        var artworkAnimeIds = artworkDirectories.Keys.ToArray();
+        var providerArtwork = new Dictionary<Guid, AnimeProviderArtwork>();
+        foreach (var metadata in await db.AnimeMetadata
+                     .AsNoTracking()
+                     .Where(x => artworkAnimeIds.Contains(x.AnimeId))
+                     .Select(x => new { x.AnimeId, x.CoverImageUrl, x.BannerImageUrl })
+                     .ToListAsync(cancellationToken))
+        {
+            providerArtwork.TryAdd(metadata.AnimeId, new AnimeProviderArtwork(metadata.CoverImageUrl, metadata.BannerImageUrl));
+        }
+
         foreach (var (animeId, animeDirectory) in artworkDirectories)
         {
             await ReportAsync(progress, LibraryScanPhase.Artwork, artworkProcessed++, artworkDirectories.Count, cancellationToken);
-            var artwork = await LocalAnimeArtworkImporter.ImportAsync(
+            var reconciled = await artwork.ReconcileAsync(
                 animeId,
                 animeDirectory,
+                artworkSeasons.GetValueOrDefault(animeId) ?? [],
+                providerArtwork.GetValueOrDefault(animeId),
                 cancellationToken);
-            localArtworkImported += artwork.ImportedCount;
-            localArtworkUnchanged += artwork.UnchangedCount;
+            localArtworkImported += reconciled.Refreshed + reconciled.Migrated;
+            localArtworkUnchanged += reconciled.Unchanged;
+        }
+
+        if (relativeFolder is null && artwork.CountLegacyFolders() is > 0 and var legacyFolders)
+        {
+            logger.LogInformation(
+                "{Count} anime artwork folder(s) under {LegacyRoot} are not migrated beside the media yet; their anime was not found in a scanned library folder.",
+                legacyFolders,
+                artwork.Cache.LegacyRootPath);
         }
 
         // Runs ffprobe only for new/changed files or after a probe version bump; invalid media is
@@ -604,6 +686,7 @@ public sealed class LibraryScanner(
         return new ScanResult(discovered, updated, skipped, subtitleFiles)
         {
             Removed = removed,
+            Relinked = relinked,
             MetadataWarnings = metadataWarnings,
             MediaFiles = candidates.Count,
             ArtworkImported = localArtworkImported,
@@ -612,6 +695,103 @@ public sealed class LibraryScanner(
             WarningCount = warningCount,
             MediaInventory = inventory
         };
+    }
+
+    private static void EnsureRootStillReadable(string rootPath)
+    {
+        bool readable;
+        try
+        {
+            readable = Directory.Exists(rootPath) &&
+                Directory.EnumerateFileSystemEntries(rootPath).Any();
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            readable = false;
+        }
+
+        if (!readable)
+        {
+            throw new IOException(
+                "Library root became unavailable during reconciliation; missing media was not removed.");
+        }
+    }
+
+    // A known file that vanished and a new file that appeared are the same file when their
+    // size and modification time match one-to-one and either the stored content fingerprint
+    // matches or (without one) the file name is unchanged. Anything less certain is left to
+    // the owner: the new file is added, the old one removed, and a warning records it.
+    private async Task<RelinkPlan> PlanRelinksAsync(
+        IReadOnlyList<MediaFile> vanished,
+        IReadOnlyList<FileInfo> appeared,
+        CancellationToken cancellationToken)
+    {
+        if (vanished.Count == 0 || appeared.Count == 0)
+        {
+            return RelinkPlan.Empty;
+        }
+
+        var appearedByIdentity = appeared
+            .Where(file => file.Length > 0)
+            .GroupBy(file => (file.Length, file.LastWriteTimeUtc))
+            .ToDictionary(group => group.Key, group => group.ToArray());
+        var candidates = vanished
+            .Where(mediaFile => mediaFile.SizeBytes > 0)
+            .GroupBy(mediaFile => (mediaFile.SizeBytes, mediaFile.LastWriteTimeUtc))
+            .Where(group => appearedByIdentity.ContainsKey(group.Key))
+            .ToArray();
+        if (candidates.Length == 0)
+        {
+            return RelinkPlan.Empty;
+        }
+
+        var candidateIds = candidates.SelectMany(group => group).Select(x => x.Id).ToArray();
+        var fingerprints = await db.MediaAnalyses
+            .AsNoTracking()
+            .Where(x => candidateIds.Contains(x.MediaFileId) && x.SourceFingerprint != null)
+            .ToDictionaryAsync(x => x.MediaFileId, x => x.SourceFingerprint!, cancellationToken);
+
+        var moves = new Dictionary<string, MediaFile>(StringComparer.Ordinal);
+        var ambiguous = new List<string>();
+        foreach (var group in candidates)
+        {
+            var newFiles = appearedByIdentity[group.Key];
+            var oldFiles = group.ToArray();
+            if (oldFiles.Length != 1 || newFiles.Length != 1)
+            {
+                ambiguous.AddRange(newFiles.Select(file => Path.GetFullPath(file.FullName)));
+                continue;
+            }
+
+            var old = oldFiles[0];
+            var newPath = Path.GetFullPath(newFiles[0].FullName);
+            var confirmed = fingerprints.TryGetValue(old.Id, out var stored)
+                ? string.Equals(
+                    await MediaInventoryService.TryComputeFingerprintAsync(newPath, cancellationToken),
+                    stored,
+                    StringComparison.Ordinal)
+                : string.Equals(Path.GetFileName(old.Path), Path.GetFileName(newPath), StringComparison.Ordinal);
+
+            if (confirmed)
+            {
+                moves.Add(newPath, old);
+            }
+            else if (!fingerprints.ContainsKey(old.Id))
+            {
+                ambiguous.Add(newPath);
+            }
+        }
+
+        return new RelinkPlan(moves, ambiguous);
+    }
+
+    private sealed record RelinkPlan(
+        IReadOnlyDictionary<string, MediaFile> Moves,
+        IReadOnlyList<string> Ambiguous)
+    {
+        public static readonly RelinkPlan Empty = new(
+            new Dictionary<string, MediaFile>(StringComparer.Ordinal),
+            []);
     }
 
     // The scope must stay inside the root; a relative folder is never allowed to escape it.

@@ -12,7 +12,7 @@ namespace Jularr.Web.Data.Migrations;
 /// re-import that recreates chapters keeps accepted artwork.
 /// </summary>
 [DbContext(typeof(AppDbContext))]
-[Migration("20260927200000_AddChapterArtwork")]
+[Migration("20260928120000_AddChapterArtwork")]
 public sealed class AddChapterArtwork : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)
