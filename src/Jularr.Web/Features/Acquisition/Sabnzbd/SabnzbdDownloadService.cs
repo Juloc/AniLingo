@@ -129,7 +129,7 @@ public sealed class SabnzbdDownloadService(
             return new SabnzbdActionOutcome(false, "This download is no longer active.");
         }
 
-        var entry = await RequireSabnzbdEntryAsync(cancellationToken);
+        var entry = await RequireSabnzbdEntryAsync(operation, cancellationToken);
         var nzoId = operation.ExternalId!;
 
         bool cancelled;
@@ -181,7 +181,7 @@ public sealed class SabnzbdDownloadService(
                 "A newer release already replaced this download for the same episodes.");
         }
 
-        var entry = await RequireSabnzbdEntryAsync(cancellationToken);
+        var entry = await RequireSabnzbdEntryAsync(operation, cancellationToken);
         var connection = SabnzbdDownloadClient.ToConnection(entry);
 
         SabnzbdActionResult result;
@@ -227,10 +227,28 @@ public sealed class SabnzbdDownloadService(
         return new SabnzbdActionOutcome(true, "Retry queued in SABnzbd.");
     }
 
-    private async Task<DownloadClientEntry> RequireSabnzbdEntryAsync(CancellationToken cancellationToken)
+    private async Task<DownloadClientEntry> RequireSabnzbdEntryAsync(
+        OperationSnapshot operation,
+        CancellationToken cancellationToken)
     {
-        var entry = (await clientStore.LoadAllAsync(cancellationToken))
-            .Where(item => item.Type == DownloadClientType.Sabnzbd && item.Enabled)
+        var entries = (await clientStore.LoadAllAsync(cancellationToken))
+            .Where(item => item.Type == DownloadClientType.Sabnzbd)
+            .ToArray();
+
+        if (DownloadOperationDetails.TryParse(operation.Details, out var details))
+        {
+            var selected = entries.SingleOrDefault(item => item.Id == details!.ClientEntryId);
+            if (selected is null || !selected.Enabled)
+            {
+                throw new InvalidOperationException(
+                    "The SABnzbd connection selected for this download is no longer enabled. Re-enable it before cancelling or retrying this job.");
+            }
+
+            return selected;
+        }
+
+        var entry = entries
+            .Where(item => item.Enabled)
             .OrderBy(item => item.Priority)
             .FirstOrDefault();
 
