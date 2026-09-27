@@ -3,6 +3,7 @@ using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Franchises;
 using Jularr.Web.Features.Localization;
 using Jularr.Web.Features.Metadata;
+using Jularr.Web.Features.Novels;
 using Jularr.Web.Features.Watchlist;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -74,7 +75,8 @@ public sealed class DetailsModel(
         {
             await franchiseService.RefreshAsync(id, cancellationToken);
         }
-        catch (MetadataProviderException)
+        catch (Exception exception) when (
+            exception is MetadataProviderException or NovelMetadataProviderException)
         {
             TempData["Status"] = "Provider relations could not be refreshed. Existing franchise data was kept.";
         }
