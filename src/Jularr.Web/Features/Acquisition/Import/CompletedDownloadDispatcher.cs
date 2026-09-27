@@ -91,6 +91,13 @@ public sealed record CompletedDownloadLocation(
     string? SourcePath,
     string Message);
 
+public interface ICompletedDownloadLocationResolver
+{
+    Task<CompletedDownloadLocation> ResolveAsync(
+        OperationSnapshot operation,
+        CancellationToken cancellationToken);
+}
+
 /// <summary>
 /// Resolves the completed path from the exact download-client connection recorded at submit time,
 /// then applies the one canonical acquisition remote-path mapping before import.
@@ -99,6 +106,7 @@ public sealed class CompletedDownloadLocationResolver(
     DownloadClientStore downloadClients,
     IDownloadClient client,
     AnimeImportSettingsStore importSettings)
+    : ICompletedDownloadLocationResolver
 {
     public async Task<CompletedDownloadLocation> ResolveAsync(
         OperationSnapshot operation,
