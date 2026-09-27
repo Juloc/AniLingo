@@ -414,6 +414,18 @@
     };
     const joined = (...parts) => parts.filter(Boolean).join(" · ");
 
+    // "PGS · Burned in by the server" / "ASS · Shown by the player"; nothing while subtitles are off.
+    const subtitleDiagnostic = () => {
+        if (plan?.subtitle) {
+            return joined(plan.subtitle.format, text[`playback.subtitle.${plan.subtitle.delivery}`]);
+        }
+
+        const option = subtitleSelect?.selectedOptions[0];
+        return option && option.value !== "off"
+            ? joined(option.dataset.format || null, text["playback.subtitle.client"])
+            : null;
+    };
+
     const diagnosticRows = () => {
         const output = plan.video;
         const audio = plan.audio;
@@ -453,6 +465,7 @@
         rows.push(["support", joined(
             text[`playback.support.${plan.confidence}`] || plan.confidence,
             planCapabilitiesInferred ? text["playback.diagnostics.inferredDocument"] : null)]);
+        rows.push(["subtitles", subtitleDiagnostic()]);
         rows.push(["processing", plan.mode === "direct_stream"
             ? text["playback.diagnostics.processingRemux"]
             : plan.mode === "transcode"
@@ -509,11 +522,32 @@
         renderDiagnostics();
     });
 
+    // The small note under the subtitle menu: picture subtitles are burned in by the server.
+    const subtitleHint = root.querySelector("[data-subtitle-hint]");
+    const renderSubtitleHint = () => {
+        if (!subtitleHint) {
+            return;
+        }
+
+        const trackId = burnInSubtitleTrackId();
+        const delivery = plan?.subtitle && `stream:${plan.subtitle.streamIndex}` === trackId
+            ? plan.subtitle.delivery
+            : null;
+        subtitleHint.textContent = !trackId
+            ? ""
+            : delivery === "burn_in"
+                ? text["playback.subtitle.burnInHint"] || ""
+                : delivery === "unavailable"
+                    ? text["playback.reason.subtitle_burn_in_unavailable"] || ""
+                    : text["playback.subtitle.preparingHint"] || "";
+    };
+
     const renderPlan = () => {
         setBadge();
         playbackSummary.textContent = plan ? compactStatus() : text["playback.status.checking"] || "";
         renderReasons();
         renderDiagnostics();
+        renderSubtitleHint();
         // Not "playbackMode": data-playback-mode is the mode selector inside this root.
         root.dataset.playbackDelivery = plan?.mode || "";
     };
@@ -977,8 +1011,9 @@
     const selectedSubtitleIsLearningSource = () =>
         subtitleSelect?.selectedOptions[0]?.dataset.learningSource === "true";
 
+    // Text tracks become cues drawn here; picture tracks are burned in by the server instead.
     const playbackTrackId = () =>
-        subtitleChoice.startsWith("stream:") && !selectedSubtitleIsLearningSource()
+        subtitleChoice.startsWith("stream:") && !selectedSubtitleIsLearningSource() && !burnInSubtitleTrackId()
             ? subtitleChoice
             : null;
 
@@ -1029,10 +1064,7 @@
             }
         } catch {
             playbackCues = [];
-            if (error) {
-                error.hidden = false;
-                error.textContent = "This subtitle track could not be loaded.";
-            }
+            showPlayerError(text["playback.subtitle.loadFailed"] || "");
         }
     };
 
@@ -1186,10 +1218,10 @@
                 break;
             }
             case design.actions.seekBack10:
-                seekToAbsolute(absoluteCurrentTime() - seekStepSeconds);
+                seekToAbsolute(seekBase() - seekStepSeconds, undefined, true);
                 break;
             case design.actions.seekForward10:
-                seekToAbsolute(absoluteCurrentTime() + seekStepSeconds);
+                seekToAbsolute(seekBase() + seekStepSeconds, undefined, true);
                 break;
             case design.actions.seekTo:
                 if (Number.isFinite(detail.seconds)) {
@@ -1263,15 +1295,18 @@
         sync();
     };
 
-    let plannedBurnIn = null;
+    // The first plan already carries a picture subtitle chosen before playback.
+    let plannedBurnIn = burnInSubtitleTrackId();
     subtitleSelect?.addEventListener("change", () => {
         subtitleChoice = subtitleSelect.value;
+        showPlayerError(null);
         void applySubtitleChoice();
         // Picture subtitles change the stream itself, so they need a new plan.
         if (burnInSubtitleTrackId() !== plannedBurnIn) {
             plannedBurnIn = burnInSubtitleTrackId();
             restartWithSelection();
         }
+        renderSubtitleHint();
     });
 
     speedSelect?.addEventListener("change", () => {
@@ -1345,8 +1380,30 @@
         }
     });
 
-    const seekToAbsolute = (requestedSeconds, shouldPlay = !video.paused && !video.ended) => {
+    // A live (remuxed or transcoded) stream restarts on every seek, so quick repeated seeks
+    // (double-tap series, arrow keys) are collected into one restart at the final position.
+    let liveSeekTarget = null;
+    let liveSeekTimer = null;
+    const liveSeekDelayMs = 350;
+    const seekBase = () => liveSeekTarget ?? absoluteCurrentTime();
+
+    const seekToAbsolute = (requestedSeconds, shouldPlay = !video.paused && !video.ended, coalesce = false) => {
         const target = clampToDuration(requestedSeconds);
+        window.clearTimeout(liveSeekTimer);
+        liveSeekTarget = null;
+
+        if (loadedStreamLive && coalesce) {
+            liveSeekTarget = target;
+            timelinePreviewing = true;
+            timeline.value = String(target);
+            timelineCurrent.textContent = formatTime(target);
+            liveSeekTimer = window.setTimeout(() => {
+                liveSeekTimer = null;
+                liveSeekTarget = null;
+                seekToAbsolute(target, shouldPlay);
+            }, liveSeekDelayMs);
+            return;
+        }
 
         if (loadedStreamLive) {
             pendingResumeTime = null;

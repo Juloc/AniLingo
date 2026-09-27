@@ -103,6 +103,7 @@ public static class PlaybackReasonCodes
     public const string HdrToneMapped = "hdr_tone_mapped";
     public const string HdrToneMapUnavailable = "hdr_tone_map_unavailable";
     public const string SubtitleBurnInUnavailable = "subtitle_burn_in_unavailable";
+    public const string SubtitleUnsupported = "subtitle_unsupported";
     public const string AudioConverted = "audio_converted";
     public const string AudioDownmixed = "audio_downmixed";
     public const string ResolutionReduced = "resolution_reduced";
@@ -124,6 +125,24 @@ public sealed record PlaybackVideoOutput(
     bool ToneMap = false,
     string? Encoder = null,
     int? BurnInSubtitleStreamIndex = null);
+
+/// <summary>How the requested subtitle stream reaches the viewer.</summary>
+[JsonConverter(typeof(SnakeCaseEnumConverter<PlaybackSubtitleDelivery>))]
+public enum PlaybackSubtitleDelivery
+{
+    // The client draws it (text cues, or bitmaps on a native player).
+    Client,
+    // The server draws the picture subtitle into the transcoded video.
+    BurnIn,
+    // It cannot be shown in this session; playback continues without it.
+    Unavailable
+}
+
+public sealed record PlaybackSubtitleOutput(
+    int StreamIndex,
+    string? Codec,
+    string? Format,
+    PlaybackSubtitleDelivery Delivery);
 
 public sealed record PlaybackAudioOutput(
     int StreamIndex,
@@ -156,7 +175,8 @@ public sealed record PlaybackPlan(
     PlaybackQualityResolution Quality,
     IReadOnlyList<PlaybackReason> Reasons,
     PlaybackCapabilitySupport Confidence,
-    string? SourceContainer = null)
+    string? SourceContainer = null,
+    PlaybackSubtitleOutput? Subtitle = null)
 {
     public bool UsesServerProcessing =>
         Mode is PlaybackDeliveryMode.DirectStream or PlaybackDeliveryMode.Transcode;

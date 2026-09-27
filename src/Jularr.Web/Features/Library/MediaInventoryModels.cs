@@ -74,21 +74,10 @@ public sealed record MediaStreamInfo(
     bool IsDefault,
     bool IsForced)
 {
-    private static readonly HashSet<string> TextSubtitleCodecs = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "ass",
-        "ssa",
-        "subrip",
-        "srt",
-        "webvtt",
-        "mov_text",
-        "text"
-    };
-
+    // Text (and styled ASS) subtitles can be extracted as cues; see SubtitleFormats.
     public bool IsText =>
         Kind == MediaStreamKind.Subtitle &&
-        Codec is not null &&
-        TextSubtitleCodecs.Contains(Codec);
+        Jularr.Web.Features.Subtitles.SubtitleFormats.IsText(Codec);
 }
 
 public sealed record MediaTechnicalInfo(

@@ -1,5 +1,6 @@
 using System.Globalization;
 using Jularr.Web.Features.Progress;
+using Jularr.Web.Features.Subtitles;
 
 namespace Jularr.Web.Features.Playback;
 
@@ -14,7 +15,8 @@ public sealed record PlayerTrackOption(
     string? Language,
     bool IsSelectable,
     bool IsLearningSource,
-    bool IsImage = false);
+    bool IsImage = false,
+    string? Format = null);
 
 /// <summary>
 /// Server-resolved initial state of the web player controls. Initial values
@@ -60,13 +62,10 @@ public sealed record PlayerControls(
         var subtitles = tracks
             .Where(x => x.Kind == PlaybackTrackKind.Subtitle)
             .OrderBy(x => x.StreamIndex)
-            .Select((track, position) => new PlayerTrackOption(
-                PlaybackTrackIds.Format(track.StreamIndex),
-                Label(track, $"Subtitle {position + 1}") + (track.IsText ? "" : " · image"),
-                PlaybackLanguages.Normalize(track.Language),
-                true,
-                hasLearningCues && track.StreamIndex == learningSourceStreamIndex,
-                IsImage: !track.IsText))
+            .Select((track, position) => SubtitleOption(
+                track,
+                position,
+                hasLearningCues && track.StreamIndex == learningSourceStreamIndex))
             .ToArray();
 
         var fileDefaultAudio = PlaybackTrackSelection.DefaultAudio(tracks);
@@ -95,6 +94,26 @@ public sealed record PlayerControls(
             preferences.DefaultPlaybackSpeed,
             media.VideoHeight,
             preferences);
+    }
+
+    // Text subtitles become client cues and picture subtitles a server burn-in; a format the
+    // server cannot decode stays listed (so the file's tracks are complete) but is not selectable.
+    private static PlayerTrackOption SubtitleOption(PlaybackMediaTrack track, int position, bool isLearningSource)
+    {
+        var kind = SubtitleFormats.Classify(track.Codec);
+        if (kind == SubtitleFormatKind.Unsupported && track.IsText)
+        {
+            kind = SubtitleFormatKind.Text;
+        }
+
+        return new PlayerTrackOption(
+            PlaybackTrackIds.Format(track.StreamIndex),
+            Label(track, $"Subtitle {position + 1}"),
+            PlaybackLanguages.Normalize(track.Language),
+            kind != SubtitleFormatKind.Unsupported,
+            isLearningSource,
+            IsImage: kind == SubtitleFormatKind.Image,
+            Format: SubtitleFormats.DisplayName(track.Codec));
     }
 
     private static string Label(PlaybackMediaTrack track, string fallback)
