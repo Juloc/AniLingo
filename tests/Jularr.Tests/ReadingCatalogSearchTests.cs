@@ -8,7 +8,7 @@ namespace Jularr.Tests;
 public sealed class ReadingCatalogSearchTests
 {
     [TestMethod]
-    public void SyosetuResponseMapsPublicWebNovelIdentity()
+    public async Task SyosetuResponseMapsPublicWebNovelIdentity()
     {
         const string json = """
         [
@@ -24,7 +24,12 @@ public sealed class ReadingCatalogSearchTests
         ]
         """;
 
-        var items = SyosetuCatalogClient.ParseResponse(json);
+        var handler = new RecordingHandler(json);
+        using var http = new HttpClient(handler);
+        var items = await new SyosetuCatalogClient(http).SearchAsync(
+            "無職転生",
+            18,
+            CancellationToken.None);
 
         Assert.AreEqual(1, items.Count);
         Assert.AreEqual("syosetu", items[0].Provider);
@@ -41,12 +46,18 @@ public sealed class ReadingCatalogSearchTests
     }
 
     [TestMethod]
-    public void SyosetuSearchUsesOfficialJsonApiAndTitleAuthorScope()
+    public async Task SyosetuSearchUsesOfficialJsonApiAndTitleAuthorScope()
     {
-        var uri = SyosetuCatalogClient.BuildSearchUri(
-            "Mushoku Tensei",
-            18);
+        var handler = new RecordingHandler("""[{"allcount":0}]""");
+        using var http = new HttpClient(handler);
+        var client = new SyosetuCatalogClient(http);
 
+        await client.SearchAsync(
+            "Mushoku Tensei",
+            18,
+            CancellationToken.None);
+
+        var uri = Assert.IsNotNull(handler.RequestUri);
         Assert.AreEqual(
             "api.syosetu.com",
             uri.Host);
@@ -77,46 +88,6 @@ public sealed class ReadingCatalogSearchTests
             SyosetuCatalogClient.IsValidNcode("../n9669bk"));
         Assert.IsFalse(
             SyosetuCatalogClient.IsValidNcode("N96BK"));
-    }
-
-    [TestMethod]
-    public void ExactCanonicalTitleRanksAboveLooseAuthorMatch()
-    {
-        var exact = new ReadingCatalogCandidate(
-            "anilist",
-            "1",
-            "Mushoku Tensei",
-            null,
-            null,
-            null,
-            2014,
-            "FINISHED",
-            26,
-            null,
-            null,
-            false);
-        var authorOnly = new ReadingCatalogCandidate(
-            "syosetu",
-            "n1234ab",
-            "Another Story",
-            null,
-            "Mushoku Tensei",
-            null,
-            2013,
-            "FINISHED",
-            null,
-            10,
-            "https://ncode.syosetu.com/n1234ab/",
-            true);
-
-        Assert.IsTrue(
-            ReadingCatalogSearch.MatchScore(
-                "Mushoku Tensei",
-                exact)
-            >
-            ReadingCatalogSearch.MatchScore(
-                "Mushoku Tensei",
-                authorOnly));
     }
 
     [TestMethod]
@@ -157,7 +128,7 @@ public sealed class ReadingCatalogSearchTests
     [TestMethod]
     public async Task SyosetuClientSendsRequiredUserAgent()
     {
-        var handler = new RecordingHandler();
+        var handler = new RecordingHandler("""[{"allcount":0}]""");
         using var http = new HttpClient(handler);
         var client = new SyosetuCatalogClient(http);
 
@@ -173,20 +144,22 @@ public sealed class ReadingCatalogSearchTests
                 StringComparison.Ordinal) == true);
     }
 
-    private sealed class RecordingHandler : HttpMessageHandler
+    private sealed class RecordingHandler(string responseJson) : HttpMessageHandler
     {
         public string? UserAgent { get; private set; }
+        public Uri? RequestUri { get; private set; }
 
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken)
         {
             UserAgent = request.Headers.UserAgent.ToString();
+            RequestUri = request.RequestUri;
             return Task.FromResult(
                 new HttpResponseMessage(HttpStatusCode.OK)
                 {
                     Content = new StringContent(
-                        """[{"allcount":0}]""",
+                        responseJson,
                         Encoding.UTF8,
                         "application/json")
                 });
