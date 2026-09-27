@@ -47,7 +47,7 @@ public sealed class NovelLearningTests
         // only text-selection UI.
         StringAssert.Contains(
             view,
-            ".ForNovelChapter(Model.Chapter.WorkId, Model.Chapter.Id, \"ja\");");
+            ".ForNovelChapter(chapter.WorkId, chapter.Id, \"ja\");");
     }
 
     [TestMethod]
