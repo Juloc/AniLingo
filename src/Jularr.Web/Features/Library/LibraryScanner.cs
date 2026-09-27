@@ -17,8 +17,12 @@ public sealed class LibraryScanner(
     SonarrArtworkSyncService sonarrArtworkSync,
     ILogger<LibraryScanner> logger,
     AnimeMetadataService? metadataService = null,
-    MediaSegmentSidecarImporter? segmentSidecars = null)
+    MediaSegmentSidecarImporter? segmentSidecars = null,
+    AnimeArtworkLibrary? artworkLibrary = null)
 {
+    private readonly AnimeArtworkLibrary artwork =
+        artworkLibrary ?? new AnimeArtworkLibrary(db, Microsoft.Extensions.Logging.Abstractions.NullLogger<AnimeArtworkLibrary>.Instance);
+
     internal static readonly HashSet<string> MediaExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".mkv", ".mp4", ".m4v", ".webm"
@@ -152,6 +156,7 @@ public sealed class LibraryScanner(
         var skipped = 0;
         var subtitleCandidates = new List<SubtitleCandidate>();
         var artworkDirectories = new Dictionary<Guid, string>();
+        var artworkSeasons = new Dictionary<Guid, Dictionary<int, string?>>();
         var newlyDiscoveredAnimeIds = new HashSet<Guid>();
         var nfoAniListIds = new Dictionary<Guid, string>();
         var nfoMalIds = new Dictionary<Guid, string>();
@@ -186,6 +191,19 @@ public sealed class LibraryScanner(
             }
 
             var animeDirectory = TryGetAnimeDirectory(rootPath, normalizedPath);
+            if (animeDirectory is not null)
+            {
+                // A season's artwork belongs in its own folder; null means the season's episodes
+                // sit directly in the series folder.
+                var mediaDirectory = Path.GetDirectoryName(normalizedPath);
+                var seasons = artworkSeasons.TryGetValue(anime.Id, out var known)
+                    ? known
+                    : artworkSeasons[anime.Id] = [];
+                seasons.TryAdd(
+                    descriptor.SeasonNumber,
+                    string.Equals(mediaDirectory, animeDirectory, StringComparison.Ordinal) ? null : mediaDirectory);
+            }
+
             if (animeDirectory is not null &&
                 artworkDirectories.TryAdd(anime.Id, animeDirectory) &&
                 nfoFiles.FindShow(animeDirectory) is { } showNfoPath)
@@ -478,15 +496,36 @@ public sealed class LibraryScanner(
         var localArtworkImported = 0;
         var localArtworkUnchanged = 0;
         var artworkProcessed = 0;
+        var artworkAnimeIds = artworkDirectories.Keys.ToArray();
+        var providerArtwork = new Dictionary<Guid, AnimeProviderArtwork>();
+        foreach (var metadata in await db.AnimeMetadata
+                     .AsNoTracking()
+                     .Where(x => artworkAnimeIds.Contains(x.AnimeId))
+                     .Select(x => new { x.AnimeId, x.CoverImageUrl, x.BannerImageUrl })
+                     .ToListAsync(cancellationToken))
+        {
+            providerArtwork.TryAdd(metadata.AnimeId, new AnimeProviderArtwork(metadata.CoverImageUrl, metadata.BannerImageUrl));
+        }
+
         foreach (var (animeId, animeDirectory) in artworkDirectories)
         {
             await ReportAsync(progress, LibraryScanPhase.Artwork, artworkProcessed++, artworkDirectories.Count, cancellationToken);
-            var artwork = await LocalAnimeArtworkImporter.ImportAsync(
+            var reconciled = await artwork.ReconcileAsync(
                 animeId,
                 animeDirectory,
+                artworkSeasons.GetValueOrDefault(animeId) ?? [],
+                providerArtwork.GetValueOrDefault(animeId),
                 cancellationToken);
-            localArtworkImported += artwork.ImportedCount;
-            localArtworkUnchanged += artwork.UnchangedCount;
+            localArtworkImported += reconciled.Refreshed + reconciled.Migrated;
+            localArtworkUnchanged += reconciled.Unchanged;
+        }
+
+        if (relativeFolder is null && artwork.CountLegacyFolders() is > 0 and var legacyFolders)
+        {
+            logger.LogInformation(
+                "{Count} anime artwork folder(s) under {LegacyRoot} are not migrated beside the media yet; their anime was not found in a scanned library folder.",
+                legacyFolders,
+                artwork.Cache.LegacyRootPath);
         }
 
         // Runs ffprobe only for new/changed files or after a probe version bump; invalid media is

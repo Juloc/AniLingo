@@ -127,6 +127,7 @@ Runtime paths are fixed and intentionally simple:
 
 - `/data` stores the SQLite database, protected integration settings, Codex authentication state, the persistent Whisper model and generated transcription cache.
 - `/media/anime` is the optional conventional read-only anime library mount; Jularr also starts without it.
+- Anime artwork lives beside the media: `poster.*`, `fanart.*` and `banner.*` in the series folder, season posters in the season's own folder (or `season01-poster.*` / `season-specials-poster.*` in the series folder). `/data/cache/artwork` only holds rebuildable WebP derivatives. On a writable library Jularr persists Sonarr and AniList artwork there once the anime is in the library and moves artwork from the former `/data/artwork/anime` store beside the media; it never replaces artwork files it did not write.
 
 For an existing Docker stack, replace `default` with that stack's network if needed. No connection string, database password, media environment variable or second service is required.
 

@@ -214,7 +214,7 @@ public sealed class EpisodeModel(
             AnimeTitle = Metadata.PreferredTitle;
         }
 
-        CoverImageUrl = AnimeArtworkStore.ResolvePosterUrl(animeId, Metadata?.CoverImageUrl);
+        CoverImageUrl = AnimeArtworkStore.ResolveSeasonPosterUrl(animeId, SeasonNumber, Metadata?.CoverImageUrl);
 
         var rows = await db.Episodes
             .AsNoTracking()

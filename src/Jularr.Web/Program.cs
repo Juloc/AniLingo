@@ -289,6 +289,9 @@ builder.Services.AddScoped<IAnimeMetadataProvider>(
     services => services.GetRequiredService<AniListMetadataProvider>());
 builder.Services.AddScoped<AnimeMetadataService>();
 builder.Services.AddScoped<AnimeRepairService>();
+builder.Services.AddHttpClient(Jularr.Web.Features.Artwork.AnimeArtworkLibrary.HttpClientName, client =>
+    client.Timeout = TimeSpan.FromSeconds(30));
+builder.Services.AddScoped<Jularr.Web.Features.Artwork.AnimeArtworkLibrary>();
 
 builder.Services.AddHttpClient<NcodeNovelSourceProvider>(client =>
 {

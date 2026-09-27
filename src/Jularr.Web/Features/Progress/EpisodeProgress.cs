@@ -638,8 +638,9 @@ public sealed class EpisodeProgressService(
                     resumeMs,
                     durationMs,
                     x.AnchorUpdatedAt,
-                    AnimeArtworkStore.ResolvePosterUrl(
+                    AnimeArtworkStore.ResolveSeasonPosterUrl(
                         detail.AnimeId,
+                        detail.SeasonNumber,
                         detail.CoverImageUrl));
             })
             .ToArray();
