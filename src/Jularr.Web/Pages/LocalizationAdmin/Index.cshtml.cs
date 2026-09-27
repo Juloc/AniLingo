@@ -12,7 +12,10 @@ namespace Jularr.Web.Pages.LocalizationAdmin;
 [Authorize(Roles = AccountRoles.Owner)]
 public sealed class IndexModel(
     AppDbContext db,
-    CodexCliProvider translationGenerator) : PageModel
+    CodexCliProvider translationGenerator,
+    CurrentAccountContext currentAccount,
+    AiActivityRunner activityRunner,
+    AiModelCatalogService catalogs) : PageModel
 {
     private const int GenerationBatchSize = 100;
 
@@ -222,11 +225,20 @@ public sealed class IndexModel(
             return 0;
         }
 
-        var result = await translationGenerator.GenerateUiTranslationsAsync(
-            new UiTranslationGenerationRequest(
-                metadata.Locale,
-                metadata.EnglishName,
-                pending),
+        var request = new UiTranslationGenerationRequest(
+            metadata.Locale,
+            metadata.EnglishName,
+            pending);
+        var catalog = await catalogs.GetCachedAsync(AiModelCatalogKeys.CodexServer, cancellationToken);
+        var result = await activityRunner.RunAsync(
+            new AiActivityStart(
+                currentAccount.ProfileId,
+                AiOperations.UiTranslation,
+                translationGenerator.Id,
+                AiOptionResolver.ResolveServer(AiInvocationOptions.Default, catalog, AiOperations.UiTranslation)),
+            pending.Sum(x => x.DefaultText.Length + x.Description.Length),
+            token => translationGenerator.GenerateUiTranslationsAsync(request, token),
+            generated => generated.Translations.Sum(x => x.Text.Length),
             cancellationToken);
 
         await store.SaveGeneratedAsync(metadata.Locale, result, cancellationToken);

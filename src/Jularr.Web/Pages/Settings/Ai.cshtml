@@ -1,143 +1,250 @@
 @page
 @model Jularr.Web.Pages.Settings.AiModel
+@using System.Text.Json
 @using Jularr.Web.Features.Ai
 @{
-    ViewData["Title"] = Model.Ui["settings.ai.title"];
+    var ui = Model.Ui;
+    ViewData["Title"] = ui["settings.ai.title"];
+    var isServer = Model.ProviderId == AiProviderIds.Server;
+    var serverCatalog = Model.ServerCatalog;
+    var personalCatalog = Model.PersonalCatalog;
+    var efforts = Model.ReasoningOptionsFor(Model.ServerModel);
+    var tiers = Model.ServiceTierOptionsFor(Model.ServerModel);
+    var allEfforts = AiOptionResolver.AllReasoningOptions(serverCatalog);
+    var effortMap = serverCatalog.Models.ToDictionary(x => x.Id, x => x.ReasoningEfforts.Select(e => e.Effort).ToArray());
+    if (serverCatalog.DefaultModel is { } defaultModel)
+    {
+        effortMap[""] = defaultModel.ReasoningEfforts.Select(e => e.Effort).ToArray();
+    }
+
+    var usagePanel = new AiUsagePanel(ui, Model.Usage, false, "/Settings/Ai");
+}
+@section Head {
+    <link rel="stylesheet" href="~/css/ai.css" asp-append-version="true" />
 }
 
 <header class="page-header">
     <div>
-        <a class="back-link" asp-page="/Settings/Index">← @Model.Ui["nav.settings"]</a>
-        <h1>@Model.Ui["settings.ai.title"]</h1>
-        <p>@Model.Ui["settings.ai.description"]</p>
+        <a class="back-link" asp-page="/Settings/Index">← @ui["nav.settings"]</a>
+        <h1>@ui["settings.ai.title"]</h1>
+        <p>@ui["settings.ai.description"]</p>
     </div>
 </header>
 
 <section class="panel">
-    <form method="post" class="form-stack">
+    <form method="post" class="form-stack" data-ai-settings>
         <div asp-validation-summary="ModelOnly" class="validation"></div>
 
         <label>
-            <span>@Model.Ui["settings.ai.provider"]</span>
-            <select asp-for="ProviderId">
-                <option value="@AiProviderIds.Server">@Model.Ui["settings.ai.server"]</option>
-                <option value="@AiProviderIds.OpenAiCompatible">@Model.Ui["settings.ai.openaiCompatible"]</option>
+            <span>@ui["settings.ai.provider"]</span>
+            <select asp-for="ProviderId" data-ai-provider>
+                <option value="@AiProviderIds.Server">@ui["settings.ai.server"]</option>
+                <option value="@AiProviderIds.OpenAiCompatible">@ui["settings.ai.openaiCompatible"]</option>
             </select>
         </label>
 
-        <label>
-            <span>@Model.Ui["settings.ai.baseUrl"]</span>
-            <input asp-for="BaseUrl" type="url" autocomplete="url" placeholder="https://api.openai.com/v1" />
-        </label>
+        <div class="form-stack" data-ai-provider-fields="@AiProviderIds.Server" hidden="@(!isServer)">
+            <label>
+                <span>@ui["settings.ai.model"]</span>
+                @if (serverCatalog.HasModels)
+                {
+                    <select asp-for="ServerModel" data-ai-model>
+                        <option value="">@ui.Format("ai.models.providerDefault", ("model", serverCatalog.DefaultModel?.DisplayName ?? "—"))</option>
+                        @foreach (var entry in serverCatalog.Models)
+                        {
+                            <option value="@entry.Id">@entry.DisplayName</option>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(Model.ServerModel) && serverCatalog.Find(Model.ServerModel) is null)
+                        {
+                            <option value="@Model.ServerModel">@ui.Format("ai.models.notInCatalog", ("model", Model.ServerModel))</option>
+                        }
+                    </select>
+                }
+                else
+                {
+                    <input asp-for="ServerModel" autocomplete="off" placeholder="@ui["ai.models.defaultPlaceholder"]" />
+                }
+                <small class="muted">@AiViewFormat.CatalogStatus(ui, serverCatalog, Model.Now)</small>
+            </label>
+
+            <label data-ai-effort-field hidden="@(allEfforts.Count == 0 || efforts.Count == 0)">
+                <span>@ui["ai.settings.reasoning"]</span>
+                <select asp-for="ReasoningEffort" data-ai-effort data-efforts="@JsonSerializer.Serialize(effortMap)">
+                    <option value="">@ui["ai.settings.modelDefault"]</option>
+                    @foreach (var option in allEfforts)
+                    {
+                        <option value="@option.Effort" hidden="@(!efforts.Any(x => x.Effort == option.Effort))">@option.Effort</option>
+                    }
+                </select>
+            </label>
+        </div>
+
+        <div class="form-stack" data-ai-provider-fields="@AiProviderIds.OpenAiCompatible" hidden="@isServer">
+            <label>
+                <span>@ui["settings.ai.baseUrl"]</span>
+                <input asp-for="BaseUrl" type="url" autocomplete="url" placeholder="https://api.openai.com/v1" />
+            </label>
+
+            <label>
+                <span>@ui["settings.ai.apiKey"]</span>
+                <input asp-for="ApiKey" type="password" autocomplete="new-password" />
+                @if (Model.HasStoredApiKey)
+                {
+                    <small class="muted">@ui["settings.ai.apiKeyKeep"]</small>
+                }
+            </label>
+
+            <label>
+                <span>@ui["settings.ai.model"]</span>
+                <input asp-for="ModelName" autocomplete="off" list="ai-personal-models" placeholder="model-name" />
+                <datalist id="ai-personal-models">
+                    @foreach (var entry in personalCatalog.Models)
+                    {
+                        <option value="@entry.Id"></option>
+                    }
+                </datalist>
+                <small class="muted">@AiViewFormat.CatalogStatus(ui, personalCatalog, Model.Now)</small>
+            </label>
+        </div>
 
         <label>
-            <span>@Model.Ui["settings.ai.model"]</span>
-            <input asp-for="ModelName" autocomplete="off" placeholder="model-name" />
-        </label>
-
-        <label>
-            <span>@Model.Ui["settings.ai.apiKey"]</span>
-            <input asp-for="ApiKey" type="password" autocomplete="new-password" />
-            @if (Model.HasStoredApiKey)
-            {
-                <small class="muted">@Model.Ui["settings.ai.apiKeyKeep"]</small>
-            }
-        </label>
-
-        <label>
-            <span>@Model.Ui["settings.ai.translationMode"]</span>
+            <span>@ui["settings.ai.translationMode"]</span>
             <select asp-for="TranslationMode">
-                <option value="@AiTranslationMode.Efficient">@Model.Ui["settings.ai.efficient"]</option>
-                <option value="@AiTranslationMode.Quality">@Model.Ui["settings.ai.quality"]</option>
-                <option value="@AiTranslationMode.Maximum">@Model.Ui["settings.ai.maximum"]</option>
+                <option value="@AiTranslationMode.Efficient">@ui["settings.ai.efficient"]</option>
+                <option value="@AiTranslationMode.Quality">@ui["settings.ai.quality"]</option>
+                <option value="@AiTranslationMode.Maximum">@ui["settings.ai.maximum"]</option>
             </select>
         </label>
+
+        <details class="ai-advanced">
+            <summary>@ui["ai.settings.advanced"]</summary>
+
+            @if (isServer && tiers.Count > 0)
+            {
+                <label>
+                    <span>@ui["ai.settings.serviceTier"]</span>
+                    <select asp-for="ServiceTier">
+                        <option value="">@ui["ai.settings.modelDefault"]</option>
+                        @foreach (var tier in tiers)
+                        {
+                            <option value="@tier.Id">@tier.Name</option>
+                        }
+                    </select>
+                </label>
+            }
+
+            <label data-ai-provider-fields="@AiProviderIds.OpenAiCompatible" hidden="@isServer">
+                <span>@ui["ai.settings.maxOutputTokens"]</span>
+                <input asp-for="MaxOutputTokens" type="number" min="1" max="@AiProfileSettings.MaxOutputTokensLimit" placeholder="@ui["ai.settings.providerLimit"]" />
+            </label>
+
+            <table class="ai-table ai-overrides">
+                <thead>
+                    <tr>
+                        <th scope="col">@ui["ai.settings.operation"]</th>
+                        <th scope="col">@ui["settings.ai.model"]</th>
+                        @if (isServer && allEfforts.Count > 0)
+                        {
+                            <th scope="col">@ui["ai.settings.reasoning"]</th>
+                        }
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var operation in AiOperations.ProfileConfigurable)
+                    {
+                        var selectedModel = Model.OverrideModels.GetValueOrDefault(operation);
+                        var selectedEffort = Model.OverrideEfforts.GetValueOrDefault(operation);
+                        <tr>
+                            <th scope="row">@AiViewFormat.Operation(ui, operation)</th>
+                            <td>
+                                @if (isServer && serverCatalog.HasModels)
+                                {
+                                    <select name="OverrideModels[@operation]" aria-label="@ui["settings.ai.model"]">
+                                        <option value="">@ui["ai.settings.inherit"]</option>
+                                        @foreach (var entry in serverCatalog.Models)
+                                        {
+                                            <option value="@entry.Id" selected="@(entry.Id == selectedModel)">@entry.DisplayName</option>
+                                        }
+                                    </select>
+                                }
+                                else
+                                {
+                                    <input name="OverrideModels[@operation]" value="@selectedModel" autocomplete="off"
+                                           list="@(isServer ? null : "ai-personal-models")" placeholder="@ui["ai.settings.inherit"]" aria-label="@ui["settings.ai.model"]" />
+                                }
+                            </td>
+                            @if (isServer && allEfforts.Count > 0)
+                            {
+                                <td>
+                                    <select name="OverrideEfforts[@operation]" aria-label="@ui["ai.settings.reasoning"]">
+                                        <option value="">@ui["ai.settings.inherit"]</option>
+                                        @foreach (var option in allEfforts)
+                                        {
+                                            <option value="@option.Effort" selected="@(option.Effort == selectedEffort)">@option.Effort</option>
+                                        }
+                                    </select>
+                                </td>
+                            }
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </details>
 
         <div class="inline-actions">
             <button class="button button-primary" type="submit" asp-page-handler="Save">
-                @Model.Ui["settings.ai.save"]
+                @ui["settings.ai.save"]
             </button>
             <button class="button" type="submit" asp-page-handler="Test">
-                @Model.Ui["settings.ai.test"]
+                @ui["settings.ai.test"]
+            </button>
+            <button class="button" type="submit" asp-page-handler="RefreshModels">
+                @ui["ai.models.refresh"]
             </button>
             <button class="button" type="submit" asp-page-handler="Reset" formnovalidate>
-                @Model.Ui["settings.ai.reset"]
+                @ui["settings.ai.reset"]
             </button>
         </div>
     </form>
 </section>
 
-<section class="panel">
-    <div class="panel-heading">
-        <h2>@Model.Ui["settings.ai.usageTitle"]</h2>
-    </div>
-
-    <div class="status-list">
-        <div>
-            <span>@Model.Ui["settings.ai.requests"]</span>
-            <strong>@Model.Usage.RequestCount</strong>
-        </div>
-        <div>
-            <span>@Model.Ui["settings.ai.inputTokens"]</span>
-            <strong>@Model.Usage.InputTokens.ToString("N0")</strong>
-        </div>
-        <div>
-            <span>@Model.Ui["settings.ai.outputTokens"]</span>
-            <strong>@Model.Usage.OutputTokens.ToString("N0")</strong>
-        </div>
-        <div>
-            <span>@Model.Ui["settings.ai.cacheHits"]</span>
-            <strong>@Model.Usage.CacheHits</strong>
-        </div>
-        <div>
-            <span>@Model.Ui["settings.ai.resumedChunks"]</span>
-            <strong>@Model.Usage.ResumedChunks</strong>
-        </div>
-    </div>
-
-    <p class="muted">@Model.Ui["settings.ai.usageNote"]</p>
-
-    @if (Model.Usage.Recent.Count > 0)
-    {
-        <h3>@Model.Ui["settings.ai.recentUsage"]</h3>
-        <div class="status-list">
-            @foreach (var item in Model.Usage.Recent.Take(8))
-            {
-                <div>
-                    <span>
-                        @item.Operation
-                        @if (!item.CacheHit && !item.ResumedChunk)
-                        {
-                            <text> · @(item.Estimated ? Model.Ui["settings.ai.estimated"] : Model.Ui["settings.ai.exact"])</text>
-                        }
-                    </span>
-                    <strong>
-                        @if (item.CacheHit)
-                        {
-                            <text>@Model.Ui["settings.ai.cacheHits"]</text>
-                        }
-                        else if (item.ResumedChunk)
-                        {
-                            <text>@Model.Ui["settings.ai.resumedChunks"]</text>
-                        }
-                        else
-                        {
-                            <text>@item.InputTokens.ToString("N0") / @item.OutputTokens.ToString("N0")</text>
-                        }
-                    </strong>
-                </div>
-            }
-        </div>
-    }
-</section>
-
-@if (Model.IsOwner)
-{
+<div class="settings-grid">
     <section class="panel">
         <div class="panel-heading">
-            <h2>@Model.Ui["settings.ai.server"]</h2>
+            <h2>@ui["settings.ai.usageTitle"]</h2>
         </div>
-        <p class="muted">@Model.Ui["settings.ai.serverDescription"]</p>
-        <a class="button" asp-page="/Admin/Ai">@Model.Ui["settings.ai.serverManage"]</a>
+        <partial name="_AiUsage" model="usagePanel" />
     </section>
+
+    <div class="form-stack">
+        <section class="panel">
+            <div class="panel-heading">
+                <h2>@ui["settings.ai.recentUsage"]</h2>
+            </div>
+            <partial name="_AiActivity" model="Model.Activity" />
+        </section>
+
+        @if (Model.SavedProviderId == AiProviderIds.Server)
+        {
+            <section class="panel">
+                <div class="panel-heading">
+                    <h2>@ui["ai.quota.title"]</h2>
+                </div>
+                <partial name="_AiQuota" model="new AiQuotaPanel(ui, Model.Quota, false)" />
+            </section>
+        }
+
+        @if (Model.IsOwner)
+        {
+            <section class="panel">
+                <p class="muted">@ui["settings.ai.serverDescription"]</p>
+                <a class="button" asp-page="/Admin/Ai">@ui["settings.ai.serverManage"]</a>
+            </section>
+        }
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/ai-settings.js" asp-append-version="true"></script>
+    <script src="~/js/ai-activity.js" asp-append-version="true"></script>
 }

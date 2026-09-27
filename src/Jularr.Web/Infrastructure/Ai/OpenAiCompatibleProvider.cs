@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -13,12 +14,18 @@ public sealed class OpenAiCompatibleProvider(
     HttpClient httpClient,
     AiProfileSettings settings,
     Action<AiUsageMeasurement>? usageSink = null)
-    : IAiProvider, IAiSentenceExplainer, INovelTranslator, IBookTranslator, INovelMappingSuggester, IStoryContextExtractor
+    : IAiProvider, IAiSentenceExplainer, INovelTranslator, IBookTranslator, INovelMappingSuggester, IStoryContextExtractor, IProfileAiBackend
 {
     private static readonly JsonSerializerOptions JsonOptions =
         new(JsonSerializerDefaults.Web)
         {
             PropertyNameCaseInsensitive = true
+        };
+
+    private static readonly JsonSerializerOptions RequestJsonOptions =
+        new(JsonSerializerDefaults.Web)
+        {
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
         };
 
     public string Id => AiProviderIds.OpenAiCompatible;
@@ -187,7 +194,7 @@ public sealed class OpenAiCompatibleProvider(
         CancellationToken cancellationToken)
     {
         var json = await CompleteAsync(
-            StoryContextExtractionPrompt.Operation,
+            AiOperations.StoryContext,
             StoryContextExtractionPrompt.Instructions + " " + StoryContextExtractionPrompt.JsonShape,
             StoryContextExtractionPrompt.BuildInput(request),
             cancellationToken);
@@ -230,21 +237,27 @@ public sealed class OpenAiCompatibleProvider(
                 "The OpenAI-compatible provider is not fully configured.");
         }
 
+        var activity = AiActivityScope.Current;
+        var model = activity?.Options.Model ?? settings.Model;
+        var maxTokens = activity is null ? settings.MaxOutputTokens : activity.Options.MaxOutputTokens;
+        activity?.SetTransport(AiTransports.OpenAiChatCompletions);
+        activity?.SetModel(model, null);
+        activity?.SetState(AiActivityState.Running);
+
         using var request = new HttpRequestMessage(
             HttpMethod.Post,
-            BuildChatCompletionsUri(settings.BaseUrl));
+            BuildUri(settings.BaseUrl, "chat/completions"));
         request.Headers.Authorization =
             new AuthenticationHeaderValue("Bearer", settings.ApiKey);
         request.Content = JsonContent.Create(
-            new
-            {
-                model = settings.Model,
-                messages = new object[]
-                {
-                    new { role = "system", content = systemPrompt },
-                    new { role = "user", content = userPrompt }
-                }
-            });
+            new ChatCompletionRequest(
+                model,
+                [
+                    new ChatRequestMessage("system", systemPrompt),
+                    new ChatRequestMessage("user", userPrompt)
+                ],
+                maxTokens),
+            options: RequestJsonOptions);
 
         using var response = await httpClient.SendAsync(
             request,
@@ -254,13 +267,8 @@ public sealed class OpenAiCompatibleProvider(
         if (!response.IsSuccessStatusCode)
         {
             var error = await response.Content.ReadAsStringAsync(cancellationToken);
-            if (error.Length > 800)
-            {
-                error = error[..800];
-            }
-
             throw new InvalidOperationException(
-                $"AI provider returned HTTP {(int)response.StatusCode}: {error}");
+                AiErrorSanitizer.Sanitize($"AI provider returned HTTP {(int)response.StatusCode}: {error}"));
         }
 
         var payload = await response.Content.ReadFromJsonAsync<ChatCompletionResponse>(
@@ -289,25 +297,104 @@ public sealed class OpenAiCompatibleProvider(
             ?? AiUsageTracker.EstimateTokens(inputCharacters);
         var outputTokens = payload.Usage?.CompletionTokens
             ?? AiUsageTracker.EstimateTokens(content.Length);
+        var cachedTokens = exactUsage ? payload.Usage?.PromptTokensDetails?.CachedTokens ?? 0 : 0;
+        var reasoningTokens = exactUsage ? payload.Usage?.CompletionTokensDetails?.ReasoningTokens ?? 0 : 0;
+
+        activity?.ReportUsage(
+            new AiTokenUsage(inputTokens, cachedTokens, outputTokens, reasoningTokens, Estimated: !exactUsage));
 
         usageSink?.Invoke(
             new AiUsageMeasurement(
                 DateTimeOffset.UtcNow,
                 operation,
                 Id,
-                settings.Model,
+                model,
                 inputCharacters,
                 content.Length,
                 inputTokens,
                 outputTokens,
                 Estimated: !exactUsage,
                 CacheHit: false,
-                ResumedChunk: false));
+                ResumedChunk: false)
+            {
+                CachedInputTokens = cachedTokens,
+                ReasoningOutputTokens = reasoningTokens
+            });
 
         return content;
     }
 
-    private static Uri BuildChatCompletionsUri(string baseUrl)
+    /// <summary>
+    /// Standards-compatible model discovery via <c>GET {base}/models</c>. Providers without that
+    /// endpoint report <see cref="AiModelDiscoveryUnsupportedException"/>; manual entry still works.
+    /// </summary>
+    public async Task<IReadOnlyList<AiModelDescriptor>> ListModelsAsync(CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(settings.BaseUrl) || string.IsNullOrWhiteSpace(settings.ApiKey))
+        {
+            throw new InvalidOperationException("Base URL and API key are required to list models.");
+        }
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, BuildUri(settings.BaseUrl, "models"));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", settings.ApiKey);
+        using var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+
+        if (response.StatusCode is HttpStatusCode.NotFound
+            or HttpStatusCode.MethodNotAllowed
+            or HttpStatusCode.NotImplemented)
+        {
+            throw new AiModelDiscoveryUnsupportedException("This provider does not list its models.");
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new InvalidOperationException($"Model discovery returned HTTP {(int)response.StatusCode}.");
+        }
+
+        JsonDocument document;
+        try
+        {
+            document = await JsonDocument.ParseAsync(
+                await response.Content.ReadAsStreamAsync(cancellationToken),
+                cancellationToken: cancellationToken);
+        }
+        catch (JsonException)
+        {
+            throw new AiModelDiscoveryUnsupportedException("This provider does not return a model list.");
+        }
+
+        using (document)
+        {
+            var root = document.RootElement;
+            var data = root.ValueKind == JsonValueKind.Array
+                ? root
+                : root.ValueKind == JsonValueKind.Object && root.TryGetProperty("data", out var list) && list.ValueKind == JsonValueKind.Array
+                    ? list
+                    : default;
+
+            if (data.ValueKind != JsonValueKind.Array)
+            {
+                throw new AiModelDiscoveryUnsupportedException("This provider does not return a model list.");
+            }
+
+            return data.EnumerateArray()
+                .Where(x => x.ValueKind == JsonValueKind.Object)
+                .Select(x => (
+                    Id: x.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.String ? id.GetString() : null,
+                    Context: ReadLong(x, "context_length") ?? ReadLong(x, "context_window")))
+                .Where(x => AiProfileSettings.IsValidModelId(x.Id))
+                .Select(x => AiModelDescriptor.Basic(x.Id!, x.Context))
+                .OrderBy(x => x.Id, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
+    }
+
+    private static long? ReadLong(JsonElement value, string name) =>
+        value.TryGetProperty(name, out var property) && property.ValueKind == JsonValueKind.Number && property.TryGetInt64(out var number)
+            ? number
+            : null;
+
+    private static Uri BuildUri(string baseUrl, string path)
     {
         var normalized = baseUrl.Trim().TrimEnd('/');
         if (Uri.TryCreate(normalized, UriKind.Absolute, out var parsed)
@@ -317,7 +404,7 @@ public sealed class OpenAiCompatibleProvider(
             normalized += "/v1";
         }
 
-        return new Uri(normalized + "/chat/completions", UriKind.Absolute);
+        return new Uri(normalized + "/" + path, UriKind.Absolute);
     }
 
     private static T DeserializeJson<T>(string value)
@@ -365,11 +452,37 @@ public sealed class OpenAiCompatibleProvider(
         [property: JsonPropertyName("usage")]
         ChatUsage? Usage);
 
+    private sealed record ChatCompletionRequest(
+        [property: JsonPropertyName("model")]
+        string Model,
+        [property: JsonPropertyName("messages")]
+        IReadOnlyList<ChatRequestMessage> Messages,
+        [property: JsonPropertyName("max_tokens")]
+        int? MaxTokens);
+
+    private sealed record ChatRequestMessage(
+        [property: JsonPropertyName("role")]
+        string Role,
+        [property: JsonPropertyName("content")]
+        string Content);
+
     private sealed record ChatUsage(
         [property: JsonPropertyName("prompt_tokens")]
         int? PromptTokens,
         [property: JsonPropertyName("completion_tokens")]
-        int? CompletionTokens);
+        int? CompletionTokens,
+        [property: JsonPropertyName("prompt_tokens_details")]
+        PromptTokenDetails? PromptTokensDetails,
+        [property: JsonPropertyName("completion_tokens_details")]
+        CompletionTokenDetails? CompletionTokensDetails);
+
+    private sealed record PromptTokenDetails(
+        [property: JsonPropertyName("cached_tokens")]
+        int? CachedTokens);
+
+    private sealed record CompletionTokenDetails(
+        [property: JsonPropertyName("reasoning_tokens")]
+        int? ReasoningTokens);
 
     private sealed record ChatChoice(
         [property: JsonPropertyName("message")]
