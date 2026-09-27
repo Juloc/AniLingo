@@ -184,7 +184,10 @@ public sealed class IndexModel(
                 localMediaId,
                 detailsUrl,
                 out var draft) ||
-            draft.Identity.MediaType != WatchlistMediaType.Anime ||
+            draft.Identity.MediaType is not (
+                WatchlistMediaType.Anime or
+                WatchlistMediaType.Manga or
+                WatchlistMediaType.LightNovel) ||
             !draft.Identity.ProviderKey.Equals(AniListMetadataProvider.ProviderKey, StringComparison.Ordinal))
         {
             return BadRequest();
