@@ -1,12 +1,27 @@
 // Novel chapter translation. The existing full AI translation and the local
-// TranslateGemma text-only translation are independent cached tracks.
+// TranslateGemma text-only translation are independent cached tracks. The
+// local track's controls exist only when the server has TranslateGemma set up
+// or the chapter already has cached local text (data-translate-gemma-available).
 (() => {
     const registry = window.JularrNovelReader = window.JularrNovelReader || {};
 
+    const loadText = shell => {
+        let bundle = {};
+        try {
+            bundle = JSON.parse(
+                shell.querySelector("[data-novel-translation-text]")?.textContent || "{}") || {};
+        } catch {
+            bundle = {};
+        }
+        return (key, fallback) => bundle["novels.translation." + key] || fallback;
+    };
+
     registry.translation = reader => {
         const { shell } = reader;
+        const t = loadText(shell);
         let translationSlot = shell.querySelector("[data-translation-slot]");
         const aiStatusUrl = shell.dataset.translationStatusUrl || "";
+        const gemmaAvailable = shell.dataset.translateGemmaAvailable === "true";
 
         const handlerUrl = handler => {
             const target = new URL(aiStatusUrl || window.location.href, window.location.origin);
@@ -37,7 +52,18 @@
         const aiStateLabel = () =>
             translationSlot?.querySelector(".novel-translation-state");
 
+        const sourceButton = (source, label) => {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.dataset.readerTranslationSource = source;
+            button.disabled = true;
+            button.textContent = label;
+            return button;
+        };
+
         const ensureSourcePanel = () => {
+            if (!gemmaAvailable) return null;
+
             const slot = ensureTranslationSlot();
             if (!slot) return null;
 
@@ -47,35 +73,36 @@
             panel = document.createElement("div");
             panel.className = "novel-translation-source-panel";
             panel.dataset.translationSourcePanel = "";
-            panel.innerHTML = `
-                <div class="novel-translation-source-switch"
-                     role="group"
-                     aria-label="Deutsche Übersetzung">
-                    <button type="button"
-                            data-reader-translation-source="gemma"
-                            disabled>Übersetzung</button>
-                    <button type="button"
-                            data-reader-translation-source="ai"
-                            disabled>AI</button>
-                    <button type="button"
-                            data-reader-translation-source="both"
-                            disabled>Beide</button>
-                </div>
-                <div class="novel-local-translation-status" data-local-translation-status></div>
-            `;
+
+            const sourceSwitch = document.createElement("div");
+            sourceSwitch.className = "novel-translation-source-switch";
+            sourceSwitch.setAttribute("role", "group");
+            sourceSwitch.setAttribute("aria-label", t("sourceSwitchAria", "German translation source"));
+            sourceSwitch.append(
+                sourceButton("gemma", t("localSource", "Local")),
+                sourceButton("ai", t("aiSource", "AI")),
+                sourceButton("both", t("bothSources", "Both")));
+
+            const status = document.createElement("div");
+            status.className = "novel-local-translation-status";
+            status.dataset.localTranslationStatus = "";
+
+            panel.append(sourceSwitch, status);
             slot.append(panel);
             reader.applyView(reader.currentView());
             return panel;
         };
 
+        const removeSourcePanel = () => {
+            translationSlot?.querySelector("[data-translation-source-panel]")?.remove();
+        };
+
         const localStatusElement = () =>
             ensureSourcePanel()?.querySelector("[data-local-translation-status]");
 
-        const installAiParagraphs = paragraphs => {
-            if (!Array.isArray(paragraphs) || paragraphs.length === 0) return;
-
+        const installParagraphs = (paragraphs, language) => {
             const content = shell.querySelector("[data-reader-content]");
-            if (!content) return;
+            if (!content) return false;
 
             paragraphs.forEach((text, index) => {
                 let segment = content.querySelector(`[data-reader-segment="${index}"]`);
@@ -87,13 +114,13 @@
                 }
 
                 let paragraph = segment.querySelector(
-                    '[data-reader-paragraph][data-language="de"]');
+                    `[data-reader-paragraph][data-language="${language}"]`);
                 if (!paragraph) {
                     paragraph = document.createElement("p");
-                    paragraph.className = "novel-reader-paragraph de";
+                    paragraph.className = `novel-reader-paragraph ${language}`;
                     paragraph.lang = "de";
                     paragraph.dataset.readerParagraph = "";
-                    paragraph.dataset.language = "de";
+                    paragraph.dataset.language = language;
                     paragraph.dataset.index = String(index);
 
                     const source = segment.querySelector(
@@ -114,12 +141,19 @@
                 paragraph.textContent = text;
             });
 
+            return true;
+        };
+
+        const installAiParagraphs = paragraphs => {
+            if (!Array.isArray(paragraphs) || paragraphs.length === 0) return;
+            if (!installParagraphs(paragraphs, "de")) return;
+
             reader.setHasTranslation(true);
 
             const state = aiStateLabel();
             if (state) {
                 state.classList.add("ready");
-                state.textContent = "AI-Übersetzung bereit";
+                state.textContent = t("aiReady", "AI translation ready");
             }
 
             translationSlot?.querySelector("[data-translate-form]")?.remove();
@@ -131,46 +165,7 @@
 
         const installGemmaParagraphs = paragraphs => {
             if (!Array.isArray(paragraphs) || paragraphs.length === 0) return;
-
-            const content = shell.querySelector("[data-reader-content]");
-            if (!content) return;
-
-            paragraphs.forEach((text, index) => {
-                let segment = content.querySelector(`[data-reader-segment="${index}"]`);
-                if (!segment) {
-                    segment = document.createElement("section");
-                    segment.className = "novel-reader-segment";
-                    segment.dataset.readerSegment = String(index);
-                    content.append(segment);
-                }
-
-                let paragraph = segment.querySelector(
-                    '[data-reader-paragraph][data-language="de-gemma"]');
-                if (!paragraph) {
-                    paragraph = document.createElement("p");
-                    paragraph.className = "novel-reader-paragraph de-gemma";
-                    paragraph.lang = "de";
-                    paragraph.dataset.readerParagraph = "";
-                    paragraph.dataset.language = "de-gemma";
-                    paragraph.dataset.index = String(index);
-
-                    const source = segment.querySelector(
-                        '[data-reader-paragraph][data-language="ja"]');
-                    if (source?.classList.contains("is-heading")) {
-                        paragraph.classList.add("is-heading");
-                        paragraph.setAttribute("role", "heading");
-                        if (source.getAttribute("aria-level")) {
-                            paragraph.setAttribute(
-                                "aria-level",
-                                source.getAttribute("aria-level"));
-                        }
-                    }
-
-                    segment.append(paragraph);
-                }
-
-                paragraph.textContent = text;
-            });
+            if (!installParagraphs(paragraphs, "de-gemma")) return;
 
             reader.setHasTranslateGemma(true);
             const status = localStatusElement();
@@ -178,7 +173,7 @@
                 status.replaceChildren();
                 const label = document.createElement("span");
                 label.className = "novel-translation-state ready";
-                label.textContent = "Übersetzung bereit";
+                label.textContent = t("localReady", "Local translation ready");
                 status.append(label);
             }
 
@@ -201,7 +196,7 @@
             }
 
             if (!response.ok) {
-                throw new Error((await response.text()) || "Request failed.");
+                throw new Error((await response.text()) || t("requestFailed", "Request failed."));
             }
 
             return response.json();
@@ -214,7 +209,7 @@
                     const result = await fetchAiStatus();
                     if (result?.status === "ready") {
                         installAiParagraphs(result.paragraphs);
-                        reader.showToast("AI-Übersetzung ist bereit");
+                        reader.showToast(t("aiReady", "AI translation ready"));
                         return;
                     }
                 } catch {
@@ -223,7 +218,9 @@
             }
 
             const state = aiStateLabel();
-            if (state) state.textContent = "AI-Übersetzung läuft im Hintergrund";
+            if (state) {
+                state.textContent = t("aiRunningInBackground", "AI translation continues in the background");
+            }
         };
 
         const waitForGemmaTranslation = async () => {
@@ -233,7 +230,7 @@
                     const result = await fetchGemmaStatus();
                     if (result?.status === "ready") {
                         installGemmaParagraphs(result.paragraphs);
-                        reader.showToast("Übersetzung ist bereit");
+                        reader.showToast(t("localReady", "Local translation ready"));
                         return;
                     }
                 } catch {
@@ -242,7 +239,9 @@
             }
 
             const status = localStatusElement();
-            if (status) status.textContent = "Übersetzung läuft im Hintergrund";
+            if (status) {
+                status.textContent = t("localRunningInBackground", "Local translation continues in the background");
+            }
         };
 
         const queueAiTranslation = async form => {
@@ -251,7 +250,7 @@
 
             button.disabled = true;
             const previous = button.textContent;
-            button.textContent = "Startet…";
+            button.textContent = t("starting", "Starting…");
 
             try {
                 const result = await reader.postForm(form);
@@ -263,16 +262,16 @@
                 }
 
                 const state = aiStateLabel();
-                if (state) state.textContent = "AI-Übersetzung läuft";
+                if (state) state.textContent = t("aiRunning", "AI translation running");
 
-                button.textContent = "Läuft";
-                reader.showToast("AI-Übersetzung gestartet");
+                button.textContent = t("running", "Running");
+                reader.showToast(t("aiStarted", "AI translation started"));
                 void waitForTranslation();
             } catch (error) {
                 button.disabled = false;
                 button.textContent = previous;
                 reader.showToast(
-                    error.message || "AI-Übersetzung konnte nicht gestartet werden");
+                    error.message || t("aiStartFailed", "AI translation could not be started"));
             }
         };
 
@@ -291,41 +290,33 @@
             const button = document.createElement("button");
             button.type = "submit";
             button.className = "novel-text-action";
-            button.textContent = "Übersetzen";
+            button.textContent = t("localTranslateButton", "Translate locally");
             form.append(button);
             return form;
         };
 
         const renderGemmaStatus = result => {
-            const status = localStatusElement();
-            if (!status) return;
-
-            status.replaceChildren();
-
             if (result?.status === "ready") {
                 installGemmaParagraphs(result.paragraphs);
                 return;
             }
 
+            // Not configured and nothing cached: the local track leaves no trace.
+            if (result?.status === "unavailable") {
+                removeSourcePanel();
+                return;
+            }
+
+            const status = localStatusElement();
+            if (!status) return;
+
+            status.replaceChildren();
             const label = document.createElement("span");
             label.className = "novel-translation-state";
-
-            if (result?.status === "unavailable") {
-                label.textContent = "Lokale Übersetzung nicht eingerichtet";
-                status.append(label);
-                return;
-            }
-
-            if (result?.status === "blocked") {
-                label.textContent = "Lokale Übersetzung nicht erstellt";
-                status.append(label);
-                return;
-            }
-
-            label.textContent = "Lokale Übersetzung nicht erstellt";
+            label.textContent = t("localNotCreated", "No local translation yet");
             status.append(label);
 
-            if (result?.canGenerate) {
+            if (result?.status !== "blocked" && result?.canGenerate) {
                 status.append(createGemmaForm());
             }
         };
@@ -336,7 +327,7 @@
 
             button.disabled = true;
             const previous = button.textContent;
-            button.textContent = "Startet…";
+            button.textContent = t("starting", "Starting…");
 
             try {
                 const result = await reader.postForm(form);
@@ -348,16 +339,16 @@
 
                 const status = localStatusElement();
                 if (status) {
-                    status.textContent = "Übersetzung läuft";
+                    status.textContent = t("localRunning", "Local translation running");
                 }
 
-                reader.showToast("Lokale Übersetzung gestartet");
+                reader.showToast(t("localStarted", "Local translation started"));
                 void waitForGemmaTranslation();
             } catch (error) {
                 button.disabled = false;
                 button.textContent = previous;
                 reader.showToast(
-                    error.message || "Lokale Übersetzung konnte nicht gestartet werden");
+                    error.message || t("localStartFailed", "Local translation could not be started"));
             }
         };
 
@@ -379,12 +370,13 @@
         // Cached local text is loaded lazily because the Razor reader markup is
         // shared with the existing AI path. This also keeps cached translations
         // readable when generation is disabled.
-        void fetchGemmaStatus()
-            .then(renderGemmaStatus)
-            .catch(() => {
-                // Reader stays fully usable when no local translation endpoint
-                // is reachable/configured.
-            });
+        if (gemmaAvailable) {
+            void fetchGemmaStatus()
+                .then(renderGemmaStatus)
+                .catch(() => {
+                    // Reader stays fully usable when the local endpoint is unreachable.
+                });
+        }
 
         if (reader.hasAiTranslation()) {
             ensureSourcePanel();
