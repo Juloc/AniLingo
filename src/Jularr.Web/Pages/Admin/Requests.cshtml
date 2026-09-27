@@ -118,6 +118,12 @@
                                 </button>
                             </form>
                         }
+                        @if (request.Status == AcquisitionRequestStatus.Approved && request.Kind == MediaAcquisitionKind.Book)
+                        {
+                            <form method="post" asp-page-handler="Approve" asp-route-id="@request.Id">
+                                <button class="button button-primary" type="submit">@ui["admin.requests.searchNow"]</button>
+                            </form>
+                        }
                         @if (request.Status == AcquisitionRequestStatus.Pending)
                         {
                             <form method="post" asp-page-handler="Reject" asp-route-id="@request.Id">

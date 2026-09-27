@@ -373,6 +373,7 @@ builder.Services.AddHostedService<AcquisitionHealthCheckService>();
 builder.Services.AddScoped<SabnzbdDownloadService>();
 builder.Services.AddScoped<SabnzbdAcquisitionService>();
 builder.Services.AddHostedService<SabnzbdOperationMonitorService>();
+builder.Services.AddHostedService<Jularr.Web.Features.Books.BookRequestSearchService>();
 
 builder.Services.AddSingleton<AnimeQualityProfileStore>();
 builder.Services.AddSingleton(_ => new AnimeMonitoringStore("/data"));

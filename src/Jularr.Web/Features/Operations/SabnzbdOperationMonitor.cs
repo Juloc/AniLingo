@@ -235,7 +235,30 @@ public sealed class SabnzbdOperationMonitorService(
         await ImportCompletedBookDownloadsAsync(services, result.Completed, history, cancellationToken);
         await ImportCompletedAnimeDownloadsAsync(services, result.Completed, history, cancellationToken);
         await ContinueFailedAnimeAcquisitionsAsync(services, result.Failed, cancellationToken);
+        await ContinueFailedBookRequestsAsync(services, result.Failed, cancellationToken);
         return true;
+    }
+
+    private async Task ContinueFailedBookRequestsAsync(
+        IServiceProvider services,
+        IReadOnlyList<SabnzbdProjectedFailure> failed,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var continued = await BookRequestSearchService.ContinueAfterFailedDownloadsAsync(
+                services,
+                failed.Select(failure => failure.Operation.Id).ToHashSet(),
+                cancellationToken);
+            if (continued > 0)
+            {
+                logger.LogInformation("Continued {Count} book requests after their SABnzbd download failed.", continued);
+            }
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            logger.LogWarning(exception, "Could not continue book requests after a failed SABnzbd download.");
+        }
     }
 
     private async Task ImportCompletedAnimeDownloadsAsync(

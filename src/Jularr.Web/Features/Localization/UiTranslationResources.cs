@@ -1871,6 +1871,7 @@ public static class UiTranslationResources
         M("admin.requests.retry", "Retry", "Requests", "Button", "Runs the failed acquisition again.", "short action", 12),
         M("admin.requests.reject", "Reject", "Requests", "Button", "Rejects the request.", "short action", 12),
         M("admin.requests.markDone", "Mark as added", "Requests", "Button", "Marks a request the owner fulfilled by hand as done.", "short action", 20),
+        M("admin.requests.searchNow", "Search now", "Requests", "Button", "Searches the indexers again right away for a book request that is waiting for a release.", "short action", 16),
 
         M("admin.nav.usenet", "Usenet", "Admin", "Navigation", "Admin navigation entry for indexers, SABnzbd and downloads.", "short navigation label", 14, null, ["Usenet"]),
         M("admin.usenet.title", "Usenet", "Admin", "Heading", "Title of the Usenet admin hub.", "short heading", 14, null, ["Usenet"]),

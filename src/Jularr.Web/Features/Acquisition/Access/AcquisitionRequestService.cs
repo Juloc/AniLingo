@@ -52,13 +52,29 @@ public sealed class AcquisitionRequestService(
     {
         RequireOwner();
         var request = await RequireAsync(id, cancellationToken);
-        if (request.Status is not (AcquisitionRequestStatus.Pending or AcquisitionRequestStatus.Failed))
+        // Approved requests that wait for a release can be searched again right away.
+        if (request.Status is not (AcquisitionRequestStatus.Pending or AcquisitionRequestStatus.Failed or AcquisitionRequestStatus.Approved))
         {
             return request;
         }
 
         await store.UpdateStatusAsync(id, AcquisitionRequestStatus.Approved, null, null, null, account.ProfileId, cancellationToken);
         return await ExecuteAsync(await RequireAsync(id, cancellationToken), cancellationToken);
+    }
+
+    /// <summary>
+    /// Runs an already approved request again without a signed-in owner: a background search for a
+    /// title that had no release yet, or the next release after a failed download.
+    /// </summary>
+    public async Task<AcquisitionRequest> ContinueAsync(Guid id, CancellationToken cancellationToken)
+    {
+        var request = await RequireAsync(id, cancellationToken);
+        if (request.Status is not (AcquisitionRequestStatus.Approved or AcquisitionRequestStatus.Downloading))
+        {
+            return request;
+        }
+
+        return await ExecuteAsync(request, cancellationToken);
     }
 
     public async Task RejectAsync(Guid id, string? note, CancellationToken cancellationToken)
