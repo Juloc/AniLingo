@@ -476,15 +476,9 @@ public sealed class WantedAcquisitionTests
             new ServiceCollection()
                 .AddSingleton(Db)
                 .AddSingleton(new AcquisitionAccessStore(Db))
-                .AddSingleton(handler)
-                .AddSingleton<IWantedRequestHandler>(
-                    services => services.GetRequiredService<RecordingWantedHandler>())
-                .AddSingleton(adapter)
-                .AddSingleton<ICompletedDownloadImportAdapter>(
-                    services => services.GetRequiredService<RecordingImportAdapter>())
-                .AddSingleton(resolver)
-                .AddSingleton<ICompletedDownloadLocationResolver>(
-                    services => services.GetRequiredService<FixedLocationResolver>())
+                .AddSingleton<IWantedRequestHandler>(handler)
+                .AddSingleton<ICompletedDownloadImportAdapter>(adapter)
+                .AddSingleton<ICompletedDownloadLocationResolver>(resolver)
                 .AddSingleton<CompletedDownloadDispatcher>()
                 .BuildServiceProvider();
 
