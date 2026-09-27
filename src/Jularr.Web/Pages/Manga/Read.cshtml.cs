@@ -1,3 +1,4 @@
+using System.Globalization;
 using Jularr.Web.Data;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Localization;
@@ -7,6 +8,20 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 
 namespace Jularr.Web.Pages.Manga;
 
+/// <summary>
+/// A run of consecutive chapters with the same volume number, as listed in the
+/// reader's contents panel. <see cref="Number"/> is null for chapters that the
+/// import could not place in a volume.
+/// </summary>
+public sealed record MangaReaderVolume(
+    int? Number,
+    IReadOnlyList<MangaChapterItem> Chapters,
+    bool ContainsCurrent)
+{
+    public MangaChapterItem First => Chapters[0];
+    public MangaChapterItem Last => Chapters[^1];
+}
+
 public sealed class ReadModel(
     AppDbContext db,
     CurrentAccountContext account) : PageModel
@@ -14,12 +29,78 @@ public sealed class ReadModel(
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public MangaChapterRead Chapter { get; private set; } = null!;
     public IReadOnlyList<MangaChapterItem> Chapters { get; private set; } = [];
+    public IReadOnlyList<MangaReaderVolume> Volumes { get; private set; } = [];
     public IReadOnlyList<MangaBookmarkItem> Bookmarks { get; private set; } = [];
     public Guid? PreviousChapterId { get; private set; }
     public Guid? NextChapterId { get; private set; }
+    public MangaChapterItem? PreviousChapter { get; private set; }
+    public MangaChapterItem? NextChapter { get; private set; }
     public int InitialPage { get; private set; }
     public MangaReaderPreset ReaderSettings { get; private set; } = null!;
     public string ProfileId => account.ProfileId;
+
+    /// <summary>Number of the last chapter, the denominator of the chapter pill.</summary>
+    public string LastChapterNumber =>
+        FormatNumber(Chapters.Count == 0 ? Chapter.Number : Chapters[^1].Number);
+
+    public static string FormatNumber(double number) =>
+        number.ToString("0.##", CultureInfo.CurrentCulture);
+
+    /// <summary>
+    /// The chapter title when it adds something to "Chapter 12": imports without
+    /// a usable file name are titled "Chapter 12" and would only repeat it.
+    /// </summary>
+    public static string? DistinctTitle(double number, string title)
+    {
+        var trimmed = title.Trim();
+        if (trimmed.Length == 0)
+        {
+            return null;
+        }
+
+        var generic = string.Create(
+            CultureInfo.InvariantCulture,
+            $"Chapter {number:0.##}");
+        return string.Equals(trimmed, generic, StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(trimmed, FormatNumber(number), StringComparison.Ordinal)
+            ? null
+            : trimmed;
+    }
+
+    public static IReadOnlyList<MangaReaderVolume> GroupVolumes(
+        IReadOnlyList<MangaChapterItem> chapters,
+        Guid currentChapterId)
+    {
+        var volumes = new List<MangaReaderVolume>();
+        var run = new List<MangaChapterItem>();
+
+        void Flush()
+        {
+            if (run.Count == 0)
+            {
+                return;
+            }
+
+            volumes.Add(new MangaReaderVolume(
+                run[0].VolumeNumber,
+                run.ToArray(),
+                run.Any(x => x.Id == currentChapterId)));
+            run.Clear();
+        }
+
+        foreach (var chapter in chapters)
+        {
+            if (run.Count > 0 && run[0].VolumeNumber != chapter.VolumeNumber)
+            {
+                Flush();
+            }
+
+            run.Add(chapter);
+        }
+
+        Flush();
+        return volumes;
+    }
 
     public async Task<IActionResult> OnGetAsync(
         Guid id,
@@ -49,6 +130,9 @@ public sealed class ReadModel(
                 chapter.SeriesId,
                 chapter.Number,
                 cancellationToken);
+        PreviousChapter = Chapters.FirstOrDefault(x => x.Id == PreviousChapterId);
+        NextChapter = Chapters.FirstOrDefault(x => x.Id == NextChapterId);
+        Volumes = GroupVolumes(Chapters, chapter.Id);
 
         var progress = await repository.GetProgressAsync(
             account.ProfileId,
