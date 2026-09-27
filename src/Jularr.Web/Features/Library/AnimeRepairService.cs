@@ -40,7 +40,8 @@ public sealed class AnimeRepairService(
     LibraryScanCoordinator scans,
     MediaInventoryService mediaInventory,
     SubtitleImportService subtitleImport,
-    AnimeMetadataService metadataService)
+    AnimeMetadataService metadataService,
+    AnimeArtworkLibrary? artworkLibrary = null)
 {
     // Locates the anime's folder from its own MediaFiles: the first segment of any known media
     // file's path relative to its library root, which is exactly the folder MediaPathParser used
@@ -49,36 +50,10 @@ public sealed class AnimeRepairService(
         Guid animeId,
         CancellationToken cancellationToken)
     {
-        var mediaPath = await (
-                from media in db.MediaFiles.AsNoTracking()
-                join episode in db.Episodes.AsNoTracking() on media.EpisodeId equals episode.Id
-                where episode.AnimeId == animeId
-                orderby media.Path
-                select new { media.LibraryRootId, media.Path })
-            .FirstOrDefaultAsync(cancellationToken);
-
-        if (mediaPath is null)
-        {
-            return null;
-        }
-
-        var root = await db.LibraryRoots
-            .AsNoTracking()
-            .SingleOrDefaultAsync(x => x.Id == mediaPath.LibraryRootId, cancellationToken);
-        if (root is null)
-        {
-            return null;
-        }
-
-        var rootPath = Path.GetFullPath(root.Path);
-        var relative = Path.GetRelativePath(rootPath, mediaPath.Path);
-        var parts = relative.Split(
-            new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar },
-            StringSplitOptions.RemoveEmptyEntries);
-
-        return parts.Length < 2
-            ? null
-            : new AnimeRepairFolder(root.Id, root.Name, parts[0]);
+        var folders = await AnimeMediaFolders.ResolveAsync(db, [animeId], cancellationToken);
+        return folders.TryGetValue(animeId, out var folder)
+            ? new AnimeRepairFolder(folder.RootId, folder.RootName, folder.FolderName)
+            : null;
     }
 
     // The single entry point for a per-anime rescan: a folder-scoped request through the
@@ -108,16 +83,13 @@ public sealed class AnimeRepairService(
         Guid animeId,
         CancellationToken cancellationToken)
     {
-        var folder = await ResolveFolderAsync(animeId, cancellationToken);
-        if (folder is null)
+        var folders = await AnimeMediaFolders.ResolveAsync(db, [animeId], cancellationToken);
+        if (!folders.TryGetValue(animeId, out var folder))
         {
             return new AnimeRepairLocalRefreshResult(0, 0, 0, 0, 0);
         }
 
-        var root = await db.LibraryRoots
-            .AsNoTracking()
-            .SingleAsync(x => x.Id == folder.RootId, cancellationToken);
-        var animeDirectory = Path.GetFullPath(Path.Combine(Path.GetFullPath(root.Path), folder.Folder));
+        var animeDirectory = folder.SeriesDirectory;
 
         var anime = await db.Anime.SingleAsync(x => x.Id == animeId, cancellationToken);
         var episodes = await db.Episodes
@@ -156,13 +128,19 @@ public sealed class AnimeRepairService(
             }
         }
 
-        var artwork = await LocalAnimeArtworkImporter.ImportAsync(animeId, animeDirectory, cancellationToken);
+        var metadata = await db.AnimeMetadata
+            .AsNoTracking()
+            .Where(x => x.AnimeId == animeId)
+            .Select(x => new AnimeProviderArtwork(x.CoverImageUrl, x.BannerImageUrl))
+            .FirstOrDefaultAsync(cancellationToken);
+        var artwork = await (artworkLibrary ?? new AnimeArtworkLibrary(db, Microsoft.Extensions.Logging.Abstractions.NullLogger<AnimeArtworkLibrary>.Instance))
+            .ReconcileAsync(animeId, animeDirectory, folder.SeasonDirectories, metadata, cancellationToken);
 
         return new AnimeRepairLocalRefreshResult(
             episodes.Count,
             subtitlesImported,
-            artwork.ImportedCount,
-            artwork.UnchangedCount,
+            artwork.Refreshed + artwork.Migrated,
+            artwork.Unchanged,
             nfoWarnings);
     }
 
