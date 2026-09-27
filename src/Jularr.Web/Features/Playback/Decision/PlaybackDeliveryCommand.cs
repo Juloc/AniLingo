@@ -150,36 +150,58 @@ public static class PlaybackDeliveryCommand
         return arguments;
     }
 
+    /// <summary>
+    /// Draws a picture subtitle (PGS, VobSub, DVB, XSUB) into the video. ffmpeg turns the bitmap
+    /// stream into overlay frames; the canvas is scaled to the source picture (DVD subtitles are
+    /// often 720×480 on an upscaled video) and laid over the tone-mapped picture before the
+    /// output is scaled, so it always lines up and never gets HDR-processed.
+    /// </summary>
+    public static string BurnInFilter(PlaybackVideoOutput video, int subtitleStreamIndex, IReadOnlyList<string> output)
+    {
+        ArgumentNullException.ThrowIfNull(video);
+        ArgumentNullException.ThrowIfNull(output);
+        ArgumentOutOfRangeException.ThrowIfNegative(subtitleStreamIndex);
+
+        var graph = new List<string>();
+        var basePad = "[0:v:0]";
+        if (video.ToneMap)
+        {
+            graph.Add($"[0:v:0]{ToneMapFilter}[base]");
+            basePad = "[base]";
+        }
+
+        var subtitlePad = $"[0:{subtitleStreamIndex.ToString(CultureInfo.InvariantCulture)}]";
+        if (video is { SourceWidth: int width and > 0, SourceHeight: int height and > 0 })
+        {
+            graph.Add($"{subtitlePad}scale={width.ToString(CultureInfo.InvariantCulture)}:{height.ToString(CultureInfo.InvariantCulture)}[sub]");
+            subtitlePad = "[sub]";
+        }
+
+        graph.Add($"{basePad}{subtitlePad}overlay=eof_action=pass,{string.Join(',', output)}[vout]");
+        return string.Join(';', graph);
+    }
+
     private static void AddVideoEncode(List<string> arguments, PlaybackPlan plan, PlaybackVideoOutput video)
     {
         var encoder = video.Encoder is { } requested && SupportedEncoders.Contains(requested)
             ? requested
             : PlaybackServerCapabilities.SoftwareH264Encoder;
 
-        var filters = new List<string>();
-        if (video.ToneMap)
-        {
-            filters.Add(ToneMapFilter);
-        }
-
+        var output = new List<string>();
         if (video.MaxOutputHeight is { } maxHeight && maxHeight > 0)
         {
-            filters.Add($"scale=-2:min(ih\\,{maxHeight.ToString(CultureInfo.InvariantCulture)})");
+            output.Add($"scale=-2:min(ih\\,{maxHeight.ToString(CultureInfo.InvariantCulture)})");
         }
 
-        filters.Add("format=yuv420p");
+        output.Add("format=yuv420p");
 
         if (video.BurnInSubtitleStreamIndex is { } subtitleIndex)
         {
-            var index = subtitleIndex.ToString(CultureInfo.InvariantCulture);
-            arguments.AddRange([
-                "-filter_complex",
-                $"[0:v:0][0:{index}]overlay=eof_action=pass,{string.Join(',', filters)}[vout]",
-                "-map", "[vout]"
-            ]);
+            arguments.AddRange(["-filter_complex", BurnInFilter(video, subtitleIndex, output), "-map", "[vout]"]);
         }
         else
         {
+            var filters = video.ToneMap ? [ToneMapFilter, .. output] : output;
             arguments.AddRange(["-map", "0:v:0", "-vf", string.Join(',', filters)]);
         }
 

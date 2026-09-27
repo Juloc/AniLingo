@@ -20,6 +20,34 @@ public sealed class WatchPageMarkupTests
     }
 
     [TestMethod]
+    public void EveryPlayerControlExistsExactlyOnce()
+    {
+        foreach (var hook in new[]
+                 {
+                     "data-chrome-play", "data-chrome-settings-toggle", "data-chrome-fullscreen", "data-chrome-subtitles",
+                     "data-chrome-pip", "data-chrome-mute", "data-player-next", "data-repeat-line",
+                     "data-player-action=\"seekBack10\"", "data-player-action=\"seekForward10\""
+                 })
+        {
+            Assert.AreEqual(1, Regex.Matches(Page, Regex.Escape(hook) + "[\\s>]").Count, $"{hook} must appear once.");
+        }
+
+        // The speed shortcut duplicated the speed menu entry; the top bar only carries the title.
+        StringAssert.DoesNotMatch(Page, new Regex("data-chrome-speed"));
+        StringAssert.DoesNotMatch(Page, new Regex("player-top-actions"));
+        StringAssert.DoesNotMatch(Page, new Regex(">\\s*✕\\s*<"), "Close buttons use the shared close icon.");
+    }
+
+    [TestMethod]
+    public void PictureSubtitlesAreMarkedAsBurnedInInTheMenu()
+    {
+        StringAssert.Contains(Page, "ui[\"library.episode.subtitleBurnedIn\"]");
+        StringAssert.Contains(Page, "ui[\"library.episode.subtitleUnsupported\"]");
+        StringAssert.Contains(Page, "data-image=");
+        StringAssert.Contains(Page, "data-subtitle-hint");
+    }
+
+    [TestMethod]
     public void EverySettingLivesInsideThePlayerStage()
     {
         var stageStart = Page.IndexOf("data-video-stage", StringComparison.Ordinal);

@@ -1,5 +1,6 @@
 using System.Globalization;
 using Jularr.Web.Features.Media.Compatibility;
+using Jularr.Web.Features.Subtitles;
 
 namespace Jularr.Web.Features.Playback.Decision;
 
@@ -36,11 +37,44 @@ public static class PlaybackDecisionEngine
     public static PlaybackPlan Decide(PlaybackDecisionRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
-        // The source container travels with every plan so diagnostics can show source → delivered.
-        return DecideCore(request) with
+        var plan = DecideCore(request);
+        // The source container travels with every plan so diagnostics can show source → delivered,
+        // and a requested subtitle says how it reaches the viewer (client, burn-in or not at all).
+        return plan with
         {
-            SourceContainer = PlaybackContainerNames.Name(request.Media.Container)
+            SourceContainer = PlaybackContainerNames.Name(request.Media.Container),
+            Subtitle = SubtitleOutput(request, plan)
         };
+    }
+
+    /// <summary>The subtitle format kind of a stream, trusting the inventory's text flag for unknown codecs.</summary>
+    public static SubtitleFormatKind SubtitleKind(PlaybackSubtitleStreamProfile subtitle)
+    {
+        ArgumentNullException.ThrowIfNull(subtitle);
+        var kind = SubtitleFormats.Classify(subtitle.Codec);
+        return kind == SubtitleFormatKind.Unsupported && subtitle.IsText ? SubtitleFormatKind.Text : kind;
+    }
+
+    private static PlaybackSubtitleOutput? SubtitleOutput(PlaybackDecisionRequest request, PlaybackPlan plan)
+    {
+        if (request.SubtitleStreamIndex is not { } index || request.Media.SubtitleStream(index) is not { } subtitle)
+        {
+            return null;
+        }
+
+        var kind = SubtitleKind(subtitle);
+        var delivery = kind switch
+        {
+            _ when plan.Mode == PlaybackDeliveryMode.Unavailable => PlaybackSubtitleDelivery.Unavailable,
+            SubtitleFormatKind.Unsupported => PlaybackSubtitleDelivery.Unavailable,
+            SubtitleFormatKind.Image when plan.Video?.BurnInSubtitleStreamIndex == index => PlaybackSubtitleDelivery.BurnIn,
+            SubtitleFormatKind.Image when !request.BurnInSubtitle && request.Client.SubtitlesOrDefault.Image.IsUsable() =>
+                PlaybackSubtitleDelivery.Client,
+            SubtitleFormatKind.Image => PlaybackSubtitleDelivery.Unavailable,
+            _ => PlaybackSubtitleDelivery.Client
+        };
+
+        return new PlaybackSubtitleOutput(index, subtitle.Codec, SubtitleFormats.DisplayName(subtitle.Codec), delivery);
     }
 
     private static PlaybackPlan DecideCore(PlaybackDecisionRequest request)
@@ -96,17 +130,31 @@ public static class PlaybackDecisionEngine
 
         // Text subtitles are rendered by the client from the cues API; only bitmap subtitles a
         // client cannot draw (or asks to have burned in) need the picture itself changed.
+        // A format the server cannot decode is never burned in; playback continues without it.
         var subtitles = client.SubtitlesOrDefault;
-        var burnIn = subtitle is { IsText: false } &&
+        var subtitleKind = subtitle is null ? (SubtitleFormatKind?)null : SubtitleKind(subtitle);
+        var burnIn = subtitleKind == SubtitleFormatKind.Image &&
                      (request.BurnInSubtitle || !subtitles.Image.IsUsable());
 
+        if (burnIn && !request.Server.CanBurnInSubtitles)
+        {
+            return WithoutBurnIn(request, subtitle!);
+        }
+
         var reasons = new List<PlaybackReason>();
-        if (subtitle is { IsText: true } && !burnIn && IsStyled(subtitle.Codec) && !subtitles.StyledAss.IsUsable())
+        if (subtitleKind == SubtitleFormatKind.StyledText && !subtitles.StyledAss.IsUsable())
         {
             reasons.Add(Reason(
                 PlaybackReasonCodes.SubtitleStylingLost,
                 PlaybackReasonSeverity.Info,
-                values: Values(("codec", subtitle.Codec))));
+                values: Values(("codec", subtitle!.Codec))));
+        }
+        else if (subtitleKind == SubtitleFormatKind.Unsupported)
+        {
+            reasons.Add(Reason(
+                PlaybackReasonCodes.SubtitleUnsupported,
+                PlaybackReasonSeverity.Warning,
+                values: Values(("codec", subtitle!.Codec ?? "unknown"))));
         }
 
         // ---- Direct Play: the untouched original ------------------------------------------
@@ -234,6 +282,12 @@ public static class PlaybackDecisionEngine
                 : PlaybackCapabilitySupport.Unknown;
             AddConfidence(reasons, confidence);
             return Transcode(request, media, audio, subtitle, burnIn, h264, limit, transport, quality, reasons, confidence);
+        }
+
+        // ---- No transcoder: a picture subtitle never stops playback --------------------------
+        if (burnIn)
+        {
+            return WithoutBurnIn(request, subtitle!);
         }
 
         // ---- No transcoder: never fail playback over a soft limit alone ---------------------
@@ -397,6 +451,24 @@ public static class PlaybackDecisionEngine
         }
 
         return confidence;
+    }
+
+    // A burn-in needs a transcode; when none is possible (no transcoder, Direct only, busy) the
+    // video plays as it would without the picture subtitle and the plan says it is not shown.
+    private static PlaybackPlan WithoutBurnIn(PlaybackDecisionRequest request, PlaybackSubtitleStreamProfile subtitle)
+    {
+        var plan = DecideCore(request with { SubtitleStreamIndex = null, BurnInSubtitle = false });
+        return plan with
+        {
+            Reasons =
+            [
+                .. plan.Reasons,
+                Reason(
+                    PlaybackReasonCodes.SubtitleBurnInUnavailable,
+                    PlaybackReasonSeverity.Warning,
+                    values: Values(("codec", subtitle.Codec), ("track", PlaybackTrackIds.Format(subtitle.StreamIndex))))
+            ]
+        };
     }
 
     // Rules shared by both untouched-video modes: subtitle burn-in, bitrate limits, a client
@@ -571,18 +643,8 @@ public static class PlaybackDecisionEngine
                 values: Values(("format", video.DynamicRange))));
         }
 
-        int? burnInIndex = null;
-        if (burnIn && subtitle is not null)
-        {
-            if (server.CanBurnInSubtitles)
-            {
-                burnInIndex = subtitle.StreamIndex;
-            }
-            else
-            {
-                reasons.Add(Reason(PlaybackReasonCodes.SubtitleBurnInUnavailable, PlaybackReasonSeverity.Warning));
-            }
-        }
+        // DecideCore only asks for a burn-in the server can do (see WithoutBurnIn).
+        int? burnInIndex = burnIn && subtitle is not null ? subtitle.StreamIndex : null;
 
         var videoOutput = new PlaybackVideoOutput(
             Copy: false,
@@ -726,9 +788,6 @@ public static class PlaybackDecisionEngine
 
     private static bool IsHevc(string? codec) =>
         codec is not null && PlaybackCodecNames.SameVideo(codec, "hevc");
-
-    private static bool IsStyled(string? codec) =>
-        codec is "ass" or "ssa";
 
     private static PlaybackReason Reason(
         string code,
