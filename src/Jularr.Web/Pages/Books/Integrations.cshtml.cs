@@ -89,7 +89,6 @@ public sealed class IntegrationsModel(
     public async Task<IActionResult> OnPostConnectHardcoverAsync(
         CancellationToken cancellationToken)
     {
-        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         try
         {
             var username = await books.ValidateHardcoverTokenAsync(
