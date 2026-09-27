@@ -607,7 +607,7 @@ public sealed class BookCatalogServiceTests
         {
             await using var db = await CreateDatabaseAsync(path);
             using var client = new HttpClient(new DelegateHttpMessageHandler(
-                _ => throw new AssertFailedException("Import should not use HTTP.")))
+                request => OfflineMetadata(request, "Import should not use HTTP.")))
             {
                 BaseAddress = new Uri("https://gutendex.com/")
             };
@@ -756,6 +756,75 @@ public sealed class BookCatalogServiceTests
     }
 
     [TestMethod]
+    public async Task EmbeddedEpubCoverOutranksATitleMatchAndAMissingCoverIsMatched()
+    {
+        var path = TempDatabasePath();
+        var covers = Path.Combine(Path.GetTempPath(), "jularr-book-covers-" + Guid.NewGuid().ToString("N"));
+        byte[] googleCover = [0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3, 4, 5, 6, 7, 8, 0xFF, 0xD9];
+        var googleSearches = new List<string>();
+
+        try
+        {
+            await using var db = await CreateDatabaseAsync(path);
+            using var client = new HttpClient(new DelegateHttpMessageHandler(request =>
+            {
+                var uri = request.RequestUri!;
+                if (uri.Host == "www.googleapis.com")
+                {
+                    googleSearches.Add(Uri.UnescapeDataString(uri.Query));
+                    return JsonResponse("""
+                        {
+                          "items": [
+                            { "id": "messiah", "volumeInfo": { "title": "Dune Messiah", "authors": ["Frank Herbert"], "publishedDate": "2024",
+                              "imageLinks": { "thumbnail": "http://books.google.com/books/content?id=messiah&zoom=1&edge=curl" } } },
+                            { "id": "dune", "volumeInfo": { "title": "Dune", "authors": ["Frank Herbert"], "publishedDate": "2019",
+                              "imageLinks": { "thumbnail": "http://books.google.com/books/content?id=dune&zoom=1&edge=curl" } } }
+                          ]
+                        }
+                        """);
+                }
+
+                if (uri.Host == "books.google.com")
+                {
+                    Assert.AreEqual("?id=dune&zoom=1", uri.Query, "The matching work's cover, without the page-curl effect; a sequel is another work.");
+                    return ImageResponse(googleCover, "image/jpeg");
+                }
+
+                throw new AssertFailedException($"Unexpected request: {uri}");
+            }))
+            {
+                BaseAddress = new Uri("https://gutendex.com/")
+            };
+            var service = NewService(db, client, configuration: new Dictionary<string, string?> { ["Books:CoversPath"] = covers });
+
+            await using var withCover = new EpubTestBuilder { Title = "Dune", Author = "Frank Herbert", Language = "en", Identifier = "urn:uuid:dune-own", CoverPath = "cover.png" }
+                .Image("cover.png")
+                .Chapter("c1.xhtml", "Book One", "A beginning is the time for taking the most delicate care.")
+                .Build();
+            var ownId = await service.ImportUploadedEpubAsync(withCover, "dune.epub", CancellationToken.None);
+            CollectionAssert.AreEqual(EpubTestBuilder.Png, await File.ReadAllBytesAsync(service.GetLocalCoverPath(ownId)!), "The file's own cover is the actual edition.");
+            Assert.AreEqual(0, googleSearches.Count, "Without an ISBN nothing outranks the embedded cover, so no lookup is made.");
+
+            await using var withoutCover = new EpubTestBuilder { Title = "Dune", Author = "Frank Herbert", Language = "en", Identifier = "urn:uuid:dune-plain" }
+                .Chapter("c1.xhtml", "Book One", "Arrakis, the desert planet.")
+                .Build();
+            var plainId = await service.ImportUploadedEpubAsync(withoutCover, "dune-plain.epub", CancellationToken.None);
+            CollectionAssert.AreEqual(googleCover, await File.ReadAllBytesAsync(service.GetLocalCoverPath(plainId)!), "A book without a cover gets its matched current cover.");
+            Assert.AreEqual($"/Books/Cover/{plainId}", (await db.NovelWorks.AsNoTracking().SingleAsync(x => x.Id == plainId)).CoverImageUrl);
+            StringAssert.Contains(googleSearches.Single(), "intitle:Dune inauthor:Frank Herbert");
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            File.Delete(path);
+            if (Directory.Exists(covers))
+            {
+                Directory.Delete(covers, recursive: true);
+            }
+        }
+    }
+
+    [TestMethod]
     public async Task BookTranslationIsCachedBySourceHashAndTargetLanguage()
     {
         var path = TempDatabasePath();
@@ -764,7 +833,7 @@ public sealed class BookCatalogServiceTests
         {
             await using var db = await CreateDatabaseAsync(path);
             using var client = new HttpClient(new DelegateHttpMessageHandler(
-                _ => throw new AssertFailedException("Translation should not use HTTP.")))
+                request => OfflineMetadata(request, "Translation should not use HTTP.")))
             {
                 BaseAddress = new Uri("https://gutendex.com/")
             };
@@ -813,7 +882,7 @@ public sealed class BookCatalogServiceTests
         {
             await using var db = await CreateDatabaseAsync(path);
             using var client = new HttpClient(new DelegateHttpMessageHandler(
-                _ => throw new AssertFailedException("Translation should not use HTTP.")))
+                request => OfflineMetadata(request, "Translation should not use HTTP.")))
             {
                 BaseAddress = new Uri("https://gutendex.com/")
             };
@@ -876,7 +945,7 @@ public sealed class BookCatalogServiceTests
         {
             await using var db = await CreateDatabaseAsync(path);
             using var client = new HttpClient(new DelegateHttpMessageHandler(
-                _ => throw new AssertFailedException("Book management should not use HTTP.")))
+                request => OfflineMetadata(request, "Book management should not use HTTP.")))
             {
                 BaseAddress = new Uri("https://gutendex.com/")
             };
@@ -1009,28 +1078,41 @@ public sealed class BookCatalogServiceTests
         try
         {
             await using var db = await CreateDatabaseAsync(path);
+            var token = "hardcover-test-" + Guid.NewGuid().ToString("N");
+            var listRequests = 0;
             using var client = new HttpClient(new DelegateHttpMessageHandler(request =>
             {
                 Assert.AreEqual("api.hardcover.app", request.RequestUri?.Host);
+                Assert.AreEqual("Bearer", request.Headers.Authorization?.Scheme);
+                Assert.AreEqual(token, request.Headers.Authorization?.Parameter, "A pasted \"Bearer \" prefix is not sent twice.");
+                var body = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+                if (body.Contains("JularrViewer", StringComparison.Ordinal))
+                {
+                    return JsonResponse("""{ "data": { "me": [ { "id": 4242, "username": "reader" } ] } }""");
+                }
+
+                listRequests++;
+                StringAssert.Contains(body, "\"userId\":4242", "The shelf is read for the connected user only.");
                 return JsonResponse("""
                     {
                       "data": {
-                        "me": {
-                          "user_books": [
-                            {
-                              "status_id": 2,
-                              "book": {
-                                "title": "Dune",
-                                "contributions": [
-                                  {"author": {"name": "Frank Herbert"}}
-                                ],
-                                "editions": [
-                                  {"isbn_13": "9780593099322", "isbn_10": null}
-                                ]
-                              }
-                            }
-                          ]
-                        }
+                        "user_books": [
+                          {
+                            "status_id": 2,
+                            "book": { "title": "Dune", "cached_contributors": [ { "author": { "name": "Frank Herbert" }, "contribution": null } ] },
+                            "edition": { "isbn_13": "9780593099322", "isbn_10": null }
+                          },
+                          {
+                            "status_id": 1,
+                            "book": { "title": "Atomic Habits", "cached_contributors": [ { "author": { "name": "James Clear" }, "contribution": null } ] },
+                            "edition": null
+                          },
+                          {
+                            "status_id": 6,
+                            "book": { "title": "Emma", "cached_contributors": [ { "author": { "name": "Jane Austen" } } ] },
+                            "edition": null
+                          }
+                        ]
                       }
                     }
                     """);
@@ -1040,28 +1122,37 @@ public sealed class BookCatalogServiceTests
             };
 
             var service = NewService(db, client);
-            var result = await service.EnrichHardcoverStatesAsync(
-                [
-                    new BookCatalogItem(
-                        "ol-OL45804W",
-                        "Dune",
-                        "Frank Herbert",
-                        null,
-                        "https://books.google.com/dune.jpg",
-                        [],
-                        1965,
-                        null,
-                        null,
-                        "https://openlibrary.org/works/OL45804W",
-                        "Open Library",
-                        null,
-                        ["9780593099322"])
-                ],
-                "hc_pat_test_token_123456",
-                CancellationToken.None);
+            var viewer = await service.ValidateHardcoverTokenAsync("Bearer " + token, CancellationToken.None);
+            Assert.AreEqual(new HardcoverViewer(4242, "reader"), viewer);
 
-            Assert.AreEqual(1, result.Count);
-            Assert.AreEqual("Reading", result[0].ExternalListState);
+            var account = new StoredHardcoverAccount(viewer.UserId, viewer.Username, token, DateTimeOffset.UtcNow);
+            IReadOnlyList<BookCatalogItem> catalog =
+            [
+                new BookCatalogItem("ol-OL45804W", "Dune", "Frank Herbert", null, null, [], 1965, null, null,
+                    "https://openlibrary.org/works/OL45804W", "Open Library", null)
+                {
+                    Isbns = ["9780593099322"]
+                },
+                new BookCatalogItem("gb-ah", "Atomic Habits: An Easy & Proven Way to Build Good Habits", "James Clear", null, null, [], 2018, null, null,
+                    "https://books.google.com/ah", "Google Books", null),
+                new BookCatalogItem("ol-EMMA", "Emma", "Jane Austen", null, null, [], 1815, null, null,
+                    "https://openlibrary.org/works/EMMA", "Open Library", null),
+                new BookCatalogItem("ol-DM", "Dune Messiah", "Frank Herbert", null, null, [], 1969, null, null,
+                    "https://openlibrary.org/works/DM", "Open Library", null)
+            ];
+
+            var result = await service.EnrichHardcoverStatesAsync(catalog, account, CancellationToken.None);
+            await service.EnrichHardcoverStatesAsync(catalog, account, CancellationToken.None);
+
+            CollectionAssert.AreEqual(
+                new string?[] { BookListStates.Reading, BookListStates.WantToRead, null, null },
+                result.Select(item => item.ExternalListState).ToArray(),
+                "ISBN or work identity matches; \"Ignored\" is no list state; a similar title is another book.");
+            Assert.AreEqual(1, listRequests, "The shelf is cached briefly instead of read on every search.");
+            Assert.AreSame(
+                catalog,
+                await service.EnrichHardcoverStatesAsync(catalog, null, CancellationToken.None),
+                "Without a connection results stay untouched.");
         }
         finally
         {
@@ -1089,6 +1180,7 @@ public sealed class BookCatalogServiceTests
             await store.SaveAsync(
                 "profile-a",
                 new StoredHardcoverAccount(
+                    4242,
                     "reader",
                     token,
                     DateTimeOffset.UtcNow),
@@ -1290,6 +1382,17 @@ public sealed class BookCatalogServiceTests
                 Encoding.UTF8,
                 "application/json")
         };
+
+    /// <summary>
+    /// No network: an imported book without an embedded cover asks Google Books for one
+    /// (#371), which fails like an outage; any other request is a test failure.
+    /// </summary>
+    private static HttpResponseMessage OfflineMetadata(
+        HttpRequestMessage request,
+        string otherwise) =>
+        request.RequestUri?.Host == "www.googleapis.com"
+            ? throw new HttpRequestException("Metadata providers are offline in tests.")
+            : throw new AssertFailedException(otherwise);
 
     private static HttpResponseMessage ImageResponse(
         byte[] bytes,

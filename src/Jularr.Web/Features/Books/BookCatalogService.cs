@@ -25,12 +25,32 @@ public sealed record BookCatalogItem(
     string? EpubUrl,
     string SourceUrl,
     string SourceName,
-    string? TextSourceName,
-    IReadOnlyList<string>? Isbns = null,
-    string? Publisher = null,
-    string? PublishedDate = null,
-    string? ExternalListState = null)
+    string? TextSourceName)
 {
+    /// <summary>Every provider id of the same work (this record's <see cref="Id"/> included once merged).</summary>
+    public IReadOnlyList<string> Identities { get; init; } = [];
+
+    /// <summary>ISBN-13 of the work's editions (ISBN-10 converted), as the providers list them.</summary>
+    public IReadOnlyList<string> Isbns { get; init; } = [];
+
+    /// <summary>How many editions the provider knows; a popularity signal for ranking.</summary>
+    public int? EditionCount { get; init; }
+
+    /// <summary>Usable covers best first; <see cref="CoverImageUrl"/> is the chosen one.</summary>
+    public IReadOnlyList<string> CoverCandidates { get; init; } = [];
+
+    /// <summary>Publisher of the edition the record describes (Google Books volumes).</summary>
+    public string? Publisher { get; init; }
+
+    /// <summary>Publication date of the edition the record describes (Google Books volumes).</summary>
+    public string? PublishedDate { get; init; }
+
+    /// <summary>
+    /// The profile's reading-list state from a connected list provider, as a
+    /// <see cref="BookListStates"/> code; never part of the shared catalog.
+    /// </summary>
+    public string? ExternalListState { get; init; }
+
     public bool CanPreview => !string.IsNullOrWhiteSpace(TextUrl);
     public bool CanAcquire =>
         !string.IsNullOrWhiteSpace(EpubUrl)
@@ -84,22 +104,26 @@ public sealed partial class BookCatalogService(
             googleTask,
             wikisourceTask);
 
-        var merged = MergeCatalogResults(
+        // A provider that failed or timed out contributes nothing; the others still answer.
+        var works = BookWorkSearch.Rank(
+            normalizedQuery,
             wikisourceTask.Result,
             openLibraryTask.Result,
             googleTask.Result);
 
-        if (merged.Count > 0)
+        if (works.Count > 0)
         {
-            return merged
+            return works
                 .Take(SearchLimit)
                 .ToArray();
         }
 
-        return await CaptureCatalogAsync(
-            token => SearchGutenbergAsync(normalizedQuery, token),
-            cancellationToken,
-            fallbackToEmpty: true);
+        return BookWorkSearch.Rank(
+            normalizedQuery,
+            await CaptureCatalogAsync(
+                token => SearchGutenbergAsync(normalizedQuery, token),
+                cancellationToken,
+                fallbackToEmpty: true));
     }
 
     public async Task<BookCatalogItem?> GetAsync(
@@ -1606,7 +1630,7 @@ public sealed partial class BookCatalogService(
         var uri = new Uri(
             "https://openlibrary.org/search.json"
             + "?q=" + Uri.EscapeDataString(query)
-            + "&fields=key,title,author_name,cover_i,first_publish_year,subject,isbn,publisher,publish_date"
+            + "&fields=key,title,author_name,cover_i,first_publish_year,subject,isbn,edition_count"
             + $"&limit={SearchLimit}");
 
         var response = await GetJsonAsync<OpenLibrarySearchResponse>(
@@ -2223,6 +2247,15 @@ public sealed partial class BookCatalogService(
                     !string.IsNullOrWhiteSpace(x)))
             : null;
 
+        // "default=false" makes a missing cover fail instead of returning a blank
+        // placeholder, so the next candidate takes over.
+        IReadOnlyList<string> covers = book.CoverId is > 0
+            ? [
+                $"https://covers.openlibrary.org/b/id/{book.CoverId}-L.jpg?default=false",
+                $"https://covers.openlibrary.org/b/id/{book.CoverId}-M.jpg?default=false"
+            ]
+            : [];
+
         return new BookCatalogItem(
             "ol-" + workKey,
             book.Title!.Trim(),
@@ -2230,9 +2263,7 @@ public sealed partial class BookCatalogService(
                 ? null
                 : author,
             null,
-            book.CoverId is > 0
-                ? $"https://covers.openlibrary.org/b/id/{book.CoverId}-L.jpg"
-                : null,
+            covers.FirstOrDefault(),
             (book.Subjects ?? [])
                 .Where(x => !string.IsNullOrWhiteSpace(x))
                 .Select(x => x.Trim())
@@ -2243,17 +2274,18 @@ public sealed partial class BookCatalogService(
             null,
             $"https://openlibrary.org/works/{workKey}",
             "Open Library",
-            null,
-            (book.Isbns ?? [])
-                .Where(x => !string.IsNullOrWhiteSpace(x))
-                .Select(NormalizeIsbn)
-                .Where(x => x is not null)
-                .Select(x => x!)
+            null)
+        {
+            // A work lists the ISBNs of all its editions; they identify it across providers.
+            Isbns = (book.Isbns ?? [])
+                .Select(BookWorkSearch.NormalizeIsbn)
+                .OfType<string>()
                 .Distinct(StringComparer.Ordinal)
-                .Take(24)
+                .Take(40)
                 .ToArray(),
-            book.Publishers?.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x))?.Trim(),
-            book.PublishDates?.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x))?.Trim());
+            EditionCount = book.EditionCount,
+            CoverCandidates = covers
+        };
     }
 
     private static BookCatalogItem MapGutenberg(
@@ -2721,18 +2753,6 @@ public sealed partial class BookCatalogService(
             80);
     }
 
-    private static string? NormalizeIsbn(string? value)
-    {
-        var normalized = new string(
-            (value ?? "")
-                .Where(char.IsLetterOrDigit)
-                .Select(char.ToUpperInvariant)
-                .ToArray());
-
-        return normalized.Length is 10 or 13
-            ? normalized
-            : null;
-    }
 
     private static string NormalizeForMatch(string value) =>
         Regex.Replace(
@@ -2999,11 +3019,9 @@ public sealed partial class BookCatalogService(
         [property: JsonPropertyName("subject")]
         string[]? Subjects,
         [property: JsonPropertyName("isbn")]
-        string[]? Isbns,
-        [property: JsonPropertyName("publisher")]
-        string[]? Publishers,
-        [property: JsonPropertyName("publish_date")]
-        string[]? PublishDates);
+        string[]? Isbns = null,
+        [property: JsonPropertyName("edition_count")]
+        int? EditionCount = null);
 
     private sealed record OpenLibraryWork(
         [property: JsonPropertyName("title")]

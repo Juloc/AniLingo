@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.DataProtection;
 namespace Jularr.Web.Features.Books;
 
 public sealed record StoredHardcoverAccount(
+    int UserId,
     string Username,
     string AccessToken,
     DateTimeOffset ConnectedAt);
@@ -49,6 +50,7 @@ public sealed class BookHardcoverAccountStore
                     await File.ReadAllTextAsync(path, cancellationToken),
                     JsonOptions);
                 if (persisted is null
+                    || persisted.UserId <= 0
                     || string.IsNullOrWhiteSpace(persisted.Username)
                     || string.IsNullOrWhiteSpace(persisted.ProtectedAccessToken))
                 {
@@ -56,6 +58,7 @@ public sealed class BookHardcoverAccountStore
                 }
 
                 return new StoredHardcoverAccount(
+                    persisted.UserId,
                     persisted.Username,
                     protector.Unprotect(persisted.ProtectedAccessToken),
                     persisted.ConnectedAt);
@@ -87,6 +90,7 @@ public sealed class BookHardcoverAccountStore
             Directory.CreateDirectory(accountDirectory);
             var temporary = path + ".tmp-" + Guid.NewGuid().ToString("N");
             var persisted = new PersistedHardcoverAccount(
+                account.UserId,
                 account.Username.Trim(),
                 protector.Protect(account.AccessToken.Trim()),
                 account.ConnectedAt);
@@ -176,6 +180,7 @@ public sealed class BookHardcoverAccountStore
     }
 
     private sealed record PersistedHardcoverAccount(
+        int UserId,
         string Username,
         string ProtectedAccessToken,
         DateTimeOffset ConnectedAt);

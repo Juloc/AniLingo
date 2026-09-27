@@ -282,6 +282,7 @@ public sealed class IndexModel(
             return new JsonResult(new { results = Array.Empty<object>() });
         }
 
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         IReadOnlyList<BookCatalogItem> found;
         try
         {
@@ -289,38 +290,73 @@ public sealed class IndexModel(
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or InvalidOperationException)
         {
-            var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
             return new JsonResult(new { results = Array.Empty<object>(), error = ui["books.index.searchUnavailable"] });
         }
 
         var hardcover = await new BookHardcoverAccountStore(
                 dataProtectionProvider)
             .LoadAsync(account.ProfileId, cancellationToken);
-        found = await books.EnrichHardcoverStatesAsync(
-            found,
-            hardcover?.AccessToken,
-            cancellationToken);
-
-        var items = found.Take(24).ToArray();
+        var items = (await books.EnrichHardcoverStatesAsync(
+                found.Take(24).ToArray(),
+                hardcover,
+                cancellationToken))
+            .ToArray();
         var states = await new BookAddStateQuery(db, requestStore).GetAsync(
-            items.Select(item => (item.Id, (string?)item.Title)).ToArray(),
+            items.Select(item => new BookAddLookup(item.Id, item.Title, item.Identities)).ToArray(),
             cancellationToken);
 
         return new JsonResult(new
         {
-            results = items.Select(item => new
+            results = items.Select(item =>
             {
-                item.Id,
-                item.Title,
-                item.Author,
-                item.CoverImageUrl,
-                item.FirstPublishYear,
-                item.Summary,
-                item.ExternalListState,
-                freeEdition = item.CanAcquire,
-                state = StateJson(states.GetValueOrDefault(item.Id) ?? BookAddState.None)
+                var state = states.GetValueOrDefault(item.Id) ?? BookAddState.None;
+                return new
+                {
+                    // A request made through another provider's record of this work owns the row.
+                    id = state.RequestCatalogId ?? item.Id,
+                    item.Title,
+                    item.Author,
+                    item.CoverImageUrl,
+                    covers = item.CoverCandidates,
+                    year = item.FirstPublishYear,
+                    summary = ShortSummary(item.Summary),
+                    listState = ListStateKey(item.ExternalListState) is { } listStateKey
+                        ? ui[listStateKey]
+                        : null,
+                    freeEdition = item.CanAcquire,
+                    state = StateJson(state)
+                };
             })
         });
+    }
+
+    private static string? ListStateKey(string? state) =>
+        state switch
+        {
+            BookListStates.WantToRead => "books.listState.wantToRead",
+            BookListStates.Reading => "books.listState.reading",
+            BookListStates.Read => "books.listState.read",
+            BookListStates.Paused => "books.listState.paused",
+            BookListStates.DidNotFinish => "books.listState.didNotFinish",
+            _ => null
+        };
+
+    /// <summary>A result's description for the dialog, cut at a word near 280 characters.</summary>
+    private static string? ShortSummary(string? summary)
+    {
+        var text = summary?.Trim();
+        if (string.IsNullOrEmpty(text))
+        {
+            return null;
+        }
+
+        if (text.Length <= 280)
+        {
+            return text;
+        }
+
+        var cut = text.LastIndexOf(' ', 280);
+        return text[..(cut > 200 ? cut : 280)].TrimEnd(' ', ',', ';', ':', '.') + "…";
     }
 
     /// <summary>
@@ -336,7 +372,7 @@ public sealed class IndexModel(
             .Take(50)
             .ToArray();
         var states = await new BookAddStateQuery(db, requestStore).GetAsync(
-            catalogIds.Select(id => (id, (string?)null)).ToArray(),
+            catalogIds.Select(id => new BookAddLookup(id)).ToArray(),
             cancellationToken);
         return new JsonResult(new
         {
@@ -375,7 +411,7 @@ public sealed class IndexModel(
             return Forbid();
         }
 
-        var states = await new BookAddStateQuery(db, requestStore).GetAsync([(catalogId.Trim(), null)], cancellationToken);
+        var states = await new BookAddStateQuery(db, requestStore).GetAsync([new BookAddLookup(catalogId.Trim())], cancellationToken);
         return new JsonResult(StateJson(states.GetValueOrDefault(catalogId.Trim()) ?? BookAddState.None));
     }
 

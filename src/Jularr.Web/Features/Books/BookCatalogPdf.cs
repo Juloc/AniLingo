@@ -322,7 +322,9 @@ public sealed partial class BookCatalogService
 
     /// <summary>
     /// Links an imported work to the catalog entry its request asked for, so the Add book dialog
-    /// finds it by catalog id; fills a missing author or cover from the request.
+    /// finds it by catalog id; fills a missing author or cover from the request. A PDF takes the
+    /// requested book's catalog title: its own Info title is file metadata, often a producer or
+    /// library label ("The Project Gutenberg eBook #…") rather than the book's name.
     /// </summary>
     public async Task LinkRequestedWorkAsync(Guid workId, BookImportHint hint, CancellationToken cancellationToken)
     {
@@ -336,6 +338,11 @@ public sealed partial class BookCatalogService
         {
             work.MetadataProvider = CatalogRequestProvider;
             work.MetadataExternalId = catalogId;
+            if (BookFileFormats.IsPdf(work) && !string.IsNullOrWhiteSpace(hint.Title))
+            {
+                work.Title = Truncate(hint.Title.Trim(), 500);
+                work.MetadataTitle = work.Title;
+            }
         }
 
         if (string.IsNullOrWhiteSpace(work.Author))
@@ -406,10 +413,20 @@ public sealed partial class BookCatalogService
         return firstLine.Length <= 80 ? firstLine : firstLine[..79].TrimEnd() + "…";
     }
 
-    /// <summary>PDF Info titles are often producer junk ("Microsoft Word - draft.docx"); those are ignored.</summary>
-    private static string? UsablePdfTitle(string? title)
+    /// <summary>
+    /// The book title in a PDF's Info title, or null. Producer junk ("Microsoft Word - draft.docx")
+    /// is ignored and a library label around the title ("The Project Gutenberg eBook #33283: …",
+    /// "The Project Gutenberg EBook of …, by …") is removed.
+    /// </summary>
+    public static string? UsablePdfTitle(string? title)
     {
         var clean = title?.Trim();
+        if (clean is not null
+            && GutenbergPdfTitle().Match(clean) is { Success: true } gutenberg)
+        {
+            clean = gutenberg.Groups["title"].Value.Trim();
+        }
+
         if (string.IsNullOrWhiteSpace(clean)
             || clean.Length < 2
             || clean.StartsWith("Microsoft Word", StringComparison.OrdinalIgnoreCase)
@@ -421,6 +438,11 @@ public sealed partial class BookCatalogService
 
         return clean;
     }
+
+    [GeneratedRegex(
+        @"^(?:the\s+)?project\s+gutenberg'?s?\s+e-?book(?:\s*#\s*\d+)?\s*(?::|,|\s+of\b)\s*(?<title>.+?)(?:,\s+by\s+.+)?$",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex GutenbergPdfTitle();
 
     private static string TitleFromFileName(string fileName)
     {

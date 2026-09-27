@@ -11,16 +11,26 @@ public sealed partial class BookCatalogService
     private static readonly TimeSpan DiscoveryProviderTimeout =
         TimeSpan.FromSeconds(7);
 
+    /// <summary>The metadata providers whose cover URLs Jularr downloads into local artwork.</summary>
     private static readonly HashSet<string> AllowedCoverHosts =
         new(StringComparer.OrdinalIgnoreCase)
         {
             "books.google.com",
             "books.googleusercontent.com",
-            "books.googleusercontent.com",
             "covers.openlibrary.org",
             "www.gutenberg.org",
             "gutenberg.org"
         };
+
+    /// <summary>
+    /// Where an allowed cover URL may end up after redirects: the provider hosts, plus the
+    /// Internet Archive, which stores and serves Open Library covers.
+    /// </summary>
+    private static bool IsAllowedCoverTarget(Uri uri) =>
+        uri.Scheme == Uri.UriSchemeHttps
+        && (AllowedCoverHosts.Contains(uri.Host)
+            || uri.Host.Equals("archive.org", StringComparison.OrdinalIgnoreCase)
+            || uri.Host.EndsWith(".archive.org", StringComparison.OrdinalIgnoreCase));
 
     private async Task<IReadOnlyList<BookCatalogItem>> CaptureCatalogAsync(
         Func<CancellationToken, Task<IReadOnlyList<BookCatalogItem>>> action,
@@ -118,9 +128,7 @@ public sealed partial class BookCatalogService
                 await gate.WaitAsync(timeout.Token);
                 try
                 {
-                    var isbn = (item.Isbns ?? [])
-                        .FirstOrDefault(x => x.Length == 13)
-                        ?? (item.Isbns ?? []).FirstOrDefault();
+                    var isbn = item.Isbns.FirstOrDefault();
                     var query = isbn is not null
                         ? "isbn:" + isbn
                         : "intitle:" + item.Title
@@ -139,18 +147,15 @@ public sealed partial class BookCatalogService
 
                     var exact = isbn is null
                         ? candidates.FirstOrDefault(candidate =>
-                            StrongBookMatch(
-                                NormalizeForMatch(item.Title),
-                                NormalizeForMatch(item.Author ?? ""),
-                                candidate))
+                            StrongBookMatch(item.Title, item.Author, candidate))
                         : candidates.FirstOrDefault(candidate =>
-                            (candidate.Isbns ?? []).Contains(
+                            candidate.Isbns.Contains(
                                 isbn,
                                 StringComparer.Ordinal));
 
                     return exact is null
                         ? item
-                        : MergeCatalogItem(item, exact);
+                        : BookWorkSearch.Combine(item, exact);
                 }
                 finally
                 {
@@ -169,23 +174,6 @@ public sealed partial class BookCatalogService
         }).ToArray();
 
         return await Task.WhenAll(tasks);
-    }
-
-    private async Task<IReadOnlyList<BookCatalogItem>> BrowsePopularGutenbergAsync(
-        CancellationToken cancellationToken)
-    {
-        var response = await GetJsonAsync<GutendexListResponse>(
-            new Uri(
-                httpClient.BaseAddress!,
-                "books?languages=en&sort=popular"),
-            cancellationToken)
-            ?? throw new InvalidOperationException(
-                "Project Gutenberg catalog returned no data.");
-
-        return response.Results
-            .Select(MapGutenberg)
-            .Take(SearchLimit)
-            .ToArray();
     }
 
     private async Task<IReadOnlyList<BookCatalogItem>> SearchGoogleBooksAsync(
@@ -226,32 +214,6 @@ public sealed partial class BookCatalogService
             .Where(x =>
                 !string.IsNullOrWhiteSpace(x.Id)
                 && !string.IsNullOrWhiteSpace(x.VolumeInfo?.Title))
-            .ToArray();
-    }
-
-    private async Task<IReadOnlyList<BookCatalogItem>> BrowseFreeGoogleBooksAsync(
-        CancellationToken cancellationToken)
-    {
-        var response = await GetJsonAsync<GoogleVolumesResponse>(
-            BuildGoogleBooksUri(
-                "volumes",
-                new Dictionary<string, string?>
-                {
-                    ["q"] = "subject:fiction",
-                    ["filter"] = "free-ebooks",
-                    ["maxResults"] = "24",
-                    ["printType"] = "books",
-                    ["orderBy"] = "relevance",
-                    ["projection"] = "full"
-                }),
-            cancellationToken);
-
-        return (response?.Items ?? [])
-            .Where(x =>
-                !string.IsNullOrWhiteSpace(x.Id)
-                && !string.IsNullOrWhiteSpace(x.VolumeInfo?.Title))
-            .Select(MapGoogleBook)
-            .Take(SearchLimit)
             .ToArray();
     }
 
@@ -315,126 +277,6 @@ public sealed partial class BookCatalogService
             + suffix);
     }
 
-    private static IReadOnlyList<BookCatalogItem> MergeCatalogResults(
-        params IReadOnlyList<BookCatalogItem>[] sources)
-    {
-        var merged = new List<BookCatalogItem>();
-
-        foreach (var item in sources.SelectMany(x => x))
-        {
-            var index = merged.FindIndex(existing =>
-                SameCatalogWork(existing, item));
-
-            if (index < 0)
-            {
-                merged.Add(item);
-                continue;
-            }
-
-            merged[index] = MergeCatalogItem(
-                merged[index],
-                item);
-        }
-
-        return merged;
-    }
-
-    private static bool SameCatalogWork(
-        BookCatalogItem left,
-        BookCatalogItem right)
-    {
-        var leftIsbns = (left.Isbns ?? [])
-            .Where(x => !string.IsNullOrWhiteSpace(x))
-            .ToHashSet(StringComparer.Ordinal);
-        if (leftIsbns.Count > 0
-            && (right.Isbns ?? []).Any(leftIsbns.Contains))
-        {
-            return true;
-        }
-
-        return CatalogMergeKey(left) == CatalogMergeKey(right);
-    }
-
-    private static BookCatalogItem MergeCatalogItem(
-        BookCatalogItem primary,
-        BookCatalogItem secondary)
-    {
-        var subjects = primary.Subjects
-            .Concat(secondary.Subjects)
-            .Where(x => !string.IsNullOrWhiteSpace(x))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Take(16)
-            .ToArray();
-        var isbns = (primary.Isbns ?? [])
-            .Concat(secondary.Isbns ?? [])
-            .Where(x => !string.IsNullOrWhiteSpace(x))
-            .Distinct(StringComparer.Ordinal)
-            .Take(24)
-            .ToArray();
-
-        var google = primary.SourceName.Equals(
-                "Google Books",
-                StringComparison.OrdinalIgnoreCase)
-            ? primary
-            : secondary.SourceName.Equals(
-                "Google Books",
-                StringComparison.OrdinalIgnoreCase)
-                ? secondary
-                : null;
-
-        return primary with
-        {
-            Author = FirstNonEmpty(
-                primary.Author,
-                secondary.Author),
-            Summary = FirstNonEmpty(
-                google?.Summary,
-                primary.Summary,
-                secondary.Summary),
-            CoverImageUrl = FirstNonEmpty(
-                google?.CoverImageUrl,
-                primary.CoverImageUrl,
-                secondary.CoverImageUrl),
-            Subjects = subjects,
-            FirstPublishYear =
-                primary.FirstPublishYear
-                ?? secondary.FirstPublishYear,
-            TextUrl = FirstNonEmpty(
-                primary.TextUrl,
-                secondary.TextUrl),
-            EpubUrl = FirstNonEmpty(
-                primary.EpubUrl,
-                secondary.EpubUrl),
-            TextSourceName = FirstNonEmpty(
-                primary.TextSourceName,
-                secondary.TextSourceName),
-            Isbns = isbns,
-            Publisher = FirstNonEmpty(
-                google?.Publisher,
-                primary.Publisher,
-                secondary.Publisher),
-            PublishedDate = FirstNonEmpty(
-                google?.PublishedDate,
-                primary.PublishedDate,
-                secondary.PublishedDate)
-        };
-    }
-
-    private static string CatalogMergeKey(
-        BookCatalogItem item)
-    {
-        var title = NormalizeForMatch(item.Title);
-        var authorTokens = NormalizeForMatch(item.Author ?? "")
-            .Split(
-                ' ',
-                StringSplitOptions.RemoveEmptyEntries)
-            .OrderBy(x => x, StringComparer.Ordinal);
-
-        return title
-            + "|"
-            + string.Join(" ", authorTokens);
-    }
-
     private static BookCatalogItem MapGoogleBook(
         GoogleVolume volume)
     {
@@ -448,14 +290,20 @@ public sealed partial class BookCatalogService
                     !string.IsNullOrWhiteSpace(x)))
             : null;
 
-        var cover = NormalizeGoogleCoverUrl(
-            FirstNonEmpty(
+        // Largest first; search results usually only carry the thumbnails.
+        IReadOnlyList<string> covers = new[]
+            {
                 info.ImageLinks?.ExtraLarge,
                 info.ImageLinks?.Large,
                 info.ImageLinks?.Medium,
                 info.ImageLinks?.Small,
                 info.ImageLinks?.Thumbnail,
-                info.ImageLinks?.SmallThumbnail));
+                info.ImageLinks?.SmallThumbnail
+            }
+            .Select(NormalizeGoogleCoverUrl)
+            .OfType<string>()
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
 
         var sourceUrl = FirstNonEmpty(
                 info.CanonicalVolumeLink,
@@ -470,7 +318,7 @@ public sealed partial class BookCatalogService
                 ? null
                 : author,
             CleanGoogleDescription(info.Description),
-            cover,
+            covers.FirstOrDefault(),
             (info.Categories ?? [])
                 .Where(x => !string.IsNullOrWhiteSpace(x))
                 .Select(x => x.Trim())
@@ -480,16 +328,19 @@ public sealed partial class BookCatalogService
             null,
             null,
             sourceUrl,
-            "Google Books",
-            null,
-            (info.IndustryIdentifiers ?? [])
-                .Select(x => NormalizeIsbn(x.Identifier))
-                .Where(x => x is not null)
-                .Select(x => x!)
+            BookWorkSearch.GoogleBooksSource,
+            null)
+        {
+            Isbns = (info.IndustryIdentifiers ?? [])
+                .Where(x => x.Type is "ISBN_13" or "ISBN_10")
+                .Select(x => BookWorkSearch.NormalizeIsbn(x.Identifier))
+                .OfType<string>()
                 .Distinct(StringComparer.Ordinal)
                 .ToArray(),
-            info.Publisher?.Trim(),
-            info.PublishedDate?.Trim());
+            CoverCandidates = covers,
+            Publisher = info.Publisher?.Trim(),
+            PublishedDate = info.PublishedDate?.Trim()
+        };
     }
 
     private static string? FirstNonEmpty(
@@ -524,7 +375,8 @@ public sealed partial class BookCatalogService
             normalized = "https://" + normalized["http://".Length..];
         }
 
-        return normalized;
+        // "edge=curl" paints a page-curl effect onto the artwork.
+        return normalized.Replace("&edge=curl", "", StringComparison.Ordinal);
     }
 
     private Task<bool> TryPersistPreferredCoverAsync(
@@ -554,28 +406,15 @@ public sealed partial class BookCatalogService
         string? catalogFallback,
         CancellationToken cancellationToken)
     {
-        string? googleCover = null;
-        try
-        {
-            googleCover = await FindPreferredGoogleCoverAsync(
-                title,
-                author,
-                isbn10,
-                isbn13,
-                cancellationToken);
-        }
-        catch (Exception exception) when (
-            !cancellationToken.IsCancellationRequested
-            && exception is not OperationCanceledException)
-        {
-            // Artwork enrichment is optional; importing the owned book must
-            // still succeed when a metadata provider is unavailable.
-        }
-
-        if (await TryCacheRemoteCoverAsync(
-                workId,
-                googleCover,
-                cancellationToken))
+        // Cover precedence (#371): the exact edition on Google Books, then the
+        // imported file's own cover (it is the actual edition), then a strong
+        // Google title/author match, then the catalog's artwork. Artwork
+        // enrichment is optional: importing the owned book still succeeds when a
+        // metadata provider is unavailable.
+        var exactCover = await OptionalCoverLookupAsync(
+            token => FindExactGoogleCoverAsync(isbn10, isbn13, token),
+            cancellationToken);
+        if (await TryCacheRemoteCoverAsync(workId, exactCover, cancellationToken))
         {
             return true;
         }
@@ -591,32 +430,48 @@ public sealed partial class BookCatalogService
             return true;
         }
 
-        if (!string.Equals(
-                googleCover,
-                catalogFallback,
-                StringComparison.OrdinalIgnoreCase)
-            && await TryCacheRemoteCoverAsync(
-                workId,
-                catalogFallback,
-                cancellationToken))
+        var matchedCover = await OptionalCoverLookupAsync(
+            token => FindMatchingGoogleCoverAsync(title, author, token),
+            cancellationToken);
+        if (!string.Equals(matchedCover, exactCover, StringComparison.Ordinal)
+            && await TryCacheRemoteCoverAsync(workId, matchedCover, cancellationToken))
         {
             return true;
         }
 
-        return false;
+        return !string.Equals(catalogFallback, exactCover, StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(catalogFallback, matchedCover, StringComparison.OrdinalIgnoreCase)
+            && await TryCacheRemoteCoverAsync(workId, catalogFallback, cancellationToken);
     }
 
-    private async Task<string?> FindPreferredGoogleCoverAsync(
-        string title,
-        string? author,
+    private static async Task<string?> OptionalCoverLookupAsync(
+        Func<CancellationToken, Task<string?>> lookup,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await lookup(cancellationToken);
+        }
+        catch (Exception exception) when (
+            !cancellationToken.IsCancellationRequested
+            && exception is HttpRequestException
+                or TaskCanceledException
+                or InvalidOperationException
+                or System.Text.Json.JsonException)
+        {
+            return null;
+        }
+    }
+
+    private async Task<string?> FindExactGoogleCoverAsync(
         string? isbn10,
         string? isbn13,
         CancellationToken cancellationToken)
     {
         foreach (var isbn in new[] { isbn13, isbn10 }
-                     .Select(NormalizeIsbn)
-                     .Where(x => x is not null)
-                     .Select(x => x!))
+                     .Select(BookWorkSearch.NormalizeIsbn)
+                     .OfType<string>()
+                     .Distinct(StringComparer.Ordinal))
         {
             var exact = await SearchGoogleVolumesAsync(
                 "isbn:" + isbn,
@@ -625,9 +480,7 @@ public sealed partial class BookCatalogService
             var exactCover = exact
                 .Select(MapGoogleBook)
                 .FirstOrDefault(x =>
-                    (x.Isbns ?? []).Contains(
-                        isbn,
-                        StringComparer.Ordinal)
+                    x.Isbns.Contains(isbn, StringComparer.Ordinal)
                     && !string.IsNullOrWhiteSpace(x.CoverImageUrl))
                 ?.CoverImageUrl;
             if (!string.IsNullOrWhiteSpace(exactCover))
@@ -636,6 +489,14 @@ public sealed partial class BookCatalogService
             }
         }
 
+        return null;
+    }
+
+    private async Task<string?> FindMatchingGoogleCoverAsync(
+        string title,
+        string? author,
+        CancellationToken cancellationToken)
+    {
         title = title.Trim();
         if (string.IsNullOrWhiteSpace(title))
         {
@@ -648,8 +509,7 @@ public sealed partial class BookCatalogService
             query += " inauthor:" + author.Trim();
         }
 
-        var expectedTitle = NormalizeForMatch(title);
-        var expectedAuthor = NormalizeForMatch(author ?? "");
+        // Several editions match: the current one (newest) has the current artwork.
         return (await SearchGoogleVolumesAsync(
                 query,
                 24,
@@ -657,10 +517,7 @@ public sealed partial class BookCatalogService
             .Select(MapGoogleBook)
             .Where(x =>
                 !string.IsNullOrWhiteSpace(x.CoverImageUrl)
-                && StrongBookMatch(
-                    expectedTitle,
-                    expectedAuthor,
-                    x))
+                && StrongBookMatch(title, author, x))
             .OrderByDescending(x => ParseYear(x.PublishedDate)
                 ?? x.FirstPublishYear
                 ?? 0)
@@ -668,34 +525,19 @@ public sealed partial class BookCatalogService
             .FirstOrDefault();
     }
 
+    /// <summary>
+    /// Whether a Google volume is the same work as the book the cover is for, by the same
+    /// identity rule the search merge uses: similar titles alone never match.
+    /// </summary>
     private static bool StrongBookMatch(
         string expectedTitle,
-        string expectedAuthor,
-        BookCatalogItem candidate)
-    {
-        var candidateTitle = NormalizeForMatch(candidate.Title);
-        if (candidateTitle != expectedTitle
-            && !candidateTitle.Contains(expectedTitle, StringComparison.Ordinal)
-            && !expectedTitle.Contains(candidateTitle, StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        if (expectedAuthor.Length == 0)
-        {
-            return true;
-        }
-
-        var candidateAuthor = NormalizeForMatch(candidate.Author ?? "");
-        var surname = expectedAuthor
-            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
-            .LastOrDefault();
-
-        return surname is null
-            || candidateAuthor
-                .Split(' ', StringSplitOptions.RemoveEmptyEntries)
-                .Contains(surname, StringComparer.Ordinal);
-    }
+        string? expectedAuthor,
+        BookCatalogItem candidate) =>
+        BookWorkSearch.SameWork(
+            expectedTitle,
+            expectedAuthor,
+            candidate.Title,
+            candidate.Author);
 
     private async Task<bool> TryCacheRemoteCoverAsync(
         Guid workId,
@@ -725,9 +567,7 @@ public sealed partial class BookCatalogService
             }
 
             var finalUri = response.RequestMessage?.RequestUri;
-            if (finalUri is not null
-                && (finalUri.Scheme != Uri.UriSchemeHttps
-                    || !AllowedCoverHosts.Contains(finalUri.Host)))
+            if (finalUri is not null && !IsAllowedCoverTarget(finalUri))
             {
                 return false;
             }

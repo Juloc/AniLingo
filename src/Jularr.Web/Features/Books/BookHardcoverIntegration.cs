@@ -1,103 +1,121 @@
+using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 
 namespace Jularr.Web.Features.Books;
 
+/// <summary>
+/// Provider-neutral codes for a profile's personal reading-list state
+/// (<see cref="BookCatalogItem.ExternalListState"/>); the UI localizes them.
+/// </summary>
+public static class BookListStates
+{
+    public const string WantToRead = "want-to-read";
+    public const string Reading = "reading";
+    public const string Read = "read";
+    public const string Paused = "paused";
+    public const string DidNotFinish = "did-not-finish";
+
+    public static readonly IReadOnlyList<string> All = [WantToRead, Reading, Read, Paused, DidNotFinish];
+}
+
+/// <summary>Why a Hardcover connection could not be made; the page shows a localized reason.</summary>
+public sealed class HardcoverConnectionException(string message)
+    : InvalidOperationException(message);
+
+/// <summary>A connected Hardcover account: who it is, as Hardcover names it.</summary>
+public sealed record HardcoverViewer(int UserId, string Username);
+
+/// <summary>
+/// Optional Hardcover integration (#371): a profile may connect its own Hardcover account to see
+/// its personal reading-list state on book results. Hardcover is never a metadata provider or a
+/// second library; search and the local library work without it.
+/// </summary>
 public sealed partial class BookCatalogService
 {
-    private static readonly Uri HardcoverGraphQl =
-        new("https://api.hardcover.app/v1/graphql");
+    /// <summary>Where a profile creates a read-only personal access token with the scopes Jularr needs.</summary>
+    public const string HardcoverNewTokenUrl =
+        "https://hardcover.app/account/api/keys/new?scope=read:me+read:library+read:catalog";
 
-    public async Task<string> ValidateHardcoverTokenAsync(
+    private const int HardcoverListLimit = 500;
+    private const int HardcoverListCacheLimit = 64;
+    private static readonly Uri HardcoverGraphQl = new("https://api.hardcover.app/v1/graphql");
+    private static readonly TimeSpan HardcoverListCacheLifetime = TimeSpan.FromMinutes(3);
+
+    // A profile's list is read once every few minutes, not on every search (Hardcover limits
+    // requests per minute). Keyed by a hash of the token, so it is profile-scoped and never
+    // outlives a disconnect or a new token.
+    private static readonly ConcurrentDictionary<string, (DateTimeOffset LoadedAt, HardcoverListBook[] Books)> HardcoverLists =
+        new(StringComparer.Ordinal);
+
+    /// <summary>The token as Hardcover expects it: trimmed, without a pasted "Bearer " prefix.</summary>
+    public static string NormalizeHardcoverToken(string? accessToken)
+    {
+        var token = accessToken?.Trim() ?? "";
+        return token.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
+            ? token["Bearer ".Length..].Trim()
+            : token;
+    }
+
+    /// <summary>Checks a personal access token and returns the account it belongs to.</summary>
+    /// <exception cref="HardcoverConnectionException">Hardcover refused the token.</exception>
+    /// <exception cref="HttpRequestException">Hardcover could not be reached.</exception>
+    public async Task<HardcoverViewer> ValidateHardcoverTokenAsync(
         string accessToken,
         CancellationToken cancellationToken)
     {
-        var token = accessToken?.Trim();
-        if (string.IsNullOrWhiteSpace(token) || token.Length < 12)
+        var token = NormalizeHardcoverToken(accessToken);
+        if (token.Length < 12 || token.Any(char.IsWhiteSpace))
         {
-            throw new InvalidOperationException(
-                "Enter a valid Hardcover API token.");
+            throw new HardcoverConnectionException("The Hardcover token is malformed.");
         }
 
         using var document = await SendHardcoverAsync(
             token,
-            "query JularrViewer { me { username } }",
+            "query JularrViewer { me { id username } }",
+            variables: null,
             cancellationToken);
 
-        var me = FirstHardcoverMe(document.RootElement);
-        var username = me is { } node
-            && node.TryGetProperty("username", out var usernameNode)
-                ? usernameNode.GetString()
-                : null;
-
-        if (string.IsNullOrWhiteSpace(username))
+        if (FirstHardcoverMe(document.RootElement) is not { } viewer
+            || !viewer.TryGetProperty("id", out var idNode)
+            || !idNode.TryGetInt32(out var userId)
+            || !viewer.TryGetProperty("username", out var usernameNode)
+            || usernameNode.ValueKind != JsonValueKind.String
+            || string.IsNullOrWhiteSpace(usernameNode.GetString()))
         {
-            throw new InvalidOperationException(
-                "Hardcover did not return an account for this token.");
+            throw new HardcoverConnectionException("Hardcover did not return an account for this token.");
         }
 
-        return username.Trim();
+        return new HardcoverViewer(userId, usernameNode.GetString()!.Trim());
     }
 
+    /// <summary>
+    /// Adds the connected profile's Hardcover list state to <paramref name="items"/>. Any
+    /// Hardcover failure leaves the results unchanged.
+    /// </summary>
     public async Task<IReadOnlyList<BookCatalogItem>> EnrichHardcoverStatesAsync(
         IReadOnlyList<BookCatalogItem> items,
-        string? accessToken,
+        StoredHardcoverAccount? account,
         CancellationToken cancellationToken)
     {
-        if (items.Count == 0 || string.IsNullOrWhiteSpace(accessToken))
+        if (items.Count == 0 || account is null || string.IsNullOrWhiteSpace(account.AccessToken))
         {
             return items;
         }
 
         try
         {
-            using var document = await SendHardcoverAsync(
-                accessToken.Trim(),
-                """
-                query JularrLibrary {
-                  me {
-                    user_books(limit: 500, order_by: { updated_at: desc }) {
-                      status_id
-                      book {
-                        title
-                        contributions { author { name } }
-                        editions { isbn_10 isbn_13 }
-                      }
-                    }
-                  }
-                }
-                """,
-                cancellationToken);
-
-            var me = FirstHardcoverMe(document.RootElement);
-            if (me is null
-                || !me.Value.TryGetProperty(
-                    "user_books",
-                    out var books)
-                || books.ValueKind != JsonValueKind.Array)
-            {
-                return items;
-            }
-
-            var states = books.EnumerateArray()
-                .Select(ParseHardcoverBook)
-                .Where(x => x is not null)
-                .Select(x => x!)
-                .ToArray();
-
+            var books = await LoadHardcoverListAsync(account, cancellationToken);
             return items
                 .Select(item =>
                 {
-                    var state = states.FirstOrDefault(candidate =>
-                        HardcoverMatches(item, candidate));
-                    return state is null
+                    var state = books.FirstOrDefault(candidate => HardcoverMatches(item, candidate));
+                    return state is null || HardcoverState(state.StatusId) is not { } code
                         ? item
-                        : item with
-                        {
-                            ExternalListState =
-                                HardcoverStatusLabel(state.StatusId)
-                        };
+                        : item with { ExternalListState = code };
                 })
                 .ToArray();
         }
@@ -112,9 +130,56 @@ public sealed partial class BookCatalogService
         }
     }
 
+    private async Task<HardcoverListBook[]> LoadHardcoverListAsync(
+        StoredHardcoverAccount account,
+        CancellationToken cancellationToken)
+    {
+        var key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(account.AccessToken)));
+        if (HardcoverLists.TryGetValue(key, out var cached)
+            && DateTimeOffset.UtcNow - cached.LoadedAt < HardcoverListCacheLifetime)
+        {
+            return cached.Books;
+        }
+
+        // Kept shallow: the shelf entries with the work's title and cached authors, and the
+        // ISBNs of the shelved edition.
+        using var document = await SendHardcoverAsync(
+            account.AccessToken,
+            """
+            query JularrLibrary($userId: Int!, $limit: Int!) {
+              user_books(
+                where: { user_id: { _eq: $userId } }
+                limit: $limit
+                order_by: { updated_at: desc }
+              ) {
+                status_id
+                book { title cached_contributors }
+                edition { isbn_10 isbn_13 }
+              }
+            }
+            """,
+            new Dictionary<string, object> { ["userId"] = account.UserId, ["limit"] = HardcoverListLimit },
+            cancellationToken);
+
+        var books = document.RootElement.TryGetProperty("data", out var data)
+            && data.TryGetProperty("user_books", out var userBooks)
+            && userBooks.ValueKind == JsonValueKind.Array
+                ? userBooks.EnumerateArray().Select(ParseHardcoverBook).OfType<HardcoverListBook>().ToArray()
+                : [];
+
+        if (HardcoverLists.Count >= HardcoverListCacheLimit)
+        {
+            HardcoverLists.Clear();
+        }
+
+        HardcoverLists[key] = (DateTimeOffset.UtcNow, books);
+        return books;
+    }
+
     private async Task<JsonDocument> SendHardcoverAsync(
         string accessToken,
         string query,
+        IReadOnlyDictionary<string, object>? variables,
         CancellationToken cancellationToken)
     {
         using var timeout =
@@ -124,10 +189,10 @@ public sealed partial class BookCatalogService
         using var request =
             new HttpRequestMessage(HttpMethod.Post, HardcoverGraphQl);
         request.Headers.Authorization =
-            new AuthenticationHeaderValue("Bearer", accessToken);
+            new AuthenticationHeaderValue("Bearer", NormalizeHardcoverToken(accessToken));
         request.Headers.Accept.Add(
             new MediaTypeWithQualityHeaderValue("application/json"));
-        request.Content = JsonContent.Create(new { query });
+        request.Content = JsonContent.Create(new { query, variables });
 
         using var response = await httpClient.SendAsync(
             request,
@@ -138,8 +203,7 @@ public sealed partial class BookCatalogService
             System.Net.HttpStatusCode.Unauthorized
             or System.Net.HttpStatusCode.Forbidden)
         {
-            throw new InvalidOperationException(
-                "The Hardcover API token is invalid or expired.");
+            throw new HardcoverConnectionException("The Hardcover token is invalid, expired or lacks a scope.");
         }
 
         response.EnsureSuccessStatusCode();
@@ -154,8 +218,7 @@ public sealed partial class BookCatalogService
             && errors.GetArrayLength() > 0)
         {
             document.Dispose();
-            throw new InvalidOperationException(
-                "Hardcover could not read the account.");
+            throw new HardcoverConnectionException("Hardcover could not read the account.");
         }
 
         return document;
@@ -169,6 +232,7 @@ public sealed partial class BookCatalogService
             return null;
         }
 
+        // "me" is a list holding the one signed-in user.
         if (me.ValueKind == JsonValueKind.Object)
         {
             return me;
@@ -191,123 +255,86 @@ public sealed partial class BookCatalogService
     private static HardcoverListBook? ParseHardcoverBook(
         JsonElement userBook)
     {
-        if (!userBook.TryGetProperty(
-                "status_id",
-                out var statusNode)
+        if (!userBook.TryGetProperty("status_id", out var statusNode)
             || !statusNode.TryGetInt32(out var statusId)
-            || !userBook.TryGetProperty(
-                "book",
-                out var book)
+            || !userBook.TryGetProperty("book", out var book)
             || book.ValueKind != JsonValueKind.Object)
         {
             return null;
         }
 
         var title = book.TryGetProperty("title", out var titleNode)
-            ? titleNode.GetString()
-            : null;
+            && titleNode.ValueKind == JsonValueKind.String
+                ? titleNode.GetString()
+                : null;
         if (string.IsNullOrWhiteSpace(title))
         {
             return null;
         }
 
+        // cached_contributors: [{ "author": { "name": … }, "contribution": null | "Editor" | … }];
+        // a contributor without a contribution role is an author.
         string? author = null;
-        if (book.TryGetProperty(
-                "contributions",
-                out var contributions)
-            && contributions.ValueKind == JsonValueKind.Array)
+        if (book.TryGetProperty("cached_contributors", out var contributors)
+            && contributors.ValueKind == JsonValueKind.Array)
         {
-            foreach (var contribution in contributions.EnumerateArray())
-            {
-                if (contribution.TryGetProperty(
-                        "author",
-                        out var authorNode)
+            author = contributors.EnumerateArray()
+                .Where(contributor => contributor.ValueKind == JsonValueKind.Object)
+                .OrderBy(contributor =>
+                    contributor.TryGetProperty("contribution", out var role)
+                    && role.ValueKind == JsonValueKind.String
+                        ? 1
+                        : 0)
+                .Select(contributor =>
+                    contributor.TryGetProperty("author", out var authorNode)
                     && authorNode.ValueKind == JsonValueKind.Object
-                    && authorNode.TryGetProperty(
-                        "name",
-                        out var nameNode)
-                    && !string.IsNullOrWhiteSpace(nameNode.GetString()))
-                {
-                    author = nameNode.GetString();
-                    break;
-                }
-            }
+                    && authorNode.TryGetProperty("name", out var nameNode)
+                    && nameNode.ValueKind == JsonValueKind.String
+                        ? nameNode.GetString()
+                        : null)
+                .FirstOrDefault(name => !string.IsNullOrWhiteSpace(name));
         }
 
         var isbns = new HashSet<string>(StringComparer.Ordinal);
-        if (book.TryGetProperty("editions", out var editions)
-            && editions.ValueKind == JsonValueKind.Array)
+        if (userBook.TryGetProperty("edition", out var edition)
+            && edition.ValueKind == JsonValueKind.Object)
         {
-            foreach (var edition in editions.EnumerateArray())
+            foreach (var key in new[] { "isbn_13", "isbn_10" })
             {
-                foreach (var key in new[] { "isbn_13", "isbn_10" })
+                if (edition.TryGetProperty(key, out var isbnNode)
+                    && isbnNode.ValueKind == JsonValueKind.String
+                    && BookWorkSearch.NormalizeIsbn(isbnNode.GetString()) is { } isbn)
                 {
-                    if (edition.TryGetProperty(key, out var isbnNode))
-                    {
-                        var isbn = NormalizeIsbn(isbnNode.GetString());
-                        if (isbn is not null)
-                        {
-                            isbns.Add(isbn);
-                        }
-                    }
+                    isbns.Add(isbn);
                 }
             }
         }
 
-        return new HardcoverListBook(
-            title.Trim(),
-            author?.Trim(),
-            isbns.ToArray(),
-            statusId);
+        return new HardcoverListBook(title.Trim(), author?.Trim(), isbns, statusId);
     }
 
+    /// <summary>The same book by a shared ISBN, or by the search's own work identity rule.</summary>
     private static bool HardcoverMatches(
         BookCatalogItem item,
-        HardcoverListBook candidate)
-    {
-        var itemIsbns = (item.Isbns ?? [])
-            .ToHashSet(StringComparer.Ordinal);
-        if (itemIsbns.Count > 0
-            && candidate.Isbns.Any(itemIsbns.Contains))
-        {
-            return true;
-        }
+        HardcoverListBook candidate) =>
+        (candidate.Isbns.Count > 0 && item.Isbns.Any(candidate.Isbns.Contains))
+        || BookWorkSearch.SameWork(item.Title, item.Author, candidate.Title, candidate.Author);
 
-        if (NormalizeForMatch(item.Title)
-            != NormalizeForMatch(candidate.Title))
-        {
-            return false;
-        }
-
-        if (string.IsNullOrWhiteSpace(item.Author)
-            || string.IsNullOrWhiteSpace(candidate.Author))
-        {
-            return true;
-        }
-
-        var expectedSurname = NormalizeForMatch(item.Author)
-            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
-            .LastOrDefault();
-        return expectedSurname is null
-            || NormalizeForMatch(candidate.Author)
-                .Split(' ', StringSplitOptions.RemoveEmptyEntries)
-                .Contains(expectedSurname, StringComparer.Ordinal);
-    }
-
-    private static string HardcoverStatusLabel(int statusId) =>
+    private static string? HardcoverState(int statusId) =>
         statusId switch
         {
-            1 => "Want to read",
-            2 => "Reading",
-            3 => "Read",
-            4 => "Paused",
-            5 => "Did not finish",
-            _ => "In Hardcover"
+            1 => BookListStates.WantToRead,
+            2 => BookListStates.Reading,
+            3 => BookListStates.Read,
+            4 => BookListStates.Paused,
+            5 => BookListStates.DidNotFinish,
+            // 6 is "Ignored": the reader chose not to see the book; not a list state.
+            _ => null
         };
 
     private sealed record HardcoverListBook(
         string Title,
         string? Author,
-        IReadOnlyList<string> Isbns,
+        IReadOnlySet<string> Isbns,
         int StatusId);
 }

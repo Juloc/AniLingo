@@ -12,7 +12,7 @@
 
 <header class="books-settings-header">
     <h1>@ui["books.integrations.heading"]</h1>
-    <p>@ui["books.integrations.subtitle"]</p>
+    <p>@(Model.IsOwner ? ui["books.integrations.subtitle"] : ui["books.integrations.subtitleProfile"])</p>
 </header>
 
 @if (TempData["Status"] is string status)
@@ -20,18 +20,17 @@
     <div class="books-message">@status</div>
 }
 
-
-<section class="books-integration-settings books-hardcover-settings">
+<section class="books-integration-settings">
     <section>
-        <h2>Hardcover</h2>
-        <p>Optional personal reading-list connection. It is used only to show your book status; book search and your local library work without it.</p>
+        <h2>@ui["books.integrations.hardcoverTitle"]</h2>
+        <p>@ui["books.integrations.hardcoverDescription"]</p>
 
         @if (Model.HardcoverAccount is not null)
         {
             <div class="books-integration-status">
-                <span class="ready">Connected as @Model.HardcoverAccount.Username</span>
+                <span class="ready">@ui.Format("books.integrations.hardcoverConnectedAs", ("username", Model.HardcoverAccount.Username))</span>
                 <form method="post" asp-page-handler="DisconnectHardcover">
-                    <button class="button" type="submit">Disconnect</button>
+                    <button class="button" type="submit">@ui["books.integrations.hardcoverDisconnect"]</button>
                 </form>
             </div>
         }
@@ -39,14 +38,21 @@
         {
             <form method="post" asp-page-handler="ConnectHardcover" class="books-stack-form">
                 <label>
-                    API token
+                    @ui["books.integrations.hardcoverTokenLabel"]
                     <input type="password"
-                           asp-for="HardcoverAccessToken"
-                           autocomplete="new-password"
-                           placeholder="hc_pat_…" />
+                           name="HardcoverAccessToken"
+                           autocomplete="off"
+                           spellcheck="false"
+                           required
+                           aria-describedby="hardcover-token-help" />
                 </label>
+                <small id="hardcover-token-help">
+                    <a href="@Jularr.Web.Features.Books.BookCatalogService.HardcoverNewTokenUrl"
+                       target="_blank"
+                       rel="noopener noreferrer">@ui["books.integrations.hardcoverTokenLink"]</a>
+                </small>
                 <div>
-                    <button class="button button-primary" type="submit">Connect</button>
+                    <button class="button button-primary" type="submit">@ui["books.integrations.hardcoverConnect"]</button>
                 </div>
             </form>
         }

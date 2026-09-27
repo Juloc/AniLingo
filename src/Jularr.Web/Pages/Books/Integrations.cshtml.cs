@@ -86,30 +86,45 @@ public sealed class IntegrationsModel(
         return RedirectToPage();
     }
 
+    /// <summary>Connects the current profile's own Hardcover account (never another profile's).</summary>
     public async Task<IActionResult> OnPostConnectHardcoverAsync(
         CancellationToken cancellationToken)
     {
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         try
         {
-            var username = await books.ValidateHardcoverTokenAsync(
+            var viewer = await books.ValidateHardcoverTokenAsync(
                 HardcoverAccessToken,
                 cancellationToken);
             await new BookHardcoverAccountStore(dataProtectionProvider)
                 .SaveAsync(
                     account.ProfileId,
                     new StoredHardcoverAccount(
-                        username,
-                        HardcoverAccessToken.Trim(),
+                        viewer.UserId,
+                        viewer.Username,
+                        BookCatalogService.NormalizeHardcoverToken(HardcoverAccessToken),
                         DateTimeOffset.UtcNow),
                     cancellationToken);
-            TempData["Status"] = $"Hardcover connected as {username}.";
+            TempData["Status"] = ui.Format(
+                "books.integrations.hardcoverConnected",
+                ("username", viewer.Username));
+        }
+        catch (HardcoverConnectionException)
+        {
+            TempData["Status"] = ui["books.integrations.hardcoverRejected"];
         }
         catch (Exception exception) when (
-            exception is InvalidOperationException
-                or HttpRequestException
-                or TaskCanceledException)
+            !cancellationToken.IsCancellationRequested
+            && exception is HttpRequestException
+                or TaskCanceledException
+                or System.Text.Json.JsonException)
         {
-            TempData["Status"] = exception.Message;
+            TempData["Status"] = ui["books.integrations.hardcoverUnreachable"];
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException)
+        {
+            TempData["Status"] = ui["books.integrations.hardcoverSaveFailed"];
         }
 
         return RedirectToPage();
@@ -118,9 +133,10 @@ public sealed class IntegrationsModel(
     public async Task<IActionResult> OnPostDisconnectHardcoverAsync(
         CancellationToken cancellationToken)
     {
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         await new BookHardcoverAccountStore(dataProtectionProvider)
             .DisconnectAsync(account.ProfileId, cancellationToken);
-        TempData["Status"] = "Hardcover disconnected.";
+        TempData["Status"] = ui["books.integrations.hardcoverDisconnected"];
         return RedirectToPage();
     }
 

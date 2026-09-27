@@ -225,19 +225,28 @@
         for (const item of items) {
             const row = element("li", "books-add-result");
             const cover = element("div", "books-add-cover");
-            if (item.coverImageUrl) {
+            // The chosen cover first; a cover that does not load gives way to the next one,
+            // and the one that shows is the one a request keeps.
+            const covers = [item.coverImageUrl, ...(item.covers || [])].filter((url, index, all) => url && all.indexOf(url) === index);
+            if (covers.length > 0) {
                 const image = document.createElement("img");
-                image.src = item.coverImageUrl;
                 image.alt = "";
                 image.loading = "lazy";
                 image.referrerPolicy = "no-referrer";
+                image.addEventListener("error", () => {
+                    covers.shift();
+                    item.coverImageUrl = covers[0] || null;
+                    if (covers.length > 0) image.src = covers[0];
+                    else image.remove();
+                });
+                image.src = covers[0];
                 cover.append(image);
             }
             const copy = element("div", "books-add-copy");
             copy.append(element("strong", null, item.title));
-            const meta = [item.author, item.firstPublishYear].filter(Boolean).join(" · ");
+            const meta = [item.author, item.year].filter(Boolean).join(" · ");
             if (meta) copy.append(element("span", "books-add-meta", meta));
-            if (item.externalListState) copy.append(element("small", "books-add-list-state", item.externalListState));
+            if (item.listState) copy.append(element("small", "books-add-list-state", item.listState));
             if (item.summary) copy.append(element("p", "books-add-summary", item.summary));
             if (item.freeEdition) copy.append(element("small", "books-add-free", text("textFree")));
             const slot = element("div", "books-add-action");
@@ -249,16 +258,41 @@
         schedulePoll();
     };
 
+    // Placeholder rows keep the list from jumping while the providers answer.
+    const showSkeleton = () => {
+        results.replaceChildren();
+        for (let index = 0; index < 4; index++) {
+            const row = element("li", "books-add-result books-add-skeleton");
+            row.setAttribute("aria-hidden", "true");
+            const copy = element("div", "books-add-copy");
+            copy.append(element("span"), element("span"));
+            row.append(element("div", "books-add-cover"), copy);
+            results.append(row);
+        }
+    };
+
+    // Typing searches after a short pause; Enter searches at once.
+    let searched = "";
+    let debounce = null;
+    query?.addEventListener("input", () => {
+        window.clearTimeout(debounce);
+        const value = query.value.trim();
+        if (value.length < 3 || value === searched) return;
+        debounce = window.setTimeout(() => form.requestSubmit(), 450);
+    });
+
     form?.addEventListener("submit", async event => {
         event.preventDefault();
+        window.clearTimeout(debounce);
         const value = query.value.trim();
         if (value.length < 2) return;
+        searched = value;
         controller?.abort();
         controller = new AbortController();
         const number = ++searchNumber;
         state.textContent = text("textSearching");
-        results.replaceChildren();
         rows.clear();
+        showSkeleton();
         try {
             const url = new URL(dialog.dataset.searchUrl, window.location.origin);
             url.searchParams.set("q", value);
@@ -269,7 +303,10 @@
             state.textContent = payload.error || (payload.results.length === 0 ? text("textNoResults") : "");
             render(payload.results);
         } catch (error) {
-            if (error.name !== "AbortError" && number === searchNumber) state.textContent = text("textFailed");
+            if (error.name !== "AbortError" && number === searchNumber) {
+                state.textContent = text("textFailed");
+                results.replaceChildren();
+            }
         }
     });
 
