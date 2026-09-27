@@ -521,7 +521,11 @@ public sealed class ReadModel(
 
         if (!translations.TranslateGemmaConfigured)
         {
-            return new JsonResult(new { status = "unavailable" });
+            return new JsonResult(new
+            {
+                status = "unavailable",
+                canGenerate = false
+            });
         }
 
         if (!await ResolveTranslationEnabledAsync(context.WorkId, id, cancellationToken))
@@ -529,7 +533,11 @@ public sealed class ReadModel(
             return Forbid();
         }
 
-        return new JsonResult(new { status = "pending" });
+        return new JsonResult(new
+        {
+            status = "pending",
+            canGenerate = account.IsOwner
+        });
     }
 
     public async Task<IActionResult> OnGetTranslationStatusAsync(
