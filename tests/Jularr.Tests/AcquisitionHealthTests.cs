@@ -1,3 +1,4 @@
+using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Acquisition;
 using Jularr.Web.Features.Acquisition.DownloadClients;
 using Jularr.Web.Features.Acquisition.Health;
@@ -90,7 +91,7 @@ public sealed class AcquisitionHealthTests
             await indexerStore.SaveAsync(indexerEntry);
             var clientEntry = new DownloadClientEntry(
                 Guid.NewGuid(), "My Client", DownloadClientType.Sabnzbd, true, 1,
-                new DownloadClientSettings("http://client.example", null, "anime"), "secret");
+                new DownloadClientSettings("http://client.example", new Dictionary<MediaAcquisitionKind, string?> { [MediaAcquisitionKind.Book] = null, [MediaAcquisitionKind.Anime] = "anime" }), "secret");
             await clientStore.SaveAsync(clientEntry);
 
             var services = new ServiceCollection();

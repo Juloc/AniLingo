@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Jularr.Web.Features.Acquisition.Access;
+using Jularr.Web.Features.Acquisition.Import;
 
 namespace Jularr.Web.Features.Acquisition.DownloadClients;
 
@@ -32,38 +33,9 @@ public sealed record DownloadClientSettings
                     : null);
     }
 
-    // Temporary source-compatibility bridge for the Books work currently
-    // owned by another agent. New code must use the media-kind category map.
-    public DownloadClientSettings(
-        string baseUrl,
-        string? booksCategory,
-        string? animeCategory)
-        : this(
-            baseUrl,
-            new Dictionary<MediaAcquisitionKind, string?>
-            {
-                [MediaAcquisitionKind.Book] = booksCategory,
-                [MediaAcquisitionKind.Anime] = animeCategory
-            })
-    {
-    }
-
     public string BaseUrl { get; init; }
 
     public IReadOnlyDictionary<MediaAcquisitionKind, string?> Categories { get; init; }
-
-    // Temporary read-only aliases for the existing Books settings view.
-    [JsonIgnore]
-    public string? BooksCategory => CategoryFor(MediaAcquisitionKind.Book);
-
-    [JsonIgnore]
-    public string? AnimeCategory => CategoryFor(MediaAcquisitionKind.Anime);
-
-    [JsonIgnore]
-    public string? MangaCategory => CategoryFor(MediaAcquisitionKind.Manga);
-
-    [JsonIgnore]
-    public string? LightNovelCategory => CategoryFor(MediaAcquisitionKind.LightNovel);
 
     public string? CategoryFor(MediaAcquisitionKind kind) =>
         Categories.TryGetValue(kind, out var category) ? CleanCategory(category) : null;
@@ -117,23 +89,55 @@ public sealed record DownloadClientSubmitRequest(
     Stream? File = null,
     string? FileName = null);
 
+/// <summary>Where the completed-download import stands for one external download.</summary>
+public enum DownloadImportState
+{
+    /// <summary>The files cannot be imported yet (path not reported, share offline, storage busy).</summary>
+    Waiting,
+    Completed,
+    /// <summary>The downloaded package was unsuitable for the media type.</summary>
+    Rejected,
+    /// <summary>Waiting timed out; the owner has to fix the path or import by hand.</summary>
+    GaveUp
+}
+
+/// <summary>
+/// The import side of an external download as the shared completed-download import recorded
+/// it: the path the download client reported, the path Jularr read after the remote-path
+/// mapping, where the media went, with which import mode (null: read in place) and the result.
+/// </summary>
+public sealed record DownloadImportDetails(
+    DownloadImportState State,
+    string Result,
+    DateTime UpdatedAtUtc,
+    string? ReportedPath = null,
+    string? LocalPath = null,
+    string? Destination = null,
+    ImportMode? Mode = null);
+
 /// <summary>
 /// Durable routing metadata for a submitted external download. The monitor
 /// uses the exact selected connection instead of whichever client currently
-/// has the highest priority.
+/// has the highest priority. <see cref="Import"/> is filled once the
+/// completed download was handed to its media importer.
 /// </summary>
 public sealed record DownloadOperationDetails(
     Guid ClientEntryId,
     MediaAcquisitionKind MediaKind,
-    string? Category)
+    string? Category,
+    DownloadImportDetails? Import = null)
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
+    };
 
     public string Serialize() => JsonSerializer.Serialize(
         new PersistedDetails(
             ClientEntryId,
             AcquisitionAccessNames.Kind(MediaKind),
-            string.IsNullOrWhiteSpace(Category) ? null : Category.Trim()),
+            string.IsNullOrWhiteSpace(Category) ? null : Category.Trim(),
+            Import),
         JsonOptions);
 
     public static bool TryParse(string? json, out DownloadOperationDetails? details)
@@ -155,7 +159,8 @@ public sealed record DownloadOperationDetails(
             details = new DownloadOperationDetails(
                 persisted.ClientEntryId,
                 AcquisitionAccessNames.ParseKind(persisted.MediaKind),
-                string.IsNullOrWhiteSpace(persisted.Category) ? null : persisted.Category.Trim());
+                string.IsNullOrWhiteSpace(persisted.Category) ? null : persisted.Category.Trim(),
+                persisted.Import);
             return true;
         }
         catch (JsonException)
@@ -171,7 +176,8 @@ public sealed record DownloadOperationDetails(
     private sealed record PersistedDetails(
         Guid ClientEntryId,
         string MediaKind,
-        string? Category);
+        string? Category,
+        DownloadImportDetails? Import = null);
 }
 
 public sealed record DownloadClientSubmitResult(

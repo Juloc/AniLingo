@@ -23,8 +23,8 @@ public sealed record DownloadSubmissionOutcome(
     string Message);
 
 /// <summary>
-/// The one path that sends a release to a download client for Books and
-/// Anime: picks the highest-priority enabled, healthy client (several
+/// The one path that sends a release to a download client for every media
+/// type: picks the highest-priority enabled, healthy client (several
 /// SABnzbd connections can be configured), and fails over to the next one
 /// on submission failure. Operations remain the single status store; the
 /// external reference is the chosen client's entry ID plus its own job ID.
@@ -99,9 +99,11 @@ public sealed class DownloadClientSubmissionService(
 
             if (result.Success && !string.IsNullOrWhiteSpace(result.ExternalId))
             {
-                await store.SetExternalReferenceAsync(operationId, client.ProviderId, result.ExternalId, cancellationToken);
-                await store.SetDetailsAsync(
+                // One write: the job id and the client it went to are never stored apart.
+                await store.SetExternalReferenceAsync(
                     operationId,
+                    client.ProviderId,
+                    result.ExternalId,
                     new DownloadOperationDetails(
                         entry.Id,
                         spec.MediaKind,

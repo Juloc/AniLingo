@@ -1,6 +1,6 @@
 using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Auth;
-using Jularr.Web.Features.Books;
+using Jularr.Web.Features.Acquisition.Import;
 using Jularr.Web.Features.Localization;
 using Jularr.Web.Features.Novels;
 using Jularr.Web.Features.Operations;
@@ -25,7 +25,7 @@ public sealed class IndexModel(
     NovelCatalogQueries catalog,
     NovelImportService imports,
     NovelEpubImportService epubImports,
-    BookCatalogService books,
+    MediaInboxImportService inboxes,
     NovelAniListProvider readingProvider,
     IHttpClientFactory httpClientFactory,
     AcquisitionRequestService requests,
@@ -44,7 +44,7 @@ public sealed class IndexModel(
             false);
     public string SearchQuery { get; private set; } = "";
     public bool IsOwner => account.IsOwner;
-    public bool IsInboxConfigured => books.IsInboxConfigured;
+    public bool IsInboxConfigured { get; private set; }
 
     public async Task OnGetAsync(
         string? q,
@@ -52,6 +52,7 @@ public sealed class IndexModel(
     {
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         Works = await catalog.GetLibraryAsync(account.ProfileId, cancellationToken);
+        IsInboxConfigured = await inboxes.InboxAsync(MediaAcquisitionKind.LightNovel, cancellationToken) is not null;
         ContinueReading = Works
             .Where(x => x.HasProgress)
             .OrderByDescending(x => x.LastReadAt)
@@ -405,8 +406,7 @@ public sealed class IndexModel(
             return Forbid();
         }
 
-        var inbox = books.InboxPath;
-        if (inbox is null)
+        if (await inboxes.InboxAsync(MediaAcquisitionKind.LightNovel, cancellationToken) is null)
         {
             var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
             TempData["Status"] = ui["novels.index.configureInboxFirst"];
@@ -415,26 +415,14 @@ public sealed class IndexModel(
 
         try
         {
-            var outcomes = await operations.RunAsync(
-                new OperationDescriptor(
-                    "novel-epub-inbox-import",
-                    "Novels",
-                    "Import light-novel inbox",
-                    ProfileId: account.ProfileId,
-                    Lane: OperationLane.Normal,
-                    Retryable: false),
-                async (operation, token) =>
-                {
-                    await operation.ReportAsync(
-                        10,
-                        "Scanning light-novel inbox.",
-                        cancellationToken: token);
-                    return await epubImports.ImportInboxAsync(inbox, token);
-                },
-                "Light-novel inbox scan completed.",
+            // The Light Novel inbox folder (Settings → Acquisition → Media folders), imported with
+            // the same importer as completed Light Novel downloads.
+            var result = await inboxes.RunAsync(
+                MediaAcquisitionKind.LightNovel,
+                account.ProfileId,
                 cancellationToken);
 
-            TempData["Status"] = NovelEpubImportOutcome.Summarize(outcomes);
+            TempData["Status"] = result.Message;
         }
         catch (InvalidOperationException exception)
         {

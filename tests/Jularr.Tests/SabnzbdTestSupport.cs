@@ -1,3 +1,4 @@
+using Jularr.Web.Features.Acquisition.Access;
 using System.Net;
 using System.Text;
 using Jularr.Web.Data;
@@ -73,7 +74,7 @@ internal static class SabnzbdTestSupport
                 DownloadClientType.Sabnzbd,
                 Enabled: true,
                 Priority: 1,
-                new DownloadClientSettings("http://sabnzbd:8080", "books", "anime"),
+                new DownloadClientSettings("http://sabnzbd:8080", new Dictionary<MediaAcquisitionKind, string?> { [MediaAcquisitionKind.Book] = "books", [MediaAcquisitionKind.Anime] = "anime" }),
                 "secret-key"));
 
         var db = await CreateDatabaseAsync(Path.Combine(directory.FullName, "jularr.db"));

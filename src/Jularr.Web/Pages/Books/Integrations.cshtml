@@ -56,10 +56,7 @@
 
 @if (Model.IsOwner)
 {
-<form method="post"
-      asp-page-handler="Save"
-      class="books-integration-settings">
-
+<section class="books-integration-settings">
     <section>
         <h2>SABnzbd</h2>
         <p>
@@ -81,35 +78,15 @@
 
     <section>
         <h2>@ui["books.integrations.inboxTitle"]</h2>
-        <p>
-            @ui["books.integrations.inboxDescription1"]
-            @ui["books.integrations.inboxDescription2a"] <code>.epub</code> @ui["books.integrations.inboxDescription2b"]
-            @ui["books.integrations.inboxDescription3a"] <em>@ui["books.index.importInboxButton"]</em> @ui["books.integrations.inboxDescription3b"]
-        </p>
+        <p>@ui["books.integrations.inboxSettingsDescription"]</p>
 
-        @if (Model.InboxEnvironmentOverride)
-        {
-            <div class="books-setting-note">
-                @ui["books.integrations.envOverrideNote"]
-            </div>
-        }
-
-        <label>
-            @ui["books.integrations.inboxPathLabel"]
-            <input type="text"
-                   name="inboxPath"
-                   value="@Model.Settings.InboxPath"
-                   placeholder="/books-inbox" />
-        </label>
-
-        <span class="@(Model.InboxConfigured ? "ready" : "")">
-            @(Model.InboxConfigured ? ui["books.integrations.configured"] : ui["books.integrations.notConfigured"])
-        </span>
+        <div class="books-integration-status">
+            <span class="@(Model.InboxPath is null ? "" : "ready")">
+                @(Model.InboxPath ?? ui["books.integrations.notConfigured"])
+            </span>
+            <a class="button" href="/Settings/Acquisition#media-folders">@ui["books.integrations.manageInbox"]</a>
+        </div>
     </section>
-
-    <div class="books-settings-save">
-        <button class="button button-primary" type="submit">@ui["books.integrations.saveSettings"]</button>
-    </div>
-</form>
+</section>
 
 }

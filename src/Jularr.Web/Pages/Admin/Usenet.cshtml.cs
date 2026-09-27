@@ -74,8 +74,7 @@ public sealed class UsenetModel(
     ISabnzbdClient sabnzbd,
     AcquisitionHealthStore health,
     AnimeImportSettingsStore importSettings,
-    AcquisitionAccessStore access,
-    BookCatalogService books) : PageModel
+    AcquisitionAccessStore access) : PageModel
 {
     private static readonly TimeSpan SabnzbdTimeout = TimeSpan.FromSeconds(6);
 
@@ -145,7 +144,7 @@ public sealed class UsenetModel(
 
         var mappings = await importSettings.LoadAsync(cancellationToken);
         RemotePathMappingCount = mappings.RemotePathMappings.Count;
-        BooksInboxPath = books.InboxPath;
+        BooksInboxPath = mappings.InboxFor(MediaAcquisitionKind.Book);
         BookPolicy = await access.GetPolicyAsync(MediaAcquisitionKind.Book, cancellationToken);
 
         var activeClient = clientCards.FirstOrDefault(card => card.Entry.Enabled && card.Health?.IsHealthy != false)

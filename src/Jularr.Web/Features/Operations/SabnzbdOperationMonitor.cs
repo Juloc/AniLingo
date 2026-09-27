@@ -3,7 +3,6 @@ using Jularr.Web.Data;
 using Jularr.Web.Features.Acquisition.DownloadClients;
 using Jularr.Web.Features.Acquisition.Import;
 using Jularr.Web.Features.Acquisition.Sabnzbd;
-using Jularr.Web.Features.Books;
 
 namespace Jularr.Web.Features.Operations;
 
@@ -322,10 +321,8 @@ public sealed class SabnzbdOperationMonitorService(
             nowUtc,
             cancellationToken);
 
-        await ImportCompletedBookDownloadsAsync(services, result.Completed, history, cancellationToken);
         await ImportCompletedAnimeDownloadsAsync(services, result.Completed, history, cancellationToken);
         await ContinueFailedAnimeAcquisitionsAsync(services, result.Failed, cancellationToken);
-        await ContinueFailedBookRequestsAsync(services, result.Failed, cancellationToken);
     }
 
     private async Task FailRemovedClientDownloadsAsync(
@@ -345,7 +342,6 @@ public sealed class SabnzbdOperationMonitorService(
             "Failed {Count} SABnzbd downloads because their download client was removed.",
             failed.Count);
         await ContinueFailedAnimeAcquisitionsAsync(services, failed, cancellationToken);
-        await ContinueFailedBookRequestsAsync(services, failed, cancellationToken);
     }
 
     private bool ShouldWarn(string key, DateTime nowUtc)
@@ -363,28 +359,6 @@ public sealed class SabnzbdOperationMonitorService(
         DownloadOperationDetails.TryParse(operation.Details, out var details)
             ? details!.ClientEntryId
             : null;
-
-    private async Task ContinueFailedBookRequestsAsync(
-        IServiceProvider services,
-        IReadOnlyList<SabnzbdProjectedFailure> failed,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            var continued = await BookRequestSearchService.ContinueAfterFailedDownloadsAsync(
-                services,
-                failed.Select(failure => failure.Operation.Id).ToHashSet(),
-                cancellationToken);
-            if (continued > 0)
-            {
-                logger.LogInformation("Continued {Count} book requests after their SABnzbd download failed.", continued);
-            }
-        }
-        catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
-        {
-            logger.LogWarning(exception, "Could not continue book requests after a failed SABnzbd download.");
-        }
-    }
 
     private async Task ImportCompletedAnimeDownloadsAsync(
         IServiceProvider services,
@@ -478,35 +452,6 @@ public sealed class SabnzbdOperationMonitorService(
                     "Could not continue the anime acquisition after SABnzbd operation {OperationId} failed.",
                     failure.Operation.Id);
             }
-        }
-    }
-
-    private async Task ImportCompletedBookDownloadsAsync(
-        IServiceProvider services,
-        IReadOnlyList<OperationSnapshot> completed,
-        SabnzbdHistorySnapshot history,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            var storagePaths = completed.ToDictionary(
-                operation => operation.Id,
-                operation => history.Jobs.FirstOrDefault(job => job.NzoId == operation.ExternalId)?.StoragePath);
-            await BookInboxImport.ImportAfterDownloadsAsync(
-                services,
-                completed,
-                storagePaths,
-                cancellationToken);
-        }
-        catch (Exception exception) when (
-            exception is InvalidOperationException
-                or IOException
-                or UnauthorizedAccessException)
-        {
-            // The runner already recorded the failed import operation.
-            logger.LogWarning(
-                exception,
-                "Could not import a completed Books SABnzbd download.");
         }
     }
 }

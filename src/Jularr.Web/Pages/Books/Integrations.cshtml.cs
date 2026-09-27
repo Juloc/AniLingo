@@ -1,5 +1,7 @@
 using Jularr.Web.Data;
+using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Acquisition.DownloadClients;
+using Jularr.Web.Features.Acquisition.Import;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Books;
 using Jularr.Web.Features.Localization;
@@ -13,26 +15,20 @@ public sealed class IntegrationsModel(
     BookCatalogService books,
     CurrentAccountContext account,
     DownloadClientStore downloadClients,
-    IConfiguration configuration,
+    AnimeImportSettingsStore importSettings,
     AppDbContext db,
     IDataProtectionProvider dataProtectionProvider) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
-    public BookIntegrationSettings Settings { get; private set; } =
-        BookIntegrationSettings.Empty;
-
     public bool IsOwner => account.IsOwner;
     public bool SabConfigured { get; private set; }
     public string? SabBooksCategory { get; private set; }
-    public bool InboxConfigured => books.IsInboxConfigured;
+    /// <summary>The Books inbox folder (Settings → Acquisition → Media folders), or null.</summary>
+    public string? InboxPath { get; private set; }
     public StoredHardcoverAccount? HardcoverAccount { get; private set; }
 
     [BindProperty]
     public string HardcoverAccessToken { get; set; } = "";
-
-    public bool InboxEnvironmentOverride =>
-        !string.IsNullOrWhiteSpace(
-            configuration["Books:InboxPath"]);
 
     public async Task<IActionResult> OnGetAsync(
         CancellationToken cancellationToken)
@@ -45,45 +41,16 @@ public sealed class IntegrationsModel(
 
         if (account.IsOwner)
         {
-            Settings = BookIntegrationSettingsStore.Load();
+            InboxPath = (await importSettings.LoadAsync(cancellationToken)).InboxFor(MediaAcquisitionKind.Book);
             var entry = (await downloadClients.LoadAllAsync(cancellationToken))
                 .Where(item => item.Type == DownloadClientType.Sabnzbd)
                 .OrderBy(item => item.Priority)
                 .FirstOrDefault();
             SabConfigured = entry?.Enabled == true;
-            SabBooksCategory = entry?.Settings.BooksCategory;
+            SabBooksCategory = entry?.CategoryFor(MediaAcquisitionKind.Book);
         }
 
         return Page();
-    }
-
-    public async Task<IActionResult> OnPostSaveAsync(
-        string? inboxPath,
-        CancellationToken cancellationToken)
-    {
-        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
-
-        if (!account.IsOwner)
-        {
-            return Forbid();
-        }
-
-        try
-        {
-            await BookIntegrationSettingsStore.SaveAsync(
-                new BookIntegrationSettings(inboxPath),
-                cancellationToken);
-            TempData["Status"] = ui["books.integrations.saved"];
-        }
-        catch (Exception exception) when (
-            exception is InvalidOperationException
-                or IOException
-                or UnauthorizedAccessException)
-        {
-            TempData["Status"] = exception.Message;
-        }
-
-        return RedirectToPage();
     }
 
     /// <summary>Connects the current profile's own Hardcover account (never another profile's).</summary>

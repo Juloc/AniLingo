@@ -57,19 +57,27 @@ public sealed partial class BookCatalogService
     /// Imports every supported book file at <paramref name="path"/>: the file itself, or the EPUB
     /// and PDF files below the folder including subfolders (SABnzbd puts each job in its own
     /// folder). Damaged or unreadable files are skipped, so one bad file never blocks the rest.
-    /// <paramref name="hint"/> names a PDF when it is the only file imported.
+    /// <paramref name="hint"/> names a PDF when it is the only file imported. Files below
+    /// <paramref name="excludedFolders"/> (another media type's inbox nested in this folder) are
+    /// left alone.
     /// </summary>
     public async Task<IReadOnlyList<Guid>> ImportBooksFromPathAsync(
         string path,
         string sourceKind,
         BookImportHint? hint,
         bool singleBook,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyCollection<string>? excludedFolders = null)
     {
+        var excluded = (excludedFolders ?? [])
+            .Select(folder => Path.GetFullPath(folder).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar)
+            .ToArray();
         var found = File.Exists(path)
             ? [path]
             : Directory.Exists(path)
-                ? Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories).Take(2000)
+                ? Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories)
+                    .Where(file => !excluded.Any(folder => Path.GetFullPath(file).StartsWith(folder, StringComparison.Ordinal)))
+                    .Take(2000)
                 : throw new InvalidOperationException($"'{path}' is not available.");
         var files = BookFileFormats.Select(found, singleBook).Take(200).ToArray();
 

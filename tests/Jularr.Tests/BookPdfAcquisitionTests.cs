@@ -619,7 +619,7 @@ public sealed class BookPdfAcquisitionTests
                 DownloadClientType.Sabnzbd,
                 Enabled: true,
                 Priority: 1,
-                new DownloadClientSettings("http://sabnzbd:8080", "books", "anime"),
+                new DownloadClientSettings("http://sabnzbd:8080", new Dictionary<MediaAcquisitionKind, string?> { [MediaAcquisitionKind.Book] = "books", [MediaAcquisitionKind.Anime] = "anime" }),
                 "secret-key"));
             await services.GetRequiredService<AnimeImportSettingsStore>().UpdateAsync(
                 state => state with { RemotePathMappings = [new RemotePathMapping("/data/downloads/complete", Path.Combine(root, "mnt", "complete"))] },

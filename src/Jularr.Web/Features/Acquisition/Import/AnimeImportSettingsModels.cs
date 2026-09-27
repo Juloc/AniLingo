@@ -29,10 +29,14 @@ public enum ImportMode
 public sealed record RemotePathMapping(string RemotePrefix, string LocalPrefix);
 
 /// <summary>
-/// Where completed downloads of one media type end up (the canonical NAS library folder) and,
-/// optionally, how they get there. A null import mode uses the global default.
+/// The folders of one media type: the final NAS library folder completed downloads are placed
+/// in (with an optional import-mode override; null uses the global default) and the inbox folder
+/// the same importer scans for content Jularr did not download. Every folder is optional.
 /// </summary>
-public sealed record MediaLibraryTarget(string LibraryRoot, ImportMode? ImportMode = null);
+public sealed record MediaLibraryTarget(
+    string? LibraryRoot = null,
+    ImportMode? ImportMode = null,
+    string? InboxRoot = null);
 
 /// <summary>
 /// The one canonical import-policy settings: default import mode, per-library-root overrides,
@@ -51,9 +55,9 @@ public sealed record AnimeImportSettingsState(
     public LosslessPlaybackOptimizationMode PlaybackOptimization { get; init; } = LosslessPlaybackOptimizationMode.Off;
 
     /// <summary>
-    /// Final library folder (and optional import-mode override) per non-anime media type, for
-    /// example Manga. Anime keeps using its library roots. A media type without an entry imports
-    /// completed downloads in place.
+    /// Library folder, import-mode override and inbox folder per non-anime media type (Manga,
+    /// Light Novels, Books). Anime keeps using its library roots. A media type without a library
+    /// folder imports completed downloads in place; without an inbox folder it has no inbox scan.
     /// </summary>
     public Dictionary<MediaAcquisitionKind, MediaLibraryTarget> MediaLibraries { get; init; } = [];
 
@@ -72,6 +76,20 @@ public sealed record AnimeImportSettingsState(
 
     public ImportMode ModeFor(MediaAcquisitionKind kind) =>
         LibraryFor(kind)?.ImportMode ?? DefaultImportMode;
+
+    /// <summary>The configured inbox folder of a media type, or null.</summary>
+    public string? InboxFor(MediaAcquisitionKind kind) =>
+        MediaLibraries is not null &&
+        MediaLibraries.TryGetValue(kind, out var target) &&
+        !string.IsNullOrWhiteSpace(target.InboxRoot)
+            ? target.InboxRoot.Trim()
+            : null;
+
+    /// <summary>The folders of a media type (all unset when nothing is configured).</summary>
+    public MediaLibraryTarget FoldersFor(MediaAcquisitionKind kind) =>
+        MediaLibraries is not null && MediaLibraries.TryGetValue(kind, out var target)
+            ? target
+            : new MediaLibraryTarget();
 
     /// <summary>
     /// Rewrites <paramref name="path"/> using the longest matching remote prefix. Comparison is

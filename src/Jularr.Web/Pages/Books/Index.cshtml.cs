@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Acquisition.DownloadClients;
+using Jularr.Web.Features.Acquisition.Import;
 using Jularr.Web.Features.Acquisition.Sabnzbd;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Books;
@@ -22,6 +23,7 @@ public sealed class IndexModel(
     OperationRunner operations,
     AcquisitionRequestService requests,
     AcquisitionAccessStore requestStore,
+    MediaInboxImportService inboxes,
     IDataProtectionProvider dataProtectionProvider) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
@@ -35,7 +37,7 @@ public sealed class IndexModel(
     public IReadOnlyList<AcquisitionRequest> MyRequests { get; private set; } = [];
     public IReadOnlyList<string> Genres => Library.SelectMany(book => book.Subjects).Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase).Take(40).ToArray();
     public bool IsSabnzbdConfigured { get; private set; }
-    public bool IsInboxConfigured => books.IsInboxConfigured;
+    public bool IsInboxConfigured { get; private set; }
 
     public async Task OnGetAsync(
         string? q,
@@ -50,6 +52,7 @@ public sealed class IndexModel(
         IsSabnzbdConfigured = Access.CanAddManually
             && (await downloadClients.LoadAllAsync(cancellationToken))
                 .Any(entry => entry.Enabled && entry.Type == DownloadClientType.Sabnzbd);
+        IsInboxConfigured = await inboxes.InboxAsync(MediaAcquisitionKind.Book, cancellationToken) is not null;
 
         Library = await books.GetLibraryAsync(
             account.ProfileId,
@@ -185,15 +188,14 @@ public sealed class IndexModel(
 
         try
         {
-            var imported = await BookInboxImport.RunAsync(
-                operations,
-                books,
+            var imported = await inboxes.RunAsync(
+                MediaAcquisitionKind.Book,
                 account.ProfileId,
                 cancellationToken);
 
-            TempData["Status"] = imported.Count == 0
+            TempData["Status"] = imported.Imported == 0
                 ? ui["books.index.inboxEmpty"]
-                : ui.Format("books.index.inboxImported", ("count", imported.Count));
+                : ui.Format("books.index.inboxImported", ("count", imported.Imported));
         }
         catch (Exception exception) when (
             exception is InvalidOperationException
@@ -443,7 +445,7 @@ public sealed class IndexModel(
 
     private SabnzbdSubmission BookSabnzbdSubmission(string name) =>
         new(
-            BookInboxImport.SabnzbdDownloadKind,
+            CompletedDownloadImportService.ManualDownloadOperationKind,
             "SABnzbd download",
             name,
             account.ProfileId,
