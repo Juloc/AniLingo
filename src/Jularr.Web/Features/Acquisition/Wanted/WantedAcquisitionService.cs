@@ -41,6 +41,16 @@ public sealed class WantedAcquisitionService(
     public static readonly TimeSpan Interval = TimeSpan.FromMinutes(2);
     public const int MaxRequestsPerKindPerPass = 25;
 
+    /// <summary>
+    /// How long a finished download may wait for its files (a purged SABnzbd history entry,
+    /// an unmapped path, an offline share) before the request stops waiting and asks the owner
+    /// for attention. Without it such a request would stay open forever.
+    /// </summary>
+    public static readonly TimeSpan CompletedImportTimeout = TimeSpan.FromHours(24);
+
+    public const string CancelledMessage =
+        "The download was cancelled, so no other release was grabbed. Approve the request again to search.";
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         await Task.Yield();
@@ -98,6 +108,7 @@ public sealed class WantedAcquisitionService(
             advanced += await RecoverInFlightAsync(
                 services,
                 handler,
+                nowUtc,
                 cancellationToken);
             advanced += await SearchDueAsync(
                 services,
@@ -112,6 +123,7 @@ public sealed class WantedAcquisitionService(
     private static async Task<int> RecoverInFlightAsync(
         IServiceProvider services,
         IWantedRequestHandler handler,
+        DateTime nowUtc,
         CancellationToken cancellationToken)
     {
         var store = services.GetRequiredService<AcquisitionAccessStore>();
@@ -156,9 +168,23 @@ public sealed class WantedAcquisitionService(
                 continue;
             }
 
+            if (operation.Status == OperationStatus.Cancelled)
+            {
+                // An owner cancelling a download means "stop", never "try the next release".
+                await store.UpdateStatusAsync(
+                    request.Id,
+                    AcquisitionRequestStatus.Failed,
+                    CancelledMessage,
+                    operation.Id,
+                    resultUrl: null,
+                    decidedByProfileId: null,
+                    cancellationToken);
+                advanced++;
+                continue;
+            }
+
             if (operation.Status is
                 OperationStatus.Failed or
-                OperationStatus.Cancelled or
                 OperationStatus.Interrupted)
             {
                 var problem = string.IsNullOrWhiteSpace(operation.Error)
@@ -214,13 +240,12 @@ public sealed class WantedAcquisitionService(
             if (!location.Resolved ||
                 string.IsNullOrWhiteSpace(location.SourcePath))
             {
-                await store.UpdateStatusAsync(
-                    request.Id,
-                    AcquisitionRequestStatus.Importing,
+                advanced += await KeepImportingAsync(
+                    store,
+                    request,
+                    operation,
                     location.Message,
-                    operation.Id,
-                    resultUrl: null,
-                    decidedByProfileId: null,
+                    nowUtc,
                     cancellationToken);
                 continue;
             }
@@ -247,13 +272,12 @@ public sealed class WantedAcquisitionService(
                     break;
 
                 case CompletedDownloadImportDisposition.RetryLater:
-                    await store.UpdateStatusAsync(
-                        request.Id,
-                        AcquisitionRequestStatus.Importing,
+                    advanced += await KeepImportingAsync(
+                        store,
+                        request,
+                        operation,
                         result.Message,
-                        operation.Id,
-                        resultUrl: null,
-                        decidedByProfileId: null,
+                        nowUtc,
                         cancellationToken);
                     break;
 
@@ -271,6 +295,41 @@ public sealed class WantedAcquisitionService(
         }
 
         return advanced;
+    }
+
+    /// <summary>
+    /// A finished download whose files cannot be imported yet stays Importing (it is not the
+    /// release's fault, so no other release is grabbed) until <see cref="CompletedImportTimeout"/>
+    /// has passed since the download finished; then the request fails with the reason so the
+    /// owner can fix the path or approve it again. Returns 1 when the request was failed.
+    /// </summary>
+    private static async Task<int> KeepImportingAsync(
+        AcquisitionAccessStore store,
+        AcquisitionRequest request,
+        OperationSnapshot operation,
+        string message,
+        DateTime nowUtc,
+        CancellationToken cancellationToken)
+    {
+        var finishedAt = operation.FinishedAtUtc ?? operation.UpdatedAtUtc;
+        var timedOut = nowUtc - finishedAt >= CompletedImportTimeout;
+        var reason = string.IsNullOrWhiteSpace(message)
+            ? "The completed download could not be imported."
+            : message.Trim();
+
+        await store.UpdateStatusAsync(
+            request.Id,
+            timedOut
+                ? AcquisitionRequestStatus.Failed
+                : AcquisitionRequestStatus.Importing,
+            timedOut
+                ? $"{reason} Gave up importing {CompletedImportTimeout.TotalHours:0} hours after the download finished; fix the download path or approve the request again."
+                : reason,
+            operation.Id,
+            resultUrl: null,
+            decidedByProfileId: null,
+            cancellationToken);
+        return timedOut ? 1 : 0;
     }
 
     private static async Task<int> SearchDueAsync(

@@ -23,10 +23,13 @@ The SABnzbd monitor is the only component that projects external queue/history s
 
 - searches an `Approved` request only when its persisted backoff is due;
 - continues a failed download with the next untried matching release;
+- treats a download the owner cancelled as "stop": the request fails with a cancelled note and no other release is grabbed;
 - changes a successful download to the real `Importing` state;
 - resumes `Importing` after restart;
-- keeps infrastructure/storage failures in `Importing` instead of grabbing a duplicate release;
+- keeps infrastructure/storage failures (no completed path, files not reachable) in `Importing` instead of grabbing a duplicate release, and fails the request with the reason when the files are still missing 24 hours after the download finished;
 - returns an unsuitable downloaded package to Wanted so another release can be tried.
+
+The reason a release was dropped is shown once in the request status and then cleared, so repeated searches do not repeat it. Retrying a failed download under Operations is refused once the request has moved on to a newer release; retrying the last download of a request that is waiting or failed puts the request back to `Downloading`.
 
 ## Completed downloads
 

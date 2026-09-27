@@ -85,6 +85,8 @@ public sealed class ReadingAcquisitionEngine(
                 ? "Every matching release was tried already."
                 : search.FailureMessage;
 
+            // Like Books: the previous problem is shown once in this message and then
+            // consumed, so repeated searches never stack "No release found… No release found…".
             if (searches >= MaxSearches)
             {
                 await SavePayloadAsync(
@@ -93,7 +95,7 @@ public sealed class ReadingAcquisitionEngine(
                     {
                         Searches = searches,
                         NextSearchUtc = null,
-                        LastProblem = reason
+                        LastProblem = null
                     },
                     cancellationToken);
                 return new AcquisitionExecution(
@@ -108,7 +110,7 @@ public sealed class ReadingAcquisitionEngine(
                 {
                     Searches = searches,
                     NextSearchUtc = next,
-                    LastProblem = reason
+                    LastProblem = null
                 },
                 cancellationToken);
             return new AcquisitionExecution(

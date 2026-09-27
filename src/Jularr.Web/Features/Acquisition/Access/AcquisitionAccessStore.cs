@@ -92,6 +92,13 @@ public sealed class AcquisitionAccessStore(AppDbContext db)
             command => Add(command, "$id", id.ToString()),
             cancellationToken);
 
+    /// <summary>The request whose current download is this operation, if any.</summary>
+    public Task<AcquisitionRequest?> FindByOperationAsync(Guid operationId, CancellationToken cancellationToken) =>
+        QuerySingleAsync(
+            $"""SELECT {Columns} FROM "AcquisitionRequests" WHERE "OperationId" = $operationId ORDER BY "UpdatedAt" DESC LIMIT 1;""",
+            command => Add(command, "$operationId", operationId.ToString()),
+            cancellationToken);
+
     public Task<IReadOnlyList<AcquisitionRequest>> ListAsync(
         MediaAcquisitionKind? kind,
         string? requestedByProfileId,
