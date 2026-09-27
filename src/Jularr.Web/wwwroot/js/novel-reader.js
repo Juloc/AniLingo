@@ -19,6 +19,8 @@
     let hasAiTranslation = shell.dataset.hasTranslation === "true";
     let hasTranslateGemma = false;
     let preferredTranslationSource = localStorage.getItem(storage.translationSource) || "";
+    let requestedView = "ja";
+    let viewInteracted = false;
 
     const focusableSelector =
         "a[href], button:not([disabled]), input:not([disabled]), " +
@@ -194,14 +196,14 @@
             hasAiTranslation = Boolean(value);
             shell.dataset.hasTranslation = hasAiTranslation ? "true" : "false";
             syncLanguageControls();
-            reader.applyView(reader.currentView());
+            reader.applyView(viewInteracted ? reader.currentView() : requestedView);
         },
 
         setHasTranslateGemma: value => {
             hasTranslateGemma = Boolean(value);
             shell.dataset.hasTranslateGemma = hasTranslateGemma ? "true" : "false";
             syncLanguageControls();
-            reader.applyView(reader.currentView());
+            reader.applyView(viewInteracted ? reader.currentView() : requestedView);
         },
 
         applyTranslationSource: source => {
@@ -253,10 +255,12 @@
             ? "de"
             : "ja";
 
-    syncLanguageControls();
-    reader.applyView(forcedAnchor
+    requestedView = forcedAnchor
         ? anchorView
-        : (storedView || anchorView));
+        : (storedView || anchorView);
+
+    syncLanguageControls();
+    reader.applyView(requestedView);
 
     reader.position = modules.position(reader);
     reader.annotations = modules.annotations(reader);
@@ -280,7 +284,9 @@
     shell.addEventListener("click", event => {
         const viewButton = event.target.closest("[data-reader-view]");
         if (viewButton) {
-            reader.applyView(viewButton.dataset.readerView);
+            viewInteracted = true;
+            requestedView = viewButton.dataset.readerView;
+            reader.applyView(requestedView);
             return;
         }
 
