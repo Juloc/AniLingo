@@ -279,7 +279,7 @@ public sealed class NovelEpubVolumeTests
     {
         await using var fixture = await Fixture.CreateAsync();
         var inbox = Path.Combine(fixture.Root, "inbox");
-        var seriesFolder = Path.Combine(inbox, NovelEpubImportService.InboxFolder, "Folder Series");
+        var seriesFolder = Path.Combine(inbox, "Folder Series");
         Directory.CreateDirectory(seriesFolder);
 
         var one = Path.Combine(seriesFolder, "one.epub");
@@ -293,8 +293,8 @@ public sealed class NovelEpubVolumeTests
         File.SetAttributes(one, FileAttributes.ReadOnly);
         var writeTime = File.GetLastWriteTimeUtc(one);
 
-        var first = await fixture.Imports.ImportInboxAsync(inbox, CancellationToken.None);
-        var second = await fixture.Imports.ImportInboxAsync(inbox, CancellationToken.None);
+        var first = await fixture.Imports.ImportDirectoryAsync(inbox, CancellationToken.None);
+        var second = await fixture.Imports.ImportDirectoryAsync(inbox, CancellationToken.None);
 
         Assert.IsTrue(first.All(x => x.Succeeded), NovelEpubImportOutcome.Summarize(first));
         Assert.IsTrue(second.All(x => x.Message.Contains("already up to date", StringComparison.Ordinal)));

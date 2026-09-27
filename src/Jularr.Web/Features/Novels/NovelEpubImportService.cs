@@ -149,19 +149,20 @@ public sealed partial class NovelEpubImportService(
     }
 
     /// <summary>
-    /// Imports every EPUB of <c>{inbox}/light-novels</c>. Files directly in the
-    /// folder resolve their series from metadata; files in a subfolder belong
-    /// to the series named by that folder. Unchanged files are skipped.
+    /// Imports every EPUB from a completed-download directory. Files directly
+    /// in the directory resolve their series from metadata; files in a
+    /// subfolder belong to the series named by that folder. Unchanged files
+    /// are skipped.
     /// </summary>
-    public async Task<IReadOnlyList<NovelEpubImportOutcome>> ImportInboxAsync(
-        string inboxPath,
+    public async Task<IReadOnlyList<NovelEpubImportOutcome>> ImportDirectoryAsync(
+        string directoryPath,
         CancellationToken cancellationToken)
     {
-        var folder = Path.Combine(inboxPath, InboxFolder);
+        var folder = Path.GetFullPath(directoryPath);
         if (!Directory.Exists(folder))
         {
             throw new InvalidOperationException(
-                $"Light-novel inbox folder '{folder}' does not exist.");
+                $"Light-novel import directory '{folder}' does not exist.");
         }
 
         var files = Directory
@@ -216,6 +217,16 @@ public sealed partial class NovelEpubImportService(
         await AutoMatchAsync(outcomes, cancellationToken);
         return outcomes;
     }
+
+    /// <summary>
+    /// Compatibility entry point for the historical Books-inbox layout.
+    /// New acquisition settings should call <see cref="ImportDirectoryAsync"/>
+    /// with the Light-Novel completed-download directory directly.
+    /// </summary>
+    public Task<IReadOnlyList<NovelEpubImportOutcome>> ImportInboxAsync(
+        string inboxPath,
+        CancellationToken cancellationToken) =>
+        ImportDirectoryAsync(Path.Combine(inboxPath, InboxFolder), cancellationToken);
 
     /// <summary>
     /// Removes one EPUB volume with its chapters (and their notes) and cached
