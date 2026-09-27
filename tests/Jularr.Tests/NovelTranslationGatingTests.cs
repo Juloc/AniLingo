@@ -58,6 +58,28 @@ public sealed class NovelTranslationGatingTests
     }
 
     [TestMethod]
+    public async Task OffStillExposesCachedTranslateGemmaTextWithoutConfiguredGenerator()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SeedCachedGermanTranslationAsync(
+            NovelTranslationProviders.TranslateGemmaPrefix + "cached:model");
+
+        var reader = fixture.CreateReadModel(Profile);
+        await reader.OnGetAsync(
+            fixture.ChapterId, null, null, null, null, null, CancellationToken.None);
+
+        Assert.IsFalse(reader.TranslationEnabled);
+        Assert.IsFalse(reader.TranslateGemmaConfigured);
+        Assert.AreEqual(0, reader.GermanParagraphs.Count);
+        Assert.AreEqual(1, reader.TranslateGemmaParagraphs.Count);
+
+        var status = await fixture.CreateReadModel(Profile)
+            .OnGetTranslateGemmaStatusAsync(fixture.ChapterId, CancellationToken.None);
+        var json = JsonDocument.Parse(JsonSerializer.Serialize(((JsonResult)status).Value));
+        Assert.AreEqual("ready", json.RootElement.GetProperty("status").GetString());
+    }
+
+    [TestMethod]
     public async Task OffWithoutACachedTranslationStillRefusesTheStatusHandler()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -291,14 +313,14 @@ public sealed class NovelTranslationGatingTests
         }
 
         /// <summary>Seeds a cached German translation directly so the reader has content to read.</summary>
-        public async Task SeedCachedGermanTranslationAsync()
+        public async Task SeedCachedGermanTranslationAsync(string providerId = "unused")
         {
             var chapter = await Db.NovelChapters.SingleAsync(x => x.Id == ChapterId);
             Db.NovelTranslations.Add(new NovelTranslation
             {
                 ChapterId = ChapterId,
                 TargetLanguage = NovelReadingLanguage.German,
-                ProviderId = "unused",
+                ProviderId = providerId,
                 PromptVersion = NovelTranslationService.PromptVersion,
                 SourceHash = chapter.SourceHash,
                 Text = "Die Katze im Buch."
