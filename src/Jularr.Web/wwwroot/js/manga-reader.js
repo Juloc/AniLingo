@@ -670,7 +670,6 @@
         if (!persist) return;
         void savePreference("series")
             .then(() => {
-                root.dataset.seriesOverride = "true";
                 if (resetSeriesButton) resetSeriesButton.hidden = false;
             })
             .catch(() => toast(t("toast.saveFailed", "Could not save. Please try again.")));
@@ -787,7 +786,6 @@
         if (target.closest("[data-manga-reset-series]")) {
             void postForm(resetPreferenceForm)
                 .then(result => {
-                    root.dataset.seriesOverride = "false";
                     if (resetSeriesButton) resetSeriesButton.hidden = true;
                     const fallback = result?.mode === "continuous"
                         ? settings.scrollMode

@@ -64,6 +64,11 @@
 
 /* Page stage ------------------------------------------------------------------ */
 
+/* A long chapter list must not stretch the reader: the contents panel scrolls. */
+.manga-reader > .reader-frame-body {
+    grid-template-rows: minmax(0, 1fr);
+}
+
 .manga-stage {
     position: relative;
     min-width: 0;
