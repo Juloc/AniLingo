@@ -277,6 +277,167 @@ fun TvAnimeScreen(
 }
 
 @Composable
+fun TvEpisodeScreen(
+    anime: AnimeDetail,
+    page: TvEpisodePageData,
+    busy: Boolean,
+    error: String?,
+    onPlay: () -> Unit,
+    onBack: () -> Unit,
+) {
+    val episode = page.detail
+    val progress = page.progress
+    val progressFraction = (progress.percent.coerceIn(0, 100) / 100f)
+
+    Surface(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 56.dp, vertical = 40.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(18.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Button(onClick = onBack) {
+                    Text("Back")
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = anime.title,
+                        style = MaterialTheme.typography.titleLarge,
+                    )
+                    Text(
+                        text = "Season ${episode.seasonNumber} · Episode ${episode.number}",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .padding(28.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Text(
+                    text = episode.title,
+                    style = MaterialTheme.typography.headlineLarge,
+                )
+
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    TvInfoPill(
+                        text = if (episode.hasMedia) "Ready to play" else "Media unavailable",
+                    )
+                    if (episode.activeLearningSubtitleTrackId != null) {
+                        TvInfoPill(text = "Japanese learning subtitles")
+                    }
+                    if (progress.isCompleted) {
+                        TvInfoPill(text = "Watched")
+                    }
+                }
+
+                if (progress.percent > 0 && !progress.isCompleted) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text(
+                                "Continue at ${formatEpisodePosition(progress.positionMs)}",
+                                style = MaterialTheme.typography.bodyLarge,
+                            )
+                            Text(
+                                "${progress.percent}%",
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(6.dp)
+                                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.20f)),
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth(progressFraction)
+                                    .height(6.dp)
+                                    .background(MaterialTheme.colorScheme.primary),
+                            )
+                        }
+                    }
+                }
+
+                val learning = episode.learning
+                Text(
+                    text = "Vocabulary · ${learning.knownTerms} known · " +
+                        "${learning.learningTerms} learning · ${learning.newTerms} new",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+
+                error?.let {
+                    Text(
+                        text = it,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Button(
+                        enabled = episode.hasMedia && !busy,
+                        onClick = onPlay,
+                    ) {
+                        Text(
+                            when {
+                                busy -> "Loading…"
+                                progress.positionMs > 0 && !progress.isCompleted -> "Resume"
+                                else -> "Play"
+                            },
+                        )
+                    }
+                    Button(
+                        enabled = !busy,
+                        onClick = onBack,
+                    ) {
+                        Text("Episodes")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TvInfoPill(text: String) {
+    Surface(
+        shape = MaterialTheme.shapes.small,
+        color = MaterialTheme.colorScheme.surface,
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelLarge,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+        )
+    }
+}
+
+private fun formatEpisodePosition(valueMs: Long): String {
+    val totalSeconds = valueMs.coerceAtLeast(0) / 1000
+    val hours = totalSeconds / 3600
+    val minutes = (totalSeconds % 3600) / 60
+    val seconds = totalSeconds % 60
+    return if (hours > 0) {
+        "%d:%02d:%02d".format(hours, minutes, seconds)
+    } else {
+        "%d:%02d".format(minutes, seconds)
+    }
+}
+
+@Composable
 private fun AnimeButton(
     anime: AnimeSummary,
     onClick: () -> Unit,
