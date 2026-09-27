@@ -57,7 +57,8 @@ public sealed class ReadingCatalogSearchTests
             18,
             CancellationToken.None);
 
-        var uri = Assert.IsNotNull(handler.RequestUri);
+        Assert.IsNotNull(handler.RequestUri);
+        var uri = handler.RequestUri!;
         Assert.AreEqual(
             "api.syosetu.com",
             uri.Host);
