@@ -15,10 +15,10 @@ manager foundation, Settings → Offline page). **Part 2 delivered
 incrementally, per client:**
 
 - **2A — PWA** (this section): the reader ↔ offline library bridge,
-  offline-first Novel progress/bookmark sync, in-page offline chapter
-  navigation, the "Save offline" action on the Novel work page, the Library
-  "Offline" filter, a compact global download indicator and JS-catalog
-  localization of `offline-library-ui.js`.
+  offline-first Novel and Book progress/bookmark sync, in-page offline
+  chapter navigation, the "Save offline" action on the Novel work page, the
+  Library "Offline" filter, a compact global download indicator and
+  JS-catalog localization of `offline-library-ui.js`.
 - **Android**: native download engine (`LibraryStore`/`LibraryDownloads`/
   WorkManager jobs), WebView request interception and native entry points;
   see [Android implementation](#android-implementation).
@@ -62,21 +62,23 @@ load; see [Part 2 TODO](#part-2-todo)), and a fresh, cold-start navigation to
 a Read URL while fully offline (nothing already loaded this session) still
 falls back to the generic `offline.html` shell — see below.
 
-### Progress and bookmarks: one canonical, offline-first write path (Novels)
+### Progress and bookmarks: one canonical, offline-first write path (Novels and Books)
 
-Novel reading progress and bookmark add/remove/rename now always go through
-`manager.queueSyncEvent`/`drainSyncQueue` (`offline-library-repository.js`'s
+Novel and Book reading progress and bookmark add/remove (rename, Novels only)
+now always go through `manager.queueSyncEvent`/`drainSyncQueue`
+(`offline-library-repository.js`'s
 `forWork(workId).queueProgress`/`queueBookmarkUpsert`/`queueBookmarkRemove`)
 — **online and offline alike, not two different code paths.** The local
 queue write always succeeds immediately (bookmarks are optimistic: the
 bookmark id is client-generated, per the sync contract's explicit support
 for client-supplied ids, so the UI updates without waiting on the network),
 then an opportunistic `drainSyncQueue()` is attempted whenever
-`navigator.onLine` is true. `Pages/Novels/Read.cshtml.cs`'s own
+`navigator.onLine` is true. `Pages/Novels/Read.cshtml.cs`'s and
+`Pages/Books/Read.cshtml.cs`'s own
 `Progress`/`Bookmark`/`RemoveBookmark`/`BookmarkLabel` POST handlers are no
-longer called by the reader; they are left in place (harmless, unused by
+longer called by either reader; they are left in place (harmless, unused by
 this client) rather than removed, to avoid widening this slice's
-server-side surface for a client-only change. Renaming a bookmark that
+server-side surface for a client-only change. Renaming a Novel bookmark that
 belongs to a *different* chapter (from the "other chapters"/search list,
 which itself requires network to have loaded) still uses the existing
 targeted endpoint, since only the current chapter's bookmarks carry every
@@ -86,28 +88,18 @@ Highlights are **not** part of the offline sync contract (PR #359 only
 covers progress and bookmarks) and intentionally keep using their existing
 online-only endpoints unchanged.
 
-### Books' progress/bookmarks: intentionally *not* wired to the queue yet
-
-Books' progress and bookmark writes still use their existing endpoints
-unchanged (online-only, exactly as before this slice) — **not** an
-oversight. Investigating the wiring surfaced a real part-1 contract gap:
-`OfflineLibrarySyncRules`'s bookmark upsert and the progress reconciler both
-call `NovelReadingLanguage.Normalize`, which hard-normalizes *any* language
-other than `"de"` to `"ja"` (`Features/Novels/NovelChapterText.cs`). That is
-correct for Novels (strictly bilingual, ja/de) but wrong for Books, whose
-`TargetLanguage` is an arbitrary BCP-47-ish code (`BookLanguageCatalog`,
-defaulting to `"id"`). Routing a Book's progress/bookmark writes through the
-shared `/sync` endpoint as it stands today would silently rewrite
-`NovelProgress.AnchorLanguage`/`NovelBookmark.Language` to `"ja"` for every
-book not read in German — a real data-correctness regression, not merely a
-missing feature. Fixing it requires a small server-side change (teach the
-reconciler to skip Novel-specific ja/de anchor-text resolution for
-Book-typed works and pass the raw target language straight through — both
-`NovelProgress.AnchorLanguage` and `NovelBookmark.Language` are already
-free-form strings, so no schema change is needed) that is out of scope for
-this PWA-only slice; see [Part 2 TODO](#part-2-todo). Books' in-page offline
-chapter *navigation* (above) has no such issue — it never touches
-`Language`/`AnchorLanguage` — and is implemented for both readers.
+Books have an arbitrary `BookLanguageCatalog` target language (default
+`"id"`), not the Novel-specific bilingual ja/de model, so
+`Features/OfflineLibrary/OfflineLibrarySync.cs`'s reconcilers detect
+Book-typed works (`NovelWork.SourceProvider ==
+BookCatalogService.ImportedBookProvider`) and, for those, normalize the
+anchor language through `BookLanguageCatalog.Normalize` (preserving the
+literal `"original"` marker, like `BookReaderAnnotationStore.NormalizeLanguage`
+does for highlights) instead of `NovelReadingLanguage.Normalize`'s ja/de rule,
+and skip `NovelChapterText`'s ja/de-translation-driven anchor-text
+re-resolution entirely — the client-supplied paragraph/offset/anchor-text is
+stored as-is. `NovelProgress.AnchorLanguage`/`NovelBookmark.Language` are
+already free-form strings, so this needed no schema change (#374).
 
 ### Discoverability: Save-offline action, Library filter, download indicator
 
@@ -513,17 +505,7 @@ slice on the other.
 
 Left after part 2A (above):
 
-1. **Books' progress/bookmark offline sync.** Teach
-   `OfflineLibrarySyncRules`'s bookmark upsert and the progress reconciler
-   (`Features/OfflineLibrary/OfflineLibrarySync.cs`) to skip
-   `NovelReadingLanguage.Normalize`/ja-de-only anchor-text resolution for
-   Book-typed works and pass the raw `TargetLanguage` straight through
-   instead (see "Books' progress/bookmarks" above for why routing them
-   through today's `/sync` endpoint as-is would corrupt
-   `NovelBookmark.Language`/`NovelProgress.AnchorLanguage`). Once fixed
-   server-side, `books-reader.js` can adopt the same
-   `offline-library-repository.js` queue calls Novels already use.
-2. **Cold-start offline page load / a fully unified reader repository.**
+1. **Cold-start offline page load / a fully unified reader repository.**
    Opening a `/Novels/Read/{id}` or `/Books/Read/{id}` URL directly while
    fully offline (nothing already loaded this session, e.g. from the
    Library's Offline filter) still falls back to the generic
@@ -538,19 +520,19 @@ Left after part 2A (above):
    effect, and a PWA service-worker fetch handler could answer the same
    requests from IndexedDB/OPFS) rather than each client only patching
    narrower gaps in-process as today.
-3. The chapter drawer's list (`novel-chapter-drawer.js`, PWA) still requires
+2. The chapter drawer's list (`novel-chapter-drawer.js`, PWA) still requires
    network to load (`OnGetChaptersAsync`); it could fall back to the local
    manifest's chapter list while offline instead of only showing a retry
    button.
-4. Per-chapter selection UI on both clients, reusing `enqueueBook`'s
+3. Per-chapter selection UI on both clients, reusing `enqueueBook`'s
    `chapterIds` option / `LibraryDownloads`'s equivalent (whole-book
    download only so far).
-5. **Android reader-side wiring.** `LibraryDownloads.recordProgress`/
+4. **Android reader-side wiring.** `LibraryDownloads.recordProgress`/
    `recordBookmark` and the local sync queues are implemented and tested but
-   have no reader call site yet (mirrors item 1/2's PWA-side gaps before
+   have no reader call site yet (mirrors item 1's PWA-side gap before
    part 2A) — wiring the WebView-hosted reader's progress/bookmark writes to
-   them is the Android equivalent of part 2A's Novel wiring above.
-6. **Manga reuse**: the manifest/chapter/asset/sync contract here is
+   them is the Android equivalent of part 2A's Novel/Book wiring above.
+5. **Manga reuse**: the manifest/chapter/asset/sync contract here is
    already generic over "work → volume → chapter" content; a Manga chapter
    payload would swap `originalText`/`blocks` for an ordered page-image
    list while keeping the same manifest hash/diff/sync machinery. No second
