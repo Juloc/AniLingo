@@ -388,7 +388,11 @@ public sealed class PlaybackDecisionEngineTests
             PlaybackReasonCodes.SubtitleBurnIn);
         Assert.AreEqual(4, web.Video!.BurnInSubtitleStreamIndex);
         var arguments = PlaybackDeliveryCommand.Progressive("/media/episode.mkv", web, 0).ToList();
-        StringAssert.StartsWith(arguments[arguments.IndexOf("-filter_complex") + 1], "[0:v:0][0:4]overlay=eof_action=pass,");
+        var graph = arguments[arguments.IndexOf("-filter_complex") + 1];
+        StringAssert.StartsWith(graph, $"[0:v:0]{PlaybackDeliveryCommand.ToneMapFilter}[base];", "HDR is tone mapped before the subtitle is drawn.");
+        StringAssert.Contains(graph, $"[0:4]scale={web.Video.SourceWidth}:{web.Video.SourceHeight}[sub];[base][sub]overlay=eof_action=pass,");
+        StringAssert.EndsWith(graph, "format=yuv420p[vout]");
+        Assert.AreEqual(PlaybackSubtitleDelivery.BurnIn, web.Subtitle!.Delivery);
         Assert.AreEqual("[vout]", arguments[arguments.IndexOf("-filter_complex") + 3]);
         CollectionAssert.DoesNotContain(arguments, "-vf");
 
@@ -401,6 +405,95 @@ public sealed class PlaybackDecisionEngineTests
         }) with { SubtitleStreamIndex = 3 });
         Assert.AreEqual(PlaybackDeliveryMode.DirectStream, text.Mode, "Text subtitles are drawn by the client.");
         Assert.IsTrue(text.Reasons.Any(x => x.Code == PlaybackReasonCodes.SubtitleStylingLost));
+    }
+
+    // ---- Subtitle burn-in matrix: format × client × server ------------------------------------
+
+    private static PlaybackMediaProfile WithSubtitle(string codec, bool isText) =>
+        H264AacMp4 with { Subtitles = [new PlaybackSubtitleStreamProfile(2, codec, "eng", isText, false, false)] };
+
+    public static IEnumerable<object[]> SubtitleMatrix =>
+    [
+        // codec, client, expected mode, expected subtitle delivery
+        ["hdmv_pgs_subtitle", "chromium", PlaybackDeliveryMode.Transcode, PlaybackSubtitleDelivery.BurnIn],
+        ["dvd_subtitle", "chromium", PlaybackDeliveryMode.Transcode, PlaybackSubtitleDelivery.BurnIn],
+        ["dvb_subtitle", "chromium", PlaybackDeliveryMode.Transcode, PlaybackSubtitleDelivery.BurnIn],
+        ["xsub", "safari", PlaybackDeliveryMode.Transcode, PlaybackSubtitleDelivery.BurnIn],
+        ["hdmv_pgs_subtitle", "android", PlaybackDeliveryMode.DirectPlay, PlaybackSubtitleDelivery.Client],
+        ["subrip", "chromium", PlaybackDeliveryMode.DirectPlay, PlaybackSubtitleDelivery.Client],
+        ["webvtt", "chromium", PlaybackDeliveryMode.DirectPlay, PlaybackSubtitleDelivery.Client],
+        ["ass", "chromium", PlaybackDeliveryMode.DirectPlay, PlaybackSubtitleDelivery.Client],
+        ["mov_text", "safari", PlaybackDeliveryMode.DirectPlay, PlaybackSubtitleDelivery.Client],
+        ["dvb_teletext", "chromium", PlaybackDeliveryMode.DirectPlay, PlaybackSubtitleDelivery.Unavailable],
+        ["arib_caption", "android", PlaybackDeliveryMode.DirectPlay, PlaybackSubtitleDelivery.Unavailable]
+    ];
+
+    [TestMethod]
+    [DynamicData(nameof(SubtitleMatrix))]
+    public void PictureSubtitlesAreBurnedInTextStaysClientSideAndUnknownFormatsNeverBreakPlayback(
+        string codec,
+        string clientName,
+        PlaybackDeliveryMode expectedMode,
+        PlaybackSubtitleDelivery expectedDelivery)
+    {
+        var isText = Jularr.Web.Features.Subtitles.SubtitleFormats.IsText(codec);
+        var plan = PlaybackDecisionEngine.Decide(Request(WithSubtitle(codec, isText), ClientNamed(clientName)) with
+        {
+            SubtitleStreamIndex = 2
+        });
+
+        Assert.AreEqual(expectedMode, plan.Mode, Describe(plan));
+        Assert.AreEqual(expectedDelivery, plan.Subtitle!.Delivery, Describe(plan));
+        Assert.AreEqual(2, plan.Subtitle.StreamIndex);
+        Assert.AreEqual(expectedDelivery == PlaybackSubtitleDelivery.BurnIn ? 2 : null, plan.Video?.BurnInSubtitleStreamIndex);
+        if (expectedDelivery == PlaybackSubtitleDelivery.BurnIn)
+        {
+            CollectionAssert.Contains(plan.WhyNot(PlaybackDeliveryMode.DirectPlay).Select(x => x.Code).ToArray(), PlaybackReasonCodes.SubtitleBurnIn);
+            var arguments = PlaybackDeliveryCommand.Progressive("/media/episode.mp4", plan, 12.5).ToList();
+            var graph = arguments[arguments.IndexOf("-filter_complex") + 1];
+            Assert.AreEqual(
+                $"[0:2]scale={plan.Video!.SourceWidth}:{plan.Video.SourceHeight}[sub];[0:v:0][sub]overlay=eof_action=pass,scale=-2:min(ih\\,{plan.Video.MaxOutputHeight}),format=yuv420p[vout]",
+                graph);
+            CollectionAssert.Contains(arguments, "-sn", "Only the burned-in picture carries the subtitle.");
+        }
+
+        if (expectedDelivery == PlaybackSubtitleDelivery.Unavailable)
+        {
+            Assert.IsTrue(plan.Reasons.Any(x => x.Code == PlaybackReasonCodes.SubtitleUnsupported), Describe(plan));
+        }
+    }
+
+    [TestMethod]
+    public void APictureSubtitleThatCannotBeBurnedInPlaysTheEpisodeWithoutIt()
+    {
+        var pgs = WithSubtitle("hdmv_pgs_subtitle", isText: false);
+        foreach (var (name, request) in new (string, PlaybackDecisionRequest)[]
+                 {
+                     ("direct only", Request(pgs, Chromium) with { SubtitleStreamIndex = 2, ModePreference = PlaybackModePreference.DirectOnly }),
+                     ("transcoding off", Request(pgs, Chromium) with { SubtitleStreamIndex = 2, Server = PlaybackServerCapabilities.Software() with { TranscodingEnabled = false } }),
+                     ("transcoder busy", Request(pgs, Chromium) with { SubtitleStreamIndex = 2, Server = PlaybackServerCapabilities.Software(availableSlots: 0) }),
+                     ("no burn-in filter", Request(pgs, Chromium) with { SubtitleStreamIndex = 2, Server = PlaybackServerCapabilities.Software() with { CanBurnInSubtitles = false } })
+                 })
+        {
+            var plan = PlaybackDecisionEngine.Decide(request);
+            Assert.AreEqual(PlaybackDeliveryMode.DirectPlay, plan.Mode, $"{name}: {Describe(plan)}");
+            Assert.AreEqual(PlaybackSubtitleDelivery.Unavailable, plan.Subtitle!.Delivery, name);
+            Assert.IsNull(plan.Video?.BurnInSubtitleStreamIndex, name);
+            Assert.IsTrue(plan.Reasons.Any(x => x.Code == PlaybackReasonCodes.SubtitleBurnInUnavailable && x.Severity == PlaybackReasonSeverity.Warning), name);
+        }
+
+        var none = PlaybackDecisionEngine.Decide(Request(pgs, Chromium));
+        Assert.IsNull(none.Subtitle, "Without a requested subtitle the plan says nothing about subtitles.");
+        Assert.AreEqual(PlaybackDeliveryMode.DirectPlay, none.Mode);
+    }
+
+    [TestMethod]
+    public void BurnInGraphWithoutKnownSourceSizeOverlaysTheCanvasAsIs()
+    {
+        var video = new PlaybackVideoOutput(false, "h264", "h264", null, null, 720, "yuv420p", "SDR");
+        Assert.AreEqual(
+            "[0:v:0][0:5]overlay=eof_action=pass,format=yuv420p[vout]",
+            PlaybackDeliveryCommand.BurnInFilter(video, 5, ["format=yuv420p"]));
     }
 
     [TestMethod]

@@ -318,7 +318,10 @@
         const enabled = [...subtitleSelect.options].filter(option => option.value !== "off" && !option.disabled);
         const next = subtitleSelect.value !== "off"
             ? "off"
-            : (lastSubtitleChoice && enabled.some(option => option.value === lastSubtitleChoice) ? lastSubtitleChoice : enabled[0]?.value);
+            : (lastSubtitleChoice && enabled.some(option => option.value === lastSubtitleChoice)
+                ? lastSubtitleChoice
+                // Prefer a text track: a picture track restarts the stream for a burn-in.
+                : (enabled.find(option => option.dataset.image !== "true") || enabled[0])?.value);
         if (!next) return;
         subtitleSelect.value = next;
         subtitleSelect.dispatchEvent(new Event("change", { bubbles: true }));

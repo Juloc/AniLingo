@@ -537,7 +537,9 @@
 
 /* Before playback starts only the header and settings are useful (mode, retry). */
 .video-stage.player-placeholder .player-center,
-.video-stage.player-placeholder .player-bottom { display: none; }
+.video-stage.player-placeholder .player-timeline-row,
+.video-stage.player-placeholder .player-bar-group > :not([data-chrome-settings-toggle]) { display: none; }
+.video-stage.player-placeholder .player-bar { justify-content: flex-end; }
 .video-stage.player-placeholder .player-chrome::after { display: none; }
 .watch-main .playback-preparation { position: absolute; inset: 0; margin: auto; z-index: 4; height: fit-content; color: #fff; }
 .playback-preparation-actions { display: flex; gap: .5rem; flex-wrap: wrap; justify-content: center; margin-top: .75rem; }
