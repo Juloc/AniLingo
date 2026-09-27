@@ -602,13 +602,6 @@ private fun PlayerControls(
                         onClick = onRepeatCurrentCue,
                     )
                 }
-                PlayerIconButton(
-                    icon = Icons.Filled.Settings,
-                    label = "Settings",
-                    design = design,
-                    selected = settingsOpen,
-                    onClick = { onSettingsOpen(!settingsOpen) },
-                )
             }
         }
 
