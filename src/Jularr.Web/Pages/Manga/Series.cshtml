@@ -10,6 +10,7 @@
 }
 @section Head {
     <link rel="stylesheet" href="~/css/manga.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/franchise-links.css" asp-append-version="true" />
 }
 
 <div class="reading-type-switch manga-series-switch">
@@ -75,6 +76,8 @@
         </div>
     </div>
 </header>
+
+<partial name="_FranchiseLinks" model="new Jularr.Web.Features.Franchises.FranchiseLinksViewModel(ui, Model.Franchises)" />
 
 @await Component.InvokeAsync("UpcomingReleases", new { mediaType = Jularr.Web.Features.Calendar.ReleaseMediaType.Manga, mediaId = series.Id, ui })
 
