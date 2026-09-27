@@ -1,7 +1,8 @@
 // The player's own controls. episode-player.js owns sources, the (absolute) timeline, subtitles
 // and progress; this file only drives what the native <video controls> used to: play/pause,
-// volume, full screen, picture-in-picture, the settings menu and auto-hiding the chrome. There is
-// deliberately no second timeline and no native control bar.
+// volume, full screen, picture-in-picture, the settings menu, auto-hiding the chrome and taps on
+// the video (show/hide, double-tap seek). Every control exists once; there is deliberately no
+// second timeline and no native control bar.
 (() => {
     const root = document.querySelector("[data-episode-player]");
     const stage = root?.querySelector("[data-player-chrome]");
@@ -17,16 +18,21 @@
             return {};
         }
     })();
+    const text = (() => {
+        try {
+            return JSON.parse(root.querySelector("[data-player-text]")?.textContent || "{}");
+        } catch {
+            return {};
+        }
+    })();
     const settings = stage.querySelector("[data-chrome-settings]");
     const timeline = stage.querySelector("[data-playback-timeline]");
     const volumeSlider = stage.querySelector("[data-chrome-volume]");
-    const speedButton = stage.querySelector("[data-chrome-speed]");
-    const speedSelect = stage.querySelector("[data-playback-speed]");
     const subtitleSelect = stage.querySelector("[data-subtitle-track]");
     const subtitleButton = stage.querySelector("[data-chrome-subtitles]");
     const pipButton = stage.querySelector("[data-chrome-pip]");
     const volumeKey = "jularr.player.volume";
-    const hideDelayMs = 2600;
+    const hideDelayMs = 3000;
     let hideTimer = 0;
     let lastSubtitleChoice = null;
 
@@ -40,23 +46,34 @@
     };
 
     // --- chrome visibility ------------------------------------------------------------------
+    // Controls stay up while paused and hide a few seconds into playback without interaction.
     const settingsOpen = () => settings && !settings.hidden;
+    const chromeHidden = () => stage.dataset.chromeState === "hidden";
+    const hide = () => {
+        window.clearTimeout(hideTimer);
+        if (!settingsOpen()) stage.dataset.chromeState = "hidden";
+    };
     const show = () => {
         stage.dataset.chromeState = "visible";
         window.clearTimeout(hideTimer);
         if (!video.paused && !settingsOpen()) {
             hideTimer = window.setTimeout(() => {
                 if (!video.paused && !settingsOpen() && !stage.contains(document.activeElement?.closest?.(".player-settings"))) {
-                    stage.dataset.chromeState = "hidden";
+                    hide();
                 }
             }, hideDelayMs);
         }
     };
-    stage.addEventListener("pointermove", show);
-    stage.addEventListener("pointerdown", show);
-    stage.addEventListener("focusin", show);
-    stage.addEventListener("pointerleave", () => {
-        if (!video.paused && !settingsOpen()) stage.dataset.chromeState = "hidden";
+    // Only a real mouse reveals the controls by moving; touch devices use the tap below.
+    stage.addEventListener("pointermove", event => {
+        if (event.pointerType === "mouse") show();
+    });
+    stage.addEventListener("pointerleave", event => {
+        if (event.pointerType === "mouse" && !video.paused && !settingsOpen()) hide();
+    });
+    // Keyboard focus shows the controls; the focus a click gives the stage does not.
+    stage.addEventListener("focusin", event => {
+        if (event.target.matches?.(":focus-visible")) show();
     });
 
     // --- play / pause ----------------------------------------------------------------------
@@ -83,9 +100,96 @@
     root.addEventListener(design?.actionEvent || "jularr:player-action", event => {
         if (event.detail?.action === "playPause") togglePlay();
     });
-    video.addEventListener("click", togglePlay);
-    video.addEventListener("dblclick", () => toggleFullscreen());
     for (const name of ["play", "pause", "ended", "emptied"]) video.addEventListener(name, renderPlayState);
+
+    // --- taps on the video (touch and mouse alike) --------------------------------------------
+    // A tap shows or hides the controls and never pauses. Double tap left/right seeks, repeated
+    // taps add up; double tap in the middle toggles full screen (player-gestures.js decides).
+    const seekStep = (() => {
+        try {
+            return Number(JSON.parse(root.querySelector("[data-player-controls-data]")?.textContent || "{}").seekStepSeconds) || 10;
+        } catch {
+            return 10;
+        }
+    })();
+    const taps = window.JularrPlayerGestures?.createTapDecider({ stepSeconds: seekStep });
+    const interactive = ".player-center button, .player-bottom, .player-settings, .player-learning-sheet, .post-play, " +
+        ".player-error, .player-subtitle-bubble, .playback-preparation-actions, button, a, input, select, textarea, label, summary";
+    const isSurface = target => target instanceof Element && !target.closest(interactive);
+
+    const feedbackTimers = {};
+    const showSeekFeedback = (zone, total) => {
+        const element = stage.querySelector(`[data-seek-feedback="${zone}"]`);
+        const label = element?.querySelector("[data-seek-feedback-label]");
+        if (!element || !label) return;
+        const template = text[zone === "back" ? "playback.gesture.seekBack" : "playback.gesture.seekForward"] || "{seconds}";
+        label.textContent = template.replace("{seconds}", String(total));
+        element.hidden = false;
+        // Restart the ripple on every tap of the series.
+        element.classList.remove("is-rippling");
+        void element.offsetWidth;
+        element.classList.add("is-rippling");
+        window.clearTimeout(feedbackTimers[zone]);
+        feedbackTimers[zone] = window.setTimeout(() => {
+            element.hidden = true;
+            element.classList.remove("is-rippling");
+        }, 800);
+    };
+
+    const handleTap = fraction => {
+        if (!taps) {
+            if (chromeHidden()) show(); else hide();
+            return;
+        }
+
+        const now = performance.now();
+        const decision = taps.tap(fraction, now);
+        if (decision.action === "wait") {
+            window.setTimeout(() => {
+                if (taps.settle(performance.now()).action === "toggleControls") {
+                    if (chromeHidden()) show(); else hide();
+                }
+            }, taps.delayMs + 20);
+        } else if (decision.action === "seek") {
+            design?.dispatch(root, decision.zone === "back" ? "seekBack10" : "seekForward10");
+            showSeekFeedback(decision.zone, decision.total);
+        } else if (decision.action === "doubleTapCenter") {
+            void toggleFullscreen();
+        }
+    };
+
+    let press = null;
+    stage.addEventListener("pointerdown", event => {
+        press = null;
+        if (!event.isPrimary || event.button > 0) return;
+        if (!isSurface(event.target)) {
+            // Using a control keeps the controls up.
+            show();
+            return;
+        }
+
+        // A tap next to an open settings menu only closes it.
+        if (settingsOpen()) {
+            setSettings(false);
+            return;
+        }
+
+        press = { x: event.clientX, y: event.clientY, at: performance.now() };
+    });
+    stage.addEventListener("pointercancel", () => { press = null; });
+    stage.addEventListener("pointerup", event => {
+        const start = press;
+        press = null;
+        if (!start || !event.isPrimary || video.hidden || !isSurface(event.target)) return;
+        // Drags, swipes and long presses are not taps.
+        if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > 16 || performance.now() - start.at > 600) return;
+        const rect = stage.getBoundingClientRect();
+        handleTap(rect.width > 0 ? (event.clientX - rect.left) / rect.width : 0.5);
+    });
+    // Double-click on the video would select text or zoom; the tap logic above owns it.
+    stage.addEventListener("dblclick", event => {
+        if (isSurface(event.target)) event.preventDefault();
+    });
 
     // --- timeline fill (the value itself is written by episode-player.js) -------------------
     const renderTimelineFill = () => {
@@ -194,27 +298,14 @@
     };
     for (const toggle of settingsToggles) toggle.addEventListener("click", () => setSettings(settings.hidden));
     stage.querySelector("[data-chrome-settings-close]")?.addEventListener("click", () => setSettings(false));
+    // Controls outside the menu (other than its toggle) close it too.
     stage.addEventListener("pointerdown", event => {
-        if (settingsOpen() && !event.target.closest(".player-settings, [data-chrome-settings-toggle]")) setSettings(false);
+        if (settingsOpen() && !isSurface(event.target) && !event.target.closest(".player-settings, [data-chrome-settings-toggle]")) {
+            setSettings(false);
+        }
     });
 
-    // --- speed & subtitle shortcuts ---------------------------------------------------------
-    const renderSpeed = () => {
-        if (!speedButton) return;
-        const rate = Number(speedSelect?.value || video.playbackRate || 1);
-        speedButton.textContent = `${Number.isInteger(rate) ? rate : rate.toString().replace(/0+$/, "")}×`;
-    };
-    speedButton?.addEventListener("click", () => {
-        if (!speedSelect) return;
-        // Cycle through the offered speeds; the select stays the one source of truth.
-        const index = (speedSelect.selectedIndex + 1) % speedSelect.options.length;
-        speedSelect.selectedIndex = index;
-        speedSelect.dispatchEvent(new Event("change", { bubbles: true }));
-    });
-    speedSelect?.addEventListener("change", renderSpeed);
-    video.addEventListener("ratechange", renderSpeed);
-    renderSpeed();
-
+    // --- subtitle shortcut -------------------------------------------------------------------
     const renderSubtitleButton = () => {
         if (!subtitleButton) return;
         const on = Boolean(subtitleSelect) && subtitleSelect.value !== "off";

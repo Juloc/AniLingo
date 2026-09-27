@@ -78,6 +78,16 @@ else if (Model.Playback.Media is { } media)
                      hidden></div>
             </div>
 
+            @* Double-tap seek feedback on the side that was tapped (player-chrome.js). *@
+            <div class="player-seek-feedback" data-seek-feedback="back" aria-hidden="true" hidden>
+                <partial name="_PlayerIcon" model="@("seekBack")" />
+                <span data-seek-feedback-label></span>
+            </div>
+            <div class="player-seek-feedback" data-seek-feedback="forward" aria-hidden="true" hidden>
+                <partial name="_PlayerIcon" model="@("seekForward")" />
+                <span data-seek-feedback-label></span>
+            </div>
+
             <div class="playback-preparation" data-playback-placeholder>
                 <span class="eyebrow">@ui["library.episode.browserPlayback"]</span>
                 <strong data-playback-status>@ui["library.episode.startingPlayback"]</strong>
@@ -97,27 +107,9 @@ else if (Model.Playback.Media is { } media)
                             <span lang="ja">@nativeTitle</span>
                         }
                     </div>
-                    <div class="player-top-actions">
-                        <button class="player-icon-button" type="button" data-chrome-subtitles
-                                aria-label="@ui["library.watch.subtitlesToggle"]" title="@ui["library.watch.subtitlesToggle"]" aria-pressed="false">
-                            <partial name="_PlayerIcon" model="@("subtitles")" />
-                        </button>
-                        <button class="player-icon-button" type="button" data-chrome-settings-toggle
-                                aria-label="@ui["library.watch.settings"]" title="@ui["library.watch.settings"]" aria-expanded="false" aria-controls="player-settings">
-                            <partial name="_PlayerIcon" model="@("settings")" />
-                        </button>
-                        <button class="player-icon-button" type="button" data-chrome-pip hidden
-                                aria-label="@ui["library.watch.pictureInPicture"]" title="@ui["library.watch.pictureInPicture"]">
-                            <partial name="_PlayerIcon" model="@("pictureInPicture")" />
-                        </button>
-                        <button class="player-icon-button" type="button" data-chrome-fullscreen
-                                aria-label="@ui["library.watch.fullscreen"]" title="@ui["library.watch.fullscreen"]"
-                                data-label-enter="@ui["library.watch.fullscreen"]" data-label-exit="@ui["library.watch.exitFullscreen"]">
-                            <partial name="_PlayerIcon" model="@("fullscreen")" />
-                        </button>
-                    </div>
                 </div>
 
+                @* The one play/pause button. Tapping the video only shows or hides these controls. *@
                 <div class="player-center">
                     <button class="player-round-button" type="button" data-player-action="seekBack10"
                             aria-label="@ui.Format("library.episode.seekBack", ("seconds", seekStep))">
@@ -150,11 +142,6 @@ else if (Model.Playback.Media is { } media)
                     </div>
                     <div class="player-bar">
                         <div class="player-bar-group">
-                            <button class="player-icon-button" type="button" data-chrome-play
-                                    aria-label="@ui["library.watch.play"]"
-                                    data-label-play="@ui["library.watch.play"]" data-label-pause="@ui["library.watch.pause"]">
-                                <partial name="_PlayerIcon" model="@("play")" />
-                            </button>
                             @if (Model.NextEpisodeUrl is { } playerNextUrl)
                             {
                                 <a class="player-icon-button" href="@playerNextUrl" data-player-next
@@ -188,11 +175,17 @@ else if (Model.Playback.Media is { } media)
                                     <partial name="_PlayerIcon" model="@("replay")" />
                                 </button>
                             }
-                            <button class="player-text-button" type="button" data-chrome-speed
-                                    aria-label="@ui["library.episode.playbackSpeed"]" title="@ui["library.episode.playbackSpeed"]">1×</button>
+                            <button class="player-icon-button" type="button" data-chrome-subtitles hidden
+                                    aria-label="@ui["library.watch.subtitlesToggle"]" title="@ui["library.watch.subtitlesToggle"]" aria-pressed="false">
+                                <partial name="_PlayerIcon" model="@("subtitles")" />
+                            </button>
                             <button class="player-icon-button" type="button" data-chrome-settings-toggle
                                     aria-label="@ui["library.watch.settings"]" title="@ui["library.watch.settings"]" aria-expanded="false" aria-controls="player-settings">
                                 <partial name="_PlayerIcon" model="@("settings")" />
+                            </button>
+                            <button class="player-icon-button" type="button" data-chrome-pip hidden
+                                    aria-label="@ui["library.watch.pictureInPicture"]" title="@ui["library.watch.pictureInPicture"]">
+                                <partial name="_PlayerIcon" model="@("pictureInPicture")" />
                             </button>
                             <button class="player-icon-button" type="button" data-chrome-fullscreen
                                     aria-label="@ui["library.watch.fullscreen"]" title="@ui["library.watch.fullscreen"]"
@@ -236,15 +229,22 @@ else if (Model.Playback.Media is { } media)
                                 }
                                 @foreach (var track in controls.SubtitleTracks)
                                 {
+                                    @* Picture subtitles (PGS, VobSub) are burned into the video by the server;
+                                       the menu says so up front instead of after a surprising restart. *@
+                                    var note = !track.IsSelectable
+                                        ? ui["library.episode.subtitleUnsupported"]
+                                        : track.IsImage ? ui["library.episode.subtitleBurnedIn"] : null;
                                     <option value="@track.Id"
                                             data-language="@(track.Language ?? "")"
                                             data-learning-source="@(track.IsLearningSource ? "true" : "false")"
                                             data-image="@(track.IsImage ? "true" : "false")"
+                                            data-format="@(track.Format ?? "")"
                                             disabled="@(!track.IsSelectable)"
-                                            selected="@(track.Id == controls.InitialSubtitle)">@track.Label</option>
+                                            selected="@(track.Id == controls.InitialSubtitle)">@track.Label@(note is null ? "" : $" · {note}")</option>
                                 }
                             </select>
                         </label>
+                        <small class="player-setting-hint" data-subtitle-hint aria-live="polite"></small>
 
                         @if (controls.AudioTracks.Count > 1)
                         {
@@ -338,7 +338,7 @@ else if (Model.Playback.Media is { } media)
                             type="button"
                             data-close-learning
                             data-player-action="closeOverlay"
-                            aria-label="@ui["library.episode.closeLearningOverlay"]">✕</button>
+                            aria-label="@ui["library.episode.closeLearningOverlay"]"><partial name="_PlayerIcon" model="@("close")" /></button>
                 </div>
                 <p class="player-learning-meaning" data-meaning></p>
                 <div class="player-learning-actions">
@@ -387,6 +387,7 @@ else if (Model.Playback.Media is { } media)
     <script src="~/js/player-design.js" asp-append-version="true"></script>
     <script src="~/js/playback-capabilities.js" asp-append-version="true"></script>
     <script src="~/js/episode-player.js" asp-append-version="true"></script>
+    <script src="~/js/player-gestures.js" asp-append-version="true"></script>
     <script src="~/js/player-chrome.js" asp-append-version="true" defer></script>
     <partial name="_EpisodeMediaNavigation" model="new Jularr.Web.Features.MediaSegments.EpisodeMediaNavigationView(Model.EpisodeId, Model.Playback.Navigation, CanEdit: false, ui)" />
 }
