@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Jularr.Tests;
@@ -70,6 +71,7 @@ public sealed class NovelTranslationGatingTests
 
         Assert.IsFalse(reader.TranslationEnabled);
         Assert.IsFalse(reader.TranslateGemmaConfigured);
+        Assert.IsTrue(reader.TranslateGemmaAvailable, "Cached local text keeps its controls.");
         Assert.AreEqual(0, reader.GermanParagraphs.Count);
         Assert.AreEqual(1, reader.TranslateGemmaParagraphs.Count);
 
@@ -77,6 +79,57 @@ public sealed class NovelTranslationGatingTests
             .OnGetTranslateGemmaStatusAsync(fixture.ChapterId, CancellationToken.None);
         var json = JsonDocument.Parse(JsonSerializer.Serialize(((JsonResult)status).Value));
         Assert.AreEqual("ready", json.RootElement.GetProperty("status").GetString());
+    }
+
+    [TestMethod]
+    public async Task UnconfiguredTranslateGemmaWithoutCachedTextRendersNoLocalControls()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SeedCachedGermanTranslationAsync();
+
+        var reader = fixture.CreateReadModel(Profile);
+        await reader.OnGetAsync(
+            fixture.ChapterId, null, null, null, null, null, CancellationToken.None);
+        Assert.IsFalse(reader.TranslateGemmaAvailable);
+
+        var root = RepositoryRoot();
+        var view = File.ReadAllText(Path.Combine(root, "src", "Jularr.Web", "Pages", "Novels", "Read.cshtml"));
+        StringAssert.Contains(
+            view,
+            "data-translate-gemma-available=\"@Model.TranslateGemmaAvailable.ToString().ToLowerInvariant()\"");
+
+        var script = File.ReadAllText(Path.Combine(root, "src", "Jularr.Web", "wwwroot", "js", "novel-translation.js"));
+        StringAssert.Contains(script, "if (!gemmaAvailable) return null;");
+        StringAssert.Contains(script, "if (gemmaAvailable) {");
+        foreach (var hardCoded in new[] { "Übersetzung", "Beide", "Startet", "Läuft", "nicht eingerichtet" })
+        {
+            Assert.IsFalse(
+                script.Contains(hardCoded, StringComparison.Ordinal),
+                $"'{hardCoded}' must come from UiTranslationResources.");
+        }
+    }
+
+    [TestMethod]
+    public async Task MalformedTranslateGemmaEndpointIsTreatedAsNotConfigured()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["TranslateGemma:Endpoint"] = "localhost:11434/v1/chat/completions"
+            })
+            .Build();
+
+        var reader = fixture.CreateReadModel(Profile, configuration);
+        await reader.OnGetAsync(
+            fixture.ChapterId, null, null, null, null, null, CancellationToken.None);
+        Assert.IsFalse(reader.TranslateGemmaConfigured);
+        Assert.IsFalse(reader.TranslateGemmaAvailable);
+
+        var status = await fixture.CreateReadModel(Profile, configuration)
+            .OnGetTranslateGemmaStatusAsync(fixture.ChapterId, CancellationToken.None);
+        var json = JsonDocument.Parse(JsonSerializer.Serialize(((JsonResult)status).Value));
+        Assert.AreEqual("unavailable", json.RootElement.GetProperty("status").GetString());
     }
 
     [TestMethod]
@@ -319,7 +372,9 @@ public sealed class NovelTranslationGatingTests
             Db.NovelTranslations.Add(new NovelTranslation
             {
                 ChapterId = ChapterId,
-                TargetLanguage = NovelReadingLanguage.German,
+                TargetLanguage = NovelTranslationProviders.IsTranslateGemma(providerId)
+                    ? NovelReadingLanguage.GermanTranslateGemma
+                    : NovelReadingLanguage.German,
                 ProviderId = providerId,
                 PromptVersion = NovelTranslationService.PromptVersion,
                 SourceHash = chapter.SourceHash,
@@ -336,7 +391,7 @@ public sealed class NovelTranslationGatingTests
                 mode,
                 CancellationToken.None);
 
-        public ReadModel CreateReadModel(string profileId)
+        public ReadModel CreateReadModel(string profileId, IConfiguration? configuration = null)
         {
             var imports = new NovelImportService(Db, []);
             return AttachPageContext(new ReadModel(
@@ -344,7 +399,7 @@ public sealed class NovelTranslationGatingTests
                 new NovelAnnotationService(Db),
                 new NovelProgressService(Db),
                 imports,
-                new NovelTranslationService(Db, imports, new UnusedTranslator()),
+                new NovelTranslationService(Db, imports, new UnusedTranslator(), configuration: configuration),
                 new NovelMappingService(Db, new UnusedMappingSuggester()),
                 new NovelJobs(new BackgroundJobQueue(services.GetRequiredService<IServiceScopeFactory>())),
                 new LanguageTextAnalyzer(
