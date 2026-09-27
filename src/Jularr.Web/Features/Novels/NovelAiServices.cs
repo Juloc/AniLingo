@@ -238,7 +238,7 @@ public sealed class NovelTranslationService(
         {
             if (translator is IAiUsageReporter usageReporter)
             {
-                usageReporter.RecordCacheHit("novel-chapter-translation");
+                usageReporter.RecordCacheHit(AiOperations.NovelTranslation);
             }
 
             return cached;
@@ -257,7 +257,7 @@ public sealed class NovelTranslationService(
             {
                 if (translator is IAiUsageReporter usageReporter)
                 {
-                    usageReporter.RecordCacheHit("novel-chapter-translation");
+                    usageReporter.RecordCacheHit(AiOperations.NovelTranslation);
                 }
 
                 return cached;

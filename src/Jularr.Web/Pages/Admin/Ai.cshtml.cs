@@ -96,7 +96,7 @@ public sealed class AiModel(
         TempData["Status"] = catalog.LastError is null
             ? Ui.Format("settings.ai.modelsRefreshed", ("count", catalog.Models.Count))
             : catalog.Discovery == AiModelDiscovery.Unsupported
-                ? Ui["ai.models.unsupported"]
+                ? AiViewFormat.CatalogStatus(Ui, catalog, time.GetUtcNow())
                 : Ui["ai.models.refreshFailed"];
         return RedirectToPage(new { Period });
     }

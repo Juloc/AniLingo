@@ -41,7 +41,7 @@ public sealed class AiSentenceExplanationService(
         {
             if (explainer is IAiUsageReporter usageReporter)
             {
-                usageReporter.RecordCacheHit("sentence-explanation");
+                usageReporter.RecordCacheHit(AiOperations.SentenceExplanation);
             }
 
             return FromCache(cached);
@@ -58,7 +58,7 @@ public sealed class AiSentenceExplanationService(
             {
                 if (explainer is IAiUsageReporter usageReporter)
                 {
-                    usageReporter.RecordCacheHit("sentence-explanation");
+                    usageReporter.RecordCacheHit(AiOperations.SentenceExplanation);
                 }
 
                 return FromCache(cached);

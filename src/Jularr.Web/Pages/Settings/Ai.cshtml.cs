@@ -8,6 +8,11 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 
 namespace Jularr.Web.Pages.Settings;
 
+/// <summary>
+/// Settings → AI (#422). The GET renders from local state only; when the selected provider's model
+/// list was never loaded, the page asks for it once right after it rendered (DiscoverModels) and then
+/// shows the real model picker. AI work never runs on an implicit provider default model.
+/// </summary>
 public sealed class AiModel(
     AppDbContext db,
     CurrentAccountContext currentAccount,
@@ -32,8 +37,29 @@ public sealed class AiModel(
     public AiQuotaSnapshot? Quota { get; private set; }
     public DateTimeOffset Now { get; private set; }
 
+    /// <summary>Saved server model the catalog no longer lists; the catalog default runs instead.</summary>
+    public string? UnavailableServerModel { get; private set; }
+
+    /// <summary>True when the page should load the model list once after it rendered.</summary>
+    public bool DiscoverOnLoad { get; private set; }
+
+    /// <summary>"Recommended for books" for the saved settings; null while no model is known.</summary>
+    public AiBookPresetPlan? BookPreset { get; private set; }
+
+    public bool BookPresetActive { get; private set; }
+
+    /// <summary>Last known connection state; null when it was not checked since the server started.</summary>
+    public AiProviderStatus? Connection { get; private set; }
+
     public AiModelCatalog SavedCatalog =>
         SavedProviderId == AiProviderIds.OpenAiCompatible ? PersonalCatalog : ServerCatalog;
+
+    /// <summary>Server provider without catalog and without a manual model: AI tasks cannot start.</summary>
+    public bool ServerModelMissing =>
+        !ServerCatalog.HasModels && string.IsNullOrWhiteSpace(ServerModel);
+
+    /// <summary>Personal provider without a model: AI tasks wait until one is chosen.</summary>
+    public bool PersonalModelMissing => string.IsNullOrWhiteSpace(ModelName);
 
     [BindProperty]
     public string ProviderId { get; set; } = AiProviderIds.Server;
@@ -43,6 +69,12 @@ public sealed class AiModel(
 
     [BindProperty]
     public string? ModelName { get; set; }
+
+    /// <summary>Picker value meaning "type another model ID" (see <see cref="CustomModelName"/>).</summary>
+    public const string CustomModelOption = "__custom";
+
+    [BindProperty]
+    public string? CustomModelName { get; set; }
 
     [BindProperty]
     public string? ServerModel { get; set; }
@@ -118,11 +150,50 @@ public sealed class AiModel(
 
         var settings = await settingsStore.LoadAsync(currentAccount.ProfileId, cancellationToken);
         var catalog = await providerRouter.RefreshCatalogAsync(settings, cancellationToken);
-        TempData["Status"] = catalog.LastError is null
-            ? Ui.Format("settings.ai.modelsRefreshed", ("count", catalog.Models.Count))
-            : catalog.Discovery == AiModelDiscovery.Unsupported
-                ? Ui["ai.models.unsupported"]
-                : Ui["ai.models.refreshFailed"];
+        TempData["Status"] = CatalogResult(catalog);
+        return RedirectToPage();
+    }
+
+    /// <summary>
+    /// The one automatic model discovery the page requests after it rendered. Only asks the provider
+    /// while the saved provider's catalog needs it; otherwise it answers from the cache.
+    /// </summary>
+    public async Task<IActionResult> OnPostDiscoverModelsAsync(
+        CancellationToken cancellationToken)
+    {
+        Ui = await LoadBundleAsync(cancellationToken);
+        var settings = await settingsStore.LoadAsync(currentAccount.ProfileId, cancellationToken);
+        var catalog = await providerRouter.GetOrDiscoverCatalogAsync(settings, cancellationToken);
+        Response.Headers.CacheControl = "no-store";
+        return new JsonResult(new
+        {
+            models = catalog.Models.Count,
+            status = catalog.HasModels
+                ? AiViewFormat.CatalogStatus(Ui, catalog, time.GetUtcNow())
+                : CatalogResult(catalog)
+        });
+    }
+
+    public async Task<IActionResult> OnPostApplyBookPresetAsync(
+        CancellationToken cancellationToken)
+    {
+        if (!await SaveAsync(cancellationToken))
+        {
+            await LoadViewAsync(cancellationToken);
+            return Page();
+        }
+
+        var settings = await settingsStore.LoadAsync(currentAccount.ProfileId, cancellationToken);
+        var catalog = await providerRouter.GetCachedCatalogAsync(AiProfileSettings.Default, cancellationToken);
+        var plan = AiBookPreset.Build(settings, catalog);
+        if (plan is null)
+        {
+            TempData["Status"] = Ui["settings.ai.bookPreset.unavailable"];
+            return RedirectToPage();
+        }
+
+        await settingsStore.SaveAsync(currentAccount.ProfileId, plan.Settings, cancellationToken);
+        TempData["Status"] = Ui["settings.ai.bookPreset.applied"];
         return RedirectToPage();
     }
 
@@ -143,6 +214,16 @@ public sealed class AiModel(
     public IReadOnlyList<AiServiceTierOption> ServiceTierOptionsFor(string? model) =>
         AiOptionResolver.ServiceTierOptions(ServerCatalog, string.IsNullOrWhiteSpace(model) ? null : model);
 
+    private string CatalogResult(AiModelCatalog catalog) =>
+        catalog.LastError is null
+            ? Ui.Format("settings.ai.modelsRefreshed", ("count", catalog.Models.Count))
+            : catalog.Discovery == AiModelDiscovery.Unsupported
+                ? AiViewFormat.CatalogStatus(Ui, catalog, time.GetUtcNow())
+                : Ui["ai.models.refreshFailed"];
+
+    private string? PersonalModel() =>
+        ModelName == CustomModelOption ? CustomModelName : ModelName;
+
     private async Task<bool> SaveAsync(
         CancellationToken cancellationToken)
     {
@@ -158,18 +239,22 @@ public sealed class AiModel(
                 ? existing.ApiKey
                 : ApiKey;
             var isServer = ProviderId == AiProviderIds.Server;
-            var overrides = AiOperations.ProfileConfigurable.Select(operation => KeyValuePair.Create(
-                operation,
-                new AiOperationOverride(
-                    OverrideModels.GetValueOrDefault(operation),
-                    isServer ? OverrideEfforts.GetValueOrDefault(operation) : null)));
+
+            // Override model ids belong to one provider's catalog; switching provider starts clean.
+            var overrides = ProviderId == existing.ProviderId
+                ? AiOperationOverrides.From(AiOperations.ProfileConfigurable.Select(operation => KeyValuePair.Create(
+                    operation,
+                    new AiOperationOverride(
+                        OverrideModels.GetValueOrDefault(operation),
+                        isServer ? OverrideEfforts.GetValueOrDefault(operation) : null))))
+                : AiOperationOverrides.Empty;
 
             await settingsStore.SaveAsync(
                 currentAccount.ProfileId,
                 new AiProfileSettings(
                     ProviderId,
                     BaseUrl,
-                    isServer ? ServerModel : ModelName,
+                    isServer ? ServerModel : PersonalModel(),
                     key,
                     TranslationMode)
                 {
@@ -177,7 +262,7 @@ public sealed class AiModel(
                     ReasoningEffort = isServer ? ReasoningEffort : null,
                     ServiceTier = isServer ? ServiceTier : null,
                     MaxOutputTokens = isServer ? null : MaxOutputTokens,
-                    Overrides = AiOperationOverrides.From(overrides)
+                    Overrides = overrides
                 },
                 cancellationToken);
 
@@ -187,6 +272,8 @@ public sealed class AiModel(
             exception is ArgumentException or InvalidOperationException)
         {
             ModelState.AddModelError(string.Empty, exception.Message);
+            ApiKey = null;
+            ModelName = PersonalModel();
             return false;
         }
     }
@@ -212,12 +299,21 @@ public sealed class AiModel(
         OverrideEfforts = settings.Overrides.Items
             .Where(x => x.Value.ReasoningEffort is not null)
             .ToDictionary(x => x.Key, x => x.Value.ReasoningEffort, StringComparer.Ordinal);
-        HasStoredApiKey = !string.IsNullOrWhiteSpace(settings.ApiKey);
         ApiKey = null;
 
-        // Page GETs stay local-first: the catalog shown is the cached one; discovery is the
-        // explicit "Refresh models" action.
         await LoadViewAsync(cancellationToken, settings);
+
+        if (settings.ProviderId == AiProviderIds.Server && ServerCatalog.HasModels)
+        {
+            // The picker always shows the concrete model that runs: the saved one when the catalog
+            // lists it, otherwise the catalog default.
+            if (ServerModel is not null && ServerCatalog.Find(ServerModel) is null)
+            {
+                UnavailableServerModel = ServerModel;
+            }
+
+            ServerModel = AiOptionResolver.EffectiveServerModel(ServerCatalog, ServerModel);
+        }
     }
 
     private async Task LoadViewAsync(CancellationToken cancellationToken, AiProfileSettings? settings = null)
@@ -228,10 +324,21 @@ public sealed class AiModel(
         SavedProviderId = settings.ProviderId;
         Now = time.GetUtcNow();
 
+        // Local state only: the catalogs shown are the cached ones. DiscoverOnLoad lets the page
+        // request the first discovery after it rendered.
         ServerCatalog = await providerRouter.GetCachedCatalogAsync(AiProfileSettings.Default, cancellationToken);
         PersonalCatalog = settings.ProviderId == AiProviderIds.OpenAiCompatible
             ? await providerRouter.GetCachedCatalogAsync(settings, cancellationToken)
             : AiModelCatalog.Empty("");
+        DiscoverOnLoad = ProfileAiProviderRouter.CanDiscover(settings)
+            && AiModelCatalogService.NeedsDiscovery(SavedCatalog, Now);
+
+        BookPreset = AiBookPreset.Build(settings, ServerCatalog);
+        BookPresetActive = BookPreset?.IsActiveFor(settings) == true;
+
+        Connection = settings.ProviderId == AiProviderIds.Server
+            ? codex.LastStatus
+            : await providerRouter.GetStatusAsync(cancellationToken);
 
         Usage = await usageStore.GetReportAsync(
             currentAccount.ProfileId,
