@@ -81,7 +81,8 @@ public sealed record ReleaseEvent(
     string? ProviderExternalId,
     ReleaseLocalStatus Local,
     string? CoverImageUrl = null,
-    string? Region = null)
+    string? Region = null,
+    string? DetailsUrl = null)
 {
     public static string BuildId(ReleaseMediaType mediaType, Guid mediaId, ReleaseKind kind, ReleaseUnit? unit, string? discriminator = null) =>
         string.Join(
@@ -104,7 +105,8 @@ public sealed record ReleaseEventQuery(
     DateTimeOffset Now,
     bool IncludeUndated = false,
     ReleaseMediaType? MediaType = null,
-    Guid? MediaId = null)
+    Guid? MediaId = null,
+    string? ProfileId = null)
 {
     public bool Wants(ReleaseMediaType type, Guid? mediaId = null) =>
         (MediaType is null || MediaType == type) &&
@@ -136,7 +138,10 @@ public enum ReleaseStateFilter
 }
 
 /// <summary>Media-type and library-state filter of the calendar; an empty type set means all types.</summary>
-public sealed record ReleaseCalendarFilter(IReadOnlySet<ReleaseMediaType> MediaTypes, ReleaseStateFilter State)
+public sealed record ReleaseCalendarFilter(
+    IReadOnlySet<ReleaseMediaType> MediaTypes,
+    ReleaseStateFilter State,
+    string? ProfileId = null)
 {
     public static ReleaseCalendarFilter All { get; } = new(new HashSet<ReleaseMediaType>(), ReleaseStateFilter.All);
 
