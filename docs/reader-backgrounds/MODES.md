@@ -26,7 +26,7 @@ Design requirements:
 
 Recommended master target: about 1600×3200.
 
-If missing, AniLingo uses the page image.
+If missing, Jularr uses the page image.
 
 ## Scroll 2.5D / parallax
 
@@ -40,7 +40,7 @@ Back: sky, distant atmosphere, broad fog, distant silhouettes.
 Mid: environmental structures, trees, ruins, skyline.
 Front: sparse branches, particles, foreground fog/ornament near edges.
 
-The layer images should be vertically repeatable/seam-friendly because AniLingo moves them at bounded independent speeds.
+The layer images should be vertically repeatable/seam-friendly because Jularr moves them at bounded independent speeds.
 
 Foreground transparency is preferred where image generation supports it.
 

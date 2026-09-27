@@ -2,7 +2,7 @@
 
 Issue: #317
 
-AniLingo uses one provider-neutral speech contract. Reader, learning and future native clients must not bind directly to one vendor or one model family.
+Jularr uses one provider-neutral speech contract. Reader, learning and future native clients must not bind directly to one vendor or one model family.
 
 ## Provider order
 
@@ -18,7 +18,7 @@ The resolver uses BCP-47 language tags. Voice matching is deterministic: exact l
 
 ## Phase 1: browser Device TTS
 
-`wwwroot/js/tts.js` wraps the browser Web Speech API behind `AniLingoTts.DeviceSpeechProvider`.
+`wwwroot/js/tts.js` wraps the browser Web Speech API behind `JularrTts.DeviceSpeechProvider`.
 
 It provides:
 - asynchronous voice discovery including `voiceschanged`
@@ -31,7 +31,7 @@ It provides:
 
 It has no Reader-specific state. `speakSequence(items, options)` speaks an array or lazily pulled iterable of items as one cancellable session: only the current utterance plus `lookAhead` upcoming utterances are ever handed to the platform queue, and item-level `itemstart` / `itemend` / `boundary` events carry the caller's key. `resolveSpeech` is the browser mirror of `SpeechPreferenceResolver` / `SpeechAvailabilityResolver` (same provider order, voice matching and unavailable reasons), because device voices only exist on the client.
 
-Important privacy distinction: AniLingo's browser Device provider itself sends no TTS request to the AniLingo server and makes no third-party HTTP request. Whether a platform/browser voice is fully local is controlled by that operating system/browser. `SpeechSynthesisVoice.localService` is exposed as metadata but must not be treated as a universal privacy guarantee. Only an AniLingo-managed offline-neural model is classified as `GuaranteedOffline`.
+Important privacy distinction: Jularr's browser Device provider itself sends no TTS request to the Jularr server and makes no third-party HTTP request. Whether a platform/browser voice is fully local is controlled by that operating system/browser. `SpeechSynthesisVoice.localService` is exposed as metadata but must not be treated as a universal privacy guarantee. Only an Jularr-managed offline-neural model is classified as `GuaranteedOffline`.
 
 ## Phase 2: Reader integration
 
@@ -66,7 +66,7 @@ The model manager must use explicit downloadable model packs. A manifest owns:
 - required runtime/model files
 - expected byte size
 - SHA-256 for every downloaded artifact
-- minimum compatible AniLingo/runtime version
+- minimum compatible Jularr/runtime version
 
 Activation is download -> verify -> atomic move. Partial or checksum-failed downloads never become selectable.
 
@@ -75,7 +75,7 @@ Model files stay outside the main web image/APK so server/Docker and Android rel
 ### Server: manifest and profile preferences
 
 `GET /api/client/v1/speech/models` serves the manifest as `ClientSpeechModelsResponse`
-(`AniLingo.Web.Features.Speech.SpeechModelManifest*`). It is owner-configurable without a
+(`Jularr.Web.Features.Speech.SpeechModelManifest*`). It is owner-configurable without a
 rebuild: drop a JSON file at `{dataRoot}/speech/tts-model-manifest.json` (for example
 `/data/speech/tts-model-manifest.json` in the container); with no override present, the
 bundled default (embedded in the assembly, zero models) is served. Every entry needs
@@ -86,7 +86,7 @@ partially served, and a manifest never claims a language or voice it does not li
 
 `GET`/`PUT /api/client/v1/me/tts-preferences` is the native-client surface for
 profile-level provider/voice/rate/pitch/volume (`ClientTtsPreferences`,
-`AniLingo.Web.Features.Speech.TtsPreferencesService`). This reuses the canonical Reader
+`Jularr.Web.Features.Speech.TtsPreferencesService`). This reuses the canonical Reader
 preference "default" (profile, no book) scope row and its existing Tts* columns/rules
 instead of a second store: the Reader's Vorlesen settings and a native client's speech
 settings share the same profile-level provider/voice/rate/pitch/volume. `PUT` is a partial
@@ -109,7 +109,7 @@ Android (Phase 3 delivered under this issue):
   Android AAR to Maven Central (see k2-fsa/sherpa-onnx#3981) or any resolvable Maven
   coordinate as of this writing, only as a manually downloaded GitHub release asset, so
   the real binding lives in the optional `core-tts-sherpa` module. It is excluded from the
-  Gradle build (and CI) unless `-PanilingoNeuralTtsEnabled=true` is passed; the rest of
+  Gradle build (and CI) unless `-PjularrNeuralTtsEnabled=true` is passed; the rest of
   the app builds and works with zero offline-neural models either way. To enable it
   locally: download `sherpa-onnx-<version>.aar` from
   https://github.com/k2-fsa/sherpa-onnx/releases, place it unmodified at

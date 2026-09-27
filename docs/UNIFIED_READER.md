@@ -1,6 +1,6 @@
 # Unified Reader
 
-AniLingo exposes one Reader product. Books, Light Novels and Web Novels use the
+Jularr exposes one Reader product. Books, Light Novels and Web Novels use the
 same shell, settings surface, preference store, theme runtime and interaction
 rules. Source-specific pages are adapters that provide content, navigation,
 translations and annotations.

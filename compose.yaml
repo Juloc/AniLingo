@@ -1,6 +1,6 @@
 services:
-  anilingo:
-    image: ghcr.io/juloc/anilingo:latest
+  jularr:
+    image: ghcr.io/juloc/jularr:latest
     volumes:
       - anilingo-data:/data
     networks:
@@ -9,4 +9,5 @@ services:
       - "8097:8080"
 
 volumes:
+  # Legacy key kept after the Jularr rename: it determines the Docker volume name that holds /data.
   anilingo-data:

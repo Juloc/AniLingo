@@ -1,0 +1,210 @@
+@page
+@using Jularr.Web.Features.Progress
+@using Jularr.Web.Features.Reading
+@model IndexModel
+@{
+    ViewData["Title"] = Model.Ui["nav.home"];
+}
+
+<header class="jularr-hero">
+    <div class="jularr-hero-art art-tint ink-night" aria-hidden="true"></div>
+    <img class="jularr-hero-heroine" src="~/brand/heroine.webp" alt="" aria-hidden="true" width="720" height="900" />
+    <div class="jularr-hero-copy">
+        <div class="jularr-hero-lockup" aria-hidden="true">
+            <partial name="_AppBrandMark" />
+        </div>
+        <span class="eyebrow">@Model.Ui["home.eyebrow"]</span>
+        <h1>@Model.Ui["home.title"]</h1>
+        <p>@Model.Ui["home.subtitle"]</p>
+        @if (Model.ShowLearningHomeWidget && Model.DueReviews > 0)
+        {
+            <a class="button button-primary" href="/Learn/Review" data-home-learning-widget>
+                @Model.Ui.Format("home.reviewButton", ("count", Model.DueReviews))
+            </a>
+        }
+    </div>
+</header>
+
+@if (Model.ContinueWatching.Count > 0)
+{
+    <section class="section section-first" data-continue-watching>
+        <div class="section-heading">
+            <div>
+                <span class="eyebrow">@Model.Ui["home.continueWatching.eyebrow"]</span>
+                <h2>@Model.Ui["home.continueWatching"]</h2>
+            </div>
+        </div>
+
+        <div class="media-grid">
+            @foreach (var item in Model.ContinueWatching)
+            {
+                var isResumable = item.ResumePositionMs > 0;
+                var episodeLabel = Model.Ui.Format(
+                    "home.continueWatching.episode",
+                    ("season", item.SeasonNumber.ToString("00")),
+                    ("episode", item.EpisodeNumber));
+                var caption = !isResumable
+                    ? null
+                    : item.RemainingMs is { } remainingMs
+                        ? Model.Ui.Format(
+                            "home.continueWatching.remaining",
+                            ("minutes", Math.Max(1, (int)Math.Ceiling(remainingMs / 60000d))))
+                        : Model.Ui["home.continueWatching.resume"];
+                <partial name="_MediaCard" model='new MediaCardModel(
+                    item.AnimeTitle,
+                    caption is null ? episodeLabel : $"{episodeLabel} · {caption}",
+                    $"/Library/Episode/{item.EpisodeId}",
+                    isResumable ? item.Percent : null,
+                    item.Kind == ContinueWatchingKind.UpNext
+                        ? Model.Ui["home.continueWatching.upNext"]
+                        : null,
+                    item.CoverImageUrl,
+                    Model.Ui.Format("home.continueWatching.progressAria", ("percent", item.Percent)))' />
+            }
+        </div>
+    </section>
+}
+
+@if (Model.ContinueReading.Count > 0)
+{
+    <section class="section section-first" data-continue-reading>
+        <div class="section-heading">
+            <div>
+                <span class="eyebrow">@Model.Ui["home.continueReading.eyebrow"]</span>
+                <h2>@Model.Ui["home.continueReading"]</h2>
+            </div>
+        </div>
+
+        <div class="media-grid">
+            @foreach (var item in Model.ContinueReading)
+            {
+                var kindLabel = item.Kind switch
+                {
+                    ContinueReadingKind.Book => Model.Ui["home.continueReading.kind.book"],
+                    ContinueReadingKind.Manga => Model.Ui["home.continueReading.kind.manga"],
+                    _ => Model.Ui["home.continueReading.kind.novel"]
+                };
+                var positionLabel = item.PageNumber is int page && item.PageCount is int pages
+                    ? Model.Ui.Format(
+                        "home.continueReading.chapterPage",
+                        ("chapter", item.ChapterLabel),
+                        ("page", page),
+                        ("pages", pages))
+                    : Model.Ui.Format(
+                        "home.continueReading.chapter",
+                        ("chapter", item.ChapterLabel));
+                <partial name="_MediaCard" model='new MediaCardModel(
+                    item.Title,
+                    positionLabel,
+                    item.ResumeUrl,
+                    item.ProgressPercent,
+                    kindLabel,
+                    item.CoverImageUrl,
+                    Model.Ui.Format("home.continueReading.progressAria", ("percent", item.ProgressPercent)))' />
+            }
+        </div>
+    </section>
+}
+
+<section class="metric-grid">
+    @if (Model.ShowLearningHomeWidget)
+    {
+        <a class="metric-card metric-card-link" href="/Learn/Review" data-home-learning-widget>
+            <div class="metric-value">@Model.DueReviews</div>
+            <div class="metric-label">@Model.Ui["home.metric.due"]</div>
+            <div class="metric-hint">@Model.Ui["home.metric.ready"]</div>
+        </a>
+    }
+    <partial name="_MetricCard"
+             model='new MetricCardModel(
+                 Model.Ui["home.metric.anime"],
+                 Model.AnimeCount.ToString(),
+                 Model.Ui["home.metric.inLibrary"])' />
+    <partial name="_MetricCard"
+             model='new MetricCardModel(
+                 Model.Ui["home.metric.episodes"],
+                 Model.EpisodeCount.ToString(),
+                 Model.Ui["home.metric.discovered"])' />
+</section>
+
+<section class="section">
+    <div class="section-heading">
+        <div>
+            <span class="eyebrow">@Model.Ui["home.library.eyebrow"]</span>
+            <h2>@Model.Ui["home.library.recent"]</h2>
+        </div>
+        <a class="text-link" href="/Library">@Model.Ui["home.library.view"]</a>
+    </div>
+
+    @if (Model.RecentEpisodes.Count == 0)
+    {
+        <div class="empty-state">
+            <h3>@Model.Ui["home.empty.title"]</h3>
+            <p>@Model.Ui["home.empty.body"]</p>
+            <a class="button" href="/Settings">@Model.Ui["home.empty.settings"]</a>
+        </div>
+    }
+    else
+    {
+        <div class="media-grid">
+            @foreach (var episode in Model.RecentEpisodes)
+            {
+                var coverageLabel = !Model.ShowContentMetrics
+                    ? null
+                    : episode.TotalOccurrences == 0
+                        ? Model.Ui["home.library.noLearningText"]
+                        : Model.Ui.Format("home.library.prepared", ("percent", episode.PreparationPercent));
+                <partial name="_MediaCard" model='new MediaCardModel(
+                    episode.AnimeTitle,
+                    Model.Ui.Format(
+                        "home.continueWatching.episode",
+                        ("season", episode.SeasonNumber.ToString("00")),
+                        ("episode", episode.Number)),
+                    $"/Library/Episode/{episode.Id}",
+                    Model.ShowContentMetrics ? episode.PreparationPercent : null,
+                    coverageLabel,
+                    episode.CoverImageUrl,
+                    coverageLabel)' />
+            }
+        </div>
+    }
+</section>
+
+@if (Model.PlaybackHistory.Count > 0)
+{
+    <details class="panel playback-history" data-playback-history>
+        <summary>
+            <strong>@Model.Ui["home.history.title"]</strong>
+            <span class="muted">@Model.PlaybackHistory.Count</span>
+        </summary>
+        <p class="muted">@Model.Ui.Format("home.history.description", ("count", Model.PlaybackHistoryLimit))</p>
+
+        <ol class="playback-history-list">
+            @foreach (var entry in Model.PlaybackHistory)
+            {
+                <li>
+                    <a href="/Library/Episode/@entry.EpisodeId">
+                        @entry.AnimeTitle ·
+                        @Model.Ui.Format(
+                            "home.continueWatching.episode",
+                            ("season", entry.SeasonNumber.ToString("00")),
+                            ("episode", entry.EpisodeNumber))
+                    </a>
+                    <span>
+                        <time datetime="@entry.LastPlayedAt.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")">@entry.LastPlayedAt.ToString("yyyy-MM-dd HH:mm") UTC</time>
+                        ·
+                        @(entry.ReachedEnd
+                            ? Model.Ui["home.history.finished"]
+                            : Model.Ui.Format(
+                                "home.history.stoppedAt",
+                                ("time", EpisodeProgressService.FormatPosition(entry.PositionMs))))
+                    </span>
+                </li>
+            }
+        </ol>
+
+        <form method="post" asp-page-handler="ClearHistory">
+            <button class="button" type="submit">@Model.Ui["home.history.clear"]</button>
+        </form>
+    </details>
+}

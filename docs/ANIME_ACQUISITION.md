@@ -1,11 +1,11 @@
 # Anime acquisition
 
-AniLingo can find, download and import missing anime episodes itself: wanted episode → indexer
+Jularr can find, download and import missing anime episodes itself: wanted episode → indexer
 search (Prowlarr and/or direct Newznab) → release parsing and scoring → ownership check → a
 download client (SABnzbd) → Operations tracking → import into the library with the naming
 profile → library reconciliation. Everything runs in-process; there is no separate service.
 
-AniLingo is usenet-only by design: torrent acquisition (Torznab indexers, qBittorrent or any other
+Jularr is usenet-only by design: torrent acquisition (Torznab indexers, qBittorrent or any other
 torrent client, magnet links or `.torrent` handling) is intentionally unsupported. Prowlarr may
 still aggregate torrent indexers on its own side; a torrent-protocol result it returns is scored
 but never grabbed (see Limits).
@@ -32,10 +32,10 @@ services and adds no state of its own beyond the API keys themselves.
 2. **Download clients** — `/Settings/DownloadClients`: add one or more SABnzbd connections (URL,
    API key stored encrypted, categories, priority, enable/disable). The pipeline and Books
    submissions pick the highest-priority enabled, healthy client and fail over to the next one on
-   submission failure. SABnzbd's completed-job folder must be visible to AniLingo under the path
+   submission failure. SABnzbd's completed-job folder must be visible to Jularr under the path
    SABnzbd reports (see [ADMIN_OPERATIONS.md](ADMIN_OPERATIONS.md#sabnzbd)).
-3. **Management mode** — anime start in read-only Sonarr coexistence, where AniLingo never
-   searches, grabs or imports. Choose *Parallel acquisition* or *AniLingo-managed* per anime under
+3. **Management mode** — anime start in read-only Sonarr coexistence, where Jularr never
+   searches, grabs or imports. Choose *Parallel acquisition* or *Jularr-managed* per anime under
    `/Settings/SonarrMigration` (see [SONARR_MIGRATION.md](SONARR_MIGRATION.md)).
 4. **Per anime** — the **Acquisition** section on the anime page (`/Library/Anime/{id}`):
    *Monitored*, *Search when monitoring starts*, quality profile and optional Prowlarr indexer IDs.
@@ -58,7 +58,7 @@ monitored anime, recent decisions and recent imports.
 | Acquisition ↔ anime/episodes/attempts, untried candidates, blocklist | `/data/acquisition/sabnzbd-acquisitions.json` |
 | Download status, progress, failure reason | the download client's Operation (`anime-sabnzbd-download`) |
 | Import plan, per-file result, manual-import state | `/data/acquisition/imports.json` (`AnimeImportStore`) |
-| Ownership (mode, AniLingo/Sonarr jobs, owned paths) | `/data/acquisition/ownership.json` |
+| Ownership (mode, Jularr/Sonarr jobs, owned paths) | `/data/acquisition/ownership.json` |
 | Import mode (global/per root), remote path mappings | `/data/acquisition/import-settings.json` (`AnimeImportSettingsStore`) |
 | Tag catalog, delay profiles, tag-scoped indexer restrictions | `/data/acquisition/acquisition-policy.json` (`AcquisitionPolicyStore`) |
 | Per-profile AniList Current/Planning auto-monitor opt-in | `/data/acquisition/anilist-auto-monitor.json` (`AniListAutoMonitorSettingsStore`) |
@@ -121,7 +121,7 @@ restriction) with the episode's titles, and evaluates every result:
 Every decision is written to the search operation's log (module `Acquisition`) with its reason,
 quality, score and indexer; `/Acquisition` shows the recent ones. Accepted releases, best first, go
 to `SabnzbdAcquisitionService.StartAsync`, which sends the first non-blocklisted one and keeps the
-rest as fallbacks. The pipeline then registers an AniLingo ownership job for the acquisition and
+rest as fallbacks. The pipeline then registers an Jularr ownership job for the acquisition and
 marks the covered episodes as grabbed.
 
 A new grab for an episode is refused while an earlier acquisition for it is still downloading or
@@ -155,7 +155,7 @@ When an anime download completes, the SABnzbd monitor hands it to `AnimeImportEx
    default): the anime's existing series folder (a new folder is named by the series folder
    template), the season folder and the episode template. The name must scan back to the same
    anime key and episode; otherwise the file needs a decision.
-5. Claim the destination as an AniLingo path and check `CanMutateLibraryPath` again; Sonarr-owned
+5. Claim the destination as an Jularr path and check `CanMutateLibraryPath` again; Sonarr-owned
    or Sonarr-active paths are never touched. An existing destination is never overwritten.
 6. Move the file (and matching subtitle/NFO sidecars). An existing worse file is deleted only after
    the new file is in place.
@@ -178,7 +178,7 @@ import waits for a decision, so it is not downloaded again.
 On startup, and before every scheduler run, the scheduler:
 
 - resumes imports that were interrupted or deferred,
-- imports anime downloads that completed within the last 7 days while AniLingo was not running
+- imports anime downloads that completed within the last 7 days while Jularr was not running
   (the storage path is read from SABnzbd history),
 - reconciles search attempts with the acquisition relation and Operations: an interrupted search
   whose release SABnzbd already accepted is recorded as grabbed (and its ownership job registered)
@@ -196,7 +196,7 @@ clear reason when the source and the library root are on different filesystems) 
 copy** (the explicit choice to fall back to a copy only on a different filesystem — no other mode
 falls back silently). The same page's remote path mappings (`RemotePrefix` → `LocalPrefix`) rewrite
 a path reported by the download client before anything reads it, and rewrite every Sonarr-observed
-path (series folder, episode file, queue output, history) the same way, so Sonarr ↔ AniLingo path
+path (series folder, episode file, queue output, history) the same way, so Sonarr ↔ Jularr path
 matching (ownership checks, rename-loop detection) still works when the two containers mount the
 shared storage differently — closing the "different mount paths" gap from
 [SONARR_MIGRATION.md](SONARR_MIGRATION.md).
@@ -294,17 +294,17 @@ session).
 ### Examples
 
 ```bash
-curl -H "X-Api-Key: $KEY" https://anilingo.example/api/acquisition/v1/monitored
+curl -H "X-Api-Key: $KEY" https://jularr.example/api/acquisition/v1/monitored
 
-curl -H "X-Api-Key: $KEY" -X POST https://anilingo.example/api/acquisition/v1/anime/$ANIME_ID/search
+curl -H "X-Api-Key: $KEY" -X POST https://jularr.example/api/acquisition/v1/anime/$ANIME_ID/search
 # => 202 {"operationId":"...","message":"Search for 'frieren' queued. ..."}
 
 curl -H "X-Api-Key: $KEY" -H "Content-Type: application/json" \
-  -X PUT https://anilingo.example/api/acquisition/v1/anime/$ANIME_ID/monitoring \
+  -X PUT https://jularr.example/api/acquisition/v1/anime/$ANIME_ID/monitoring \
   -d '{"monitored":true,"searchOnAdd":true,"qualityProfileId":null,"indexerIds":[],"tagIds":["dub"],"targetRootId":null}'
 
 # Sonarr-owned anime: refused, not silently ignored.
-curl -i -H "X-Api-Key: $KEY" -X POST https://anilingo.example/api/acquisition/v1/anime/$ANIME_ID/search
+curl -i -H "X-Api-Key: $KEY" -X POST https://jularr.example/api/acquisition/v1/anime/$ANIME_ID/search
 # HTTP/1.1 409 Conflict
 # Content-Type: application/problem+json
 # {"type":"...","title":"Refused.","status":409,
@@ -313,12 +313,12 @@ curl -i -H "X-Api-Key: $KEY" -X POST https://anilingo.example/api/acquisition/v1
 
 ## Limits
 
-- AniLingo is usenet-only by owner decision: torrent acquisition (Torznab indexers, qBittorrent or
+- Jularr is usenet-only by owner decision: torrent acquisition (Torznab indexers, qBittorrent or
   any other torrent client, magnet links or `.torrent` handling) is intentionally unsupported and
   will not be added. The anime pipeline searches every enabled, healthy indexer (Prowlarr and
   direct Newznab) and scores every result, but a release is only ever grabbed when its protocol is
   usenet; a torrent-protocol release Prowlarr itself returns (from a torrent indexer configured on
-  Prowlarr's side, outside AniLingo) is always shown as rejected ("not a usenet release").
+  Prowlarr's side, outside Jularr) is always shown as rejected ("not a usenet release").
 - No RSS feed polling: wanted episodes are found by the scheduled search.
 - Quality profiles can be assigned per anime; editing profiles has no UI yet.
 - AniList auto-monitor only enables monitoring for anime that already exist locally; it does not add

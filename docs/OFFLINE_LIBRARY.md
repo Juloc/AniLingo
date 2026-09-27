@@ -4,7 +4,7 @@ Tracking issue: **#221** (parent context: #69, Android/TV architecture in
 [ANDROID_CLIENTS.md](ANDROID_CLIENTS.md); reader model in
 [UNIFIED_READER.md](UNIFIED_READER.md)).
 
-This document is the contract for AniLingo's offline Book/Novel library: a
+This document is the contract for Jularr's offline Book/Novel library: a
 canonical versioned package a client downloads, verifies and reads without
 network access, plus offline-first reading-state sync. It intentionally
 reuses one server model instead of separate PWA/Android business logic
@@ -300,10 +300,10 @@ progress, bookmarks or tombstones.
 Three new `wwwroot/js/` modules, split the same way `tts.js`/`reader-tts.js`
 already are — pure engine vs. browser I/O vs. DOM wiring — so the pure parts
 run under the existing Jint test harness
-(`tests/AniLingo.Tests/OfflineLibraryEngineTests.cs`, mirroring
+(`tests/Jularr.Tests/OfflineLibraryEngineTests.cs`, mirroring
 `DeviceSpeechEngineTests.cs`):
 
-- **`offline-library.js`** (`window.AniLingoOfflineLibrary`) — pure, no
+- **`offline-library.js`** (`window.JularrOfflineLibrary`) — pure, no
   IndexedDB/OPFS/network: `diffManifest` (differential detection),
   `isBookComplete` (finalization rule — a book is "available offline" only
   once every selected chapter's *verified local hash* matches the manifest),
@@ -312,7 +312,7 @@ run under the existing Jint test harness
   branches and bounded exponential backoff via `computeBackoffMs`),
   `isNetworkEligible` (Wi-Fi-only, explicitly best-effort — see below),
   `namespaceKey`, `formatBytes`/`totalStorageBytes`.
-- **`offline-library-storage.js`** (`window.AniLingoOfflineLibraryStorage`)
+- **`offline-library-storage.js`** (`window.JularrOfflineLibraryStorage`)
   — IndexedDB (manifests, download queue/state, verified chapter hashes,
   local settings, the reading-state sync queue) and OPFS (chapter JSON,
   covers/illustrations), namespaced per profile (see below). Requests
@@ -322,7 +322,7 @@ run under the existing Jint test harness
   (**degraded mode** — the UI surfaces this explicitly, see the Settings
   page below) and images are simply not cached rather than exhausting
   IndexedDB with binary blobs.
-- **`offline-library-manager.js`** (`window.AniLingoOfflineLibraryManager`)
+- **`offline-library-manager.js`** (`window.JularrOfflineLibraryManager`)
   — wires the two together: `enqueueBook` (fetch manifest, diff, queue the
   difference), `processQueue`/`pause`/`resume`/`retryFailed`,
   `removeChapter`/`removeBook`, `storageUsage`, the Wi-Fi-only setting, and
@@ -398,7 +398,7 @@ that default under last-writer-wins.
 
 ## Tests
 
-- `tests/AniLingo.Tests/OfflineLibraryTests.cs`: chapter/work hash
+- `tests/Jularr.Tests/OfflineLibraryTests.cs`: chapter/work hash
   determinism and order-(in)dependence, differential manifest detection
   against a real SQLite database, chapter payload translation filtering and
   image asset URL resolution, asset path-safety (traversal, wrong
@@ -406,7 +406,7 @@ that default under last-writer-wins.
   `DecideProgress`/`DecideBookmark` rules, and full reconciler runs proving
   idempotent replay, forward-only progress, tombstoned removal +
   resurrection, and profile isolation.
-- `tests/AniLingo.Tests/OfflineLibraryEngineTests.cs`: the JS engine
+- `tests/Jularr.Tests/OfflineLibraryEngineTests.cs`: the JS engine
   (`offline-library.js`) under Jint — manifest diffing, the finalization
   rule, queue state transitions (including invalid/no-op transitions),
   eligible-item selection with backoff, Wi-Fi-only eligibility, namespacing
@@ -414,10 +414,10 @@ that default under last-writer-wins.
 
 ## Android implementation
 
-`clients/android/app-mobile`, package `de.juloc.anilingo.mobile.offline.library`
+`clients/android/app-mobile`, package `de.juloc.jularr.mobile.offline.library`
 (kept separate from `mobile.offline`, the #341 bounded-offline-playback
 package, so the two features stay independently reviewable). Consumes the
-contract above through new `AniLingoLibraryApi`/`OfflineLibraryJson`
+contract above through new `JularrLibraryApi`/`OfflineLibraryJson`
 (`core-api`) and `ClientOfflineLibrary*`/`OfflineLibrary*Event`/`Result`
 models (`core-model`), gated by the `offlineLibrary` capability flag.
 
@@ -460,7 +460,7 @@ models (`core-model`), gated by the `offlineLibrary` capability flag.
   resumable unit via WorkManager's own retry/backoff — the same granularity
   the PWA queue already uses. `LibrarySyncWorker` re-checks `/me` before
   draining the queue, exactly like the offline-playback progress worker.
-- **WebView local interception** (`AniLingoWebShell.shouldInterceptRequest`,
+- **WebView local interception** (`JularrWebShell.shouldInterceptRequest`,
   `LibraryRequestInterception`): a same-origin `GET` matching the
   offline-library manifest/chapter/asset path shape is answered from local
   storage when available ("local source first"), otherwise falls through to

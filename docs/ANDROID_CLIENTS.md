@@ -4,13 +4,13 @@ Status: **accepted future architecture**
 Tracking issue: **#69**  
 Decision date: **2026-09-22**
 
-This document is the implementation contract for AniLingo's first-party Android phone and Android TV clients. It intentionally fixes the product and architecture decisions before implementation so future work does not rediscover or reinterpret them.
+This document is the implementation contract for Jularr's first-party Android phone and Android TV clients. It intentionally fixes the product and architecture decisions before implementation so future work does not rediscover or reinterpret them.
 
 If an implementation detail below must change because of a platform/API constraint, change this document and #69 in the same PR. Do not silently create an alternative architecture.
 
 ## 1. Product model
 
-AniLingo remains one product with one self-hosted server.
+Jularr remains one product with one self-hosted server.
 
 The server remains authoritative for:
 
@@ -29,7 +29,7 @@ Supported front ends are:
 | Surface | Shell | Playback | Learning interaction |
 | --- | --- | --- | --- |
 | Browser | existing responsive Razor UI | web player | full |
-| Android phone | existing AniLingo web UI inside same-origin WebView | native Media3 player | full |
+| Android phone | existing Jularr web UI inside same-origin WebView | native Media3 player | full |
 | Android TV | native Compose for TV UI | native Media3 player + MediaSession | remote-optimized + handoff to phone |
 
 The phone app is deliberately **not** a second implementation of Library, Learn and Settings. The TV app is deliberately **not** a WebView wrapper.
@@ -38,12 +38,12 @@ The phone app is deliberately **not** a second implementation of Library, Learn 
 
 1. Original anime media remains read-only.
 2. No second database or client-side source of truth for learning/media state.
-3. Native clients use a versioned AniLingo API and never scrape Razor HTML.
+3. Native clients use a versioned Jularr API and never scrape Razor HTML.
 4. Device playback is preferred. Server video conversion is fallback behavior.
 5. No mandatory pre-encode step before Play.
 6. Web, phone and TV use one player vocabulary and one visual design contract.
-7. Subtitle learning uses normalized AniLingo subtitle cues, not platform-specific subtitle text parsing.
-8. TV/phone pairing uses AniLingo as the coordinator. Bluetooth, Chromecast or vendor APIs are not the state layer.
+7. Subtitle learning uses normalized Jularr subtitle cues, not platform-specific subtitle text parsing.
+8. TV/phone pairing uses Jularr as the coordinator. Bluetooth, Chromecast or vendor APIs are not the state layer.
 9. Pairing is session-scoped and does not grant general server access.
 10. Android APK signing credentials exist only in protected GitHub secrets/environment.
 11. Browser use remains fully supported when no Android app is installed.
@@ -74,18 +74,18 @@ Modules:
 
 - `app-mobile`: phone application, WebView shell, native player host, app settings.
 - `app-tv`: Android TV application, browse/detail/player surfaces, remote focus handling.
-- `core-api`: HTTP + SignalR transport for the versioned AniLingo client API.
+- `core-api`: HTTP + SignalR transport for the versioned Jularr client API.
 - `core-model`: API DTOs and shared immutable client models.
 - `core-player`: Media3/ExoPlayer integration, direct/fallback selection, audio tracks, playback state.
 - `core-session`: playback-session/pairing/companion protocol.
 - `core-design`: generated player theme values and reusable native player controls.
 - `core-tts`: provider-neutral TTS contract, resolver, system (`TextToSpeech`) provider and offline-neural model manager (docs/TTS.md).
-- `core-tts-sherpa`: optional sherpa-onnx offline-neural binding; excluded from the build unless `-PanilingoNeuralTtsEnabled=true` because it needs a manually downloaded AAR (docs/TTS.md).
+- `core-tts-sherpa`: optional sherpa-onnx offline-neural binding; excluded from the build unless `-PjularrNeuralTtsEnabled=true` because it needs a manually downloaded AAR (docs/TTS.md).
 
 Application IDs:
 
-- phone: `de.juloc.anilingo`
-- TV: `de.juloc.anilingo.tv`
+- phone: `de.juloc.jularr`
+- TV: `de.juloc.jularr.tv`
 
 Baseline:
 
@@ -130,7 +130,7 @@ POST /api/client/v1/library-roots/{rootId}/test
 POST /api/client/v1/library-roots/{rootId}/wake
 ```
 
-All endpoints except `/capabilities` use the normal AniLingo authenticated account and therefore the same profile-scoped learning state as the web UI. API authentication failures return JSON `401/403` responses instead of redirects to Razor login pages.
+All endpoints except `/capabilities` use the normal Jularr authenticated account and therefore the same profile-scoped learning state as the web UI. API authentication failures return JSON `401/403` responses instead of redirects to Razor login pages.
 
 Playback continuity endpoints (additive v1, advertised by `episodeFlow`, `continueWatching` and `playbackHistory`):
 
@@ -254,7 +254,7 @@ For both phone and TV:
 3. If supported, open the original media endpoint directly.
 4. Prefer hardware decoding when Android/Media3 provides it.
 5. Apply requested audio track.
-6. Render the learning subtitle through AniLingo's cue overlay.
+6. Render the learning subtitle through Jularr's cue overlay.
 7. If direct playback fails because of codec/container/decoder support, record the current position and track choices.
 8. Start the server HLS compatibility stream.
 9. Restore position and track choices.
@@ -307,7 +307,7 @@ The phone native player should also use MediaSession for normal Android media co
 
 The video renderer and learning subtitles are separate concerns.
 
-Media3 may expose embedded subtitle tracks for normal playback selection, but AniLingo's interactive Japanese subtitle is rendered from the server's normalized cue model so behavior is identical for:
+Media3 may expose embedded subtitle tracks for normal playback selection, but Jularr's interactive Japanese subtitle is rendered from the server's normalized cue model so behavior is identical for:
 
 - nearby SRT/ASS
 - extracted embedded text subtitles
@@ -357,7 +357,7 @@ This rule is shared by browser, phone and TV.
 
 ## 7. Player visual contract
 
-The goal is one AniLingo player, not three unrelated players with similar colors.
+The goal is one Jularr player, not three unrelated players with similar colors.
 
 Canonical design input lives under:
 
@@ -427,7 +427,7 @@ Controls auto-hide while playing after a short idle period. They remain visible 
 
 ### 8.1 Hybrid phone shell
 
-The phone application's main surface is a WebView loading only the configured AniLingo server origin.
+The phone application's main surface is a WebView loading only the configured Jularr server origin.
 
 Rules:
 
@@ -436,13 +436,13 @@ Rules:
 - TLS errors: never bypassed automatically
 - no broad `addJavascriptInterface`
 - no arbitrary remote origin inside the app shell
-- WebView cookies/session belong to the configured AniLingo origin
+- WebView cookies/session belong to the configured Jularr origin
 
-AniLingo has one canonical episode Play route. The WebView shell intercepts that same-origin route and opens the native player using the episode ID. The website still handles the route normally in a regular browser.
+Jularr has one canonical episode Play route. The WebView shell intercepts that same-origin route and opens the native player using the episode ID. The website still handles the route normally in a regular browser.
 
 When native playback closes, the user returns to the same WebView history/navigation state.
 
-The Companion screen itself remains a normal responsive AniLingo web page and therefore appears identically in a browser or inside the phone app.
+The Companion screen itself remains a normal responsive Jularr web page and therefore appears identically in a browser or inside the phone app.
 
 ### 8.2 Bounded offline playback (phone, #225)
 
@@ -619,7 +619,7 @@ There is no permanent trusted-device table in v1. A new playback session require
 - active while the player is alive
 - short disconnect/reconnect of the TV transport is tolerated
 - ends explicitly when the TV player exits or after server-determined stale-session expiry
-- ephemeral session loss after AniLingo server restart is acceptable
+- ephemeral session loss after Jularr server restart is acceptable
 - learning state and review data are unaffected because they use existing durable storage
 
 ### 10.4 Companion screen
@@ -673,11 +673,11 @@ Requirements:
 - WebView only trusts the configured server origin
 - future server authentication, if added, must integrate with this contract rather than introducing a second Android-only account system
 
-No cloud relay is required. Phone and TV both need network access to the same AniLingo server endpoint.
+No cloud relay is required. Phone and TV both need network access to the same Jularr server endpoint.
 
 ## 12. Versioning and compatibility
 
-Server, phone and TV are released from the same repository and use the AniLingo product version.
+Server, phone and TV are released from the same repository and use the Jularr product version.
 
 The native client API begins at `v1`.
 
@@ -718,12 +718,12 @@ Pull request validation:
 
 Debug APKs are workflow artifacts only.
 
-Release workflow on AniLingo release tag:
+Release workflow on Jularr release tag:
 
 1. build server as today
 2. build phone release APK
 3. build TV release APK
-4. sign both with the stable AniLingo Android release key
+4. sign both with the stable Jularr Android release key
 5. verify signatures
 6. calculate SHA-256
 7. attach APKs/checksums to the same GitHub Release
@@ -732,10 +732,10 @@ Release workflow on AniLingo release tag:
 Asset names:
 
 ```text
-AniLingo-Mobile-<version>.apk
-AniLingo-Mobile-<version>.apk.sha256
-AniLingo-TV-<version>.apk
-AniLingo-TV-<version>.apk.sha256
+Jularr-Mobile-<version>.apk
+Jularr-Mobile-<version>.apk.sha256
+Jularr-TV-<version>.apk
+Jularr-TV-<version>.apk.sha256
 ```
 
 Release secrets:
@@ -873,7 +873,7 @@ The first Android/TV milestone does **not** include:
 - WebView as the TV shell
 - Bluetooth pairing
 - Chromecast as the primary playback architecture
-- cloud relay outside the configured AniLingo server
+- cloud relay outside the configured Jularr server
 - permanent trusted-device accounts just for pairing
 - offline anime downloads (added afterwards as the bounded, explicit phone feature in §8.2)
 - copying source media into app storage outside that explicit download feature
@@ -885,7 +885,7 @@ The first Android/TV milestone does **not** include:
 
 The Android/TV milestone is complete only when all are true:
 
-- browser AniLingo still works independently
+- browser Jularr still works independently
 - phone non-player UI is the existing web frontend
 - phone player is native Media3
 - TV shell/player is native and remote-first

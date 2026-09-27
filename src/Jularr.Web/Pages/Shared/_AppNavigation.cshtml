@@ -1,0 +1,71 @@
+@using Jularr.Web.Data
+@using Jularr.Web.Features.Localization
+@using Jularr.Web.Features.Learning
+@inject AppDbContext LearningNavigationDb
+@{
+    var ui = ViewData["UiTextBundle"] as UiTextBundle ?? UiTextBundle.English;
+    var profileId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+    var learningVisible = false;
+    if (!string.IsNullOrWhiteSpace(profileId))
+    {
+        learningVisible = await new LearningConfigurationStore(LearningNavigationDb)
+            .HasAnyLearningEnabledAsync(profileId, Context.RequestAborted);
+    }
+
+    var nav = UiShellNavigation.Build(
+        Context.Request.Path,
+        learningVisible,
+        User.IsInRole(Jularr.Web.Features.Auth.AccountRoles.Owner));
+}
+<aside class="sidebar">
+    <a class="brand" href="/">
+        <partial name="_AppBrandMark" />
+    </a>
+
+    <nav class="nav-list" aria-label="@ui["nav.primaryAria"]">
+        @foreach (var item in nav.Primary)
+        {
+            <partial name="_AppNavLink" model="item" />
+        }
+    </nav>
+
+    <nav class="nav-list nav-list-secondary" aria-label="@ui["nav.secondaryAria"]">
+        @foreach (var item in nav.Secondary)
+        {
+            <partial name="_AppNavLink" model="item" />
+        }
+    </nav>
+
+    <div class="sidebar-footer">
+        <partial name="_AppAccountFooter" />
+    </div>
+</aside>
+
+<nav class="mobile-nav" aria-label="@ui["nav.primaryAria"]">
+    @foreach (var item in nav.MobilePrimary)
+    {
+        <a class="mobile-nav-item @(item.IsActive ? "active" : "")"
+           href="@item.Href"
+           aria-current="@(item.IsActive ? "page" : null)">
+            <partial name="_AppIcon" model="item.Icon" />
+            <span class="mobile-nav-label">@ui[item.LabelKey]</span>
+        </a>
+    }
+    <details class="mobile-more" data-nav-more>
+        <summary class="mobile-nav-item @(nav.MoreIsActive ? "active" : "")">
+            <partial name="_AppIcon" model="@("more")" />
+            <span class="mobile-nav-label">@ui["nav.more"]</span>
+        </summary>
+        <div class="mobile-more-sheet">
+            <div class="mobile-more-links">
+                @foreach (var item in nav.MobileMore)
+                {
+                    <partial name="_AppNavLink" model="item" />
+                }
+            </div>
+            <div class="mobile-more-footer">
+                <partial name="_AppAccountFooter" />
+            </div>
+        </div>
+    </details>
+</nav>

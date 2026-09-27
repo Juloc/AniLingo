@@ -1,10 +1,10 @@
-# AniLingo reader backgrounds
+# Jularr reader backgrounds
 
 Reader artwork is repository content. Deployment/Docker configuration does not select or enumerate images.
 
 ## Canonical root
 
-`src/AniLingo.Web/wwwroot/reader-backgrounds/`
+`src/Jularr.Web/wwwroot/reader-backgrounds/`
 
 A theme has a stable id:
 
@@ -37,7 +37,7 @@ It receives the same stable id. That means a simple image can later be upgraded 
 
 No genre or image list exists in C# or JavaScript.
 
-AniLingo scans folders and recognizes these optional files:
+Jularr scans folders and recognizes these optional files:
 
 - `page.webp`
 - `scroll.webp`
@@ -77,7 +77,7 @@ WebP is preferred. AVIF, PNG, JPG and JPEG are also accepted.
 
 The existing canonical ReaderPreferences model remains the source of truth:
 
-1. AniLingo defaults
+1. Jularr defaults
 2. genre/mood suggestion
 3. user defaults
 4. per-work override
