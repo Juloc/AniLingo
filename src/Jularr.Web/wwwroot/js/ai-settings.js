@@ -28,6 +28,7 @@
         });
     };
     provider?.addEventListener("change", syncProvider);
+    syncProvider();
 
     const model = form.querySelector("[data-ai-model]");
     const effort = form.querySelector("[data-ai-effort]");
