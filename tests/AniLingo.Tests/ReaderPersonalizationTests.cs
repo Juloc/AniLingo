@@ -207,7 +207,7 @@ public sealed class ReaderPersonalizationTests
         StringAssert.Contains(page, "data-reader-autoscroll-toggle");
         StringAssert.Contains(page, "data-reader-page-controls");
         StringAssert.Contains(page, "_ReaderSettingsPanel");
-        StringAssert.Contains(page, "Kapitel @Model.Chapter.Number");
+        StringAssert.Contains(page, "novels.read.chapterLabel");
         StringAssert.Contains(sharedSettings, "data-reader-genre-select");
         StringAssert.Contains(sharedSettings, "data-reader-background-select");
         StringAssert.Contains(sharedSettings, "data-setting-key=\"bookmarkStyle\"");

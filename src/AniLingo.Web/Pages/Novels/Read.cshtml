@@ -44,6 +44,7 @@
     return;
 }
 @{
+    var ui = Model.Ui;
     var hasTranslation = Model.TranslationEnabled && Model.Chapter.HasTranslation;
     var anchor = Model.InitialAnchor;
     var currentBookmarks = Model.Annotations.Bookmarks;
@@ -99,13 +100,13 @@
      data-furigana-enabled="@Model.ReaderSettings.FuriganaEnabled.ToString().ToLowerInvariant()"
      data-furigana-url="@Url.Page("/Novels/Read", "Furigana", new { id = Model.Chapter.Id })">
 
-    <nav class="novel-reader-toolbar" data-reader-chrome data-reader-chrome-primary aria-label="Reader controls">
+    <nav class="novel-reader-toolbar" data-reader-chrome data-reader-chrome-primary aria-label="@ui["novels.read.controlsAria"]">
         <div class="novel-toolbar-start">
             <a class="novel-icon-button"
                asp-page="/Novels/Work"
                asp-route-id="@Model.Chapter.WorkId"
-               aria-label="Zurück zum Novel"
-               title="Zurück">
+               aria-label="@ui["novels.read.backToNovel"]"
+               title="@ui["novels.read.backToNovel"]">
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                     <path d="M15 18l-6-6 6-6" />
                 </svg>
@@ -115,8 +116,8 @@
                     data-reader-chapters-toggle
                     aria-controls="novel-chapter-drawer"
                     aria-expanded="false"
-                    aria-label="Kapitel öffnen"
-                    title="Kapitel">
+                    aria-label="@ui["novels.read.openChapters"]"
+                    title="@ui["novels.read.openChapters"]">
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                     <path d="M4 6h16M4 12h16M4 18h16" />
                 </svg>
@@ -126,24 +127,24 @@
             </div>
         </div>
 
-        <div class="novel-view-switch" data-reader-language-control role="group" aria-label="Lesesprache">
-            <button type="button" data-reader-view="ja" aria-label="Japanisch">JP</button>
+        <div class="novel-view-switch" data-reader-language-control role="group" aria-label="@ui["novels.read.readingLanguageAria"]">
+            <button type="button" data-reader-view="ja" aria-label="@ui["novels.read.japaneseAria"]">@ui["novels.read.japaneseLabel"]</button>
             <button type="button"
                     data-reader-view="de"
-                    aria-label="Deutsch"
-                    disabled="@(!hasTranslation)">DE</button>
+                    aria-label="@ui["novels.read.germanAria"]"
+                    disabled="@(!hasTranslation)">@ui["novels.read.germanLabel"]</button>
             <button type="button"
                     data-reader-view="both"
-                    aria-label="Japanisch und Deutsch"
-                    disabled="@(!hasTranslation)">JP+DE</button>
+                    aria-label="@ui["novels.read.japaneseAndGermanAria"]"
+                    disabled="@(!hasTranslation)">@ui["novels.read.bothLabel"]</button>
         </div>
 
         <div class="novel-toolbar-end">
             <button class="novel-icon-button @(currentBookmarks.Count > 0 ? "has-bookmarks" : "")"
                     type="button"
                     data-reader-bookmark
-                    aria-label="Lesezeichen setzen"
-                    title="Lesezeichen setzen">
+                    aria-label="@ui["novels.read.setBookmark"]"
+                    title="@ui["novels.read.setBookmark"]">
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                     <path d="M7 4.5h10v15l-5-3-5 3z" />
                 </svg>
@@ -157,8 +158,8 @@
                     data-reader-notes-toggle
                     aria-controls="novel-reader-notes"
                     aria-expanded="false"
-                    aria-label="Lesezeichen und Markierungen"
-                    title="Lesezeichen und Markierungen">
+                    aria-label="@ui["novels.read.bookmarksAndHighlights"]"
+                    title="@ui["novels.read.bookmarksAndHighlights"]">
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                     <path d="M5 19l1-4L15.5 5.5a2.1 2.1 0 0 1 3 3L9 18zM13.5 7.5l3 3" />
                 </svg>
@@ -171,8 +172,8 @@
                     type="button"
                     data-reader-autoscroll-toggle
                     aria-pressed="false"
-                    aria-label="Auto-Scroll starten"
-                    title="Auto-Scroll">
+                    aria-label="@ui["novels.read.startAutoScrollAria"]"
+                    title="@ui["novels.read.autoScrollTitle"]">
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                     <path d="m9 7 8 5-8 5z" />
                 </svg>
@@ -182,8 +183,8 @@
                     type="button"
                     data-reader-wake-lock-toggle
                     aria-pressed="false"
-                    aria-label="Bildschirm eingeschaltet lassen"
-                    title="Bildschirm an">
+                    aria-label="@ui["novels.read.keepScreenOnAria"]"
+                    title="@ui["novels.read.screenOnTitle"]">
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                     <circle cx="12" cy="12" r="3.5" />
                     <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
@@ -194,8 +195,8 @@
                     type="button"
                     data-reader-immersive-toggle
                     aria-pressed="false"
-                    aria-label="Immersiven Lesemodus öffnen"
-                    title="Immersiv">
+                    aria-label="@ui["novels.read.openImmersiveAria"]"
+                    title="@ui["novels.read.immersiveTitle"]">
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                     <path d="M8 4H4v4M16 4h4v4M20 16v4h-4M4 16v4h4" />
                 </svg>
@@ -207,8 +208,8 @@
                         type="button"
                         data-reader-furigana-toggle
                         aria-pressed="@Model.ReaderSettings.FuriganaEnabled.ToString().ToLowerInvariant()"
-                        aria-label="Furigana ein-/ausblenden"
-                        title="Furigana">
+                        aria-label="@ui["novels.read.toggleFuriganaAria"]"
+                        title="@ui["novels.read.furiganaTitle"]">
                     <svg viewBox="0 0 24 24" aria-hidden="true">
                         <path d="M6 8h12M6 8v9M18 8v9" />
                         <path d="M9 4.5h6" stroke-width="1.4" />
@@ -220,7 +221,7 @@
         </div>
     </nav>
 
-    <aside class="novel-reader-progress-rail" aria-label="Lesefortschritt">
+    <aside class="novel-reader-progress-rail" aria-label="@ui["novels.read.progressAria"]">
         <div class="novel-reader-progress-track">
             <span class="novel-reader-progress-fill"
                   data-reader-rail-fill
@@ -234,14 +235,16 @@
     {
         <div class="novel-jump-context" data-jump-context role="status">
             <span>@anchor.AnchorText</span>
-            <button type="button" data-jump-context-dismiss aria-label="Schließen">
+            <button type="button" data-jump-context-dismiss aria-label="@ui["novels.read.close"]">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
             </button>
         </div>
     }
 
     <header class="novel-reader-title">
-        <span class="novel-chapter-label">@(Model.Chapter.IsEpubVolume ? $"Band {Model.Chapter.VolumeNumber} · " : "")Kapitel @Model.Chapter.Number</span>
+        <span class="novel-chapter-label">@(Model.Chapter.IsEpubVolume
+            ? ui.Format("novels.read.volumeChapterLabel", ("volume", Model.Chapter.VolumeNumber), ("number", Model.Chapter.Number))
+            : ui.Format("novels.read.chapterLabel", ("number", Model.Chapter.Number)))</span>
         <h1>@Model.Chapter.Title</h1>
         @if (Model.AnimeMappings.Count > 0)
         {
@@ -264,19 +267,19 @@
             {
                 <span class="novel-translation-state ready">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4 10-10" /></svg>
-                    Deutsch bereit
+                    @ui["novels.read.germanReady"]
                 </span>
             }
             else
             {
-                <span class="novel-translation-state">Deutsch noch nicht vorbereitet</span>
+                <span class="novel-translation-state">@ui["novels.read.germanNotReady"]</span>
                 @if (Model.IsOwner)
                 {
                     <form method="post"
                           asp-page-handler="Translate"
                           asp-route-id="@Model.Chapter.Id"
                           data-translate-form>
-                        <button class="novel-text-action" type="submit">Übersetzen</button>
+                        <button class="novel-text-action" type="submit">@ui["novels.read.translateButton"]</button>
                     </form>
                 }
             }
@@ -285,7 +288,9 @@
 
     <main class="novel-reader-content" data-reader-content data-reader-surface>
         <header class="novel-reader-title novel-reader-page-title">
-            <span class="novel-chapter-label">@(Model.Chapter.IsEpubVolume ? $"Band {Model.Chapter.VolumeNumber} · " : "")Kapitel @Model.Chapter.Number</span>
+            <span class="novel-chapter-label">@(Model.Chapter.IsEpubVolume
+                ? ui.Format("novels.read.volumeChapterLabel", ("volume", Model.Chapter.VolumeNumber), ("number", Model.Chapter.Number))
+                : ui.Format("novels.read.chapterLabel", ("number", Model.Chapter.Number)))</span>
             <h1>@Model.Chapter.Title</h1>
         </header>
 
@@ -347,17 +352,17 @@
          data-reader-page-controls
          data-reader-chrome
          hidden
-         aria-label="Seitennavigation">
-        <button type="button" class="novel-page-button" data-reader-page-prev aria-label="Vorherige Seite">←</button>
+         aria-label="@ui["novels.read.pageNavigationAria"]">
+        <button type="button" class="novel-page-button" data-reader-page-prev aria-label="@ui["novels.read.previousPageAria"]">←</button>
         <output data-reader-page-number>1 / 1</output>
-        <button type="button" class="novel-page-button" data-reader-page-next aria-label="Nächste Seite">→</button>
+        <button type="button" class="novel-page-button" data-reader-page-next aria-label="@ui["novels.read.nextPageAria"]">→</button>
     </nav>
-    <div class="novel-page-bookmarks" data-page-bookmarks aria-label="Lesezeichen auf dieser Seite"></div>
+    <div class="novel-page-bookmarks" data-page-bookmarks aria-label="@ui["novels.read.bookmarksAndHighlights"]"></div>
 
     <footer class="novel-reader-footer">
         @if (Model.Chapter.PreviousChapterId is Guid previousFooter)
         {
-            <a href="/Novels/Read/@previousFooter">← Vorheriges Kapitel</a>
+            <a href="/Novels/Read/@previousFooter">@ui["novels.read.previousChapterLink"]</a>
         }
         else
         {
@@ -367,7 +372,7 @@
         @if (Model.Chapter.NextChapterId is Guid nextFooter)
         {
             <a href="/Novels/Read/@nextFooter"
-               data-reader-next-chapter="@nextFooter">Nächstes Kapitel →</a>
+               data-reader-next-chapter="@nextFooter">@ui["novels.read.nextChapterLink"]</a>
         }
     </footer>
 
@@ -375,10 +380,10 @@
     <partial name="_NovelReaderNotes" model="Model" />
 
     <div class="novel-selection-menu" data-selection-menu hidden>
-        <button type="button" data-save-highlight>Markieren</button>
-        <button type="button" data-save-highlight-note>Markieren + Notiz</button>
-        <button type="button" data-save-bookmark-selection>Auswahl als Lesezeichen</button>
-        <button type="button" data-language-lookup-selection hidden>Nachschlagen</button>
+        <button type="button" data-save-highlight>@ui["novels.read.highlightAction"]</button>
+        <button type="button" data-save-highlight-note>@ui["novels.read.highlightWithNoteAction"]</button>
+        <button type="button" data-save-bookmark-selection>@ui["novels.read.bookmarkSelectionAction"]</button>
+        <button type="button" data-language-lookup-selection hidden>@ui["languageInspector.lookUp"]</button>
     </div>
 
     @foreach (var bookmark in currentBookmarks)

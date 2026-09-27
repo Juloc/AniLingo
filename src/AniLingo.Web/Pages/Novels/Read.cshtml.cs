@@ -3,6 +3,7 @@ using AniLingo.Web.Features.Auth;
 using AniLingo.Web.Features.Learning;
 using AniLingo.Web.Features.Learning.Courses;
 using AniLingo.Web.Features.Learning.LanguageAssistance;
+using AniLingo.Web.Features.Localization;
 using AniLingo.Web.Features.Novels;
 using AniLingo.Web.Features.Operations;
 using AniLingo.Web.Features.ReaderCore;
@@ -41,6 +42,7 @@ public sealed class ReadModel(
     CurrentAccountContext account,
     OperationRunner operations) : PageModel
 {
+    public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public NovelReaderChapter Chapter { get; private set; } = null!;
     public IReadOnlyList<string> JapaneseParagraphs { get; private set; } = [];
     public IReadOnlyList<string> GermanParagraphs { get; private set; } = [];
@@ -88,6 +90,7 @@ public sealed class ReadModel(
         Guid? prepare,
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         var chapter = await catalog.GetReaderChapterAsync(id, cancellationToken);
         if (chapter is null)
         {
@@ -349,12 +352,13 @@ public sealed class ReadModel(
         }
 
         var preparation = await GetPreparationAsync(prepare, cancellationToken);
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         return new JsonResult(new
         {
             ready = false,
             status = preparation?.Status.ToString().ToLowerInvariant(),
             message = preparation?.Status is OperationStatus.Failed or OperationStatus.Interrupted
-                ? "Das Kapitel konnte nicht heruntergeladen werden."
+                ? ui["novels.read.prep.failed"]
                 : null
         });
     }
@@ -391,7 +395,8 @@ public sealed class ReadModel(
                 return new JsonResult(new { status = "ready" });
             }
 
-            TempData["Status"] = "German translation is already cached.";
+            var uiCached = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+            TempData["Status"] = uiCached["novels.read.translationAlreadyCached"];
             return RedirectToPage(new { id });
         }
 
@@ -406,7 +411,8 @@ public sealed class ReadModel(
             return new JsonResult(new { status = "queued" });
         }
 
-        TempData["Status"] = "German AI translation queued.";
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+        TempData["Status"] = ui["novels.read.translationQueued"];
         return RedirectToPage(new { id });
     }
 
@@ -509,7 +515,8 @@ public sealed class ReadModel(
                 "Novel chapter source refreshed.",
                 cancellationToken);
 
-            TempData["Status"] = "Japanese source refreshed. A changed source invalidates the old translation automatically.";
+            var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+            TempData["Status"] = ui["novels.read.sourceRefreshed"];
         }
         catch (InvalidOperationException exception)
         {

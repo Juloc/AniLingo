@@ -5,19 +5,21 @@ namespace AniLingo.Tests;
 /// <summary>
 /// Guards the #185 localization migration of Books, Manga, Discover, Admin,
 /// Reading, Kana, Settings, Acquisition, Appearance, Artwork, Companion,
-/// LocalizationAdmin, LocalizationPreferences, Statistics and Library pages
-/// (including Settings/DownloadClients and Settings/Indexers): their
+/// LocalizationAdmin, LocalizationPreferences, Statistics, Library and Novels
+/// pages (including Settings/DownloadClients and Settings/Indexers): their
 /// headings and buttons must come from the UI catalog instead of being
 /// hard-coded English literals. This intentionally scans only
 /// headings/buttons (not every text node) because these feature pages
 /// legitimately render dynamic user/library content (titles, file names,
 /// provider identifiers) in many other elements.
 ///
-/// Library, Settings/DownloadClients, Settings/Indexers and the shared
-/// partials they use (_AnimeAcquisitionPanel, _ExternalProgress,
-/// _ExternalProgressState) are scanned with a wider element set that also
-/// covers &lt;h3&gt; and &lt;label&gt;, since those areas make heavy use of
-/// both.
+/// Library, Novels (including its own _NovelChapterDrawer,
+/// _NovelChapterPreparation and _NovelReaderNotes partials), Settings/DownloadClients,
+/// Settings/Indexers and the shared partials they use (_AnimeAcquisitionPanel,
+/// _ExternalProgress, _ExternalProgressState, _OfflineLibraryAction,
+/// _ReaderSettingsPanel, _LanguageInspector) are scanned with a wider element
+/// set that also covers &lt;h3&gt; and &lt;label&gt;, since those areas make
+/// heavy use of both.
 /// </summary>
 [TestClass]
 public sealed partial class FeaturePageLocalizationTests
@@ -51,7 +53,8 @@ public sealed partial class FeaturePageLocalizationTests
     [
         "Books", "Manga", "Discover", "Admin", "Reading", "Kana",
         "Settings", "Acquisition", "Appearance", "Artwork", "Companion",
-        "LocalizationAdmin", "LocalizationPreferences", "Statistics", "Library"
+        "LocalizationAdmin", "LocalizationPreferences", "Statistics", "Library",
+        "Novels"
     ];
 
     // Folders scanned with the wider h1/h2/h3/button/label element set because
@@ -59,6 +62,7 @@ public sealed partial class FeaturePageLocalizationTests
     private static readonly string[] ExtendedTagFolders =
     [
         "Library",
+        "Novels",
         Path.Combine("Settings", "DownloadClients"),
         Path.Combine("Settings", "Indexers")
     ];
@@ -69,7 +73,10 @@ public sealed partial class FeaturePageLocalizationTests
     [
         "_AnimeAcquisitionPanel.cshtml",
         "_ExternalProgress.cshtml",
-        "_ExternalProgressState.cshtml"
+        "_ExternalProgressState.cshtml",
+        "_OfflineLibraryAction.cshtml",
+        "_ReaderSettingsPanel.cshtml",
+        "_LanguageInspector.cshtml"
     ];
 
     [TestMethod]
