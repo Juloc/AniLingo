@@ -370,6 +370,8 @@
             actions.append(createLink(item.detailsUrl, "AniList", false));
         }
 
+        renderWatchlistAction(item, actions);
+
         if (!item.isLocal && addActions[item.category]) {
             renderAddAction(item, actions);
         }
