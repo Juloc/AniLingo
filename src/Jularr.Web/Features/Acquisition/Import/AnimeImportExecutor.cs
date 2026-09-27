@@ -1011,9 +1011,9 @@ public sealed class AnimeImportExecutor(
         var settings = await importSettings.LoadAsync(cancellationToken);
         return settings.ModeFor(rootId) switch
         {
-            AnimeImportMode.Copy => (AnimeImportFileAction.Copy, false),
-            AnimeImportMode.Hardlink => (AnimeImportFileAction.Hardlink, false),
-            AnimeImportMode.HardlinkOrCopy => (AnimeImportFileAction.Hardlink, true),
+            ImportMode.Copy => (AnimeImportFileAction.Copy, false),
+            ImportMode.Hardlink => (AnimeImportFileAction.Hardlink, false),
+            ImportMode.HardlinkOrCopy => (AnimeImportFileAction.Hardlink, true),
             _ => (AnimeImportFileAction.Move, false)
         };
     }

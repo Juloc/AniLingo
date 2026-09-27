@@ -18,7 +18,7 @@ public sealed class AcquisitionImportPolicyTests
     {
         await using var environment = await AnimeAcquisitionEnvironment.CreateAsync();
         await environment.SeedFrierenAsync();
-        await environment.ImportSettings.UpdateAsync(state => state with { DefaultImportMode = AnimeImportMode.Copy });
+        await environment.ImportSettings.UpdateAsync(state => state with { DefaultImportMode = ImportMode.Copy });
         await environment.StartAcquisitionAsync([new AnimeEpisodeKey(AnimeAcquisitionEnvironment.AnimeKey, 1, 2, 2)], Best);
 
         var download = environment.AddCompletedDownload(Best, $"{Best}.mkv");
@@ -34,7 +34,7 @@ public sealed class AcquisitionImportPolicyTests
     {
         await using var environment = await AnimeAcquisitionEnvironment.CreateAsync();
         await environment.SeedFrierenAsync();
-        await environment.ImportSettings.UpdateAsync(state => state with { DefaultImportMode = AnimeImportMode.Hardlink });
+        await environment.ImportSettings.UpdateAsync(state => state with { DefaultImportMode = ImportMode.Hardlink });
         await environment.StartAcquisitionAsync([new AnimeEpisodeKey(AnimeAcquisitionEnvironment.AnimeKey, 1, 2, 2)], Best);
 
         var download = environment.AddCompletedDownload(Best, $"{Best}.mkv");
@@ -52,7 +52,7 @@ public sealed class AcquisitionImportPolicyTests
     {
         await using var environment = await AnimeAcquisitionEnvironment.CreateAsync(new AlwaysCrossDeviceHardLinkCreator());
         await environment.SeedFrierenAsync();
-        await environment.ImportSettings.UpdateAsync(state => state with { DefaultImportMode = AnimeImportMode.Hardlink });
+        await environment.ImportSettings.UpdateAsync(state => state with { DefaultImportMode = ImportMode.Hardlink });
         await environment.StartAcquisitionAsync([new AnimeEpisodeKey(AnimeAcquisitionEnvironment.AnimeKey, 1, 2, 2)], Best);
 
         var download = environment.AddCompletedDownload(Best, $"{Best}.mkv");
@@ -69,7 +69,7 @@ public sealed class AcquisitionImportPolicyTests
     {
         await using var environment = await AnimeAcquisitionEnvironment.CreateAsync(new AlwaysCrossDeviceHardLinkCreator());
         await environment.SeedFrierenAsync();
-        await environment.ImportSettings.UpdateAsync(state => state with { DefaultImportMode = AnimeImportMode.HardlinkOrCopy });
+        await environment.ImportSettings.UpdateAsync(state => state with { DefaultImportMode = ImportMode.HardlinkOrCopy });
         await environment.StartAcquisitionAsync([new AnimeEpisodeKey(AnimeAcquisitionEnvironment.AnimeKey, 1, 2, 2)], Best);
 
         var download = environment.AddCompletedDownload(Best, $"{Best}.mkv");
@@ -87,8 +87,8 @@ public sealed class AcquisitionImportPolicyTests
         await environment.SeedFrierenAsync();
         await environment.ImportSettings.UpdateAsync(state => state with
         {
-            DefaultImportMode = AnimeImportMode.Move,
-            RootImportModes = new Dictionary<Guid, AnimeImportMode> { [environment.Root.Id] = AnimeImportMode.Copy }
+            DefaultImportMode = ImportMode.Move,
+            RootImportModes = new Dictionary<Guid, ImportMode> { [environment.Root.Id] = ImportMode.Copy }
         });
         await environment.StartAcquisitionAsync([new AnimeEpisodeKey(AnimeAcquisitionEnvironment.AnimeKey, 1, 2, 2)], Best);
 

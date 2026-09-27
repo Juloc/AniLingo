@@ -9,7 +9,7 @@ namespace Jularr.Web.Features.Acquisition.Import;
 /// folder are on different filesystems. Plain Hardlink never falls back, so a cross-filesystem
 /// import fails with a clear reason instead of silently copying.
 /// </summary>
-public enum AnimeImportMode
+public enum ImportMode
 {
     Move,
     Copy,
@@ -35,8 +35,8 @@ public sealed record RemotePathMapping(string RemotePrefix, string LocalPrefix);
 /// </summary>
 public sealed record AnimeImportSettingsState(
     int Version,
-    AnimeImportMode DefaultImportMode,
-    Dictionary<Guid, AnimeImportMode> RootImportModes,
+    ImportMode DefaultImportMode,
+    Dictionary<Guid, ImportMode> RootImportModes,
     List<RemotePathMapping> RemotePathMappings)
 {
     // Post-import step for imported video: a lossless container remux when it widens browser
@@ -44,9 +44,9 @@ public sealed record AnimeImportSettingsState(
     public LosslessPlaybackOptimizationMode PlaybackOptimization { get; init; } = LosslessPlaybackOptimizationMode.Off;
 
     public static AnimeImportSettingsState Empty() =>
-        new(1, AnimeImportMode.Move, [], []);
+        new(1, ImportMode.Move, [], []);
 
-    public AnimeImportMode ModeFor(Guid? rootId) =>
+    public ImportMode ModeFor(Guid? rootId) =>
         rootId is { } id && RootImportModes.TryGetValue(id, out var mode) ? mode : DefaultImportMode;
 
     /// <summary>
