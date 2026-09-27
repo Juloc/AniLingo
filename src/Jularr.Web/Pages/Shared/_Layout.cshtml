@@ -20,7 +20,7 @@
     ViewData["AppBuildVersion"] = AppBuildInfo.Version;
 }
 <!DOCTYPE html>
-<html lang="@ui.Locale" dir="@ui.Direction" data-app-theme="@appTheme" data-accent="@palette.Seed">
+<html lang="@ui.Locale" dir="@ui.Direction" data-app-theme="@appTheme" data-accent="@palette.Seed" data-sakura="@appearance.SakuraMode">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
@@ -35,9 +35,11 @@
     <link rel="icon" href="~/brand/jularr-mark.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" sizes="180x180" href="~/icons/apple-touch-icon.png" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/sakura.css" asp-append-version="true" />
     <style id="app-accent-palette">@Html.Raw(palette.ToStyleSheet())</style>
     <script type="application/json" id="app-shell-text">@Json.Serialize(ui.WithPrefix("pwa."))</script>
     <script src="~/js/app-theme.js" asp-append-version="true" defer></script>
+    <script src="~/js/sakura.js" asp-append-version="true" defer></script>
     <script src="~/js/pwa.js" asp-append-version="true" defer></script>
     @if (isAuthenticated)
     {
