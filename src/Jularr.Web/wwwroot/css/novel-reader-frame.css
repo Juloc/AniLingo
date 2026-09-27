@@ -215,6 +215,22 @@
     background-image: none;
 }
 
+/* Scroll mode: the same paper, with margins so the text does not run into its edges. */
+.novel-reader-shell.reader-frame:not([data-reading-mode="paged"]) .novel-reader-content {
+    padding: 1.4rem clamp(1rem, 3vw, 2.4rem) 2.2rem;
+}
+
+.novel-reader-shell.reader-frame:not([data-reading-mode="paged"]):not([data-chapter-style="minimal"]) .novel-reader-content {
+    background-image:
+        linear-gradient(color-mix(in srgb, var(--reader-paper) 55%, transparent) 0 0),
+        url("/brand/washi.webp");
+    /* An opaque base: the texture multiplies onto the paper, never onto the backdrop. */
+    background-color: color-mix(in srgb, var(--reader-paper) 94%, transparent);
+    background-size: 100% 100%, 900px auto;
+    background-repeat: no-repeat, repeat;
+    background-blend-mode: normal, multiply;
+}
+
 /* Two pages side by side get a fold between them instead of one wide sheet. */
 @media (min-width: 761px) {
     .novel-reader-shell.reader-frame[data-reading-mode="paged"][data-two-page="true"]:not([data-chapter-style="minimal"]) .novel-reader-content {

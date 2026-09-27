@@ -706,7 +706,15 @@
             if (anchor) goToPage(pageOfAnchor(anchor), false);
             syncPageState();
         });
+
+        // Web fonts and illustrations can finish after the first layout and change how
+        // many columns the chapter needs; count again then (the page stays where it is).
+        document.fonts?.ready.then(syncPageState).catch(() => {});
     };
+
+    content.addEventListener("load", event => {
+        if (event.target instanceof HTMLImageElement) syncPageState();
+    }, true);
 
     const teardownPaged = anchor => {
         settledPagedAnchor = null;
