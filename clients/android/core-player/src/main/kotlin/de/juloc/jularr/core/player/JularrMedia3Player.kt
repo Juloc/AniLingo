@@ -12,6 +12,7 @@ import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaSession
+import de.juloc.jularr.core.model.PlayerEpisode
 import java.io.Closeable
 
 data class JularrPlaybackMetadata(
@@ -20,6 +21,15 @@ data class JularrPlaybackMetadata(
     val seriesTitle: String? = null,
     val episodeLabel: String? = null,
 )
+
+fun PlayerEpisode.toPlaybackMetadata(): JularrPlaybackMetadata =
+    JularrPlaybackMetadata(
+        mediaId = id,
+        title = title,
+        seriesTitle = animeTitle,
+        episodeLabel = "S${seasonNumber.toString().padStart(2, '0')} " +
+            "E${number.toString().padStart(2, '0')}",
+    )
 
 @UnstableApi
 class JularrMedia3Player(context: Context) : Closeable {
