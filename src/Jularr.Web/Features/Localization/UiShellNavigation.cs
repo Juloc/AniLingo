@@ -130,7 +130,7 @@ public static class UiNavigationCatalog
     /// The Devices page belongs to #518. Set this once <c>Pages/Profile/Devices.cshtml</c>
     /// exists; a test keeps the two in sync.
     /// </summary>
-    public static readonly bool DevicesPageAvailable = false;
+    public static readonly bool DevicesPageAvailable = true;
 
     public static readonly UiNavigationEntry ProfileDevices =
         new("profile-devices", "nav.devices", "/Profile/Devices", "devices");
