@@ -1,0 +1,194 @@
+@page "/Books/Library/{id:guid}"
+@model Jularr.Web.Pages.Books.LibraryModel
+@{
+    var ui = Model.Ui;
+    ViewData["Title"] = Model.Book.Work.MetadataTitle ?? Model.Book.Work.Title;
+    var title = Model.Book.Work.MetadataTitle ?? Model.Book.Work.Title;
+    var translatedCount = Model.Book.Chapters.Count(x => x.HasTranslation);
+    var firstChapter = Model.Book.Progress?.ChapterId
+        ?? Model.Book.Chapters.FirstOrDefault()?.Id;
+}
+@section Head {
+    <link rel="stylesheet" href="~/css/books.css" asp-append-version="true" />
+}
+
+<a class="books-back" href="/Books?lang=@Model.TargetLanguage">← @ui["nav.books"]</a>
+
+@if (TempData["Status"] is string status)
+{
+    <div class="books-message">@status</div>
+}
+
+<header class="book-detail-header book-library-header">
+    <div class="book-detail-cover">
+        @if (!string.IsNullOrWhiteSpace(Model.Book.Work.CoverImageUrl))
+        {
+            <img src="@Model.Book.Work.CoverImageUrl"
+                 alt=""
+                 referrerpolicy="no-referrer" />
+        }
+        else
+        {
+            <span>B</span>
+        }
+    </div>
+
+    <div class="book-detail-copy">
+        <h1>@title</h1>
+        @if (!string.IsNullOrWhiteSpace(Model.Book.Work.Author))
+        {
+            <p class="book-author">@Model.Book.Work.Author</p>
+        }
+        @if (!string.IsNullOrWhiteSpace(Model.Book.Work.Description))
+        {
+            <p class="book-summary">@Model.Book.Work.Description</p>
+        }
+        @if (Model.Book.Subjects.Count > 0)
+        {
+            <div class="book-tags">
+                @foreach (var genre in Model.Book.Subjects.Take(8))
+                {
+                    <span>@genre</span>
+                }
+            </div>
+        }
+
+        <div class="book-language-row">
+            <form method="get" class="book-language-form">
+                <label>
+                    @ui["books.library.readingLanguage"]
+                    <input type="text"
+                           name="lang"
+                           value="@Model.TargetLanguage"
+                           list="book-language-options"
+                           maxlength="35"
+                           spellcheck="false"
+                           autocapitalize="none"
+                           aria-describedby="book-language-help" />
+                </label>
+                <datalist id="book-language-options">
+                    @foreach (var language in Jularr.Web.Features.Books.BookLanguageCatalog.Supported)
+                    {
+                        <option value="@language.Key">@language.Value</option>
+                    }
+                </datalist>
+                <button class="button" type="submit">@ui["books.library.useLanguage"]</button>
+                <small id="book-language-help">
+                    @ui["books.library.languageHelpPrefix"] <code>ro</code>, <code>sv</code> @ui["books.library.languageHelpConjunction"] <code>id-modern</code>.
+                </small>
+            </form>
+
+            @if (!Model.SourceIsTarget && Model.TranslationEnabled)
+            {
+                <form method="post"
+                      asp-page-handler="TranslateBook"
+                      asp-route-id="@Model.Book.Work.Id">
+                    <input type="hidden" name="lang" value="@Model.TargetLanguage" />
+                    <button class="button button-primary" type="submit">
+                        @ui.Format("books.library.translateWholeBook", ("language", Jularr.Web.Features.Books.BookLanguageCatalog.GetName(Model.TargetLanguage)))
+                    </button>
+                </form>
+            }
+        </div>
+
+        @if (Model.SourceIsTarget || Model.TranslationEnabled)
+        {
+            <div class="book-translation-summary">
+                @if (Model.SourceIsTarget)
+                {
+                    <span>@ui["books.library.originalLanguageSelected"]</span>
+                }
+                else
+                {
+                    <span>@ui.Format("books.library.chaptersTranslated", ("translated", translatedCount), ("total", Model.Book.Chapters.Count))</span>
+                    <div class="book-card-progress">
+                        <span style="width:@(Model.Book.Chapters.Count == 0 ? 0 : translatedCount * 100 / Model.Book.Chapters.Count)%"></span>
+                    </div>
+                }
+            </div>
+        }
+
+        <div class="book-actions">
+            @if (firstChapter is Guid chapterId)
+            {
+                <a class="button button-primary"
+                   href="/Books/Read/@chapterId?lang=@Model.TargetLanguage">
+                    @(Model.Book.Progress is null ? ui["books.library.startReading"] : ui["reader.continueReading"])
+                </a>
+            }
+            <a class="button"
+               href="@Url.Page("/Settings/LearningScope", new {
+                   mediaType = Jularr.Web.Features.Learning.LearningMediaType.Book,
+                   scope = "work",
+                   workKey = Model.Book.Work.Id.ToString(),
+                   label = title,
+                   returnUrl = $"/Books/Library/{Model.Book.Work.Id}?lang={Model.TargetLanguage}"
+               })">
+                @ui["books.library.languageToolsLearning"]
+            </a>
+        </div>
+
+        <partial name="_OfflineLibraryAction" model="new Jularr.Web.Features.OfflineLibrary.OfflineLibraryActionViewModel(Model.Book.Work.Id, title)" />
+    </div>
+</header>
+
+@if (Model.IsOwner)
+{
+    <details class="book-library-management">
+        <summary>@ui["books.library.manageBook"]</summary>
+        <div class="book-library-management-actions">
+            @if (!Model.SourceIsTarget && Model.TranslationEnabled)
+            {
+                <form method="post"
+                      asp-page-handler="Regenerate"
+                      asp-route-id="@Model.Book.Work.Id"
+                      onsubmit="return confirm('@ui.Format("books.library.confirmRegenerate", ("language", Jularr.Web.Features.Books.BookLanguageCatalog.GetName(Model.TargetLanguage)))');">
+                    <input type="hidden" name="lang" value="@Model.TargetLanguage" />
+                    <button class="button" type="submit">
+                        @ui.Format("books.library.regenerateButton", ("language", Jularr.Web.Features.Books.BookLanguageCatalog.GetName(Model.TargetLanguage)))
+                    </button>
+                </form>
+            }
+
+            <form method="post"
+                  asp-page-handler="Delete"
+                  asp-route-id="@Model.Book.Work.Id"
+                  onsubmit="return confirm('@ui["books.library.confirmRemove"]');">
+                <button class="button book-danger-button" type="submit">
+                    @ui["books.library.removeButton"]
+                </button>
+            </form>
+        </div>
+        <p>
+            @ui["books.library.manageNote"]
+        </p>
+    </details>
+}
+
+<section class="book-chapter-list">
+    <div class="books-results-heading">
+        <strong>@ui["books.library.chaptersHeading"]</strong>
+        <span>@Model.Book.Chapters.Count</span>
+    </div>
+
+    @foreach (var chapter in Model.Book.Chapters)
+    {
+        <a class="book-chapter-row"
+           href="/Books/Read/@chapter.Id?lang=@Model.TargetLanguage">
+            <span class="book-chapter-number">@chapter.Number</span>
+            <strong>@chapter.Title</strong>
+            @if (Model.SourceIsTarget)
+            {
+                <small>@ui["books.read.original"]</small>
+            }
+            else if (Model.TranslationEnabled && chapter.HasTranslation)
+            {
+                <small class="ready">@ui["books.library.translated"]</small>
+            }
+            else
+            {
+                <small>@ui["books.library.originalAvailable"]</small>
+            }
+        </a>
+    }
+</section>

@@ -1,6 +1,6 @@
-# AniLingo localization architecture
+# Jularr localization architecture
 
-AniLingo uses one central UI translation catalog. UI language is independent from content language and from Learning courses.
+Jularr uses one central UI translation catalog. UI language is independent from content language and from Learning courses.
 
 This document is durable architecture guidance. GitHub Issues remain the backlog and source of task state; do not create a separate AGENDA.md or localization backlog file.
 
@@ -85,7 +85,7 @@ Placeholder count: current due review count
 
 Localization and learning languages are separate concepts.
 
-A user may use AniLingo UI in German, Japanese → Indonesian as one Learning course, German → Indonesian as another Learning course, or no Learning system at all.
+A user may use Jularr UI in German, Japanese → Indonesian as one Learning course, German → Indonesian as another Learning course, or no Learning system at all.
 
 Learning capability visibility is resolved independently through the Learning v2 profile → media type → work/series → content inheritance hierarchy tracked in issue #226.
 
@@ -110,7 +110,7 @@ Migrated surfaces: shared navigation and layout, setup/sign-in/registration, the
 
 ## Shipping additional locales
 
-AniLingo ships only the English source resources. German (de), Indonesian (id) or any other locale is not seeded into the database, because shipped values would be a second translation source next to the Owner-managed catalog and would bypass the Generated/Reviewed/Manual lifecycle.
+Jularr ships only the English source resources. German (de), Indonesian (id) or any other locale is not seeded into the database, because shipped values would be a second translation source next to the Owner-managed catalog and would bypass the Generated/Reviewed/Manual lifecycle.
 
 To offer a locale, the Owner:
 
