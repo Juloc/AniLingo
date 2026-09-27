@@ -129,19 +129,6 @@ Runtime paths are fixed and intentionally simple:
 - `/media/anime` is the optional conventional read-only anime library mount; Jularr also starts without it.
 - Anime artwork lives beside the media: `poster.*`, `fanart.*` and `banner.*` in the series folder, season posters in the season's own folder (or `season01-poster.*` / `season-specials-poster.*` in the series folder). `/data/cache/artwork` only holds rebuildable WebP derivatives. On a writable library Jularr persists Sonarr and AniList artwork there once the anime is in the library and moves artwork from the former `/data/artwork/anime` store beside the media; it never replaces artwork files it did not write.
 
-The container runs as the non-root `app` user (UID/GID `1654:1654`) and needs no privileged mode or extra Linux capabilities. It writes to `/data` and `/tmp`, plus any media path you let it change: library roots it imports downloads into, renames files in or stores artwork beside media, and the completed downloads when the import mode is **Move** or **Hardlink**. Those paths must be writable by UID `1654` (directly or through a `group_add` group). Read-only media mounts only need to be readable by it. A new named volume gets the right ownership automatically.
-
-**Upgrading from an image that still ran as root:** the existing `/data` volume is owned by root. Jularr refuses to start and prints the exact fix until ownership is handed over once:
-
-```bash
-docker compose stop jularr
-docker volume ls   # the data volume, e.g. <project>_anilingo-data
-docker run --rm --user 0:0 --entrypoint chown -v <project>_anilingo-data:/data ghcr.io/juloc/jularr:latest -R 1654:1654 /data
-docker compose up -d
-```
-
-For a bind mount, pass the host path instead of the volume name. Details are in [docs/ADMIN_OPERATIONS.md](docs/ADMIN_OPERATIONS.md#non-root-container-runtime-and-data-ownership).
-
 For an existing Docker stack, replace `default` with that stack's network if needed. No connection string, database password, media environment variable or second service is required.
 
 ## AniList metadata

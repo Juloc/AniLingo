@@ -18,8 +18,8 @@
             @if (Model.IsOwner)
             {
                 <a href="/Books/Sources">@ui["books.sources.title"]</a>
-                <a href="/Books/Integrations">@ui["books.index.acquisitionLink"]</a>
             }
+            <a href="/Books/Integrations">@ui["books.index.integrationsLink"]</a>
         </nav>
     </div>
     <div class="books-hero-actions">
@@ -35,11 +35,6 @@
         }
     </div>
 </header>
-
-@if (TempData["Status"] is string status)
-{
-    <div class="books-message">@status</div>
-}
 
 <section class="books-library-section" data-books-library data-offline-library-filter>
     <div class="books-toolbar">

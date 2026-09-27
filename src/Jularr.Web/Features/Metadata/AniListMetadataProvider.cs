@@ -412,13 +412,17 @@ public sealed class AniListMetadataProvider(
         return result;
     }
 
-    public async Task<IReadOnlyList<AniListMediaRelation>> GetRelatedMediaAsync(
+    /// <summary>
+    /// The anime and its related AniList entries in one request. Adult entries are skipped; the
+    /// entry itself is null when AniList does not return it.
+    /// </summary>
+    public async Task<AniListRelatedMedia> GetRelatedMediaAsync(
         string externalId,
         CancellationToken cancellationToken)
     {
         if (!int.TryParse(externalId, out var id) || id <= 0)
         {
-            return [];
+            return new AniListRelatedMedia(null, []);
         }
 
         var response = await SendAsync(
@@ -429,13 +433,18 @@ public sealed class AniListMetadataProvider(
         using var document = JsonDocument.Parse(response);
         if (!document.RootElement.TryGetProperty("data", out var data) ||
             !data.TryGetProperty("Media", out var media) ||
-            media.ValueKind != JsonValueKind.Object ||
-            !media.TryGetProperty("relations", out var relations) ||
+            media.ValueKind != JsonValueKind.Object)
+        {
+            return new AniListRelatedMedia(null, []);
+        }
+
+        var self = ReadMediaSummary(media, "ANIME");
+        if (!media.TryGetProperty("relations", out var relations) ||
             relations.ValueKind != JsonValueKind.Object ||
             !relations.TryGetProperty("edges", out var edges) ||
             edges.ValueKind != JsonValueKind.Array)
         {
-            return [];
+            return new AniListRelatedMedia(self, []);
         }
 
         var result = new List<AniListMediaRelation>();
@@ -445,52 +454,54 @@ public sealed class AniListMetadataProvider(
             if (string.IsNullOrWhiteSpace(relationType) ||
                 !edge.TryGetProperty("node", out var node) ||
                 node.ValueKind != JsonValueKind.Object ||
-                (node.TryGetProperty("isAdult", out var adult) && adult.ValueKind == JsonValueKind.True) ||
-                !node.TryGetProperty("id", out var idElement) ||
-                !idElement.TryGetInt32(out var relatedId))
+                ReadMediaSummary(node, ReadString(node, "type")) is not { } related)
             {
                 continue;
             }
 
-            var mediaType = ReadString(node, "type");
-            if (mediaType is not ("ANIME" or "MANGA"))
-            {
-                continue;
-            }
-
-            var titleObject = node.TryGetProperty("title", out var titleElement)
-                ? titleElement
-                : default;
-            var romaji = ReadString(titleObject, "romaji");
-            var english = ReadString(titleObject, "english");
-            var native = ReadString(titleObject, "native");
-            var title = AnimeMetadataTitles.Choose(
-                english,
-                romaji,
-                native,
-                $"AniList {relatedId}");
-
-            string? cover = null;
-            if (node.TryGetProperty("coverImage", out var coverElement) &&
-                coverElement.ValueKind == JsonValueKind.Object)
-            {
-                cover = ReadString(coverElement, "extraLarge")
-                    ?? ReadString(coverElement, "large");
-            }
-
-            result.Add(new AniListMediaRelation(
-                relationType,
-                mediaType,
-                relatedId.ToString(),
-                title,
-                native,
-                cover,
-                ReadString(node, "format"),
-                ReadString(node, "status"),
-                ReadInt(node, "seasonYear")));
+            result.Add(new AniListMediaRelation(relationType, related));
         }
 
-        return result;
+        return new AniListRelatedMedia(self, result);
+    }
+
+    private static AniListMediaSummary? ReadMediaSummary(JsonElement node, string? mediaType)
+    {
+        if (mediaType is not ("ANIME" or "MANGA") ||
+            (node.TryGetProperty("isAdult", out var adult) && adult.ValueKind == JsonValueKind.True) ||
+            !node.TryGetProperty("id", out var idElement) ||
+            !idElement.TryGetInt32(out var id))
+        {
+            return null;
+        }
+
+        var titleObject = node.TryGetProperty("title", out var titleElement)
+            ? titleElement
+            : default;
+        var native = ReadString(titleObject, "native");
+        var title = AnimeMetadataTitles.Choose(
+            ReadString(titleObject, "english"),
+            ReadString(titleObject, "romaji"),
+            native,
+            $"AniList {id}");
+
+        string? cover = null;
+        if (node.TryGetProperty("coverImage", out var coverElement) &&
+            coverElement.ValueKind == JsonValueKind.Object)
+        {
+            cover = ReadString(coverElement, "extraLarge")
+                ?? ReadString(coverElement, "large");
+        }
+
+        return new AniListMediaSummary(
+            mediaType,
+            id.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            title,
+            native,
+            cover,
+            ReadString(node, "format"),
+            ReadString(node, "status"),
+            ReadInt(node, "seasonYear"));
     }
 
     private async Task<string> SendAsync(

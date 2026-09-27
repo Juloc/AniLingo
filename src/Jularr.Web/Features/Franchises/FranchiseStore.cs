@@ -7,18 +7,19 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Web.Features.Franchises;
 
+/// <summary>
+/// Shared franchise data (tables Franchises and FranchiseMembers). Everything stored here comes
+/// from the provider through <see cref="FranchiseService"/>; browser input only ever names the
+/// seed's identity.
+/// </summary>
 public sealed class FranchiseStore(AppDbContext db)
 {
-    public async Task<Guid> GetOrCreateBySeedAsync(WatchlistDraft seed, CancellationToken cancellationToken)
+    /// <summary>
+    /// The franchise grown from <paramref name="seed"/>, created without a title or members when
+    /// it does not exist yet. The next refresh reads both from the provider.
+    /// </summary>
+    public async Task<Guid> GetOrCreateBySeedAsync(WatchlistIdentity seed, CancellationToken cancellationToken)
     {
-        var existing = await FindBySeedAsync(seed.Identity, cancellationToken);
-        if (existing is { } id)
-        {
-            await UpsertMemberAsync(id, seed, null, true, cancellationToken);
-            return id;
-        }
-
-        var franchiseId = Guid.NewGuid();
         await WithConnectionAsync(async connection =>
         {
             await using var command = connection.CreateCommand();
@@ -27,21 +28,19 @@ public sealed class FranchiseStore(AppDbContext db)
                 INSERT INTO "Franchises"
                     ("Id", "Title", "SeedMediaType", "SeedProvider", "SeedExternalId", "CreatedAtUtc", "UpdatedAtUtc")
                 VALUES
-                    (@id, @title, @mediaType, @provider, @externalId, @created, @updated);
+                    (@id, '', @mediaType, @provider, @externalId, @created, @created)
+                ON CONFLICT ("SeedMediaType", "SeedProvider", "SeedExternalId") DO NOTHING;
                 """;
-            var now = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture);
-            Add(command, "@id", franchiseId.ToString("D"));
-            Add(command, "@title", seed.Title.Trim());
-            Add(command, "@mediaType", WatchlistMediaTypeNames.ToStorage(seed.Identity.MediaType));
-            Add(command, "@provider", seed.Identity.ProviderKey);
-            Add(command, "@externalId", seed.Identity.ExternalKey);
-            Add(command, "@created", now);
-            Add(command, "@updated", now);
+            Add(command, "@id", Guid.NewGuid().ToString("D"));
+            Add(command, "@mediaType", WatchlistMediaTypeNames.ToStorage(seed.MediaType));
+            Add(command, "@provider", seed.ProviderKey);
+            Add(command, "@externalId", seed.ExternalKey);
+            Add(command, "@created", Timestamp(DateTime.UtcNow));
             await command.ExecuteNonQueryAsync(cancellationToken);
         }, cancellationToken);
 
-        await UpsertMemberAsync(franchiseId, seed, null, true, cancellationToken);
-        return franchiseId;
+        return await FindBySeedAsync(seed, cancellationToken)
+            ?? throw new InvalidOperationException("The franchise could not be created.");
     }
 
     public Task FollowAsync(string profileId, Guid franchiseId, CancellationToken cancellationToken) =>
@@ -74,6 +73,10 @@ public sealed class FranchiseStore(AppDbContext db)
             await command.ExecuteNonQueryAsync(cancellationToken);
         }, cancellationToken);
 
+    /// <summary>
+    /// Stores provider data of one member. The relation a member was first found through is kept
+    /// (the seed has none), so a later refresh from another member does not relabel it.
+    /// </summary>
     public Task UpsertMemberAsync(
         Guid franchiseId,
         WatchlistDraft media,
@@ -87,22 +90,21 @@ public sealed class FranchiseStore(AppDbContext db)
                 """
                 INSERT INTO "FranchiseMembers"
                     ("FranchiseId", "MediaType", "Provider", "ExternalId", "Title", "NativeTitle",
-                     "CoverImageUrl", "Format", "Status", "Year", "LocalMediaId", "DetailsUrl",
-                     "RelationType", "IsSeed", "UpdatedAtUtc")
+                     "CoverImageUrl", "Format", "Status", "Year", "RelationType", "IsSeed", "UpdatedAtUtc")
                 VALUES
                     (@franchise, @mediaType, @provider, @externalId, @title, @nativeTitle,
-                     @cover, @format, @status, @year, @localMediaId, @detailsUrl,
-                     @relationType, @isSeed, @updated)
+                     @cover, @format, @status, @year, @relationType, @isSeed, @updated)
                 ON CONFLICT ("FranchiseId", "MediaType", "Provider", "ExternalId") DO UPDATE SET
                     "Title" = excluded."Title",
-                    "NativeTitle" = excluded."NativeTitle",
-                    "CoverImageUrl" = excluded."CoverImageUrl",
-                    "Format" = excluded."Format",
-                    "Status" = excluded."Status",
-                    "Year" = excluded."Year",
-                    "LocalMediaId" = COALESCE(excluded."LocalMediaId", "FranchiseMembers"."LocalMediaId"),
-                    "DetailsUrl" = COALESCE(excluded."DetailsUrl", "FranchiseMembers"."DetailsUrl"),
-                    "RelationType" = COALESCE(excluded."RelationType", "FranchiseMembers"."RelationType"),
+                    "NativeTitle" = COALESCE(excluded."NativeTitle", "FranchiseMembers"."NativeTitle"),
+                    "CoverImageUrl" = COALESCE(excluded."CoverImageUrl", "FranchiseMembers"."CoverImageUrl"),
+                    "Format" = COALESCE(excluded."Format", "FranchiseMembers"."Format"),
+                    "Status" = COALESCE(excluded."Status", "FranchiseMembers"."Status"),
+                    "Year" = COALESCE(excluded."Year", "FranchiseMembers"."Year"),
+                    "RelationType" = CASE
+                        WHEN "FranchiseMembers"."IsSeed" = 1 OR excluded."IsSeed" = 1 THEN NULL
+                        ELSE COALESCE("FranchiseMembers"."RelationType", excluded."RelationType")
+                    END,
                     "IsSeed" = CASE WHEN excluded."IsSeed" = 1 THEN 1 ELSE "FranchiseMembers"."IsSeed" END,
                     "UpdatedAtUtc" = excluded."UpdatedAtUtc";
                 """;
@@ -116,11 +118,9 @@ public sealed class FranchiseStore(AppDbContext db)
             Add(command, "@format", Clean(media.Format));
             Add(command, "@status", Clean(media.Status));
             Add(command, "@year", media.Year);
-            Add(command, "@localMediaId", media.LocalMediaId?.ToString("D"));
-            Add(command, "@detailsUrl", Clean(media.DetailsUrl));
-            Add(command, "@relationType", Clean(relationType));
+            Add(command, "@relationType", isSeed ? null : Clean(relationType));
             Add(command, "@isSeed", isSeed ? 1 : 0);
-            Add(command, "@updated", DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture));
+            Add(command, "@updated", Timestamp(DateTime.UtcNow));
             await command.ExecuteNonQueryAsync(cancellationToken);
         }, cancellationToken);
 
@@ -131,8 +131,8 @@ public sealed class FranchiseStore(AppDbContext db)
             command.CommandText =
                 """
                 SELECT "MediaType", "Provider", "ExternalId", "Title", "NativeTitle",
-                       "CoverImageUrl", "Format", "Status", "Year", "LocalMediaId",
-                       "DetailsUrl", "RelationType", "IsSeed"
+                       "CoverImageUrl", "Format", "Status", "Year",
+                       "RelationType", "IsSeed", "RelationsCheckedAtUtc"
                 FROM "FranchiseMembers"
                 WHERE "FranchiseId" = @franchise
                 ORDER BY "IsSeed" DESC, "Title";
@@ -145,9 +145,6 @@ public sealed class FranchiseStore(AppDbContext db)
                 var type = WatchlistMediaTypeNames.Parse(reader.GetString(0));
                 if (type is null) continue;
 
-                Guid? localId = reader.IsDBNull(9) || !Guid.TryParse(reader.GetString(9), out var parsed)
-                    ? null
-                    : parsed;
                 var draft = new WatchlistDraft(
                     new WatchlistIdentity(type.Value, reader.GetString(1), reader.GetString(2)),
                     reader.GetString(3),
@@ -155,14 +152,131 @@ public sealed class FranchiseStore(AppDbContext db)
                     reader.IsDBNull(5) ? null : reader.GetString(5),
                     reader.IsDBNull(6) ? null : reader.GetString(6),
                     reader.IsDBNull(7) ? null : reader.GetString(7),
-                    reader.IsDBNull(8) ? null : reader.GetInt32(8),
-                    localId,
-                    reader.IsDBNull(10) ? null : reader.GetString(10));
+                    reader.IsDBNull(8) ? null : reader.GetInt32(8));
                 result.Add(new FranchiseMember(
                     franchiseId,
                     draft,
-                    reader.IsDBNull(11) ? null : reader.GetString(11),
-                    reader.GetInt32(12) != 0));
+                    reader.IsDBNull(9) ? null : reader.GetString(9),
+                    reader.GetInt32(10) != 0,
+                    ParseTimestamp(reader, 11)));
+            }
+
+            return result.ToArray();
+        }, cancellationToken);
+
+    public Task MarkMemberCheckedAsync(
+        Guid franchiseId,
+        WatchlistIdentity member,
+        DateTime checkedAtUtc,
+        CancellationToken cancellationToken) =>
+        WithConnectionAsync(async connection =>
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText =
+                """
+                UPDATE "FranchiseMembers"
+                SET "RelationsCheckedAtUtc" = @checked
+                WHERE "FranchiseId" = @franchise
+                  AND "MediaType" = @mediaType
+                  AND "Provider" = @provider
+                  AND "ExternalId" = @externalId;
+                """;
+            Add(command, "@checked", Timestamp(checkedAtUtc));
+            Add(command, "@franchise", franchiseId.ToString("D"));
+            Add(command, "@mediaType", WatchlistMediaTypeNames.ToStorage(member.MediaType));
+            Add(command, "@provider", member.ProviderKey);
+            Add(command, "@externalId", member.ExternalKey);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }, cancellationToken);
+
+    public Task SetTitleAsync(Guid franchiseId, string title, CancellationToken cancellationToken) =>
+        WithConnectionAsync(async connection =>
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText =
+                """
+                UPDATE "Franchises"
+                SET "Title" = @title, "UpdatedAtUtc" = @updated
+                WHERE "Id" = @id AND "Title" <> @title;
+                """;
+            Add(command, "@title", title.Trim());
+            Add(command, "@updated", Timestamp(DateTime.UtcNow));
+            Add(command, "@id", franchiseId.ToString("D"));
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }, cancellationToken);
+
+    /// <summary>When a full refresh of the franchise was last asked for, if ever.</summary>
+    public async Task<DateTime?> GetRefreshRequestedAsync(Guid franchiseId, CancellationToken cancellationToken) =>
+        await WithConnectionAsync(async connection =>
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = """SELECT "RefreshRequestedAtUtc" FROM "Franchises" WHERE "Id" = @id;""";
+            Add(command, "@id", franchiseId.ToString("D"));
+            return await command.ExecuteScalarAsync(cancellationToken) is string text ? ParseTimestamp(text) : null;
+        }, cancellationToken);
+
+    /// <summary>
+    /// Asks for a full refresh unless one was asked for, or finished, after <paramref name="cooldownStartUtc"/>.
+    /// Returns whether the request was recorded.
+    /// </summary>
+    public async Task<bool> TryRequestRefreshAsync(
+        Guid franchiseId,
+        DateTime nowUtc,
+        DateTime cooldownStartUtc,
+        CancellationToken cancellationToken) =>
+        await WithConnectionAsync(async connection =>
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText =
+                """
+                UPDATE "Franchises"
+                SET "RefreshRequestedAtUtc" = @now
+                WHERE "Id" = @id
+                  AND COALESCE("RefreshRequestedAtUtc", '') < @cooldown
+                  AND COALESCE("LastRefreshedAtUtc", '') < @cooldown;
+                """;
+            Add(command, "@now", Timestamp(nowUtc));
+            Add(command, "@cooldown", Timestamp(cooldownStartUtc));
+            Add(command, "@id", franchiseId.ToString("D"));
+            return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+        }, cancellationToken);
+
+    /// <summary>
+    /// Followed franchises with work to do: no seed member yet, or a provider member whose
+    /// relations were never read, were read before the last refresh request, or before
+    /// <paramref name="recheckBeforeUtc"/>. Least recently refreshed first.
+    /// </summary>
+    public async Task<IReadOnlyList<Guid>> ListRefreshDueAsync(
+        DateTime recheckBeforeUtc,
+        CancellationToken cancellationToken) =>
+        await WithConnectionAsync(async connection =>
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText =
+                """
+                SELECT f."Id"
+                FROM "Franchises" f
+                WHERE EXISTS (SELECT 1 FROM "ProfileFranchiseFollows" pf WHERE pf."FranchiseId" = f."Id")
+                  AND (
+                      NOT EXISTS (
+                          SELECT 1 FROM "FranchiseMembers" s
+                          WHERE s."FranchiseId" = f."Id" AND s."IsSeed" = 1)
+                      OR EXISTS (
+                          SELECT 1 FROM "FranchiseMembers" m
+                          WHERE m."FranchiseId" = f."Id"
+                            AND m."Provider" = 'anilist'
+                            AND m."MediaType" IN ('anime', 'manga', 'lightNovel')
+                            AND (m."RelationsCheckedAtUtc" IS NULL
+                                 OR m."RelationsCheckedAtUtc" < @recheck
+                                 OR m."RelationsCheckedAtUtc" < COALESCE(f."RefreshRequestedAtUtc", ''))))
+                ORDER BY COALESCE(f."LastRefreshedAtUtc", '');
+                """;
+            Add(command, "@recheck", Timestamp(recheckBeforeUtc));
+            var result = new List<Guid>();
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                if (Guid.TryParse(reader.GetString(0), out var id)) result.Add(id);
             }
 
             return result.ToArray();
@@ -234,6 +348,60 @@ public sealed class FranchiseStore(AppDbContext db)
             return await command.ExecuteScalarAsync(cancellationToken) is not null;
         }, cancellationToken);
 
+    public async Task<IReadOnlyList<FranchiseSummary>> FindForMemberAsync(
+        WatchlistIdentity identity,
+        CancellationToken cancellationToken) =>
+        await WithConnectionAsync<IReadOnlyList<FranchiseSummary>>(async connection =>
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText =
+                """
+                SELECT f."Id", f."Title", f."SeedMediaType", f."SeedProvider", f."SeedExternalId",
+                       f."LastRefreshedAtUtc",
+                       (SELECT COUNT(*) FROM "FranchiseMembers" countMember WHERE countMember."FranchiseId" = f."Id")
+                FROM "Franchises" f
+                INNER JOIN "FranchiseMembers" m ON m."FranchiseId" = f."Id"
+                WHERE m."MediaType" = @mediaType
+                  AND m."Provider" = @provider
+                  AND m."ExternalId" = @externalId
+                ORDER BY f."Title";
+                """;
+            Add(command, "@mediaType", WatchlistMediaTypeNames.ToStorage(identity.MediaType));
+            Add(command, "@provider", identity.ProviderKey);
+            Add(command, "@externalId", identity.ExternalKey);
+
+            var result = new List<FranchiseSummary>();
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                if (!Guid.TryParse(reader.GetString(0), out var id) ||
+                    WatchlistMediaTypeNames.Parse(reader.GetString(2)) is not { } seedType)
+                {
+                    continue;
+                }
+
+                DateTime? refreshed = null;
+                if (!reader.IsDBNull(5) &&
+                    DateTime.TryParse(
+                        reader.GetString(5),
+                        CultureInfo.InvariantCulture,
+                        DateTimeStyles.RoundtripKind,
+                        out var parsed))
+                {
+                    refreshed = parsed;
+                }
+
+                result.Add(new FranchiseSummary(
+                    id,
+                    reader.GetString(1),
+                    new WatchlistIdentity(seedType, reader.GetString(3), reader.GetString(4)),
+                    refreshed,
+                    Convert.ToInt32(reader.GetValue(6), CultureInfo.InvariantCulture)));
+            }
+
+            return result.ToArray();
+        }, cancellationToken);
+
     public async Task<IReadOnlyList<FranchiseSummary>> ListFollowedAsync(string profileId, CancellationToken cancellationToken) =>
         await WithConnectionAsync(async connection =>
         {
@@ -274,22 +442,8 @@ public sealed class FranchiseStore(AppDbContext db)
             return result.ToArray();
         }, cancellationToken);
 
-    public async Task<IReadOnlyList<Guid>> ListFollowedFranchiseIdsAsync(CancellationToken cancellationToken) =>
-        await WithConnectionAsync(async connection =>
-        {
-            await using var command = connection.CreateCommand();
-            command.CommandText = """SELECT DISTINCT "FranchiseId" FROM "ProfileFranchiseFollows";""";
-            var result = new List<Guid>();
-            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-            while (await reader.ReadAsync(cancellationToken))
-            {
-                if (Guid.TryParse(reader.GetString(0), out var id)) result.Add(id);
-            }
-
-            return result.ToArray();
-        }, cancellationToken);
-
-    public Task MarkRefreshedAsync(Guid franchiseId, CancellationToken cancellationToken) =>
+    /// <summary>Records that every member's relations are current.</summary>
+    public Task MarkRefreshedAsync(Guid franchiseId, DateTime refreshedAtUtc, CancellationToken cancellationToken) =>
         WithConnectionAsync(async connection =>
         {
             await using var command = connection.CreateCommand();
@@ -300,7 +454,7 @@ public sealed class FranchiseStore(AppDbContext db)
                 WHERE "Id" = @id;
                 """;
             Add(command, "@id", franchiseId.ToString("D"));
-            Add(command, "@refreshed", DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture));
+            Add(command, "@refreshed", Timestamp(refreshedAtUtc));
             await command.ExecuteNonQueryAsync(cancellationToken);
         }, cancellationToken);
 
@@ -357,4 +511,16 @@ public sealed class FranchiseStore(AppDbContext db)
 
     private static string? Clean(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    /// <summary>Stored timestamps are round-trip UTC text, so they also compare correctly as strings.</summary>
+    private static string Timestamp(DateTime value) =>
+        DateTime.SpecifyKind(value, DateTimeKind.Utc).ToString("O", CultureInfo.InvariantCulture);
+
+    private static DateTime? ParseTimestamp(string? value) =>
+        DateTime.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var parsed)
+            ? parsed
+            : null;
+
+    private static DateTime? ParseTimestamp(DbDataReader reader, int ordinal) =>
+        reader.IsDBNull(ordinal) ? null : ParseTimestamp(reader.GetString(ordinal));
 }

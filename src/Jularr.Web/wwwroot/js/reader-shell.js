@@ -154,14 +154,15 @@
 
         const sectionForKey = key => {
             if ([
-                "readingMode", "pageTransition", "twoPageSpread", "autoScrollSpeed"
+                "readingMode", "pageTransition", "twoPageSpread", "autoScrollSpeed",
+                "showPageNumbers", "autoContinueChapters"
             ].includes(key)) return "reading";
             if ([
                 "fontFamily", "fontSizeRem", "lineHeight", "paragraphSpacingEm",
-                "textWidthPx", "textAlignment", "chapterStyle"
+                "textWidthPx", "textAlignment", "chapterStyle", "hyphenation", "paragraphIndent"
             ].includes(key)) return "text";
             if ([
-                "paperStyle", "genreArtworkEnabled", "genreTheme",
+                "paperStyle", "genreArtworkEnabled", "genreTheme", "showIllustrations",
                 "backgroundAssetId", "backgroundIntensity", "backgroundMotionMode",
                 "themeEffectStrength", "themeBrightness", "themeContrast",
                 "themeSaturation", "themeBlurPx", "themeVignetteStrength",
@@ -541,27 +542,54 @@
             nav.dataset.readerChrome = "";
             nav.setAttribute("aria-label", "Reader");
 
+            // A proxy only exists while the control it drives exists (#487: no
+            // dead mobile buttons).
             const addProxy = (label, selectors, action) => {
                 const source = root.querySelector(selectors);
-                if (!source && !action) return;
+                if (!source) return null;
                 const button = document.createElement("button");
                 button.type = "button";
                 button.textContent = label;
                 button.addEventListener("click", () => {
                     showChrome();
-                    if (action) action();
-                    else source?.click();
+                    if (action) action(button, source);
+                    else source.click();
                 });
                 nav.append(button);
+                return button;
             };
 
             addProxy(
                 "Kapitel",
                 "[data-reader-chapters-toggle],[data-book-drawer-open]");
-            addProxy(
+
+            // The language switch opens as a panel above the action row and
+            // closes again from the same button, after a choice or on Escape.
+            const setLanguageExpanded = (button, expanded) => {
+                root.classList.toggle("reader-language-expanded", expanded);
+                button.setAttribute("aria-expanded", expanded ? "true" : "false");
+            };
+            const languageButton = addProxy(
                 "Sprache",
-                "[data-reader-language-control],.novel-view-switch,.book-reader-view-switch",
-                () => root.classList.toggle("reader-language-expanded"));
+                "[data-reader-language-control]",
+                button => setLanguageExpanded(
+                    button,
+                    !root.classList.contains("reader-language-expanded")));
+            if (languageButton) {
+                const languageControl = root.querySelector("[data-reader-language-control]");
+                if (!languageControl.id) languageControl.id = "reader-language-control";
+                languageButton.setAttribute("aria-controls", languageControl.id);
+                languageButton.setAttribute("aria-expanded", "false");
+                languageControl.addEventListener("click", event => {
+                    if (event.target.closest("button")) setLanguageExpanded(languageButton, false);
+                });
+                root.addEventListener("keydown", event => {
+                    if (event.key === "Escape" && root.classList.contains("reader-language-expanded")) {
+                        setLanguageExpanded(languageButton, false);
+                        languageButton.focus();
+                    }
+                });
+            }
             addProxy(
                 "Aa",
                 "[data-reader-settings-container],.novel-reader-settings,.book-reader-settings",
@@ -647,7 +675,8 @@
         };
 
         const buildOverflow = () => {
-            if (!topChrome || topChrome.querySelector("[data-reader-overflow]")) return;
+            // The frame renders its own More menu with these actions.
+            if (frame || !topChrome || topChrome.querySelector("[data-reader-overflow]")) return;
             const sources = [
                 root.querySelector("[data-reader-wake-lock-toggle]"),
                 root.querySelector("[data-reader-immersive-toggle]")
@@ -767,7 +796,8 @@
                 button.tabIndex = active ? 0 : -1;
             });
             contents.querySelectorAll("[data-reader-contents-panel]").forEach(panel => {
-                panel.hidden = panel.dataset.readerContentsPanel !== name;
+                // One panel may serve several tabs (for example bookmarks and notes).
+                panel.hidden = !panel.dataset.readerContentsPanel.split(" ").includes(name);
             });
             if (focus) tab.focus();
             if (!contents.hidden) {
@@ -922,6 +952,120 @@
             const fraction = max > 0 ? Number(progressSlider.value) / max : 0;
             progressSlider.style.setProperty("--reader-progress", (fraction * 100).toFixed(2) + "%");
         };
+
+        // ---- Setting proxies ------------------------------------------------------
+        // Quick controls outside the settings form (for example an appearance
+        // sheet) mirror a canonical settings control by key:
+        //   data-reader-proxy="key"                 range / checkbox / button
+        //   data-value="v"                          button that selects v
+        //   data-values='{"a":"x","b":"y"}'         button that sets several keys
+        //   data-on / data-off                      checkbox mapped to two values
+        // They change the canonical control and fire its input/change events, so
+        // the source reader applies and persists the value exactly as if the
+        // setting had been changed in the settings panel.
+        const proxyFormat = (format, value) => {
+            const number = Number(value);
+            switch (format) {
+                case "px16": return String(Math.round(number * 16));
+                case "decimal1": return number.toFixed(1);
+                case "px": return Math.round(number) + " px";
+                default: return String(value ?? "");
+            }
+        };
+
+        const setCanonical = (key, value) => {
+            const control = controlFor(key);
+            if (!control) return false;
+            if (control.type === "checkbox") control.checked = value === true || value === "true";
+            else control.value = String(value);
+            control.dispatchEvent(new Event("input", { bubbles: true }));
+            control.dispatchEvent(new Event("change", { bubbles: true }));
+            return true;
+        };
+
+        const proxyValues = element => {
+            try {
+                return JSON.parse(element.dataset.values || "null");
+            } catch {
+                return null;
+            }
+        };
+
+        function syncProxies() {
+            root.querySelectorAll("[data-reader-proxy],[data-values]").forEach(element => {
+                const values = proxyValues(element);
+                if (values) {
+                    const active = Object.entries(values)
+                        .every(([key, value]) => String(settings[key]) === String(value));
+                    element.setAttribute("aria-pressed", active ? "true" : "false");
+                    return;
+                }
+                const key = element.dataset.readerProxy;
+                const value = settings[key];
+                if (value === undefined) return;
+                if (element.type === "range") {
+                    element.value = String(value);
+                } else if (element.type === "checkbox") {
+                    element.checked = element.dataset.off !== undefined
+                        ? String(value) !== element.dataset.off
+                        : Boolean(value);
+                } else if (element.dataset.value !== undefined) {
+                    const active = String(value) === element.dataset.value;
+                    element.setAttribute(
+                        element.getAttribute("role") === "radio" ? "aria-checked" : "aria-pressed",
+                        active ? "true" : "false");
+                }
+            });
+            root.querySelectorAll("[data-reader-proxy-output]").forEach(output => {
+                const key = output.dataset.readerProxyOutput;
+                if (settings[key] !== undefined) {
+                    output.textContent = proxyFormat(output.dataset.format, settings[key]);
+                }
+            });
+        }
+
+        root.addEventListener("input", event => {
+            const element = event.target instanceof Element
+                ? event.target.closest("[data-reader-proxy]")
+                : null;
+            if (!element || element.type !== "range") return;
+            const control = controlFor(element.dataset.readerProxy);
+            if (!control) return;
+            control.value = element.value;
+            control.dispatchEvent(new Event("input", { bubbles: true }));
+            const output = root.querySelector(
+                `[data-reader-proxy-output="${CSS.escape(element.dataset.readerProxy)}"]`);
+            if (output) output.textContent = proxyFormat(output.dataset.format, element.value);
+        });
+
+        root.addEventListener("change", event => {
+            const element = event.target instanceof Element
+                ? event.target.closest("[data-reader-proxy]")
+                : null;
+            if (!element) return;
+            const key = element.dataset.readerProxy;
+            if (element.type === "range") {
+                controlFor(key)?.dispatchEvent(new Event("change", { bubbles: true }));
+            } else if (element.type === "checkbox") {
+                const value = element.dataset.on !== undefined
+                    ? (element.checked ? element.dataset.on : element.dataset.off)
+                    : element.checked;
+                setCanonical(key, value);
+            }
+        });
+
+        root.addEventListener("click", event => {
+            const element = event.target instanceof Element
+                ? event.target.closest("button[data-reader-proxy][data-value],button[data-values]")
+                : null;
+            if (!element) return;
+            const values = proxyValues(element);
+            if (values) {
+                for (const [key, value] of Object.entries(values)) setCanonical(key, value);
+            } else {
+                setCanonical(element.dataset.readerProxy, element.dataset.value);
+            }
+        });
 
         const setupFrame = () => {
             if (!frame) return;
@@ -1143,6 +1287,7 @@
         buildOverflow();
         setupFrame();
         updateModeVisibility();
+        syncProxies();
 
         // Integration seam for shared Reader extensions such as reader-tts.js.
         // Extensions persist through the same ReaderPreferences command and place
@@ -1160,6 +1305,9 @@
             isFrame: frame,
             openSettings,
             openContents: tab => setContents(true, { tab }),
+            closeContents: () => setContents(false),
+            contentsOpen: () => Boolean(contents && !contents.hidden),
+            contentsTab: () => activeContentsTab,
             closeMenus,
             toast
         });
@@ -1186,8 +1334,12 @@
                 }
                 updateModeVisibility();
                 updateSourceBadges();
+                syncProxies();
             }
         });
+
+        root.addEventListener("jularr:reader-settings-response", () => syncProxies());
+        root.addEventListener("jularr:reader-proxies", () => syncProxies());
 
         if (surface) {
             surface.addEventListener("pointerdown", event => {

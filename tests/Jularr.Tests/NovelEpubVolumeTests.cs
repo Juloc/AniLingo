@@ -309,6 +309,82 @@ public sealed class NovelEpubVolumeTests
     }
 
     [TestMethod]
+    public async Task InboxImportReadsTheLightNovelsSubfolderOfTheInbox()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var inbox = Path.Combine(fixture.Root, "books-inbox");
+        var seriesFolder = Path.Combine(inbox, NovelEpubImportService.InboxFolder, "Inbox Series");
+        Directory.CreateDirectory(seriesFolder);
+        await File.WriteAllBytesAsync(
+            Path.Combine(seriesFolder, "one.epub"),
+            new EpubTestBuilder { Title = "Unrelated", Identifier = "urn:x:inbox-1" }
+                .Chapter("text/a.xhtml", "一", "受信箱の一巻です。").BuildBytes());
+        // Books in the inbox root are not light novels.
+        await File.WriteAllBytesAsync(
+            Path.Combine(inbox, "book.epub"),
+            new EpubTestBuilder { Title = "A Book", Identifier = "urn:x:book" }
+                .Chapter("text/a.xhtml", "本", "本です。").BuildBytes());
+
+        var outcomes = await fixture.Imports.ImportInboxAsync(inbox, CancellationToken.None);
+
+        Assert.AreEqual(1, outcomes.Count, NovelEpubImportOutcome.Summarize(outcomes));
+        Assert.IsTrue(outcomes[0].Succeeded, outcomes[0].Message);
+        Assert.AreEqual("Inbox Series", (await fixture.Db.NovelWorks.SingleAsync()).Title);
+    }
+
+    [TestMethod]
+    public async Task DownloadImportFindsNestedEpubsAndIgnoresFolderNames()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var job = Path.Combine(fixture.Root, "complete", "lightnovels", "Series.Vol.1-2.EPUB-GROUP");
+        var nested = Path.Combine(job, "Series", "EPUB", "deep");
+        Directory.CreateDirectory(nested);
+        await File.WriteAllBytesAsync(Path.Combine(nested, "v1.epub"), Volume(1, "一巻の本文です。").BuildBytes());
+        await File.WriteAllBytesAsync(Path.Combine(job, "v2.epub"), Volume(2, "二巻の本文です。").BuildBytes());
+
+        var import = await fixture.Imports.ImportDownloadAsync(job, CancellationToken.None);
+
+        Assert.IsNull(import.RejectedBecause);
+        Assert.IsTrue(import.Outcomes.All(x => x.Succeeded), NovelEpubImportOutcome.Summarize(import.Outcomes));
+        var work = await fixture.Db.NovelWorks.SingleAsync();
+        Assert.AreEqual(Series, work.Title);
+        Assert.AreEqual(2, await fixture.Db.NovelVolumes.CountAsync());
+    }
+
+    [TestMethod]
+    public async Task DownloadImportRejectsSeveralSeriesBeforeStoringAnything()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var job = Path.Combine(fixture.Root, "complete", "lightnovels", "Mixed.Pack");
+        Directory.CreateDirectory(job);
+        await File.WriteAllBytesAsync(Path.Combine(job, "a.epub"), Volume(1, "一巻の本文です。").BuildBytes());
+        await File.WriteAllBytesAsync(
+            Path.Combine(job, "b.epub"),
+            new EpubTestBuilder { Title = "Completely Different 1", Identifier = "urn:x:other", CalibreSeries = "Completely Different" }
+                .Chapter("text/a.xhtml", "別", "別の作品です。").BuildBytes());
+
+        var import = await fixture.Imports.ImportDownloadAsync(job, CancellationToken.None);
+
+        StringAssert.Contains(import.RejectedBecause, "2 different series");
+        Assert.AreEqual(0, await fixture.Db.NovelWorks.CountAsync());
+        Assert.AreEqual(0, await fixture.Db.NovelVolumes.CountAsync());
+    }
+
+    [TestMethod]
+    public async Task DownloadImportWithoutUsableEpubIsRejected()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var job = Path.Combine(fixture.Root, "complete", "lightnovels", "Broken");
+        Directory.CreateDirectory(job);
+        await File.WriteAllBytesAsync(Path.Combine(job, "broken.epub"), [1, 2, 3]);
+
+        var import = await fixture.Imports.ImportDownloadAsync(job, CancellationToken.None);
+
+        StringAssert.Contains(import.RejectedBecause, "no usable EPUB");
+        Assert.AreEqual(0, await fixture.Db.NovelWorks.CountAsync());
+    }
+
+    [TestMethod]
     public void VolumeNumbersAndSeriesNamesAreReadFromTitles()
     {
         Assert.AreEqual(3, NovelEpubImportService.ParseVolumeNumber("魔法の国 第三巻"));

@@ -28,11 +28,6 @@
         </div>
     </header>
 
-    @if (TempData["Status"] is string status)
-    {
-        <div class="book-bible-message">@status</div>
-    }
-
     @if (Model.Bible is null)
     {
         <section class="book-bible-empty">

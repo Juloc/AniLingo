@@ -9,6 +9,10 @@ const SakuraModes = ['off', 'subtle', 'full'];
     const root = document.documentElement;
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
     const burstFlagKey = 'jularr:sakuraBurst';
+    // The Books, Novels and Manga readers share the reader frame. Petals would drift across the
+    // text and the reader panels, so the effect stays paused there (this script is deferred, so
+    // the frame is already in the DOM). Leaving a reader still records the navigation burst.
+    const inReader = document.querySelector('[data-reader-frame]') !== null;
 
     // Suggested tuning from #387: ~4-10 visible petals normally, ~30-50 in a burst.
     const AMBIENT_COUNT = { subtle: 6, full: 10 };
@@ -177,7 +181,7 @@ const SakuraModes = ['off', 'subtle', 'full'];
         petals = [];
     };
 
-    const isDisabled = () => mode === 'off' || reducedMotion.matches;
+    const isDisabled = () => mode === 'off' || reducedMotion.matches || inReader;
 
     const apply = (nextMode) => {
         mode = SakuraModes.includes(nextMode) ? nextMode : 'off';

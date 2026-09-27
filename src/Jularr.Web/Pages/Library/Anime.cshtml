@@ -7,6 +7,10 @@
     ViewData["Title"] = Model.AnimeTitle;
 }
 
+@section Head {
+    <link rel="stylesheet" href="~/css/franchise-links.css" asp-append-version="true" />
+}
+
 <section class="anime-hero">
     @if (!string.IsNullOrWhiteSpace(Model.BannerImageUrl))
     {
@@ -123,6 +127,8 @@
         </div>
     </div>
 </section>
+
+<partial name="_FranchiseLinks" model="new Jularr.Web.Features.Franchises.FranchiseLinksViewModel(ui, Model.Franchises)" />
 
 @await Component.InvokeAsync("UpcomingReleases", new { mediaType = Jularr.Web.Features.Calendar.ReleaseMediaType.Anime, mediaId = Model.AnimeId, ui })
 

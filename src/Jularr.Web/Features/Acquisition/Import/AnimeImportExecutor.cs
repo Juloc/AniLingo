@@ -676,28 +676,11 @@ public sealed class AnimeImportExecutor(
         try
         {
             Directory.CreateDirectory(directory);
-            switch (planned.FileAction)
-            {
-                case AnimeImportFileAction.Copy:
-                    File.Copy(planned.Source.Path, destination, overwrite: false);
-                    break;
-
-                case AnimeImportFileAction.Hardlink:
-                    try
-                    {
-                        hardLinkCreator.CreateHardLink(planned.Source.Path, destination);
-                    }
-                    catch (CrossDeviceLinkException) when (planned.AllowHardlinkFallbackToCopy)
-                    {
-                        File.Copy(planned.Source.Path, destination, overwrite: false);
-                    }
-
-                    break;
-
-                default:
-                    File.Move(planned.Source.Path, destination, overwrite: false);
-                    break;
-            }
+            new ImportFileTransfer(hardLinkCreator).Transfer(
+                planned.Source.Path,
+                destination,
+                planned.FileAction,
+                planned.AllowHardlinkFallbackToCopy);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
@@ -1009,13 +992,7 @@ public sealed class AnimeImportExecutor(
         CancellationToken cancellationToken)
     {
         var settings = await importSettings.LoadAsync(cancellationToken);
-        return settings.ModeFor(rootId) switch
-        {
-            ImportMode.Copy => (AnimeImportFileAction.Copy, false),
-            ImportMode.Hardlink => (AnimeImportFileAction.Hardlink, false),
-            ImportMode.HardlinkOrCopy => (AnimeImportFileAction.Hardlink, true),
-            _ => (AnimeImportFileAction.Move, false)
-        };
+        return ImportFileTransfer.Resolve(settings.ModeFor(rootId));
     }
 
     private static IReadOnlyList<CompletedDownloadFile> EnumerateDownload(string downloadPath, out string? error)

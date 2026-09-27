@@ -316,7 +316,7 @@
         if (item.isLocal) {
             const local = document.createElement("span");
             local.className = "discover-local";
-            local.textContent = "In Jularr";
+            local.textContent = root.dataset.textInLibrary || "In library";
             kicker.append(local);
         }
 
@@ -358,20 +358,17 @@
         const actions = document.createElement("div");
         actions.className = "discover-card-actions";
 
+        // One primary action (open, add or request, import), then one follow control, then
+        // the provider page as a small link.
         if (item.isLocal && item.localUrl) {
-            actions.append(createLink(item.localUrl, "Open", true));
+            actions.append(createLink(item.localUrl, root.dataset.textOpenLocal || "Open", true));
         } else if (item.category === "book") {
             actions.append(createLink(item.detailsUrl, "Book details", true));
         } else if (
             item.category === "manga" &&
             item.detailsUrl?.startsWith("/Discover/MangaImport")) {
             actions.append(createLink(item.detailsUrl, "Add manga", true));
-        } else {
-            actions.append(createLink(item.detailsUrl, "AniList", false));
         }
-
-        renderWatchlistAction(item, actions);
-        renderFranchiseAction(item, actions);
 
         if (!item.isLocal && addActions[item.category]) {
             renderAddAction(item, actions);
@@ -386,116 +383,169 @@
             actions.append(source);
         }
 
+        renderFollowControl(item, actions);
+
+        const providerUrl = aniListUrl(item);
+        if (providerUrl) {
+            const link = createLink(providerUrl, "AniList", false);
+            link.classList.add("discover-provider-link");
+            actions.append(link);
+        }
+
         copy.append(actions);
         card.append(cover, copy);
         return card;
     }
 
-    function renderWatchlistAction(item, actions) {
-        if (!root.dataset.watchlistUrl) return;
-
-        const button = document.createElement("button");
-        button.type = "button";
-        button.textContent = item.isFollowed
-            ? root.dataset.textFollowed
-            : root.dataset.textFollow;
-        button.title = item.isFollowed
-            ? root.dataset.textUnfollow
-            : root.dataset.textFollow;
-
-        button.addEventListener("click", async () => {
-            const follow = !item.isFollowed;
-            button.disabled = true;
-
-            const body = new FormData();
-            body.set("category", item.category || "");
-            body.set("provider", item.provider || "");
-            body.set("externalId", item.externalId || "");
-            body.set("title", item.title || "");
-            if (item.nativeTitle) body.set("nativeTitle", item.nativeTitle);
-            if (item.coverImageUrl) body.set("coverImageUrl", item.coverImageUrl);
-            if (item.format) body.set("format", item.format);
-            if (item.status) body.set("status", item.status);
-            if (item.year) body.set("year", String(item.year));
-            if (item.localMediaId) body.set("localMediaId", item.localMediaId);
-            const detailsUrl = item.localUrl || item.detailsUrl;
-            if (detailsUrl) body.set("detailsUrl", detailsUrl);
-            body.set("follow", String(follow));
-            body.set("__RequestVerificationToken", token);
-
-            try {
-                const response = await fetch(root.dataset.watchlistUrl, {
-                    method: "POST",
-                    body,
-                    credentials: "same-origin",
-                    headers: { Accept: "application/json" }
-                });
-                if (!response.ok) throw new Error(String(response.status));
-                const payload = await response.json();
-                item.isFollowed = payload.followed === true;
-                button.textContent = item.isFollowed
-                    ? root.dataset.textFollowed
-                    : root.dataset.textFollow;
-                button.title = item.isFollowed
-                    ? root.dataset.textUnfollow
-                    : root.dataset.textFollow;
-            } catch {
-                button.title = root.dataset.textAddFailed || button.title;
-            } finally {
-                button.disabled = false;
-            }
-        });
-
-        actions.append(button);
+    function aniListUrl(item) {
+        if (item.provider !== "anilist" || !/^\d+$/.test(String(item.externalId || ""))) return null;
+        const kind = item.category === "anime" ? "anime" : "manga";
+        return `https://anilist.co/${kind}/${item.externalId}`;
     }
 
-    function renderFranchiseAction(item, actions) {
-        if (!["anime", "manga", "light-novel"].includes(item.category) ||
-            item.provider !== "anilist" ||
-            !root.dataset.franchiseUrl) {
-            return;
+    async function postForm(url, fields) {
+        const body = new FormData();
+        Object.entries(fields).forEach(([name, value]) => {
+            if (value !== null && value !== undefined && value !== "") body.set(name, String(value));
+        });
+        body.set("__RequestVerificationToken", token);
+        const response = await fetch(url, {
+            method: "POST",
+            body,
+            credentials: "same-origin",
+            headers: { Accept: "application/json" }
+        });
+        if (!response.ok) throw new Error(String(response.status));
+        return response.json();
+    }
+
+    // Follow toggle with a small menu for the franchise: one compact secondary control.
+    function renderFollowControl(item, actions) {
+        if (!root.dataset.watchlistUrl) return;
+
+        const group = document.createElement("span");
+        group.className = "discover-follow";
+
+        const toggle = document.createElement("button");
+        toggle.type = "button";
+        toggle.className = "discover-follow-toggle";
+        const sync = () => {
+            toggle.setAttribute("aria-pressed", String(item.isFollowed === true));
+            toggle.textContent = item.isFollowed ? root.dataset.textFollowed : root.dataset.textFollow;
+            toggle.title = item.isFollowed ? root.dataset.textUnfollow : root.dataset.textFollow;
+        };
+        sync();
+
+        toggle.addEventListener("click", async () => {
+            const follow = !item.isFollowed;
+            toggle.disabled = true;
+            try {
+                const payload = await postForm(root.dataset.watchlistUrl, {
+                    category: item.category,
+                    provider: item.provider,
+                    externalId: item.externalId,
+                    title: item.title,
+                    nativeTitle: item.nativeTitle,
+                    coverImageUrl: item.coverImageUrl,
+                    format: item.format,
+                    status: item.status,
+                    year: item.year,
+                    follow
+                });
+                item.isFollowed = payload.followed === true;
+                sync();
+            } catch {
+                toggle.title = root.dataset.textAddFailed || toggle.title;
+            } finally {
+                toggle.disabled = false;
+            }
+        });
+        group.append(toggle);
+
+        if (["anime", "manga", "light-novel"].includes(item.category) &&
+            item.provider === "anilist" &&
+            root.dataset.franchiseUrl) {
+            group.append(...createFranchiseMenu(item));
         }
 
-        const button = document.createElement("button");
-        button.type = "button";
-        button.textContent = root.dataset.textFollowFranchise;
+        actions.append(group);
+    }
 
-        button.addEventListener("click", async () => {
-            button.disabled = true;
-            const body = new FormData();
-            body.set("category", item.category || "");
-            body.set("provider", item.provider || "");
-            body.set("externalId", item.externalId || "");
-            body.set("title", item.title || "");
-            if (item.nativeTitle) body.set("nativeTitle", item.nativeTitle);
-            if (item.coverImageUrl) body.set("coverImageUrl", item.coverImageUrl);
-            if (item.format) body.set("format", item.format);
-            if (item.status) body.set("status", item.status);
-            if (item.year) body.set("year", String(item.year));
-            if (item.localMediaId) body.set("localMediaId", item.localMediaId);
-            const detailsUrl = item.localUrl || item.detailsUrl;
-            if (detailsUrl) body.set("detailsUrl", detailsUrl);
-            body.set("__RequestVerificationToken", token);
+    function createFranchiseMenu(item) {
+        const more = document.createElement("button");
+        more.type = "button";
+        more.className = "discover-follow-more";
+        more.setAttribute("aria-haspopup", "menu");
+        more.setAttribute("aria-expanded", "false");
+        more.setAttribute("aria-label", root.dataset.textFollowOptions || "");
+        more.title = root.dataset.textFollowOptions || "";
+        more.textContent = "▾";
 
-            try {
-                const response = await fetch(root.dataset.franchiseUrl, {
-                    method: "POST",
-                    body,
-                    credentials: "same-origin",
-                    headers: { Accept: "application/json" }
-                });
-                if (!response.ok) throw new Error(String(response.status));
-                const payload = await response.json();
-                item.isFollowed = payload.followed === true;
-                button.textContent = root.dataset.textFollowed;
-                button.disabled = true;
-            } catch {
-                button.title = root.dataset.textAddFailed || "";
-                button.disabled = false;
+        const menu = document.createElement("div");
+        menu.className = "discover-follow-menu";
+        menu.setAttribute("role", "menu");
+        menu.hidden = true;
+
+        const followedLink = franchiseId => {
+            const link = document.createElement("a");
+            link.setAttribute("role", "menuitem");
+            link.href = `/Franchises/${franchiseId}`;
+            link.textContent = root.dataset.textFranchiseFollowed;
+            return link;
+        };
+
+        if (item.followedFranchiseId) {
+            menu.append(followedLink(item.followedFranchiseId));
+        } else {
+            const follow = document.createElement("button");
+            follow.type = "button";
+            follow.setAttribute("role", "menuitem");
+            follow.textContent = root.dataset.textFollowFranchise;
+            follow.addEventListener("click", async () => {
+                follow.disabled = true;
+                try {
+                    const payload = await postForm(root.dataset.franchiseUrl, {
+                        category: item.category,
+                        provider: item.provider,
+                        externalId: item.externalId
+                    });
+                    item.followedFranchiseId = payload.franchiseId;
+                    menu.replaceChildren(followedLink(payload.franchiseId));
+                    menu.firstElementChild.focus();
+                } catch {
+                    follow.title = root.dataset.textAddFailed || "";
+                    follow.disabled = false;
+                }
+            });
+            menu.append(follow);
+        }
+
+        const close = () => {
+            menu.hidden = true;
+            more.setAttribute("aria-expanded", "false");
+            document.removeEventListener("click", onOutside, true);
+        };
+        const onOutside = event => {
+            if (!menu.contains(event.target) && event.target !== more) close();
+        };
+        more.addEventListener("click", () => {
+            if (!menu.hidden) {
+                close();
+                return;
+            }
+            menu.hidden = false;
+            more.setAttribute("aria-expanded", "true");
+            document.addEventListener("click", onOutside, true);
+            menu.querySelector("a, button")?.focus();
+        });
+        menu.addEventListener("keydown", event => {
+            if (event.key === "Escape") {
+                close();
+                more.focus();
             }
         });
 
-        actions.append(button);
+        return [more, menu];
     }
 
     function renderAddAction(item, actions) {

@@ -41,7 +41,6 @@ public sealed class AnimeRepairModel(
     public string SearchQuery { get; private set; } = "";
     public IReadOnlyList<AnimeRepairMatchCandidate> Candidates { get; private set; } = [];
 
-    public string? Status => TempData["Status"] as string;
     public string? Error => TempData["Error"] as string;
     public Guid? OperationId =>
         TempData["RepairOperation"] is string value && Guid.TryParse(value, out var id) ? id : null;

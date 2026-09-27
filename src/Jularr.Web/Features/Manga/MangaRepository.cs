@@ -96,6 +96,31 @@ public sealed class MangaRepository(AppDbContext db)
         return result;
     }
 
+    /// <summary>The series already matched to this metadata entry (for example one AniList id).</summary>
+    public async Task<MangaSeriesLocation?> FindByMetadataAsync(
+        string provider,
+        string externalId,
+        CancellationToken cancellationToken)
+    {
+        return (await QueryAsync(
+            """
+            SELECT "Id", "Title", "SourcePath"
+            FROM "MangaSeries"
+            WHERE "MetadataProvider" = @provider AND "MetadataExternalId" = @externalId
+            LIMIT 1;
+            """,
+            command =>
+            {
+                AddParameter(command, "@provider", provider);
+                AddParameter(command, "@externalId", externalId);
+            },
+            reader => new MangaSeriesLocation(
+                ReadGuid(reader, 0),
+                reader.GetString(1),
+                reader.GetString(2)),
+            cancellationToken)).SingleOrDefault();
+    }
+
     public async Task<MangaAutoMatchSource?> GetAutoMatchSourceAsync(
         Guid seriesId,
         CancellationToken cancellationToken)

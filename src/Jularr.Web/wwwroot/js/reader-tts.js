@@ -309,7 +309,10 @@
 
         const paragraphs = () =>
             Array.from(surface.querySelectorAll(PARAGRAPH_SELECTOR))
-                .filter(element => isVisible(element) && element.textContent.trim());
+                // Scene-break marks (role=separator) are ornaments, not speech.
+                .filter(element => isVisible(element) &&
+                    element.textContent.trim() &&
+                    !element.closest('[role="separator"]'));
 
         const paged = () =>
             (root.dataset.readingMode || api.getSettings().readingMode) === "paged";

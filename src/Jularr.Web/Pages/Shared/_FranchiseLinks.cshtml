@@ -1,0 +1,18 @@
+@model Jularr.Web.Features.Franchises.FranchiseLinksViewModel
+@if (Model.Franchises.Count > 0)
+{
+    <section class="franchise-links-panel" aria-label="@Model.Ui["franchise.sectionTitle"]">
+        <div class="franchise-links-heading">
+            <span>@Model.Ui["franchise.sectionTitle"]</span>
+        </div>
+        <div class="franchise-links-list">
+            @foreach (var franchise in Model.Franchises)
+            {
+                <a href="/Franchises/@franchise.Id">
+                    <span>@Jularr.Web.Features.Franchises.FranchiseLabels.Title(Model.Ui, franchise.Title)</span>
+                    <small>@Model.Ui.Format("franchise.memberCount", ("count", franchise.MemberCount))</small>
+                </a>
+            }
+        </div>
+    </section>
+}

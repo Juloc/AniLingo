@@ -224,7 +224,7 @@
                     }
                 });
             } catch {
-                reader.showToast("Furigana konnte nicht geladen werden");
+                reader.showToast(reader.t("furiganaLoadFailed", "Furigana could not be loaded"));
             }
         };
 
@@ -253,6 +253,7 @@
                         data.set("scope", "default");
                     });
                     furiganaButton.setAttribute("aria-pressed", next ? "true" : "false");
+                    furiganaButton.setAttribute("aria-checked", next ? "true" : "false");
                     shell.dataset.furiganaEnabled = next ? "true" : "false";
                     if (next) {
                         await applyFurigana();
@@ -260,7 +261,7 @@
                         removeFurigana();
                     }
                 } catch (error) {
-                    reader.showToast(error.message || "Furigana konnte nicht gespeichert werden");
+                    reader.showToast(reader.t("furiganaSaveFailed", "The furigana setting could not be saved"));
                 } finally {
                     furiganaButton.disabled = false;
                 }

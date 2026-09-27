@@ -147,10 +147,10 @@
                             data-reader-setting
                             data-setting-key="fontFamily"
                             data-book-setting="fontFamily">
-                        <option value="literary-serif">Literary Serif</option>
-                        <option value="book-serif">Book Serif</option>
-                        <option value="system-serif">System Serif</option>
-                        <option value="system-sans">System Sans</option>
+                        <option value="literary-serif">@ui["reader.settings.fontFamily.literarySerif"]</option>
+                        <option value="book-serif">@ui["reader.settings.fontFamily.bookSerif"]</option>
+                        <option value="system-serif">@ui["reader.settings.fontFamily.systemSerif"]</option>
+                        <option value="system-sans">@ui["reader.settings.fontFamily.systemSans"]</option>
                         <option value="atkinson">Atkinson Hyperlegible</option>
                         <option value="noto-serif-jp">Noto Serif JP</option>
                         <option value="noto-sans-jp">Noto Sans JP</option>
@@ -258,13 +258,39 @@
                             data-reader-setting
                             data-setting-key="chapterStyle"
                             data-book-setting="chapterStyle">
-                        <option value="classic">Classic</option>
-                        <option value="modern">Modern</option>
-                        <option value="light-novel">Light Novel</option>
-                        <option value="minimal">Minimal</option>
-                        <option value="decorative">Decorative</option>
+                        <option value="classic">@ui["reader.settings.chapterStyle.classic"]</option>
+                        <option value="modern">@ui["reader.settings.chapterStyle.modern"]</option>
+                        <option value="light-novel">@ui["reader.settings.chapterStyle.lightNovel"]</option>
+                        <option value="minimal">@ui["reader.settings.chapterStyle.minimal"]</option>
+                        <option value="decorative">@ui["reader.settings.chapterStyle.decorative"]</option>
                     </select>
                 </label>
+            }
+
+            @if (Model.LayoutPreferences)
+            {
+                @* Checkbox first, hidden "false" second: the binder takes the first value, so
+                   an unchecked box posts false instead of leaving the field unset. *@
+                @foreach (var item in new[]
+                {
+                    ("Hyphenation", "hyphenation", "reader.settings.hyphenation", Model.Settings.Hyphenation),
+                    ("ParagraphIndent", "paragraphIndent", "reader.settings.paragraphIndent", Model.Settings.ParagraphIndent),
+                    ("ShowPageNumbers", "showPageNumbers", "reader.settings.showPageNumbers", Model.Settings.ShowPageNumbers),
+                    ("ShowIllustrations", "showIllustrations", "reader.settings.showIllustrations", Model.Settings.ShowIllustrations),
+                    ("AutoContinueChapters", "autoContinueChapters", "reader.settings.autoContinueChapters", Model.Settings.AutoContinueChapters)
+                })
+                {
+                    <label class="reader-settings-check">
+                        <input type="checkbox"
+                               name="@item.Item1"
+                               value="true"
+                               checked="@item.Item4"
+                               data-reader-setting
+                               data-setting-key="@item.Item2" />
+                        <input type="hidden" name="@item.Item1" value="false" />
+                        <span>@ui[item.Item3]</span>
+                    </label>
+                }
             }
 
             <label>
@@ -273,12 +299,13 @@
                         data-reader-setting
                         data-setting-key="paperStyle"
                         data-book-setting="paperStyle">
-                    <option value="white">White</option>
-                    <option value="cream">Cream</option>
-                    <option value="sepia">Sepia</option>
-                    <option value="old-paper">Old Paper</option>
-                    <option value="midnight">Midnight</option>
-                    <option value="oled">OLED Black</option>
+                    <option value="auto">@ui["reader.settings.auto"]</option>
+                    <option value="white">@ui["reader.frame.paper.white"]</option>
+                    <option value="cream">@ui["reader.frame.paper.cream"]</option>
+                    <option value="sepia">@ui["reader.frame.paper.sepia"]</option>
+                    <option value="old-paper">@ui["reader.frame.paper.oldPaper"]</option>
+                    <option value="midnight">@ui["reader.frame.paper.midnight"]</option>
+                    <option value="oled">@ui["reader.frame.paper.oled"]</option>
                 </select>
             </label>
 
@@ -387,11 +414,11 @@
                         data-reader-setting
                         data-setting-key="bookmarkStyle"
                         data-book-setting="bookmarkStyle">
-                    <option value="fabric">Fabric ribbon</option>
-                    <option value="paper">Paper</option>
-                    <option value="leather">Leather</option>
-                    <option value="cord">Cord</option>
-                    <option value="minimal">Minimal</option>
+                    <option value="fabric">@ui["reader.settings.bookmarkStyle.fabric"]</option>
+                    <option value="paper">@ui["reader.settings.bookmarkStyle.paper"]</option>
+                    <option value="leather">@ui["reader.settings.bookmarkStyle.leather"]</option>
+                    <option value="cord">@ui["reader.settings.bookmarkStyle.cord"]</option>
+                    <option value="minimal">@ui["reader.settings.bookmarkStyle.minimal"]</option>
                 </select>
             </label>
 

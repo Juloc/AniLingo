@@ -39,7 +39,6 @@
     letter-spacing: .04em;
 }
 
-.book-bible-message,
 .book-bible-empty {
     margin-bottom: 18px;
     padding: 12px 14px;
@@ -194,8 +193,9 @@
     background: color-mix(in srgb, currentColor 2%, transparent);
 }
 
+/* A locked entry reads through a firmer surface and its lock badge. */
 .book-bible-item.locked {
-    box-shadow: inset 3px 0 0 currentColor;
+    background: color-mix(in srgb, currentColor 6%, transparent);
 }
 
 .book-bible-item-title,

@@ -23,6 +23,15 @@ public sealed class LibraryModel(
     public bool SourceIsTarget { get; private set; }
     public bool IsOwner => account.IsOwner;
 
+    /// <summary>A PDF book: its chapters are its pages, which the page lists in ranges.</summary>
+    public bool IsPdf => BookFileFormats.IsPdf(Book.Work);
+
+    /// <summary>
+    /// A PDF's pages in about a dozen ranges of a round size (10, 20, 30 …); listing every
+    /// page as a chapter would bury the book under hundreds of rows.
+    /// </summary>
+    public IReadOnlyList<BookPageRange> PageRanges => BookPageRange.Group(Book.Chapters);
+
     /// <summary>
     /// Whether generating a whole-book translation (Translate/Regenerate) is
     /// allowed, resolved through <see cref="LearningModuleResolver.ResolveTranslationEnabledAsync"/>

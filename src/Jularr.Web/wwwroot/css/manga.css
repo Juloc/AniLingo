@@ -100,14 +100,6 @@
     color: inherit;
 }
 
-.manga-message {
-    margin-bottom: 1rem;
-    padding: .65rem .75rem;
-    border-radius: 8px;
-    background: color-mix(in srgb, var(--accent) 6%, transparent);
-    font-size: .82rem;
-}
-
 .manga-section {
     margin-bottom: 1.8rem;
 }

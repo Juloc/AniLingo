@@ -544,6 +544,8 @@ When no modal/sheet is open:
 - Left/right with controls hidden: -10s/+10s
 - Back with controls visible: hide controls
 - Back with controls hidden: leave player after normal navigation behavior
+- controls auto-hide after the canonical `timing.controlsAutoHide` token while playback runs; every remote key resets the timer. Paused playback, an open learning overlay or the phone companion overlay keep them visible.
+- when the controls hide, remote focus returns to the player surface so the next key still reaches the player
 
 Player control row always contains a **Learn this line** action.
 

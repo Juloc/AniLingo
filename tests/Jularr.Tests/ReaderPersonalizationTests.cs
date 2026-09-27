@@ -205,7 +205,10 @@ public sealed class ReaderPersonalizationTests
             root, "src", "Jularr.Web", "wwwroot", "js", "books-reader.js"));
 
         StringAssert.Contains(page, "data-reader-autoscroll-toggle");
-        StringAssert.Contains(page, "data-reader-page-controls");
+        StringAssert.Contains(page, "data-reader-frame");
+        StringAssert.Contains(page, "data-reader-progress-slider");
+        StringAssert.Contains(page, "data-reader-page-step");
+        StringAssert.Contains(page, "data-reader-settings-open=\"reading\"");
         StringAssert.Contains(page, "_ReaderSettingsPanel");
         StringAssert.Contains(page, "novels.read.chapterLabel");
         StringAssert.Contains(sharedSettings, "data-reader-genre-select");
@@ -236,6 +239,30 @@ public sealed class ReaderPersonalizationTests
         StringAssert.Contains(css, "[data-paper-style=\"oled\"]");
         StringAssert.Contains(css, "[data-chapter-style=\"light-novel\"]");
         StringAssert.Contains(css, "[data-bookmark-style=\"fabric\"]");
+    }
+
+    [TestMethod]
+    public void ReaderSettingsOptionLabelsComeFromTheCatalog()
+    {
+        var panel = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(), "src", "Jularr.Web", "Pages", "Shared", "_ReaderSettingsPanel.cshtml"));
+
+        // Typeface names are proper nouns and stay verbatim; every other option label is UI text.
+        string[] typefaceNames =
+        [
+            "Atkinson Hyperlegible", "Noto Serif JP", "Noto Sans JP", "Literata", "Lora", "Merriweather"
+        ];
+
+        var literals = System.Text.RegularExpressions.Regex
+            .Matches(panel, @"<option\b[^>]*>(?<text>[^<]*)</option>")
+            .Select(match => match.Groups["text"].Value.Trim())
+            .Where(text => text.Length > 0 && !text.StartsWith('@') && !typefaceNames.Contains(text))
+            .ToArray();
+
+        Assert.AreEqual(0, literals.Length, "Hard-coded option labels: " + string.Join(", ", literals));
+        StringAssert.Contains(panel, "@ui[\"reader.settings.chapterStyle.classic\"]");
+        StringAssert.Contains(panel, "@ui[\"reader.frame.paper.oled\"]");
+        StringAssert.Contains(panel, "@ui[\"reader.settings.bookmarkStyle.fabric\"]");
     }
 
     private static ReaderSettingsInput Defaults(string font, string paper) =>

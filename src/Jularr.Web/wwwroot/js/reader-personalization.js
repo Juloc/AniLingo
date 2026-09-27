@@ -21,8 +21,26 @@
     const genreSelect = shell.querySelector("[data-reader-genre-select]");
     const toast = shell.querySelector("[data-reader-toast]");
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const pageNumberOverlay = shell.querySelector("[data-novel-page-number]");
+    const frame = shell.hasAttribute("data-reader-frame");
 
     if (!settingsElement || !settingsForm || !content) return;
+
+    // UI text from the catalog (novels.reader.*); English fallbacks only cover a
+    // missing bundle.
+    let text = {};
+    try {
+        text = JSON.parse(shell.querySelector("[data-novel-reader-text]")?.textContent || "{}") || {};
+    } catch {
+        text = {};
+    }
+    const t = (key, fallback, values = {}) => {
+        let value = text["novels.reader." + key] || fallback;
+        for (const [name, replacement] of Object.entries(values)) {
+            value = value.replaceAll("{" + name + "}", String(replacement));
+        }
+        return value;
+    };
 
     let state;
     try {
@@ -34,6 +52,7 @@
     let pageCount = 1;
     let currentPage = 0;
     let resizeTimer = null;
+    let settledPagedAnchor = null;
     let autoScrollFrame = null;
     let autoScrollLastTime = null;
     let autoScrollRunning = false;
@@ -86,22 +105,13 @@
     const syncWakeLockButton = () => {
         if (!wakeLockButton) return;
         const supported = wakeLockSupported();
-        wakeLockButton.disabled = !supported;
-        wakeLockButton.setAttribute(
-            "aria-pressed",
-            supported && keepAwake ? "true" : "false");
+        // Unsupported browsers get no control at all instead of a dead one.
+        wakeLockButton.hidden = !supported;
+        const active = supported && keepAwake ? "true" : "false";
+        wakeLockButton.setAttribute("aria-pressed", active);
+        wakeLockButton.setAttribute("aria-checked", active);
         wakeLockButton.classList.toggle("is-active", supported && keepAwake);
         wakeLockButton.dataset.wakeLockActive = String(Boolean(readerWakeLock));
-        wakeLockButton.title = !supported
-            ? "Bildschirm an wird von diesem Browser nicht unterstützt"
-            : keepAwake
-                ? "Bildschirm bleibt an"
-                : "Bildschirm darf ausgehen";
-        wakeLockButton.setAttribute(
-            "aria-label",
-            keepAwake
-                ? "Bildschirm darf wieder ausgehen"
-                : "Bildschirm eingeschaltet lassen");
     };
 
     const releaseReaderWakeLock = async () => {
@@ -142,7 +152,7 @@
 
     const toggleReaderWakeLock = async () => {
         if (!wakeLockSupported()) {
-            showToast("Bildschirm an wird von diesem Browser nicht unterstützt.");
+            showToast(t("wakeLockUnsupported", "This browser cannot keep the screen on."));
             return;
         }
 
@@ -151,7 +161,7 @@
         if (keepAwake) {
             await acquireReaderWakeLock();
             if (!readerWakeLock) {
-                showToast("Bildschirm konnte nicht dauerhaft aktiviert werden.");
+                showToast(t("wakeLockFailed", "The screen could not be kept on."));
             }
         } else {
             await releaseReaderWakeLock();
@@ -170,12 +180,12 @@
         const active = fullscreenElement() === shell || immersiveFallbackActive();
         immersiveButton.setAttribute("aria-pressed", active ? "true" : "false");
         immersiveButton.classList.toggle("is-active", active);
-        immersiveButton.title = active ? "Immersiv beenden" : "Immersiv";
-        immersiveButton.setAttribute(
-            "aria-label",
-            active
-                ? "Immersiven Lesemodus beenden"
-                : "Immersiven Lesemodus öffnen");
+        const label = active
+            ? t("exitFullscreen", "Exit fullscreen")
+            : t("fullscreen", "Fullscreen");
+        immersiveButton.title = label;
+        immersiveButton.setAttribute("aria-label", label);
+        shell.classList.toggle("reader-fullscreen", active);
     };
 
     const exitFullscreen = async () => {
@@ -229,7 +239,7 @@
 
         shell.classList.add("reader-immersive-fallback", "reader-focus");
         syncImmersiveButton();
-        showToast("Systemleisten können in diesem Browser nicht vollständig ausgeblendet werden.");
+        showToast(t("fullscreenFallback", "This browser cannot hide its toolbars completely."));
     };
 
     const tokenFrom = form =>
@@ -269,6 +279,11 @@
         setFormValue(data, "ThemeTintStrength", source.themeTintStrength);
         setFormValue(data, "BookmarkStyle", source.bookmarkStyle);
         setFormValue(data, "BookmarkColor", source.bookmarkColor);
+        setFormValue(data, "Hyphenation", source.hyphenation);
+        setFormValue(data, "ParagraphIndent", source.paragraphIndent);
+        setFormValue(data, "ShowPageNumbers", source.showPageNumbers);
+        setFormValue(data, "ShowIllustrations", source.showIllustrations);
+        setFormValue(data, "AutoContinueChapters", source.autoContinueChapters);
     };
 
     const postSettings = async (
@@ -288,7 +303,7 @@
             headers: { "X-Requested-With": "fetch" }
         });
         if (!response.ok) {
-            throw new Error((await response.text()) || "Einstellungen konnten nicht gespeichert werden.");
+            throw new Error(t("settingsSaveFailed", "The settings could not be saved."));
         }
 
         const payload = await response.json();
@@ -316,8 +331,15 @@
                 if (scope === "work" || scope === "book") {
                     state.hasBookOverride = true;
                 }
+                // Apply the saved values, except for settings that changed again
+                // while this save was in flight (an appearance card sets several
+                // keys at once; each key's own save carries its newer value).
                 if (saved && state[changedKey] === snapshot[changedKey]) {
-                    state = { ...state, ...saved };
+                    const merged = { ...state };
+                    for (const [key, value] of Object.entries(saved)) {
+                        if (state[key] === snapshot[key]) merged[key] = value;
+                    }
+                    state = merged;
                     applySettings();
                 }
             })
@@ -429,21 +451,85 @@
 
         if (overrideState) {
             overrideState.textContent = state.hasBookOverride
-                ? "Für dieses Buch angepasst"
+                ? t("overrideWork", "Customized for this work")
                 : state.hasGenreOverride
-                    ? "Genre-Standard"
+                    ? t("overrideGenre", "Genre default")
                     : state.hasTypeOverride
-                        ? "Typ-Standard"
-                        : "Mein Standard";
+                        ? t("overrideType", "Type default")
+                        : t("overrideMine", "My default");
         }
     };
 
-    const initialAnchorElement = () => {
+    // A reading anchor is a paragraph plus a character offset into its text
+    // (textContent, the same unit novel-position.js stores for Scroll mode). In
+    // Pages mode a long paragraph can continue from the previous page, so the
+    // offset marks the first character on the current page.
+    const initialAnchor = () => {
         const language = shell.dataset.anchorLanguage || "ja";
         const index = shell.dataset.anchorParagraph;
         if (index == null || index === "") return null;
-        return shell.querySelector(
+        const paragraph = shell.querySelector(
             `[data-reader-paragraph][data-language="${cssEscape(language)}"][data-index="${cssEscape(index)}"]`);
+        return paragraph
+            ? { paragraph, offset: Math.max(0, Number(shell.dataset.anchorOffset) || 0) }
+            : null;
+    };
+
+    // Maps a textContent offset to a one-character range inside the paragraph.
+    const characterRange = (paragraph, offset) => {
+        const walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
+        let remaining = offset;
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+            const length = node.data.length;
+            if (remaining < length) {
+                const range = document.createRange();
+                range.setStart(node, remaining);
+                range.setEnd(node, remaining + 1);
+                return range;
+            }
+            remaining -= length;
+        }
+        return null;
+    };
+
+    // Left edge of the character at (or the first rendered one after) offset.
+    const characterLeft = (paragraph, offset, length) => {
+        for (let index = offset; index < Math.min(length, offset + 8); index++) {
+            const rect = characterRange(paragraph, index)?.getClientRects()[0];
+            if (rect && (rect.width > 0 || rect.height > 0)) return rect.left;
+        }
+        return null;
+    };
+
+    // Page index of a viewport x coordinate. Capturing and restoring an anchor
+    // both use this, so a saved anchor always maps back to the page it came from.
+    const pageAt = left => {
+        const width = Math.max(1, content.clientWidth);
+        return Math.floor((content.scrollLeft + left - content.getBoundingClientRect().left + 1) / width);
+    };
+
+    const pagedAnchor = paragraphs => {
+        const page = Math.round(content.scrollLeft / Math.max(1, content.clientWidth));
+        const paragraph = paragraphs.find(item =>
+            Array.from(item.getClientRects()).some(rect => rect.width > 0 && pageAt(rect.left) >= page));
+        if (!paragraph) return { paragraph: paragraphs[0], offset: 0 };
+
+        const first = paragraph.getClientRects()[0];
+        if (!first || pageAt(first.left) >= page) return { paragraph, offset: 0 };
+
+        // The paragraph started on an earlier page: find the first character laid
+        // out on this page. Characters run in reading order across the columns,
+        // so "on this page or later" is monotonic in the offset.
+        const length = paragraph.textContent?.length || 0;
+        let low = 0;
+        let high = length;
+        while (low < high) {
+            const middle = Math.floor((low + high) / 2);
+            const left = characterLeft(paragraph, middle, length);
+            if (left !== null && pageAt(left) >= page) high = middle;
+            else low = middle + 1;
+        }
+        return { paragraph, offset: Math.min(low, Math.max(0, length - 1)) };
     };
 
     const captureLogicalAnchor = () => {
@@ -457,12 +543,7 @@
         if (paragraphs.length === 0) return null;
 
         if ((shell.dataset.readingMode || state.readingMode) === "paged") {
-            const contentRect = content.getBoundingClientRect();
-            return paragraphs.find(paragraph => {
-                const rect = paragraph.getBoundingClientRect();
-                return rect.right > contentRect.left + 20 &&
-                    rect.left < contentRect.right - 20;
-            }) || paragraphs[0];
+            return pagedAnchor(paragraphs);
         }
 
         const target = window.innerHeight * .28;
@@ -473,7 +554,20 @@
             if (rect.top <= target && rect.bottom >= target) break;
             if (rect.top > target) break;
         }
-        return selected;
+        const rect = selected.getBoundingClientRect();
+        const length = selected.textContent?.length || 0;
+        const fraction = rect.height <= 0 ? 0 : clamp((target - rect.top) / rect.height, 0, 1);
+        return { paragraph: selected, offset: Math.round(length * fraction) };
+    };
+
+    // Page that shows the anchor's character (the paragraph start for offset 0).
+    const pageOfAnchor = anchor => {
+        const length = anchor.paragraph.textContent?.length || 0;
+        const left = anchor.offset > 0 && anchor.offset < length
+            ? characterLeft(anchor.paragraph, anchor.offset, length)
+            : null;
+        const edge = left ?? anchor.paragraph.getClientRects()[0]?.left;
+        return edge == null ? currentPage : pageAt(edge);
     };
 
     const updateReadingProgress = () => {
@@ -491,9 +585,12 @@
         });
     };
 
+    // Runs once a page turn or swipe has settled.
     const sendPagedProgress = () => {
-        if (!progressForm || state.readingMode !== "paged") return;
-        const paragraph = captureLogicalAnchor();
+        if (state.readingMode !== "paged") return;
+        const anchor = captureLogicalAnchor();
+        settledPagedAnchor = anchor;
+        if (!progressForm) return;
         const language =
             shell.dataset.view === "de" && shell.dataset.hasTranslation === "true"
                 ? "de"
@@ -503,8 +600,8 @@
         const data = new FormData(progressForm);
         setFormValue(data, "positionPermille", progress);
         setFormValue(data, "anchorLanguage", language);
-        setFormValue(data, "anchorParagraphIndex", paragraph?.dataset.index ?? "");
-        setFormValue(data, "anchorOffset", 0);
+        setFormValue(data, "anchorParagraphIndex", anchor?.paragraph.dataset.index ?? "");
+        setFormValue(data, "anchorOffset", anchor?.offset ?? 0);
 
         fetch(progressForm.action, {
             method: "POST",
@@ -515,12 +612,49 @@
         }).catch(() => {});
     };
 
+    // Reader frame slider/position text (reader-shell.js) for both modes.
+    const emitLocation = () => {
+        if (!frame) return;
+        let page;
+        let total;
+        let value;
+        let max;
+        if (state.readingMode === "paged") {
+            page = currentPage + 1;
+            total = pageCount;
+            value = currentPage;
+            max = pageCount - 1;
+        } else {
+            const viewport = Math.max(1, window.innerHeight);
+            const scrollable = Math.max(1, document.documentElement.scrollHeight - viewport);
+            total = Math.max(1, Math.ceil(document.documentElement.scrollHeight / viewport));
+            page = Math.min(total, Math.floor(window.scrollY / viewport) + 1);
+            value = Math.round(clamp(window.scrollY / scrollable, 0, 1) * 1000);
+            max = 1000;
+        }
+        const percent = state.readingMode === "paged"
+            ? Math.round(page / total * 100)
+            : Math.round(value / 10);
+        const label = t("position", "{page} / {total}", { page, total });
+        const valueText = t(
+            "positionAria",
+            "Page {page} of {total}, {percent}% of the chapter",
+            { page, total, percent });
+        shell.dispatchEvent(new CustomEvent("jularr:reader-location", {
+            detail: { value, max, text: label, valueText }
+        }));
+        if (pageNumberOverlay) {
+            pageNumberOverlay.textContent = state.readingMode === "paged" ? String(page) : "";
+        }
+    };
+
     const syncPageState = () => {
         if (state.readingMode !== "paged") return;
         const width = Math.max(1, content.clientWidth);
         pageCount = Math.max(1, Math.ceil(content.scrollWidth / width));
         currentPage = clamp(Math.round(content.scrollLeft / width), 0, pageCount - 1);
         if (pageNumber) pageNumber.textContent = `${currentPage + 1} / ${pageCount}`;
+        emitLocation();
         shell.querySelector("[data-reader-page-prev]")?.toggleAttribute("disabled", currentPage <= 0);
         shell.querySelector("[data-reader-page-next]")?.toggleAttribute("disabled", currentPage >= pageCount - 1);
         updateReadingProgress();
@@ -559,42 +693,38 @@
     const setupPaged = anchor => {
         stopAutoScroll();
         shell.dataset.readingMode = "paged";
-        pageControls.hidden = false;
+        shell.classList.toggle("reader-frame-fixed", frame);
+        if (pageControls) pageControls.hidden = false;
         document.body.classList.add("novel-paged-body");
+        settledPagedAnchor = anchor;
 
         requestAnimationFrame(() => {
             syncPageState();
-            if (anchor) {
-                const contentRect = content.getBoundingClientRect();
-                const anchorRect = anchor.getBoundingClientRect();
-                const horizontalOffset =
-                    content.scrollLeft + anchorRect.left - contentRect.left;
-                goToPage(Math.floor(horizontalOffset / Math.max(1, content.clientWidth)), false);
-            }
+            if (anchor) goToPage(pageOfAnchor(anchor), false);
             syncPageState();
         });
     };
 
     const teardownPaged = anchor => {
-        const index = anchor?.dataset.index;
-        const language = anchor?.dataset.language;
+        settledPagedAnchor = null;
         content.scrollLeft = 0;
         shell.dataset.readingMode = "continuous";
-        pageControls.hidden = true;
+        shell.classList.remove("reader-frame-fixed");
+        if (pageControls) pageControls.hidden = true;
         document.body.classList.remove("novel-paged-body");
 
         requestAnimationFrame(() => {
-            if (index == null || !language) return;
-            const target = shell.querySelector(
-                `[data-reader-paragraph][data-language="${cssEscape(language)}"][data-index="${cssEscape(index)}"]`);
-            if (!target) return;
-            const top = window.scrollY + target.getBoundingClientRect().top - window.innerHeight * .28;
+            if (!anchor) return;
+            const rect = anchor.paragraph.getBoundingClientRect();
+            const length = anchor.paragraph.textContent?.length || 0;
+            const fraction = length <= 0 ? 0 : clamp(anchor.offset / length, 0, 1);
+            const top = window.scrollY + rect.top + rect.height * fraction - window.innerHeight * .28;
             window.scrollTo({ top: Math.max(0, top), behavior: "auto" });
         });
     };
 
     const applySettings = (preserveAnchor = true) => {
-        const anchor = preserveAnchor ? captureLogicalAnchor() : initialAnchorElement();
+        const anchor = preserveAnchor ? captureLogicalAnchor() : initialAnchor();
         const previousMode = shell.dataset.readingMode || state.readingMode;
 
         shell.dataset.readingMode = state.readingMode;
@@ -605,6 +735,10 @@
         shell.dataset.genreArtwork = String(Boolean(state.genreArtworkEnabled));
         shell.dataset.genreTheme = state.genreTheme || "auto";
         shell.dataset.textAlignment = state.textAlignment;
+        shell.dataset.hyphenation = String(state.hyphenation !== false);
+        shell.dataset.paragraphIndent = String(state.paragraphIndent !== false);
+        shell.dataset.pageNumbers = String(state.showPageNumbers !== false);
+        shell.dataset.illustrations = String(state.showIllustrations !== false);
 
         document.documentElement.style.setProperty("--novel-reader-size", `${state.fontSizeRem}rem`);
         document.documentElement.style.setProperty("--novel-reader-leading", state.lineHeight);
@@ -627,8 +761,10 @@
         } else if (previousMode === "paged") {
             teardownPaged(anchor);
         } else {
-            pageControls.hidden = true;
+            if (pageControls) pageControls.hidden = true;
+            shell.classList.remove("reader-frame-fixed");
             document.body.classList.remove("novel-paged-body");
+            requestAnimationFrame(emitLocation);
         }
 
         syncControls();
@@ -644,7 +780,6 @@
         }
         if (autoScrollButton) {
             autoScrollButton.setAttribute("aria-pressed", "false");
-            autoScrollButton.setAttribute("aria-label", "Auto-Scroll starten");
         }
     };
 
@@ -662,6 +797,7 @@
         const max = document.documentElement.scrollHeight - window.innerHeight;
         if (window.scrollY >= max - 2) {
             stopAutoScroll();
+            if (state.autoContinueChapters) openAdjacentChapter("next");
             return;
         }
         autoScrollFrame = requestAnimationFrame(autoScrollTick);
@@ -673,13 +809,12 @@
             return;
         }
         if (state.readingMode !== "continuous") {
-            showToast("Auto-Scroll ist im Scroll-Modus verfügbar.");
+            showToast(t("autoScrollScrollOnly", "Auto-scroll works in Scroll mode."));
             return;
         }
         autoScrollRunning = true;
         if (autoScrollButton) {
             autoScrollButton.setAttribute("aria-pressed", "true");
-            autoScrollButton.setAttribute("aria-label", "Auto-Scroll pausieren");
         }
         autoScrollFrame = requestAnimationFrame(autoScrollTick);
     };
@@ -803,8 +938,8 @@
             button.dataset.bookmarkStyle = bookmark.style || state.bookmarkStyle;
             button.style.setProperty("--bookmark-color", bookmark.color || state.bookmarkColor);
             button.dataset.pageBookmark = bookmark.id;
-            button.title = "Lesezeichen";
-            button.setAttribute("aria-label", "Lesezeichen auf dieser Seite");
+            button.title = t("bookmark", "Bookmark");
+            button.setAttribute("aria-label", t("bookmarkOnPage", "Bookmark on this page"));
             pageBookmarks.append(button);
         }
     };
@@ -852,7 +987,7 @@
             const title = document.createElement("strong");
             title.textContent =
                 bookmark.label ||
-                `Lesezeichen · ${Math.round(item.positionPermille / 10)}%`;
+                t("bookmarkAt", "Bookmark · {position}", { position: Math.round(item.positionPermille / 10) + "%" });
             link.append(title);
             if (bookmark.anchorText) {
                 const excerpt = document.createElement("span");
@@ -865,7 +1000,7 @@
             remove.className = "novel-note-remove";
             remove.dataset.removeBookmarkButton = "";
             remove.dataset.bookmarkId = item.id;
-            remove.textContent = "Entfernen";
+            remove.textContent = t("remove", "Remove");
             card.append(link, remove);
             list.prepend(card);
         }
@@ -882,7 +1017,7 @@
             if (track.dataset.orientation === "horizontal") marker.style.left = percent + "%";
             else marker.style.top = percent + "%";
             marker.innerHTML = "<span></span>";
-            marker.title = bookmark.anchorText || "Lesezeichen";
+            marker.title = bookmark.anchorText || t("bookmark", "Bookmark");
             track.append(marker);
         });
 
@@ -892,7 +1027,7 @@
 
     const savePagedBookmark = async () => {
         if (!bookmarkForm) return;
-        const paragraph = captureLogicalAnchor();
+        const anchor = captureLogicalAnchor();
         const language =
             shell.dataset.view === "de" && shell.dataset.hasTranslation === "true"
                 ? "de"
@@ -902,8 +1037,8 @@
         const data = new FormData(bookmarkForm);
         setFormValue(data, "positionPermille", position);
         setFormValue(data, "language", language);
-        setFormValue(data, "paragraphIndex", paragraph?.dataset.index ?? "");
-        setFormValue(data, "characterOffset", 0);
+        setFormValue(data, "paragraphIndex", anchor?.paragraph.dataset.index ?? "");
+        setFormValue(data, "characterOffset", anchor?.offset ?? 0);
         setFormValue(data, "label", "");
         setFormValue(data, "style", state.bookmarkStyle);
         setFormValue(data, "color", state.bookmarkColor);
@@ -915,11 +1050,11 @@
             headers: { "X-Requested-With": "fetch" }
         });
         if (!response.ok) {
-            throw new Error((await response.text()) || "Lesezeichen konnte nicht gespeichert werden.");
+            throw new Error(t("bookmarkSaveFailed", "The bookmark could not be saved"));
         }
 
         addPagedBookmarkUi(await response.json());
-        showToast("Lesezeichen gespeichert.");
+        showToast(t("bookmarkSaved", "Bookmark saved"));
     };
 
     const saveBookmarkAppearance = async (id, style, color) => {
@@ -935,7 +1070,7 @@
             credentials: "same-origin",
             headers: { "X-Requested-With": "fetch" }
         });
-        if (!response.ok) throw new Error("Lesezeichen konnte nicht geändert werden.");
+        if (!response.ok) throw new Error(t("bookmarkChangeFailed", "The bookmark could not be changed"));
         const payload = await response.json();
         const bookmark = bookmarkState.get(id);
         if (bookmark) {
@@ -972,7 +1107,7 @@
     shell.querySelector("[data-reader-save-defaults]")?.addEventListener("click", async () => {
         try {
             await postSettings("default", null);
-            showToast("User-Standard gespeichert.");
+            showToast(t("defaultsSaved", "Saved as your default."));
         } catch (error) {
             showToast(error.message);
         }
@@ -987,13 +1122,13 @@
                 credentials: "same-origin",
                 headers: { "X-Requested-With": "fetch" }
             });
-            if (!response.ok) throw new Error("Buch-Einstellungen konnten nicht zurückgesetzt werden.");
+            if (!response.ok) throw new Error(t("resetFailed", "The settings could not be reset."));
             const payload = await response.json();
             if (payload?.settings) {
                 state = payload.settings;
                 applySettings();
             }
-            showToast("Buch verwendet wieder den User-Standard.");
+            showToast(t("resetDone", "This work uses your default again."));
         } catch (error) {
             showToast(error.message);
         }
@@ -1040,11 +1175,90 @@
         applySettings();
     });
 
+    const chapterLink = which => shell.querySelector(`a[data-novel-chapter-link="${which}"]`);
+
+    const openAdjacentChapter = which => {
+        const link = chapterLink(which);
+        if (!link) return false;
+        link.click();
+        return true;
+    };
+
     shell.addEventListener("jularr:reader-page-edge", event => {
         const direction = Number(event.detail?.direction || 0);
-        if (!direction || state.readingMode !== "paged") return;
-        goToPage(currentPage + direction);
+        if (!direction) return;
+        if (state.readingMode !== "paged") {
+            // Frame page buttons in Scroll mode move by one screen.
+            window.scrollBy({
+                top: direction * window.innerHeight * .85,
+                behavior: reduceMotion.matches ? "auto" : "smooth"
+            });
+            return;
+        }
+        const speaking = shell.dataset.readerTts && shell.dataset.readerTts !== "idle";
+        const next = currentPage + direction;
+        // Turning past either end opens the adjacent chapter; read-aloud page
+        // following never changes chapters.
+        if (!speaking && next >= pageCount && openAdjacentChapter("next")) return;
+        if (!speaking && next < 0 && openAdjacentChapter("previous")) return;
+        goToPage(next);
     });
+
+    shell.addEventListener("jularr:reader-seek", event => {
+        const value = Number(event.detail?.value || 0);
+        if (state.readingMode === "paged") {
+            goToPage(value, false);
+            return;
+        }
+        const max = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+        window.scrollTo({ top: max * value / 1000, behavior: "auto" });
+    });
+
+    // Search hits and note jumps inside the current chapter (novel-search.js).
+    shell.addEventListener("jularr:novel-jump-paragraph", event => {
+        const { language, index } = event.detail || {};
+        const target = shell.querySelector(
+            `[data-reader-paragraph][data-language="${cssEscape(language || "ja")}"][data-index="${cssEscape(String(index))}"]`);
+        if (!target) return;
+        if (state.readingMode === "paged") {
+            goToPage(pageOfAnchor({ paragraph: target, offset: 0 }), false);
+        } else {
+            const top = window.scrollY + target.getBoundingClientRect().top - window.innerHeight * .28;
+            window.scrollTo({ top: Math.max(0, top), behavior: reduceMotion.matches ? "auto" : "smooth" });
+        }
+        target.classList.remove("novel-paragraph-flash");
+        void target.offsetWidth;
+        target.classList.add("novel-paragraph-flash");
+    });
+
+    shell.addEventListener("jularr:reader-timer-end", stopAutoScroll);
+
+    // Scroll mode: with "continue automatically" on, scrolling on at the very end
+    // of the chapter opens the next one.
+    let endIntent = 0;
+    const atChapterEnd = () =>
+        window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4;
+    const continueAtEnd = direction => {
+        if (state.readingMode === "paged" || !state.autoContinueChapters || direction <= 0) return;
+        if (!atChapterEnd()) {
+            endIntent = 0;
+            return;
+        }
+        endIntent += 1;
+        if (endIntent >= 3) {
+            endIntent = 0;
+            openAdjacentChapter("next");
+        }
+    };
+    window.addEventListener("wheel", event => continueAtEnd(Math.sign(event.deltaY)), { passive: true });
+    window.addEventListener("keydown", event => {
+        if (["PageDown", "ArrowDown", " "].includes(event.key)) continueAtEnd(1);
+    });
+    window.addEventListener("scroll", () => {
+        if (state.readingMode === "paged") return;
+        window.clearTimeout(emitLocation.timer);
+        emitLocation.timer = window.setTimeout(emitLocation, 60);
+    }, { passive: true });
 
     shell.querySelector("[data-reader-page-prev]")?.addEventListener("click", () =>
         goToPage(currentPage - 1));
@@ -1143,15 +1357,12 @@
         clearTimeout(resizeTimer);
         resizeTimer = setTimeout(() => {
             if (state.readingMode === "paged") {
-                const anchor = captureLogicalAnchor();
+                // The columns have already reflowed by now, so the anchor comes from
+                // the last settled page rather than from the resized layout.
+                const anchor = settledPagedAnchor || captureLogicalAnchor();
                 requestAnimationFrame(() => {
                     syncPageState();
-                    if (anchor) {
-                        const contentRect = content.getBoundingClientRect();
-                        const rect = anchor.getBoundingClientRect();
-                        const horizontalOffset = content.scrollLeft + rect.left - contentRect.left;
-                        goToPage(Math.floor(horizontalOffset / Math.max(1, content.clientWidth)), false);
-                    }
+                    if (anchor) goToPage(pageOfAnchor(anchor), false);
                 });
             }
         }, 160);

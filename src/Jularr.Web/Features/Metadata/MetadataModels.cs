@@ -61,8 +61,8 @@ public sealed record AniListAnimeRelation(
     string RelationType,
     AnimeMetadataCandidate Candidate);
 
-public sealed record AniListMediaRelation(
-    string RelationType,
+/// <summary>Display fields of one AniList entry; <see cref="MediaType"/> is AniList's ANIME or MANGA.</summary>
+public sealed record AniListMediaSummary(
     string MediaType,
     string ExternalId,
     string Title,
@@ -71,6 +71,15 @@ public sealed record AniListMediaRelation(
     string? Format,
     string? Status,
     int? Year);
+
+public sealed record AniListMediaRelation(
+    string RelationType,
+    AniListMediaSummary Media);
+
+/// <summary>One AniList entry and its related entries, from a single request.</summary>
+public sealed record AniListRelatedMedia(
+    AniListMediaSummary? Media,
+    IReadOnlyList<AniListMediaRelation> Relations);
 
 
 public interface IAnimeMetadataProvider

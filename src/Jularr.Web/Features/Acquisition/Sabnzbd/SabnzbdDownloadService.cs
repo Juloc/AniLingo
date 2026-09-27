@@ -2,6 +2,7 @@ using Jularr.Web.Data;
 using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Acquisition.DownloadClients;
 using Jularr.Web.Features.Operations;
+using Jularr.Web.Features.ReadingAcquisition;
 
 namespace Jularr.Web.Features.Acquisition.Sabnzbd;
 
@@ -181,6 +182,21 @@ public sealed class SabnzbdDownloadService(
                 "A newer release already replaced this download for the same episodes.");
         }
 
+        // Request-backed Manga/Light Novel downloads: once Wanted moved the request on to a newer
+        // release, retrying this one would start a download nobody imports.
+        var requests = new AcquisitionAccessStore(db);
+        var request = await requests.FindByOperationAsync(operation.Id, cancellationToken);
+        var readingDownload = string.Equals(
+            operation.Kind,
+            ReadingAcquisitionEngine.OperationKind,
+            StringComparison.Ordinal);
+        if (readingDownload && request is null)
+        {
+            return new SabnzbdActionOutcome(
+                false,
+                "A newer release already replaced this download for the same request.");
+        }
+
         var entry = await RequireSabnzbdEntryAsync(operation, cancellationToken);
         var connection = SabnzbdDownloadClient.ToConnection(entry);
 
@@ -217,6 +233,21 @@ public sealed class SabnzbdDownloadService(
             0,
             "Retry accepted by SABnzbd; waiting for download progress.",
             cancellationToken: cancellationToken);
+
+        if (readingDownload
+            && request is { Status: AcquisitionRequestStatus.Approved or AcquisitionRequestStatus.Failed })
+        {
+            // The request stopped waiting for this download (no other release, or it gave up);
+            // the owner's retry brings it back so Wanted imports the result.
+            await requests.UpdateStatusAsync(
+                request.Id,
+                AcquisitionRequestStatus.Downloading,
+                "Retry queued in SABnzbd.",
+                operation.Id,
+                resultUrl: null,
+                decidedByProfileId: null,
+                cancellationToken);
+        }
 
         if (relation is { } retried)
         {

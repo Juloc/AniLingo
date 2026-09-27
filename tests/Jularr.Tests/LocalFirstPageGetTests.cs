@@ -367,7 +367,8 @@ public sealed class LocalFirstPageGetTests
                 HttpClientFactory,
                 Operations,
                 ReviewStore,
-                AniListAccount());
+                AniListAccount(),
+                new FranchiseStore(Db));
 
         public DiscoverIndexModel DiscoverPage()
         {
@@ -395,8 +396,9 @@ public sealed class LocalFirstPageGetTests
             var franchiseService = new FranchiseService(
                 franchiseStore,
                 relationStore,
-                animeProvider,
-                readingProvider,
+                new AniListFranchiseRelationSource(animeProvider, readingProvider),
+                new Jularr.Web.Features.Calendar.AniListRequestLimiter(new AniListRateLimitGate(), TimeProvider.System),
+                new FranchiseRefreshSignal(),
                 NullLogger<FranchiseService>.Instance);
 
             return new DiscoverIndexModel(

@@ -3,33 +3,18 @@
     margin-inline: auto;
 }
 
-.watchlist-header,
-.watchlist-section-heading {
+.watchlist-header {
     display: flex;
     align-items: end;
     justify-content: space-between;
     gap: 18px;
-}
-
-.watchlist-header {
     margin-bottom: 22px;
 }
 
-.watchlist-header h1,
-.watchlist-section-heading h2 {
-    margin: 0;
-}
-
 .watchlist-header h1 {
+    margin: 0;
     font-size: clamp(30px, 4vw, 42px);
     letter-spacing: -.04em;
-}
-
-.watchlist-header p,
-.watchlist-section-heading span {
-    margin: 6px 0 0;
-    color: var(--muted);
-    font-size: 13px;
 }
 
 .watchlist-grid {
@@ -48,6 +33,10 @@
     border-radius: 13px;
     background: var(--surface);
     box-shadow: var(--shadow-card);
+}
+
+.watchlist-card:target {
+    border-color: var(--accent);
 }
 
 .watchlist-cover {
@@ -82,8 +71,7 @@
     line-height: 1.25;
 }
 
-.watchlist-meta,
-.watchlist-source {
+.watchlist-meta {
     display: flex;
     flex-wrap: wrap;
     gap: 5px 9px;
@@ -96,6 +84,11 @@
     margin-inline-end: 9px;
 }
 
+.watchlist-meta .watchlist-in-library {
+    color: var(--accent-text);
+    font-weight: 700;
+}
+
 .watchlist-native {
     margin: 3px 0 0;
     overflow: hidden;
@@ -106,7 +99,16 @@
 }
 
 .watchlist-source {
+    width: fit-content;
     margin-top: 8px;
+    color: var(--muted);
+    font-size: 11px;
+    text-decoration: none;
+}
+
+.watchlist-source:hover {
+    color: var(--text);
+    text-decoration: underline;
 }
 
 .watchlist-actions {
@@ -148,11 +150,8 @@
     margin-top: 30px;
 }
 
-.watchlist-section-heading {
-    margin-bottom: 12px;
-}
-
-.watchlist-section-heading h2 {
+.watchlist-franchises h2 {
+    margin: 0 0 12px;
     font-size: 19px;
 }
 
@@ -180,20 +179,26 @@
     gap: 2px;
 }
 
-.watchlist-franchise-list strong {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
 .watchlist-franchise-list span {
     color: var(--muted);
     font-size: 11px;
 }
 
+.watchlist-franchise-link {
+    overflow: hidden;
+    color: var(--text);
+    font-weight: 700;
+    text-decoration: none;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.watchlist-franchise-link:hover {
+    text-decoration: underline;
+}
+
 @media (max-width: 720px) {
-    .watchlist-header,
-    .watchlist-section-heading {
+    .watchlist-header {
         align-items: flex-start;
         flex-direction: column;
     }
@@ -214,15 +219,4 @@
         align-items: flex-start;
         flex-direction: column;
     }
-}
-
-
-.watchlist-franchise-link {
-    color: var(--text);
-    font-weight: 700;
-    text-decoration: none;
-}
-
-.watchlist-franchise-link:hover {
-    text-decoration: underline;
 }

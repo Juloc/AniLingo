@@ -112,9 +112,11 @@ RUN set -eux; \
     ffmpeg -version >/dev/null; \
     ffprobe -version >/dev/null; \
     rm -rf /var/lib/apt/lists/*; \
+    groupadd --system jularr; \
+    useradd --system --gid jularr --home-dir /data --shell /usr/sbin/nologin jularr; \
     mkdir -p /data/codex /data/whisper /data/transcription-cache; \
-    chown -R "${APP_UID}:${APP_UID}" /data
-# Jularr runs as the aspnet image's non-root "app" user (APP_UID, 1654:1654).
+    chown -R jularr:jularr /data
+# Jularr runs as the dedicated non-root "jularr" system user created above.
 # Only /data (persistent state) and /tmp (scratch) are writable for it; the
 # application, tools and dictionaries stay root-owned and read-only.
 # Data volumes created by earlier root-based images are root-owned. The
@@ -165,5 +167,5 @@ COPY --from=whisper /src/whisper/build/bin/whisper-cli /usr/local/bin/whisper-cl
 COPY --from=japanese-data /var/lib/mecab/dic/open-jtalk/naist-jdic /var/lib/mecab/dic/open-jtalk/naist-jdic
 COPY --from=japanese-data /dictionary ./dictionary
 COPY --from=build /app/publish .
-USER ${APP_UID}
+USER jularr
 ENTRYPOINT ["/usr/local/bin/jularr-entrypoint"]
