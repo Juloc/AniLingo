@@ -13,29 +13,31 @@ public sealed record AniListReleaseTarget(int Id, string? KnownStatus, bool Only
 public sealed record ReleaseRefreshResult(int Refreshed, int Failed, int Requests, TimeSpan? RetryAfter);
 
 /// <summary>
-/// Bounded refresh of the AniList release cache: only library entries that can still have
-/// upcoming releases, only when their cached data is due, at most <see cref="MaxIdsPerRun"/> ids
-/// and <see cref="MaxPagesPerBatch"/> schedule pages per batch. Failures keep the cached data.
-/// This refreshes metadata only; it never marks anything wanted or starts a search.
+/// Bounded refresh of the AniList release cache: only library and followed entries that can still
+/// have upcoming releases, only when their cached data is due, at most <see cref="MaxIdsPerRun"/>
+/// ids per run. The whole airing schedule of the window is paged through (a weekly show has about
+/// 22 airings in it), up to <see cref="MaxPagesPerBatch"/> pages per batch. Requests go through
+/// the shared <see cref="AniListRequestLimiter"/>. Failures keep the cached data. This refreshes
+/// metadata only; it never marks anything wanted or starts a search.
 /// </summary>
 public sealed class ReleaseCalendarRefresher(
     AppDbContext db,
     ReleaseCalendarCacheStore cache,
     AniListAccountStore mappings,
     IAniListReleaseScheduleClient client,
+    AniListRequestLimiter limiter,
     ILogger<ReleaseCalendarRefresher> logger,
     TimeProvider? clock = null)
 {
     public const int MaxIdsPerRun = 200;
-    public const int MaxPagesPerBatch = 4;
+
+    /// <summary>50 airings per page: enough for 50 weekly shows over the whole window.</summary>
+    public const int MaxPagesPerBatch = 40;
     public static readonly TimeSpan RefreshAfter = TimeSpan.FromHours(12);
     public static readonly TimeSpan RetryFailedAfter = TimeSpan.FromHours(1);
     public static readonly TimeSpan FinishedRecheckAfter = TimeSpan.FromDays(30);
     public static readonly TimeSpan PastWindow = TimeSpan.FromDays(35);
     public static readonly TimeSpan FutureWindow = TimeSpan.FromDays(120);
-
-    /// <summary>Pause between provider requests, well below AniList's per-minute limit.</summary>
-    public TimeSpan RequestSpacing { get; init; } = TimeSpan.FromSeconds(2);
 
     private static readonly string[] EndedStatuses = ["FINISHED", "CANCELLED"];
 
@@ -63,11 +65,11 @@ public sealed class ReleaseCalendarRefresher(
             {
                 var media = new List<AniListReleaseMedia>();
                 var airings = new List<AniListAiring>();
-                for (var page = 1; page <= MaxPagesPerBatch; page++)
+                for (var page = 1; ; page++)
                 {
-                    if (requests > 0 && RequestSpacing > TimeSpan.Zero)
+                    if (await limiter.WaitAsync(cancellationToken) is { } blocked)
                     {
-                        await Task.Delay(RequestSpacing, cancellationToken);
+                        return new ReleaseRefreshResult(refreshed, failed, requests, blocked);
                     }
 
                     var schedule = await client.FetchAsync(ids, from, to, page, cancellationToken);
@@ -78,6 +80,15 @@ public sealed class ReleaseCalendarRefresher(
                     {
                         break;
                     }
+
+                    if (page == MaxPagesPerBatch)
+                    {
+                        logger.LogWarning(
+                            "The AniList airing schedule of {Count} entries has more than {Pages} pages; later airings are left out.",
+                            ids.Length,
+                            MaxPagesPerBatch);
+                        break;
+                    }
                 }
 
                 var snapshots = AniListReleaseNormalizer.Normalize(ids, media, airings);
@@ -86,6 +97,7 @@ public sealed class ReleaseCalendarRefresher(
             }
             catch (ReleaseProviderRateLimitedException limited)
             {
+                limiter.RateLimited(limited.RetryAfter);
                 logger.LogInformation("AniList rate limit reached; release refresh resumes in {Seconds} s.", limited.RetryAfter.TotalSeconds);
                 return new ReleaseRefreshResult(refreshed, failed, requests, limited.RetryAfter);
             }

@@ -19,6 +19,7 @@ data class TvPlayerDesign(
     val spacingLargeDp: Int,
     val controlSizeDp: Int,
     val subtitlePreferredSp: Int,
+    val controlsAutoHideMs: Long,
 )
 
 object TvPlayerDesignLoader {
@@ -39,6 +40,7 @@ object TvPlayerDesignLoader {
             spacingLargeDp = config.spacingLargeDp,
             controlSizeDp = config.tvControlSizeDp,
             subtitlePreferredSp = config.subtitlePreferredSp,
+            controlsAutoHideMs = config.controlsAutoHideMs,
         )
     }
 }

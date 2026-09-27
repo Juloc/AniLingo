@@ -111,7 +111,9 @@ public sealed record DiscoveryItem(
     // Status of the open add request for this title; set per response, never cached.
     string? RequestStatus = null,
     bool IsFollowed = false,
-    Guid? LocalMediaId = null);
+    Guid? LocalMediaId = null,
+    // A franchise the profile follows that holds this title; set per response.
+    Guid? FollowedFranchiseId = null);
 
 public sealed record DiscoveryResponse(
     string Query,

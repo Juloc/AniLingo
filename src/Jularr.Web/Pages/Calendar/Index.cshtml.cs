@@ -121,6 +121,11 @@ public sealed class IndexModel(
                               release.Date.Overlaps(PeriodStart, PeriodEnd, Presenter.Zone))
             .ToArray();
 
+    /// <summary>No release is known for the shown period (padding days of the month grid do not count).</summary>
+    public bool IsPeriodEmpty =>
+        Imprecise.Count == 0 &&
+        !Result.Days.Any(day => day.Date >= PeriodStart && day.Date <= PeriodEnd && day.Events.Count > 0);
+
     public DateOnly Previous => View switch
     {
         CalendarView.Month => PeriodStart.AddMonths(-1),
