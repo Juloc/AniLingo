@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using Jularr.Web.Features.Novels;
+using Jularr.Web.Features.ReadingSources;
 
 namespace Jularr.Web.Features.ReadingDiscovery;
 
@@ -63,13 +64,30 @@ public static class ReadingCatalogSearch
         }
     }
 
-    public static async Task<IReadOnlyList<ReadingCatalogCandidate>> SearchLightNovelsAsync(
+    public static Task<IReadOnlyList<ReadingCatalogCandidate>> SearchLightNovelsAsync(
         NovelAniListProvider aniList,
         HttpClient syosetuClient,
         string query,
         int limit,
+        CancellationToken cancellationToken) =>
+        SearchLightNovelsAsync(
+            aniList,
+            syosetuClient,
+            ReadingSourceSettingsState.Default,
+            query,
+            limit,
+            cancellationToken);
+
+    public static async Task<IReadOnlyList<ReadingCatalogCandidate>> SearchLightNovelsAsync(
+        NovelAniListProvider aniList,
+        HttpClient syosetuClient,
+        ReadingSourceSettingsState sourceSettings,
+        string query,
+        int limit,
         CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(sourceSettings);
+
         var normalized = NormalizeQuery(query);
         if (normalized.Length == 0)
         {
@@ -77,16 +95,22 @@ public static class ReadingCatalogSearch
         }
 
         var boundedLimit = Math.Clamp(limit, 1, 24);
-        var aniListTask = SearchAniListNovelsSafeAsync(
-            aniList,
-            normalized,
-            boundedLimit,
-            cancellationToken);
-        var syosetuTask = SearchSyosetuSafeAsync(
-            syosetuClient,
-            normalized,
-            boundedLimit,
-            cancellationToken);
+        var aniListTask = sourceSettings.IsEnabled(
+                NovelAniListProvider.ProviderKey)
+            ? SearchAniListNovelsSafeAsync(
+                aniList,
+                normalized,
+                boundedLimit,
+                cancellationToken)
+            : Task.FromResult<IReadOnlyList<ReadingCatalogCandidate>>([]);
+        var syosetuTask = sourceSettings.IsEnabled(
+                NcodeNovelSourceProvider.ProviderKey)
+            ? SearchSyosetuSafeAsync(
+                syosetuClient,
+                normalized,
+                boundedLimit,
+                cancellationToken)
+            : Task.FromResult<IReadOnlyList<ReadingCatalogCandidate>>([]);
 
         await Task.WhenAll(aniListTask, syosetuTask);
 
@@ -96,7 +120,18 @@ public static class ReadingCatalogSearch
             .Select(group => group.First())
             .ToArray();
 
-        return Rank(normalized, merged);
+        var enabledSourceCount = ReadingSourceCatalog.Definitions.Count(
+            source => sourceSettings.IsEnabled(source.Key));
+        var maximumResults = Math.Clamp(
+            boundedLimit * Math.Max(enabledSourceCount, 1),
+            1,
+            96);
+
+        return Rank(
+            normalized,
+            merged,
+            sourceSettings,
+            maximumResults);
     }
 
     public static string NormalizeQuery(string? query) =>
@@ -182,11 +217,15 @@ public static class ReadingCatalogSearch
 
     private static IReadOnlyList<ReadingCatalogCandidate> Rank(
         string query,
-        IReadOnlyList<ReadingCatalogCandidate> candidates) =>
+        IReadOnlyList<ReadingCatalogCandidate> candidates,
+        ReadingSourceSettingsState? sourceSettings = null,
+        int maximumResults = 24) =>
         candidates
             .OrderByDescending(candidate => MatchScore(query, candidate))
+            .ThenBy(candidate =>
+                sourceSettings?.PriorityFor(candidate.Provider) ?? int.MaxValue)
             .ThenBy(candidate => candidate.Title, StringComparer.OrdinalIgnoreCase)
-            .Take(24)
+            .Take(Math.Clamp(maximumResults, 1, 96))
             .ToArray();
 
     internal static int MatchScore(

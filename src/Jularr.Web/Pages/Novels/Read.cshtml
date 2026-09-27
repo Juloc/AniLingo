@@ -294,6 +294,7 @@
     }
 
     <main class="novel-reader-content" data-reader-content data-reader-surface>
+        <partial name="_ChapterArtwork" model='new Jularr.Web.Features.ChapterArtwork.ChapterArtworkSlot(Model.Chapter.WorkId, Model.Chapter.Number, ui["chapterArt.aiGenerated"])' />
         <header class="novel-reader-title novel-reader-page-title">
             <span class="novel-chapter-label">@(Model.Chapter.IsEpubVolume
                 ? ui.Format("novels.read.volumeChapterLabel", ("volume", Model.Chapter.VolumeNumber), ("number", Model.Chapter.Number))

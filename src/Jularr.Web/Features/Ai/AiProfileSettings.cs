@@ -169,6 +169,12 @@ public sealed partial record AiProfileSettings(
     string? ApiKey,
     AiTranslationMode TranslationMode)
 {
+    /// <summary>
+    /// Image model of the OpenAI-compatible provider (for example
+    /// <c>gpt-image-1</c>). Image generation stays unavailable without it.
+    /// </summary>
+    public string? ImageModel { get; init; }
+
     public const int MaxOutputTokensLimit = 128_000;
 
     public static AiProfileSettings Default { get; } =
