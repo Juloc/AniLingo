@@ -1,7 +1,9 @@
 using Jularr.Web.Data;
+using Jularr.Web.Features.Artwork;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Learning;
 using Jularr.Web.Features.Localization;
+using Jularr.Web.Features.Metadata;
 using Jularr.Web.Features.Operations;
 using Jularr.Web.Features.Playback;
 using Jularr.Web.Features.Progress;
@@ -54,6 +56,11 @@ public sealed class EpisodeModel(
     public EpisodeProgressSnapshot? LocalProgress { get; private set; }
     public EpisodeFlowSnapshot? Flow { get; private set; }
     public PlayerControls? Controls { get; private set; }
+    public AnimeMetadata? Metadata { get; private set; }
+    public string? CoverImageUrl { get; private set; }
+    /// <summary>Every episode of the anime for the watch page's side list, in play order.</summary>
+    public IReadOnlyList<WatchEpisode> Episodes { get; private set; } = [];
+    public IReadOnlyList<int> Seasons => Episodes.Select(x => x.SeasonNumber).Distinct().ToArray();
     public double ResumePositionSeconds =>
         (LocalProgress?.ResumePositionMs ?? 0) / 1000d;
     public string? NextEpisodeUrl =>
@@ -150,6 +157,7 @@ public sealed class EpisodeModel(
         Playback = await playbackService.GetSnapshotAsync(id, cancellationToken);
         LocalProgress = await episodeProgressService.GetAsync(id, cancellationToken);
         Flow = await episodeProgressService.GetFlowAsync(id, cancellationToken);
+        await LoadSidePanelAsync(header.AnimeId, id, cancellationToken);
         // Local-only: remote AniList progress is loaded after first paint
         // through OnGetExternalProgressAsync.
         ExternalProgress = await aniListAccountService.GetEpisodeProgressSummaryAsync(
@@ -192,6 +200,55 @@ public sealed class EpisodeModel(
 
         return Page();
     }
+
+    private async Task LoadSidePanelAsync(
+        Guid animeId,
+        Guid currentEpisodeId,
+        CancellationToken cancellationToken)
+    {
+        Metadata = await db.AnimeMetadata
+            .AsNoTracking()
+            .SingleOrDefaultAsync(x => x.AnimeId == animeId, cancellationToken);
+        if (Metadata is not null)
+        {
+            AnimeTitle = Metadata.PreferredTitle;
+        }
+
+        CoverImageUrl = AnimeArtworkStore.ResolvePosterUrl(animeId, Metadata?.CoverImageUrl);
+
+        var rows = await db.Episodes
+            .AsNoTracking()
+            .Where(x => x.AnimeId == animeId)
+            .OrderBy(x => x.SeasonNumber)
+            .ThenBy(x => x.Number)
+            .Select(x => new { x.Id, x.SeasonNumber, x.Number, x.Title })
+            .ToListAsync(cancellationToken);
+        var progress = await episodeProgressService.GetForAnimeAsync(animeId, cancellationToken);
+
+        Episodes = rows
+            .Select(row =>
+            {
+                var state = progress.GetValueOrDefault(row.Id);
+                return new WatchEpisode(
+                    row.Id,
+                    row.SeasonNumber,
+                    row.Number,
+                    row.Title,
+                    state?.IsCompleted == true,
+                    state is { IsCompleted: false, ResumePositionMs: > 0 } ? state.Percent : null,
+                    row.Id == currentEpisodeId);
+            })
+            .ToArray();
+    }
+
+    public sealed record WatchEpisode(
+        Guid Id,
+        int SeasonNumber,
+        int Number,
+        string Title,
+        bool IsWatched,
+        int? ResumePercent,
+        bool IsCurrent);
 
     public async Task<IActionResult> OnPostUseSubtitleAsync(
         Guid id,

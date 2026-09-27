@@ -92,7 +92,12 @@ public sealed class PwaManifestTests
         StringAssert.Contains(pwaRuntime, "viewport-fit=cover");
         StringAssert.Contains(pwaRuntime, "mediaSession");
         StringAssert.Contains(pwaRuntime, "wakeLock");
-        StringAssert.Contains(pwaRuntime, "requestPictureInPicture");
+        // Picture-in-picture and full screen live in the player chrome, not in a second PWA button row.
+        var playerChrome = File.ReadAllText(Path.Combine(webRoot, "js", "player-chrome.js"));
+        StringAssert.Contains(playerChrome, "requestPictureInPicture");
+        StringAssert.Contains(playerChrome, "webkitSetPresentationMode");
+        StringAssert.Contains(playerChrome, "requestFullscreen");
+        Assert.IsFalse(pwaRuntime.Contains("pwa-player-actions", StringComparison.Ordinal));
         StringAssert.Contains(pwaRuntime, "navigator.share");
         StringAssert.Contains(pwaRuntime, "currentFingerprintedAssets");
         StringAssert.Contains(pwaRuntime, "url.searchParams.has(\"v\")");
