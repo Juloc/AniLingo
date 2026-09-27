@@ -59,6 +59,23 @@ public sealed class MangaReaderFrameTests
     }
 
     [TestMethod]
+    public void PageIndexIsBoundFromTheQueryNotTheRazorPageRouteValue()
+    {
+        // The route value "page" holds the Razor page path ("/Manga/Read").
+        // Without [FromQuery] every page image and ?page= resume became page 0.
+        foreach (var handler in new[] { nameof(ReadModel.OnGetAsync), nameof(ReadModel.OnGetPageAsync) })
+        {
+            var parameter = typeof(ReadModel).GetMethod(handler)!
+                .GetParameters()
+                .Single(x => x.Name == "page");
+            var attribute = parameter.GetCustomAttributes(typeof(Microsoft.AspNetCore.Mvc.FromQueryAttribute), false)
+                .Cast<Microsoft.AspNetCore.Mvc.FromQueryAttribute>()
+                .SingleOrDefault();
+            Assert.AreEqual("page", attribute?.Name, handler);
+        }
+    }
+
+    [TestMethod]
     public void MangaReaderOffersNoTranslationControlsWithoutMangaTranslation()
     {
         // Jularr has no manga (speech bubble) translation yet: no language menu,

@@ -102,9 +102,12 @@ public sealed class ReadModel(
         return volumes;
     }
 
+    // "page" is also the Razor Pages route value (the page path) and model
+    // binding reads route values before the query string; the page index is
+    // therefore bound from the query explicitly (?page= resume, page images).
     public async Task<IActionResult> OnGetAsync(
         Guid id,
-        int? page,
+        [FromQuery(Name = "page")] int? page,
         CancellationToken cancellationToken)
     {
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
@@ -216,7 +219,7 @@ public sealed class ReadModel(
 
     public async Task<IActionResult> OnGetPageAsync(
         Guid id,
-        int page,
+        [FromQuery(Name = "page")] int page,
         CancellationToken cancellationToken)
     {
         var repository = new MangaRepository(db);
