@@ -1917,6 +1917,7 @@ public static class UiTranslationResources
         M("admin.usenet.pathReadable", "readable", "Admin", "Status", "Marks a finished download Jularr can read.", "compact status", 12),
 
         M("nav.backToApp", "Back to library", "Shell", "Navigation", "Sidebar link that leaves Admin or Settings and returns to the app.", "short navigation label", 18),
+        M("nav.current", "Current", "Shell", "Navigation", "Sidebar heading above the book, novel or manga the profile is reading now.", "short navigation label", 18),
         M("nav.group.adminPeople", "People", "Shell", "Navigation", "Sidebar group title in Admin: users and requests.", "short navigation label", 18),
         M("nav.group.adminMedia", "Media & downloads", "Shell", "Navigation", "Sidebar group title in Admin: Usenet, import, subtitles, Sonarr.", "short navigation label", 18),
         M("nav.group.adminSystem", "System", "Shell", "Navigation", "Sidebar group title in Admin: operations, logs, system.", "short navigation label", 18),
