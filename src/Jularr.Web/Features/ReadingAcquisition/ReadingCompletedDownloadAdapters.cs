@@ -11,7 +11,8 @@ public sealed class MangaCompletedDownloadImportAdapter(
     AppDbContext db,
     IHttpClientFactory httpClientFactory,
     MediaMappingReviewStore mappingReviewStore,
-    ReadingSegmentMappingStore segmentMappings)
+    ReadingSegmentMappingStore segmentMappings,
+    ILogger<MangaCompletedDownloadImportAdapter> logger)
     : ICompletedDownloadImportAdapter
 {
     public MediaAcquisitionKind Kind =>
@@ -25,7 +26,7 @@ public sealed class MangaCompletedDownloadImportAdapter(
             !Directory.Exists(request.SourcePath))
         {
             return CompletedDownloadImportResult.RetryLater(
-                $"The completed Manga path is not currently available: {request.SourcePath}");
+                "The completed Manga files are not currently available.");
         }
 
         try
@@ -63,8 +64,12 @@ public sealed class MangaCompletedDownloadImportAdapter(
                     TaskCanceledException or
                     System.Text.Json.JsonException)
                 {
+                    logger.LogWarning(
+                        exception,
+                        "AniList reconciliation failed after Manga request {RequestId} imported.",
+                        request.Request.Id);
                     metadataWarning =
-                        $" Manga was imported, but AniList reconciliation needs attention: {exception.Message}";
+                        " Manga was imported, but AniList reconciliation needs attention.";
                 }
             }
 
@@ -80,22 +85,31 @@ public sealed class MangaCompletedDownloadImportAdapter(
             exception is IOException or
             UnauthorizedAccessException)
         {
+            logger.LogWarning(
+                exception,
+                "Manga import is waiting for storage for request {RequestId}.",
+                request.Request.Id);
             return CompletedDownloadImportResult.RetryLater(
-                $"Manga import is waiting for storage: {exception.Message}");
+                "Manga import is waiting for storage.");
         }
         catch (Exception exception) when (
             exception is InvalidOperationException or
             InvalidDataException)
         {
+            logger.LogWarning(
+                exception,
+                "Downloaded Manga release was unsuitable for request {RequestId}.",
+                request.Request.Id);
             return CompletedDownloadImportResult.RejectRelease(
-                $"Downloaded release could not be imported as Manga: {exception.Message}");
+                "Downloaded release could not be imported as Manga.");
         }
     }
 }
 
 public sealed class LightNovelCompletedDownloadImportAdapter(
     NovelEpubImportService importer,
-    NovelMetadataService metadata)
+    NovelMetadataService metadata,
+    ILogger<LightNovelCompletedDownloadImportAdapter> logger)
     : ICompletedDownloadImportAdapter
 {
     public MediaAcquisitionKind Kind =>
@@ -109,7 +123,7 @@ public sealed class LightNovelCompletedDownloadImportAdapter(
             !Directory.Exists(request.SourcePath))
         {
             return CompletedDownloadImportResult.RetryLater(
-                $"The completed Light Novel path is not currently available: {request.SourcePath}");
+                "The completed Light Novel files are not currently available.");
         }
 
         try
@@ -190,8 +204,12 @@ public sealed class LightNovelCompletedDownloadImportAdapter(
                     TaskCanceledException or
                     System.Text.Json.JsonException)
                 {
+                    logger.LogWarning(
+                        exception,
+                        "AniList reconciliation failed after Light Novel request {RequestId} imported.",
+                        request.Request.Id);
                     metadataWarning =
-                        $" Light Novel was imported, but AniList reconciliation needs attention: {exception.Message}";
+                        " Light Novel was imported, but AniList reconciliation needs attention.";
                 }
             }
 
@@ -207,15 +225,23 @@ public sealed class LightNovelCompletedDownloadImportAdapter(
             exception is IOException or
             UnauthorizedAccessException)
         {
+            logger.LogWarning(
+                exception,
+                "Light Novel import is waiting for storage for request {RequestId}.",
+                request.Request.Id);
             return CompletedDownloadImportResult.RetryLater(
-                $"Light Novel import is waiting for storage: {exception.Message}");
+                "Light Novel import is waiting for storage.");
         }
         catch (Exception exception) when (
             exception is InvalidOperationException or
             InvalidDataException)
         {
+            logger.LogWarning(
+                exception,
+                "Downloaded Light Novel release was unsuitable for request {RequestId}.",
+                request.Request.Id);
             return CompletedDownloadImportResult.RejectRelease(
-                $"Downloaded release could not be imported as a Light Novel: {exception.Message}");
+                "Downloaded release could not be imported as a Light Novel.");
         }
     }
 }
