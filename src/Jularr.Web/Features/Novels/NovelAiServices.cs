@@ -447,12 +447,12 @@ public sealed record TranslateGemmaOptions(
                 "TranslateGemma:Model must not exceed 200 characters.");
         }
 
-        var maxChunkCharacters = 3200;
+        var maxChunkCharacters = 1200;
         if (int.TryParse(
                 configuration?[$"{SectionName}:MaxChunkCharacters"],
                 out var configuredChunkCharacters))
         {
-            maxChunkCharacters = Math.Clamp(configuredChunkCharacters, 800, 6000);
+            maxChunkCharacters = Math.Clamp(configuredChunkCharacters, 400, 3000);
         }
 
         var timeoutMinutes = 30;
@@ -575,6 +575,7 @@ public sealed class TranslateGemmaNovelTranslator
                     new { role = "user", content = userContent }
                 },
                 temperature = 0,
+                max_tokens = 2048,
                 stream = false
             })
         };
