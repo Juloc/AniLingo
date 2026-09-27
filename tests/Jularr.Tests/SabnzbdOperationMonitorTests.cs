@@ -1,5 +1,5 @@
 using Jularr.Web.Features.Acquisition.Sabnzbd;
-using Jularr.Web.Features.Books;
+using Jularr.Web.Features.Acquisition.Import;
 using Jularr.Web.Features.Operations;
 
 namespace Jularr.Tests;
@@ -17,7 +17,7 @@ public sealed class SabnzbdOperationMonitorTests
 
         var outcome = await downloads.SubmitUrlAsync(
             new SabnzbdSubmission(
-                BookInboxImport.SabnzbdDownloadKind,
+                CompletedDownloadImportService.ManualDownloadOperationKind,
                 "SABnzbd download",
                 "Test Book",
                 "owner",
@@ -32,7 +32,7 @@ public sealed class SabnzbdOperationMonitorTests
 
         var operation = await new OperationStore(environment.Db).GetAsync(outcome.OperationId);
         Assert.IsNotNull(operation);
-        Assert.AreEqual(BookInboxImport.SabnzbdDownloadKind, operation.Kind);
+        Assert.AreEqual(CompletedDownloadImportService.ManualDownloadOperationKind, operation.Kind);
         Assert.AreEqual(OperationStatus.Running, operation.Status);
         Assert.AreEqual(SabnzbdClient.ProviderId, operation.ExternalProvider);
         Assert.AreEqual(outcome.NzoId, operation.ExternalId);
@@ -48,7 +48,7 @@ public sealed class SabnzbdOperationMonitorTests
         var downloads = environment.NewDownloadService(environment.NewAcquisitionStore());
 
         var outcome = await downloads.SubmitUrlAsync(
-            new SabnzbdSubmission(BookInboxImport.SabnzbdDownloadKind, "SABnzbd download", "Bad", null, SabnzbdPurpose.Books),
+            new SabnzbdSubmission(CompletedDownloadImportService.ManualDownloadOperationKind, "SABnzbd download", "Bad", null, SabnzbdPurpose.Books),
             new Uri("https://indexer.example/bad.nzb"),
             CancellationToken.None);
 
@@ -63,7 +63,7 @@ public sealed class SabnzbdOperationMonitorTests
     {
         await using var environment = await SabnzbdTestSupport.CreateEnvironmentAsync();
         var store = new OperationStore(environment.Db);
-        var book = await CreateTrackedAsync(store, BookInboxImport.SabnzbdDownloadKind, "nzo_book");
+        var book = await CreateTrackedAsync(store, CompletedDownloadImportService.ManualDownloadOperationKind, "nzo_book");
         var anime = await CreateTrackedAsync(store, SabnzbdAcquisitionService.OperationKind, "nzo_anime");
 
         var result = await SabnzbdOperationProjector.ApplyAsync(
@@ -123,7 +123,7 @@ public sealed class SabnzbdOperationMonitorTests
     {
         await using var environment = await SabnzbdTestSupport.CreateEnvironmentAsync();
         var store = new OperationStore(environment.Db);
-        var completed = await CreateTrackedAsync(store, BookInboxImport.SabnzbdDownloadKind, "nzo_done");
+        var completed = await CreateTrackedAsync(store, CompletedDownloadImportService.ManualDownloadOperationKind, "nzo_done");
         var processing = await CreateTrackedAsync(store, SabnzbdAcquisitionService.OperationKind, "nzo_pp");
         var missing = await CreateTrackedAsync(store, SabnzbdAcquisitionService.OperationKind, "nzo_gone");
 
