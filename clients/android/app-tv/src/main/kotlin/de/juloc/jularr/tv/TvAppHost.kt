@@ -25,6 +25,7 @@ import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import de.juloc.jularr.core.player.JularrMedia3Player
 import de.juloc.jularr.core.player.PlaybackTransport
+import de.juloc.jularr.core.player.toPlaybackMetadata
 import de.juloc.jularr.core.session.PlaybackCommand
 import de.juloc.jularr.core.session.PlaybackPairing
 import de.juloc.jularr.core.session.PlaybackSessionToken
@@ -327,6 +328,7 @@ fun TvAppHost(
             startPositionMs = plan.startPositionMs,
             playWhenReady = resumeShouldPlay,
             requestHeaders = cookies.requestHeaders(),
+            metadata = bundle.bootstrap.episode.toPlaybackMetadata(),
         )
         openedEpisodeId = route.episodeId
     }
