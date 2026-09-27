@@ -19,8 +19,14 @@ public sealed class AiActivityRunner(
         Func<T, int> outputCharacters,
         CancellationToken cancellationToken)
     {
+        start = AiWorkScope.Apply(start);
         using var handle = tracker.Start(start, cancellationToken);
         using var scope = AiActivityScope.Enter(handle);
+        if (AiWorkScope.Current is { Part: { } part, Parts: { } parts })
+        {
+            handle.ReportProgress(part, parts);
+        }
+
         var stopwatch = Stopwatch.StartNew();
         handle.SetState(start.ContextTokens > 0 ? AiActivityState.PreparingContext : AiActivityState.Running);
 
@@ -80,6 +86,7 @@ public sealed class AiActivityRunner(
                 CachedInputTokens = (int)Math.Min(int.MaxValue, exact?.CachedInputTokens ?? 0),
                 ReasoningOutputTokens = (int)Math.Min(int.MaxValue, exact?.ReasoningOutputTokens ?? 0),
                 ContextTokens = start.ContextTokens,
+                FullContextTokens = Math.Max(start.ContextTokens, start.FullContextTokens),
                 DurationMs = durationMs,
                 Retries = snapshot.Retries,
                 Outcome = outcome

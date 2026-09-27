@@ -31,7 +31,8 @@ public sealed record AiActivityDto(
     int SourceTokens,
     int ContextTokens,
     int Retries,
-    string? Error)
+    string? Error,
+    int FullContextTokens = 0)
 {
     public static AiActivityDto From(AiActivitySnapshot snapshot, bool includeProfile, DateTimeOffset now) =>
         new(
@@ -55,7 +56,8 @@ public sealed record AiActivityDto(
             snapshot.SourceTokens,
             snapshot.ContextTokens,
             snapshot.Retries,
-            snapshot.Error);
+            snapshot.Error,
+            snapshot.FullContextTokens);
 }
 
 public static class AiActivityStates

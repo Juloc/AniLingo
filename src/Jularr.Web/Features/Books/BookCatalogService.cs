@@ -779,6 +779,10 @@ public sealed partial class BookCatalogService(
                 nextContext,
                 targetLanguage);
 
+            // The whole story memory before it is reduced to what a segment needs (#412), so AI
+            // activity and usage show how much context the relevant-context projection saves.
+            var fullBibleCharacters = BookTranslationMemoryStore.RenderContext(bible, int.MaxValue).Length;
+
             var chunkStore = CreateTranslationChunkStore();
             var translatedChunks = new List<string>();
             var chunks = NovelTranslationService.ChunkText(
@@ -833,6 +837,11 @@ public sealed partial class BookCatalogService(
                     translatedChunks.Add(cachedChunk);
                     continue;
                 }
+
+                using var segmentScope = AiWorkScope.Enter(
+                    index + 1,
+                    chunks.Count,
+                    localContext.Length - bibleContext.Length + fullBibleCharacters);
 
                 var draft = await translator.TranslateLiteraryAsync(
                     chunk,
@@ -919,16 +928,20 @@ public sealed partial class BookCatalogService(
                     5000,
                     chapter.Number);
 
-            var delta = await translator.ExtractTranslationMemoryAsync(
-                new BookTranslationMemoryRequest(
-                    chapter.Number,
-                    chapter.Title,
-                    CompactMemorySample(chapter.OriginalText, 6000),
-                    CompactMemorySample(finalText, 6000),
-                    sourceLanguage,
-                    targetLanguage,
-                    memoryContext),
-                cancellationToken);
+            BookTranslationMemoryDelta delta;
+            using (AiWorkScope.Enter(null, null, fullBibleCharacters))
+            {
+                delta = await translator.ExtractTranslationMemoryAsync(
+                    new BookTranslationMemoryRequest(
+                        chapter.Number,
+                        chapter.Title,
+                        CompactMemorySample(chapter.OriginalText, 6000),
+                        CompactMemorySample(finalText, 6000),
+                        sourceLanguage,
+                        targetLanguage,
+                        memoryContext),
+                    cancellationToken);
+            }
 
             await memoryStore.ApplyChapterDeltaAsync(
                 bible,

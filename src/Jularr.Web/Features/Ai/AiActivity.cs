@@ -42,6 +42,9 @@ public sealed record AiActivitySnapshot(
     int Retries,
     string? Error)
 {
+    /// <summary>Estimated size of the shared context before it was compacted for this request (#412).</summary>
+    public int FullContextTokens { get; init; }
+
     public bool IsActive => State is AiActivityState.Queued
         or AiActivityState.PreparingContext
         or AiActivityState.Running
@@ -63,7 +66,11 @@ public sealed record AiActivityStart(
     string ProviderId,
     AiInvocationOptions Options,
     int SourceTokens = 0,
-    int ContextTokens = 0);
+    int ContextTokens = 0)
+{
+    /// <summary>Estimated size of the shared context before compaction; 0 when unknown.</summary>
+    public int FullContextTokens { get; init; }
+}
 
 public enum AiActivityCancelResult
 {
@@ -235,7 +242,7 @@ public sealed class AiActivityTracker(TimeProvider time)
                 start.SourceTokens,
                 start.ContextTokens,
                 0,
-                null),
+                null) { FullContextTokens = start.FullContextTokens },
             start.Options,
             requestToken);
 

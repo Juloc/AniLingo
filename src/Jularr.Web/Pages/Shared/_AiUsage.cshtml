@@ -49,7 +49,12 @@ else
         }
         @if (selected.ContextTokens > 0)
         {
-            <div><span>@ui["ai.usage.sharedContext"]</span><strong>~@AiViewFormat.Tokens(selected.ContextTokens)</strong></div>
+            <div>
+                <span>@ui["ai.usage.sharedContext"]</span>
+                <strong>@(selected.FullContextTokens > selected.ContextTokens
+                    ? ui.Format("ai.usage.contextOfFull", ("count", AiViewFormat.Tokens(selected.ContextTokens)), ("full", AiViewFormat.Tokens(selected.FullContextTokens)))
+                    : "~" + AiViewFormat.Tokens(selected.ContextTokens))</strong>
+            </div>
         }
         <div><span>@ui["settings.ai.cacheHits"]</span><strong>@AiViewFormat.Tokens(selected.CacheHits + selected.ResumedChunks)</strong></div>
         @if (selected.Failures + selected.Cancellations + selected.Retries > 0)
