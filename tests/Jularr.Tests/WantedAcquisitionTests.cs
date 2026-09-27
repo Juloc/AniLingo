@@ -148,8 +148,7 @@ public sealed class WantedAcquisitionTests
         Directory.CreateDirectory(directory);
         try
         {
-            var protection = DataProtectionProvider.Create(
-                new DirectoryInfo(Path.Combine(directory, "keys")));
+            var protection = new EphemeralDataProtectionProvider();
             var clients = new DownloadClientStore(
                 protection,
                 new DirectoryInfo(Path.Combine(directory, "acquisition")));
