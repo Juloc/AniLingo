@@ -61,6 +61,17 @@ public sealed record AniListAnimeRelation(
     string RelationType,
     AnimeMetadataCandidate Candidate);
 
+public sealed record AniListMediaRelation(
+    string RelationType,
+    string MediaType,
+    string ExternalId,
+    string Title,
+    string? NativeTitle,
+    string? CoverImageUrl,
+    string? Format,
+    string? Status,
+    int? Year);
+
 
 public interface IAnimeMetadataProvider
 {
