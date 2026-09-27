@@ -54,8 +54,10 @@ public static class ReadingCatalogSearch
         }
         catch (Exception exception) when (
             exception is NovelMetadataProviderException or
+            InvalidOperationException or
             HttpRequestException or
-            TaskCanceledException)
+            TaskCanceledException or
+            JsonException)
         {
             return [];
         }
@@ -128,8 +130,10 @@ public static class ReadingCatalogSearch
         }
         catch (Exception exception) when (
             exception is NovelMetadataProviderException or
+            InvalidOperationException or
             HttpRequestException or
-            TaskCanceledException)
+            TaskCanceledException or
+            JsonException)
         {
             return [];
         }
@@ -244,8 +248,10 @@ public sealed class SyosetuCatalogClient(HttpClient client)
         if (code is null ||
             code.Length is < 6 or > 12 ||
             code[0] is not ('n' or 'N') ||
-            !code.AsSpan(1, 4).ToArray().All(char.IsDigit) ||
-            !code.AsSpan(5).ToArray().All(char.IsLetter))
+            !code.Skip(1).Take(4).All(char.IsDigit) ||
+            !code.Skip(5).All(character =>
+                character is >= 'a' and <= 'z'
+                    or >= 'A' and <= 'Z'))
         {
             return false;
         }
@@ -343,7 +349,7 @@ public sealed class SyosetuCatalogClient(HttpClient client)
             var normalizedCode = ncode.ToLowerInvariant();
             results.Add(
                 new ReadingCatalogCandidate(
-                    "syosetu",
+                    NcodeNovelSourceProvider.ProviderKey,
                     normalizedCode,
                     title,
                     title,
