@@ -22,7 +22,9 @@ public sealed class ProfileAiProviderRouter(
     CodexCliProvider codex,
     IHttpClientFactory httpClientFactory,
     AiActivityRunner activityRunner,
-    AiModelCatalogService catalogs)
+    AiModelCatalogService catalogs,
+    AiUsageStore usageStore,
+    TimeProvider time)
     : IAiProvider,
       IAiSentenceExplainer,
       INovelTranslator,
@@ -274,6 +276,9 @@ public sealed class ProfileAiProviderRouter(
             options = AiOptionResolver.ResolveServer(requested, catalog, operation);
         }
 
+        // The profile's Jularr-local daily limit stops work before a request is sent.
+        await new AiBudgetGuard(usageStore, time).EnsureAvailableAsync(currentAccount.ProfileId, settings, cancellationToken);
+
         var contextTokens = AiUsageTracker.EstimateTokens(contextCharacters);
         return await activityRunner.RunAsync(
             new AiActivityStart(
@@ -282,7 +287,10 @@ public sealed class ProfileAiProviderRouter(
                 providerId,
                 options,
                 AiUsageTracker.EstimateTokens(Math.Max(0, inputCharacters - contextCharacters)),
-                contextTokens),
+                contextTokens)
+            {
+                ConcurrencyLimit = settings.MaxConcurrentJobs
+            },
             inputCharacters,
             token => call(backend, token),
             outputCharacters,

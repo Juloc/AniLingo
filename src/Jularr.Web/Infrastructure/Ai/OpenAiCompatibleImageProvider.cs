@@ -214,7 +214,9 @@ public sealed class OpenAiCompatibleImageProvider(
 public sealed class ProfileAiImageRouter(
     AiProfileSettingsStore settingsStore,
     IHttpClientFactory httpClientFactory,
-    AiActivityRunner activityRunner) : IAiImageGenerator
+    AiActivityRunner activityRunner,
+    AiUsageStore usageStore,
+    TimeProvider time) : IAiImageGenerator
 {
     public async Task<AiImageAvailability> GetAvailabilityAsync(
         string profileId,
@@ -227,13 +229,17 @@ public sealed class ProfileAiImageRouter(
         CancellationToken cancellationToken)
     {
         var (provider, settings) = await CreateAsync(profileId, cancellationToken);
+        await new AiBudgetGuard(usageStore, time).EnsureAvailableAsync(profileId, settings, cancellationToken);
         return await activityRunner.RunAsync(
             new AiActivityStart(
                 profileId,
                 request.Operation,
                 provider.Id,
                 new AiInvocationOptions(settings.ImageModel?.Trim(), null, null, null),
-                AiUsageTracker.EstimateTokens(request.Prompt.Length)),
+                AiUsageTracker.EstimateTokens(request.Prompt.Length))
+            {
+                ConcurrencyLimit = settings.MaxConcurrentJobs
+            },
             request.Prompt.Length,
             token => provider.GenerateAsync(request, token),
             _ => 0,

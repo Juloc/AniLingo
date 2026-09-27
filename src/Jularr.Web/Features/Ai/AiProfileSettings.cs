@@ -207,6 +207,24 @@ public sealed partial record AiProfileSettings(
 
     public AiOperationOverrides Overrides { get; init; } = AiOperationOverrides.Empty;
 
+    public const int MaxDailyTokenBudget = 1_000_000_000;
+    public const int MaxConcurrentJobsLimit = 8;
+    public const int DefaultBudgetWarningPercent = 80;
+
+    /// <summary>
+    /// Jularr-local daily token limit of this profile (input plus output, UTC day); null means no
+    /// limit. Separate from the provider's own quota.
+    /// </summary>
+    public int? DailyTokenBudget { get; init; }
+
+    /// <summary>Share of <see cref="DailyTokenBudget"/> at which a warning is shown; null uses 80 %.</summary>
+    public int? BudgetWarningPercent { get; init; }
+
+    /// <summary>How many AI requests of this profile run at once; further requests wait queued.</summary>
+    public int? MaxConcurrentJobs { get; init; }
+
+    public int EffectiveWarningPercent => BudgetWarningPercent ?? DefaultBudgetWarningPercent;
+
     public AiInvocationOptions Resolve(string operation)
     {
         var entry = Overrides.Get(operation);

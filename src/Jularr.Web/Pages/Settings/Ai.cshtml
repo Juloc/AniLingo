@@ -260,6 +260,25 @@
                     <input asp-for="ImageModel" autocomplete="off" spellcheck="false" />
                 </label>
 
+                <fieldset class="ai-limits">
+                    <legend>@ui["ai.budget.title"]</legend>
+                    <div class="ai-limits-fields">
+                        <label>
+                            <span>@ui["ai.budget.daily"]</span>
+                            <input asp-for="DailyTokenBudget" type="number" min="1" max="@AiProfileSettings.MaxDailyTokenBudget" step="1000" inputmode="numeric" placeholder="@ui["ai.budget.noLimit"]" />
+                        </label>
+                        <label>
+                            <span>@ui["ai.budget.warnAt"]</span>
+                            <input asp-for="BudgetWarningPercent" type="number" min="1" max="99" inputmode="numeric" placeholder="@AiProfileSettings.DefaultBudgetWarningPercent" />
+                        </label>
+                        <label>
+                            <span>@ui["ai.budget.parallel"]</span>
+                            <input asp-for="MaxConcurrentJobs" type="number" min="1" max="@AiProfileSettings.MaxConcurrentJobsLimit" inputmode="numeric" placeholder="@ui["ai.budget.noLimit"]" />
+                        </label>
+                    </div>
+                    <small class="muted">@ui["ai.budget.hint"]</small>
+                </fieldset>
+
                 <div class="ai-overrides-block">
                     <p class="muted" data-ai-saved-only>@ui["ai.settings.overridesIntro"]</p>
                     <p class="muted" data-ai-switched-only hidden>@ui["ai.settings.overridesAfterSave"]</p>
@@ -335,6 +354,27 @@
             <div class="panel-heading">
                 <h2>@ui["settings.ai.usageTitle"]</h2>
             </div>
+            @if (Model.Budget.LimitTokens is { } limit)
+            {
+                <div class="ai-budget" data-state="@Model.Budget.State.ToString().ToLowerInvariant()">
+                    <div class="ai-budget-line">
+                        <span>@ui.Format("ai.budget.usedOf", ("used", AiViewFormat.Tokens(Model.Budget.UsedTokens)), ("limit", AiViewFormat.Tokens(limit)))</span>
+                        @if (Model.Budget.State == AiBudgetState.Reached)
+                        {
+                            <span class="status-pill status-error">@ui["ai.budget.reached"]</span>
+                        }
+                        else if (Model.Budget.State == AiBudgetState.Warning)
+                        {
+                            <span class="status-pill status-warn">@ui["ai.budget.warning"]</span>
+                        }
+                    </div>
+                    <div class="progress-track" role="presentation"><span style="width: @((Model.Budget.Percent ?? 0).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture))%"></span></div>
+                    @if (Model.Budget.State == AiBudgetState.Reached)
+                    {
+                        <small class="muted">@ui["ai.budget.reachedHint"]</small>
+                    }
+                </div>
+            }
             <partial name="_AiUsage" model="usageTotals" />
         </section>
 
