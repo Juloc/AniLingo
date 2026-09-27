@@ -100,7 +100,9 @@
                 meta.append(span(format(labels.context, { percent: `${item.contextWindowPercent} %` })));
             }
             if (item.contextTokens > 0) {
-                meta.append(span(format(labels.sharedContext, { count: numberFormat.format(item.contextTokens) })));
+                meta.append(span(item.fullContextTokens > item.contextTokens
+                    ? format(labels.sharedContextOf, { count: numberFormat.format(item.contextTokens), full: numberFormat.format(item.fullContextTokens) })
+                    : format(labels.sharedContext, { count: numberFormat.format(item.contextTokens) })));
             }
             if (item.progressTotal > 0) {
                 meta.append(span(format(labels.progress, { current: item.progressCurrent || 0, total: item.progressTotal })));

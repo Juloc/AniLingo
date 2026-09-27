@@ -381,7 +381,7 @@ public sealed class AiControlCenterTests
 
         await store.AddAsync(
         [
-            ("alice", Measurement(Start, AiOperations.BookTranslation, "gpt-a", 1000, 200, estimated: false) with { CachedInputTokens = 600, ReasoningOutputTokens = 30, ContextTokens = 250, DurationMs = 1500 }),
+            ("alice", Measurement(Start, AiOperations.BookTranslation, "gpt-a", 1000, 200, estimated: false) with { CachedInputTokens = 600, ReasoningOutputTokens = 30, ContextTokens = 250, FullContextTokens = 900, DurationMs = 1500 }),
             ("alice", Measurement(Start.AddMinutes(1), AiOperations.BookTranslation, "gpt-a", 500, 100, estimated: false) with { Retries = 1 }),
             ("alice", Measurement(Start, AiOperations.SentenceExplanation, null, 40, 10, estimated: true)),
             ("alice", Measurement(Start.AddDays(-3), AiOperations.BookQa, "gpt-a", 10, 1, estimated: false) with { Outcome = AiUsageOutcome.Failed }),
@@ -400,6 +400,7 @@ public sealed class AiControlCenterTests
         Assert.AreEqual(600, report.Today.CachedInputTokens);
         Assert.AreEqual(30, report.Today.ReasoningOutputTokens);
         Assert.AreEqual(250, report.Today.ContextTokens);
+        Assert.AreEqual(900, report.Today.FullContextTokens, "Context before compaction survives restarts too.");
         Assert.AreEqual(1, report.Today.Retries);
         Assert.AreEqual(1, report.Today.CacheHits);
         Assert.IsTrue(report.Today.HasEstimates);
@@ -448,6 +449,86 @@ public sealed class AiControlCenterTests
         Assert.AreEqual("boom", activities[0].Error);
         Assert.AreEqual(AiActivityState.Completed, activities[2].State);
         Assert.AreEqual(9d, activities[2].ContextWindowPercent);
+    }
+
+    [TestMethod]
+    public async Task WorkScopeAddsPartProgressAndContextBeforeCompaction()
+    {
+        var usage = new AiUsageTracker();
+        var tracker = new AiActivityTracker(TimeProvider.System);
+        var runner = new AiActivityRunner(tracker, usage, TimeProvider.System);
+        var start = new AiActivityStart("alice", AiOperations.BookTranslation, "codex-cli", AiInvocationOptions.Default, 100, 40);
+
+        AiActivitySnapshot? during = null;
+        using (AiWorkScope.Enter(3, 7, 4000))
+        {
+            await runner.RunAsync(start, 800, _ =>
+            {
+                during = AiActivityScope.Current!.Snapshot;
+                return Task.FromResult("done");
+            }, x => x.Length, CancellationToken.None);
+        }
+
+        await runner.RunAsync(start, 800, _ => Task.FromResult("done"), x => x.Length, CancellationToken.None);
+
+        Assert.AreEqual(3, during!.ProgressCurrent);
+        Assert.AreEqual(7, during.ProgressTotal);
+        Assert.AreEqual(1000, during.FullContextTokens);
+        Assert.IsNull(AiWorkScope.Current, "The scope ends with its block.");
+
+        var recent = usage.GetSnapshot("alice").Recent.Reverse().ToArray();
+        Assert.AreEqual(40, recent[0].ContextTokens);
+        Assert.AreEqual(1000, recent[0].FullContextTokens);
+        Assert.AreEqual(40, recent[1].FullContextTokens, "Without a scope the sent context is all that is known.");
+        Assert.IsNull(tracker.List("alice")[0].ProgressTotal);
+    }
+
+    [TestMethod]
+    public async Task ChapterArtworkImagesRunAsTrackedActivitiesWithOneUsageRecord()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "jularr-ai-images", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var settings = new AiProfileSettingsStore(
+                new EphemeralDataProtectionProvider(),
+                NullLogger<AiProfileSettingsStore>.Instance,
+                new DirectoryInfo(root));
+            await settings.SaveAsync(
+                "alice",
+                new AiProfileSettings(AiProviderIds.OpenAiCompatible, "https://api.example.invalid/v1", "text-model", "test-key", AiTranslationMode.Efficient)
+                {
+                    ImageModel = "image-model"
+                },
+                CancellationToken.None);
+            byte[] png = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0];
+            var handler = new RouteHandler(_ => Json($$"""{"data":[{"b64_json":"{{Convert.ToBase64String(png)}}"}]}"""));
+            var usage = new AiUsageTracker();
+            var tracker = new AiActivityTracker(TimeProvider.System);
+            var router = new ProfileAiImageRouter(
+                settings,
+                new SingleClientFactory(handler),
+                new AiActivityRunner(tracker, usage, TimeProvider.System));
+
+            await router.GenerateAsync(
+                "alice",
+                new AiImageRequest(AiOperations.ChapterArtwork, "A misty harbor.", AiImageLayout.Landscape, AiImageQuality.High, 1),
+                CancellationToken.None);
+
+            var activity = tracker.List("alice").Single();
+            Assert.AreEqual(AiOperations.ChapterArtwork, activity.Operation);
+            Assert.AreEqual(AiActivityState.Completed, activity.State);
+            Assert.AreEqual("image-model", activity.Model);
+            var measurement = usage.GetSnapshot("alice").Recent.Single();
+            Assert.AreEqual(AiOperations.ChapterArtwork, measurement.Operation);
+            Assert.IsTrue(measurement.Estimated);
+            Assert.IsTrue(AiOperations.IsKnown(AiOperations.ChapterArtwork));
+            Assert.IsFalse(AiOperations.AcceptsOverride(AiOperations.ChapterArtwork), "Images use the separate image model.");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
     }
 
     [TestMethod]
@@ -561,7 +642,7 @@ public sealed class AiControlCenterTests
     [TestMethod]
     public void EveryDynamicAiUiKeyExists()
     {
-        var keys = AiOperations.ProfileConfigurable.Append(AiOperations.UiTranslation).Select(x => "ai.operation." + x)
+        var keys = AiOperations.All.Select(x => "ai.operation." + x)
             .Concat(AiActivityStates.All.Select(x => "ai.state." + AiActivityStates.Name(x)))
             .Concat(Enum.GetValues<AiCapability>().Select(x => "ai.capability." + char.ToLowerInvariant(x.ToString()[0]) + x.ToString()[1..]))
             .Concat(Enum.GetValues<AiCapabilityState>().Select(x => "ai.capabilityState." + x.ToString().ToLowerInvariant()));
@@ -610,6 +691,11 @@ public sealed class AiControlCenterTests
         public override DateTimeOffset GetUtcNow() => now;
 
         public void Advance(TimeSpan delta) => now += delta;
+    }
+
+    private sealed class SingleClientFactory(HttpMessageHandler handler) : IHttpClientFactory
+    {
+        public HttpClient CreateClient(string name) => new(handler, disposeHandler: false);
     }
 
     private sealed class FixedAccessor(HttpContext context) : IHttpContextAccessor

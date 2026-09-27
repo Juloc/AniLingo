@@ -37,6 +37,9 @@ public static class AiOperations
     public const string NovelMapping = "novel-mapping";
     public const string StoryContext = "story-context";
 
+    /// <summary>Chapter artwork images; the image model is chosen separately from text models.</summary>
+    public const string ChapterArtwork = "chapter-artwork";
+
     /// <summary>Operations a profile can tune; UI translation runs on the owner's server connection only.</summary>
     public static IReadOnlyList<string> ProfileConfigurable { get; } =
     [
@@ -51,7 +54,15 @@ public static class AiOperations
         StoryContext
     ];
 
+    /// <summary>Every operation shown in activity and usage views.</summary>
+    public static IReadOnlyList<string> All { get; } =
+        [.. ProfileConfigurable, UiTranslation, ChapterArtwork];
+
     public static bool IsKnown(string? operation) =>
+        operation is not null && All.Contains(operation, StringComparer.Ordinal);
+
+    /// <summary>Operations that accept a model/reasoning override.</summary>
+    public static bool AcceptsOverride(string? operation) =>
         operation is not null
         && (ProfileConfigurable.Contains(operation, StringComparer.Ordinal)
             || string.Equals(operation, UiTranslation, StringComparison.Ordinal));
@@ -102,7 +113,7 @@ public sealed class AiOperationOverrides : IEquatable<AiOperationOverrides>
         var builder = ImmutableSortedDictionary.CreateBuilder<string, AiOperationOverride>(StringComparer.Ordinal);
         foreach (var (operation, value) in entries)
         {
-            if (!AiOperations.IsKnown(operation))
+            if (!AiOperations.AcceptsOverride(operation))
             {
                 continue;
             }

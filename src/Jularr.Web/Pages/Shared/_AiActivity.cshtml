@@ -20,14 +20,13 @@
         labels = new
         {
             states = AiActivityStates.All.ToDictionary(AiActivityStates.Name, x => ui["ai.state." + AiActivityStates.Name(x)]),
-            operations = AiOperations.ProfileConfigurable
-                .Append(AiOperations.UiTranslation)
-                .ToDictionary(x => x, x => ui["ai.operation." + x]),
+            operations = AiOperations.All.ToDictionary(x => x, x => ui["ai.operation." + x]),
             tokens = ui["ai.activity.tokens"],
             cached = ui["ai.activity.cached"],
             reasoning = ui["ai.activity.reasoning"],
             context = ui["ai.activity.context"],
             sharedContext = ui["ai.activity.sharedContext"],
+            sharedContextOf = ui["ai.activity.sharedContextOf"],
             retries = ui["ai.activity.retries"],
             progress = ui["ai.activity.progress"],
             profile = ui["ai.activity.profile"],
@@ -68,7 +67,13 @@
                     }
                     @if (item.ContextTokens > 0)
                     {
-                        <span>@ui.Format("ai.activity.sharedContext", ("count", AiViewFormat.Tokens(item.ContextTokens)))</span>
+                        <span>@(item.FullContextTokens > item.ContextTokens
+                            ? ui.Format("ai.activity.sharedContextOf", ("count", AiViewFormat.Tokens(item.ContextTokens)), ("full", AiViewFormat.Tokens(item.FullContextTokens)))
+                            : ui.Format("ai.activity.sharedContext", ("count", AiViewFormat.Tokens(item.ContextTokens))))</span>
+                    }
+                    @if (item.ProgressTotal is > 0)
+                    {
+                        <span>@ui.Format("ai.activity.progress", ("current", item.ProgressCurrent ?? 0), ("total", item.ProgressTotal))</span>
                     }
                     @if (item.Retries > 0)
                     {
