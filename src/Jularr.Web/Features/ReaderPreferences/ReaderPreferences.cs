@@ -54,6 +54,17 @@ public sealed class ReaderPreference
     /// </summary>
     public bool? FuriganaEnabled { get; set; }
 
+    /// <summary>Hyphenate reflowable text (CSS hyphens).</summary>
+    public bool? Hyphenation { get; set; }
+    /// <summary>Show the page number in Pages mode.</summary>
+    public bool? ShowPageNumbers { get; set; }
+    /// <summary>Show embedded illustrations (EPUB images).</summary>
+    public bool? ShowIllustrations { get; set; }
+    /// <summary>Indent the first line of paragraphs.</summary>
+    public bool? ParagraphIndent { get; set; }
+    /// <summary>Turning past the last page (or scrolling to the end) opens the next chapter.</summary>
+    public bool? AutoContinueChapters { get; set; }
+
     public string? TtsProviderId { get; set; }
     /// <summary>JSON object: normalized BCP-47 tag -> voice id. See <see cref="SpeechVoiceMap"/>.</summary>
     public string? TtsVoiceIds { get; set; }
@@ -101,6 +112,14 @@ public sealed class ReaderSettingsInput
     public string? BookmarkColor { get; set; }
 
     public bool FuriganaEnabled { get; set; }
+
+    // Nullable: a settings form that does not render one of these fields
+    // (for example the Books reader) must not overwrite it with false.
+    public bool? Hyphenation { get; set; }
+    public bool? ShowPageNumbers { get; set; }
+    public bool? ShowIllustrations { get; set; }
+    public bool? ParagraphIndent { get; set; }
+    public bool? AutoContinueChapters { get; set; }
 
     public string? TtsProviderId { get; set; } = "auto";
     /// <summary>JSON object: language tag -> voice id (the effective map the client posts back).</summary>
@@ -151,6 +170,12 @@ public sealed record ReaderSettingsSnapshot(
     /// </summary>
     public bool FuriganaEnabled { get; init; }
 
+    public bool Hyphenation { get; init; } = true;
+    public bool ShowPageNumbers { get; init; } = true;
+    public bool ShowIllustrations { get; init; } = true;
+    public bool ParagraphIndent { get; init; } = true;
+    public bool AutoContinueChapters { get; init; }
+
     public string ContentTypeKey { get; init; } = "light-novel";
     public bool HasTypeOverride { get; init; }
     public bool HasGenreOverride { get; init; }
@@ -199,7 +224,7 @@ public static partial class ReaderPreferenceRules
     private static readonly HashSet<string> PaperStyles =
         new(StringComparer.OrdinalIgnoreCase)
         {
-            "white", "cream", "sepia", "old-paper", "midnight", "oled"
+            "auto", "white", "cream", "sepia", "old-paper", "midnight", "oled"
         };
     private static readonly HashSet<string> BackgroundMotionModes =
         new(StringComparer.OrdinalIgnoreCase)
@@ -686,6 +711,11 @@ public static class ReaderPreferenceStore
             // Off by default regardless of content-type preset; not part of
             // ReaderSystemPreset (Features/ReaderCore) since every preset agrees.
             FuriganaEnabled = ResolveValue("furiganaEnabled", x => x.FuriganaEnabled, false),
+            Hyphenation = ResolveValue("hyphenation", x => x.Hyphenation, true),
+            ShowPageNumbers = ResolveValue("showPageNumbers", x => x.ShowPageNumbers, true),
+            ShowIllustrations = ResolveValue("showIllustrations", x => x.ShowIllustrations, true),
+            ParagraphIndent = ResolveValue("paragraphIndent", x => x.ParagraphIndent, true),
+            AutoContinueChapters = ResolveValue("autoContinueChapters", x => x.AutoContinueChapters, false),
             TtsProviderId = ReaderPreferenceRules.NormalizeTtsProviderId(
                 ResolveString("ttsProviderId", x => x.TtsProviderId, preset.TtsProviderId)),
             TtsVoiceIds = ttsVoiceIds,
@@ -956,6 +986,11 @@ public static class ReaderPreferenceStore
         preference.BookmarkColor =
             ReaderPreferenceRules.NormalizeBookmarkColor(input.BookmarkColor);
         preference.FuriganaEnabled = input.FuriganaEnabled;
+        if (input.Hyphenation is bool hyphenationValue) preference.Hyphenation = hyphenationValue;
+        if (input.ShowPageNumbers is bool showPageNumbersValue) preference.ShowPageNumbers = showPageNumbersValue;
+        if (input.ShowIllustrations is bool showIllustrationsValue) preference.ShowIllustrations = showIllustrationsValue;
+        if (input.ParagraphIndent is bool paragraphIndentValue) preference.ParagraphIndent = paragraphIndentValue;
+        if (input.AutoContinueChapters is bool autoContinueChaptersValue) preference.AutoContinueChapters = autoContinueChaptersValue;
         preference.TtsProviderId =
             ReaderPreferenceRules.NormalizeTtsProviderId(input.TtsProviderId);
         preference.TtsVoiceIds =
@@ -1123,6 +1158,21 @@ public static class ReaderPreferenceStore
             case "furiganaEnabled":
                 preference.FuriganaEnabled = input.FuriganaEnabled;
                 break;
+            case "hyphenation":
+                preference.Hyphenation = input.Hyphenation ?? false;
+                break;
+            case "showPageNumbers":
+                preference.ShowPageNumbers = input.ShowPageNumbers ?? false;
+                break;
+            case "showIllustrations":
+                preference.ShowIllustrations = input.ShowIllustrations ?? false;
+                break;
+            case "paragraphIndent":
+                preference.ParagraphIndent = input.ParagraphIndent ?? false;
+                break;
+            case "autoContinueChapters":
+                preference.AutoContinueChapters = input.AutoContinueChapters ?? false;
+                break;
             case "ttsProviderId":
                 preference.TtsProviderId =
                     ReaderPreferenceRules.NormalizeTtsProviderId(input.TtsProviderId);
@@ -1189,6 +1239,11 @@ public static class ReaderPreferenceStore
             case "bookmarkStyle": preference.BookmarkStyle = null; break;
             case "bookmarkColor": preference.BookmarkColor = null; break;
             case "furiganaEnabled": preference.FuriganaEnabled = null; break;
+            case "hyphenation": preference.Hyphenation = null; break;
+            case "showPageNumbers": preference.ShowPageNumbers = null; break;
+            case "showIllustrations": preference.ShowIllustrations = null; break;
+            case "paragraphIndent": preference.ParagraphIndent = null; break;
+            case "autoContinueChapters": preference.AutoContinueChapters = null; break;
             case "ttsProviderId": preference.TtsProviderId = null; break;
             case "ttsRate": preference.TtsRate = null; break;
             case "ttsPitch": preference.TtsPitch = null; break;
@@ -1230,6 +1285,11 @@ public static class ReaderPreferenceStore
         preference.BookmarkStyle is null &&
         preference.BookmarkColor is null &&
         preference.FuriganaEnabled is null &&
+        preference.Hyphenation is null &&
+        preference.ShowPageNumbers is null &&
+        preference.ShowIllustrations is null &&
+        preference.ParagraphIndent is null &&
+        preference.AutoContinueChapters is null &&
         preference.TtsProviderId is null &&
         preference.TtsVoiceIds is null &&
         preference.TtsRate is null &&
