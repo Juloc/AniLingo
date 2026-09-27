@@ -1732,6 +1732,7 @@ public static class UiTranslationResources
         M("watchlist.type.manga", "Manga", "Watchlist", "Metadata", "Media type label for manga.", "very short label", 14),
         M("watchlist.type.light-novel", "Light novel", "Watchlist", "Metadata", "Media type label for light novels.", "short label", 18),
         M("watchlist.type.book", "Book", "Watchlist", "Metadata", "Media type label for books.", "very short label", 14),
+        M("franchise.sectionTitle", "Franchise", "Franchise", "Heading", "Compact heading on media detail pages linking to related franchise pages.", "short heading", 18),
         M("franchise.back", "Back to watchlist", "Franchise", "Navigation", "Returns from a franchise page to the local watchlist.", "short navigation label", 24),
         M("franchise.memberCount", "{count} works", "Franchise", "Metadata", "Number of known works in the franchise.", "compact metadata", 24,
             new Dictionary<string, string> { ["count"] = "Number of known franchise works." }),
