@@ -369,6 +369,9 @@ builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Access.AcquisitionAcc
 builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Access.AcquisitionRequestService>();
 builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Access.IAcquisitionRequestExecutor, Jularr.Web.Features.Books.BookAcquisitionExecutor>();
 builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Access.IAcquisitionRequestExecutor, Jularr.Web.Features.Acquisition.Access.AnimeAcquisitionRequestExecutor>();
+builder.Services.AddScoped<Jularr.Web.Features.ReadingAcquisition.ReadingAcquisitionEngine>();
+builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Access.IAcquisitionRequestExecutor, Jularr.Web.Features.ReadingAcquisition.MangaAcquisitionRequestExecutor>();
+builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Access.IAcquisitionRequestExecutor, Jularr.Web.Features.ReadingAcquisition.LightNovelAcquisitionRequestExecutor>();
 
 // Download clients: SABnzbd connections share the one canonical list (several can fail over to
 // each other). Jularr is usenet-only; torrent clients (qBittorrent) are intentionally
@@ -387,6 +390,7 @@ builder.Services.AddScoped<SabnzbdDownloadService>();
 builder.Services.AddScoped<SabnzbdAcquisitionService>();
 builder.Services.AddHostedService<SabnzbdOperationMonitorService>();
 builder.Services.AddHostedService<Jularr.Web.Features.Books.BookRequestSearchService>();
+builder.Services.AddHostedService<Jularr.Web.Features.ReadingAcquisition.ReadingRequestLifecycleService>();
 
 builder.Services.AddSingleton<AnimeQualityProfileStore>();
 builder.Services.AddSingleton(_ => new AnimeMonitoringStore("/data"));
