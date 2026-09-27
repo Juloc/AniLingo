@@ -32,7 +32,8 @@ The repository CI installs Gradle 9.6 directly and builds both debug APKs. Relea
 From this directory with Android SDK 36 available:
 
 ```bash
-gradle :core-api:testDebugUnitTest :core-player:testDebugUnitTest
+gradle :core-api:testDebugUnitTest :core-player:testDebugUnitTest :core-tts:testDebugUnitTest \
+  :app-mobile:testDebugUnitTest :app-tv:testDebugUnitTest
 gradle :app-mobile:assembleDebug :app-tv:assembleDebug
 ```
 
