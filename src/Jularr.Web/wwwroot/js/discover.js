@@ -371,6 +371,7 @@
         }
 
         renderWatchlistAction(item, actions);
+        renderFranchiseAction(item, actions);
 
         if (!item.isLocal && addActions[item.category]) {
             renderAddAction(item, actions);
@@ -441,6 +442,55 @@
             } catch {
                 button.title = root.dataset.textAddFailed || button.title;
             } finally {
+                button.disabled = false;
+            }
+        });
+
+        actions.append(button);
+    }
+
+    function renderFranchiseAction(item, actions) {
+        if (item.category !== "anime" ||
+            item.provider !== "anilist" ||
+            !root.dataset.franchiseUrl) {
+            return;
+        }
+
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = root.dataset.textFollowFranchise;
+
+        button.addEventListener("click", async () => {
+            button.disabled = true;
+            const body = new FormData();
+            body.set("category", item.category || "");
+            body.set("provider", item.provider || "");
+            body.set("externalId", item.externalId || "");
+            body.set("title", item.title || "");
+            if (item.nativeTitle) body.set("nativeTitle", item.nativeTitle);
+            if (item.coverImageUrl) body.set("coverImageUrl", item.coverImageUrl);
+            if (item.format) body.set("format", item.format);
+            if (item.status) body.set("status", item.status);
+            if (item.year) body.set("year", String(item.year));
+            if (item.localMediaId) body.set("localMediaId", item.localMediaId);
+            const detailsUrl = item.localUrl || item.detailsUrl;
+            if (detailsUrl) body.set("detailsUrl", detailsUrl);
+            body.set("__RequestVerificationToken", token);
+
+            try {
+                const response = await fetch(root.dataset.franchiseUrl, {
+                    method: "POST",
+                    body,
+                    credentials: "same-origin",
+                    headers: { Accept: "application/json" }
+                });
+                if (!response.ok) throw new Error(String(response.status));
+                const payload = await response.json();
+                item.isFollowed = payload.followed === true;
+                button.textContent = root.dataset.textFollowed;
+                button.disabled = true;
+            } catch {
+                button.title = root.dataset.textAddFailed || "";
                 button.disabled = false;
             }
         });
