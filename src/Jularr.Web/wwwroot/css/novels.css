@@ -398,20 +398,26 @@
     font-family: "Yu Mincho", "Hiragino Mincho ProN", "Noto Serif JP", serif;
 }
 
-.novel-reader-paragraph.de {
+.novel-reader-paragraph.de,
+.novel-reader-paragraph.de-gemma {
     font-family: ui-serif, Georgia, Cambria, "Times New Roman", serif;
 }
 
 .novel-reader-shell[data-view="ja"] .novel-reader-paragraph.de,
-.novel-reader-shell[data-view="de"] .novel-reader-paragraph.ja {
+.novel-reader-shell[data-view="ja"] .novel-reader-paragraph.de-gemma,
+.novel-reader-shell[data-view="de"] .novel-reader-paragraph.ja,
+.novel-reader-shell[data-translation-source="ai"] .novel-reader-paragraph.de-gemma,
+.novel-reader-shell[data-translation-source="gemma"] .novel-reader-paragraph.de {
     display: none;
 }
 
-.novel-reader-shell[data-view="both"] .novel-reader-content {
+.novel-reader-shell[data-view="both"] .novel-reader-content,
+.novel-reader-shell[data-view="de"][data-translation-source="both"] .novel-reader-content {
     width: min(calc(100% - 4rem), 1180px);
 }
 
-.novel-reader-shell[data-view="both"] .novel-reader-segment {
+.novel-reader-shell[data-view="both"] .novel-reader-segment,
+.novel-reader-shell[data-view="de"][data-translation-source="both"] .novel-reader-segment {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: clamp(1.75rem, 4vw, 3.5rem);
@@ -422,9 +428,84 @@
     grid-column: 1;
 }
 
-.novel-reader-shell[data-view="both"] .novel-reader-paragraph.de {
+.novel-reader-shell[data-view="both"] .novel-reader-paragraph.de,
+.novel-reader-shell[data-view="both"] .novel-reader-paragraph.de-gemma {
     grid-column: 2;
     color: color-mix(in srgb, var(--reader-text) 92%, var(--reader-muted));
+}
+
+.novel-reader-shell[data-view="both"][data-translation-source="both"] .novel-reader-content {
+    width: min(calc(100% - 4rem), 1540px);
+}
+
+.novel-reader-shell[data-view="both"][data-translation-source="both"] .novel-reader-segment {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: clamp(1.25rem, 2.5vw, 2.5rem);
+}
+
+.novel-reader-shell[data-view="both"][data-translation-source="both"] .novel-reader-paragraph.de-gemma {
+    grid-column: 2;
+}
+
+.novel-reader-shell[data-view="both"][data-translation-source="both"] .novel-reader-paragraph.de {
+    grid-column: 3;
+}
+
+.novel-reader-shell[data-view="de"][data-translation-source="both"] .novel-reader-paragraph.de-gemma {
+    grid-column: 1;
+}
+
+.novel-reader-shell[data-view="de"][data-translation-source="both"] .novel-reader-paragraph.de {
+    grid-column: 2;
+}
+
+
+.novel-translation-source-panel {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem;
+    flex-wrap: wrap;
+    width: 100%;
+}
+
+.novel-translation-source-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px;
+    border: 1px solid color-mix(in srgb, var(--reader-text) 14%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--reader-paper) 88%, transparent);
+}
+
+.novel-translation-source-switch button {
+    min-height: 30px;
+    padding: .25rem .7rem;
+    border: 0;
+    border-radius: 999px;
+    color: var(--reader-muted);
+    background: transparent;
+    font: inherit;
+    font-size: .82rem;
+    cursor: pointer;
+}
+
+.novel-translation-source-switch button[aria-pressed="true"] {
+    color: var(--reader-ink);
+    background: color-mix(in srgb, var(--reader-accent) 14%, var(--reader-paper));
+}
+
+.novel-translation-source-switch button:disabled {
+    opacity: .4;
+    cursor: default;
+}
+
+.novel-local-translation-status {
+    display: inline-flex;
+    align-items: center;
+    gap: .55rem;
+    min-width: 0;
 }
 
 .novel-reader-paragraph::selection,
@@ -679,16 +760,21 @@ body:has(.novel-reader-shell) .app-main {
         width: calc(100% - 1rem);
     }
 
-    .novel-reader-shell[data-view="both"] .novel-reader-content {
+    .novel-reader-shell[data-view="both"] .novel-reader-content,
+    .novel-reader-shell[data-view="de"][data-translation-source="both"] .novel-reader-content {
         width: calc(100% - 1rem);
     }
 
-    .novel-reader-shell[data-view="both"] .novel-reader-segment {
+    .novel-reader-shell[data-view="both"] .novel-reader-segment,
+    .novel-reader-shell[data-view="de"][data-translation-source="both"] .novel-reader-segment {
         display: block;
         margin-bottom: 1.55em;
     }
 
-    .novel-reader-shell[data-view="both"] .novel-reader-paragraph.de {
+    .novel-reader-shell[data-view="both"] .novel-reader-paragraph.de,
+    .novel-reader-shell[data-view="both"] .novel-reader-paragraph.de-gemma,
+    .novel-reader-shell[data-view="de"][data-translation-source="both"] .novel-reader-paragraph.de,
+    .novel-reader-shell[data-view="de"][data-translation-source="both"] .novel-reader-paragraph.de-gemma {
         margin-top: .45rem;
         padding-left: .75rem;
         border-left: 2px solid color-mix(in srgb, var(--reader-accent) 34%, transparent);
