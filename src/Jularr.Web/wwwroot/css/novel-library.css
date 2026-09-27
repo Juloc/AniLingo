@@ -535,7 +535,7 @@
 }
 
 .novel-volume-group.current .novel-volume-header {
-    box-shadow: inset 2px 0 var(--accent);
+    background: color-mix(in srgb, var(--accent) 6%, transparent);
 }
 
 .novel-volume-cover {
@@ -596,7 +596,7 @@
 }
 
 .novel-chapter-row.current {
-    box-shadow: inset 2px 0 var(--accent);
+    font-weight: 700;
     background: color-mix(in srgb, var(--accent) 6%, transparent);
 }
 

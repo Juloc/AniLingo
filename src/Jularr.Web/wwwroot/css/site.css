@@ -1103,8 +1103,8 @@ button, input { font: inherit; }
 .admin-log-row > span { color: var(--muted); }
 .admin-log-row strong { font-size: 11px; }
 .admin-log-row p { margin: 0; overflow-wrap: anywhere; }
-.admin-log-warning { border-left: 2px solid #d7aa45; }
-.admin-log-error { border-left: 2px solid #d46f6f; }
+.admin-log-warning { background: color-mix(in srgb, #d7aa45 9%, transparent); }
+.admin-log-error { background: color-mix(in srgb, #d46f6f 10%, transparent); }
 
 @media (max-width: 820px) {
     .operation-filter { grid-template-columns: 1fr 1fr; }
