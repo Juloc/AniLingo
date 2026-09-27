@@ -450,7 +450,7 @@
     }
 
     function renderFranchiseAction(item, actions) {
-        if (item.category !== "anime" ||
+        if (!["anime", "manga", "light-novel"].includes(item.category) ||
             item.provider !== "anilist" ||
             !root.dataset.franchiseUrl) {
             return;
