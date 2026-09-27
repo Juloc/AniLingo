@@ -76,6 +76,8 @@
     </div>
 </header>
 
+@await Component.InvokeAsync("UpcomingReleases", new { mediaType = Jularr.Web.Features.Calendar.ReleaseMediaType.Manga, mediaId = series.Id, ui })
+
 @if (TempData["Status"] is string status)
 {
     <div class="manga-message">@status</div>

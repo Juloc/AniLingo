@@ -124,6 +124,8 @@
     </div>
 </section>
 
+@await Component.InvokeAsync("UpcomingReleases", new { mediaType = Jularr.Web.Features.Calendar.ReleaseMediaType.Anime, mediaId = Model.AnimeId, ui })
+
 @if (Model.ExternalProgress is { } externalProgress)
 {
     var externalPanel = new ExternalProgressPanel(
