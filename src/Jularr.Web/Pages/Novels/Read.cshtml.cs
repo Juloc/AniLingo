@@ -497,13 +497,17 @@ public sealed class ReadModel(
             NovelTranslationEngine.TranslateGemma,
             cancellationToken);
 
-        if (cached is not null)
+        // A local translation made with another model, endpoint or algorithm stays readable,
+        // but asking again queues a new one with the current configuration.
+        if (cached is not null &&
+            string.Equals(cached.ProviderId, translations.TranslateGemmaProviderId, StringComparison.Ordinal))
         {
             if (IsFetchRequest())
             {
                 return new JsonResult(new
                 {
                     status = "ready",
+                    current = true,
                     paragraphs = NovelTextLayout.SplitParagraphs(cached.Text)
                 });
             }
@@ -543,16 +547,28 @@ public sealed class ReadModel(
             NovelTranslationEngine.TranslateGemma,
             cancellationToken);
 
+        var currentProviderId = translations.TranslateGemmaProviderId;
         if (cached is not null)
         {
+            // Cached text is readable without the Learning capability or a running endpoint.
+            // Regeneration is only offered when the configuration changed since.
+            var current = currentProviderId is null ||
+                string.Equals(cached.ProviderId, currentProviderId, StringComparison.Ordinal);
+            var canRegenerate =
+                !current &&
+                account.IsOwner &&
+                await ResolveTranslationEnabledAsync(context.WorkId, id, cancellationToken);
+
             return new JsonResult(new
             {
                 status = "ready",
+                current,
+                canRegenerate,
                 paragraphs = NovelTextLayout.SplitParagraphs(cached.Text)
             });
         }
 
-        if (!translations.TranslateGemmaConfigured)
+        if (currentProviderId is null)
         {
             return new JsonResult(new
             {

@@ -110,6 +110,36 @@ public sealed class NovelTranslationGatingTests
     }
 
     [TestMethod]
+    public async Task LocalTextFromAnOlderModelStaysReadableButIsNotCurrent()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SeedCachedGermanTranslationAsync(
+            NovelTranslationProviders.TranslateGemmaPrefix + "translategemma-4b-it:0123456789ab");
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["TranslateGemma:Endpoint"] = "http://translategemma:11434/v1/chat/completions"
+            })
+            .Build();
+
+        var status = await fixture.CreateReadModel(Profile, configuration)
+            .OnGetTranslateGemmaStatusAsync(fixture.ChapterId, CancellationToken.None);
+        var json = JsonDocument.Parse(JsonSerializer.Serialize(((JsonResult)status).Value));
+
+        Assert.AreEqual("ready", json.RootElement.GetProperty("status").GetString());
+        Assert.AreEqual(1, json.RootElement.GetProperty("paragraphs").GetArrayLength());
+        Assert.IsFalse(json.RootElement.GetProperty("current").GetBoolean());
+        Assert.IsFalse(
+            json.RootElement.GetProperty("canRegenerate").GetBoolean(),
+            "Only the owner may queue a new local translation, and Learning is off here.");
+
+        var script = File.ReadAllText(Path.Combine(
+            RepositoryRoot(), "src", "Jularr.Web", "wwwroot", "js", "novel-translation.js"));
+        StringAssert.Contains(script, "result.canRegenerate");
+        StringAssert.Contains(script, "localRetranslateButton");
+    }
+
+    [TestMethod]
     public async Task MalformedTranslateGemmaEndpointIsTreatedAsNotConfigured()
     {
         await using var fixture = await Fixture.CreateAsync();
