@@ -36,10 +36,13 @@ public sealed class ReadModel(
             StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Whole-chapter AI translation, resolved through the canonical Learning
-    /// hierarchy (Book media type → work → chapter) rather than the presence
-    /// of a cached translation. When it resolves off, cached translated text
-    /// is withheld from the response and the translate/status handlers refuse.
+    /// Whether generating (or regenerating) this chapter's AI translation is
+    /// allowed, resolved through the canonical Learning hierarchy (Book media
+    /// type → work → chapter). This only gates the translate/generation-status
+    /// handlers and the "translate this chapter" prompt; it must never
+    /// withhold an already cached translation, since reading an existing
+    /// translated variant is core reader behaviour and must work with
+    /// Learning off (#369).
     /// </summary>
     public bool TranslationEnabled { get; private set; }
 
@@ -319,21 +322,25 @@ public sealed class ReadModel(
             });
         }
 
+        // Reading an already cached translation is core reader behaviour and
+        // must not depend on the Learning capability (#369); only a *pending*
+        // generation (no cached text yet) requires the resolved capability,
+        // since it implies a translation would still need to be produced.
+        if (reader.Translation is not null)
+        {
+            return new JsonResult(new
+            {
+                status = "ready",
+                paragraphs = reader.TranslatedParagraphs
+            });
+        }
+
         if (!await ResolveTranslationEnabledAsync(reader.Work.Id, reader.Chapter.Id, cancellationToken))
         {
             return Forbid();
         }
 
-        if (reader.Translation is null)
-        {
-            return new JsonResult(new { status = "pending" });
-        }
-
-        return new JsonResult(new
-        {
-            status = "ready",
-            paragraphs = reader.TranslatedParagraphs
-        });
+        return new JsonResult(new { status = "pending" });
     }
 
     public async Task<IActionResult> OnGetChaptersAsync(
