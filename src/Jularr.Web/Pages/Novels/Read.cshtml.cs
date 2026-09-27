@@ -139,7 +139,9 @@ public sealed class ReadModel(
             contentType,
             cancellationToken);
 
-        FuriganaSupported = FuriganaToolkitSupportsReadings;
+        // Readings only help Japanese text; an English book gets no furigana toggle.
+        FuriganaSupported = FuriganaToolkitSupportsReadings &&
+            JapaneseScript.Contains(chapter.OriginalText);
         TranslateGemmaConfigured = translations.TranslateGemmaConfigured;
         TranslationEnabled = await ResolveTranslationEnabledAsync(
             chapter.WorkId,

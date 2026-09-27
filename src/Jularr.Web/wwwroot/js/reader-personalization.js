@@ -651,7 +651,10 @@
     const syncPageState = () => {
         if (state.readingMode !== "paged") return;
         const width = Math.max(1, content.clientWidth);
-        pageCount = Math.max(1, Math.ceil(content.scrollWidth / width));
+        // Columns advance by exactly one page width (novels.css: column gap = twice the
+        // inline padding). The 2 px allowance absorbs sub-pixel rounding, which would
+        // otherwise add an empty page after the last one.
+        pageCount = Math.max(1, Math.ceil((content.scrollWidth - 2) / width));
         currentPage = clamp(Math.round(content.scrollLeft / width), 0, pageCount - 1);
         if (pageNumber) pageNumber.textContent = `${currentPage + 1} / ${pageCount}`;
         emitLocation();
@@ -703,7 +706,15 @@
             if (anchor) goToPage(pageOfAnchor(anchor), false);
             syncPageState();
         });
+
+        // Web fonts and illustrations can finish after the first layout and change how
+        // many columns the chapter needs; count again then (the page stays where it is).
+        document.fonts?.ready.then(syncPageState).catch(() => {});
     };
+
+    content.addEventListener("load", event => {
+        if (event.target instanceof HTMLImageElement) syncPageState();
+    }, true);
 
     const teardownPaged = anchor => {
         settledPagedAnchor = null;

@@ -195,6 +195,93 @@
     width: min(calc(var(--novel-reader-width) * 1.8), 100%);
 }
 
+/* Page art per paper: dark ink on light paper, pale ink and a deeper fold on dark paper. */
+.novel-reader-shell.reader-frame {
+    --novel-page-mountains: url("/brand/ink-mountains.svg");
+    --novel-page-fold: rgba(60, 40, 20, .09);
+}
+
+.novel-reader-shell.reader-frame[data-paper-style="midnight"],
+.novel-reader-shell.reader-frame[data-paper-style="oled"],
+:root[data-app-theme="dark"] .novel-reader-shell.reader-frame[data-paper-style="auto"] {
+    --novel-page-mountains: url("/brand/ink-mountains-light.svg");
+    --novel-page-fold: rgba(0, 0, 0, .38);
+}
+
+@media (prefers-color-scheme: dark) {
+    :root[data-app-theme="system"] .novel-reader-shell.reader-frame[data-paper-style="auto"] {
+        --novel-page-mountains: url("/brand/ink-mountains-light.svg");
+        --novel-page-fold: rgba(0, 0, 0, .38);
+    }
+}
+
+/* The page is paper like the Books reader: washi texture, ink mountains in the bottom
+   margin (never under the text) and room there for the page number. Background layers
+   of the scrolling page stay put while the columns move. */
+.novel-reader-shell.reader-frame[data-reading-mode="paged"] .novel-reader-content {
+    --novel-page-art-h: calc(var(--novel-page-pad-y) + 1.6rem);
+    padding-bottom: var(--novel-page-art-h);
+    background-image:
+        linear-gradient(color-mix(in srgb, var(--reader-paper) 55%, transparent) 0 0),
+        var(--novel-page-mountains),
+        url("/brand/washi.webp");
+    background-size: 100% 100%, 100% var(--novel-page-art-h), cover;
+    background-position: 0 0, center bottom, center;
+    background-repeat: no-repeat;
+    background-blend-mode: normal, normal, multiply;
+}
+
+.novel-reader-shell.reader-frame[data-reading-mode="paged"][data-chapter-style="minimal"] .novel-reader-content {
+    background-image: none;
+}
+
+/* Scroll mode: the same paper, with margins so the text does not run into its edges. */
+.novel-reader-shell.reader-frame:not([data-reading-mode="paged"]) .novel-reader-content {
+    padding: 1.4rem clamp(1rem, 3vw, 2.4rem) 2.2rem;
+}
+
+.novel-reader-shell.reader-frame:not([data-reading-mode="paged"]):not([data-chapter-style="minimal"]) .novel-reader-content {
+    background-image:
+        linear-gradient(color-mix(in srgb, var(--reader-paper) 55%, transparent) 0 0),
+        url("/brand/washi.webp");
+    /* An opaque base: the texture multiplies onto the paper, never onto the backdrop. */
+    background-color: color-mix(in srgb, var(--reader-paper) 94%, transparent);
+    background-size: 100% 100%, 900px auto;
+    background-repeat: no-repeat, repeat;
+    background-blend-mode: normal, multiply;
+}
+
+/* Two pages side by side get a fold between them instead of one wide sheet. */
+@media (min-width: 761px) {
+    .novel-reader-shell.reader-frame[data-reading-mode="paged"][data-two-page="true"]:not([data-chapter-style="minimal"]) .novel-reader-content {
+        background-image:
+            linear-gradient(to right,
+                transparent calc(50% - 26px),
+                var(--novel-page-fold) 50%,
+                transparent calc(50% + 26px)),
+            linear-gradient(color-mix(in srgb, var(--reader-paper) 55%, transparent) 0 0),
+            var(--novel-page-mountains),
+            url("/brand/washi.webp");
+        background-size: 100% 100%, 100% 100%, 100% var(--novel-page-art-h), cover;
+        background-position: 0 0, 0 0, center bottom, center;
+        background-blend-mode: normal, normal, normal, multiply;
+    }
+}
+
+/* The font choice (Standard / Serif / Sans) reaches the text. The per-language paragraph
+   fonts in novels.css used to override it, so the switch changed nothing. Every stack
+   ends in a Japanese face. */
+.novel-reader-shell[data-reader-personalization] .novel-reader-paragraph {
+    font-family: var(--reader-font-family);
+}
+
+/* The source's own copy of the chapter heading: kept for paragraph indexes, not drawn. */
+.novel-reader-segment.is-title-echo {
+    height: 0;
+    margin: 0;
+    overflow: hidden;
+}
+
 .novel-reader-shell.reader-frame[data-reading-mode="paged"] .novel-reader-page-title {
     padding-top: .6rem;
 }
@@ -207,11 +294,13 @@
     display: none;
 }
 
+/* Sits in the page's bottom margin (stage padding + part of the art band), not in the
+   gap under the page. */
 .novel-page-number {
     position: absolute;
     left: 0;
     right: 0;
-    bottom: 10px;
+    bottom: calc(34px + .8rem);
     display: none;
     color: var(--reader-muted, var(--muted));
     font-size: 12px;
@@ -632,6 +721,10 @@
         box-shadow: none;
     }
 
+    .novel-page-number {
+        bottom: calc(22px + .7rem);
+    }
+
     .novel-reader-shell.reader-frame .novel-reader-toast {
         bottom: calc(150px + var(--safe-bottom, 0px));
     }
@@ -641,4 +734,11 @@
     .novel-paragraph-flash {
         animation: none;
     }
+}
+
+/* A one-line row (numbering or special title only) reads like the label lines around it. */
+.novel-reader-shell.reader-frame .novel-drawer-text > .reader-contents-title:only-child {
+    color: inherit;
+    font-size: 14px;
+    font-weight: 600;
 }
