@@ -3,7 +3,7 @@ plugins {
 }
 
 android {
-    namespace = "de.juloc.anilingo.core.player"
+    namespace = "de.juloc.jularr.core.player"
     compileSdk = 36
 
     defaultConfig {

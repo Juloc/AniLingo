@@ -79,7 +79,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: anilingo-android-debug-apks
+          name: jularr-android-debug-apks
           if-no-files-found: error
           path: |
             clients/android/app-mobile/build/outputs/apk/debug/*.apk
@@ -138,10 +138,10 @@ jobs:
           set -euo pipefail
           VERSION="$(python3 - <<'PY'
           import xml.etree.ElementTree as ET
-          root = ET.parse("src/AniLingo.Web/AniLingo.Web.csproj").getroot()
+          root = ET.parse("src/Jularr.Web/Jularr.Web.csproj").getroot()
           version = root.findtext(".//Version")
           if not version:
-              raise SystemExit("AniLingo.Web.csproj has no Version.")
+              raise SystemExit("Jularr.Web.csproj has no Version.")
           print(version.strip())
           PY
           )"
@@ -190,7 +190,7 @@ jobs:
           : "${ANDROID_KEY_ALIAS:?ANDROID_KEY_ALIAS is required}"
           : "${ANDROID_KEY_PASSWORD:?ANDROID_KEY_PASSWORD is required}"
 
-          KEYSTORE="${RUNNER_TEMP}/anilingo-release.jks"
+          KEYSTORE="${RUNNER_TEMP}/jularr-release.jks"
           printf '%s' "${ANDROID_KEYSTORE_BASE64}" | base64 --decode > "${KEYSTORE}"
 
           MOBILE_UNSIGNED="$(find clients/android/app-mobile/build/outputs/apk/release -name '*-release-unsigned.apk' -print -quit)"
@@ -214,8 +214,8 @@ jobs:
             sha256sum "${target}" > "${target}.sha256"
           }
 
-          sign_apk "${MOBILE_UNSIGNED}" "AniLingo-Mobile-${VERSION}"
-          sign_apk "${TV_UNSIGNED}" "AniLingo-TV-${VERSION}"
+          sign_apk "${MOBILE_UNSIGNED}" "Jularr-Mobile-${VERSION}"
+          sign_apk "${TV_UNSIGNED}" "Jularr-TV-${VERSION}"
 
       - name: Attach Android assets to GitHub release
         if: steps.release_commit.outputs.is_release == 'true'

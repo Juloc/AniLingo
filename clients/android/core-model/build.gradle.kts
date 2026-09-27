@@ -3,7 +3,7 @@ plugins {
 }
 
 android {
-    namespace = "de.juloc.anilingo.core.model"
+    namespace = "de.juloc.jularr.core.model"
     compileSdk = 36
 
     defaultConfig {

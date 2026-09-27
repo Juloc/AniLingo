@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "de.juloc.anilingo.tv"
+    namespace = "de.juloc.jularr.tv"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "de.juloc.anilingo.tv"
+        applicationId = "de.juloc.jularr.tv"
         minSdk = 26
         targetSdk = 36
         versionCode = 1
