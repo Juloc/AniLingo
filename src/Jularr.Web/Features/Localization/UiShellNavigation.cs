@@ -3,6 +3,7 @@ namespace Jularr.Web.Features.Localization;
 /// <summary>
 /// One rendered link. <see cref="Groups"/> is set on a section anchor (Admin, Settings) whose
 /// child pages are listed beneath it, either expanded in the sidebar or on a drill-in screen.
+/// <see cref="IsSection"/> marks Admin and Settings even while they are collapsed.
 /// </summary>
 public sealed record UiNavigationItem(
     string Id,
@@ -10,7 +11,8 @@ public sealed record UiNavigationItem(
     string Href,
     string Icon,
     bool IsActive,
-    IReadOnlyList<UiNavigationGroup>? Groups = null)
+    IReadOnlyList<UiNavigationGroup>? Groups = null,
+    bool IsSection = false)
 {
     public bool IsExpanded => Groups is not null;
 
@@ -296,7 +298,7 @@ public sealed record UiShellNavigation(
     }
 
     private static UiNavigationItem ToItem(UiNavigationEntry entry, bool isActive) =>
-        new(entry.Id, entry.LabelKey, entry.Href, entry.Icon, isActive);
+        new(entry.Id, entry.LabelKey, entry.Href, entry.Icon, isActive, IsSection: entry.Sections is not null);
 
     private static bool IsActive(UiNavigationEntry entry, PathString path) => MatchLength(entry, path) >= 0;
 

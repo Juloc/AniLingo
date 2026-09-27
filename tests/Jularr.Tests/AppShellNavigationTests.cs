@@ -331,6 +331,19 @@ public sealed partial class AppShellNavigationTests
     }
 
     [TestMethod]
+    public void ClosedSectionsReopenOnTheirLastUsedPage()
+    {
+        var nav = UiShellNavigation.Build("/", learningVisible: true, isOwner: true);
+        CollectionAssert.AreEqual(
+            new[] { "admin", "settings" },
+            nav.Secondary.Where(item => item.IsSection).Select(item => item.Id).ToArray());
+
+        var web = Path.Combine(RepositoryRoot(), "src", "Jularr.Web");
+        StringAssert.Contains(File.ReadAllText(Path.Combine(web, "Pages", "Shared", "_AppNavLink.cshtml")), "data-nav-section-link");
+        StringAssert.Contains(File.ReadAllText(Path.Combine(web, "wwwroot", "js", "pwa.js")), "a[data-nav-section-link]");
+    }
+
+    [TestMethod]
     public void ShellHasNoMoreSheetOrContextSidebar()
     {
         var web = Path.Combine(RepositoryRoot(), "src", "Jularr.Web");

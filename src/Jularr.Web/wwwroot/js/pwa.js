@@ -586,6 +586,33 @@
   window.addEventListener("online", () =>
     showToast(shellLabel("pwa.online")));
 
+  // Admin and Settings reopen on the page last used inside them. The server
+  // decides which section is expanded; this only remembers the child link.
+  const NAV_LAST_PAGE_KEY = "jularr.nav.lastPage.";
+  document.addEventListener("click", event => {
+    if (!(event.target instanceof Element)) {
+      return;
+    }
+
+    const child = event.target.closest("[data-nav-section] .nav-children a[href]");
+    if (child) {
+      const section = child.closest("[data-nav-section]").dataset.navSection;
+      safeLocalStorageSet(NAV_LAST_PAGE_KEY + section, child.getAttribute("href"));
+      return;
+    }
+
+    const anchor = event.target.closest("a[data-nav-section-link]");
+    if (!anchor || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+      return;
+    }
+
+    const last = safeLocalStorageGet(NAV_LAST_PAGE_KEY + anchor.dataset.navSectionLink);
+    if (last && last.startsWith("/") && !last.startsWith("//")) {
+      event.preventDefault();
+      window.location.assign(last);
+    }
+  });
+
   document.addEventListener("submit", event => {
     if (event.target instanceof HTMLFormElement
         && event.target.matches("[data-offline-logout]")) {
