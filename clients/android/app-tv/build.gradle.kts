@@ -37,6 +37,8 @@ dependencies {
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.foundation)
+    implementation("androidx.compose.material:material")
+    implementation("androidx.compose.material:material-icons-extended")
     implementation(libs.androidx.tv.material)
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.compose.ui.tooling.preview)

@@ -69,7 +69,7 @@ jobs:
           :app-mobile:assembleDebug
           :app-tv:assembleDebug
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: jularr-android-debug-apks
           if-no-files-found: error
@@ -223,7 +223,7 @@ jobs:
 
       - name: Upload signed APKs for manual test
         if: steps.release_commit.outputs.is_release == 'true' && github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: jularr-android-signed-test
           if-no-files-found: error
