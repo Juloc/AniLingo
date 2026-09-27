@@ -91,22 +91,22 @@
             }
         </div>
 
-        @if (Model.SourceIsTarget || Model.TranslationEnabled)
-        {
-            <div class="book-translation-summary">
-                @if (Model.SourceIsTarget)
-                {
-                    <span>@ui["books.library.originalLanguageSelected"]</span>
-                }
-                else
-                {
-                    <span>@ui.Format("books.library.chaptersTranslated", ("translated", translatedCount), ("total", Model.Book.Chapters.Count))</span>
-                    <div class="book-card-progress">
-                        <span style="width:@(Model.Book.Chapters.Count == 0 ? 0 : translatedCount * 100 / Model.Book.Chapters.Count)%"></span>
-                    </div>
-                }
-            </div>
-        }
+        @* Reflects the cache, not the resolved capability: showing how many
+           chapters already have a translated variant is core reader status
+           and must not depend on Learning (#369). *@
+        <div class="book-translation-summary">
+            @if (Model.SourceIsTarget)
+            {
+                <span>@ui["books.library.originalLanguageSelected"]</span>
+            }
+            else
+            {
+                <span>@ui.Format("books.library.chaptersTranslated", ("translated", translatedCount), ("total", Model.Book.Chapters.Count))</span>
+                <div class="book-card-progress">
+                    <span style="width:@(Model.Book.Chapters.Count == 0 ? 0 : translatedCount * 100 / Model.Book.Chapters.Count)%"></span>
+                </div>
+            }
+        </div>
 
         <div class="book-actions">
             @if (firstChapter is Guid chapterId)
@@ -181,7 +181,7 @@
             {
                 <small>@ui["books.read.original"]</small>
             }
-            else if (Model.TranslationEnabled && chapter.HasTranslation)
+            else if (chapter.HasTranslation)
             {
                 <small class="ready">@ui["books.library.translated"]</small>
             }
