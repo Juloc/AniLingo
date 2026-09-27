@@ -458,9 +458,9 @@ Rules:
 - no arbitrary remote origin inside the app shell
 - WebView cookies/session belong to the configured Jularr origin
 
-Jularr has one canonical episode Play route. The WebView shell intercepts that same-origin route and opens the native player using the episode ID. The website still handles the route normally in a regular browser.
+Normal episode/detail navigation stays inside the WebView so the user can see the episode information and episode list before playback. On the Android phone client, that page exposes an explicit native Play navigation (`/Library/Episode/{id}?native=1`). The WebView shell intercepts only that explicit same-origin Play request and opens the native player using the episode ID. A regular browser continues to use the normal web player and never needs the Android marker.
 
-When native playback closes, the user returns to the same WebView history/navigation state.
+When native playback closes, the user returns to the same episode/detail WebView history/navigation state.
 
 The Companion screen itself remains a normal responsive Jularr web page and therefore appears identically in a browser or inside the phone app.
 
@@ -531,6 +531,8 @@ machine directly (both are generic, not anime-specific).
 ## 9. Android TV interaction
 
 The TV app uses Compose for TV focus semantics and a native Media3 player. It is landscape-only.
+
+TV browse/navigation is deliberately layered: **Library → Anime → Episode → Player**. Selecting an episode must open its TV detail surface first; loading Media3/player bootstrap begins only after the user activates **Play/Resume**. Back from Player returns to that Episode surface, not directly to the season list.
 
 ### 9.1 Remote behavior
 
@@ -848,7 +850,8 @@ Implementation should remain mergeable and testable in these slices:
 ### Slice C — phone native playback
 
 - WebView shell
-- Play-route interception
+- episode/detail navigation remains in the WebView
+- explicit native Play-route interception
 - Media3 direct play
 - HLS fallback
 - native learning subtitle overlay

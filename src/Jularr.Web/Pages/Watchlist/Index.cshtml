@@ -1,0 +1,138 @@
+@page "/Watchlist"
+@model Jularr.Web.Pages.Watchlist.IndexModel
+@using Jularr.Web.Features.Watchlist
+@{
+    var ui = Model.Ui;
+    ViewData["Title"] = ui["watchlist.title"];
+}
+
+@section Head {
+    <link rel="stylesheet" href="~/css/watchlist.css" asp-append-version="true" />
+}
+
+<div class="watchlist-page">
+    <header class="watchlist-header">
+        <div>
+            <h1>@ui["watchlist.title"]</h1>
+            <p>@ui["watchlist.subtitle"]</p>
+        </div>
+        <a class="button button-primary" href="/Discover">@ui["watchlist.discover"]</a>
+    </header>
+
+    @if (Model.Items.Count == 0)
+    {
+        <section class="watchlist-empty">
+            <strong>@ui["watchlist.emptyTitle"]</strong>
+            <span>@ui["watchlist.emptyBody"]</span>
+        </section>
+    }
+    else
+    {
+        <section class="watchlist-grid" aria-label="@ui["watchlist.title"]">
+            @foreach (var item in Model.Items)
+            {
+                var category = WatchlistMediaTypeNames.ToCategory(item.Identity.MediaType);
+                <article class="watchlist-card" id="target-@item.StableId">
+                    <div class="watchlist-cover" aria-hidden="true">
+                        @if (!string.IsNullOrWhiteSpace(item.CoverImageUrl))
+                        {
+                            <img src="@item.CoverImageUrl" alt="" loading="lazy" referrerpolicy="no-referrer" />
+                        }
+                        else
+                        {
+                            <span>@item.Title[..1]</span>
+                        }
+                    </div>
+                    <div class="watchlist-copy">
+                        <div class="watchlist-meta">
+                            <span>@ui[$"watchlist.type.{category}"]</span>
+                            @if (item.Year is { } year)
+                            {
+                                <span>@year</span>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(item.Format))
+                            {
+                                <span>@item.Format</span>
+                            }
+                        </div>
+                        <h2>@item.Title</h2>
+                        @if (!string.IsNullOrWhiteSpace(item.NativeTitle) && item.NativeTitle != item.Title)
+                        {
+                            <p class="watchlist-native">@item.NativeTitle</p>
+                        }
+                        <div class="watchlist-source">
+                            @if (item.IsFromFranchise)
+                            {
+                                <span>@ui.Format("watchlist.fromFranchise", ("name", item.FranchiseTitle ?? ""))</span>
+                            }
+                            else
+                            {
+                                <span>@ui["watchlist.directFollow"]</span>
+                            }
+                        </div>
+                        <div class="watchlist-actions">
+                            @if (!string.IsNullOrWhiteSpace(item.DetailsUrl))
+                            {
+                                <a class="button" href="@item.DetailsUrl">@ui["watchlist.open"]</a>
+                            }
+                            <form method="post" asp-page-handler="Remove">
+                                <input type="hidden" name="mediaType" value="@item.Identity.MediaType" />
+                                <input type="hidden" name="provider" value="@item.Identity.ProviderKey" />
+                                <input type="hidden" name="externalId" value="@item.Identity.ExternalKey" />
+                                <button class="button" type="submit">@ui["watchlist.remove"]</button>
+                            </form>
+                            @if (!item.IsFromFranchise)
+                            {
+                                <form method="post" asp-page-handler="FollowFranchise">
+                                    <input type="hidden" name="mediaType" value="@item.Identity.MediaType" />
+                                    <input type="hidden" name="provider" value="@item.Identity.ProviderKey" />
+                                    <input type="hidden" name="externalId" value="@item.Identity.ExternalKey" />
+                                    <input type="hidden" name="title" value="@item.Title" />
+                                    <input type="hidden" name="nativeTitle" value="@item.NativeTitle" />
+                                    <input type="hidden" name="coverImageUrl" value="@item.CoverImageUrl" />
+                                    <input type="hidden" name="format" value="@item.Format" />
+                                    <input type="hidden" name="status" value="@item.Status" />
+                                    <input type="hidden" name="year" value="@item.Year" />
+                                    <input type="hidden" name="localMediaId" value="@item.LocalMediaId" />
+                                    <input type="hidden" name="detailsUrl" value="@item.DetailsUrl" />
+                                    <button class="button" type="submit">@ui["watchlist.followFranchise"]</button>
+                                </form>
+                            }
+                        </div>
+                    </div>
+                </article>
+            }
+        </section>
+    }
+
+    @if (Model.Franchises.Count > 0)
+    {
+        <section class="watchlist-franchises">
+            <div class="watchlist-section-heading">
+                <h2>@ui["watchlist.franchises"]</h2>
+                <span>@ui["watchlist.franchiseHint"]</span>
+            </div>
+            <div class="watchlist-franchise-list">
+                @foreach (var franchise in Model.Franchises)
+                {
+                    <article>
+                        <div>
+                            <a class="watchlist-franchise-link" href="/Franchises/@franchise.Id">@franchise.Title</a>
+                            <span>@ui.Format("watchlist.memberCount", ("count", franchise.MemberCount))</span>
+                        </div>
+                        <div class="watchlist-actions">
+                            <form method="post" asp-page-handler="RefreshFranchise">
+                                <input type="hidden" name="franchiseId" value="@franchise.Id" />
+                                <button class="button" type="submit">@ui["watchlist.refreshFranchise"]</button>
+                            </form>
+                            <form method="post" asp-page-handler="UnfollowFranchise">
+                                <input type="hidden" name="franchiseId" value="@franchise.Id" />
+                                <button class="button" type="submit">@ui["watchlist.unfollowFranchise"]</button>
+                            </form>
+                        </div>
+                    </article>
+                }
+            </div>
+        </section>
+    }
+</div>

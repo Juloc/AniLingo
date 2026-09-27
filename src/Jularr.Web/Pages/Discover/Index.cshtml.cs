@@ -3,11 +3,13 @@ using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Books;
 using Jularr.Web.Features.Discovery;
+using Jularr.Web.Features.Franchises;
 using Jularr.Web.Features.Localization;
 using Jularr.Web.Features.Metadata;
 using Jularr.Web.Features.Novels;
 using Jularr.Web.Features.Operations;
 using Jularr.Web.Features.Tracking;
+using Jularr.Web.Features.Watchlist;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
@@ -25,6 +27,8 @@ public sealed class IndexModel(
     OperationRunner operations,
     AcquisitionRequestService requests,
     AcquisitionAccessStore requestStore,
+    WatchlistStore watchlist,
+    FranchiseService franchiseService,
     ILogger<DiscoveryCoordinator> discoveryLogger) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
@@ -88,17 +92,120 @@ public sealed class IndexModel(
             .GroupBy(item => (item.Kind, item.ExternalId))
             .ToDictionary(group => group.Key, group => AcquisitionAccessNames.Status(group.First().Status));
 
+        var followed = await watchlist.GetEffectiveKeysAsync(account.ProfileId, cancellationToken);
+
         return new JsonResult(result with
         {
             Items = result.Items
-                .Select(item => !item.IsLocal &&
-                                Categories.TryGetValue(item.Category, out var kind) &&
-                                open.TryGetValue((kind, item.ExternalId), out var status)
-                    ? item with { RequestStatus = status }
-                    : item)
+                .Select(item =>
+                {
+                    var mapped = !item.IsLocal &&
+                                 Categories.TryGetValue(item.Category, out var kind) &&
+                                 open.TryGetValue((kind, item.ExternalId), out var status)
+                        ? item with { RequestStatus = status }
+                        : item;
+
+                    return TryWatchIdentity(item.Category, item.Provider, item.ExternalId, out var identity)
+                        ? mapped with { IsFollowed = followed.Contains(identity.Key) }
+                        : mapped;
+                })
                 .ToArray()
         });
     }
+
+    public async Task<IActionResult> OnPostWatchlistAsync(
+        string? category,
+        string? provider,
+        string? externalId,
+        string? title,
+        string? nativeTitle,
+        string? coverImageUrl,
+        string? format,
+        string? status,
+        int? year,
+        Guid? localMediaId,
+        string? detailsUrl,
+        bool follow,
+        CancellationToken cancellationToken)
+    {
+        if (!WatchlistDraftInput.TryCreate(
+                category,
+                provider,
+                externalId,
+                title,
+                nativeTitle,
+                coverImageUrl,
+                format,
+                status,
+                year,
+                localMediaId,
+                detailsUrl,
+                out var draft))
+        {
+            return BadRequest();
+        }
+
+        if (follow)
+        {
+            await watchlist.FollowAsync(account.ProfileId, draft, cancellationToken);
+        }
+        else
+        {
+            await watchlist.UnfollowAsync(account.ProfileId, draft.Identity, cancellationToken);
+        }
+
+        return new JsonResult(new { followed = follow });
+    }
+
+    public async Task<IActionResult> OnPostFollowFranchiseAsync(
+        string? category,
+        string? provider,
+        string? externalId,
+        string? title,
+        string? nativeTitle,
+        string? coverImageUrl,
+        string? format,
+        string? status,
+        int? year,
+        Guid? localMediaId,
+        string? detailsUrl,
+        CancellationToken cancellationToken)
+    {
+        if (!WatchlistDraftInput.TryCreate(
+                category,
+                provider,
+                externalId,
+                title,
+                nativeTitle,
+                coverImageUrl,
+                format,
+                status,
+                year,
+                localMediaId,
+                detailsUrl,
+                out var draft) ||
+            draft.Identity.MediaType is not (
+                WatchlistMediaType.Anime or
+                WatchlistMediaType.Manga or
+                WatchlistMediaType.LightNovel) ||
+            !draft.Identity.ProviderKey.Equals(AniListMetadataProvider.ProviderKey, StringComparison.Ordinal))
+        {
+            return BadRequest();
+        }
+
+        var franchiseId = await franchiseService.FollowFromSeedAsync(
+            account.ProfileId,
+            draft,
+            cancellationToken);
+        return new JsonResult(new { followed = true, franchiseId });
+    }
+
+    private static bool TryWatchIdentity(
+        string category,
+        string provider,
+        string externalId,
+        out WatchlistIdentity identity) =>
+        WatchlistDraftInput.TryIdentity(category, provider, externalId, out identity);
 
     /// <summary>Adds (anime, automatic) or requests an AniList title according to its access policy.</summary>
     public async Task<IActionResult> OnPostAddAsync(

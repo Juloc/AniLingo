@@ -70,6 +70,22 @@ public sealed class AniListSyncTests
     }
 
     [TestMethod]
+    public async Task RepeatingAniListEntryWritesForwardProgressAsync()
+    {
+        await using var fixture = await SyncFixture.CreateAsync();
+        await fixture.ConnectAsync(Owner, 42, OwnerToken);
+        await fixture.EnableAsync(Owner, AniListSyncMode.OnCompletion);
+        var anime = await fixture.AddAnimeAsync("Rewatch Anime", 555, episodes: 12);
+        fixture.Remote.Put(OwnerToken, 555, progress: 1, status: "REPEATING");
+
+        await fixture.WatchAsync(Owner, anime, 3, completed: true, fixture.Time.Ago(TimeSpan.FromSeconds(5)));
+        var written = await fixture.RunAsync();
+
+        Assert.AreEqual(1, written.Written);
+        Assert.AreEqual(3, fixture.Remote.Progress(OwnerToken, 555));
+    }
+
+    [TestMethod]
     public async Task OnCompletionWritesFinishedMangaChapterAsync()
     {
         await using var fixture = await SyncFixture.CreateAsync();

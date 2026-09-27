@@ -412,6 +412,87 @@ public sealed class AniListMetadataProvider(
         return result;
     }
 
+    public async Task<IReadOnlyList<AniListMediaRelation>> GetRelatedMediaAsync(
+        string externalId,
+        CancellationToken cancellationToken)
+    {
+        if (!int.TryParse(externalId, out var id) || id <= 0)
+        {
+            return [];
+        }
+
+        var response = await SendAsync(
+            SequenceQuery,
+            new { id },
+            cancellationToken);
+
+        using var document = JsonDocument.Parse(response);
+        if (!document.RootElement.TryGetProperty("data", out var data) ||
+            !data.TryGetProperty("Media", out var media) ||
+            media.ValueKind != JsonValueKind.Object ||
+            !media.TryGetProperty("relations", out var relations) ||
+            relations.ValueKind != JsonValueKind.Object ||
+            !relations.TryGetProperty("edges", out var edges) ||
+            edges.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        var result = new List<AniListMediaRelation>();
+        foreach (var edge in edges.EnumerateArray())
+        {
+            var relationType = ReadString(edge, "relationType");
+            if (string.IsNullOrWhiteSpace(relationType) ||
+                !edge.TryGetProperty("node", out var node) ||
+                node.ValueKind != JsonValueKind.Object ||
+                (node.TryGetProperty("isAdult", out var adult) && adult.ValueKind == JsonValueKind.True) ||
+                !node.TryGetProperty("id", out var idElement) ||
+                !idElement.TryGetInt32(out var relatedId))
+            {
+                continue;
+            }
+
+            var mediaType = ReadString(node, "type");
+            if (mediaType is not ("ANIME" or "MANGA"))
+            {
+                continue;
+            }
+
+            var titleObject = node.TryGetProperty("title", out var titleElement)
+                ? titleElement
+                : default;
+            var romaji = ReadString(titleObject, "romaji");
+            var english = ReadString(titleObject, "english");
+            var native = ReadString(titleObject, "native");
+            var title = AnimeMetadataTitles.Choose(
+                english,
+                romaji,
+                native,
+                $"AniList {relatedId}");
+
+            string? cover = null;
+            if (node.TryGetProperty("coverImage", out var coverElement) &&
+                coverElement.ValueKind == JsonValueKind.Object)
+            {
+                cover = ReadString(coverElement, "extraLarge")
+                    ?? ReadString(coverElement, "large");
+            }
+
+            result.Add(new AniListMediaRelation(
+                relationType,
+                mediaType,
+                relatedId.ToString(),
+                title,
+                native,
+                cover,
+                ReadString(node, "format"),
+                ReadString(node, "status"),
+                ReadInt(node, "seasonYear")));
+        }
+
+        return result;
+    }
+
     private async Task<string> SendAsync(
         string query,
         object variables,

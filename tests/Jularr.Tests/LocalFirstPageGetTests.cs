@@ -3,6 +3,7 @@ using Jularr.Web.Data;
 using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Books;
+using Jularr.Web.Features.Franchises;
 using Jularr.Web.Features.Library;
 using Jularr.Web.Features.Manga;
 using Jularr.Web.Features.MediaMapping;
@@ -10,6 +11,7 @@ using Jularr.Web.Features.Metadata;
 using Jularr.Web.Features.Novels;
 using Jularr.Web.Features.Operations;
 using Jularr.Web.Features.Tracking;
+using Jularr.Web.Features.Watchlist;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -21,6 +23,10 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Jularr.Web.Features.Ai;
+using Jularr.Web.Infrastructure.Ai;
+using AiAdminModel = Jularr.Web.Pages.Admin.AiModel;
+using AiSettingsModel = Jularr.Web.Pages.Settings.AiModel;
 using DiscoverIndexModel = Jularr.Web.Pages.Discover.IndexModel;
 using DiscoverMangaImportModel = Jularr.Web.Pages.Discover.MangaImportModel;
 using LibraryIndexModel = Jularr.Web.Pages.Library.IndexModel;
@@ -185,6 +191,58 @@ public sealed class LocalFirstPageGetTests
         fixture.Guard.AssertNotCalled();
     }
 
+    [TestMethod]
+    public async Task AiSettingsAndAdminGetsRenderFromCachedStateAsync()
+    {
+        await using var fixture = await LocalFirstFixture.CreateAsync();
+        var launcher = new GuardedCodexLauncher();
+        var settingsStore = new AiProfileSettingsStore(
+            new EphemeralDataProtectionProvider(),
+            NullLogger<AiProfileSettingsStore>.Instance,
+            new DirectoryInfo(fixture.Root));
+        await settingsStore.SaveAsync(
+            "owner",
+            new AiProfileSettings(AiProviderIds.OpenAiCompatible, "https://api.example.invalid/v1", "model", "test-key", AiTranslationMode.Efficient),
+            CancellationToken.None);
+        var codex = new CodexCliProvider(new CodexAppServerGateway(
+            new CodexAppServerClient(launcher, TimeProvider.System, NullLogger<CodexAppServerClient>.Instance),
+            TimeProvider.System));
+        var usage = new AiUsageTracker();
+        var tracker = new AiActivityTracker(TimeProvider.System);
+        var catalogs = new AiModelCatalogService(new AiModelCatalogStore(fixture.Db), TimeProvider.System);
+        var router = new ProfileAiProviderRouter(
+            fixture.OwnerAccount,
+            settingsStore,
+            usage,
+            codex,
+            fixture.HttpClientFactory,
+            new AiActivityRunner(tracker, usage, TimeProvider.System),
+            catalogs);
+
+        var settings = fixture.Attach(new AiSettingsModel(
+            fixture.Db, fixture.OwnerAccount, settingsStore, router, new AiUsageStore(fixture.Db), tracker, codex, TimeProvider.System));
+        await settings.OnGetAsync(CancellationToken.None);
+        var admin = fixture.Attach(new AiAdminModel(
+            fixture.Db, codex, catalogs, new AiUsageStore(fixture.Db), tracker, TimeProvider.System));
+        await admin.OnGetAsync(CancellationToken.None);
+
+        Assert.AreEqual(AiProviderIds.OpenAiCompatible, settings.ProviderId);
+        Assert.IsNull(admin.Diagnostics.Quota, "Quota is only read by the explicit refresh.");
+        Assert.AreEqual(0, launcher.Starts, "A page GET must not start the Codex app-server.");
+        fixture.Guard.AssertNotCalled();
+    }
+
+    private sealed class GuardedCodexLauncher : ICodexAppServerLauncher
+    {
+        public int Starts { get; private set; }
+
+        public Task<ICodexAppServerTransport> StartAsync(CancellationToken cancellationToken)
+        {
+            Starts++;
+            throw new InvalidOperationException("Codex app-server started during a local-first page GET.");
+        }
+    }
+
     /// <summary>
     /// Stands in for every outbound HTTP dependency. Any request fails the
     /// calling code immediately and is recorded for the assertion.
@@ -253,6 +311,7 @@ public sealed class LocalFirstPageGetTests
         }
 
         public AppDbContext Db { get; }
+        public string Root => root;
         public ExternalCallGuard Guard { get; }
         public IHttpClientFactory HttpClientFactory { get; }
         public CurrentAccountContext OwnerAccount { get; }
@@ -327,10 +386,21 @@ public sealed class LocalFirstPageGetTests
                 ReviewStore,
                 segmentStore);
 
+            var animeProvider = new AniListMetadataProvider(
+                Guard.CreateClient(),
+                NullLogger<AniListMetadataProvider>.Instance);
+            var franchiseStore = new FranchiseStore(Db);
+            var relationStore = new MediaRelationStore(Db);
+            var watchlistStore = new WatchlistStore(Db);
+            var franchiseService = new FranchiseService(
+                franchiseStore,
+                relationStore,
+                animeProvider,
+                readingProvider,
+                NullLogger<FranchiseService>.Instance);
+
             return new DiscoverIndexModel(
-                new AniListMetadataProvider(
-                    Guard.CreateClient(),
-                    NullLogger<AniListMetadataProvider>.Instance),
+                animeProvider,
                 readingProvider,
                 new BookCatalogService(
                     Guard.CreateClient(),
@@ -349,6 +419,8 @@ public sealed class LocalFirstPageGetTests
                     OwnerAccount,
                     NullLogger<AcquisitionRequestService>.Instance),
                 new AcquisitionAccessStore(Db),
+                watchlistStore,
+                franchiseService,
                 NullLogger<Jularr.Web.Features.Discovery.DiscoveryCoordinator>.Instance);
         }
 

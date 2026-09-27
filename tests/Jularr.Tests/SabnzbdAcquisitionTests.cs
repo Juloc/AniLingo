@@ -1,4 +1,5 @@
 using Jularr.Web.Features.Acquisition;
+using Jularr.Web.Features.Acquisition.DownloadClients;
 using Jularr.Web.Features.Acquisition.Monitoring;
 using Jularr.Web.Features.Acquisition.Prowlarr;
 using Jularr.Web.Features.Acquisition.Quality;
@@ -162,6 +163,32 @@ public sealed class SabnzbdAcquisitionTests
     }
 
     [TestMethod]
+    public async Task CancelUsesTheConnectionThatAcceptedTheDownload()
+    {
+        await using var environment = await SabnzbdTestSupport.CreateEnvironmentAsync();
+        var store = environment.NewAcquisitionStore();
+        var started = await environment.NewAcquisitionService(store)
+            .StartAsync(Request(1, "a"), CancellationToken.None);
+
+        var clients = environment.NewDownloadClientStore();
+        await clients.SaveAsync(
+            new DownloadClientEntry(
+                Guid.NewGuid(),
+                "Higher priority SABnzbd",
+                DownloadClientType.Sabnzbd,
+                Enabled: true,
+                Priority: 0,
+                new DownloadClientSettings("http://higher-priority:8080", "books", "anime"),
+                "secret-key"));
+
+        var cancelled = await environment.NewDownloadService(store)
+            .CancelAsync(started.OperationId!.Value, CancellationToken.None);
+
+        Assert.IsTrue(cancelled.Success);
+        Assert.AreEqual("http://sabnzbd:8080", environment.Client.CancelConnections.Single().Settings.BaseUrl);
+    }
+
+    [TestMethod]
     public async Task RetryRequeuesLatestFailedAttemptAndUnblocksRelease()
     {
         await using var environment = await SabnzbdTestSupport.CreateEnvironmentAsync();
@@ -191,6 +218,7 @@ public sealed class SabnzbdAcquisitionTests
 
         Assert.IsTrue(retried.Success);
         Assert.AreEqual(previousNzo, environment.Client.Retried.Single());
+        Assert.AreEqual("http://sabnzbd:8080", environment.Client.RetryConnections.Single().Settings.BaseUrl);
         var operation = await operations.GetAsync(replacement.OperationId.Value);
         Assert.AreEqual(OperationStatus.Running, operation!.Status);
         Assert.AreEqual(2, operation.Attempt);

@@ -106,7 +106,7 @@ public sealed class ReleaseCalendarService(
 
         var mediaType = filter.MediaTypes.Count == 1 ? filter.MediaTypes.Single() : (ReleaseMediaType?)null;
         var (events, failed) = await CollectAsync(
-            new ReleaseEventQuery(start, end, zone, now, includeUndated, mediaType),
+            new ReleaseEventQuery(start, end, zone, now, includeUndated, mediaType, ProfileId: filter.ProfileId),
             filter.MediaTypes,
             cancellationToken);
         var (days, imprecise) = ReleaseCalendarAssembler.Assemble(events, start, end, zone, filter, now);

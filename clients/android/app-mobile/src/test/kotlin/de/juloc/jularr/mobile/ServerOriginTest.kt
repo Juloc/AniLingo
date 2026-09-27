@@ -28,13 +28,25 @@ class ServerOriginTest {
     }
 
     @Test
-    fun canonicalEpisodeRouteOpensNativePlayerWithExactId() {
+    fun canonicalEpisodeRouteStaysInWebView() {
+        val id = "7a3c4f54-66a8-4acd-98aa-2fcd597f9466"
+        assertEquals(
+            WebNavigationDecision.AllowInWebView,
+            WebNavigationPolicy.decide(
+                origin,
+                "https://jularr.example:8443/Library/Episode/$id",
+            ),
+        )
+    }
+
+    @Test
+    fun explicitNativeEpisodeRouteOpensNativePlayerWithExactId() {
         val id = "7a3c4f54-66a8-4acd-98aa-2fcd597f9466"
         assertEquals(
             WebNavigationDecision.OpenNativeEpisode(id),
             WebNavigationPolicy.decide(
                 origin,
-                "https://jularr.example:8443/Library/Episode/$id",
+                "https://jularr.example:8443/Library/Episode/$id?native=1",
             ),
         )
     }

@@ -156,6 +156,8 @@
                         <div><dt>@ui["admin.usenet.address"]</dt><dd>@card.Entry.Settings.BaseUrl</dd></div>
                         <div><dt>@ui["admin.usenet.booksCategory"]</dt><dd>@(string.IsNullOrWhiteSpace(card.Entry.Settings.BooksCategory) ? ui["admin.usenet.defaultCategory"] : card.Entry.Settings.BooksCategory)</dd></div>
                         <div><dt>@ui["admin.usenet.animeCategory"]</dt><dd>@(string.IsNullOrWhiteSpace(card.Entry.Settings.AnimeCategory) ? ui["admin.usenet.defaultCategory"] : card.Entry.Settings.AnimeCategory)</dd></div>
+                        <div><dt>@ui["settings.downloadClients.field.mangaCategory"]</dt><dd>@(string.IsNullOrWhiteSpace(card.Entry.Settings.MangaCategory) ? ui["admin.usenet.defaultCategory"] : card.Entry.Settings.MangaCategory)</dd></div>
+                        <div><dt>@ui["settings.downloadClients.field.lightNovelCategory"]</dt><dd>@(string.IsNullOrWhiteSpace(card.Entry.Settings.LightNovelCategory) ? ui["admin.usenet.defaultCategory"] : card.Entry.Settings.LightNovelCategory)</dd></div>
                     </dl>
                     @if (card.Health is { IsHealthy: false, LastError: not null })
                     {

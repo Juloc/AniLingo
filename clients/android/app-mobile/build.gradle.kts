@@ -48,6 +48,7 @@ dependencies {
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.foundation)
     implementation(libs.androidx.material3)
+    implementation("androidx.compose.material:material-icons-extended")
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation("androidx.media3:media3-ui:1.11.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")

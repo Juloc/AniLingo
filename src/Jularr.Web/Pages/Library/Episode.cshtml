@@ -18,6 +18,8 @@
     var episodeCode = $"S{Model.SeasonNumber:00} E{Model.EpisodeNumber:00}";
     var nativeTitle = Model.Metadata?.NativeTitle;
     var seekStep = PlayerDesign.SeekStepSeconds;
+    var isAndroidClient = Request.Headers.UserAgent.ToString()
+        .Contains("JularrAndroid/", StringComparison.OrdinalIgnoreCase);
 }
 
 @section Head {
@@ -26,7 +28,19 @@
 
 <div class="watch-layout">
 <div class="watch-main">
-@if (Model.Playback.Media is { } media)
+@if (isAndroidClient && Model.Playback.Media is not null)
+{
+    <section class="preparation-panel">
+        <div class="preparation-copy">
+            <span class="eyebrow">@episodeCode</span>
+            <strong>@Model.EpisodeTitle</strong>
+            <span>@Model.AnimeTitle</span>
+        </div>
+        <a class="button button-primary"
+           href="/Library/Episode/@Model.EpisodeId?native=1">@ui["player.play"]</a>
+    </section>
+}
+else if (Model.Playback.Media is { } media)
 {
     <section class="player-panel"
              data-episode-player

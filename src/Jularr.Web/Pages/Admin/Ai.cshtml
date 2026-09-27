@@ -4,11 +4,15 @@
 @{
     var ui = Model.Ui;
     ViewData["Title"] = ui["admin.system.ai"];
+    var capabilities = Model.Diagnostics.Capabilities;
+    var usagePanel = new AiUsagePanel(ui, Model.Usage, true, "/Admin/Ai", Model.ProfileNames);
+}
+@section Head {
+    <link rel="stylesheet" href="~/css/ai.css" asp-append-version="true" />
 }
 
 <header class="page-header">
     <div>
-        <span class="eyebrow">@ui["admin.ai.eyebrow"]</span>
         <h1>@ui["admin.system.ai"]</h1>
         <p>@ui["admin.ai.subtitle"]</p>
     </div>
@@ -46,6 +50,10 @@
             <div>
                 <span>@ui["admin.ai.authentication"]</span>
                 <strong>@(Model.Provider.AuthenticationMethod ?? "—")</strong>
+            </div>
+            <div>
+                <span>@ui["admin.ai.transport"]</span>
+                <strong>@AiViewFormat.Transport(ui, capabilities.Transport)</strong>
             </div>
             <div>
                 <span>@ui["admin.ai.credentialStorage"]</span>
@@ -123,11 +131,92 @@
             </p>
         }
     </section>
+</div>
+
+<div class="settings-grid">
+    <section class="panel">
+        <div class="panel-heading"><h2>@ui["settings.ai.recentUsage"]</h2></div>
+        <partial name="_AiActivity" model="Model.Activity" />
+    </section>
 
     <section class="panel">
-        <div class="panel-heading"><h2>@ui["admin.ai.providerDesign"]</h2></div>
-        <p class="muted">
-            @ui["admin.ai.providerDesignDescription"]
-        </p>
+        <div class="panel-heading"><h2>@ui["admin.ai.capabilities"]</h2></div>
+        <div class="status-list">
+            @foreach (var capability in Enum.GetValues<AiCapability>())
+            {
+                var state = capabilities[capability];
+                <div>
+                    <span>@AiViewFormat.Capability(ui, capability)</span>
+                    <strong class="@(state == AiCapabilityState.Supported ? "status-pill status-ok" : state == AiCapabilityState.Unsupported ? "status-pill" : "muted")">
+                        @AiViewFormat.CapabilityState(ui, state)
+                    </strong>
+                </div>
+            }
+        </div>
+        @if (Model.Provider.IsAvailable && !string.IsNullOrWhiteSpace(Model.Diagnostics.Error))
+        {
+            <p class="validation">@Model.Diagnostics.Error</p>
+        }
     </section>
 </div>
+
+<div class="settings-grid">
+    <section class="panel">
+        <div class="panel-heading"><h2>@ui["settings.ai.usageTitle"]</h2></div>
+        <partial name="_AiUsage" model="usagePanel" />
+    </section>
+
+    <section class="panel">
+        <div class="panel-heading">
+            <h2>@ui["ai.quota.title"]</h2>
+            <form method="post" asp-page-handler="RefreshQuota" asp-route-period="@Model.Period">
+                <button class="button" type="submit">@ui["admin.ai.refresh"]</button>
+            </form>
+        </div>
+        <partial name="_AiQuota" model="new AiQuotaPanel(ui, Model.Diagnostics.Quota, true)" />
+    </section>
+</div>
+
+<section class="panel">
+    <div class="panel-heading">
+        <h2>@ui["admin.ai.models"]</h2>
+        <form method="post" asp-page-handler="RefreshModels" asp-route-period="@Model.Period">
+            <button class="button" type="submit">@ui["ai.models.refresh"]</button>
+        </form>
+    </div>
+    <p class="muted">@AiViewFormat.CatalogStatus(ui, Model.Catalog, Model.Now)</p>
+    @if (Model.Catalog.HasModels)
+    {
+        <ul class="ai-model-list">
+            @foreach (var entry in Model.Catalog.Models)
+            {
+                <li>
+                    <div>
+                        <strong>@entry.DisplayName</strong>
+                        <code>@entry.Id</code>
+                        @if (entry.IsDefault)
+                        {
+                            <span class="status-pill status-ok">@ui["admin.ai.defaultModel"]</span>
+                        }
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(entry.Description))
+                    {
+                        <p class="muted">@entry.Description</p>
+                    }
+                    @if (entry.ReasoningEfforts.Count > 0)
+                    {
+                        <p>@ui["ai.settings.reasoning"]: @string.Join(", ", entry.ReasoningEfforts.Select(x => x.Effort == entry.DefaultReasoningEffort ? x.Effort + " *" : x.Effort))</p>
+                    }
+                    @if (entry.ServiceTiers.Count > 0)
+                    {
+                        <p>@ui["ai.settings.serviceTier"]: @string.Join(", ", entry.ServiceTiers.Select(x => x.Name))</p>
+                    }
+                </li>
+            }
+        </ul>
+    }
+</section>
+
+@section Scripts {
+    <script src="~/js/ai-activity.js" asp-append-version="true"></script>
+}

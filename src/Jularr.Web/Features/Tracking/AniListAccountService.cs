@@ -1121,7 +1121,7 @@ public sealed partial class AniListAccountService(
     /// <summary>
     /// Adds mapped volume progress (Manga volumes, EPUB light-novel volumes)
     /// to a chapter-progress context. Volume progress is only written forward,
-    /// only while the entry is CURRENT and never lowers chapter progress.
+    /// only while the entry is CURRENT or REPEATING and never lowers chapter progress.
     /// </summary>
     private static ReadingProgressContext WithMappedVolumeProgress(
         StoredAniListAccount account,
@@ -1142,13 +1142,10 @@ public sealed partial class AniListAccountService(
         var progressToWrite = requestedProgress;
         if (volumeProgressToWrite is not null && preview.IsNoOp)
         {
-            if (!string.Equals(
-                    remote.Status,
-                    "CURRENT",
-                    StringComparison.OrdinalIgnoreCase))
+            if (!IsProgressWritableStatus(remote.Status))
             {
                 preview = AniListReadingProgressPreview.Blocked(
-                    $"AniList status is {remote.Status ?? "unknown"}. For safety, Jularr only writes reading progress while the entry is CURRENT.",
+                    $"AniList status is {remote.Status ?? "unknown"}. For safety, Jularr only writes reading progress while the entry is CURRENT or REPEATING.",
                     requestedProgress,
                     displayTitle,
                     remote.Progress,
@@ -1589,6 +1586,10 @@ public sealed partial class AniListAccountService(
             remoteSafety);
     }
 
+    private static bool IsProgressWritableStatus(string? status) =>
+        string.Equals(status, "CURRENT", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(status, "REPEATING", StringComparison.OrdinalIgnoreCase);
+
     public static AniListProgressPreview EvaluateRemoteProgressSafety(
         AniListRemoteListEntry remote,
         int requestedProgress,
@@ -1619,10 +1620,10 @@ public sealed partial class AniListAccountService(
                 aniListEpisodeCount);
         }
 
-        if (!string.Equals(remote.Status, "CURRENT", StringComparison.OrdinalIgnoreCase))
+        if (!IsProgressWritableStatus(remote.Status))
         {
             return AniListProgressPreview.Blocked(
-                $"AniList status is {remote.Status ?? "unknown"}. For safety, Jularr only writes progress while the entry is CURRENT (Watching). Change the status in AniList first.",
+                $"AniList status is {remote.Status ?? "unknown"}. For safety, Jularr only writes progress while the entry is CURRENT (Watching) or REPEATING (Rewatching).",
                 requestedProgress,
                 mediaTitle,
                 remote.Progress,
@@ -1684,10 +1685,10 @@ public sealed partial class AniListAccountService(
                 aniListChapterCount);
         }
 
-        if (!string.Equals(remote.Status, "CURRENT", StringComparison.OrdinalIgnoreCase))
+        if (!IsProgressWritableStatus(remote.Status))
         {
             return AniListReadingProgressPreview.Blocked(
-                $"AniList status is {remote.Status ?? "unknown"}. For safety, Jularr only writes chapter progress while the entry is CURRENT (Reading).",
+                $"AniList status is {remote.Status ?? "unknown"}. For safety, Jularr only writes chapter progress while the entry is CURRENT (Reading) or REPEATING (Rereading).",
                 requestedProgress,
                 mediaTitle,
                 remote.Progress,

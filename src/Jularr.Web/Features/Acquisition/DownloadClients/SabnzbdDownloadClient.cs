@@ -33,14 +33,14 @@ public sealed class SabnzbdDownloadClient(ISabnzbdClient client) : IDownloadClie
                 ToConnection(entry),
                 request.File,
                 request.FileName ?? "release.nzb",
-                entry.CategoryFor(request.IsBooks),
+                entry.CategoryFor(request.MediaKind),
                 cancellationToken);
         }
         else if (request.Url is not null)
         {
             result = await client.GrabAsync(
                 ToConnection(entry),
-                new SabnzbdGrabRequest(request.Url, request.Name, entry.CategoryFor(request.IsBooks)),
+                new SabnzbdGrabRequest(request.Url, request.Name, entry.CategoryFor(request.MediaKind)),
                 cancellationToken);
         }
         else

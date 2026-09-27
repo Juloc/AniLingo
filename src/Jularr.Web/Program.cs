@@ -333,6 +333,9 @@ builder.Services.AddScoped<IAnimeMetadataProvider>(
     services => services.GetRequiredService<AniListMetadataProvider>());
 builder.Services.AddScoped<AnimeMetadataService>();
 builder.Services.AddScoped<AnimeRepairService>();
+builder.Services.AddHttpClient(Jularr.Web.Features.Artwork.AnimeArtworkLibrary.HttpClientName, client =>
+    client.Timeout = TimeSpan.FromSeconds(30));
+builder.Services.AddScoped<Jularr.Web.Features.Artwork.AnimeArtworkLibrary>();
 
 builder.Services.AddHttpClient<NcodeNovelSourceProvider>(client =>
 {
@@ -400,6 +403,9 @@ builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Access.AcquisitionAcc
 builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Access.AcquisitionRequestService>();
 builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Access.IAcquisitionRequestExecutor, Jularr.Web.Features.Books.BookAcquisitionExecutor>();
 builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Access.IAcquisitionRequestExecutor, Jularr.Web.Features.Acquisition.Access.AnimeAcquisitionRequestExecutor>();
+builder.Services.AddScoped<Jularr.Web.Features.ReadingAcquisition.ReadingAcquisitionEngine>();
+builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Access.IAcquisitionRequestExecutor, Jularr.Web.Features.ReadingAcquisition.MangaAcquisitionRequestExecutor>();
+builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Access.IAcquisitionRequestExecutor, Jularr.Web.Features.ReadingAcquisition.LightNovelAcquisitionRequestExecutor>();
 
 // Download clients: SABnzbd connections share the one canonical list (several can fail over to
 // each other). Jularr is usenet-only; torrent clients (qBittorrent) are intentionally
@@ -418,6 +424,7 @@ builder.Services.AddScoped<SabnzbdDownloadService>();
 builder.Services.AddScoped<SabnzbdAcquisitionService>();
 builder.Services.AddHostedService<SabnzbdOperationMonitorService>();
 builder.Services.AddHostedService<Jularr.Web.Features.Books.BookRequestSearchService>();
+builder.Services.AddHostedService<Jularr.Web.Features.ReadingAcquisition.ReadingRequestLifecycleService>();
 
 builder.Services.AddSingleton<AnimeQualityProfileStore>();
 builder.Services.AddSingleton(_ => new AnimeMonitoringStore("/data"));
@@ -468,9 +475,20 @@ builder.Services.AddSingleton<AniListSyncStateStore>();
 builder.Services.AddScoped<AniListSyncService>();
 builder.Services.AddHostedService<AniListSyncBackgroundService>();
 
+builder.Services.AddSingleton<ICodexAppServerLauncher, CodexAppServerProcessLauncher>();
+builder.Services.AddSingleton<CodexAppServerClient>();
+builder.Services.AddSingleton<CodexAppServerGateway>();
 builder.Services.AddSingleton<CodexCliProvider>();
 builder.Services.AddSingleton<AiProfileSettingsStore>();
+builder.Services.AddSingleton<AiUsagePersistenceQueue>();
+builder.Services.AddSingleton<IAiUsageSink>(services => services.GetRequiredService<AiUsagePersistenceQueue>());
+builder.Services.AddHostedService<AiUsagePersistenceWorker>();
 builder.Services.AddSingleton<AiUsageTracker>();
+builder.Services.AddSingleton<AiActivityTracker>();
+builder.Services.AddSingleton<AiActivityRunner>();
+builder.Services.AddScoped<AiUsageStore>();
+builder.Services.AddScoped<IAiModelCatalogStore, AiModelCatalogStore>();
+builder.Services.AddScoped<AiModelCatalogService>();
 builder.Services.AddHttpClient("ai-openai-compatible", client =>
 {
     client.Timeout = TimeSpan.FromMinutes(4);
@@ -518,6 +536,7 @@ app.MapHub<PlaybackSessionHub>(PlaybackSessionHub.Route)
     .AllowAnonymous();
 app.MapReaderThemeCatalog();
 app.MapLanguageInspector();
+app.MapAiActivity();
 app.MapRazorPages();
 
 try

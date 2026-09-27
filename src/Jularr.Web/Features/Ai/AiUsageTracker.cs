@@ -2,6 +2,13 @@ using System.Collections.Concurrent;
 
 namespace Jularr.Web.Features.Ai;
 
+public enum AiUsageOutcome
+{
+    Succeeded,
+    Failed,
+    Cancelled
+}
+
 public sealed record AiUsageMeasurement(
     DateTimeOffset Timestamp,
     string Operation,
@@ -13,7 +20,25 @@ public sealed record AiUsageMeasurement(
     int OutputTokens,
     bool Estimated,
     bool CacheHit,
-    bool ResumedChunk);
+    bool ResumedChunk)
+{
+    /// <summary>Input tokens served from the provider's prompt cache (exact values only).</summary>
+    public int CachedInputTokens { get; init; }
+
+    /// <summary>Reasoning output tokens when the provider reports them; never the reasoning text.</summary>
+    public int ReasoningOutputTokens { get; init; }
+
+    /// <summary>Estimated share of the input that came from shared story/translation context (#412).</summary>
+    public int ContextTokens { get; init; }
+
+    public long DurationMs { get; init; }
+
+    public int Retries { get; init; }
+
+    public AiUsageOutcome Outcome { get; init; } = AiUsageOutcome.Succeeded;
+
+    public bool IsRequest => !CacheHit && !ResumedChunk;
+}
 
 public sealed record AiUsageSnapshot(
     int RequestCount,
@@ -29,7 +54,17 @@ public interface IAiUsageReporter
     void RecordResumedChunk(string operation);
 }
 
-public sealed class AiUsageTracker
+/// <summary>Receives every measurement for durable aggregation.</summary>
+public interface IAiUsageSink
+{
+    void Enqueue(string profileId, AiUsageMeasurement measurement);
+}
+
+/// <summary>
+/// Records AI usage per profile. Recent measurements stay in memory for the live view; every
+/// measurement is also handed to the durable sink so daily aggregates survive restarts.
+/// </summary>
+public sealed class AiUsageTracker(IAiUsageSink? sink = null)
 {
     private const int MaxRecentPerProfile = 50;
     private readonly ConcurrentDictionary<string, ProfileUsage> profiles =
@@ -48,7 +83,7 @@ public sealed class AiUsageTracker
 
         lock (usage.Gate)
         {
-            if (!measurement.CacheHit && !measurement.ResumedChunk)
+            if (measurement.IsRequest)
             {
                 usage.RequestCount++;
                 usage.InputTokens += measurement.InputTokens;
@@ -71,6 +106,8 @@ public sealed class AiUsageTracker
                 usage.Recent.RemoveLast();
             }
         }
+
+        sink?.Enqueue(profileId, measurement);
     }
 
     public AiUsageSnapshot GetSnapshot(string profileId)

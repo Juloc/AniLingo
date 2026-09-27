@@ -7,6 +7,7 @@
 @section Head {
     <link rel="stylesheet" href="~/css/novel-library.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/reading.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/reading-catalog.css" asp-append-version="true" />
 }
 
 <header class="novel-library-header">
@@ -18,48 +19,159 @@
         <h1>@ui["novels.index.title"]</h1>
     </div>
 
-    @if (Model.IsOwner)
+    @if (Model.Access.CanAdd)
     {
-        <details class="novel-import-popover">
+        <details class="novel-import-popover" open="@(Model.SearchQuery.Length > 0)">
             <summary class="novel-add-button">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
-                @ui["novels.index.addNovel"]
+                @(Model.Access.AddCreatesRequest
+                    ? ui["discover.card.request"]
+                    : ui["novels.index.addNovel"])
             </summary>
             <div class="novel-import-panel">
-                <form method="post" asp-page-handler="Import" class="novel-import-form">
-                    <label for="sourceUrl">@ui["novels.index.sourceUrlLabel"]</label>
-                    <input id="sourceUrl"
-                           type="url"
-                           name="sourceUrl"
-                           required
-                           inputmode="url"
-                           placeholder="https://ncode.syosetu.com/n9669bk/" />
-                    <button class="button button-primary" type="submit">@ui["novels.index.importSubmit"]</button>
+                <form method="get" class="reading-catalog-form">
+                    <label for="novelCatalogQuery">@ui["discover.search.srLabel"]</label>
+                    <input id="novelCatalogQuery"
+                           name="q"
+                           type="search"
+                           value="@Model.SearchQuery"
+                           autocomplete="off"
+                           placeholder="@ui["discover.search.placeholder"]" />
+                    <button class="button button-primary" type="submit">@ui["common.search"]</button>
                 </form>
-                <form method="post"
-                      asp-page-handler="UploadEpub"
-                      enctype="multipart/form-data"
-                      class="novel-import-form">
-                    <label for="epubs">@ui["novels.index.epubLabel"]</label>
-                    <input id="epubs"
-                           type="file"
-                           name="epubs"
-                           accept=".epub,application/epub+zip"
-                           multiple
-                           required />
-                    <button class="button button-primary" type="submit">@ui["novels.index.uploadSubmit"]</button>
-                </form>
-                @if (Model.IsInboxConfigured)
+
+                @if (Model.SearchQuery.Length > 0)
                 {
-                    <form method="post" asp-page-handler="ScanInbox" class="novel-import-form">
-                        <label>@ui["novels.index.inboxLabel"] · <code>@Jularr.Web.Features.Novels.NovelEpubImportService.InboxFolder</code></label>
-                        <button class="button" type="submit">@ui["novels.index.importFromInbox"]</button>
+                    @if (Model.SearchResults.Count == 0)
+                    {
+                        <div class="reading-catalog-empty">@ui["discover.results.emptyTitle"]</div>
+                    }
+                    else
+                    {
+                        <div class="reading-catalog-results">
+                            @foreach (var result in Model.SearchResults)
+                            {
+                                <article class="reading-catalog-result">
+                                    <div class="reading-catalog-cover">
+                                        @if (!string.IsNullOrWhiteSpace(result.Item.CoverImageUrl))
+                                        {
+                                            <img src="@result.Item.CoverImageUrl" alt="" loading="lazy" referrerpolicy="no-referrer" />
+                                        }
+                                        else
+                                        {
+                                            <span>文</span>
+                                        }
+                                    </div>
+
+                                    <div class="reading-catalog-copy">
+                                        <span class="reading-catalog-title">@result.Item.Title</span>
+                                        @if (!string.IsNullOrWhiteSpace(result.Item.NativeTitle) &&
+                                             !string.Equals(result.Item.NativeTitle, result.Item.Title, StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            <span class="reading-catalog-native">@result.Item.NativeTitle</span>
+                                        }
+                                        <span class="reading-catalog-meta">
+                                            @if (!string.IsNullOrWhiteSpace(result.Item.Author))
+                                            {
+                                                @result.Item.Author
+                                            }
+                                            @if (result.Item.FirstPublishYear is int year)
+                                            {
+                                                <text> · @year</text>
+                                            }
+                                            @if (result.Item.VolumeCount is int volumes)
+                                            {
+                                                <text> · </text>
+                                                @ui.Format("novels.card.volumeCount", ("count", volumes))
+                                            }
+                                            @if (result.Item.ChapterCount is int chapters)
+                                            {
+                                                <text> · </text>
+                                                @ui.Format("manga.card.chapterCount", ("count", chapters))
+                                            }
+                                        </span>
+                                    </div>
+
+                                    <div class="reading-catalog-action">
+                                        @if (result.LocalUrl is { Length: > 0 } localUrl)
+                                        {
+                                            <a class="button" href="@localUrl">@ui["books.add.inLibrary"]</a>
+                                        }
+                                        else if (result.RequestStatus is { Length: > 0 } requestStatus)
+                                        {
+                                            <button class="button" type="button" disabled>
+                                                @ui["requests.status." + requestStatus]
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <form method="post" asp-page-handler="AddCatalog">
+                                                <input type="hidden" name="provider" value="@result.Item.Provider" />
+                                                <input type="hidden" name="externalId" value="@result.Item.ExternalId" />
+                                                <input type="hidden" name="title" value="@result.Item.Title" />
+                                                <input type="hidden" name="nativeTitle" value="@result.Item.NativeTitle" />
+                                                <input type="hidden" name="author" value="@result.Item.Author" />
+                                                <input type="hidden" name="coverImageUrl" value="@result.Item.CoverImageUrl" />
+                                                <input type="hidden" name="q" value="@Model.SearchQuery" />
+                                                <button class="button button-primary" type="submit">
+                                                    @(Model.Access.AddCreatesRequest
+                                                        ? ui["discover.card.request"]
+                                                        : ui["discover.card.add"])
+                                                </button>
+                                            </form>
+                                        }
+                                    </div>
+                                </article>
+                            }
+                        </div>
+                    }
+                }
+
+                @if (Model.IsOwner)
+                {
+                    <div class="reading-catalog-divider">@ui["books.add.manual"]</div>
+
+                    <form method="post" asp-page-handler="Import" class="novel-import-form">
+                        <label for="sourceUrl">@ui["novels.index.sourceUrlLabel"]</label>
+                        <input id="sourceUrl"
+                               type="url"
+                               name="sourceUrl"
+                               required
+                               inputmode="url"
+                               placeholder="https://ncode.syosetu.com/n9669bk/" />
+                        <button class="button button-primary" type="submit">@ui["novels.index.importSubmit"]</button>
                     </form>
+                    <form method="post"
+                          asp-page-handler="UploadEpub"
+                          enctype="multipart/form-data"
+                          class="novel-import-form">
+                        <label for="epubs">@ui["novels.index.epubLabel"]</label>
+                        <input id="epubs"
+                               type="file"
+                               name="epubs"
+                               accept=".epub,application/epub+zip"
+                               multiple
+                               required />
+                        <button class="button button-primary" type="submit">@ui["novels.index.uploadSubmit"]</button>
+                    </form>
+                    @if (Model.IsInboxConfigured)
+                    {
+                        <form method="post" asp-page-handler="ScanInbox" class="novel-import-form">
+                            <label>@ui["novels.index.inboxLabel"] · <code>@Jularr.Web.Features.Novels.NovelEpubImportService.InboxFolder</code></label>
+                            <button class="button" type="submit">@ui["novels.index.importFromInbox"]</button>
+                        </form>
+                    }
                 }
             </div>
         </details>
     }
 </header>
+
+@if (TempData["Status"] is string status)
+{
+    <div class="reading-catalog-empty" role="status">@status</div>
+}
+
 
 @if (Model.ContinueReading.Count > 0)
 {

@@ -127,6 +127,7 @@ Runtime paths are fixed and intentionally simple:
 
 - `/data` stores the SQLite database, protected integration settings, Codex authentication state, the persistent Whisper model and generated transcription cache.
 - `/media/anime` is the optional conventional read-only anime library mount; Jularr also starts without it.
+- Anime artwork lives beside the media: `poster.*`, `fanart.*` and `banner.*` in the series folder, season posters in the season's own folder (or `season01-poster.*` / `season-specials-poster.*` in the series folder). `/data/cache/artwork` only holds rebuildable WebP derivatives. On a writable library Jularr persists Sonarr and AniList artwork there once the anime is in the library and moves artwork from the former `/data/artwork/anime` store beside the media; it never replaces artwork files it did not write.
 
 For an existing Docker stack, replace `default` with that stack's network if needed. No connection string, database password, media environment variable or second service is required.
 
@@ -176,11 +177,15 @@ Novel metadata is separate from anime metadata. Jularr searches AniList's novel 
 
 The image includes the Codex CLI, but Jularr does not require AI to scan media or learn vocabulary.
 
-Open **Settings → AI** and choose **Connect with ChatGPT**. Jularr starts the Codex device-code flow inside the container and shows the OpenAI login link and one-time code. The resulting Codex credentials are kept under `/data/codex`, so they survive normal container recreation as part of the existing data volume.
+Open **Admin → AI** and choose **Connect with ChatGPT**. Jularr starts the Codex device-code flow inside the container and shows the OpenAI login link and one-time code. The resulting Codex credentials are kept under `/data/codex`, so they survive normal container recreation as part of the existing data volume.
 
 Device-code authorization may need to be enabled in the ChatGPT security settings or workspace permissions. Jularr never reads or displays the stored credential file itself; status and logout are delegated to the Codex CLI.
 
-The initial integration deliberately exposes no generic prompt or agent execution endpoint. AI capabilities will be added only for narrow learning tasks where they are useful. The provider boundary allows later API-key or other-engine providers without coupling them to the learning pages.
+Jobs run through the public Codex **app-server** protocol (JSON-RPC over stdio) when the installed Codex supports it, and fall back to `codex exec --json` otherwise. Both paths use ephemeral, read-only threads with shell, web search, plugins and tool suggestions disabled and approvals off, so translation, analysis and story-memory jobs never gain tool access. Supported surfaces are detected, not assumed: **Admin → AI** shows the detected capabilities, the discovered model catalog (cached, marked stale when a refresh fails, refreshed on demand), the provider's quota buckets exactly as reported (unavailable when not reported; buckets are only tied to a model when the protocol says so), live activity of every profile and usage per profile, task and model.
+
+Each profile chooses its provider under **Settings → AI**: the shared server Codex connection or a personal OpenAI-compatible API (models are discovered via `GET {base}/models` when the provider supports it; manual entry always works). The page only offers options the selected model lists (reasoning effort, speed tier) plus per-task overrides that inherit the defaults and store only differences. Usage is kept as daily aggregates in SQLite (counters only, never prompts or responses); exact provider token counts are used when reported and estimates are marked with `~`. Active requests are shown live over server-sent events and can be cancelled. Page loads never contact Codex or a provider; discovery and quota reads are explicit refresh actions.
+
+The integration deliberately exposes no generic prompt or agent execution endpoint.
 
 ## Playback
 
