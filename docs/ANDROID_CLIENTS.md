@@ -514,6 +514,8 @@ machine directly (both are generic, not anime-specific).
 
 The TV app uses Compose for TV focus semantics and a native Media3 player. It is landscape-only.
 
+TV browse/navigation is deliberately layered: **Library → Anime → Episode → Player**. Selecting an episode must open its TV detail surface first; loading Media3/player bootstrap begins only after the user activates **Play/Resume**. Back from Player returns to that Episode surface, not directly to the season list.
+
 ### 9.1 Remote behavior
 
 When no modal/sheet is open:
