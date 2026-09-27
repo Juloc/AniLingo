@@ -81,35 +81,54 @@ object TvMediaTrackSelector {
     internal fun score(
         format: Format,
         requested: MediaTrack,
+    ): Int =
+        score(
+            language = format.language,
+            label = format.label,
+            sampleMimeType = format.sampleMimeType,
+            selectionFlags = format.selectionFlags,
+            requested = requested,
+        )
+
+    /**
+     * Scores plain track attributes so the matching rules stay testable on the JVM:
+     * building a Media3 [Format] touches Android framework stubs that throw in unit tests.
+     */
+    internal fun score(
+        language: String?,
+        label: String?,
+        sampleMimeType: String?,
+        selectionFlags: Int,
+        requested: MediaTrack,
     ): Int {
         var score = 0
 
         if (!requested.language.isNullOrBlank() &&
-            requested.language.equals(format.language, ignoreCase = true)
+            requested.language.equals(language, ignoreCase = true)
         ) {
             score += 6
         }
 
         if (!requested.title.isNullOrBlank() &&
-            requested.title.equals(format.label, ignoreCase = true)
+            requested.title.equals(label, ignoreCase = true)
         ) {
             score += 5
         }
 
         val codec = requested.codec?.lowercase()
-        val mime = format.sampleMimeType?.lowercase()
+        val mime = sampleMimeType?.lowercase()
         if (codec != null && mime != null && codecMatchesMime(codec, mime)) {
             score += 3
         }
 
         if (requested.isDefault &&
-            format.selectionFlags and C.SELECTION_FLAG_DEFAULT != 0
+            selectionFlags and C.SELECTION_FLAG_DEFAULT != 0
         ) {
             score += 1
         }
 
         if (requested.isForced &&
-            format.selectionFlags and C.SELECTION_FLAG_FORCED != 0
+            selectionFlags and C.SELECTION_FLAG_FORCED != 0
         ) {
             score += 1
         }

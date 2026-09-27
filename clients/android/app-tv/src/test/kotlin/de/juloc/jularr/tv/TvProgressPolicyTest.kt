@@ -30,9 +30,9 @@ class TvProgressPolicyTest {
             durationMs = 100_000,
         )
 
-        assertEquals(10_000, first?.positionMs)
+        assertEquals(10_000L, first?.positionMs)
         assertNull(tooSoon)
-        assertEquals(15_000, due?.positionMs)
+        assertEquals(15_000L, due?.positionMs)
     }
 
     @Test
@@ -58,7 +58,7 @@ class TvProgressPolicyTest {
                 durationMs = 100_000,
             )
 
-            assertEquals(11_000, write?.positionMs)
+            assertEquals(11_000L, write?.positionMs)
         }
     }
 

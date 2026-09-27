@@ -310,9 +310,10 @@ class TvAppController(
     ): TvAppSnapshot {
         snapshot = snapshot.copy(busy = true, error = null)
         return try {
-            snapshot.action().also {
-                snapshot = it.copy(busy = false)
-            }
+            // The action runs against the busy snapshot, so its result still
+            // carries busy = true. Clear it on the value we store *and* return:
+            // TvAppHost assigns the returned snapshot directly to the UI state.
+            snapshot.action().copy(busy = false).also { snapshot = it }
         } catch (throwable: Throwable) {
             reportError(throwable)
         }
