@@ -215,3 +215,14 @@
         flex-direction: column;
     }
 }
+
+
+.watchlist-franchise-link {
+    color: var(--text);
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.watchlist-franchise-link:hover {
+    text-decoration: underline;
+}
