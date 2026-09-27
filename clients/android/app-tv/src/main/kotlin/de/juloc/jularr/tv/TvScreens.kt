@@ -604,7 +604,7 @@ private fun EpisodeButton(
     }
 }
 
-private data class TvArtworkSource(
+internal data class TvArtworkSource(
     val url: String,
     val authenticated: Boolean,
 )
@@ -665,7 +665,7 @@ private fun TvArtwork(
     }
 }
 
-private fun resolveArtworkSource(
+internal fun resolveArtworkSource(
     serverOrigin: String,
     rawUrl: String?,
 ): TvArtworkSource? {
