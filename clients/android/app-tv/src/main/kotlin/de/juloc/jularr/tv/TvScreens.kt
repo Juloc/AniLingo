@@ -413,14 +413,17 @@ fun TvEpisodeScreen(
 
 @Composable
 private fun TvInfoPill(text: String) {
-    Surface(
-        shape = MaterialTheme.shapes.small,
-        color = MaterialTheme.colorScheme.surface,
+    Box(
+        modifier = Modifier
+            .background(
+                color = MaterialTheme.colorScheme.surface,
+                shape = MaterialTheme.shapes.small,
+            )
+            .padding(horizontal = 12.dp, vertical = 8.dp),
     ) {
         Text(
             text = text,
             style = MaterialTheme.typography.labelLarge,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
         )
     }
 }
