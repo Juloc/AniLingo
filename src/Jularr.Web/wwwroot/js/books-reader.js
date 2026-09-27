@@ -22,6 +22,19 @@
     const targetLanguage = root.dataset.targetLanguage || "id";
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
+    // #374: Book reading progress and bookmark add always go through the same
+    // offline-first sync queue the Novel reader uses (offline-library-repository.js's
+    // forWork(workId).queueProgress/queueBookmarkUpsert, wrapping
+    // manager.queueSyncEvent) — online and offline alike, one canonical write
+    // path instead of the Progress/Bookmark POST handlers below. Those
+    // handlers are left in place server-side (harmless, unused by this
+    // client) rather than removed, matching the Novel reader's #221 part 2A
+    // change. See docs/OFFLINE_LIBRARY.md.
+    const workId = root.dataset.workId || "";
+    const repository = workId && window.JularrOfflineLibraryRepository
+        ? window.JularrOfflineLibraryRepository.forWork(workId)
+        : null;
+
     let view = root.dataset.view || "original";
     let saveTimer = 0;
     let pollTimer = 0;
@@ -148,13 +161,21 @@
         return type.includes("application/json") ? response.json() : null;
     }
 
+    function currentAnchorLanguage() {
+        return view === "original" ? "original" : targetLanguage;
+    }
+
     function queueProgressSave() {
-        updateProgress();
+        const position = updateProgress();
         window.clearTimeout(saveTimer);
         saveTimer = window.setTimeout(async () => {
-            if (!progressForm) return;
+            if (!repository) return;
             try {
-                await postForm(progressForm);
+                await repository.queueProgress({
+                    chapterId: root.dataset.chapterId,
+                    positionPermille: position,
+                    anchorLanguage: currentAnchorLanguage()
+                });
             } catch {
             }
         }, 900);
@@ -530,16 +551,24 @@
     }
 
     const bookmarkButton = root.querySelector("[data-bookmark-button]");
-    if (bookmarkButton && bookmarkForm) {
+    if (bookmarkButton && repository) {
         bookmarkButton.addEventListener("click", async () => {
-            updateProgress();
+            const position = updateProgress();
             try {
-                await postForm(bookmarkForm);
+                await repository.queueBookmarkUpsert({
+                    chapterId: root.dataset.chapterId,
+                    positionPermille: position,
+                    language: currentAnchorLanguage(),
+                    paragraphIndex: null,
+                    characterOffset: 0,
+                    anchorText: null,
+                    label: null
+                });
                 const count = bookmarkButton.querySelector("[data-bookmark-count]");
                 if (count) count.textContent = String((Number(count.textContent) || 0) + 1);
                 bookmarkButton.classList.add("active");
                 bookmarkButton.style.setProperty("--bookmark-color", settings.bookmarkColor || "#b04455");
-                showToast("Bookmark added at " + Math.round(scrollPermille() / 10) + "%.");
+                showToast("Bookmark added at " + Math.round(position / 10) + "%.");
             } catch (error) {
                 showToast(error.message || "Could not add bookmark.");
             }
@@ -701,13 +730,20 @@
     const selectionToolbar = root.querySelector("[data-book-selection-toolbar]");
     const highlightButton = root.querySelector("[data-book-highlight-button]");
     const highlightForm = root.querySelector("[data-book-highlight-form]");
-    const bookmarkForm = root.querySelector("[data-book-bookmark-form]");
     const bookmarkButton = root.querySelector("[data-bookmark-button]");
     const highlightsJson = root.querySelector("[data-book-highlights-json]");
     const original = root.querySelector("[data-book-original]");
     const translated = root.querySelector("[data-book-translated]");
     const targetLanguage = root.dataset.targetLanguage || "id";
     const currentChapterId = (root.dataset.chapterId || "").toLowerCase();
+
+    // Bookmark removal always goes through the offline-first sync queue
+    // (#374), same as the add path in the module above; see
+    // docs/OFFLINE_LIBRARY.md.
+    const workId = root.dataset.workId || "";
+    const repository = workId && window.JularrOfflineLibraryRepository
+        ? window.JularrOfflineLibraryRepository.forWork(workId)
+        : null;
 
     let currentHighlights = [];
     let allAnnotations = null;
@@ -950,9 +986,14 @@
             remove.addEventListener("click", async () => {
                 remove.disabled = true;
                 try {
-                    await postHandler("RemoveBookmark", {
-                        bookmarkId: prop(bookmark, "id")
-                    });
+                    const bookmarkId = prop(bookmark, "id");
+                    if (repository) {
+                        await repository.queueBookmarkRemove(bookmarkId, {
+                            chapterId: root.dataset.chapterId
+                        });
+                    } else {
+                        await postHandler("RemoveBookmark", { bookmarkId });
+                    }
 
                     const items = prop(allAnnotations, "bookmarks") || [];
                     allAnnotations.bookmarks = items.filter(
@@ -1313,17 +1354,6 @@
         });
     }
 
-    if (bookmarkButton && bookmarkForm) {
-        bookmarkButton.addEventListener("click", () => {
-            const anchor = bookmarkForm.querySelector('[name="anchorLanguage"]');
-            if (anchor) {
-                anchor.value = root.dataset.view === "original"
-                    ? "original"
-                    : targetLanguage;
-            }
-        }, true);
-    }
-
     document.addEventListener("selectionchange", () => {
         window.clearTimeout(inspectSelection.timer);
         inspectSelection.timer = window.setTimeout(inspectSelection, 40);
@@ -1393,10 +1423,9 @@
     // link to a downloaded chapter renders it locally instead of a failing
     // full-page navigation; to an undownloaded chapter shows a clear notice.
     // Online, this never engages and the existing full-page navigation is
-    // unchanged. Progress/bookmark writes for Books are intentionally left
-    // on their existing (online-only) endpoints; see docs/OFFLINE_LIBRARY.md
-    // for why the shared /sync endpoint is not yet safe for Books' arbitrary
-    // target-language model.
+    // unchanged. Progress/bookmark writes for Books now go through the same
+    // offline-first sync queue as chapter navigation here (#374); see
+    // docs/OFFLINE_LIBRARY.md.
     const root = document.querySelector("[data-book-reader]");
     if (!root || !root.dataset.workId || !window.JularrOfflineLibraryRepository) return;
 
