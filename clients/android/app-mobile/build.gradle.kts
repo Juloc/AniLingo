@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "de.juloc.anilingo"
+    namespace = "de.juloc.jularr"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "de.juloc.anilingo"
+        applicationId = "de.juloc.jularr"
         minSdk = 26
         targetSdk = 36
         versionCode = 1
@@ -28,7 +28,7 @@ android {
 // See settings.gradle.kts: core-tts-sherpa (the sherpa-onnx offline-neural runtime) only
 // exists in the build when this property is set, because it depends on a manually
 // downloaded AAR that is not part of this repository. docs/TTS.md documents the manual step.
-val neuralTtsEnabled = providers.gradleProperty("anilingoNeuralTtsEnabled")
+val neuralTtsEnabled = providers.gradleProperty("jularrNeuralTtsEnabled")
     .getOrElse("false")
     .toBoolean()
 

@@ -1,10 +1,10 @@
-# AniLingo Android clients
+# Jularr Android clients
 
 This directory contains the first-party Android phone and Android TV clients defined by [`docs/ANDROID_CLIENTS.md`](../../docs/ANDROID_CLIENTS.md).
 
 ## Modules
 
-- `app-mobile`: phone shell; the full AniLingo web UI remains the normal Library/Learn/Settings surface, while episode playback becomes native.
+- `app-mobile`: phone shell; the full Jularr web UI remains the normal Library/Learn/Settings surface, while episode playback becomes native.
 - `app-tv`: native TV shell and player surface.
 - `core-api`: versioned `/api/client/v1` route/compatibility contract.
 - `core-model`: shared immutable client models.
