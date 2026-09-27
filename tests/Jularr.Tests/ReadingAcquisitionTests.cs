@@ -67,7 +67,7 @@ public sealed class ReadingAcquisitionTests
             Candidate("Sousou no Frieren Ch 111-118 [Digital] CBZ"),
             target);
 
-        Assert.IsGreaterThan(0, ranked.Score);
+        Assert.IsTrue(ranked.Score > 0);
         Assert.AreEqual(111d, ranked.Parsed.ChapterStart);
         Assert.AreEqual(118d, ranked.Parsed.ChapterEnd);
     }
@@ -108,7 +108,7 @@ public sealed class ReadingAcquisitionTests
             Candidate("Ascendance of a Bookworm Volume 1 English PDF"),
             target);
 
-        Assert.IsGreaterThan(epub.Score, unknown.Score);
+        Assert.IsTrue(epub.Score > unknown.Score);
         Assert.AreEqual(0, pdf.Score);
     }
 
@@ -129,7 +129,7 @@ public sealed class ReadingAcquisitionTests
             target);
 
         Assert.AreEqual(0, wrong.Score);
-        Assert.IsGreaterThan(0, right.Score);
+        Assert.IsTrue(right.Score > 0);
     }
 
     [TestMethod]
@@ -149,7 +149,7 @@ public sealed class ReadingAcquisitionTests
             target);
 
         Assert.AreEqual(0, japanese.Score);
-        Assert.IsGreaterThan(0, german.Score);
+        Assert.IsTrue(german.Score > 0);
     }
 
     [TestMethod]
