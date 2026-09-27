@@ -5,6 +5,7 @@ namespace Jularr.Web.Features.Franchises;
 
 public sealed class FranchiseService(
     FranchiseStore franchises,
+    MediaRelationStore relations,
     AniListMetadataProvider aniList,
     ILogger<FranchiseService> logger)
 {
@@ -95,6 +96,14 @@ public sealed class FranchiseService(
                     media,
                     relation.RelationType,
                     false,
+                    cancellationToken);
+                await relations.UpsertProviderAsync(
+                    current.Media.Identity,
+                    media.Identity,
+                    relation.RelationType,
+                    AniListMetadataProvider.ProviderKey,
+                    1.0,
+                    confirmed: true,
                     cancellationToken);
 
                 if (seen.Add(media.Identity.Key) && seen.Count < MaxMembersPerRefresh)
