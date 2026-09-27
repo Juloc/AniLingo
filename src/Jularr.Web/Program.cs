@@ -399,6 +399,7 @@ builder.Services.AddScoped<AnimeAcquisitionPipeline>();
 builder.Services.AddScoped<AnimeImportExecutor>();
 builder.Services.AddSingleton<AnimeAcquisitionScheduler>();
 builder.Services.AddHostedService(services => services.GetRequiredService<AnimeAcquisitionScheduler>());
+Jularr.Web.Features.Calendar.ReleaseCalendarRegistration.AddReleaseCalendar(builder.Services);
 
 builder.Services.AddScoped<AcquisitionApiKeyService>();
 builder.Services.AddScoped<AcquisitionApiService>();
