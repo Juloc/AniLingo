@@ -239,7 +239,7 @@ public sealed class FranchiseStore(AppDbContext db)
         }, cancellationToken);
 
     private async Task<Guid?> FindBySeedAsync(WatchlistIdentity seed, CancellationToken cancellationToken) =>
-        await WithConnectionAsync(async connection =>
+        await WithConnectionAsync<Guid?>(async connection =>
         {
             await using var command = connection.CreateCommand();
             command.CommandText =
