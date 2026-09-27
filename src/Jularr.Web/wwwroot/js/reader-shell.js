@@ -542,27 +542,54 @@
             nav.dataset.readerChrome = "";
             nav.setAttribute("aria-label", "Reader");
 
+            // A proxy only exists while the control it drives exists (#487: no
+            // dead mobile buttons).
             const addProxy = (label, selectors, action) => {
                 const source = root.querySelector(selectors);
-                if (!source && !action) return;
+                if (!source) return null;
                 const button = document.createElement("button");
                 button.type = "button";
                 button.textContent = label;
                 button.addEventListener("click", () => {
                     showChrome();
-                    if (action) action();
-                    else source?.click();
+                    if (action) action(button, source);
+                    else source.click();
                 });
                 nav.append(button);
+                return button;
             };
 
             addProxy(
                 "Kapitel",
                 "[data-reader-chapters-toggle],[data-book-drawer-open]");
-            addProxy(
+
+            // The language switch opens as a panel above the action row and
+            // closes again from the same button, after a choice or on Escape.
+            const setLanguageExpanded = (button, expanded) => {
+                root.classList.toggle("reader-language-expanded", expanded);
+                button.setAttribute("aria-expanded", expanded ? "true" : "false");
+            };
+            const languageButton = addProxy(
                 "Sprache",
-                "[data-reader-language-control],.novel-view-switch,.book-reader-view-switch",
-                () => root.classList.toggle("reader-language-expanded"));
+                "[data-reader-language-control]",
+                button => setLanguageExpanded(
+                    button,
+                    !root.classList.contains("reader-language-expanded")));
+            if (languageButton) {
+                const languageControl = root.querySelector("[data-reader-language-control]");
+                if (!languageControl.id) languageControl.id = "reader-language-control";
+                languageButton.setAttribute("aria-controls", languageControl.id);
+                languageButton.setAttribute("aria-expanded", "false");
+                languageControl.addEventListener("click", event => {
+                    if (event.target.closest("button")) setLanguageExpanded(languageButton, false);
+                });
+                root.addEventListener("keydown", event => {
+                    if (event.key === "Escape" && root.classList.contains("reader-language-expanded")) {
+                        setLanguageExpanded(languageButton, false);
+                        languageButton.focus();
+                    }
+                });
+            }
             addProxy(
                 "Aa",
                 "[data-reader-settings-container],.novel-reader-settings,.book-reader-settings",

@@ -226,6 +226,34 @@
     display: none;
 }
 
+/* Scene breaks: the source mark ("◇◇◇", "＊＊＊") becomes a quiet section ornament.
+   The text stays in the DOM (visually hidden) for paragraph offsets. */
+.novel-reader-segment.is-scene-break {
+    position: relative;
+    height: 1.2em;
+    margin: 1.4em auto;
+    color: var(--reader-muted, var(--muted));
+}
+
+.novel-reader-segment.is-scene-break::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: currentColor;
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 12'%3E%3Cpath d='M60 1.5l4.5 4.5-4.5 4.5-4.5-4.5z' fill='none' stroke='%23000' stroke-width='1.2'/%3E%3Cpath d='M42 6l3-3 3 3-3 3zM72 6l3-3 3 3-3 3z'/%3E%3Cpath d='M8 6h28M84 6h28' stroke='%23000' stroke-width='.8'/%3E%3C/svg%3E") center / 120px 12px no-repeat;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 12'%3E%3Cpath d='M60 1.5l4.5 4.5-4.5 4.5-4.5-4.5z' fill='none' stroke='%23000' stroke-width='1.2'/%3E%3Cpath d='M42 6l3-3 3 3-3 3zM72 6l3-3 3 3-3 3z'/%3E%3Cpath d='M8 6h28M84 6h28' stroke='%23000' stroke-width='.8'/%3E%3C/svg%3E") center / 120px 12px no-repeat;
+}
+
+.novel-reader-segment.is-scene-break .novel-reader-paragraph {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
 /* Layout preferences --------------------------------------------------------------- */
 
 .novel-reader-shell[data-hyphenation="true"] .novel-reader-paragraph {
@@ -295,22 +323,6 @@
     display: none;
 }
 
-.novel-drawer-current {
-    display: grid;
-    grid-template-columns: 40px minmax(0, 1fr) 40px;
-    align-items: center;
-    gap: 4px;
-    padding: 2px 0 4px;
-    font-size: 13px;
-}
-
-.novel-drawer-current strong {
-    overflow: hidden;
-    text-align: center;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
 .novel-reader-shell.reader-frame .novel-drawer-list {
     display: grid;
     gap: 2px;
@@ -325,12 +337,63 @@
 }
 
 .novel-drawer-volume-heading {
-    margin: 12px 10px 4px;
-    color: var(--muted);
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: .04em;
-    text-transform: uppercase;
+    margin: 10px 0 2px;
+    padding: 10px 10px 4px;
+    border-top: 1px solid var(--border);
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 650;
+}
+
+.novel-drawer-volume-heading:first-child {
+    margin-top: 0;
+    border-top: 0;
+}
+
+/* Rows read like a printed table of contents: "Chapter 3" over its title. */
+.novel-reader-shell.reader-frame .novel-drawer-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    min-height: 48px;
+    padding: 7px 12px;
+    font-weight: 400;
+}
+
+.novel-drawer-text {
+    min-width: 0;
+    display: grid;
+    gap: 1px;
+}
+
+.novel-drawer-label {
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.novel-drawer-text .reader-contents-title {
+    font-size: 13px;
+}
+
+.novel-drawer-label + .reader-contents-title {
+    color: var(--text-secondary, var(--muted));
+}
+
+.novel-reader-shell.reader-frame .novel-drawer-row[aria-current="page"] .reader-contents-title {
+    color: inherit;
+}
+
+/* The chapter being read carries a small "now reading" marker. */
+.novel-reader-shell.reader-frame .novel-drawer-row[aria-current="page"]::after {
+    content: "";
+    grid-column: 2;
+    grid-row: 1;
+    width: 10px;
+    height: 12px;
+    background: currentColor;
+    clip-path: polygon(0 0, 100% 50%, 0 100%);
+}
+
+.novel-drawer-row.earlier .novel-drawer-label {
+    color: var(--text-secondary, var(--muted));
 }
 
 .novel-drawer-row.is-remote {
@@ -338,7 +401,8 @@
 }
 
 .novel-drawer-row .novel-drawer-lang {
-    margin-inline-start: auto;
+    grid-column: 2;
+    grid-row: 1;
     padding: 1px 6px;
     border-radius: 6px;
     background: var(--surface-2);
@@ -347,8 +411,8 @@
     font-weight: 700;
 }
 
-.novel-reader-shell.reader-frame .novel-drawer-row {
-    grid-template-columns: auto minmax(0, 1fr) auto;
+.novel-drawer-row[aria-current="page"] .novel-drawer-lang {
+    display: none;
 }
 
 .novel-reader-shell.reader-frame .novel-notes-header {

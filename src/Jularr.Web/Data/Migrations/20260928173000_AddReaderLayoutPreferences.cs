@@ -11,7 +11,7 @@ namespace Jularr.Web.Data.Migrations;
 /// next chapter. All nullable so every scope keeps inheriting field by field.
 /// </summary>
 [DbContext(typeof(AppDbContext))]
-[Migration("20260927200000_AddReaderLayoutPreferences")]
+[Migration("20260928173000_AddReaderLayoutPreferences")]
 public sealed class AddReaderLayoutPreferences : Migration
 {
     private static readonly string[] Columns =

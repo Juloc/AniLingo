@@ -11,32 +11,6 @@
          aria-labelledby="novel-tab-chapters"
          data-reader-contents-panel="chapters"
          data-chapter-drawer>
-    <div class="novel-drawer-current">
-        @if (Model.Chapter.PreviousChapterId is Guid drawerPrevious)
-        {
-            <a class="reader-frame-icon" href="/Novels/Read/@drawerPrevious" aria-label="@ui["novels.read.drawer.previousChapterAria"]" title="@ui["novels.read.drawer.previousChapterAria"]">
-                <partial name="_ReaderIcon" model="@("back")" />
-            </a>
-        }
-        else
-        {
-            <span aria-hidden="true"></span>
-        }
-
-        <strong>@Model.Chapter.Number. @Model.Chapter.Title</strong>
-
-        @if (Model.Chapter.NextChapterId is Guid drawerNext)
-        {
-            <a class="reader-frame-icon" href="/Novels/Read/@drawerNext" aria-label="@ui["novels.read.drawer.nextChapterAria"]" title="@ui["novels.read.drawer.nextChapterAria"]">
-                <partial name="_ReaderIcon" model="@("forward")" />
-            </a>
-        }
-        else
-        {
-            <span aria-hidden="true"></span>
-        }
-    </div>
-
     <input class="reader-contents-search"
            type="search"
            data-chapter-filter

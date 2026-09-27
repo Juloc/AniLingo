@@ -66,7 +66,9 @@
         : ui.Format("novels.read.chapterLabel", ("number", chapter.Number));
     var supportsTts = Model.ReaderDocument.Capabilities.SupportsTts;
     var canTranslate = !hasTranslation && Model.TranslationEnabled && Model.IsOwner;
-    var hasLanguageChoice = hasTranslation || canTranslate;
+    // The TranslateGemma track adds its source switch to the language menu only
+    // when it is configured or already cached (novel-translation.js).
+    var hasLanguageChoice = hasTranslation || canTranslate || Model.TranslateGemmaAvailable;
     // A chapter that opens with an illustration shows it as the chapter header.
     var openingImage = Model.JapaneseBlocks
         .TakeWhile(block => block.IsImage || block.IsHeading)
@@ -171,17 +173,17 @@
                         </button>
                         @* Generating a translation is gated behind the Learning capability;
                            reading a cached one never is (#369). *@
-                        @if (canTranslate)
-                        {
-                            <div class="reader-menu-translate" data-translation-slot>
+                        <div class="reader-menu-translate" data-translation-slot>
+                            @if (canTranslate)
+                            {
                                 <form method="post"
                                       asp-page-handler="Translate"
                                       asp-route-id="@chapter.Id"
                                       data-translate-form>
                                     <button class="novel-translation-state" type="submit" role="menuitem">@ui["novels.reader.translateIntoGerman"]</button>
                                 </form>
-                            </div>
-                        }
+                            }
+                        </div>
                     </div>
                 </div>
             }
@@ -476,7 +478,11 @@
                     var index = block.ParagraphIndex!.Value;
                     var headingClass = block.IsHeading ? " is-heading" : "";
                     var headingLevel = block.IsHeading ? Math.Min(block.HeadingLevel + 1, 6) : (int?)null;
-                    <section class="novel-reader-segment" data-reader-segment="@index">
+                    @* A scene-break line ("◇◇◇") is drawn as a section ornament; its text stays
+                       in the DOM so paragraph indexes and offsets are unchanged. *@
+                    <section class="novel-reader-segment@(block.IsSceneBreak ? " is-scene-break" : "")"
+                             role="@(block.IsSceneBreak ? "separator" : null)"
+                             data-reader-segment="@index">
                         <p class="novel-reader-paragraph ja@(headingClass)"
                            lang="ja"
                            role="@(block.IsHeading ? "heading" : null)"

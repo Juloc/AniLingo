@@ -5,6 +5,19 @@
 (() => {
     const registry = window.JularrNovelReader = window.JularrNovelReader || {};
 
+    // Chapters that are not numbered story chapters in the source: prologue,
+    // epilogue, interludes, side/short stories, extras and the afterword.
+    const specialChapterPattern = new RegExp(
+        "^(?:" + [
+            "プロローグ", "エピローグ", "序章", "終章", "幕間", "閑話", "番外編?", "外伝",
+            "あとがき", "後書き", "短編", "書き下ろし",
+            "prolog(?:ue)?", "epilog(?:ue)?", "interlude", "intermission", "afterword",
+            "nachwort", "zwischenspiel", "extra", "bonus", "side ?story", "short ?story",
+            "character ?stor(?:y|ies)"
+        ].join("|") + ")(?![a-z])",
+        "i");
+    const isSpecialChapter = title => specialChapterPattern.test(title || "");
+
     registry.chapterDrawer = reader => {
         const { shell, normalizeText, t } = reader;
         const drawer = shell.querySelector("[data-chapter-drawer]");
@@ -67,16 +80,26 @@
             if (isCurrent) link.setAttribute("aria-current", "page");
             if (!chapter.hasContent) link.title = t("notDownloaded", "Not downloaded yet");
 
-            const number = document.createElement("span");
-            number.className = "reader-contents-index";
-            number.textContent = String(chapter.number);
+            // Two lines like a printed table of contents: "Chapter 3" and the
+            // chapter's own title. Prologues, interludes, extras and afterwords
+            // carry their name as the only line; the number would be noise.
+            const titleText = normalizeText(chapter.title);
+            const text = document.createElement("span");
+            text.className = "novel-drawer-text";
+            if (!isSpecialChapter(titleText)) {
+                const number = document.createElement("span");
+                number.className = "novel-drawer-label";
+                number.textContent = t("chapterNumber", "Chapter {number}", { number: chapter.number });
+                text.append(number);
+            }
 
             const title = document.createElement("span");
             title.className = "reader-contents-title";
             title.lang = "ja";
-            title.textContent = normalizeText(chapter.title);
+            title.textContent = titleText;
+            text.append(title);
 
-            link.append(number, title);
+            link.append(text);
             if (chapter.hasTranslation) {
                 const language = document.createElement("span");
                 language.className = "novel-drawer-lang";

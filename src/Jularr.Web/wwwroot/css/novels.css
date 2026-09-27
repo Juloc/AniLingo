@@ -775,8 +775,9 @@
     .novel-reader-shell[data-view="de"][data-translation-source="both"] .novel-reader-paragraph.de,
     .novel-reader-shell[data-view="de"][data-translation-source="both"] .novel-reader-paragraph.de-gemma {
         margin-top: .45rem;
-        padding-left: .75rem;
-        border-left: 2px solid color-mix(in srgb, var(--reader-accent) 34%, transparent);
+        padding: .35rem .6rem;
+        border-radius: 6px;
+        background: color-mix(in srgb, var(--reader-accent) 6%, transparent);
         color: color-mix(in srgb, var(--reader-text) 88%, var(--reader-muted));
     }
 
