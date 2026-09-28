@@ -14,7 +14,7 @@ namespace Jularr.Web.Pages.Settings.ApiKeys;
 /// <see cref="OnPostCreateAsync"/>) and revoke. Nothing but a SHA-256 hash of the key is ever
 /// persisted, so a reload of this page never shows it again.
 /// </summary>
-[Authorize(Roles = AccountRoles.Owner)]
+[Authorize(Policy = JularrPolicies.AdminSystem)]
 public sealed class IndexModel(AcquisitionApiKeyService keys, AppDbContext db) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;

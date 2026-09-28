@@ -23,7 +23,7 @@ public sealed record SonarrMigrationRow(
     int ActiveSonarrDownloads,
     IReadOnlyList<OwnershipConflict> Conflicts);
 
-[Authorize(Roles = AccountRoles.Owner)]
+[Authorize(Policy = JularrPolicies.AdminSystem)]
 public sealed class SonarrMigrationModel(
     AppDbContext db,
     SonarrObservationService observationService,

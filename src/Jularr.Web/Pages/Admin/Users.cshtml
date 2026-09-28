@@ -31,7 +31,7 @@
                         <div>
                             <strong>@account.UserName</strong>
                             <small>
-                                @account.Role · @(account.IsEnabled ? ui["admin.user.statusEnabled"] : ui["admin.user.statusPending"])
+                                @ui[AccountRoles.LabelKey(account.Role)] · @(account.IsEnabled ? ui["admin.user.statusEnabled"] : ui["admin.user.statusPending"])
                                 @if (user.LastActivityAt is { } lastActivity)
                                 {
                                     <text> · @ui.Format("admin.users.activeAt", ("time", lastActivity.ToString("yyyy-MM-dd HH:mm")))</text>

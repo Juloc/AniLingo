@@ -10,7 +10,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 
 namespace Jularr.Web.Pages.Admin;
 
-[Authorize(Roles = AccountRoles.Owner)]
+[Authorize(Policy = JularrPolicies.AdminSystem)]
 public sealed class SonarrModel(
     AppDbContext db,
     SonarrConnectionStore connectionStore,

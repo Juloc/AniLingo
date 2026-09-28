@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Localization;
 using Microsoft.AspNetCore.Http;
 
@@ -9,15 +10,18 @@ public sealed partial class AppShellNavigationTests
 {
     private static readonly string[] AllowedLiteralText = ["Jularr"];
 
+    private static readonly Func<string, bool> Owner = RoleNavigationTests.As(AccountRole.Owner);
+    private static readonly Func<string, bool> User = RoleNavigationTests.As(AccountRole.User);
+
     [TestMethod]
     public void DesktopSidebarListsTheBaseDestinationsInOrder()
     {
-        var owner = UiShellNavigation.Build("/", learningVisible: true, isOwner: true);
+        var owner = UiShellNavigation.Build("/", learningVisible: true, can: Owner);
         CollectionAssert.AreEqual(
             new[] { "home", "library", "watchlist", "calendar", "learn", "activity", "admin", "settings", "profile" },
             owner.Primary.Concat(owner.Secondary).Select(item => item.Id).ToArray());
 
-        var user = UiShellNavigation.Build("/", learningVisible: false, isOwner: false);
+        var user = UiShellNavigation.Build("/", learningVisible: false, can: User);
         CollectionAssert.AreEqual(
             new[] { "home", "library", "watchlist", "calendar", "activity", "settings", "profile" },
             user.Primary.Concat(user.Secondary).Select(item => item.Id).ToArray());
@@ -26,7 +30,7 @@ public sealed partial class AppShellNavigationTests
     [TestMethod]
     public void DiscoverReadingAndBooksAreNoSidebarItemsButStayReachable()
     {
-        var nav = UiShellNavigation.Build("/", learningVisible: true, isOwner: true);
+        var nav = UiShellNavigation.Build("/", learningVisible: true, can: Owner);
         var ids = nav.Primary.Concat(nav.Secondary).Select(item => item.Id).ToArray();
 
         foreach (var removed in new[] { "discover", "reading", "books" })
@@ -57,7 +61,7 @@ public sealed partial class AppShellNavigationTests
 
         Assert.AreEqual(1, active.Length, path);
         Assert.AreEqual(expectedId, active[0].Id);
-        Assert.AreEqual("library", UiShellNavigation.Build(path, learningVisible: true, isOwner: true).Primary.Single(item => item.IsActive).Id);
+        Assert.AreEqual("library", UiShellNavigation.Build(path, learningVisible: true, can: Owner).Primary.Single(item => item.IsActive).Id);
     }
 
     [TestMethod]
@@ -69,14 +73,14 @@ public sealed partial class AppShellNavigationTests
         bool learningVisible,
         bool isOwner)
     {
-        var nav = UiShellNavigation.Build("/", learningVisible, isOwner);
+        var nav = UiShellNavigation.Build("/", learningVisible, isOwner ? Owner : User);
 
         CollectionAssert.AreEqual(
             new[] { "home", "calendar", "watchlist", "profile" },
             nav.MobilePrimary.Select(item => item.Id).ToArray());
         Assert.IsTrue(nav.MobilePrimary.Count <= UiShellNavigation.MaxMobilePrimaryItems);
 
-        var (links, elsewhere) = UiShellNavigation.BuildProfile(learningVisible, isOwner);
+        var (links, elsewhere) = UiShellNavigation.BuildProfile(learningVisible, isOwner ? Owner : User);
         var desktop = nav.Primary.Concat(nav.Secondary).Select(item => item.Id).ToArray();
         var mobile = nav.MobilePrimary.Concat(links).Concat(elsewhere).Select(item => item.Id).ToArray();
         CollectionAssert.IsSubsetOf(desktop, mobile, "Every sidebar destination is reachable on a phone.");
@@ -88,13 +92,13 @@ public sealed partial class AppShellNavigationTests
     [TestMethod]
     public void ProfileListsAccountActivityDownloadsSettingsAndAdminInOrder()
     {
-        var (owner, _) = UiShellNavigation.BuildProfile(learningVisible: true, isOwner: true);
+        var (owner, _) = UiShellNavigation.BuildProfile(learningVisible: true, can: Owner);
         var expected = UiNavigationCatalog.DevicesPageAvailable
             ? new[] { "settings-account", "activity", "settings-offline", "profile-devices", "settings", "admin" }
             : new[] { "settings-account", "activity", "settings-offline", "settings", "admin" };
         CollectionAssert.AreEqual(expected, owner.Select(item => item.Id).ToArray());
 
-        var (user, _) = UiShellNavigation.BuildProfile(learningVisible: true, isOwner: false);
+        var (user, _) = UiShellNavigation.BuildProfile(learningVisible: true, can: User);
         CollectionAssert.AreEqual(expected.Where(id => id != "admin").ToArray(), user.Select(item => item.Id).ToArray());
 
         Assert.AreEqual("/Profile/Account", owner.Single(item => item.Id == "settings-account").Href);
@@ -109,14 +113,14 @@ public sealed partial class AppShellNavigationTests
         var page = Path.Combine(RepositoryRoot(), "src", "Jularr.Web", "Pages", "Profile", "Devices.cshtml");
         Assert.AreEqual(File.Exists(page), UiNavigationCatalog.DevicesPageAvailable, "Set DevicesPageAvailable together with the Devices page.");
 
-        var (links, _) = UiShellNavigation.BuildProfile(learningVisible: true, isOwner: true);
+        var (links, _) = UiShellNavigation.BuildProfile(learningVisible: true, can: Owner);
         Assert.AreEqual(UiNavigationCatalog.DevicesPageAvailable, links.Any(item => item.Id == "profile-devices"));
     }
 
     [TestMethod]
     public void DrillInListsReuseTheSidebarGroupsAndAdminIsOwnerOnly()
     {
-        var settings = UiShellNavigation.BuildSection("settings", isOwner: false);
+        var settings = UiShellNavigation.BuildSection("settings", can: User);
         Assert.IsNotNull(settings);
         CollectionAssert.AreEqual(
             UiNavigationCatalog.Settings.Select(section => section.TitleKey).ToArray(),
@@ -126,10 +130,10 @@ public sealed partial class AppShellNavigationTests
             settings.Groups!.SelectMany(group => group.Items).Select(item => item.Id).ToArray());
         Assert.IsFalse(settings.Groups!.SelectMany(group => group.Items).Any(item => item.IsActive));
 
-        Assert.IsNull(UiShellNavigation.BuildSection("admin", isOwner: false), "Users have no Admin drill-in.");
-        Assert.IsNotNull(UiShellNavigation.BuildSection("ADMIN", isOwner: true));
-        Assert.IsNull(UiShellNavigation.BuildSection("profile", isOwner: true), "Only sections drill in.");
-        Assert.IsNull(UiShellNavigation.BuildSection("Devices", isOwner: true));
+        Assert.IsNull(UiShellNavigation.BuildSection("admin", can: User), "Users have no Admin drill-in.");
+        Assert.IsNotNull(UiShellNavigation.BuildSection("ADMIN", can: Owner));
+        Assert.IsNull(UiShellNavigation.BuildSection("profile", can: Owner), "Only sections drill in.");
+        Assert.IsNull(UiShellNavigation.BuildSection("Devices", can: Owner));
     }
 
     [TestMethod]
@@ -150,7 +154,7 @@ public sealed partial class AppShellNavigationTests
     [DataRow("/Settings/Acquisition", "admin", "profile")]
     public void CurrentLocationMarksExactlyOneDestination(string path, string expectedId, string expectedMobileId)
     {
-        var nav = UiShellNavigation.Build(path, learningVisible: true, isOwner: true);
+        var nav = UiShellNavigation.Build(path, learningVisible: true, can: Owner);
 
         var active = nav.Primary.Concat(nav.Secondary).Where(item => item.IsActive).ToArray();
         Assert.AreEqual(1, active.Length, path);
@@ -161,7 +165,7 @@ public sealed partial class AppShellNavigationTests
     [TestMethod]
     public void DiscoverHasNoSidebarItemSoNothingIsMarked()
     {
-        var nav = UiShellNavigation.Build("/Discover", learningVisible: true, isOwner: true);
+        var nav = UiShellNavigation.Build("/Discover", learningVisible: true, can: Owner);
 
         Assert.IsFalse(nav.Primary.Concat(nav.Secondary).Any(item => item.IsActive));
         Assert.IsFalse(nav.MobilePrimary.Any(item => item.IsActive));
@@ -178,7 +182,7 @@ public sealed partial class AppShellNavigationTests
     [DataRow("/LocalizationAdmin", "admin-localization")]
     public void AdminExpandsInlineWithExactlyOneActivePage(string path, string expectedId)
     {
-        var nav = UiShellNavigation.Build(path, learningVisible: true, isOwner: true);
+        var nav = UiShellNavigation.Build(path, learningVisible: true, can: Owner);
 
         Assert.AreEqual("admin", nav.Expanded?.Id);
         Assert.AreEqual(1, nav.Secondary.Count(item => item.IsExpanded), "Only one section is open.");
@@ -204,7 +208,7 @@ public sealed partial class AppShellNavigationTests
     {
         foreach (var isOwner in new[] { true, false })
         {
-            var nav = UiShellNavigation.Build(path, learningVisible: true, isOwner);
+            var nav = UiShellNavigation.Build(path, learningVisible: true, isOwner ? Owner : User);
 
             Assert.AreEqual("settings", nav.Expanded?.Id, path);
             Assert.AreEqual(1, nav.Secondary.Count(item => item.IsExpanded));
@@ -220,7 +224,7 @@ public sealed partial class AppShellNavigationTests
     [DataRow("/Activity")]
     public void NoSectionIsExpandedOutsideAdminAndSettings(string path)
     {
-        var nav = UiShellNavigation.Build(path, learningVisible: true, isOwner: true);
+        var nav = UiShellNavigation.Build(path, learningVisible: true, can: Owner);
 
         Assert.IsNull(nav.Expanded);
         Assert.IsTrue(nav.Secondary.All(item => item.Groups is null));
@@ -231,7 +235,7 @@ public sealed partial class AppShellNavigationTests
     {
         foreach (var path in new[] { "/", "/Admin", "/Admin/Users", "/Settings/Acquisition", "/Settings" })
         {
-            var nav = UiShellNavigation.Build(path, learningVisible: true, isOwner: false);
+            var nav = UiShellNavigation.Build(path, learningVisible: true, can: User);
             var ids = nav.Primary.Concat(nav.Secondary).Concat(nav.MobilePrimary)
                 .SelectMany(item => (item.Groups?.SelectMany(group => group.Items) ?? []).Prepend(item))
                 .Select(item => item.Id)
@@ -241,7 +245,7 @@ public sealed partial class AppShellNavigationTests
             Assert.AreNotEqual("admin", nav.Expanded?.Id, path);
         }
 
-        var (links, elsewhere) = UiShellNavigation.BuildProfile(learningVisible: true, isOwner: false);
+        var (links, elsewhere) = UiShellNavigation.BuildProfile(learningVisible: true, can: User);
         Assert.IsFalse(links.Concat(elsewhere).Any(item => item.Id.StartsWith("admin", StringComparison.Ordinal)));
     }
 
@@ -254,13 +258,13 @@ public sealed partial class AppShellNavigationTests
 
         foreach (var entry in UiNavigationCatalog.Settings.SelectMany(section => section.Entries))
         {
-            Assert.IsFalse(entry.OwnerOnly, entry.Id);
+            Assert.IsNull(entry.Policy, entry.Id);
             var model = PageModelFor(pages, entry.Href);
             Assert.IsNotNull(model, $"No page model for {entry.Href}.");
             var ownerOnly = model.GetCustomAttributes(typeof(Microsoft.AspNetCore.Authorization.AuthorizeAttribute), inherit: true)
                 .Cast<Microsoft.AspNetCore.Authorization.AuthorizeAttribute>()
-                .Any(attribute => attribute.Roles?.Contains(Jularr.Web.Features.Auth.AccountRoles.Owner, StringComparison.Ordinal) == true);
-            Assert.IsFalse(ownerOnly, $"{entry.Href} is owner-only and belongs under Admin.");
+                .Any(attribute => attribute.Policy is not null || !string.IsNullOrEmpty(attribute.Roles));
+            Assert.IsFalse(ownerOnly, $"{entry.Href} is restricted and belongs under Admin.");
         }
     }
 
@@ -276,7 +280,7 @@ public sealed partial class AppShellNavigationTests
     [DataRow("/Admin/Usenet", false)]
     public void CurrentReadingShowsOnlyInReaders(string path, bool expected)
     {
-        Assert.AreEqual(expected, UiShellNavigation.Build(path, learningVisible: true, isOwner: true).ShowCurrentReading);
+        Assert.AreEqual(expected, UiShellNavigation.Build(path, learningVisible: true, can: Owner).ShowCurrentReading);
     }
 
     [TestMethod]
@@ -313,7 +317,7 @@ public sealed partial class AppShellNavigationTests
     [TestMethod]
     public void NavigationLabelsAreCatalogKeysWithShortLengthGuidance()
     {
-        var nav = UiShellNavigation.Build("/", learningVisible: true, isOwner: true);
+        var nav = UiShellNavigation.Build("/", learningVisible: true, can: Owner);
 
         foreach (var item in nav.Primary.Concat(nav.Secondary))
         {
@@ -333,7 +337,7 @@ public sealed partial class AppShellNavigationTests
     [TestMethod]
     public void ClosedSectionsReopenOnTheirLastUsedPage()
     {
-        var nav = UiShellNavigation.Build("/", learningVisible: true, isOwner: true);
+        var nav = UiShellNavigation.Build("/", learningVisible: true, can: Owner);
         CollectionAssert.AreEqual(
             new[] { "admin", "settings" },
             nav.Secondary.Where(item => item.IsSection).Select(item => item.Id).ToArray());
@@ -408,7 +412,7 @@ public sealed partial class AppShellNavigationTests
         Assert.IsFalse(navigation.Contains("brand-mark\">A<", StringComparison.Ordinal));
         StringAssert.Contains(navigation, "UiShellNavigation.Build");
 
-        var nav = UiShellNavigation.Build("/", learningVisible: true, isOwner: true);
+        var nav = UiShellNavigation.Build("/", learningVisible: true, can: Owner);
         foreach (var icon in nav.Primary.Concat(nav.Secondary).Select(x => x.Icon).Append("search"))
         {
             StringAssert.Contains(icons, $"case \"{icon}\":", $"Missing icon {icon}.");

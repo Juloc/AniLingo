@@ -235,14 +235,14 @@ public sealed class AnimeRepairServiceTests
     }
 
     [TestMethod]
-    public void TheRepairPageIsOwnerOnly()
+    public void TheRepairPageIsForMediaAdmins()
     {
         var attribute = typeof(AnimeRepairModel).GetCustomAttributes(typeof(AuthorizeAttribute), inherit: true)
             .Cast<AuthorizeAttribute>()
             .SingleOrDefault();
 
         Assert.IsNotNull(attribute, "The repair page must declare an authorization requirement.");
-        Assert.AreEqual(AccountRoles.Owner, attribute!.Roles);
+        Assert.AreEqual(JularrPolicies.AdminMedia, attribute!.Policy);
     }
 
     // A real SQLite database plus the scan and repair services wired like Program.cs, without the

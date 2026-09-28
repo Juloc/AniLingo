@@ -9,7 +9,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 namespace Jularr.Web.Pages.Library;
 
 // Per-anime naming selection plus the rename preview and its confirmed execution.
-[Authorize(Roles = AccountRoles.Owner)]
+[Authorize(Policy = JularrPolicies.MediaRename)]
 public sealed class RenameModel(
     AppDbContext db,
     AnimeRenameService renameService,

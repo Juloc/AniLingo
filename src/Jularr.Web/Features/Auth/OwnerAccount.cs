@@ -5,13 +5,23 @@ namespace Jularr.Web.Features.Auth;
 public enum AccountRole
 {
     Owner = 1,
-    User = 2
+    User = 2,
+    MediaManager = 3
 }
 
 public static class AccountRoles
 {
     public const string Owner = nameof(AccountRole.Owner);
     public const string User = nameof(AccountRole.User);
+    public const string MediaManager = nameof(AccountRole.MediaManager);
+
+    /// <summary>UI catalog key of a role's display name.</summary>
+    public static string LabelKey(AccountRole role) => role switch
+    {
+        AccountRole.Owner => "admin.users.role.owner",
+        AccountRole.MediaManager => "admin.users.role.mediaManager",
+        _ => "admin.users.role.user"
+    };
 }
 
 public sealed class OwnerAccount

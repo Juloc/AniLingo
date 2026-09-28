@@ -15,7 +15,7 @@
     var nav = UiShellNavigation.Build(
         Context.Request.Path,
         learningVisible,
-        User.IsInRole(Jularr.Web.Features.Auth.AccountRoles.Owner));
+        policy => Jularr.Web.Features.Auth.JularrPolicies.Allows(User, policy));
 
     // Discover has its own search field; the shell search would repeat it.
     var showSearch = !Context.Request.Path.StartsWithSegments("/Discover", StringComparison.OrdinalIgnoreCase);

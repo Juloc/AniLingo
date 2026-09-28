@@ -22,7 +22,7 @@ namespace Jularr.Web.Pages.Settings;
 /// root), post-import playback optimization, remote path mappings, tags, delay profiles, tag-scoped indexer restrictions, the current
 /// profile's AniList list auto-monitor rule, and acquisition settings backup/restore.
 /// </summary>
-[Authorize(Roles = AccountRoles.Owner)]
+[Authorize(Policy = JularrPolicies.AcquisitionSettings)]
 public sealed class AcquisitionModel(
     AnimeImportSettingsStore importSettings,
     AcquisitionPolicyStore policyStore,
@@ -45,6 +45,9 @@ public sealed class AcquisitionModel(
     public string? PendingRestoreJson { get; private set; }
     public string? Notice => TempData["AcquisitionSettingsNotice"] as string;
     public string? Error => TempData["AcquisitionSettingsError"] as string;
+
+    /// <summary>Library and inbox folders and the settings backup are storage settings, Owner only.</summary>
+    public bool CanManageStorage => currentAccount.Can(JularrPolicies.AdminSystem);
 
     public async Task OnGetAsync(CancellationToken cancellationToken) => await LoadAsync(cancellationToken);
 
@@ -126,6 +129,11 @@ public sealed class AcquisitionModel(
         string? inboxRoot,
         CancellationToken cancellationToken)
     {
+        if (!CanManageStorage)
+        {
+            return Forbid();
+        }
+
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         if (!MediaFolderKinds.Contains(kind) || importMode is { } mode && !Enum.IsDefined(mode))
         {
@@ -418,6 +426,11 @@ public sealed class AcquisitionModel(
 
     public async Task<IActionResult> OnPostExportBackupAsync(CancellationToken cancellationToken)
     {
+        if (!CanManageStorage)
+        {
+            return Forbid();
+        }
+
         var bundle = await backupService.ExportAsync(cancellationToken);
         var json = JsonSerializer.Serialize(bundle, JsonOptions);
         var bytes = System.Text.Encoding.UTF8.GetBytes(json);
@@ -426,6 +439,11 @@ public sealed class AcquisitionModel(
 
     public async Task<IActionResult> OnPostPreviewRestoreAsync(IFormFile backupFile, CancellationToken cancellationToken)
     {
+        if (!CanManageStorage)
+        {
+            return Forbid();
+        }
+
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         await LoadAsync(cancellationToken);
         if (backupFile is null || backupFile.Length == 0)
@@ -459,6 +477,11 @@ public sealed class AcquisitionModel(
 
     public async Task<IActionResult> OnPostApplyRestoreAsync(string pendingRestoreJson, CancellationToken cancellationToken)
     {
+        if (!CanManageStorage)
+        {
+            return Forbid();
+        }
+
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
 
         try

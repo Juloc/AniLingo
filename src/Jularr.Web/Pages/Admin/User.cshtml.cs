@@ -9,7 +9,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 
 namespace Jularr.Web.Pages.Admin;
 
-[Authorize(Roles = AccountRoles.Owner)]
+[Authorize(Policy = JularrPolicies.AdminSystem)]
 public sealed class UserModel(
     AppDbContext db,
     OwnerAuthService authService,
@@ -68,6 +68,26 @@ public sealed class UserModel(
             TempData["Status"] = enabled
                 ? Ui["admin.user.enabled"]
                 : Ui["admin.user.disabledSessionsRevoked"];
+            return RedirectToPage(new { id });
+        }
+        catch (InvalidOperationException exception)
+        {
+            ModelState.AddModelError(string.Empty, exception.Message);
+            return await ReloadOrNotFoundAsync(id, cancellationToken);
+        }
+    }
+
+    public async Task<IActionResult> OnPostSetRoleAsync(
+        string id,
+        AccountRole role,
+        CancellationToken cancellationToken)
+    {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
+        try
+        {
+            await authService.SetRoleAsync(id, role, cancellationToken);
+            TempData["Status"] = Ui["admin.users.roleSaved"];
             return RedirectToPage(new { id });
         }
         catch (InvalidOperationException exception)

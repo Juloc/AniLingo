@@ -5,12 +5,13 @@
     var ui = Model.Ui;
     ViewData["Title"] = ui.Format("admin.user.manageTitle", ("userName", Model.Account.Account.UserName));
     var account = Model.Account.Account;
+    var roleLabel = ui[AccountRoles.LabelKey(account.Role)];
 }
 
 <header class="page-header">
     <div>
         <h1>@account.UserName</h1>
-        <p>@account.Role · @(account.IsEnabled ? ui["admin.user.statusEnabled"] : ui["admin.user.statusPending"])</p>
+        <p>@roleLabel · @(account.IsEnabled ? ui["admin.user.statusEnabled"] : ui["admin.user.statusPending"])</p>
     </div>
     <a class="button" asp-page="/Admin/Users">@ui["admin.user.backToUsers"]</a>
 </header>
@@ -89,7 +90,10 @@
         <div class="panel-heading"><h2>@ui["admin.user.account"]</h2></div>
 
         <div class="status-list">
-            <div><span>@ui["admin.user.role"]</span><strong>@account.Role</strong></div>
+            @if (account.Role == AccountRole.Owner)
+            {
+                <div><span>@ui["admin.user.role"]</span><strong>@roleLabel</strong></div>
+            }
             <div><span>@ui["admin.operation.status"]</span><strong>@(account.IsEnabled ? ui["admin.user.enabledLabel"] : ui["admin.user.disabledPendingLabel"])</strong></div>
             <div><span>@ui["admin.operation.created"]</span><strong>@account.CreatedAt.ToString("yyyy-MM-dd HH:mm") UTC</strong></div>
         </div>
@@ -109,6 +113,20 @@
 
         @if (account.Role != AccountRole.Owner)
         {
+            <form method="post" asp-page-handler="SetRole" class="form-stack">
+                <input type="hidden" name="id" value="@account.Id" />
+                <label>
+                    <span>@ui["admin.user.role"]</span>
+                    <select name="role">
+                        @foreach (var role in new[] { AccountRole.User, AccountRole.MediaManager })
+                        {
+                            <option value="@role" selected="@(account.Role == role)">@ui[AccountRoles.LabelKey(role)]</option>
+                        }
+                    </select>
+                </label>
+                <button class="button" type="submit">@ui["admin.users.saveRole"]</button>
+            </form>
+
             <div class="inline-actions">
                 <form method="post" asp-page-handler="SetEnabled">
                     <input type="hidden" name="id" value="@account.Id" />

@@ -229,20 +229,20 @@ public sealed class OperationStoreTests
     }
 
     [TestMethod]
-    public void AdminPagesAreOwnerOnly()
+    public void AdminPagesRequireAnAdminPolicy()
     {
-        var pageTypes = new[]
+        var pageTypes = new (Type Page, string Policy)[]
         {
-            typeof(Jularr.Web.Pages.Admin.IndexModel),
-            typeof(Jularr.Web.Pages.Admin.OperationsModel),
-            typeof(Jularr.Web.Pages.Admin.OperationModel),
-            typeof(Jularr.Web.Pages.Admin.LogsModel),
-            typeof(Jularr.Web.Pages.Admin.SystemModel),
-            typeof(Jularr.Web.Pages.Admin.UsersModel),
-            typeof(Jularr.Web.Pages.Admin.UserModel)
+            (typeof(Jularr.Web.Pages.Admin.IndexModel), Jularr.Web.Features.Auth.JularrPolicies.AdminMedia),
+            (typeof(Jularr.Web.Pages.Admin.OperationsModel), Jularr.Web.Features.Auth.JularrPolicies.AdminMedia),
+            (typeof(Jularr.Web.Pages.Admin.OperationModel), Jularr.Web.Features.Auth.JularrPolicies.AdminMedia),
+            (typeof(Jularr.Web.Pages.Admin.LogsModel), Jularr.Web.Features.Auth.JularrPolicies.AdminMedia),
+            (typeof(Jularr.Web.Pages.Admin.SystemModel), Jularr.Web.Features.Auth.JularrPolicies.AdminSystem),
+            (typeof(Jularr.Web.Pages.Admin.UsersModel), Jularr.Web.Features.Auth.JularrPolicies.AdminSystem),
+            (typeof(Jularr.Web.Pages.Admin.UserModel), Jularr.Web.Features.Auth.JularrPolicies.AdminSystem)
         };
 
-        foreach (var pageType in pageTypes)
+        foreach (var (pageType, policy) in pageTypes)
         {
             var authorize = pageType
                 .GetCustomAttributes(typeof(AuthorizeAttribute), inherit: true)
@@ -253,9 +253,9 @@ public sealed class OperationStoreTests
                 authorize,
                 $"{pageType.Name} must require authorization.");
             Assert.AreEqual(
-                Jularr.Web.Features.Auth.AccountRoles.Owner,
-                authorize.Roles,
-                $"{pageType.Name} must be Owner-only.");
+                policy,
+                authorize.Policy,
+                $"{pageType.Name} must require {policy}.");
         }
     }
 

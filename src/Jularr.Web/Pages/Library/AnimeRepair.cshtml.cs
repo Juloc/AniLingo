@@ -16,7 +16,7 @@ namespace Jularr.Web.Pages.Library;
 // Owner-only per-anime repair tools: rescan one anime's folder, refresh its local sidecar
 // subtitles/NFO/artwork, force a media re-analysis, and identify/fix its AniList match without
 // touching any other anime or requiring a full library scan (issue #133).
-[Authorize(Roles = AccountRoles.Owner)]
+[Authorize(Policy = JularrPolicies.AdminMedia)]
 public sealed class AnimeRepairModel(
     AppDbContext db,
     AnimeRepairService repair,
@@ -182,6 +182,11 @@ public sealed class AnimeRepairModel(
         string externalId,
         CancellationToken cancellationToken)
     {
+        if (!currentAccount.Can(JularrPolicies.MappingEdit))
+        {
+            return Forbid();
+        }
+
         var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         try
         {
