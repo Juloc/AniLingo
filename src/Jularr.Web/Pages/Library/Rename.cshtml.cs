@@ -13,7 +13,8 @@ namespace Jularr.Web.Pages.Library;
 public sealed class RenameModel(
     AppDbContext db,
     AnimeRenameService renameService,
-    AnimeNamingProfileStore namingStore) : PageModel
+    AnimeNamingProfileStore namingStore,
+    ILogger<RenameModel> logger) : PageModel
 {
     [BindProperty(SupportsGet = true)]
     public bool Folder { get; set; }
@@ -52,7 +53,8 @@ public sealed class RenameModel(
         }
         catch (Exception exception) when (exception is InvalidDataException or ArgumentException)
         {
-            TempData["RenameError"] = exception.Message;
+            logger.LogError(exception, "Saving naming selection for anime {AnimeId} failed", id);
+            TempData["RenameError"] = ui["library.rename.selectionFailed"];
         }
 
         return RedirectToPage(new { id, folder = Folder });

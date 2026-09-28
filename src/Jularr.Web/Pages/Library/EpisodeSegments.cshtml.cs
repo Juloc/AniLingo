@@ -20,7 +20,8 @@ public sealed record EpisodeSegmentKindRow(
 public sealed class EpisodeSegmentsModel(
     AppDbContext db,
     MediaSegmentService segments,
-    CurrentAccountContext currentAccount) : PageModel
+    CurrentAccountContext currentAccount,
+    ILogger<EpisodeSegmentsModel> logger) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public Guid EpisodeId { get; private set; }
@@ -81,7 +82,8 @@ public sealed class EpisodeSegmentsModel(
         }
         catch (ArgumentException exception)
         {
-            TempData["Status"] = exception.Message;
+            logger.LogError(exception, "Saving {Kind} marker for episode {EpisodeId} failed", kind, id);
+            TempData["Status"] = ui["library.episodeSegments.saveFailed"];
             return RedirectToPage(new { id });
         }
 

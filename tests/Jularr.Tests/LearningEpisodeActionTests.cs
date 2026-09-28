@@ -3,6 +3,7 @@ using Jularr.Web.Features.Learning.Courses;
 using Jularr.Web.Pages.Library;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Jularr.Tests;
 
@@ -101,7 +102,8 @@ public sealed class LearningEpisodeActionTests
             null!,
             null!,
             TestAccounts.Context(LanguageInspectorFixture.Profile),
-            null!);
+            null!,
+            NullLogger<EpisodeModel>.Instance);
 
     private static async Task<Guid> AddTermAsync(LanguageInspectorFixture fixture, string canonical)
     {

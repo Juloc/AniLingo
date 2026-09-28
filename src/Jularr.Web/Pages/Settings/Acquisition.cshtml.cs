@@ -31,7 +31,8 @@ public sealed class AcquisitionModel(
     IndexerStore indexerStore,
     CurrentAccountContext currentAccount,
     MediaInboxImportService inboxes,
-    AppDbContext db) : PageModel
+    AppDbContext db,
+    ILogger<AcquisitionModel> logger) : PageModel
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true };
 
@@ -206,7 +207,8 @@ public sealed class AcquisitionModel(
             IOException or
             UnauthorizedAccessException)
         {
-            TempData["AcquisitionSettingsError"] = exception.Message;
+            logger.LogError(exception, "Scanning the {Kind} inbox failed", kind);
+            TempData["AcquisitionSettingsError"] = Ui["settings.acquisition.error.inboxScanFailed"];
         }
 
         return RedirectToPage(pageName: null, pageHandler: null, routeValues: null, fragment: "media-folders");

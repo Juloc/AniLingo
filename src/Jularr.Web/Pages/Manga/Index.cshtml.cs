@@ -24,6 +24,7 @@ public sealed class IndexModel(
     OperationRunner operations,
     IHttpClientFactory httpClientFactory,
     MediaMappingReviewStore mappingReviewStore,
+    ILogger<IndexModel> logger,
     NovelAniListProvider? readingProvider = null,
     AcquisitionRequestService? requests = null,
     AcquisitionAccessStore? requestStore = null) : PageModel
@@ -258,7 +259,8 @@ public sealed class IndexModel(
                 or IOException
                 or UnauthorizedAccessException)
         {
-            TempData["Status"] = exception.Message;
+            logger.LogError(exception, "Uploading Manga series {SeriesTitle} failed", seriesTitle);
+            TempData["Status"] = Ui["manga.status.uploadFailed"];
             return RedirectToPage();
         }
     }
@@ -321,7 +323,8 @@ public sealed class IndexModel(
                 or IOException
                 or UnauthorizedAccessException)
         {
-            TempData["Status"] = exception.Message;
+            logger.LogError(exception, "Importing mounted Manga source {SourcePath} failed", sourcePath);
+            TempData["Status"] = Ui["manga.status.pathImportFailed"];
             return RedirectToPage();
         }
     }

@@ -16,6 +16,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Jularr.Tests;
 
@@ -441,7 +442,8 @@ public sealed class NovelTranslationGatingTests
                     new JapaneseDictionary(directory)),
                 Db,
                 TestAccounts.Context(profileId),
-                new OperationRunner(Db, services)));
+                new OperationRunner(Db, services),
+                NullLogger<ReadModel>.Instance));
         }
 
         /// <summary>

@@ -14,7 +14,8 @@ public sealed record ReadingSourceRow(
 
 [Authorize(Policy = JularrPolicies.AcquisitionSettings)]
 public sealed class ReadingSourcesModel(
-    AppDbContext db) : PageModel
+    AppDbContext db,
+    ILogger<ReadingSourcesModel> logger) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public IReadOnlyList<ReadingSourceRow> Sources { get; private set; } = [];
@@ -120,7 +121,8 @@ public sealed class ReadingSourcesModel(
         }
         catch (InvalidDataException exception)
         {
-            LoadError = exception.Message;
+            logger.LogError(exception, "Loading reading source settings failed");
+            LoadError = Ui["admin.readingSources.loadFailed"];
             return ReadingSourceSettingsState.Default;
         }
     }

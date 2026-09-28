@@ -16,6 +16,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Jularr.Tests;
 
@@ -366,7 +367,8 @@ public sealed class BooksLearningGatingTests
                 Db,
                 NewBookCatalogService(),
                 owner ? OwnerContext(profileId) : TestAccounts.Context(profileId),
-                new BackgroundJobQueue(services.GetRequiredService<IServiceScopeFactory>())));
+                new BackgroundJobQueue(services.GetRequiredService<IServiceScopeFactory>()),
+                NullLogger<LibraryModel>.Instance));
 
         /// <summary>
         /// The Ui bundle (localization PR #362) is resolved from

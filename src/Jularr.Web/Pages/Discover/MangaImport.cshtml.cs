@@ -14,7 +14,8 @@ public sealed class MangaImportModel(
     AppDbContext db,
     CurrentAccountContext account,
     IHttpClientFactory httpClientFactory,
-    OperationRunner operations) : PageModel
+    OperationRunner operations,
+    ILogger<MangaImportModel> logger) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public string AniListId { get; private set; } = "";
@@ -115,7 +116,8 @@ public sealed class MangaImportModel(
                 or IOException
                 or UnauthorizedAccessException)
         {
-            TempData["Status"] = exception.Message;
+            logger.LogError(exception, "Uploading discovered Manga {Title} failed", normalizedTitle);
+            TempData["Status"] = Ui["discover.mangaImport.importFailed"];
             return RedirectToPage(new
             {
                 anilistId = normalizedId,
@@ -171,7 +173,8 @@ public sealed class MangaImportModel(
                 or IOException
                 or UnauthorizedAccessException)
         {
-            TempData["Status"] = exception.Message;
+            logger.LogError(exception, "Importing discovered Manga {Title} from path failed", normalizedTitle);
+            TempData["Status"] = Ui["discover.mangaImport.importFailed"];
             return RedirectToPage(new
             {
                 anilistId = normalizedId,

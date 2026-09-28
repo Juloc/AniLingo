@@ -15,7 +15,8 @@ namespace Jularr.Web.Pages.Settings;
 [Authorize(Policy = JularrPolicies.AcquisitionSettings)]
 public sealed class NamingModel(
     AnimeNamingProfileStore store,
-    AppDbContext db) : PageModel
+    AppDbContext db,
+    ILogger<NamingModel> logger) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
 
@@ -125,7 +126,8 @@ public sealed class NamingModel(
         }
         catch (InvalidDataException exception)
         {
-            TempData["NamingError"] = exception.Message;
+            logger.LogError(exception, "Naming action '{Notice}' failed", notice);
+            TempData["NamingError"] = Ui["common.error.unexpected"];
         }
 
         return RedirectToPage();

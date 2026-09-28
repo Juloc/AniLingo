@@ -10,7 +10,8 @@ namespace Jularr.Web.Pages.Books;
 public sealed class SourcesModel(
     BookCatalogService books,
     CurrentAccountContext account,
-    AppDbContext db) : PageModel
+    AppDbContext db,
+    ILogger<SourcesModel> logger) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public IReadOnlyList<BookOpdsSourceSettings> Sources { get; private set; } = [];
@@ -79,7 +80,8 @@ public sealed class SourcesModel(
                 or IOException
                 or UnauthorizedAccessException)
         {
-            TempData["Status"] = exception.Message;
+            logger.LogError(exception, "Saving OPDS source {Name} failed", name);
+            TempData["Status"] = ui["books.sources.saveFailed"];
         }
 
         return RedirectToPage();
@@ -181,7 +183,8 @@ public sealed class SourcesModel(
                 or IOException
                 or UnauthorizedAccessException)
         {
-            TempData["Status"] = exception.Message;
+            logger.LogError(exception, "Removing OPDS source {SourceId} failed", sourceId);
+            TempData["Status"] = ui["books.sources.removeFailed"];
         }
 
         return RedirectToPage();
