@@ -32,7 +32,8 @@ public sealed class IndexModel(
     AcquisitionAccessStore requestStore,
     CurrentAccountContext account,
     OperationRunner operations,
-    AppDbContext db) : PageModel
+    AppDbContext db,
+    ILogger<IndexModel> logger) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public IReadOnlyList<NovelListItem> Works { get; private set; } = [];
@@ -179,6 +180,7 @@ public sealed class IndexModel(
         string? q,
         CancellationToken cancellationToken)
     {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         var normalizedProvider = provider?.Trim().ToLowerInvariant();
         var normalizedId = externalId?.Trim();
         if (string.IsNullOrWhiteSpace(title) ||
@@ -256,7 +258,8 @@ public sealed class IndexModel(
             }
             catch (InvalidOperationException exception)
             {
-                TempData["Status"] = exception.Message;
+                logger.LogError(exception, "Importing public novel source {SourceUrl} failed", sourceUrl);
+                TempData["Status"] = Ui["novels.index.catalogImportFailed"];
                 return RedirectToPage(
                     new
                     {
@@ -358,7 +361,8 @@ public sealed class IndexModel(
                 operationId,
                 $"{exception.GetType().Name}: {exception.Message}",
                 CancellationToken.None);
-            TempData["Status"] = exception.Message;
+            logger.LogError(exception, "Importing novel source {SourceUrl} failed for operation {OperationId}", sourceUrl, operationId);
+            TempData["Status"] = ui["novels.index.importFailed"];
             return RedirectToPage();
         }
     }
@@ -409,9 +413,9 @@ public sealed class IndexModel(
             return Forbid();
         }
 
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         if (await inboxes.InboxAsync(MediaAcquisitionKind.LightNovel, cancellationToken) is null)
         {
-            var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
             TempData["Status"] = ui["novels.index.configureInboxFirst"];
             return RedirectToPage();
         }
@@ -429,7 +433,8 @@ public sealed class IndexModel(
         }
         catch (InvalidOperationException exception)
         {
-            TempData["Status"] = exception.Message;
+            logger.LogError(exception, "Scanning the light novel inbox for profile {ProfileId} failed", account.ProfileId);
+            TempData["Status"] = ui["novels.index.inboxScanFailed"];
         }
 
         return RedirectToPage();

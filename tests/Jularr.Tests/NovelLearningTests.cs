@@ -17,6 +17,7 @@ using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Jularr.Tests;
 
@@ -399,7 +400,8 @@ public sealed class NovelLearningTests
                     new JapaneseDictionary(directory)),
                 Db,
                 TestAccounts.Context(profileId),
-                new OperationRunner(Db, services)));
+                new OperationRunner(Db, services),
+                NullLogger<ReadModel>.Instance));
         }
 
         public ReviewModel CreateReviewModel(string profileId) =>

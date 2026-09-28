@@ -23,7 +23,8 @@ public sealed class AnimeModel(
     OperationRunner operations,
     EpisodeProgressService episodeProgressService,
     AniListAccountService aniListAccountService,
-    FranchiseStore franchises) : PageModel
+    FranchiseStore franchises,
+    ILogger<AnimeModel> logger) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public Guid AnimeId { get; private set; }
@@ -118,7 +119,8 @@ public sealed class AnimeModel(
             }
             catch (MetadataProviderException exception)
             {
-                MetadataError = exception.Message;
+                logger.LogError(exception, "Anime metadata search for {AnimeId} failed", id);
+                MetadataError = Ui["library.anime.searchFailed"];
             }
         }
 
@@ -148,7 +150,8 @@ public sealed class AnimeModel(
             }
             catch (AniListAccountException exception)
             {
-                MetadataError ??= exception.Message;
+                logger.LogError(exception, "Loading episode mappings for anime {AnimeId} failed", id);
+                MetadataError ??= Ui["library.anime.episodeMappingsLoadFailed"];
                 EpisodeMappings = [];
             }
 
@@ -325,6 +328,8 @@ public sealed class AnimeModel(
             return Forbid();
         }
 
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         try
         {
             await operations.RunAsync(
@@ -355,7 +360,8 @@ public sealed class AnimeModel(
         catch (Exception exception) when (
             exception is MetadataProviderException or InvalidOperationException)
         {
-            TempData["MetadataError"] = exception.Message;
+            logger.LogError(exception, "Matching anime metadata for {AnimeId} failed", id);
+            TempData["MetadataError"] = Ui["library.anime.metadataMatchFailed"];
         }
 
         return RedirectToPage(new { id });
@@ -375,6 +381,8 @@ public sealed class AnimeModel(
         {
             return Forbid();
         }
+
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
 
         try
         {
@@ -410,7 +418,8 @@ public sealed class AnimeModel(
         catch (Exception exception) when (
             exception is MetadataProviderException or InvalidOperationException)
         {
-            TempData["MetadataError"] = exception.Message;
+            logger.LogError(exception, "Matching anime episode range for {AnimeId} failed", id);
+            TempData["MetadataError"] = Ui["library.anime.episodeRangeMatchFailed"];
         }
 
         return RedirectToPage(new { id });
@@ -426,6 +435,8 @@ public sealed class AnimeModel(
             return Forbid();
         }
 
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         try
         {
             if (!await metadataService.RemoveEpisodeMappingAsync(
@@ -433,13 +444,13 @@ public sealed class AnimeModel(
                     mappingId,
                     cancellationToken))
             {
-                var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
-                TempData["MetadataError"] = ui["library.anime.episodeMappingNotFound"];
+                TempData["MetadataError"] = Ui["library.anime.episodeMappingNotFound"];
             }
         }
         catch (AniListAccountException exception)
         {
-            TempData["MetadataError"] = exception.Message;
+            logger.LogError(exception, "Removing episode mapping {MappingId} for anime {AnimeId} failed", mappingId, id);
+            TempData["MetadataError"] = Ui["library.anime.episodeMappingRemoveFailed"];
         }
 
         return RedirectToPage(new { id });
@@ -453,6 +464,8 @@ public sealed class AnimeModel(
         {
             return Forbid();
         }
+
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
 
         try
         {
@@ -478,7 +491,8 @@ public sealed class AnimeModel(
         catch (Exception exception) when (
             exception is MetadataProviderException or InvalidOperationException)
         {
-            TempData["MetadataError"] = exception.Message;
+            logger.LogError(exception, "Refreshing anime metadata for {AnimeId} failed", id);
+            TempData["MetadataError"] = Ui["library.anime.metadataRefreshFailed"];
         }
 
         return RedirectToPage(new { id });

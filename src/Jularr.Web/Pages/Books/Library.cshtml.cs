@@ -15,7 +15,8 @@ public sealed class LibraryModel(
     AppDbContext db,
     BookCatalogService books,
     CurrentAccountContext account,
-    BackgroundJobQueue jobs) : PageModel
+    BackgroundJobQueue jobs,
+    ILogger<LibraryModel> logger) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public BookLibraryDetail Book { get; private set; } = null!;
@@ -221,7 +222,8 @@ public sealed class LibraryModel(
         }
         catch (InvalidOperationException exception)
         {
-            TempData["Status"] = exception.Message;
+            logger.LogError(exception, "Deleting imported book {BookId} failed", id);
+            TempData["Status"] = ui["books.library.deleteFailed"];
             return RedirectToPage(new { id });
         }
     }

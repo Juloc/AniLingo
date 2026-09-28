@@ -74,7 +74,8 @@ public sealed class UsenetModel(
     ISabnzbdClient sabnzbd,
     AcquisitionHealthStore health,
     AnimeImportSettingsStore importSettings,
-    AcquisitionAccessStore access) : PageModel
+    AcquisitionAccessStore access,
+    ILogger<UsenetModel> logger) : PageModel
 {
     private static readonly TimeSpan SabnzbdTimeout = TimeSpan.FromSeconds(6);
 
@@ -396,7 +397,15 @@ public sealed class UsenetModel(
             exception is HttpRequestException or TaskCanceledException or InvalidOperationException or System.Text.Json.JsonException
             && !cancellationToken.IsCancellationRequested)
         {
-            DownloadsError = exception is TaskCanceledException ? Ui["admin.usenet.downloadsTimeout"] : exception.Message;
+            if (exception is TaskCanceledException)
+            {
+                DownloadsError = Ui["admin.usenet.downloadsTimeout"];
+            }
+            else
+            {
+                logger.LogError(exception, "Loading downloads for client {ClientName} failed", entry.Name);
+                DownloadsError = Ui["admin.usenet.downloadsLoadFailed"];
+            }
         }
     }
 

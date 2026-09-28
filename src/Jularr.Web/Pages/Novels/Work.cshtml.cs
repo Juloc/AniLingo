@@ -24,7 +24,8 @@ public sealed class WorkModel(
     NovelEpubImportService epubImports,
     CurrentAccountContext account,
     OperationRunner operations,
-    FranchiseStore franchises) : PageModel
+    FranchiseStore franchises,
+    ILogger<WorkModel> logger) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public NovelWorkDetail? Detail { get; private set; }
@@ -91,7 +92,8 @@ public sealed class WorkModel(
             }
             catch (NovelMetadataProviderException exception)
             {
-                TempData["Status"] = exception.Message;
+                logger.LogError(exception, "Novel metadata search for {WorkId} failed", id);
+                TempData["Status"] = Ui["novels.work.searchFailed"];
             }
         }
 
@@ -173,7 +175,8 @@ public sealed class WorkModel(
         }
         catch (InvalidOperationException exception)
         {
-            TempData["Status"] = exception.Message;
+            logger.LogError(exception, "Refreshing novel table of contents for {WorkId} failed", id);
+            TempData["Status"] = ui["novels.work.refreshFailed"];
         }
 
         return RedirectToPage(new { id });
@@ -230,7 +233,8 @@ public sealed class WorkModel(
         }
         catch (InvalidOperationException exception)
         {
-            TempData["Status"] = exception.Message;
+            logger.LogError(exception, "Removing volume {VolumeId} for novel {WorkId} failed", volumeId, id);
+            TempData["Status"] = ui["novels.work.volumeRemoveFailed"];
         }
 
         return RedirectToPage(new { id });
@@ -307,7 +311,8 @@ public sealed class WorkModel(
         catch (Exception exception) when (
             exception is InvalidOperationException or NovelMetadataProviderException)
         {
-            TempData["Status"] = exception.Message;
+            logger.LogError(exception, "Matching novel metadata for {WorkId} failed", id);
+            TempData["Status"] = ui["novels.work.matchFailed"];
         }
 
         return RedirectToPage(new { id });
@@ -361,7 +366,8 @@ public sealed class WorkModel(
         }
         catch (InvalidOperationException exception)
         {
-            TempData["Status"] = exception.Message;
+            logger.LogError(exception, "Adding episode mapping for novel {WorkId} to anime {AnimeId} failed", id, animeId);
+            TempData["Status"] = ui["novels.work.mappingFailed"];
         }
 
         return RedirectToPage(new { id });

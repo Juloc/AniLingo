@@ -10,7 +10,7 @@ namespace Jularr.Web.Pages.Settings.Indexers;
 
 /// <summary>Add or edit one canonical indexer entry.</summary>
 [Authorize(Policy = JularrPolicies.AcquisitionSettings)]
-public sealed class EditModel(AppDbContext db, IndexerStore store) : PageModel
+public sealed class EditModel(AppDbContext db, IndexerStore store, ILogger<EditModel> logger) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
 
@@ -117,7 +117,8 @@ public sealed class EditModel(AppDbContext db, IndexerStore store) : PageModel
         catch (Exception exception) when (
             exception is ArgumentException or ArgumentOutOfRangeException or InvalidDataException or IOException or UnauthorizedAccessException)
         {
-            Error = exception.Message;
+            logger.LogError(exception, "Saving indexer {Name} failed", Name);
+            Error = Ui["settings.indexers.saveFailed"];
             return Page();
         }
     }

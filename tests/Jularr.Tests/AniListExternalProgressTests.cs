@@ -610,7 +610,8 @@ public sealed class AniListExternalProgressTests
                 new OperationRunner(Db, new ServiceCollection().BuildServiceProvider()),
                 new EpisodeProgressService(Db, account),
                 Service(profileId, remote),
-                new FranchiseStore(Db));
+                new FranchiseStore(Db),
+                NullLogger<AnimeModel>.Instance);
             Attach(page);
             return page;
         }

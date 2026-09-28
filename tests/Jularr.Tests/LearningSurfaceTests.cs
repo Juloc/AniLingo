@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Jularr.Tests;
 
@@ -148,7 +149,10 @@ public sealed class LearningSurfaceTests
             Assert.AreEqual("猫", sentences.Single().TargetCanonical);
 
             // Course settings list the course with its word count.
-            var courses = new Jularr.Web.Pages.Settings.LearningCoursesModel(db, account);
+            var courses = new Jularr.Web.Pages.Settings.LearningCoursesModel(
+                db,
+                account,
+                NullLogger<Jularr.Web.Pages.Settings.LearningCoursesModel>.Instance);
             var coursesHttpContext = new DefaultHttpContext
             {
                 RequestServices = new ServiceCollection()
