@@ -150,6 +150,8 @@ public static partial class EpubBookParser
             }
         }
 
+        var chapterGroups = ExtractChapterGroups(archive, manifest, packageDirectory);
+
         var spineIds = package
             .Descendants()
             .Where(x => x.Name.LocalName == "itemref")
@@ -193,12 +195,18 @@ public static partial class EpubBookParser
                 continue;
             }
 
+            var normalizedEntryPath = NormalizeZipPath(entryPath);
             var chapter = ParseChapter(
                 entry,
-                NormalizeZipPath(entryPath),
+                normalizedEntryPath,
                 number,
                 archive,
                 mediaTypesByPath);
+
+            if (chapterGroups.TryGetValue(normalizedEntryPath, out var groupTitle))
+            {
+                chapter = chapter with { GroupTitle = Clean(groupTitle, 200) };
+            }
 
             if (chapter.Text.Length < 10)
             {
@@ -343,6 +351,167 @@ public static partial class EpubBookParser
         {
             throw new InvalidOperationException(
                 "EPUB is DRM-protected (encrypted content). Jularr imports only DRM-free EPUBs and does not remove DRM.");
+        }
+    }
+
+    /// <summary>
+    /// Reads chapter groups (#512) from the EPUB 3 <c>nav</c> document, falling
+    /// back to the EPUB 2 <c>toc.ncx</c> when there is no nav or it yields no
+    /// groups. Maps a spine document's normalized archive path to the title of
+    /// the nearest table-of-contents entry it is nested under, when that entry
+    /// is not the top-level (volume) entry itself.
+    /// </summary>
+    private static IReadOnlyDictionary<string, string> ExtractChapterGroups(
+        ZipArchive archive,
+        IReadOnlyDictionary<string, ManifestItem> manifest,
+        string packageDirectory)
+    {
+        var navItem = manifest.Values.FirstOrDefault(x =>
+            x.Properties
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .Contains("nav", StringComparer.OrdinalIgnoreCase));
+
+        if (navItem is not null &&
+            TryResolveRelativePath(packageDirectory, navItem.Href, out var navPath) &&
+            FindEntry(archive, navPath) is { } navEntry)
+        {
+            var navGroups = ExtractNavGroups(LoadXml(navEntry), GetDirectory(navPath));
+            if (navGroups.Count > 0)
+            {
+                return navGroups;
+            }
+        }
+
+        var ncxItem = manifest.Values.FirstOrDefault(x =>
+            x.MediaType.Equals("application/x-dtbncx+xml", StringComparison.OrdinalIgnoreCase));
+
+        if (ncxItem is not null &&
+            TryResolveRelativePath(packageDirectory, ncxItem.Href, out var ncxPath) &&
+            FindEntry(archive, ncxPath) is { } ncxEntry)
+        {
+            return ExtractNcxGroups(LoadXml(ncxEntry), GetDirectory(ncxPath));
+        }
+
+        return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Walks an EPUB 3 nav document's <c>&lt;nav epub:type="toc"&gt;</c> list.</summary>
+    private static IReadOnlyDictionary<string, string> ExtractNavGroups(
+        XDocument document,
+        string navDirectory)
+    {
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        var tocNav = document
+            .Descendants()
+            .FirstOrDefault(x =>
+                x.Name.LocalName == "nav" &&
+                x.Attributes().Any(a =>
+                    a.Name.LocalName == "type" &&
+                    a.Value.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                        .Contains("toc", StringComparer.OrdinalIgnoreCase)))
+            ?? document.Descendants().FirstOrDefault(x => x.Name.LocalName == "nav");
+
+        var rootList = tocNav?.Elements().FirstOrDefault(x => x.Name.LocalName == "ol");
+        if (rootList is not null)
+        {
+            WalkNavList(rootList, navDirectory, null, result);
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// A nav <c>&lt;li&gt;</c> whose own link is nested under another entry
+    /// records that ancestor's title as its group; an <c>&lt;li&gt;</c> that
+    /// itself carries a nested <c>&lt;ol&gt;</c> becomes the group for its
+    /// children instead of getting a group of its own.
+    /// </summary>
+    private static void WalkNavList(
+        XElement list,
+        string baseDirectory,
+        string? inheritedGroup,
+        IDictionary<string, string> result)
+    {
+        foreach (var item in list.Elements().Where(x => x.Name.LocalName == "li"))
+        {
+            var link = item.Elements().FirstOrDefault(x => x.Name.LocalName is "a" or "span");
+            var href = link?.Attribute("href")?.Value;
+            var title = link is null ? null : NormalizeWhitespace(link.Value);
+
+            if (inheritedGroup is not null &&
+                !string.IsNullOrWhiteSpace(href) &&
+                TryResolveRelativePath(baseDirectory, href, out var path))
+            {
+                result.TryAdd(NormalizeZipPath(path), inheritedGroup);
+            }
+
+            var childList = item.Elements().FirstOrDefault(x => x.Name.LocalName == "ol");
+            if (childList is not null)
+            {
+                WalkNavList(
+                    childList,
+                    baseDirectory,
+                    string.IsNullOrWhiteSpace(title) ? inheritedGroup : title,
+                    result);
+            }
+        }
+    }
+
+    /// <summary>Walks an EPUB 2 <c>toc.ncx</c> document's <c>navMap</c>.</summary>
+    private static IReadOnlyDictionary<string, string> ExtractNcxGroups(
+        XDocument document,
+        string ncxDirectory)
+    {
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        var navMap = document.Descendants().FirstOrDefault(x => x.Name.LocalName == "navMap");
+        if (navMap is not null)
+        {
+            WalkNavPoints(
+                navMap.Elements().Where(x => x.Name.LocalName == "navPoint"),
+                ncxDirectory,
+                null,
+                result);
+        }
+
+        return result;
+    }
+
+    /// <summary>Same nesting rule as <see cref="WalkNavList"/>, for <c>navPoint</c> elements.</summary>
+    private static void WalkNavPoints(
+        IEnumerable<XElement> navPoints,
+        string baseDirectory,
+        string? inheritedGroup,
+        IDictionary<string, string> result)
+    {
+        foreach (var navPoint in navPoints)
+        {
+            var label = navPoint.Elements().FirstOrDefault(x => x.Name.LocalName == "navLabel");
+            var titleText = label?.Elements().FirstOrDefault(x => x.Name.LocalName == "text")?.Value;
+            var title = string.IsNullOrWhiteSpace(titleText) ? null : NormalizeWhitespace(titleText);
+            var href = navPoint
+                .Elements()
+                .FirstOrDefault(x => x.Name.LocalName == "content")
+                ?.Attribute("src")
+                ?.Value;
+
+            if (inheritedGroup is not null &&
+                !string.IsNullOrWhiteSpace(href) &&
+                TryResolveRelativePath(baseDirectory, href, out var path))
+            {
+                result.TryAdd(NormalizeZipPath(path), inheritedGroup);
+            }
+
+            var children = navPoint.Elements().Where(x => x.Name.LocalName == "navPoint").ToArray();
+            if (children.Length > 0)
+            {
+                WalkNavPoints(
+                    children,
+                    baseDirectory,
+                    title ?? inheritedGroup,
+                    result);
+            }
         }
     }
 

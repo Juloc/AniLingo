@@ -45,6 +45,8 @@
         let lastNumber = null;
         let firstVolume = null;
         let lastVolume = null;
+        let firstGroup = null;
+        let lastGroup = null;
         let loadedQuery = null;
         let requestId = 0;
         let searchTimer = null;
@@ -71,6 +73,19 @@
             return heading;
         };
 
+        // A collapsible section heading ("Extra", "Character Stories"); rows of
+        // its group carry a matching data-group attribute so the click handler
+        // can hide/show them without a nested DOM structure.
+        const groupHeading = title => {
+            const heading = document.createElement("button");
+            heading.type = "button";
+            heading.className = "novel-drawer-group-heading";
+            heading.dataset.groupHeading = title;
+            heading.setAttribute("aria-expanded", "true");
+            heading.textContent = title;
+            return heading;
+        };
+
         const createRow = chapter => {
             const link = document.createElement("a");
             const isCurrent = chapter.id === currentId;
@@ -82,6 +97,7 @@
             ].filter(Boolean).join(" ");
             link.href = `/Novels/Read/${encodeURIComponent(chapter.id)}`;
             link.dataset.chapterRow = "";
+            if (chapter.groupTitle) link.dataset.group = chapter.groupTitle;
             if (isCurrent) link.setAttribute("aria-current", "page");
             if (!chapter.hasContent) link.title = t("notDownloaded", "Not downloaded yet");
 
@@ -115,16 +131,24 @@
             return link;
         };
 
-        // Builds rows plus volume headings; `previousVolume` is the volume of the
-        // row directly before the inserted block (null at the list start).
-        const buildRows = (items, previousVolume) => {
+        // Builds rows plus volume and group headings; `previousVolume`/`previousGroup`
+        // are the volume/group of the row directly before the inserted block (null at
+        // the list start). A new volume always starts its own grouping, even when its
+        // first chapter shares a group name with the end of the previous volume.
+        const buildRows = (items, previousVolume, previousGroup) => {
             const fragment = document.createDocumentFragment();
             let volume = previousVolume;
+            let group = previousGroup;
             for (const item of items) {
                 if (item.volumeNumber && item.volumeNumber !== volume) {
                     fragment.append(volumeHeading(item.volumeNumber));
+                    group = null;
                 }
                 volume = item.volumeNumber || volume;
+                if (item.groupTitle && item.groupTitle !== group) {
+                    fragment.append(groupHeading(item.groupTitle));
+                }
+                group = item.groupTitle || null;
                 fragment.append(createRow(item));
             }
             return fragment;
@@ -132,30 +156,38 @@
 
         const render = (items, mode) => {
             if (mode === "replace") {
-                list.replaceChildren(buildRows(items, null));
+                list.replaceChildren(buildRows(items, null, null));
             } else if (mode === "prepend") {
                 const previousHeight = scroller?.scrollHeight || 0;
-                // The first existing heading repeats when the block ends in its volume.
+                // An existing first heading repeats when the prepended block ends in
+                // the same volume/group: it will be re-declared at the right spot.
                 const firstHeading = list.firstElementChild;
                 const endsInFirstVolume = items.length > 0 &&
                     items[items.length - 1].volumeNumber === firstVolume;
+                const endsInFirstGroup = items.length > 0 &&
+                    (items[items.length - 1].groupTitle || null) === firstGroup;
                 if (endsInFirstVolume && firstHeading?.classList.contains("novel-drawer-volume-heading")) {
                     firstHeading.remove();
+                } else if (endsInFirstGroup && firstGroup &&
+                    firstHeading?.classList.contains("novel-drawer-group-heading")) {
+                    firstHeading.remove();
                 }
-                list.prepend(buildRows(items, null));
+                list.prepend(buildRows(items, null, null));
                 if (scroller) scroller.scrollTop += scroller.scrollHeight - previousHeight;
             } else {
-                list.append(buildRows(items, lastVolume));
+                list.append(buildRows(items, lastVolume, lastGroup));
             }
 
             if (items.length === 0) return;
             if (mode !== "append") {
                 firstNumber = items[0].number;
                 firstVolume = items[0].volumeNumber || null;
+                firstGroup = items[0].groupTitle || null;
             }
             if (mode !== "prepend") {
                 lastNumber = items[items.length - 1].number;
                 lastVolume = items[items.length - 1].volumeNumber || null;
+                lastGroup = items[items.length - 1].groupTitle || null;
             }
         };
 
@@ -216,6 +248,16 @@
         });
 
         shell.addEventListener("click", event => {
+            const heading = event.target.closest("[data-group-heading]");
+            if (heading) {
+                const expanded = heading.getAttribute("aria-expanded") !== "false";
+                heading.setAttribute("aria-expanded", expanded ? "false" : "true");
+                for (const row of list.querySelectorAll(`[data-group="${CSS.escape(heading.dataset.groupHeading)}"]`)) {
+                    row.hidden = expanded;
+                }
+                return;
+            }
+
             if (event.target.closest("[data-chapter-load-before]") && firstNumber !== null) {
                 void load({ mode: "prepend", before: firstNumber });
                 return;

@@ -120,6 +120,51 @@ public sealed class NovelDesignPassTests
         StringAssert.Contains(index, "<button class=\"button\" type=\"submit\">@ui[\"novels.index.uploadSubmit\"]</button>");
     }
 
+    [TestMethod]
+    public void ContentsViewsRenderChapterGroupsCollapsibleAndWithoutAnEyebrow()
+    {
+        var work = Read("src", "Jularr.Web", "Pages", "Novels", "Work.cshtml");
+        var row = Read("src", "Jularr.Web", "Pages", "Novels", "_NovelChapterRow.cshtml");
+        var drawer = Read("src", "Jularr.Web", "wwwroot", "js", "novel-chapter-drawer.js");
+        var libraryCss = Read("src", "Jularr.Web", "wwwroot", "css", "novel-library.css");
+        var frameCss = Read("src", "Jularr.Web", "wwwroot", "css", "novel-reader-frame.css");
+
+        // Work page: a grouped run draws once under a native, collapsible <details> heading;
+        // an ungrouped run (every novel today) renders the same row partial with no wrapper.
+        StringAssert.Contains(work, "GroupRuns(group.Chapters)");
+        StringAssert.Contains(work, "<details class=\"novel-chapter-group\" open>");
+        StringAssert.Contains(work, "<summary class=\"novel-chapter-group-heading\">@run.GroupTitle</summary>");
+        StringAssert.Contains(work, "_NovelChapterRow");
+        StringAssert.Contains(row, "novel-chapter-row");
+
+        // The row partial is the single source of a chapter row; it is not duplicated
+        // inline for the grouped and ungrouped branches.
+        Assert.AreEqual(2, CountOccurrences(work, "<partial name=\"_NovelChapterRow\""));
+
+        // Reader drawer: a group heading only appears when the loaded window carries a
+        // groupTitle, and toggles its own rows via a plain data attribute (no eyebrow text).
+        StringAssert.Contains(drawer, "item.groupTitle");
+        StringAssert.Contains(drawer, "novel-drawer-group-heading");
+        StringAssert.Contains(drawer, "data-group-heading");
+        StringAssert.Contains(drawer, "aria-expanded");
+
+        StringAssert.Contains(libraryCss, ".novel-chapter-group-heading");
+        StringAssert.Contains(frameCss, ".novel-drawer-group-heading");
+    }
+
+    private static int CountOccurrences(string haystack, string needle)
+    {
+        var count = 0;
+        var index = 0;
+        while ((index = haystack.IndexOf(needle, index, StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            index += needle.Length;
+        }
+
+        return count;
+    }
+
     private static string Read(params string[] parts) =>
         File.ReadAllText(Path.Combine([RepositoryRoot(), .. parts]));
 

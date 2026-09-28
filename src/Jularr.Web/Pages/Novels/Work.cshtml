@@ -37,6 +37,27 @@
         ? ui["novels.work.oneVolumeInline"]
         : ui.Format("novels.work.volumesCountInline", ("count", count));
     var backLink = new ContextBackLinkModel("/Novels", ui["novels.work.backToNovels"], "back-link");
+    // Splits a volume's chapters into runs of consecutive same-group chapters, so an
+    // ungrouped novel (every run's GroupTitle is null) renders exactly as before groups
+    // existed, and a grouped run draws once under its own collapsible heading (#512).
+    static IReadOnlyList<(string? GroupTitle, List<Jularr.Web.Features.Novels.NovelChapterItem> Chapters)> GroupRuns(
+        IReadOnlyList<Jularr.Web.Features.Novels.NovelChapterItem> chapters)
+    {
+        var runs = new List<(string? GroupTitle, List<Jularr.Web.Features.Novels.NovelChapterItem> Chapters)>();
+        foreach (var chapter in chapters)
+        {
+            if (runs.Count > 0 && runs[^1].GroupTitle == chapter.GroupTitle)
+            {
+                runs[^1].Chapters.Add(chapter);
+            }
+            else
+            {
+                runs.Add((chapter.GroupTitle, [chapter]));
+            }
+        }
+
+        return runs;
+    }
 }
 @section Head {
     <link rel="stylesheet" href="~/css/novel-library.css" asp-append-version="true" />
@@ -440,46 +461,27 @@
             }
 
             <div class="novel-chapter-list">
-                @foreach (var chapter in group.Chapters)
+                @foreach (var run in GroupRuns(group.Chapters))
                 {
-                    var isCurrent = Model.Progress?.ChapterId == chapter.Id;
-                    var isEarlier = currentChapter is not null && chapter.Number < currentChapter.Number;
-                    <a class="novel-chapter-row @(isCurrent ? "current" : isEarlier ? "earlier" : "")" href="/Novels/Read/@chapter.Id">
-                        <span class="novel-chapter-number">@chapter.Number</span>
-                        <div class="novel-chapter-copy">
-                            <strong lang="ja">@chapter.Title</strong>
-                            <div class="novel-chapter-subline">
-                                @if (isCurrent)
+                    if (run.GroupTitle is null)
+                    {
+                        @foreach (var chapter in run.Chapters)
+                        {
+                            <partial name="_NovelChapterRow" model="new Jularr.Web.Pages.Novels.NovelChapterRowModel(chapter, currentChapter, Model.Progress, ui)" />
+                        }
+                    }
+                    else
+                    {
+                        <details class="novel-chapter-group" open>
+                            <summary class="novel-chapter-group-heading">@run.GroupTitle</summary>
+                            <div class="novel-chapter-group-list">
+                                @foreach (var chapter in run.Chapters)
                                 {
-                                    <span>@ui.Format("novels.work.percentRead", ("percent", Model.Progress!.PositionPermille / 10))</span>
-                                }
-                                else if (chapter.PublishedAt is DateTime published)
-                                {
-                                    <span>@published.ToString("yyyy-MM-dd")</span>
+                                    <partial name="_NovelChapterRow" model="new Jularr.Web.Pages.Novels.NovelChapterRowModel(chapter, currentChapter, Model.Progress, ui)" />
                                 }
                             </div>
-                            @if (isCurrent)
-                            {
-                                <div class="novel-progress-track compact">
-                                    <span style="width:@(Model.Progress!.PositionPermille / 10)%"></span>
-                                </div>
-                            }
-                        </div>
-                        <div class="novel-chapter-badges">
-                            @* Reflects the cache only: reading an already
-                               available German chapter is core reader
-                               behaviour and must not depend on the Learning
-                               Translation capability (#369). *@
-                            @if (chapter.HasTranslation)
-                            {
-                                <span>DE</span>
-                            }
-                            @if (isCurrent)
-                            {
-                                <span class="current-dot" title="@ui["novels.work.currentChapterTitle"]"></span>
-                            }
-                        </div>
-                    </a>
+                        </details>
+                    }
                 }
             </div>
         </div>

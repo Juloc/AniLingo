@@ -86,6 +86,14 @@ public sealed class NovelChapter
     /// Null when the source is plain text.
     /// </summary>
     public string? ContentJson { get; set; }
+    /// <summary>
+    /// Optional section/group heading the chapter belongs to within its volume
+    /// (e.g. "Extra", "Character Stories"), read from an EPUB's <c>nav</c>/
+    /// <c>toc.ncx</c> nesting or a Narou chapter-index section heading (#512).
+    /// Null for a chapter that is not part of a named group; it then renders
+    /// as a flat list item, exactly as before groups existed.
+    /// </summary>
+    public string? GroupTitle { get; set; }
     public string SourceHash { get; set; } = "";
     public DateTime? PublishedAt { get; set; }
     public DateTime ImportedAt { get; set; } = DateTime.UtcNow;
@@ -180,11 +188,13 @@ public sealed class NovelAnimeMapping
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
+// GroupTitle: the section heading the chapter is listed under on the source's chapter index, if any.
 public sealed record NovelSourceChapterReference(
     int Number,
     string Title,
     string SourceUrl,
-    DateTime? PublishedAt = null);
+    DateTime? PublishedAt = null,
+    string? GroupTitle = null);
 
 public sealed record NovelSourceWorkSnapshot(
     string Provider,
@@ -248,7 +258,8 @@ public sealed record NovelChapterItem(
     bool HasContent,
     bool HasTranslation,
     DateTime? PublishedAt,
-    Guid VolumeId);
+    Guid VolumeId,
+    string? GroupTitle = null);
 
 /// <summary>A volume of a series with its chapter range.</summary>
 public sealed record NovelVolumeItem(

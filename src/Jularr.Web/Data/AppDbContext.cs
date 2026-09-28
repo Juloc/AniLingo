@@ -331,6 +331,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(x => x.Title).HasMaxLength(500);
             entity.Property(x => x.SourceHash).HasMaxLength(64);
             entity.Property(x => x.ContentJson).HasColumnType("TEXT");
+            entity.Property(x => x.GroupTitle).HasMaxLength(200);
             entity.HasOne<NovelWork>().WithMany().HasForeignKey(x => x.WorkId).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne<NovelVolume>().WithMany().HasForeignKey(x => x.VolumeId).OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(x => new { x.WorkId, x.Number }).IsUnique();

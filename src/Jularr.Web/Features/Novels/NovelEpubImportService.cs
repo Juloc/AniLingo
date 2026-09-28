@@ -448,7 +448,8 @@ public sealed partial class NovelEpubImportService(
                     "epub:" + (chapter.SourcePath ?? chapter.Number.ToString(CultureInfo.InvariantCulture)),
                     chapter.Title,
                     chapter.Text,
-                    NovelChapterDocument.Serialize(ResolveImages(chapter.Blocks, assetNames))))
+                    NovelChapterDocument.Serialize(ResolveImages(chapter.Blocks, assetNames)),
+                    chapter.GroupTitle))
                 .ToArray();
 
             var result = await NovelVolumeContent.SyncChaptersAsync(

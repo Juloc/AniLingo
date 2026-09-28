@@ -10,7 +10,8 @@ public sealed record NovelVolumeChapterInput(
     string SourceKey,
     string Title,
     string Text,
-    string? ContentJson = null);
+    string? ContentJson = null,
+    string? GroupTitle = null);
 
 public sealed record NovelVolumeSyncResult(
     int Added,
@@ -98,6 +99,7 @@ public static class NovelVolumeContent
             var hash = Hash(input.Text);
             var title = Truncate(input.Title, 500);
             var sourceKey = Truncate(input.SourceKey, 2048);
+            var groupTitle = input.GroupTitle is null ? null : Truncate(input.GroupTitle, 200);
 
             if (assignment[index] is not NovelChapter chapter)
             {
@@ -110,6 +112,7 @@ public static class NovelVolumeContent
                     Title = title,
                     OriginalText = input.Text,
                     ContentJson = input.ContentJson,
+                    GroupTitle = groupTitle,
                     SourceHash = hash,
                     ImportedAt = now,
                     UpdatedAt = now
@@ -121,12 +124,14 @@ public static class NovelVolumeContent
                 chapter.OriginalText != input.Text ||
                 chapter.Title != title ||
                 chapter.SourceUrl != sourceKey ||
-                chapter.ContentJson != input.ContentJson)
+                chapter.ContentJson != input.ContentJson ||
+                chapter.GroupTitle != groupTitle)
             {
                 chapter.SourceUrl = sourceKey;
                 chapter.Title = title;
                 chapter.OriginalText = input.Text;
                 chapter.ContentJson = input.ContentJson;
+                chapter.GroupTitle = groupTitle;
                 chapter.SourceHash = hash;
                 chapter.UpdatedAt = now;
                 updated++;

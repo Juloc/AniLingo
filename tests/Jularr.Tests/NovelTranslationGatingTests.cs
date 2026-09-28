@@ -300,15 +300,22 @@ public sealed class NovelTranslationGatingTests
     {
         var view = File.ReadAllText(Path.Combine(
             RepositoryRoot(), "src", "Jularr.Web", "Pages", "Novels", "Work.cshtml"));
+        // The row markup (including the "DE" badge) lives in a shared partial
+        // (#512) so a grouped and an ungrouped chapter list draw the same row.
+        var chapterRow = File.ReadAllText(Path.Combine(
+            RepositoryRoot(), "src", "Jularr.Web", "Pages", "Novels", "_NovelChapterRow.cshtml"));
 
-        StringAssert.Contains(view, "@if (chapter.HasTranslation)");
+        StringAssert.Contains(chapterRow, "@if (chapter.HasTranslation)");
         StringAssert.Contains(
-            view,
+            chapterRow,
             "chapter.HasTranslation",
             "The badge must not resolve the Learning Translation capability (#369).");
         Assert.IsFalse(
             view.Contains("Model.TranslationEnabled", StringComparison.Ordinal),
             "The Work page must not gate the cached-translation badge behind Learning (#369).");
+        Assert.IsFalse(
+            chapterRow.Contains("Model.TranslationEnabled", StringComparison.Ordinal),
+            "The chapter row partial must not gate the cached-translation badge behind Learning (#369).");
     }
 
     [TestMethod]

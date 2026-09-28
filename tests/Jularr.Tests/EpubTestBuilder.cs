@@ -16,6 +16,8 @@ internal sealed class EpubTestBuilder
 
     private readonly List<(string Path, string Xhtml)> chapters = [];
     private readonly List<(string Path, byte[] Bytes, string MediaType)> images = [];
+    private (string Path, string Document)? nav;
+    private (string Path, string Document)? ncx;
 
     public string Title { get; set; } = "Test Volume";
     public string? Author { get; set; } = "Test Author";
@@ -55,6 +57,20 @@ internal sealed class EpubTestBuilder
         return this;
     }
 
+    /// <summary>An EPUB 3 <c>nav</c> document (manifest <c>properties="nav"</c>), not part of the spine.</summary>
+    public EpubTestBuilder Nav(string path, string document)
+    {
+        nav = (path, document);
+        return this;
+    }
+
+    /// <summary>An EPUB 2 <c>toc.ncx</c> document, not part of the spine.</summary>
+    public EpubTestBuilder Ncx(string path, string document)
+    {
+        ncx = (path, document);
+        return this;
+    }
+
     public MemoryStream Build()
     {
         var output = new MemoryStream();
@@ -84,6 +100,16 @@ internal sealed class EpubTestBuilder
             foreach (var (path, xhtml) in chapters)
             {
                 Write(archive, "OEBPS/" + path, xhtml);
+            }
+
+            if (nav is { } navFile)
+            {
+                Write(archive, "OEBPS/" + navFile.Path, navFile.Document);
+            }
+
+            if (ncx is { } ncxFile)
+            {
+                Write(archive, "OEBPS/" + ncxFile.Path, ncxFile.Document);
             }
 
             foreach (var (path, bytes, _) in images)
@@ -155,12 +181,23 @@ internal sealed class EpubTestBuilder
             manifest.Append($"<item id=\"i{index}\" href=\"{path}\" media-type=\"{mediaType}\"{properties}/>");
         }
 
+        if (nav is { } navFile)
+        {
+            manifest.Append($"<item id=\"nav\" href=\"{navFile.Path}\" media-type=\"application/xhtml+xml\" properties=\"nav\"/>");
+        }
+
+        if (ncx is { } ncxFile)
+        {
+            manifest.Append($"<item id=\"ncx\" href=\"{ncxFile.Path}\" media-type=\"application/x-dtbncx+xml\"/>");
+        }
+
+        var spineToc = ncx is not null ? " toc=\"ncx\"" : "";
         return $"""
             <?xml version="1.0" encoding="utf-8"?>
             <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="BookId">
               <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">{metadata}</metadata>
               <manifest>{manifest}</manifest>
-              <spine>{spine}</spine>
+              <spine{spineToc}>{spine}</spine>
             </package>
             """;
     }

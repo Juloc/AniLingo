@@ -57,6 +57,26 @@ public sealed class NovelTests
         Assert.AreEqual(2, chapters.Count);
         Assert.AreEqual(171, chapters[0].Number);
         Assert.AreEqual(172, chapters[1].Number);
+        Assert.IsTrue(chapters.All(x => x.GroupTitle is null), "A chapter index without section headings stays ungrouped.");
+    }
+
+    [TestMethod]
+    public void NcodeParserAssignsSectionHeadingsToChapterLinks()
+    {
+        const string html = """
+            <div class="p-eplist__chapter-title">第一章　幼年期</div>
+            <dl class="p-eplist__sublist"><dd class="p-eplist__title"><a href="/n9669bk/1/">幼年期その1</a></dd></dl>
+            <dl class="p-eplist__sublist"><dd class="p-eplist__title"><a href="/n9669bk/2/">幼年期その2</a></dd></dl>
+            <div class="p-eplist__chapter-title">閑話</div>
+            <dl class="p-eplist__sublist"><dd class="p-eplist__title"><a href="/n9669bk/3/">ある日の出来事</a></dd></dl>
+            """;
+
+        var chapters = NcodeNovelSourceProvider.ParseChapterLinks(html, "n9669bk");
+
+        Assert.AreEqual(3, chapters.Count);
+        Assert.AreEqual("第一章　幼年期", chapters[0].GroupTitle);
+        Assert.AreEqual("第一章　幼年期", chapters[1].GroupTitle);
+        Assert.AreEqual("閑話", chapters[2].GroupTitle);
     }
 
     [TestMethod]
@@ -152,6 +172,10 @@ public sealed class NovelTests
             Assert.AreEqual(first, second);
             Assert.AreEqual(1, await db.NovelWorks.CountAsync());
             Assert.AreEqual(2, await db.NovelChapters.CountAsync());
+
+            var chapters = await db.NovelChapters.AsNoTracking().OrderBy(x => x.Number).ToListAsync();
+            Assert.IsNull(chapters[0].GroupTitle);
+            Assert.AreEqual("Extra", chapters[1].GroupTitle);
         }
         finally
         {
@@ -938,7 +962,8 @@ public sealed class NovelTests
                         new NovelSourceChapterReference(
                             2,
                             "Two",
-                            "https://example.invalid/work/2")
+                            "https://example.invalid/work/2",
+                            GroupTitle: "Extra")
                     ]));
 
         public Task<NovelSourceChapterSnapshot> GetChapterAsync(
