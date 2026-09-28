@@ -54,6 +54,23 @@ public sealed class ProviderRoleAssignmentStore(AppDbContext db)
             .ToArray();
     }
 
+    /// <summary>
+    /// Resolved role → provider for exactly one role of a work (work override → global default →
+    /// built-in). Feature services use this to look up the single role they care about instead of
+    /// hard-wiring a provider, so a work configured with a non-default role for that concern uses
+    /// the configured provider while every other concern (and every work with nothing stored)
+    /// keeps today's behaviour.
+    /// </summary>
+    public async Task<ProviderRoleAssignment> ResolveRoleForWorkAsync(
+        Guid workId,
+        MappingProviderRole role,
+        CancellationToken cancellationToken,
+        string mediaType = DefaultMediaType)
+    {
+        var resolved = await ResolveForWorkAsync(workId, cancellationToken, mediaType);
+        return resolved.Single(assignment => assignment.Role == role);
+    }
+
     /// <summary>Resolved global defaults (stored value or built-in) for every role.</summary>
     public async Task<IReadOnlyList<ProviderRoleAssignment>> ResolveGlobalDefaultsAsync(
         CancellationToken cancellationToken,
