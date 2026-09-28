@@ -217,3 +217,80 @@ When an anime download fails, its release identity is blocklisted and the next a
 ### Cancel and retry
 
 The operation detail page (`/Admin/Operation/{id}`) cancels an active SABnzbd job (removed from SABnzbd queue/history including files) and retries a failed one through SABnzbd's retry, which requeues the same operation with the new `nzo_id`. Retrying an anime attempt is only allowed for the latest attempt of its acquisition and removes that release from the blocklist. Anime operations also show the anime, episodes, attempt number and blocklisted releases.
+
+## Non-root container runtime and /data ownership
+
+The Jularr image runs as a dedicated, unprivileged user and group, both named `jularr` and fixed at UID/GID **1654:1654** (the same fixed value the aspnet base image's own `app` user already has; the image renames `app` to `jularr`, or creates it fresh with that same UID/GID if a future base image drops `app`). Because the UID/GID are fixed rather than assigned per build, a `chown` an operator has already run against `1654:1654` keeps working across image upgrades. The container needs no privileged mode and no added Linux capabilities, so it can run with `cap_drop: [ALL]` and `security_opt: [no-new-privileges:true]`.
+
+Writable locations:
+
+- `/data` holds all persistent state: SQLite database, Data Protection keys (`/data/keys`), protected integration settings, Codex credentials (`CODEX_HOME=/data/codex`), Whisper model, transcription/playback/artwork caches, manga, novel and book data, and acquisition state.
+- `/tmp` is scratch space, for example temporary Codex work directories and audio fingerprint windows.
+- Media paths Jularr changes: library roots that receive imported downloads, file renames or artwork stored beside the media, and the completed-download folder (after remote path mapping) when the import mode is **Move**. These must be writable by UID `1654`, either through ownership or through a group added with `group_add: ["1654"]` (or `group_add: ["jularr"]`). **Copy** imports only need read access to the download folder. **Hardlink** imports also need the downloaded files to be readable and writable by UID `1654`, because most Linux hosts enable `fs.protected_hardlinks`.
+
+The application under `/app`, the bundled `codex`, `whisper-cli`, `ffmpeg`/`ffprobe`, the MeCab dictionary and the JMdict data are root-owned and read-only for the runtime user. Read-only media mounts such as `/media/anime:ro` only need to be readable by UID `1654` (world-readable, or a matching `group_add` group). Jularr already reports read-only or unwritable libraries as failed imports or refused renames.
+
+### Dynamic NAS mounts
+
+When a NAS or other network filesystem can be powered off, do not bind the network mount itself as the Docker source. Docker resolves bind sources before Jularr starts, so a stale CIFS/NFS mount can make container creation fail before Jularr can report the library root as offline.
+
+For this case the image supports `JULARR_MEDIA_ROOT=<absolute-container-source>`. `/media` remains the canonical application path, but is routed through an internal indirection to that source. The entrypoint changes only the internal symlink and **does not dereference the source**, so an unavailable NAS cannot block Jularr startup. Every existing child path is preserved unchanged, for example `/media/anime`, `/media/tv`, `/media/movies` and download folders.
+
+Example for a NAS mounted somewhere below an always-present host parent:
+
+```yaml
+environment:
+  JULARR_MEDIA_ROOT: /host-mounts/arr_bay4_media
+volumes:
+  - type: bind
+    source: /mnt
+    target: /host-mounts
+    bind:
+      propagation: rslave
+      create_host_path: false
+```
+
+`rslave` is intentional: host-side submount changes can propagate into the already-running container, while mounts created inside the container do not propagate back to the host. Docker bind mounts also include existing nested mounts recursively by default, so a currently sleeping/stale NAS mount below the stable parent is carried into the container without Docker having to use that NAS path as the bind source. The container still needs no `SYS_ADMIN` capability or privileged mode. Bind propagation is a Linux-host feature and the selected host parent must support it.
+
+Prefer a dedicated stable host parent when practical so the container does not see unrelated host mounts. The mapped media tree must have the normal read/write permissions required by Jularr.
+
+The legacy direct bind `/path/to/media:/media` remains supported for storage that is guaranteed to be available when Docker creates the container. Do not combine that direct bind with `JULARR_MEDIA_ROOT`.
+
+### Startup ownership check
+
+Before the application starts, the entrypoint (`/usr/local/bin/jularr-entrypoint`) checks that every directory and file under `/data` is readable and writable by the runtime user. If one is not, the container exits with code 1 and logs the first offending path plus the exact fix command below. It never changes ownership itself and never falls back to running as root.
+
+### Fresh installations
+
+A new, empty named volume is initialized from the image with `1654:1654` ownership, so no action is needed. A bind-mounted host directory must be owned by (or writable for) UID/GID `1654:1654`, for example:
+
+```bash
+sudo chown -R 1654:1654 /srv/jularr-data
+```
+
+### Upgrading from a root-based image
+
+Images released before the non-root runtime, including all AniLingo images, wrote `/data` as root. After upgrading, Jularr refuses to start and `docker logs` shows `Jularr startup aborted: ... is not readable and writable by the Jularr runtime user.` Hand the existing data over once, with Jularr stopped.
+
+For a named volume:
+
+```bash
+docker compose stop jularr
+docker volume ls   # find the data volume, e.g. <project>_anilingo-data
+docker run --rm --user 0:0 --entrypoint chown -v <project>_anilingo-data:/data ghcr.io/juloc/jularr:latest -R 1654:1654 /data
+docker compose up -d
+```
+
+For a bind mount, run the equivalent `chown` directly on the host path instead of through a throwaway container:
+
+```bash
+docker compose stop jularr
+sudo chown -R 1654:1654 /path/on/host/jularr-data
+docker compose up -d
+```
+
+The command only changes ownership, not data. Rolling back to an older root-based image keeps working, but files it creates are root-owned again, so repeat the command before returning to the current image.
+
+### Custom runtime user
+
+If the deployment sets `user: "<uid>:<gid>"` in Compose (for example to match NAS permissions), `/data` and the writable media paths must be owned by that UID/GID instead of `1654:1654`. The startup check and its fix command use the effective UID/GID of the container, whatever that is set to.
