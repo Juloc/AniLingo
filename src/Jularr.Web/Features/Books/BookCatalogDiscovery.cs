@@ -339,7 +339,9 @@ public sealed partial class BookCatalogService
                 .ToArray(),
             CoverCandidates = covers,
             Publisher = info.Publisher?.Trim(),
-            PublishedDate = info.PublishedDate?.Trim()
+            PublishedDate = info.PublishedDate?.Trim(),
+            // Google Books volumes are edition-specific and already tag their own language.
+            Language = BookWorkSearch.NormalizeLanguageTag(info.Language)
         };
     }
 
@@ -738,6 +740,9 @@ public sealed partial class BookCatalogService
 
         [JsonPropertyName("publisher")]
         public string? Publisher { get; init; }
+
+        [JsonPropertyName("language")]
+        public string? Language { get; init; }
 
         [JsonPropertyName("industryIdentifiers")]
         public GoogleIndustryIdentifier[]? IndustryIdentifiers { get; init; }
