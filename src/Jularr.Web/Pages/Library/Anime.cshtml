@@ -23,6 +23,19 @@
                 : "library.mediaCard.startWatching"
             : "library.mediaCard.watchAgain";
     var backLink = new ContextBackLinkModel("/Library", $"← {ui["nav.library"]}", "back-link");
+    var providerStatus = MediaBannerCardModel.MapStatus(Model.Metadata?.Status);
+    var providerStatusLabel = providerStatus switch
+    {
+        MediaReleaseStatus.Ongoing => ui["library.mediaCard.status.ongoing"],
+        MediaReleaseStatus.Finished => ui["library.mediaCard.status.finished"],
+        MediaReleaseStatus.Upcoming => ui["library.mediaCard.status.upcoming"],
+        MediaReleaseStatus.Hiatus => ui["library.mediaCard.status.hiatus"],
+        MediaReleaseStatus.Cancelled => ui["library.mediaCard.status.cancelled"],
+        _ => null
+    };
+    var providerRating = Model.Metadata?.AverageScore is int averageScore and > 0 and <= 100
+        ? (averageScore / 10m).ToString("0.0")
+        : null;
 }
 
 @section Head {
@@ -53,7 +66,13 @@
         }
         <div class="anime-hero-copy">
             <partial name="_ContextBackLink" model="backLink" />
-            <h1>@Model.AnimeTitle</h1>
+            <div class="anime-title-line">
+                <h1>@Model.AnimeTitle</h1>
+                @if (providerStatus is { } status && providerStatusLabel is not null)
+                {
+                    <span class="anime-status anime-status-@status.ToString().ToLowerInvariant()">@providerStatusLabel</span>
+                }
+            </div>
 
             @if (Model.Metadata is { } metadata)
             {
@@ -82,6 +101,14 @@
                     @if (metadata.EpisodeDurationMinutes is int duration)
                     {
                         <span>@ui.Format("library.anime.durationMinutes", ("minutes", duration))</span>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(metadata.Season))
+                    {
+                        <span>@metadata.Season</span>
+                    }
+                    @if (providerRating is not null)
+                    {
+                        <span class="anime-rating" aria-label="@ui["library.mediaCard.rating"]">★ @providerRating</span>
                     }
                 </div>
 

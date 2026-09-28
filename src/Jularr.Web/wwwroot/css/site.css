@@ -622,12 +622,24 @@ button, input { font: inherit; }
     margin: 5px 0 5px; font-size: clamp(30px, 5vw, 52px);
     line-height: 1.02; letter-spacing: -.04em;
 }
+.anime-title-line { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.anime-title-line h1 { margin: 5px 0; }
+.anime-status {
+    display: inline-flex; align-items: center; min-height: 24px; padding: 4px 8px;
+    border: 1px solid rgba(255,255,255,.16); border-radius: 999px;
+    background: rgba(7,10,14,.42); color: #e7ebef; font-size: 11px; font-weight: 800;
+}
+.anime-status-ongoing { border-color: color-mix(in srgb, var(--success-text) 60%, rgba(255,255,255,.16)); color: #b8f0ca; }
+.anime-status-finished { color: #dce2e8; }
+.anime-status-upcoming, .anime-status-hiatus { border-color: color-mix(in srgb, var(--warning-text) 60%, rgba(255,255,255,.16)); color: #f4d98b; }
+.anime-status-cancelled { border-color: color-mix(in srgb, var(--danger-text) 60%, rgba(255,255,255,.16)); color: #ffb4b4; }
 .local-title, .native-title { display: block; color: var(--muted); font-size: 13px; margin-top: 3px; }
 .anime-facts { display: flex; gap: 7px; flex-wrap: wrap; margin: 14px 0 0; }
 .anime-facts span {
     padding: 4px 7px; border-radius: 6px; background: rgba(255,255,255,.07);
     color: #c8ced6; font-size: 11px; font-weight: 700;
 }
+.anime-facts .anime-rating { color: #ffe19a; background: rgba(255, 197, 61, .13); }
 .anime-description {
     display: -webkit-box; max-width: 760px; margin: 14px 0; overflow: hidden;
     color: #c3c9d1; font-size: 13px; line-height: 1.55; white-space: pre-line;
