@@ -36,6 +36,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-dotnet@v5
         with:
@@ -65,6 +67,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -81,17 +85,131 @@ jobs:
 
       - name: Smoke test startup without NAS
         run: |
-          docker run -d --name jularr-no-nas -p 127.0.0.1:18097:8080 "${IMAGE}:${GITHUB_SHA}"
+          docker run -d --name jularr-no-nas \
+            --cap-drop ALL --security-opt no-new-privileges:true \
+            -p 127.0.0.1:18097:8080 "${IMAGE}:${GITHUB_SHA}"
           trap 'docker rm -f jularr-no-nas >/dev/null 2>&1 || true' EXIT
 
           for _ in {1..30}; do
             if curl -fsS http://127.0.0.1:18097/Account/Setup >/dev/null; then
+              test "$(docker exec jularr-no-nas id -un)" = "jularr"
+              test "$(docker exec jularr-no-nas id -u)" = "1654"
+              test "$(docker exec jularr-no-nas id -g)" = "1654"
               exit 0
             fi
             sleep 1
           done
 
           docker logs jularr-no-nas
+          exit 1
+
+      - name: Smoke test dynamic NAS mount gateway
+        run: |
+          set -euo pipefail
+          HOST_PARENT="${RUNNER_TEMP}/jularr-media-parent"
+          HOST_NAS="${HOST_PARENT}/arr_bay4_media"
+          NAS_CONTENT="${RUNNER_TEMP}/jularr-media-content"
+          mkdir -p "${HOST_NAS}" "${NAS_CONTENT}/anime"
+          printf 'online\n' > "${NAS_CONTENT}/anime/online-marker"
+
+          cleanup() {
+            docker rm -f jularr-media-gateway >/dev/null 2>&1 || true
+            sudo umount "${HOST_NAS}" >/dev/null 2>&1 || true
+            sudo umount "${HOST_PARENT}" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          # The parent stays mounted while a NAS submount may appear/disappear.
+          # rslave makes those host-side submount changes visible in the already
+          # running container without giving the container mount capabilities.
+          sudo mount --bind "${HOST_PARENT}" "${HOST_PARENT}"
+          sudo mount --make-rshared "${HOST_PARENT}"
+
+          docker run -d --name jularr-media-gateway \
+            --cap-drop ALL --security-opt no-new-privileges:true \
+            -e 'JULARR_MEDIA_ROOT=/host-mounts/arr_bay4_media' \
+            --mount "type=bind,source=${HOST_PARENT},target=/host-mounts,bind-propagation=rslave" \
+            "${IMAGE}:${GITHUB_SHA}"
+
+          for _ in {1..30}; do
+            if docker exec jularr-media-gateway test -L /media; then
+              break
+            fi
+            sleep 1
+          done
+          docker exec jularr-media-gateway test -L /media
+          ! docker exec jularr-media-gateway test -e /media/anime/online-marker
+
+          sudo mount --bind "${NAS_CONTENT}" "${HOST_NAS}"
+          for _ in {1..20}; do
+            if docker exec jularr-media-gateway test -f /media/anime/online-marker; then
+              break
+            fi
+            sleep 0.25
+          done
+          test "$(docker exec jularr-media-gateway cat /media/anime/online-marker)" = "online"
+
+          sudo umount "${HOST_NAS}"
+          for _ in {1..20}; do
+            if ! docker exec jularr-media-gateway test -e /media/anime/online-marker; then
+              break
+            fi
+            sleep 0.25
+          done
+          ! docker exec jularr-media-gateway test -e /media/anime/online-marker
+
+          # Existing deployments may still bind a permanently available root
+          # directly to /media; that contract remains supported.
+          docker run --rm --entrypoint sh \
+            --cap-drop ALL --security-opt no-new-privileges:true \
+            --mount "type=bind,source=${NAS_CONTENT},target=/media,readonly" \
+            "${IMAGE}:${GITHUB_SHA}" -c 'test -r /media/anime/online-marker'
+
+      - name: Smoke test upgrade from a root-owned /data
+        run: |
+          set -euo pipefail
+          cleanup() {
+            docker rm -f jularr-legacy >/dev/null 2>&1 || true
+            docker volume rm -f jularr-legacy-data >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          # Simulate /data written by an earlier image that still ran as root.
+          docker volume create jularr-legacy-data >/dev/null
+          docker run --rm --user 0:0 --entrypoint sh -v jularr-legacy-data:/data "${IMAGE}:${GITHUB_SHA}" \
+            -c 'mkdir -p /data/keys && touch /data/keys/legacy-root-file && chown -R 0:0 /data && chmod 0755 /data'
+
+          # The jularr user/group are fixed at UID/GID 1654:1654 (renamed
+          # from, or matching, the aspnet base image's own "app" user), so an
+          # operator's existing `chown -R 1654:1654` fix keeps working.
+          JULARR_UID="$(docker run --rm --entrypoint id "${IMAGE}:${GITHUB_SHA}" -u jularr)"
+          JULARR_GID="$(docker run --rm --entrypoint id "${IMAGE}:${GITHUB_SHA}" -g jularr)"
+          test "${JULARR_UID}" = "1654"
+          test "${JULARR_GID}" = "1654"
+
+          if docker run --rm -v jularr-legacy-data:/data "${IMAGE}:${GITHUB_SHA}" > "${RUNNER_TEMP}/legacy.log" 2>&1; then
+            cat "${RUNNER_TEMP}/legacy.log"
+            echo "::error::The image started with a root-owned /data."
+            exit 1
+          fi
+          cat "${RUNNER_TEMP}/legacy.log"
+          grep -q "Jularr startup aborted" "${RUNNER_TEMP}/legacy.log"
+          grep -qF "chown -v <jularr-data>:/data ghcr.io/juloc/jularr:latest -R 1654:1654 /data" "${RUNNER_TEMP}/legacy.log"
+
+          # The documented one-time fix (with the image under test instead of :latest).
+          docker run --rm --user 0:0 --entrypoint chown -v jularr-legacy-data:/data "${IMAGE}:${GITHUB_SHA}" -R 1654:1654 /data
+
+          docker run -d --name jularr-legacy \
+            --cap-drop ALL --security-opt no-new-privileges:true \
+            -v jularr-legacy-data:/data -p 127.0.0.1:18098:8080 "${IMAGE}:${GITHUB_SHA}"
+          for _ in {1..30}; do
+            if curl -fsS http://127.0.0.1:18098/Account/Setup >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+
+          docker logs jularr-legacy
           exit 1
 
       # publish pushes exactly this smoke-tested image instead of rebuilding it
