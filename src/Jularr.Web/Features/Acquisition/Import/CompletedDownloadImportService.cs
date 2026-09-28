@@ -50,12 +50,35 @@ public sealed class CompletedDownloadImportService(
             return waiting;
         }
 
+        await RecordPhaseAsync(
+            operation,
+            location,
+            new CompletedDownloadImportProgress(
+                CompletedDownloadImportPhase.Verifying,
+                "Verifying completed files before import."),
+            nowUtc,
+            cancellationToken);
+        await RecordPhaseAsync(
+            operation,
+            location,
+            new CompletedDownloadImportProgress(
+                CompletedDownloadImportPhase.Importing,
+                "Importing completed files into the library."),
+            nowUtc,
+            cancellationToken);
+
         var result = await dispatcher.DispatchAsync(
             new CompletedDownloadImportRequest(
                 request,
                 operation,
                 location.SourcePath,
-                kind),
+                kind,
+                progress => RecordPhaseAsync(
+                    operation,
+                    location,
+                    progress,
+                    nowUtc,
+                    cancellationToken)),
             cancellationToken);
         await RecordAsync(operation, location, result, nowUtc, cancellationToken);
         return result;
@@ -177,6 +200,30 @@ public sealed class CompletedDownloadImportService(
                 result.Placement is { } placement ? placement.Mode : previous?.Mode),
             cancellationToken);
 
+    private Task RecordPhaseAsync(
+        OperationSnapshot operation,
+        CompletedDownloadLocation location,
+        CompletedDownloadImportProgress progress,
+        DateTime nowUtc,
+        CancellationToken cancellationToken) =>
+        WriteAsync(
+            operation,
+            previous => new DownloadImportDetails(
+                progress.Phase switch
+                {
+                    CompletedDownloadImportPhase.Verifying => DownloadImportState.Verifying,
+                    CompletedDownloadImportPhase.Importing => DownloadImportState.Importing,
+                    CompletedDownloadImportPhase.MatchingMetadata => DownloadImportState.MatchingMetadata,
+                    _ => throw new ArgumentOutOfRangeException(nameof(progress))
+                },
+                progress.Message,
+                nowUtc,
+                location.ReportedPath ?? previous?.ReportedPath,
+                location.Resolved ? location.SourcePath : previous?.LocalPath,
+                progress.Placement?.Destination ?? previous?.Destination,
+                progress.Placement is { } placement ? placement.Mode : previous?.Mode),
+            cancellationToken);
+
     private Task WriteAsync(
         OperationSnapshot operation,
         Func<DownloadImportDetails?, DownloadImportDetails> build,
@@ -222,6 +269,9 @@ public static class DownloadImportRecorder
                 {
                     DownloadImportState.Completed => OperationLogLevel.Information,
                     DownloadImportState.Waiting => OperationLogLevel.Information,
+                    DownloadImportState.Verifying => OperationLogLevel.Information,
+                    DownloadImportState.Importing => OperationLogLevel.Information,
+                    DownloadImportState.MatchingMetadata => OperationLogLevel.Information,
                     _ => OperationLogLevel.Warning
                 },
                 "Import",

@@ -91,9 +91,18 @@ public sealed class BookCompletedDownloadImportTests
             AcquisitionRequestStatus.Downloading,
             "owner",
             CancellationToken.None);
+        var phases = new List<CompletedDownloadImportPhase>();
 
         var result = await host.Adapter.ImportAsync(
-            new CompletedDownloadImportRequest(request, null, Path.GetDirectoryName(job)!),
+            new CompletedDownloadImportRequest(
+                request,
+                null,
+                Path.GetDirectoryName(job)!,
+                ProgressReporter: progress =>
+                {
+                    phases.Add(progress.Phase);
+                    return Task.CompletedTask;
+                }),
             CancellationToken.None);
 
         var work = await host.Db.NovelWorks.AsNoTracking().SingleAsync();
@@ -102,6 +111,9 @@ public sealed class BookCompletedDownloadImportTests
         Assert.AreEqual("ol:dune", work.MetadataExternalId, "The only book of the job answers the request.");
         Assert.AreEqual(ImportMode.Copy, result.Placement!.Mode, "Book files are read, never moved.");
         Assert.IsTrue(File.Exists(Path.Combine(job, "dune.epub")));
+        CollectionAssert.AreEqual(
+            new[] { CompletedDownloadImportPhase.MatchingMetadata },
+            phases);
     }
 
     [TestMethod]
@@ -185,7 +197,14 @@ public sealed class BookCompletedDownloadImportTests
         Assert.AreEqual(ImportMode.Copy, import.Mode);
         Assert.AreEqual(MediaAcquisitionKind.Book, details.MediaKind, "The routing details survive the import record.");
         var logs = await store.ListLogsAsync(new OperationLogFilter(OperationId: operationId));
-        Assert.AreEqual(1, logs.Count(entry => entry.Module == "Import"));
+        CollectionAssert.AreEqual(
+            new[]
+            {
+                "Verifying completed files before import.",
+                "Importing completed files into the library.",
+                "Imported 1 book(s)."
+            },
+            logs.Where(entry => entry.Module == "Import").Reverse().Select(entry => entry.Message).ToArray());
     }
 
     [TestMethod]

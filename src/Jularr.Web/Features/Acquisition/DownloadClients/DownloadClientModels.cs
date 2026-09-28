@@ -94,6 +94,12 @@ public enum DownloadImportState
 {
     /// <summary>The files cannot be imported yet (path not reported, share offline, storage busy).</summary>
     Waiting,
+    /// <summary>The completed files are being checked before they enter the media library.</summary>
+    Verifying,
+    /// <summary>The media importer is reading or placing the completed files.</summary>
+    Importing,
+    /// <summary>The imported media is being reconciled with its requested provider metadata.</summary>
+    MatchingMetadata,
     Completed,
     /// <summary>The downloaded package was unsuitable for the media type.</summary>
     Rejected,
