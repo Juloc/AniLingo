@@ -17,7 +17,8 @@ public sealed class RoleNavigationTests
         "admin-subtitles",
         "admin-operations",
         "admin-scans",
-        "admin-logs"
+        "admin-logs",
+        "admin-sessions"
     ];
 
     /// <summary>The policy check a signed-in account with exactly this role passes.</summary>
