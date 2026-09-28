@@ -1,4 +1,5 @@
 @page "/Books/Library/{id:guid}"
+@using Jularr.Web.Ui
 @model Jularr.Web.Pages.Books.LibraryModel
 @{
     var ui = Model.Ui;
@@ -14,12 +15,19 @@
     var unitLabel = Model.IsPdf
         ? ui["books.library.pagesHeading"]
         : ui["books.library.chaptersHeading"];
+    var backLink = new ContextBackLinkModel(
+        $"/Books?lang={Model.TargetLanguage}",
+        $"← {ui["nav.books"]}",
+        "books-back");
 }
 @section Head {
     <link rel="stylesheet" href="~/css/books.css" asp-append-version="true" />
 }
+@section Scripts {
+    <script src="~/js/context-back-link.js" asp-append-version="true"></script>
+}
 
-<a class="books-back" href="/Books?lang=@Model.TargetLanguage">← @ui["nav.books"]</a>
+<partial name="_ContextBackLink" model="backLink" />
 
 <header class="book-detail-header book-library-header book-reading-hero">
     <div class="book-detail-cover">
