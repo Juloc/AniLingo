@@ -173,6 +173,47 @@
     display: none;
 }
 
+/* Page stacks (#446): a thin ream of paper peeking out at the book's outer
+   edges, approximating how much has been read (left) vs remains (right).
+   books-reader.js only ever sets --book-stack-left/--book-stack-right (a
+   width in px derived from currentView/viewCount); the look itself is plain
+   CSS, themed through the same --paper tokens as the rest of the page so it
+   follows light/dark and every paper style automatically. */
+.book-stack {
+    position: absolute;
+    top: 5px;
+    bottom: 5px;
+    width: var(--book-stack-w, 3px);
+    background:
+        repeating-linear-gradient(
+            to right,
+            color-mix(in srgb, var(--paper-ink) 26%, var(--paper)) 0,
+            color-mix(in srgb, var(--paper-ink) 26%, var(--paper)) 1px,
+            var(--paper) 1px,
+            var(--paper) 3px
+        );
+    box-shadow: 0 10px 20px -14px rgba(0, 0, 0, .5);
+    opacity: 0;
+    pointer-events: none;
+    transition: width .3s ease, opacity .3s ease;
+}
+
+.book-reader-page[data-book-layout="paged"] .book-stack {
+    opacity: .9;
+}
+
+.book-reader-page[data-book-layout="paged"] .book-stack-left {
+    --book-stack-w: var(--book-stack-left, 3px);
+    right: 100%;
+    border-radius: 3px 0 0 3px;
+}
+
+.book-reader-page[data-book-layout="paged"] .book-stack-right {
+    --book-stack-w: var(--book-stack-right, 3px);
+    left: 100%;
+    border-radius: 0 3px 3px 0;
+}
+
 .book-page-number {
     position: absolute;
     z-index: 1;
@@ -271,6 +312,46 @@
 .book-reader-page[data-book-layout="paged"] .book-columns.is-turning {
     transition: transform .32s cubic-bezier(.22, .7, .25, 1);
     will-change: transform;
+}
+
+/* Interactive drag (#446): the transform tracks the pointer 1:1, so it must not
+   fight a CSS transition; settleDrag() in books-reader.js swaps this class for
+   .is-turning the moment the pointer is released, reusing the transition above. */
+.book-reader-page[data-book-layout="paged"] .book-columns.is-dragging {
+    transition: none;
+    will-change: transform;
+}
+
+.book-is-dragging {
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: none;
+}
+
+.book-is-dragging .book-stage {
+    cursor: grabbing;
+}
+
+/* Shading that follows the dragged page, like light catching the lifted corner.
+   books-reader.js only ever sets --book-turn-progress (0-1) and the direction
+   data attribute while the pointer is down; it is 0/unset the rest of the time,
+   so this never shows outside an active drag. */
+.book-turn-shade {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.book-reader-page[data-book-layout="paged"] .book-turn-shade[data-turn-direction="next"] {
+    background: linear-gradient(to left, rgba(0, 0, 0, .3), transparent 24%);
+    opacity: var(--book-turn-progress, 0);
+}
+
+.book-reader-page[data-book-layout="paged"] .book-turn-shade[data-turn-direction="prev"] {
+    background: linear-gradient(to right, rgba(0, 0, 0, .3), transparent 24%);
+    opacity: var(--book-turn-progress, 0);
 }
 
 .book-columns.is-fading {
@@ -864,9 +945,17 @@
 @media (prefers-reduced-motion: reduce) {
     .book-columns.is-turning,
     .book-columns.is-fading,
+    .book-columns.is-dragging,
     .book-pdf-spread,
-    .book-paragraph-flash {
+    .book-paragraph-flash,
+    .book-stack {
         transition: none !important;
         animation: none !important;
+    }
+
+    /* books-reader.js never starts a drag under reduced motion, but this keeps
+       the shade inert even if state is left over from a setting change mid-drag. */
+    .book-turn-shade {
+        display: none;
     }
 }

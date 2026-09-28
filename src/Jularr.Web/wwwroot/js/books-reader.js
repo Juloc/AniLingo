@@ -38,6 +38,7 @@
     const spread = root.querySelector("[data-book-spread]");
     const flow = root.querySelector("[data-book-flow]");
     const columns = root.querySelector("[data-book-columns]");
+    const turnShade = root.querySelector("[data-book-turn-shade]");
     const translateForm = root.querySelector("[data-book-translate-form]");
     const settingsForm = root.querySelector("[data-book-settings-form]");
     const toastElement = root.querySelector("[data-book-toast]");
@@ -188,6 +189,12 @@
             button.setAttribute(
                 "aria-checked",
                 button.dataset.bookPaper === settings.paperStyle ? "true" : "false");
+        });
+        // Animated (curl/slide/fade) vs instant paging; see the drag-turn section below.
+        root.querySelectorAll("[data-book-page-turn-choice]").forEach(button => {
+            const animated = button.dataset.bookPageTurnChoice !== "none";
+            const isOn = settings.pageTransition !== "none";
+            button.setAttribute("aria-checked", animated === isOn ? "true" : "false");
         });
     };
 
@@ -341,6 +348,9 @@
     });
     root.querySelectorAll("[data-book-paper]").forEach(button => {
         button.addEventListener("click", () => setSettingControl("paperStyle", button.dataset.bookPaper));
+    });
+    root.querySelectorAll("[data-book-page-turn-choice]").forEach(button => {
+        button.addEventListener("click", () => setSettingControl("pageTransition", button.dataset.bookPageTurnChoice));
     });
 
     root.addEventListener("jularr:reader-settings-response", event => {
@@ -548,6 +558,25 @@
         }
     };
 
+    // Book edge (#446): the visible thickness of the read/remaining page stacks
+    // approximates reading progress, from a thin left stack at the start to a
+    // thin right stack at the end. Purely decorative (aria-hidden); the CSS
+    // custom properties are the only thing this touches.
+    const STACK_MIN_PX = 3;
+    const STACK_MAX_PX = 16;
+    const updateStackDepth = () => {
+        if (!spread) return;
+        if (!layout.paged) {
+            spread.style.removeProperty("--book-stack-left");
+            spread.style.removeProperty("--book-stack-right");
+            return;
+        }
+        const max = compactQuery.matches ? 6 : STACK_MAX_PX;
+        const ratio = layout.viewCount > 1 ? currentView / (layout.viewCount - 1) : 0;
+        spread.style.setProperty("--book-stack-left", Math.round(STACK_MIN_PX + ratio * (max - STACK_MIN_PX)) + "px");
+        spread.style.setProperty("--book-stack-right", Math.round(STACK_MIN_PX + (1 - ratio) * (max - STACK_MIN_PX)) + "px");
+    };
+
     // The slider and the label show one fraction: in Pages mode the slider runs
     // from 0 to the page count and its value is the last page on screen, the same
     // page the percentage is computed from; in Scroll mode both use the scroll
@@ -618,6 +647,7 @@
         }
 
         renderPageNumbers();
+        updateStackDepth();
         emitLocation();
         if (save) {
             readerMoved = true;
@@ -660,6 +690,129 @@
         }
         goToView(next);
     };
+
+    // ---- Interactive page-turn drag (#446) -----------------------------------------
+    // Holding and dragging a page follows the pointer instead of jumping straight to
+    // the next/previous view; tap-zones, swipe and keyboard paging (reader-shell.js /
+    // the keydown handler above) are untouched and still drive goToView() directly.
+    // This drag feeds the exact same currentView/goToView() pagination: while
+    // dragging it slides the real .book-columns transform live, and on release it
+    // either commits with goToView(currentView ± 1) or springs back to the same
+    // view with the .is-turning transition already used for every other page turn.
+    // Disabled for reduced motion and for the "instant paging" choice (pageTransition
+    // "none"), which both fall back to the existing quick tap/swipe handling.
+    const DRAG_ACTIVATE_PX = 10;
+    const DRAG_COMMIT_RATIO = 0.32;
+    const DRAG_FLICK_PX_MS = 0.5;
+    const dragInteractiveSelector = "a,button,input,textarea,select,summary,[contenteditable='true']";
+    let dragState = null;
+
+    const dragEnabled = () =>
+        Boolean(spread) && !pdfContainer && layout.paged &&
+        settings.pageTransition !== "none" && !reduceMotion.matches;
+
+    const setTurnShade = (direction, progress) => {
+        if (!turnShade) return;
+        turnShade.dataset.turnDirection = direction;
+        spread.style.setProperty("--book-turn-progress", progress.toFixed(3));
+    };
+
+    const settleDrag = (dx, velocity) => {
+        columns.classList.remove("is-dragging");
+        root.classList.remove("book-is-dragging");
+        setTurnShade("", 0);
+        const direction = dx < 0 ? 1 : dx > 0 ? -1 : 0;
+        const distanceRatio = layout.stride ? Math.abs(dx) / layout.stride : 0;
+        const flick = Math.abs(velocity) > DRAG_FLICK_PX_MS && Math.sign(velocity) === -direction;
+        const atStart = currentView <= 0;
+        const atEnd = currentView >= layout.viewCount - 1;
+        const commit = direction !== 0 && !(direction === 1 && atEnd) && !(direction === -1 && atStart) &&
+            (distanceRatio > DRAG_COMMIT_RATIO || flick);
+        if (commit) {
+            goToView(currentView + direction);
+            return;
+        }
+        window.clearTimeout(turnTimer);
+        columns.classList.add("is-turning");
+        columns.style.transform = `translate3d(${-currentView * layout.stride}px,0,0)`;
+        turnTimer = window.setTimeout(() => {
+            columns.classList.remove("is-turning", "is-fading");
+        }, 360);
+    };
+
+    if (spread) {
+        spread.addEventListener("pointerdown", event => {
+            if (event.pointerType === "mouse" && event.button !== 0) return;
+            if (event.target instanceof HTMLElement && event.target.closest(dragInteractiveSelector)) return;
+            dragState = {
+                id: event.pointerId,
+                active: false,
+                startX: event.clientX,
+                startY: event.clientY,
+                samples: [{ x: event.clientX, t: performance.now() }]
+            };
+        });
+
+        spread.addEventListener("pointermove", event => {
+            if (!dragState || dragState.id !== event.pointerId) return;
+            const dx = event.clientX - dragState.startX;
+            const dy = event.clientY - dragState.startY;
+            if (!dragState.active) {
+                if (Math.abs(dx) < DRAG_ACTIVATE_PX || Math.abs(dx) < Math.abs(dy)) return;
+                if (!dragEnabled()) {
+                    dragState = null;
+                    return;
+                }
+                const selection = window.getSelection();
+                if (selection && !selection.isCollapsed && selection.toString().trim()) {
+                    dragState = null;
+                    return;
+                }
+                dragState.active = true;
+                dragState.atStart = currentView <= 0;
+                dragState.atEnd = currentView >= layout.viewCount - 1;
+                window.getSelection()?.removeAllRanges();
+                window.clearTimeout(turnTimer);
+                columns.classList.remove("is-turning", "is-fading");
+                columns.classList.add("is-dragging");
+                root.classList.add("book-is-dragging");
+                spread.setPointerCapture(event.pointerId);
+            }
+            event.preventDefault();
+            dragState.samples.push({ x: event.clientX, t: performance.now() });
+            if (dragState.samples.length > 6) dragState.samples.shift();
+            const edge = (dx < 0 && dragState.atEnd) || (dx > 0 && dragState.atStart);
+            const clampedDx = edge
+                ? Math.sign(dx) * Math.min(Math.abs(dx), 70) * 0.4
+                : Math.max(-layout.stride, Math.min(layout.stride, dx));
+            columns.style.transform = `translate3d(${-currentView * layout.stride + clampedDx}px,0,0)`;
+            const progress = layout.stride ? Math.min(1, Math.abs(clampedDx) / layout.stride) : 0;
+            setTurnShade(clampedDx < 0 ? "next" : "prev", edge ? progress * 0.5 : progress);
+        });
+
+        spread.addEventListener("pointerup", event => {
+            if (!dragState || dragState.id !== event.pointerId) return;
+            const wasActive = dragState.active;
+            if (wasActive) {
+                event.stopPropagation();
+                const dx = event.clientX - dragState.startX;
+                const now = performance.now();
+                const early = dragState.samples.find(sample => now - sample.t <= 120) || dragState.samples[0];
+                const dt = Math.max(1, now - early.t);
+                const velocity = (event.clientX - early.x) / dt;
+                settleDrag(dx, velocity);
+            }
+            dragState = null;
+        });
+
+        spread.addEventListener("pointercancel", event => {
+            if (dragState?.id === event.pointerId && dragState.active) {
+                event.stopPropagation();
+                settleDrag(0, 0);
+            }
+            dragState = null;
+        });
+    }
 
     const jumpToParagraph = index => {
         const paragraph = paragraphAt(index);
