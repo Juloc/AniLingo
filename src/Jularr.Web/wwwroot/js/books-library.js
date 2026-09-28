@@ -151,7 +151,7 @@
                 headers: { Accept: "application/json" }
             });
             if (!response.ok) throw new Error(String(response.status));
-            update(item, await response.json());
+            update(item, slot, await response.json());
         } catch {
             renderAction(item, slot);
             state.textContent = text("textFailed");
@@ -185,11 +185,12 @@
         if (current.message) slot.append(element("small", "books-add-note", current.message));
     };
 
-    const update = (item, next) => {
+    // Takes the slot directly rather than looking a row up by item.id: picking a different
+    // edition (#405) changes item.id after the row was keyed in `rows`.
+    const update = (item, slot, next) => {
         if (next.libraryWorkId && !item.state?.libraryWorkId) libraryChanged = true;
         item.state = next;
-        const row = rows.get(item.id);
-        if (row) renderAction(item, row.slot);
+        renderAction(item, slot);
         schedulePoll();
     };
 
@@ -212,11 +213,37 @@
                 const payload = await response.json();
                 for (const row of pending) {
                     const next = payload.states?.[row.item.id];
-                    if (next) update(row.item, next);
+                    if (next) update(row.item, row.slot, next);
                 }
             }
         } catch { /* offline for a moment: the next poll catches up */ }
         schedulePoll();
+    };
+
+    // A work's own choice of primary edition is a sensible default (a free edition when one
+    // exists); expanding lets the reader pick a different provider record instead (#405).
+    let editionGroup = 0;
+    const editionFormatText = (format) => text(`editionFormat${format.charAt(0).toUpperCase()}${format.slice(1)}`);
+    const editionPicker = (item, group) => {
+        const picker = element("details", "books-edition-picker");
+        picker.append(element("summary", null, text("editionsCount").replace("{count}", item.editions.length)));
+        const list = element("ul", "books-edition-list");
+        for (const edition of item.editions) {
+            const row = element("li");
+            const label = document.createElement("label");
+            const radio = document.createElement("input");
+            radio.type = "radio";
+            radio.name = `books-edition-${group}`;
+            radio.value = edition.id;
+            radio.checked = edition.id === item.id;
+            radio.addEventListener("change", () => { item.id = edition.id; });
+            const parts = [edition.year, editionFormatText(edition.format), edition.languageName, edition.publisher, edition.isbn, edition.source].filter(Boolean);
+            label.append(radio, element("span", "books-edition-meta", parts.join(" · ")));
+            row.append(label);
+            list.append(row);
+        }
+        picker.append(list);
+        return picker;
     };
 
     const render = (items) => {
@@ -236,11 +263,19 @@
                 image.addEventListener("error", () => {
                     covers.shift();
                     item.coverImageUrl = covers[0] || null;
-                    if (covers.length > 0) image.src = covers[0];
-                    else image.remove();
+                    if (covers.length > 0) {
+                        image.src = covers[0];
+                    } else {
+                        image.remove();
+                        cover.append(element("span", "book-tile-placeholder", item.title));
+                    }
                 });
                 image.src = covers[0];
                 cover.append(image);
+            } else {
+                // No cover from any provider: the same paper-tile placeholder as the shelf and
+                // the library grid, never a blank box (#405).
+                cover.append(element("span", "book-tile-placeholder", item.title));
             }
             const copy = element("div", "books-add-copy");
             copy.append(element("strong", null, item.title));
@@ -249,6 +284,7 @@
             if (item.listState) copy.append(element("small", "books-add-list-state", item.listState));
             if (item.summary) copy.append(element("p", "books-add-summary", item.summary));
             if (item.freeEdition) copy.append(element("small", "books-add-free", text("textFree")));
+            if (item.editions?.length > 1) copy.append(editionPicker(item, editionGroup++));
             const slot = element("div", "books-add-action");
             rows.set(item.id, { item, slot });
             renderAction(item, slot);

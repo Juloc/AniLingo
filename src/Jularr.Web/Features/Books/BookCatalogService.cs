@@ -45,11 +45,21 @@ public sealed record BookCatalogItem(
     /// <summary>Publication date of the edition the record describes (Google Books volumes).</summary>
     public string? PublishedDate { get; init; }
 
+    /// <summary>Language of the edition the record describes, as a short tag (e.g. "en", "id") when known.</summary>
+    public string? Language { get; init; }
+
     /// <summary>
     /// The profile's reading-list state from a connected list provider, as a
     /// <see cref="BookListStates"/> code; never part of the shared catalog.
     /// </summary>
     public string? ExternalListState { get; init; }
+
+    /// <summary>
+    /// The provider records merged into this work (#405), each a distinct edition view: its own
+    /// year, language, publisher, ISBN and format. Populated only once <see cref="BookWorkSearch"/>
+    /// has merged the search results; empty on a single, unmerged provider record.
+    /// </summary>
+    public IReadOnlyList<BookEditionSummary> Editions { get; init; } = [];
 
     public bool CanPreview => !string.IsNullOrWhiteSpace(TextUrl);
     public bool CanAcquire =>
@@ -1615,7 +1625,7 @@ public sealed partial class BookCatalogService(
         var uri = new Uri(
             "https://openlibrary.org/search.json"
             + "?q=" + Uri.EscapeDataString(query)
-            + "&fields=key,title,author_name,cover_i,first_publish_year,subject,isbn,edition_count"
+            + "&fields=key,title,author_name,cover_i,first_publish_year,subject,isbn,edition_count,language"
             + $"&limit={SearchLimit}");
 
         var response = await GetJsonAsync<OpenLibrarySearchResponse>(
@@ -2269,7 +2279,9 @@ public sealed partial class BookCatalogService(
                 .Take(40)
                 .ToArray(),
             EditionCount = book.EditionCount,
-            CoverCandidates = covers
+            CoverCandidates = covers,
+            // Open Library lists language(s) across all editions of the work (e.g. "eng", "ind").
+            Language = BookWorkSearch.NormalizeLanguageTag(book.Languages?.FirstOrDefault())
         };
     }
 
@@ -2988,7 +3000,9 @@ public sealed partial class BookCatalogService(
         [property: JsonPropertyName("isbn")]
         string[]? Isbns = null,
         [property: JsonPropertyName("edition_count")]
-        int? EditionCount = null);
+        int? EditionCount = null,
+        [property: JsonPropertyName("language")]
+        string[]? Languages = null);
 
     private sealed record OpenLibraryWork(
         [property: JsonPropertyName("title")]
