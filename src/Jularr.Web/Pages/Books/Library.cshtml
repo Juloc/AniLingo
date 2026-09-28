@@ -7,6 +7,13 @@
     var translatedCount = Model.Book.Chapters.Count(x => x.HasTranslation);
     var firstChapter = Model.Book.Progress?.ChapterId
         ?? Model.Book.Chapters.FirstOrDefault()?.Id;
+    var currentChapter = Model.Book.Progress is null
+        ? null
+        : Model.Book.Chapters.FirstOrDefault(x => x.Id == Model.Book.Progress.ChapterId);
+    var progressPercent = Model.Book.Progress?.PositionPermille / 10 ?? 0;
+    var unitLabel = Model.IsPdf
+        ? ui["books.library.pagesHeading"]
+        : ui["books.library.chaptersHeading"];
 }
 @section Head {
     <link rel="stylesheet" href="~/css/books.css" asp-append-version="true" />
@@ -14,7 +21,7 @@
 
 <a class="books-back" href="/Books?lang=@Model.TargetLanguage">← @ui["nav.books"]</a>
 
-<header class="book-detail-header book-library-header">
+<header class="book-detail-header book-library-header book-reading-hero">
     <div class="book-detail-cover">
         @if (!string.IsNullOrWhiteSpace(Model.Book.Work.CoverImageUrl))
         {
@@ -29,6 +36,14 @@
     </div>
 
     <div class="book-detail-copy">
+        <div class="reading-detail-kicker">
+            <span>@unitLabel</span>
+            <span>@Model.Book.Chapters.Count</span>
+            @if (translatedCount > 0)
+            {
+                <span>@translatedCount @ui["books.library.translated"]</span>
+            }
+        </div>
         <h1>@title</h1>
         @if (!string.IsNullOrWhiteSpace(Model.Book.Work.Author))
         {
@@ -48,7 +63,44 @@
             </div>
         }
 
-        <div class="book-language-row">
+        @if (Model.Book.Progress is not null)
+        {
+            <section class="reading-progress-card" aria-label="@ui["reader.continueReading"]">
+                <div>
+                    <span>@ui["reader.continueReading"]</span>
+                    @if (currentChapter is not null)
+                    {
+                        <strong>@currentChapter.Title</strong>
+                    }
+                </div>
+                <strong>@progressPercent%</strong>
+                <div class="reading-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@progressPercent">
+                    <span style="width:@progressPercent%"></span>
+                </div>
+            </section>
+        }
+
+        <div class="book-actions book-reading-primary-actions">
+            @if (firstChapter is Guid chapterId)
+            {
+                <a class="button button-primary"
+                   href="/Books/Read/@chapterId?lang=@Model.TargetLanguage">
+                    @(Model.Book.Progress is null ? ui["books.library.startReading"] : ui["reader.continueReading"])
+                </a>
+            }
+            <a class="button"
+               href="@Url.Page("/Settings/LearningScope", new {
+                   mediaType = Jularr.Web.Features.Learning.LearningMediaType.Book,
+                   scope = "work",
+                   workKey = Model.Book.Work.Id.ToString(),
+                   label = title,
+                   returnUrl = $"/Books/Library/{Model.Book.Work.Id}?lang={Model.TargetLanguage}"
+               })">
+                @ui["books.library.languageToolsLearning"]
+            </a>
+        </div>
+
+        <div class="book-language-row book-reading-language-row">
             <form method="get" class="book-language-form">
                 <label>
                     @ui["books.library.readingLanguage"]
@@ -101,26 +153,6 @@
                     <span style="width:@(Model.Book.Chapters.Count == 0 ? 0 : translatedCount * 100 / Model.Book.Chapters.Count)%"></span>
                 </div>
             }
-        </div>
-
-        <div class="book-actions">
-            @if (firstChapter is Guid chapterId)
-            {
-                <a class="button button-primary"
-                   href="/Books/Read/@chapterId?lang=@Model.TargetLanguage">
-                    @(Model.Book.Progress is null ? ui["books.library.startReading"] : ui["reader.continueReading"])
-                </a>
-            }
-            <a class="button"
-               href="@Url.Page("/Settings/LearningScope", new {
-                   mediaType = Jularr.Web.Features.Learning.LearningMediaType.Book,
-                   scope = "work",
-                   workKey = Model.Book.Work.Id.ToString(),
-                   label = title,
-                   returnUrl = $"/Books/Library/{Model.Book.Work.Id}?lang={Model.TargetLanguage}"
-               })">
-                @ui["books.library.languageToolsLearning"]
-            </a>
         </div>
 
         <partial name="_OfflineLibraryAction" model="new Jularr.Web.Features.OfflineLibrary.OfflineLibraryActionViewModel(Model.Book.Work.Id, title)" />

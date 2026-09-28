@@ -997,3 +997,75 @@
     background: var(--surface-2);
     color: var(--text);
 }
+
+/* Reading detail: title metadata, progress and the next reading action share
+   the same information hierarchy as the book library. */
+.novel-reading-hero {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    align-items: stretch;
+    padding: 28px;
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius-card) + 4px);
+    background: var(--surface);
+    box-shadow: var(--shadow-card);
+}
+
+.novel-reading-hero::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    opacity: .34;
+    background: url("/brand/hero-fuji.webp") right center / cover no-repeat;
+    -webkit-mask-image: linear-gradient(90deg, transparent 26%, #000 100%);
+    mask-image: linear-gradient(90deg, transparent 26%, #000 100%);
+    pointer-events: none;
+}
+
+:root[data-app-theme="dark"] .novel-reading-hero::before {
+    filter: invert(1) hue-rotate(180deg) brightness(.8);
+}
+
+.novel-reading-hero .reading-detail-kicker {
+    margin-bottom: 8px;
+}
+
+.novel-work-genres {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    margin-top: 14px;
+}
+
+.novel-work-genres span {
+    padding: 5px 9px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+.novel-reading-primary-actions {
+    display: flex;
+    align-items: center;
+    margin-top: 18px;
+}
+
+@media (max-width: 560px) {
+    .novel-reading-hero {
+        padding: 16px;
+    }
+
+    .novel-reading-hero::before {
+        opacity: .2;
+        -webkit-mask-image: linear-gradient(180deg, #000, transparent 70%);
+        mask-image: linear-gradient(180deg, #000, transparent 70%);
+    }
+
+    .novel-reading-hero .reading-detail-kicker {
+        gap: 5px 8px;
+        font-size: 10px;
+    }
+}
