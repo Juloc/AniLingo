@@ -36,6 +36,7 @@
     string VolumeCount(int count) => count == 1
         ? ui["novels.work.oneVolumeInline"]
         : ui.Format("novels.work.volumesCountInline", ("count", count));
+    var backLink = new ContextBackLinkModel("/Novels", ui["novels.work.backToNovels"], "back-link");
 }
 @section Head {
     <link rel="stylesheet" href="~/css/novel-library.css" asp-append-version="true" />
@@ -43,9 +44,10 @@
 }
 @section Scripts {
     <script src="~/js/novel-file-picker.js" asp-append-version="true"></script>
+    <script src="~/js/context-back-link.js" asp-append-version="true"></script>
 }
 
-<a class="back-link" href="/Novels">@ui["novels.work.backToNovels"]</a>
+<partial name="_ContextBackLink" model="backLink" />
 
 <header class="novel-work-header novel-reading-hero">
     <div class="novel-work-cover">
