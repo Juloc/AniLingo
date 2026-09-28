@@ -633,6 +633,29 @@ button, input { font: inherit; }
     color: #c3c9d1; font-size: 13px; line-height: 1.55; white-space: pre-line;
     -webkit-line-clamp: 5; -webkit-box-orient: vertical;
 }
+.anime-viewing-state {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 8px 12px;
+    width: min(510px, 100%);
+    margin-top: 18px;
+    padding: 12px;
+    border: 1px solid rgba(255,255,255,.16);
+    border-radius: 12px;
+    background: rgba(5, 8, 12, .35);
+    backdrop-filter: blur(8px);
+}
+.anime-primary-action { min-width: 0; }
+.anime-next-episode { display: grid; min-width: 0; gap: 2px; }
+.anime-next-episode strong { font-size: 12px; }
+.anime-next-episode span { overflow: hidden; color: #c8ced6; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.anime-series-progress { grid-column: 1 / -1; display: grid; gap: 6px; }
+.anime-series-progress-label { display: flex; justify-content: space-between; gap: 12px; color: #c8ced6; font-size: 11px; font-variant-numeric: tabular-nums; }
+.anime-series-progress-label strong { color: #f3f5f7; }
+.anime-viewing-state .progress-track { height: 5px; background: rgba(255,255,255,.18); }
+.anime-viewing-state .progress-track > span { background: var(--accent); }
+.anime-secondary-actions { margin-top: 16px; }
 
 .metadata-panel { margin-bottom: 18px; }
 .metadata-search { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
@@ -668,6 +691,8 @@ button, input { font: inherit; }
 @media (max-width: 620px) {
     .anime-hero-content { align-items: flex-start; flex-direction: column; }
     .anime-detail-poster { width: 118px; }
+    .anime-viewing-state { grid-template-columns: 1fr; width: 100%; }
+    .anime-primary-action { width: 100%; }
     .metadata-search { grid-template-columns: 1fr; }
     .metadata-result { grid-template-columns: 46px minmax(0, 1fr); }
     .metadata-result-poster { width: 46px; height: 66px; }
