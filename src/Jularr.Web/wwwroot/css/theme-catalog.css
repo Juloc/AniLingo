@@ -1,0 +1,134 @@
+/* Built-in application themes change tokens and shared chrome only. They never add page art,
+   alter navigation, or replace a route's data-driven layout. */
+:root[data-app-theme-id^="clean-"] {
+    --paper-texture: none;
+    --paper-opacity: 0;
+    --blossom-opacity: 0;
+    --radius-card: 18px;
+    --shadow-card: 0 12px 32px rgba(41, 91, 153, .10);
+}
+
+:root[data-app-theme-id^="clean-"] .sidebar {
+    background: color-mix(in srgb, var(--sidebar-bg) 90%, #fff 10%);
+    border-inline-end-color: color-mix(in srgb, var(--border) 72%, #9cc8ff);
+}
+
+:root[data-app-theme-id^="clean-"] .sidebar::after {
+    display: none;
+}
+
+:root[data-app-theme-id^="clean-"] .art-tint {
+    filter: none;
+}
+
+:root[data-app-theme-id^="clean-"] .panel,
+:root[data-app-theme-id^="clean-"] .metric-card,
+:root[data-app-theme-id^="clean-"] .media-poster,
+:root[data-app-theme-id^="clean-"] .episode-row {
+    box-shadow: var(--shadow-card);
+}
+
+/* Reader and player keep their controls and user-selected media settings. Only their automatic
+   application chrome follows the clean theme, without the original paper/artwork treatment. */
+:root[data-app-theme-id^="clean-"] .reader-frame {
+    --reader-surface: var(--surface);
+    --reader-surface-2: var(--surface-2);
+    --reader-border: var(--border);
+}
+
+:root[data-app-theme-id^="clean-"] .book-reader-page[data-paper-style="auto"] {
+    --paper: var(--surface);
+    --paper-ink: var(--text);
+    --paper-ink-soft: var(--muted);
+    --paper-texture-opacity: 0;
+    --paper-art-opacity: 0;
+    --paper-shadow: var(--shadow-card);
+}
+
+:root[data-app-theme-id^="clean-"] .player-panel {
+    border-color: var(--border);
+    box-shadow: var(--shadow-card);
+}
+
+.brand-mark-theme {
+    border-radius: 11px;
+    object-fit: contain;
+}
+
+.theme-choice-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 10px;
+}
+
+.theme-choice {
+    display: flex !important;
+    align-items: center;
+    gap: 10px !important;
+    min-width: 0;
+    padding: 11px;
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius-card) - 4px);
+    background: var(--surface-2);
+    color: var(--text) !important;
+    cursor: pointer;
+}
+
+.theme-choice:has(input:checked) {
+    border-color: color-mix(in srgb, var(--accent) 54%, var(--border));
+    background: var(--accent-soft);
+}
+
+.theme-choice input {
+    width: auto !important;
+    margin: 0;
+}
+
+.theme-choice img {
+    flex: none;
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    object-fit: contain;
+}
+
+.theme-choice > span {
+    min-width: 0;
+    display: grid;
+    gap: 2px;
+}
+
+.theme-choice small {
+    color: var(--muted);
+    font-weight: 500;
+    line-height: 1.3;
+}
+
+@media (max-width: 520px) {
+    .theme-choice-grid { grid-template-columns: 1fr; }
+}
+
+:root[data-app-theme-id="clean-summit"] {
+    --radius-card: 20px;
+    --shadow-card: 0 10px 28px rgba(49, 108, 181, .09);
+}
+
+:root[data-app-theme-id="clean-orbit"] {
+    --radius-card: 24px;
+    --shadow-card: 0 14px 36px rgba(36, 111, 204, .12);
+}
+
+:root[data-app-theme-id="clean-horizon"] {
+    --radius-card: 16px;
+    --shadow-card: 0 12px 30px rgba(25, 73, 134, .14);
+}
+
+:root[data-app-theme-id^="clean-"][data-app-theme="dark"] {
+    --shadow-card: 0 12px 32px rgba(0, 0, 0, .32);
+}
+
+@media (prefers-color-scheme: dark) {
+    :root[data-app-theme-id^="clean-"][data-app-theme="system"] {
+        --shadow-card: 0 12px 32px rgba(0, 0, 0, .32);
+    }
+}

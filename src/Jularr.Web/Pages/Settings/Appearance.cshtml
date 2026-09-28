@@ -32,6 +32,44 @@
     <div class="appearance-controls">
         <section class="panel">
             <div class="panel-heading">
+                <h2>@ui["settings.appearance.catalogHeading"]</h2>
+            </div>
+            @if (Model.InstanceAppearance.AllowProfileThemeOverride)
+            {
+                <p class="muted appearance-help">@ui["settings.appearance.catalogHelp"]</p>
+                <form method="post" asp-page="/Appearance/Theme" asp-page-handler="Select" class="form-stack">
+                    <div class="theme-choice-grid" role="radiogroup" aria-label="@ui["settings.appearance.catalogHeading"]">
+                        <label class="theme-choice @(string.IsNullOrEmpty(Model.SelectedThemeId) ? "selected" : "")">
+                            <input type="radio" name="themeId" value="" checked="@string.IsNullOrEmpty(Model.SelectedThemeId)" />
+                            <img src="@Model.Themes.Single(theme => theme.Id == Model.InstanceAppearance.DefaultThemeId).LogoPath" alt="" width="40" height="40" />
+                            <span>
+                                <strong>@ui["settings.appearance.followInstance"]</strong>
+                                <small>@ui.Format("settings.appearance.followInstanceHelp", ("theme", ui[Model.Themes.Single(theme => theme.Id == Model.InstanceAppearance.DefaultThemeId).NameKey]))</small>
+                            </span>
+                        </label>
+                        @foreach (var theme in Model.Themes)
+                        {
+                            <label class="theme-choice @(theme.Id == Model.SelectedThemeId ? "selected" : "")">
+                                <input type="radio" name="themeId" value="@theme.Id" checked="@(theme.Id == Model.SelectedThemeId)" />
+                                <img src="@theme.LogoPath" alt="" width="40" height="40" />
+                                <span>
+                                    <strong>@ui[theme.NameKey]</strong>
+                                    <small>@ui[theme.DescriptionKey]</small>
+                                </span>
+                            </label>
+                        }
+                    </div>
+                    <div class="inline-actions"><button type="submit" class="button">@ui["settings.appearance.applyTheme"]</button></div>
+                </form>
+            }
+            else
+            {
+                <p class="muted">@ui.Format("settings.appearance.instanceThemeLocked", ("theme", ui[Model.Themes.Single(theme => theme.Id == Model.InstanceAppearance.DefaultThemeId).NameKey]))</p>
+            }
+        </section>
+
+        <section class="panel">
+            <div class="panel-heading">
                 <h2>@ui["settings.appearance.modeHeading"]</h2>
             </div>
             <form method="post" asp-page="/Appearance/Theme" class="appearance-mode" data-appearance-mode-form>

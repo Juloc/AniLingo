@@ -1,7 +1,18 @@
-@* Product logo and name. "Jularr" is the protected brand name and is intentionally not translated.
-   The ensō ring follows the profile accent (--jularr-ring) and the brush-stroke J follows the ink
-   colour of the current theme (--jularr-ink); both are set in site.css. *@
-<svg class="brand-mark" viewBox="48 16 864 864" width="36" height="36" aria-hidden="true" focusable="false">
-    <use href="/brand/jularr-mark.svg#jularr-mark" x="48" y="16" width="864" height="864"></use>
-</svg>
+@using Jularr.Web.Features.Appearance
+@{
+    var themeId = ThemeCatalog.NormalizeOrOriginal(ViewData["AppThemeId"] as string);
+    var theme = ThemeCatalog.All.Single(item => item.Id == themeId);
+}
+@* Product logo and name. Each built-in theme may use its approved brand mark, while the app
+   shell, routes and navigation remain identical. *@
+@if (theme.UsesOriginalArtwork)
+{
+    <svg class="brand-mark" viewBox="48 16 864 864" width="36" height="36" aria-hidden="true" focusable="false">
+        <use href="/brand/jularr-mark.svg#jularr-mark" x="48" y="16" width="864" height="864"></use>
+    </svg>
+}
+@if (!theme.UsesOriginalArtwork)
+{
+    <img class="brand-mark brand-mark-theme" src="@theme.LogoPath" alt="" width="36" height="36" />
+}
 <span class="brand-name">Jularr</span>
