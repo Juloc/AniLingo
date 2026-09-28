@@ -1,4 +1,6 @@
 @page "/Books/{id}"
+@using Jularr.Web.Ui
+@using Microsoft.AspNetCore.Html
 @model Jularr.Web.Pages.Books.DetailsModel
 @{
     var ui = Model.Ui;
@@ -56,24 +58,50 @@
             }
 
             <div class="book-actions">
-                @if (Model.IsOwner)
-                {
-                    <form method="post"
-                          asp-page-handler="Acquire"
-                          asp-route-id="@Model.Book.Id">
-                        <button class="button button-primary" type="submit">
-                            @(!string.IsNullOrWhiteSpace(Model.Book.EpubUrl)
-                                ? ui["books.details.addEpub"]
-                                : Model.Book.CanAcquire
-                                    ? ui["books.details.addToLibrary"]
-                                    : ui["books.details.findFreeEdition"])
-                        </button>
-                    </form>
-                }
                 <a class="button"
                    href="@Model.Book.SourceUrl"
                    target="_blank"
                    rel="noopener noreferrer">@Model.Book.SourceName</a>
+
+                @if (Model.IsOwner)
+                {
+                    Func<dynamic?, IHtmlContent> acquisitionGroup = @<div>
+                            <form method="post"
+                                  asp-page-handler="Acquire"
+                                  asp-route-id="@Model.Book.Id">
+                                <button class="button button-primary" type="submit">
+                                    @(!string.IsNullOrWhiteSpace(Model.Book.EpubUrl)
+                                        ? ui["books.details.addEpub"]
+                                        : Model.Book.CanAcquire
+                                            ? ui["books.details.addToLibrary"]
+                                            : ui["books.details.findFreeEdition"])
+                                </button>
+                            </form>
+
+                            @if (Model.Book.SourceName != "Project Gutenberg")
+                            {
+                                <p class="muted">@ui["books.details.sendNzbSummary"]</p>
+                                <form method="post"
+                                      asp-page-handler="SabUrl"
+                                      asp-route-id="@Model.Book.Id"
+                                      class="books-inline-form">
+                                    <input type="url"
+                                           name="nzbUrl"
+                                           placeholder="https://…/book.nzb"
+                                           required />
+                                    <button class="button" type="submit">@ui["books.details.send"]</button>
+                                </form>
+                            }
+                        </div>;
+
+                    var bookManageSheet = new ManageSheetModel(
+                        "book-manage",
+                        ui["manage.trigger"],
+                        Model.Book.Title,
+                        [new ManageSheetGroup(ui["manage.group.acquisition"], acquisitionGroup(null))],
+                        ui);
+                    <partial name="_ManageSheet" model="bookManageSheet" />
+                }
             </div>
 
             @if (!Model.Book.CanAcquire)
@@ -81,23 +109,6 @@
                 <p class="book-meta">
                     @ui["books.details.acquireNote"]
                 </p>
-            }
-
-            @if (Model.IsOwner && Model.Book.SourceName != "Project Gutenberg")
-            {
-                <details class="book-sab-panel">
-                    <summary>@ui["books.details.sendNzbSummary"]</summary>
-                    <form method="post"
-                          asp-page-handler="SabUrl"
-                          asp-route-id="@Model.Book.Id"
-                          class="books-inline-form">
-                        <input type="url"
-                               name="nzbUrl"
-                               placeholder="https://…/book.nzb"
-                               required />
-                        <button class="button" type="submit">@ui["books.details.send"]</button>
-                    </form>
-                </details>
             }
         </div>
     </header>

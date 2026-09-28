@@ -1,10 +1,9 @@
 @model Jularr.Web.Features.Franchises.FranchiseLinksViewModel
+@* No visible heading (#519): the section's aria-label already names it for assistive tech, and
+   an uppercase "Franchise" label above one or two links is unnecessary. *@
 @if (Model.Franchises.Count > 0)
 {
     <section class="franchise-links-panel" aria-label="@Model.Ui["franchise.sectionTitle"]">
-        <div class="franchise-links-heading">
-            <span>@Model.Ui["franchise.sectionTitle"]</span>
-        </div>
         <div class="franchise-links-list">
             @foreach (var franchise in Model.Franchises)
             {
