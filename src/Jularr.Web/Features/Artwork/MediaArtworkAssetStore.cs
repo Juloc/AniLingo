@@ -9,6 +9,9 @@ namespace Jularr.Web.Features.Artwork;
 public static class MediaArtworkScopes
 {
     public const string AnimeSeries = "anime-series";
+
+    /// <summary>A Books work (issue #406); the folder beside its NAS-stored EPUB/PDF.</summary>
+    public const string Book = "book";
 }
 
 /// <summary>Where a Jularr-written artwork file came from; a higher rank may replace a lower one.</summary>
@@ -17,6 +20,10 @@ public static class MediaArtworkSources
     public const string Sonarr = "sonarr";
     public const string Migrated = "migrated";
     public const string AniList = "anilist";
+
+    /// <summary>A book cover fetched from its metadata provider or the imported file itself; Books
+    /// has no multi-provider ranking, so every non-user cover shares this one source.</summary>
+    public const string Provider = "provider";
 
     public static int Rank(string source) =>
         source switch
