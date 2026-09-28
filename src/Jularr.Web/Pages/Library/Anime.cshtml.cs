@@ -5,6 +5,7 @@ using Jularr.Web.Features.Franchises;
 using Jularr.Web.Features.Learning;
 using Jularr.Web.Features.Library;
 using Jularr.Web.Features.Localization;
+using Jularr.Web.Features.MediaFacts;
 using Jularr.Web.Features.Metadata;
 using Jularr.Web.Features.Operations;
 using Jularr.Web.Features.Presentation;
@@ -54,6 +55,14 @@ public sealed class AnimeModel(
     public IReadOnlyList<FranchiseSummary> Franchises { get; private set; } = [];
     public IReadOnlyList<FranchiseRelationGroup> FranchiseGroups { get; private set; } = [];
 
+    /// <summary>
+    /// Language availability across this anime's episodes (#426). The hero already states the
+    /// episode/season counts, runtime, year and provider status in its own words, so this only
+    /// ever renders the language chips (showFacts: false) -- never a second, differently-worded
+    /// copy of the same fact.
+    /// </summary>
+    public MediaFactsStripModel? Facts { get; private set; }
+
     public async Task<IActionResult> OnGetAsync(
         Guid id,
         string? q,
@@ -69,6 +78,10 @@ public sealed class AnimeModel(
             return NotFound();
         }
 
+        Facts = MediaFactsStripModel.Create(
+            await new MediaFactsService(db).GetAnimeFactsAsync(id, cancellationToken),
+            Ui,
+            showFacts: false);
         AnimeId = anime.Id;
         LocalAnimeTitle = anime.Title;
         Metadata = await metadataService.GetAsync(id, cancellationToken);
