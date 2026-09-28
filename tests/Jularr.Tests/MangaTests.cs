@@ -186,6 +186,103 @@ public sealed class MangaTests
 
 
     [TestMethod]
+    public async Task RenamingChapterFilePreservesIdentityAndProgressOnRescan()
+    {
+        var root = TempDirectory();
+        var database = Path.Combine(root, "jularr.db");
+        var source = Path.Combine(root, "Series");
+        var cache = Path.Combine(root, "cache");
+        var originalChapterPath = Path.Combine(source, "Ch. 5.cbz");
+
+        try
+        {
+            Directory.CreateDirectory(source);
+            CreateArchive(originalChapterPath, 4);
+
+            await using var db = await CreateDatabaseAsync(database);
+            var repository = new MangaRepository(db);
+            var importer = new MangaImportService(repository, cache);
+
+            var imported = await importer.ImportAsync(source, CancellationToken.None);
+            var seriesBefore = await repository.GetSeriesAsync(imported.SeriesId, CancellationToken.None);
+            var chapterBefore = seriesBefore!.Chapters.Single();
+            Assert.AreEqual(5d, chapterBefore.Number);
+
+            var chapterRead = await repository.GetChapterAsync(chapterBefore.Id, CancellationToken.None);
+            await repository.SaveProgressAsync("reader-a", chapterRead!, 2, CancellationToken.None);
+
+            // Rename the chapter file on disk within the same series folder: same chapter number,
+            // different path/name - the way a #529 naming placement or a manual rename would leave
+            // it, and exactly what MangaChapters used to have no durable identity to survive (#563).
+            var renamedChapterPath = Path.Combine(source, "Chapter 05 (moved).cbz");
+            File.Move(originalChapterPath, renamedChapterPath);
+
+            var rescanned = await importer.ImportAsync(source, CancellationToken.None);
+
+            Assert.AreEqual(imported.SeriesId, rescanned.SeriesId);
+            Assert.AreEqual(1, rescanned.ChapterCount);
+
+            var seriesAfter = await repository.GetSeriesAsync(rescanned.SeriesId, CancellationToken.None);
+            var chapterAfter = seriesAfter!.Chapters.Single();
+            Assert.AreEqual(chapterBefore.Id, chapterAfter.Id);
+
+            var progress = await repository.GetProgressAsync(
+                "reader-a",
+                rescanned.SeriesId,
+                CancellationToken.None);
+            Assert.IsNotNull(progress);
+            Assert.AreEqual(chapterBefore.Id, progress!.ChapterId);
+            Assert.AreEqual(2, progress.PageIndex);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            TryDelete(root);
+        }
+    }
+
+    [TestMethod]
+    public async Task RescanningUnchangedMangaSeriesIsIdempotentAndDoesNotDuplicateChaptersOrVolumes()
+    {
+        var root = TempDirectory();
+        var database = Path.Combine(root, "jularr.db");
+        var source = Path.Combine(root, "Series");
+        var chapterDirectory = Path.Combine(source, "Vol.1", "Ch. 3");
+        var cache = Path.Combine(root, "cache");
+
+        try
+        {
+            Directory.CreateDirectory(chapterDirectory);
+            await File.WriteAllBytesAsync(Path.Combine(chapterDirectory, "001.jpg"), [1, 2, 3]);
+
+            await using var db = await CreateDatabaseAsync(database);
+            var repository = new MangaRepository(db);
+            var importer = new MangaImportService(repository, cache);
+
+            var first = await importer.ImportAsync(source, CancellationToken.None);
+            var seriesAfterFirst = await repository.GetSeriesAsync(first.SeriesId, CancellationToken.None);
+            var chapterIdAfterFirst = seriesAfterFirst!.Chapters.Single().Id;
+            var volumesAfterFirst = await repository.GetVolumesAsync(first.SeriesId, CancellationToken.None);
+            var volumeIdAfterFirst = volumesAfterFirst.Single().Id;
+
+            var second = await importer.ImportAsync(source, CancellationToken.None);
+            var seriesAfterSecond = await repository.GetSeriesAsync(second.SeriesId, CancellationToken.None);
+            var volumesAfterSecond = await repository.GetVolumesAsync(second.SeriesId, CancellationToken.None);
+
+            Assert.AreEqual(first.SeriesId, second.SeriesId);
+            Assert.AreEqual(1, seriesAfterSecond!.Chapters.Count);
+            Assert.AreEqual(chapterIdAfterFirst, seriesAfterSecond.Chapters.Single().Id);
+            Assert.AreEqual(1, volumesAfterSecond.Count);
+            Assert.AreEqual(volumeIdAfterFirst, volumesAfterSecond.Single().Id);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            TryDelete(root);
+        }
+    }
+
+    [TestMethod]
     public async Task SeriesCoverBesideChapterFoldersIsNotImportedAsChapter()
     {
         var root = TempDirectory();
