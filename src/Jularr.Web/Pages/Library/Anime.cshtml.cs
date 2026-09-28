@@ -7,6 +7,7 @@ using Jularr.Web.Features.Library;
 using Jularr.Web.Features.Localization;
 using Jularr.Web.Features.Metadata;
 using Jularr.Web.Features.Operations;
+using Jularr.Web.Features.Presentation;
 using Jularr.Web.Features.Progress;
 using Jularr.Web.Features.Tracking;
 using Jularr.Web.Features.Watchlist;
@@ -39,6 +40,10 @@ public sealed class AnimeModel(
     public IReadOnlyList<AnimeMetadataCandidate> SearchResults { get; private set; } = [];
     public IReadOnlyList<AnimeEpisodeMetadataMapping> EpisodeMappings { get; private set; } = [];
     public IReadOnlyList<EpisodeRow> Episodes { get; private set; } = [];
+
+    // Owner-defined display grouping (#524). Empty for works with no groups, which then render as
+    // a plain episode list exactly as before. Never alters episode identity or file paths.
+    public IReadOnlyList<PresentationSection<EpisodeRow>> PresentationSections { get; private set; } = [];
     public IReadOnlyList<SeasonRow> Seasons { get; private set; } = [];
     public int SuggestedMappingSeason { get; private set; }
     public int SuggestedMappingEpisodeStart { get; private set; } = 1;
@@ -238,6 +243,14 @@ public sealed class AnimeModel(
                         : null);
             })
             .ToArray();
+
+        var presentationGroups = await new PresentationGroupStore(db)
+            .ListForWorkAsync(PresentationMediaType.Anime, id, cancellationToken);
+        PresentationSections = PresentationGrouping.Arrange(
+            presentationGroups,
+            Episodes,
+            episode => episode.Number,
+            Ui["library.presentation.otherHeading"]);
 
         // Local-only: remote AniList progress is loaded after first paint
         // through OnGetExternalProgressAsync.
