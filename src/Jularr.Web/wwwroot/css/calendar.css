@@ -167,6 +167,36 @@
     color: var(--accent-text);
 }
 
+/* #520 media-type filter-chip pattern, reused here for the calendar's media-type filter. */
+.calendar-filter-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.calendar-filter-chip {
+    display: inline-flex;
+    align-items: center;
+    min-height: 34px;
+    padding: 6px 14px;
+    border: 1px solid var(--border-strong);
+    border-radius: 999px;
+    background: var(--surface-2);
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 700;
+    text-decoration: none;
+    white-space: nowrap;
+}
+.calendar-filter-chip:hover {
+    color: var(--text);
+    background: var(--surface);
+}
+.calendar-filter-chip.active {
+    color: var(--accent-text);
+    border-color: color-mix(in srgb, var(--accent) 18%, transparent);
+    background: color-mix(in srgb, var(--accent) 12%, var(--surface-2));
+}
+
 .calendar-period {
     min-width: 0;
     display: flex;
@@ -652,10 +682,13 @@
     .calendar-views a {
         padding-inline: 8px;
     }
+    .calendar-filter-chips {
+        width: 100%;
+    }
     .calendar-filter-group {
         width: 100%;
         display: grid;
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: 1fr;
     }
     .calendar-filter-menu > summary {
         min-width: 0;
@@ -743,9 +776,6 @@
 }
 
 @media (max-width: 460px) {
-    .calendar-filter-group {
-        grid-template-columns: 1fr;
-    }
     .calendar-period {
         grid-template-columns: auto auto auto;
     }
