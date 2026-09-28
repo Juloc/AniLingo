@@ -91,6 +91,7 @@ fun TvAppHost(
     var updateChecksEnabled by remember { mutableStateOf(updatePreferences.checksEnabled) }
     var updateState by remember { mutableStateOf<TvUpdateState>(TvUpdateState.Idle) }
     var updatePromptInfo by remember { mutableStateOf<UpdateCheckResult.UpdateAvailable?>(null) }
+    val updateChecksumMismatchMessage = stringResource(R.string.tv_update_failed_checksum)
 
     fun checkForUpdatesNow() {
         scope.launch {
@@ -119,7 +120,7 @@ fun TvAppHost(
             updateState = when (result) {
                 is UpdateDownloadResult.Success -> TvUpdateState.ReadyToInstall(info, result.file)
                 UpdateDownloadResult.ChecksumMismatch ->
-                    TvUpdateState.Failed(context.getString(R.string.tv_update_failed_checksum))
+                    TvUpdateState.Failed(updateChecksumMismatchMessage)
                 is UpdateDownloadResult.Failed -> TvUpdateState.Failed(result.message)
             }
         }

@@ -72,6 +72,7 @@ fun UpdateScreen(
     val scope = rememberCoroutineScope()
     val manager = remember { UpdateManager() }
     val preferences = remember { UpdatePreferences(context.applicationContext) }
+    val checksumMismatchMessage = stringResource(R.string.update_failed_checksum)
 
     var checksEnabled by remember { mutableStateOf(preferences.checksEnabled) }
     var state by remember {
@@ -126,7 +127,7 @@ fun UpdateScreen(
             state = when (result) {
                 is UpdateDownloadResult.Success -> UpdateScreenState.ReadyToInstall(info, result.file)
                 UpdateDownloadResult.ChecksumMismatch ->
-                    UpdateScreenState.Failed(context.getString(R.string.update_failed_checksum))
+                    UpdateScreenState.Failed(checksumMismatchMessage)
                 is UpdateDownloadResult.Failed -> UpdateScreenState.Failed(result.message)
             }
         }
