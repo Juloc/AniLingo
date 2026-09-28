@@ -741,8 +741,9 @@ public sealed class BookCatalogServiceTests
             Assert.AreEqual(
                 $"/Books/Cover/{workId}",
                 work.CoverImageUrl);
-            Assert.IsNotNull(service.GetLocalCoverPath(workId));
-            Assert.IsTrue(File.Exists(service.GetLocalCoverPath(workId)!));
+            var coverPath = await service.GetLocalCoverPathAsync(workId, null, CancellationToken.None);
+            Assert.IsNotNull(coverPath);
+            Assert.IsTrue(File.Exists(coverPath));
         }
         finally
         {
@@ -802,14 +803,14 @@ public sealed class BookCatalogServiceTests
                 .Chapter("c1.xhtml", "Book One", "A beginning is the time for taking the most delicate care.")
                 .Build();
             var ownId = await service.ImportUploadedEpubAsync(withCover, "dune.epub", CancellationToken.None);
-            CollectionAssert.AreEqual(EpubTestBuilder.Png, await File.ReadAllBytesAsync(service.GetLocalCoverPath(ownId)!), "The file's own cover is the actual edition.");
+            CollectionAssert.AreEqual(EpubTestBuilder.Png, await File.ReadAllBytesAsync((await service.GetLocalCoverPathAsync(ownId, null, CancellationToken.None))!), "The file's own cover is the actual edition.");
             Assert.AreEqual(0, googleSearches.Count, "Without an ISBN nothing outranks the embedded cover, so no lookup is made.");
 
             await using var withoutCover = new EpubTestBuilder { Title = "Dune", Author = "Frank Herbert", Language = "en", Identifier = "urn:uuid:dune-plain" }
                 .Chapter("c1.xhtml", "Book One", "Arrakis, the desert planet.")
                 .Build();
             var plainId = await service.ImportUploadedEpubAsync(withoutCover, "dune-plain.epub", CancellationToken.None);
-            CollectionAssert.AreEqual(googleCover, await File.ReadAllBytesAsync(service.GetLocalCoverPath(plainId)!), "A book without a cover gets its matched current cover.");
+            CollectionAssert.AreEqual(googleCover, await File.ReadAllBytesAsync((await service.GetLocalCoverPathAsync(plainId, null, CancellationToken.None))!), "A book without a cover gets its matched current cover.");
             Assert.AreEqual($"/Books/Cover/{plainId}", (await db.NovelWorks.AsNoTracking().SingleAsync(x => x.Id == plainId)).CoverImageUrl);
             StringAssert.Contains(googleSearches.Single(), "intitle:Dune inauthor:Frank Herbert");
         }
