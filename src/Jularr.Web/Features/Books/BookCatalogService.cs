@@ -56,8 +56,8 @@ public sealed record BookCatalogItem(
 
     /// <summary>
     /// The provider records merged into this work (#405), each a distinct edition view: its own
-    /// year, language, publisher, ISBN and format. Populated only once <see cref="BookWorkSearch"/>
-    /// has merged the search results; empty on a single, unmerged provider record.
+    /// year, language, publisher, ISBN and format. Set by <see cref="BookWorkSearch"/> to one
+    /// entry per merged record (at least one); a raw, unranked provider result leaves it empty.
     /// </summary>
     public IReadOnlyList<BookEditionSummary> Editions { get; init; } = [];
 
