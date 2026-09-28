@@ -233,13 +233,13 @@ The application under `/app`, the bundled `codex`, `whisper-cli`, `ffmpeg`/`ffpr
 
 When a NAS or other network filesystem can be powered off, do not bind the network mount itself as the Docker source. Docker resolves bind sources before Jularr starts, so a stale CIFS/NFS mount can make container creation fail before Jularr can report the library root as offline.
 
-For this case the image supports `JULARR_MEDIA_LINKS`. It is a semicolon-separated list of `<name>=<absolute-container-source>` mappings. At startup the entrypoint creates `/media/<name>` as a symlink to the source path **without dereferencing that source**. This preserves canonical library paths such as `/media/anime` while allowing the actual NAS submount to appear or disappear later.
+For this case the image supports `JULARR_MEDIA_ROOT=<absolute-container-source>`. `/media` remains the canonical application path, but is routed through an internal indirection to that source. The entrypoint changes only the internal symlink and **does not dereference the source**, so an unavailable NAS cannot block Jularr startup. Every existing child path is preserved unchanged, for example `/media/anime`, `/media/tv`, `/media/movies` and download folders.
 
 Example for a NAS mounted somewhere below an always-present host parent:
 
 ```yaml
 environment:
-  JULARR_MEDIA_LINKS: anime=/host-mounts/arr_bay4_media/anime
+  JULARR_MEDIA_ROOT: /host-mounts/arr_bay4_media
 volumes:
   - type: bind
     source: /mnt
@@ -249,11 +249,11 @@ volumes:
       create_host_path: false
 ```
 
-`rslave` is intentional: host-side submount changes propagate into the already-running container, while mounts created inside the container do not propagate back to the host. The container still needs no `SYS_ADMIN` capability or privileged mode. Bind propagation is a Linux-host feature and the selected host parent must support mount propagation.
+`rslave` is intentional: host-side submount changes can propagate into the already-running container, while mounts created inside the container do not propagate back to the host. Docker bind mounts also include existing nested mounts recursively by default, so a currently sleeping/stale NAS mount below the stable parent is carried into the container without Docker having to use that NAS path as the bind source. The container still needs no `SYS_ADMIN` capability or privileged mode. Bind propagation is a Linux-host feature and the selected host parent must support it.
 
-Prefer a dedicated stable host parent when practical so the container does not see unrelated host mounts. The mapped media path must have the normal read/write permissions required by the configured Jularr library root.
+Prefer a dedicated stable host parent when practical so the container does not see unrelated host mounts. The mapped media tree must have the normal read/write permissions required by Jularr.
 
-A direct bind such as `/path/to/anime:/media/anime` remains supported for storage that is guaranteed to be available when Docker creates the container. Do not set `JULARR_MEDIA_LINKS` for a `/media/<name>` that is also supplied as a direct bind mount.
+The legacy direct bind `/path/to/media:/media` remains supported for storage that is guaranteed to be available when Docker creates the container. Do not combine that direct bind with `JULARR_MEDIA_ROOT`.
 
 ### Startup ownership check
 
