@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Sockets;
 using Jularr.Web.Data;
+using Jularr.Web.Features.Devices;
 using Jularr.Web.Features.Library;
 using Jularr.Web.Features.Storage;
 using Microsoft.EntityFrameworkCore;
@@ -113,7 +114,8 @@ public sealed class PlaybackPlanService(
     MediaInventoryService mediaInventory,
     PlaybackStreamSessionStore sessions,
     PlaybackServerCapabilityProvider serverCapabilities,
-    MediaAvailabilityService? mediaAvailability = null)
+    MediaAvailabilityService? mediaAvailability = null,
+    KnownDeviceRegistry? deviceRegistry = null)
 {
     public async Task<PlaybackPlanOutcome?> PlanAsync(
         Guid episodeId,
@@ -208,6 +210,19 @@ public sealed class PlaybackPlanService(
                     input.ModePreference,
                     capabilities.Client.Kind),
                 previous?.Id);
+
+            // Known clients/devices registry (#527): the same touch point that opens the live
+            // session records/refreshes the device that opened it.
+            if (deviceRegistry is not null)
+            {
+                await deviceRegistry.TouchAsync(
+                    profileId,
+                    capabilities.Client.Kind,
+                    capabilities.Client.Name,
+                    capabilities.Client.AppVersion,
+                    input.UserAgent,
+                    cancellationToken);
+            }
         }
 
         return new PlaybackPlanOutcome(plan, session, row.Id, availability, capabilities.Inferred);
