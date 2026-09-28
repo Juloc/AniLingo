@@ -39,13 +39,13 @@ public sealed class StorageAvailabilityTests
         Assert.IsFalse(WakeOnLanService.TryNormalizeMacAddress(
             "not-a-mac",
             out _));
-        Assert.IsFalse(WakeOnLanService.TryResolveBroadcastAddress(
+        Assert.IsFalse(WakeOnLanService.TryResolveBroadcastEndpoint(
             "not-an-ip",
             out _));
-        Assert.IsTrue(WakeOnLanService.TryResolveBroadcastAddress(
+        Assert.IsTrue(WakeOnLanService.TryResolveBroadcastEndpoint(
             null,
             out var defaultBroadcast));
-        Assert.AreEqual("255.255.255.255", defaultBroadcast!.ToString());
+        Assert.AreEqual("255.255.255.255:9", defaultBroadcast!.ToString());
     }
 
     [TestMethod]

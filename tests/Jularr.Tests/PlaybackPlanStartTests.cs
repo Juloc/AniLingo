@@ -228,7 +228,7 @@ public sealed partial class PlaybackPlanStartTests
 
         public int Sent => Volatile.Read(ref sent);
 
-        public Task SendAsync(string normalizedMacAddress, IPAddress broadcastAddress, CancellationToken cancellationToken)
+        public Task SendAsync(string normalizedMacAddress, IPEndPoint broadcastEndpoint, CancellationToken cancellationToken)
         {
             Interlocked.Increment(ref sent);
             return Task.CompletedTask;

@@ -509,7 +509,7 @@ public sealed class LibraryRootAvailabilityService(
                 cancellationToken);
 
         var target = wakeConfigured &&
-            WakeOnLanService.TryResolveBroadcastAddress(
+            WakeOnLanService.TryResolveBroadcastEndpoint(
                 root.WakeBroadcastAddress,
                 out var broadcast)
             ? new StorageWakeTarget(root.Id, root.Path, mac!, broadcast!, expectedNonEmpty)
@@ -678,7 +678,7 @@ public sealed class WakeOnLanService(
                 await availability.CheckAsync(rootId, false, cancellationToken));
         }
 
-        if (!TryResolveBroadcastAddress(
+        if (!TryResolveBroadcastEndpoint(
                 root.WakeBroadcastAddress,
                 out _))
         {
@@ -760,25 +760,52 @@ public sealed class WakeOnLanService(
         }
     }
 
-    public static bool TryResolveBroadcastAddress(
+    // Standard Wake-on-LAN UDP port used when the owner's broadcast setting omits one.
+    public const int DefaultBroadcastPort = 9;
+
+    // The owner's WakeBroadcastAddress setting resolves to an endpoint instead of a bare
+    // address so the same field can carry a directed LAN broadcast plus a non-default port
+    // (e.g. "192.168.1.255:7"). This is the one canonical parse of that field: every caller
+    // (validation, wake, diagnostics) goes through it instead of re-deriving a broadcast target.
+    //
+    // The default (no value configured) is the limited broadcast 255.255.255.255. That default
+    // only reaches devices on the same L2 segment as the sender: from inside a Docker bridge
+    // network the packet never leaves the container's bridge subnet, so it never reaches a NAS
+    // on the physical LAN. An explicit directed subnet broadcast (e.g. 192.168.1.255) is the
+    // supported way to make Wake-on-LAN work from a bridge-networked container without
+    // requiring host networking; see docs/ADMIN_OPERATIONS.md.
+    public static bool TryResolveBroadcastEndpoint(
         string? value,
-        out IPAddress? address)
+        out IPEndPoint? endpoint)
     {
         if (string.IsNullOrWhiteSpace(value))
         {
-            address = IPAddress.Broadcast;
+            endpoint = new IPEndPoint(IPAddress.Broadcast, DefaultBroadcastPort);
             return true;
         }
 
-        if (IPAddress.TryParse(value.Trim(), out var parsed) &&
-            parsed.AddressFamily == AddressFamily.InterNetwork)
+        var trimmed = value.Trim();
+        var separatorIndex = trimmed.LastIndexOf(':');
+        var hostPart = separatorIndex < 0 ? trimmed : trimmed[..separatorIndex];
+        var portPart = separatorIndex < 0 ? null : trimmed[(separatorIndex + 1)..];
+
+        var port = DefaultBroadcastPort;
+        if (portPart is not null &&
+            (!int.TryParse(portPart, out port) || port is <= 0 or > 65535))
         {
-            address = parsed;
-            return true;
+            endpoint = null;
+            return false;
         }
 
-        address = null;
-        return false;
+        if (!IPAddress.TryParse(hostPart, out var parsed) ||
+            parsed.AddressFamily != AddressFamily.InterNetwork)
+        {
+            endpoint = null;
+            return false;
+        }
+
+        endpoint = new IPEndPoint(parsed, port);
+        return true;
     }
 
     public static byte[] BuildMagicPacket(string normalizedMacAddress)
