@@ -103,6 +103,68 @@ jobs:
           docker logs jularr-no-nas
           exit 1
 
+      - name: Smoke test dynamic NAS mount gateway
+        run: |
+          set -euo pipefail
+          HOST_PARENT="${RUNNER_TEMP}/jularr-media-parent"
+          HOST_NAS="${HOST_PARENT}/arr_bay4_media"
+          NAS_CONTENT="${RUNNER_TEMP}/jularr-media-content"
+          mkdir -p "${HOST_NAS}" "${NAS_CONTENT}/anime"
+          printf 'online\n' > "${NAS_CONTENT}/anime/online-marker"
+
+          cleanup() {
+            docker rm -f jularr-media-gateway >/dev/null 2>&1 || true
+            sudo umount "${HOST_NAS}" >/dev/null 2>&1 || true
+            sudo umount "${HOST_PARENT}" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          # The parent stays mounted while a NAS submount may appear/disappear.
+          # rslave makes those host-side submount changes visible in the already
+          # running container without giving the container mount capabilities.
+          sudo mount --bind "${HOST_PARENT}" "${HOST_PARENT}"
+          sudo mount --make-rshared "${HOST_PARENT}"
+
+          docker run -d --name jularr-media-gateway \
+            --cap-drop ALL --security-opt no-new-privileges:true \
+            -e 'JULARR_MEDIA_LINKS=anime=/host-mounts/arr_bay4_media/anime' \
+            --mount "type=bind,source=${HOST_PARENT},target=/host-mounts,bind-propagation=rslave" \
+            "${IMAGE}:${GITHUB_SHA}"
+
+          for _ in {1..30}; do
+            if docker exec jularr-media-gateway test -L /media/anime; then
+              break
+            fi
+            sleep 1
+          done
+          docker exec jularr-media-gateway test -L /media/anime
+          ! docker exec jularr-media-gateway test -e /media/anime/online-marker
+
+          sudo mount --bind "${NAS_CONTENT}" "${HOST_NAS}"
+          for _ in {1..20}; do
+            if docker exec jularr-media-gateway test -f /media/anime/online-marker; then
+              break
+            fi
+            sleep 0.25
+          done
+          test "$(docker exec jularr-media-gateway cat /media/anime/online-marker)" = "online"
+
+          sudo umount "${HOST_NAS}"
+          for _ in {1..20}; do
+            if ! docker exec jularr-media-gateway test -e /media/anime/online-marker; then
+              break
+            fi
+            sleep 0.25
+          done
+          ! docker exec jularr-media-gateway test -e /media/anime/online-marker
+
+          # Existing deployments may still bind a permanently available root
+          # directly to /media/<name>; that contract remains supported.
+          docker run --rm --entrypoint sh \
+            --cap-drop ALL --security-opt no-new-privileges:true \
+            --mount "type=bind,source=${NAS_CONTENT}/anime,target=/media/anime,readonly" \
+            "${IMAGE}:${GITHUB_SHA}" -c 'test -r /media/anime/online-marker'
+
       - name: Smoke test upgrade from a root-owned /data
         run: |
           set -euo pipefail
