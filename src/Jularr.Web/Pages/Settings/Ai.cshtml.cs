@@ -20,6 +20,7 @@ public sealed class AiModel(
     ProfileAiProviderRouter providerRouter,
     AiUsageStore usageStore,
     AiActivityTracker activityTracker,
+    AiUsageTracker usageTracker,
     CodexCliProvider codex,
     TimeProvider time) : PageModel
 {
@@ -104,14 +105,56 @@ public sealed class AiModel(
     [BindProperty]
     public int? MaxConcurrentJobs { get; set; }
 
+    [BindProperty]
+    public int? SessionTokenBudget { get; set; }
+
+    [BindProperty]
+    public int? ContextBudgetTokens { get; set; }
+
+    [BindProperty]
+    public int? MaxRetries { get; set; }
+
+    [BindProperty]
+    public int? TimeoutSeconds { get; set; }
+
+    [BindProperty]
+    public string? Verbosity { get; set; }
+
+    [BindProperty]
+    public bool FallbackModelEnabled { get; set; }
+
     /// <summary>Today's usage against the saved daily limit.</summary>
     public AiBudgetStatus Budget { get; private set; } = new(0, null, AiProfileSettings.DefaultBudgetWarningPercent);
+
+    /// <summary>This run's usage against the saved session limit; resets when Jularr restarts.</summary>
+    public AiSessionBudgetStatus SessionBudget { get; private set; } = new(0, null);
+
+    /// <summary>
+    /// True when the saved catalog reports enough context-window metadata to ever identify a lighter
+    /// model; the fallback-model option is disabled with a note otherwise, never a guess.
+    /// </summary>
+    public bool FallbackModelAvailable { get; private set; }
 
     [BindProperty]
     public Dictionary<string, string?> OverrideModels { get; set; } = new(StringComparer.Ordinal);
 
     [BindProperty]
     public Dictionary<string, string?> OverrideEfforts { get; set; } = new(StringComparer.Ordinal);
+
+    [BindProperty]
+    public Dictionary<string, int?> OverrideContextBudgets { get; set; } = new(StringComparer.Ordinal);
+
+    [BindProperty]
+    public Dictionary<string, int?> OverrideMaxOutputTokens { get; set; } = new(StringComparer.Ordinal);
+
+    [BindProperty]
+    public Dictionary<string, int?> OverrideMaxRetries { get; set; } = new(StringComparer.Ordinal);
+
+    [BindProperty]
+    public Dictionary<string, int?> OverrideTimeoutSeconds { get; set; } = new(StringComparer.Ordinal);
+
+    [BindProperty]
+    public Dictionary<string, string?> OverrideVerbosity { get; set; } = new(StringComparer.Ordinal);
 
     [BindProperty(SupportsGet = true)]
     public string? Period { get; set; }
@@ -258,7 +301,14 @@ public sealed class AiModel(
                     operation,
                     new AiOperationOverride(
                         OverrideModels.GetValueOrDefault(operation),
-                        isServer ? OverrideEfforts.GetValueOrDefault(operation) : null))))
+                        isServer ? OverrideEfforts.GetValueOrDefault(operation) : null)
+                    {
+                        ContextBudgetTokens = OverrideContextBudgets.GetValueOrDefault(operation),
+                        MaxOutputTokens = isServer ? null : OverrideMaxOutputTokens.GetValueOrDefault(operation),
+                        MaxRetries = OverrideMaxRetries.GetValueOrDefault(operation),
+                        TimeoutSeconds = OverrideTimeoutSeconds.GetValueOrDefault(operation),
+                        Verbosity = isServer ? OverrideVerbosity.GetValueOrDefault(operation) : null
+                    })))
                 : AiOperationOverrides.Empty;
 
             await settingsStore.SaveAsync(
@@ -277,6 +327,12 @@ public sealed class AiModel(
                     DailyTokenBudget = DailyTokenBudget,
                     BudgetWarningPercent = BudgetWarningPercent,
                     MaxConcurrentJobs = MaxConcurrentJobs,
+                    SessionTokenBudget = SessionTokenBudget,
+                    ContextBudgetTokens = ContextBudgetTokens,
+                    MaxRetries = MaxRetries,
+                    TimeoutSeconds = TimeoutSeconds,
+                    Verbosity = isServer ? Verbosity : null,
+                    FallbackModelEnabled = FallbackModelEnabled,
                     Overrides = overrides
                 },
                 cancellationToken);
@@ -311,12 +367,33 @@ public sealed class AiModel(
         DailyTokenBudget = settings.DailyTokenBudget;
         BudgetWarningPercent = settings.BudgetWarningPercent;
         MaxConcurrentJobs = settings.MaxConcurrentJobs;
+        SessionTokenBudget = settings.SessionTokenBudget;
+        ContextBudgetTokens = settings.ContextBudgetTokens;
+        MaxRetries = settings.MaxRetries;
+        TimeoutSeconds = settings.TimeoutSeconds;
+        Verbosity = settings.Verbosity;
+        FallbackModelEnabled = settings.FallbackModelEnabled;
         OverrideModels = settings.Overrides.Items
             .Where(x => x.Value.Model is not null)
             .ToDictionary(x => x.Key, x => x.Value.Model, StringComparer.Ordinal);
         OverrideEfforts = settings.Overrides.Items
             .Where(x => x.Value.ReasoningEffort is not null)
             .ToDictionary(x => x.Key, x => x.Value.ReasoningEffort, StringComparer.Ordinal);
+        OverrideContextBudgets = settings.Overrides.Items
+            .Where(x => x.Value.ContextBudgetTokens is not null)
+            .ToDictionary(x => x.Key, x => x.Value.ContextBudgetTokens, StringComparer.Ordinal);
+        OverrideMaxOutputTokens = settings.Overrides.Items
+            .Where(x => x.Value.MaxOutputTokens is not null)
+            .ToDictionary(x => x.Key, x => x.Value.MaxOutputTokens, StringComparer.Ordinal);
+        OverrideMaxRetries = settings.Overrides.Items
+            .Where(x => x.Value.MaxRetries is not null)
+            .ToDictionary(x => x.Key, x => x.Value.MaxRetries, StringComparer.Ordinal);
+        OverrideTimeoutSeconds = settings.Overrides.Items
+            .Where(x => x.Value.TimeoutSeconds is not null)
+            .ToDictionary(x => x.Key, x => x.Value.TimeoutSeconds, StringComparer.Ordinal);
+        OverrideVerbosity = settings.Overrides.Items
+            .Where(x => x.Value.Verbosity is not null)
+            .ToDictionary(x => x.Key, x => x.Value.Verbosity, StringComparer.Ordinal);
         ApiKey = null;
 
         await LoadViewAsync(cancellationToken, settings);
@@ -365,6 +442,8 @@ public sealed class AiModel(
             cancellationToken);
 
         Budget = AiBudgetStatus.For(settings, Usage.Today);
+        SessionBudget = AiSessionBudgetStatus.For(settings, usageTracker.GetSnapshot(currentAccount.ProfileId));
+        FallbackModelAvailable = AiOptionResolver.CanSuggestLighterModel(SavedCatalog);
 
         Activity = new AiActivityPanel(
             Ui,

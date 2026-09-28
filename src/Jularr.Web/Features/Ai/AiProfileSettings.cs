@@ -83,7 +83,29 @@ public static class AiOperationDefaults
 /// <summary>Only the values that differ from the profile defaults; null inherits.</summary>
 public sealed record AiOperationOverride(string? Model, string? ReasoningEffort)
 {
-    public bool IsEmpty => Model is null && ReasoningEffort is null;
+    /// <summary>Context sent to this task, in tokens; trims the shared story/translation context.</summary>
+    public int? ContextBudgetTokens { get; init; }
+
+    /// <summary>Output token cap for this task (OpenAI-compatible providers only).</summary>
+    public int? MaxOutputTokens { get; init; }
+
+    /// <summary>How many times this task retries a failed request before giving up.</summary>
+    public int? MaxRetries { get; init; }
+
+    /// <summary>Per-request timeout for this task, in seconds.</summary>
+    public int? TimeoutSeconds { get; init; }
+
+    /// <summary>Codex response verbosity for this task (low/medium/high).</summary>
+    public string? Verbosity { get; init; }
+
+    public bool IsEmpty =>
+        Model is null
+        && ReasoningEffort is null
+        && ContextBudgetTokens is null
+        && MaxOutputTokens is null
+        && MaxRetries is null
+        && TimeoutSeconds is null
+        && Verbosity is null;
 }
 
 /// <summary>Per-operation overrides with value equality, keyed by <see cref="AiOperations"/> ids.</summary>
@@ -108,7 +130,12 @@ public sealed class AiOperationOverrides : IEquatable<AiOperationOverrides>
     public static AiOperationOverrides From(
         IEnumerable<KeyValuePair<string, AiOperationOverride>> entries,
         string? defaultModel = null,
-        string? defaultReasoningEffort = null)
+        string? defaultReasoningEffort = null,
+        int? defaultContextBudgetTokens = null,
+        int? defaultMaxOutputTokens = null,
+        int? defaultMaxRetries = null,
+        int? defaultTimeoutSeconds = null,
+        string? defaultVerbosity = null)
     {
         var builder = ImmutableSortedDictionary.CreateBuilder<string, AiOperationOverride>(StringComparer.Ordinal);
         foreach (var (operation, value) in entries)
@@ -130,7 +157,24 @@ public sealed class AiOperationOverrides : IEquatable<AiOperationOverrides>
                 effort = null;
             }
 
-            var normalized = new AiOperationOverride(model, effort);
+            var contextBudget = value.ContextBudgetTokens == defaultContextBudgetTokens ? null : value.ContextBudgetTokens;
+            var maxOutputTokens = value.MaxOutputTokens == defaultMaxOutputTokens ? null : value.MaxOutputTokens;
+            var maxRetries = value.MaxRetries == defaultMaxRetries ? null : value.MaxRetries;
+            var timeoutSeconds = value.TimeoutSeconds == defaultTimeoutSeconds ? null : value.TimeoutSeconds;
+            var verbosity = Clean(value.Verbosity)?.ToLowerInvariant();
+            if (string.Equals(verbosity, Clean(defaultVerbosity)?.ToLowerInvariant(), StringComparison.Ordinal))
+            {
+                verbosity = null;
+            }
+
+            var normalized = new AiOperationOverride(model, effort)
+            {
+                ContextBudgetTokens = contextBudget,
+                MaxOutputTokens = maxOutputTokens,
+                MaxRetries = maxRetries,
+                TimeoutSeconds = timeoutSeconds,
+                Verbosity = verbosity
+            };
             if (!normalized.IsEmpty)
             {
                 builder[operation] = normalized;
@@ -171,6 +215,18 @@ public sealed record AiInvocationOptions(
     int? MaxOutputTokens)
 {
     public static AiInvocationOptions Default { get; } = new(null, null, null, null);
+
+    /// <summary>Context sent to this request, in tokens; trims the shared story/translation context.</summary>
+    public int? ContextBudgetTokens { get; init; }
+
+    /// <summary>How many times this request retries a failed call before giving up.</summary>
+    public int? MaxRetries { get; init; }
+
+    /// <summary>Per-request timeout, in seconds; null keeps the built-in per-task default.</summary>
+    public int? TimeoutSeconds { get; init; }
+
+    /// <summary>Codex response verbosity (low/medium/high); ignored by personal providers.</summary>
+    public string? Verbosity { get; init; }
 }
 
 public sealed partial record AiProfileSettings(
@@ -208,8 +264,13 @@ public sealed partial record AiProfileSettings(
     public AiOperationOverrides Overrides { get; init; } = AiOperationOverrides.Empty;
 
     public const int MaxDailyTokenBudget = 1_000_000_000;
+    public const int MaxSessionTokenBudget = MaxDailyTokenBudget;
     public const int MaxConcurrentJobsLimit = 8;
     public const int DefaultBudgetWarningPercent = 80;
+    public const int MaxContextBudgetTokens = 200_000;
+    public const int MaxRetriesLimit = 5;
+    public const int MinTimeoutSeconds = 5;
+    public const int MaxTimeoutSeconds = 900;
 
     /// <summary>
     /// Jularr-local daily token limit of this profile (input plus output, UTC day); null means no
@@ -223,6 +284,31 @@ public sealed partial record AiProfileSettings(
     /// <summary>How many AI requests of this profile run at once; further requests wait queued.</summary>
     public int? MaxConcurrentJobs { get; init; }
 
+    /// <summary>
+    /// Jularr-local session token limit (input plus output since Jularr last started); null means no
+    /// limit. Resets on restart, unlike <see cref="DailyTokenBudget"/> which survives restarts.
+    /// </summary>
+    public int? SessionTokenBudget { get; init; }
+
+    /// <summary>Shared default context budget (tokens) for every task; null keeps the built-in size.</summary>
+    public int? ContextBudgetTokens { get; init; }
+
+    /// <summary>Shared default retry count for every task; null means no retries (today's behavior).</summary>
+    public int? MaxRetries { get; init; }
+
+    /// <summary>Shared default per-request timeout (seconds); null keeps the built-in per-task timeout.</summary>
+    public int? TimeoutSeconds { get; init; }
+
+    /// <summary>Shared default Codex response verbosity; null keeps the built-in "low" verbosity.</summary>
+    public string? Verbosity { get; init; }
+
+    /// <summary>
+    /// When a daily or session token budget is reached, use a lighter model instead of stopping work —
+    /// only while the catalog can safely identify one from its own metadata (context window); never a
+    /// guess. See <see cref="AiOptionResolver.FindLighterModel"/>.
+    /// </summary>
+    public bool FallbackModelEnabled { get; init; }
+
     public int EffectiveWarningPercent => BudgetWarningPercent ?? DefaultBudgetWarningPercent;
 
     public AiInvocationOptions Resolve(string operation)
@@ -232,7 +318,13 @@ public sealed partial record AiProfileSettings(
             entry?.Model ?? Model,
             entry?.ReasoningEffort ?? ReasoningEffort,
             ServiceTier,
-            MaxOutputTokens);
+            entry?.MaxOutputTokens ?? MaxOutputTokens)
+        {
+            ContextBudgetTokens = entry?.ContextBudgetTokens ?? ContextBudgetTokens,
+            MaxRetries = entry?.MaxRetries ?? MaxRetries,
+            TimeoutSeconds = entry?.TimeoutSeconds ?? TimeoutSeconds,
+            Verbosity = entry?.Verbosity ?? Verbosity
+        };
     }
 
     public static bool IsValidModelId(string? value) =>

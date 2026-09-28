@@ -13,7 +13,14 @@ public sealed record CodexTurnRequest(
     string? Model,
     string? ReasoningEffort,
     string? ServiceTier,
-    TimeSpan Timeout);
+    TimeSpan Timeout)
+{
+    /// <summary>Codex response verbosity (low/medium/high); null uses the least-privilege default "low".</summary>
+    public string? Verbosity { get; init; }
+}
+
+/// <summary>Codex app-server login started over JSON-RPC (device-code style: a URL plus a one-time code).</summary>
+public sealed record CodexAppServerLoginStart(string LoginId, string VerificationUrl, string UserCode);
 
 public sealed record CodexTurnResult(
     string Text,
@@ -35,20 +42,22 @@ public sealed class CodexAppServerGateway
     public const string TurnStart = "turn/start";
     public const string TurnInterrupt = "turn/interrupt";
     public const string TokenUsageUpdated = "thread/tokenUsage/updated";
+    public const string AccountLoginStart = "account/login/start";
+    public const string AccountLoginCancel = "account/login/cancel";
+    public const string AccountUpdated = "account/updated";
 
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(30);
 
     /// <summary>
-    /// Least-privilege overrides applied to every Jularr thread: no shell, web search, plugins or
-    /// tool suggestions, even when the connected Codex supports them.
+    /// Least-privilege security overrides applied to every Jularr thread: no shell, web search, plugins
+    /// or tool suggestions, even when the connected Codex supports them. Never configurable per task.
     /// </summary>
-    private static readonly Dictionary<string, object> LeastPrivilegeConfig = new(StringComparer.Ordinal)
+    private static readonly Dictionary<string, object> LeastPrivilegeSecurity = new(StringComparer.Ordinal)
     {
         ["features.shell_tool"] = false,
         ["features.standalone_web_search"] = false,
         ["features.plugins"] = false,
-        ["features.tool_suggest"] = false,
-        ["model_verbosity"] = "low"
+        ["features.tool_suggest"] = false
     };
 
     private readonly CodexAppServerClient client;
@@ -64,6 +73,9 @@ public sealed class CodexAppServerGateway
         client.Notification += OnNotification;
         client.Disconnected += OnDisconnected;
     }
+
+    /// <summary>Raised whenever the app-server sends an <see cref="AccountUpdated"/> notification.</summary>
+    public event Action? AccountChanged;
 
     private void OnDisconnected()
     {
@@ -117,13 +129,14 @@ public sealed class CodexAppServerGateway
             states[AiCapability.Interrupt] = client.GetMethodState(TurnInterrupt) == AiCapabilityState.Unsupported
                 ? AiCapabilityState.Unsupported
                 : SupportsTurns ? AiCapabilityState.Supported : AiCapabilityState.Unknown;
+            states[AiCapability.AppServerLogin] = client.GetMethodState(AccountLoginStart);
         }
         else if (client.IsAvailable == false)
         {
             foreach (var capability in new[]
                      {
                          AiCapability.ModelCatalog, AiCapability.AccountStatus, AiCapability.RateLimits,
-                         AiCapability.RateLimitUpdates, AiCapability.TurnLifecycle
+                         AiCapability.RateLimitUpdates, AiCapability.TurnLifecycle, AiCapability.AppServerLogin
                      })
             {
                 states[capability] = AiCapabilityState.Unsupported;
@@ -177,6 +190,45 @@ public sealed class CodexAppServerGateway
         return models;
     }
 
+    /// <summary>
+    /// Starts a Codex login over the app-server connection instead of spawning a CLI login process:
+    /// the same device-code UX (a verification URL plus a one-time code), driven by JSON-RPC. Throws
+    /// <see cref="AiModelDiscoveryUnsupportedException"/>-style <see cref="CodexAppServerException"/>
+    /// when this Codex version has no <see cref="AccountLoginStart"/> method, so callers fall back to
+    /// the CLI device flow instead of guessing a URL.
+    /// </summary>
+    public async Task<CodexAppServerLoginStart> StartLoginAsync(CancellationToken cancellationToken)
+    {
+        if (!await client.TryConnectAsync(cancellationToken))
+        {
+            throw new InvalidOperationException(client.LastError ?? "Codex app-server is not available.");
+        }
+
+        var result = await client.RequestAsync(AccountLoginStart, new { type = "chatgptDeviceCode" }, RequestTimeout, cancellationToken);
+        var loginId = String(result, "loginId");
+        var verificationUrl = String(result, "verificationUrl");
+        var userCode = String(result, "userCode");
+        if (loginId is null || verificationUrl is null || userCode is null)
+        {
+            throw new InvalidOperationException("Codex app-server returned an incomplete login response.");
+        }
+
+        return new CodexAppServerLoginStart(loginId, verificationUrl, userCode);
+    }
+
+    /// <summary>Best effort: cancels an app-server login in progress.</summary>
+    public async Task CancelLoginAsync(string loginId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await client.RequestAsync(AccountLoginCancel, new { loginId }, TimeSpan.FromSeconds(5), cancellationToken);
+        }
+        catch (Exception exception) when (exception is CodexAppServerException or InvalidOperationException or OperationCanceledException)
+        {
+            // The login may already have finished or failed, or the server may be gone.
+        }
+    }
+
     public async Task<AiAccountInfo?> ReadAccountAsync(CancellationToken cancellationToken)
     {
         var result = await client.RequestAsync(AccountRead, new { refreshToken = false }, RequestTimeout, cancellationToken);
@@ -211,6 +263,11 @@ public sealed class CodexAppServerGateway
     {
         activity?.SetTransport(AiTransports.CodexAppServer);
 
+        var config = new Dictionary<string, object>(LeastPrivilegeSecurity, StringComparer.Ordinal)
+        {
+            ["model_verbosity"] = AiOptionResolver.ValidVerbosity(request.Verbosity) ?? "low"
+        };
+
         var thread = await client.RequestAsync(
             ThreadStart,
             new
@@ -220,7 +277,7 @@ public sealed class CodexAppServerGateway
                 cwd = request.WorkingDirectory,
                 approvalPolicy = "never",
                 sandbox = "read-only",
-                config = LeastPrivilegeConfig,
+                config,
                 ephemeral = true
             },
             RequestTimeout,
@@ -382,6 +439,12 @@ public sealed class CodexAppServerGateway
 
     private void OnNotification(CodexAppServerNotification notification)
     {
+        if (notification.Method == AccountUpdated)
+        {
+            AccountChanged?.Invoke();
+            return;
+        }
+
         if (notification.Method == RateLimitsUpdated)
         {
             if (notification.Params.ValueKind == JsonValueKind.Object

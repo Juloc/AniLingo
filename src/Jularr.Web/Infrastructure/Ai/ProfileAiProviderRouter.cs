@@ -262,22 +262,45 @@ public sealed class ProfileAiProviderRouter(
         string providerId;
         AiInvocationOptions options;
 
+        AiModelCatalog catalog;
         if (settings.ProviderId == AiProviderIds.OpenAiCompatible)
         {
             backend = CreatePersonal(settings);
             providerId = AiProviderIds.OpenAiCompatible;
+            catalog = await catalogs.GetCachedAsync(CatalogKey(settings), cancellationToken);
             options = AiOptionResolver.ResolvePersonal(requested);
         }
         else
         {
             backend = codex;
             providerId = codex.Id;
-            var catalog = await catalogs.GetCachedAsync(AiModelCatalogKeys.CodexServer, cancellationToken);
+            catalog = await catalogs.GetCachedAsync(AiModelCatalogKeys.CodexServer, cancellationToken);
             options = AiOptionResolver.ResolveServer(requested, catalog, operation);
         }
 
-        // The profile's Jularr-local daily limit stops work before a request is sent.
-        await new AiBudgetGuard(usageStore, time).EnsureAvailableAsync(currentAccount.ProfileId, settings, cancellationToken);
+        // The profile's Jularr-local daily and session limits stop work before a request is sent —
+        // unless a lighter model can be identified safely from the catalog and the profile opted in,
+        // in which case the request runs on that model instead of being blocked.
+        var dailyStatus = await new AiBudgetGuard(usageStore, time).GetStatusAsync(currentAccount.ProfileId, settings, cancellationToken);
+        var sessionStatus = new AiSessionBudgetGuard(usageTracker).GetStatus(currentAccount.ProfileId, settings);
+        if (dailyStatus.State == AiBudgetState.Reached || sessionStatus.IsReached)
+        {
+            var lighter = settings.FallbackModelEnabled
+                ? AiOptionResolver.FindLighterModel(catalog, options.Model)
+                : null;
+            if (lighter is not null)
+            {
+                options = options with { Model = lighter.Id };
+            }
+            else if (dailyStatus.State == AiBudgetState.Reached)
+            {
+                throw new AiBudgetExceededException(AiBudgetExceededException.DefaultMessage);
+            }
+            else
+            {
+                throw new AiSessionBudgetExceededException(AiSessionBudgetExceededException.DefaultMessage);
+            }
+        }
 
         var contextTokens = AiUsageTracker.EstimateTokens(contextCharacters);
         return await activityRunner.RunAsync(

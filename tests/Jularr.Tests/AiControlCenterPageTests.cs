@@ -100,6 +100,43 @@ public sealed class AiControlCenterPageTests
     }
 
     [TestMethod]
+    public async Task SessionBudgetFallsBackToALighterModelWhenTheCatalogCanIdentifyOne()
+    {
+        await using var fixture = await PageFixture.CreateAsync(_ => Json("""{"choices":[{"message":{"content":"Hallo"}}]}"""));
+        await fixture.Settings.SaveAsync(
+            Profile,
+            Personal("heavy-model") with { SessionTokenBudget = 10, FallbackModelEnabled = true },
+            CancellationToken.None);
+        await fixture.SeedPersonalCatalogAsync(
+            "https://api.example.invalid/v1",
+            [
+                new AiModelDescriptor("heavy-model", "Heavy", null, [], null, [], null, false, 200_000),
+                new AiModelDescriptor("light-model", "Light", null, [], null, [], null, false, 20_000)
+            ]);
+        fixture.RecordSessionUsage(inputTokens: 100, outputTokens: 0);
+
+        var result = await fixture.Router().TranslateAsync("こんにちは", "de", CancellationToken.None);
+
+        Assert.AreEqual("Hallo", result);
+        StringAssert.Contains(fixture.LastRequestBody, "light-model", "The session limit was reached, so the safely identified lighter model ran the request.");
+    }
+
+    [TestMethod]
+    public async Task SessionBudgetBlocksWorkWhenNoLighterModelCanBeIdentified()
+    {
+        await using var fixture = await PageFixture.CreateAsync(_ => Json("""{"choices":[{"message":{"content":"Hallo"}}]}"""));
+        await fixture.Settings.SaveAsync(
+            Profile,
+            Personal("model-a") with { SessionTokenBudget = 10, FallbackModelEnabled = true },
+            CancellationToken.None);
+        fixture.RecordSessionUsage(inputTokens: 100, outputTokens: 0);
+
+        await Assert.ThrowsExactlyAsync<AiSessionBudgetExceededException>(
+            () => fixture.Router().TranslateAsync("こんにちは", "de", CancellationToken.None));
+        Assert.AreEqual(0, fixture.Requests, "No request is sent once the session limit is reached without an identifiable lighter model.");
+    }
+
+    [TestMethod]
     public async Task UnsupportedDiscoveryKeepsManualEntryWithAClearWarning()
     {
         await using var fixture = await PageFixture.CreateAsync(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
@@ -331,6 +368,37 @@ public sealed class AiControlCenterPageTests
 
         public int Requests => handler.Count;
 
+        public string? LastRequestBody => handler.LastBody;
+
+        /// <summary>Simulates prior usage this run, for session-budget tests (in-memory, no restart).</summary>
+        public void RecordSessionUsage(int inputTokens, int outputTokens) =>
+            usage.Record(
+                Profile,
+                new AiUsageMeasurement(
+                    DateTimeOffset.UtcNow,
+                    "novel-translation",
+                    AiProviderIds.OpenAiCompatible,
+                    "model",
+                    inputTokens * 4,
+                    outputTokens * 4,
+                    inputTokens,
+                    outputTokens,
+                    Estimated: false,
+                    CacheHit: false,
+                    ResumedChunk: false));
+
+        /// <summary>Seeds a personal provider's cached catalog directly, bypassing discovery.</summary>
+        public async Task SeedPersonalCatalogAsync(string baseUrl, IReadOnlyList<AiModelDescriptor> models) =>
+            await new AiModelCatalogStore(Db).SaveAsync(
+                new AiModelCatalog(
+                    AiModelCatalogKeys.OpenAiCompatible(Profile, baseUrl),
+                    models,
+                    AiModelDiscovery.Supported,
+                    DateTimeOffset.UtcNow,
+                    DateTimeOffset.UtcNow,
+                    null),
+                CancellationToken.None);
+
         public static async Task<PageFixture> CreateAsync(Func<HttpRequestMessage, HttpResponseMessage> respond)
         {
             var root = Path.Combine(Path.GetTempPath(), $"jularr-ai-page-{Guid.NewGuid():N}");
@@ -371,7 +439,7 @@ public sealed class AiControlCenterPageTests
         public AiSettingsModel Page()
         {
             var router = Router();
-            var page = new AiSettingsModel(Db, account, Settings, router, new AiUsageStore(Db), tracker, codex, TimeProvider.System);
+            var page = new AiSettingsModel(Db, account, Settings, router, new AiUsageStore(Db), tracker, usage, codex, TimeProvider.System);
 
             var httpContext = new DefaultHttpContext
             {
@@ -406,10 +474,13 @@ public sealed class AiControlCenterPageTests
     {
         public int Count { get; private set; }
 
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        public string? LastBody { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             Count++;
-            return Task.FromResult(respond(request));
+            LastBody = request.Content is null ? null : await request.Content.ReadAsStringAsync(cancellationToken);
+            return respond(request);
         }
     }
 

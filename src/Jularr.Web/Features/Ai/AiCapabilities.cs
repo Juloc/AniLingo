@@ -15,7 +15,10 @@ public enum AiCapability
     Interrupt,
     ReasoningEffort,
     ServiceTier,
-    MaxOutputTokens
+    MaxOutputTokens,
+
+    /// <summary>Codex login can be started and completed over the app-server JSON-RPC connection.</summary>
+    AppServerLogin
 }
 
 public enum AiCapabilityState
