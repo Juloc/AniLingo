@@ -17,6 +17,8 @@ android {
 
     buildFeatures {
         compose = true
+        // Self-update (#490) compares BuildConfig.VERSION_NAME against the latest GitHub release.
+        buildConfig = true
     }
 
     compileOptions {
@@ -38,6 +40,7 @@ dependencies {
     implementation(project(":core-player"))
     implementation(project(":core-design"))
     implementation(project(":core-tts"))
+    implementation(project(":core-update"))
     if (neuralTtsEnabled) {
         implementation(project(":core-tts-sherpa"))
     }
