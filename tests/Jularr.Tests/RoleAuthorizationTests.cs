@@ -49,6 +49,7 @@ public sealed class RoleAuthorizationTests
         ["Jularr.Web.Pages.Library.RenameModel"] = JularrPolicies.MediaRename,
 
         ["Jularr.Web.Pages.Admin.AiModel"] = JularrPolicies.AdminSystem,
+        ["Jularr.Web.Pages.Admin.HealthModel"] = JularrPolicies.AdminSystem,
         ["Jularr.Web.Pages.Admin.SonarrModel"] = JularrPolicies.AdminSystem,
         ["Jularr.Web.Pages.Admin.SystemModel"] = JularrPolicies.AdminSystem,
         ["Jularr.Web.Pages.Admin.UserModel"] = JularrPolicies.AdminSystem,
@@ -143,6 +144,7 @@ public sealed class RoleAuthorizationTests
     [TestMethod]
     [DataRow(typeof(Jularr.Web.Pages.Admin.UsersModel), false)]
     [DataRow(typeof(Jularr.Web.Pages.Admin.SystemModel), false)]
+    [DataRow(typeof(Jularr.Web.Pages.Admin.HealthModel), false)]
     [DataRow(typeof(Jularr.Web.Pages.Settings.ApiKeys.IndexModel), false)]
     [DataRow(typeof(Jularr.Web.Pages.Library.RenameModel), false)]
     [DataRow(typeof(Jularr.Web.Pages.Admin.OperationsModel), true)]
