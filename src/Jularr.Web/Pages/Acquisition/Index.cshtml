@@ -34,7 +34,7 @@
     <link rel="stylesheet" href="~/css/acquisition.css" asp-append-version="true" />
 }
 
-<header class="page-header">
+<header class="page-header acquisition-console-header">
     <div>
         <span class="eyebrow">@ui["acquisition.eyebrow"]</span>
         <h1>@ui["acquisition.title"]</h1>
@@ -44,6 +44,32 @@
         <button class="button button-primary" type="submit" disabled="@(!Model.ProwlarrConfigured)">@ui["acquisition.searchAllNow"]</button>
     </form>
 </header>
+
+<section class="acquisition-signal-grid" aria-label="@ui["acquisition.title"]">
+    <a href="#active-downloads" class="acquisition-signal-card">
+        <span>@ui["acquisition.downloadsHeading"]</span>
+        <strong>@overview.ActiveDownloads.Count</strong>
+        <small>@ui.Format("acquisition.activeCount", ("count", overview.ActiveDownloads.Count))</small>
+    </a>
+    <a href="#wanted" class="acquisition-signal-card">
+        <span>@ui["acquisition.wantedHeading"]</span>
+        <strong>@overview.Wanted.Count</strong>
+        <small>@ui.Format("acquisition.episodesCount", ("count", overview.Wanted.Count))</small>
+    </a>
+    <a href="#manual-import" class="acquisition-signal-card @(overview.ImportsNeedingAttention.Count > 0 ? "needs-attention" : "")">
+        <span>@ui["acquisition.needsDecisionHeading"]</span>
+        <strong>@overview.ImportsNeedingAttention.Count</strong>
+        <small>@ui.Format("acquisition.importsCount", ("count", overview.ImportsNeedingAttention.Count))</small>
+    </a>
+    <a href="#automation" class="acquisition-signal-card @(scheduler.IsRunning ? "is-running" : "")">
+        <span>@ui["acquisition.scheduleHeading"]</span>
+        <strong>@(scheduler.IsRunning ? ui["acquisition.schedule.runningNow"] : overview.Schedule.Enabled ? ui["acquisition.configured"] : ui["acquisition.schedule.off"])</strong>
+        @if (overview.Schedule.Enabled && scheduler.NextRunAtUtc is { } nextRun)
+        {
+            <small>@ui.Format("acquisition.schedule.nextRun", ("time", nextRun.ToLocalTime().ToString("t")))</small>
+        }
+    </a>
+</section>
 
 @if (!string.IsNullOrWhiteSpace(Model.Notice))
 {
@@ -58,8 +84,8 @@
     <p class="metadata-error" role="alert">@Model.ConfigurationError</p>
 }
 
-<div class="settings-grid">
-    <section class="panel">
+<div class="settings-grid acquisition-control-grid">
+    <section class="panel" id="automation">
         <div class="panel-heading">
             <h2>@ui["acquisition.scheduleHeading"]</h2>
             <span>
@@ -126,35 +152,37 @@
 {
     <section class="panel">
         <div class="panel-heading"><h2>@ui["acquisition.recentHistoryHeading"]</h2></div>
-        <table class="data-table">
-            <thead>
-                <tr>
-                    <th>@ui["acquisition.column.when"]</th>
-                    <th>@ui["acquisition.column.anime"]</th>
-                    <th>@ui["acquisition.column.episode"]</th>
-                    <th>@ui["acquisition.column.event"]</th>
-                    <th>@ui["acquisition.column.release"]</th>
-                    <th>@ui["acquisition.column.quality"]</th>
-                    <th>@ui["acquisition.column.score"]</th>
-                    <th>@ui["acquisition.column.reason"]</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var entry in Model.RecentHistory)
-                {
+        <div class="acquisition-history-table">
+            <table class="data-table">
+                <thead>
                     <tr>
-                        <td>@entry.OccurredAtUtc.ToLocalTime().ToString("g")</td>
-                        <td>@(Model.AnimeTitles.TryGetValue(entry.AnimeId, out var title) ? title : entry.AnimeId.ToString())</td>
-                        <td>S@(entry.SeasonNumber.ToString("00"))E@(entry.EpisodeNumber.ToString("00"))</td>
-                        <td>@entry.EventKind</td>
-                        <td>@entry.ReleaseTitle</td>
-                        <td>@entry.QualityKey</td>
-                        <td>@entry.Score</td>
-                        <td>@entry.Reason</td>
+                        <th>@ui["acquisition.column.when"]</th>
+                        <th>@ui["acquisition.column.anime"]</th>
+                        <th>@ui["acquisition.column.episode"]</th>
+                        <th>@ui["acquisition.column.event"]</th>
+                        <th>@ui["acquisition.column.release"]</th>
+                        <th>@ui["acquisition.column.quality"]</th>
+                        <th>@ui["acquisition.column.score"]</th>
+                        <th>@ui["acquisition.column.reason"]</th>
                     </tr>
-                }
-            </tbody>
-        </table>
+                </thead>
+                <tbody>
+                    @foreach (var entry in Model.RecentHistory)
+                    {
+                        <tr>
+                            <td>@entry.OccurredAtUtc.ToLocalTime().ToString("g")</td>
+                            <td>@(Model.AnimeTitles.TryGetValue(entry.AnimeId, out var title) ? title : entry.AnimeId.ToString())</td>
+                            <td>S@(entry.SeasonNumber.ToString("00"))E@(entry.EpisodeNumber.ToString("00"))</td>
+                            <td>@entry.EventKind</td>
+                            <td>@entry.ReleaseTitle</td>
+                            <td>@entry.QualityKey</td>
+                            <td>@entry.Score</td>
+                            <td>@entry.Reason</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
     </section>
 }
 
@@ -277,7 +305,7 @@
     </section>
 }
 
-<section class="panel">
+<section class="panel" id="active-downloads">
     <div class="panel-heading">
         <h2>@ui["acquisition.downloadsHeading"]</h2>
         <span>@ui.Format("acquisition.activeCount", ("count", overview.ActiveDownloads.Count))</span>
@@ -315,7 +343,7 @@
     }
 </section>
 
-<section class="panel">
+<section class="panel" id="wanted">
     <div class="panel-heading">
         <h2>@ui["acquisition.wantedHeading"]</h2>
         <span>@ui.Format("acquisition.episodesCount", ("count", overview.Wanted.Count))</span>

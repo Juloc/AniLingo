@@ -4,6 +4,84 @@
     background: var(--accent-soft); color: var(--text);
 }
 
+/* Acquisition is an operations console: its current work is visible before
+   the configuration and the long release history below it. */
+.acquisition-console-header {
+    margin-bottom: 16px;
+}
+
+.acquisition-signal-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+    margin: 0 0 20px;
+}
+
+.acquisition-signal-card {
+    display: grid;
+    min-width: 0;
+    gap: 4px;
+    padding: 14px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface);
+    color: inherit;
+    text-decoration: none;
+    box-shadow: var(--shadow-card);
+}
+
+.acquisition-signal-card:hover {
+    border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+    transform: translateY(-1px);
+}
+
+.acquisition-signal-card > span,
+.acquisition-signal-card small {
+    overflow: hidden;
+    color: var(--text-secondary);
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.acquisition-signal-card > strong {
+    overflow: hidden;
+    font-size: clamp(20px, 2.4vw, 28px);
+    line-height: 1.05;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.acquisition-signal-card.needs-attention {
+    border-color: color-mix(in srgb, var(--warning-text) 45%, var(--border));
+}
+
+.acquisition-signal-card.is-running {
+    border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+    background: color-mix(in srgb, var(--accent) 7%, var(--surface));
+}
+
+.acquisition-history-table {
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+}
+
+.acquisition-history-table .data-table {
+    min-width: 920px;
+    margin: 0;
+}
+
+.acquisition-history-table th:first-child,
+.acquisition-history-table td:first-child {
+    padding-left: 14px;
+}
+
+.acquisition-history-table th:last-child,
+.acquisition-history-table td:last-child {
+    padding-right: 14px;
+}
+
 .acquisition-inline-form {
     display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; margin: 0;
 }
@@ -50,9 +128,15 @@
 }
 
 @media (max-width: 720px) {
+    .acquisition-signal-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .acquisition-signal-card { padding: 12px; }
     .acquisition-import-file { grid-template-columns: 1fr; }
     .acquisition-inline-form { align-items: stretch; }
     .acquisition-inline-form button { width: 100%; }
+}
+
+@media (max-width: 420px) {
+    .acquisition-signal-grid { grid-template-columns: 1fr; }
 }
 .acquisition-owner-actions { margin-top: 12px; }
 
