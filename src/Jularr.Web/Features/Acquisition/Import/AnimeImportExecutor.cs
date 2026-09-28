@@ -116,7 +116,19 @@ public sealed class AnimeImportExecutor(
             new OperationStore(db),
             download.Id,
             previous => new DownloadImportDetails(
-                DownloadImportState.Waiting,
+                DownloadImportState.Verifying,
+                "Verifying completed anime files.",
+                DateTime.UtcNow,
+                reportedPath ?? previous?.ReportedPath,
+                storagePath ?? previous?.LocalPath,
+                previous?.Destination,
+                previous?.Mode),
+            cancellationToken);
+        await DownloadImportRecorder.RecordAsync(
+            new OperationStore(db),
+            download.Id,
+            previous => new DownloadImportDetails(
+                DownloadImportState.Importing,
                 "Importing the completed anime download.",
                 DateTime.UtcNow,
                 reportedPath ?? previous?.ReportedPath,
@@ -592,9 +604,23 @@ public sealed class AnimeImportExecutor(
         }
 
         var imported = results.Count(result => result.Status == AnimeImportFileStatus.Imported);
-        var reconciled = imported > 0 && location is not null
-            ? await ReconcileAsync(location, operationId, cancellationToken)
-            : null;
+        string? reconciled = null;
+        if (imported > 0 && location is not null)
+        {
+            await DownloadImportRecorder.RecordAsync(
+                operations,
+                download.Id,
+                previous => new DownloadImportDetails(
+                    DownloadImportState.MatchingMetadata,
+                    "Matching imported Anime metadata.",
+                    DateTime.UtcNow,
+                    previous?.ReportedPath,
+                    previous?.LocalPath,
+                    previous?.Destination,
+                    previous?.Mode),
+                cancellationToken);
+            reconciled = await ReconcileAsync(location, operationId, cancellationToken);
+        }
 
         var attention = results.Any(result => result.Status is AnimeImportFileStatus.ManualRequired or AnimeImportFileStatus.Failed);
         var status = attention
@@ -1009,7 +1035,7 @@ public sealed class AnimeImportExecutor(
         {
             AnimeImportStatus.Imported => DownloadImportState.Completed,
             AnimeImportStatus.ManualRequired => DownloadImportState.ManualReview,
-            AnimeImportStatus.Importing => DownloadImportState.Waiting,
+            AnimeImportStatus.Importing => DownloadImportState.Importing,
             _ => DownloadImportState.Failed
         };
         await DownloadImportRecorder.RecordAsync(
