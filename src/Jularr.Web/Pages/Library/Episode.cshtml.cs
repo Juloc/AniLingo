@@ -42,7 +42,8 @@ public sealed class EpisodeModel(
     SubtitleImportService subtitleImportService,
     AniListAccountService aniListAccountService,
     CurrentAccountContext currentAccount,
-    OperationRunner operations) : PageModel
+    OperationRunner operations,
+    ILogger<EpisodeModel> logger) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public Guid EpisodeId { get; private set; }
@@ -328,7 +329,8 @@ public sealed class EpisodeModel(
         }
         catch (InvalidOperationException exception)
         {
-            TempData["SubtitleError"] = exception.Message;
+            logger.LogError(exception, "Importing subtitle stream {StreamIndex} for episode {EpisodeId} failed", streamIndex, id);
+            TempData["SubtitleError"] = ui["library.episode.subtitleImportFailed"];
         }
         return RedirectToPage(new { id });
     }

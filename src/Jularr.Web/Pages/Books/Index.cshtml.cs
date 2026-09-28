@@ -24,7 +24,8 @@ public sealed class IndexModel(
     AcquisitionRequestService requests,
     AcquisitionAccessStore requestStore,
     MediaInboxImportService inboxes,
-    IDataProtectionProvider dataProtectionProvider) : PageModel
+    IDataProtectionProvider dataProtectionProvider,
+    ILogger<IndexModel> logger) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public string Query { get; private set; } = "";
@@ -119,7 +120,8 @@ public sealed class IndexModel(
         }
         catch (InvalidOperationException exception)
         {
-            TempData["Status"] = exception.Message;
+            logger.LogError(exception, "Importing uploaded book {FileName} failed", book.FileName);
+            TempData["Status"] = ui["books.index.uploadFailed"];
             return RedirectToPage();
         }
     }
@@ -128,6 +130,8 @@ public sealed class IndexModel(
         string? epubUrl,
         CancellationToken cancellationToken)
     {
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         if (!await CanAddManuallyAsync(cancellationToken))
         {
             return Forbid();
@@ -171,7 +175,8 @@ public sealed class IndexModel(
                 operationId,
                 $"{exception.GetType().Name}: {exception.Message}",
                 CancellationToken.None);
-            TempData["Status"] = exception.Message;
+            logger.LogError(exception, "Remote EPUB import failed for operation {OperationId}", operationId);
+            TempData["Status"] = ui["books.index.remoteEpubFailed"];
             return RedirectToPage();
         }
     }
@@ -202,7 +207,8 @@ public sealed class IndexModel(
                 or IOException
                 or UnauthorizedAccessException)
         {
-            TempData["Status"] = exception.Message;
+            logger.LogError(exception, "Importing the book inbox for profile {ProfileId} failed", account.ProfileId);
+            TempData["Status"] = ui["books.index.inboxImportFailed"];
         }
 
         return RedirectToPage();
@@ -234,7 +240,8 @@ public sealed class IndexModel(
         }
         catch (InvalidOperationException exception)
         {
-            TempData["Status"] = exception.Message;
+            logger.LogError(exception, "Submitting SABnzbd URL download {DisplayName} failed", effectiveName);
+            TempData["Status"] = ui["books.index.sabSubmitFailed"];
         }
 
         return RedirectToPage();
@@ -269,7 +276,8 @@ public sealed class IndexModel(
         }
         catch (InvalidOperationException exception)
         {
-            TempData["Status"] = exception.Message;
+            logger.LogError(exception, "Submitting SABnzbd file download {FileName} failed", nzb.FileName);
+            TempData["Status"] = ui["books.index.sabSubmitFailed"];
         }
 
         return RedirectToPage();

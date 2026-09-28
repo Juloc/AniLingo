@@ -24,7 +24,8 @@ public sealed class AnimeRepairModel(
     LibraryScanCoordinator scans,
     CurrentAccountContext currentAccount,
     OperationRunner operations,
-    MediaOptimizationQueue optimizationQueue) : PageModel
+    MediaOptimizationQueue optimizationQueue,
+    ILogger<AnimeRepairModel> logger) : PageModel
 {
     public const string MatchOperationKind = "anime-metadata-match";
     public const string RefreshMetadataOperationKind = "anime-metadata-refresh";
@@ -78,7 +79,8 @@ public sealed class AnimeRepairModel(
             }
             catch (MetadataProviderException exception)
             {
-                TempData["Error"] = exception.Message;
+                logger.LogError(exception, "Anime repair metadata search for {AnimeId} failed", id);
+                TempData["Error"] = Ui["library.animeRepair.searchFailed"];
             }
         }
 
@@ -215,7 +217,8 @@ public sealed class AnimeRepairModel(
         catch (Exception exception) when (
             exception is MetadataProviderException or InvalidOperationException)
         {
-            TempData["Error"] = exception.Message;
+            logger.LogError(exception, "Matching anime metadata for {AnimeId} failed", id);
+            TempData["Error"] = ui["library.animeRepair.matchFailed"];
         }
 
         return RedirectToPage(new { id });
@@ -249,7 +252,8 @@ public sealed class AnimeRepairModel(
         catch (Exception exception) when (
             exception is MetadataProviderException or InvalidOperationException)
         {
-            TempData["Error"] = exception.Message;
+            logger.LogError(exception, "Refreshing anime metadata for {AnimeId} failed", id);
+            TempData["Error"] = ui["library.animeRepair.metadataRefreshFailed"];
         }
 
         return RedirectToPage(new { id });

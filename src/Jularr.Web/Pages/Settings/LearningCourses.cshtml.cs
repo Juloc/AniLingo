@@ -13,7 +13,8 @@ namespace Jularr.Web.Pages.Settings;
 
 public sealed class LearningCoursesModel(
     AppDbContext db,
-    CurrentAccountContext currentAccount) : PageModel
+    CurrentAccountContext currentAccount,
+    ILogger<LearningCoursesModel> logger) : PageModel
 {
     private LearningCourseStore Store { get; } = new(db);
 
@@ -98,7 +99,8 @@ public sealed class LearningCoursesModel(
         }
         catch (ArgumentException exception)
         {
-            TempData["Status"] = exception.Message;
+            logger.LogError(exception, "Updating learning course {CourseId} failed", courseId);
+            TempData["Status"] = Ui["settings.learningCourses.updateFailed"];
             return RedirectToPage();
         }
 

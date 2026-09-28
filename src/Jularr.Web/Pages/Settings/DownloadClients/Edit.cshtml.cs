@@ -11,7 +11,7 @@ namespace Jularr.Web.Pages.Settings.DownloadClients;
 
 /// <summary>Add or edit one canonical SABnzbd download client entry.</summary>
 [Authorize(Policy = JularrPolicies.AcquisitionSettings)]
-public sealed class EditModel(AppDbContext db, DownloadClientStore store) : PageModel
+public sealed class EditModel(AppDbContext db, DownloadClientStore store, ILogger<EditModel> logger) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
 
@@ -111,7 +111,8 @@ public sealed class EditModel(AppDbContext db, DownloadClientStore store) : Page
         catch (Exception exception) when (
             exception is ArgumentException or InvalidDataException or IOException or UnauthorizedAccessException)
         {
-            Error = exception.Message;
+            logger.LogError(exception, "Saving download client {Name} failed", Name);
+            Error = Ui["settings.downloadClients.saveFailed"];
             return Page();
         }
     }

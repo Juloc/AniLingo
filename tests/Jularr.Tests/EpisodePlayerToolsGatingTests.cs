@@ -74,7 +74,7 @@ public sealed class EpisodePlayerToolsGatingTests
     }
 
     private static EpisodeModel NewModel() =>
-        new(null!, null!, null!, null!, null!, null!, null!, null!, null!, null!);
+        new(null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!);
 
     private static void SetLearningSettings(
         EpisodeModel model,

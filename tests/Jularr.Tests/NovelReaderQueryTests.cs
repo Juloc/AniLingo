@@ -16,6 +16,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Jularr.Tests;
 
@@ -569,7 +570,8 @@ public sealed class NovelReaderQueryTests
                     new JapaneseDictionary(Path.GetTempPath())),
                 db,
                 EpisodeFlowFixture.Account(profileId),
-                new OperationRunner(db, services)));
+                new OperationRunner(db, services),
+                NullLogger<ReadModel>.Instance));
         }
 
         /// <summary>

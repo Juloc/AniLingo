@@ -13,7 +13,8 @@ namespace Jularr.Web.Pages.Settings;
 public sealed class MappingSegmentsModel(
     ReadingSegmentMappingStore segmentMappings,
     CurrentAccountContext account,
-    AppDbContext db) : PageModel
+    AppDbContext db,
+    ILogger<MappingSegmentsModel> logger) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public IReadOnlyList<ReadingMediaSegmentMapping> Mappings { get; private set; } = [];
@@ -136,7 +137,8 @@ public sealed class MappingSegmentsModel(
         }
         catch (InvalidOperationException exception)
         {
-            TempData["Status"] = exception.Message;
+            logger.LogError(exception, "Adding reading segment mapping for {MediaType} {LocalId} failed", MediaType, localId);
+            TempData["Status"] = Ui["settings.mappingSegments.addFailed"];
         }
 
         return RedirectToPage(

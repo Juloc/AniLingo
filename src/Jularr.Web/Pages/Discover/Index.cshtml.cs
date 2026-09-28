@@ -29,7 +29,8 @@ public sealed class IndexModel(
     AcquisitionAccessStore requestStore,
     WatchlistStore watchlist,
     FranchiseService franchiseService,
-    ILogger<DiscoveryCoordinator> discoveryLogger) : PageModel
+    ILogger<DiscoveryCoordinator> discoveryLogger,
+    ILogger<IndexModel> logger) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public bool IsOwner => account.IsOwner;
@@ -323,7 +324,8 @@ public sealed class IndexModel(
         }
         catch (InvalidOperationException exception)
         {
-            TempData["Status"] = exception.Message;
+            logger.LogError(exception, "Importing discovered novel source {SourceUrl} failed", sourceUrl);
+            TempData["Status"] = Ui["discover.import.sourceImportFailed"];
             return RedirectToPage();
         }
     }

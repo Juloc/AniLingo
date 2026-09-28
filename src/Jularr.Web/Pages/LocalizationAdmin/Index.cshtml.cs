@@ -15,7 +15,8 @@ public sealed class IndexModel(
     CodexCliProvider translationGenerator,
     CurrentAccountContext currentAccount,
     AiActivityRunner activityRunner,
-    AiModelCatalogService catalogs) : PageModel
+    AiModelCatalogService catalogs,
+    ILogger<IndexModel> logger) : PageModel
 {
     private const int GenerationBatchSize = 100;
 
@@ -105,7 +106,8 @@ public sealed class IndexModel(
         catch (Exception exception) when (
             exception is ArgumentException or InvalidOperationException)
         {
-            TempData["Status"] = exception.Message;
+            logger.LogError(exception, "Generating missing translations for locale {Locale} failed", locale);
+            TempData["Status"] = Ui["localizationAdmin.error.generateFailed"];
         }
 
         return RedirectToPage(new { locale });
@@ -134,7 +136,8 @@ public sealed class IndexModel(
         catch (Exception exception) when (
             exception is ArgumentException or InvalidOperationException)
         {
-            TempData["Status"] = exception.Message;
+            logger.LogError(exception, "Regenerating outdated translations for locale {Locale} failed", locale);
+            TempData["Status"] = Ui["localizationAdmin.error.generateFailed"];
         }
 
         return RedirectToPage(new { locale });
@@ -160,7 +163,8 @@ public sealed class IndexModel(
             or InvalidOperationException
             or KeyNotFoundException)
         {
-            TempData["Status"] = exception.Message;
+            logger.LogError(exception, "Saving manual translation {Key} for locale {Locale} failed", key, locale);
+            TempData["Status"] = Ui["localizationAdmin.error.saveFailed"];
         }
 
         return RedirectToPage(new { locale });
@@ -185,7 +189,8 @@ public sealed class IndexModel(
             or InvalidOperationException
             or KeyNotFoundException)
         {
-            TempData["Status"] = exception.Message;
+            logger.LogError(exception, "Marking translation {Key} reviewed for locale {Locale} failed", key, locale);
+            TempData["Status"] = Ui["localizationAdmin.error.markReviewedFailed"];
         }
 
         return RedirectToPage(new { locale });

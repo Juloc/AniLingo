@@ -11,7 +11,8 @@ namespace Jularr.Web.Pages.Books;
 public sealed class TranslationMemoryModel(
     AppDbContext db,
     CurrentAccountContext account,
-    IConfiguration configuration) : PageModel
+    IConfiguration configuration,
+    ILogger<TranslationMemoryModel> logger) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public Guid WorkId { get; private set; }
@@ -134,7 +135,8 @@ public sealed class TranslationMemoryModel(
         }
         catch (InvalidOperationException exception)
         {
-            TempData["Status"] = exception.Message;
+            logger.LogError(exception, "Saving translation memory term for book {BookId} failed", id);
+            TempData["Status"] = ui["books.bible.termFailed"];
         }
 
         return RedirectToPage(
@@ -220,7 +222,8 @@ public sealed class TranslationMemoryModel(
         }
         catch (InvalidOperationException exception)
         {
-            TempData["Status"] = exception.Message;
+            logger.LogError(exception, "Saving translation memory character for book {BookId} failed", id);
+            TempData["Status"] = ui["books.bible.entityFailed"];
         }
 
         return RedirectToPage(

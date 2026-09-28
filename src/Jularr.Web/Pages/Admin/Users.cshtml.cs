@@ -13,7 +13,8 @@ namespace Jularr.Web.Pages.Admin;
 public sealed class UsersModel(
     AppDbContext db,
     OwnerAuthService authService,
-    AdminUserProgressService progressService) : PageModel
+    AdminUserProgressService progressService,
+    ILogger<UsersModel> logger) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
 
@@ -94,7 +95,8 @@ public sealed class UsersModel(
         }
         catch (InvalidOperationException exception)
         {
-            TempData["Status"] = exception.Message;
+            logger.LogError(exception, "Updating account {AccountId} (enabled={Enabled}) failed", accountId, enabled);
+            TempData["Status"] = Ui["admin.users.updateFailed"];
         }
 
         return RedirectToPage();

@@ -11,7 +11,8 @@ public sealed class AniListModel(
     AniListAccountService accountService,
     AniListSyncService syncService,
     CurrentAccountContext currentAccount,
-    AppDbContext db) : PageModel
+    AppDbContext db,
+    ILogger<AniListModel> logger) : PageModel
 {
     private string ClientIdTempDataKey =>
         $"AniListClientId:{currentAccount.ProfileId}";
@@ -137,7 +138,8 @@ public sealed class AniListModel(
         }
         catch (AniListAccountException exception)
         {
-            TempData["Status"] = exception.Message;
+            logger.LogError(exception, "Changing AniList sync mode to {SyncMode} failed", syncMode);
+            TempData["Status"] = Ui["settings.anilist.error.syncModeFailed"];
         }
 
         return RedirectToPage();

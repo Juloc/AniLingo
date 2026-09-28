@@ -40,7 +40,8 @@ public sealed class ReadModel(
     LanguageTextAnalyzer languageAnalyzer,
     AppDbContext db,
     CurrentAccountContext account,
-    OperationRunner operations) : PageModel
+    OperationRunner operations,
+    ILogger<ReadModel> logger) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public NovelReaderChapter Chapter { get; private set; } = null!;
@@ -668,6 +669,8 @@ public sealed class ReadModel(
             return Forbid();
         }
 
+        var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         try
         {
             await operations.RunAsync(
@@ -694,12 +697,12 @@ public sealed class ReadModel(
                 "Novel chapter source refreshed.",
                 cancellationToken);
 
-            var ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
             TempData["Status"] = ui["novels.read.sourceRefreshed"];
         }
         catch (InvalidOperationException exception)
         {
-            TempData["Status"] = exception.Message;
+            logger.LogError(exception, "Refreshing novel chapter source for chapter {ChapterId} failed", id);
+            TempData["Status"] = ui["novels.read.sourceRefreshFailed"];
         }
 
         return RedirectToPage(new { id });

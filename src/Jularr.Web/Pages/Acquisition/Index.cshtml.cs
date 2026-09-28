@@ -26,7 +26,8 @@ public sealed class IndexModel(
     AnimeImportExecutor importExecutor,
     DownloadClientStore downloadClients,
     AcquisitionHistoryService history,
-    AppDbContext db) : PageModel
+    AppDbContext db,
+    ILogger<IndexModel> logger) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
 
@@ -188,7 +189,8 @@ public sealed class IndexModel(
         catch (Exception exception) when (
             exception is ArgumentException or InvalidDataException or IOException or UnauthorizedAccessException)
         {
-            TempData["AcquisitionError"] = exception.Message;
+            logger.LogError(exception, "Anime acquisition settings update failed for {AnimeId}", animeId);
+            TempData["AcquisitionError"] = Ui["acquisition.error.settingsUpdateFailed"];
         }
 
         return RedirectBack(returnUrl);

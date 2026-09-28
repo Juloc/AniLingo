@@ -12,7 +12,8 @@ public sealed class DetailsModel(
     BookCatalogService books,
     CurrentAccountContext account,
     SabnzbdDownloadService sabnzbd,
-    AppDbContext db) : PageModel
+    AppDbContext db,
+    ILogger<DetailsModel> logger) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public BookCatalogItem? Book { get; private set; }
@@ -55,6 +56,8 @@ public sealed class DetailsModel(
             return Forbid();
         }
 
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
         try
         {
             var workId = await books.AcquireCatalogBookAsync(
@@ -69,7 +72,8 @@ public sealed class DetailsModel(
                 or HttpRequestException
                 or TaskCanceledException)
         {
-            TempData["Status"] = exception.Message;
+            logger.LogError(exception, "Acquiring catalog book {BookId} failed", id);
+            TempData["Status"] = Ui["books.details.acquireFailed"];
             return RedirectToPage(new { id });
         }
     }
@@ -110,7 +114,8 @@ public sealed class DetailsModel(
                 or HttpRequestException
                 or TaskCanceledException)
         {
-            TempData["Status"] = exception.Message;
+            logger.LogError(exception, "Submitting SABnzbd download for book {BookId} failed", id);
+            TempData["Status"] = ui["books.details.sabSubmitFailed"];
         }
 
         return RedirectToPage(new { id });

@@ -137,7 +137,8 @@ public sealed class LocalFirstPageGetTests
             fixture.OwnerAccount,
             fixture.Operations,
             fixture.HttpClientFactory,
-            fixture.ReviewStore));
+            fixture.ReviewStore,
+            NullLogger<MangaIndexModel>.Instance));
 
         await page.OnGetAsync(CancellationToken.None);
 
@@ -168,7 +169,8 @@ public sealed class LocalFirstPageGetTests
             fixture.Db,
             fixture.OwnerAccount,
             fixture.HttpClientFactory,
-            fixture.Operations));
+            fixture.Operations,
+            NullLogger<DiscoverMangaImportModel>.Instance));
 
         var result = await page.OnGetAsync("321", "Remote Manga");
 
@@ -425,7 +427,8 @@ public sealed class LocalFirstPageGetTests
                 new AcquisitionAccessStore(Db),
                 watchlistStore,
                 franchiseService,
-                NullLogger<Jularr.Web.Features.Discovery.DiscoveryCoordinator>.Instance);
+                NullLogger<Jularr.Web.Features.Discovery.DiscoveryCoordinator>.Instance,
+                NullLogger<DiscoverIndexModel>.Instance);
         }
 
         public async Task<(Guid SeriesId, IReadOnlyList<Guid> ChapterIds)> AddMangaAsync(
