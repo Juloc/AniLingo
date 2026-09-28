@@ -5,6 +5,7 @@ using Jularr.Web.Features.MediaMapping;
 using Jularr.Web.Features.Operations;
 using Jularr.Web.Features.Playback.Decision;
 using Jularr.Web.Features.Storage;
+using Jularr.Web.Features.Subtitles;
 using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Web.Features.Admin;
@@ -19,6 +20,7 @@ public sealed record AdminOverviewSnapshot(
     int ActiveProcessing,
     int OpenAcquisitionRequests,
     int UnresolvedMappings,
+    int MissingLearningText,
     int StorageRootsOffline,
     int BlockedJobs,
     int WatchingNow,
@@ -28,7 +30,7 @@ public sealed record AdminOverviewSnapshot(
     long? DataVolumeFreeBytes,
     long? DataVolumeTotalBytes)
 {
-    public static readonly AdminOverviewSnapshot Empty = new(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, null, null);
+    public static readonly AdminOverviewSnapshot Empty = new(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, null, null);
 }
 
 /// <summary>
@@ -40,6 +42,7 @@ public sealed class AdminOverviewService(
     AcquisitionAccessStore acquisitionAccess,
     MediaMappingReviewStore mappingReview,
     LibraryRootAvailabilityService storageAvailability,
+    SubtitleImportService subtitleImport,
     PlaybackStreamSessionStore sessions)
 {
     // The store clamps to 500 regardless; this just avoids an arbitrary smaller default.
@@ -59,6 +62,7 @@ public sealed class AdminOverviewService(
             cancellationToken);
 
         var mappingTasks = await mappingReview.ListAsync(cancellationToken);
+        var subtitleCoverage = await subtitleImport.GetCoverageAsync(cancellationToken);
 
         var roots = await db.LibraryRoots.AsNoTracking().ToListAsync(cancellationToken);
         var offlineRoots = roots.Count(root => IsOffline(storageAvailability.GetCached(root)));
@@ -75,6 +79,7 @@ public sealed class AdminOverviewService(
             ActiveProcessing: processing,
             OpenAcquisitionRequests: openRequests.Count,
             UnresolvedMappings: mappingTasks.Count,
+            MissingLearningText: subtitleCoverage.MissingEpisodes,
             StorageRootsOffline: offlineRoots,
             BlockedJobs: summary.Interrupted,
             WatchingNow: allSessions.Count,
