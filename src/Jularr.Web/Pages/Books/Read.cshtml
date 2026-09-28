@@ -402,6 +402,8 @@
         {
         <main class="book-stage" data-reader-surface aria-label="@chapter.Title">
             <div class="book-spread" data-book-spread>
+                <div class="book-stack book-stack-left" data-book-stack="left" aria-hidden="true"></div>
+                <div class="book-stack book-stack-right" data-book-stack="right" aria-hidden="true"></div>
                 <div class="book-sheet book-sheet-left" aria-hidden="true">
                     <span class="book-art-mountains"></span>
                     <span class="book-page-number" data-book-page-number="left"></span>
@@ -412,6 +414,7 @@
                 </div>
                 <span class="book-art-branch book-art-branch-top art-tint" aria-hidden="true"></span>
                 <span class="book-art-branch book-art-branch-side art-tint" aria-hidden="true"></span>
+                <div class="book-turn-shade" data-book-turn-shade aria-hidden="true"></div>
 
                 <div class="book-flow" data-book-flow>
                     <div class="book-columns" data-book-columns data-book-reader-content>
@@ -557,6 +560,17 @@
                         <partial name="_ReaderIcon" model="@("view")" />
                         <span>@ui["reader.frame.twoPages"]</span>
                     </button>
+                    @if (!isPdf)
+                    {
+                        <button type="button" role="menuitemradio" aria-checked="false" data-book-page-turn-choice="curl" data-reader-mode-only="paged">
+                            <partial name="_ReaderIcon" model="@("auto-scroll")" />
+                            <span>@ui["reader.settings.pageTransition.curl"]</span>
+                        </button>
+                        <button type="button" role="menuitemradio" aria-checked="false" data-book-page-turn-choice="none" data-reader-mode-only="paged">
+                            <partial name="_ReaderIcon" model="@("single-page")" />
+                            <span>@ui["reader.settings.pageTransition.none"]</span>
+                        </button>
+                    }
                     @if (isPdf)
                     {
                         await PdfZoomRow(null);
