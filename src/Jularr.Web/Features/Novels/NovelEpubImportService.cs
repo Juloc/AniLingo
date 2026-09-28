@@ -232,7 +232,8 @@ public sealed partial class NovelEpubImportService(
     /// </summary>
     public async Task<NovelEpubDownloadImport> ImportDownloadAsync(
         string sourcePath,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool recordSourceStoragePath = false)
     {
         var source = Path.GetFullPath(sourcePath);
         string[] paths;
@@ -310,7 +311,8 @@ public sealed partial class NovelEpubImportService(
                 Path.GetFileName(path),
                 targetWorkId: null,
                 seriesHint: null,
-                cancellationToken));
+                cancellationToken,
+                recordSourceStoragePath ? Path.GetFullPath(path) : null));
         }
 
         await AutoMatchAsync(outcomes, cancellationToken);
@@ -355,7 +357,8 @@ public sealed partial class NovelEpubImportService(
         string fileName,
         Guid? targetWorkId,
         string? seriesHint,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? sourceStoragePath = null)
     {
         fileName = Path.GetFileName(fileName);
         if (!fileName.EndsWith(".epub", StringComparison.OrdinalIgnoreCase))
@@ -391,10 +394,22 @@ public sealed partial class NovelEpubImportService(
 
             var work = await ResolveSeriesAsync(parsed, fileName, targetWorkId, seriesHint, cancellationToken);
             (volume, createdVolume) = await ResolveVolumeAsync(work, parsed, fileName, cancellationToken);
+            var storagePath = TruncateOptional(sourceStoragePath, 2048);
 
             if (!createdVolume && volume.SourceContentHash == contentHash)
             {
-                await transaction.RollbackAsync(cancellationToken);
+                if (storagePath is not null && !string.Equals(volume.SourceStoragePath, storagePath, StringComparison.Ordinal))
+                {
+                    volume.SourceStoragePath = storagePath;
+                    volume.UpdatedAt = DateTime.UtcNow;
+                    await db.SaveChangesAsync(cancellationToken);
+                    await transaction.CommitAsync(cancellationToken);
+                }
+                else
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                }
+
                 db.ChangeTracker.Clear();
                 return new NovelEpubImportOutcome(
                     fileName,
@@ -406,6 +421,10 @@ public sealed partial class NovelEpubImportService(
 
             volume.Title = Truncate(parsed.Title, 500);
             volume.SourceFileName = Truncate(fileName, 500);
+            if (storagePath is not null)
+            {
+                volume.SourceStoragePath = storagePath;
+            }
             volume.SourceContentHash = contentHash;
             volume.UpdatedAt = DateTime.UtcNow;
 

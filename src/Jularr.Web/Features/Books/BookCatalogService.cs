@@ -474,7 +474,8 @@ public sealed partial class BookCatalogService(
         string fileName,
         string sourceKind,
         string sourceUrl,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? storagePath = null)
     {
         using var copy = await CopyToMemoryBoundedAsync(
             stream,
@@ -518,7 +519,8 @@ public sealed partial class BookCatalogService(
             sourceKind: sourceKind,
             contentHash: contentHash,
             sizeBytes: bytes.LongLength,
-            cancellationToken);
+            cancellationToken,
+            storagePath: storagePath);
     }
 
     public async Task<Guid> ImportRemoteEpubAsync(
@@ -1352,7 +1354,8 @@ public sealed partial class BookCatalogService(
         long sizeBytes,
         CancellationToken cancellationToken,
         string fileFormat = "EPUB",
-        string fileMediaType = "application/epub+zip")
+        string fileMediaType = "application/epub+zip",
+        string? storagePath = null)
     {
         sourceKey = CleanSourceKey(sourceKey);
 
@@ -1454,7 +1457,8 @@ public sealed partial class BookCatalogService(
             sizeBytes,
             fileFormat,
             fileMediaType,
-            cancellationToken);
+            cancellationToken,
+            storagePath);
 
         return work.Id;
     }
