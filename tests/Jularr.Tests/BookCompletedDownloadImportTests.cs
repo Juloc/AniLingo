@@ -105,6 +105,31 @@ public sealed class BookCompletedDownloadImportTests
     }
 
     [TestMethod]
+    public async Task CompletedDownloadKeepsItsOriginalBookFileInTheConfiguredLibrary()
+    {
+        await using var host = await Host.CreateAsync();
+        var job = host.Folder("complete-book");
+        await WriteEpubAsync(Path.Combine(job, "dune.epub"));
+        var library = host.Folder("media-books");
+        await host.SetLibraryAsync(MediaAcquisitionKind.Book, library, ImportMode.Copy);
+
+        var result = await host.Adapter.ImportAsync(
+            new CompletedDownloadImportRequest(null, null, job, MediaAcquisitionKind.Book),
+            CancellationToken.None);
+
+        Assert.AreEqual(CompletedDownloadImportDisposition.Completed, result.Disposition, result.Message);
+        var placement = result.Placement ?? throw new AssertFailedException("The import records its library placement.");
+        Assert.AreEqual(Path.Combine(library, "complete-book"), placement.Destination);
+        Assert.AreEqual(ImportMode.Copy, placement.Mode);
+        Assert.IsTrue(File.Exists(Path.Combine(library, "complete-book", "dune.epub")));
+        Assert.IsTrue(File.Exists(Path.Combine(job, "dune.epub")), "Copy leaves the completed download intact.");
+        var stored = await host.Db.BookFiles.AsNoTracking().SingleAsync();
+        Assert.AreEqual(
+            Path.Combine(library, "complete-book", "dune.epub"),
+            stored.StoragePath);
+    }
+
+    [TestMethod]
     public async Task MissingOrUnsuitableDownloadsAreToldApart()
     {
         await using var host = await Host.CreateAsync();
@@ -318,6 +343,7 @@ public sealed class BookCompletedDownloadImportTests
                     configuration))
                 .AddSingleton(provider => new OperationRunner(db, provider))
                 .AddSingleton(new AnimeImportSettingsStore(root))
+                .AddSingleton<IHardLinkCreator, FileSystemHardLinkCreator>()
                 .AddSingleton(new AcquisitionAccessStore(db))
                 .AddSingleton(typeof(ILogger<>), typeof(NullLogger<>))
                 .AddSingleton<BookCompletedDownloadImportAdapter>()
@@ -336,6 +362,16 @@ public sealed class BookCompletedDownloadImportTests
                 var libraries = new Dictionary<MediaAcquisitionKind, MediaLibraryTarget>(state.MediaLibraries)
                 {
                     [kind] = new MediaLibraryTarget(InboxRoot: inbox)
+                };
+                return state with { MediaLibraries = libraries };
+            });
+
+        public Task SetLibraryAsync(MediaAcquisitionKind kind, string library, ImportMode mode) =>
+            services.GetRequiredService<AnimeImportSettingsStore>().UpdateAsync(state =>
+            {
+                var libraries = new Dictionary<MediaAcquisitionKind, MediaLibraryTarget>(state.MediaLibraries)
+                {
+                    [kind] = new MediaLibraryTarget(library, mode)
                 };
                 return state with { MediaLibraries = libraries };
             });

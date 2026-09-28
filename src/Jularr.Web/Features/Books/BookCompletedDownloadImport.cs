@@ -1,6 +1,7 @@
 using Jularr.Web.Data;
 using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Acquisition.Import;
+using Jularr.Web.Features.ReadingAcquisition;
 using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Web.Features.Books;
@@ -15,6 +16,8 @@ namespace Jularr.Web.Features.Books;
 public sealed class BookCompletedDownloadImportAdapter(
     BookCatalogService books,
     AppDbContext db,
+    AnimeImportSettingsStore importSettings,
+    IHardLinkCreator hardLinks,
     ILogger<BookCompletedDownloadImportAdapter> logger)
     : ICompletedDownloadImportAdapter, IMediaInboxImportAdapter
 {
@@ -30,6 +33,7 @@ public sealed class BookCompletedDownloadImportAdapter(
         CompletedDownloadImportRequest request,
         CancellationToken cancellationToken)
     {
+        CompletedDownloadPlacement? placement = null;
         if (!File.Exists(request.SourcePath) && !Directory.Exists(request.SourcePath))
         {
             // Not the release's fault: an unmapped path or an offline share. Wanted waits and
@@ -42,12 +46,32 @@ public sealed class BookCompletedDownloadImportAdapter(
         IReadOnlyList<Guid> imported;
         try
         {
+            var settings = await importSettings.LoadAsync(cancellationToken);
+            var library = settings.LibraryFor(MediaAcquisitionKind.Book);
+            var importSource = request.SourcePath;
+            var preserveSourceFiles = false;
+            if (library is not null)
+            {
+                var destination = ReadingLibraryPlacement.ReleaseFolder(
+                    library.LibraryRoot!,
+                    request.Request?.Title ?? Path.GetFileNameWithoutExtension(request.SourcePath));
+                var mode = settings.ModeFor(MediaAcquisitionKind.Book);
+                placement = new CompletedDownloadPlacement(destination, mode);
+                new ReadingLibraryPlacement(new ImportFileTransfer(hardLinks)).PlaceBookFiles(
+                    request.SourcePath,
+                    destination,
+                    mode);
+                importSource = destination;
+                preserveSourceFiles = true;
+            }
+
             imported = await books.ImportBooksFromPathAsync(
-                request.SourcePath,
+                importSource,
                 "download",
                 hint,
                 singleBook: true,
-                cancellationToken);
+                cancellationToken,
+                preserveSourceFiles);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -82,7 +106,7 @@ public sealed class BookCompletedDownloadImportAdapter(
             return CompletedDownloadImportResult.Completed(
                 $"Imported {works.Count} book(s).",
                 $"/Books/Library/{works[0].Id}",
-                Placement);
+                placement ?? Placement);
         }
 
         var match = works.FirstOrDefault(work => SameTitle(work.Title, answered.Title))
@@ -96,7 +120,7 @@ public sealed class BookCompletedDownloadImportAdapter(
         return CompletedDownloadImportResult.Completed(
             "Downloaded book imported.",
             $"/Books/Library/{match.Id}",
-            Placement);
+            placement ?? Placement);
     }
 
     public async Task<MediaInboxImportResult> ImportInboxAsync(
@@ -110,7 +134,7 @@ public sealed class BookCompletedDownloadImportAdapter(
             hint: null,
             singleBook: false,
             cancellationToken,
-            excludedFolders);
+            excludedFolders: excludedFolders);
         return new MediaInboxImportResult(
             imported.Count,
             imported.Count == 0
