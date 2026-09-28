@@ -488,10 +488,26 @@ public sealed class MangaRepository(AppDbContext db)
                 ("Id", "Title", "SourcePath", "Direction", "CreatedAt", "UpdatedAt")
             VALUES
                 ({id.ToString()}, {title}, {sourcePath}, {"rtl"}, {now}, {now})
-            ON CONFLICT("SourcePath") DO UPDATE SET
+            ON CONFLICT("Id") DO UPDATE SET
                 "Title" = excluded."Title",
+                "SourcePath" = excluded."SourcePath",
                 "UpdatedAt" = excluded."UpdatedAt";
             """,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// The series already stored at this exact source path (#563): lets a rescan of an
+    /// unmoved/unrenamed series folder reuse its existing stable id instead of minting a new one,
+    /// without requiring the caller to already know it.
+    /// </summary>
+    public async Task<Guid?> FindSeriesIdByPathAsync(
+        string sourcePath,
+        CancellationToken cancellationToken)
+    {
+        return await QueryScalarGuidAsync(
+            """SELECT "Id" FROM "MangaSeries" WHERE "SourcePath" = @sourcePath LIMIT 1;""",
+            command => AddParameter(command, "@sourcePath", sourcePath),
             cancellationToken);
     }
 
@@ -504,21 +520,87 @@ public sealed class MangaRepository(AppDbContext db)
         await db.Database.ExecuteSqlInterpolatedAsync(
             $"""
             INSERT INTO "MangaChapters"
-                ("Id", "SeriesId", "Number", "VolumeNumber", "Title", "SourcePath",
+                ("Id", "SeriesId", "Number", "VolumeNumber", "VolumeId", "Title", "SourcePath",
                  "SourceKind", "PageCount", "SourceUpdatedAt", "CreatedAt", "UpdatedAt")
             VALUES
                 ({chapter.Id.ToString()}, {chapter.SeriesId.ToString()}, {chapter.Number},
-                 {chapter.VolumeNumber}, {chapter.Title}, {sourcePath}, {chapter.SourceKind},
+                 {chapter.VolumeNumber}, {(chapter.VolumeId.HasValue ? chapter.VolumeId.Value.ToString() : null)},
+                 {chapter.Title}, {sourcePath}, {chapter.SourceKind},
                  {chapter.PageCount}, {chapter.SourceUpdatedAt.ToString("O")}, {now}, {now})
-            ON CONFLICT("SeriesId", "SourcePath") DO UPDATE SET
+            ON CONFLICT("Id") DO UPDATE SET
                 "Number" = excluded."Number",
                 "VolumeNumber" = excluded."VolumeNumber",
+                "VolumeId" = excluded."VolumeId",
                 "Title" = excluded."Title",
+                "SourcePath" = excluded."SourcePath",
                 "SourceKind" = excluded."SourceKind",
                 "PageCount" = excluded."PageCount",
                 "SourceUpdatedAt" = excluded."SourceUpdatedAt",
                 "UpdatedAt" = excluded."UpdatedAt";
             """,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// A volume's own durable id for this (series, number) (#563), reusing an existing row's id
+    /// when one already exists so the volume's identity - and anything keyed on it - survives a
+    /// rescan even when every chapter file in it was renamed.
+    /// </summary>
+    public async Task<Guid> UpsertVolumeAsync(
+        Guid seriesId,
+        int number,
+        string? title,
+        CancellationToken cancellationToken)
+    {
+        var existingId = await QueryScalarGuidAsync(
+            """
+            SELECT "Id" FROM "MangaVolumes"
+            WHERE "SeriesId" = @seriesId AND "Number" = @number
+            LIMIT 1;
+            """,
+            command =>
+            {
+                AddParameter(command, "@seriesId", seriesId.ToString());
+                AddParameter(command, "@number", number);
+            },
+            cancellationToken);
+
+        var id = existingId ?? Guid.NewGuid();
+        var now = DateTime.UtcNow.ToString("O");
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            INSERT INTO "MangaVolumes"
+                ("Id", "SeriesId", "Number", "Title", "CreatedAt", "UpdatedAt")
+            VALUES
+                ({id.ToString()}, {seriesId.ToString()}, {number}, {title}, {now}, {now})
+            ON CONFLICT("Id") DO UPDATE SET
+                "Title" = COALESCE(excluded."Title", "MangaVolumes"."Title"),
+                "UpdatedAt" = excluded."UpdatedAt";
+            """,
+            cancellationToken);
+
+        return id;
+    }
+
+    public async Task<IReadOnlyList<MangaVolumeItem>> GetVolumesAsync(
+        Guid seriesId,
+        CancellationToken cancellationToken)
+    {
+        return await QueryAsync(
+            """
+            SELECT "Id", "SeriesId", "Number", "Title", "CreatedAt", "UpdatedAt"
+            FROM "MangaVolumes"
+            WHERE "SeriesId" = @seriesId
+            ORDER BY "Number";
+            """,
+            command => AddParameter(command, "@seriesId", seriesId.ToString()),
+            reader => new MangaVolumeItem(
+                ReadGuid(reader, 0),
+                ReadGuid(reader, 1),
+                reader.GetInt32(2),
+                ReadNullableString(reader, 3),
+                ReadDateTime(reader, 4),
+                ReadDateTime(reader, 5)),
             cancellationToken);
     }
 
@@ -551,18 +633,29 @@ public sealed class MangaRepository(AppDbContext db)
         await transaction.CommitAsync(cancellationToken);
     }
 
-    public async Task<IReadOnlyList<(Guid Id, string SourcePath)>> GetChapterSourcesAsync(
-        Guid seriesId,
-        CancellationToken cancellationToken)
+    /// <summary>
+    /// Every chapter's stable id, current source path and content/number identity (#563), used by
+    /// <see cref="MangaImportService"/> to match a rescanned file against an existing chapter by
+    /// path first, falling back to (number, volume) so a rename updates the row in place - instead
+    /// of by recomputing an id from the path, which would treat a renamed file as a new chapter.
+    /// </summary>
+    public async Task<IReadOnlyList<(Guid Id, string SourcePath, double Number, int? VolumeNumber)>>
+        GetChapterSourcesAsync(
+            Guid seriesId,
+            CancellationToken cancellationToken)
     {
         return await QueryAsync(
             """
-            SELECT "Id", "SourcePath"
+            SELECT "Id", "SourcePath", "Number", "VolumeNumber"
             FROM "MangaChapters"
             WHERE "SeriesId" = @seriesId;
             """,
             command => AddParameter(command, "@seriesId", seriesId.ToString()),
-            reader => (ReadGuid(reader, 0), reader.GetString(1)),
+            reader => (
+                ReadGuid(reader, 0),
+                reader.GetString(1),
+                reader.GetDouble(2),
+                reader.IsDBNull(3) ? (int?)null : reader.GetInt32(3)),
             cancellationToken);
     }
 
