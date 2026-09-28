@@ -130,7 +130,7 @@ public sealed class WatchlistStore(AppDbContext db)
                 command.CommandText =
                     """
                     SELECT m."MediaType", m."Provider", m."ExternalId", m."Title", m."NativeTitle",
-                           m."CoverImageUrl", m."Format", m."Status", m."Year", f."Id", f."Title"
+                           m."CoverImageUrl", m."Format", m."Status", m."Year", f."Id", f."Title", NULL
                     FROM "FranchiseMembers" m
                     INNER JOIN "ProfileFranchiseFollows" pf ON pf."FranchiseId" = m."FranchiseId"
                     INNER JOIN "Franchises" f ON f."Id" = m."FranchiseId"
@@ -151,7 +151,7 @@ public sealed class WatchlistStore(AppDbContext db)
                 command.CommandText =
                     """
                     SELECT "MediaType", "Provider", "ExternalId", "Title", "NativeTitle",
-                           "CoverImageUrl", "Format", "Status", "Year", NULL, NULL
+                           "CoverImageUrl", "Format", "Status", "Year", NULL, NULL, "UpdatedAtUtc"
                     FROM "ProfileWatchlistPreferences"
                     WHERE "ProfileId" = @profile AND "FollowState" = 'follow'
                     ORDER BY "UpdatedAtUtc" DESC;
@@ -320,6 +320,11 @@ public sealed class WatchlistStore(AppDbContext db)
         Guid? franchiseId = reader.IsDBNull(9) || !Guid.TryParse(reader.GetString(9), out var parsedFranchise)
             ? null
             : parsedFranchise;
+        DateTime? addedAtUtc = reader.IsDBNull(11)
+            ? null
+            : DateTime.SpecifyKind(
+                DateTime.Parse(reader.GetString(11), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
+                DateTimeKind.Utc);
 
         // Library entry and link are resolved by WatchlistLibraryResolver when the item is shown.
         return new WatchlistItem(
@@ -334,7 +339,8 @@ public sealed class WatchlistStore(AppDbContext db)
             null,
             franchiseId,
             reader.IsDBNull(10) ? null : reader.GetString(10),
-            isExplicit);
+            isExplicit,
+            addedAtUtc);
     }
 
     private async Task<T> WithConnectionAsync<T>(

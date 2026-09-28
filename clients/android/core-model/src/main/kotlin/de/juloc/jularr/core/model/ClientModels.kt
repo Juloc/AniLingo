@@ -29,6 +29,7 @@ data class ClientFeatureFlags(
     val ttsPreferences: Boolean = false,
     val continueWatching: Boolean = false,
     val playbackHistory: Boolean = false,
+    val watchlist: Boolean = false,
 )
 
 data class ClientAccount(
@@ -96,6 +97,24 @@ data class PlaybackHistoryItem(
     val positionMs: Long,
     val durationMs: Long?,
     val reachedEnd: Boolean,
+)
+
+/**
+ * One entry of `GET /watchlist`: a followed work from the signed-in profile's watchlist
+ * (docs/ANDROID_CLIENTS.md, "Playback continuity endpoints"). `availability` is
+ * `in_library` when the work is matched to a local library entry (`detailsUrl` then points
+ * at that library page) or `external` when it is only known through its provider.
+ * `addedAtUtc` is null for works only included through a followed franchise, never
+ * followed individually.
+ */
+data class WatchlistItem(
+    val id: String,
+    val mediaType: String,
+    val title: String,
+    val artworkUrl: String?,
+    val availability: String,
+    val detailsUrl: String?,
+    val addedAtUtc: String?,
 )
 
 data class AnimeDetail(

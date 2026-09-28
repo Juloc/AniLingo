@@ -19,6 +19,7 @@ import de.juloc.jularr.core.model.TermDetail
 import de.juloc.jularr.core.model.TermStateResult
 import de.juloc.jularr.core.model.TtsPreferences
 import de.juloc.jularr.core.model.TtsPreferencesUpdate
+import de.juloc.jularr.core.model.WatchlistItem
 
 interface JularrClientApi {
     suspend fun getCapabilities(): ClientCapabilities
@@ -32,6 +33,9 @@ interface JularrClientApi {
 
     /** `GET /me/playback-history`: past playback entries, most recent first. */
     suspend fun getPlaybackHistory(): List<PlaybackHistoryItem>
+
+    /** `GET /watchlist`: the signed-in profile's followed works. */
+    suspend fun getWatchlist(): List<WatchlistItem>
 
     suspend fun getAnime(animeId: String): AnimeDetail
     suspend fun getEpisode(episodeId: String): EpisodeDetail

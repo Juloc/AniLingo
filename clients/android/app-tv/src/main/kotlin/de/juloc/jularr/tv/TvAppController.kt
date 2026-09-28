@@ -8,6 +8,7 @@ import de.juloc.jularr.core.model.ClientLibrary
 import de.juloc.jularr.core.model.ContinueWatchingItem
 import de.juloc.jularr.core.model.CueResponse
 import de.juloc.jularr.core.model.PlaybackHistoryItem
+import de.juloc.jularr.core.model.WatchlistItem
 
 data class TvAppSnapshot(
     val navigation: TvNavigationState,
@@ -22,6 +23,7 @@ data class TvAppSnapshot(
      * screen, and the UI notes why (#522 item 4).
      */
     val activityUsesContinueWatchingFallback: Boolean = false,
+    val watchlist: List<WatchlistItem> = emptyList(),
     val anime: AnimeDetail? = null,
     val episodePage: TvEpisodePageData? = null,
     val episode: TvEpisodeBundle? = null,
@@ -71,6 +73,7 @@ class TvAppController(
                 episode = null,
                 activity = emptyList(),
                 activityUsesContinueWatchingFallback = false,
+                watchlist = emptyList(),
                 storageDecision = null,
                 error = null,
             )
@@ -117,6 +120,14 @@ class TvAppController(
                 } else {
                     copy(activityUsesContinueWatchingFallback = true)
                 }
+
+                TvRoute.Watchlist -> copy(
+                    watchlist = if (capabilities?.features?.watchlist == true) {
+                        flow.loadWatchlist()
+                    } else {
+                        emptyList()
+                    },
+                )
 
                 else -> this
             }
@@ -307,6 +318,7 @@ class TvAppController(
                 continueWatching = emptyList(),
                 activity = emptyList(),
                 activityUsesContinueWatchingFallback = false,
+                watchlist = emptyList(),
                 anime = null,
                 episodePage = null,
                 episode = null,

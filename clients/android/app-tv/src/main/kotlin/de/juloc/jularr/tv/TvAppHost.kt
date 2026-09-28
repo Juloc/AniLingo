@@ -456,7 +456,16 @@ fun TvAppHost(
                             }
                         }
 
-                        TvRoute.Watchlist -> TvWatchlistScreen()
+                        TvRoute.Watchlist -> TvWatchlistScreen(
+                            entries = snapshot.watchlist,
+                            supported = snapshot.capabilities?.features?.watchlist == true,
+                            serverOrigin = settings.origin.orEmpty(),
+                            requestHeaders = cookies.requestHeaders(),
+                            focusMemory = focusMemory,
+                            onOpenAnime = { animeId ->
+                                launchSnapshot { controller.openAnime(animeId) }
+                            },
+                        )
 
                         TvRoute.Activity -> TvActivityScreen(
                             history = snapshot.activity,
