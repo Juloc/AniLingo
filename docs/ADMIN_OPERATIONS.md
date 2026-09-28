@@ -229,6 +229,32 @@ Writable locations:
 
 The application under `/app`, the bundled `codex`, `whisper-cli`, `ffmpeg`/`ffprobe`, the MeCab dictionary and the JMdict data are root-owned and read-only for the runtime user. Read-only media mounts such as `/media/anime:ro` only need to be readable by UID `1654` (world-readable, or a matching `group_add` group). Jularr already reports read-only or unwritable libraries as failed imports or refused renames.
 
+### Dynamic NAS mounts
+
+When a NAS or other network filesystem can be powered off, do not bind the network mount itself as the Docker source. Docker resolves bind sources before Jularr starts, so a stale CIFS/NFS mount can make container creation fail before Jularr can report the library root as offline.
+
+For this case the image supports `JULARR_MEDIA_LINKS`. It is a semicolon-separated list of `<name>=<absolute-container-source>` mappings. At startup the entrypoint creates `/media/<name>` as a symlink to the source path **without dereferencing that source**. This preserves canonical library paths such as `/media/anime` while allowing the actual NAS submount to appear or disappear later.
+
+Example for a NAS mounted somewhere below an always-present host parent:
+
+```yaml
+environment:
+  JULARR_MEDIA_LINKS: anime=/host-mounts/arr_bay4_media/anime
+volumes:
+  - type: bind
+    source: /mnt
+    target: /host-mounts
+    bind:
+      propagation: rslave
+      create_host_path: false
+```
+
+`rslave` is intentional: host-side submount changes propagate into the already-running container, while mounts created inside the container do not propagate back to the host. The container still needs no `SYS_ADMIN` capability or privileged mode. Bind propagation is a Linux-host feature and the selected host parent must support mount propagation.
+
+Prefer a dedicated stable host parent when practical so the container does not see unrelated host mounts. The mapped media path must have the normal read/write permissions required by the configured Jularr library root.
+
+A direct bind such as `/path/to/anime:/media/anime` remains supported for storage that is guaranteed to be available when Docker creates the container. Do not set `JULARR_MEDIA_LINKS` for a `/media/<name>` that is also supplied as a direct bind mount.
+
 ### Startup ownership check
 
 Before the application starts, the entrypoint (`/usr/local/bin/jularr-entrypoint`) checks that every directory and file under `/data` is readable and writable by the runtime user. If one is not, the container exits with code 1 and logs the first offending path plus the exact fix command below. It never changes ownership itself and never falls back to running as root.
