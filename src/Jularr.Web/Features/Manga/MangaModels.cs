@@ -40,7 +40,21 @@ public sealed record MangaChapterItem(
     string Title,
     int PageCount,
     string SourceKind,
-    DateTime SourceUpdatedAt);
+    DateTime SourceUpdatedAt,
+    Guid? VolumeId = null);
+
+/// <summary>
+/// A Manga volume's own durable identity (#563): stable independent of any one chapter file, so
+/// grouping/ordering by volume survives a chapter rename/reorganize the same way the chapter's own
+/// id does. <see cref="Number"/> together with the series is the natural key a rescan matches on.
+/// </summary>
+public sealed record MangaVolumeItem(
+    Guid Id,
+    Guid SeriesId,
+    int Number,
+    string? Title,
+    DateTime CreatedAt,
+    DateTime UpdatedAt);
 
 public sealed record MangaChapterRead(
     Guid Id,

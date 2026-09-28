@@ -1,6 +1,4 @@
 using System.IO.Compression;
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.RegularExpressions;
 
 namespace Jularr.Web.Features.Manga;
@@ -76,7 +74,13 @@ public sealed partial class MangaImportService
                 "No CBZ/ZIP archives or image chapters were found in this manga source.");
         }
 
-        var seriesId = intoSeriesId ?? DeterministicGuid("series:" + sourcePath);
+        // A stable id, reused across rescans instead of recomputed from the path (#563): an
+        // explicit intoSeriesId wins (adding a release to a series already matched elsewhere),
+        // otherwise an unmoved/unrenamed series folder is found by its still-current path, and
+        // only a genuinely new series gets a freshly minted id.
+        var seriesId = intoSeriesId ??
+                       await repository.FindSeriesIdByPathAsync(sourcePath, cancellationToken) ??
+                       Guid.NewGuid();
         if (intoSeriesId is null)
         {
             var title = File.Exists(sourcePath)
@@ -95,10 +99,18 @@ public sealed partial class MangaImportService
             cancellationToken);
         var existingByPath = existing.ToDictionary(
             x => x.SourcePath,
-            x => x.Id,
             StringComparer.Ordinal);
+        var existingByNumber = new Dictionary<(double Number, int? VolumeNumber), Guid>();
+        foreach (var item in existing)
+        {
+            existingByNumber.TryAdd((item.Number, item.VolumeNumber), item.Id);
+        }
 
-        var observed = new HashSet<string>(StringComparer.Ordinal);
+        // Rows from `existing` still claimed by this scan (matched by path or by number/volume);
+        // anything left unclaimed afterwards is genuinely gone and gets removed below. A chapter
+        // whose file was merely renamed stays claimed under its original id (#563), so it is never
+        // treated as stale even though its old path is no longer observed.
+        var claimedIds = new HashSet<Guid>();
         var totalPages = 0;
         var updated = 0;
 
@@ -107,11 +119,30 @@ public sealed partial class MangaImportService
             cancellationToken.ThrowIfCancellationRequested();
 
             var sourceItem = sources[index];
-            observed.Add(sourceItem.Path);
-
-            var chapterId = DeterministicGuid("chapter:" + sourceItem.Path);
             var number = TryParseChapterNumber(sourceItem.Path) ?? index + 1;
             var volume = TryParseVolumeNumber(sourceItem.Path);
+
+            Guid chapterId;
+            var isExisting = false;
+            if (existingByPath.TryGetValue(sourceItem.Path, out var samePath))
+            {
+                chapterId = samePath.Id;
+                isExisting = claimedIds.Add(chapterId);
+            }
+            else if (existingByNumber.TryGetValue((number, volume), out var sameNumberId) &&
+                     claimedIds.Add(sameNumberId))
+            {
+                // Not seen at this path before, but this series already has a chapter with the
+                // same chapter/volume number: a rename, not a new chapter, so its stable id (and
+                // everything keyed on it - reading progress, bookmarks) is preserved (#563).
+                chapterId = sameNumberId;
+                isExisting = true;
+            }
+            else
+            {
+                chapterId = Guid.NewGuid();
+            }
+
             var chapterTitle = BuildChapterTitle(sourceItem.Path, number);
             var updatedAt = GetSourceUpdatedAt(sourceItem);
             var cacheDirectory = GetChapterCacheDirectory(seriesId, chapterId);
@@ -133,6 +164,10 @@ public sealed partial class MangaImportService
                 continue;
             }
 
+            Guid? volumeId = volume is { } volumeNumber
+                ? await repository.UpsertVolumeAsync(seriesId, volumeNumber, null, cancellationToken)
+                : null;
+
             var chapter = new MangaChapterItem(
                 chapterId,
                 seriesId,
@@ -141,7 +176,8 @@ public sealed partial class MangaImportService
                 chapterTitle,
                 cached.Pages.Count,
                 sourceItem.Kind,
-                updatedAt);
+                updatedAt,
+                volumeId);
 
             await repository.UpsertChapterAsync(
                 chapter,
@@ -154,14 +190,14 @@ public sealed partial class MangaImportService
                 cancellationToken);
 
             totalPages += cached.Pages.Count;
-            if (existingByPath.ContainsKey(sourceItem.Path))
+            if (isExisting)
             {
                 updated++;
             }
         }
 
         foreach (var stale in existing.Where(x =>
-                     !observed.Contains(x.SourcePath) &&
+                     !claimedIds.Contains(x.Id) &&
                      IsSameOrBelow(x.SourcePath, sourcePath)))
         {
             await repository.RemoveChapterAsync(stale.Id, cancellationToken);
@@ -171,7 +207,7 @@ public sealed partial class MangaImportService
 
         return new MangaImportResult(
             seriesId,
-            observed.Count,
+            sources.Count,
             totalPages,
             updated);
     }
@@ -543,14 +579,6 @@ public sealed partial class MangaImportService
         return full.Equals(parent, StringComparison.Ordinal) ||
                full.StartsWith(parent + Path.DirectorySeparatorChar, StringComparison.Ordinal) ||
                full.StartsWith(parent + Path.AltDirectorySeparatorChar, StringComparison.Ordinal);
-    }
-
-    private static Guid DeterministicGuid(string value)
-    {
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(value));
-        Span<byte> bytes = stackalloc byte[16];
-        hash.AsSpan(0, 16).CopyTo(bytes);
-        return new Guid(bytes);
     }
 
     private sealed record ChapterSource(string Path, string Kind);
