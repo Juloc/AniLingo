@@ -22,10 +22,14 @@
                 ? "library.mediaCard.continueWatching"
                 : "library.mediaCard.startWatching"
             : "library.mediaCard.watchAgain";
+    var backLink = new ContextBackLinkModel("/Library", $"← {ui["nav.library"]}", "back-link");
 }
 
 @section Head {
     <link rel="stylesheet" href="~/css/franchise-links.css" asp-append-version="true" />
+}
+@section Scripts {
+    <script src="~/js/context-back-link.js" asp-append-version="true"></script>
 }
 
 <section class="anime-hero">
@@ -48,7 +52,7 @@
                  referrerpolicy="no-referrer" />
         }
         <div class="anime-hero-copy">
-            <a class="back-link" href="/Library">← @ui["nav.library"]</a>
+            <partial name="_ContextBackLink" model="backLink" />
             <h1>@Model.AnimeTitle</h1>
 
             @if (Model.Metadata is { } metadata)
