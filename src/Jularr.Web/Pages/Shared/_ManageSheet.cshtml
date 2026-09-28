@@ -19,15 +19,14 @@
         aria-haspopup="dialog"
         aria-controls="@Model.Id">
     @Model.TriggerLabel
-    @if (Model.ReviewBadge is not null)
-    {
-        <a class="manage-sheet-review-dot"
-           href="@Model.ReviewBadge.Url"
-           title="@Model.ReviewBadge.Text"
-           aria-label="@Model.ReviewBadge.Text"
-           onclick="event.stopPropagation()"></a>
-    }
 </button>
+@if (Model.ReviewBadge is not null)
+{
+    <a class="manage-sheet-review-dot"
+       href="@Model.ReviewBadge.Url"
+       title="@Model.ReviewBadge.Text"
+       aria-label="@Model.ReviewBadge.Text"></a>
+}
 
 <dialog class="manage-sheet-dialog"
         id="@Model.Id"
