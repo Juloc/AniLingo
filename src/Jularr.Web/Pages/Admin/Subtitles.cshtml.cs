@@ -13,7 +13,9 @@ namespace Jularr.Web.Pages.Admin;
 [Authorize(Policy = JularrPolicies.AdminMedia)]
 public sealed class SubtitlesModel(
     AppDbContext db,
-    SubtitleImportService subtitleImportService) : PageModel
+    SubtitleImportService subtitleImportService,
+    SubtitleCompletenessService completenessService,
+    SubtitleManualSearchService manualSearchService) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
 
@@ -27,6 +29,25 @@ public sealed class SubtitlesModel(
         new(false);
 
     public IReadOnlyList<LearningTextEpisodeStatus> MissingEpisodes { get; private set; } = [];
+
+    /// <summary>Per-episode language-profile completeness (#526): complete / cutoff met / missing X.</summary>
+    public IReadOnlyList<SubtitleEpisodeCompletion> Completions { get; private set; } = [];
+
+    [BindProperty(SupportsGet = true)]
+    public Guid? SearchEpisodeId { get; set; }
+
+    [BindProperty(SupportsGet = true)]
+    public string? SearchLanguage { get; set; }
+
+    [BindProperty(SupportsGet = true)]
+    public bool SearchForced { get; set; }
+
+    [BindProperty(SupportsGet = true)]
+    public bool SearchSdh { get; set; }
+
+    public SubtitleEpisodeCompletion? SearchEpisode { get; private set; }
+    public IReadOnlyList<SubtitleManualSearchOutcome> SearchOutcomes { get; private set; } = [];
+    public bool HasProviders => manualSearchService.HasProviders;
 
     [BindProperty]
     public string JimakuApiKey { get; set; } = "";
@@ -117,6 +138,41 @@ public sealed class SubtitlesModel(
         return RedirectToPage();
     }
 
+    public async Task<IActionResult> OnPostImportSearchResultAsync(
+        Guid episodeId,
+        string providerId,
+        string resultToken,
+        string language,
+        bool forced,
+        bool sdh,
+        string releaseName,
+        string? uploader,
+        CancellationToken cancellationToken)
+    {
+        if (!JularrPolicies.Allows(User, JularrPolicies.AdminMedia))
+        {
+            return Forbid();
+        }
+
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
+        var result = new SubtitleSearchResult(
+            providerId, resultToken, language, forced, sdh, releaseName, uploader, null, null);
+        var downloaded = await manualSearchService.ImportAsync(episodeId, result, cancellationToken);
+
+        TempData[downloaded.Success ? "Status" : "Error"] = downloaded.Success
+            ? Ui["admin.subtitles.search.imported"]
+            : downloaded.Message ?? Ui["admin.subtitles.search.importFailed"];
+
+        return RedirectToPage(new
+        {
+            searchEpisodeId = episodeId,
+            searchLanguage = language,
+            searchForced = forced,
+            searchSdh = sdh
+        });
+    }
+
     private async Task LoadAsync(CancellationToken cancellationToken)
     {
         Coverage = await subtitleImportService.GetCoverageAsync(cancellationToken);
@@ -128,6 +184,24 @@ public sealed class SubtitlesModel(
         MissingEpisodes = await subtitleImportService.GetMissingEpisodesAsync(
             200,
             cancellationToken);
+        Completions = await completenessService.GetCompletionsAsync(200, cancellationToken);
+
+        if (SearchEpisodeId is Guid episodeId && !string.IsNullOrWhiteSpace(SearchLanguage))
+        {
+            SearchEpisode = await completenessService.GetEpisodeCompletionAsync(episodeId, cancellationToken);
+            if (SearchEpisode is not null)
+            {
+                var request = new SubtitleSearchRequest(
+                    episodeId,
+                    SearchEpisode.AnimeTitle,
+                    SearchEpisode.SeasonNumber,
+                    SearchEpisode.EpisodeNumber,
+                    SearchLanguage,
+                    SearchForced,
+                    SearchSdh);
+                SearchOutcomes = await manualSearchService.SearchAsync(request, cancellationToken);
+            }
+        }
     }
 
     private static string LanguageName(string languageTag)

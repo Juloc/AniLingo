@@ -14,6 +14,7 @@ using Jularr.Web.Features.OfflineLibrary;
 using Jularr.Web.Features.Progress;
 using Jularr.Web.Features.Subtitles;
 using Jularr.Web.Features.Vocabulary;
+using Jularr.Web.Features.Watchlist;
 using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Web.Data;
@@ -30,6 +31,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<AnimeLocalMetadata> AnimeLocalMetadata => Set<AnimeLocalMetadata>();
     public DbSet<SubtitleTrack> SubtitleTracks => Set<SubtitleTrack>();
     public DbSet<SubtitleCue> SubtitleCues => Set<SubtitleCue>();
+    public DbSet<SubtitleLanguageProfile> SubtitleLanguageProfiles => Set<SubtitleLanguageProfile>();
+    public DbSet<SubtitleLanguageProfileItem> SubtitleLanguageProfileItems => Set<SubtitleLanguageProfileItem>();
+    public DbSet<SubtitleProfileAssignment> SubtitleProfileAssignments => Set<SubtitleProfileAssignment>();
     public DbSet<Term> Terms => Set<Term>();
     public DbSet<EpisodeTerm> EpisodeTerms => Set<EpisodeTerm>();
     public DbSet<LearningUnit> LearningUnits => Set<LearningUnit>();
@@ -183,6 +187,30 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasKey(x => x.Id);
             entity.HasOne<SubtitleTrack>().WithMany().HasForeignKey(x => x.SubtitleTrackId).OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(x => new { x.SubtitleTrackId, x.StartMs });
+        });
+
+        modelBuilder.Entity<SubtitleLanguageProfile>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Name).HasMaxLength(120);
+            entity.HasIndex(x => x.Name).IsUnique();
+        });
+
+        modelBuilder.Entity<SubtitleLanguageProfileItem>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.LanguageTag).HasMaxLength(16);
+            entity.HasOne<SubtitleLanguageProfile>().WithMany().HasForeignKey(x => x.ProfileId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(x => new { x.ProfileId, x.SortOrder });
+        });
+
+        modelBuilder.Entity<SubtitleProfileAssignment>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.MediaType).HasConversion<int?>();
+            entity.HasOne<SubtitleLanguageProfile>().WithMany().HasForeignKey(x => x.ProfileId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<LibraryRoot>().WithMany().HasForeignKey(x => x.LibraryRootId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(x => new { x.MediaType, x.LibraryRootId });
         });
 
         modelBuilder.Entity<Term>(entity =>
