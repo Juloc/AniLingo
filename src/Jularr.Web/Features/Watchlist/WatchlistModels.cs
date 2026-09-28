@@ -106,7 +106,8 @@ public sealed record WatchlistItem(
     string? DetailsUrl,
     Guid? FranchiseId,
     string? FranchiseTitle,
-    bool IsExplicit)
+    bool IsExplicit,
+    DateTime? AddedAtUtc = null)
 {
     public Guid StableId => LocalMediaId ?? Identity.StableId;
 

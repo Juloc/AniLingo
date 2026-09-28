@@ -148,6 +148,32 @@ DELETE /api/client/v1/me/playback-history
 
 The server is the only durable owner of resume position, watched state, autoplay preference and history; clients must not keep a second durable progress store. Clients should resume from `resumePositionMs` (zero means start from the beginning), send bounded checkpoints (for example every 15 seconds while playing plus pause/stop/end) and use `/flow` instead of computing next/previous episodes locally. The semantics are described in the README section *Playback continuity*.
 
+Watchlist endpoint (additive v1, advertised by `watchlist`; #533):
+
+```text
+GET /api/client/v1/watchlist
+```
+
+Read-only; it reuses `WatchlistStore`/`WatchlistLibraryResolver` (the same profile-scoped follow state the `/Watchlist` Razor page renders) rather than a second data path. Response shape:
+
+```json
+{
+  "items": [
+    {
+      "id": "<guid>",
+      "mediaType": "anime | tv | movie | manga | light-novel | book",
+      "title": "string",
+      "artworkUrl": "string | null",
+      "availability": "in_library | external",
+      "detailsUrl": "string | null",
+      "addedAtUtc": "ISO-8601 | null"
+    }
+  ]
+}
+```
+
+`availability` is `in_library` when the work is matched to a local library entry (`detailsUrl` then points at that library page) or `external` when it is only known through its provider (`detailsUrl` then points at the provider page, if any). `addedAtUtc` is null for works only included through a followed franchise, never followed individually. Older servers without the `watchlist` flag have no equivalent endpoint; clients must show an explicit "not available" state instead of calling it.
+
 Player controls and preferences (additive v1, advertised by `playbackPreferences` and `embeddedSubtitleCues`):
 
 - `/me/playback-preferences` is the one profile-scoped store for autoplay, preferred audio language, preferred subtitle language (`off` allowed) and default speed. `PUT` is a partial update: omitted/null fields keep their value, an empty language clears it, invalid values return `400` (`invalid_playback_speed`, `invalid_audio_language`, `invalid_subtitle_language`). Older clients that send only `{ autoplayNext }` keep working.
@@ -537,7 +563,9 @@ Library, Discover or per-media-type destination. Home carries a search field at 
 top (activating it opens the full search/browse screen, which reuses Home's card/grid
 components) followed by an All/Anime content filter — Movies/TV are omitted because the
 client API has no Movie/TV entity yet (#396) — then content rows: Continue Watching (when
-`continueWatching` is advertised) and the library. Activity shows
+`continueWatching` is advertised) and the library. Watchlist shows `GET /watchlist` as
+focusable cards when the server advertises `watchlist` (#533), falling back to an explicit
+"not available" state on older servers. Activity shows
 `GET /me/playback-history` when the server advertises `playbackHistory`, falling back to
 Continue Watching with an on-screen note otherwise. Selecting a title still drills in
 **Anime → Episode → Player**: selecting an episode opens its TV detail surface first;

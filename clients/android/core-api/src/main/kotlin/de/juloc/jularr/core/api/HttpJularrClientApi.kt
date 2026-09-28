@@ -42,6 +42,7 @@ import de.juloc.jularr.core.model.TermDetail
 import de.juloc.jularr.core.model.TermStateResult
 import de.juloc.jularr.core.model.TtsPreferences
 import de.juloc.jularr.core.model.TtsPreferencesUpdate
+import de.juloc.jularr.core.model.WatchlistItem
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
@@ -94,6 +95,11 @@ class HttpJularrClientApi(
         requestJson("GET", ClientApiRoutes.PlaybackHistory)
             .getJSONArray("items")
             .mapObjects { it.toPlaybackHistoryItem() }
+
+    override suspend fun getWatchlist(): List<WatchlistItem> =
+        requestJson("GET", ClientApiRoutes.Watchlist)
+            .getJSONArray("items")
+            .mapObjects { it.toWatchlistItem() }
 
     override suspend fun getAnime(animeId: String): AnimeDetail =
         requestJson("GET", ClientApiRoutes.anime(animeId)).toAnimeDetail()
@@ -327,7 +333,8 @@ class HttpJularrClientApi(
                     name == "offlineLibrary" ||
                     name == "ttsPreferences" ||
                     name == "continueWatching" ||
-                    name == "playbackHistory"
+                    name == "playbackHistory" ||
+                    name == "watchlist"
                 ) {
                     features.optBoolean(name, false)
                 } else {
@@ -388,6 +395,16 @@ class HttpJularrClientApi(
         positionMs = getLong("positionMs"),
         durationMs = longOrNull("durationMs"),
         reachedEnd = getBoolean("reachedEnd"),
+    )
+
+    private fun JSONObject.toWatchlistItem() = WatchlistItem(
+        id = getString("id"),
+        mediaType = getString("mediaType"),
+        title = getString("title"),
+        artworkUrl = stringOrNull("artworkUrl"),
+        availability = getString("availability"),
+        detailsUrl = stringOrNull("detailsUrl"),
+        addedAtUtc = stringOrNull("addedAtUtc"),
     )
 
     private fun JSONObject.toAnimeDetail() = AnimeDetail(
@@ -704,5 +721,6 @@ internal object ClientFeatureFlagParser {
         ttsPreferences = readBoolean("ttsPreferences"),
         continueWatching = readBoolean("continueWatching"),
         playbackHistory = readBoolean("playbackHistory"),
+        watchlist = readBoolean("watchlist"),
     )
 }

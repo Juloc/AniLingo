@@ -19,6 +19,7 @@ import de.juloc.jularr.core.model.TermDetail
 import de.juloc.jularr.core.model.TermStateResult
 import de.juloc.jularr.core.model.TtsPreferences
 import de.juloc.jularr.core.model.TtsPreferencesUpdate
+import de.juloc.jularr.core.model.WatchlistItem
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -120,6 +121,21 @@ class TvAppControllerTest {
 
         assertEquals(TvRoute.Watchlist, state.navigation.route)
         assertNull(state.anime)
+        assertEquals(1, state.watchlist.size)
+    }
+
+    @Test
+    fun selectingWatchlistLeavesItEmptyWithoutTheCapabilityFlag() {
+        val store = FakeOriginStore("https://jularr.example")
+        val api = FakeApi(advertiseWatchlist = false)
+        val controller = TvAppController(store) { api }
+
+        runSuspend { controller.restoreConnection() }
+        runSuspend { controller.login("jessi", "password-password") }
+        val state = runSuspend { controller.selectSidebarRoute(TvRoute.Watchlist) }
+
+        assertEquals(TvRoute.Watchlist, state.navigation.route)
+        assertEquals(0, state.watchlist.size)
     }
 
     @Test
@@ -186,6 +202,7 @@ class TvAppControllerTest {
     private class FakeApi(
         private val failLogin: Boolean = false,
         private val advertisePlaybackHistory: Boolean = true,
+        private val advertiseWatchlist: Boolean = true,
     ) : JularrClientApi {
         override suspend fun getCapabilities() = ClientCapabilities(
             apiVersion = 1,
@@ -210,6 +227,7 @@ class TvAppControllerTest {
                 ownerWakeOnLan = true,
                 continueWatching = true,
                 playbackHistory = advertisePlaybackHistory,
+                watchlist = advertiseWatchlist,
             ),
         )
 
@@ -276,6 +294,18 @@ class TvAppControllerTest {
                 positionMs = 444_000,
                 durationMs = 1_200_000,
                 reachedEnd = false,
+            ),
+        )
+
+        override suspend fun getWatchlist() = listOf(
+            WatchlistItem(
+                id = "anime",
+                mediaType = "anime",
+                title = "Anime",
+                artworkUrl = null,
+                availability = "in_library",
+                detailsUrl = "/Library/Anime/anime",
+                addedAtUtc = "2026-09-20T00:00:00Z",
             ),
         )
 

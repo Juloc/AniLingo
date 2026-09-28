@@ -10,6 +10,7 @@ object ClientApiRoutes {
     const val Library = "$Base/library"
     const val ContinueWatching = "$Base/continue-watching"
     const val PlaybackHistory = "$Base/me/playback-history"
+    const val Watchlist = "$Base/watchlist"
 
     fun anime(animeId: String) = "$Base/anime/$animeId"
     fun episode(episodeId: String) = "$Base/episodes/$episodeId"

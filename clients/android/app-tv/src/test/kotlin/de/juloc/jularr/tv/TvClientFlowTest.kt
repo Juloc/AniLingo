@@ -98,6 +98,7 @@ class TvClientFlowTest {
         override suspend fun getLibrary() = ClientLibrary(emptyList())
         override suspend fun getContinueWatching() = emptyList<de.juloc.jularr.core.model.ContinueWatchingItem>()
         override suspend fun getPlaybackHistory() = emptyList<de.juloc.jularr.core.model.PlaybackHistoryItem>()
+        override suspend fun getWatchlist() = emptyList<de.juloc.jularr.core.model.WatchlistItem>()
         override suspend fun getAnime(animeId: String): AnimeDetail =
             error("unused")
         override suspend fun getEpisode(episodeId: String): EpisodeDetail =
