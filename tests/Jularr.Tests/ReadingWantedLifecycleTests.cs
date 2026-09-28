@@ -263,6 +263,7 @@ public sealed class ReadingWantedLifecycleTests
                 .AddSingleton<ReleaseRequestTracker>()
                 .AddSingleton<ReadingAcquisitionEngine>()
                 .AddSingleton<IAcquisitionRequestExecutor, MangaAcquisitionRequestExecutor>()
+                .AddSingleton<Jularr.Web.Features.Events.IJularrEventPublisher, RecordingEventPublisher>()
                 .AddSingleton<AcquisitionRequestService>()
                 .AddSingleton<IWantedRequestHandler, MangaWantedRequestHandler>()
                 .AddSingleton<ICompletedDownloadImportAdapter>(importer)
