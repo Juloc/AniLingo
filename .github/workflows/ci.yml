@@ -127,17 +127,17 @@ jobs:
 
           docker run -d --name jularr-media-gateway \
             --cap-drop ALL --security-opt no-new-privileges:true \
-            -e 'JULARR_MEDIA_LINKS=anime=/host-mounts/arr_bay4_media/anime' \
+            -e 'JULARR_MEDIA_ROOT=/host-mounts/arr_bay4_media' \
             --mount "type=bind,source=${HOST_PARENT},target=/host-mounts,bind-propagation=rslave" \
             "${IMAGE}:${GITHUB_SHA}"
 
           for _ in {1..30}; do
-            if docker exec jularr-media-gateway test -L /media/anime; then
+            if docker exec jularr-media-gateway test -L /media; then
               break
             fi
             sleep 1
           done
-          docker exec jularr-media-gateway test -L /media/anime
+          docker exec jularr-media-gateway test -L /media
           ! docker exec jularr-media-gateway test -e /media/anime/online-marker
 
           sudo mount --bind "${NAS_CONTENT}" "${HOST_NAS}"
@@ -159,10 +159,10 @@ jobs:
           ! docker exec jularr-media-gateway test -e /media/anime/online-marker
 
           # Existing deployments may still bind a permanently available root
-          # directly to /media/<name>; that contract remains supported.
+          # directly to /media; that contract remains supported.
           docker run --rm --entrypoint sh \
             --cap-drop ALL --security-opt no-new-privileges:true \
-            --mount "type=bind,source=${NAS_CONTENT}/anime,target=/media/anime,readonly" \
+            --mount "type=bind,source=${NAS_CONTENT},target=/media,readonly" \
             "${IMAGE}:${GITHUB_SHA}" -c 'test -r /media/anime/online-marker'
 
       - name: Smoke test upgrade from a root-owned /data
