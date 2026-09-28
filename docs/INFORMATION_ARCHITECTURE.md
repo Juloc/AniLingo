@@ -83,7 +83,7 @@ Four layers per #510. Mapped to what exists in `src/Jularr.Web/Data` and `Featur
 | --- | --- | --- | --- |
 | 1. Storage/Admin structure | Root, work folder, season/special folder, media file/sidecars | **Exists** | `LibraryRoot`, `MediaFile` (`Data/AppDbContext.cs`); root config and wake state on `/Admin/System` |
 | 2. Jularr internal structure | Work, season/unit, episode/chapter/volume, stable internal IDs | **Exists** | `Anime`, `Episode`, `MediaFile` for video; `NovelWork`/`NovelVolume`/`NovelChapter`, `BookEdition`/`BookFile` for reading. Manga is file-based (`MangaModels.cs`: `MangaSeriesItem`/`MangaChapterItem`), not a DB entity — its "stable ID" is a derived series key, not a row id |
-| 3. Provider mappings | AniList, TVDB, TMDb, IMDb, MAL, future providers | **Partial** | `AnimeMetadata` (AniList match: provider+external id, cover/banner, unique per anime) and `AnimeLocalMetadata` (TVDB/MAL ids, NFO-sourced) exist; `NovelAnimeMapping` cross-references novel↔anime. Provider **roles are not independently configurable** (display metadata vs. episode structure vs. acquisition identity vs. progress vs. artwork vs. cross-reference IDs, per #510) — AniList is hard-wired as metadata/progress/artwork source, TVDB/local numbering as episode structure; there is no settings surface to reassign a role to a different provider. See [#525](https://github.com/Juloc/Jularr/issues/525) |
+| 3. Provider mappings | AniList, TVDB, TMDb, IMDb, MAL, future providers | **Exists** | `AnimeMetadata` (AniList match: provider+external id, cover/banner, unique per anime) and `AnimeLocalMetadata` (TVDB/MAL ids, NFO-sourced) exist; `NovelAnimeMapping` cross-references novel↔anime. Provider **roles are now independently configurable** (display metadata, episode structure, acquisition identity, progress tracking, artwork, cross-reference IDs — `Features/Mapping/MappingProviderRoles.cs`) with a global default per role plus a per-anime override, stored via `ProviderRoleAssignmentStore` (raw-SQL migration `20260929150000`, no EF entity). With nothing stored the resolved roles reproduce Jularr's implicit behaviour (AniList = display/progress/artwork, local numbering = structure/acquisition, TVDB = cross-reference); assigned on `/Settings/MappingReview`. See [#525](https://github.com/Juloc/Jularr/issues/525) |
 | 4. User presentation groups | Seasons, parts, cours, story arcs, specials, person/week/round groups (reality shows), independent of files/provider coordinates | **Partial** | The presentation-group layer now exists (#524). A `PresentationGroup` is a per-work free-text name plus an ordered list of inclusive internal-unit ranges (episode `Number` / chapter / volume number) with a group order; it is keyed by (`MediaType`, `WorkId`) and is media-type-agnostic. Stored in `PresentationGroups`/`PresentationGroupRanges` (raw-SQL migration `20260929130000_AddPresentationGroups`, accessed via `Features/Presentation/PresentationGroupStore.cs` as derived state — no EF entity, so it never touches episode identity, file paths or provider mappings). `PresentationGrouping.Arrange` derives the display sections; the anime detail page (`Pages/Library/Anime.cshtml`) renders episodes under collapsible group headings when groups exist and falls back to the plain list otherwise, and an owner-only editor (`Pages/Library/PresentationGroups.cshtml`, linked from the `_ManageSheet` Files group) creates/reorders/deletes groups and assigns ranges with a preview before apply. **Follow-up:** the model and store are ready for reading media, but the editor and consumer wiring for manga/novel volumes/chapters are not built yet. See [#524](https://github.com/Juloc/Jularr/issues/524) |
 
 Reality-show example ("Anna: E01-E05" over S01E01-E20) and anime-cour example (AniList Part 1
@@ -93,11 +93,15 @@ editor UI is wired.
 
 ## 3. Anime multi-provider mapping
 
-**Provider roles** (display metadata: AniList; episode structure: local/TVDB; acquisition identity:
-TVDB/absolute numbering; progress: AniList; artwork: AniList; cross-reference: IMDb/MAL/TMDb/TVDB)
-are Jularr's de facto behavior today but are not a configurable per-anime setting — they are
-implicit in which service each feature calls (`AnimeMetadataService` for AniList display/progress/
-artwork, `AnimeLocalMetadata` for local/TVDB numbering and cross-reference ids). **Partial.**
+**Provider roles** (display metadata, episode structure, acquisition identity, progress tracking,
+artwork, cross-reference IDs) are now an owner-configurable setting, not just de facto behaviour.
+`Features/Mapping/MappingProviderRoles.cs` defines the six roles and their allowed providers;
+`ProviderRoleAssignmentStore` (raw-SQL table `ProviderRoleAssignments`, migration `20260929150000`,
+no EF entity) stores a global default per role and a per-anime override, resolved most-specific-first
+(work override → global default → built-in). The built-ins reproduce the previous implicit behaviour
+(AniList = display/progress/artwork, local/absolute numbering = structure/acquisition, TVDB =
+cross-reference), so nothing changes until a role is reassigned on `/Settings/MappingReview`.
+**Exists.**
 
 **Range mapping**: `AnimeSequenceMappingPlanner` (`Features/MediaMapping/AnimeSequenceMapping.cs`)
 plans local-season-to-AniList-part ranges from contiguous local numbering and an anchor AniList
@@ -107,22 +111,26 @@ entry; `AnimeSpecialMapping.cs` covers specials/OVA/ONA separately. `NovelAnimeM
 (below).
 
 **`/Settings/MappingReview`** (`Pages/Settings/MappingReview.cshtml(.cs)`, backed by
-`MediaMappingReviewStore`) lists `MediaMappingReviewTask` items — provider, external id, title,
-score and evidence per candidate, across media types (`MediaType`/`LocalId`/`Purpose`/`Reason`).
-Today it only supports **Dismiss** (`OnPostDismissAsync`); there is no **Apply** action on the page,
-no per-episode override UI, no explicit "unmapped" state control, no preview-before-apply step and
-no audit history — matches are applied automatically elsewhere (`AutomaticMediaMapping.cs`) and
-this page is a dismiss-only exception queue, not the "automatic candidate matching, confidence/
-evidence, auto-map, exact/partial/missing/conflict states, per-episode overrides, preview before
-apply, audit history, safe remapping without losing progress" workflow #510 describes. **Partial**
-(tracked in [#525](https://github.com/Juloc/Jularr/issues/525)).
+`MediaMappingReviewStore`) still lists `MediaMappingReviewTask` items (provider, external id, title,
+score and evidence per candidate) and keeps **Dismiss**, but it is now also the anime range-mapping
+apply workspace (`?animeId=`). For a selected anime it shows the match candidates with confidence,
+a local-vs-provider side-by-side coverage table with per-episode **exact/partial/missing/conflict/
+unmapped** states (classified by the pure `AnimeMappingPlanner`), a range form for per-episode
+overrides and specials (season 0), an explicit **Mark unmapped** action, **Preview** before **Apply**,
+and the per-anime provider-role overrides. Applying goes through `AnimeMappingApplyService`, which
+replaces the work's ranges in the canonical episode-mapping store (`AniListAccountStore`, which
+`AnimeMetadataService.ResolveEpisodeAsync` already consumes — no second source of truth) and writes
+a durable **audit** entry (`MappingAuditStore`, table `AnimeMappingAuditEntries`). Remapping is
+progress-safe: watch progress keys on the stable `EpisodeId` while mappings key on `AnimeId` + local
+range, so changing a mapping only rewrites provider coordinates. **Exists**
+([#525](https://github.com/Juloc/Jularr/issues/525)).
 
 **`/Settings/MappingSegments`** (`Pages/Settings/MappingSegments.cshtml(.cs)`, backed by
 `ReadingSegmentMappingStore`) maps local chapter ranges (`LocalChapterStart`/`End`) to an external
 provider's chapter numbering (`RemoteChapterStart`) for Manga/Light Novels. It is **not** an anime
-episode-range mapping tool despite the adjacent name — anime range mapping has no owner-facing page
-of its own yet; it runs only through the automatic planner. **Partial** (exists for reading media,
-missing for anime as a dedicated review UI).
+episode-range mapping tool despite the adjacent name — anime range mapping now has its own owner-facing
+workflow on `/Settings/MappingReview?animeId=` (see above); this page remains the reading-media
+equivalent. **Exists** (reading media here, anime on Mapping Review).
 
 ## 4. Admin navigation
 
@@ -138,7 +146,7 @@ catalog in `src/Jularr.Web/Features/Localization/UiShellNavigation.cs`:
 | Acquisition | `/Acquisition` (admin-anime-acquisition), `/Settings/Acquisition` (admin-import) | Exists |
 | Wanted / Missing | inside `/Acquisition` | Exists (not a separate nav entry, but present as a section) |
 | Queue / Downloads | inside `/Acquisition`, Operations `IsDownload` rows | Exists (no standalone "Downloads" nav entry; folded into Acquisition and Operations) |
-| Metadata & Mapping | `/Settings/MappingReview`, `/Settings/MappingSegments` (admin-mapping) | Partial — see §3 |
+| Metadata & Mapping | `/Settings/MappingReview`, `/Settings/MappingSegments` (admin-mapping) | Exists — configurable provider roles and the anime range-mapping apply/preview/audit workflow, see §3 |
 | Subtitles | `/Admin/Subtitles`, `/Settings/Subtitles` (admin-subtitles) | Exists |
 | Media Processing | no dedicated nav entry (optimizer/trickplay/segments run as background Operations, surfaced only in `/Admin/Operations`) | Partial |
 | Playback & Sessions | **missing** — no admin sessions page exists (`Features/PlaybackSessions` has the hub/coordinator/store but no admin view) | Missing. #518 |
