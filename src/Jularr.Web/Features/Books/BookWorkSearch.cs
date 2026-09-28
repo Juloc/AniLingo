@@ -6,6 +6,21 @@ using System.Text.RegularExpressions;
 namespace Jularr.Web.Features.Books;
 
 /// <summary>
+/// One provider's view of a specific edition of a work (#405): kept when records merge so the
+/// Add book dialog can expand a work into what is actually known about its editions, distinct
+/// from the single best-metadata row <see cref="BookWorkSearch"/> chooses for the work itself.
+/// </summary>
+public sealed record BookEditionSummary(
+    string Id,
+    int? Year,
+    string? Language,
+    string? Publisher,
+    string? Isbn,
+    string Format,
+    string SourceName,
+    string? CoverImageUrl);
+
+/// <summary>
 /// The one Books search model (#371, #405): turns provider records (Open Library, Google
 /// Books, Wikisource, Gutenberg) into canonical works. Records with identity evidence for the
 /// same book merge into one result, the best metadata and cover are chosen across them, and
@@ -15,7 +30,24 @@ public static partial class BookWorkSearch
 {
     public const string GoogleBooksSource = "Google Books";
 
+    /// <summary>An edition Jularr can add directly (an EPUB or an importable Wikisource text).</summary>
+    public const string EditionFormatEpub = "epub";
+
+    /// <summary>An edition that can be read online but not imported as a file.</summary>
+    public const string EditionFormatText = "text";
+
+    /// <summary>A catalog record with no directly usable file: metadata only.</summary>
+    public const string EditionFormatListing = "listing";
+
     private const int CoverMemoryLimit = 4000;
+
+    /// <summary>Common MARC/ISO 639-2 three-letter codes to the two-letter tag Jularr uses elsewhere.</summary>
+    private static readonly IReadOnlyDictionary<string, string> LanguageTagAliases = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["eng"] = "en", ["ind"] = "id", ["deu"] = "de", ["ger"] = "de", ["fra"] = "fr", ["fre"] = "fr",
+        ["spa"] = "es", ["ita"] = "it", ["nld"] = "nl", ["dut"] = "nl", ["pol"] = "pl", ["por"] = "pt",
+        ["tur"] = "tr", ["jpn"] = "ja", ["kor"] = "ko", ["zho"] = "zh", ["chi"] = "zh", ["rus"] = "ru"
+    };
 
     // Once chosen, a work keeps its cover across searches, so cards do not change pictures.
     private static readonly ConcurrentDictionary<string, string> ChosenCovers = new(StringComparer.Ordinal);
@@ -94,6 +126,30 @@ public static partial class BookWorkSearch
         var sum = core.Select((digit, index) => (digit - '0') * (index % 2 == 0 ? 1 : 3)).Sum();
         return core + ((10 - sum % 10) % 10).ToString(CultureInfo.InvariantCulture);
     }
+
+    /// <summary>
+    /// A short language tag ("en", "id") for a provider's two- or three-letter code, or the
+    /// lower-cased code itself when it is not one of the common aliases above; null when unknown.
+    /// </summary>
+    public static string? NormalizeLanguageTag(string? value)
+    {
+        var tag = value?.Trim().ToLowerInvariant();
+        if (string.IsNullOrEmpty(tag) || tag.Length > 8)
+        {
+            return null;
+        }
+
+        return LanguageTagAliases.TryGetValue(tag, out var alias) ? alias : tag;
+    }
+
+    /// <summary>
+    /// What an edition record offers: a file Jularr can import, a text it can only show online,
+    /// or a catalog listing with neither (#405 "language/format when known").
+    /// </summary>
+    private static string EditionFormat(BookCatalogItem item) =>
+        item.CanAcquire ? EditionFormatEpub
+        : item.CanPreview ? EditionFormatText
+        : EditionFormatListing;
 
     /// <summary>A title for matching: lower case letters and digits, single spaces, no leading article.</summary>
     public static string NormalizeTitle(string? value)
@@ -250,9 +306,29 @@ public static partial class BookWorkSearch
                 CoverCandidates = covers,
                 Publisher = FirstNonEmpty(google?.Publisher, records.Select(record => record.Item.Publisher)),
                 PublishedDate = FirstNonEmpty(google?.PublishedDate, records.Select(record => record.Item.PublishedDate)),
-                ExternalListState = records.Select(record => record.Item.ExternalListState).FirstOrDefault(state => state is not null)
+                ExternalListState = records.Select(record => record.Item.ExternalListState).FirstOrDefault(state => state is not null),
+                Editions = Editions()
             };
         }
+
+        /// <summary>
+        /// One row per merged provider record (#405): each carries its own year, language,
+        /// publisher, ISBN and format, newest first. A single-record work still returns its one
+        /// edition; the dialog only offers a picker once there is more than one to choose from.
+        /// </summary>
+        private IReadOnlyList<BookEditionSummary> Editions() =>
+            records
+                .Select(record => new BookEditionSummary(
+                    record.Item.Id,
+                    record.Item.FirstPublishYear,
+                    record.Item.Language,
+                    record.Item.Publisher,
+                    record.Item.Isbns.FirstOrDefault(),
+                    EditionFormat(record.Item),
+                    record.Item.SourceName,
+                    record.Item.CoverImageUrl))
+                .OrderByDescending(edition => edition.Year ?? 0)
+                .ToArray();
 
         /// <summary>
         /// Every usable cover, best first (see <see cref="CoverRank"/>). The client falls back

@@ -334,11 +334,27 @@ public sealed class IndexModel(
                         ? ui[listStateKey]
                         : null,
                     freeEdition = item.CanAcquire,
-                    state = StateJson(state)
+                    state = StateJson(state),
+                    // Only worth a picker once more than one provider record contributed (#405).
+                    editions = item.Editions.Count > 1 ? item.Editions.Select(EditionJson) : null
                 };
             })
         });
     }
+
+    /// <summary>One row of a work's edition picker: what is known about that provider record.</summary>
+    private static object EditionJson(BookEditionSummary edition) => new
+    {
+        edition.Id,
+        edition.Year,
+        edition.Language,
+        languageName = edition.Language is { } language ? BookLanguageCatalog.GetName(language) : null,
+        edition.Publisher,
+        edition.Isbn,
+        edition.Format,
+        source = edition.SourceName,
+        cover = edition.CoverImageUrl
+    };
 
     private static string? ListStateKey(string? state) =>
         state switch

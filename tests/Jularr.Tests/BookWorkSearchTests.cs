@@ -117,6 +117,49 @@ public sealed class BookWorkSearchTests
     }
 
     [TestMethod]
+    public void MergedWorkExposesOneEditionPerProviderRecord()
+    {
+        var openLibrary = Book("ol-D1", "Dune", "Frank Herbert", year: 1965, isbns: ["9780441013593"], language: "eng");
+        var google = Book("gb-d1", "Dune", "Frank Herbert", year: 1990, isbns: ["9780441172719"], language: "eng", publisher: "Ace Books", epubUrl: "https://example.org/dune.epub");
+        var readOnline = Book("gb-d2", "Dune", "Frank Herbert", year: 2019, language: "ind", textUrl: "https://id.wikisource.org/dune");
+
+        var work = BookWorkSearch.Rank("dune", [openLibrary], [google, readOnline]).Single();
+
+        Assert.AreEqual(3, work.Editions.Count, "Every merged provider record stays visible as its own edition.");
+        CollectionAssert.AreEqual(new[] { 2019, 1990, 1965 }, work.Editions.Select(edition => edition.Year).ToArray(), "Newest edition first.");
+
+        var googleEdition = work.Editions.Single(edition => edition.Id == "gb-d1");
+        Assert.AreEqual("en", googleEdition.Language, "A three-letter code normalizes to the tag Jularr uses elsewhere.");
+        Assert.AreEqual("Ace Books", googleEdition.Publisher);
+        Assert.AreEqual("9780441172719", googleEdition.Isbn);
+        Assert.AreEqual(BookWorkSearch.EditionFormatEpub, googleEdition.Format, "An importable file makes the edition an EPUB.");
+        Assert.AreEqual("Google Books", googleEdition.SourceName);
+
+        var readOnlineEdition = work.Editions.Single(edition => edition.Id == "gb-d2");
+        Assert.AreEqual("id", readOnlineEdition.Language);
+        Assert.AreEqual(BookWorkSearch.EditionFormatText, readOnlineEdition.Format, "Readable online but not importable as a file.");
+
+        var openLibraryEdition = work.Editions.Single(edition => edition.Id == "ol-D1");
+        Assert.AreEqual(BookWorkSearch.EditionFormatListing, openLibraryEdition.Format, "Neither a file nor a read-online link: a catalog listing.");
+
+        // A work with only one contributing record still reports it, so a caller never special-cases zero.
+        var single = BookWorkSearch.Rank("emma", [Book("ol-E1", "Emma", "Jane Austen")]).Single();
+        Assert.AreEqual(1, single.Editions.Count);
+    }
+
+    [TestMethod]
+    public void LanguageTagsNormalizeCommonThreeLetterCodesAndPassThroughOthers()
+    {
+        Assert.AreEqual("en", BookWorkSearch.NormalizeLanguageTag("eng"));
+        Assert.AreEqual("id", BookWorkSearch.NormalizeLanguageTag("IND"));
+        Assert.AreEqual("de", BookWorkSearch.NormalizeLanguageTag("ger"));
+        Assert.AreEqual("fr", BookWorkSearch.NormalizeLanguageTag(" fre "));
+        Assert.AreEqual("pt-br", BookWorkSearch.NormalizeLanguageTag("PT-BR"), "An already-short tag passes through lower-cased.");
+        Assert.IsNull(BookWorkSearch.NormalizeLanguageTag(null));
+        Assert.IsNull(BookWorkSearch.NormalizeLanguageTag(""));
+    }
+
+    [TestMethod]
     public async Task SearchStillAnswersWhenAProviderFails()
     {
         var directory = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), $"jularr-work-search-{Guid.NewGuid():N}")).FullName;
@@ -208,12 +251,19 @@ public sealed class BookWorkSearchTests
         string[]? isbns = null,
         string? cover = null,
         string[]? covers = null,
-        string? summary = null) =>
-        new(id, title, author, summary, cover, [], year, null, null, "https://example.org/" + id, id.StartsWith("gb-", StringComparison.Ordinal) ? "Google Books" : "Open Library", null)
+        string? summary = null,
+        string? language = null,
+        string? publisher = null,
+        string? epubUrl = null,
+        string? textUrl = null) =>
+        new(id, title, author, summary, cover, [], year, textUrl, epubUrl, "https://example.org/" + id, id.StartsWith("gb-", StringComparison.Ordinal) ? "Google Books" : "Open Library", null)
         {
             EditionCount = editions,
             Isbns = isbns ?? [],
-            CoverCandidates = covers ?? []
+            CoverCandidates = covers ?? [],
+            // Mapping normalizes the language tag once, the same as MapOpenLibrarySearch/MapGoogleBook do.
+            Language = BookWorkSearch.NormalizeLanguageTag(language),
+            Publisher = publisher
         };
 
     private static async Task<AppDbContext> Database(string directory)
