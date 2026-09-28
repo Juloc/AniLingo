@@ -19,7 +19,6 @@
         .SelectMany(day => day.Events.Select(release => (Date: day.Date, Event: release)))
         .Take(5)
         .ToArray();
-    var activeTypeLabel = Model.MediaType is null ? ui["calendar.filter.all"] : presenter.FilterLabel(Model.MediaType.Value);
     var activeStateLabel = presenter.StateFilterLabel(Model.State);
 }
 @section Head {
@@ -44,18 +43,19 @@
         </nav>
 
         <div class="calendar-toolbar">
-            <div class="calendar-filter-group">
-                <details class="calendar-filter-menu">
-                    <summary>@activeTypeLabel</summary>
-                    <nav class="calendar-filter-popover" aria-label="@ui["calendar.filter.typeAria"]">
-                        <a class="@(Model.MediaType is null ? "selected" : null)" href="@Model.Link(allTypes: true)">@ui["calendar.filter.all"]</a>
-                        @foreach (var type in Model.MediaTypes)
-                        {
-                            <a class="@(Model.MediaType == type ? "selected" : null)" href="@Model.Link(type: type)">@presenter.FilterLabel(type)</a>
-                        }
-                    </nav>
-                </details>
+            <nav class="calendar-filter-chips" aria-label="@ui["calendar.filter.typeAria"]">
+                <a class="calendar-filter-chip@(Model.MediaType is null ? " active" : null)"
+                   href="@Model.Link(allTypes: true)"
+                   aria-current="@(Model.MediaType is null ? "true" : null)">@ui["calendar.filter.all"]</a>
+                @foreach (var type in Model.MediaTypes)
+                {
+                    <a class="calendar-filter-chip@(Model.MediaType == type ? " active" : null)"
+                       href="@Model.Link(type: type)"
+                       aria-current="@(Model.MediaType == type ? "true" : null)">@presenter.FilterLabel(type)</a>
+                }
+            </nav>
 
+            <div class="calendar-filter-group">
                 <details class="calendar-filter-menu">
                     <summary>@activeStateLabel</summary>
                     <nav class="calendar-filter-popover" aria-label="@ui["calendar.filter.stateAria"]">
