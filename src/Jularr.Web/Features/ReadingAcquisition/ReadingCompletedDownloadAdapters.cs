@@ -122,6 +122,10 @@ public sealed class MangaCompletedDownloadImportAdapter(
             {
                 try
                 {
+                    await request.ReportProgressAsync(
+                        CompletedDownloadImportPhase.MatchingMetadata,
+                        "Matching imported Manga metadata.",
+                        placement);
                     var metadata = new MangaAniListService(
                         repository,
                         httpClientFactory,
@@ -338,6 +342,10 @@ public sealed class LightNovelCompletedDownloadImportAdapter(
             {
                 try
                 {
+                    await request.ReportProgressAsync(
+                        CompletedDownloadImportPhase.MatchingMetadata,
+                        "Matching imported Light Novel metadata.",
+                        placement);
                     await metadata.MatchAsync(
                         workIds[0],
                         answered.Provider,
