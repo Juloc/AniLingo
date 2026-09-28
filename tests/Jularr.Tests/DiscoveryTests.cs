@@ -340,6 +340,36 @@ public sealed class DiscoveryTests
         StringAssert.Contains(script, "popstate");
     }
 
+    [TestMethod]
+    public void NewModeStringsParseToNewDiscoveryMode()
+    {
+        // #371: "New" (recently published) is a real Books-only signal; other spellings the
+        // client/URL might send must resolve to the same mode.
+        Assert.AreEqual(DiscoveryMode.New, DiscoveryRequest.Parse(null, "book", "new").Mode);
+        Assert.AreEqual(DiscoveryMode.New, DiscoveryRequest.Parse(null, "book", "recent").Mode);
+        Assert.AreEqual(DiscoveryMode.New, DiscoveryRequest.Parse(null, "book", "recently-published").Mode);
+        Assert.AreEqual("new", DiscoveryRequest.Parse(null, "book", "new").CacheKey("profile").Split('|')[1]);
+    }
+
+    [TestMethod]
+    public void DiscoveryClientOnlyOffersTheNewTabForBooks()
+    {
+        // #371: Anime/Manga/Novels have no real "recently published" source of their own (their
+        // AniList browse only distinguishes Trending from Top), so the New tab must stay hidden
+        // outside the Book category instead of silently aliasing to Top under a wrong label.
+        var root = FindRepositoryRoot();
+        var script = File.ReadAllText(Path.Combine(
+            root,
+            "src",
+            "Jularr.Web",
+            "wwwroot",
+            "js",
+            "discover.js"));
+
+        StringAssert.Contains(script, "data-discover-mode-books-only");
+        StringAssert.Contains(script, "state.category !== \"book\"");
+    }
+
     private static AniListRemoteListEntry Remote(
         int progress,
         string status) =>

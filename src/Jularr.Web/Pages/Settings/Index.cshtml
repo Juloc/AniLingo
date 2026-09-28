@@ -60,6 +60,15 @@
 
     <section class="panel">
         <div class="panel-heading">
+            <h2>@ui["settings.books.title"]</h2>
+            <span>@ui["settings.scope.owner"]</span>
+        </div>
+        <p class="muted">@ui["settings.books.description"]</p>
+        <a class="button" asp-page="/Settings/Books">@ui["settings.books.manage"]</a>
+    </section>
+
+    <section class="panel">
+        <div class="panel-heading">
             <h2>@ui["settings.offline.title"]</h2>
             <span>@ui["settings.scope.personal"]</span>
         </div>

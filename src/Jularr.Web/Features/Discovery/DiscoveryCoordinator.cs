@@ -187,11 +187,9 @@ public sealed class DiscoveryCoordinator(
             ? CaptureAsync(
                 async () =>
                 {
-                    var rows = await books.SearchAsync(
-                        request.Mode == DiscoveryMode.Search
-                            ? request.Query
-                            : null,
-                        cancellationToken);
+                    var rows = request.Mode == DiscoveryMode.Search
+                        ? await books.SearchAsync(request.Query, cancellationToken)
+                        : await books.BrowseAsync(ToBookBrowseMode(request.Mode), cancellationToken);
 
                     return rows
                         .Where(row => MatchesGenre(row, request.Genre))
@@ -444,6 +442,17 @@ public sealed class DiscoveryCoordinator(
         || row.Subjects.Count == 0
         || row.Subjects.Any(subject => subject.Contains(genre, StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>The Books browse row for a shared discovery mode (#371). Other categories keep
+    /// their own <see cref="DiscoveryMode.Trending"/>-flag branching; only Books has a source for
+    /// a genuine "New" (recently published) signal, so New only exists as a book browse mode.</summary>
+    private static BookBrowseMode ToBookBrowseMode(DiscoveryMode mode) =>
+        mode switch
+        {
+            DiscoveryMode.Top => BookBrowseMode.Popular,
+            DiscoveryMode.New => BookBrowseMode.New,
+            _ => BookBrowseMode.Trending
+        };
+
     private static DiscoveryItem MapBook(BookCatalogItem row) =>
         new(
             $"book:{row.Id}",
@@ -465,7 +474,9 @@ public sealed class DiscoveryCoordinator(
             false,
             null,
             $"/Books/{Uri.EscapeDataString(row.Id)}",
-            false);
+            false,
+            Author: row.Author,
+            Rating: row.Rating);
 
     private static DiscoveryItem MapLibrary(
         AniListLibraryMedia row,
@@ -643,6 +654,7 @@ public sealed class DiscoveryCoordinator(
             DiscoveryMode.Top => "top",
             DiscoveryMode.MyList => "my-list",
             DiscoveryMode.Search => "search",
+            DiscoveryMode.New => "new",
             _ => "trending"
         };
 

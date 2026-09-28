@@ -62,7 +62,7 @@ public sealed partial class BookCatalogService
         }
     }
 
-    private async Task<IReadOnlyList<BookCatalogItem>> BrowsePopularBooksAsync(
+    private async Task<IReadOnlyList<BookCatalogItem>> BrowseTrendingBooksAsync(
         CancellationToken cancellationToken)
     {
         var daily = await CaptureCatalogAsync(
@@ -85,6 +85,104 @@ public sealed partial class BookCatalogService
             weekly,
             cancellationToken);
     }
+
+    /// <summary>
+    /// The "Popular" row (#371): Open Library's own catalog-wide edition-count ranking
+    /// (<c>sort=editions</c> against the unscoped catalog query), a real, enduring-popularity
+    /// signal distinct from /trending's recent-activity one. Verified live against Open Library
+    /// (Bible, Pride and Prejudice and similar long-standing works lead it); never Gutenberg
+    /// download counts.
+    /// </summary>
+    private async Task<IReadOnlyList<BookCatalogItem>> BrowseTopBooksAsync(
+        CancellationToken cancellationToken)
+    {
+        var items = await CaptureCatalogAsync(
+            SearchOpenLibraryPopularAsync,
+            cancellationToken);
+        return await EnrichTrendingWithGoogleAsync(items, cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<BookCatalogItem>> SearchOpenLibraryPopularAsync(
+        CancellationToken cancellationToken)
+    {
+        var uri = new Uri(
+            "https://openlibrary.org/search.json"
+            + "?q=" + Uri.EscapeDataString("*:*")
+            + "&sort=editions"
+            + "&fields=key,title,author_name,cover_i,first_publish_year,subject,isbn,edition_count,language"
+            + $"&limit={SearchLimit}");
+
+        var response = await GetJsonAsync<OpenLibrarySearchResponse>(
+            uri,
+            cancellationToken)
+            ?? throw new InvalidOperationException(
+                "Open Library popular listing returned no data.");
+
+        return response.Docs
+            .Where(x =>
+                !string.IsNullOrWhiteSpace(x.Key)
+                && !string.IsNullOrWhiteSpace(x.Title)
+                && x.Key.StartsWith("/works/", StringComparison.Ordinal))
+            .Take(SearchLimit)
+            .Select(MapOpenLibrarySearch)
+            .ToArray();
+    }
+
+    /// <summary>
+    /// The "New" row (#371): Open Library's subject-scoped recent listing
+    /// (<c>/subjects/fiction.json?sort=new</c>). The unscoped catalog query
+    /// (<c>/search.json?q=*:*&amp;sort=new</c>) was verified live to surface spam/placeholder
+    /// records (implausible publish years, markup injected into titles); subject-scoping to a
+    /// broad, actively-catalogued subject avoids that, and <see cref="IsPlausibleBookTitle"/> plus
+    /// the publish-year sanity check in <see cref="MapOpenLibrarySubjectWork"/> defend against it
+    /// regardless.
+    /// </summary>
+    private async Task<IReadOnlyList<BookCatalogItem>> BrowseNewBooksAsync(
+        CancellationToken cancellationToken)
+    {
+        var items = await CaptureCatalogAsync(
+            token => SearchOpenLibraryRecentAsync("fiction", token),
+            cancellationToken);
+        return await EnrichTrendingWithGoogleAsync(items, cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<BookCatalogItem>> SearchOpenLibraryRecentAsync(
+        string subject,
+        CancellationToken cancellationToken)
+    {
+        var uri = new Uri(
+            $"https://openlibrary.org/subjects/{Uri.EscapeDataString(subject)}.json"
+            + "?sort=new"
+            + $"&limit={SearchLimit}");
+
+        var response = await GetJsonAsync<OpenLibrarySubjectResponse>(
+            uri,
+            cancellationToken)
+            ?? throw new InvalidOperationException(
+                "Open Library recent listing returned no data.");
+
+        var currentYear = DateTime.UtcNow.Year;
+        return (response.Works ?? [])
+            .Where(x =>
+                !string.IsNullOrWhiteSpace(x.Key)
+                && !string.IsNullOrWhiteSpace(x.Title)
+                && x.Key.StartsWith("/works/", StringComparison.Ordinal)
+                && IsPlausibleBookTitle(x.Title!))
+            .Take(SearchLimit)
+            .Select(x => MapOpenLibrarySubjectWork(x, currentYear))
+            .ToArray();
+    }
+
+    /// <summary>
+    /// A cheap data-quality guard for community-editable subject listings: rejects markup and
+    /// implausibly long "titles" (#371 found an injected <c>&lt;iframe&gt;</c> in an unscoped
+    /// listing). Rendering already HTML-encodes every title, so this is defence in depth against
+    /// bad data, not an XSS fix.
+    /// </summary>
+    private static bool IsPlausibleBookTitle(string title) =>
+        title.Length is > 0 and <= 300
+        && !title.Contains('<')
+        && !title.Contains('>');
 
     private async Task<IReadOnlyList<BookCatalogItem>> BrowseOpenLibraryTrendingAsync(
         string window,
