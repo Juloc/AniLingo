@@ -146,7 +146,7 @@ public sealed class OperationStore(AppDbContext db)
 
         if (!string.IsNullOrWhiteSpace(filter.Search))
         {
-            conditions.Add("(Title LIKE @search OR Subject LIKE @search OR Message LIKE @search OR Kind LIKE @search)");
+            conditions.Add("(Title ILIKE @search OR Subject ILIKE @search OR Message ILIKE @search OR Kind ILIKE @search)");
             parameters.Add(("@search", $"%{filter.Search.Trim()}%"));
         }
 
@@ -692,7 +692,7 @@ public sealed class OperationStore(AppDbContext db)
 
         if (!string.IsNullOrWhiteSpace(filter.Search))
         {
-            conditions.Add("(Message LIKE @search OR Module LIKE @search)");
+            conditions.Add("(Message ILIKE @search OR Module ILIKE @search)");
             parameters.Add(("@search", $"%{filter.Search.Trim()}%"));
         }
 

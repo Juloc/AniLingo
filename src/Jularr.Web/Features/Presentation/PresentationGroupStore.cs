@@ -33,11 +33,11 @@ public sealed class PresentationGroupStore(AppDbContext db)
                     SELECT r."GroupId", r."StartUnit", r."EndUnit"
                     FROM "PresentationGroupRanges" r
                     JOIN "PresentationGroups" g ON g."Id" = r."GroupId"
-                    WHERE g."MediaType" = $media AND g."WorkId" = $work
+                    WHERE g."MediaType" = @media AND g."WorkId" = @work
                     ORDER BY r."SortOrder", r."StartUnit";
                     """;
-                Add(rangeCommand, "$media", media);
-                Add(rangeCommand, "$work", Key(workId));
+                Add(rangeCommand, "@media", media);
+                Add(rangeCommand, "@work", Key(workId));
                 await using var reader = await rangeCommand.ExecuteReaderAsync(cancellationToken);
                 while (await reader.ReadAsync(cancellationToken))
                 {
@@ -59,11 +59,11 @@ public sealed class PresentationGroupStore(AppDbContext db)
                     """
                     SELECT "Id", "Name", "SortOrder", "CreatedAt", "UpdatedAt"
                     FROM "PresentationGroups"
-                    WHERE "MediaType" = $media AND "WorkId" = $work
+                    WHERE "MediaType" = @media AND "WorkId" = @work
                     ORDER BY "SortOrder", "CreatedAt";
                     """;
-                Add(groupCommand, "$media", media);
-                Add(groupCommand, "$work", Key(workId));
+                Add(groupCommand, "@media", media);
+                Add(groupCommand, "@work", Key(workId));
                 await using var reader = await groupCommand.ExecuteReaderAsync(cancellationToken);
                 while (await reader.ReadAsync(cancellationToken))
                 {
@@ -115,10 +115,10 @@ public sealed class PresentationGroupStore(AppDbContext db)
                     """
                     DELETE FROM "PresentationGroupRanges"
                     WHERE "GroupId" IN (
-                        SELECT "Id" FROM "PresentationGroups" WHERE "MediaType" = $media AND "WorkId" = $work);
+                        SELECT "Id" FROM "PresentationGroups" WHERE "MediaType" = @media AND "WorkId" = @work);
                     """;
-                Add(deleteRanges, "$media", media);
-                Add(deleteRanges, "$work", Key(workId));
+                Add(deleteRanges, "@media", media);
+                Add(deleteRanges, "@work", Key(workId));
                 await deleteRanges.ExecuteNonQueryAsync(cancellationToken);
             }
 
@@ -126,9 +126,9 @@ public sealed class PresentationGroupStore(AppDbContext db)
             {
                 deleteGroups.Transaction = transaction;
                 deleteGroups.CommandText =
-                    """DELETE FROM "PresentationGroups" WHERE "MediaType" = $media AND "WorkId" = $work;""";
-                Add(deleteGroups, "$media", media);
-                Add(deleteGroups, "$work", Key(workId));
+                    """DELETE FROM "PresentationGroups" WHERE "MediaType" = @media AND "WorkId" = @work;""";
+                Add(deleteGroups, "@media", media);
+                Add(deleteGroups, "@work", Key(workId));
                 await deleteGroups.ExecuteNonQueryAsync(cancellationToken);
             }
 
@@ -152,14 +152,14 @@ public sealed class PresentationGroupStore(AppDbContext db)
                         """
                         INSERT INTO "PresentationGroups"
                             ("Id", "MediaType", "WorkId", "Name", "SortOrder", "CreatedAt", "UpdatedAt")
-                        VALUES ($id, $media, $work, $name, $order, $now, $now);
+                        VALUES (@id, @media, @work, @name, @order, @now, @now);
                         """;
-                    Add(insertGroup, "$id", Key(groupId));
-                    Add(insertGroup, "$media", media);
-                    Add(insertGroup, "$work", Key(workId));
-                    Add(insertGroup, "$name", name.Length <= NameMaxLength ? name : name[..NameMaxLength]);
-                    Add(insertGroup, "$order", order);
-                    Add(insertGroup, "$now", now);
+                    Add(insertGroup, "@id", Key(groupId));
+                    Add(insertGroup, "@media", media);
+                    Add(insertGroup, "@work", Key(workId));
+                    Add(insertGroup, "@name", name.Length <= NameMaxLength ? name : name[..NameMaxLength]);
+                    Add(insertGroup, "@order", order);
+                    Add(insertGroup, "@now", now);
                     await insertGroup.ExecuteNonQueryAsync(cancellationToken);
                 }
 
@@ -172,13 +172,13 @@ public sealed class PresentationGroupStore(AppDbContext db)
                         """
                         INSERT INTO "PresentationGroupRanges"
                             ("Id", "GroupId", "StartUnit", "EndUnit", "SortOrder")
-                        VALUES ($id, $group, $start, $end, $order);
+                        VALUES (@id, @group, @start, @end, @order);
                         """;
-                    Add(insertRange, "$id", Key(Guid.NewGuid()));
-                    Add(insertRange, "$group", Key(groupId));
-                    Add(insertRange, "$start", range.Low);
-                    Add(insertRange, "$end", range.High);
-                    Add(insertRange, "$order", rangeOrder);
+                    Add(insertRange, "@id", Key(Guid.NewGuid()));
+                    Add(insertRange, "@group", Key(groupId));
+                    Add(insertRange, "@start", range.Low);
+                    Add(insertRange, "@end", range.High);
+                    Add(insertRange, "@order", rangeOrder);
                     await insertRange.ExecuteNonQueryAsync(cancellationToken);
                     rangeOrder++;
                 }

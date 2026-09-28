@@ -199,23 +199,23 @@ public sealed class AiUsageStore(AppDbContext db)
                 await using var command = connection.CreateCommand();
                 command.Transaction = transaction;
                 var columns = string.Join(", ", CounterColumns.Select(x => $"\"{x}\""));
-                var values = string.Join(", ", CounterColumns.Select(x => "$" + x));
+                var values = string.Join(", ", CounterColumns.Select(x => "@" + x));
                 var updates = string.Join(", ", CounterColumns.Select(x => $"\"{x}\" = \"{x}\" + excluded.\"{x}\""));
                 command.CommandText =
                     $"""
                     INSERT INTO "AiUsageDaily" ("ProfileId", "Day", "ProviderId", "Model", "Operation", {columns})
-                    VALUES ($profile, $day, $provider, $model, $operation, {values})
+                    VALUES (@profile, @day, @provider, @model, @operation, {values})
                     ON CONFLICT("ProfileId", "Day", "ProviderId", "Model", "Operation") DO UPDATE SET {updates};
                     """;
-                Add(command, "$profile", key.ProfileId);
-                Add(command, "$day", key.Day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
-                Add(command, "$provider", key.ProviderId);
-                Add(command, "$model", key.Model);
-                Add(command, "$operation", key.Operation);
+                Add(command, "@profile", key.ProfileId);
+                Add(command, "@day", key.Day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+                Add(command, "@provider", key.ProviderId);
+                Add(command, "@model", key.Model);
+                Add(command, "@operation", key.Operation);
                 var counters = Counters(totals);
                 for (var index = 0; index < CounterColumns.Length; index++)
                 {
-                    Add(command, "$" + CounterColumns[index], counters[index]);
+                    Add(command, "@" + CounterColumns[index], counters[index]);
                 }
 
                 await command.ExecuteNonQueryAsync(cancellationToken);
@@ -240,13 +240,13 @@ public sealed class AiUsageStore(AppDbContext db)
                 $"""
                 SELECT "Day", "ProfileId", "ProviderId", "Model", "Operation", {columns}
                 FROM "AiUsageDaily"
-                WHERE "Day" >= $from AND "Day" <= $to
-                  AND ($profile IS NULL OR "ProfileId" = $profile)
+                WHERE "Day" >= @from AND "Day" <= @to
+                  AND (@profile IS NULL OR "ProfileId" = @profile)
                 ORDER BY "Day";
                 """;
-            Add(command, "$from", fromDay.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
-            Add(command, "$to", toDay.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
-            Add(command, "$profile", profileId);
+            Add(command, "@from", fromDay.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+            Add(command, "@to", toDay.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+            Add(command, "@profile", profileId);
 
             var rows = new List<AiUsageRow>();
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);

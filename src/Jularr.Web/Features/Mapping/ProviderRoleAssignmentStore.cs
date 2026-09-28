@@ -149,16 +149,16 @@ public sealed class ProviderRoleAssignmentStore(AppDbContext db)
             command.CommandText =
                 """
                 INSERT INTO "ProviderRoleAssignments" ("Id", "MediaType", "WorkId", "Role", "Provider", "UpdatedAt")
-                VALUES ($id, $media, $work, $role, $provider, $now)
+                VALUES (@id, @media, @work, @role, @provider, @now)
                 ON CONFLICT ("MediaType", "WorkId", "Role")
                 DO UPDATE SET "Provider" = excluded."Provider", "UpdatedAt" = excluded."UpdatedAt";
                 """;
-            Add(command, "$id", Key(Guid.NewGuid()));
-            Add(command, "$media", media);
-            Add(command, "$work", scope);
-            Add(command, "$role", MappingProviderRoles.StorageKey(role));
-            Add(command, "$provider", normalizedProvider);
-            Add(command, "$now", DateTime.UtcNow);
+            Add(command, "@id", Key(Guid.NewGuid()));
+            Add(command, "@media", media);
+            Add(command, "@work", scope);
+            Add(command, "@role", MappingProviderRoles.StorageKey(role));
+            Add(command, "@provider", normalizedProvider);
+            Add(command, "@now", DateTime.UtcNow);
             await command.ExecuteNonQueryAsync(cancellationToken);
             return 0;
         }, cancellationToken);
@@ -173,13 +173,13 @@ public sealed class ProviderRoleAssignmentStore(AppDbContext db)
         {
             await using var command = connection.CreateCommand();
             command.CommandText = role is null
-                ? """DELETE FROM "ProviderRoleAssignments" WHERE "MediaType" = $media AND "WorkId" = $work;"""
-                : """DELETE FROM "ProviderRoleAssignments" WHERE "MediaType" = $media AND "WorkId" = $work AND "Role" = $role;""";
-            Add(command, "$media", media);
-            Add(command, "$work", scope);
+                ? """DELETE FROM "ProviderRoleAssignments" WHERE "MediaType" = @media AND "WorkId" = @work;"""
+                : """DELETE FROM "ProviderRoleAssignments" WHERE "MediaType" = @media AND "WorkId" = @work AND "Role" = @role;""";
+            Add(command, "@media", media);
+            Add(command, "@work", scope);
             if (role is not null)
             {
-                Add(command, "$role", role);
+                Add(command, "@role", role);
             }
 
             await command.ExecuteNonQueryAsync(cancellationToken);
@@ -197,10 +197,10 @@ public sealed class ProviderRoleAssignmentStore(AppDbContext db)
             command.CommandText =
                 """
                 SELECT "Role", "Provider" FROM "ProviderRoleAssignments"
-                WHERE "MediaType" = $media AND "WorkId" = $work;
+                WHERE "MediaType" = @media AND "WorkId" = @work;
                 """;
-            Add(command, "$media", media);
-            Add(command, "$work", scope);
+            Add(command, "@media", media);
+            Add(command, "@work", scope);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
             {

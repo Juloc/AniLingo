@@ -79,7 +79,7 @@ builder.Services.AddDataProtection()
 var connectionString = builder.Configuration.GetConnectionString("Default")
     ?? throw new InvalidOperationException("ConnectionStrings:Default is required.");
 
-builder.Services.AddDbContext<AppDbContext>(options => options.UseSqlite(connectionString));
+builder.Services.AddDbContext<AppDbContext>(options => options.UseNpgsql(connectionString));
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<OperationProfileContext>();
@@ -613,9 +613,6 @@ app.MapRazorPages();
 try
 {
     Console.WriteLine($"[Jularr] {DateTimeOffset.UtcNow:O} Initializing persistent database.");
-    LegacyDatabaseFileMigration.Run(
-        connectionString,
-        message => Console.WriteLine($"[Jularr] {DateTimeOffset.UtcNow:O} {message}"));
     await InitializeDatabaseAsync(
         app.Services,
         message => Console.WriteLine($"[Jularr] {DateTimeOffset.UtcNow:O} {message}"));
@@ -657,9 +654,6 @@ static async Task InitializeDatabaseAsync(
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
     await DatabaseMigrationBridge.UpgradeAsync(db, log: log);
-
-    log("Enabling SQLite WAL journal mode.");
-    await db.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;");
 
     if (await db.LibraryRoots.AnyAsync())
     {
