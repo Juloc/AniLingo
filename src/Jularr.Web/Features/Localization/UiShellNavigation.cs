@@ -77,6 +77,7 @@ public static class UiNavigationCatalog
         new("nav.group.adminSystem",
         [
             new("admin-operations", "admin.nav.operations", "/Admin/Operations", "activity", ["/Admin/Operations", "/Admin/Operation"]),
+            new("admin-sessions", "admin.nav.sessions", "/Admin/Sessions", "activity"),
             new("admin-scans", "admin.nav.scans", "/Admin/Scans", "scan"),
             new("admin-logs", "admin.nav.logs", "/Admin/Logs", "logs"),
             new("admin-ai", "admin.nav.ai", "/Admin/Ai", "spark"),
@@ -129,7 +130,7 @@ public static class UiNavigationCatalog
     /// The Devices page belongs to #518. Set this once <c>Pages/Profile/Devices.cshtml</c>
     /// exists; a test keeps the two in sync.
     /// </summary>
-    public static readonly bool DevicesPageAvailable = false;
+    public static readonly bool DevicesPageAvailable = true;
 
     public static readonly UiNavigationEntry ProfileDevices =
         new("profile-devices", "nav.devices", "/Profile/Devices", "devices");
