@@ -228,11 +228,11 @@ each row's Where.
 | --- | --- | --- | --- |
 | Work/volume/chapter identity — Novels | Exists | `NovelWork`, `NovelVolume`, `NovelChapter`, `NovelTranslation` | — |
 | Work/edition/file identity — Books | Exists | `BookEdition`, `BookFile` | — |
-| Series/chapter identity — Manga | Partial — file-derived (`MangaSeriesItem`/`MangaChapterItem`), not a durable DB entity like anime/novels | `Features/Manga/MangaModels.cs`, `MangaRepository` | #529 |
+| Series/chapter identity — Manga | Partial — file-derived (`MangaSeriesItem`/`MangaChapterItem`), not a durable DB entity like anime/novels; blocks a Manga equivalent of `/Library/Rename` for *existing* files | `Features/Manga/MangaModels.cs`, `MangaRepository` | #563 |
 | Acquisition (search/download/import) | Exists | `Features/ReadingAcquisition`, `AcquisitionRequestService` | — |
 | Monitoring/wanted | Exists | `WantedAcquisitionService` | — |
 | Metadata/provider mapping | Exists (AniList) | Manga/Novel AniList match services | — |
-| Naming/organization | Partial — Manga library folder + import mode exist; no configurable naming-template system like anime's | READING_ACQUISITION.md "Manga library" | #529 |
+| Naming/organization | Exists — one naming-template profile per reading media type (Books, Manga, Light Novels), applied when a release is placed into its NAS library root; live preview and token reference on `/Settings/ReadingNaming` (sibling of anime's `/Settings/Naming`) | `Features/Naming`, `Pages/Settings/ReadingNaming.cshtml(.cs)` | — |
 | Reading progress | Exists | `NovelProgress`, `MangaProgressItem`, bookmarks/highlights | — |
 | Multiple editions/formats | Exists (Books) | `BookEdition`/`BookFile` (EPUB, PDF) | — |
 | Chapter-range provider mapping | Exists | `ReadingSegmentMappingStore`, `/Settings/MappingSegments` | — |

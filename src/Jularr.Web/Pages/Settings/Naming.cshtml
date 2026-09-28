@@ -12,6 +12,7 @@
         <h1>@ui["settings.naming.title"]</h1>
         <p>@ui["settings.naming.pageDescription"]</p>
     </div>
+    <a class="button" asp-page="/Settings/ReadingNaming">@ui["settings.naming.readingNamingLink"]</a>
 </header>
 
 @if (!string.IsNullOrWhiteSpace(Model.Notice))

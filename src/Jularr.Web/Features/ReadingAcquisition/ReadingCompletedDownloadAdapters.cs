@@ -1,9 +1,12 @@
+using System.Globalization;
+using System.Text.RegularExpressions;
 using Jularr.Web.Data;
 using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Acquisition.Import;
 using Jularr.Web.Features.Books;
 using Jularr.Web.Features.Manga;
 using Jularr.Web.Features.MediaMapping;
+using Jularr.Web.Features.Naming;
 using Jularr.Web.Features.Novels;
 
 namespace Jularr.Web.Features.ReadingAcquisition;
@@ -22,7 +25,8 @@ public sealed class MangaCompletedDownloadImportAdapter(
     AnimeImportSettingsStore importSettings,
     IHardLinkCreator hardLinks,
     ILogger<MangaCompletedDownloadImportAdapter> logger,
-    string? mangaCacheRoot = null)
+    string? mangaCacheRoot = null,
+    ReadingNamingProfileStore? namingStore = null)
     : ICompletedDownloadImportAdapter, IMediaInboxImportAdapter
 {
     public MediaAcquisitionKind Kind =>
@@ -63,6 +67,9 @@ public sealed class MangaCompletedDownloadImportAdapter(
             var settings = await importSettings.LoadAsync(cancellationToken);
             var library = settings.LibraryFor(MediaAcquisitionKind.Manga);
             var sourceExists = File.Exists(request.SourcePath) || Directory.Exists(request.SourcePath);
+            var namingProfile = namingStore is null
+                ? null
+                : await namingStore.ResolveAsync(MediaAcquisitionKind.Manga, cancellationToken);
 
             string importSource;
             if (library is null)
@@ -83,10 +90,23 @@ public sealed class MangaCompletedDownloadImportAdapter(
                 var seriesFolder = MangaLibraryPlacement.SeriesFolder(
                     library.LibraryRoot!,
                     existing,
-                    title);
-                var releaseTarget = Path.Combine(
-                    seriesFolder,
-                    MangaLibraryPlacement.SafeName(releaseName));
+                    title,
+                    namingProfile);
+
+                // The rendered leaf name is computed once, upfront, from the source path's name
+                // alone (IsImportableFile is a pure extension check, not a disk probe), so the
+                // exact same path is used for the existence/retry check below, the placement
+                // itself and importSource - including on a retry after a previous Move already
+                // relocated (and deleted) the original download (#529/#563: Manga has no durable
+                // identity to look the file up by otherwise).
+                var releaseLeaf = MangaImportService.IsImportableFile(request.SourcePath)
+                    ? ReadingNamingPlacement.RenderChapterLeafName(
+                        request.SourcePath,
+                        namingProfile,
+                        title,
+                        MangaLibraryPlacement.SafeName(releaseName))
+                    : MangaLibraryPlacement.SafeName(releaseName);
+                var releaseTarget = Path.Combine(seriesFolder, releaseLeaf);
                 var mode = settings.ModeFor(MediaAcquisitionKind.Manga);
                 placement = new CompletedDownloadPlacement(releaseTarget, mode);
 
@@ -95,7 +115,9 @@ public sealed class MangaCompletedDownloadImportAdapter(
                     new MangaLibraryPlacement(new ImportFileTransfer(hardLinks)).Place(
                         request.SourcePath,
                         releaseTarget,
-                        mode);
+                        mode,
+                        namingProfile,
+                        title);
                 }
                 else if (!File.Exists(releaseTarget) && !Directory.Exists(releaseTarget))
                 {
@@ -259,7 +281,8 @@ public sealed class LightNovelCompletedDownloadImportAdapter(
     NovelMetadataService metadata,
     AnimeImportSettingsStore importSettings,
     IHardLinkCreator hardLinks,
-    ILogger<LightNovelCompletedDownloadImportAdapter> logger)
+    ILogger<LightNovelCompletedDownloadImportAdapter> logger,
+    ReadingNamingProfileStore? namingStore = null)
     : ICompletedDownloadImportAdapter, IMediaInboxImportAdapter
 {
     private static readonly CompletedDownloadPlacement Placement =
@@ -287,15 +310,22 @@ public sealed class LightNovelCompletedDownloadImportAdapter(
             var importSource = request.SourcePath;
             if (library is not null)
             {
+                var namingProfile = namingStore is null
+                    ? null
+                    : await namingStore.ResolveAsync(MediaAcquisitionKind.LightNovel, cancellationToken);
+                var releaseTitle = request.Request?.Title ?? Path.GetFileNameWithoutExtension(request.SourcePath);
                 var destination = ReadingLibraryPlacement.ReleaseFolder(
                     library.LibraryRoot!,
-                    request.Request?.Title ?? Path.GetFileNameWithoutExtension(request.SourcePath));
+                    releaseTitle,
+                    namingProfile);
                 var mode = settings.ModeFor(MediaAcquisitionKind.LightNovel);
                 placement = new CompletedDownloadPlacement(destination, mode);
                 new ReadingLibraryPlacement(new ImportFileTransfer(hardLinks)).PlaceEpubs(
                     request.SourcePath,
                     destination,
-                    mode);
+                    mode,
+                    namingProfile,
+                    releaseTitle);
                 importSource = destination;
             }
 
@@ -439,26 +469,53 @@ public sealed class LightNovelCompletedDownloadImportAdapter(
 /// </summary>
 public sealed class ReadingLibraryPlacement(ImportFileTransfer transfer)
 {
-    public static string ReleaseFolder(string libraryRoot, string? title) =>
-        Path.Combine(Path.GetFullPath(libraryRoot), MangaLibraryPlacement.SafeName(title));
+    /// <summary>
+    /// The series/work folder for a release. Without a naming <paramref name="profile"/> (the
+    /// Books completed-download import does not resolve one, #529 claim scope), or when the
+    /// profile renders nothing useful, this is exactly <c>MangaLibraryPlacement.SafeName(title)</c>
+    /// - the placement Jularr already did before naming profiles existed.
+    /// </summary>
+    public static string ReleaseFolder(string libraryRoot, string? title, ReadingNamingProfile? profile = null)
+    {
+        var rendered = profile is not null
+            ? ReadingNamingFormatter.BuildSeriesFolderName(profile, new ReadingNamingRequest(profile.MediaKind, Series: title))
+            : "";
 
-    public void PlaceEpubs(string source, string destination, ImportMode mode)
+        var folderName = string.IsNullOrWhiteSpace(rendered) ? MangaLibraryPlacement.SafeName(title) : rendered;
+        return Path.Combine(Path.GetFullPath(libraryRoot), folderName);
+    }
+
+    public void PlaceEpubs(
+        string source,
+        string destination,
+        ImportMode mode,
+        ReadingNamingProfile? profile = null,
+        string? seriesTitle = null)
         => PlaceFiles(
             source,
             destination,
             mode,
             path => path.EndsWith(".epub", StringComparison.OrdinalIgnoreCase),
-            "EPUB");
+            "EPUB",
+            profile,
+            seriesTitle);
 
-    public void PlaceBookFiles(string source, string destination, ImportMode mode)
-        => PlaceFiles(source, destination, mode, BookFileFormats.IsSupported, "Book");
+    public void PlaceBookFiles(
+        string source,
+        string destination,
+        ImportMode mode,
+        ReadingNamingProfile? profile = null,
+        string? seriesTitle = null)
+        => PlaceFiles(source, destination, mode, BookFileFormats.IsSupported, "Book", profile, seriesTitle);
 
     private void PlaceFiles(
         string source,
         string destination,
         ImportMode mode,
         Func<string, bool> isSupported,
-        string mediaName)
+        string mediaName,
+        ReadingNamingProfile? profile,
+        string? seriesTitle)
     {
         var root = Path.GetFullPath(source);
         var files = File.Exists(root)
@@ -482,7 +539,12 @@ public sealed class ReadingLibraryPlacement(ImportFileTransfer transfer)
                 throw new InvalidDataException("The EPUB path is outside the completed download.");
             }
 
-            var target = Path.Combine(destination, relative);
+            var relativeDirectory = Path.GetDirectoryName(relative) ?? "";
+            var leafName = ReadingNamingPlacement.RenderLeafName(
+                Path.GetFileName(relative),
+                profile,
+                seriesTitle);
+            var target = Path.Combine(destination, relativeDirectory, leafName);
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
             if (File.Exists(target))
             {
@@ -539,7 +601,8 @@ public sealed class MangaLibraryPlacement(ImportFileTransfer transfer)
     public static string SeriesFolder(
         string libraryRoot,
         MangaSeriesLocation? existing,
-        string title)
+        string title,
+        ReadingNamingProfile? profile = null)
     {
         var root = Path.GetFullPath(libraryRoot);
         if (existing is not null &&
@@ -549,7 +612,10 @@ public sealed class MangaLibraryPlacement(ImportFileTransfer transfer)
             return Path.GetFullPath(existing.SourcePath);
         }
 
-        return Path.Combine(root, SafeName(title));
+        var rendered = profile is not null
+            ? ReadingNamingFormatter.BuildSeriesFolderName(profile, new ReadingNamingRequest(profile.MediaKind, Series: title))
+            : "";
+        return Path.Combine(root, string.IsNullOrWhiteSpace(rendered) ? SafeName(title) : rendered);
     }
 
     public static string SafeName(string? value)
@@ -567,8 +633,23 @@ public sealed class MangaLibraryPlacement(ImportFileTransfer transfer)
             Path.GetFullPath(right).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
             StringComparison.Ordinal);
 
-    /// <summary>Returns how many files were placed now (skipped identical files excluded).</summary>
-    public int Place(string source, string destination, ImportMode mode)
+    /// <summary>
+    /// Places source file(s) at <paramref name="destination"/>. For a single-file source,
+    /// <paramref name="destination"/> must already be the file's final rendered leaf name (see
+    /// <see cref="ReadingNamingPlacement.RenderChapterLeafName"/>) - computed once by the caller
+    /// so the same path is used for the existence/retry check, the placement itself and reading
+    /// the file back afterwards. For a directory source, only each file's own leaf name is
+    /// rendered per <paramref name="profile"/> (chapter/volume numbers are read from each file's
+    /// own name - Manga has no durable chapter entity yet, #563); the destination folder name
+    /// itself is never renamed. Returns how many files were placed now (skipped identical files
+    /// excluded).
+    /// </summary>
+    public int Place(
+        string source,
+        string destination,
+        ImportMode mode,
+        ReadingNamingProfile? profile = null,
+        string? seriesTitle = null)
     {
         if (File.Exists(source))
         {
@@ -593,7 +674,9 @@ public sealed class MangaLibraryPlacement(ImportFileTransfer transfer)
                 continue;
             }
 
-            if (PlaceFile(file, Path.Combine(destination, relative), mode))
+            var relativeDirectory = Path.GetDirectoryName(relative) ?? "";
+            var leaf = ReadingNamingPlacement.RenderChapterLeafName(file, profile, seriesTitle, Path.GetFileName(relative));
+            if (PlaceFile(file, Path.Combine(destination, relativeDirectory, leaf), mode))
             {
                 placed++;
             }
@@ -670,5 +753,89 @@ public sealed class MangaLibraryPlacement(ImportFileTransfer transfer)
         var parent = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         return full.StartsWith(parent + Path.DirectorySeparatorChar, StringComparison.Ordinal) ||
                full.StartsWith(parent + Path.AltDirectorySeparatorChar, StringComparison.Ordinal);
+    }
+}
+
+/// <summary>
+/// Renders one file's leaf (file) name with a reading naming profile (#529), shared by
+/// <see cref="ReadingLibraryPlacement"/> (Books/Light Novels) and <see cref="MangaLibraryPlacement"/>
+/// (Manga). Every method falls back to the exact name the caller already computed when there is no
+/// profile or the template renders nothing, so the "Original names" default profile never changes
+/// what Jularr writes to disk.
+/// </summary>
+public static partial class ReadingNamingPlacement
+{
+    // Same filename-hint patterns as Features/Manga/MangaImportService's chapter/volume parsing
+    // (kept local: that parser is private to a file outside this claim's scope, and this is a
+    // different concern - a display hint for naming, not the canonical reading-order parse).
+    [GeneratedRegex(@"(?:chapter|chap|ch|c)[\s._-]*(?<number>\d+(?:\.\d+)?)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex ChapterNumberRegex();
+
+    [GeneratedRegex(@"(?:volume|vol|v)[\s._-]*(?<number>\d+)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex VolumeNumberRegex();
+
+    /// <summary>Books/Light Novels: one release is usually one file, so its title doubles as the
+    /// file's Series/Title tokens.</summary>
+    public static string RenderLeafName(string originalFileName, ReadingNamingProfile? profile, string? seriesTitle)
+    {
+        if (profile is null)
+        {
+            return originalFileName;
+        }
+
+        var extension = Path.GetExtension(originalFileName);
+        var request = new ReadingNamingRequest(
+            profile.MediaKind,
+            Series: seriesTitle,
+            Title: seriesTitle,
+            Format: extension.TrimStart('.').ToUpperInvariant(),
+            OriginalFileName: Path.GetFileNameWithoutExtension(originalFileName));
+
+        var rendered = ReadingNamingFormatter.BuildFileName(profile, request);
+        return string.IsNullOrWhiteSpace(rendered) ? originalFileName : rendered + extension;
+    }
+
+    /// <summary>Manga: chapter/volume numbers come from the file's own name.</summary>
+    public static string RenderChapterLeafName(
+        string filePath,
+        ReadingNamingProfile? profile,
+        string? seriesTitle,
+        string fallbackLeafName)
+    {
+        if (profile is null)
+        {
+            return fallbackLeafName;
+        }
+
+        var extension = Path.GetExtension(filePath);
+        var originalWithoutExtension = Path.GetFileNameWithoutExtension(filePath);
+        var request = new ReadingNamingRequest(
+            profile.MediaKind,
+            Series: seriesTitle,
+            ChapterNumber: TryParseChapterNumber(originalWithoutExtension),
+            VolumeNumber: TryParseVolumeNumber(originalWithoutExtension),
+            Format: extension.TrimStart('.').ToUpperInvariant(),
+            OriginalFileName: originalWithoutExtension);
+
+        var rendered = ReadingNamingFormatter.BuildFileName(profile, request);
+        return string.IsNullOrWhiteSpace(rendered) ? fallbackLeafName : rendered + extension;
+    }
+
+    private static double? TryParseChapterNumber(string name)
+    {
+        var match = ChapterNumberRegex().Match(name);
+        return match.Success &&
+               double.TryParse(match.Groups["number"].Value, NumberStyles.Number, CultureInfo.InvariantCulture, out var value)
+            ? value
+            : null;
+    }
+
+    private static int? TryParseVolumeNumber(string name)
+    {
+        var match = VolumeNumberRegex().Match(name);
+        return match.Success &&
+               int.TryParse(match.Groups["number"].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value)
+            ? value
+            : null;
     }
 }

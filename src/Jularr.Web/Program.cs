@@ -467,6 +467,7 @@ builder.Services.AddSingleton<SonarrMigrationService>();
 builder.Services.AddSingleton<Jularr.Web.Features.Acquisition.Naming.AnimeNamingProfileStore>();
 builder.Services.AddSingleton<Jularr.Web.Features.Acquisition.Naming.AnimeRenameFileSystem>();
 builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Naming.AnimeRenameService>();
+builder.Services.AddSingleton<Jularr.Web.Features.Naming.ReadingNamingProfileStore>();
 
 builder.Services.AddSingleton<MediaMappingReviewStore>();
 builder.Services.AddSingleton<ReadingSegmentMappingStore>();
