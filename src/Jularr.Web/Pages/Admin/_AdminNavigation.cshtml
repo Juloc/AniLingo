@@ -13,5 +13,6 @@
     <a class="admin-nav-item @(path.StartsWithSegments("/Admin/Sessions") ? "active" : "")" asp-page="/Admin/Sessions">@ui["admin.nav.sessions"]</a>
     <a class="admin-nav-item @(path.StartsWithSegments("/Admin/Scans") ? "active" : "")" asp-page="/Admin/Scans">@ui["admin.nav.scans"]</a>
     <a class="admin-nav-item @(path.StartsWithSegments("/Admin/Logs") ? "active" : "")" asp-page="/Admin/Logs">@ui["admin.nav.logs"]</a>
+    <a class="admin-nav-item @(path.StartsWithSegments("/Admin/Appearance") ? "active" : "")" asp-page="/Admin/Appearance">@ui["admin.nav.appearance"]</a>
     <a class="admin-nav-item @(path.StartsWithSegments("/Admin/System") || path.StartsWithSegments("/Admin/Subtitles") || path.StartsWithSegments("/Admin/Sonarr") || path.StartsWithSegments("/Admin/Ai") ? "active" : "")" asp-page="/Admin/System">@ui["admin.nav.system"]</a>
 </nav>

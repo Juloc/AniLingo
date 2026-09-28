@@ -12,15 +12,26 @@
     var appearance = isAuthenticated
         ? await new ProfileAppearanceStore(LocalizationDb).GetAsync(profileId, Context.RequestAborted)
         : ProfileAppearance.Default;
+    var instanceAppearance = await new InstanceAppearanceSettingsStore(LocalizationDb)
+        .LoadAsync(Context.RequestAborted);
+    var themeId = instanceAppearance.AllowProfileThemeOverride && appearance.ThemeId is not null
+        ? ThemeCatalog.NormalizeOrOriginal(appearance.ThemeId)
+        : instanceAppearance.DefaultThemeId;
     var appTheme = appearance.ThemeMode;
-    var palette = appearance.Palette;
+    var effectiveSakura = ThemeCatalog.TryGet(themeId, out var activeTheme) && activeTheme.UsesOriginalArtwork
+        ? appearance.SakuraMode
+        : AppSakura.Off;
+    var themeIconType = activeTheme.UsesOriginalArtwork ? "image/svg+xml" : "image/png";
+    var palette = AccentPalette.Build(
+        instanceAppearance.AllowProfileAccentOverride ? appearance.AccentColor : null);
 
     ViewData["UiTextBundle"] = ui;
     ViewData["AppThemeMode"] = appTheme;
+    ViewData["AppThemeId"] = themeId;
     ViewData["AppBuildVersion"] = AppBuildInfo.Version;
 }
 <!DOCTYPE html>
-<html lang="@ui.Locale" dir="@ui.Direction" data-app-theme="@appTheme" data-accent="@palette.Seed" data-sakura="@appearance.SakuraMode">
+<html lang="@ui.Locale" dir="@ui.Direction" data-app-theme="@appTheme" data-app-theme-id="@themeId" data-accent="@palette.Seed" data-sakura="@effectiveSakura">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
@@ -32,9 +43,10 @@
     <meta name="apple-mobile-web-app-title" content="Jularr" />
     <title>@ViewData["Title"] - Jularr</title>
     <link rel="manifest" href="~/manifest.webmanifest" />
-    <link rel="icon" href="~/brand/jularr-mark.svg" type="image/svg+xml" />
+    <link rel="icon" href="@activeTheme.LogoPath" type="@themeIconType" />
     <link rel="apple-touch-icon" sizes="180x180" href="~/icons/apple-touch-icon.png" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/theme-catalog.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/sakura.css" asp-append-version="true" />
     <style id="app-accent-palette">@Html.Raw(palette.ToStyleSheet())</style>
     <script type="application/json" id="app-shell-text">@Json.Serialize(ui.WithPrefix("pwa."))</script>

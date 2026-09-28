@@ -16,8 +16,13 @@ public sealed class AppearanceModel(
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public ProfileAppearance Appearance { get; private set; } = ProfileAppearance.Default;
+    public InstanceAppearanceSettings InstanceAppearance { get; private set; } = InstanceAppearanceSettings.Default;
     public IReadOnlyList<AccentPreset> Presets => AppAccent.Presets;
+    public IReadOnlyList<AppThemeDefinition> Themes => ThemeCatalog.All;
     public string EffectiveAccent => AppAccent.Effective(Appearance.AccentColor);
+    public string SelectedThemeId => Appearance.ThemeId is null
+        ? string.Empty
+        : ThemeCatalog.NormalizeOrOriginal(Appearance.ThemeId);
 
     public async Task OnGetAsync(CancellationToken cancellationToken)
     {
@@ -25,5 +30,7 @@ public sealed class AppearanceModel(
         Appearance = await new ProfileAppearanceStore(db).GetAsync(
             currentAccount.ProfileId,
             cancellationToken);
+        InstanceAppearance = await new InstanceAppearanceSettingsStore(db)
+            .LoadAsync(cancellationToken);
     }
 }
