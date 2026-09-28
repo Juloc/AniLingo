@@ -5,6 +5,7 @@ using Jularr.Web.Features.Playback;
 using Jularr.Web.Features.Progress;
 using Jularr.Web.Features.Speech;
 using Jularr.Web.Features.Storage;
+using Jularr.Web.Features.Watchlist;
 
 namespace Jularr.Web.Features.ClientApi;
 
@@ -55,7 +56,8 @@ public static class ClientApiContract
                 Trickplay: true,
                 OfflineLibrary: true,
                 TtsPreferences: true,
-                PlaybackPlan: true));
+                PlaybackPlan: true,
+                Watchlist: true));
     }
 }
 
@@ -96,6 +98,9 @@ public static class ClientApiRoutes
 
     public static string PlaybackHistory =>
         $"{ClientApiContract.BasePath}/me/playback-history";
+
+    public static string Watchlist =>
+        $"{ClientApiContract.BasePath}/watchlist";
 
     public static string TtsPreferences =>
         $"{ClientApiContract.BasePath}/me/tts-preferences";
@@ -223,7 +228,8 @@ public sealed record ClientFeatureFlags(
     bool Trickplay,
     bool OfflineLibrary,
     bool TtsPreferences = false,
-    bool PlaybackPlan = false);
+    bool PlaybackPlan = false,
+    bool Watchlist = false);
 
 public sealed record ClientErrorResponse(
     string Code,
@@ -365,6 +371,26 @@ public sealed record ClientPlaybackPreferencesUpdate(
 public sealed record ClientPlaybackHistoryResponse(
     int Limit,
     IReadOnlyList<ClientPlaybackHistoryItem> Items);
+
+public sealed record ClientWatchlistResponse(
+    IReadOnlyList<ClientWatchlistItem> Items);
+
+/// <summary>
+/// A followed work from the signed-in profile's watchlist. <c>availability</c> is
+/// <c>in_library</c> when <see cref="WatchlistLibraryResolver"/> matched it to a local library
+/// entry (<c>detailsUrl</c> then points at that library page) or <c>external</c> when it is only
+/// known through its provider (<c>detailsUrl</c> then points at the provider page, if any).
+/// <c>addedAtUtc</c> is null for works only included through a followed franchise, never
+/// followed individually.
+/// </summary>
+public sealed record ClientWatchlistItem(
+    Guid Id,
+    string MediaType,
+    string Title,
+    string? ArtworkUrl,
+    string Availability,
+    string? DetailsUrl,
+    DateTime? AddedAtUtc);
 
 /// <summary>
 /// Profile-level TTS preferences, backed by the canonical Reader preference "default"
@@ -664,6 +690,16 @@ public static class ClientApiMappings
             item.PositionMs,
             item.DurationMs,
             item.ReachedEnd);
+
+    public static ClientWatchlistItem ToClientWatchlistItem(WatchlistItem item) =>
+        new(
+            item.StableId,
+            WatchlistMediaTypeNames.ToCategory(item.Identity.MediaType),
+            item.Title,
+            item.CoverImageUrl,
+            item.LocalMediaId is null ? "external" : "in_library",
+            item.DetailsUrl,
+            item.AddedAtUtc);
 
     private static ClientEpisodeReference? ToClientEpisodeReference(
         EpisodeReference? episode) =>

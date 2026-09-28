@@ -39,7 +39,15 @@
 
     <!-- Watchlist -->
     <string name="tv_watchlist_title">Watchlist</string>
-    <string name="tv_watchlist_unavailable">Watchlist isn\'t available in the Jularr Android TV app yet. Use the Jularr web app to manage your watchlist for now.</string>
+    <string name="tv_watchlist_unavailable">This Jularr server doesn\'t support the watchlist yet. Use the Jularr web app to manage your watchlist for now.</string>
+    <string name="tv_watchlist_empty">Your watchlist is empty. Follow a title in the Jularr web app to see it here.</string>
+    <string name="tv_watchlist_media_anime">Anime</string>
+    <string name="tv_watchlist_media_tv">TV</string>
+    <string name="tv_watchlist_media_movie">Movie</string>
+    <string name="tv_watchlist_media_manga">Manga</string>
+    <string name="tv_watchlist_media_light_novel">Light Novel</string>
+    <string name="tv_watchlist_media_book">Book</string>
+    <string name="tv_watchlist_in_library">In library</string>
 
     <!-- Activity -->
     <string name="tv_activity_title">Activity</string>

@@ -1,5 +1,6 @@
 using Jularr.Web.Data;
 using Jularr.Web.Features.Calendar;
+using Jularr.Web.Features.ClientApi;
 using Jularr.Web.Features.Franchises;
 using Jularr.Web.Features.Watchlist;
 using Microsoft.Data.Sqlite;
@@ -154,6 +155,72 @@ public sealed class WatchlistTests
         var after = (await resolver.ApplyAsync(await watchlist.GetEffectiveAsync("profile-a", CancellationToken.None), CancellationToken.None)).Single();
         Assert.AreEqual(anime.Id, after.LocalMediaId);
         Assert.AreEqual($"/Library/Anime/{anime.Id}", after.DetailsUrl);
+    }
+
+    [TestMethod]
+    public async Task ClientWatchlistItemsAreScopedToTheCallingProfileAndCarryAnAddedDate()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var watchlist = new WatchlistStore(fixture.Db);
+        var resolver = new WatchlistLibraryResolver(fixture.Db);
+
+        await watchlist.FollowAsync("profile-a", Draft("154587", "Frieren"), CancellationToken.None);
+        await watchlist.FollowAsync("profile-b", Draft("999", "Someone Else's Show"), CancellationToken.None);
+
+        var items = await resolver.ApplyAsync(
+            await watchlist.GetEffectiveAsync("profile-a", CancellationToken.None),
+            CancellationToken.None);
+        var mapped = items.Select(ClientApiMappings.ToClientWatchlistItem).ToArray();
+
+        var item = Assert.ContainsSingle(mapped, "Only profile-a's own entry is present, never profile-b's.");
+        Assert.AreEqual("anime", item.MediaType);
+        Assert.AreEqual("Frieren", item.Title);
+        Assert.AreEqual("https://cdn.example/cover.jpg", item.ArtworkUrl);
+        Assert.AreEqual("external", item.Availability, "Not matched to a library entry yet.");
+        Assert.AreEqual("https://anilist.co/anime/154587", item.DetailsUrl);
+        Assert.IsNotNull(item.AddedAtUtc);
+        Assert.AreEqual(DateTimeKind.Utc, item.AddedAtUtc!.Value.Kind);
+
+        var anime = new Jularr.Web.Features.Library.Anime { Key = "frieren", Title = "Frieren" };
+        fixture.Db.Anime.Add(anime);
+        fixture.Db.AnimeMetadata.Add(new Jularr.Web.Features.Metadata.AnimeMetadata
+        {
+            AnimeId = anime.Id,
+            Provider = "anilist",
+            ExternalId = "154587",
+            PreferredTitle = "Frieren"
+        });
+        await fixture.Db.SaveChangesAsync();
+
+        var afterLibraryMatch = (await resolver.ApplyAsync(
+            await watchlist.GetEffectiveAsync("profile-a", CancellationToken.None),
+            CancellationToken.None))
+            .Select(ClientApiMappings.ToClientWatchlistItem)
+            .Single();
+        Assert.AreEqual("in_library", afterLibraryMatch.Availability);
+        Assert.AreEqual($"/Library/Anime/{anime.Id}", afterLibraryMatch.DetailsUrl);
+    }
+
+    [TestMethod]
+    public async Task FranchiseInheritedWatchlistItemsHaveNoIndividualAddedDate()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var watchlist = new WatchlistStore(fixture.Db);
+        var franchises = new FranchiseStore(fixture.Db);
+        const string profile = "profile-a";
+        var seed = Draft("100", "Series A");
+        var franchiseId = await franchises.GetOrCreateBySeedAsync(seed.Identity, CancellationToken.None);
+        await franchises.UpsertMemberAsync(franchiseId, seed, null, true, CancellationToken.None);
+        await franchises.FollowAsync(profile, franchiseId, CancellationToken.None);
+
+        var item = Assert.ContainsSingle(await watchlist.GetEffectiveAsync(profile, CancellationToken.None));
+        Assert.IsTrue(item.IsFromFranchise);
+        Assert.IsNull(item.AddedAtUtc, "A work only followed through its franchise was never individually added.");
+        Assert.IsNull(ClientApiMappings.ToClientWatchlistItem(item).AddedAtUtc);
+
+        await watchlist.FollowAsync(profile, seed, CancellationToken.None);
+        var explicitItem = Assert.ContainsSingle(await watchlist.GetEffectiveAsync(profile, CancellationToken.None));
+        Assert.IsNotNull(explicitItem.AddedAtUtc, "Explicitly following a franchise work now records when it was added.");
     }
 
     private static WatchlistDraft Draft(string externalId, string title) =>

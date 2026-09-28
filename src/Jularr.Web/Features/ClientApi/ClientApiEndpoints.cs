@@ -6,6 +6,7 @@ using Jularr.Web.Features.PlaybackSessions;
 using Jularr.Web.Features.Progress;
 using Jularr.Web.Features.Speech;
 using Jularr.Web.Features.Storage;
+using Jularr.Web.Features.Watchlist;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
@@ -212,6 +213,20 @@ public static class ClientApiEndpoints
 
             return Results.Ok(new ClientContinueWatchingResponse(
                 items.Select(ClientApiMappings.ToClientContinueWatchingItem).ToArray()));
+        });
+
+        group.MapGet("/watchlist", async (
+            WatchlistStore watchlist,
+            WatchlistLibraryResolver library,
+            CurrentAccountContext currentAccount,
+            CancellationToken cancellationToken) =>
+        {
+            var items = await library.ApplyAsync(
+                await watchlist.GetEffectiveAsync(currentAccount.ProfileId, cancellationToken),
+                cancellationToken);
+
+            return Results.Ok(new ClientWatchlistResponse(
+                items.Select(ClientApiMappings.ToClientWatchlistItem).ToArray()));
         });
 
         group.MapGet("/me/playback-preferences", async (

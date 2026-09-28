@@ -32,6 +32,7 @@ public sealed class ClientApiTests
         Assert.IsTrue(capabilities.Features.CompanionControl);
         Assert.IsTrue(capabilities.Features.StorageAvailability);
         Assert.IsTrue(capabilities.Features.OwnerWakeOnLan);
+        Assert.IsTrue(capabilities.Features.Watchlist);
     }
 
     [TestMethod]
