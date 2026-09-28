@@ -11,7 +11,7 @@
         <use href="/brand/jularr-mark.svg#jularr-mark" x="48" y="16" width="864" height="864"></use>
     </svg>
 }
-else
+@if (!theme.UsesOriginalArtwork)
 {
     <img class="brand-mark brand-mark-theme" src="@theme.LogoPath" alt="" width="36" height="36" />
 }
