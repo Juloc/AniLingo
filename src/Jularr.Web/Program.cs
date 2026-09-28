@@ -19,6 +19,7 @@ using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Books;
 using Jularr.Web.Features.ChapterArtwork;
 using Jularr.Web.Features.ClientApi;
+using Jularr.Web.Features.Health;
 using Jularr.Web.Features.Learning;
 using Jularr.Web.Features.Learning.LanguageAssistance;
 using Jularr.Web.Features.Library;
@@ -83,6 +84,16 @@ builder.Services.AddScoped<OwnerAuthService>();
 builder.Services.AddScoped<AdminUserProgressService>();
 builder.Services.AddScoped<AdminOverviewService>();
 builder.Services.AddScoped<AdminSessionsService>();
+builder.Services.AddScoped<SystemHealthService>();
+builder.Services.AddHttpClient(GitHubReleaseCheckService.HttpClientName, client =>
+{
+    client.BaseAddress = new Uri("https://api.github.com/");
+    client.Timeout = TimeSpan.FromSeconds(5);
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("Jularr/0.1 (+https://github.com/Juloc/Jularr)");
+    client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
+});
+// Singleton: caches the last GitHub release check in memory across requests (#528), never on GET.
+builder.Services.AddSingleton<GitHubReleaseCheckService>();
 builder.Services.AddScoped<OperationRunner>();
 builder.Services.AddSingleton<IPasswordHasher<OwnerAccount>, PasswordHasher<OwnerAccount>>();
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)

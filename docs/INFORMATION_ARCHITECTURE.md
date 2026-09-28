@@ -146,7 +146,7 @@ catalog in `src/Jularr.Web/Features/Localization/UiShellNavigation.cs`:
 | Integrations | `/Admin/Usenet`, `/Admin/Sonarr` (admin-usenet, admin-sonarr) | Partial — Usenet/Sonarr only, no general integrations hub (Prowlarr health lives under Usenet) |
 | Users & Permissions | `/Admin/Users`, `/Admin/Requests` (admin-users, admin-requests) | Partial — user management and request policy exist; a permissions/roles matrix does not (§8). #521 |
 | Settings | `/Settings/*` section (Admin AI, API keys, Localization) | Exists |
-| Diagnostics | `/Admin/Logs`, `/Admin/Ai` (admin-ai) | Partial — operation logs exist; no dependency/service health or version/update diagnostics (§5, Sonarr/Radarr table) |
+| Diagnostics | `/Admin/Logs`, `/Admin/Ai`, `/Admin/Health` (admin-ai, admin-health) | Exists — operation logs plus dependency/service health and version/update diagnostics (§5, Sonarr/Radarr table). #528 |
 
 ## 5. Parity matrices
 
@@ -195,7 +195,7 @@ each row's Where.
 | Backup/export/restore (full app state) | Partial — acquisition-store bundle only | `/Settings/Acquisition` export/restore | #416 |
 | Retention & cleanup (recycle/trash, orphaned files) | Partial — scan prunes its own old runs/logs only, no library-wide cleanup preview | `LibraryScanCoordinator` retention | #414 |
 | API/webhooks/automation | Partial — REST automation API exists for acquisition only, no generic webhooks | `Features/Acquisition/Api` | #438 (provider framework) / #429 (webhook destinations) |
-| System health & updates | Missing | — | #528 |
+| System health & updates | Exists | `/Admin/Health` | — |
 
 ### 5.2 Bazarr
 
