@@ -128,11 +128,21 @@ public sealed class AnimeRepairService(
             }
         }
 
-        var metadata = await db.AnimeMetadata
+        var metadataRow = await db.AnimeMetadata
             .AsNoTracking()
             .Where(x => x.AnimeId == animeId)
-            .Select(x => new AnimeProviderArtwork(x.CoverImageUrl, x.BannerImageUrl))
+            .Select(x => new { x.Provider, x.CoverImageUrl, x.BannerImageUrl })
             .FirstOrDefaultAsync(cancellationToken);
+        // Issue #568: only use provider artwork when it matches the anime's resolved Artwork role.
+        var metadata = metadataRow is null
+            ? null
+            : await AnimeArtworkSourceResolver.ResolveForAnimeAsync(
+                db,
+                animeId,
+                metadataRow.Provider,
+                metadataRow.CoverImageUrl,
+                metadataRow.BannerImageUrl,
+                cancellationToken);
         var artwork = await (artworkLibrary ?? new AnimeArtworkLibrary(db, Microsoft.Extensions.Logging.Abstractions.NullLogger<AnimeArtworkLibrary>.Instance))
             .ReconcileAsync(animeId, animeDirectory, folder.SeasonDirectories, metadata, cancellationToken);
 
