@@ -344,6 +344,44 @@ public sealed class AiControlCenterTests
     }
 
     [TestMethod]
+    public void PerOperationTuningOverridesInheritSharedDefaults()
+    {
+        var settings = AiProfileSettings.Default with
+        {
+            Model = "gpt-a",
+            ContextBudgetTokens = 3000,
+            MaxRetries = 1,
+            TimeoutSeconds = 30,
+            Verbosity = "low",
+            Overrides = AiOperationOverrides.From(
+                [
+                    KeyValuePair.Create(
+                        AiOperations.BookTranslation,
+                        new AiOperationOverride(null, null) { ContextBudgetTokens = 8000, MaxRetries = 3, Verbosity = "high" })
+                ],
+                defaultContextBudgetTokens: 3000,
+                defaultMaxRetries: 1,
+                defaultTimeoutSeconds: 30,
+                defaultVerbosity: "low")
+        };
+
+        var overridden = settings.Resolve(AiOperations.BookTranslation);
+        Assert.AreEqual(8000, overridden.ContextBudgetTokens, "The task override replaces the shared default.");
+        Assert.AreEqual(3, overridden.MaxRetries);
+        Assert.AreEqual(30, overridden.TimeoutSeconds, "A field the task did not override still inherits the shared default.");
+        Assert.AreEqual("high", overridden.Verbosity);
+
+        var inherited = settings.Resolve(AiOperations.BookQa);
+        Assert.AreEqual(3000, inherited.ContextBudgetTokens);
+        Assert.AreEqual(1, inherited.MaxRetries);
+        Assert.AreEqual(30, inherited.TimeoutSeconds);
+        Assert.AreEqual("low", inherited.Verbosity);
+
+        // A value equal to the shared default is not stored as a difference.
+        Assert.AreEqual(1, settings.Overrides.Count);
+    }
+
+    [TestMethod]
     public async Task LegacySettingsFilesWithoutNewFieldsStillLoad()
     {
         var root = Path.Combine(Path.GetTempPath(), "jularr-ai-legacy", Guid.NewGuid().ToString("N"));
@@ -579,6 +617,52 @@ public sealed class AiControlCenterTests
     }
 
     [TestMethod]
+    public void SessionBudgetStatusSeparatesOkAndReached()
+    {
+        var settings = AiProfileSettings.Default with { SessionTokenBudget = 1000 };
+        AiUsageSnapshot Snapshot(long input, long output) => new(0, input, output, 0, 0, []);
+
+        Assert.IsFalse(AiSessionBudgetStatus.For(AiProfileSettings.Default, Snapshot(5000, 0)).IsReached, "No session limit means no reached state.");
+        Assert.IsFalse(AiSessionBudgetStatus.For(settings, Snapshot(600, 399)).IsReached);
+        Assert.IsTrue(AiSessionBudgetStatus.For(settings, Snapshot(600, 400)).IsReached);
+        Assert.AreEqual(100, AiSessionBudgetStatus.For(settings, Snapshot(4000, 0)).Percent);
+    }
+
+    [TestMethod]
+    public void FindLighterModelUsesOnlyKnownContextWindowsAndNeverGuesses()
+    {
+        var withWindows = new AiModelCatalog(
+            "key",
+            [
+                new AiModelDescriptor("heavy", "Heavy", null, [], null, [], null, false, 200_000),
+                new AiModelDescriptor("medium", "Medium", null, [], null, [], null, false, 50_000),
+                new AiModelDescriptor("light", "Light", null, [], null, [], null, false, 8_000),
+                new AiModelDescriptor("unknown-size", "Unknown", null, [], null, [], null, false, null)
+            ],
+            AiModelDiscovery.Supported,
+            null,
+            null,
+            null);
+
+        Assert.IsTrue(AiOptionResolver.CanSuggestLighterModel(withWindows));
+        Assert.AreEqual("light", AiOptionResolver.FindLighterModel(withWindows, "heavy")!.Id, "The smallest known window lighter than the current model is chosen.");
+        Assert.AreEqual("light", AiOptionResolver.FindLighterModel(withWindows, "medium")!.Id);
+        Assert.IsNull(AiOptionResolver.FindLighterModel(withWindows, "light"), "The lightest known model has nothing lighter to fall back to.");
+        Assert.IsNull(AiOptionResolver.FindLighterModel(withWindows, "unknown-size"), "A model without a known window is never used to judge lighter alternatives.");
+        Assert.IsNull(AiOptionResolver.FindLighterModel(withWindows, null));
+
+        var noWindowData = new AiModelCatalog(
+            "key",
+            [AiModelDescriptor.Basic("a"), AiModelDescriptor.Basic("b")],
+            AiModelDiscovery.Supported,
+            null,
+            null,
+            null);
+        Assert.IsFalse(AiOptionResolver.CanSuggestLighterModel(noWindowData), "Catalogs with no context-window metadata can never suggest a lighter model.");
+        Assert.IsNull(AiOptionResolver.FindLighterModel(noWindowData, "a"));
+    }
+
+    [TestMethod]
     public async Task LimitsPersistAndOutOfRangeValuesAreRejected()
     {
         var root = Path.Combine(Path.GetTempPath(), "jularr-ai-limits", Guid.NewGuid().ToString("N"));
@@ -589,22 +673,72 @@ public sealed class AiControlCenterTests
                 new EphemeralDataProtectionProvider(),
                 NullLogger<AiProfileSettingsStore>.Instance,
                 new DirectoryInfo(root));
-            await store.SaveAsync("alice", AiProfileSettings.Default with { DailyTokenBudget = 50_000, BudgetWarningPercent = 90, MaxConcurrentJobs = 2 }, CancellationToken.None);
+            await store.SaveAsync(
+                "alice",
+                AiProfileSettings.Default with
+                {
+                    DailyTokenBudget = 50_000,
+                    BudgetWarningPercent = 90,
+                    MaxConcurrentJobs = 2,
+                    SessionTokenBudget = 20_000,
+                    ContextBudgetTokens = 4_000,
+                    MaxRetries = 2,
+                    TimeoutSeconds = 60,
+                    Verbosity = "high",
+                    FallbackModelEnabled = true
+                },
+                CancellationToken.None);
 
             var loaded = await store.LoadAsync("alice", CancellationToken.None);
             Assert.AreEqual(50_000, loaded.DailyTokenBudget);
             Assert.AreEqual(90, loaded.EffectiveWarningPercent);
             Assert.AreEqual(2, loaded.MaxConcurrentJobs);
+            Assert.AreEqual(20_000, loaded.SessionTokenBudget);
+            Assert.AreEqual(4_000, loaded.ContextBudgetTokens);
+            Assert.AreEqual(2, loaded.MaxRetries);
+            Assert.AreEqual(60, loaded.TimeoutSeconds);
+            Assert.AreEqual("high", loaded.Verbosity);
+            Assert.IsTrue(loaded.FallbackModelEnabled);
 
             foreach (var invalid in new[]
             {
                 AiProfileSettings.Default with { DailyTokenBudget = 0 },
                 AiProfileSettings.Default with { BudgetWarningPercent = 100 },
-                AiProfileSettings.Default with { MaxConcurrentJobs = AiProfileSettings.MaxConcurrentJobsLimit + 1 }
+                AiProfileSettings.Default with { MaxConcurrentJobs = AiProfileSettings.MaxConcurrentJobsLimit + 1 },
+                AiProfileSettings.Default with { SessionTokenBudget = 0 },
+                AiProfileSettings.Default with { ContextBudgetTokens = AiProfileSettings.MaxContextBudgetTokens + 1 },
+                AiProfileSettings.Default with { MaxRetries = AiProfileSettings.MaxRetriesLimit + 1 },
+                AiProfileSettings.Default with { MaxRetries = -1 },
+                AiProfileSettings.Default with { TimeoutSeconds = AiProfileSettings.MinTimeoutSeconds - 1 },
+                AiProfileSettings.Default with { TimeoutSeconds = AiProfileSettings.MaxTimeoutSeconds + 1 }
             })
             {
                 await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => store.SaveAsync("alice", invalid, CancellationToken.None));
             }
+
+            // Per-task output caps are OpenAI-compatible only; the server provider strips them even
+            // when a client sends one, and verbosity is Codex-only so a personal provider never keeps it.
+            var serverWithBadOverride = AiProfileSettings.Default with
+            {
+                Overrides = AiOperationOverrides.From(
+                [
+                    KeyValuePair.Create(AiOperations.BookTranslation, new AiOperationOverride(null, null) { MaxOutputTokens = 500 })
+                ])
+            };
+            await store.SaveAsync("alice", serverWithBadOverride, CancellationToken.None);
+            var reloadedServer = await store.LoadAsync("alice", CancellationToken.None);
+            Assert.IsNull(reloadedServer.Overrides.Get(AiOperations.BookTranslation)?.MaxOutputTokens, "Server profiles never keep a per-task output cap.");
+
+            var personalWithBadOverride = new AiProfileSettings(AiProviderIds.OpenAiCompatible, "https://api.example.invalid/v1", "model", "secret", AiTranslationMode.Efficient)
+            {
+                Overrides = AiOperationOverrides.From(
+                [
+                    KeyValuePair.Create(AiOperations.BookTranslation, new AiOperationOverride(null, null) { Verbosity = "high" })
+                ])
+            };
+            await store.SaveAsync("alice", personalWithBadOverride, CancellationToken.None);
+            var reloadedPersonal = await store.LoadAsync("alice", CancellationToken.None);
+            Assert.IsNull(reloadedPersonal.Overrides.Get(AiOperations.BookTranslation)?.Verbosity, "Personal providers never keep a per-task verbosity override.");
         }
         finally
         {

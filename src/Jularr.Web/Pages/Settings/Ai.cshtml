@@ -275,8 +275,49 @@
                             <span>@ui["ai.budget.parallel"]</span>
                             <input asp-for="MaxConcurrentJobs" type="number" min="1" max="@AiProfileSettings.MaxConcurrentJobsLimit" inputmode="numeric" placeholder="@ui["ai.budget.noLimit"]" />
                         </label>
+                        <label>
+                            <span>@ui["ai.budget.session"]</span>
+                            <input asp-for="SessionTokenBudget" type="number" min="1" max="@AiProfileSettings.MaxSessionTokenBudget" inputmode="numeric" placeholder="@ui["ai.budget.noLimit"]" />
+                        </label>
                     </div>
                     <small class="muted">@ui["ai.budget.hint"]</small>
+                    <label class="ai-fallback-model">
+                        <input asp-for="FallbackModelEnabled" type="checkbox" disabled="@(!Model.FallbackModelAvailable)" />
+                        <span>@ui["ai.budget.fallbackModel"]</span>
+                    </label>
+                    <small class="muted">@ui["ai.budget.fallbackModelHint"]</small>
+                </fieldset>
+
+                <fieldset class="ai-limits">
+                    <legend>@ui["ai.tuning.title"]</legend>
+                    <div class="ai-limits-fields">
+                        <label>
+                            <span>@ui["ai.tuning.contextBudget"]</span>
+                            <input asp-for="ContextBudgetTokens" type="number" min="1" max="@AiProfileSettings.MaxContextBudgetTokens" inputmode="numeric" placeholder="@ui["ai.tuning.builtIn"]" />
+                        </label>
+                        <label>
+                            <span>@ui["ai.tuning.retries"]</span>
+                            <input asp-for="MaxRetries" type="number" min="0" max="@AiProfileSettings.MaxRetriesLimit" inputmode="numeric" placeholder="0" />
+                        </label>
+                        <label>
+                            <span>@ui["ai.tuning.timeout"]</span>
+                            <input asp-for="TimeoutSeconds" type="number" min="@AiProfileSettings.MinTimeoutSeconds" max="@AiProfileSettings.MaxTimeoutSeconds" inputmode="numeric" placeholder="@ui["ai.tuning.builtIn"]" />
+                        </label>
+                        @if (isServer)
+                        {
+                            <label data-ai-provider-fields="@AiProviderIds.Server">
+                                <span>@ui["ai.tuning.verbosity"]</span>
+                                <select asp-for="Verbosity">
+                                    <option value="">@ui["ai.tuning.builtIn"]</option>
+                                    @foreach (var level in AiOptionResolver.VerbosityLevels)
+                                    {
+                                        <option value="@level">@ui["ai.verbosity." + level]</option>
+                                    }
+                                </select>
+                            </label>
+                        }
+                    </div>
+                    <small class="muted">@ui["ai.tuning.hint"]</small>
                 </fieldset>
 
                 <div class="ai-overrides-block">
@@ -290,6 +331,17 @@
                                 @if (isServer && allEfforts.Count > 0)
                                 {
                                     <th scope="col">@ui["ai.settings.reasoning"]</th>
+                                }
+                                <th scope="col">@ui["ai.tuning.contextBudget"]</th>
+                                @if (!isServer)
+                                {
+                                    <th scope="col">@ui["ai.settings.maxOutputTokens"]</th>
+                                }
+                                <th scope="col">@ui["ai.tuning.retries"]</th>
+                                <th scope="col">@ui["ai.tuning.timeout"]</th>
+                                @if (isServer)
+                                {
+                                    <th scope="col">@ui["ai.tuning.verbosity"]</th>
                                 }
                             </tr>
                         </thead>
@@ -334,6 +386,38 @@
                                             </select>
                                         </td>
                                     }
+                                    <td data-label="@ui["ai.tuning.contextBudget"]">
+                                        <input name="OverrideContextBudgets[@operation]" type="number" min="1" max="@AiProfileSettings.MaxContextBudgetTokens" inputmode="numeric"
+                                               value="@Model.OverrideContextBudgets.GetValueOrDefault(operation)" placeholder="@ui["ai.settings.inherit"]" aria-label="@operationName: @ui["ai.tuning.contextBudget"]" />
+                                    </td>
+                                    @if (!isServer)
+                                    {
+                                        <td data-label="@ui["ai.settings.maxOutputTokens"]">
+                                            <input name="OverrideMaxOutputTokens[@operation]" type="number" min="1" max="@AiProfileSettings.MaxOutputTokensLimit" inputmode="numeric"
+                                                   value="@Model.OverrideMaxOutputTokens.GetValueOrDefault(operation)" placeholder="@ui["ai.settings.inherit"]" aria-label="@operationName: @ui["ai.settings.maxOutputTokens"]" />
+                                        </td>
+                                    }
+                                    <td data-label="@ui["ai.tuning.retries"]">
+                                        <input name="OverrideMaxRetries[@operation]" type="number" min="0" max="@AiProfileSettings.MaxRetriesLimit" inputmode="numeric"
+                                               value="@Model.OverrideMaxRetries.GetValueOrDefault(operation)" placeholder="@ui["ai.settings.inherit"]" aria-label="@operationName: @ui["ai.tuning.retries"]" />
+                                    </td>
+                                    <td data-label="@ui["ai.tuning.timeout"]">
+                                        <input name="OverrideTimeoutSeconds[@operation]" type="number" min="@AiProfileSettings.MinTimeoutSeconds" max="@AiProfileSettings.MaxTimeoutSeconds" inputmode="numeric"
+                                               value="@Model.OverrideTimeoutSeconds.GetValueOrDefault(operation)" placeholder="@ui["ai.settings.inherit"]" aria-label="@operationName: @ui["ai.tuning.timeout"]" />
+                                    </td>
+                                    @if (isServer)
+                                    {
+                                        var selectedVerbosity = Model.OverrideVerbosity.GetValueOrDefault(operation);
+                                        <td data-label="@ui["ai.tuning.verbosity"]">
+                                            <select name="OverrideVerbosity[@operation]" aria-label="@operationName: @ui["ai.tuning.verbosity"]">
+                                                <option value="">@ui["ai.settings.inherit"]</option>
+                                                @foreach (var level in AiOptionResolver.VerbosityLevels)
+                                                {
+                                                    <option value="@level" selected="@(level == selectedVerbosity)">@ui["ai.verbosity." + level]</option>
+                                                }
+                                            </select>
+                                        </td>
+                                    }
                                 </tr>
                             }
                         </tbody>
@@ -373,6 +457,19 @@
                     {
                         <small class="muted">@ui["ai.budget.reachedHint"]</small>
                     }
+                </div>
+            }
+            @if (Model.SessionBudget.LimitTokens is { } sessionLimit)
+            {
+                <div class="ai-budget" data-state="@(Model.SessionBudget.IsReached ? "reached" : "ok")">
+                    <div class="ai-budget-line">
+                        <span>@ui.Format("ai.budget.usedOfSession", ("used", AiViewFormat.Tokens(Model.SessionBudget.UsedTokens)), ("limit", AiViewFormat.Tokens(sessionLimit)))</span>
+                        @if (Model.SessionBudget.IsReached)
+                        {
+                            <span class="status-pill status-error">@ui["ai.budget.reached"]</span>
+                        }
+                    </div>
+                    <div class="progress-track" role="presentation"><span style="width: @((Model.SessionBudget.Percent ?? 0).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture))%"></span></div>
                 </div>
             }
             <partial name="_AiUsage" model="usageTotals" />

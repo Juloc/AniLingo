@@ -131,6 +131,62 @@
             </p>
         }
     </section>
+
+    <section class="panel">
+        <div class="panel-heading"><h2>@ui["admin.ai.appServerLogin"]</h2></div>
+
+        @if (Model.AppServerLogin.State == DeviceLoginState.WaitingForUser)
+        {
+            <div class="device-login">
+                <p>@ui["admin.ai.step1"]</p>
+                <a class="button button-primary" href="@Model.AppServerLogin.VerificationUrl" target="_blank" rel="noopener noreferrer">
+                    @ui["admin.ai.openLoginPage"]
+                </a>
+
+                <p>@ui["admin.ai.step2"]</p>
+                <code class="device-code">@Model.AppServerLogin.UserCode</code>
+
+                <p class="muted">@ui["admin.ai.codeExpires"]</p>
+
+                <div class="inline-actions">
+                    <a class="button" asp-page="/Admin/Ai">@ui["admin.ai.checkConnection"]</a>
+                    <form method="post" asp-page-handler="CancelAppServer">
+                        <button class="button" type="submit">@ui["common.cancel"]</button>
+                    </form>
+                </div>
+            </div>
+        }
+        else if (Model.AppServerLogin.State == DeviceLoginState.Starting)
+        {
+            <p class="muted">@ui["admin.ai.waitingForDeviceCode"]</p>
+            <div class="inline-actions">
+                <a class="button" asp-page="/Admin/Ai">@ui["admin.ai.refresh"]</a>
+                <form method="post" asp-page-handler="CancelAppServer">
+                    <button class="button" type="submit">@ui["common.cancel"]</button>
+                </form>
+            </div>
+        }
+        else if (Model.AppServerLogin.State is DeviceLoginState.Failed or DeviceLoginState.Cancelled)
+        {
+            <p class="validation">@(Model.AppServerLogin.Message ?? ui["admin.ai.loginIncomplete"])</p>
+            @if (Model.AppServerLoginSupported && Model.Provider.IsAvailable && !Model.Provider.IsAuthenticated)
+            {
+                <form method="post" asp-page-handler="ConnectAppServer">
+                    <button class="button" type="submit">@ui["admin.ai.tryAgain"]</button>
+                </form>
+            }
+        }
+        else if (!Model.AppServerLoginSupported)
+        {
+            <p class="muted">@ui["admin.ai.appServerLoginUnsupported"]</p>
+        }
+        else if (!Model.Provider.IsAuthenticated)
+        {
+            <form method="post" asp-page-handler="ConnectAppServer">
+                <button class="button button-primary" type="submit">@ui["admin.ai.connectViaAppServer"]</button>
+            </form>
+        }
+    </section>
 </div>
 
 <div class="settings-grid">

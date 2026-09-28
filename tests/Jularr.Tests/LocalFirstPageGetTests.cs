@@ -222,7 +222,7 @@ public sealed class LocalFirstPageGetTests
             TimeProvider.System);
 
         var settings = fixture.Attach(new AiSettingsModel(
-            fixture.Db, fixture.OwnerAccount, settingsStore, router, new AiUsageStore(fixture.Db), tracker, codex, TimeProvider.System));
+            fixture.Db, fixture.OwnerAccount, settingsStore, router, new AiUsageStore(fixture.Db), tracker, usage, codex, TimeProvider.System));
         await settings.OnGetAsync(CancellationToken.None);
         var admin = fixture.Attach(new AiAdminModel(
             fixture.Db, codex, catalogs, new AiUsageStore(fixture.Db), tracker, TimeProvider.System));
