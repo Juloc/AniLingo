@@ -483,6 +483,7 @@ public sealed partial class BookCatalogService
         Guid workId,
         ParsedEpubBook parsed,
         string? catalogFallback,
+        string? knownStoragePath,
         CancellationToken cancellationToken) =>
         TryPersistPreferredCoverAsync(
             workId,
@@ -493,6 +494,7 @@ public sealed partial class BookCatalogService
             parsed.CoverBytes,
             parsed.CoverMediaType,
             catalogFallback,
+            knownStoragePath,
             cancellationToken);
 
     private async Task<bool> TryPersistPreferredCoverAsync(
@@ -504,6 +506,7 @@ public sealed partial class BookCatalogService
         byte[]? embeddedCover,
         string? embeddedMediaType,
         string? catalogFallback,
+        string? knownStoragePath,
         CancellationToken cancellationToken)
     {
         // Cover precedence (#371): the exact edition on Google Books, then the
@@ -514,7 +517,7 @@ public sealed partial class BookCatalogService
         var exactCover = await OptionalCoverLookupAsync(
             token => FindExactGoogleCoverAsync(isbn10, isbn13, token),
             cancellationToken);
-        if (await TryCacheRemoteCoverAsync(workId, exactCover, cancellationToken))
+        if (await TryCacheRemoteCoverAsync(workId, exactCover, knownStoragePath, cancellationToken))
         {
             return true;
         }
@@ -525,6 +528,8 @@ public sealed partial class BookCatalogService
                 workId,
                 embeddedCover,
                 embeddedMediaType,
+                identity: "embedded",
+                knownStoragePath,
                 cancellationToken) is not null)
         {
             return true;
@@ -534,14 +539,14 @@ public sealed partial class BookCatalogService
             token => FindMatchingGoogleCoverAsync(title, author, token),
             cancellationToken);
         if (!string.Equals(matchedCover, exactCover, StringComparison.Ordinal)
-            && await TryCacheRemoteCoverAsync(workId, matchedCover, cancellationToken))
+            && await TryCacheRemoteCoverAsync(workId, matchedCover, knownStoragePath, cancellationToken))
         {
             return true;
         }
 
         return !string.Equals(catalogFallback, exactCover, StringComparison.OrdinalIgnoreCase)
             && !string.Equals(catalogFallback, matchedCover, StringComparison.OrdinalIgnoreCase)
-            && await TryCacheRemoteCoverAsync(workId, catalogFallback, cancellationToken);
+            && await TryCacheRemoteCoverAsync(workId, catalogFallback, knownStoragePath, cancellationToken);
     }
 
     private static async Task<string?> OptionalCoverLookupAsync(
@@ -642,6 +647,7 @@ public sealed partial class BookCatalogService
     private async Task<bool> TryCacheRemoteCoverAsync(
         Guid workId,
         string? coverUrl,
+        string? knownStoragePath,
         CancellationToken cancellationToken)
     {
         if (!Uri.TryCreate(
@@ -707,6 +713,8 @@ public sealed partial class BookCatalogService
                     workId,
                     bytes,
                     mediaType,
+                    identity: coverUrl,
+                    knownStoragePath,
                     cancellationToken)
                 is not null;
         }

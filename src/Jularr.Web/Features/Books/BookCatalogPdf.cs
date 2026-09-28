@@ -317,6 +317,7 @@ public sealed partial class BookCatalogService
                 embeddedCover: content.CoverJpeg,
                 embeddedMediaType: content.CoverJpeg is null ? null : "image/jpeg",
                 catalogFallback: hint?.CoverImageUrl,
+                knownStoragePath: storedPath,
                 cancellationToken: cancellationToken))
         {
             work.CoverImageUrl = $"/Books/Cover/{work.Id}";
@@ -421,6 +422,7 @@ public sealed partial class BookCatalogService
                 embeddedCover: null,
                 embeddedMediaType: null,
                 catalogFallback: hint.CoverImageUrl,
+                knownStoragePath: null,
                 cancellationToken: cancellationToken))
         {
             work.CoverImageUrl = $"/Books/Cover/{work.Id}";

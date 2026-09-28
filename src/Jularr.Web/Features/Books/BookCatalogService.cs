@@ -7,7 +7,10 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using Jularr.Web.Data;
+using Jularr.Web.Features.Acquisition.Access;
+using Jularr.Web.Features.Acquisition.Import;
 using Jularr.Web.Features.Ai;
+using Jularr.Web.Features.Artwork;
 using Jularr.Web.Features.Novels;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
@@ -98,10 +101,17 @@ public sealed partial class BookCatalogService(
     IDataProtectionProvider? dataProtectionProvider = null,
     // Test-only override of BookDiscoverySettingsStore's "/data" default; production callers
     // never pass this.
-    DirectoryInfo? discoverySettingsDirectory = null)
+    DirectoryInfo? discoverySettingsDirectory = null,
+    // Resolves the configured Books NAS library root (#389/#545); null (the default for tests
+    // that do not exercise artwork placement) behaves exactly like no root being configured, so
+    // covers keep using CoversPath -- no regression when nothing is set up.
+    AnimeImportSettingsStore? importSettings = null)
 {
     public const string ImportedBookProvider = "book-epub";
     public const int TranslationPromptVersion = 5;
+
+    /// <summary>Beside-media artwork kind (issue #406): <c>cover.*</c> next to the EPUB/PDF.</summary>
+    private const string CoverArtworkKind = "cover";
 
     private const int SearchLimit = 24;
     private const int DefaultSampleCharacters = 5500;
@@ -110,6 +120,7 @@ public sealed partial class BookCatalogService(
     private static readonly TimeSpan CatalogRequestTimeout = TimeSpan.FromSeconds(12);
     private static readonly TimeSpan EpubDownloadTimeout = TimeSpan.FromSeconds(45);
     private static readonly SemaphoreSlim TranslationGate = new(1, 1);
+    private readonly BesideMediaArtworkStore artwork = new(db);
 
     public async Task<IReadOnlyList<BookCatalogItem>> SearchAsync(
         string? query,
@@ -1471,11 +1482,15 @@ public sealed partial class BookCatalogService(
         // Library artwork is always local once a book is imported. Prefer a
         // current Google Books edition cover, then the actual EPUB cover, then
         // the catalog fallback. Existing local artwork survives provider outages.
-        var hadLocalCover = GetLocalCoverPath(work.Id) is not null;
+        // storagePath (when set) is this import's NAS destination (#389/#545), known here
+        // before the edition/file row exists, so the cover can land beside it right away
+        // instead of waiting for the next refresh.
+        var hadLocalCover = await GetLocalCoverPathAsync(work.Id, storagePath, cancellationToken) is not null;
         var storedCover = await TryPersistPreferredCoverAsync(
             work.Id,
             parsed,
             coverImageUrl,
+            storagePath,
             cancellationToken);
         work.CoverImageUrl = storedCover || hadLocalCover
             ? $"/Books/Cover/{work.Id}"
@@ -2652,7 +2667,31 @@ public sealed partial class BookCatalogService(
         return builder.ToString();
     }
 
-    public string? GetLocalCoverPath(Guid workId)
+    /// <summary>
+    /// The cover to serve for a work (issue #406): beside its media on the Books NAS library root
+    /// when one is configured and the book has been imported/refreshed onto it, else Jularr's own
+    /// <c>/data/books/covers</c> copy -- unchanged behavior when no root is configured.
+    /// </summary>
+    public async Task<string?> GetLocalCoverPathAsync(
+        Guid workId,
+        string? knownStoragePath,
+        CancellationToken cancellationToken)
+    {
+        var folder = await ResolveBesideMediaFolderAsync(workId, knownStoragePath, cancellationToken);
+        if (folder is not null)
+        {
+            var resolved = await artwork.ResolveAsync(
+                MediaArtworkScopes.Book, workId, CoverArtworkKind, folder, cancellationToken);
+            if (resolved is not null)
+            {
+                return resolved;
+            }
+        }
+
+        return GetLocalCoverPathFromData(workId);
+    }
+
+    private string? GetLocalCoverPathFromData(Guid workId)
     {
         var directory = CoversPath;
 
@@ -2679,10 +2718,48 @@ public sealed partial class BookCatalogService(
             _ => "image/jpeg"
         };
 
+    /// <summary>
+    /// The Books NAS library root's folder for a work's own media (issue #406), or null when no
+    /// root is configured or the work has not been imported/refreshed onto one yet.
+    /// <paramref name="knownStoragePath"/> lets a fresh import pass its just-computed destination
+    /// before the file row that would otherwise carry it exists.
+    /// </summary>
+    private async Task<string?> ResolveBesideMediaFolderAsync(
+        Guid workId,
+        string? knownStoragePath,
+        CancellationToken cancellationToken)
+    {
+        if (importSettings is null)
+        {
+            return null;
+        }
+
+        var libraryRoot = (await importSettings.LoadAsync(cancellationToken))
+            .LibraryFor(MediaAcquisitionKind.Book)?.LibraryRoot;
+        if (string.IsNullOrWhiteSpace(libraryRoot))
+        {
+            return null;
+        }
+
+        var storagePath = knownStoragePath ?? await CanonicalStoragePathAsync(workId, cancellationToken);
+        return BookArtworkFolders.Resolve(libraryRoot, storagePath);
+    }
+
+    /// <summary>The NAS path of the file Jularr currently keeps for a work, or null (no file kept,
+    /// or it lives in Jularr's own <c>/data/books/files</c> copy rather than the NAS).</summary>
+    private Task<string?> CanonicalStoragePathAsync(Guid workId, CancellationToken cancellationToken) =>
+        (from file in db.BookFiles.AsNoTracking()
+         join edition in db.BookEditions.AsNoTracking() on file.EditionId equals edition.Id
+         where edition.WorkId == workId && file.StoragePath != null
+         orderby edition.IsPrimary descending, file.IsPrimary descending, file.ImportedAt descending
+         select file.StoragePath!).FirstOrDefaultAsync(cancellationToken);
+
     private async Task<string?> SaveLocalCoverAsync(
         Guid workId,
         byte[] bytes,
         string mediaType,
+        string? identity,
+        string? knownStoragePath,
         CancellationToken cancellationToken)
     {
         if (bytes.Length == 0 || bytes.Length > 10 * 1024 * 1024)
@@ -2702,6 +2779,35 @@ public sealed partial class BookCatalogService(
         if (extension is null)
         {
             return null;
+        }
+
+        var besideMediaFolder = await ResolveBesideMediaFolderAsync(workId, knownStoragePath, cancellationToken);
+        if (besideMediaFolder is not null)
+        {
+            var outcome = await artwork.PersistAsync(
+                MediaArtworkScopes.Book,
+                workId,
+                CoverArtworkKind,
+                besideMediaFolder,
+                bytes,
+                MediaArtworkSources.Provider,
+                identity,
+                cancellationToken);
+            if (outcome is ArtworkPersistOutcome.Saved or ArtworkPersistOutcome.Current or ArtworkPersistOutcome.KeptCustom)
+            {
+                var resolved = await artwork.ResolveAsync(
+                    MediaArtworkScopes.Book, workId, CoverArtworkKind, besideMediaFolder, cancellationToken);
+                if (resolved is not null)
+                {
+                    // The NAS copy is now canonical; a leftover /data copy from before the
+                    // library root was configured would otherwise shadow it forever.
+                    DeleteLocalCoverFiles(workId);
+                    return resolved;
+                }
+            }
+
+            // Unavailable/Rejected/Failed: fall through to /data so the cover is never lost while
+            // the NAS root is briefly unreachable.
         }
 
         var directory = CoversPath;

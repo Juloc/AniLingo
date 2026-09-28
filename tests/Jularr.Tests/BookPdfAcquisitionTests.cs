@@ -289,7 +289,7 @@ public sealed class BookPdfAcquisitionTests
         Assert.AreEqual("en-gb", BookFileFormats.Language("PDF:en-GB"));
         Assert.AreEqual("PDF:en", work.Format);
         Assert.AreEqual($"/Books/Cover/{workId}", work.CoverImageUrl, "Without another cover, page 1 gives it.");
-        CollectionAssert.AreEqual(CoverJpeg, await File.ReadAllBytesAsync(books.GetLocalCoverPath(workId)!));
+        CollectionAssert.AreEqual(CoverJpeg, await File.ReadAllBytesAsync((await books.GetLocalCoverPathAsync(workId, null, CancellationToken.None))!));
 
         var detail = await books.GetLibraryBookAsync(workId, "alice", "en", CancellationToken.None);
         Assert.IsNotNull(detail);
@@ -316,7 +316,7 @@ public sealed class BookPdfAcquisitionTests
 
         await books.DeleteImportedBookAsync(workId, CancellationToken.None);
         Assert.IsFalse(File.Exists(file.Path), "Removing the book removes Jularr's copy of the PDF.");
-        Assert.IsNull(books.GetLocalCoverPath(workId));
+        Assert.IsNull(await books.GetLocalCoverPathAsync(workId, null, CancellationToken.None));
     }
 
     [TestMethod]
@@ -353,7 +353,7 @@ public sealed class BookPdfAcquisitionTests
             new BookImportHint("ol-OTHER", "Another Book", null, "https://covers.openlibrary.org/b/id/666-L.jpg?default=false"),
             CancellationToken.None);
         Assert.IsNull((await environment.Db.NovelWorks.AsNoTracking().SingleAsync(x => x.Id == otherId)).CoverImageUrl);
-        Assert.IsNull(environment.Books.GetLocalCoverPath(otherId));
+        Assert.IsNull(await environment.Books.GetLocalCoverPathAsync(otherId, null, CancellationToken.None));
     }
 
     [TestMethod]
