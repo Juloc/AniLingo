@@ -29,6 +29,7 @@ public sealed class RoleAuthorizationTests
         ["Jularr.Web.Pages.Admin.OperationsModel"] = JularrPolicies.AdminMedia,
         ["Jularr.Web.Pages.Admin.RequestsModel"] = JularrPolicies.AdminMedia,
         ["Jularr.Web.Pages.Admin.ScansModel"] = JularrPolicies.AdminMedia,
+        ["Jularr.Web.Pages.Admin.SessionsModel"] = JularrPolicies.SessionsStopOthers,
         ["Jularr.Web.Pages.Admin.SubtitlesModel"] = JularrPolicies.AdminMedia,
         ["Jularr.Web.Pages.Library.AnimeRepairModel"] = JularrPolicies.AdminMedia,
         ["Jularr.Web.Pages.Settings.SubtitlesModel"] = JularrPolicies.AdminMedia,
@@ -79,7 +80,7 @@ public sealed class RoleAuthorizationTests
             .Select(type => (type, attributes: type.GetCustomAttributes(typeof(AuthorizeAttribute), inherit: true)
                 .Cast<AuthorizeAttribute>()
                 .ToArray()))
-            .Where(page => page.attributes.Length > 0)
+            .Where(page => page.attributes.Any(attribute => !string.IsNullOrEmpty(attribute.Roles) || !string.IsNullOrEmpty(attribute.Policy)))
             .ToArray();
 
         Assert.IsTrue(restricted.Length >= PagePolicies.Count, "Expected every restricted page to be found.");

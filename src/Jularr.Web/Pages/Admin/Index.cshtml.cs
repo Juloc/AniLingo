@@ -8,7 +8,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 
 namespace Jularr.Web.Pages.Admin;
 
-[Authorize(Roles = AccountRoles.Owner)]
+[Authorize(Policy = JularrPolicies.AdminMedia)]
 public sealed class IndexModel(
     AppDbContext db,
     AdminUserProgressService userProgressService,
