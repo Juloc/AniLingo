@@ -11,27 +11,27 @@ namespace Jularr.Web.Pages.Admin;
 [Authorize(Roles = AccountRoles.Owner)]
 public sealed class IndexModel(
     AppDbContext db,
-    AdminUserProgressService userProgressService) : PageModel
+    AdminUserProgressService userProgressService,
+    AdminOverviewService overviewService) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
-
-    public OperationSummary Summary { get; private set; } =
-        new(0, 0, 0, 0, 0, 0);
 
     public IReadOnlyList<OperationSnapshot> Recent { get; private set; } = [];
 
     public int UserCount { get; private set; }
+
+    public AdminOverviewSnapshot Overview { get; private set; } = AdminOverviewSnapshot.Empty;
 
     public async Task OnGetAsync(CancellationToken cancellationToken)
     {
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
 
         var store = new OperationStore(db);
-        Summary = await store.GetSummaryAsync(cancellationToken);
         Recent = await store.ListAsync(
             new OperationListFilter(Limit: 8),
             cancellationToken);
 
         UserCount = (await userProgressService.GetAsync(cancellationToken)).Count;
+        Overview = await overviewService.GetAsync(cancellationToken);
     }
 }

@@ -280,6 +280,35 @@ public sealed class PlaybackStreamSessionStore(TimeProvider time)
         return true;
     }
 
+    /// <summary>Every live session, newest activity first. Owner-only diagnostics (Admin &gt; Sessions).</summary>
+    public IReadOnlyList<PlaybackStreamSession> ListAll() =>
+        sessions.Values.OrderByDescending(x => x.LastSeenUtc).ToArray();
+
+    /// <summary>One profile's own live sessions, newest activity first (Profile &gt; Devices).</summary>
+    public IReadOnlyList<PlaybackStreamSession> ListForProfile(string profileId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(profileId);
+        return sessions.Values
+            .Where(x => string.Equals(x.ProfileId, profileId, StringComparison.Ordinal))
+            .OrderByDescending(x => x.LastSeenUtc)
+            .ToArray();
+    }
+
+    /// <summary>
+    /// Owner-only removal that ends any profile's session (Admin &gt; Sessions "Stop"), unlike
+    /// <see cref="Remove"/> which only lets a profile end its own session.
+    /// </summary>
+    public bool RemoveAny(Guid sessionId)
+    {
+        if (!sessions.TryRemove(sessionId, out var session))
+        {
+            return false;
+        }
+
+        Removed?.Invoke(session);
+        return true;
+    }
+
     public void CleanupExpired()
     {
         List<PlaybackStreamSession> removed;

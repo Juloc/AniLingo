@@ -81,6 +81,8 @@ builder.Services.AddScoped<OperationProfileContext>();
 builder.Services.AddScoped<CurrentAccountContext>();
 builder.Services.AddScoped<OwnerAuthService>();
 builder.Services.AddScoped<AdminUserProgressService>();
+builder.Services.AddScoped<AdminOverviewService>();
+builder.Services.AddScoped<AdminSessionsService>();
 builder.Services.AddScoped<OperationRunner>();
 builder.Services.AddSingleton<IPasswordHasher<OwnerAccount>, PasswordHasher<OwnerAccount>>();
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
