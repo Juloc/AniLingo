@@ -37,6 +37,18 @@ public static class UiTranslationResources
         M("common.backToSettings", "← Settings", "Common", "Link", "Back link shown on personal Settings sub-pages that returns to the Settings index.", "short navigation label", 16),
         M("common.remove", "Remove", "Common", "Button", "Delete one list row or entry, such as a mapping, connection or marker.", "concise destructive action", 16),
 
+        // Owner-only "Manage" sheet shared by Library/Anime, Library/Episode, Books/Details,
+        // Manga/Series, Novels/Work and Franchises/Details (#519, part of epic #510). Every
+        // owner-only metadata/mapping/files/acquisition control on those pages opens inside one
+        // of these instead of being mixed into the consumer media layout.
+        M("manage.trigger", "Manage", "Manage", "Button", "Opens the owner-only management sheet for the current title.", "concise action", 14),
+        M("manage.close", "Close", "Manage", "Button", "Closes the owner-only management sheet.", "concise action", 12),
+        M("manage.needsReview", "Mapping needs review", "Manage", "Status", "Small link on the management sheet trigger, shown only when the AniList mapping needs the owner's attention; the full status lives inside the sheet, never as a card on the media page.", "compact status", 26),
+        M("manage.group.metadata", "Metadata", "Manage", "Heading", "Heading of the metadata-match group inside the owner-only management sheet.", "short heading", 16),
+        M("manage.group.mapping", "Mapping", "Manage", "Heading", "Heading of the episode/chapter/mapping group inside the owner-only management sheet.", "short heading", 16),
+        M("manage.group.files", "Files", "Manage", "Heading", "Heading of the file-management group (rename, repair, volumes) inside the owner-only management sheet.", "short heading", 12),
+        M("manage.group.acquisition", "Acquisition", "Manage", "Heading", "Heading of the acquisition group (download/import actions) inside the owner-only management sheet.", "short heading", 20),
+
         M("account.field.userName", "User name", "Account", "Label", "Form label for the Jularr account user name used to sign in.", "short form label", 24),
         M("account.field.password", "Password", "Account", "Label", "Form label for the account password.", "short form label", 24),
         M("account.field.confirmPassword", "Confirm password", "Account", "Label", "Form label for repeating a newly chosen password to catch typing mistakes.", "short form label", 28),
@@ -2742,6 +2754,7 @@ public static class UiTranslationResources
         M("library.externalProgress.state.notOnList", "Not on list", "Library", "Status", "Remote AniList progress state when the entry is not on the profile's AniList list.", "compact status", 16, null, ["AniList"]),
         M("library.externalProgress.state.notConnected", "AniList not connected", "Library", "Status", "Remote AniList progress state when the profile has no AniList connection.", "compact status", 26, null, ["AniList"]),
         M("library.externalProgress.state.noLocalProgress", "No local progress", "Library", "Status", "Remote AniList progress state when there is no local progress to compare.", "compact status", 22),
+        M("library.externalProgress.state.pending", "Not synced yet", "Library", "Status", "Consumer-safe remote AniList progress state shown to a normal (non-owner) user when the mapping needs owner review; never mentions mapping.", "compact status", 20, null, ["AniList"]),
         M("library.externalProgress.state.syncBlocked", "Sync blocked", "Library", "Status", "Fallback remote AniList progress state when sync cannot proceed.", "compact status", 16, null, ["AniList"]),
         M("library.externalProgress.unit.episode", "Episode", "Library", "Label", "Progress unit label used for anime and episode media kinds.", "short unit label", 10),
         M("library.externalProgress.unit.chapter", "Chapter", "Library", "Label", "Progress unit label used for manga and novel media kinds.", "short unit label", 10),
