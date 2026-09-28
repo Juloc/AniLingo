@@ -1,5 +1,6 @@
 @page "/Novels/Work/{id:guid}"
 @using Jularr.Web.Features.Tracking
+@using Jularr.Web.Features.ReaderPreferences
 @using Jularr.Web.Ui
 @using Microsoft.AspNetCore.Html
 @model Jularr.Web.Pages.Novels.WorkModel
@@ -15,6 +16,9 @@
     var currentVolume = currentChapter is null
         ? null
         : epubVolumes.FirstOrDefault(x => x.Id == currentChapter.VolumeId);
+    var translatedChapterCount = detail.Chapters.Count(x => x.HasTranslation);
+    var progressPercent = Model.Progress?.PositionPermille / 10 ?? 0;
+    var genres = ReaderPreferenceRules.ParseGenres(work.MetadataGenresJson);
     // Series → volume → chapter; web novels and books have one implicit volume
     // that is not shown as a group.
     var chapterGroups = epubVolumes.Length > 0
@@ -43,7 +47,7 @@
 
 <a class="back-link" href="/Novels">@ui["novels.work.backToNovels"]</a>
 
-<header class="novel-work-header">
+<header class="novel-work-header novel-reading-hero">
     <div class="novel-work-cover">
         @if (!string.IsNullOrWhiteSpace(detail.CoverUrl))
         {
@@ -56,6 +60,17 @@
     </div>
 
     <div class="novel-work-copy">
+        <div class="reading-detail-kicker">
+            @if (!string.IsNullOrWhiteSpace(work.Format))
+            {
+                <span>@work.Format</span>
+            }
+            @if (!string.IsNullOrWhiteSpace(work.MetadataStatus))
+            {
+                <span>@work.MetadataStatus.Replace("_", " ").ToLowerInvariant()</span>
+            }
+            <span>@ChapterCount(detail.Chapters.Count)</span>
+        </div>
         <h1>@(work.MetadataTitle ?? work.Title)</h1>
 
         <div class="novel-meta">
@@ -89,7 +104,34 @@
             <p class="novel-work-description">@description</p>
         }
 
-        <div class="novel-work-actions">
+        @if (genres.Count > 0)
+        {
+            <div class="novel-work-genres">
+                @foreach (var genre in genres.Take(8))
+                {
+                    <span>@genre</span>
+                }
+            </div>
+        }
+
+        @if (Model.Progress is not null)
+        {
+            <section class="reading-progress-card" aria-label="@ui["reader.continueReading"]">
+                <div>
+                    <span>@ui["reader.continueReading"]</span>
+                    @if (currentChapter is not null)
+                    {
+                        <strong>@currentChapter.Title</strong>
+                    }
+                </div>
+                <strong>@progressPercent%</strong>
+                <div class="reading-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@progressPercent">
+                    <span style="width:@progressPercent%"></span>
+                </div>
+            </section>
+        }
+
+        <div class="novel-work-actions novel-reading-primary-actions">
             @if (currentChapter is not null)
             {
                 <a class="button button-primary novel-primary-action" href="/Novels/Read/@currentChapter.Id">
@@ -353,6 +395,10 @@
         @if (epubVolumes.Length > 0)
         {
             <span>@VolumeCount(epubVolumes.Length) · @ChapterCount(detail.Chapters.Count)</span>
+        }
+        else if (translatedChapterCount > 0)
+        {
+            <span>@translatedChapterCount DE</span>
         }
     </div>
 

@@ -549,6 +549,136 @@
     font-size: .92em;
 }
 
+/* Reader detail: the primary reading state is visible without exposing the
+   owner-only controls that live below the header. */
+.book-reading-hero {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    padding: 28px;
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius-card) + 4px);
+    background: var(--surface);
+    box-shadow: var(--shadow-card);
+}
+
+.book-reading-hero::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    opacity: .34;
+    background: url("/brand/hero-torii.webp") right center / cover no-repeat;
+    -webkit-mask-image: linear-gradient(90deg, transparent 26%, #000 100%);
+    mask-image: linear-gradient(90deg, transparent 26%, #000 100%);
+    pointer-events: none;
+}
+
+:root[data-app-theme="dark"] .book-reading-hero::before {
+    filter: invert(1) hue-rotate(180deg) brightness(.8);
+}
+
+.reading-detail-kicker {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    margin-bottom: 8px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 750;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+}
+
+.reading-detail-kicker span + span {
+    padding-left: 10px;
+    border-left: 1px solid var(--border);
+}
+
+.book-reading-primary-actions {
+    margin-top: 18px;
+}
+
+.book-reading-language-row {
+    margin-top: 24px;
+    padding-top: 18px;
+    border-top: 1px solid var(--border);
+}
+
+.reading-progress-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 6px 16px;
+    width: min(460px, 100%);
+    margin-top: 18px;
+    padding: 12px 14px;
+    border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--accent) 7%, var(--surface));
+}
+
+.reading-progress-card > div:first-child {
+    display: grid;
+    min-width: 0;
+    gap: 2px;
+}
+
+.reading-progress-card > div:first-child span {
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.reading-progress-card > div:first-child strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 14px;
+}
+
+.reading-progress-card > strong {
+    align-self: center;
+    color: var(--accent-text);
+    font-size: 14px;
+    font-variant-numeric: tabular-nums;
+}
+
+.reading-progress-track {
+    grid-column: 1 / -1;
+    height: 5px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent) 18%, var(--surface-2));
+}
+
+.reading-progress-track > span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--accent);
+}
+
+@media (max-width: 640px) {
+    .book-reading-hero {
+        padding: 16px;
+    }
+
+    .book-reading-hero::before {
+        opacity: .2;
+        -webkit-mask-image: linear-gradient(180deg, #000, transparent 70%);
+        mask-image: linear-gradient(180deg, #000, transparent 70%);
+    }
+
+    .reading-detail-kicker {
+        gap: 5px 8px;
+        font-size: 10px;
+    }
+
+    .reading-detail-kicker span + span {
+        padding-left: 8px;
+    }
+}
+
 @media (max-width: 640px) {
     .book-language-form {
         grid-template-columns: 1fr;
