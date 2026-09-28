@@ -9,6 +9,7 @@ using System.Text.RegularExpressions;
 using Jularr.Web.Data;
 using Jularr.Web.Features.Ai;
 using Jularr.Web.Features.Novels;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Web.Features.Books;
@@ -61,6 +62,13 @@ public sealed record BookCatalogItem(
     /// </summary>
     public IReadOnlyList<BookEditionSummary> Editions { get; init; } = [];
 
+    /// <summary>
+    /// A community rating (0-5) from a connected source (#371, currently only the optional
+    /// Hardcover discovery integration); null whenever no source supplied one. Never a fabricated
+    /// or derived number.
+    /// </summary>
+    public double? Rating { get; init; }
+
     public bool CanPreview => !string.IsNullOrWhiteSpace(TextUrl);
     public bool CanAcquire =>
         !string.IsNullOrWhiteSpace(EpubUrl)
@@ -69,11 +77,28 @@ public sealed record BookCatalogItem(
             StringComparison.OrdinalIgnoreCase);
 }
 
+/// <summary>
+/// A Books discovery row backed by a real, honestly-labelled source (#371): <see cref="Trending"/>
+/// is recent activity (Open Library trending), <see cref="Popular"/> is enduring, catalog-wide
+/// popularity (Open Library edition count), <see cref="New"/> is recently published (Open Library
+/// recent-subject data). None of these ever falls back to Gutenberg download counts.
+/// </summary>
+public enum BookBrowseMode
+{
+    Trending,
+    Popular,
+    New
+}
+
 public sealed partial class BookCatalogService(
     HttpClient httpClient,
     AppDbContext db,
     IBookTranslator translator,
-    IConfiguration configuration)
+    IConfiguration configuration,
+    IDataProtectionProvider? dataProtectionProvider = null,
+    // Test-only override of BookDiscoverySettingsStore's "/data" default; production callers
+    // never pass this.
+    DirectoryInfo? discoverySettingsDirectory = null)
 {
     public const string ImportedBookProvider = "book-epub";
     public const int TranslationPromptVersion = 5;
@@ -92,7 +117,7 @@ public sealed partial class BookCatalogService(
     {
         if (string.IsNullOrWhiteSpace(query))
         {
-            return await BrowsePopularBooksAsync(cancellationToken);
+            return await BrowseTrendingBooksAsync(cancellationToken);
         }
 
         var normalizedQuery = query.Trim();
@@ -134,6 +159,38 @@ public sealed partial class BookCatalogService(
                 token => SearchGutenbergAsync(normalizedQuery, token),
                 cancellationToken,
                 fallbackToEmpty: true));
+    }
+
+    /// <summary>
+    /// One honestly-labelled Books discovery row (#371): each mode is backed by a source that
+    /// actually offers that signal (Open Library trending/edition-count/recent-subject data), never
+    /// a substitute for a provider that cannot supply it (Gutenberg download counts are never used
+    /// as a Trending/Popular/New signal). When an owner Hardcover API key is configured (Settings →
+    /// Books), matching items also get a Hardcover community rating; Hardcover never gates
+    /// discovery itself off when it is unset or unreachable.
+    /// </summary>
+    public async Task<IReadOnlyList<BookCatalogItem>> BrowseAsync(
+        BookBrowseMode mode,
+        CancellationToken cancellationToken)
+    {
+        var items = mode switch
+        {
+            BookBrowseMode.Popular => await BrowseTopBooksAsync(cancellationToken),
+            BookBrowseMode.New => await BrowseNewBooksAsync(cancellationToken),
+            _ => await BrowseTrendingBooksAsync(cancellationToken)
+        };
+
+        if (dataProtectionProvider is null)
+        {
+            return items;
+        }
+
+        var settings = await new BookDiscoverySettingsStore(dataProtectionProvider, discoverySettingsDirectory)
+            .LoadAsync(cancellationToken);
+
+        return settings.HardcoverEnabled
+            ? await EnrichHardcoverRatingsAsync(items, settings.HardcoverApiKey!, cancellationToken)
+            : items;
     }
 
     public async Task<BookCatalogItem?> GetAsync(
@@ -2285,6 +2342,65 @@ public sealed partial class BookCatalogService(
         };
     }
 
+    /// <summary>
+    /// Maps one <c>/subjects/{subject}.json</c> work (#371's "New" row) to a catalog item. Unlike
+    /// <see cref="MapOpenLibrarySearch"/>'s <c>/search.json</c> shape, subjects responses carry
+    /// authors as objects and the cover id under a different field name, and (per the unscoped-query
+    /// spam found live) need a publish-year sanity check rather than trusting the value outright.
+    /// </summary>
+    private static BookCatalogItem MapOpenLibrarySubjectWork(
+        OpenLibrarySubjectWork book,
+        int currentYear)
+    {
+        var workKey = book.Key!["/works/".Length..];
+        var author = book.Authors is { Length: > 0 }
+            ? string.Join(
+                ", ",
+                book.Authors
+                    .Select(x => x.Name?.Trim())
+                    .Where(x => !string.IsNullOrWhiteSpace(x)))
+            : null;
+
+        // Community-editable placeholder/spam rows sometimes carry an implausible year
+        // (e.g. 9999); a year outside plausible print-history bounds is dropped, not shown.
+        var year = book.FirstPublishYear is int publishYear
+            && publishYear > 1450
+            && publishYear <= currentYear + 1
+                ? publishYear
+                : (int?)null;
+
+        IReadOnlyList<string> covers = book.CoverId is > 0
+            ? [
+                $"https://covers.openlibrary.org/b/id/{book.CoverId}-L.jpg?default=false",
+                $"https://covers.openlibrary.org/b/id/{book.CoverId}-M.jpg?default=false"
+            ]
+            : [];
+
+        return new BookCatalogItem(
+            "ol-" + workKey,
+            book.Title!.Trim(),
+            string.IsNullOrWhiteSpace(author)
+                ? null
+                : author,
+            null,
+            covers.FirstOrDefault(),
+            (book.Subjects ?? [])
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Select(x => x.Trim())
+                .Take(16)
+                .ToArray(),
+            year,
+            null,
+            null,
+            $"https://openlibrary.org/works/{workKey}",
+            "Open Library",
+            null)
+        {
+            EditionCount = book.EditionCount,
+            CoverCandidates = covers
+        };
+    }
+
     private static BookCatalogItem MapGutenberg(
         GutendexBook book)
     {
@@ -3003,6 +3119,32 @@ public sealed partial class BookCatalogService(
         int? EditionCount = null,
         [property: JsonPropertyName("language")]
         string[]? Languages = null);
+
+    /// <summary>The <c>/subjects/{subject}.json</c> envelope (#371's "New" row): a different shape
+    /// than <c>/search.json</c> (authors as objects, <c>cover_id</c> instead of <c>cover_i</c>).</summary>
+    private sealed record OpenLibrarySubjectResponse(
+        [property: JsonPropertyName("works")]
+        OpenLibrarySubjectWork[]? Works);
+
+    private sealed record OpenLibrarySubjectWork(
+        [property: JsonPropertyName("key")]
+        string? Key,
+        [property: JsonPropertyName("title")]
+        string? Title,
+        [property: JsonPropertyName("authors")]
+        OpenLibrarySubjectAuthor[]? Authors,
+        [property: JsonPropertyName("cover_id")]
+        int? CoverId,
+        [property: JsonPropertyName("first_publish_year")]
+        int? FirstPublishYear,
+        [property: JsonPropertyName("subject")]
+        string[]? Subjects,
+        [property: JsonPropertyName("edition_count")]
+        int? EditionCount = null);
+
+    private sealed record OpenLibrarySubjectAuthor(
+        [property: JsonPropertyName("name")]
+        string? Name);
 
     private sealed record OpenLibraryWork(
         [property: JsonPropertyName("title")]

@@ -58,7 +58,7 @@
     }
 
     function normalizeMode(value) {
-        return ["trending", "top", "my-list", "search"].includes(value)
+        return ["trending", "top", "new", "my-list", "search"].includes(value)
             ? value
             : "trending";
     }
@@ -77,6 +77,7 @@
         return {
             "trending": "Trending",
             "top": "Top",
+            "new": "New",
             "my-list": "My AniList",
             "search": "Search"
         }[value] || "Trending";
@@ -84,6 +85,21 @@
 
     function syncControls(syncSearchValue = true) {
         if (syncSearchValue) searchInput.value = state.query;
+
+        const effectiveMode = state.mode === "search" ? browseMode : state.mode;
+
+        // "New" only has a real source (Open Library recent-subject data) for Books; other
+        // categories would silently alias it to Top, so the tab only appears there.
+        modeButtons.forEach(button => {
+            if (button.hasAttribute("data-discover-mode-books-only")) {
+                button.hidden = state.category !== "book";
+            }
+        });
+
+        if (effectiveMode === "new" && state.category !== "book") {
+            browseMode = "trending";
+            if (state.mode !== "search") state.mode = "trending";
+        }
 
         modeButtons.forEach(button => {
             const active = button.dataset.discoverMode ===
@@ -345,10 +361,18 @@
             copy.append(native);
         }
 
+        if (item.author) {
+            const author = document.createElement("div");
+            author.className = "discover-native-title";
+            author.textContent = item.author;
+            copy.append(author);
+        }
+
         const metaValues = [
             item.format ? formatLabel(item.format) : null,
             item.year || null,
-            item.listStatus ? listStatusLabel(item.listStatus) : null
+            item.listStatus ? listStatusLabel(item.listStatus) : null,
+            Number.isFinite(item.rating) ? `★ ${item.rating.toFixed(1)}` : null
         ].filter(Boolean);
 
         if (metaValues.length) {

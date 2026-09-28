@@ -14,7 +14,10 @@ public enum DiscoveryMode
     Trending,
     Top,
     MyList,
-    Search
+    Search,
+    /// <summary>Recently published (#371); currently only Books sources this honestly
+    /// (Open Library recent-subject data). Other categories fall back to their Top browse.</summary>
+    New
 }
 
 public sealed record DiscoveryRequest(
@@ -105,6 +108,7 @@ public sealed record DiscoveryRequest(
         {
             "top" or "popular" => DiscoveryMode.Top,
             "my" or "my-list" or "mylist" => DiscoveryMode.MyList,
+            "new" or "recent" or "recently-published" => DiscoveryMode.New,
             _ => DiscoveryMode.Trending
         };
 }
@@ -135,7 +139,10 @@ public sealed record DiscoveryItem(
     bool IsFollowed = false,
     Guid? LocalMediaId = null,
     // A franchise the profile follows that holds this title; set per response.
-    Guid? FollowedFranchiseId = null);
+    Guid? FollowedFranchiseId = null,
+    // Books only (#371): the source never fabricates either when it does not supply one.
+    string? Author = null,
+    double? Rating = null);
 
 public sealed record DiscoveryResponse(
     string Query,
