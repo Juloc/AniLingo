@@ -38,6 +38,7 @@ public sealed class RoleAuthorizationTests
         ["Jularr.Web.Pages.Admin.UsenetModel"] = JularrPolicies.AcquisitionSettings,
         ["Jularr.Web.Pages.Settings.AcquisitionModel"] = JularrPolicies.AcquisitionSettings,
         ["Jularr.Web.Pages.Settings.NamingModel"] = JularrPolicies.AcquisitionSettings,
+        ["Jularr.Web.Pages.Settings.ReadingNamingModel"] = JularrPolicies.AcquisitionSettings,
         ["Jularr.Web.Pages.Settings.DownloadClients.EditModel"] = JularrPolicies.AcquisitionSettings,
         ["Jularr.Web.Pages.Settings.DownloadClients.IndexModel"] = JularrPolicies.AcquisitionSettings,
         ["Jularr.Web.Pages.Settings.Indexers.EditModel"] = JularrPolicies.AcquisitionSettings,
