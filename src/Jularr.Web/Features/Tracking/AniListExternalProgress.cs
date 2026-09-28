@@ -73,7 +73,12 @@ public sealed record ExternalProgressPanel(
     bool CanManageMapping = false,
     UiTextBundle? Ui = null);
 
-/// <summary>View model of the lazily loaded <c>_ExternalProgressState</c> fragment.</summary>
+/// <summary>
+/// View model of the lazily loaded <c>_ExternalProgressState</c> fragment. Mapping state is an
+/// owner-only diagnostic that lives inside the owner's Manage sheet, never as a card in this
+/// consumer-facing fragment (#519, part of epic #510: "a normal user must not see mapping state
+/// at all"; "for the owner, ... not a card").
+/// </summary>
 public sealed record ExternalProgressRemoteView(
     ExternalProgressMediaKind MediaKind,
     AniListExternalProgressState State,

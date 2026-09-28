@@ -1,4 +1,7 @@
 @page "/Manga/Series/{id:guid}"
+@using Jularr.Web.Features.Tracking
+@using Jularr.Web.Ui
+@using Microsoft.AspNetCore.Html
 @model Jularr.Web.Pages.Manga.SeriesModel
 @{
     var ui = Model.Ui;
@@ -73,6 +76,94 @@
                })">
                 @ui["manga.series.languageToolsLink"]
             </a>
+
+            @if (Model.IsOwner)
+            {
+                Func<dynamic?, IHtmlContent> metadataGroup = @<div>
+                        <form method="get" class="manga-metadata-search">
+                            <input type="search" name="q" value="@Model.Query" placeholder="@ui["manga.series.matchPlaceholder"]" />
+                            <button class="button" type="submit">@ui["common.search"]</button>
+                        </form>
+
+                        @if (Model.SearchError is string searchError)
+                        {
+                            <p class="muted" role="status">@searchError</p>
+                        }
+
+                        @if (Model.SearchResults.Count > 0)
+                        {
+                            <div class="manga-metadata-results">
+                                @foreach (var candidate in Model.SearchResults)
+                                {
+                                    <article>
+                                        @if (!string.IsNullOrWhiteSpace(candidate.CoverImageUrl))
+                                        {
+                                            <img src="@candidate.CoverImageUrl" alt="" loading="lazy" referrerpolicy="no-referrer" />
+                                        }
+                                        <div>
+                                            <strong>@candidate.Title</strong>
+                                            @if (!string.IsNullOrWhiteSpace(candidate.NativeTitle))
+                                            {
+                                                <span lang="ja">@candidate.NativeTitle</span>
+                                            }
+                                        </div>
+                                        <form method="post" asp-page-handler="Match" asp-route-id="@series.Id">
+                                            <input type="hidden" name="externalId" value="@candidate.ExternalId" />
+                                            <button class="button" type="submit">@ui["manga.series.useCandidate"]</button>
+                                        </form>
+                                    </article>
+                                }
+                            </div>
+                        }
+                    </div>;
+
+                    Func<dynamic?, IHtmlContent> filesGroup = @<div class="manga-inline-actions">
+                        <form method="post" asp-page-handler="Refresh" asp-route-id="@series.Id">
+                            <button class="button" type="submit">@ui["manga.series.refreshSource"]</button>
+                        </form>
+                        <form method="post" asp-page-handler="Direction" asp-route-id="@series.Id">
+                            <input type="hidden" name="direction" value="@(series.Direction == "rtl" ? "ltr" : "rtl")" />
+                            <button class="button" type="submit">
+                                @ui.Format("manga.series.switchDirection", ("direction", series.Direction == "rtl" ? "LTR" : "RTL"))
+                            </button>
+                        </form>
+                    </div>;
+
+                    Func<dynamic?, IHtmlContent> mappingGroup = @<div>
+                        @if (Model.ExternalProgress is { } mangaMappingProgress)
+                        {
+                            var mangaMappingPanel = new ExternalProgressPanel(
+                                mangaMappingProgress,
+                                Url.Page(null, "ExternalProgress", new { id = series.Id })!,
+                                MatchUrl: null,
+                                MappingUrl: $"/Settings/MappingSegments?mediaType=manga&localId={series.Id}",
+                                CanManageMapping: true,
+                                Ui: ui);
+                            <partial name="_ExternalProgressManage" model="mangaMappingPanel" />
+                        }
+                    </div>;
+
+                    var mangaNeedsReview = Model.ExternalProgress?.MappingBasis == ExternalMappingBasis.NeedsReview;
+                    var mangaGroups = new List<ManageSheetGroup>
+                    {
+                        new(ui["manage.group.metadata"], metadataGroup(null)),
+                        new(ui["manage.group.files"], filesGroup(null))
+                    };
+                    if (Model.ExternalProgress is not null)
+                    {
+                        mangaGroups.Add(new ManageSheetGroup(ui["manage.group.mapping"], mappingGroup(null)));
+                    }
+
+                    var mangaManageSheet = new ManageSheetModel(
+                        "manga-manage",
+                        ui["manage.trigger"],
+                        series.Title,
+                        mangaGroups,
+                        ui,
+                        mangaNeedsReview ? new ManageSheetReviewBadge(ui["manage.needsReview"], "/Settings/MappingReview") : null,
+                        OpenOnLoad: Model.Query.Length > 0);
+                <partial name="_ManageSheet" model="mangaManageSheet" />
+            }
         </div>
     </div>
 </header>
@@ -90,67 +181,8 @@
         externalProgress.MappingBasis == Jularr.Web.Features.Tracking.ExternalMappingBasis.Matched
             ? series.CoverImageUrl
             : null,
-        MatchUrl: $"/Manga/Series/{series.Id}?q={Uri.EscapeDataString(series.Title)}#manga-manage",
-        MappingUrl: $"/Settings/MappingSegments?mediaType=manga&localId={series.Id}",
-        CanManageMapping: Model.IsOwner,
         Ui: ui);
     <partial name="_ExternalProgress" model="externalPanel" />
-}
-
-@if (Model.IsOwner)
-{
-    <details class="manga-manage" id="manga-manage" open="@(Model.Query.Length > 0)">
-        <summary>@ui["manga.series.manage"]</summary>
-        <div class="manga-manage-body">
-            <div class="manga-inline-actions">
-                <form method="post" asp-page-handler="Refresh" asp-route-id="@series.Id">
-                    <button class="button" type="submit">@ui["manga.series.refreshSource"]</button>
-                </form>
-                <form method="post" asp-page-handler="Direction" asp-route-id="@series.Id">
-                    <input type="hidden" name="direction" value="@(series.Direction == "rtl" ? "ltr" : "rtl")" />
-                    <button class="button" type="submit">
-                        @ui.Format("manga.series.switchDirection", ("direction", series.Direction == "rtl" ? "LTR" : "RTL"))
-                    </button>
-                </form>
-            </div>
-
-            <form method="get" class="manga-metadata-search">
-                <input type="search" name="q" value="@Model.Query" placeholder="@ui["manga.series.matchPlaceholder"]" />
-                <button class="button" type="submit">@ui["common.search"]</button>
-            </form>
-
-            @if (Model.SearchError is string searchError)
-            {
-                <p class="muted" role="status">@searchError</p>
-            }
-
-            @if (Model.SearchResults.Count > 0)
-            {
-                <div class="manga-metadata-results">
-                    @foreach (var candidate in Model.SearchResults)
-                    {
-                        <article>
-                            @if (!string.IsNullOrWhiteSpace(candidate.CoverImageUrl))
-                            {
-                                <img src="@candidate.CoverImageUrl" alt="" loading="lazy" referrerpolicy="no-referrer" />
-                            }
-                            <div>
-                                <strong>@candidate.Title</strong>
-                                @if (!string.IsNullOrWhiteSpace(candidate.NativeTitle))
-                                {
-                                    <span lang="ja">@candidate.NativeTitle</span>
-                                }
-                            </div>
-                            <form method="post" asp-page-handler="Match" asp-route-id="@series.Id">
-                                <input type="hidden" name="externalId" value="@candidate.ExternalId" />
-                                <button class="button" type="submit">@ui["manga.series.useCandidate"]</button>
-                            </form>
-                        </article>
-                    }
-                </div>
-            }
-        </div>
-    </details>
 }
 
 <section class="manga-chapters">

@@ -14,9 +14,10 @@
 @if (panel is not null)
 {
     <link rel="stylesheet" href="~/css/acquisition.css" asp-append-version="true" />
+    @* No "Acquisition" heading here: this renders inside the Manage sheet's own Acquisition
+       group, which already carries that heading (#519). *@
     <section class="panel metadata-panel" id="acquisition">
         <div class="panel-heading">
-            <h2>@ui["library.acquisitionPanel.heading"]</h2>
             <span class="status-pill @(panel.CanAcquire ? "status-ok" : "status-warn")">@SonarrMigration.Describe(panel.Mode)</span>
         </div>
 

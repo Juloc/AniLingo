@@ -8,6 +8,8 @@
 @using Jularr.Web.Features.Learning
 @using Jularr.Web.Features.Learning.LanguageAssistance
 @using Jularr.Web.Features.Tracking
+@using Jularr.Web.Ui
+@using Microsoft.AspNetCore.Html
 @model Jularr.Web.Pages.Library.EpisodeModel
 @{
     var ui = Model.Ui;
@@ -546,7 +548,48 @@ else
            })">@ui["library.languageToolsAndLearning"]</a>
         @if (Model.IsOwner)
         {
-            <button class="button" type="button" data-open-dialog="episode-manage">@ui["library.watch.manageSources"]</button>
+            Func<dynamic?, IHtmlContent> mappingGroup = @<div>
+                    @if (Model.ExternalProgress is { } ownerProgress && !(ownerProgress.IsMatched && ownerProgress.ReviewReason is null))
+                    {
+                        var ownerPanel = new ExternalProgressPanel(
+                            ownerProgress,
+                            Url.Page(null, "ExternalProgress", new { id = Model.EpisodeId })!,
+                            MatchUrl: $"/Library/Anime/{Model.AnimeId}#anime-manage",
+                            MappingUrl: $"/Library/Anime/{Model.AnimeId}#anime-manage",
+                            CanManageMapping: true,
+                            Ui: ui);
+                        <partial name="_ExternalProgressManage" model="ownerPanel" />
+                    }
+                    else
+                    {
+                        <a class="button" href="/Library/Anime/@Model.AnimeId#anime-manage">@ui["library.watch.manageAniListMatch"]</a>
+                        <a class="button" href="/Library/Anime/@Model.AnimeId#anime-manage">@ui["library.watch.manageEpisodeMapping"]</a>
+                    }
+                </div>;
+
+                Func<dynamic?, IHtmlContent> filesGroup = @<div>
+                    @if (Model.NeedsLearningSource)
+                    {
+                        <partial name="_EpisodeSubtitleSources" model="Model" />
+                    }
+                    <div class="inline-actions">
+                        <a class="button" href="@Url.Page("/Library/EpisodeSegments", new { id = Model.EpisodeId })">@ui["library.episodeSegments.editLink"]</a>
+                    </div>
+                </div>;
+
+                var episodeNeedsReview = Model.ExternalProgress?.MappingBasis == ExternalMappingBasis.NeedsReview;
+                var episodeManageSheet = new ManageSheetModel(
+                    "episode-manage",
+                    ui["library.watch.manageSources"],
+                    ui.Format("library.episode.pageTitle", ("anime", Model.AnimeTitle), ("episode", Model.EpisodeNumber)),
+                    [
+                        new ManageSheetGroup(ui["manage.group.mapping"], mappingGroup(null)),
+                        new ManageSheetGroup(ui["manage.group.files"], filesGroup(null))
+                    ],
+                    ui,
+                    episodeNeedsReview ? new ManageSheetReviewBadge(ui["manage.needsReview"], "/Settings/MappingReview") : null,
+                    OpenOnLoad: !string.IsNullOrWhiteSpace(Model.SubtitleNotice) || !string.IsNullOrWhiteSpace(Model.SubtitleError));
+            <partial name="_ManageSheet" model="episodeManageSheet" />
         }
     </div>
 
@@ -629,41 +672,4 @@ else
 </aside>
 </div>
 
-@if (Model.IsOwner)
-{
-    @* Owner-only mapping and source management; users never need it to watch. *@
-    <dialog class="watch-manage-dialog" id="episode-manage" aria-labelledby="episode-manage-title"
-            data-open-on-load="@(!string.IsNullOrWhiteSpace(Model.SubtitleNotice) || !string.IsNullOrWhiteSpace(Model.SubtitleError) ? "true" : "false")">
-        <div class="watch-manage-header">
-            <div>
-                <span class="eyebrow">@ui["library.watch.ownerEyebrow"]</span>
-                <h2 id="episode-manage-title">@ui["library.watch.manageSources"]</h2>
-            </div>
-            <form method="dialog"><button class="button" type="submit">@ui["library.watch.closeDialog"]</button></form>
-        </div>
-        @if (Model.ExternalProgress is { } ownerProgress && !(ownerProgress.IsMatched && ownerProgress.ReviewReason is null))
-        {
-            var ownerPanel = new ExternalProgressPanel(
-                ownerProgress,
-                Url.Page(null, "ExternalProgress", new { id = Model.EpisodeId })!,
-                MatchUrl: $"/Library/Anime/{Model.AnimeId}#anilist-match",
-                MappingUrl: $"/Library/Anime/{Model.AnimeId}#anilist-episode-mappings",
-                CanManageMapping: true,
-                Ui: ui);
-            <partial name="_ExternalProgress" model="ownerPanel" />
-        }
-        @if (Model.NeedsLearningSource)
-        {
-            <partial name="_EpisodeSubtitleSources" model="Model" />
-        }
-        <nav class="watch-manage-links">
-            @if (Model.ExternalProgress is null or { IsMatched: true, ReviewReason: null })
-            {
-                <a class="button" href="/Library/Anime/@Model.AnimeId#anilist-match">@ui["library.watch.manageAniListMatch"]</a>
-                <a class="button" href="/Library/Anime/@Model.AnimeId#anilist-episode-mappings">@ui["library.watch.manageEpisodeMapping"]</a>
-            }
-            <a class="button" href="@Url.Page("/Library/EpisodeSegments", new { id = Model.EpisodeId })">@ui["library.episodeSegments.editLink"]</a>
-        </nav>
-    </dialog>
-}
 
