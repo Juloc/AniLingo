@@ -316,6 +316,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(x => x.Kind).HasMaxLength(16);
             entity.Property(x => x.SourceKey).HasMaxLength(200);
             entity.Property(x => x.SourceFileName).HasMaxLength(500);
+            entity.Property(x => x.SourceStoragePath).HasMaxLength(2048);
             entity.Property(x => x.SourceContentHash).HasMaxLength(64);
             entity.Property(x => x.CoverAsset).HasMaxLength(120);
             entity.HasOne<NovelWork>().WithMany().HasForeignKey(x => x.WorkId).OnDelete(DeleteBehavior.Cascade);

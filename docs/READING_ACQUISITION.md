@@ -61,7 +61,7 @@ Downloads the owner sends by hand (an NZB URL or file on the Books page, kind `s
 
 ### Books
 
-A completed Books job is imported from its own folder, including subfolders, as one book: EPUB is preferred, PDF accepted. The book is linked to the requested catalog entry. A job without a readable EPUB or PDF is an unsuitable release, and Wanted tries the next one. A path Jularr cannot read is not the release's fault: the request waits as `Importing` with the path in its status. Book files are only read; EPUBs are parsed into the library and PDFs copied into `Books:FilesPath`.
+A completed Books job is imported from its own folder, including subfolders, as one book: EPUB is preferred, PDF accepted. The book is linked to the requested catalog entry. A job without a readable EPUB or PDF is an unsuitable release, and Wanted tries the next one. A path Jularr cannot read is not the release's fault: the request waits as `Importing` with the path in its status. When a Books library folder is configured, the original EPUB/PDF is placed there with the chosen import mode and the parsed reader state is derived from that copy. Without one, EPUBs are read in place and PDFs use the legacy `Books:FilesPath`.
 
 ### Manga
 
@@ -106,7 +106,7 @@ All folders are settings; nothing is hard-coded. A layout that keeps completed d
 └── manga/                         Manga library folder
 ```
 
-Light Novels and Books are read into Jularr's own library under `/data`, so they have no library folder. Enter every path as the Jularr container sees it. When SABnzbd runs in another container and reports different paths, add a remote path mapping (Settings → Acquisition), for example `/downloads -> /data/downloads`.
+Books and Light Novels can also have final library folders, for example `/data/media/books` and `/data/media/lightnovels`. Jularr keeps the original EPUB/PDF there according to Move / Copy / Hardlink / Hardlink or copy, while parsed chapters and cached assets remain rebuildable derived state. Enter every path as the Jularr container sees it. When SABnzbd runs in another container and reports different paths, add a remote path mapping (Settings → Acquisition), for example `/downloads -> /data/downloads`.
 
 ## Operations
 

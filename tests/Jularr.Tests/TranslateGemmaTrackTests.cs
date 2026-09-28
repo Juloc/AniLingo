@@ -89,7 +89,7 @@ public sealed class TranslateGemmaTrackTests
             Assert.IsTrue(index > 0, "The track migration must be registered.");
             await db.GetService<IMigrator>().MigrateAsync(migrations[index - 1]);
 
-            var chapterId = await SeedChapterAsync(db, "本。");
+            var chapterId = await SeedLegacyChapterAsync(db, "本。");
             db.NovelTranslations.AddRange(
                 LegacyRow(chapterId, "fake-ai", "KI."),
                 LegacyRow(chapterId, NovelTranslationProviders.TranslateGemmaPrefix + "model:abc", "Lokal."));
@@ -366,6 +366,37 @@ public sealed class TranslateGemmaTrackTests
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
         return chapter.Id;
+    }
+
+    private static async Task<Guid> SeedLegacyChapterAsync(AppDbContext db, string text)
+    {
+        var workId = Guid.NewGuid();
+        var volumeId = Guid.NewGuid();
+        var chapterId = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+
+        // This test intentionally migrates to a historic schema. Seed it with
+        // its own columns so newer model properties cannot leak into the test.
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO "NovelWorks" (
+                "Id", "SourceProvider", "SourceKey", "SourceUrl", "Title", "ImportedAt", "UpdatedAt")
+            VALUES ({workId}, {"test"}, {workId.ToString("N")}, {"https://example.invalid/gemma"},
+                {"Gemma Track Novel"}, {now}, {now});
+            """);
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO "NovelVolumes" (
+                "Id", "WorkId", "Number", "Kind", "SourceKey", "ImportedAt", "UpdatedAt")
+            VALUES ({volumeId}, {workId}, {1}, {NovelVolumeKinds.Web}, {"web"}, {now}, {now});
+            """);
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO "NovelChapters" (
+                "Id", "WorkId", "VolumeId", "Number", "SourceUrl", "Title", "OriginalText", "SourceHash",
+                "ImportedAt", "UpdatedAt")
+            VALUES ({chapterId}, {workId}, {volumeId}, {1}, {"https://example.invalid/gemma/1"},
+                {"Chapter One"}, {text}, {"hash"}, {now}, {now});
+            """);
+
+        return chapterId;
     }
 
     private sealed class Fixture : IAsyncDisposable

@@ -97,10 +97,14 @@ public sealed class AcquisitionModel(
     public MediaLibraryTarget FoldersFor(MediaAcquisitionKind kind) => ImportSettings.FoldersFor(kind);
 
     /// <summary>
-    /// Only Manga keeps its files in a NAS library folder; Light Novels and Books are read into
-    /// Jularr's own library, so they only have an inbox folder.
+    /// Every reading media type can retain its original files in a NAS library folder. The
+    /// database holds derived reader state; it is not the sole canonical media copy.
     /// </summary>
-    public static bool HasLibraryFolder(MediaAcquisitionKind kind) => kind == MediaAcquisitionKind.Manga;
+    public static bool HasLibraryFolder(MediaAcquisitionKind kind) =>
+        MediaFolderKindsStatic.Contains(kind);
+
+    private static readonly MediaAcquisitionKind[] MediaFolderKindsStatic =
+        [MediaAcquisitionKind.Manga, MediaAcquisitionKind.LightNovel, MediaAcquisitionKind.Book];
 
     /// <summary>The conventional folder name of a media type in the NAS layout (placeholders only).</summary>
     public static string FolderName(MediaAcquisitionKind kind) => kind switch
@@ -119,8 +123,8 @@ public sealed class AcquisitionModel(
     };
 
     /// <summary>
-    /// Sets the folders of one reading media type: the library folder and import mode (Manga)
-    /// and the inbox folder. An empty field clears that folder.
+    /// Sets the folders of one reading media type: its durable library folder, import mode and
+    /// inbox folder. An empty field clears that folder.
     /// </summary>
     public async Task<IActionResult> OnPostMediaFoldersAsync(
         MediaAcquisitionKind kind,

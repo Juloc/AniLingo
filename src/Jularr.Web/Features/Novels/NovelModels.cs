@@ -46,6 +46,12 @@ public sealed class NovelVolume
     /// </summary>
     public string SourceKey { get; set; } = "";
     public string? SourceFileName { get; set; }
+    /// <summary>
+    /// Absolute path of the original EPUB in the configured NAS library. Reader chapters and
+    /// cached assets are derived from this file and can be rebuilt without retaining a second
+    /// canonical copy under /data.
+    /// </summary>
+    public string? SourceStoragePath { get; set; }
     public string? SourceContentHash { get; set; }
     /// <summary>File name of the cached cover in the volume asset store.</summary>
     public string? CoverAsset { get; set; }
