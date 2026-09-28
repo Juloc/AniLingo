@@ -1,4 +1,5 @@
 using Jularr.Web.Features.Auth;
+using Jularr.Web.Features.Events;
 
 namespace Jularr.Web.Features.Acquisition.Access;
 
@@ -11,6 +12,7 @@ public sealed class AcquisitionRequestService(
     AcquisitionAccessStore store,
     IEnumerable<IAcquisitionRequestExecutor> executors,
     CurrentAccountContext account,
+    IJularrEventPublisher events,
     ILogger<AcquisitionRequestService> logger)
 {
     public async Task<AcquisitionCapabilities> GetCapabilitiesAsync(
@@ -59,6 +61,7 @@ public sealed class AcquisitionRequestService(
         }
 
         await store.UpdateStatusAsync(id, AcquisitionRequestStatus.Approved, null, null, null, account.ProfileId, cancellationToken);
+        await PublishDecisionAsync(request, JularrEventCategory.RequestApproved, cancellationToken);
         return await ExecuteAsync(await RequireAsync(id, cancellationToken), cancellationToken);
     }
 
@@ -97,6 +100,7 @@ public sealed class AcquisitionRequestService(
             null,
             account.ProfileId,
             cancellationToken);
+        await PublishDecisionAsync(request, JularrEventCategory.RequestDenied, cancellationToken);
     }
 
     /// <summary>For media types without automatic acquisition: the owner added it by hand.</summary>
@@ -168,6 +172,23 @@ public sealed class AcquisitionRequestService(
             cancellationToken);
         return await RequireAsync(request.Id, cancellationToken);
     }
+
+    /// <summary>
+    /// Notifies the requester of the owner's decision (#429). Delivery is fully decoupled here:
+    /// a channel failure inside <see cref="IJularrEventPublisher"/> is already caught and logged
+    /// by the publisher, so it can never turn an approval/rejection into a failed request.
+    /// </summary>
+    private Task PublishDecisionAsync(AcquisitionRequest request, JularrEventCategory category, CancellationToken cancellationToken) =>
+        events.PublishAsync(
+            JularrEvent.Create(
+                category,
+                profileId: request.RequestedByProfileId,
+                mediaType: AcquisitionAccessNames.Kind(request.Kind),
+                subjectId: request.Id.ToString(),
+                messageParams: new Dictionary<string, string> { ["title"] = request.Title },
+                deepLink: request.ResultUrl,
+                dedupKey: $"acquisition-request:{request.Id}:{category}"),
+            cancellationToken);
 
     private async Task<AcquisitionRequest> RequireAsync(Guid id, CancellationToken cancellationToken) =>
         await store.GetAsync(id, cancellationToken)

@@ -68,6 +68,8 @@
            library scripts above, so any consumer detail page can open one. *@
         <link rel="stylesheet" href="~/css/manage-sheet.css" asp-append-version="true" />
         <script src="~/js/manage-sheet.js" asp-append-version="true" defer></script>
+        @* Notification bell (#429): rendered in the sidebar/topbar on every authenticated page. *@
+        <link rel="stylesheet" href="~/css/notifications.css" asp-append-version="true" />
     }
     @await RenderSectionAsync("Head", required: false)
 </head>

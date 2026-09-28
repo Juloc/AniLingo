@@ -348,6 +348,7 @@ public sealed class AcquisitionAccessTests
                 new AcquisitionAccessStore(Db),
                 executors,
                 account,
+                new RecordingEventPublisher(),
                 NullLogger<AcquisitionRequestService>.Instance);
         }
 

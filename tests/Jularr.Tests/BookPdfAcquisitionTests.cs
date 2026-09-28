@@ -640,6 +640,7 @@ public sealed class BookPdfAcquisitionTests
             collection.AddSingleton(TimeProvider.System);
             collection.AddSingleton<ReleaseRequestTracker>();
             collection.AddSingleton<IAcquisitionRequestExecutor, BookAcquisitionExecutor>();
+            collection.AddSingleton<Jularr.Web.Features.Events.IJularrEventPublisher, RecordingEventPublisher>();
             collection.AddSingleton<AcquisitionRequestService>();
             // The shared Wanted lifecycle with the Book adapter behind the dispatcher.
             collection.AddSingleton<IWantedRequestHandler, BookWantedRequestHandler>();

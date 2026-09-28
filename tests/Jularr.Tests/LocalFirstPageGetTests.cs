@@ -436,6 +436,7 @@ public sealed class LocalFirstPageGetTests
                     new AcquisitionAccessStore(Db),
                     [],
                     OwnerAccount,
+                    new RecordingEventPublisher(),
                     NullLogger<AcquisitionRequestService>.Instance),
                 new AcquisitionAccessStore(Db),
                 watchlistStore,
