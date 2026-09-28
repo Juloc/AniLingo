@@ -520,6 +520,46 @@
     display: block;
 }
 
+.novel-chapter-group + .novel-chapter-group,
+.novel-chapter-group + a.novel-chapter-row,
+a.novel-chapter-row + .novel-chapter-group {
+    margin-top: .5rem;
+}
+
+.novel-chapter-group-heading {
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+    padding: .5rem .35rem;
+    color: var(--muted);
+    font-size: .78rem;
+    font-weight: 650;
+    cursor: pointer;
+    list-style: none;
+}
+
+.novel-chapter-group-heading::-webkit-details-marker {
+    display: none;
+}
+
+.novel-chapter-group-heading::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-right: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+    transform: rotate(-45deg);
+    transition: transform .15s ease;
+}
+
+.novel-chapter-group[open] > .novel-chapter-group-heading::before {
+    transform: rotate(45deg);
+}
+
+.novel-chapter-group-list {
+    display: block;
+}
+
 .novel-volume-group + .novel-volume-group {
     margin-top: 1.4rem;
 }

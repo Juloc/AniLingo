@@ -1243,6 +1243,10 @@ namespace Jularr.Web.Data.Migrations
                     b.Property<string>("ContentJson")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("GroupTitle")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime>("ImportedAt")
                         .HasColumnType("TEXT");
 

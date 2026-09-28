@@ -231,6 +231,15 @@ public sealed class NovelReaderDesignTests
             "Pages",
             "Novels",
             "Work.cshtml"));
+        // The chapter row markup (current/earlier indicator) lives in a shared partial
+        // (#512) so a grouped and an ungrouped chapter list draw the exact same row.
+        var chapterRow = File.ReadAllText(Path.Combine(
+            root,
+            "src",
+            "Jularr.Web",
+            "Pages",
+            "Novels",
+            "_NovelChapterRow.cshtml"));
 
         Assert.IsFalse(index.Contains("eyebrow", StringComparison.OrdinalIgnoreCase));
         Assert.IsFalse(index.Contains(
@@ -242,7 +251,7 @@ public sealed class NovelReaderDesignTests
         Assert.IsFalse(work.Contains(
             "Manual mappings are authoritative",
             StringComparison.Ordinal));
-        StringAssert.Contains(work, "isEarlier");
+        StringAssert.Contains(chapterRow, "isEarlier");
     }
 
     [TestMethod]
