@@ -104,6 +104,34 @@ public sealed class ProviderRoleAssignmentStoreTests
                 MappingProviderRole.ProgressTracking, MappingProviders.Imdb, CancellationToken.None));
     }
 
+    // Issue #568: feature services resolve a single role through ResolveRoleForWorkAsync instead
+    // of hard-wiring a provider; it must agree with the full ResolveForWorkAsync resolution.
+    [TestMethod]
+    public async Task ResolveRoleForWork_ReturnsTheSingleRequestedRole()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var work = Guid.NewGuid();
+
+        var unset = await fixture.Store.ResolveRoleForWorkAsync(
+            work, MappingProviderRole.Artwork, CancellationToken.None);
+        Assert.AreEqual(MappingProviders.AniList, unset.Provider);
+        Assert.AreEqual(ProviderRoleSource.BuiltIn, unset.Source);
+
+        await fixture.Store.SetWorkOverrideAsync(
+            work, MappingProviderRole.Artwork, MappingProviders.Tmdb, CancellationToken.None);
+
+        var overridden = await fixture.Store.ResolveRoleForWorkAsync(
+            work, MappingProviderRole.Artwork, CancellationToken.None);
+        Assert.AreEqual(MappingProviders.Tmdb, overridden.Provider);
+        Assert.AreEqual(ProviderRoleSource.WorkOverride, overridden.Source);
+
+        // A different role for the same work is unaffected by the Artwork override.
+        var display = await fixture.Store.ResolveRoleForWorkAsync(
+            work, MappingProviderRole.DisplayMetadata, CancellationToken.None);
+        Assert.AreEqual(MappingProviders.AniList, display.Provider);
+        Assert.AreEqual(ProviderRoleSource.BuiltIn, display.Source);
+    }
+
     private sealed class Fixture : IAsyncDisposable
     {
         private readonly string _databasePath;

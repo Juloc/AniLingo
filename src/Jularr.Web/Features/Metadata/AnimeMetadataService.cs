@@ -1,5 +1,6 @@
 using Jularr.Web.Data;
 using Jularr.Web.Features.Tracking;
+using Jularr.Web.Features.Mapping;
 using Jularr.Web.Features.MediaMapping;
 using Microsoft.EntityFrameworkCore;
 
@@ -11,6 +12,10 @@ public sealed class AnimeMetadataService(
     AniListAccountStore aniListStore,
     MediaMappingReviewStore reviewStore)
 {
+    // Raw-ADO.NET derived-state store (see ProviderRoleAssignmentStore); not DI-registered, so it
+    // is constructed inline from the already-injected db context, same as MappingReviewModel does.
+    private ProviderRoleAssignmentStore Roles() => new(db);
+
     public Task<AnimeMetadata?> GetAsync(
         Guid animeId,
         CancellationToken cancellationToken) =>
@@ -35,6 +40,22 @@ public sealed class AnimeMetadataService(
         {
             return AutomaticAnimeEpisodeMappingResult.Skipped(
                 "Explicit episode mappings already exist; automatic mapping will not replace them.");
+        }
+
+        // Issue #568: episode-range auto-mapping only ever produces AniList-numbered ranges, so it
+        // only runs while this anime's resolved EpisodeStructure role is AniList (the built-in
+        // default, reproducing today's behaviour) or has not been explicitly assigned away from it.
+        // An explicit non-AniList assignment (support for non-AniList episode numbering) opts the
+        // anime out, leaving its local numbering untouched.
+        var structureRole = await Roles().ResolveRoleForWorkAsync(
+            animeId,
+            MappingProviderRole.EpisodeStructure,
+            cancellationToken);
+        if (structureRole.Source != ProviderRoleSource.BuiltIn &&
+            !string.Equals(structureRole.Provider, MappingProviders.AniList, StringComparison.OrdinalIgnoreCase))
+        {
+            return AutomaticAnimeEpisodeMappingResult.Skipped(
+                $"Episode structure for this anime is configured to use '{structureRole.Provider}', not AniList; automatic episode-range mapping is skipped.");
         }
 
         var localTitle = await db.Anime
@@ -353,7 +374,24 @@ public sealed class AnimeMetadataService(
                 ["Local anime was not found."]);
         }
 
-        var provider = GetProvider(AniListMetadataProvider.ProviderKey);
+        // Issue #568: automatic identity matching now searches whichever provider fills the
+        // DisplayMetadata role for this anime instead of always AniList. With nothing configured
+        // (BuiltIn source) that role resolves to AniList, reproducing today's behaviour exactly.
+        var displayRole = await Roles().ResolveRoleForWorkAsync(
+            animeId,
+            MappingProviderRole.DisplayMetadata,
+            cancellationToken);
+        var provider = TryGetProvider(displayRole.Provider);
+        if (provider is null)
+        {
+            return new AutomaticMediaMatchDecision(
+                AutomaticMediaMatchDisposition.None,
+                null,
+                0,
+                0,
+                [$"The display metadata provider configured for this anime ('{displayRole.Provider}') is not available."]);
+        }
+
         IReadOnlyList<AnimeMetadataCandidate> candidates;
         try
         {
@@ -369,7 +407,7 @@ public sealed class AnimeMetadataService(
                 null,
                 0,
                 0,
-                ["AniList metadata is currently unavailable."]);
+                [$"{provider.Key} metadata is currently unavailable."]);
         }
 
         var decision = AutomaticMediaMatcher.Select(
@@ -523,6 +561,20 @@ public sealed class AnimeMetadataService(
             return new AnimeMetadataMatchResult(
                 false,
                 $"Season {seasonNumber} already has an episode mapping.");
+        }
+
+        // Same EpisodeStructure gate as AutoMapEpisodeRangesAsync: an anime explicitly opted out
+        // of AniList-numbered structure keeps its season.nfo AniList ID from being applied.
+        var structureRole = await Roles().ResolveRoleForWorkAsync(
+            animeId,
+            MappingProviderRole.EpisodeStructure,
+            cancellationToken);
+        if (structureRole.Source != ProviderRoleSource.BuiltIn &&
+            !string.Equals(structureRole.Provider, MappingProviders.AniList, StringComparison.OrdinalIgnoreCase))
+        {
+            return new AnimeMetadataMatchResult(
+                false,
+                $"Episode structure for this anime is configured to use '{structureRole.Provider}', not AniList; the season.nfo AniList ID was not applied.");
         }
 
         var localSeasonNumbers = await db.Episodes
@@ -917,10 +969,16 @@ public sealed class AnimeMetadataService(
     }
 
     private IAnimeMetadataProvider GetProvider(string providerKey) =>
-        providers.FirstOrDefault(
-            provider => provider.Key.Equals(providerKey, StringComparison.OrdinalIgnoreCase))
+        TryGetProvider(providerKey)
         ?? throw new InvalidOperationException(
             $"Metadata provider '{providerKey}' is not registered.");
+
+    // Non-throwing lookup for role-resolved providers: a role can legitimately resolve to a
+    // provider this Jularr instance has no IAnimeMetadataProvider for yet (e.g. Tvdb/Tmdb/Mal),
+    // which must degrade to "not available" rather than throw.
+    private IAnimeMetadataProvider? TryGetProvider(string providerKey) =>
+        providers.FirstOrDefault(
+            provider => provider.Key.Equals(providerKey, StringComparison.OrdinalIgnoreCase));
 
     private static void Apply(
         AnimeMetadata metadata,

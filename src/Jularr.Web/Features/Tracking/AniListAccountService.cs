@@ -6,6 +6,7 @@ using System.Text.Json.Nodes;
 using Jularr.Web.Data;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Calendar;
+using Jularr.Web.Features.Mapping;
 using Jularr.Web.Features.Metadata;
 using Jularr.Web.Features.Manga;
 using Jularr.Web.Features.MediaMapping;
@@ -1566,10 +1567,19 @@ public sealed partial class AniListAccountService(
                     episode.AnimeTitle));
         }
 
+        // Issue #568: AniList progress sync only runs while this anime's resolved
+        // ProgressTracking role is AniList (the built-in default, reproducing today's behaviour).
+        // An anime whose ProgressTracking role was explicitly assigned to something else is
+        // treated the same as having no AniList episode mapping, so it is never synced here.
+        var progressRole = await new ProviderRoleAssignmentStore(db).ResolveRoleForWorkAsync(
+            episode.AnimeId,
+            MappingProviderRole.ProgressTracking,
+            cancellationToken);
+
         if (resolved is null ||
             !string.Equals(
                 resolved.Provider,
-                AniListMetadataProvider.ProviderKey,
+                progressRole.Provider,
                 StringComparison.OrdinalIgnoreCase) ||
             !int.TryParse(resolved.ExternalId, out var mediaId) ||
             mediaId <= 0)

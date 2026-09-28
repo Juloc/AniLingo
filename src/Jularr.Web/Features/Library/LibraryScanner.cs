@@ -540,14 +540,24 @@ public sealed class LibraryScanner(
         var localArtworkUnchanged = 0;
         var artworkProcessed = 0;
         var artworkAnimeIds = artworkDirectories.Keys.ToArray();
-        var providerArtwork = new Dictionary<Guid, AnimeProviderArtwork>();
+        var providerArtwork = new Dictionary<Guid, AnimeProviderArtwork?>();
         foreach (var metadata in await db.AnimeMetadata
                      .AsNoTracking()
                      .Where(x => artworkAnimeIds.Contains(x.AnimeId))
-                     .Select(x => new { x.AnimeId, x.CoverImageUrl, x.BannerImageUrl })
+                     .Select(x => new { x.AnimeId, x.Provider, x.CoverImageUrl, x.BannerImageUrl })
                      .ToListAsync(cancellationToken))
         {
-            providerArtwork.TryAdd(metadata.AnimeId, new AnimeProviderArtwork(metadata.CoverImageUrl, metadata.BannerImageUrl));
+            // Issue #568: the provider artwork picked up here is only used when it matches the
+            // anime's resolved Artwork role; see AnimeArtworkSourceResolver.
+            providerArtwork.TryAdd(
+                metadata.AnimeId,
+                await AnimeArtworkSourceResolver.ResolveForAnimeAsync(
+                    db,
+                    metadata.AnimeId,
+                    metadata.Provider,
+                    metadata.CoverImageUrl,
+                    metadata.BannerImageUrl,
+                    cancellationToken));
         }
 
         foreach (var (animeId, animeDirectory) in artworkDirectories)
