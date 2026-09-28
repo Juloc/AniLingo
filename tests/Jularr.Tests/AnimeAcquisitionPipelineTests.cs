@@ -219,6 +219,18 @@ public sealed class AnimeAcquisitionPipelineTests
         Assert.AreEqual(Path.GetFullPath(expected), mediaFile.Path);
         StringAssert.Contains(record.Message, "Library reconciled");
 
+        var downloadImportLog = await environment.Operations.ListLogsAsync(
+            new OperationLogFilter(OperationId: completed.Id, Module: "Import"));
+        CollectionAssert.AreEqual(
+            new[]
+            {
+                "Verifying completed anime files.",
+                "Importing the completed anime download.",
+                "Matching imported Anime metadata.",
+                record.Message
+            },
+            downloadImportLog.Reverse().Select(entry => entry.Message).ToArray());
+
         var acquisition = (await environment.Acquisitions.LoadAsync()).Acquisitions.Single();
         Assert.AreEqual(AcquisitionOwnershipStatus.Completed, (await environment.Ownership.LoadAsync()).Jobs[acquisition.Id.ToString()].Status);
         var importLog = (await environment.LogsAsync(AnimeImportExecutor.LogModule)).Select(entry => entry.Message).ToArray();
