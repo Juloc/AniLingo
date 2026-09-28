@@ -28,14 +28,14 @@ public sealed class IndexModel(AppDbContext db, CurrentAccountContext account) :
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
         if (section is not null)
         {
-            // Admin is owner-only; for everyone else the drill-in does not exist.
-            Section = UiShellNavigation.BuildSection(section, account.IsOwner);
+            // Admin needs admin.media; for everyone else the drill-in does not exist.
+            Section = UiShellNavigation.BuildSection(section, account.Can);
             return Section is null ? NotFound() : Page();
         }
 
         var learningVisible = await new LearningConfigurationStore(db)
             .HasAnyLearningEnabledAsync(account.ProfileId, cancellationToken);
-        (Links, Elsewhere) = UiShellNavigation.BuildProfile(learningVisible, account.IsOwner);
+        (Links, Elsewhere) = UiShellNavigation.BuildProfile(learningVisible, account.Can);
 
         // The shell account footer (theme, sign out, version) is shown here on phones and
         // reads the same view data the layout sets for the sidebar.

@@ -9,8 +9,8 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 
 namespace Jularr.Web.Pages.Admin;
 
-/// <summary>Owner page: every live playback session on the server, with a Stop action (#518).</summary>
-[Authorize(Roles = AccountRoles.Owner)]
+/// <summary>Admin page: every live playback session on the server, with a Stop action (#518).</summary>
+[Authorize(Policy = JularrPolicies.SessionsStopOthers)]
 public sealed class SessionsModel(
     AppDbContext db,
     AdminSessionsService sessionsService,

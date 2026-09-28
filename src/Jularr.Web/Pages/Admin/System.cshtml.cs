@@ -72,7 +72,7 @@ public sealed record AdminLibraryRootRow(
         Availability.Health is not StorageHealthState.Online and not StorageHealthState.Starting;
 }
 
-[Authorize(Roles = AccountRoles.Owner)]
+[Authorize(Policy = JularrPolicies.AdminSystem)]
 public sealed class SystemModel(
     AppDbContext db,
     LibraryScanCoordinator scans,

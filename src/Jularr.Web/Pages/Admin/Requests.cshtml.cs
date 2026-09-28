@@ -10,7 +10,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Jularr.Web.Pages.Admin;
 
 /// <summary>Owner page: who may add what (per media type) and the request queue from all users.</summary>
-[Authorize(Roles = AccountRoles.Owner)]
+[Authorize(Policy = JularrPolicies.AdminMedia)]
 public sealed class RequestsModel(
     AppDbContext db,
     AcquisitionAccessStore store,
@@ -35,6 +35,11 @@ public sealed class RequestsModel(
 
     public async Task<IActionResult> OnPostPoliciesAsync(CancellationToken cancellationToken)
     {
+        if (!JularrPolicies.Allows(User, JularrPolicies.AcquisitionSettings))
+        {
+            return Forbid();
+        }
+
         foreach (var kind in Enum.GetValues<MediaAcquisitionKind>())
         {
             var name = AcquisitionAccessNames.Kind(kind);

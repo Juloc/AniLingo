@@ -15,6 +15,10 @@ public sealed class CurrentAccountContext(
     public bool IsOwner =>
         accessor.HttpContext?.User.IsInRole(AccountRoles.Owner) == true;
 
+    /// <summary>Whether the signed-in account passes a <see cref="JularrPolicies"/> policy.</summary>
+    public bool Can(string policy) =>
+        JularrPolicies.Allows(accessor.HttpContext?.User, policy);
+
     /// <summary>
     /// Account context for background work on behalf of one profile. It is
     /// instance-bound, so concurrent jobs for different profiles never mix.

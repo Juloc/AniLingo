@@ -12,7 +12,7 @@ namespace Jularr.Web.Pages.Settings;
 
 // The one place where the owner edits naming profiles, previews them against Sonarr's sample
 // and chooses the default and per-library profile. Per-anime selection lives on /Library/Rename.
-[Authorize(Roles = AccountRoles.Owner)]
+[Authorize(Policy = JularrPolicies.AcquisitionSettings)]
 public sealed class NamingModel(
     AnimeNamingProfileStore store,
     AppDbContext db) : PageModel

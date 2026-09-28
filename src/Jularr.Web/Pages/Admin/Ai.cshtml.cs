@@ -14,7 +14,7 @@ namespace Jularr.Web.Pages.Admin;
 /// Owner AI control center: the shared Codex connection, detected capabilities, discovered models,
 /// provider quota, live activity and usage across all profiles.
 /// </summary>
-[Authorize(Roles = AccountRoles.Owner)]
+[Authorize(Policy = JularrPolicies.AdminSystem)]
 public sealed class AiModel(
     AppDbContext db,
     CodexCliProvider codex,

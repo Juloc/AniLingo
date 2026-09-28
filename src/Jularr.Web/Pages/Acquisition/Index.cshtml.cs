@@ -19,7 +19,7 @@ namespace Jularr.Web.Pages.Acquisition;
 /// downloads, imports that need a decision and recent decisions with their reasons. Interactive
 /// search results are shown on the same page so a grab stays one step away.
 /// </summary>
-[Authorize(Roles = AccountRoles.Owner)]
+[Authorize(Policy = JularrPolicies.AdminMedia)]
 public sealed class IndexModel(
     AnimeAcquisitionPipeline pipeline,
     AnimeAcquisitionScheduler scheduler,
