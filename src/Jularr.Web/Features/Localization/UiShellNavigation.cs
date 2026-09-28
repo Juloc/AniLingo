@@ -100,7 +100,8 @@ public static class UiNavigationCatalog
             new("settings-overview", "settings.nav.overview", "/Settings", "settings", Exact: true),
             new("settings-account", "settings.nav.account", "/Profile/Account", "profile"),
             new("settings-appearance", "settings.nav.appearance", "/Settings/Appearance", "palette", ["/Settings/Appearance", "/Appearance"]),
-            new("settings-language", "settings.nav.language", "/Settings/Language", "globe", ["/Settings/Language", "/LocalizationPreferences"])
+            new("settings-language", "settings.nav.language", "/Settings/Language", "globe", ["/Settings/Language", "/LocalizationPreferences"]),
+            new("settings-notifications", "settings.nav.notifications", "/Profile/Notifications", "bell")
         ]),
         new("nav.group.settingsLearning",
         [

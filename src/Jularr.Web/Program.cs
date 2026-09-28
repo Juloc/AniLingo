@@ -20,6 +20,7 @@ using Jularr.Web.Features.Books;
 using Jularr.Web.Features.ChapterArtwork;
 using Jularr.Web.Features.ClientApi;
 using Jularr.Web.Features.Devices;
+using Jularr.Web.Features.Events;
 using Jularr.Web.Features.Health;
 using Jularr.Web.Features.Learning;
 using Jularr.Web.Features.Learning.LanguageAssistance;
@@ -28,6 +29,7 @@ using Jularr.Web.Features.Media.Optimization;
 using Jularr.Web.Features.MediaMapping;
 using Jularr.Web.Features.MediaSegments;
 using Jularr.Web.Features.Metadata;
+using Jularr.Web.Features.Notifications;
 using Jularr.Web.Features.Novels;
 using Jularr.Web.Features.OfflineLibrary;
 using Jularr.Web.Features.Operations;
@@ -81,6 +83,16 @@ builder.Services.AddDbContext<AppDbContext>(options => options.UseSqlite(connect
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<OperationProfileContext>();
 builder.Services.AddScoped<CurrentAccountContext>();
+// Unified event & notification boundary (#429): features publish through IJularrEventPublisher;
+// NotificationDispatcher fans a published event out to every subscribed profile's sinks. In-app
+// is the only sink today — a webhook/Home Assistant, Web Push or e-mail sink is a follow-up that
+// only needs to register another INotificationSink.
+builder.Services.AddScoped<EventLogStore>();
+builder.Services.AddScoped<NotificationSubscriptionStore>();
+builder.Services.AddScoped<NotificationStore>();
+builder.Services.AddScoped<INotificationSink, InAppNotificationSink>();
+builder.Services.AddScoped<NotificationDispatcher>();
+builder.Services.AddScoped<IJularrEventPublisher, JularrEventPublisher>();
 builder.Services.AddScoped<OwnerAuthService>();
 builder.Services.AddScoped<AdminUserProgressService>();
 builder.Services.AddScoped<AdminOverviewService>();
