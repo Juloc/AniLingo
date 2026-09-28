@@ -36,6 +36,9 @@ public sealed class SubtitleImportService
 {
     public const string JimakuSourcePrefix = "jimaku:";
 
+    /// <summary>Source-key prefix for tracks imported via <see cref="ImportManualSearchResultAsync"/> (#526).</summary>
+    public const string ProviderSourcePrefix = "provider:";
+
     // The canonical default when nothing else configures a content language, and the
     // only language Jimaku (a Japanese fansub site) or the local Whisper fallback
     // (a Japanese-only model invocation) ever serve.
@@ -148,6 +151,96 @@ public sealed class SubtitleImportService
             cues,
             targetLanguage,
             cancellationToken);
+    }
+
+    /// <summary>
+    /// Imports a subtitle chosen from a manual provider search (#526) as its own
+    /// (language, forced, SDH) track, independent of the single "current learning source" track
+    /// <see cref="ImportPreferredContentAsync"/> manages. Replaces any earlier track already
+    /// imported for that exact (episode, language, forced, SDH) combination.
+    /// </summary>
+    public async Task<Guid> ImportManualSearchResultAsync(
+        Guid episodeId,
+        string providerId,
+        string resultToken,
+        string languageTag,
+        bool forced,
+        bool sdh,
+        string format,
+        DateTime sourceUpdatedAt,
+        string content,
+        CancellationToken cancellationToken)
+    {
+        var normalizedLanguage = languageTag.Trim().ToLowerInvariant();
+        var normalizedFormat = format.Trim().TrimStart('.').ToLowerInvariant();
+        var cues = SubtitleParser.ParseFormat(normalizedFormat, content);
+        if (cues.Count == 0)
+        {
+            throw new InvalidDataException("The selected subtitle contained no usable cues.");
+        }
+
+        var sourceKey = BuildProviderSourceKey(providerId, resultToken);
+        var track = await db.SubtitleTracks.SingleOrDefaultAsync(
+            x => x.EpisodeId == episodeId &&
+                 x.Language == normalizedLanguage &&
+                 x.Forced == forced &&
+                 x.Sdh == sdh,
+            cancellationToken);
+
+        if (track is null)
+        {
+            track = new SubtitleTrack
+            {
+                EpisodeId = episodeId,
+                Path = sourceKey,
+                Language = normalizedLanguage,
+                Forced = forced,
+                Sdh = sdh,
+                Format = normalizedFormat,
+                SourceUpdatedAt = sourceUpdatedAt
+            };
+            db.SubtitleTracks.Add(track);
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        else
+        {
+            track.Path = sourceKey;
+            track.Format = normalizedFormat;
+            track.SourceUpdatedAt = sourceUpdatedAt;
+            track.ImportedAt = DateTime.UtcNow;
+
+            await db.SubtitleCues
+                .Where(x => x.SubtitleTrackId == track.Id)
+                .ExecuteDeleteAsync(cancellationToken);
+        }
+
+        db.SubtitleCues.AddRange(cues.Select(cue => new SubtitleCue
+        {
+            SubtitleTrackId = track.Id,
+            StartMs = cue.StartMs,
+            EndMs = cue.EndMs,
+            Text = cue.Text
+        }));
+        await db.SaveChangesAsync(cancellationToken);
+
+        // A normal (non-forced, non-SDH) track in the resolved learning language is also the
+        // learning-text source: rebuild vocabulary the same way the automatic pipeline would.
+        var targetLanguage = await contentLanguageResolver.ResolveTargetLanguageAsync(cancellationToken);
+        if (!forced && !sdh && normalizedLanguage.Equals(targetLanguage, StringComparison.OrdinalIgnoreCase))
+        {
+            await RemoveOtherTracksAsync(episodeId, track.Id, targetLanguage, cancellationToken);
+            await vocabularyService.RebuildEpisodeAsync(episodeId, cancellationToken);
+            MarkPreparationReady(episodeId, LearningTextSourceKind.LocalSubtitle, "Using a manually searched subtitle.");
+        }
+
+        return track.Id;
+    }
+
+    private static string BuildProviderSourceKey(string providerId, string resultToken)
+    {
+        var fingerprint = $"{providerId}\n{resultToken}";
+        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(fingerprint))).ToLowerInvariant();
+        return $"{ProviderSourcePrefix}{providerId}:{hash}";
     }
 
     private async Task ImportCuesAsync(
@@ -300,6 +393,8 @@ public sealed class SubtitleImportService
             .Where(x =>
                 x.EpisodeId == episodeId &&
                 x.Language == targetLanguage &&
+                !x.Forced &&
+                !x.Sdh &&
                 !x.Path.StartsWith(EmbeddedSubtitleExtractor.SourcePrefix) &&
                 !x.Path.StartsWith(EmbeddedSubtitleExtractor.TranscriptionSourcePrefix) &&
                 !x.Path.StartsWith(JimakuSourcePrefix))
@@ -1331,6 +1426,9 @@ public sealed class SubtitleImportService
             .ToListAsync(cancellationToken);
     }
 
+    // Only prunes other *normal* (non-forced, non-SDH) tracks in the same language: forced/SDH
+    // tracks imported through ImportManualSearchResultAsync (#526) are a separate wanted item, not
+    // a stale copy of the single "current learning source" this pipeline otherwise manages.
     private Task<int> RemoveOtherTracksAsync(
         Guid episodeId,
         Guid preferredTrackId,
@@ -1340,6 +1438,8 @@ public sealed class SubtitleImportService
             .Where(x =>
                 x.EpisodeId == episodeId &&
                 x.Language == targetLanguage &&
+                !x.Forced &&
+                !x.Sdh &&
                 x.Id != preferredTrackId)
             .ExecuteDeleteAsync(cancellationToken);
 

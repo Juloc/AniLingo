@@ -7,6 +7,17 @@ public sealed class SubtitleTrack
     public string Path { get; set; } = "";
     public string Language { get; set; } = "ja";
     public string Format { get; set; } = "";
+
+    /// <summary>
+    /// True for a forced (signs/foreign-dialogue-only) track. Distinguishes it from the full
+    /// dialogue track for the same <see cref="Language"/> so both can be imported and tracked
+    /// against a language profile's forced/SDH preference (#526) without one overwriting the other.
+    /// </summary>
+    public bool Forced { get; set; }
+
+    /// <summary>True for a subtitle-for-the-deaf-or-hard-of-hearing (SDH/closed-caption) track.</summary>
+    public bool Sdh { get; set; }
+
     public DateTime SourceUpdatedAt { get; set; }
     public DateTime ImportedAt { get; set; } = DateTime.UtcNow;
 }

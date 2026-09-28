@@ -206,11 +206,11 @@ each row's Where.
 | Sidecar subtitle import (per-episode, per-folder) | Exists | `MediaSegmentSidecarImporter`-adjacent `SubtitleImportService`, sidecar formats | — |
 | Embedded subtitle extraction | Exists | `EmbeddedSubtitleExtractor` | — |
 | Generated transcription subtitle | Exists | Whisper-based transcription (`LearningTextPreparation.cs`) | — |
-| Forced/SDH detection | Partial — forced-track detection exists for extraction ordering; no owner-facing forced/SDH preference setting | `EmbeddedSubtitleExtractor.cs` (`IsForced`) | #526 |
-| Missing-subtitle tracking | Partial — covered only implicitly (no file → nothing to import); no dedicated "missing subtitles" list like Bazarr's | `/Admin/Subtitles` | #526 |
-| External subtitle provider search/download | Partial — Jimaku integration exists but is scoped to the Japanese learning subtitle, not general multi-language subtitle acquisition | `SubtitleImportService.cs`, `Pages/Admin/Subtitles.cshtml.cs` | #526 |
-| Subtitle language profiles | Missing — no per-anime/per-library subtitle-language profile equivalent to Bazarr's | — | #526 |
-| Subtitle sync/validation | Missing — no timing-sync or validation tool | — | #526 |
+| Forced/SDH detection | Exists — owner-facing forced/SDH preference per wanted language, on top of the existing extraction-ordering detection | `SubtitleLanguageProfileItem` (`Forced`/`Sdh`), `EmbeddedSubtitleExtractor.cs` (`IsForced`), `Settings/Subtitles.cshtml(.cs)` | — |
+| Missing-subtitle tracking | Exists — per-episode complete/cutoff-met/missing-N state against the resolved language profile, from embedded + external tracks | `SubtitleCompletenessService.cs`, `/Admin/Subtitles` completeness panel | — |
+| Subtitle language profiles | Exists — owner-managed ordered wanted-language profiles with forced/SDH preference and a cutoff, assignable per media type and per library root (fallback media-type → global default) | `SubtitleLanguageProfile(Item)`, `SubtitleLanguageProfileService.cs`, `Settings/Subtitles.cshtml(.cs)` | — |
+| External subtitle provider search/download | Partial — Jimaku still covers only the Japanese learning subtitle; a general `ISubtitleProvider` search/download abstraction and an owner-only manual-search UI now exist, but ship with zero registered providers (no credential-free provider could be added without an account/API key) | `SubtitleProviders.cs`, `SubtitleManualSearchService.cs`, `Pages/Admin/Subtitles.cshtml.cs` (manual search panel) | #560 |
+| Subtitle sync/validation | Missing — no timing-sync or validation tool; not part of #526's scope | — | — |
 | Replace/remove subtitle | Exists | Rename/repair "Refresh subtitles" path re-imports; per-track removal via subtitle sources | — |
 | Per-media subtitle diagnostics | Exists | Episode subtitle sources partial (`_EpisodeSubtitleSources.cshtml`) | — |
 
