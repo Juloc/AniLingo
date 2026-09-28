@@ -1662,6 +1662,11 @@ public static class UiTranslationResources
         M("admin.users.disabled", "User disabled.", "Admin", "Status", "Confirmation after disabling a user account from the Users list.", "concise confirmation", 22, null, null),
         M("admin.users.initialPassword", "Initial password", "Admin", "Label", "Form label for the initial password of a newly created user.", "short form label", 24, null, null),
         M("admin.users.manage", "Manage", "Admin", "Link", "Link from a row in the Users list to that account's management page.", "concise navigation action", 14, null, null),
+        M("admin.users.role.mediaManager", "Media manager", "Admin", "Value", "Name of the Media manager role: runs library, acquisition, mapping, requests and sessions, but not users or system settings.", "role name", 18, null, null),
+        M("admin.users.role.owner", "Owner", "Admin", "Value", "Name of the Owner role, the one account with full access.", "role name", 14, null, null),
+        M("admin.users.role.user", "User", "Admin", "Value", "Name of the User role: watches, reads and requests media, no admin access.", "role name", 14, null, null),
+        M("admin.users.roleSaved", "Role updated.", "Admin", "Status", "Confirmation after the owner changes an account's role.", "concise confirmation", 28, null, null),
+        M("admin.users.saveRole", "Save role", "Admin", "Button", "Submit the role picker on a user account's page.", "concise admin action", 16, null, null),
         M("admin.users.subtitle", "Manage local accounts and review their Jularr progress.", "Admin", "Body", "Subtitle under the Users page heading.", "concise admin copy", 78, null, ["Jularr"]),
 
         M("books.bible.addEntity", "Add entity", "Books", "Label", "Books UI text (bible) shown as: \"Add entity\".", "short field label", 16, null, null),

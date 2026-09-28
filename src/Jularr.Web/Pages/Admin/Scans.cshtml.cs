@@ -48,7 +48,7 @@ public sealed record AdminLibraryScanRow(
     }
 }
 
-[Authorize(Roles = AccountRoles.Owner)]
+[Authorize(Policy = JularrPolicies.AdminMedia)]
 public sealed class ScansModel(
     AppDbContext db,
     LibraryScanCoordinator scans,

@@ -17,7 +17,7 @@ namespace Jularr.Tests;
 public sealed class AdminSessionsTests
 {
     [TestMethod]
-    public void SessionsPageIsOwnerOnly()
+    public void SessionsPageUsesTheStopOthersPolicy()
     {
         var authorize = typeof(Jularr.Web.Pages.Admin.SessionsModel)
             .GetCustomAttributes(typeof(AuthorizeAttribute), inherit: true)
@@ -25,7 +25,10 @@ public sealed class AdminSessionsTests
             .SingleOrDefault();
 
         Assert.IsNotNull(authorize, "Admin/Sessions must require authorization.");
-        Assert.AreEqual(AccountRoles.Owner, authorize.Roles, "Admin/Sessions must be Owner-only.");
+        Assert.AreEqual(
+            JularrPolicies.SessionsStopOthers,
+            authorize.Policy,
+            "Admin/Sessions must enforce the policy for stopping another user's session.");
     }
 
     [TestMethod]

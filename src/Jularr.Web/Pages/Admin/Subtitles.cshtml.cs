@@ -10,7 +10,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 
 namespace Jularr.Web.Pages.Admin;
 
-[Authorize(Roles = AccountRoles.Owner)]
+[Authorize(Policy = JularrPolicies.AdminMedia)]
 public sealed class SubtitlesModel(
     AppDbContext db,
     SubtitleImportService subtitleImportService) : PageModel
@@ -35,7 +35,7 @@ public sealed class SubtitlesModel(
 
     public async Task<IActionResult> OnGetAsync(CancellationToken cancellationToken)
     {
-        if (!User.IsInRole(AccountRoles.Owner))
+        if (!JularrPolicies.Allows(User, JularrPolicies.AdminMedia))
         {
             return Forbid();
         }
@@ -49,7 +49,7 @@ public sealed class SubtitlesModel(
     public async Task<IActionResult> OnPostSaveJimakuAsync(
         CancellationToken cancellationToken)
     {
-        if (!User.IsInRole(AccountRoles.Owner))
+        if (!JularrPolicies.Allows(User, JularrPolicies.AdminMedia))
         {
             return Forbid();
         }
@@ -65,7 +65,7 @@ public sealed class SubtitlesModel(
     public async Task<IActionResult> OnPostDisconnectJimakuAsync(
         CancellationToken cancellationToken)
     {
-        if (!User.IsInRole(AccountRoles.Owner))
+        if (!JularrPolicies.Allows(User, JularrPolicies.AdminMedia))
         {
             return Forbid();
         }
@@ -80,7 +80,7 @@ public sealed class SubtitlesModel(
     public async Task<IActionResult> OnPostPrepareAllAsync(
         CancellationToken cancellationToken)
     {
-        if (!User.IsInRole(AccountRoles.Owner))
+        if (!JularrPolicies.Allows(User, JularrPolicies.AdminMedia))
         {
             return Forbid();
         }
@@ -100,7 +100,7 @@ public sealed class SubtitlesModel(
         Guid episodeId,
         CancellationToken cancellationToken)
     {
-        if (!User.IsInRole(AccountRoles.Owner))
+        if (!JularrPolicies.Allows(User, JularrPolicies.AdminMedia))
         {
             return Forbid();
         }

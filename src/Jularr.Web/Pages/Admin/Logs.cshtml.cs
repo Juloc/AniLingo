@@ -8,7 +8,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 
 namespace Jularr.Web.Pages.Admin;
 
-[Authorize(Roles = AccountRoles.Owner)]
+[Authorize(Policy = JularrPolicies.AdminMedia)]
 public sealed class LogsModel(AppDbContext db) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;

@@ -88,11 +88,11 @@
                 {
                     <label>
                         <span>@ui["settings.acquisition.libraryFolderLabel"]</span>
-                        <input type="text" name="libraryRoot" value="@folders.LibraryRoot" placeholder="/data/media/@slug" />
+                        <input type="text" name="libraryRoot" value="@folders.LibraryRoot" placeholder="/data/media/@slug" disabled="@(!Model.CanManageStorage)" />
                     </label>
                     <label>
                         <span>@ui["settings.acquisition.importModeLabel"]</span>
-                        <select name="importMode">
+                        <select name="importMode" disabled="@(!Model.CanManageStorage)">
                             <option value="">@ui["settings.acquisition.usesDefault"]</option>
                             @foreach (var mode in Enum.GetValues<ImportMode>())
                             {
@@ -107,10 +107,13 @@
                 }
                 <label>
                     <span>@ui["settings.acquisition.inboxFolderLabel"]</span>
-                    <input type="text" name="inboxRoot" value="@folders.InboxRoot" placeholder="/data/downloads/complete/@slug" />
+                    <input type="text" name="inboxRoot" value="@folders.InboxRoot" placeholder="/data/downloads/complete/@slug" disabled="@(!Model.CanManageStorage)" />
                 </label>
                 <div class="inline-actions">
-                    <button class="button" type="submit">@ui["common.save"]</button>
+                    @if (Model.CanManageStorage)
+                    {
+                        <button class="button" type="submit">@ui["common.save"]</button>
+                    }
                     @if (!string.IsNullOrWhiteSpace(folders.InboxRoot))
                     {
                         <button class="button" type="submit" asp-page-handler="ScanInbox">@ui["settings.acquisition.scanInbox"]</button>
@@ -299,53 +302,56 @@
         </form>
     </section>
 
-    <section class="panel">
-        <div class="panel-heading"><h2>@ui["settings.acquisition.backupHeading"]</h2></div>
-        <p class="muted">
-            @ui["settings.acquisition.backupDescription"]
-        </p>
-        <form method="post" asp-page-handler="ExportBackup">
-            <button class="button" type="submit">@ui["settings.acquisition.exportBackup"]</button>
-        </form>
+    @if (Model.CanManageStorage)
+    {
+        <section class="panel">
+            <div class="panel-heading"><h2>@ui["settings.acquisition.backupHeading"]</h2></div>
+            <p class="muted">
+                @ui["settings.acquisition.backupDescription"]
+            </p>
+            <form method="post" asp-page-handler="ExportBackup">
+                <button class="button" type="submit">@ui["settings.acquisition.exportBackup"]</button>
+            </form>
 
-        <form method="post" asp-page-handler="PreviewRestore" enctype="multipart/form-data" class="acquisition-inline-form">
-            <label><span>@ui["settings.acquisition.backupFileLabel"]</span><input type="file" name="backupFile" accept="application/json" required /></label>
-            <button class="button" type="submit">@ui["settings.acquisition.previewRestore"]</button>
-        </form>
+            <form method="post" asp-page-handler="PreviewRestore" enctype="multipart/form-data" class="acquisition-inline-form">
+                <label><span>@ui["settings.acquisition.backupFileLabel"]</span><input type="file" name="backupFile" accept="application/json" required /></label>
+                <button class="button" type="submit">@ui["settings.acquisition.previewRestore"]</button>
+            </form>
 
-        @if (Model.RestorePreview is { } preview)
-        {
-            <table>
-                <thead><tr><th>@ui["settings.acquisition.fileColumn"]</th><th>@ui["settings.acquisition.existsNowColumn"]</th><th>@ui["settings.acquisition.secretColumn"]</th><th>@ui["settings.acquisition.validJsonColumn"]</th><th>@ui["settings.acquisition.wouldChangeColumn"]</th></tr></thead>
-                <tbody>
-                    @foreach (var file in preview.Files)
-                    {
-                        <tr>
-                            <td>@file.FileName</td>
-                            <td>@(file.ExistedBefore ? ui["settings.acquisition.yes"] : ui["settings.acquisition.noNew"])</td>
-                            <td>@(file.ContainsEncryptedSecret ? ui["settings.acquisition.yes"] : "")</td>
-                            <td>@(file.IsValidJson ? ui["settings.acquisition.yes"] : ui["settings.acquisition.invalid"])</td>
-                            <td>@(file.WouldChange ? ui["settings.acquisition.yes"] : ui["settings.acquisition.no"])</td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-            @if (preview.Errors.Count > 0)
+            @if (Model.RestorePreview is { } preview)
             {
-                <ul>
-                    @foreach (var error in preview.Errors)
-                    {
-                        <li class="metadata-error">@error</li>
-                    }
-                </ul>
+                <table>
+                    <thead><tr><th>@ui["settings.acquisition.fileColumn"]</th><th>@ui["settings.acquisition.existsNowColumn"]</th><th>@ui["settings.acquisition.secretColumn"]</th><th>@ui["settings.acquisition.validJsonColumn"]</th><th>@ui["settings.acquisition.wouldChangeColumn"]</th></tr></thead>
+                    <tbody>
+                        @foreach (var file in preview.Files)
+                        {
+                            <tr>
+                                <td>@file.FileName</td>
+                                <td>@(file.ExistedBefore ? ui["settings.acquisition.yes"] : ui["settings.acquisition.noNew"])</td>
+                                <td>@(file.ContainsEncryptedSecret ? ui["settings.acquisition.yes"] : "")</td>
+                                <td>@(file.IsValidJson ? ui["settings.acquisition.yes"] : ui["settings.acquisition.invalid"])</td>
+                                <td>@(file.WouldChange ? ui["settings.acquisition.yes"] : ui["settings.acquisition.no"])</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                @if (preview.Errors.Count > 0)
+                {
+                    <ul>
+                        @foreach (var error in preview.Errors)
+                        {
+                            <li class="metadata-error">@error</li>
+                        }
+                    </ul>
+                }
+                @if (preview.CanRestore)
+                {
+                    <form method="post" asp-page-handler="ApplyRestore">
+                        <input type="hidden" name="pendingRestoreJson" value="@Model.PendingRestoreJson" />
+                        <button class="button button-primary" type="submit">@ui["settings.acquisition.applyRestore"]</button>
+                    </form>
+                }
             }
-            @if (preview.CanRestore)
-            {
-                <form method="post" asp-page-handler="ApplyRestore">
-                    <input type="hidden" name="pendingRestoreJson" value="@Model.PendingRestoreJson" />
-                    <button class="button button-primary" type="submit">@ui["settings.acquisition.applyRestore"]</button>
-                </form>
-            }
-        }
-    </section>
+        </section>
+    }
 </div>

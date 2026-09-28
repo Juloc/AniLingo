@@ -12,7 +12,7 @@ public sealed record ReadingSourceRow(
     ReadingSourceDefinition Definition,
     ReadingSourcePreference Preference);
 
-[Authorize(Roles = AccountRoles.Owner)]
+[Authorize(Policy = JularrPolicies.AcquisitionSettings)]
 public sealed class ReadingSourcesModel(
     AppDbContext db) : PageModel
 {

@@ -183,6 +183,34 @@ public sealed class OwnerAuthService(
         await transaction.CommitAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// Makes an account a User or a Media manager. There is exactly one Owner: it can't be
+    /// demoted and no other account can become Owner. The new role applies on the account's
+    /// next request, when cookie validation reads it from the database.
+    /// </summary>
+    public async Task SetRoleAsync(
+        string accountId,
+        AccountRole role,
+        CancellationToken cancellationToken = default)
+    {
+        if (role is not (AccountRole.User or AccountRole.MediaManager))
+        {
+            throw new InvalidOperationException("Only the User and Media manager roles can be assigned.");
+        }
+
+        var account = await db.OwnerAccounts
+            .SingleOrDefaultAsync(x => x.Id == accountId, cancellationToken)
+            ?? throw new InvalidOperationException("Account was not found.");
+
+        if (account.Role == AccountRole.Owner)
+        {
+            throw new InvalidOperationException("The owner account keeps the Owner role.");
+        }
+
+        account.Role = role;
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
     public async Task ResetPasswordAsync(
         string accountId,
         string password,

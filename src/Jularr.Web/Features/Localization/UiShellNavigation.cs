@@ -1,3 +1,5 @@
+using Jularr.Web.Features.Auth;
+
 namespace Jularr.Web.Features.Localization;
 
 /// <summary>
@@ -27,7 +29,8 @@ public sealed record UiNavigationGroup(string TitleKey, IReadOnlyList<UiNavigati
 /// <summary>
 /// One destination in <see cref="UiNavigationCatalog"/>. <see cref="Matches"/> are the path roots
 /// that mark it active (the href's path when empty); <see cref="Exact"/> matches the href only.
-/// <see cref="Sections"/> are the grouped child pages of a section anchor.
+/// <see cref="Sections"/> are the grouped child pages of a section anchor. <see cref="Policy"/> is the
+/// <see cref="JularrPolicies"/> policy an account needs to see the entry; null means every account.
 /// </summary>
 public sealed record UiNavigationEntry(
     string Id,
@@ -36,7 +39,7 @@ public sealed record UiNavigationEntry(
     string Icon,
     string[]? Matches = null,
     bool Exact = false,
-    bool OwnerOnly = false,
+    string? Policy = null,
     bool RequiresLearning = false,
     UiNavigationSection[]? Sections = null);
 
@@ -61,29 +64,29 @@ public static class UiNavigationCatalog
     [
         new("nav.group.adminPeople",
         [
-            new("admin-overview", "admin.nav.overview", "/Admin", "admin", Exact: true),
-            new("admin-users", "admin.nav.users", "/Admin/Users", "users", ["/Admin/Users", "/Admin/User"]),
-            new("admin-requests", "admin.nav.requests", "/Admin/Requests", "requests")
+            new("admin-overview", "admin.nav.overview", "/Admin", "admin", Exact: true, Policy: JularrPolicies.AdminMedia),
+            new("admin-users", "admin.nav.users", "/Admin/Users", "users", ["/Admin/Users", "/Admin/User"], Policy: JularrPolicies.AdminSystem),
+            new("admin-requests", "admin.nav.requests", "/Admin/Requests", "requests", Policy: JularrPolicies.AdminMedia)
         ]),
         new("nav.group.adminMedia",
         [
-            new("admin-usenet", "admin.nav.usenet", "/Admin/Usenet", "download", ["/Admin/Usenet", "/Settings/Indexers", "/Settings/DownloadClients"]),
-            new("admin-anime-acquisition", "admin.nav.animeAcquisition", "/Acquisition", "library", ["/Acquisition"]),
-            new("admin-import", "admin.nav.importSettings", "/Settings/Acquisition", "folder", ["/Settings/Acquisition", "/Settings/Naming"]),
-            new("admin-mapping", "admin.nav.mapping", "/Settings/MappingReview", "link", ["/Settings/MappingReview", "/Settings/MappingSegments"]),
-            new("admin-subtitles", "admin.nav.subtitles", "/Admin/Subtitles", "subtitles", ["/Admin/Subtitles", "/Settings/Subtitles"]),
-            new("admin-sonarr", "admin.nav.sonarr", "/Admin/Sonarr", "sync", ["/Admin/Sonarr", "/Settings/Sonarr", "/Settings/SonarrMigration"])
+            new("admin-usenet", "admin.nav.usenet", "/Admin/Usenet", "download", ["/Admin/Usenet", "/Settings/Indexers", "/Settings/DownloadClients"], Policy: JularrPolicies.AcquisitionSettings),
+            new("admin-anime-acquisition", "admin.nav.animeAcquisition", "/Acquisition", "library", ["/Acquisition"], Policy: JularrPolicies.AdminMedia),
+            new("admin-import", "admin.nav.importSettings", "/Settings/Acquisition", "folder", ["/Settings/Acquisition", "/Settings/Naming"], Policy: JularrPolicies.AcquisitionSettings),
+            new("admin-mapping", "admin.nav.mapping", "/Settings/MappingReview", "link", ["/Settings/MappingReview", "/Settings/MappingSegments"], Policy: JularrPolicies.MappingEdit),
+            new("admin-subtitles", "admin.nav.subtitles", "/Admin/Subtitles", "subtitles", ["/Admin/Subtitles", "/Settings/Subtitles"], Policy: JularrPolicies.AdminMedia),
+            new("admin-sonarr", "admin.nav.sonarr", "/Admin/Sonarr", "sync", ["/Admin/Sonarr", "/Settings/Sonarr", "/Settings/SonarrMigration"], Policy: JularrPolicies.AdminSystem)
         ]),
         new("nav.group.adminSystem",
         [
-            new("admin-operations", "admin.nav.operations", "/Admin/Operations", "activity", ["/Admin/Operations", "/Admin/Operation"]),
-            new("admin-sessions", "admin.nav.sessions", "/Admin/Sessions", "activity"),
-            new("admin-scans", "admin.nav.scans", "/Admin/Scans", "scan"),
-            new("admin-logs", "admin.nav.logs", "/Admin/Logs", "logs"),
-            new("admin-ai", "admin.nav.ai", "/Admin/Ai", "spark"),
-            new("admin-localization", "admin.nav.localization", "/LocalizationAdmin", "globe"),
-            new("admin-api-keys", "admin.nav.apiKeys", "/Settings/ApiKeys", "key"),
-            new("admin-system", "admin.nav.system", "/Admin/System", "server")
+            new("admin-operations", "admin.nav.operations", "/Admin/Operations", "activity", ["/Admin/Operations", "/Admin/Operation"], Policy: JularrPolicies.AdminMedia),
+            new("admin-sessions", "admin.nav.sessions", "/Admin/Sessions", "activity", Policy: JularrPolicies.SessionsStopOthers),
+            new("admin-scans", "admin.nav.scans", "/Admin/Scans", "scan", Policy: JularrPolicies.AdminMedia),
+            new("admin-logs", "admin.nav.logs", "/Admin/Logs", "logs", Policy: JularrPolicies.AdminMedia),
+            new("admin-ai", "admin.nav.ai", "/Admin/Ai", "spark", Policy: JularrPolicies.AdminSystem),
+            new("admin-localization", "admin.nav.localization", "/LocalizationAdmin", "globe", Policy: JularrPolicies.AdminSystem),
+            new("admin-api-keys", "admin.nav.apiKeys", "/Settings/ApiKeys", "key", Policy: JularrPolicies.AdminSystem),
+            new("admin-system", "admin.nav.system", "/Admin/System", "server", Policy: JularrPolicies.AdminSystem)
         ])
     ];
 
@@ -121,7 +124,7 @@ public static class UiNavigationCatalog
 
     public static readonly UiNavigationEntry[] Secondary =
     [
-        new("admin", "nav.admin", "/Admin", "admin", OwnerOnly: true, Sections: Admin),
+        new("admin", "nav.admin", "/Admin", "admin", Policy: JularrPolicies.AdminMedia, Sections: Admin),
         new("settings", "nav.settings", "/Settings", "settings", Sections: Settings),
         new("profile", "nav.profile", "/Profile", "profile")
     ];
@@ -187,22 +190,23 @@ public sealed record UiShellNavigation(
     public static UiShellNavigation Build(
         PathString path,
         bool learningVisible,
-        bool isOwner)
+        Func<string, bool> can)
     {
         // Admin pages that live under /Settings belong to Admin, not to Settings.
-        var inAdmin = isOwner && IsUnder(path, UiNavigationCatalog.Roots(UiNavigationCatalog.Admin));
+        var admin = UiNavigationCatalog.Secondary.Single(entry => entry.Id == "admin");
+        var inAdmin = Visible(admin, learningVisible, can) && IsUnder(path, UiNavigationCatalog.Roots(UiNavigationCatalog.Admin));
         var inSettings = !inAdmin && IsUnder(path, UiNavigationCatalog.Roots(UiNavigationCatalog.Settings));
 
         var primary = UiNavigationCatalog.App
-            .Where(entry => Visible(entry, learningVisible, isOwner))
+            .Where(entry => Visible(entry, learningVisible, can))
             .Select(entry => ToItem(entry, IsActive(entry, path)))
             .ToArray();
         var secondary = UiNavigationCatalog.Secondary
-            .Where(entry => Visible(entry, learningVisible, isOwner))
+            .Where(entry => Visible(entry, learningVisible, can))
             .Select(entry => entry.Id switch
             {
-                "admin" => inAdmin ? Expand(entry, path, isOwner) : ToItem(entry, false),
-                "settings" => inSettings ? Expand(entry, path, isOwner) : ToItem(entry, false),
+                "admin" => inAdmin ? Expand(entry, path, can) : ToItem(entry, false),
+                "settings" => inSettings ? Expand(entry, path, can) : ToItem(entry, false),
                 _ => ToItem(entry, !inAdmin && !inSettings && IsActive(entry, path))
             })
             .ToArray();
@@ -227,13 +231,13 @@ public sealed record UiShellNavigation(
     /// </summary>
     public static (IReadOnlyList<UiNavigationItem> Links, IReadOnlyList<UiNavigationItem> Elsewhere) BuildProfile(
         bool learningVisible,
-        bool isOwner)
+        Func<string, bool> can)
     {
         var entries = UiNavigationCatalog.All.ToDictionary(entry => entry.Id, StringComparer.Ordinal);
         var links = UiNavigationCatalog.ProfileLinkIds
             .Where(id => id != UiNavigationCatalog.ProfileDevices.Id || UiNavigationCatalog.DevicesPageAvailable)
             .Select(id => entries[id])
-            .Where(entry => Visible(entry, learningVisible, isOwner))
+            .Where(entry => Visible(entry, learningVisible, can))
             .Select(entry => ToItem(entry, false) with
             {
                 Href = entry.Sections is null ? entry.Href : DrillInHref(entry.Id)
@@ -241,7 +245,7 @@ public sealed record UiShellNavigation(
             .ToArray();
 
         var elsewhere = UiNavigationCatalog.App.Concat(UiNavigationCatalog.Secondary)
-            .Where(entry => Visible(entry, learningVisible, isOwner))
+            .Where(entry => Visible(entry, learningVisible, can))
             .Where(entry => !UiNavigationCatalog.MobilePrimaryIds.Contains(entry.Id)
                 && !UiNavigationCatalog.ProfileLinkIds.Contains(entry.Id))
             .Select(entry => ToItem(entry, false))
@@ -251,14 +255,14 @@ public sealed record UiShellNavigation(
     }
 
     /// <summary>The drill-in list of Admin or Settings, or null when the section is not available.</summary>
-    public static UiNavigationItem? BuildSection(string? sectionId, bool isOwner)
+    public static UiNavigationItem? BuildSection(string? sectionId, Func<string, bool> can)
     {
         var entry = UiNavigationCatalog.Secondary.FirstOrDefault(candidate =>
             candidate.Sections is not null
             && string.Equals(candidate.Id, sectionId, StringComparison.OrdinalIgnoreCase));
-        return entry is null || !Visible(entry, learningVisible: true, isOwner)
+        return entry is null || !Visible(entry, learningVisible: true, can)
             ? null
-            : Expand(entry, PathString.Empty, isOwner);
+            : Expand(entry, PathString.Empty, can);
     }
 
     public static string DrillInHref(string sectionId) => $"/Profile/{sectionId}";
@@ -267,14 +271,14 @@ public sealed record UiShellNavigation(
     public static IReadOnlyList<UiNavigationItem> BuildLibraryTabs(PathString path) =>
         UiNavigationCatalog.LibraryTabs.Select(entry => ToItem(entry, IsActive(entry, path))).ToArray();
 
-    private static bool Visible(UiNavigationEntry entry, bool learningVisible, bool isOwner) =>
-        (!entry.OwnerOnly || isOwner) && (!entry.RequiresLearning || learningVisible);
+    private static bool Visible(UiNavigationEntry entry, bool learningVisible, Func<string, bool> can) =>
+        (entry.Policy is null || can(entry.Policy)) && (!entry.RequiresLearning || learningVisible);
 
-    private static UiNavigationItem Expand(UiNavigationEntry anchor, PathString path, bool isOwner)
+    private static UiNavigationItem Expand(UiNavigationEntry anchor, PathString path, Func<string, bool> can)
     {
         var entries = anchor.Sections!
             .SelectMany(section => section.Entries)
-            .Where(entry => Visible(entry, learningVisible: true, isOwner))
+            .Where(entry => Visible(entry, learningVisible: true, can))
             .ToArray();
 
         // The most specific match wins, so "/Admin" (overview) is not active on "/Admin/Users".

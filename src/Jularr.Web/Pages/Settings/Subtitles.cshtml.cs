@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 
 namespace Jularr.Web.Pages.Settings;
 
-[Authorize(Roles = AccountRoles.Owner)]
+[Authorize(Policy = JularrPolicies.AdminMedia)]
 public sealed class SubtitlesModel : PageModel
 {
     public IActionResult OnGet() => RedirectToPage("/Admin/Subtitles");
