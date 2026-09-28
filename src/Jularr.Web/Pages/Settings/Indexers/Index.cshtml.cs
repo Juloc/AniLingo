@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 namespace Jularr.Web.Pages.Settings.Indexers;
 
 /// <summary>Indexers are managed on the Usenet hub; this address stays for old links.</summary>
-[Authorize(Roles = AccountRoles.Owner)]
+[Authorize(Policy = JularrPolicies.AcquisitionSettings)]
 public sealed class IndexModel : PageModel
 {
     public IActionResult OnGet() => RedirectToPage("/Admin/Usenet");

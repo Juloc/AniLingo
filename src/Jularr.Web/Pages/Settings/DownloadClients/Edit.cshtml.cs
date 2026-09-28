@@ -10,7 +10,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 namespace Jularr.Web.Pages.Settings.DownloadClients;
 
 /// <summary>Add or edit one canonical SABnzbd download client entry.</summary>
-[Authorize(Roles = AccountRoles.Owner)]
+[Authorize(Policy = JularrPolicies.AcquisitionSettings)]
 public sealed class EditModel(AppDbContext db, DownloadClientStore store) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;

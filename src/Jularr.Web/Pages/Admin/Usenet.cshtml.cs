@@ -63,7 +63,7 @@ public sealed record UsenetDownloadRow(
 /// automatic adding would pick, and the recent SABnzbd queue and history with whether Jularr can
 /// read each result.
 /// </summary>
-[Authorize(Roles = AccountRoles.Owner)]
+[Authorize(Policy = JularrPolicies.AcquisitionSettings)]
 public sealed class UsenetModel(
     AppDbContext db,
     IndexerStore indexerStore,

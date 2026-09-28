@@ -2,11 +2,13 @@ using Jularr.Web.Data;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Localization;
 using Jularr.Web.Features.MediaMapping;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
 namespace Jularr.Web.Pages.Settings;
 
+[Authorize(Policy = JularrPolicies.MappingEdit)]
 public sealed class MappingReviewModel(
     MediaMappingReviewStore reviewStore,
     CurrentAccountContext account,
@@ -20,7 +22,7 @@ public sealed class MappingReviewModel(
     {
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
 
-        if (!account.IsOwner)
+        if (!account.Can(JularrPolicies.MappingEdit))
         {
             return Forbid();
         }
@@ -35,7 +37,7 @@ public sealed class MappingReviewModel(
     {
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
 
-        if (!account.IsOwner)
+        if (!account.Can(JularrPolicies.MappingEdit))
         {
             return Forbid();
         }

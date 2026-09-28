@@ -9,7 +9,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 
 namespace Jularr.Web.Pages.LocalizationAdmin;
 
-[Authorize(Roles = AccountRoles.Owner)]
+[Authorize(Policy = JularrPolicies.AdminSystem)]
 public sealed class IndexModel(
     AppDbContext db,
     CodexCliProvider translationGenerator,

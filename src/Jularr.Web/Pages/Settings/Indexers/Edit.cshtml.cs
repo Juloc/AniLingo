@@ -9,7 +9,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 namespace Jularr.Web.Pages.Settings.Indexers;
 
 /// <summary>Add or edit one canonical indexer entry.</summary>
-[Authorize(Roles = AccountRoles.Owner)]
+[Authorize(Policy = JularrPolicies.AcquisitionSettings)]
 public sealed class EditModel(AppDbContext db, IndexerStore store) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;

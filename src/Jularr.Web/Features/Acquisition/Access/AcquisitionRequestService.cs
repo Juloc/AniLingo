@@ -16,7 +16,7 @@ public sealed class AcquisitionRequestService(
     public async Task<AcquisitionCapabilities> GetCapabilitiesAsync(
         MediaAcquisitionKind kind,
         CancellationToken cancellationToken) =>
-        AcquisitionCapabilities.Resolve(await store.GetPolicyAsync(kind, cancellationToken), account.IsOwner);
+        AcquisitionCapabilities.Resolve(await store.GetPolicyAsync(kind, cancellationToken), account.Can(JularrPolicies.AdminMedia));
 
     /// <summary>Adds (or requests) a title. Returns the open request for it, new or existing.</summary>
     public async Task<AcquisitionRequest> SubmitAsync(
@@ -50,7 +50,7 @@ public sealed class AcquisitionRequestService(
 
     public async Task<AcquisitionRequest> ApproveAsync(Guid id, CancellationToken cancellationToken)
     {
-        RequireOwner();
+        RequireRequestManager();
         var request = await RequireAsync(id, cancellationToken);
         // Approved requests that wait for a release can be searched again right away.
         if (request.Status is not (AcquisitionRequestStatus.Pending or AcquisitionRequestStatus.Failed or AcquisitionRequestStatus.Approved))
@@ -82,7 +82,7 @@ public sealed class AcquisitionRequestService(
 
     public async Task RejectAsync(Guid id, string? note, CancellationToken cancellationToken)
     {
-        RequireOwner();
+        RequireRequestManager();
         var request = await RequireAsync(id, cancellationToken);
         if (request.Status != AcquisitionRequestStatus.Pending)
         {
@@ -102,7 +102,7 @@ public sealed class AcquisitionRequestService(
     /// <summary>For media types without automatic acquisition: the owner added it by hand.</summary>
     public async Task MarkCompletedAsync(Guid id, CancellationToken cancellationToken)
     {
-        RequireOwner();
+        RequireRequestManager();
         var request = await RequireAsync(id, cancellationToken);
         if (!request.IsOpen)
         {
@@ -121,9 +121,9 @@ public sealed class AcquisitionRequestService(
             return;
         }
 
-        if (!account.IsOwner && request.RequestedByProfileId != account.ProfileId)
+        if (!account.Can(JularrPolicies.AdminMedia) && request.RequestedByProfileId != account.ProfileId)
         {
-            throw new AcquisitionAccessDeniedException("Only the requester or the owner can withdraw a request.");
+            throw new AcquisitionAccessDeniedException("Only the requester, the owner or a media manager can withdraw a request.");
         }
 
         await store.UpdateStatusAsync(id, AcquisitionRequestStatus.Rejected, "Withdrawn.", null, null, account.ProfileId, cancellationToken);
@@ -173,11 +173,11 @@ public sealed class AcquisitionRequestService(
         await store.GetAsync(id, cancellationToken)
         ?? throw new InvalidOperationException("The request no longer exists.");
 
-    private void RequireOwner()
+    private void RequireRequestManager()
     {
-        if (!account.IsOwner)
+        if (!account.Can(JularrPolicies.AdminMedia))
         {
-            throw new AcquisitionAccessDeniedException("Only the owner can decide requests.");
+            throw new AcquisitionAccessDeniedException("Only the owner or a media manager can decide requests.");
         }
     }
 }

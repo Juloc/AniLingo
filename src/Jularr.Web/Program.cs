@@ -162,7 +162,9 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
                 return;
             }
 
-            context.Response.Redirect(context.RedirectUri);
+            // A signed-in account without the page's policy gets 403. Redirecting to the login
+            // page would send it straight back here, because login forwards signed-in accounts.
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
         };
     })
     .AddScheme<AuthenticationSchemeOptions, AcquisitionApiKeyAuthenticationHandler>(
@@ -173,6 +175,7 @@ builder.Services.AddAuthorization(options =>
     options.FallbackPolicy = new AuthorizationPolicyBuilder()
         .RequireAuthenticatedUser()
         .Build();
+    JularrPolicies.Register(options);
 });
 builder.Services.AddRateLimiter(options =>
 {
