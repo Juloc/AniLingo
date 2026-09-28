@@ -1,10 +1,38 @@
 package de.juloc.jularr.core.api
 
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.concurrent.atomic.AtomicReference
 
 class HttpJularrClientApiTest {
+    @Test
+    fun requestWorkIsDispatchedAwayFromTheCallerThread() {
+        val callerThread = Thread.currentThread()
+        val requestThread = AtomicReference<Thread>()
+        val client = HttpJularrClientApi(
+            origin = "http://localhost",
+            requestHeaders = {
+                requestThread.set(Thread.currentThread())
+                throw RequestProbeComplete()
+            },
+        )
+
+        var probeCompleted = false
+        try {
+            runBlocking {
+                client.logout()
+            }
+        } catch (_: RequestProbeComplete) {
+            probeCompleted = true
+        }
+
+        assertTrue(probeCompleted)
+        assertNotSame(callerThread, requestThread.get())
+    }
+
     @Test
     fun featureParserIncludesNativeSessionAuth() {
         val enabled = setOf(
@@ -73,4 +101,7 @@ class HttpJularrClientApiTest {
         val parsed = ClientFeatureFlagParser.parse { name -> name in enabled }
         assertTrue(parsed.watchlist)
     }
+
+    private class RequestProbeComplete : RuntimeException()
 }
+

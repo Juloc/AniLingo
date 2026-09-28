@@ -43,6 +43,8 @@ import de.juloc.jularr.core.model.TermStateResult
 import de.juloc.jularr.core.model.TtsPreferences
 import de.juloc.jularr.core.model.TtsPreferencesUpdate
 import de.juloc.jularr.core.model.WatchlistItem
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
@@ -240,11 +242,11 @@ class HttpJularrClientApi(
     override suspend fun getSpeechModels(): SpeechModelsResponse =
         requestJson("GET", ClientApiRoutes.SpeechModels).toSpeechModelsResponse()
 
-    private fun requestJson(
+    private suspend fun requestJson(
         method: String,
         route: String,
         body: JSONObject? = null,
-    ): JSONObject {
+    ): JSONObject = withContext(Dispatchers.IO) {
         val url = resolveSameOrigin(route)
         val connection = (url.openConnection() as HttpURLConnection).apply {
             requestMethod = method
@@ -304,10 +306,10 @@ class HttpJularrClientApi(
             }
 
             if (payload.isBlank()) {
-                return JSONObject()
+                JSONObject()
+            } else {
+                JSONObject(payload)
             }
-
-            return JSONObject(payload)
         } finally {
             connection.disconnect()
         }
