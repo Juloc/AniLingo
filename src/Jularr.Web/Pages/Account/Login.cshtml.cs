@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using Jularr.Web.Data;
 using Jularr.Web.Features.Auth;
+using Jularr.Web.Features.Devices;
 using Jularr.Web.Features.Localization;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -13,7 +14,7 @@ namespace Jularr.Web.Pages.Account;
 
 [AllowAnonymous]
 [EnableRateLimiting("login")]
-public sealed class LoginModel(OwnerAuthService ownerAuth) : PageModel
+public sealed class LoginModel(OwnerAuthService ownerAuth, SecurityEventLog securityEvents) : PageModel
 {
     [BindProperty]
     [Required]
@@ -78,6 +79,11 @@ public sealed class LoginModel(OwnerAuthService ownerAuth) : PageModel
         var owner = await ownerAuth.ValidateCredentialsAsync(UserName, Password, cancellationToken);
         if (owner is null)
         {
+            securityEvents.Record(
+                SecurityEventKind.LoginFailed,
+                accountId: null,
+                UserName,
+                HttpContext.Connection.RemoteIpAddress?.ToString());
             ModelState.AddModelError(string.Empty, Ui["account.login.invalid"]);
             return Page();
         }
@@ -97,6 +103,12 @@ public sealed class LoginModel(OwnerAuthService ownerAuth) : PageModel
             CookieAuthenticationDefaults.AuthenticationScheme,
             OwnerAuthService.CreatePrincipal(owner),
             properties);
+
+        securityEvents.Record(
+            SecurityEventKind.LoginSucceeded,
+            owner.Id,
+            owner.UserName,
+            HttpContext.Connection.RemoteIpAddress?.ToString());
 
         return LocalRedirect(ReturnUrl);
     }

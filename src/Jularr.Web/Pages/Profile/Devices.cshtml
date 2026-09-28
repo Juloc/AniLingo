@@ -16,6 +16,7 @@
     </div>
 </header>
 
+<h2>@ui["profile.devices.section.live"]</h2>
 @if (Model.Sessions.Count == 0)
 {
     <p class="muted">@ui["profile.devices.empty"]</p>
@@ -54,6 +55,46 @@
                         <td data-label="@ui["admin.sessions.column.actions"]">
                             <form method="post" asp-page-handler="Stop" asp-route-id="@session.SessionId">
                                 <button class="button" type="submit">@ui["profile.devices.stop"]</button>
+                            </form>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+<h2>@ui["profile.devices.section.known"]</h2>
+@if (Model.KnownDevices.Count == 0)
+{
+    <p class="muted">@ui["profile.devices.knownEmpty"]</p>
+}
+@if (Model.KnownDevices.Count > 0)
+{
+    <div class="sessions-table-wrap">
+        <table class="sessions-table">
+            <thead>
+                <tr>
+                    <th>@ui["admin.devices.column.label"]</th>
+                    <th>@ui["admin.devices.column.client"]</th>
+                    <th>@ui["admin.devices.column.status"]</th>
+                    <th>@ui["admin.devices.column.lastSeen"]</th>
+                    <th>@ui["admin.devices.column.actions"]</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var device in Model.KnownDevices)
+                {
+                    <tr>
+                        <td data-label="@ui["admin.devices.column.label"]">@(device.Label ?? "—")</td>
+                        <td data-label="@ui["admin.devices.column.client"]">@device.ClientKind</td>
+                        <td data-label="@ui["admin.devices.column.status"]">
+                            <span class="status-pill @device.StatusPillClass">@ui[device.StatusLabelKey]</span>
+                        </td>
+                        <td data-label="@ui["admin.devices.column.lastSeen"]">@device.LastSeenUtc.ToLocalTime().ToString("g")</td>
+                        <td data-label="@ui["admin.devices.column.actions"]">
+                            <form method="post" asp-page-handler="Revoke" asp-route-id="@device.Id">
+                                <button class="button" type="submit">@ui["profile.devices.revoke"]</button>
                             </form>
                         </td>
                     </tr>

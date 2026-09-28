@@ -19,6 +19,7 @@ using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Books;
 using Jularr.Web.Features.ChapterArtwork;
 using Jularr.Web.Features.ClientApi;
+using Jularr.Web.Features.Devices;
 using Jularr.Web.Features.Health;
 using Jularr.Web.Features.Learning;
 using Jularr.Web.Features.Learning.LanguageAssistance;
@@ -84,6 +85,8 @@ builder.Services.AddScoped<OwnerAuthService>();
 builder.Services.AddScoped<AdminUserProgressService>();
 builder.Services.AddScoped<AdminOverviewService>();
 builder.Services.AddScoped<AdminSessionsService>();
+builder.Services.AddScoped<KnownDeviceRegistry>();
+builder.Services.AddSingleton<SecurityEventLog>();
 builder.Services.AddScoped<SystemHealthService>();
 builder.Services.AddHttpClient(GitHubReleaseCheckService.HttpClientName, client =>
 {
