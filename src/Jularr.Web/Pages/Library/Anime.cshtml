@@ -406,7 +406,7 @@
     </div>
 </section>
 
-<partial name="_FranchiseLinks" model="new Jularr.Web.Features.Franchises.FranchiseLinksViewModel(ui, Model.Franchises)" />
+<partial name="_FranchiseLinks" model="new Jularr.Web.Features.Franchises.FranchiseLinksViewModel(ui, Model.Franchises, Model.FranchiseGroups)" />
 
 @await Component.InvokeAsync("UpcomingReleases", new { mediaType = Jularr.Web.Features.Calendar.ReleaseMediaType.Anime, mediaId = Model.AnimeId, ui })
 

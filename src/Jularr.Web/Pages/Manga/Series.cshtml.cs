@@ -20,7 +20,8 @@ public sealed class SeriesModel(
     OperationRunner operations,
     MediaMappingReviewStore mappingReviewStore,
     AniListAccountService aniListAccount,
-    FranchiseStore franchises) : PageModel
+    FranchiseStore franchises,
+    FranchiseService franchiseService) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public MangaSeriesDetail Series { get; private set; } = null!;
@@ -31,6 +32,7 @@ public sealed class SeriesModel(
     public string? SearchError { get; private set; }
     public bool IsOwner => account.IsOwner;
     public IReadOnlyList<FranchiseSummary> Franchises { get; private set; } = [];
+    public IReadOnlyList<FranchiseRelationGroup> FranchiseGroups { get; private set; } = [];
 
     public async Task<IActionResult> OnGetAsync(
         Guid id,
@@ -50,12 +52,12 @@ public sealed class SeriesModel(
         var franchiseSource = await repository.GetAutoMatchSourceAsync(id, cancellationToken);
         if (!string.IsNullOrWhiteSpace(franchiseSource?.MetadataExternalId))
         {
-            Franchises = await franchises.FindForMemberAsync(
-                new WatchlistIdentity(
-                    WatchlistMediaType.Manga,
-                    "anilist",
-                    franchiseSource.MetadataExternalId),
-                cancellationToken);
+            var identity = new WatchlistIdentity(
+                WatchlistMediaType.Manga,
+                "anilist",
+                franchiseSource.MetadataExternalId);
+            Franchises = await franchises.FindForMemberAsync(identity, cancellationToken);
+            FranchiseGroups = await franchiseService.GetRelationGroupsAsync(identity, cancellationToken);
         }
 
         Progress = await repository.GetProgressAsync(

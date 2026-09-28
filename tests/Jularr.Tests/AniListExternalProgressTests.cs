@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
 using Jularr.Web.Data;
+using Jularr.Web.Features.Calendar;
 using Jularr.Web.Features.Franchises;
 using Jularr.Web.Features.Library;
 using Jularr.Web.Features.Manga;
@@ -11,6 +12,7 @@ using Jularr.Web.Features.Novels;
 using Jularr.Web.Features.Operations;
 using Jularr.Web.Features.Progress;
 using Jularr.Web.Features.Tracking;
+using Jularr.Web.Features.Watchlist;
 using Jularr.Web.Pages.Library;
 using Jularr.Web.Pages.Manga;
 using Microsoft.AspNetCore.DataProtection;
@@ -595,7 +597,8 @@ public sealed class AniListExternalProgressTests
                 new OperationRunner(Db, new ServiceCollection().BuildServiceProvider()),
                 ReviewStore,
                 Service(profileId, remote),
-                new FranchiseStore(Db));
+                new FranchiseStore(Db),
+                CreateFranchiseService());
             Attach(page);
             return page;
         }
@@ -611,10 +614,22 @@ public sealed class AniListExternalProgressTests
                 new EpisodeProgressService(Db, account),
                 Service(profileId, remote),
                 new FranchiseStore(Db),
+                CreateFranchiseService(),
                 NullLogger<AnimeModel>.Instance);
             Attach(page);
             return page;
         }
+
+        // These pages only read existing franchise membership (#425); nothing here exercises the
+        // AniList-backed refresh, so the source and limiter are unused placeholders.
+        private FranchiseService CreateFranchiseService() =>
+            new(
+                new FranchiseStore(Db),
+                new MediaRelationStore(Db),
+                new NoopFranchiseRelationSource(),
+                new AniListRequestLimiter(new AniListRateLimitGate(), TimeProvider.System),
+                new FranchiseRefreshSignal(),
+                NullLogger<FranchiseService>.Instance);
 
         public Task ConnectAsync(string profileId, int viewerId, string token) =>
             accountStore.SaveAsync(
@@ -833,6 +848,12 @@ public sealed class AniListExternalProgressTests
     private sealed class SingleClientFactory(HttpMessageHandler handler) : IHttpClientFactory
     {
         public HttpClient CreateClient(string name) => new(handler, disposeHandler: false);
+    }
+
+    private sealed class NoopFranchiseRelationSource : IFranchiseRelationSource
+    {
+        public Task<AniListRelatedMedia> GetRelatedAsync(WatchlistIdentity work, CancellationToken cancellationToken) =>
+            Task.FromResult(new AniListRelatedMedia(null, []));
     }
 
     private sealed class NoTempDataProvider : ITempDataProvider
