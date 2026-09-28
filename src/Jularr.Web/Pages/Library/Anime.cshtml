@@ -40,6 +40,7 @@
 
 @section Head {
     <link rel="stylesheet" href="~/css/franchise-links.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/library-presentation.css" asp-append-version="true" />
 }
 @section Scripts {
     <script src="~/js/context-back-link.js" asp-append-version="true"></script>
@@ -378,6 +379,7 @@
                         Func<dynamic?, IHtmlContent> filesGroup = @<div class="inline-actions">
                             <a class="button" href="/Library/Rename/@Model.AnimeId">@ui["library.anime.renameFiles"]</a>
                             <a class="button" href="/Library/AnimeRepair/@Model.AnimeId">@ui["library.anime.repair"]</a>
+                            <a class="button" href="/Library/PresentationGroups/@Model.AnimeId">@ui["library.presentation.manageLink"]</a>
                         </div>;
 
                         Func<dynamic?, IHtmlContent> acquisitionGroup = @<div>
@@ -423,40 +425,42 @@
     <partial name="_ExternalProgress" model="externalPanel" />
 }
 
-<div class="episode-list">
-    @foreach (var episode in Model.Episodes)
-    {
-        var episodeCode = $"S{episode.SeasonNumber:00}E{episode.Number:00}";
-        <div class="episode-row-shell @(episode.IsWatched ? "is-watched" : "")">
-        <a class="episode-row" href="/Library/Episode/@episode.Id">
-            <div class="episode-number">E@(episode.Number.ToString("00"))</div>
+@{
+    // One episode row, reused by the plain list and by the grouped layout so both render
+    // identically. The row shows only internal identity (S..E.., title); presentation grouping
+    // never changes the episode code or its link target.
+    Func<Jularr.Web.Pages.Library.AnimeModel.EpisodeRow, IHtmlContent> renderEpisode = @<text>
+        @{ var episodeCode = $"S{item.SeasonNumber:00}E{item.Number:00}"; }
+        <div class="episode-row-shell @(item.IsWatched ? "is-watched" : "")">
+        <a class="episode-row" href="/Library/Episode/@item.Id">
+            <div class="episode-number">E@(item.Number.ToString("00"))</div>
             <div class="episode-main">
-                <strong>S@(episode.SeasonNumber.ToString("00")) · @episode.Title</strong>
-                @if (episode.IsWatched)
+                <strong>S@(item.SeasonNumber.ToString("00")) · @item.Title</strong>
+                @if (item.IsWatched)
                 {
                     <span class="episode-watch-state">✓ @ui["library.episode.watched"]</span>
                 }
-                else if (episode.ResumePercent is int resumePercent)
+                else if (item.ResumePercent is int resumePercent)
                 {
                     <span class="episode-watch-state">@ui.Format("library.anime.inProgressWatched", ("percent", resumePercent))</span>
                 }
                 <span>
-                    @if (episode.JapaneseSubtitleTracks == 0)
+                    @if (item.JapaneseSubtitleTracks == 0)
                     {
                         <text>@ui["library.anime.noJapaneseSubtitle"]</text>
                     }
                     else if (Model.ShowContentMetrics)
                     {
-                        <text>@ui.Format("library.anime.vocabularyCandidates", ("count", episode.TotalTerms), ("percent", episode.PreparationPercent))</text>
+                        <text>@ui.Format("library.anime.vocabularyCandidates", ("count", item.TotalTerms), ("percent", item.PreparationPercent))</text>
                     }
                     else
                     {
-                        <text>@ui.Format("library.anime.subtitleTrackCount", ("count", episode.JapaneseSubtitleTracks))</text>
+                        <text>@ui.Format("library.anime.subtitleTrackCount", ("count", item.JapaneseSubtitleTracks))</text>
                     }
                 </span>
                 @if (Model.ShowContentMetrics)
                 {
-                    <div class="progress-track"><span style="width:@episode.PreparationPercent%"></span></div>
+                    <div class="progress-track"><span style="width:@item.PreparationPercent%"></span></div>
                 }
             </div>
             <span class="episode-arrow">›</span>
@@ -465,14 +469,42 @@
               class="episode-watched-form"
               asp-page-handler="Watched"
               asp-route-id="@Model.AnimeId">
-            <input type="hidden" name="episodeId" value="@episode.Id" />
-            <input type="hidden" name="watched" value="@(episode.IsWatched ? "false" : "true")" />
+            <input type="hidden" name="episodeId" value="@item.Id" />
+            <input type="hidden" name="watched" value="@(item.IsWatched ? "false" : "true")" />
             <button class="button"
                     type="submit"
-                    aria-label="@(episode.IsWatched ? ui.Format("library.anime.markUnwatchedAria", ("code", episodeCode)) : ui.Format("library.anime.markWatchedAria", ("code", episodeCode)))">
-                @(episode.IsWatched ? ui["library.episode.markUnwatched"] : ui["library.episode.markWatched"])
+                    aria-label="@(item.IsWatched ? ui.Format("library.anime.markUnwatchedAria", ("code", episodeCode)) : ui.Format("library.anime.markWatchedAria", ("code", episodeCode)))">
+                @(item.IsWatched ? ui["library.episode.markUnwatched"] : ui["library.episode.markWatched"])
             </button>
         </form>
         </div>
+    </text>;
+}
+
+@if (Model.PresentationSections.Count > 0)
+{
+    @foreach (var groupSection in Model.PresentationSections)
+    {
+        <details class="presentation-group" open>
+            <summary class="presentation-group-summary">
+                <span class="presentation-group-name">@groupSection.Name</span>
+                <span class="presentation-group-count">@ui.Format("library.presentation.episodeCount", ("count", groupSection.Items.Count))</span>
+            </summary>
+            <div class="episode-list">
+                @foreach (var episode in groupSection.Items)
+                {
+                    @renderEpisode(episode)
+                }
+            </div>
+        </details>
     }
-</div>
+}
+else
+{
+    <div class="episode-list">
+        @foreach (var episode in Model.Episodes)
+        {
+            @renderEpisode(episode)
+        }
+    </div>
+}
