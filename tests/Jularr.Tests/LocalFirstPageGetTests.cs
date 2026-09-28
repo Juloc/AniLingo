@@ -3,6 +3,7 @@ using Jularr.Web.Data;
 using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Books;
+using Jularr.Web.Features.Calendar;
 using Jularr.Web.Features.Franchises;
 using Jularr.Web.Features.Library;
 using Jularr.Web.Features.Manga;
@@ -372,7 +373,19 @@ public sealed class LocalFirstPageGetTests
                 Operations,
                 ReviewStore,
                 AniListAccount(),
-                new FranchiseStore(Db));
+                new FranchiseStore(Db),
+                CreateFranchiseService());
+
+        // This page only reads existing franchise membership (#425); nothing here exercises the
+        // AniList-backed refresh, so the source and limiter are unused placeholders.
+        private FranchiseService CreateFranchiseService() =>
+            new(
+                new FranchiseStore(Db),
+                new MediaRelationStore(Db),
+                new NoopFranchiseRelationSource(),
+                new AniListRequestLimiter(new AniListRateLimitGate(), TimeProvider.System),
+                new FranchiseRefreshSignal(),
+                NullLogger<FranchiseService>.Instance);
 
         public DiscoverIndexModel DiscoverPage()
         {
@@ -573,6 +586,12 @@ public sealed class LocalFirstPageGetTests
             CancellationToken cancellationToken) =>
             throw new InvalidOperationException(
                 "Translation must not run during a local-first page GET.");
+    }
+
+    private sealed class NoopFranchiseRelationSource : IFranchiseRelationSource
+    {
+        public Task<AniListRelatedMedia> GetRelatedAsync(WatchlistIdentity work, CancellationToken cancellationToken) =>
+            Task.FromResult(new AniListRelatedMedia(null, []));
     }
 
     private sealed class NoTempDataProvider : ITempDataProvider

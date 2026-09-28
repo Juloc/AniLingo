@@ -21,6 +21,7 @@ using Jularr.Web.Features.Operations;
 using Jularr.Web.Features.Progress;
 using Jularr.Web.Features.Sonarr;
 using Jularr.Web.Features.Tracking;
+using Jularr.Web.Features.Watchlist;
 using Jularr.Web.Pages.Library;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.DataProtection;
@@ -87,6 +88,15 @@ internal sealed class ManageSheetPageTestHost : IAsyncDisposable
                         services.AddScoped<OperationRunner>();
                         services.AddScoped<EpisodeProgressService>();
                         services.AddScoped<FranchiseStore>();
+                        services.AddScoped<MediaRelationStore>();
+                        // AnimeModel's GET only reads existing franchise membership (#425); it
+                        // never triggers a refresh, so the relation source and rate limiter below
+                        // are unused placeholders, same reasoning as the AniList HttpClient below.
+                        services.AddScoped<IFranchiseRelationSource, NoopFranchiseRelationSource>();
+                        services.AddSingleton<AniListRateLimitGate>();
+                        services.AddScoped<AniListRequestLimiter>();
+                        services.AddSingleton<FranchiseRefreshSignal>();
+                        services.AddScoped<FranchiseService>();
                         // The "Upcoming releases" view component every consumer detail page
                         // includes; no IReleaseEventSource is registered, so it just renders empty.
                         services.AddScoped<ReleaseCalendarService>();
@@ -291,5 +301,11 @@ internal sealed class ManageSheetPageTestHost : IAsyncDisposable
             CancellationToken cancellationToken) =>
             throw new InvalidOperationException(
                 $"Unexpected outbound request to {request.RequestUri} during a manage-sheet render test.");
+    }
+
+    private sealed class NoopFranchiseRelationSource : IFranchiseRelationSource
+    {
+        public Task<AniListRelatedMedia> GetRelatedAsync(WatchlistIdentity work, CancellationToken cancellationToken) =>
+            Task.FromResult(new AniListRelatedMedia(null, []));
     }
 }

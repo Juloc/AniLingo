@@ -33,6 +33,7 @@ public sealed class WorkModel(
     CurrentAccountContext account,
     OperationRunner operations,
     FranchiseStore franchises,
+    FranchiseService franchiseService,
     ILogger<WorkModel> logger) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
@@ -45,6 +46,7 @@ public sealed class WorkModel(
     public bool IsSearching { get; private set; }
     public bool IsOwner => account.IsOwner;
     public IReadOnlyList<FranchiseSummary> Franchises { get; private set; } = [];
+    public IReadOnlyList<FranchiseRelationGroup> FranchiseGroups { get; private set; } = [];
 
     public async Task<IActionResult> OnGetAsync(
         Guid id,
@@ -61,12 +63,12 @@ public sealed class WorkModel(
         if (!string.IsNullOrWhiteSpace(Detail.Work.MetadataProvider) &&
             !string.IsNullOrWhiteSpace(Detail.Work.MetadataExternalId))
         {
-            Franchises = await franchises.FindForMemberAsync(
-                new WatchlistIdentity(
-                    WatchlistMediaType.LightNovel,
-                    Detail.Work.MetadataProvider,
-                    Detail.Work.MetadataExternalId),
-                cancellationToken);
+            var identity = new WatchlistIdentity(
+                WatchlistMediaType.LightNovel,
+                Detail.Work.MetadataProvider,
+                Detail.Work.MetadataExternalId);
+            Franchises = await franchises.FindForMemberAsync(identity, cancellationToken);
+            FranchiseGroups = await franchiseService.GetRelationGroupsAsync(identity, cancellationToken);
         }
 
         Progress = await progress.GetProgressAsync(

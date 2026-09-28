@@ -25,6 +25,7 @@ public sealed class AnimeModel(
     EpisodeProgressService episodeProgressService,
     AniListAccountService aniListAccountService,
     FranchiseStore franchises,
+    FranchiseService franchiseService,
     ILogger<AnimeModel> logger) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
@@ -51,6 +52,7 @@ public sealed class AnimeModel(
     public bool ShowContentMetrics { get; private set; }
     public ExternalProgressSummary? ExternalProgress { get; private set; }
     public IReadOnlyList<FranchiseSummary> Franchises { get; private set; } = [];
+    public IReadOnlyList<FranchiseRelationGroup> FranchiseGroups { get; private set; } = [];
 
     public async Task<IActionResult> OnGetAsync(
         Guid id,
@@ -75,12 +77,12 @@ public sealed class AnimeModel(
             !string.IsNullOrWhiteSpace(franchiseMetadata.Provider) &&
             !string.IsNullOrWhiteSpace(franchiseMetadata.ExternalId))
         {
-            Franchises = await franchises.FindForMemberAsync(
-                new WatchlistIdentity(
-                    WatchlistMediaType.Anime,
-                    franchiseMetadata.Provider,
-                    franchiseMetadata.ExternalId),
-                cancellationToken);
+            var identity = new WatchlistIdentity(
+                WatchlistMediaType.Anime,
+                franchiseMetadata.Provider,
+                franchiseMetadata.ExternalId);
+            Franchises = await franchises.FindForMemberAsync(identity, cancellationToken);
+            FranchiseGroups = await franchiseService.GetRelationGroupsAsync(identity, cancellationToken);
         }
 
         // Local NFO plot/year is a display fallback only: it is never shown once provider

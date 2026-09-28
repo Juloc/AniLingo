@@ -187,6 +187,72 @@ public sealed class FranchiseRelationTests
         Assert.IsFalse(FranchiseService.CanSeed(new WatchlistIdentity(WatchlistMediaType.Anime, "tmdb", "1")));
     }
 
+    [TestMethod]
+    public async Task RelationGroupsBucketDirectEdgesByTypeAndFallBackToSameFranchise()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        // 101 is a direct sequel of the seed, 102 a direct side story, 103 reached only through
+        // AniList's CONTAINS (no specific relation, per FranchiseLabels), and 104 a sequel of 101
+        // with no direct edge to the seed at all: every one of those is still a franchise member.
+        fixture.Source.Add("100", "Series A", ("SEQUEL", "101"), ("SIDE_STORY", "102"), ("CONTAINS", "103"));
+        fixture.Source.Add("101", "Series A 2", ("SEQUEL", "104"));
+        fixture.Source.Add("102", "Side Story");
+        fixture.Source.Add("103", "Collection");
+        fixture.Source.Add("104", "Series A 3");
+
+        var franchiseId = await fixture.Service.FollowFromSeedAsync("profile-a", Anime("100"), CancellationToken.None);
+        for (var run = 0; run < 5 && !(await fixture.Service.RefreshAsync(franchiseId, CancellationToken.None)).Complete; run++)
+        {
+        }
+
+        var groups = await fixture.Service.GetRelationGroupsAsync(Anime("100"), CancellationToken.None);
+        var byKey = groups.ToDictionary(group => group.GroupKey, group => group.Items.Select(item => item.Identity.ExternalKey).ToArray());
+
+        CollectionAssert.AreEquivalent(new[] { "101" }, byKey["franchise.group.sequelPrequel"]);
+        CollectionAssert.AreEquivalent(new[] { "102" }, byKey["franchise.group.sideStory"]);
+        CollectionAssert.AreEquivalent(
+            new[] { "103", "104" },
+            byKey[FranchiseLabels.SameFranchiseGroupKey],
+            "CONTAINS names no specific relation, and 104 has no direct edge to the seed; both still belong to the franchise.");
+        Assert.IsFalse(byKey.ContainsKey("franchise.group.spinOff"), "Empty groups are omitted.");
+    }
+
+    [TestMethod]
+    public async Task RelationGroupsAreEmptyForAWorkThatIsNotAFranchiseMember()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+
+        var groups = await fixture.Service.GetRelationGroupsAsync(Anime("999"), CancellationToken.None);
+
+        Assert.AreEqual(0, groups.Count);
+    }
+
+    [TestMethod]
+    [DataRow("ADAPTATION", "franchise.group.adaptation")]
+    [DataRow("SOURCE", "franchise.group.adaptation")]
+    [DataRow("SEQUEL", "franchise.group.sequelPrequel")]
+    [DataRow("PREQUEL", "franchise.group.sequelPrequel")]
+    [DataRow("SIDE_STORY", "franchise.group.sideStory")]
+    [DataRow("PARENT", "franchise.group.sideStory")]
+    [DataRow("SPIN_OFF", "franchise.group.spinOff")]
+    [DataRow("ALTERNATIVE", "franchise.group.alternative")]
+    [DataRow("SUMMARY", "franchise.group.alternative")]
+    [DataRow("COMPILATION", "franchise.group.alternative")]
+    [DataRow("REMAKE", "franchise.group.alternative")]
+    [DataRow("CONTAINS", "franchise.group.sameFranchise")]
+    [DataRow("CHARACTER", "franchise.group.sameFranchise")]
+    [DataRow(null, "franchise.group.sameFranchise")]
+    public void RelationGroupKeyMapsEveryRelationTypeSomewhere(string? relationType, string expectedGroupKey)
+    {
+        Assert.AreEqual(expectedGroupKey, FranchiseLabels.RelationGroupKey(relationType));
+    }
+
+    [TestMethod]
+    public void RemakeHasAPerCardRelationLabel()
+    {
+        Assert.AreEqual("franchise.relation.remake", FranchiseLabels.RelationKey("REMAKE"));
+    }
+
     private static WatchlistIdentity Anime(string externalId) =>
         new(WatchlistMediaType.Anime, "anilist", externalId);
 
