@@ -52,6 +52,7 @@ class HttpJularrClientApiTest {
 
         assertFalse(parsed.continueWatching)
         assertFalse(parsed.playbackHistory)
+        assertFalse(parsed.watchlist)
     }
 
     @Test
@@ -61,5 +62,15 @@ class HttpJularrClientApiTest {
 
         assertTrue(parsed.continueWatching)
         assertTrue(parsed.playbackHistory)
+    }
+
+    @Test
+    fun watchlistDefaultsToFalseOnAnOlderServerAndParsesWhenAdvertised() {
+        val olderServer = ClientFeatureFlagParser.parse { name -> name == "library" }
+        assertFalse(olderServer.watchlist)
+
+        val enabled = setOf("watchlist")
+        val parsed = ClientFeatureFlagParser.parse { name -> name in enabled }
+        assertTrue(parsed.watchlist)
     }
 }
