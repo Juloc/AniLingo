@@ -1,6 +1,7 @@
 using Jularr.Web.Data;
 using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Acquisition.Import;
+using Jularr.Web.Features.Books;
 using Jularr.Web.Features.Manga;
 using Jularr.Web.Features.MediaMapping;
 using Jularr.Web.Features.Novels;
@@ -252,6 +253,8 @@ public sealed class MangaCompletedDownloadImportAdapter(
 public sealed class LightNovelCompletedDownloadImportAdapter(
     NovelEpubImportService importer,
     NovelMetadataService metadata,
+    AnimeImportSettingsStore importSettings,
+    IHardLinkCreator hardLinks,
     ILogger<LightNovelCompletedDownloadImportAdapter> logger)
     : ICompletedDownloadImportAdapter, IMediaInboxImportAdapter
 {
@@ -265,6 +268,7 @@ public sealed class LightNovelCompletedDownloadImportAdapter(
         CompletedDownloadImportRequest request,
         CancellationToken cancellationToken)
     {
+        CompletedDownloadPlacement? placement = null;
         if (!File.Exists(request.SourcePath) &&
             !Directory.Exists(request.SourcePath))
         {
@@ -274,10 +278,28 @@ public sealed class LightNovelCompletedDownloadImportAdapter(
 
         try
         {
+            var settings = await importSettings.LoadAsync(cancellationToken);
+            var library = settings.LibraryFor(MediaAcquisitionKind.LightNovel);
+            var importSource = request.SourcePath;
+            if (library is not null)
+            {
+                var destination = ReadingLibraryPlacement.ReleaseFolder(
+                    library.LibraryRoot!,
+                    request.Request?.Title ?? Path.GetFileNameWithoutExtension(request.SourcePath));
+                var mode = settings.ModeFor(MediaAcquisitionKind.LightNovel);
+                placement = new CompletedDownloadPlacement(destination, mode);
+                new ReadingLibraryPlacement(new ImportFileTransfer(hardLinks)).PlaceEpubs(
+                    request.SourcePath,
+                    destination,
+                    mode);
+                importSource = destination;
+            }
+
             // Recursive, no folder hints, validated before anything is stored (#485 item 8).
             var import = await importer.ImportDownloadAsync(
-                request.SourcePath,
-                cancellationToken);
+                importSource,
+                cancellationToken,
+                recordSourceStoragePath: library is not null);
             if (import.RejectedBecause is { } rejected)
             {
                 return CompletedDownloadImportResult.RejectRelease(
@@ -345,7 +367,7 @@ public sealed class LightNovelCompletedDownloadImportAdapter(
             return CompletedDownloadImportResult.Completed(
                 $"{NovelEpubImportOutcome.Summarize(outcomes)}{metadataWarning}",
                 $"/Novels/Work/{workIds[0]}",
-                Placement);
+                placement ?? Placement);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -360,7 +382,8 @@ public sealed class LightNovelCompletedDownloadImportAdapter(
                 "Light Novel import is waiting for storage for '{SourcePath}'.",
                 request.SourcePath);
             return CompletedDownloadImportResult.RetryLater(
-                "Light Novel import is waiting for storage.");
+                "Light Novel import is waiting for storage.",
+                placement);
         }
         catch (Exception exception) when (
             exception is InvalidOperationException or
@@ -371,7 +394,8 @@ public sealed class LightNovelCompletedDownloadImportAdapter(
                 "Downloaded Light Novel release '{SourcePath}' was unsuitable.",
                 request.SourcePath);
             return CompletedDownloadImportResult.RejectRelease(
-                "Downloaded release could not be imported as a Light Novel.");
+                "Downloaded release could not be imported as a Light Novel.",
+                placement);
         }
     }
 
@@ -397,6 +421,93 @@ public sealed class LightNovelCompletedDownloadImportAdapter(
                 ? "No Light Novel EPUBs in the inbox."
                 : NovelEpubImportOutcome.Summarize(outcomes),
             works.Length == 1 ? $"/Novels/Work/{works[0]}" : null);
+    }
+}
+
+/// <summary>
+/// Places original EPUBs in a durable per-series NAS folder before the reader derives its
+/// chapter and asset state. The same transfer policy as Manga is used, but only EPUB files are
+/// accepted here; unrelated download artifacts never become library files.
+/// </summary>
+public sealed class ReadingLibraryPlacement(ImportFileTransfer transfer)
+{
+    public static string ReleaseFolder(string libraryRoot, string? title) =>
+        Path.Combine(Path.GetFullPath(libraryRoot), MangaLibraryPlacement.SafeName(title));
+
+    public void PlaceEpubs(string source, string destination, ImportMode mode)
+        => PlaceFiles(
+            source,
+            destination,
+            mode,
+            path => path.EndsWith(".epub", StringComparison.OrdinalIgnoreCase),
+            "EPUB");
+
+    public void PlaceBookFiles(string source, string destination, ImportMode mode)
+        => PlaceFiles(source, destination, mode, BookFileFormats.IsSupported, "Book");
+
+    private void PlaceFiles(
+        string source,
+        string destination,
+        ImportMode mode,
+        Func<string, bool> isSupported,
+        string mediaName)
+    {
+        var root = Path.GetFullPath(source);
+        var files = File.Exists(root)
+            ? [root]
+            : Directory.Exists(root)
+                ? Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories)
+                    .Where(isSupported)
+                    .ToArray()
+                : throw new IOException($"The completed {mediaName} files are not currently available.");
+
+        if (files.Length == 0 || files.Any(file => !isSupported(file)))
+        {
+            throw new InvalidDataException($"The download contains no supported {mediaName} files.");
+        }
+
+        foreach (var file in files)
+        {
+            var relative = File.Exists(root) ? Path.GetFileName(file) : Path.GetRelativePath(root, file);
+            if (relative.StartsWith("..", StringComparison.Ordinal) || Path.IsPathRooted(relative))
+            {
+                throw new InvalidDataException("The EPUB path is outside the completed download.");
+            }
+
+            var target = Path.Combine(destination, relative);
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            if (File.Exists(target))
+            {
+                if (new FileInfo(target).Length == new FileInfo(file).Length)
+                {
+                    if (mode == ImportMode.Move && !MangaLibraryPlacement.SamePath(file, target))
+                    {
+                        File.Delete(file);
+                    }
+
+                    continue;
+                }
+
+                target = UniqueName(target);
+            }
+
+            transfer.Transfer(file, target, mode);
+        }
+    }
+
+    private static string UniqueName(string path)
+    {
+        var directory = Path.GetDirectoryName(path)!;
+        var name = Path.GetFileNameWithoutExtension(path);
+        var extension = Path.GetExtension(path);
+        for (var index = 2; ; index++)
+        {
+            var candidate = Path.Combine(directory, $"{name} ({index}){extension}");
+            if (!File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
     }
 }
 

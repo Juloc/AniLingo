@@ -67,6 +67,7 @@ public sealed partial class BookCatalogService
         BookImportHint? hint,
         bool singleBook,
         CancellationToken cancellationToken,
+        bool preserveSourceFiles = false,
         IReadOnlyCollection<string>? excludedFolders = null)
     {
         var excluded = (excludedFolders ?? [])
@@ -91,7 +92,13 @@ public sealed partial class BookCatalogService
                 var fileName = Path.GetFileName(file);
                 if (BookFileFormats.FromPath(file) == BookFileFormats.Pdf)
                 {
-                    imported.Add(await ImportPdfFileAsync(file, fileName, sourceKind, files.Length == 1 ? hint : null, cancellationToken));
+                    imported.Add(await ImportPdfFileAsync(
+                        file,
+                        fileName,
+                        sourceKind,
+                        files.Length == 1 ? hint : null,
+                        cancellationToken,
+                        preserveSourceFiles));
                     continue;
                 }
 
@@ -107,7 +114,8 @@ public sealed partial class BookCatalogService
                     fileName,
                     sourceKind,
                     sourceKind + "://" + Uri.EscapeDataString(fileName),
-                    cancellationToken));
+                    cancellationToken,
+                    preserveSourceFiles ? Path.GetFullPath(file) : null));
             }
             catch (IOException)
             {
@@ -157,12 +165,27 @@ public sealed partial class BookCatalogService
         string fileName,
         string sourceKind,
         BookImportHint? hint,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool preserveSourceFile = false)
     {
         var length = new FileInfo(path).Length;
         if (length > MaxPdfBytes)
         {
             throw new InvalidOperationException("PDF exceeds the 500 MB import limit.");
+        }
+
+        if (preserveSourceFile)
+        {
+            var sourcePath = Path.GetFullPath(path);
+            var sourceHash = await ValidateAndHashPdfAsync(sourcePath, fileName, cancellationToken);
+            return await SavePdfWorkAsync(
+                sourcePath,
+                fileName,
+                sourceKind,
+                sourceHash,
+                length,
+                hint,
+                cancellationToken);
         }
 
         Directory.CreateDirectory(FilesPath);
@@ -213,6 +236,36 @@ public sealed partial class BookCatalogService
                 File.Delete(temporary);
             }
         }
+    }
+
+    private static async Task<string> ValidateAndHashPdfAsync(
+        string path,
+        string fileName,
+        CancellationToken cancellationToken)
+    {
+        await using var source = new FileStream(
+            path,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.ReadWrite | FileShare.Delete,
+            81920,
+            useAsync: true);
+        var head = new byte[1024];
+        var read = await source.ReadAtLeastAsync(head, head.Length, throwOnEndOfStream: false, cancellationToken);
+        if (!PdfDocumentReader.HasPdfHeader(head.AsSpan(0, read)))
+        {
+            throw new InvalidOperationException($"'{fileName}' is not a PDF file.");
+        }
+
+        source.Position = 0;
+        using var hasher = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        var buffer = new byte[81920];
+        while ((read = await source.ReadAsync(buffer, cancellationToken)) > 0)
+        {
+            hasher.AppendData(buffer, 0, read);
+        }
+
+        return Convert.ToHexString(hasher.GetHashAndReset());
     }
 
     private async Task<Guid> SavePdfWorkAsync(

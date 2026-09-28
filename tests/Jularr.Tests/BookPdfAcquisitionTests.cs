@@ -616,6 +616,7 @@ public sealed class BookPdfAcquisitionTests
                 configuration));
             collection.AddSingleton(provider => new OperationRunner(db, provider));
             collection.AddSingleton(new AnimeImportSettingsStore(data.FullName));
+            collection.AddSingleton<IHardLinkCreator, FileSystemHardLinkCreator>();
             collection.AddSingleton(new AcquisitionAccessStore(db));
             collection.AddSingleton<FakeProwlarrClient>();
             collection.AddSingleton<IProwlarrClient>(provider => provider.GetRequiredService<FakeProwlarrClient>());
