@@ -25,6 +25,22 @@ public sealed record CompletedDownloadPlacement(
     string Destination,
     ImportMode? Mode);
 
+/// <summary>
+/// A durable, user-visible stage reported by a media importer while it processes a completed
+/// download. The shared import service writes it to the download operation and its log.
+/// </summary>
+public enum CompletedDownloadImportPhase
+{
+    Verifying,
+    Importing,
+    MatchingMetadata
+}
+
+public sealed record CompletedDownloadImportProgress(
+    CompletedDownloadImportPhase Phase,
+    string Message,
+    CompletedDownloadPlacement? Placement = null);
+
 public sealed record CompletedDownloadImportResult(
     CompletedDownloadImportDisposition Disposition,
     string Message,
@@ -58,11 +74,19 @@ public sealed record CompletedDownloadImportRequest(
     AcquisitionRequest? Request,
     OperationSnapshot? Operation,
     string SourcePath,
-    MediaAcquisitionKind? MediaKind = null)
+    MediaAcquisitionKind? MediaKind = null,
+    Func<CompletedDownloadImportProgress, Task>? ProgressReporter = null)
 {
     public MediaAcquisitionKind Kind =>
         MediaKind ?? Request?.Kind ??
         throw new InvalidOperationException("A completed-download import needs a request or a media type.");
+
+    public Task ReportProgressAsync(
+        CompletedDownloadImportPhase phase,
+        string message,
+        CompletedDownloadPlacement? placement = null) =>
+        ProgressReporter?.Invoke(new CompletedDownloadImportProgress(phase, message, placement))
+        ?? Task.CompletedTask;
 }
 
 /// <summary>

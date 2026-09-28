@@ -116,6 +116,10 @@ public sealed class BookCompletedDownloadImportAdapter(
             return CompletedDownloadImportResult.RejectRelease(NoBookFileReason);
         }
 
+        await request.ReportProgressAsync(
+            CompletedDownloadImportPhase.MatchingMetadata,
+            "Matching imported book with the requested catalog item.",
+            placement ?? Placement);
         await books.LinkRequestedWorkAsync(match.Id, hint, cancellationToken);
         return CompletedDownloadImportResult.Completed(
             "Downloaded book imported.",
