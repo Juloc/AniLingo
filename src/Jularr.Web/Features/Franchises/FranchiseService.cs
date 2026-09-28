@@ -126,6 +126,86 @@ public sealed class FranchiseService(
         franchises.UnfollowAsync(profileId, franchiseId, cancellationToken);
 
     /// <summary>
+    /// The compact "Related / Franchise" section for one work: other members of its franchise(s),
+    /// grouped by how they relate to it (<see cref="FranchiseLabels.RelationGroupOrder"/>). A
+    /// member with a direct typed edge to <paramref name="work"/> (read from
+    /// <see cref="MediaRelationStore"/>, already populated by the background refresh) is grouped
+    /// by that edge; every other franchise member falls back to "same franchise" so nothing is
+    /// dropped only because its specific relation was never read. Empty when the work is not a
+    /// known franchise member.
+    /// </summary>
+    public async Task<IReadOnlyList<FranchiseRelationGroup>> GetRelationGroupsAsync(
+        WatchlistIdentity work,
+        CancellationToken cancellationToken)
+    {
+        var memberOf = await franchises.FindForMemberAsync(work, cancellationToken);
+        if (memberOf.Count == 0)
+        {
+            return [];
+        }
+
+        var seen = new HashSet<string>(StringComparer.Ordinal) { work.Key };
+        var byGroup = new Dictionary<string, List<WatchlistDraft>>(StringComparer.Ordinal);
+
+        foreach (var franchise in memberOf)
+        {
+            var members = await franchises.GetMembersAsync(franchise.Id, cancellationToken);
+            var byKey = members.ToDictionary(member => member.Media.Identity.Key, member => member.Media, StringComparer.Ordinal);
+            var graph = await relations.GetForFranchiseAsync(franchise.Id, cancellationToken);
+            var direct = new HashSet<string>(StringComparer.Ordinal);
+
+            foreach (var edge in graph)
+            {
+                if (edge.From.Key != work.Key && edge.To.Key != work.Key)
+                {
+                    continue;
+                }
+
+                var otherKey = edge.From.Key == work.Key ? edge.To.Key : edge.From.Key;
+                direct.Add(otherKey);
+                if (!seen.Add(otherKey) || !byKey.TryGetValue(otherKey, out var other))
+                {
+                    continue;
+                }
+
+                Append(byGroup, FranchiseLabels.RelationGroupKey(edge.RelationType), other);
+            }
+
+            foreach (var member in members)
+            {
+                var key = member.Media.Identity.Key;
+                if (direct.Contains(key) || !seen.Add(key))
+                {
+                    continue;
+                }
+
+                Append(byGroup, FranchiseLabels.SameFranchiseGroupKey, member.Media);
+            }
+        }
+
+        return FranchiseLabels.RelationGroupOrder
+            .Where(byGroup.ContainsKey)
+            .Select(key => new FranchiseRelationGroup(
+                key,
+                byGroup[key]
+                    .OrderBy(item => item.Year ?? int.MaxValue)
+                    .ThenBy(item => item.Title, StringComparer.CurrentCultureIgnoreCase)
+                    .ToArray()))
+            .ToArray();
+    }
+
+    private static void Append(Dictionary<string, List<WatchlistDraft>> byGroup, string groupKey, WatchlistDraft item)
+    {
+        if (!byGroup.TryGetValue(groupKey, out var items))
+        {
+            items = [];
+            byGroup[groupKey] = items;
+        }
+
+        items.Add(item);
+    }
+
+    /// <summary>
     /// Queues a full refresh for a follower of the franchise or the owner, at most once per
     /// <see cref="RefreshCooldown"/>.
     /// </summary>

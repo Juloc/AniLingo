@@ -20,6 +20,17 @@ public sealed record FranchiseMember(
     bool IsSeed,
     DateTime? RelationsCheckedAtUtc = null);
 
+/// <summary>
+/// Other works of the same franchise directly typed to one work (an "Adaptation" bucket, a
+/// "Sequel / Prequel" bucket, ...), or the franchise-wide fallback bucket for members reached
+/// only through shared membership, with no specific typed edge to that work.
+/// </summary>
+/// <param name="GroupKey">One of <see cref="FranchiseLabels.RelationGroupOrder"/>.</param>
+public sealed record FranchiseRelationGroup(
+    string GroupKey,
+    IReadOnlyList<WatchlistDraft> Items);
+
 public sealed record FranchiseLinksViewModel(
     UiTextBundle Ui,
-    IReadOnlyList<FranchiseSummary> Franchises);
+    IReadOnlyList<FranchiseSummary> Franchises,
+    IReadOnlyList<FranchiseRelationGroup> Groups);

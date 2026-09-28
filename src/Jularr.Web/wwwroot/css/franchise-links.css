@@ -55,3 +55,57 @@
         max-width: 100%;
     }
 }
+
+.franchise-related-groups {
+    display: grid;
+    gap: 10px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+}
+
+.franchise-related-group h3 {
+    margin: 0 0 6px;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .02em;
+    text-transform: uppercase;
+}
+
+.franchise-related-items {
+    display: grid;
+    gap: 4px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.franchise-related-items a {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 6px 9px;
+    border-radius: 8px;
+    color: var(--text);
+    text-decoration: none;
+}
+
+.franchise-related-items a:hover {
+    background: var(--surface-2);
+}
+
+.franchise-related-items a > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.franchise-related-items a > small {
+    flex: none;
+    color: var(--muted);
+    font-size: 11px;
+}
