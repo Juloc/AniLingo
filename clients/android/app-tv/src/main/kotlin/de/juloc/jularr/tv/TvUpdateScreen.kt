@@ -24,7 +24,7 @@ internal const val TvUpdateFileProviderAuthority = "de.juloc.jularr.tv.fileprovi
  * [UpdateCheckResult]/[de.juloc.jularr.core.update.UpdateDownloadResult] from the
  * shared `core-update` module (the same one app-mobile drives).
  */
-internal sealed interface TvUpdateState {
+sealed interface TvUpdateState {
     data object Idle : TvUpdateState
     data object Checking : TvUpdateState
     data object UpToDate : TvUpdateState
