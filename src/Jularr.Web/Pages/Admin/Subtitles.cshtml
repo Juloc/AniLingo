@@ -141,3 +141,113 @@
         </div>
     }
 </section>
+
+<section class="panel">
+    <div class="panel-heading">
+        <h2>@ui["admin.subtitles.completenessHeading"]</h2>
+        <span>@ui.Format("admin.subtitles.shownCount", ("count", Model.Completions.Count))</span>
+    </div>
+    <p class="muted">@ui["admin.subtitles.completenessHelp"]</p>
+
+    @if (Model.Completions.Count == 0)
+    {
+        <p class="muted">@ui["admin.subtitles.noEpisodesDiscovered"]</p>
+    }
+    else
+    {
+        <div class="root-list">
+            @foreach (var completion in Model.Completions)
+            {
+                <div class="root-row">
+                    <div>
+                        <strong>@completion.AnimeTitle · S@(completion.SeasonNumber.ToString("00"))E@(completion.EpisodeNumber.ToString("00"))</strong>
+                        <span>@completion.ProfileName</span>
+                        <small>
+                            @switch (completion.Status)
+                            {
+                                case SubtitleProfileCompletionStatus.Complete:
+                                    <span class="status-pill status-ok">@ui["admin.subtitles.completion.complete"]</span>
+                                    break;
+                                case SubtitleProfileCompletionStatus.CutoffMet:
+                                    <span class="status-pill status-ok">@ui["admin.subtitles.completion.cutoffMet"]</span>
+                                    break;
+                                default:
+                                    <span class="status-pill status-warning">@ui.Format("admin.subtitles.completion.missingCount", ("count", completion.Missing.Count))</span>
+                                    break;
+                            }
+                        </small>
+                    </div>
+
+                    @if (completion.Missing.Count > 0)
+                    {
+                        <div class="inline-actions">
+                            @foreach (var missing in completion.Missing)
+                            {
+                                <a class="button"
+                                   asp-page="/Admin/Subtitles"
+                                   asp-route-searchEpisodeId="@completion.EpisodeId"
+                                   asp-route-searchLanguage="@missing.LanguageTag"
+                                   asp-route-searchForced="@missing.Forced"
+                                   asp-route-searchSdh="@missing.Sdh">
+                                    @ui.Format("admin.subtitles.searchFor", ("language", missing.LanguageTag))
+                                </a>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+</section>
+
+@if (Model.SearchEpisode is { } searchEpisode)
+{
+    <section class="panel">
+        <div class="panel-heading">
+            <h2>@ui.Format("admin.subtitles.search.heading", ("language", Model.SearchLanguage ?? ""))</h2>
+            <span>@searchEpisode.AnimeTitle · S@(searchEpisode.SeasonNumber.ToString("00"))E@(searchEpisode.EpisodeNumber.ToString("00"))</span>
+        </div>
+
+        @if (!Model.HasProviders)
+        {
+            <p class="muted">@ui["admin.subtitles.search.noProviders"]</p>
+            <a class="button" asp-page="/Settings/Subtitles">@ui["admin.subtitles.search.configureProviders"]</a>
+        }
+        else if (Model.SearchOutcomes.SelectMany(o => o.Results).Any() == false)
+        {
+            <p class="muted">@ui["admin.subtitles.search.noResults"]</p>
+        }
+        else
+        {
+            <div class="root-list">
+                @foreach (var outcome in Model.SearchOutcomes)
+                {
+                    @if (!string.IsNullOrWhiteSpace(outcome.Error))
+                    {
+                        <div class="subtitle-source-message status-error">@outcome.ProviderDisplayName: @outcome.Error</div>
+                    }
+                    @foreach (var result in outcome.Results)
+                    {
+                        <div class="root-row">
+                            <div>
+                                <strong>@result.ReleaseName</strong>
+                                <span>@outcome.ProviderDisplayName@(result.UploaderOrSource is { } uploader ? $" · {uploader}" : "")</span>
+                            </div>
+                            <form method="post" asp-page-handler="ImportSearchResult">
+                                <input type="hidden" name="episodeId" value="@searchEpisode.EpisodeId" />
+                                <input type="hidden" name="providerId" value="@result.ProviderId" />
+                                <input type="hidden" name="resultToken" value="@result.ResultToken" />
+                                <input type="hidden" name="language" value="@result.LanguageTag" />
+                                <input type="hidden" name="forced" value="@result.Forced" />
+                                <input type="hidden" name="sdh" value="@result.Sdh" />
+                                <input type="hidden" name="releaseName" value="@result.ReleaseName" />
+                                <input type="hidden" name="uploader" value="@result.UploaderOrSource" />
+                                <button class="button button-primary" type="submit">@ui["admin.subtitles.search.import"]</button>
+                            </form>
+                        </div>
+                    }
+                }
+            </div>
+        }
+    </section>
+}
