@@ -7,6 +7,21 @@
 @{
     var ui = Model.Ui;
     ViewData["Title"] = Model.AnimeTitle;
+    var watchedEpisodeCount = Model.Episodes.Count(x => x.IsWatched);
+    var seriesProgressPercent = Model.Episodes.Count == 0
+        ? 0
+        : watchedEpisodeCount * 100 / Model.Episodes.Count;
+    var resumeEpisode = Model.Episodes.FirstOrDefault(x => x.ResumePercent is not null);
+    var nextEpisode = resumeEpisode
+        ?? Model.Episodes.FirstOrDefault(x => !x.IsWatched)
+        ?? Model.Episodes.FirstOrDefault();
+    var primaryActionKey = resumeEpisode is not null
+        ? "library.mediaCard.continueWatching"
+        : Model.Episodes.Any(x => !x.IsWatched)
+            ? watchedEpisodeCount > 0
+                ? "library.mediaCard.continueWatching"
+                : "library.mediaCard.startWatching"
+            : "library.mediaCard.watchAgain";
 }
 
 @section Head {
@@ -96,7 +111,35 @@
                 <p>@ui.Format("library.anime.episodesDiscovered", ("count", Model.Episodes.Count))</p>
             }
 
-            <div class="inline-actions">
+            @if (nextEpisode is not null)
+            {
+                <div class="anime-viewing-state">
+                    <a class="button button-primary anime-primary-action"
+                       href="/Library/Episode/@nextEpisode.Id">
+                        @ui[primaryActionKey]
+                    </a>
+                    <div class="anime-next-episode">
+                        <strong>S@(nextEpisode.SeasonNumber.ToString("00")) · E@(nextEpisode.Number.ToString("00"))</strong>
+                        <span>@nextEpisode.Title</span>
+                    </div>
+                    @if (Model.Episodes.Count > 0)
+                    {
+                        <div class="anime-series-progress">
+                            <div class="anime-series-progress-label">
+                                <span>@watchedEpisodeCount / @Model.Episodes.Count @ui["library.watch.episodesHeading"]</span>
+                                <strong>@seriesProgressPercent%</strong>
+                            </div>
+                            <div class="progress-track" role="progressbar"
+                                 aria-label="@ui.Format("library.mediaCard.progressWatched", ("percent", seriesProgressPercent))"
+                                 aria-valuemin="0" aria-valuemax="100" aria-valuenow="@seriesProgressPercent">
+                                <span style="width:@seriesProgressPercent%"></span>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+
+            <div class="inline-actions anime-secondary-actions">
                 <a class="button"
                    href="@Url.Page("/Settings/LearningScope", new {
                        mediaType = LearningMediaType.Anime,
