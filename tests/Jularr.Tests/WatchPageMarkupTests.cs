@@ -66,16 +66,21 @@ public sealed class WatchPageMarkupTests
         }
     }
 
+    // Owner-only mapping/source management (subtitle sources, AniList mapping) moved into the
+    // shared _ManageSheet partial (#519, part of epic #510); the sheet itself is only rendered
+    // inside an @if (Model.IsOwner) block, same guarantee as the previous bespoke dialog.
     [TestMethod]
     public void SourceAndMappingManagementIsOwnerOnly()
     {
-        var ownerBlock = Page.IndexOf("@if (Model.IsOwner)\r\n{", StringComparison.Ordinal) is var crlf and >= 0
-            ? crlf
-            : Page.IndexOf("@if (Model.IsOwner)\n{", StringComparison.Ordinal);
-        Assert.IsTrue(ownerBlock > 0, "Owner-only dialog block exists.");
+        var ownerBlock = Page.IndexOf("@if (Model.IsOwner)", StringComparison.Ordinal);
+        Assert.IsTrue(ownerBlock > 0, "Owner-only manage sheet block exists.");
 
         var subtitleSources = Page.IndexOf("_EpisodeSubtitleSources", StringComparison.Ordinal);
-        Assert.IsTrue(subtitleSources > ownerBlock, "Subtitle source mapping renders only in the owner dialog.");
+        Assert.IsTrue(subtitleSources > ownerBlock, "Subtitle source mapping renders only in the owner-only block.");
+
+        var manageSheet = Page.IndexOf("<partial name=\"_ManageSheet\"", StringComparison.Ordinal);
+        Assert.IsTrue(manageSheet > subtitleSources, "Subtitle source mapping renders inside the owner-only Manage sheet.");
+
         Assert.AreEqual(1, Regex.Matches(Page, "CanManageMapping: true").Count);
         StringAssert.Contains(Page, "Model.ExternalProgress is { IsMatched: true, ReviewReason: null } externalProgress");
     }

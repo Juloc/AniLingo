@@ -1,0 +1,44 @@
+@using Jularr.Web.Features.Localization
+@using Jularr.Web.Features.Tracking
+@model ExternalProgressPanel
+@*
+    Owner-only half of the shared AniList progress card (#519, part of epic #510): mapping state
+    ("Mapping needs review", matched/episode ranges/manual segments/...), the review reason and
+    the Change match / Review mapping / Edit mappings links. Rendered inside the page's owner-only
+    Manage sheet ("Mapping" group), never in the consumer layout (see _ExternalProgress, which
+    renders the consumer-safe local progress and AniList link only).
+*@
+@{
+    var ui = Model.Ui ?? UiTextBundle.English;
+    var summary = Model.Summary;
+    var (basisLabel, basisClass) = summary.MappingBasis switch
+    {
+        ExternalMappingBasis.NeedsReview => (ui["library.externalProgress.basis.needsReview"], "status-warn"),
+        ExternalMappingBasis.EpisodeRanges => (ui["library.externalProgress.basis.episodeRanges"], "status-ok"),
+        ExternalMappingBasis.ManualSegments => (ui["library.externalProgress.basis.manualSegments"], "status-ok"),
+        ExternalMappingBasis.AutomaticSegments => (ui["library.externalProgress.basis.automaticSegments"], "status-ok"),
+        ExternalMappingBasis.Matched => (ui["library.matched"], "status-ok"),
+        _ => (ui["library.externalProgress.basis.notMatched"], "")
+    };
+}
+<div class="manage-mapping-status">
+    <span class="status-pill @basisClass">@basisLabel</span>
+    @if (!string.IsNullOrWhiteSpace(summary.ReviewReason))
+    {
+        <p class="muted">@summary.ReviewReason</p>
+    }
+</div>
+<div class="inline-actions">
+    @if (!string.IsNullOrWhiteSpace(Model.MatchUrl))
+    {
+        <a class="button" href="@Model.MatchUrl">@(summary.IsMatched ? ui["library.externalProgress.changeMatch"] : ui["library.externalProgress.matchAniList"])</a>
+    }
+    @if (summary.MappingBasis == ExternalMappingBasis.NeedsReview)
+    {
+        <a class="button" href="/Settings/MappingReview">@ui["library.externalProgress.reviewMapping"]</a>
+    }
+    @if (!string.IsNullOrWhiteSpace(Model.MappingUrl))
+    {
+        <a class="button" href="@Model.MappingUrl">@ui["library.externalProgress.editMappings"]</a>
+    }
+</div>
