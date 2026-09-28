@@ -3,6 +3,7 @@ using Jularr.Web.Features.Acquisition.Sabnzbd;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Books;
 using Jularr.Web.Features.Localization;
+using Jularr.Web.Features.MediaFacts;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
@@ -20,6 +21,13 @@ public sealed class DetailsModel(
     public string? Error { get; private set; }
     public bool IsOwner => account.IsOwner;
 
+    /// <summary>
+    /// Language availability across this work's known catalog editions (#426). The page already
+    /// shows its own release year, so this only ever renders the language chips (showFacts: false)
+    /// -- never a second, differently-worded copy of the same fact.
+    /// </summary>
+    public MediaFactsStripModel? Facts { get; private set; }
+
     public async Task<IActionResult> OnGetAsync(
         string id,
         CancellationToken cancellationToken)
@@ -31,9 +39,16 @@ public sealed class DetailsModel(
             Book = await books.GetAsync(
                 id,
                 cancellationToken);
-            return Book is null
-                ? NotFound()
-                : Page();
+            if (Book is null)
+            {
+                return NotFound();
+            }
+
+            Facts = MediaFactsStripModel.Create(
+                MediaFactsService.CreateBookCatalogFacts(Book),
+                Ui,
+                showFacts: false);
+            return Page();
         }
         catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
         {

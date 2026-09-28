@@ -3233,6 +3233,20 @@ public static class UiTranslationResources
         M("library.mediaCard.volumes", "Volumes", "Library", "Accessibility", "Accessible label of the folder icon before the volume count on a reading media card.", "concise accessible name", 18),
         M("library.mediaCard.rating", "Rating", "Library", "Accessibility", "Accessible label of the star icon before the provider rating (one decimal on a 10 scale) on a library media card.", "concise accessible name", 18),
 
+        // #426: the unified media-facts + language-availability strip (_MediaFacts, one partial
+        // shared by Library/Anime, Manga/Series, Novels/Work and Books/Details).
+        M("mediaFacts.factsAria", "Media facts", "MediaFacts", "Accessibility", "Accessible group label for the compact status/counts/runtime/year facts strip on a media detail page.", "concise accessible name", 32),
+        M("mediaFacts.languagesAria", "Language availability", "MediaFacts", "Accessibility", "Accessible group label for the audio/subtitle/text language-availability chips on a media detail page.", "concise accessible name", 40),
+        M("mediaFacts.audio", "Audio", "MediaFacts", "Label", "Icon group label for audio-language availability chips on the media facts strip.", "short label", 12),
+        M("mediaFacts.subtitles", "Subtitles", "MediaFacts", "Label", "Icon group label for subtitle-language availability chips on the media facts strip.", "short label", 16),
+        M("mediaFacts.text", "Text", "MediaFacts", "Label", "Icon group label for reading/original-text language availability chips (manga, light novels, books) on the media facts strip.", "short label", 12),
+        M("mediaFacts.episodeCount", "{count} episodes", "MediaFacts", "Value", "Episode count fact on the media facts strip.", "compact metadata", 24, new Dictionary<string, string> { ["count"] = "Number of known episodes." }),
+        M("mediaFacts.seasonCount", "{count} seasons", "MediaFacts", "Value", "Season count fact on the media facts strip.", "compact metadata", 24, new Dictionary<string, string> { ["count"] = "Number of local seasons." }),
+        M("mediaFacts.chapterCount", "{count} chapters", "MediaFacts", "Value", "Chapter count fact on the media facts strip.", "compact metadata", 24, new Dictionary<string, string> { ["count"] = "Number of known chapters." }),
+        M("mediaFacts.volumeCount", "{count} volumes", "MediaFacts", "Value", "Volume count fact on the media facts strip.", "compact metadata", 24, new Dictionary<string, string> { ["count"] = "Number of known volumes." }),
+        M("mediaFacts.coverageFraction", "{available}/{total}", "MediaFacts", "Value", "Compact \"available of total\" fraction on a language-availability chip, e.g. episodes with German audio out of all episodes. Keep the slash.", "compact fraction", 24, new Dictionary<string, string> { ["available"] = "Units that carry this language.", ["total"] = "Total known units." }),
+        M("mediaFacts.coveragePartial", "Partial", "MediaFacts", "Status", "Small qualifier next to a language-availability chip when the language only covers some units instead of all of them.", "compact status word", 16),
+
         // #185: Novels (Index, Work, Read) and the reader partials they use
         // (_NovelChapterDrawer, _NovelChapterPreparation, _NovelReaderNotes,
         // _ReaderSettingsPanel, shared with Books/Read).

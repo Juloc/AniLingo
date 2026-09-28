@@ -4,6 +4,7 @@ using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Franchises;
 using Jularr.Web.Features.Localization;
 using Jularr.Web.Features.Manga;
+using Jularr.Web.Features.MediaFacts;
 using Jularr.Web.Features.MediaMapping;
 using Jularr.Web.Features.Operations;
 using Jularr.Web.Features.Tracking;
@@ -34,6 +35,13 @@ public sealed class SeriesModel(
     public IReadOnlyList<FranchiseSummary> Franchises { get; private set; } = [];
     public IReadOnlyList<FranchiseRelationGroup> FranchiseGroups { get; private set; } = [];
 
+    /// <summary>
+    /// Language availability for this series (#426). The header already states the chapter count
+    /// and raw provider status in its own words, so this only ever renders the language chips
+    /// (showFacts: false) -- never a second, differently-worded copy of the same fact.
+    /// </summary>
+    public MediaFactsStripModel? Facts { get; private set; }
+
     public async Task<IActionResult> OnGetAsync(
         Guid id,
         string? q,
@@ -49,6 +57,10 @@ public sealed class SeriesModel(
         }
 
         Series = series;
+        Facts = MediaFactsStripModel.Create(
+            await new MediaFactsService(db).GetMangaFactsAsync(id, cancellationToken),
+            Ui,
+            showFacts: false);
         var franchiseSource = await repository.GetAutoMatchSourceAsync(id, cancellationToken);
         if (!string.IsNullOrWhiteSpace(franchiseSource?.MetadataExternalId))
         {

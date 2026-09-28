@@ -62,6 +62,7 @@
 @section Head {
     <link rel="stylesheet" href="~/css/novel-library.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/franchise-links.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/media-facts.css" asp-append-version="true" />
 }
 @section Scripts {
     <script src="~/js/novel-file-picker.js" asp-append-version="true"></script>
@@ -135,6 +136,11 @@
                     <span>@genre</span>
                 }
             </div>
+        }
+
+        @if (Model.Facts is not null)
+        {
+            <partial name="_MediaFacts" model="Model.Facts" />
         }
 
         @if (Model.Progress is not null)
