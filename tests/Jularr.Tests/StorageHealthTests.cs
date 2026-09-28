@@ -57,7 +57,7 @@ public sealed class StorageHealthTests
         var rootPath = Path.Combine(temp.Path, "nas");
         var sender = new FakeWakeSender(() => BootLater(rootPath, TimeSpan.FromMilliseconds(150)));
         var (availability, wake) = CreateCoordinators(sender, TimeSpan.FromSeconds(10));
-        var target = new StorageWakeTarget(Guid.NewGuid(), rootPath, Mac, IPAddress.Broadcast, ExpectedNonEmpty: true);
+        var target = new StorageWakeTarget(Guid.NewGuid(), rootPath, Mac, new IPEndPoint(IPAddress.Broadcast, 9), ExpectedNonEmpty: true);
 
         var attempts = new Task<LibraryRootAvailabilitySnapshot>[12];
         Parallel.For(0, attempts.Length, index => attempts[index] = wake.StartAsync(target));
@@ -79,7 +79,7 @@ public sealed class StorageHealthTests
         using var temp = new TempDirectory();
         var sender = new FakeWakeSender();
         var (availability, wake) = CreateCoordinators(sender, TimeSpan.FromMilliseconds(200));
-        var target = new StorageWakeTarget(Guid.NewGuid(), Path.Combine(temp.Path, "never"), Mac, IPAddress.Broadcast, false);
+        var target = new StorageWakeTarget(Guid.NewGuid(), Path.Combine(temp.Path, "never"), Mac, new IPEndPoint(IPAddress.Broadcast, 9), false);
 
         var failed = await wake.StartAsync(target).WaitAsync(TimeSpan.FromSeconds(10));
 
@@ -100,7 +100,7 @@ public sealed class StorageHealthTests
         using var temp = new TempDirectory();
         var sender = new FakeWakeSender(failure: new SocketException((int)SocketError.NetworkUnreachable));
         var (_, wake) = CreateCoordinators(sender, TimeSpan.FromSeconds(10));
-        var target = new StorageWakeTarget(Guid.NewGuid(), Path.Combine(temp.Path, "nas"), Mac, IPAddress.Broadcast, false);
+        var target = new StorageWakeTarget(Guid.NewGuid(), Path.Combine(temp.Path, "nas"), Mac, new IPEndPoint(IPAddress.Broadcast, 9), false);
 
         var result = await wake.StartAsync(target).WaitAsync(TimeSpan.FromSeconds(10));
 
@@ -192,7 +192,7 @@ public sealed class StorageHealthTests
 
         public int Sent => Volatile.Read(ref sent);
 
-        public Task SendAsync(string normalizedMacAddress, IPAddress broadcastAddress, CancellationToken cancellationToken)
+        public Task SendAsync(string normalizedMacAddress, IPEndPoint broadcastEndpoint, CancellationToken cancellationToken)
         {
             Interlocked.Increment(ref sent);
             if (failure is not null)

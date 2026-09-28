@@ -7,15 +7,20 @@ public interface IWakeOnLanPacketSender
 {
     Task SendAsync(
         string normalizedMacAddress,
-        IPAddress broadcastAddress,
+        IPEndPoint broadcastEndpoint,
         CancellationToken cancellationToken);
 }
 
+// Sends the magic packet to whatever address/port the owner configured (see
+// WakeOnLanService.TryResolveBroadcastEndpoint). In a Docker bridge network the limited
+// broadcast address 255.255.255.255 never leaves the container's bridge subnet, so reaching a
+// NAS on the physical LAN requires a directed subnet broadcast (e.g. 192.168.1.255) that the
+// Docker host's own routing/NAT forwards onward; see docs/ADMIN_OPERATIONS.md.
 public sealed class UdpWakeOnLanPacketSender : IWakeOnLanPacketSender
 {
     public async Task SendAsync(
         string normalizedMacAddress,
-        IPAddress broadcastAddress,
+        IPEndPoint broadcastEndpoint,
         CancellationToken cancellationToken)
     {
         var packet = WakeOnLanService.BuildMagicPacket(normalizedMacAddress);
@@ -26,7 +31,7 @@ public sealed class UdpWakeOnLanPacketSender : IWakeOnLanPacketSender
 
         await udp.SendAsync(
             packet,
-            new IPEndPoint(broadcastAddress, 9),
+            broadcastEndpoint,
             cancellationToken);
     }
 }
@@ -44,7 +49,7 @@ public sealed record StorageWakeTarget(
     Guid RootId,
     string Path,
     string MacAddress,
-    IPAddress BroadcastAddress,
+    IPEndPoint BroadcastEndpoint,
     bool ExpectedNonEmpty);
 
 // One start attempt per root at a time: the first media request sends one Wake-on-LAN packet
@@ -108,11 +113,13 @@ public sealed class StorageWakeCoordinator(
             {
                 await sender.SendAsync(
                     target.MacAddress,
-                    target.BroadcastAddress,
+                    target.BroadcastEndpoint,
                     CancellationToken.None);
                 logger.LogInformation(
-                    "Wake-on-LAN packet sent for library root {RootId}; waiting up to {Seconds} s for its storage.",
+                    "Wake-on-LAN packet sent for library root {RootId} ({MacAddress}) to {BroadcastEndpoint}; waiting up to {Seconds} s for its storage.",
                     target.RootId,
+                    target.MacAddress,
+                    target.BroadcastEndpoint,
                     (int)options.StartTimeout.TotalSeconds);
             }
             catch (Exception exception) when (
@@ -120,8 +127,10 @@ public sealed class StorageWakeCoordinator(
             {
                 logger.LogWarning(
                     exception,
-                    "Wake-on-LAN packet could not be sent for library root {RootId}.",
-                    target.RootId);
+                    "Wake-on-LAN packet could not be sent for library root {RootId} ({MacAddress}) to {BroadcastEndpoint}.",
+                    target.RootId,
+                    target.MacAddress,
+                    target.BroadcastEndpoint);
                 availability.MarkWakeFailed(target.RootId, StorageDiagnosticCodes.WakeSendFailed);
                 return await ProbeAsync(target);
             }

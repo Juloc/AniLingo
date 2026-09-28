@@ -172,7 +172,7 @@ public sealed class SystemModel(
             return Page();
         }
 
-        if (!WakeOnLanService.TryResolveBroadcastAddress(
+        if (!WakeOnLanService.TryResolveBroadcastEndpoint(
                 wakeBroadcastAddress,
                 out _))
         {
