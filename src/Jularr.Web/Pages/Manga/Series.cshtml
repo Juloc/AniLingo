@@ -14,6 +14,7 @@
 @section Head {
     <link rel="stylesheet" href="~/css/manga.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/franchise-links.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/media-facts.css" asp-append-version="true" />
 }
 
 <div class="reading-type-switch manga-series-switch">
@@ -47,6 +48,11 @@
                 <span>@series.Status.Replace("_", " ").ToLowerInvariant()</span>
             }
         </div>
+
+        @if (Model.Facts is not null)
+        {
+            <partial name="_MediaFacts" model="Model.Facts" />
+        }
 
         @if (!string.IsNullOrWhiteSpace(series.Description))
         {

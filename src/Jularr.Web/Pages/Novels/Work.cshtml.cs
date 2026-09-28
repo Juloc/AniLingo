@@ -2,6 +2,7 @@ using Jularr.Web.Data;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Franchises;
 using Jularr.Web.Features.Localization;
+using Jularr.Web.Features.MediaFacts;
 using Jularr.Web.Features.Novels;
 using Jularr.Web.Features.Operations;
 using Jularr.Web.Features.Tracking;
@@ -48,6 +49,13 @@ public sealed class WorkModel(
     public IReadOnlyList<FranchiseSummary> Franchises { get; private set; } = [];
     public IReadOnlyList<FranchiseRelationGroup> FranchiseGroups { get; private set; } = [];
 
+    /// <summary>
+    /// Language availability for this work (#426). The header already states the chapter/volume
+    /// counts and raw provider status in its own words, so this only ever renders the language
+    /// chips (showFacts: false) -- never a second, differently-worded copy of the same fact.
+    /// </summary>
+    public MediaFactsStripModel? Facts { get; private set; }
+
     public async Task<IActionResult> OnGetAsync(
         Guid id,
         string? q,
@@ -59,6 +67,11 @@ public sealed class WorkModel(
         {
             return NotFound();
         }
+
+        Facts = MediaFactsStripModel.Create(
+            await new MediaFactsService(db).GetNovelFactsAsync(id, cancellationToken),
+            Ui,
+            showFacts: false);
 
         if (!string.IsNullOrWhiteSpace(Detail.Work.MetadataProvider) &&
             !string.IsNullOrWhiteSpace(Detail.Work.MetadataExternalId))

@@ -8,6 +8,7 @@
 }
 @section Head {
     <link rel="stylesheet" href="~/css/books.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/media-facts.css" asp-append-version="true" />
 }
 
 <a class="books-back" href="/Books">← @ui["nav.books"]</a>
@@ -55,6 +56,11 @@
                         <span>@subject</span>
                     }
                 </div>
+            }
+
+            @if (Model.Facts is not null)
+            {
+                <partial name="_MediaFacts" model="Model.Facts" />
             }
 
             <div class="book-actions">
