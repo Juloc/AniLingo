@@ -10,7 +10,11 @@ namespace Jularr.Web.Features.Appearance;
 /// A profile's appearance: theme mode, optional accent seed (null = Jularr red) and the Sakura
 /// particle effect density (#387).
 /// </summary>
-public sealed record ProfileAppearance(string ThemeMode, string? AccentColor, string SakuraMode)
+public sealed record ProfileAppearance(
+    string ThemeMode,
+    string? AccentColor,
+    string SakuraMode,
+    string? ThemeId = null)
 {
     public static ProfileAppearance Default { get; } = new(AppTheme.System, null, AppSakura.Default);
 
@@ -36,7 +40,7 @@ public sealed class ProfileAppearanceStore(AppDbContext db)
             await using var command = connection.CreateCommand();
             command.CommandText =
                 """
-                SELECT "ThemeMode", "AccentColor", "SakuraMode"
+                SELECT "ThemeMode", "AccentColor", "SakuraMode", "ThemeId"
                 FROM "UiProfileThemes"
                 WHERE "ProfileId" = $profileId
                 LIMIT 1;
@@ -55,7 +59,8 @@ public sealed class ProfileAppearanceStore(AppDbContext db)
             return new ProfileAppearance(
                 mode,
                 AppAccent.TryNormalize(accent, out var normalized) ? normalized : null,
-                sakura);
+                sakura,
+                reader.IsDBNull(3) ? null : ThemeCatalog.NormalizeOrOriginal(reader.GetString(3)));
         }, cancellationToken);
     }
 
@@ -113,6 +118,37 @@ public sealed class ProfileAppearanceStore(AppDbContext db)
                 """;
             Add(command, "$profileId", profileId);
             Add(command, "$sakura", normalized);
+            Add(command, "$updatedAt", DateTime.UtcNow);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+            return true;
+        }, cancellationToken);
+    }
+
+    /// <summary>Stores an optional profile theme. A null value follows the instance default.</summary>
+    public async Task SetThemeIdAsync(
+        string profileId,
+        string? themeId,
+        CancellationToken cancellationToken)
+    {
+        RequireProfile(profileId);
+        if (themeId is not null && !ThemeCatalog.TryGet(themeId, out _))
+        {
+            throw new ArgumentException("Unknown application theme.", nameof(themeId));
+        }
+
+        await WithConnectionAsync(async connection =>
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText =
+                """
+                INSERT INTO "UiProfileThemes" ("ProfileId", "ThemeMode", "ThemeId", "UpdatedAt")
+                VALUES ($profileId, 'system', $themeId, $updatedAt)
+                ON CONFLICT("ProfileId") DO UPDATE SET
+                    "ThemeId" = excluded."ThemeId",
+                    "UpdatedAt" = excluded."UpdatedAt";
+                """;
+            Add(command, "$profileId", profileId);
+            Add(command, "$themeId", themeId is null ? null : ThemeCatalog.NormalizeOrOriginal(themeId));
             Add(command, "$updatedAt", DateTime.UtcNow);
             await command.ExecuteNonQueryAsync(cancellationToken);
             return true;

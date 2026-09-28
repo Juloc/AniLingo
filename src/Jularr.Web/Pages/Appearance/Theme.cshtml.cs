@@ -30,4 +30,45 @@ public sealed class ThemeModel(AppDbContext db) : PageModel
 
         return new JsonResult(new { theme = normalized });
     }
+
+    public async Task<IActionResult> OnPostSelectAsync(string? themeId)
+    {
+        var profileId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrWhiteSpace(profileId))
+        {
+            return Unauthorized();
+        }
+
+        var instance = await new InstanceAppearanceSettingsStore(db)
+            .LoadAsync(HttpContext.RequestAborted);
+        if (!instance.AllowProfileThemeOverride)
+        {
+            return Forbid();
+        }
+
+        if (string.IsNullOrWhiteSpace(themeId))
+        {
+            await new ProfileAppearanceStore(db).SetThemeIdAsync(
+                profileId,
+                null,
+                HttpContext.RequestAborted);
+            return SelectedThemeResponse(null);
+        }
+
+        if (!ThemeCatalog.TryGet(themeId, out var theme))
+        {
+            return BadRequest(new { error = "Unknown application theme." });
+        }
+
+        await new ProfileAppearanceStore(db).SetThemeIdAsync(
+            profileId,
+            theme.Id,
+            HttpContext.RequestAborted);
+        return SelectedThemeResponse(theme.Id);
+    }
+
+    private IActionResult SelectedThemeResponse(string? themeId) =>
+        Request.Headers.Accept.Any(value => value.Contains("application/json", StringComparison.OrdinalIgnoreCase))
+            ? new JsonResult(new { themeId })
+            : RedirectToPage("/Settings/Appearance");
 }

@@ -1,0 +1,53 @@
+@page
+@model Jularr.Web.Pages.Admin.AppearanceModel
+@{
+    var ui = Model.Ui;
+    ViewData["Title"] = ui["admin.appearance.title"];
+}
+
+<header class="page-header">
+    <div>
+        <h1>@ui["admin.appearance.title"]</h1>
+        <p>@ui["admin.appearance.description"]</p>
+    </div>
+</header>
+
+<partial name="_AdminNavigation" model="ui" />
+
+<form method="post" class="form-stack settings-grid">
+    <section class="panel">
+        <div class="panel-heading"><h2>@ui["admin.appearance.defaultTheme"]</h2></div>
+        <p class="muted">@ui["admin.appearance.defaultThemeHelp"]</p>
+        <div class="theme-choice-grid" role="radiogroup" aria-label="@ui["admin.appearance.defaultTheme"]">
+            @foreach (var theme in Model.Themes)
+            {
+                <label class="theme-choice @(theme.Id == Model.DefaultThemeId ? "selected" : "")">
+                    <input type="radio" name="DefaultThemeId" value="@theme.Id" checked="@(theme.Id == Model.DefaultThemeId)" />
+                    <img src="@theme.LogoPath" alt="" width="40" height="40" />
+                    <span>
+                        <strong>@ui[theme.NameKey]</strong>
+                        <small>@ui[theme.DescriptionKey]</small>
+                    </span>
+                </label>
+            }
+        </div>
+        <span asp-validation-for="DefaultThemeId" class="field-validation-error"></span>
+    </section>
+
+    <section class="panel">
+        <div class="panel-heading"><h2>@ui["admin.appearance.profileOverrides"]</h2></div>
+        <p class="muted">@ui["admin.appearance.profileOverridesHelp"]</p>
+        <label class="checkbox-row">
+            <input asp-for="AllowProfileThemeOverride" />
+            <span>@ui["admin.appearance.allowThemeOverride"]</span>
+        </label>
+        <label class="checkbox-row">
+            <input asp-for="AllowProfileAccentOverride" />
+            <span>@ui["admin.appearance.allowAccentOverride"]</span>
+        </label>
+    </section>
+
+    <div class="inline-actions">
+        <button class="button button-primary" type="submit">@ui["admin.appearance.save"]</button>
+    </div>
+</form>
