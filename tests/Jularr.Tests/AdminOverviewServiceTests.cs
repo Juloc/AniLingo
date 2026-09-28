@@ -4,6 +4,8 @@ using Jularr.Web.Features.Admin;
 using Jularr.Web.Features.MediaMapping;
 using Jularr.Web.Features.Playback.Decision;
 using Jularr.Web.Features.Storage;
+using Jularr.Web.Features.Subtitles;
+using Jularr.Web.Features.Vocabulary;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -28,6 +30,9 @@ public sealed class AdminOverviewServiceTests
                 new AcquisitionAccessStore(db),
                 new MediaMappingReviewStore(NullLogger<MediaMappingReviewStore>.Instance),
                 new LibraryRootAvailabilityService(db, new StorageAvailabilityCoordinator()),
+                new SubtitleImportService(
+                    db,
+                    new VocabularyService(db, new JapaneseTermExtractor(new NoMorphology()), new JapaneseDictionary())),
                 new PlaybackStreamSessionStore(TimeProvider.System));
 
             var overview = await service.GetAsync(CancellationToken.None);
@@ -37,6 +42,7 @@ public sealed class AdminOverviewServiceTests
             Assert.AreEqual(0, overview.ActiveProcessing);
             Assert.AreEqual(0, overview.OpenAcquisitionRequests);
             Assert.AreEqual(0, overview.UnresolvedMappings);
+            Assert.AreEqual(0, overview.MissingLearningText);
             Assert.AreEqual(0, overview.StorageRootsOffline);
             Assert.AreEqual(0, overview.BlockedJobs);
             Assert.AreEqual(0, overview.WatchingNow);
@@ -65,5 +71,10 @@ public sealed class AdminOverviewServiceTests
         var db = new AppDbContext(options);
         await DatabaseMigrationBridge.UpgradeAsync(db);
         return db;
+    }
+
+    private sealed class NoMorphology : IJapaneseMorphology
+    {
+        public IReadOnlyList<JapaneseMorphToken> Analyze(string text) => [];
     }
 }

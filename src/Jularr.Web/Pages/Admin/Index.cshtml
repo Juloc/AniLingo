@@ -82,6 +82,10 @@
         <span>@ui["admin.overview.mapping.label"]</span>
         <strong class="status-pill @Pill(overview.UnresolvedMappings, "status-warning")">@CountValue(overview.UnresolvedMappings)</strong>
     </a>
+    <a asp-page="/Admin/Subtitles">
+        <span>@ui["admin.overview.subtitles.label"]</span>
+        <strong class="status-pill @Pill(overview.MissingLearningText, "status-warning")">@CountValue(overview.MissingLearningText)</strong>
+    </a>
     <a asp-page="/Admin/System">
         <span>@ui["admin.overview.storage.label"]</span>
         <strong class="status-pill @Pill(overview.StorageRootsOffline, "status-error")">@CountValue(overview.StorageRootsOffline)</strong>
