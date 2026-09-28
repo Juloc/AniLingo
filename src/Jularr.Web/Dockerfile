@@ -119,8 +119,8 @@ RUN set -eux; \
         groupadd --gid 1654 jularr; \
         useradd --uid 1654 --gid 1654 --home-dir /data --shell /usr/sbin/nologin jularr; \
     fi; \
-    mkdir -p /data/codex /data/whisper /data/transcription-cache; \
-    chown -R jularr:jularr /data
+    mkdir -p /data/codex /data/whisper /data/transcription-cache /media; \
+    chown -R jularr:jularr /data /media
 # Jularr runs as the dedicated non-root "jularr" user, fixed at UID/GID
 # 1654:1654 (renamed from the aspnet base image's own "app" user, which
 # already has that UID/GID; a fresh groupadd/useradd with the same fixed
@@ -166,6 +166,64 @@ blocked_path="$(find "${data_root}" \
 if [ -n "${blocked_path}" ]; then
     fail_data_access "${blocked_path} is not readable and writable by the Jularr runtime user."
 fi
+
+configure_media_links() {
+    remaining="${JULARR_MEDIA_LINKS:-}"
+    [ -z "${remaining}" ] && return 0
+
+    while [ -n "${remaining}" ]; do
+        case "${remaining}" in
+            *';'*)
+                mapping="${remaining%%;*}"
+                remaining="${remaining#*;}"
+                ;;
+            *)
+                mapping="${remaining}"
+                remaining=
+                ;;
+        esac
+
+        name="${mapping%%=*}"
+        source_path="${mapping#*=}"
+
+        if [ "${name}" = "${mapping}" ] || [ -z "${name}" ] || [ -z "${source_path}" ]; then
+            echo "Jularr startup aborted: JULARR_MEDIA_LINKS contains an invalid mapping." >&2
+            exit 1
+        fi
+
+        case "${name}" in
+            .|..|*[!A-Za-z0-9._-]*)
+                echo "Jularr startup aborted: media link names must be one safe path segment." >&2
+                exit 1
+                ;;
+        esac
+        case "${source_path}" in
+            /*) ;;
+            *)
+                echo "Jularr startup aborted: media link source paths must be absolute." >&2
+                exit 1
+                ;;
+        esac
+
+        target_path="/media/${name}"
+        if [ -e "${target_path}" ] && [ ! -L "${target_path}" ]; then
+            echo "Jularr startup aborted: ${target_path} already exists and is not a managed media link." >&2
+            exit 1
+        fi
+
+        if [ -L "${target_path}" ] && [ "$(readlink "${target_path}")" != "${source_path}" ]; then
+            rm "${target_path}"
+        fi
+        if [ ! -L "${target_path}" ]; then
+            ln -s "${source_path}" "${target_path}"
+        fi
+    done
+}
+
+# JULARR_MEDIA_LINKS deliberately creates links without touching their source.
+# A sleeping/unmounted NAS can therefore stay offline while the container starts;
+# mount propagation can make the source appear later without recreating Jularr.
+configure_media_links
 
 exec dotnet /app/Jularr.Web.dll "$@"
 EOF
