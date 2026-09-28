@@ -138,7 +138,7 @@ public sealed class OpenAiCompatibleProvider(
         CompleteAsync(
             "book-translation",
             "You are a professional literary translator and line editor. Produce publication-quality prose in the target language in one pass. Preserve meaning, narrative voice, emotional tone, pacing, dialogue intent, paragraph structure, names and factual details. Context is reference material only. Return only the translated source text.",
-            $"Source language: {sourceLanguage}\nTarget language: {targetLanguage}\n\nCONTEXT:\n{context}\n\nSOURCE TEXT:\n{sourceText}",
+            $"Source language: {sourceLanguage}\nTarget language: {targetLanguage}\n\nCONTEXT:\n{BoundedContext(context)}\n\nSOURCE TEXT:\n{sourceText}",
             cancellationToken);
 
     public async Task<BookTranslationBibleSeed> AnalyzeBookAsync(
@@ -160,7 +160,7 @@ public sealed class OpenAiCompatibleProvider(
         CompleteAsync(
             "book-edit",
             "Act as a literary translation editor. Improve the draft for accuracy, natural style, continuity and character voice without adding, removing or summarizing content. Return only the edited translation.",
-            $"Source language: {request.SourceLanguage}\nTarget language: {request.TargetLanguage}\n\nCONTEXT:\n{request.Context}\n\nSOURCE:\n{request.SourceText}\n\nDRAFT:\n{request.DraftTranslation}",
+            $"Source language: {request.SourceLanguage}\nTarget language: {request.TargetLanguage}\n\nCONTEXT:\n{BoundedContext(request.Context)}\n\nSOURCE:\n{request.SourceText}\n\nDRAFT:\n{request.DraftTranslation}",
             cancellationToken);
 
     public async Task<BookTranslationQualityReview> ReviewLiteraryAsync(
@@ -170,7 +170,7 @@ public sealed class OpenAiCompatibleProvider(
         var json = await CompleteAsync(
             "book-qa",
             "Review a literary translation against its source. Return JSON only with keys accepted (boolean), correctedTranslation (string or null), issues (array). If accepted is false, correctedTranslation must contain the complete corrected translation.",
-            $"Source language: {request.SourceLanguage}\nTarget language: {request.TargetLanguage}\n\nCONTEXT:\n{request.Context}\n\nSOURCE:\n{request.SourceText}\n\nTRANSLATION:\n{request.EditedTranslation}",
+            $"Source language: {request.SourceLanguage}\nTarget language: {request.TargetLanguage}\n\nCONTEXT:\n{BoundedContext(request.Context)}\n\nSOURCE:\n{request.SourceText}\n\nTRANSLATION:\n{request.EditedTranslation}",
             cancellationToken);
 
         return DeserializeJson<BookTranslationQualityReview>(json);
@@ -183,7 +183,7 @@ public sealed class OpenAiCompatibleProvider(
         var json = await CompleteAsync(
             "book-memory",
             "Extract only durable translation-memory facts needed for later chapters. Return JSON only with keys chapterSummary, continuityNotes, entities, terms. Keep it compact. entities use sourceName,targetName,type,description,pronouns,relationships,voiceNotes. terms use source,target,category,notes,locked.",
-            $"Chapter {request.ChapterNumber}: {request.ChapterTitle}\nSource language: {request.SourceLanguage}\nTarget language: {request.TargetLanguage}\n\nEXISTING CONTEXT:\n{request.ExistingContext}\n\nSOURCE SAMPLE:\n{request.SourceText}\n\nTRANSLATION SAMPLE:\n{request.FinalTranslation}",
+            $"Chapter {request.ChapterNumber}: {request.ChapterTitle}\nSource language: {request.SourceLanguage}\nTarget language: {request.TargetLanguage}\n\nEXISTING CONTEXT:\n{BoundedContext(request.ExistingContext)}\n\nSOURCE SAMPLE:\n{request.SourceText}\n\nTRANSLATION SAMPLE:\n{request.FinalTranslation}",
             cancellationToken);
 
         return DeserializeJson<BookTranslationMemoryDelta>(json);
@@ -193,15 +193,20 @@ public sealed class OpenAiCompatibleProvider(
         StoryChapterExtractionRequest request,
         CancellationToken cancellationToken)
     {
+        var boundedRequest = request with { ExistingContext = BoundedContext(request.ExistingContext) };
         var json = await CompleteAsync(
             AiOperations.StoryContext,
             StoryContextExtractionPrompt.Instructions + " " + StoryContextExtractionPrompt.JsonShape,
-            StoryContextExtractionPrompt.BuildInput(request),
+            StoryContextExtractionPrompt.BuildInput(boundedRequest),
             cancellationToken);
 
         return StoryContextExtractionPrompt.Map(
             DeserializeJson<StoryContextExtractionPrompt.Result>(json));
     }
+
+    /// <summary>Trims shared context to the ambient per-task context budget; null keeps it unchanged.</summary>
+    private static string BoundedContext(string context) =>
+        CodexCliProvider.TrimContext(context, AiActivityScope.Current?.Options.ContextBudgetTokens);
 
     public async Task<IReadOnlyList<NovelMappingSuggestion>> SuggestMappingsAsync(
         NovelMappingSuggestionRequest request,
@@ -229,6 +234,35 @@ public sealed class OpenAiCompatibleProvider(
         string userPrompt,
         CancellationToken cancellationToken)
     {
+        var activity = AiActivityScope.Current;
+        var invocationOptions = activity?.Options ?? AiInvocationOptions.Default;
+        var maxAttempts = 1 + Math.Clamp(invocationOptions.MaxRetries ?? 0, 0, AiProfileSettings.MaxRetriesLimit);
+
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return await CompleteOnceAsync(operation, systemPrompt, userPrompt, activity, invocationOptions, cancellationToken);
+            }
+            catch (Exception exception) when (
+                attempt < maxAttempts
+                && exception is HttpRequestException or TaskCanceledException or JsonException or InvalidOperationException
+                && !cancellationToken.IsCancellationRequested)
+            {
+                activity?.ReportRetry();
+                await Task.Delay(TimeSpan.FromMilliseconds(250 * attempt), cancellationToken);
+            }
+        }
+    }
+
+    private async Task<string> CompleteOnceAsync(
+        string operation,
+        string systemPrompt,
+        string userPrompt,
+        AiActivityHandle? activity,
+        AiInvocationOptions invocationOptions,
+        CancellationToken cancellationToken)
+    {
         if (string.IsNullOrWhiteSpace(settings.BaseUrl)
             || string.IsNullOrWhiteSpace(settings.Model)
             || string.IsNullOrWhiteSpace(settings.ApiKey))
@@ -237,12 +271,18 @@ public sealed class OpenAiCompatibleProvider(
                 "The OpenAI-compatible provider is not fully configured.");
         }
 
-        var activity = AiActivityScope.Current;
-        var model = activity?.Options.Model ?? settings.Model;
-        var maxTokens = activity is null ? settings.MaxOutputTokens : activity.Options.MaxOutputTokens;
+        var model = invocationOptions.Model ?? settings.Model;
+        var maxTokens = activity is null ? settings.MaxOutputTokens : invocationOptions.MaxOutputTokens;
         activity?.SetTransport(AiTransports.OpenAiChatCompletions);
         activity?.SetModel(model, null);
         activity?.SetState(AiActivityState.Running);
+
+        using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        if (invocationOptions.TimeoutSeconds is { } timeoutSeconds)
+        {
+            timeoutSource.CancelAfter(
+                TimeSpan.FromSeconds(Math.Clamp(timeoutSeconds, AiProfileSettings.MinTimeoutSeconds, AiProfileSettings.MaxTimeoutSeconds)));
+        }
 
         using var request = new HttpRequestMessage(
             HttpMethod.Post,
@@ -262,18 +302,18 @@ public sealed class OpenAiCompatibleProvider(
         using var response = await httpClient.SendAsync(
             request,
             HttpCompletionOption.ResponseHeadersRead,
-            cancellationToken);
+            timeoutSource.Token);
 
         if (!response.IsSuccessStatusCode)
         {
-            var error = await response.Content.ReadAsStringAsync(cancellationToken);
+            var error = await response.Content.ReadAsStringAsync(timeoutSource.Token);
             throw new InvalidOperationException(
                 AiErrorSanitizer.Sanitize($"AI provider returned HTTP {(int)response.StatusCode}: {error}"));
         }
 
         var payload = await response.Content.ReadFromJsonAsync<ChatCompletionResponse>(
             JsonOptions,
-            cancellationToken)
+            timeoutSource.Token)
             ?? throw new InvalidOperationException(
                 "The AI provider returned an empty response.");
 

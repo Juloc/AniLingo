@@ -318,18 +318,214 @@ public sealed class CodexAppServerTests
     [TestMethod]
     public void ExecArgumentsStayReadOnlyAndSeparateThePrompt()
     {
-        var arguments = CodexCliProvider.BuildExecArguments("/s.json", "/o.json", "gpt-a", "high", "--version");
+        var arguments = CodexCliProvider.BuildExecArguments("/s.json", "/o.json", "gpt-a", "high", "medium", "--version");
 
         CollectionAssert.IsSubsetOf(new[] { "--sandbox", "read-only", "--json", "--ephemeral" }, arguments.ToArray());
         CollectionAssert.Contains(arguments.ToArray(), "model_reasoning_effort=high");
         CollectionAssert.Contains(arguments.ToArray(), "features.shell_tool=false");
+        CollectionAssert.Contains(arguments.ToArray(), "model_verbosity=medium");
         Assert.AreEqual("gpt-a", arguments[arguments.ToList().IndexOf("--model") + 1]);
         Assert.AreEqual("--", arguments[^2], "A prompt starting with a dash must not be parsed as a flag.");
         Assert.AreEqual("--version", arguments[^1]);
 
-        var defaults = CodexCliProvider.BuildExecArguments("/s.json", "/o.json", null, null, "p");
+        var defaults = CodexCliProvider.BuildExecArguments("/s.json", "/o.json", null, null, null, "p");
         Assert.IsFalse(defaults.Contains("--model"));
         Assert.IsFalse(defaults.Any(x => x.StartsWith("model_reasoning_effort", StringComparison.Ordinal)));
+        CollectionAssert.Contains(defaults.ToArray(), "model_verbosity=low", "An invalid or missing verbosity falls back to low.");
+    }
+
+    [TestMethod]
+    public void TrimContextCapsToApproximatelyFourCharactersPerToken()
+    {
+        var context = new string('x', 100);
+
+        Assert.AreEqual(context, CodexCliProvider.TrimContext(context, null), "No budget keeps the context unchanged.");
+        Assert.AreEqual(40, CodexCliProvider.TrimContext(context, 10).Length, "10 tokens is approximately 40 characters.");
+        Assert.AreEqual(context, CodexCliProvider.TrimContext(context, 1000), "A generous budget never grows the context.");
+        Assert.AreEqual(string.Empty, CodexCliProvider.TrimContext(string.Empty, 10));
+    }
+
+    [TestMethod]
+    public async Task TurnConfigCarriesTheResolvedVerbosityAndFallsBackToLow()
+    {
+        async Task<string> VerbosityForAsync(string? requested)
+        {
+            var server = new FakeCodexServer();
+            server.Handle("thread/start", _ => Result(new JsonObject { ["thread"] = new JsonObject { ["id"] = "t1" } }));
+            server.Handle("turn/start", _ =>
+            {
+                server.Push("turn/completed", new JsonObject
+                {
+                    ["threadId"] = "t1",
+                    ["turn"] = new JsonObject
+                    {
+                        ["id"] = "u1",
+                        ["status"] = "completed",
+                        ["items"] = new JsonArray(new JsonObject { ["type"] = "agentMessage", ["text"] = "{}" })
+                    }
+                });
+                return Result(new JsonObject { ["turn"] = new JsonObject { ["id"] = "u1" } });
+            });
+            await using var fixture = new Fixture(server);
+
+            await fixture.Gateway.RunTurnAsync(
+                new CodexTurnRequest("p", "{}", "/tmp", "gpt-a", null, null, TimeSpan.FromSeconds(5)) { Verbosity = requested },
+                null,
+                CancellationToken.None);
+
+            return server.Received.Single(x => x["method"]?.GetValue<string>() == "thread/start")["params"]!["config"]!["model_verbosity"]!.GetValue<string>();
+        }
+
+        Assert.AreEqual("high", await VerbosityForAsync("high"));
+        Assert.AreEqual("low", await VerbosityForAsync(null), "Missing verbosity defaults to low.");
+        Assert.AreEqual("low", await VerbosityForAsync("invalid-level"), "An unrecognized verbosity falls back to low rather than being sent as-is.");
+    }
+
+    [TestMethod]
+    public async Task StructuredJobsRetryTransientTurnFailuresUpToTheResolvedLimit()
+    {
+        var server = new FakeCodexServer();
+        var turnAttempts = 0;
+        server.Handle("thread/start", _ => Result(new JsonObject { ["thread"] = new JsonObject { ["id"] = $"thread-{Guid.NewGuid():N}" } }));
+        server.Handle("turn/start", request =>
+        {
+            turnAttempts++;
+            var threadId = request["params"]!["threadId"]!.GetValue<string>();
+            var turnId = $"turn-{turnAttempts}";
+            server.Push(
+                "turn/completed",
+                turnAttempts < 3
+                    ? new JsonObject
+                    {
+                        ["threadId"] = threadId,
+                        ["turn"] = new JsonObject { ["id"] = turnId, ["status"] = "failed", ["error"] = new JsonObject { ["message"] = "temporary overload" } }
+                    }
+                    : new JsonObject
+                    {
+                        ["threadId"] = threadId,
+                        ["turn"] = new JsonObject
+                        {
+                            ["id"] = turnId,
+                            ["status"] = "completed",
+                            ["items"] = new JsonArray(new JsonObject { ["type"] = "agentMessage", ["text"] = "{\"translation\":\"Hallo\"}" })
+                        }
+                    });
+            return Result(new JsonObject { ["turn"] = new JsonObject { ["id"] = turnId } });
+        });
+        await using var fixture = new Fixture(server);
+        var provider = new CodexCliProvider(fixture.Gateway);
+        var tracker = new AiActivityTracker(TimeProvider.System);
+        using var activity = tracker.Start(
+            new AiActivityStart("alice", AiOperations.NovelTranslation, "codex-cli", new AiInvocationOptions("gpt-a", "low", null, null) { MaxRetries = 2 }),
+            CancellationToken.None);
+
+        string result;
+        using (AiActivityScope.Enter(activity))
+        {
+            result = await provider.TranslateAsync("こんにちは", "de", CancellationToken.None);
+        }
+
+        Assert.AreEqual("Hallo", result);
+        Assert.AreEqual(3, turnAttempts, "Two retries after the first failed attempt reach the third, successful attempt.");
+        Assert.AreEqual(2, activity.Snapshot.Retries);
+    }
+
+    [TestMethod]
+    public async Task StructuredJobsGiveUpAfterExhaustingTheResolvedRetryLimit()
+    {
+        var server = new FakeCodexServer();
+        var turnAttempts = 0;
+        server.Handle("thread/start", _ => Result(new JsonObject { ["thread"] = new JsonObject { ["id"] = $"thread-{Guid.NewGuid():N}" } }));
+        server.Handle("turn/start", request =>
+        {
+            turnAttempts++;
+            var threadId = request["params"]!["threadId"]!.GetValue<string>();
+            var turnId = $"turn-{turnAttempts}";
+            server.Push("turn/completed", new JsonObject
+            {
+                ["threadId"] = threadId,
+                ["turn"] = new JsonObject { ["id"] = turnId, ["status"] = "failed", ["error"] = new JsonObject { ["message"] = "still overloaded" } }
+            });
+            return Result(new JsonObject { ["turn"] = new JsonObject { ["id"] = turnId } });
+        });
+        await using var fixture = new Fixture(server);
+        var provider = new CodexCliProvider(fixture.Gateway);
+        var tracker = new AiActivityTracker(TimeProvider.System);
+        using var activity = tracker.Start(
+            new AiActivityStart("alice", AiOperations.NovelTranslation, "codex-cli", new AiInvocationOptions("gpt-a", "low", null, null) { MaxRetries = 1 }),
+            CancellationToken.None);
+
+        using (AiActivityScope.Enter(activity))
+        {
+            await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => provider.TranslateAsync("こんにちは", "de", CancellationToken.None));
+        }
+
+        Assert.AreEqual(2, turnAttempts, "A retry limit of 1 allows exactly one retry: two attempts total.");
+    }
+
+    [TestMethod]
+    public async Task AppServerLoginStartsAndCompletesWhenTheAccountChanges()
+    {
+        var server = new FakeCodexServer();
+        server.Handle("account/login/start", _ => Result(new JsonObject
+        {
+            ["type"] = "chatgptDeviceCode",
+            ["loginId"] = "login-1",
+            ["verificationUrl"] = "https://auth.openai.com/codex/device",
+            ["userCode"] = "ABCD-1234"
+        }));
+        await using var fixture = new Fixture(server);
+        var provider = new CodexCliProvider(fixture.Gateway);
+        Assert.IsFalse(provider.AppServerLoginSupported, "Not proven supported before the first attempt.");
+
+        var snapshot = await provider.StartAppServerLoginAsync(CancellationToken.None);
+        Assert.AreEqual(DeviceLoginState.WaitingForUser, snapshot.State);
+        Assert.AreEqual("https://auth.openai.com/codex/device", snapshot.VerificationUrl);
+        Assert.AreEqual("ABCD-1234", snapshot.UserCode);
+        Assert.IsTrue(provider.AppServerLoginSupported);
+
+        server.Push("account/updated", new JsonObject { ["authMode"] = "chatgpt" });
+        await WaitUntilAsync(() => provider.GetAppServerLoginSnapshot().State == DeviceLoginState.Succeeded);
+
+        var cancelled = server.Received.Any(x => x["method"]?.GetValue<string>() == "account/login/cancel");
+        Assert.IsFalse(cancelled, "A login that succeeded is never also cancelled.");
+    }
+
+    [TestMethod]
+    public async Task AppServerLoginCancelSendsTheLoginId()
+    {
+        var server = new FakeCodexServer();
+        server.Handle("account/login/start", _ => Result(new JsonObject
+        {
+            ["type"] = "chatgptDeviceCode",
+            ["loginId"] = "login-9",
+            ["verificationUrl"] = "https://auth.openai.com/codex/device",
+            ["userCode"] = "WXYZ-9999"
+        }));
+        server.Handle("account/login/cancel", _ => Result(new JsonObject()));
+        await using var fixture = new Fixture(server);
+        var provider = new CodexCliProvider(fixture.Gateway);
+
+        await provider.StartAppServerLoginAsync(CancellationToken.None);
+        await provider.CancelAppServerLoginAsync(CancellationToken.None);
+
+        Assert.AreEqual(DeviceLoginState.Cancelled, provider.GetAppServerLoginSnapshot().State);
+        var cancel = server.Received.Single(x => x["method"]?.GetValue<string>() == "account/login/cancel")["params"]!;
+        Assert.AreEqual("login-9", cancel["loginId"]!.GetValue<string>());
+    }
+
+    [TestMethod]
+    public async Task AppServerLoginMarksUnsupportedOnMethodNotFoundAndLeavesTheCliFlowUnaffected()
+    {
+        var server = new FakeCodexServer();
+        server.Handle("account/login/start", _ => MethodNotFound());
+        await using var fixture = new Fixture(server);
+        var provider = new CodexCliProvider(fixture.Gateway);
+
+        var snapshot = await provider.StartAppServerLoginAsync(CancellationToken.None);
+        Assert.AreEqual(DeviceLoginState.Failed, snapshot.State);
+        Assert.IsFalse(provider.AppServerLoginSupported);
+        Assert.AreEqual(AiCapabilityState.Unsupported, fixture.Gateway.GetCapabilities(true)[AiCapability.AppServerLogin]);
     }
 
     private static async Task WaitUntilAsync(Func<bool> condition)

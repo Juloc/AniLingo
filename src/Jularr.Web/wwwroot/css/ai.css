@@ -57,7 +57,9 @@
 /* Jularr-local limits (Advanced) and today's usage against the daily limit. */
 .ai-limits { border: 0; margin: 0; padding: 0; display: grid; gap: 8px; min-width: 0; }
 .ai-limits legend { padding: 0; margin-bottom: 6px; color: var(--text-secondary); font-size: 12px; font-weight: 700; }
-.ai-limits-fields { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, .8fr) minmax(0, 1fr); gap: 10px; }
+.ai-limits-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+.ai-fallback-model { display: flex; align-items: center; gap: 8px; margin-top: 4px; font-size: 13px; }
+.ai-fallback-model input[type="checkbox"] { flex-shrink: 0; }
 .ai-budget { display: grid; gap: 4px; margin-bottom: 14px; font-size: 13px; font-variant-numeric: tabular-nums; }
 .ai-budget-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 .ai-budget .progress-track { margin-top: 2px; }

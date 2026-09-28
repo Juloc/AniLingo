@@ -89,11 +89,24 @@ public sealed class AiProfileSettingsStore
                         DailyTokenBudget = persisted.DailyTokenBudget,
                         BudgetWarningPercent = persisted.BudgetWarningPercent,
                         MaxConcurrentJobs = persisted.MaxConcurrentJobs,
+                        SessionTokenBudget = persisted.SessionTokenBudget,
+                        ContextBudgetTokens = persisted.ContextBudgetTokens,
+                        MaxRetries = persisted.MaxRetries,
+                        TimeoutSeconds = persisted.TimeoutSeconds,
+                        Verbosity = persisted.Verbosity,
+                        FallbackModelEnabled = persisted.FallbackModelEnabled,
                         Overrides = AiOperationOverrides.From(
                             persisted.Overrides?
                                 .Select(x => KeyValuePair.Create(
                                     x.Key,
-                                    new AiOperationOverride(x.Value.Model, x.Value.ReasoningEffort)))
+                                    new AiOperationOverride(x.Value.Model, x.Value.ReasoningEffort)
+                                    {
+                                        ContextBudgetTokens = x.Value.ContextBudgetTokens,
+                                        MaxOutputTokens = x.Value.MaxOutputTokens,
+                                        MaxRetries = x.Value.MaxRetries,
+                                        TimeoutSeconds = x.Value.TimeoutSeconds,
+                                        Verbosity = x.Value.Verbosity
+                                    }))
                             ?? [])
                     },
                     requireSecret: false);
@@ -148,12 +161,25 @@ public sealed class AiProfileSettingsStore
                     ? null
                     : validated.Overrides.Items.ToDictionary(
                         x => x.Key,
-                        x => new PersistedAiOperationOverride(x.Value.Model, x.Value.ReasoningEffort),
+                        x => new PersistedAiOperationOverride(x.Value.Model, x.Value.ReasoningEffort)
+                        {
+                            ContextBudgetTokens = x.Value.ContextBudgetTokens,
+                            MaxOutputTokens = x.Value.MaxOutputTokens,
+                            MaxRetries = x.Value.MaxRetries,
+                            TimeoutSeconds = x.Value.TimeoutSeconds,
+                            Verbosity = x.Value.Verbosity
+                        },
                         StringComparer.Ordinal))
             {
                 DailyTokenBudget = validated.DailyTokenBudget,
                 BudgetWarningPercent = validated.BudgetWarningPercent,
-                MaxConcurrentJobs = validated.MaxConcurrentJobs
+                MaxConcurrentJobs = validated.MaxConcurrentJobs,
+                SessionTokenBudget = validated.SessionTokenBudget,
+                ContextBudgetTokens = validated.ContextBudgetTokens,
+                MaxRetries = validated.MaxRetries,
+                TimeoutSeconds = validated.TimeoutSeconds,
+                Verbosity = validated.Verbosity,
+                FallbackModelEnabled = validated.FallbackModelEnabled
             };
 
             try
@@ -245,10 +271,41 @@ public sealed class AiProfileSettingsStore
                 $"Parallel AI tasks must be between 1 and {AiProfileSettings.MaxConcurrentJobsLimit}.");
         }
 
+        if (settings.SessionTokenBudget is < 1 or > AiProfileSettings.MaxSessionTokenBudget)
+        {
+            throw new InvalidOperationException(
+                $"The session token limit must be between 1 and {AiProfileSettings.MaxSessionTokenBudget}.");
+        }
+
+        if (settings.ContextBudgetTokens is < 1 or > AiProfileSettings.MaxContextBudgetTokens)
+        {
+            throw new InvalidOperationException(
+                $"The context budget must be between 1 and {AiProfileSettings.MaxContextBudgetTokens} tokens.");
+        }
+
+        if (settings.MaxRetries is < 0 or > AiProfileSettings.MaxRetriesLimit)
+        {
+            throw new InvalidOperationException(
+                $"Retries must be between 0 and {AiProfileSettings.MaxRetriesLimit}.");
+        }
+
+        if (settings.TimeoutSeconds is < AiProfileSettings.MinTimeoutSeconds or > AiProfileSettings.MaxTimeoutSeconds)
+        {
+            throw new InvalidOperationException(
+                $"The timeout must be between {AiProfileSettings.MinTimeoutSeconds} and {AiProfileSettings.MaxTimeoutSeconds} seconds.");
+        }
+
+        var verbosity = CleanOption(settings.Verbosity, "verbosity");
+
         foreach (var (operation, value) in settings.Overrides.Items)
         {
             if ((value.Model is not null && !AiProfileSettings.IsValidModelId(value.Model))
-                || (value.ReasoningEffort is not null && !AiProfileSettings.IsValidOptionId(value.ReasoningEffort)))
+                || (value.ReasoningEffort is not null && !AiProfileSettings.IsValidOptionId(value.ReasoningEffort))
+                || (value.Verbosity is not null && !AiProfileSettings.IsValidOptionId(value.Verbosity))
+                || value.ContextBudgetTokens is < 1 or > AiProfileSettings.MaxContextBudgetTokens
+                || value.MaxOutputTokens is < 1 or > AiProfileSettings.MaxOutputTokensLimit
+                || value.MaxRetries is < 0 or > AiProfileSettings.MaxRetriesLimit
+                || value.TimeoutSeconds is < AiProfileSettings.MinTimeoutSeconds or > AiProfileSettings.MaxTimeoutSeconds)
             {
                 throw new InvalidOperationException($"The override for {operation} is not valid.");
             }
@@ -257,12 +314,16 @@ public sealed class AiProfileSettingsStore
         if (settings.ProviderId == AiProviderIds.Server)
         {
             // The server's Codex connection is shared: a profile may pick a catalog model and
-            // reasoning effort, but never an endpoint, key or output limit.
+            // reasoning effort, but never an endpoint, key or output limit. Per-task output-token
+            // caps are OpenAI-compatible only, so they are stripped here too.
             var serverModel = string.IsNullOrWhiteSpace(settings.Model) ? null : settings.Model.Trim();
             if (serverModel is not null && !AiProfileSettings.IsValidModelId(serverModel))
             {
                 throw new InvalidOperationException("Enter a valid model name.");
             }
+
+            var serverEntries = settings.Overrides.Items
+                .Select(x => KeyValuePair.Create(x.Key, x.Value with { MaxOutputTokens = null }));
 
             return settings with
             {
@@ -273,7 +334,16 @@ public sealed class AiProfileSettingsStore
                 ReasoningEffort = effort,
                 ServiceTier = serviceTier,
                 MaxOutputTokens = null,
-                Overrides = AiOperationOverrides.From(settings.Overrides.Items, serverModel, effort)
+                Verbosity = verbosity,
+                Overrides = AiOperationOverrides.From(
+                    serverEntries,
+                    serverModel,
+                    effort,
+                    settings.ContextBudgetTokens,
+                    null,
+                    settings.MaxRetries,
+                    settings.TimeoutSeconds,
+                    verbosity)
             };
         }
 
@@ -308,6 +378,10 @@ public sealed class AiProfileSettingsStore
                 "An API key is required for the OpenAI-compatible provider.");
         }
 
+        // Verbosity is a Codex response setting; personal OpenAI-compatible providers never receive it.
+        var personalEntries = settings.Overrides.Items
+            .Select(x => KeyValuePair.Create(x.Key, x.Value with { Verbosity = null }));
+
         return settings with
         {
             BaseUrl = baseUrl.TrimEnd('/'),
@@ -316,7 +390,15 @@ public sealed class AiProfileSettingsStore
             ImageModel = string.IsNullOrWhiteSpace(imageModel) ? null : imageModel,
             ReasoningEffort = effort,
             ServiceTier = serviceTier,
-            Overrides = AiOperationOverrides.From(settings.Overrides.Items, model, effort)
+            Verbosity = null,
+            Overrides = AiOperationOverrides.From(
+                personalEntries,
+                model,
+                effort,
+                settings.ContextBudgetTokens,
+                settings.MaxOutputTokens,
+                settings.MaxRetries,
+                settings.TimeoutSeconds)
         };
     }
 
@@ -394,9 +476,32 @@ public sealed class AiProfileSettingsStore
         public int? BudgetWarningPercent { get; init; }
 
         public int? MaxConcurrentJobs { get; init; }
+
+        public int? SessionTokenBudget { get; init; }
+
+        public int? ContextBudgetTokens { get; init; }
+
+        public int? MaxRetries { get; init; }
+
+        public int? TimeoutSeconds { get; init; }
+
+        public string? Verbosity { get; init; }
+
+        public bool FallbackModelEnabled { get; init; }
     }
 
     private sealed record PersistedAiOperationOverride(
         string? Model,
-        string? ReasoningEffort);
+        string? ReasoningEffort)
+    {
+        public int? ContextBudgetTokens { get; init; }
+
+        public int? MaxOutputTokens { get; init; }
+
+        public int? MaxRetries { get; init; }
+
+        public int? TimeoutSeconds { get; init; }
+
+        public string? Verbosity { get; init; }
+    }
 }

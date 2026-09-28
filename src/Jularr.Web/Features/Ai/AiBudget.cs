@@ -67,3 +67,40 @@ public sealed class AiBudgetGuard(AiUsageStore usage, TimeProvider time)
         }
     }
 }
+
+/// <summary>
+/// This process run's usage against the profile's Jularr-local session token limit. Unlike
+/// <see cref="AiBudgetStatus"/>, session usage is in-memory only and resets when Jularr restarts.
+/// </summary>
+public sealed record AiSessionBudgetStatus(long UsedTokens, int? LimitTokens)
+{
+    public double? Percent =>
+        LimitTokens is > 0 ? Math.Min(100, UsedTokens * 100d / LimitTokens.Value) : null;
+
+    public bool IsReached => LimitTokens is > 0 && UsedTokens >= LimitTokens;
+
+    public static AiSessionBudgetStatus For(AiProfileSettings settings, AiUsageSnapshot usage) =>
+        new(usage.InputTokens + usage.OutputTokens, settings.SessionTokenBudget);
+}
+
+/// <summary>Stops AI work before a request is sent once the profile's session limit is used up.</summary>
+public sealed class AiSessionBudgetExceededException(string message) : InvalidOperationException(message)
+{
+    public const string DefaultMessage =
+        "The session AI token limit of this profile is used up. AI tasks continue after Jularr restarts or after the limit is raised in Settings → AI.";
+}
+
+/// <summary>Checks the session limit against this run's in-memory usage before an AI request starts.</summary>
+public sealed class AiSessionBudgetGuard(AiUsageTracker usage)
+{
+    public AiSessionBudgetStatus GetStatus(string profileId, AiProfileSettings settings) =>
+        AiSessionBudgetStatus.For(settings, usage.GetSnapshot(profileId));
+
+    public void EnsureAvailable(string profileId, AiProfileSettings settings)
+    {
+        if (GetStatus(profileId, settings).IsReached)
+        {
+            throw new AiSessionBudgetExceededException(AiSessionBudgetExceededException.DefaultMessage);
+        }
+    }
+}

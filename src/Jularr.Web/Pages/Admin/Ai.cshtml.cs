@@ -31,6 +31,13 @@ public sealed class AiModel(
     public DeviceLoginSnapshot Login { get; private set; } =
         new(DeviceLoginState.Idle, null, null, null, null);
 
+    /// <summary>Login started over the app-server JSON-RPC connection instead of the CLI device flow.</summary>
+    public DeviceLoginSnapshot AppServerLogin { get; private set; } =
+        new(DeviceLoginState.Idle, null, null, null, null);
+
+    /// <summary>True once this Codex connection has proven it can log in over the app-server.</summary>
+    public bool AppServerLoginSupported { get; private set; }
+
     public AiServerDiagnostics Diagnostics { get; private set; } =
         new(AiProviderCapabilities.None(AiTransports.CodexExec), null, null, null, null);
 
@@ -79,6 +86,32 @@ public sealed class AiModel(
         return RedirectToPage();
     }
 
+    /// <summary>Starts Codex login over the app-server instead of spawning the CLI device flow.</summary>
+    public async Task<IActionResult> OnPostConnectAppServerAsync(CancellationToken cancellationToken)
+    {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
+        var snapshot = await codex.StartAppServerLoginAsync(cancellationToken);
+        TempData["Status"] = snapshot.State switch
+        {
+            DeviceLoginState.WaitingForUser => Ui["admin.ai.loginStarted"],
+            DeviceLoginState.Succeeded => Ui["admin.ai.connected"],
+            DeviceLoginState.Failed => snapshot.Message ?? Ui["admin.ai.loginFailed"],
+            _ => Ui["admin.ai.loginStarting"]
+        };
+
+        return RedirectToPage();
+    }
+
+    public async Task<IActionResult> OnPostCancelAppServerAsync(CancellationToken cancellationToken)
+    {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
+        await codex.CancelAppServerLoginAsync(cancellationToken);
+        TempData["Status"] = Ui["admin.ai.loginCancelled"];
+        return RedirectToPage();
+    }
+
     public async Task<IActionResult> OnPostLogoutAsync(CancellationToken cancellationToken)
     {
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
@@ -117,6 +150,8 @@ public sealed class AiModel(
         Now = time.GetUtcNow();
         Provider = await codex.GetStatusAsync(cancellationToken);
         Login = codex.GetDeviceLoginSnapshot();
+        AppServerLogin = codex.GetAppServerLoginSnapshot();
+        AppServerLoginSupported = codex.AppServerLoginSupported;
         // Account, quota and models come from the last explicit refresh; a GET does not ask Codex.
         Catalog = await catalogs.GetCachedAsync(AiModelCatalogKeys.CodexServer, cancellationToken);
         var diagnostics = codex.GetCachedDiagnostics();

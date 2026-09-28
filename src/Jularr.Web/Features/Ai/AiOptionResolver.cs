@@ -58,17 +58,34 @@ public static class AiOptionResolver
                 ? requested.ServiceTier
                 : null;
 
-        return new AiInvocationOptions(model, effort, tier, null);
+        return new AiInvocationOptions(model, effort, tier, null)
+        {
+            ContextBudgetTokens = requested.ContextBudgetTokens,
+            MaxRetries = requested.MaxRetries,
+            TimeoutSeconds = requested.TimeoutSeconds,
+            Verbosity = ValidVerbosity(requested.Verbosity)
+        };
     }
 
     public const string MissingPersonalModelMessage =
         "Choose a model for your AI provider in Settings → AI before running AI tasks.";
 
+    /// <summary>Response verbosity levels Codex accepts; nothing else is ever sent.</summary>
+    public static IReadOnlyList<string> VerbosityLevels { get; } = ["low", "medium", "high"];
+
+    public static string? ValidVerbosity(string? value) =>
+        value is not null && VerbosityLevels.Contains(value, StringComparer.Ordinal) ? value : null;
+
     /// <summary>Personal providers get no reasoning options; a request without a model never starts.</summary>
     public static AiInvocationOptions ResolvePersonal(AiInvocationOptions requested) =>
         string.IsNullOrWhiteSpace(requested.Model)
             ? throw new InvalidOperationException(MissingPersonalModelMessage)
-            : new(requested.Model, null, null, requested.MaxOutputTokens);
+            : new AiInvocationOptions(requested.Model, null, null, requested.MaxOutputTokens)
+            {
+                ContextBudgetTokens = requested.ContextBudgetTokens,
+                MaxRetries = requested.MaxRetries,
+                TimeoutSeconds = requested.TimeoutSeconds
+            };
 
     /// <summary>Reasoning options to offer for a model, or none when the model lists none.</summary>
     public static IReadOnlyList<AiReasoningOption> ReasoningOptions(AiModelCatalog catalog, string? modelId) =>
@@ -84,4 +101,35 @@ public static class AiOptionResolver
 
     public static IReadOnlyList<AiServiceTierOption> ServiceTierOptions(AiModelCatalog catalog, string? modelId) =>
         (catalog.Find(modelId) ?? (modelId is null ? catalog.DefaultModel : null))?.ServiceTiers ?? [];
+
+    /// <summary>
+    /// True when the catalog reports a context window for at least two models, so a lighter model can
+    /// ever be identified. Catalogs carry no cost data, so context window — the one numeric, provider-
+    /// reported size signal Jularr has — is the only safe basis for "lighter"; nothing is guessed.
+    /// </summary>
+    public static bool CanSuggestLighterModel(AiModelCatalog catalog) =>
+        catalog.Models.Count(x => x.ContextWindow is > 0) >= 2;
+
+    /// <summary>
+    /// A model with a strictly smaller known context window than <paramref name="currentModelId"/>, or
+    /// null when the current model or the catalog does not report enough context-window metadata to
+    /// tell safely. Never a guess: a model without a reported context window is never suggested and
+    /// never used to judge another model.
+    /// </summary>
+    public static AiModelDescriptor? FindLighterModel(AiModelCatalog catalog, string? currentModelId)
+    {
+        var currentWindow = catalog.Find(currentModelId)?.ContextWindow;
+        if (currentWindow is not > 0)
+        {
+            return null;
+        }
+
+        return catalog.Models
+            .Where(x =>
+                x.ContextWindow is > 0
+                && x.ContextWindow < currentWindow
+                && !string.Equals(x.Id, currentModelId, StringComparison.Ordinal))
+            .OrderBy(x => x.ContextWindow)
+            .FirstOrDefault();
+    }
 }
