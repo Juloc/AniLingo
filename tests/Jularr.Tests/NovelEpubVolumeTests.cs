@@ -211,6 +211,124 @@ public sealed class NovelEpubVolumeTests
     }
 
     [TestMethod]
+    public void EpubParserReadsNavNestingIntoChapterGroups()
+    {
+        var epub = new EpubTestBuilder { Title = "Grouped" }
+            .Chapter("text/ch1.xhtml", "Prologue", "プロローグの本文です。")
+            .Chapter("text/ch2.xhtml", "The First Story", "一話目の短編です。")
+            .Chapter("text/ch3.xhtml", "The Second Story", "二話目の短編です。")
+            .Nav("nav.xhtml", """
+                <?xml version="1.0" encoding="utf-8"?>
+                <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+                <head><title>Contents</title></head>
+                <body>
+                <nav epub:type="toc" id="toc">
+                <ol>
+                <li><a href="text/ch1.xhtml">Prologue</a></li>
+                <li><a href="text/short.xhtml">Short Stories</a>
+                <ol>
+                <li><a href="text/ch2.xhtml">The First Story</a></li>
+                <li><a href="text/ch3.xhtml">The Second Story</a></li>
+                </ol>
+                </li>
+                </ol>
+                </nav>
+                </body></html>
+                """)
+            .Build();
+
+        var parsed = EpubBookParser.Parse(epub, "grouped.epub");
+
+        Assert.AreEqual(3, parsed.Chapters.Count);
+        Assert.IsNull(parsed.Chapters[0].GroupTitle);
+        Assert.AreEqual("Short Stories", parsed.Chapters[1].GroupTitle);
+        Assert.AreEqual("Short Stories", parsed.Chapters[2].GroupTitle);
+    }
+
+    [TestMethod]
+    public void EpubParserFallsBackToNcxNestingWhenThereIsNoNav()
+    {
+        var epub = new EpubTestBuilder { Title = "Grouped Ncx" }
+            .Chapter("text/ch1.xhtml", "Prologue", "プロローグの本文です。")
+            .Chapter("text/ch2.xhtml", "The First Story", "一話目の短編です。")
+            .Chapter("text/ch3.xhtml", "The Second Story", "二話目の短編です。")
+            .Ncx("toc.ncx", """
+                <?xml version="1.0" encoding="utf-8"?>
+                <ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
+                <navMap>
+                <navPoint id="np1"><navLabel><text>Prologue</text></navLabel><content src="text/ch1.xhtml"/></navPoint>
+                <navPoint id="np2"><navLabel><text>Short Stories</text></navLabel><content src="text/short.xhtml"/>
+                <navPoint id="np3"><navLabel><text>The First Story</text></navLabel><content src="text/ch2.xhtml"/></navPoint>
+                <navPoint id="np4"><navLabel><text>The Second Story</text></navLabel><content src="text/ch3.xhtml"/></navPoint>
+                </navPoint>
+                </navMap>
+                </ncx>
+                """)
+            .Build();
+
+        var parsed = EpubBookParser.Parse(epub, "grouped-ncx.epub");
+
+        Assert.AreEqual(3, parsed.Chapters.Count);
+        Assert.IsNull(parsed.Chapters[0].GroupTitle);
+        Assert.AreEqual("Short Stories", parsed.Chapters[1].GroupTitle);
+        Assert.AreEqual("Short Stories", parsed.Chapters[2].GroupTitle);
+    }
+
+    [TestMethod]
+    public void EpubWithoutNavOrNcxLeavesChaptersUngrouped()
+    {
+        var epub = new EpubTestBuilder { Title = "Flat" }
+            .Chapter("text/ch1.xhtml", "One", "一つ目の本文です。")
+            .Chapter("text/ch2.xhtml", "Two", "二つ目の本文です。")
+            .Build();
+
+        var parsed = EpubBookParser.Parse(epub, "flat.epub");
+
+        Assert.AreEqual(2, parsed.Chapters.Count);
+        Assert.IsTrue(parsed.Chapters.All(x => x.GroupTitle is null));
+    }
+
+    [TestMethod]
+    public async Task EpubNavGroupsFlowIntoStoredChapterGroupTitles()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var builder = new EpubTestBuilder { Title = "テスト作品", Identifier = "urn:uuid:group-flow" }
+            .Chapter("text/ch1.xhtml", "序章", "序章の本文です。")
+            .Chapter("text/ch2.xhtml", "短編一", "短編一の本文です。")
+            .Nav("nav.xhtml", """
+                <?xml version="1.0" encoding="utf-8"?>
+                <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+                <head><title>Contents</title></head>
+                <body>
+                <nav epub:type="toc" id="toc">
+                <ol>
+                <li><a href="text/ch1.xhtml">序章</a></li>
+                <li><a href="text/short.xhtml">Short Stories</a>
+                <ol>
+                <li><a href="text/ch2.xhtml">短編一</a></li>
+                </ol>
+                </li>
+                </ol>
+                </nav>
+                </body></html>
+                """);
+
+        var outcome = await fixture.ImportAsync(builder);
+        Assert.IsTrue(outcome.Succeeded, outcome.Message);
+
+        var chapters = await fixture.Db.NovelChapters.AsNoTracking().OrderBy(x => x.Number).ToListAsync();
+        Assert.AreEqual(2, chapters.Count);
+        Assert.IsNull(chapters[0].GroupTitle);
+        Assert.AreEqual("Short Stories", chapters[1].GroupTitle);
+
+        // The work page's chapter list (NovelWorkDetail.Chapters) reads the same GroupTitle.
+        var detail = (await fixture.Catalog.GetWorkDetailAsync(outcome.WorkId!.Value, CancellationToken.None))!;
+        CollectionAssert.AreEqual(
+            new[] { null, "Short Stories" },
+            detail.Chapters.OrderBy(x => x.Number).Select(x => x.GroupTitle).ToArray());
+    }
+
+    [TestMethod]
     public async Task ImportedIllustrationsAreCachedAsContentAddressedAssets()
     {
         await using var fixture = await Fixture.CreateAsync();

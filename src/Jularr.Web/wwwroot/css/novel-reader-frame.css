@@ -535,6 +535,36 @@
     border-top: 0;
 }
 
+.novel-drawer-group-heading {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    margin: 6px 0 2px;
+    padding: 6px 10px;
+    border: 0;
+    background: none;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 650;
+    text-align: left;
+    cursor: pointer;
+}
+
+.novel-drawer-group-heading::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-right: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+    transform: rotate(45deg);
+    transition: transform .15s ease;
+}
+
+.novel-drawer-group-heading[aria-expanded="false"]::before {
+    transform: rotate(-45deg);
+}
+
 /* Rows read like a printed table of contents: "Chapter 3" over its title. */
 .novel-reader-shell.reader-frame .novel-drawer-row {
     grid-template-columns: minmax(0, 1fr) auto;

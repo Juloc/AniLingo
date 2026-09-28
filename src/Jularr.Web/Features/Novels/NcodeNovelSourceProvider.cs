@@ -33,7 +33,11 @@ public sealed partial class NcodeNovelSourceProvider(
         var description = ParseDescription(firstHtml);
 
         var chapters = new Dictionary<int, NovelSourceChapterReference>();
-        AddChapterLinks(firstHtml, sourceKey, chapters);
+        // The current section heading (e.g. "第一章　幼年期", "閑話") carries across
+        // table-of-contents pages: Narou never repeats it on the next page when a
+        // section's chapters spill over a page boundary.
+        string? currentGroup = null;
+        AddChapterLinks(firstHtml, sourceKey, chapters, ref currentGroup);
 
         var currentPage = 1;
         var currentHtml = firstHtml;
@@ -51,7 +55,7 @@ public sealed partial class NcodeNovelSourceProvider(
             currentPage = nextPage.Value;
 
             var before = chapters.Count;
-            AddChapterLinks(currentHtml, sourceKey, chapters);
+            AddChapterLinks(currentHtml, sourceKey, chapters, ref currentGroup);
 
             if (chapters.Count == before)
             {
@@ -124,7 +128,8 @@ public sealed partial class NcodeNovelSourceProvider(
         string sourceKey)
     {
         var result = new Dictionary<int, NovelSourceChapterReference>();
-        AddChapterLinks(html, sourceKey, result);
+        string? group = null;
+        AddChapterLinks(html, sourceKey, result, ref group);
         return result.Values.OrderBy(x => x.Number).ToArray();
     }
 
@@ -148,13 +153,40 @@ public sealed partial class NcodeNovelSourceProvider(
         }
     }
 
+    /// <summary>
+    /// Adds every chapter link, assigning each the section heading
+    /// (<c>p-eplist__chapter-title</c>, e.g. "第一章　幼年期", "閑話") that precedes
+    /// it on the page. Headings and links are walked together in document
+    /// order so a heading only applies to the links after it.
+    /// </summary>
     private static void AddChapterLinks(
         string html,
         string sourceKey,
-        IDictionary<int, NovelSourceChapterReference> target)
+        IDictionary<int, NovelSourceChapterReference> target,
+        ref string? currentGroup)
     {
-        foreach (Match match in ChapterLinkRegex().Matches(html))
+        var events = SectionTitleRegex()
+            .Matches(html)
+            .Select(match => (match.Index, Heading: (Match?)match, Link: (Match?)null))
+            .Concat(ChapterLinkRegex()
+                .Matches(html)
+                .Select(match => (match.Index, Heading: (Match?)null, Link: (Match?)match)))
+            .OrderBy(x => x.Index);
+
+        foreach (var (_, heading, link) in events)
         {
+            if (heading is not null)
+            {
+                var headingText = CleanInlineText(heading.Groups["value"].Value);
+                if (headingText.Length > 0)
+                {
+                    currentGroup = headingText;
+                }
+
+                continue;
+            }
+
+            var match = link!;
             var key = match.Groups["key"].Value;
             if (!key.Equals(sourceKey, StringComparison.OrdinalIgnoreCase) ||
                 !int.TryParse(match.Groups["number"].Value, out var number) ||
@@ -175,7 +207,8 @@ public sealed partial class NcodeNovelSourceProvider(
             target[number] = new NovelSourceChapterReference(
                 number,
                 title,
-                $"https://ncode.syosetu.com/{sourceKey}/{number}/");
+                $"https://ncode.syosetu.com/{sourceKey}/{number}/",
+                GroupTitle: currentGroup);
         }
     }
 
@@ -323,6 +356,13 @@ public sealed partial class NcodeNovelSourceProvider(
         @"href\s*=\s*[""'][^""']*[?&](?:amp;)?p=(?<page>\d+)[^""']*[""']",
         RegexOptions.IgnoreCase)]
     private static partial Regex TocPageLinkRegex();
+
+    // Section heading on the chapter-index page ("第一章　幼年期", "閑話"): any
+    // element carrying the p-eplist__chapter-title class.
+    [GeneratedRegex(
+        @"<(?<tag>[a-zA-Z][a-zA-Z0-9]*)\b[^>]*class\s*=\s*[""'][^""']*p-eplist__chapter-title[^""']*[""'][^>]*>(?<value>.*?)</\k<tag>>",
+        RegexOptions.IgnoreCase | RegexOptions.Singleline)]
+    private static partial Regex SectionTitleRegex();
 
     [GeneratedRegex(
         @"<h1\b[^>]*class\s*=\s*[""'][^""']*p-novel__title[^""']*[""'][^>]*>(?<value>.*?)</h1>",

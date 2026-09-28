@@ -53,7 +53,8 @@ public sealed record NovelChapterNavItem(
     string Title,
     bool HasContent,
     bool HasTranslation,
-    int? VolumeNumber);
+    int? VolumeNumber,
+    string? GroupTitle = null);
 
 public sealed record NovelChapterWindow(
     IReadOnlyList<NovelChapterNavItem> Items,
@@ -198,7 +199,8 @@ public sealed class NovelCatalogQueries(AppDbContext db)
                     translation.PromptVersion == NovelTranslationService.PromptVersion &&
                     translation.SourceHash == chapter.SourceHash),
                 chapter.PublishedAt,
-                chapter.VolumeId))
+                chapter.VolumeId,
+                chapter.GroupTitle))
             .ToListAsync(cancellationToken);
 
         var mappings = await db.NovelAnimeMappings
@@ -454,5 +456,6 @@ public sealed class NovelCatalogQueries(AppDbContext db)
                     volume.Id == chapter.VolumeId &&
                     volume.Kind == NovelVolumeKinds.Epub)
                 .Select(volume => (int?)volume.Number)
-                .FirstOrDefault()));
+                .FirstOrDefault(),
+            chapter.GroupTitle));
 }

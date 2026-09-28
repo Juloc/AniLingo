@@ -103,6 +103,13 @@ public sealed record ImportedBookChapter(
     /// <see cref="Text"/>. Image blocks reference archive paths.
     /// </summary>
     public IReadOnlyList<NovelContentBlock> Blocks { get; init; } = [];
+
+    /// <summary>
+    /// Title of the nearest <c>nav</c>/<c>toc.ncx</c> entry this chapter is nested
+    /// under, when that entry is not the volume's own top-level entry (#512).
+    /// Null when the chapter is not part of a named group.
+    /// </summary>
+    public string? GroupTitle { get; init; }
 }
 
 /// <summary>An embedded raster image referenced by chapter content.</summary>

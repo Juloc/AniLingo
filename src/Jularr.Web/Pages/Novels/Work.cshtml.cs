@@ -11,6 +11,14 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 
 namespace Jularr.Web.Pages.Novels;
 
+/// <summary>View model of one row in the work page's chapter list (partial _NovelChapterRow), shared
+/// between ungrouped chapters and chapters nested under a collapsible group heading (#512).</summary>
+public sealed record NovelChapterRowModel(
+    NovelChapterItem Chapter,
+    NovelChapterItem? CurrentChapter,
+    NovelProgress? Progress,
+    UiTextBundle Ui);
+
 [NovelEpubUploadRequestLimits("UploadVolume")]
 public sealed class WorkModel(
     AppDbContext db,

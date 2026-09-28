@@ -76,6 +76,7 @@ public sealed class NovelImportService(
             chapter.Title = sourceChapter.Title;
             chapter.SourceUrl = sourceChapter.SourceUrl;
             chapter.PublishedAt = sourceChapter.PublishedAt ?? chapter.PublishedAt;
+            chapter.GroupTitle = sourceChapter.GroupTitle;
             chapter.UpdatedAt = DateTime.UtcNow;
         }
 

@@ -107,6 +107,25 @@ public sealed class NovelReaderQueryTests
     }
 
     [TestMethod]
+    public async Task ChapterWindowCarriesGroupTitleForTheContentsDrawer()
+    {
+        using var fixture = await NovelFixture.CreateAsync();
+        var work = await fixture.SeedWorkAsync("groups", chapterCount: 4);
+        await fixture.Db.NovelChapters
+            .Where(x => x.WorkId == work.Id && x.Number >= 3)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.GroupTitle, "Extra"));
+
+        var catalog = new NovelCatalogQueries(fixture.Db);
+        var window = await catalog.GetChapterWindowAsync(
+            work.Id, 1, null, null, null, 10, CancellationToken.None);
+
+        Assert.AreEqual(4, window.Items.Count);
+        CollectionAssert.AreEqual(
+            new[] { null, null, "Extra", "Extra" },
+            window.Items.Select(x => x.GroupTitle).ToArray());
+    }
+
+    [TestMethod]
     public async Task ChapterNotDownloadedGetRendersPreparationWithoutProviderCall()
     {
         using var fixture = await NovelFixture.CreateAsync();
