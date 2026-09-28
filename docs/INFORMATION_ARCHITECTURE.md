@@ -187,9 +187,9 @@ each row's Where.
 | **Movies and TV library** | **Missing — Jularr has no Movie or TV Show entity, acquisition, or naming distinct from anime; only Anime is modeled** | `Data/AppDbContext.cs` has no `Movie`/`Show` `DbSet` | #396 |
 | Requests & approvals (Overseerr/Jellyseerr-style) | Partial — request lifecycle and admin policy page exist; no per-user request history page or availability-state indicator on cards | `AcquisitionRequestService`, `/Admin/Requests` | #436 |
 | Notifications (events/destinations) | Missing | — | #429 |
-| Clients & devices inventory (admin) | Missing — pairing/session state exists per playback session, no admin inventory/revoke page | `Features/PlaybackSessions` | #527 |
+| Clients & devices inventory (admin) | Partial — `/Admin/Devices` lists known clients/devices across every account (kind, label, app version, first/last seen, online state, live playback method) with a Revoke action that ends the device's live session and forgets it; `/Profile/Devices` lets a user self-manage their own devices the same way. No capability/app-version negotiation beyond what a client already reports, and Jularr's cookie auth has no per-device token, so revoke cannot block a future reconnect from the same browser/app | `Features/Devices/KnownDeviceRegistry`, `Pages/Admin/Devices`, `Pages/Profile/Devices` | #510 |
 | Transcoder resources dashboard | Missing | — | #403 |
-| Remote access & security overview | Missing | — | #527 |
+| Remote access & security overview | Partial — `/Admin/Devices` shows recent sign-in success/failure activity (user name, remote address, timestamp) from an in-memory ring, alongside the devices inventory above; no persisted audit log, IP geolocation, trusted-device flagging or access-policy controls yet | `Features/Devices/SecurityEventLog`, `Pages/Admin/Devices` | #510 |
 | Migration/coexistence: Sonarr | Exists | SONARR_MIGRATION.md, `SonarrParallelSafety` | — |
 | Migration/coexistence: Radarr/Bazarr/Readarr/Plex/Jellyfin | Missing | — | #433 |
 | Backup/export/restore (full app state) | Partial — acquisition-store bundle only | `/Settings/Acquisition` export/restore | #416 |
