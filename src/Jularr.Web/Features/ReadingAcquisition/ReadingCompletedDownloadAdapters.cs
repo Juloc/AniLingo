@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using Jularr.Web.Data;
 using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Acquisition.Import;
+using Jularr.Web.Features.Artwork;
 using Jularr.Web.Features.Books;
 using Jularr.Web.Features.Manga;
 using Jularr.Web.Features.MediaMapping;
@@ -26,7 +27,8 @@ public sealed class MangaCompletedDownloadImportAdapter(
     IHardLinkCreator hardLinks,
     ILogger<MangaCompletedDownloadImportAdapter> logger,
     string? mangaCacheRoot = null,
-    ReadingNamingProfileStore? namingStore = null)
+    ReadingNamingProfileStore? namingStore = null,
+    ReadingCoverArtwork? coverArtwork = null)
     : ICompletedDownloadImportAdapter, IMediaInboxImportAdapter
 {
     public MediaAcquisitionKind Kind =>
@@ -152,7 +154,8 @@ public sealed class MangaCompletedDownloadImportAdapter(
                         repository,
                         httpClientFactory,
                         mappingReviewStore,
-                        segmentMappings);
+                        segmentMappings,
+                        coverArtwork);
                     await metadata.MatchAsync(
                         imported.SeriesId,
                         aniListId,

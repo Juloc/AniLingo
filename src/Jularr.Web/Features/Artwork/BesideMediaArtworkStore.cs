@@ -15,13 +15,14 @@ public enum ArtworkPersistOutcome
 
 /// <summary>
 /// The one write/read path for durable artwork kept beside a work's media on its configured NAS
-/// library root (issue #406), shared by every media type that is not Anime -- Books covers today,
-/// any future Manga/Light Novel folder tomorrow. It records ownership through the same
-/// <see cref="MediaArtworkAssetStore"/> rows and atomic write-then-verify discipline as
-/// <see cref="AnimeArtworkLibrary"/> (which keeps its own richer per-season precedence chain), so
-/// a file without a row -- or one that changed size/timestamp since Jularr wrote it -- is the
-/// user's own and is never replaced. A future local derivative cache (#570) sits in front of
-/// <see cref="ResolveAsync"/> without a second artwork write path.
+/// library root (issue #406), shared by every media type that is not Anime -- Books covers and,
+/// through <see cref="ReadingCoverArtwork"/> (issue #581), Light Novel and Manga series covers. It
+/// records ownership through the same <see cref="MediaArtworkAssetStore"/> rows and atomic
+/// write-then-verify discipline as <see cref="AnimeArtworkLibrary"/> (which keeps its own richer
+/// per-season precedence chain), so a file without a row -- or one that changed size/timestamp
+/// since Jularr wrote it -- is the user's own and is never replaced. The local derivative cache
+/// (<see cref="BesideMediaArtworkCache"/>, #570) sits in front of <see cref="ResolveAsync"/>
+/// without a second artwork write path.
 /// </summary>
 public sealed class BesideMediaArtworkStore(AppDbContext db)
 {

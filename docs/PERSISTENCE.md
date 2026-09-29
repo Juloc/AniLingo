@@ -196,7 +196,9 @@ files beside the media. #570 extends the same pattern to the **non-anime** path
 without a second write path:
 
 - **Wrap the existing single read path** `BesideMediaArtworkStore.ResolveAsync`
-  (and `MediaArtworkAssetStore`), used for Books today and designed for Manga/LN.
+  (and `MediaArtworkAssetStore`), used for Books and, since #581, Light Novel and
+  Manga series covers (`ReadingCoverArtwork`, served by `/Novels/Cover/{id}` and
+  `/Manga/Cover/{id}` through this cache).
   The store's own docstring names this the intended #570 integration point.
 - **Derivatives** (compact poster/cover thumbnails, e.g. WebP ≤512px) are generated
   from the canonical beside-media file and persisted under

@@ -398,6 +398,7 @@ builder.Services.AddHttpClient(Jularr.Web.Features.Artwork.AnimeArtworkLibrary.H
 builder.Services.AddScoped<Jularr.Web.Features.Artwork.AnimeArtworkLibrary>();
 builder.Services.AddScoped<Jularr.Web.Features.Artwork.BesideMediaArtworkStore>();
 builder.Services.AddScoped<Jularr.Web.Features.Artwork.BesideMediaArtworkCache>();
+builder.Services.AddScoped<Jularr.Web.Features.Artwork.ReadingCoverArtwork>();
 builder.Services.AddScoped<Jularr.Web.Features.Search.MediaSearchService>();
 
 builder.Services.AddHttpClient<NcodeNovelSourceProvider>(client =>
