@@ -22,6 +22,7 @@ using Jularr.Web.Features.Progress;
 using Jularr.Web.Features.Sonarr;
 using Jularr.Web.Features.Tracking;
 using Jularr.Web.Features.Watchlist;
+using Jularr.Web.Frontend;
 using Jularr.Web.Pages.Library;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.DataProtection;
@@ -83,6 +84,7 @@ internal sealed class ManageSheetPageTestHost : IAsyncDisposable
 
                         services.AddDbContext<AppDbContext>(options => options.UseSqlite(connectionString));
                         services.AddHttpContextAccessor();
+                        services.AddSingleton<ViteAssetManifest>();
                         services.AddScoped<CurrentAccountContext>();
                         services.AddScoped<OperationRunner>();
                         services.AddScoped<EpisodeProgressService>();
