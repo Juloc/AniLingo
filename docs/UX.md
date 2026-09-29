@@ -643,3 +643,10 @@ A vertical slice may start only when:
 - acceptance criteria exist.
 
 This prevents implementation agents from inventing product structure while coding.
+
+### Canonical search identity and Anime provider view
+
+Search is canonical-first across the product. Series/Anime use one Jularr work with seasons/episodes even when a provider such as AniList models seasons, parts or specials as separate media entries.
+
+Default search groups results by media type and deduplicates provider hits into canonical Jularr works. When the Anime filter is active, the result surface may switch between **Jularr** (canonical grouped work, default) and **AniList** (provider-native entries). A specific season/part query may deep-link directly to that season/provider presentation, but still opens the same canonical work. Home, Discover, Library, Calendar and Requests must resolve through the same identity layer rather than inventing surface-specific duplicates.
+
