@@ -141,8 +141,12 @@ fun TvLoginScreen(
     onLogin: (userName: String, password: String) -> Unit,
     onChangeServer: () -> Unit,
     pairingEnabled: Boolean = false,
-    onStartPairing: suspend () -> DevicePairingSession = { error("Pairing is not enabled.") },
-    onPollPairing: suspend (String) -> DevicePairingPollResult = { error("Pairing is not enabled.") },
+    onStartPairing: suspend () -> DevicePairingSession = {
+        throw IllegalStateException("Pairing is not enabled.")
+    },
+    onPollPairing: suspend (String) -> DevicePairingPollResult = {
+        throw IllegalStateException("Pairing is not enabled.")
+    },
     onPaired: (ClientAccount) -> Unit = {},
 ) {
     // A code-pairing device install never needs a password typed with a remote, so pairing is
