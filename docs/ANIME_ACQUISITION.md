@@ -147,7 +147,7 @@ When an anime download completes, the SABnzbd monitor hands it to `AnimeImportEx
 1. Wait if a library scan or rename is running (the import stays *Importing* and continues before
    the next scheduler run). Renames likewise refuse to start while an import runs.
 2. Enumerate the completed folder SABnzbd reports.
-3. Plan with `CompletedDownloadImportPlanner` (#298): map every file to the requested local
+3. Plan with `AnimeImportPlanner` (#298): map every file to the requested local
    episodes (season/episode or AniList absolute number), score it, detect existing files and apply
    `SonarrParallelSafety.CanImport`/`CanMutateLibraryPath`. Only confident single-anime matches are
    imported automatically; everything else needs a decision.

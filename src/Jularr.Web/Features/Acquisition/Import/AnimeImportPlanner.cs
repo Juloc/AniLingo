@@ -4,22 +4,17 @@ using Jularr.Web.Features.Acquisition.Quality;
 
 namespace Jularr.Web.Features.Acquisition.Import;
 
-public static class CompletedDownloadImportPlanner
+/// <summary>
+/// The Anime-specific part of importing a completed download: maps every video to the requested
+/// local episodes (season/episode, absolute numbering, multi-episode ranges), decides between
+/// automatic import, manual review and ignoring it, and picks the existing files an upgrade
+/// replaces once the new file is in place. Finding, classifying and placing the files is shared
+/// (<see cref="CompletedDownloadFiles"/>, <see cref="LibraryFilePlacer"/>).
+/// </summary>
+public static class AnimeImportPlanner
 {
-    private static readonly HashSet<string> VideoExtensions =
-        new(StringComparer.OrdinalIgnoreCase)
-        {
-            ".mkv", ".mp4", ".m4v", ".avi", ".ts", ".m2ts", ".webm"
-        };
-
-    private static readonly HashSet<string> SidecarExtensions =
-        new(StringComparer.OrdinalIgnoreCase)
-        {
-            ".srt", ".ass", ".ssa", ".vtt", ".nfo"
-        };
-
-    public static CompletedDownloadImportPlan Plan(
-        CompletedDownloadImportContext context,
+    public static AnimeImportPlan Plan(
+        AnimeImportPlanContext context,
         IEnumerable<CompletedDownloadFile> completedFiles,
         IEnumerable<ExistingAnimeFile>? existingFiles = null,
         AcquisitionOwnershipSnapshot? ownership = null)
@@ -40,7 +35,7 @@ public static class CompletedDownloadImportPlanner
             if (!download.Allowed)
             {
                 var reason = $"Ownership: {download.Reason}";
-                return new CompletedDownloadImportPlan(
+                return new AnimeImportPlan(
                     context.AcquisitionId,
                     allFiles
                         .Select(file => new PlannedAnimeImport(
@@ -59,11 +54,11 @@ public static class CompletedDownloadImportPlanner
         }
 
         var videos = allFiles
-            .Where(file => VideoExtensions.Contains(Path.GetExtension(file.Path)))
+            .Where(file => CompletedDownloadFiles.IsVideo(file.Path))
             .ToArray();
 
         var sidecars = allFiles
-            .Where(file => SidecarExtensions.Contains(Path.GetExtension(file.Path)))
+            .Where(file => CompletedDownloadFiles.IsSidecar(file.Path))
             .ToArray();
 
         var existing = existingFiles?.ToArray() ?? [];
@@ -89,13 +84,13 @@ public static class CompletedDownloadImportPlanner
                 context.AllowHardlinkFallbackToCopy));
         }
 
-        return new CompletedDownloadImportPlan(context.AcquisitionId, plans);
+        return new AnimeImportPlan(context.AcquisitionId, plans);
     }
 
     // Sonarr-owned sources are left to Sonarr; replacing a file Jularr may not mutate needs
     // an owner decision instead of an automatic import.
     private static PlannedAnimeImport ApplyOwnership(
-        CompletedDownloadImportContext context,
+        AnimeImportPlanContext context,
         PlannedAnimeImport planned,
         AcquisitionOwnershipSnapshot ownership)
     {
@@ -139,7 +134,7 @@ public static class CompletedDownloadImportPlanner
     }
 
     private static PlannedAnimeImport PlanVideo(
-        CompletedDownloadImportContext context,
+        AnimeImportPlanContext context,
         CompletedDownloadFile video,
         int videoCount,
         IReadOnlyList<CompletedDownloadFile> sidecars,
@@ -239,7 +234,7 @@ public static class CompletedDownloadImportPlanner
     }
 
     private static MappingResult ResolveTargets(
-        CompletedDownloadImportContext context,
+        AnimeImportPlanContext context,
         AnimeReleaseInfo release,
         int videoCount)
     {
@@ -366,7 +361,7 @@ public static class CompletedDownloadImportPlanner
 
     private static PlannedAnimeImport Manual(
         CompletedDownloadFile video,
-        CompletedDownloadImportContext context,
+        AnimeImportPlanContext context,
         IReadOnlyList<RequestedAnimeEpisode> targets,
         IReadOnlyList<string> sidecars,
         double confidence,
@@ -382,7 +377,7 @@ public static class CompletedDownloadImportPlanner
             reasons,
             context.AllowHardlinkFallbackToCopy);
 
-    private static void ValidateContext(CompletedDownloadImportContext context)
+    private static void ValidateContext(AnimeImportPlanContext context)
     {
         if (string.IsNullOrWhiteSpace(context.AcquisitionId))
         {

@@ -1,3 +1,4 @@
+using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Acquisition.Import;
 using Jularr.Web.Features.Acquisition.Ownership;
 
@@ -91,28 +92,28 @@ public sealed class SonarrObservationService(
             }
 
             // Sonarr and Jularr may see the shared library under different mount paths
-            // (#301/#302): translate every Sonarr-reported path through the same canonical remote
-            // path mapping used for completed-download paths, so path comparisons in
-            // SonarrOwnershipRecognizer/SonarrParallelSafety compare like with like.
+            // (#301/#302): translate every Sonarr-reported path through the Anime remote path
+            // mappings, the same ones used for completed anime download paths, so path
+            // comparisons in SonarrOwnershipRecognizer/SonarrParallelSafety compare like with like.
             var mapping = await importSettings.LoadAsync(cancellationToken);
-            if (mapping.RemotePathMappings.Count > 0)
+            if (mapping.RemotePathMappingsFor(MediaAcquisitionKind.Anime).Count > 0)
             {
                 series = series
-                    .Select(item => item with { Path = mapping.TranslatePath(item.Path) })
+                    .Select(item => item with { Path = mapping.TranslatePath(MediaAcquisitionKind.Anime, item.Path) })
                     .ToArray();
                 files = files
-                    .Select(item => item with { Path = mapping.TranslatePath(item.Path) })
+                    .Select(item => item with { Path = mapping.TranslatePath(MediaAcquisitionKind.Anime, item.Path) })
                     .ToList();
                 queue = queue
                     .Select(item => item.OutputPath is null
                         ? item
-                        : item with { OutputPath = mapping.TranslatePath(item.OutputPath) })
+                        : item with { OutputPath = mapping.TranslatePath(MediaAcquisitionKind.Anime, item.OutputPath) })
                     .ToArray();
                 history = history
                     .Select(item => item with
                     {
-                        Path = item.Path is null ? null : mapping.TranslatePath(item.Path),
-                        SourcePath = item.SourcePath is null ? null : mapping.TranslatePath(item.SourcePath)
+                        Path = item.Path is null ? null : mapping.TranslatePath(MediaAcquisitionKind.Anime, item.Path),
+                        SourcePath = item.SourcePath is null ? null : mapping.TranslatePath(MediaAcquisitionKind.Anime, item.SourcePath)
                     })
                     .ToArray();
             }

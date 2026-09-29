@@ -205,7 +205,7 @@ each row's Where.
 | Manual import | Exists | `/Acquisition` "Needs a decision", `AnimeImportExecutor` | — |
 | Move/organize files | Exists | Naming profile + `ImportFileTransfer` | — |
 | Quality/language inventory (dedicated report) | Partial — data exists per file (`MediaAnalysis`) but no cross-library inventory view | `MediaInventoryService` | #421 |
-| Duplicate detection | Partial — media-core duplicate/merge review exists (`/Admin/MergeReview`: shared-title suggestions, manual merge/split/reassign, identity-change history); import-time existing-file detection still separate, and detection is title-based (no cross-provider evidence merge yet) | `WorkQueryService.FindDuplicateSuggestionsAsync`, `WorkService.MergeWorksAsync`, `Pages/Admin/MergeReview`, `CompletedDownloadImportPlanner` | #437 |
+| Duplicate detection | Partial — media-core duplicate/merge review exists (`/Admin/MergeReview`: shared-title suggestions, manual merge/split/reassign, identity-change history); import-time existing-file detection still separate, and detection is title-based (no cross-provider evidence merge yet) | `WorkQueryService.FindDuplicateSuggestionsAsync`, `WorkService.MergeWorksAsync`, `Pages/Admin/MergeReview`, `AnimeImportPlanner` | #437 |
 | Health/problems (unified) | Partial — per-root and per-indexer/client health exist separately, no single "problems" view | `/Admin/System`, `AcquisitionHealthStore` | #518 |
 | Indexers/Prowlarr integration | Exists | `/Settings/Indexers` | — |
 | Download clients/SABnzbd | Exists | `/Settings/DownloadClients` | — |

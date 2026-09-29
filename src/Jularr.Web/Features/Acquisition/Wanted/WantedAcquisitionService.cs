@@ -277,6 +277,21 @@ public sealed class WantedAcquisitionService(
                     advanced++;
                     break;
 
+                case CompletedDownloadImportDisposition.NeedsReview:
+                case CompletedDownloadImportDisposition.Failed:
+                    // The importer ended the import and keeps what the owner has to resolve. The
+                    // release is not at fault, so no other release is grabbed.
+                    await store.UpdateStatusAsync(
+                        request.Id,
+                        AcquisitionRequestStatus.Failed,
+                        result.Message,
+                        operation.Id,
+                        resultUrl: null,
+                        decidedByProfileId: null,
+                        cancellationToken);
+                    advanced++;
+                    break;
+
                 default:
                     throw new ArgumentOutOfRangeException();
             }

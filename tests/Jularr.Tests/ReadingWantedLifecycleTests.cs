@@ -65,10 +65,9 @@ public sealed class ReadingWantedLifecycleTests
     public async Task CompletedDownloadImportsThroughTheRemotePathMapping()
     {
         await using var host = await Host.CreateAsync(First);
-        await host.ImportSettings.UpdateAsync(current => current with
-        {
-            RemotePathMappings = [new RemotePathMapping("/downloads", "/data/sab")]
-        });
+        await host.ImportSettings.UpdateAsync(current => current.WithRemotePathMappings(
+            MediaAcquisitionKind.Manga,
+            [new RemotePathMapping("/downloads", "/data/sab")]));
         var request = await host.StartAsync();
         var operation = (await host.Operations.GetAsync(request.OperationId!.Value))!;
         host.CompleteInSabnzbd(operation.ExternalId!, "/downloads/manga/Frieren Vol 01");

@@ -1,3 +1,4 @@
+using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Acquisition.Import;
 using Jularr.Web.Features.Acquisition.Ownership;
 using Jularr.Web.Features.Sonarr;
@@ -21,10 +22,9 @@ public sealed class SonarrPathMappingTests
         try
         {
             var importSettings = new AnimeImportSettingsStore(root);
-            await importSettings.UpdateAsync(state => state with
-            {
-                RemotePathMappings = [new RemotePathMapping("/tv", "/data/anime")]
-            });
+            await importSettings.UpdateAsync(state => state.WithRemotePathMappings(
+                MediaAcquisitionKind.Anime,
+                [new RemotePathMapping("/tv", "/data/anime")]));
 
             var ownership = new AcquisitionOwnershipStore(root);
             var client = new FakeSonarrObserverClient(

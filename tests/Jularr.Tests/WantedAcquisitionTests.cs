@@ -164,15 +164,13 @@ public sealed class WantedAcquisitionTests
 
             var settings = new AnimeImportSettingsStore(directory);
             await settings.UpdateAsync(
-                current => current with
-                {
-                    RemotePathMappings =
+                current => current.WithRemotePathMappings(
+                    MediaAcquisitionKind.Manga,
                     [
                         new RemotePathMapping(
                             "/remote/complete",
                             "/mnt/downloads")
-                    ]
-                });
+                    ]));
 
             var client = new RecordingDownloadClient(
                 new DownloadClientJobStatus(
@@ -201,6 +199,7 @@ public sealed class WantedAcquisitionTests
 
             var result = await resolver.ResolveAsync(
                 operation,
+                MediaAcquisitionKind.Manga,
                 CancellationToken.None);
 
             Assert.IsTrue(result.Resolved);
@@ -208,6 +207,71 @@ public sealed class WantedAcquisitionTests
                 "/mnt/downloads/manga/title",
                 result.SourcePath);
             Assert.AreEqual(entry.Id, client.LastEntryId);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public async Task CompletedPathResolverAppliesOnlyTheMediaTypesOwnRemoteMappings()
+    {
+        var directory = Path.Combine(
+            Path.GetTempPath(),
+            $"jularr-wanted-path-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var clients = new DownloadClientStore(
+                new EphemeralDataProtectionProvider(),
+                new DirectoryInfo(Path.Combine(directory, "acquisition")));
+            var entry = new DownloadClientEntry(
+                Guid.NewGuid(),
+                "SAB",
+                DownloadClientType.Sabnzbd,
+                Enabled: true,
+                Priority: 0,
+                DownloadClientSettings.CreateDefault("http://sab.invalid"),
+                "secret");
+            await clients.SaveAsync(entry);
+
+            // The same reported folder is mounted differently for each media type.
+            var settings = new AnimeImportSettingsStore(directory);
+            await settings.UpdateAsync(
+                current => current
+                    .WithRemotePathMappings(MediaAcquisitionKind.Manga, [new RemotePathMapping("/remote/complete", "/mnt/manga")])
+                    .WithRemotePathMappings(MediaAcquisitionKind.Book, [new RemotePathMapping("/remote/complete", "/mnt/books")]));
+
+            var resolver = new CompletedDownloadLocationResolver(
+                clients,
+                new RecordingDownloadClient(
+                    new DownloadClientJobStatus(
+                        "job-1",
+                        "Release",
+                        DownloadClientJobState.Completed,
+                        100,
+                        null,
+                        1_000,
+                        0,
+                        null,
+                        "/remote/complete/release",
+                        null)),
+                settings,
+                NullLogger<CompletedDownloadLocationResolver>.Instance);
+            var operation = Operation(
+                Guid.NewGuid(),
+                "job-1",
+                new DownloadOperationDetails(entry.Id, MediaAcquisitionKind.Manga, "manga").Serialize());
+
+            var manga = await resolver.ResolveAsync(operation, MediaAcquisitionKind.Manga, CancellationToken.None);
+            var book = await resolver.ResolveAsync(operation, MediaAcquisitionKind.Book, CancellationToken.None);
+            var anime = await resolver.ResolveAsync(operation, MediaAcquisitionKind.Anime, CancellationToken.None);
+
+            Assert.AreEqual("/mnt/manga/release", manga.SourcePath);
+            Assert.AreEqual("/mnt/books/release", book.SourcePath);
+            Assert.AreEqual("/remote/complete/release", anime.SourcePath, "Anime has no mapping for this folder.");
+            Assert.AreEqual("/remote/complete/release", manga.ReportedPath, "The reported path is kept next to the mapped one.");
         }
         finally
         {
@@ -348,6 +412,7 @@ public sealed class WantedAcquisitionTests
     {
         public Task<CompletedDownloadLocation> ResolveAsync(
             OperationSnapshot operation,
+            MediaAcquisitionKind kind,
             CancellationToken cancellationToken) =>
             Task.FromResult(
                 new CompletedDownloadLocation(

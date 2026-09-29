@@ -1,5 +1,13 @@
 namespace Jularr.Web.Features.Acquisition.Import;
 
+/// <summary>What happens to the source file of an import: moved, copied or hardlinked.</summary>
+public enum ImportFileAction
+{
+    Move,
+    Copy,
+    Hardlink
+}
+
 /// <summary>
 /// The one implementation of the owner's import mode (Move / Copy / Hardlink / Hardlink or copy)
 /// for a single file, shared by every media importer. It never overwrites an existing file;
@@ -8,13 +16,13 @@ namespace Jularr.Web.Features.Acquisition.Import;
 public sealed class ImportFileTransfer(IHardLinkCreator hardLinks)
 {
     /// <summary>The file action and cross-filesystem fallback an import mode stands for.</summary>
-    public static (AnimeImportFileAction Action, bool AllowHardlinkFallbackToCopy) Resolve(ImportMode mode) =>
+    public static (ImportFileAction Action, bool AllowHardlinkFallbackToCopy) Resolve(ImportMode mode) =>
         mode switch
         {
-            ImportMode.Copy => (AnimeImportFileAction.Copy, false),
-            ImportMode.Hardlink => (AnimeImportFileAction.Hardlink, false),
-            ImportMode.HardlinkOrCopy => (AnimeImportFileAction.Hardlink, true),
-            _ => (AnimeImportFileAction.Move, false)
+            ImportMode.Copy => (ImportFileAction.Copy, false),
+            ImportMode.Hardlink => (ImportFileAction.Hardlink, false),
+            ImportMode.HardlinkOrCopy => (ImportFileAction.Hardlink, true),
+            _ => (ImportFileAction.Move, false)
         };
 
     public void Transfer(string sourcePath, string destinationPath, ImportMode mode)
@@ -27,16 +35,16 @@ public sealed class ImportFileTransfer(IHardLinkCreator hardLinks)
     public void Transfer(
         string sourcePath,
         string destinationPath,
-        AnimeImportFileAction action,
+        ImportFileAction action,
         bool allowHardlinkFallbackToCopy)
     {
         switch (action)
         {
-            case AnimeImportFileAction.Copy:
+            case ImportFileAction.Copy:
                 File.Copy(sourcePath, destinationPath, overwrite: false);
                 break;
 
-            case AnimeImportFileAction.Hardlink:
+            case ImportFileAction.Hardlink:
                 try
                 {
                     hardLinks.CreateHardLink(sourcePath, destinationPath);

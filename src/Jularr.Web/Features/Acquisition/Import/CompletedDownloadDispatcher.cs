@@ -8,13 +8,21 @@ namespace Jularr.Web.Features.Acquisition.Import;
 /// Result of handing one completed external download to the canonical media importer.
 /// RetryLater is for infrastructure/storage problems and must never trigger another grab.
 /// RejectedRelease means the downloaded package itself is unsuitable and Wanted may try
-/// the next release.
+/// the next release. NeedsReview and Failed end the import without another attempt: the importer
+/// keeps the details the owner needs to resolve it (Anime keeps them in its import record), and
+/// neither picks another release.
 /// </summary>
 public enum CompletedDownloadImportDisposition
 {
     Completed,
     RetryLater,
-    RejectedRelease
+    RejectedRelease,
+
+    /// <summary>Some files were imported or left untouched and others wait for an owner decision.</summary>
+    NeedsReview,
+
+    /// <summary>The import ended without media in the library; the result says why.</summary>
+    Failed
 }
 
 /// <summary>
@@ -49,7 +57,7 @@ public sealed record CompletedDownloadImportResult(
 {
     public static CompletedDownloadImportResult Completed(
         string message,
-        string resultUrl,
+        string? resultUrl,
         CompletedDownloadPlacement? placement = null) =>
         new(CompletedDownloadImportDisposition.Completed, message, resultUrl, placement);
 
@@ -62,6 +70,16 @@ public sealed record CompletedDownloadImportResult(
         string message,
         CompletedDownloadPlacement? placement = null) =>
         new(CompletedDownloadImportDisposition.RejectedRelease, message, Placement: placement);
+
+    public static CompletedDownloadImportResult NeedsReview(
+        string message,
+        CompletedDownloadPlacement? placement = null) =>
+        new(CompletedDownloadImportDisposition.NeedsReview, message, Placement: placement);
+
+    public static CompletedDownloadImportResult Failed(
+        string message,
+        CompletedDownloadPlacement? placement = null) =>
+        new(CompletedDownloadImportDisposition.Failed, message, Placement: placement);
 }
 
 /// <summary>
@@ -173,14 +191,21 @@ public sealed record CompletedDownloadLocation(
 
 public interface ICompletedDownloadLocationResolver
 {
+    /// <param name="operation">The download Operation.</param>
+    /// <param name="kind">
+    /// The media type the download is imported as; its remote path mappings translate the path the
+    /// download client reports.
+    /// </param>
     Task<CompletedDownloadLocation> ResolveAsync(
         OperationSnapshot operation,
+        MediaAcquisitionKind kind,
         CancellationToken cancellationToken);
 }
 
 /// <summary>
 /// Resolves the completed path from the exact download-client connection recorded at submit time,
-/// then applies the one canonical acquisition remote-path mapping before import.
+/// then applies the media type's remote path mappings (<see cref="AnimeImportSettingsState.TranslatePath"/>)
+/// before import.
 /// </summary>
 public sealed class CompletedDownloadLocationResolver(
     DownloadClientStore downloadClients,
@@ -191,6 +216,7 @@ public sealed class CompletedDownloadLocationResolver(
 {
     public async Task<CompletedDownloadLocation> ResolveAsync(
         OperationSnapshot operation,
+        MediaAcquisitionKind kind,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(operation.ExternalId))
@@ -255,7 +281,7 @@ public sealed class CompletedDownloadLocationResolver(
             }
 
             var settings = await importSettings.LoadAsync(cancellationToken);
-            var localPath = settings.TranslatePath(reportedPath.Trim());
+            var localPath = settings.TranslatePath(kind, reportedPath.Trim());
             return new CompletedDownloadLocation(
                 true,
                 localPath,

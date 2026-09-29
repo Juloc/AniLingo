@@ -287,6 +287,19 @@ internal sealed class AnimeAcquisitionEnvironment : IAsyncDisposable
     {
         acquisition ??= (await Acquisitions.LoadAsync()).Acquisitions.Single();
         var operation = (await Operations.GetAsync(acquisition.LatestAttempt!.OperationId))!;
+        ReportCompletedPath(operation, storagePath);
+        var result = await SabnzbdOperationProjector.ApplyAsync(
+            Operations,
+            await Operations.ListActiveExternalAsync(SabnzbdClient.ProviderId),
+            new SabnzbdQueueSnapshot(false, null, null, []),
+            Sabnzbd.History,
+            DateTime.UtcNow,
+            CancellationToken.None);
+        return result.Completed.Single(item => item.Id == operation.Id);
+    }
+
+    /// <summary>SABnzbd's history lists the job of <paramref name="operation"/> as completed at this path.</summary>
+    public void ReportCompletedPath(OperationSnapshot operation, string storagePath) =>
         Sabnzbd.History = new SabnzbdHistorySnapshot(
         [
             new SabnzbdHistoryJob(
@@ -299,24 +312,64 @@ internal sealed class AnimeAcquisitionEnvironment : IAsyncDisposable
                 SabnzbdFailureKind.None,
                 DateTimeOffset.UtcNow)
         ]);
-        var result = await SabnzbdOperationProjector.ApplyAsync(
-            Operations,
-            await Operations.ListActiveExternalAsync(SabnzbdClient.ProviderId),
-            new SabnzbdQueueSnapshot(false, null, null, []),
-            Sabnzbd.History,
+
+    /// <summary>
+    /// What the SABnzbd monitor does for a completed anime job: the shared completed-download
+    /// import step, which reads the path SABnzbd reports (<paramref name="reportedPath"/>) from
+    /// the job's download client, applies the Anime remote path mapping and dispatches to the
+    /// Anime importer. Returns the job's import record.
+    /// </summary>
+    public async Task<AnimeImportRecord?> ImportCompletedAsync(OperationSnapshot download, string reportedPath)
+    {
+        ReportCompletedPath(download, reportedPath);
+        await using var scope = services.CreateAsyncScope();
+        await scope.ServiceProvider.GetRequiredService<CompletedDownloadImportService>().ImportAsync(
+            download,
+            MediaAcquisitionKind.Anime,
+            request: null,
             DateTime.UtcNow,
             CancellationToken.None);
-        return result.Completed.Single(item => item.Id == operation.Id);
-    }
-
-    /// <summary>What the SABnzbd monitor does for a completed anime job.</summary>
-    public async Task<AnimeImportRecord?> ImportCompletedAsync(OperationSnapshot download, string storagePath)
-    {
-        await using var scope = services.CreateAsyncScope();
-        var record = await scope.ServiceProvider.GetRequiredService<AnimeImportExecutor>()
-            .ImportCompletedAsync(download, storagePath, CancellationToken.None);
+        var record = await scope.ServiceProvider.GetRequiredService<AnimeImportStore>()
+            .FindByDownloadAsync(download.Id, CancellationToken.None);
         Db.ChangeTracker.Clear();
         return record;
+    }
+
+    /// <summary>The shared import step for a completed anime job, with its result and the download's recorded import details.</summary>
+    public async Task<(CompletedDownloadImportResult Result, DownloadImportDetails? Details)> ImportThroughSharedSpineAsync(
+        OperationSnapshot download,
+        DateTime? nowUtc = null)
+    {
+        await using var scope = services.CreateAsyncScope();
+        var result = await scope.ServiceProvider.GetRequiredService<CompletedDownloadImportService>().ImportAsync(
+            download,
+            MediaAcquisitionKind.Anime,
+            request: null,
+            nowUtc ?? DateTime.UtcNow,
+            CancellationToken.None);
+        var stored = await Operations.GetAsync(download.Id);
+        Db.ChangeTracker.Clear();
+        return (result, DownloadOperationDetails.TryParse(stored?.Details, out var details) ? details!.Import : null);
+    }
+
+    public AsyncServiceScope CreateScope() => services.CreateAsyncScope();
+
+    /// <summary>The import details recorded on a download Operation.</summary>
+    public async Task<DownloadImportDetails?> DownloadImportAsync(Guid downloadOperationId)
+    {
+        var stored = await Operations.GetAsync(downloadOperationId);
+        Db.ChangeTracker.Clear();
+        return DownloadOperationDetails.TryParse(stored?.Details, out var details) ? details!.Import : null;
+    }
+
+    /// <summary>Restart recovery of Anime imports, as the scheduler runs it.</summary>
+    public async Task<int> RecoverImportsAsync(DateTime nowUtc)
+    {
+        await using var scope = services.CreateAsyncScope();
+        var recovered = await scope.ServiceProvider.GetRequiredService<AnimeImportRecovery>()
+            .RecoverAsync(nowUtc, CancellationToken.None);
+        Db.ChangeTracker.Clear();
+        return recovered;
     }
 
     public async Task<AnimeImportActionResult> ImportManuallyAsync(Guid recordId, string sourcePath, int season, int episode)
@@ -462,6 +515,12 @@ internal sealed class AnimeAcquisitionEnvironment : IAsyncDisposable
         collection.AddScoped<AnimeAcquisitionInventory>();
         collection.AddScoped<AnimeAcquisitionPipeline>();
         collection.AddScoped<AnimeImportExecutor>();
+        collection.AddScoped<AcquisitionAccessStore>();
+        collection.AddScoped<ICompletedDownloadImportAdapter>(provider => provider.GetRequiredService<AnimeImportExecutor>());
+        collection.AddScoped<CompletedDownloadDispatcher>();
+        collection.AddScoped<ICompletedDownloadLocationResolver, CompletedDownloadLocationResolver>();
+        collection.AddScoped<CompletedDownloadImportService>();
+        collection.AddScoped<AnimeImportRecovery>();
         collection.AddSingleton<Jularr.Web.Features.Storage.StorageAvailabilityCoordinator>();
         collection.AddScoped<Jularr.Web.Features.Storage.LibraryRootAvailabilityService>();
         collection.AddSingleton<BackgroundJobQueue>();

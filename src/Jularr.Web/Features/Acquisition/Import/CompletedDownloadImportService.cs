@@ -6,11 +6,13 @@ using Jularr.Web.Features.Operations;
 namespace Jularr.Web.Features.Acquisition.Import;
 
 /// <summary>
-/// The one completed-download import step for request-backed and manual downloads: resolve the
-/// completed path from the exact download client, apply the remote-path mapping, hand the files
-/// to the media type's importer through <see cref="CompletedDownloadDispatcher"/> and record on
-/// the download Operation what happened (reported path, mapped path, destination, import mode,
-/// result). Request state stays with Wanted; this class never grabs another release.
+/// The one completed-download import step for every media type (request-backed Manga, Light Novel
+/// and Book downloads, manual downloads and Anime): resolve the completed path from the exact
+/// download client, apply the media type's remote-path mapping, hand the files to the media type's
+/// importer through <see cref="CompletedDownloadDispatcher"/> and record on the download Operation
+/// what happened (reported path, mapped path, destination, import mode, result). Request state
+/// stays with Wanted and Anime's episode state with its import record; this class never grabs
+/// another release.
 /// </summary>
 public sealed class CompletedDownloadImportService(
     ICompletedDownloadLocationResolver locations,
@@ -42,7 +44,27 @@ public sealed class CompletedDownloadImportService(
     {
         ArgumentNullException.ThrowIfNull(operation);
 
-        var location = await locations.ResolveAsync(operation, cancellationToken);
+        var location = await locations.ResolveAsync(operation, kind, cancellationToken);
+        return await ImportAtAsync(operation, kind, request, location, nowUtc, cancellationToken);
+    }
+
+    /// <summary>
+    /// Imports from a location that is already known: the same steps as
+    /// <see cref="ImportAsync"/> without asking the download client again. Used to resume an
+    /// interrupted import from the mapped path it recorded, which stays readable after the download
+    /// client dropped the job from its history.
+    /// </summary>
+    public async Task<CompletedDownloadImportResult> ImportAtAsync(
+        OperationSnapshot operation,
+        MediaAcquisitionKind kind,
+        AcquisitionRequest? request,
+        CompletedDownloadLocation location,
+        DateTime nowUtc,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(operation);
+        ArgumentNullException.ThrowIfNull(location);
+
         if (!location.Resolved || string.IsNullOrWhiteSpace(location.SourcePath))
         {
             var waiting = CompletedDownloadImportResult.RetryLater(location.Message);
@@ -183,21 +205,12 @@ public sealed class CompletedDownloadImportService(
         CompletedDownloadImportResult result,
         DateTime nowUtc,
         CancellationToken cancellationToken) =>
-        WriteAsync(
-            operation,
-            previous => new DownloadImportDetails(
-                result.Disposition switch
-                {
-                    CompletedDownloadImportDisposition.Completed => DownloadImportState.Completed,
-                    CompletedDownloadImportDisposition.RejectedRelease => DownloadImportState.Rejected,
-                    _ => DownloadImportState.Waiting
-                },
-                result.Message,
-                nowUtc,
-                location.ReportedPath ?? previous?.ReportedPath,
-                location.Resolved ? location.SourcePath : previous?.LocalPath,
-                result.Placement?.Destination ?? previous?.Destination,
-                result.Placement is { } placement ? placement.Mode : previous?.Mode),
+        DownloadImportRecorder.RecordResultAsync(
+            new OperationStore(db),
+            operation.Id,
+            result,
+            location,
+            nowUtc,
             cancellationToken);
 
     private Task RecordPhaseAsync(
@@ -238,6 +251,42 @@ public sealed class CompletedDownloadImportService(
 /// </summary>
 public static class DownloadImportRecorder
 {
+    /// <summary>
+    /// Records what an importer reported on the download Operation: the state the disposition
+    /// stands for, its message, the placement (destination and import mode) and, when the
+    /// download's <paramref name="location"/> is known, the reported and mapped paths. Anything the
+    /// result or location does not carry keeps its earlier value.
+    /// </summary>
+    public static Task RecordResultAsync(
+        OperationStore store,
+        Guid downloadOperationId,
+        CompletedDownloadImportResult result,
+        CompletedDownloadLocation? location,
+        DateTime nowUtc,
+        CancellationToken cancellationToken) =>
+        RecordAsync(
+            store,
+            downloadOperationId,
+            previous => new DownloadImportDetails(
+                StateFor(result.Disposition),
+                result.Message,
+                nowUtc,
+                location?.ReportedPath ?? previous?.ReportedPath,
+                location is { Resolved: true } ? location.SourcePath : previous?.LocalPath,
+                result.Placement?.Destination ?? previous?.Destination,
+                result.Placement is { } placement ? placement.Mode : previous?.Mode),
+            cancellationToken);
+
+    public static DownloadImportState StateFor(CompletedDownloadImportDisposition disposition) =>
+        disposition switch
+        {
+            CompletedDownloadImportDisposition.Completed => DownloadImportState.Completed,
+            CompletedDownloadImportDisposition.RejectedRelease => DownloadImportState.Rejected,
+            CompletedDownloadImportDisposition.NeedsReview => DownloadImportState.ManualReview,
+            CompletedDownloadImportDisposition.Failed => DownloadImportState.Failed,
+            _ => DownloadImportState.Waiting
+        };
+
     public static async Task RecordAsync(
         OperationStore store,
         Guid downloadOperationId,

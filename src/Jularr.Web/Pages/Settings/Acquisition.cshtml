@@ -145,28 +145,42 @@
         <p class="muted">
             @ui["settings.acquisition.remotePathMappingDescription"]
         </p>
-        @if (Model.ImportSettings.RemotePathMappings.Count > 0)
+        @if (Model.ImportSettings.RemotePathMappingCount > 0)
         {
             <table>
-                <thead><tr><th>@ui["settings.acquisition.remotePrefixColumn"]</th><th>@ui["settings.acquisition.localPrefixColumn"]</th><th></th></tr></thead>
+                <thead><tr><th>@ui["admin.requests.column.media"]</th><th>@ui["settings.acquisition.remotePrefixColumn"]</th><th>@ui["settings.acquisition.localPrefixColumn"]</th><th></th></tr></thead>
                 <tbody>
-                    @foreach (var mapping in Model.ImportSettings.RemotePathMappings)
+                    @foreach (var kind in Model.PathMappingKinds)
                     {
-                        <tr>
-                            <td>@mapping.RemotePrefix</td>
-                            <td>@mapping.LocalPrefix</td>
-                            <td>
-                                <form method="post" asp-page-handler="RemovePathMapping">
-                                    <input type="hidden" name="remotePrefix" value="@mapping.RemotePrefix" />
-                                    <button class="button" type="submit">@ui["settings.acquisition.remove"]</button>
-                                </form>
-                            </td>
-                        </tr>
+                        foreach (var mapping in Model.ImportSettings.RemotePathMappingsFor(kind))
+                        {
+                            <tr>
+                                <td>@Model.KindLabel(kind)</td>
+                                <td>@mapping.RemotePrefix</td>
+                                <td>@mapping.LocalPrefix</td>
+                                <td>
+                                    <form method="post" asp-page-handler="RemovePathMapping">
+                                        <input type="hidden" name="kind" value="@kind" />
+                                        <input type="hidden" name="remotePrefix" value="@mapping.RemotePrefix" />
+                                        <button class="button" type="submit">@ui["settings.acquisition.remove"]</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        }
                     }
                 </tbody>
             </table>
         }
         <form method="post" asp-page-handler="AddPathMapping" class="acquisition-inline-form">
+            <label>
+                <span>@ui["admin.operation.mediaType"]</span>
+                <select name="kind">
+                    @foreach (var kind in Model.PathMappingKinds)
+                    {
+                        <option value="@kind">@Model.KindLabel(kind)</option>
+                    }
+                </select>
+            </label>
             <label><span>@ui["settings.acquisition.remotePrefixLabel"]</span><input type="text" name="remotePrefix" placeholder="/downloads" required /></label>
             <label><span>@ui["settings.acquisition.localPrefixLabel"]</span><input type="text" name="localPrefix" placeholder="/data/downloads" required /></label>
             <button class="button" type="submit">@ui["settings.acquisition.addMapping"]</button>

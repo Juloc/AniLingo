@@ -666,7 +666,7 @@ public sealed class BookPdfAcquisitionTests
                 new DownloadClientSettings("http://sabnzbd:8080", new Dictionary<MediaAcquisitionKind, string?> { [MediaAcquisitionKind.Book] = "books", [MediaAcquisitionKind.Anime] = "anime" }),
                 "secret-key"));
             await services.GetRequiredService<AnimeImportSettingsStore>().UpdateAsync(
-                state => state with { RemotePathMappings = [new RemotePathMapping("/data/downloads/complete", Path.Combine(root, "mnt", "complete"))] },
+                state => state.WithRemotePathMappings(MediaAcquisitionKind.Book, [new RemotePathMapping("/data/downloads/complete", Path.Combine(root, "mnt", "complete"))]),
                 CancellationToken.None);
 
             return new BookAcquisitionEnvironment(root, services, db);

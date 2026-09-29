@@ -164,7 +164,7 @@ public sealed class SonarrOwnershipGuardTests
             "/downloads/jularr/Dungeon Meshi - S01E01 BluRay 1080p HEVC FLAC[JA].mkv",
             2_000_000_000);
 
-        var sonarrDownload = CompletedDownloadImportPlanner.Plan(
+        var sonarrDownload = AnimeImportPlanner.Plan(
             MeshiContext("sonarr-job", "sonarr-nzo-2-5"),
             [file],
             null,
@@ -172,7 +172,7 @@ public sealed class SonarrOwnershipGuardTests
         Assert.IsTrue(sonarrDownload.BlockedByOwnership);
         Assert.IsTrue(sonarrDownload.Files.All(item => item.Disposition == AnimeImportDisposition.Ignore));
 
-        var upgrade = CompletedDownloadImportPlanner.Plan(
+        var upgrade = AnimeImportPlanner.Plan(
             MeshiContext("job-meshi", "jularr-nzo-meshi"),
             [file],
             [new ExistingAnimeFile(MeshiRoot + "/Season 01/Dungeon Meshi - S01E01 WEB-DL 1080p AVC AAC[JA].mkv", 1, 1, 1_400_000_000)],
@@ -184,7 +184,7 @@ public sealed class SonarrOwnershipGuardTests
         Assert.IsTrue(planned.Reasons.Any(reason => reason.StartsWith("Ownership:", StringComparison.Ordinal)));
 
         // Without the ownership snapshot the same file would replace the Sonarr file automatically.
-        var unguarded = CompletedDownloadImportPlanner.Plan(
+        var unguarded = AnimeImportPlanner.Plan(
             MeshiContext("job-meshi", "jularr-nzo-meshi"),
             [file],
             [new ExistingAnimeFile(MeshiRoot + "/Season 01/Dungeon Meshi - S01E01 WEB-DL 1080p AVC AAC[JA].mkv", 1, 1, 1_400_000_000)]);
@@ -287,8 +287,8 @@ public sealed class SonarrOwnershipGuardTests
         }
 
         // Import: Jularr imports its own Frieren download and leaves Sonarr's Meshi download alone.
-        var frierenImport = CompletedDownloadImportPlanner.Plan(
-            new CompletedDownloadImportContext(
+        var frierenImport = AnimeImportPlanner.Plan(
+            new AnimeImportPlanContext(
                 "job-frieren-08",
                 "frieren",
                 ["Frieren"],
@@ -300,7 +300,7 @@ public sealed class SonarrOwnershipGuardTests
             ownership);
         Assert.AreEqual(AnimeImportDisposition.AutoImport, frierenImport.Files.Single().Disposition);
 
-        var meshiImport = CompletedDownloadImportPlanner.Plan(
+        var meshiImport = AnimeImportPlanner.Plan(
             MeshiContext("sonarr-queue-101", "sonarr-nzo-2-5"),
             [new CompletedDownloadFile("/downloads/complete/tv/series2.e05/Dungeon Meshi - S01E05 WEB-DL 1080p AVC AAC[JA].mkv", 900_000_000)],
             null,
@@ -410,7 +410,7 @@ public sealed class SonarrOwnershipGuardTests
         return state;
     }
 
-    private static CompletedDownloadImportContext MeshiContext(string jobId, string downloadId) =>
+    private static AnimeImportPlanContext MeshiContext(string jobId, string downloadId) =>
         new(
             jobId,
             "meshi",
