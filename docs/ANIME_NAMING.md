@@ -75,7 +75,7 @@ daily template are rejected. The preview on `/Settings/Naming` renders Sonarr's 
 | Quality | `{Quality Full}` (`WEBDL-1080p Proper`) `{Quality Title}` `{Quality Proper}` `{Quality Key}` (the quality key of the shared quality model) |
 | Release | `{Release Group}` `{MediaInfo VideoCodec}` `{MediaInfo VideoBitDepth}` `{MediaInfo VideoDynamicRangeType}` `{MediaInfo AudioCodec}` `{MediaInfo AudioChannels}` `{MediaInfo AudioLanguages}` `{MediaInfo AudioLanguagesAll}` `{MediaInfo SubtitleLanguages}` `{MediaInfo Simple}` `{MediaInfo Full}` |
 
-Release tokens always come from the shared `AnimeReleaseParser` result for the current file name
+Release tokens always come from the shared `ReleaseParser` result for the current file name
 (the same parser and quality model acquisition uses); the naming module has no parser of its own.
 
 - `{Quality Proper}` is the release version (`v2`) for anime series, otherwise `Repack` or `Proper`.
