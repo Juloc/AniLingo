@@ -5,12 +5,11 @@ using Npgsql;
 namespace Jularr.Tests.Infrastructure;
 
 /// <summary>
-/// Backs the whole test suite with a single real PostgreSQL database (issue #570). The former
-/// SQLite tests each built their own throwaway <c>.db</c> file; here every distinct SQLite-style
-/// connection string a test builds is mapped to one shared PostgreSQL database that is truncated
-/// back to empty whenever a test moves on to a new logical database. MSTest runs tests serially,
-/// so one shared database with a reset between logical databases gives the same isolation the
-/// per-file model gave, without creating (and leaking) thousands of databases on limited disk.
+/// Backs the whole test suite with real PostgreSQL (issue #570). The former SQLite tests each built
+/// their own throwaway <c>.db</c> file; here every distinct SQLite-style "Data Source" a test builds
+/// is mapped to its own PostgreSQL database, cloned from a once-migrated template. That reproduces
+/// the old file-per-test isolation exactly — including tests that open two independent databases at
+/// once — while a small LRU keeps the number of live databases (and disk use) bounded.
 ///
 /// The base server comes from the <c>JULARR_TEST_DB</c> environment variable
 /// (e.g. <c>Host=localhost;Port=5433;Username=jularr;Password=…</c>); a throwaway ephemeral
@@ -18,71 +17,88 @@ namespace Jularr.Tests.Infrastructure;
 /// </summary>
 public static class TestPostgres
 {
-    private const string DatabaseName = "jularr_test";
+    private const string TemplateDatabase = "jularr_test_tpl";
+    private const int MaxLiveDatabases = 32;
+
     private static readonly object Gate = new();
+    private static readonly Dictionary<string, string> KeyToDatabase = new(StringComparer.Ordinal);
+    private static readonly LinkedList<string> Lru = new();
     private static bool _initialized;
-    private static string _sharedConnectionString = string.Empty;
-    private static string? _currentKey;
-    private static string[]? _dataTables;
+    private static string _baseConnectionString = string.Empty;
+    private static int _counter;
 
     private static string BaseConnectionString =>
         Environment.GetEnvironmentVariable("JULARR_TEST_DB")
         ?? "Host=localhost;Port=5433;Username=jularr;Password=devtest;Include Error Detail=true";
 
-    /// <summary>Connection string to the shared, migrated test database.</summary>
-    public static string SharedConnectionString
-    {
-        get
-        {
-            EnsureInitialized();
-            return _sharedConnectionString;
-        }
-    }
-
     /// <summary>
-    /// Called by the <c>UseSqlite</c> test shim. Returns the shared PostgreSQL connection string,
-    /// resetting the database to empty when the caller has switched to a different logical
-    /// database (a different SQLite "Data Source"), which mirrors starting a fresh <c>.db</c> file.
+    /// Called by the <c>UseSqlite</c> test shim. Returns a PostgreSQL connection string for a database
+    /// dedicated to the caller's logical database (its SQLite "Data Source" path); the same path
+    /// always maps to the same database, distinct paths to distinct databases.
     /// </summary>
-    public static string ResolveConnectionString(string sqliteConnectionString)
+    public static string ResolveConnectionString(string connectionString)
     {
-        EnsureInitialized();
-        var key = KeyFor(sqliteConnectionString);
+        // A caller reusing an already-resolved PostgreSQL connection string (e.g. from
+        // Database.GetConnectionString()) keeps using that same database.
+        if (connectionString.Contains("Host=", StringComparison.OrdinalIgnoreCase))
+        {
+            return connectionString;
+        }
+
+        var key = KeyFor(connectionString);
         lock (Gate)
         {
-            // A caller that passes the shared PostgreSQL string itself (e.g. reusing
-            // Database.GetConnectionString()) means "keep using the current database".
-            if (key is not null && key != _currentKey)
-            {
-                ResetData();
-                _currentKey = key;
-            }
-        }
+            EnsureInitialized();
 
-        return _sharedConnectionString;
+            if (KeyToDatabase.TryGetValue(key, out var existing))
+            {
+                Touch(key);
+                return ConnectionFor(existing);
+            }
+
+            while (KeyToDatabase.Count >= MaxLiveDatabases && Lru.First is { } oldest)
+            {
+                Lru.RemoveFirst();
+                if (KeyToDatabase.Remove(oldest.Value, out var evicted))
+                {
+                    DropDatabase(evicted);
+                }
+            }
+
+            var database = $"jt_{Interlocked.Increment(ref _counter)}";
+            CreateFromTemplate(database);
+            KeyToDatabase[key] = database;
+            Lru.AddLast(key);
+            return ConnectionFor(database);
+        }
     }
 
-    private static string? KeyFor(string connectionString)
+    private static string KeyFor(string connectionString)
     {
-        if (string.IsNullOrWhiteSpace(connectionString)
-            || connectionString.Contains(DatabaseName, StringComparison.Ordinal))
-        {
-            // Reusing the shared database explicitly: do not reset.
-            return null;
-        }
-
-        // SQLite style: "Data Source=<path>;...". Key on the data-source path so that several
-        // contexts opened against the same path within one test share state (as the file did).
         var builder = new System.Data.Common.DbConnectionStringBuilder { ConnectionString = connectionString };
-        if (builder.TryGetValue("Data Source", out var dataSource) && dataSource is string ds && !string.IsNullOrWhiteSpace(ds))
+        if (builder.TryGetValue("Data Source", out var value) && value is string ds && !string.IsNullOrWhiteSpace(ds))
         {
+            // SQLite ":memory:" is private per connection; give each use its own database.
             return ds.Equals(":memory:", StringComparison.OrdinalIgnoreCase)
-                ? Guid.NewGuid().ToString("N")
+                ? "mem-" + Guid.NewGuid().ToString("N")
                 : ds;
         }
 
         return connectionString;
     }
+
+    private static void Touch(string key)
+    {
+        var node = Lru.Find(key);
+        if (node is not null)
+        {
+            Lru.Remove(node);
+            Lru.AddLast(node);
+        }
+    }
+
+    private static string ConnectionFor(string database) =>
+        new NpgsqlConnectionStringBuilder(BaseConnectionString) { Database = database }.ConnectionString;
 
     private static void EnsureInitialized()
     {
@@ -91,73 +107,71 @@ public static class TestPostgres
             return;
         }
 
-        lock (Gate)
+        _baseConnectionString = BaseConnectionString;
+        var maintenance = new NpgsqlConnectionStringBuilder(_baseConnectionString) { Database = "postgres" }
+            .ConnectionString;
+
+        // Drop any databases left by a previous run, then build a freshly migrated template.
+        using (var admin = new NpgsqlConnection(maintenance))
         {
-            if (_initialized)
+            admin.Open();
+            foreach (var stale in StaleDatabases(admin))
             {
-                return;
+                Execute(admin, $"DROP DATABASE IF EXISTS \"{stale}\" WITH (FORCE);");
             }
 
-            var maintenance = new NpgsqlConnectionStringBuilder(BaseConnectionString) { Database = "postgres" }
-                .ConnectionString;
-            using (var admin = new NpgsqlConnection(maintenance))
-            {
-                admin.Open();
-                Execute(admin, $"DROP DATABASE IF EXISTS \"{DatabaseName}\" WITH (FORCE);");
-                Execute(admin, $"CREATE DATABASE \"{DatabaseName}\";");
-            }
-
-            _sharedConnectionString = new NpgsqlConnectionStringBuilder(BaseConnectionString)
-            {
-                Database = DatabaseName
-            }.ConnectionString;
-
-            var options = new DbContextOptionsBuilder<AppDbContext>()
-                .UseNpgsql(_sharedConnectionString)
-                .Options;
-            using (var db = new AppDbContext(options))
-            {
-                db.Database.Migrate();
-            }
-
-            _dataTables = LoadDataTables();
-            _initialized = true;
-        }
-    }
-
-    private static void ResetData()
-    {
-        if (_dataTables is null || _dataTables.Length == 0)
-        {
-            return;
+            Execute(admin, $"DROP DATABASE IF EXISTS \"{TemplateDatabase}\" WITH (FORCE);");
+            Execute(admin, $"CREATE DATABASE \"{TemplateDatabase}\";");
         }
 
-        using var conn = new NpgsqlConnection(_sharedConnectionString);
-        conn.Open();
-        var list = string.Join(", ", _dataTables.Select(t => $"\"{t}\""));
-        Execute(conn, $"TRUNCATE TABLE {list} RESTART IDENTITY CASCADE;");
+        var templateConnection = new NpgsqlConnectionStringBuilder(_baseConnectionString) { Database = TemplateDatabase }
+            .ConnectionString;
+        using (var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
+                   .UseNpgsql(templateConnection).Options))
+        {
+            db.Database.Migrate();
+        }
+
+        NpgsqlConnection.ClearAllPools();
+        _initialized = true;
     }
 
-    private static string[] LoadDataTables()
+    private static void CreateFromTemplate(string database)
     {
-        using var conn = new NpgsqlConnection(_sharedConnectionString);
-        conn.Open();
-        using var command = conn.CreateCommand();
-        command.CommandText =
-            "SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename <> '__EFMigrationsHistory';";
-        var tables = new List<string>();
+        var maintenance = new NpgsqlConnectionStringBuilder(_baseConnectionString) { Database = "postgres" }
+            .ConnectionString;
+        using var admin = new NpgsqlConnection(maintenance);
+        admin.Open();
+        Execute(admin, $"CREATE DATABASE \"{database}\" TEMPLATE \"{TemplateDatabase}\";");
+    }
+
+    private static void DropDatabase(string database)
+    {
+        NpgsqlConnection.ClearPool(new NpgsqlConnection(ConnectionFor(database)));
+        var maintenance = new NpgsqlConnectionStringBuilder(_baseConnectionString) { Database = "postgres" }
+            .ConnectionString;
+        using var admin = new NpgsqlConnection(maintenance);
+        admin.Open();
+        Execute(admin, $"DROP DATABASE IF EXISTS \"{database}\" WITH (FORCE);");
+    }
+
+    private static IReadOnlyList<string> StaleDatabases(NpgsqlConnection admin)
+    {
+        using var command = admin.CreateCommand();
+        command.CommandText = "SELECT datname FROM pg_database WHERE datname LIKE 'jt\\_%';";
+        var names = new List<string>();
         using var reader = command.ExecuteReader();
         while (reader.Read())
         {
-            tables.Add(reader.GetString(0));
+            names.Add(reader.GetString(0));
         }
 
-        return tables.ToArray();
+        return names;
     }
 
-    private static void Execute(NpgsqlConnection conn, string sql)
+    private static void Execute(NpgsqlConnection connection, string sql)
     {
-        using var command = conn.CreateCommand();
+        using var command = connection.CreateCommand();
         command.CommandText = sql;
         command.ExecuteNonQuery();
     }
