@@ -405,3 +405,10 @@ case justifies the added surface, and the issue itself rules out Sonarr checkbox
 
 If a real need for one of these appears later, open a fresh, narrowly-scoped issue for it rather
 than reopening #302.
+
+## Canonical Work resolution before acquisition
+
+Acquisition never starts from a provider record as if it were Jularr identity. A Search/Discover selection is resolved first to the canonical Jularr **Work -> Season -> Episode** structure plus any provider/presentation target.
+
+For Anime, one Work may map to multiple AniList entries for seasons, parts/cours or specials. An AniList-native search result may therefore identify which season/range the user intended, but it must not create a separate acquisition tree. Monitoring, requirements, release search, queueing, import and file matching all operate on canonical Jularr media items after resolution.
+
