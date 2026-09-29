@@ -312,6 +312,7 @@ public sealed class BookCompletedDownloadImportTests
     {
         public Task<CompletedDownloadLocation> ResolveAsync(
             OperationSnapshot operation,
+            MediaAcquisitionKind kind,
             CancellationToken cancellationToken) =>
             Task.FromResult(new CompletedDownloadLocation(true, local, "Completed path resolved.", reported));
     }

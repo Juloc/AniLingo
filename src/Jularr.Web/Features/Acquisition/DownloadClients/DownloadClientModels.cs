@@ -40,6 +40,30 @@ public sealed record DownloadClientSettings
     public string? CategoryFor(MediaAcquisitionKind kind) =>
         Categories.TryGetValue(kind, out var category) ? CleanCategory(category) : null;
 
+    /// <summary>
+    /// The media type a job in this SABnzbd category belongs to, or null for a category no media
+    /// type is mapped to (a job Jularr did not submit).
+    /// </summary>
+    public MediaAcquisitionKind? KindForCategory(string? category)
+    {
+        var cleaned = CleanCategory(category);
+        if (cleaned is null)
+        {
+            return null;
+        }
+
+        foreach (var (kind, configured) in Categories)
+        {
+            if (CleanCategory(configured) is { } mapped &&
+                mapped.Equals(cleaned, StringComparison.OrdinalIgnoreCase))
+            {
+                return kind;
+            }
+        }
+
+        return null;
+    }
+
     public static DownloadClientSettings CreateDefault(string baseUrl) =>
         new(
             baseUrl,

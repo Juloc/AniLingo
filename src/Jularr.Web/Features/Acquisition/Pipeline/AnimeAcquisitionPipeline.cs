@@ -1075,7 +1075,7 @@ public sealed class AnimeAcquisitionPipeline(
             {
                 decision = new(false, "Not a usenet release with an NZB link; only SABnzbd downloads are supported.", score);
             }
-            else if (!CompletedDownloadImportPlanner.SeriesMatches(aliases, parsed.SeriesTitle))
+            else if (!AnimeImportPlanner.SeriesMatches(aliases, parsed.SeriesTitle))
             {
                 decision = new(false, $"Series title '{parsed.SeriesTitle}' does not match this anime.", score);
             }

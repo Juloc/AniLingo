@@ -107,7 +107,7 @@ public sealed class AnimeAcquisitionScheduler(
             {
                 await using var scope = scopeFactory.CreateAsyncScope();
                 var recovered = await scope.ServiceProvider
-                    .GetRequiredService<AnimeImportExecutor>()
+                    .GetRequiredService<AnimeImportRecovery>()
                     .RecoverAsync(token);
                 await pipeline.ReconcileAttemptsAsync(token);
                 return recovered;
@@ -175,7 +175,7 @@ public sealed class AnimeAcquisitionScheduler(
         try
         {
             await using var scope = scopeFactory.CreateAsyncScope();
-            await scope.ServiceProvider.GetRequiredService<AnimeImportExecutor>().RecoverAsync(cancellationToken);
+            await scope.ServiceProvider.GetRequiredService<AnimeImportRecovery>().RecoverAsync(cancellationToken);
         }
         catch (Exception exception) when (
             exception is IOException or InvalidDataException or InvalidOperationException or HttpRequestException or UnauthorizedAccessException)

@@ -1,5 +1,7 @@
 using System.Security.Claims;
 using Jularr.Web.Data;
+using Jularr.Web.Features.Acquisition.AniListAutoMonitor;
+using Jularr.Web.Features.Acquisition.Backup;
 using Jularr.Web.Features.Acquisition.DownloadClients;
 using Jularr.Web.Features.Acquisition.History;
 using Jularr.Web.Features.Acquisition.Health;
@@ -61,6 +63,9 @@ internal sealed class ManageSheetPageTestHost : IAsyncDisposable
 
     public AppDbContext Db { get; }
 
+    /// <summary>The host's services, to seed the stores a page reads.</summary>
+    public IServiceProvider Services => host.Services;
+
     public static async Task<ManageSheetPageTestHost> CreateAsync()
     {
         var root = Path.Combine(Path.GetTempPath(), $"jularr-manage-sheet-{Guid.NewGuid():N}");
@@ -84,6 +89,7 @@ internal sealed class ManageSheetPageTestHost : IAsyncDisposable
 
                         services.AddDbContext<AppDbContext>(options => options.UseSqlite(connectionString));
                         services.AddHttpContextAccessor();
+                        services.AddAuthorization(options => JularrPolicies.Register(options));
                         services.AddSingleton<ViteAssetManifest>();
                         services.AddScoped<CurrentAccountContext>();
                         services.AddScoped<OperationRunner>();
@@ -173,6 +179,13 @@ internal sealed class ManageSheetPageTestHost : IAsyncDisposable
                         services.AddScoped<AnimeAcquisitionInventory>();
                         services.AddScoped<AcquisitionHistoryService>();
                         services.AddScoped<AnimeAcquisitionPipeline>();
+                        // The Settings → Acquisition page (#389) lists the per-media-type remote
+                        // path mappings; its other panels read the same empty stores.
+                        services.AddSingleton(new AniListAutoMonitorSettingsStore(
+                            Path.Combine(dataDirectory.FullName, "anilist-auto-monitor")));
+                        services.AddScoped(_ => new AcquisitionBackupService(
+                            Path.Combine(dataDirectory.FullName, "acquisition-backup")));
+                        services.AddScoped<MediaInboxImportService>();
                         services.AddHttpClient();
                     })
                     .Configure(app =>
@@ -193,6 +206,9 @@ internal sealed class ManageSheetPageTestHost : IAsyncDisposable
                             await next();
                         });
                         app.UseRouting();
+                        // Pages that carry a role policy (Settings → Acquisition) need the
+                        // authorization middleware; the roles come from the simulated account.
+                        app.UseAuthorization();
                         app.UseEndpoints(endpoints => endpoints.MapRazorPages());
                     });
             })

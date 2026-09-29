@@ -4,7 +4,7 @@ using Jularr.Web.Features.Acquisition.Quality;
 namespace Jularr.Tests;
 
 [TestClass]
-public sealed class CompletedDownloadImportPlannerTests
+public sealed class AnimeImportPlannerTests
 {
     private static readonly AnimeQualityProfile Profile = AnimeQualityProfiles.CreateDefaultAnime1080p();
 
@@ -18,7 +18,7 @@ public sealed class CompletedDownloadImportPlannerTests
             new CompletedDownloadFile("/downloads/Anime Name - S01E01 WEB-DL 1080p AVC AAC[JA].de.srt", 100_000)
         };
 
-        var plan = CompletedDownloadImportPlanner.Plan(context, files);
+        var plan = AnimeImportPlanner.Plan(context, files);
 
         var item = plan.Files.Single(file => file.Source.Path.EndsWith(".mkv"));
         Assert.AreEqual(AnimeImportDisposition.AutoImport, item.Disposition);
@@ -35,7 +35,7 @@ public sealed class CompletedDownloadImportPlannerTests
             [new RequestedAnimeEpisode(2, 1, 13)],
             aliases: ["Anime Name"]);
 
-        var plan = CompletedDownloadImportPlanner.Plan(
+        var plan = AnimeImportPlanner.Plan(
             context,
             [new CompletedDownloadFile("/downloads/[Group] Anime Name - 13 WEB-DL 1080p HEVC AAC[JA].mkv", 800_000_000)]);
 
@@ -56,7 +56,7 @@ public sealed class CompletedDownloadImportPlannerTests
                 new RequestedAnimeEpisode(1, 3)
             ]);
 
-        var plan = CompletedDownloadImportPlanner.Plan(
+        var plan = AnimeImportPlanner.Plan(
             context,
             [new CompletedDownloadFile("/downloads/Anime Name - S01E01-E03 WEB-DL 1080p AVC AAC[JA].mkv", 2_400_000_000)]);
 
@@ -70,7 +70,7 @@ public sealed class CompletedDownloadImportPlannerTests
     {
         var context = Context([new RequestedAnimeEpisode(1, 1)]);
 
-        var plan = CompletedDownloadImportPlanner.Plan(
+        var plan = AnimeImportPlanner.Plan(
             context,
             [new CompletedDownloadFile("/downloads/Anime Name - S01E02 WEB-DL 1080p AVC AAC[JA].mkv", 800_000_000)]);
 
@@ -84,7 +84,7 @@ public sealed class CompletedDownloadImportPlannerTests
     {
         var context = Context([new RequestedAnimeEpisode(1, 1)]);
 
-        var plan = CompletedDownloadImportPlanner.Plan(
+        var plan = AnimeImportPlanner.Plan(
             context,
             [new CompletedDownloadFile("/downloads/Anime Name WEB-DL 1080p AVC AAC[JA].mkv", 800_000_000)]);
 
@@ -100,7 +100,7 @@ public sealed class CompletedDownloadImportPlannerTests
             [new RequestedAnimeEpisode(1, 1)],
             aliases: ["Expected Anime"]);
 
-        var plan = CompletedDownloadImportPlanner.Plan(
+        var plan = AnimeImportPlanner.Plan(
             context,
             [new CompletedDownloadFile("/downloads/Wrong Anime - S01E01 WEB-DL 1080p AVC AAC[JA].mkv", 800_000_000)]);
 
@@ -120,7 +120,7 @@ public sealed class CompletedDownloadImportPlannerTests
             1,
             800_000_000);
 
-        var plan = CompletedDownloadImportPlanner.Plan(context, [candidate], [existing]);
+        var plan = AnimeImportPlanner.Plan(context, [candidate], [existing]);
 
         Assert.AreEqual(AnimeImportDisposition.Ignore, plan.Files.Single().Disposition);
     }
@@ -138,7 +138,7 @@ public sealed class CompletedDownloadImportPlannerTests
             1,
             500_000_000);
 
-        var plan = CompletedDownloadImportPlanner.Plan(context, [candidate], [existing]);
+        var plan = AnimeImportPlanner.Plan(context, [candidate], [existing]);
 
         var item = plan.Files.Single();
         Assert.AreEqual(AnimeImportDisposition.AutoImport, item.Disposition);
@@ -156,7 +156,7 @@ public sealed class CompletedDownloadImportPlannerTests
             new CompletedDownloadFile("/downloads/Other Anime - S01E01.de.srt", 100_000)
         };
 
-        var item = CompletedDownloadImportPlanner.Plan(context, files).Files.Single(file => file.Source.Path.EndsWith(".mkv"));
+        var item = AnimeImportPlanner.Plan(context, files).Files.Single(file => file.Source.Path.EndsWith(".mkv"));
 
         Assert.AreEqual(0, item.SidecarPaths.Count);
     }
@@ -166,7 +166,7 @@ public sealed class CompletedDownloadImportPlannerTests
     {
         var context = Context([new RequestedAnimeEpisode(1, 1)]);
 
-        var plan = CompletedDownloadImportPlanner.Plan(
+        var plan = AnimeImportPlanner.Plan(
             context,
             [
                 new CompletedDownloadFile("/downloads/Anime Name - S01E01 WEB-DL 1080p AVC AAC[JA].mkv", 900_000_000),
@@ -178,7 +178,7 @@ public sealed class CompletedDownloadImportPlannerTests
             file.Disposition == AnimeImportDisposition.Ignore));
     }
 
-    private static CompletedDownloadImportContext Context(
+    private static AnimeImportPlanContext Context(
         IReadOnlyList<RequestedAnimeEpisode> episodes,
         IReadOnlyList<string>? aliases = null) =>
         new(

@@ -1,5 +1,6 @@
 using Jularr.Web.Data;
 using Jularr.Web.Features.Acquisition;
+using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Acquisition.History;
 using Jularr.Web.Features.Acquisition.Import;
 using Jularr.Web.Features.Acquisition.Monitoring;
@@ -109,10 +110,9 @@ public sealed class AcquisitionImportPolicyTests
 
         // The download client reports the completed job under a mount Jularr does not share.
         var remoteReportedPath = "/downloads/complete/" + Path.GetFileName(localFolder);
-        await environment.ImportSettings.UpdateAsync(state => state with
-        {
-            RemotePathMappings = [new RemotePathMapping("/downloads/complete", Path.GetDirectoryName(localFolder)!)]
-        });
+        await environment.ImportSettings.UpdateAsync(state => state.WithRemotePathMappings(
+            MediaAcquisitionKind.Anime,
+            [new RemotePathMapping("/downloads/complete", Path.GetDirectoryName(localFolder)!)]));
 
         var completed = await environment.CompleteLatestDownloadAsync(remoteReportedPath);
         var record = await environment.ImportCompletedAsync(completed, remoteReportedPath);

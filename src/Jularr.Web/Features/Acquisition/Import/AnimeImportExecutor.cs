@@ -1,5 +1,5 @@
 using Jularr.Web.Data;
-using Jularr.Web.Features.Acquisition.DownloadClients;
+using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Acquisition.History;
 using Jularr.Web.Features.Acquisition.Monitoring;
 using Jularr.Web.Features.Acquisition.Naming;
@@ -22,11 +22,15 @@ public sealed record AnimeImportActionResult(
     string Message);
 
 /// <summary>
-/// Executes the completed-download import for anime: plans with the canonical planner, consults
-/// Sonarr ownership before touching any path, moves accepted files into the anime's library
-/// folder, preserves existing files until the replacement committed, then reconciles that anime
-/// folder through the library scanner. Uncertain or failed files become manual-intervention
-/// records the owner resolves on the acquisition overview.
+/// The Anime importer behind the shared completed-download dispatcher
+/// (<see cref="ICompletedDownloadImportAdapter"/>). The shared layer resolves the completed
+/// download's location with the Anime remote path mappings, records the import on the download
+/// Operation and finds and places the files (<see cref="CompletedDownloadFiles"/>,
+/// <see cref="LibraryFilePlacer"/>); this class keeps only what is Anime-specific: it plans the
+/// episode mapping with <see cref="AnimeImportPlanner"/>, consults Sonarr ownership before touching
+/// any path, names the library path, preserves existing files until the replacement committed,
+/// then reconciles that anime folder through the library scanner. Uncertain or failed files become
+/// manual-intervention records the owner resolves on the acquisition overview.
 /// </summary>
 public sealed class AnimeImportExecutor(
     AppDbContext db,
@@ -41,21 +45,22 @@ public sealed class AnimeImportExecutor(
     IHardLinkCreator hardLinkCreator,
     AcquisitionHistoryService history,
     LibraryScanner scanner,
-    DownloadClientStore downloadClients,
-    IDownloadClient downloadClient,
     ILogger<AnimeImportExecutor> logger,
     MediaOptimizationQueue? optimizationQueue = null,
     LibraryRootAvailabilityService? storage = null,
-    IJularrEventPublisher? events = null)
+    IJularrEventPublisher? events = null) : ICompletedDownloadImportAdapter
 {
     public const string OperationKind = "anime-import";
     public const string OperationCategory = "Library";
     public const string LogModule = "Import";
+    public const string NoStoragePathMessage = "SABnzbd reported no storage path for the completed job.";
     public static readonly TimeSpan RecoveryWindow = TimeSpan.FromDays(7);
 
     // The SABnzbd monitor, startup recovery and owner actions run in different scopes; one
     // process-wide gate keeps two of them from executing the same import at the same time.
     private static readonly SemaphoreSlim ExecutionGate = new(1, 1);
+
+    private readonly LibraryFilePlacer placer = new(new ImportFileTransfer(hardLinkCreator));
 
     // Held by a caller that swaps a library file (the lossless playback optimizer) so no import
     // moves files or rescans folders at the same moment; null while an import is executing.
@@ -65,19 +70,83 @@ public sealed class AnimeImportExecutor(
     public static bool IsAnimeDownload(OperationSnapshot operation) =>
         string.Equals(operation.Kind, SabnzbdAcquisitionService.OperationKind, StringComparison.Ordinal);
 
+    public MediaAcquisitionKind Kind =>
+        MediaAcquisitionKind.Anime;
+
     /// <summary>
-    /// Imports the files of a completed anime SABnzbd job. Idempotent per download operation:
-    /// a finished record is returned as is, an interrupted one is resumed.
+    /// Imports the files of a completed anime SABnzbd job from the already mapped
+    /// <see cref="CompletedDownloadImportRequest.SourcePath"/>. Idempotent per download operation:
+    /// a finished record is reported as is, an interrupted one is resumed.
     /// </summary>
-    public async Task<AnimeImportRecord?> ImportCompletedAsync(
+    public async Task<CompletedDownloadImportResult> ImportAsync(
+        CompletedDownloadImportRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var download = request.Operation
+            ?? throw new InvalidOperationException("An Anime import needs the download operation it answers.");
+
+        await ExecutionGate.WaitAsync(cancellationToken);
+        try
+        {
+            var record = await ImportCompletedCoreAsync(
+                download,
+                request.SourcePath,
+                request,
+                unavailableReason: null,
+                cancellationToken);
+            return record is null
+                ? CompletedDownloadImportResult.Failed("The download is not an Anime acquisition download.")
+                : await ToResultAsync(record, cancellationToken);
+        }
+        finally
+        {
+            ExecutionGate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Ends the import of a completed download whose files can never be read (its download client
+    /// no longer reports a path): records the failure so it shows on the acquisition overview.
+    /// </summary>
+    public async Task<AnimeImportRecord?> FailUnavailableAsync(
         OperationSnapshot download,
-        string? storagePath,
+        string reason,
         CancellationToken cancellationToken)
     {
         await ExecutionGate.WaitAsync(cancellationToken);
         try
         {
-            return await ImportCompletedCoreAsync(download, storagePath, cancellationToken);
+            var record = await ImportCompletedCoreAsync(
+                download,
+                storagePath: null,
+                request: null,
+                reason,
+                cancellationToken);
+            if (record is not null)
+            {
+                await RecordOnDownloadAsync(record, cancellationToken);
+            }
+
+            return record;
+        }
+        finally
+        {
+            ExecutionGate.Release();
+        }
+    }
+
+    /// <summary>Marks an import record failed, for a record whose download operation is gone.</summary>
+    public async Task FailAsync(
+        AnimeImportRecord record,
+        string message,
+        CancellationToken cancellationToken)
+    {
+        await ExecutionGate.WaitAsync(cancellationToken);
+        try
+        {
+            var failed = await FinishAsync(record, AnimeImportStatus.Failed, message, record.ImportOperationId, cancellationToken);
+            await RecordOnDownloadAsync(failed, cancellationToken);
         }
         finally
         {
@@ -88,6 +157,8 @@ public sealed class AnimeImportExecutor(
     private async Task<AnimeImportRecord?> ImportCompletedCoreAsync(
         OperationSnapshot download,
         string? storagePath,
+        CompletedDownloadImportRequest? request,
+        string? unavailableReason,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(download);
@@ -96,48 +167,11 @@ public sealed class AnimeImportExecutor(
             return null;
         }
 
-        // The download client may report its storage path under a different mount than Jularr
-        // sees the same folder (#301/#302): translate it once here, at the one place every
-        // completed-download path enters the import pipeline (a fresh completion and restart
-        // recovery both call this method).
-        var reportedPath = string.IsNullOrWhiteSpace(storagePath) ? null : storagePath.Trim();
-        if (reportedPath is not null)
-        {
-            var settings = await importSettings.LoadAsync(cancellationToken);
-            storagePath = settings.TranslatePath(reportedPath);
-        }
-
         var existing = await imports.FindByDownloadAsync(download.Id, cancellationToken);
         if (existing is not null && existing.Status != AnimeImportStatus.Importing)
         {
             return existing;
         }
-
-        // The download Operation shows the same import details as every other media type.
-        await DownloadImportRecorder.RecordAsync(
-            new OperationStore(db),
-            download.Id,
-            previous => new DownloadImportDetails(
-                DownloadImportState.Verifying,
-                "Verifying completed anime files.",
-                DateTime.UtcNow,
-                reportedPath ?? previous?.ReportedPath,
-                storagePath ?? previous?.LocalPath,
-                previous?.Destination,
-                previous?.Mode),
-            cancellationToken);
-        await DownloadImportRecorder.RecordAsync(
-            new OperationStore(db),
-            download.Id,
-            previous => new DownloadImportDetails(
-                DownloadImportState.Importing,
-                "Importing the completed anime download.",
-                DateTime.UtcNow,
-                reportedPath ?? previous?.ReportedPath,
-                storagePath ?? previous?.LocalPath,
-                previous?.Destination,
-                previous?.Mode),
-            cancellationToken);
 
         var now = DateTimeOffset.UtcNow;
         var acquisition = (await acquisitions.FindByOperationAsync(download.Id, cancellationToken))?.Acquisition;
@@ -191,7 +225,14 @@ public sealed class AnimeImportExecutor(
 
         try
         {
-            return await PlanAndExecuteAsync(record, acquisition, download, operationId, cancellationToken);
+            return await PlanAndExecuteAsync(
+                record,
+                acquisition,
+                download,
+                operationId,
+                request,
+                unavailableReason,
+                cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -336,7 +377,7 @@ public sealed class AnimeImportExecutor(
             ? AnimeImportStatus.ManualRequired
             : AnimeImportStatus.Imported;
         await QueuePlaybackOptimizationAsync([executed], record.AnimeTitle, download?.ProfileId, operationId, cancellationToken);
-        await FinishAsync(
+        var finished = await FinishAsync(
             record with { Files = files },
             status,
             executed.Status == AnimeImportFileStatus.Imported
@@ -344,6 +385,7 @@ public sealed class AnimeImportExecutor(
                 : executed.Error ?? "Manual import did not complete.",
             operationId,
             cancellationToken);
+        await RecordOnDownloadAsync(finished, cancellationToken);
 
         return executed.Status == AnimeImportFileStatus.Imported
             ? new(true, $"Imported as S{seasonNumber:00}E{episodeNumber:00}.")
@@ -368,12 +410,13 @@ public sealed class AnimeImportExecutor(
                 return new(false, "Only imports waiting for attention can be dismissed.");
             }
 
-            await FinishAsync(
+            var dismissed = await FinishAsync(
                 record,
                 AnimeImportStatus.Dismissed,
                 "Dismissed by the owner; the downloaded files were left untouched.",
                 record.ImportOperationId,
                 cancellationToken);
+            await RecordOnDownloadAsync(dismissed, cancellationToken);
             return new(true, "Import dismissed.");
         }
         finally
@@ -382,93 +425,13 @@ public sealed class AnimeImportExecutor(
         }
     }
 
-    /// <summary>
-    /// Restart recovery: resumes imports interrupted mid-way and imports anime downloads that
-    /// completed while Jularr was not running (their storage path is read from SABnzbd history).
-    /// </summary>
-    public async Task<int> RecoverAsync(CancellationToken cancellationToken)
-    {
-        await ExecutionGate.WaitAsync(cancellationToken);
-        try
-        {
-            return await RecoverCoreAsync(cancellationToken);
-        }
-        finally
-        {
-            ExecutionGate.Release();
-        }
-    }
-
-    private async Task<int> RecoverCoreAsync(CancellationToken cancellationToken)
-    {
-        var recovered = 0;
-        var operations = new OperationStore(db);
-        var state = await imports.LoadAsync(cancellationToken);
-
-        foreach (var record in state.Imports.Where(record => record.Status == AnimeImportStatus.Importing).ToArray())
-        {
-            var download = await operations.GetAsync(record.DownloadOperationId, cancellationToken);
-            if (download is null)
-            {
-                await FinishAsync(record, AnimeImportStatus.Failed, "The download operation no longer exists.", record.ImportOperationId, cancellationToken);
-                continue;
-            }
-
-            await ImportCompletedCoreAsync(download, record.DownloadPath, cancellationToken);
-            recovered++;
-        }
-
-        var known = state.Imports.Select(record => record.DownloadOperationId).ToHashSet();
-        var since = DateTime.UtcNow - RecoveryWindow;
-        var completed = (await operations.ListAsync(
-                new OperationListFilter(View: "history", Category: SabnzbdDownloadService.OperationCategory, Limit: 200),
-                cancellationToken))
-            .Where(operation =>
-                IsAnimeDownload(operation) &&
-                operation.Status == OperationStatus.Succeeded &&
-                !string.IsNullOrWhiteSpace(operation.ExternalId) &&
-                operation.FinishedAtUtc is { } finished && finished >= since &&
-                !known.Contains(operation.Id))
-            .ToArray();
-        if (completed.Length == 0)
-        {
-            return recovered;
-        }
-
-        // The highest-priority enabled SABnzbd entry reports status for every completed anime
-        // download recovered here; its reported path is translated through the remote path mapping
-        // (below, in ImportCompletedCoreAsync) the same way as a fresh completion.
-        var entry = (await downloadClients.LoadAllAsync(cancellationToken))
-            .Where(item => item.Enabled)
-            .OrderBy(item => item.Priority)
-            .FirstOrDefault();
-        if (entry is null)
-        {
-            logger.LogWarning(
-                "{Count} completed anime downloads await import but no download client is configured.",
-                completed.Length);
-            return recovered;
-        }
-
-        var statuses = await downloadClient.GetStatusAsync(
-            entry,
-            completed.Select(operation => operation.ExternalId!).ToArray(),
-            cancellationToken);
-        foreach (var operation in completed)
-        {
-            var job = statuses.FirstOrDefault(item => item.ExternalId == operation.ExternalId);
-            await ImportCompletedCoreAsync(operation, job?.StoragePath, cancellationToken);
-            recovered++;
-        }
-
-        return recovered;
-    }
-
     private async Task<AnimeImportRecord> PlanAndExecuteAsync(
         AnimeImportRecord record,
         SabnzbdAcquisition acquisition,
         OperationSnapshot download,
         Guid operationId,
+        CompletedDownloadImportRequest? request,
+        string? unavailableReason,
         CancellationToken cancellationToken)
     {
         if (await FindConflictingLibraryWorkAsync(operationId, cancellationToken) is { } waiting)
@@ -488,10 +451,10 @@ public sealed class AnimeImportExecutor(
 
         if (string.IsNullOrWhiteSpace(record.DownloadPath))
         {
-            return await FinishAsync(record, AnimeImportStatus.Failed, "SABnzbd reported no storage path for the completed job.", operationId, cancellationToken);
+            return await FinishAsync(record, AnimeImportStatus.Failed, unavailableReason ?? NoStoragePathMessage, operationId, cancellationToken);
         }
 
-        var files = EnumerateDownload(record.DownloadPath, out var enumerationError);
+        var files = CompletedDownloadFiles.Enumerate(record.DownloadPath, out var enumerationError);
         if (enumerationError is not null)
         {
             return await FinishAsync(record, AnimeImportStatus.Failed, enumerationError, operationId, cancellationToken);
@@ -541,8 +504,8 @@ public sealed class AnimeImportExecutor(
         }
 
         var (importAction, allowHardlinkFallback) = await ResolveImportActionAsync(location?.RootId, cancellationToken);
-        var plan = CompletedDownloadImportPlanner.Plan(
-            new CompletedDownloadImportContext(
+        var plan = AnimeImportPlanner.Plan(
+            new AnimeImportPlanContext(
                 jobId,
                 acquisition.AnimeKey,
                 aliases,
@@ -595,7 +558,7 @@ public sealed class AnimeImportExecutor(
                     break;
 
                 default:
-                    if (planned.Targets.Count > 0 || !IsSidecarOrJunk(planned.Source.Path))
+                    if (planned.Targets.Count > 0 || !CompletedDownloadFiles.IsSidecarOrJunk(planned.Source.Path))
                     {
                         await operations.AppendLogAsync(operationId, OperationLogLevel.Information, LogModule, $"Ignored: {name} — {string.Join(" ", planned.Reasons)}", cancellationToken);
                     }
@@ -609,18 +572,13 @@ public sealed class AnimeImportExecutor(
         string? reconciled = null;
         if (imported > 0 && location is not null)
         {
-            await DownloadImportRecorder.RecordAsync(
-                operations,
-                download.Id,
-                previous => new DownloadImportDetails(
-                    DownloadImportState.MatchingMetadata,
-                    "Matching imported Anime metadata.",
-                    DateTime.UtcNow,
-                    previous?.ReportedPath,
-                    previous?.LocalPath,
-                    previous?.Destination,
-                    previous?.Mode),
-                cancellationToken);
+            if (request is not null)
+            {
+                await request.ReportProgressAsync(
+                    CompletedDownloadImportPhase.MatchingMetadata,
+                    "Matching imported Anime metadata.");
+            }
+
             reconciled = await ReconcileAsync(location, operationId, cancellationToken);
         }
 
@@ -675,9 +633,9 @@ public sealed class AnimeImportExecutor(
             return await ManualAsync("No library root is enabled; add one under Admin → System, then import manually.");
         }
 
-        if (!File.Exists(planned.Source.Path))
+        if (LibraryFilePlacer.FindSourceProblem(planned.Source.Path) is { } sourceProblem)
         {
-            return await ManualAsync("The downloaded file no longer exists.");
+            return await ManualAsync(sourceProblem);
         }
 
         var named = await BuildTargetAsync(target, location, planned.Targets, planned.Source.Path, cancellationToken);
@@ -691,13 +649,11 @@ public sealed class AnimeImportExecutor(
             return await ManualAsync(named.Problem);
         }
 
-        var directory = named.Directory;
         var destination = named.Path;
 
-        if (File.Exists(destination) &&
-            !planned.ExistingPathsToReplaceAfterCommit.Any(path => SonarrOwnershipRecognizer.PathEquals(path, destination)))
+        if (LibraryFilePlacer.FindDestinationConflict(destination, planned.ExistingPathsToReplaceAfterCommit) is { } conflict)
         {
-            return await ManualAsync($"Destination already exists: {Path.GetFileName(destination)}.");
+            return await ManualAsync(conflict);
         }
 
         // Claim the destination for this job first so parallel mode can mutate it, then verify
@@ -716,14 +672,22 @@ public sealed class AnimeImportExecutor(
             return await ManualAsync($"Ownership: {mutation.Reason}");
         }
 
+        // The shared commit step: transfer with the owner's import mode, follow with the sidecars
+        // and delete the replaced files only after the new file is in place.
+        IReadOnlyList<string> notes;
         try
         {
-            Directory.CreateDirectory(directory);
-            new ImportFileTransfer(hardLinkCreator).Transfer(
+            notes = placer.Place(new LibraryFilePlacement(
                 planned.Source.Path,
                 destination,
                 planned.FileAction,
-                planned.AllowHardlinkFallbackToCopy);
+                planned.AllowHardlinkFallbackToCopy,
+                planned.SidecarPaths
+                    .Select(sidecar => new PlacedSidecar(
+                        sidecar,
+                        AnimeImportDestination.BuildSidecarName(name, Path.GetFileName(sidecar), Path.GetFileName(destination))))
+                    .ToArray(),
+                planned.ExistingPathsToReplaceAfterCommit));
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
@@ -735,42 +699,6 @@ public sealed class AnimeImportExecutor(
             }
 
             return ToRecord(planned, AnimeImportFileStatus.Failed, null, error);
-        }
-
-        var notes = new List<string>();
-        foreach (var sidecar in planned.SidecarPaths)
-        {
-            var sidecarDestination = Path.Combine(
-                directory,
-                AnimeImportDestination.BuildSidecarName(name, Path.GetFileName(sidecar), Path.GetFileName(destination)));
-            try
-            {
-                if (File.Exists(sidecar) && !File.Exists(sidecarDestination))
-                {
-                    File.Move(sidecar, sidecarDestination);
-                }
-            }
-            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-            {
-                notes.Add($"Sidecar {Path.GetFileName(sidecar)} stayed in the download folder: {exception.Message}");
-            }
-        }
-
-        foreach (var replaced in planned.ExistingPathsToReplaceAfterCommit)
-        {
-            if (SonarrOwnershipRecognizer.PathEquals(replaced, destination))
-            {
-                continue;
-            }
-
-            try
-            {
-                File.Delete(replaced);
-            }
-            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-            {
-                notes.Add($"Replaced file {Path.GetFileName(replaced)} could not be deleted: {exception.Message}");
-            }
         }
 
         if (operationId is { } importedId)
@@ -1008,23 +936,23 @@ public sealed class AnimeImportExecutor(
             }
         }
 
-        await RecordOnDownloadAsync(finished, cancellationToken);
         return finished;
     }
 
     /// <summary>
-    /// Shows the anime import on its download Operation like every other media import: where the
-    /// files went (the imported files' folder), with which import mode and the result.
+    /// The importer result of an import record for the shared layer: the state it stands for and
+    /// where the files went (the imported files' folder) with which import mode.
     /// </summary>
-    private async Task RecordOnDownloadAsync(AnimeImportRecord record, CancellationToken cancellationToken)
+    private async Task<CompletedDownloadImportResult> ToResultAsync(
+        AnimeImportRecord record,
+        CancellationToken cancellationToken)
     {
         var imported = record.Files
             .Select(file => file.ImportedPath)
             .OfType<string>()
             .ToArray();
-        string? destination = imported.Length == 0 ? null : Path.GetDirectoryName(imported[0]);
-        ImportMode? mode = null;
-        if (destination is not null)
+        CompletedDownloadPlacement? placement = null;
+        if (imported.Length > 0 && Path.GetDirectoryName(imported[0]) is { } destination)
         {
             var full = Path.GetFullPath(destination);
             var roots = await db.LibraryRoots.AsNoTracking().ToListAsync(cancellationToken);
@@ -1032,30 +960,37 @@ public sealed class AnimeImportExecutor(
                 .Where(candidate => full.StartsWith(Path.GetFullPath(candidate.Path), StringComparison.Ordinal))
                 .OrderByDescending(candidate => candidate.Path.Length)
                 .FirstOrDefault();
-            mode = (await importSettings.LoadAsync(cancellationToken)).ModeFor(root?.Id);
+            placement = new CompletedDownloadPlacement(
+                destination,
+                (await importSettings.LoadAsync(cancellationToken)).ModeFor(root?.Id));
         }
 
-        var state = record.Status switch
+        var message = string.IsNullOrWhiteSpace(record.Message) ? "Anime import finished." : record.Message;
+        return record.Status switch
         {
-            AnimeImportStatus.Imported => DownloadImportState.Completed,
-            AnimeImportStatus.ManualRequired => DownloadImportState.ManualReview,
-            AnimeImportStatus.Importing => DownloadImportState.Importing,
-            _ => DownloadImportState.Failed
+            AnimeImportStatus.Imported => CompletedDownloadImportResult.Completed(message, resultUrl: null, placement),
+            AnimeImportStatus.ManualRequired => CompletedDownloadImportResult.NeedsReview(message, placement),
+            // Waiting for a library scan, rename or offline storage: the scheduler resumes it.
+            AnimeImportStatus.Importing => CompletedDownloadImportResult.RetryLater(message, placement),
+            _ => CompletedDownloadImportResult.Failed(message, placement)
         };
-        await DownloadImportRecorder.RecordAsync(
-            new OperationStore(db),
-            record.DownloadOperationId,
-            previous => new DownloadImportDetails(
-                state,
-                string.IsNullOrWhiteSpace(record.Message) ? "Anime import finished." : record.Message,
-                DateTime.UtcNow,
-                previous?.ReportedPath,
-                record.DownloadPath ?? previous?.LocalPath,
-                destination ?? previous?.Destination,
-                destination is null ? previous?.Mode : mode),
-            CancellationToken.None);
     }
 
+    /// <summary>
+    /// Shows an owner decision on an anime import (manual import, dismiss) on its download
+    /// Operation like the shared import service shows the automatic import.
+    /// </summary>
+    private async Task RecordOnDownloadAsync(AnimeImportRecord record, CancellationToken cancellationToken)
+    {
+        var result = await ToResultAsync(record, cancellationToken);
+        await DownloadImportRecorder.RecordResultAsync(
+            new OperationStore(db),
+            record.DownloadOperationId,
+            result,
+            location: null,
+            DateTime.UtcNow,
+            CancellationToken.None);
+    }
     private async Task ReleasePathAsync(string path, string jobId, CancellationToken cancellationToken)
     {
         var normalized = SonarrParallelSafety.NormalizePath(path);
@@ -1077,56 +1012,13 @@ public sealed class AnimeImportExecutor(
     // Resolves the canonical import mode (global default, overridden per library root) to the
     // planner/executor's file action plus whether a cross-filesystem hardlink may fall back to a
     // copy. rootId is null when no library root is enabled yet; the global default still applies.
-    private async Task<(AnimeImportFileAction Action, bool AllowHardlinkFallback)> ResolveImportActionAsync(
+    private async Task<(ImportFileAction Action, bool AllowHardlinkFallback)> ResolveImportActionAsync(
         Guid? rootId,
         CancellationToken cancellationToken)
     {
         var settings = await importSettings.LoadAsync(cancellationToken);
         return ImportFileTransfer.Resolve(settings.ModeFor(rootId));
     }
-
-    private static IReadOnlyList<CompletedDownloadFile> EnumerateDownload(string downloadPath, out string? error)
-    {
-        error = null;
-        try
-        {
-            if (File.Exists(downloadPath))
-            {
-                return [new CompletedDownloadFile(Path.GetFullPath(downloadPath), new FileInfo(downloadPath).Length)];
-            }
-
-            if (!Directory.Exists(downloadPath))
-            {
-                error = $"The completed download path does not exist or is not mounted in Jularr: {downloadPath}";
-                return [];
-            }
-
-            return Directory
-                .EnumerateFiles(downloadPath, "*", SearchOption.AllDirectories)
-                .Select(path => new CompletedDownloadFile(Path.GetFullPath(path), new FileInfo(path).Length))
-                .OrderBy(file => file.Path, StringComparer.Ordinal)
-                .ToArray();
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-            error = $"The completed download path could not be read: {exception.Message}";
-            return [];
-        }
-    }
-
-    private static bool IsSidecarOrJunk(string path) =>
-        Path.GetExtension(path) is { } extension &&
-        (extension.Equals(".nfo", StringComparison.OrdinalIgnoreCase) ||
-         extension.Equals(".srt", StringComparison.OrdinalIgnoreCase) ||
-         extension.Equals(".ass", StringComparison.OrdinalIgnoreCase) ||
-         extension.Equals(".ssa", StringComparison.OrdinalIgnoreCase) ||
-         extension.Equals(".vtt", StringComparison.OrdinalIgnoreCase) ||
-         extension.Equals(".txt", StringComparison.OrdinalIgnoreCase) ||
-         extension.Equals(".jpg", StringComparison.OrdinalIgnoreCase) ||
-         extension.Equals(".png", StringComparison.OrdinalIgnoreCase) ||
-         extension.Equals(".nzb", StringComparison.OrdinalIgnoreCase) ||
-         extension.Equals(".par2", StringComparison.OrdinalIgnoreCase) ||
-         extension.Equals(".sfv", StringComparison.OrdinalIgnoreCase));
 
     private sealed class ExecutionLease : IDisposable
     {

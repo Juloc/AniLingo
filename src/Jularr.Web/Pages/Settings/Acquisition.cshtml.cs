@@ -157,11 +157,14 @@ public sealed class AcquisitionModel(
             state =>
             {
                 var libraries = new Dictionary<MediaAcquisitionKind, MediaLibraryTarget>(state.MediaLibraries ?? []);
-                var target = new MediaLibraryTarget(
-                    library,
-                    HasLibraryFolder(kind) && library is not null ? importMode : null,
-                    inbox);
-                if (target.LibraryRoot is null && target.InboxRoot is null)
+                // The folders form does not touch the media type's remote path mappings.
+                var target = (libraries.TryGetValue(kind, out var existing) ? existing : new MediaLibraryTarget()) with
+                {
+                    LibraryRoot = library,
+                    ImportMode = HasLibraryFolder(kind) && library is not null ? importMode : null,
+                    InboxRoot = inbox
+                };
+                if (target.IsEmpty)
                 {
                     libraries.Remove(kind);
                 }
@@ -238,12 +241,24 @@ public sealed class AcquisitionModel(
         return RedirectToPage();
     }
 
+    /// <summary>Every media type has its own remote path mappings.</summary>
+    public IReadOnlyList<MediaAcquisitionKind> PathMappingKinds { get; } =
+        Enum.GetValues<MediaAcquisitionKind>();
+
+    public string KindLabel(MediaAcquisitionKind kind) =>
+        Ui[$"admin.requests.kind.{AcquisitionAccessNames.Kind(kind)}"];
+
     public async Task<IActionResult> OnPostAddPathMappingAsync(
+        MediaAcquisitionKind kind,
         string remotePrefix,
         string localPrefix,
         CancellationToken cancellationToken)
     {
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+        if (!PathMappingKinds.Contains(kind))
+        {
+            return BadRequest();
+        }
 
         if (string.IsNullOrWhiteSpace(remotePrefix) || string.IsNullOrWhiteSpace(localPrefix))
         {
@@ -252,30 +267,32 @@ public sealed class AcquisitionModel(
         }
 
         await importSettings.UpdateAsync(
-            state =>
-            {
-                var mappings = state.RemotePathMappings
+            state => state.WithRemotePathMappings(
+                kind,
+                state.RemotePathMappingsFor(kind)
                     .Where(mapping => !mapping.RemotePrefix.Equals(remotePrefix.Trim(), StringComparison.OrdinalIgnoreCase))
-                    .Append(new RemotePathMapping(remotePrefix.Trim(), localPrefix.Trim()))
-                    .ToList();
-                return state with { RemotePathMappings = mappings };
-            },
+                    .Append(new RemotePathMapping(remotePrefix.Trim(), localPrefix.Trim()))),
             cancellationToken);
         TempData["AcquisitionSettingsNotice"] = Ui["settings.acquisition.status.pathMappingSaved"];
         return RedirectToPage();
     }
 
-    public async Task<IActionResult> OnPostRemovePathMappingAsync(string remotePrefix, CancellationToken cancellationToken)
+    public async Task<IActionResult> OnPostRemovePathMappingAsync(
+        MediaAcquisitionKind kind,
+        string remotePrefix,
+        CancellationToken cancellationToken)
     {
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+        if (!PathMappingKinds.Contains(kind))
+        {
+            return BadRequest();
+        }
 
         await importSettings.UpdateAsync(
-            state => state with
-            {
-                RemotePathMappings = state.RemotePathMappings
-                    .Where(mapping => !mapping.RemotePrefix.Equals(remotePrefix, StringComparison.OrdinalIgnoreCase))
-                    .ToList()
-            },
+            state => state.WithRemotePathMappings(
+                kind,
+                state.RemotePathMappingsFor(kind)
+                    .Where(mapping => !mapping.RemotePrefix.Equals(remotePrefix, StringComparison.OrdinalIgnoreCase))),
             cancellationToken);
         TempData["AcquisitionSettingsNotice"] = Ui["settings.acquisition.status.pathMappingRemoved"];
         return RedirectToPage();

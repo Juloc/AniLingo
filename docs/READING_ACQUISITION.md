@@ -48,11 +48,12 @@ Retrying a failed download under Operations is refused once the request has move
 
 `CompletedDownloadImportService` is the one import step for completed downloads:
 
-1. `CompletedDownloadLocationResolver` asks the exact download client recorded on the Operation for the completed path and applies the canonical remote-path mapping.
+1. `CompletedDownloadLocationResolver` asks the exact download client recorded on the Operation for the completed path and applies the remote path mappings of the download's media type (Settings → Acquisition → Remote path mapping is set per media type).
 2. `CompletedDownloadDispatcher` hands the path to the media type's adapter:
    - Book -> `BookCompletedDownloadImportAdapter` -> `BookCatalogService.ImportBooksFromPathAsync`
    - Manga -> `MangaCompletedDownloadImportAdapter` -> `MangaImportService`
    - Light Novel -> `LightNovelCompletedDownloadImportAdapter` -> `NovelEpubImportService`
+   - Anime -> `AnimeImportExecutor` (episode mapping, Sonarr ownership, naming; see [ANIME_ACQUISITION.md](ANIME_ACQUISITION.md#import))
 3. The result is recorded on the download Operation (see [Operations](#operations)).
 
 Adapters normalize files; they never poll the download client or schedule retries. After an import, the adapter reconciles metadata where applicable and returns the library URL. Importers are idempotent, so a restart during `Importing` safely retries the same path.

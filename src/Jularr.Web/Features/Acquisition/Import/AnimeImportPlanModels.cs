@@ -2,6 +2,10 @@ using Jularr.Web.Features.Acquisition.Quality;
 
 namespace Jularr.Web.Features.Acquisition.Import;
 
+// The Anime-specific import plan: which completed file is which requested episode, and whether it
+// replaces an existing one. Everything that is not episode mapping (finding the files, placing
+// them, replacing files after the commit) is shared: CompletedDownloadFiles, LibraryFilePlacer.
+
 public enum AnimeImportDisposition
 {
     AutoImport,
@@ -9,21 +13,10 @@ public enum AnimeImportDisposition
     Ignore
 }
 
-public enum AnimeImportFileAction
-{
-    Move,
-    Copy,
-    Hardlink
-}
-
 public sealed record RequestedAnimeEpisode(
     int SeasonNumber,
     int EpisodeNumber,
     int? AbsoluteEpisodeNumber = null);
-
-public sealed record CompletedDownloadFile(
-    string Path,
-    long SizeBytes);
 
 public sealed record ExistingAnimeFile(
     string Path,
@@ -31,13 +24,13 @@ public sealed record ExistingAnimeFile(
     int EpisodeNumber,
     long SizeBytes);
 
-public sealed record CompletedDownloadImportContext(
+public sealed record AnimeImportPlanContext(
     string AcquisitionId,
     string AnimeKey,
     IReadOnlyList<string> SeriesAliases,
     IReadOnlyList<RequestedAnimeEpisode> RequestedEpisodes,
     AnimeQualityProfile QualityProfile,
-    AnimeImportFileAction PreferredAction = AnimeImportFileAction.Move,
+    ImportFileAction PreferredAction = ImportFileAction.Move,
     // Only meaningful when PreferredAction is Hardlink: the owner explicitly chose "Hardlink or
     // copy", so a cross-filesystem hardlink falls back to a copy instead of failing the import.
     bool AllowHardlinkFallbackToCopy = false,
@@ -47,7 +40,7 @@ public sealed record CompletedDownloadImportContext(
 public sealed record PlannedAnimeImport(
     CompletedDownloadFile Source,
     AnimeImportDisposition Disposition,
-    AnimeImportFileAction FileAction,
+    ImportFileAction FileAction,
     IReadOnlyList<RequestedAnimeEpisode> Targets,
     IReadOnlyList<string> SidecarPaths,
     IReadOnlyList<string> ExistingPathsToReplaceAfterCommit,
@@ -55,7 +48,7 @@ public sealed record PlannedAnimeImport(
     IReadOnlyList<string> Reasons,
     bool AllowHardlinkFallbackToCopy = false);
 
-public sealed record CompletedDownloadImportPlan(
+public sealed record AnimeImportPlan(
     string AcquisitionId,
     IReadOnlyList<PlannedAnimeImport> Files,
     string? OwnershipBlockReason = null)

@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Jularr.Web.Data;
+using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Acquisition.DownloadClients;
 using Jularr.Web.Features.Acquisition.Import;
 using Jularr.Web.Features.Acquisition.Sabnzbd;
@@ -324,7 +325,7 @@ public sealed class SabnzbdOperationMonitorService(
             nowUtc,
             cancellationToken);
 
-        await ImportCompletedAnimeDownloadsAsync(services, result.Completed, history, cancellationToken);
+        await ImportCompletedAnimeDownloadsAsync(services, result.Completed, cancellationToken);
         await ContinueFailedAnimeAcquisitionsAsync(services, result.Failed, cancellationToken);
     }
 
@@ -366,18 +367,21 @@ public sealed class SabnzbdOperationMonitorService(
     private async Task ImportCompletedAnimeDownloadsAsync(
         IServiceProvider services,
         IReadOnlyList<OperationSnapshot> completed,
-        SabnzbdHistorySnapshot history,
         CancellationToken cancellationToken)
     {
         foreach (var operation in completed.Where(AnimeImportExecutor.IsAnimeDownload))
         {
             try
             {
-                var storagePath = history.Jobs
-                    .FirstOrDefault(job => job.NzoId == operation.ExternalId)?
-                    .StoragePath;
-                await services.GetRequiredService<AnimeImportExecutor>()
-                    .ImportCompletedAsync(operation, storagePath, cancellationToken);
+                // The shared import step: the exact download client's completed path, the Anime
+                // remote path mapping, then the Anime importer behind the dispatcher.
+                await services.GetRequiredService<CompletedDownloadImportService>()
+                    .ImportAsync(
+                        operation,
+                        MediaAcquisitionKind.Anime,
+                        request: null,
+                        DateTime.UtcNow,
+                        cancellationToken);
             }
             catch (Exception exception) when (
                 exception is InvalidOperationException

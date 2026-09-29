@@ -144,7 +144,7 @@ public sealed class UsenetModel(
         Clients = clientCards;
 
         var mappings = await importSettings.LoadAsync(cancellationToken);
-        RemotePathMappingCount = mappings.RemotePathMappings.Count;
+        RemotePathMappingCount = mappings.RemotePathMappingCount;
         BooksInboxPath = mappings.InboxFor(MediaAcquisitionKind.Book);
         BookPolicy = await access.GetPolicyAsync(MediaAcquisitionKind.Book, cancellationToken);
 
@@ -373,7 +373,11 @@ public sealed class UsenetModel(
                 bool? readable = null;
                 if (job.IsCompleted && !string.IsNullOrWhiteSpace(job.StoragePath))
                 {
-                    local = mappings.TranslatePath(job.StoragePath);
+                    // The media type's own mappings apply; a job in no mapped category is not
+                    // Jularr's to import and stays as reported.
+                    local = entry.Settings.KindForCategory(job.Category) is { } kind
+                        ? mappings.TranslatePath(kind, job.StoragePath)
+                        : job.StoragePath;
                     readable = Directory.Exists(local) || System.IO.File.Exists(local);
                 }
 

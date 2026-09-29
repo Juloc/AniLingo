@@ -114,6 +114,73 @@ public sealed class WantedAcquisitionTests
     }
 
     [TestMethod]
+    [DataRow(CompletedDownloadImportDisposition.NeedsReview)]
+    [DataRow(CompletedDownloadImportDisposition.Failed)]
+    public async Task AnImportTheImporterEndedFailsTheRequestWithoutAnotherRelease(CompletedDownloadImportDisposition disposition)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var setup = await fixture.CreateInFlightAsync(
+            AcquisitionRequestStatus.Downloading);
+        var handler = new RecordingWantedHandler();
+        var adapter = new RecordingImportAdapter(
+            disposition == CompletedDownloadImportDisposition.NeedsReview
+                ? CompletedDownloadImportResult.NeedsReview("One file needs a decision.")
+                : CompletedDownloadImportResult.Failed("The library folder is not writable."));
+
+        var services = fixture.Services(
+            handler,
+            adapter,
+            new FixedLocationResolver("/mapped/manga"));
+
+        await WantedAcquisitionService.ProcessOnceAsync(
+            services,
+            DateTime.UtcNow,
+            CancellationToken.None);
+
+        var stored = await setup.Store.GetAsync(
+            setup.Request.Id,
+            CancellationToken.None);
+        Assert.AreEqual(AcquisitionRequestStatus.Failed, stored!.Status);
+        StringAssert.Contains(stored.StatusMessage, disposition == CompletedDownloadImportDisposition.NeedsReview ? "needs a decision" : "not writable");
+        Assert.AreEqual(0, handler.Problems, "The release is not at fault, so no other release is tried.");
+        Assert.AreEqual(1, adapter.Imports);
+    }
+
+    [TestMethod]
+    [DataRow(CompletedDownloadImportDisposition.NeedsReview, DownloadImportState.ManualReview)]
+    [DataRow(CompletedDownloadImportDisposition.Failed, DownloadImportState.Failed)]
+    [DataRow(CompletedDownloadImportDisposition.RejectedRelease, DownloadImportState.Rejected)]
+    public async Task ManualDownloadWhoseImportEndedIsRecordedOnceAndNeverImportedAgain(
+        CompletedDownloadImportDisposition disposition,
+        DownloadImportState expectedState)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var operations = new OperationStore(fixture.Db);
+        var operationId = await operations.CreateAsync(
+            new OperationDescriptor(
+                CompletedDownloadImportService.ManualDownloadOperationKind,
+                "External downloads",
+                "SABnzbd download",
+                IsDownload: true,
+                ExternalProvider: "sabnzbd",
+                ExternalId: "job-manual",
+                Details: new DownloadOperationDetails(Guid.NewGuid(), MediaAcquisitionKind.Manga, "manga").Serialize()),
+            CancellationToken.None);
+        await operations.MarkRunningAsync(operationId, CancellationToken.None);
+        await operations.MarkSucceededAsync(operationId, "Downloaded.", CancellationToken.None);
+        var adapter = new RecordingImportAdapter(
+            new CompletedDownloadImportResult(disposition, "The importer ended it."));
+        var services = fixture.Services(new RecordingWantedHandler(), adapter, new FixedLocationResolver("/mapped/manga"));
+
+        await WantedAcquisitionService.ProcessOnceAsync(services, DateTime.UtcNow, CancellationToken.None);
+        await WantedAcquisitionService.ProcessOnceAsync(services, DateTime.UtcNow.AddMinutes(2), CancellationToken.None);
+
+        Assert.AreEqual(1, adapter.Imports, "An ended import is not repeated on the next pass.");
+        Assert.IsTrue(DownloadOperationDetails.TryParse((await operations.GetAsync(operationId))!.Details, out var details));
+        Assert.AreEqual(expectedState, details!.Import!.State);
+    }
+
+    [TestMethod]
     public async Task UnsuitableCompletedReleaseReturnsToWantedHandler()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -164,15 +231,13 @@ public sealed class WantedAcquisitionTests
 
             var settings = new AnimeImportSettingsStore(directory);
             await settings.UpdateAsync(
-                current => current with
-                {
-                    RemotePathMappings =
+                current => current.WithRemotePathMappings(
+                    MediaAcquisitionKind.Manga,
                     [
                         new RemotePathMapping(
                             "/remote/complete",
                             "/mnt/downloads")
-                    ]
-                });
+                    ]));
 
             var client = new RecordingDownloadClient(
                 new DownloadClientJobStatus(
@@ -201,6 +266,7 @@ public sealed class WantedAcquisitionTests
 
             var result = await resolver.ResolveAsync(
                 operation,
+                MediaAcquisitionKind.Manga,
                 CancellationToken.None);
 
             Assert.IsTrue(result.Resolved);
@@ -208,6 +274,71 @@ public sealed class WantedAcquisitionTests
                 "/mnt/downloads/manga/title",
                 result.SourcePath);
             Assert.AreEqual(entry.Id, client.LastEntryId);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public async Task CompletedPathResolverAppliesOnlyTheMediaTypesOwnRemoteMappings()
+    {
+        var directory = Path.Combine(
+            Path.GetTempPath(),
+            $"jularr-wanted-path-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var clients = new DownloadClientStore(
+                new EphemeralDataProtectionProvider(),
+                new DirectoryInfo(Path.Combine(directory, "acquisition")));
+            var entry = new DownloadClientEntry(
+                Guid.NewGuid(),
+                "SAB",
+                DownloadClientType.Sabnzbd,
+                Enabled: true,
+                Priority: 0,
+                DownloadClientSettings.CreateDefault("http://sab.invalid"),
+                "secret");
+            await clients.SaveAsync(entry);
+
+            // The same reported folder is mounted differently for each media type.
+            var settings = new AnimeImportSettingsStore(directory);
+            await settings.UpdateAsync(
+                current => current
+                    .WithRemotePathMappings(MediaAcquisitionKind.Manga, [new RemotePathMapping("/remote/complete", "/mnt/manga")])
+                    .WithRemotePathMappings(MediaAcquisitionKind.Book, [new RemotePathMapping("/remote/complete", "/mnt/books")]));
+
+            var resolver = new CompletedDownloadLocationResolver(
+                clients,
+                new RecordingDownloadClient(
+                    new DownloadClientJobStatus(
+                        "job-1",
+                        "Release",
+                        DownloadClientJobState.Completed,
+                        100,
+                        null,
+                        1_000,
+                        0,
+                        null,
+                        "/remote/complete/release",
+                        null)),
+                settings,
+                NullLogger<CompletedDownloadLocationResolver>.Instance);
+            var operation = Operation(
+                Guid.NewGuid(),
+                "job-1",
+                new DownloadOperationDetails(entry.Id, MediaAcquisitionKind.Manga, "manga").Serialize());
+
+            var manga = await resolver.ResolveAsync(operation, MediaAcquisitionKind.Manga, CancellationToken.None);
+            var book = await resolver.ResolveAsync(operation, MediaAcquisitionKind.Book, CancellationToken.None);
+            var anime = await resolver.ResolveAsync(operation, MediaAcquisitionKind.Anime, CancellationToken.None);
+
+            Assert.AreEqual("/mnt/manga/release", manga.SourcePath);
+            Assert.AreEqual("/mnt/books/release", book.SourcePath);
+            Assert.AreEqual("/remote/complete/release", anime.SourcePath, "Anime has no mapping for this folder.");
+            Assert.AreEqual("/remote/complete/release", manga.ReportedPath, "The reported path is kept next to the mapped one.");
         }
         finally
         {
@@ -348,6 +479,7 @@ public sealed class WantedAcquisitionTests
     {
         public Task<CompletedDownloadLocation> ResolveAsync(
             OperationSnapshot operation,
+            MediaAcquisitionKind kind,
             CancellationToken cancellationToken) =>
             Task.FromResult(
                 new CompletedDownloadLocation(

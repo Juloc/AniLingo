@@ -224,8 +224,8 @@ public sealed class AnimeAcquisitionPipelineTests
         CollectionAssert.AreEqual(
             new[]
             {
-                "Verifying completed anime files.",
-                "Importing the completed anime download.",
+                "Verifying completed files before import.",
+                "Importing completed files into the library.",
                 "Matching imported Anime metadata.",
                 record.Message
             },
