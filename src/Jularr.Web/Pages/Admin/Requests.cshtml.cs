@@ -21,14 +21,14 @@ public sealed class RequestsModel(
     AcquisitionAccessStore store,
     AcquisitionRequestService requests,
     AcquisitionRequestSettingsStore settings,
-    AnimeQualityProfileStore qualityProfiles) : PageModel
+    QualityProfileStore qualityProfiles) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public IReadOnlyList<AcquisitionAccessPolicy> Policies { get; private set; } = [];
     public IReadOnlyList<AcquisitionRequest> Requests { get; private set; } = [];
     public IReadOnlyDictionary<string, string> ProfileNames { get; private set; } = new Dictionary<string, string>();
     public AcquisitionRequestSettings RequestSettings { get; private set; } = AcquisitionRequestSettings.Default;
-    public IReadOnlyList<AnimeQualityProfile> QualityProfiles { get; private set; } = [];
+    public IReadOnlyList<QualityProfile> QualityProfiles { get; private set; } = [];
     public IReadOnlyDictionary<string, string> QualityProfileNames { get; private set; } = new Dictionary<string, string>();
     public bool ShowAll { get; private set; }
 

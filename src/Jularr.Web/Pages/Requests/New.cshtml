@@ -94,11 +94,11 @@
         {
             <label class="request-field">
                 <span>@ui["requests.new.profile"]</span>
-                <select name="QualityProfile">
+                <select name="QualityProfileId">
                     <option value="">@ui["requests.new.defaultProfile"]</option>
                     @foreach (var profile in Model.SelectableProfiles)
                     {
-                        <option value="@profile.Id" selected="@(Model.QualityProfile == profile.Id)">@profile.Name</option>
+                        <option value="@profile.Id" selected="@(Model.QualityProfileId == profile.Id)">@profile.Name</option>
                     }
                 </select>
             </label>

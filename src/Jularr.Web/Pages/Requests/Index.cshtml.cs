@@ -18,7 +18,7 @@ public sealed class IndexModel(
     CurrentAccountContext account,
     RequestHistoryQuery history,
     AcquisitionRequestService requests,
-    AnimeQualityProfileStore qualityProfiles) : PageModel
+    QualityProfileStore qualityProfiles) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public RequestHistoryPage History { get; private set; } = new([], RequestHistoryFilter.All, 1, 0, 0);

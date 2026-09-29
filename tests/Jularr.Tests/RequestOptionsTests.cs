@@ -214,7 +214,7 @@ public sealed class RequestOptionsTests
         Assert.AreEqual(true, settings.EpisodeOverrides["S01E02"]);
         Assert.AreEqual(true, settings.EpisodeOverrides["S01E03"]);
         Assert.AreEqual(false, settings.SeasonOverrides[1], "The rest of the season is switched off, so episodes that air later are not picked up unasked.");
-        Assert.AreEqual("anime-720p", (await profiles.LoadAsync()).AnimeProfileAssignments[anime.Id.ToString("D")]);
+        Assert.AreEqual("anime-720p", (await profiles.LoadAsync()).WorkAssignments[anime.Id.ToString("D")]);
         Assert.AreEqual(1, environment.Scheduler.QueuedRequests);
     }
 

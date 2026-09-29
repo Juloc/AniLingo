@@ -152,7 +152,7 @@ public sealed class RequestHistoryTests
     private static RequestsIndexModel Page(AcquisitionAccessFixture fixture, string profileId)
     {
         var account = AcquisitionAccessFixture.Account(profileId, AccountRole.User);
-        var profiles = new AnimeQualityProfileStore(new DirectoryInfo(Path.Combine(Path.GetTempPath(), $"jularr-profiles-{Guid.NewGuid():N}")));
+        var profiles = new QualityProfileStore(new DirectoryInfo(Path.Combine(Path.GetTempPath(), $"jularr-profiles-{Guid.NewGuid():N}")));
         var page = new RequestsIndexModel(
             fixture.Db,
             account,

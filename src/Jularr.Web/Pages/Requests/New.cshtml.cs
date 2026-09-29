@@ -21,7 +21,7 @@ public sealed class NewModel(
     CurrentAccountContext account,
     AcquisitionRequestService requests,
     AcquisitionRequestSettingsStore settings,
-    AnimeQualityProfileStore qualityProfiles) : PageModel
+    QualityProfileStore qualityProfiles) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
 
@@ -59,10 +59,10 @@ public sealed class NewModel(
     public string? Subtitles { get; set; }
 
     [BindProperty]
-    public string? QualityProfile { get; set; }
+    public string? QualityProfileId { get; set; }
 
     public bool AddCreatesRequest { get; private set; }
-    public IReadOnlyList<AnimeQualityProfile> SelectableProfiles { get; private set; } = [];
+    public IReadOnlyList<QualityProfile> SelectableProfiles { get; private set; } = [];
     public string? Error { get; private set; }
 
     public async Task<IActionResult> OnGetAsync(CancellationToken cancellationToken) =>
@@ -145,7 +145,7 @@ public sealed class NewModel(
         {
             AudioLanguage = Audio,
             SubtitleLanguage = Subtitles,
-            QualityProfileId = QualityProfile
+            QualityProfileId = QualityProfileId
         };
 
         switch (Scope)

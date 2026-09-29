@@ -101,9 +101,9 @@ public sealed class RequestPagesRenderTests
 
         // Only the profiles the owner opened are offered to a requester; the owner adds instead of requesting.
         var noProfiles = await host.GetHtmlAsync(path, asOwner: false, mediaCapability: MediaCapability.Request, openProfiles: false);
-        Assert.IsFalse(noProfiles.Contains("name=\"QualityProfile\"", StringComparison.Ordinal));
+        Assert.IsFalse(noProfiles.Contains("name=\"QualityProfileId\"", StringComparison.Ordinal));
         var owner = await host.GetHtmlAsync(path, asOwner: true);
-        StringAssert.Contains(owner, "name=\"QualityProfile\"");
+        StringAssert.Contains(owner, "name=\"QualityProfileId\"");
         Assert.IsFalse(owner.Contains("Send request", StringComparison.Ordinal));
         StringAssert.Matches(owner, new System.Text.RegularExpressions.Regex(@"type=""submit"">\s*Add\s*</button>"));
 
@@ -269,7 +269,7 @@ public sealed class RequestPagesRenderTests
                         services.AddScoped<IMediaCapabilityService, MediaCapabilityService>();
                         services.AddScoped<IAppShellService, AppShellService>();
                         services.AddSingleton(settings);
-                        services.AddSingleton(new AnimeQualityProfileStore(new DirectoryInfo(Path.Combine(data.FullName, "quality"))));
+                        services.AddSingleton(new QualityProfileStore(new DirectoryInfo(Path.Combine(data.FullName, "quality"))));
                         services.AddScoped<AcquisitionAccessStore>();
                         services.AddScoped<RequestHistoryQuery>();
                         services.AddScoped<AcquisitionRequestService>();

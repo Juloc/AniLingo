@@ -78,7 +78,7 @@ internal sealed class AnimeAcquisitionEnvironment : IAsyncDisposable
 
     public AnimeAcquisitionScheduler Scheduler => services.GetRequiredService<AnimeAcquisitionScheduler>();
     public AnimeMonitoringStore Monitoring => services.GetRequiredService<AnimeMonitoringStore>();
-    public AnimeQualityProfileStore QualityProfiles => services.GetRequiredService<AnimeQualityProfileStore>();
+    public QualityProfileStore QualityProfiles => services.GetRequiredService<QualityProfileStore>();
     public AcquisitionOwnershipStore Ownership => services.GetRequiredService<AcquisitionOwnershipStore>();
     public SabnzbdAcquisitionStore Acquisitions => services.GetRequiredService<SabnzbdAcquisitionStore>();
     public AnimeImportStore Imports => services.GetRequiredService<AnimeImportStore>();
