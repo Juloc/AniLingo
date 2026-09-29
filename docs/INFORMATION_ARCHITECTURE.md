@@ -154,7 +154,7 @@ catalog in `src/Jularr.Web/Features/Localization/UiShellNavigation.cs`:
 | Calendar / Releases | consumer `/Calendar` only; no admin releases nav entry | Partial |
 | Jobs / Activity | `/Admin/Operations`, `/Admin/Scans`, `/Admin/Logs` (admin-operations, admin-scans, admin-logs) | Exists |
 | Integrations | `/Admin/Usenet`, `/Admin/Sonarr` (admin-usenet, admin-sonarr) | Partial — Usenet/Sonarr only, no general integrations hub (Prowlarr health lives under Usenet) |
-| Users & Permissions | `/Admin/Users`, `/Admin/Requests` (admin-users, admin-requests) | Partial — user management and request policy exist; a permissions/roles matrix does not (§8). #521 |
+| Users & Permissions | `/Admin/Users`, `/Admin/Requests`, `/Admin/Capabilities` (admin-users, admin-requests) | Partial — user management, request policy and a per-media-type capability matrix (Hidden/Browse/Request/Instant, §8) exist; role assignment lives on the per-user page. `/Admin/Capabilities` is linked from `/Admin/Users`, not from the shell nav catalog. #521 #436 |
 | Settings | `/Settings/*` section (Admin AI, API keys, Localization) | Exists |
 | Diagnostics | `/Admin/Logs`, `/Admin/Ai`, `/Admin/Health` (admin-ai, admin-health) | Exists — operation logs plus dependency/service health and version/update diagnostics (§5, Sonarr/Radarr table). #528 |
 
@@ -298,6 +298,7 @@ policy checks below; the table states the target state, not today's binary Owner
 | Consumer pages (Home, Library, Watchlist, Calendar, Discover, playback, reading) | Full | Full | Full |
 | Own account settings, own sessions/history | Full | Full | Full |
 | Request media (Requests queue) | Full | Full | Allowed per acquisition-access policy (today: `AcquisitionAccessPolicy.UserAdd`) |
+| Per-media-type capability: Hidden/Browse/Request/Instant (`/Admin/Capabilities`, #436) | Unrestricted (always Instant) | Configurable (default Instant) | Configurable (default Request), with per-user overrides |
 | Approve/reject requests | Full | Full | No |
 | View admin dashboard, Operations, Scans, Logs | Full | Full (read) | No |
 | Delete media / library files | Full | No (per #510's sensitive-action list) | No |
@@ -314,3 +315,18 @@ mapping, request approval, session moderation) without the account-management an
 authority reserved for Owner. Sensitive-action gating listed above follows #510's own list
 verbatim (delete, rename/move, mapping changes, acquisition settings, user management, stopping
 another user's session, storage/settings/integration changes).
+
+### 8.1 Per-media-type capability matrix (#436)
+
+Orthogonal to the role/policy table above, each media type (`WorkMediaType`: Movie, Series/TV,
+Anime, Book, Manga, Light Novel) resolves to one ordered capability per profile:
+`Hidden < Browse < Request < Instant`. The owner edits the matrix on `/Admin/Capabilities`
+(owner-only, `admin.system`): a default per configurable role (Media manager, User) plus sparse
+per-user overrides. The policy is the canonical JSON settings store
+`Features/Auth/MediaCapabilityStore` (`/data/auth/media-capabilities.json`) — no EF table.
+Resolution precedence: **Owner is always Instant (unrestricted); otherwise a per-user override
+wins over the role default.** Features consume the resolved capability through
+`IMediaCapabilityService` (`Features/Auth/MediaCapabilityService`) instead of re-deriving rules:
+`GetViewAsync`/`GetEffectiveCapabilityAsync` (request experience #597 — Instant vs Request gating),
+`GetVisibleMediaTypesAsync` (permission-derived shell #598 and discovery categories #595 — Hidden
+removes a media type entirely), and `EnsureCapabilityAsync` (server-side per-media-type guard).
