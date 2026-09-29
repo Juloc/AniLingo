@@ -44,6 +44,10 @@ public sealed class SubtitleImportService
     // (a Japanese-only model invocation) ever serve.
     private const string JapaneseLanguageTag = "ja";
 
+    // Namespaces the advisory-lock key of a track import (see LockSourceKeyAsync) away from any
+    // other advisory lock the database might be asked to take.
+    private const string SourceLockNamespace = "jularr:subtitle-track:";
+
     private const string JimakuStorePath = "/data/integrations/jimaku.json";
     private const string JimakuApiBase = "https://jimaku.cc/api/";
     private const int MaxJimakuDownloadBytes = 64 * 1024 * 1024;
@@ -243,6 +247,14 @@ public sealed class SubtitleImportService
         return $"{ProviderSourcePrefix}{providerId}:{hash}";
     }
 
+    // The one path that creates or replaces a track by its source key (SubtitleTracks.Path is
+    // unique). Looking the Path up, creating or updating the row, replacing its cues and rebuilding
+    // the episode vocabulary run as one transaction that is serialized per source key (#601): a
+    // scan, the background learning-text batch and a repair refresh can all reach the same sidecar
+    // at once, and unserialized each would see no track and insert one (IX_SubtitleTracks_Path,
+    // 23505) or replace the cues of an existing track twice and leave it with two copies. The
+    // importer that waits on the lock re-reads the winner's committed row, so importing a source
+    // that is already current degrades to a no-op instead of failing.
     private async Task ImportCuesAsync(
         Guid episodeId,
         string sourceKey,
@@ -252,18 +264,62 @@ public sealed class SubtitleImportService
         string targetLanguage,
         CancellationToken cancellationToken)
     {
-        var track = await db.SubtitleTracks
-            .SingleOrDefaultAsync(x => x.Path == sourceKey, cancellationToken);
+        sourceUpdatedAt = ToStoredPrecision(sourceUpdatedAt);
+        string readyMessage;
+        Guid? previousEpisodeId = null;
 
-        if (track is not null && track.SourceUpdatedAt == sourceUpdatedAt)
+        await using (var transaction = await db.Database.BeginTransactionAsync(cancellationToken))
         {
-            await KeepCurrentTrackAsync(episodeId, track.Id, sourceKey, targetLanguage, cancellationToken);
-            return;
+            await LockSourceKeyAsync(sourceKey, cancellationToken);
+            var current = await FindTrackStampAsync(sourceKey, cancellationToken);
+
+            if (current is not null && IsCurrent(current, episodeId, sourceUpdatedAt))
+            {
+                await PruneOtherTracksAsync(episodeId, current.Id, targetLanguage, cancellationToken);
+                readyMessage = "Learning text is ready.";
+            }
+            else
+            {
+                previousEpisodeId = await ReplaceTrackAsync(
+                    current,
+                    episodeId,
+                    sourceKey,
+                    normalizedFormat,
+                    sourceUpdatedAt,
+                    cues,
+                    targetLanguage,
+                    cancellationToken);
+                readyMessage = $"Learning text is ready ({cues.Count} cues).";
+            }
+
+            await transaction.CommitAsync(cancellationToken);
         }
 
-        if (track is null)
+        if (previousEpisodeId is { } previous)
         {
-            track = new SubtitleTrack
+            ForgetReadyState(previous);
+        }
+
+        MarkPreparationReady(episodeId, DetectSourceKind(sourceKey), readyMessage);
+    }
+
+    // Upserts the track for the source key and swaps in the new cues. An existing row is matched by
+    // Path and updated in place (episode, language, format, timestamps), so a source that moved to
+    // another episode keeps its single row. Returns the episode the track left, if it moved.
+    private async Task<Guid?> ReplaceTrackAsync(
+        TrackStamp? current,
+        Guid episodeId,
+        string sourceKey,
+        string normalizedFormat,
+        DateTime sourceUpdatedAt,
+        IReadOnlyList<SubtitleCueData> cues,
+        string targetLanguage,
+        CancellationToken cancellationToken)
+    {
+        Guid trackId;
+        if (current is null)
+        {
+            var track = new SubtitleTrack
             {
                 EpisodeId = episodeId,
                 Path = sourceKey,
@@ -272,43 +328,91 @@ public sealed class SubtitleImportService
                 SourceUpdatedAt = sourceUpdatedAt
             };
             db.SubtitleTracks.Add(track);
+            trackId = track.Id;
         }
         else
         {
-            track.EpisodeId = episodeId;
-            track.Language = targetLanguage;
-            track.Format = normalizedFormat;
-            track.SourceUpdatedAt = sourceUpdatedAt;
-            track.ImportedAt = DateTime.UtcNow;
+            trackId = current.Id;
+            var importedAt = DateTime.UtcNow;
+            await db.SubtitleTracks
+                .Where(x => x.Id == trackId)
+                .ExecuteUpdateAsync(
+                    setters => setters
+                        .SetProperty(x => x.EpisodeId, episodeId)
+                        .SetProperty(x => x.Language, targetLanguage)
+                        .SetProperty(x => x.Format, normalizedFormat)
+                        .SetProperty(x => x.SourceUpdatedAt, sourceUpdatedAt)
+                        .SetProperty(x => x.ImportedAt, importedAt),
+                    cancellationToken);
+
+            // ExecuteUpdate bypasses the change tracker; drop any copy this context still holds.
+            foreach (var stale in db.ChangeTracker
+                         .Entries<SubtitleTrack>()
+                         .Where(x => x.Entity.Id == trackId)
+                         .ToArray())
+            {
+                stale.State = EntityState.Detached;
+            }
 
             await db.SubtitleCues
-                .Where(x => x.SubtitleTrackId == track.Id)
+                .Where(x => x.SubtitleTrackId == trackId)
                 .ExecuteDeleteAsync(cancellationToken);
         }
 
-        await RemoveOtherTracksAsync(episodeId, track.Id, targetLanguage, cancellationToken);
+        await RemoveOtherTracksAsync(episodeId, trackId, targetLanguage, cancellationToken);
 
         db.SubtitleCues.AddRange(cues.Select(cue => new SubtitleCue
         {
-            SubtitleTrackId = track.Id,
+            SubtitleTrackId = trackId,
             StartMs = cue.StartMs,
             EndMs = cue.EndMs,
             Text = cue.Text
         }));
 
         await db.SaveChangesAsync(cancellationToken);
-        await vocabularyService.RebuildEpisodeAsync(episodeId, cancellationToken);
 
-        MarkPreparationReady(
-            episodeId,
-            DetectSourceKind(sourceKey),
-            $"Learning text is ready ({cues.Count} cues).");
+        // The episode the track left no longer owns its cues, so its vocabulary is rebuilt too.
+        Guid? previousEpisodeId = current is not null && current.EpisodeId != episodeId
+            ? current.EpisodeId
+            : null;
+        if (previousEpisodeId is { } previous)
+        {
+            await vocabularyService.RebuildEpisodeAsync(previous, cancellationToken);
+        }
+
+        await vocabularyService.RebuildEpisodeAsync(episodeId, cancellationToken);
+        return previousEpisodeId;
     }
 
-    private async Task KeepCurrentTrackAsync(
+    // A transaction-scoped advisory lock on the source key: it needs no row (so it also orders two
+    // importers of a Path that has no track yet), is shared by every connection to the database and
+    // is released with the transaction. Distinct keys only ever serialize on a hash collision.
+    private Task LockSourceKeyAsync(string sourceKey, CancellationToken cancellationToken) =>
+        db.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock(hashtextextended({SourceLockNamespace + sourceKey}, 0))",
+            cancellationToken);
+
+    private Task<TrackStamp?> FindTrackStampAsync(string path, CancellationToken cancellationToken) =>
+        db.SubtitleTracks
+            .AsNoTracking()
+            .Where(x => x.Path == path)
+            .Select(x => new TrackStamp(x.Id, x.EpisodeId, x.SourceUpdatedAt))
+            .SingleOrDefaultAsync(cancellationToken);
+
+    // The single definition of "this source was already imported for this episode": the same
+    // timestamp on the same episode. A track whose episode differs is re-associated, not kept.
+    private static bool IsCurrent(TrackStamp track, Guid episodeId, DateTime sourceUpdatedAt) =>
+        track.EpisodeId == episodeId && track.SourceUpdatedAt == ToStoredPrecision(sourceUpdatedAt);
+
+    // timestamptz keeps microseconds while file timestamps carry 100 ns ticks, so a stored stamp
+    // only ever equals its file's after truncation; without it an unchanged source never compares
+    // equal again and is re-imported (cues replaced, vocabulary rebuilt) on every scan and repair.
+    private static DateTime ToStoredPrecision(DateTime value) =>
+        value.AddTicks(-(value.Ticks % TimeSpan.TicksPerMicrosecond));
+
+    private async Task PruneOtherTracksAsync(
         Guid episodeId,
         Guid trackId,
-        string sourceKey,
         string targetLanguage,
         CancellationToken cancellationToken)
     {
@@ -322,6 +426,16 @@ public sealed class SubtitleImportService
         {
             await vocabularyService.RebuildEpisodeAsync(episodeId, cancellationToken);
         }
+    }
+
+    private async Task KeepCurrentTrackAsync(
+        Guid episodeId,
+        Guid trackId,
+        string sourceKey,
+        string targetLanguage,
+        CancellationToken cancellationToken)
+    {
+        await PruneOtherTracksAsync(episodeId, trackId, targetLanguage, cancellationToken);
 
         MarkPreparationReady(
             episodeId,
@@ -342,16 +456,12 @@ public sealed class SubtitleImportService
         }
 
         var sourceUpdatedAt = info.LastWriteTimeUtc;
-        var current = await db.SubtitleTracks
-            .AsNoTracking()
-            .Where(x => x.Path == candidate.Path)
-            .Select(x => new { x.Id, x.EpisodeId, x.SourceUpdatedAt })
-            .SingleOrDefaultAsync(cancellationToken);
+        // Unlocked fast path so an unchanged sidecar is not even read; ImportCuesAsync re-checks
+        // under the source-key lock, so a stale answer here can only cost a redundant parse.
+        var current = await FindTrackStampAsync(candidate.Path, cancellationToken);
 
         // An unchanged sidecar was already validated when it was imported.
-        if (current is not null &&
-            current.EpisodeId == episodeId &&
-            current.SourceUpdatedAt == sourceUpdatedAt)
+        if (current is not null && IsCurrent(current, episodeId, sourceUpdatedAt))
         {
             await KeepCurrentTrackAsync(episodeId, current.Id, candidate.Path, targetLanguage, cancellationToken);
             return true;
@@ -406,6 +516,11 @@ public sealed class SubtitleImportService
         }
 
         await vocabularyService.RebuildEpisodeAsync(episodeId, cancellationToken);
+        ForgetReadyState(episodeId);
+    }
+
+    private static void ForgetReadyState(Guid episodeId)
+    {
         if (PreparationStates.TryGetValue(episodeId, out var state) &&
             state.Status == LearningTextPreparationStatus.Ready)
         {
@@ -1581,6 +1696,8 @@ public sealed class SubtitleImportService
         {
         }
     }
+
+    private sealed record TrackStamp(Guid Id, Guid EpisodeId, DateTime SourceUpdatedAt);
 
     private sealed record EpisodeMediaSnapshot(
         Guid EpisodeId,

@@ -1,3 +1,4 @@
+using System.Data.Common;
 using Jularr.Web.Data;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Library;
@@ -14,6 +15,7 @@ using Jularr.Web.Pages.Library;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -162,6 +164,11 @@ public sealed class AnimeRepairServiceTests
         var animeId = await host.GetAnimeIdAsync("Frieren");
         var mediaFileCountBefore = await host.CountMediaFilesAsync();
 
+        // The scan's own discovery queues a background learning-text batch that would import the
+        // sidecar dropped below on its own. Let it settle so this test exercises only the repair
+        // action; the repair-vs-background race itself is covered by the concurrency test (#601).
+        await host.WaitForNoActiveOperationsOfKindAsync("learning-text-batch");
+
         // Simulate the user dropping sidecar files after the scan, without triggering a rescan.
         await File.WriteAllTextAsync(
             Path.Combine(host.LibraryPath, "Frieren", "tvshow.nfo"),
@@ -183,6 +190,136 @@ public sealed class AnimeRepairServiceTests
         Assert.AreEqual(0, await host.CountAnimeMetadataAsync(),
             "Refreshing local files is distinct from a metadata refresh/match.");
         Assert.AreEqual(1, await host.CountSubtitleTracksAsync(animeId));
+    }
+
+    [TestMethod]
+    public async Task RefreshLocalIsIdempotentWhenRepeatedForTheSameSidecar()
+    {
+        await using var host = await AnimeRepairTestHost.CreateAsync();
+        var root = await host.AddRootAsync("Anime");
+        var mediaPath = host.WriteMedia(Path.Combine("Frieren", "Season 01", "Frieren - S01E01.mkv"));
+
+        await host.StartWorkerAsync();
+        var initial = await host.Scans.QueueAsync(new LibraryScanRequest(root.Id, LibraryScanTrigger.Manual));
+        await host.WaitForAsync(initial.OperationId!.Value, x => x.Status == OperationStatus.Succeeded);
+        await host.WaitForNoActiveOperationsOfKindAsync("learning-text-batch");
+        var animeId = await host.GetAnimeIdAsync("Frieren");
+
+        host.WriteSidecar(mediaPath, "猫が走る", "犬が歩く");
+
+        // Each refresh is its own action with its own DbContext, so the second one must recognise
+        // the sidecar from what the database stored (which keeps microseconds, not file ticks).
+        var first = await host.RefreshLocalInNewScopeAsync(animeId);
+        var tracksAfterFirst = await host.GetSubtitleTracksAsync();
+
+        var second = await host.RefreshLocalInNewScopeAsync(animeId);
+        var tracksAfterSecond = await host.GetSubtitleTracksAsync();
+
+        Assert.AreEqual(1, first.SubtitlesImported);
+        Assert.AreEqual(1, second.SubtitlesImported, "An unchanged sidecar is still the episode's learning text.");
+        Assert.AreEqual(1, tracksAfterFirst.Count);
+        Assert.AreEqual(1, tracksAfterSecond.Count, "Repeating the reimport must not add a second track for the same Path.");
+        Assert.AreEqual(tracksAfterFirst[0].Id, tracksAfterSecond[0].Id);
+        Assert.AreEqual(2, tracksAfterSecond[0].CueCount);
+        Assert.AreEqual(
+            tracksAfterFirst[0].ImportedAt,
+            tracksAfterSecond[0].ImportedAt,
+            "An unchanged sidecar must not be re-imported.");
+    }
+
+    // Issue #601: IX_SubtitleTracks_Path (Npgsql 23505) was violated when two imports of the same
+    // sidecar Path ran at once - the repair action, a scan and the background learning-text batch
+    // can all reach the same file - because each looked the Path up, saw no track and inserted one.
+    // The lookup delay widens that read-then-write window so any non-atomic import collides here
+    // every time, instead of once in a while.
+    [TestMethod]
+    public async Task ConcurrentRefreshLocalReimportsNeverDuplicateSubtitleTracksOrCues()
+    {
+        const int episodeCount = 6;
+        const int racers = 3;
+
+        await using var host = await AnimeRepairTestHost.CreateAsync();
+        var root = await host.AddRootAsync("Anime");
+        var mediaPaths = Enumerable.Range(1, episodeCount)
+            .Select(number => host.WriteMedia(Path.Combine("Frieren", "Season 01", $"Frieren - S01E{number:00}.mkv")))
+            .ToArray();
+
+        await host.StartWorkerAsync();
+        var initial = await host.Scans.QueueAsync(new LibraryScanRequest(root.Id, LibraryScanTrigger.Manual));
+        await host.WaitForAsync(initial.OperationId!.Value, x => x.Status == OperationStatus.Succeeded);
+        await host.WaitForNoActiveOperationsOfKindAsync("learning-text-batch");
+        var animeId = await host.GetAnimeIdAsync("Frieren");
+
+        // First import: no track exists yet, so every racer takes the insert path.
+        foreach (var mediaPath in mediaPaths)
+        {
+            host.WriteSidecar(mediaPath, "猫が走る", "犬が歩く");
+        }
+
+        host.SubtitleLookupDelay = TimeSpan.FromMilliseconds(50);
+        var firstRound = await host.RefreshLocalConcurrentlyAsync(animeId, racers);
+
+        Assert.IsTrue(firstRound.All(x => x.SubtitlesImported == episodeCount));
+        var tracks = await host.GetSubtitleTracksAsync();
+        Assert.AreEqual(episodeCount, tracks.Count, "Exactly one track per sidecar Path.");
+        Assert.AreEqual(episodeCount, tracks.Select(x => x.Path).Distinct(StringComparer.Ordinal).Count());
+        Assert.IsTrue(tracks.All(x => x.CueCount == 2), "Each track carries the sidecar's cues exactly once.");
+
+        // Changed sidecars: every racer now takes the update path against an existing track.
+        var changedStamp = new DateTime(2030, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        for (var index = 0; index < mediaPaths.Length; index++)
+        {
+            host.WriteSidecar(mediaPaths[index], changedStamp.AddMinutes(index), "猫が走る", "犬が歩く", "鳥が飛ぶ");
+        }
+
+        var secondRound = await host.RefreshLocalConcurrentlyAsync(animeId, racers);
+
+        Assert.IsTrue(secondRound.All(x => x.SubtitlesImported == episodeCount));
+        var updated = await host.GetSubtitleTracksAsync();
+        Assert.AreEqual(episodeCount, updated.Count, "Reimporting a changed sidecar updates its track instead of adding one.");
+        CollectionAssert.AreEquivalent(
+            tracks.Select(x => x.Id).ToArray(),
+            updated.Select(x => x.Id).ToArray(),
+            "The existing tracks are matched by Path and updated in place.");
+        Assert.IsTrue(updated.All(x => x.CueCount == 3), "Concurrent cue replacement must not duplicate cues.");
+    }
+
+    // A media file re-linked to another episode keeps its sidecar Path, so the existing track must
+    // follow it instead of staying on the old episode (and never gaining a second row for the Path).
+    // The sidecar's stamp is fixed and unchanged throughout: "same timestamp" alone must not keep a
+    // track that belongs to a different episode.
+    [TestMethod]
+    public async Task RefreshLocalMovesAnExistingTrackToTheEpisodeNowOwningTheSidecar()
+    {
+        await using var host = await AnimeRepairTestHost.CreateAsync();
+        var root = await host.AddRootAsync("Anime");
+        var firstMedia = host.WriteMedia(Path.Combine("Frieren", "Season 01", "Frieren - S01E01.mkv"));
+        host.WriteMedia(Path.Combine("Frieren", "Season 01", "Frieren - S01E02.mkv"));
+
+        await host.StartWorkerAsync();
+        var initial = await host.Scans.QueueAsync(new LibraryScanRequest(root.Id, LibraryScanTrigger.Manual));
+        await host.WaitForAsync(initial.OperationId!.Value, x => x.Status == OperationStatus.Succeeded);
+        await host.WaitForNoActiveOperationsOfKindAsync("learning-text-batch");
+        var animeId = await host.GetAnimeIdAsync("Frieren");
+
+        host.WriteSidecar(firstMedia, new DateTime(2030, 1, 1, 0, 0, 0, DateTimeKind.Utc), "猫が走る", "犬が歩く");
+        await host.RefreshLocalInNewScopeAsync(animeId);
+
+        var firstEpisodeId = await host.GetEpisodeIdAsync(animeId, 1);
+        var secondEpisodeId = await host.GetEpisodeIdAsync(animeId, 2);
+        var before = await host.GetSubtitleTracksAsync();
+        Assert.AreEqual(1, before.Count);
+        Assert.AreEqual(firstEpisodeId, before[0].EpisodeId);
+
+        await host.MoveMediaFileToEpisodeAsync(firstMedia, secondEpisodeId);
+        await host.RefreshLocalInNewScopeAsync(animeId);
+        await host.RefreshLocalInNewScopeAsync(animeId);
+
+        var after = await host.GetSubtitleTracksAsync();
+        Assert.AreEqual(1, after.Count, "The Path still has exactly one track.");
+        Assert.AreEqual(before[0].Id, after[0].Id);
+        Assert.AreEqual(secondEpisodeId, after[0].EpisodeId, "The track follows its media file to the new episode.");
+        Assert.AreEqual(2, after[0].CueCount);
     }
 
     [TestMethod]
@@ -248,13 +385,29 @@ public sealed class AnimeRepairServiceTests
     // web host. Mirrors LibraryScanTestHost and adds the metadata/repair services it does not need.
     private sealed class AnimeRepairTestHost : IAsyncDisposable
     {
-        private AnimeRepairTestHost(string tempRoot, ServiceProvider services, FakeMediaProbeRunner probe, FakeAniListProvider provider)
+        private readonly SubtitleTrackLookupDelayInterceptor lookupDelay;
+
+        private AnimeRepairTestHost(
+            string tempRoot,
+            ServiceProvider services,
+            FakeMediaProbeRunner probe,
+            FakeAniListProvider provider,
+            SubtitleTrackLookupDelayInterceptor lookupDelay)
         {
             TempRoot = tempRoot;
             Services = services;
             Probe = probe;
             Provider = provider;
+            this.lookupDelay = lookupDelay;
             LibraryPath = Path.Combine(tempRoot, "anime");
+        }
+
+        // Holds every SubtitleTracks-by-Path lookup open for this long after it ran, widening the
+        // window between "no track for this Path" and the insert that follows it (#601).
+        public TimeSpan SubtitleLookupDelay
+        {
+            get => lookupDelay.Delay;
+            set => lookupDelay.Delay = value;
         }
 
         public string TempRoot { get; }
@@ -290,10 +443,13 @@ public sealed class AnimeRepairServiceTests
             var provider = new FakeAniListProvider();
             var dataProtection = DataProtectionProvider.Create(new DirectoryInfo(keysPath));
 
+            var lookupDelay = new SubtitleTrackLookupDelayInterceptor();
             var services = new ServiceCollection();
             services.AddLogging();
             services.AddDbContext<AppDbContext>(options =>
-                options.UseSqlite($"Data Source={databasePath};Foreign Keys=True"));
+                options
+                    .UseSqlite($"Data Source={databasePath};Foreign Keys=True")
+                    .AddInterceptors(lookupDelay));
             services.AddSingleton<IJapaneseMorphology, EmptyMorphology>();
             services.AddSingleton<JapaneseTermExtractor>();
             services.AddSingleton(new JapaneseDictionary(dictionaryPath));
@@ -331,7 +487,7 @@ public sealed class AnimeRepairServiceTests
                 await DatabaseMigrationBridge.UpgradeAsync(db);
             }
 
-            return new AnimeRepairTestHost(tempRoot, built, probe, provider);
+            return new AnimeRepairTestHost(tempRoot, built, probe, provider, lookupDelay);
         }
 
         public async Task<LibraryRoot> AddRootAsync(string name)
@@ -468,6 +624,88 @@ public sealed class AnimeRepairServiceTests
                 .CountAsync(x => x.episode.AnimeId == animeId);
         }
 
+        public string WriteSidecar(string mediaPath, params string[] cueTexts) =>
+            WriteSidecar(mediaPath, null, cueTexts);
+
+        // Writes <media>.ja.srt with one cue per text. A fixed stamp makes "the sidecar changed"
+        // independent of the filesystem's timestamp resolution.
+        public string WriteSidecar(string mediaPath, DateTime? lastWriteUtc, params string[] cueTexts)
+        {
+            var sidecarPath = Path.ChangeExtension(mediaPath, null) + ".ja.srt";
+            var content = string.Join(
+                "\n",
+                cueTexts.Select((text, index) =>
+                    $"{index + 1}\n00:00:{index * 2 + 1:00},000 --> 00:00:{index * 2 + 2:00},000\n{text}\n"));
+            File.WriteAllText(sidecarPath, content);
+            if (lastWriteUtc is { } stamp)
+            {
+                File.SetLastWriteTimeUtc(sidecarPath, stamp);
+            }
+
+            return sidecarPath;
+        }
+
+        // One repair action in its own DI scope (its own DbContext), like each request or job gets.
+        // The shared Repair instance keeps one DbContext for the host's whole life, so its tracked
+        // entities would go stale between actions and hide what a fresh action reads back.
+        public async Task<AnimeRepairLocalRefreshResult> RefreshLocalInNewScopeAsync(Guid animeId)
+        {
+            await using var scope = Services.CreateAsyncScope();
+            return await scope.ServiceProvider
+                .GetRequiredService<AnimeRepairService>()
+                .RefreshLocalAsync(animeId, CancellationToken.None);
+        }
+
+        // One scope per racer, all released at the same instant, like the repair action, a scan and
+        // the learning-text batch would be.
+        public async Task<AnimeRepairLocalRefreshResult[]> RefreshLocalConcurrentlyAsync(Guid animeId, int racers)
+        {
+            var start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var tasks = Enumerable.Range(0, racers)
+                .Select(_ => Task.Run(async () =>
+                {
+                    await start.Task;
+                    return await RefreshLocalInNewScopeAsync(animeId);
+                }))
+                .ToArray();
+
+            start.SetResult();
+            return await Task.WhenAll(tasks);
+        }
+
+        public async Task<Guid> GetEpisodeIdAsync(Guid animeId, int number)
+        {
+            await using var scope = Services.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            return (await db.Episodes.AsNoTracking().SingleAsync(x => x.AnimeId == animeId && x.Number == number)).Id;
+        }
+
+        public async Task MoveMediaFileToEpisodeAsync(string mediaPath, Guid episodeId)
+        {
+            await using var scope = Services.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var moved = await db.MediaFiles
+                .Where(x => x.Path == mediaPath)
+                .ExecuteUpdateAsync(x => x.SetProperty(media => media.EpisodeId, episodeId));
+            Assert.AreEqual(1, moved);
+        }
+
+        public async Task<IReadOnlyList<SubtitleTrackRow>> GetSubtitleTracksAsync()
+        {
+            await using var scope = Services.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            return await db.SubtitleTracks
+                .AsNoTracking()
+                .OrderBy(x => x.Path)
+                .Select(x => new SubtitleTrackRow(
+                    x.Id,
+                    x.EpisodeId,
+                    x.Path,
+                    x.ImportedAt,
+                    db.SubtitleCues.Count(cue => cue.SubtitleTrackId == x.Id)))
+                .ToListAsync();
+        }
+
         public async Task<(DateTime Frieren, DateTime Bocchi)> GetAnalyzedAtAsync(string frierenPath, string bocchiPath)
         {
             await using var scope = Services.CreateAsyncScope();
@@ -502,6 +740,31 @@ public sealed class AnimeRepairServiceTests
             catch (UnauthorizedAccessException)
             {
             }
+        }
+
+        public sealed record SubtitleTrackRow(Guid Id, Guid EpisodeId, string Path, DateTime ImportedAt, int CueCount);
+
+        private sealed class SubtitleTrackLookupDelayInterceptor : DbCommandInterceptor
+        {
+            public TimeSpan Delay { get; set; }
+
+            public override async ValueTask<DbDataReader> ReaderExecutedAsync(
+                DbCommand command,
+                CommandExecutedEventData eventData,
+                DbDataReader result,
+                CancellationToken cancellationToken = default)
+            {
+                if (Delay > TimeSpan.Zero && IsSubtitleTrackPathLookup(command.CommandText))
+                {
+                    await Task.Delay(Delay, cancellationToken);
+                }
+
+                return result;
+            }
+
+            private static bool IsSubtitleTrackPathLookup(string sql) =>
+                sql.Contains("FROM \"SubtitleTracks\"", StringComparison.Ordinal) &&
+                sql.Contains(".\"Path\" =", StringComparison.Ordinal);
         }
 
         private sealed class TestHttpClientFactory : IHttpClientFactory
