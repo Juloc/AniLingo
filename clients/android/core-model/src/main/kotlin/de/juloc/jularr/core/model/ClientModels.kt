@@ -30,7 +30,7 @@ data class ClientFeatureFlags(
     val continueWatching: Boolean = false,
     val playbackHistory: Boolean = false,
     val watchlist: Boolean = false,
-    /** TV device-code pairing, "/api/client/v1/pairing/*" (#489). */
+    /** TV device-code pairing, POST /api/client/v1/pairing start|approve|poll (#489). */
     val devicePairing: Boolean = false,
 )
 
