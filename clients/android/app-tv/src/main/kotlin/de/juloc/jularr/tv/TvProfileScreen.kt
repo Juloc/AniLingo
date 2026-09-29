@@ -14,16 +14,25 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import de.juloc.jularr.core.model.ClientAccount
+import de.juloc.jularr.core.update.UpdateCheckResult
 
 /**
- * The TV sidebar's Profile/Settings destination (#522): account identity and the two
- * account-level actions the TV app exposes today (sign out, change server). There is no
- * dedicated Settings screen yet, so those live here rather than nowhere.
+ * The TV sidebar's Profile/Settings destination (#522): account identity, the two
+ * account-level actions the TV app exposes today (sign out, change server), and the
+ * self-update panel (#490).
  */
 @Composable
 fun TvProfileScreen(
     account: ClientAccount,
     serverOrigin: String,
+    currentVersionName: String,
+    updateState: TvUpdateState,
+    updateChecksEnabled: Boolean,
+    canInstallPackages: Boolean,
+    onToggleUpdateChecksEnabled: () -> Unit,
+    onCheckForUpdatesNow: () -> Unit,
+    onStartUpdateDownload: (UpdateCheckResult.UpdateAvailable) -> Unit,
+    onInstallUpdate: () -> Unit,
     onSignOut: () -> Unit,
     onChangeServer: () -> Unit,
 ) {
@@ -62,6 +71,17 @@ fun TvProfileScreen(
                     Text(stringResource(R.string.tv_profile_change_server))
                 }
             }
+
+            TvUpdateSection(
+                currentVersionName = currentVersionName,
+                state = updateState,
+                checksEnabled = updateChecksEnabled,
+                canInstallPackages = canInstallPackages,
+                onToggleChecksEnabled = onToggleUpdateChecksEnabled,
+                onCheckNow = onCheckForUpdatesNow,
+                onStartDownload = onStartUpdateDownload,
+                onInstall = onInstallUpdate,
+            )
         }
     }
 }

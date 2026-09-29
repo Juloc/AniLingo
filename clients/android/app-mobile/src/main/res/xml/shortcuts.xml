@@ -18,4 +18,13 @@
             android:targetClass="de.juloc.jularr.MainActivity"
             android:targetPackage="de.juloc.jularr" />
     </shortcut>
+    <shortcut
+        android:enabled="true"
+        android:shortcutId="check_for_updates"
+        android:shortcutShortLabel="@string/shortcut_check_for_updates">
+        <intent
+            android:action="de.juloc.jularr.action.CHECK_UPDATES"
+            android:targetClass="de.juloc.jularr.MainActivity"
+            android:targetPackage="de.juloc.jularr" />
+    </shortcut>
 </shortcuts>

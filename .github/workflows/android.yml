@@ -58,6 +58,7 @@ jobs:
           :core-api:testDebugUnitTest
           :core-player:testDebugUnitTest
           :core-tts:testDebugUnitTest
+          :core-update:testDebugUnitTest
           :app-mobile:testDebugUnitTest
           :app-tv:testDebugUnitTest
           :app-mobile:lintDebug
@@ -68,6 +69,7 @@ jobs:
           :core-session:lintDebug
           :core-design:lintDebug
           :core-tts:lintDebug
+          :core-update:lintDebug
           :app-mobile:assembleDebug
           :app-tv:assembleDebug
 

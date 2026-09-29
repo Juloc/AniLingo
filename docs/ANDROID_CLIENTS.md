@@ -67,7 +67,8 @@ clients/android/
 ├── core-session/
 ├── core-design/
 ├── core-tts/
-└── core-tts-sherpa/        (optional, see docs/TTS.md)
+├── core-tts-sherpa/        (optional, see docs/TTS.md)
+└── core-update/
 ```
 
 Modules:
@@ -81,6 +82,13 @@ Modules:
 - `core-design`: generated player theme values and reusable native player controls.
 - `core-tts`: provider-neutral TTS contract, resolver, system (`TextToSpeech`) provider and offline-neural model manager (docs/TTS.md).
 - `core-tts-sherpa`: optional sherpa-onnx offline-neural binding; excluded from the build unless `-PjularrNeuralTtsEnabled=true` because it needs a manually downloaded AAR (docs/TTS.md).
+- `core-update`: self-update implementation shared by `app-mobile` and `app-tv` (#490) — an
+  unauthenticated GitHub Releases check, semver comparison against `BuildConfig.VERSION_NAME`,
+  phone-vs-TV asset selection, download, SHA-256 verification and the Android package-installer
+  intent. Draft/pre-release releases are never offered (`/releases/latest` already excludes
+  them), and a release that is not newer than the installed version is never treated as an
+  update. Each app keeps its own device-local toggle/last-check/dismissed-version state
+  (`UpdatePreferences`) and its own `FileProvider` authority for the staged APK.
 
 Application IDs:
 
