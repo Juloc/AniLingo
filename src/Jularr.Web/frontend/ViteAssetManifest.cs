@@ -65,7 +65,7 @@ public sealed class ViteAssetManifest(IWebHostEnvironment environment)
         var manifestInfo = new FileInfo(manifestPath);
         if (!manifestInfo.Exists)
         {
-            return [];
+            return new Dictionary<string, ManifestEntry>();
         }
 
         lock (sync)
