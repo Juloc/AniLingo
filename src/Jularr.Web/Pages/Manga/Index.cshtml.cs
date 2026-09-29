@@ -1,5 +1,6 @@
 using Jularr.Web.Data;
 using Jularr.Web.Features.Acquisition.Access;
+using Jularr.Web.Features.Artwork;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Localization;
 using Jularr.Web.Features.Manga;
@@ -27,7 +28,8 @@ public sealed class IndexModel(
     ILogger<IndexModel> logger,
     NovelAniListProvider? readingProvider = null,
     AcquisitionRequestService? requests = null,
-    AcquisitionAccessStore? requestStore = null) : PageModel
+    AcquisitionAccessStore? requestStore = null,
+    ReadingCoverArtwork? coverArtwork = null) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public IReadOnlyList<MangaSeriesItem> Series { get; private set; } = [];
@@ -235,7 +237,8 @@ public sealed class IndexModel(
                     var metadata = new MangaAniListService(
                         repository,
                         httpClientFactory,
-                        mappingReviewStore);
+                        mappingReviewStore,
+                        coverArtwork: coverArtwork);
                     await metadata.AutoMatchAsync(
                         imported.SeriesId,
                         token);
@@ -299,7 +302,8 @@ public sealed class IndexModel(
                     var metadata = new MangaAniListService(
                         repository,
                         httpClientFactory,
-                        mappingReviewStore);
+                        mappingReviewStore,
+                        coverArtwork: coverArtwork);
                     await metadata.AutoMatchAsync(
                         imported.SeriesId,
                         token);

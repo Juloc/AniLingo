@@ -310,15 +310,7 @@ public sealed class AnimeArtworkLibrary(
         try
         {
             using var client = httpClientFactory.CreateClient(HttpClientName);
-            using var response = await client.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-            if (!response.IsSuccessStatusCode ||
-                response.Content.Headers.ContentType?.MediaType?.StartsWith("image/", StringComparison.OrdinalIgnoreCase) != true)
-            {
-                return;
-            }
-
-            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            bytes = await AnimeArtworkFiles.ReadLimitedAsync(stream, cancellationToken);
+            bytes = await AnimeArtworkFiles.DownloadImageAsync(client, uri, cancellationToken);
         }
         catch (Exception exception) when (
             exception is HttpRequestException ||

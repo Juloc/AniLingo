@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Jularr.Web.Data;
+using Jularr.Web.Features.Artwork;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Franchises;
 using Jularr.Web.Features.Localization;
@@ -22,7 +23,8 @@ public sealed class SeriesModel(
     MediaMappingReviewStore mappingReviewStore,
     AniListAccountService aniListAccount,
     FranchiseStore franchises,
-    FranchiseService franchiseService) : PageModel
+    FranchiseService franchiseService,
+    ReadingCoverArtwork? coverArtwork = null) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public MangaSeriesDetail Series { get; private set; } = null!;
@@ -186,7 +188,8 @@ public sealed class SeriesModel(
                 var metadata = new MangaAniListService(
                     repository,
                     httpClientFactory,
-                    mappingReviewStore);
+                    mappingReviewStore,
+                    coverArtwork: coverArtwork);
                 await metadata.MatchAsync(id, externalId, token);
             },
             "Manga metadata matched.",
@@ -236,7 +239,8 @@ public sealed class SeriesModel(
                 var metadata = new MangaAniListService(
                     repository,
                     httpClientFactory,
-                    mappingReviewStore);
+                    mappingReviewStore,
+                    coverArtwork: coverArtwork);
                 await metadata.AutoMatchAsync(
                     imported.SeriesId,
                     token);

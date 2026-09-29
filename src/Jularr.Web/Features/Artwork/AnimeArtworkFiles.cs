@@ -115,6 +115,27 @@ public static class AnimeArtworkFiles
         };
     }
 
+    /// <summary>
+    /// Downloads a provider image: null when the response is not a success, not an image, or larger
+    /// than <see cref="MaxImageBytes"/>. Network failures propagate to the caller, which decides
+    /// whether one unreachable provider may fail the surrounding step.
+    /// </summary>
+    public static async Task<byte[]?> DownloadImageAsync(
+        HttpClient client,
+        Uri uri,
+        CancellationToken cancellationToken)
+    {
+        using var response = await client.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        if (!response.IsSuccessStatusCode ||
+            response.Content.Headers.ContentType?.MediaType?.StartsWith("image/", StringComparison.OrdinalIgnoreCase) != true)
+        {
+            return null;
+        }
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        return await ReadLimitedAsync(stream, cancellationToken);
+    }
+
     /// <summary>Reads at most <see cref="MaxImageBytes"/>; null when the image is larger.</summary>
     public static async Task<byte[]?> ReadLimitedAsync(Stream source, CancellationToken cancellationToken)
     {

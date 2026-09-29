@@ -1,4 +1,5 @@
 using Jularr.Web.Data;
+using Jularr.Web.Features.Artwork;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Discovery;
 using Jularr.Web.Features.Localization;
@@ -15,7 +16,8 @@ public sealed class MangaImportModel(
     CurrentAccountContext account,
     IHttpClientFactory httpClientFactory,
     OperationRunner operations,
-    ILogger<MangaImportModel> logger) : PageModel
+    ILogger<MangaImportModel> logger,
+    ReadingCoverArtwork? coverArtwork = null) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public string AniListId { get; private set; } = "";
@@ -203,7 +205,8 @@ public sealed class MangaImportModel(
 
         var metadata = new MangaAniListService(
             repository,
-            httpClientFactory);
+            httpClientFactory,
+            coverArtwork: coverArtwork);
 
         try
         {

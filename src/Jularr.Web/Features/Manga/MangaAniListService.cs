@@ -2,6 +2,8 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Jularr.Web.Features.Acquisition.Access;
+using Jularr.Web.Features.Artwork;
 using Jularr.Web.Features.MediaMapping;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -11,7 +13,10 @@ public sealed partial class MangaAniListService(
     MangaRepository repository,
     IHttpClientFactory httpClientFactory,
     MediaMappingReviewStore? reviewStore = null,
-    ReadingSegmentMappingStore? segmentMappings = null)
+    ReadingSegmentMappingStore? segmentMappings = null,
+    // Stores the matched cover beside the series' files on the Manga library root (#581); null
+    // (hosts that do not exercise artwork placement) keeps the provider cover URL.
+    ReadingCoverArtwork? coverArtwork = null)
 {
     private readonly ReadingSegmentMappingStore segmentMappingsStore =
         segmentMappings ??
@@ -287,6 +292,18 @@ public sealed partial class MangaAniListService(
 
         var candidate = Parse(media)
             ?? throw new InvalidOperationException("AniList result is not a manga.");
+
+        if (coverArtwork is not null)
+        {
+            candidate = candidate with
+            {
+                CoverImageUrl = await coverArtwork.PersistProviderCoverAsync(
+                    MediaAcquisitionKind.Manga,
+                    seriesId,
+                    candidate.CoverImageUrl,
+                    cancellationToken)
+            };
+        }
 
         await repository.UpdateMetadataAsync(
             seriesId,

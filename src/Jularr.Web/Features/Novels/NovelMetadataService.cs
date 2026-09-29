@@ -1,5 +1,7 @@
 using System.Text.Json;
 using Jularr.Web.Data;
+using Jularr.Web.Features.Acquisition.Access;
+using Jularr.Web.Features.Artwork;
 using Jularr.Web.Features.MediaMapping;
 using Microsoft.EntityFrameworkCore;
 
@@ -9,7 +11,10 @@ public sealed class NovelMetadataService(
     AppDbContext db,
     IEnumerable<INovelMetadataProvider> providers,
     MediaMappingReviewStore reviewStore,
-    ReadingSegmentMappingStore segmentMappings)
+    ReadingSegmentMappingStore segmentMappings,
+    // Stores the matched cover beside the series' EPUBs on the Light Novel library root (#581);
+    // null (hosts that do not exercise artwork placement) keeps the provider cover URL.
+    ReadingCoverArtwork? coverArtwork = null)
 {
     public async Task<IReadOnlyList<NovelMetadataCandidate>> SearchAsync(
         string providerKey,
@@ -190,7 +195,13 @@ public sealed class NovelMetadataService(
         work.MetadataTitle = candidate.PreferredTitle;
         work.MetadataNativeTitle = candidate.NativeTitle;
         work.MetadataDescription = candidate.Description;
-        work.CoverImageUrl = candidate.CoverImageUrl;
+        work.CoverImageUrl = coverArtwork is null
+            ? candidate.CoverImageUrl
+            : await coverArtwork.PersistProviderCoverAsync(
+                MediaAcquisitionKind.LightNovel,
+                workId,
+                candidate.CoverImageUrl,
+                cancellationToken);
         work.BannerImageUrl = candidate.BannerImageUrl;
         work.Format = candidate.Format;
         work.MetadataStatus = candidate.Status;

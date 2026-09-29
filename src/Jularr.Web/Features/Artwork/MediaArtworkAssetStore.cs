@@ -12,6 +12,12 @@ public static class MediaArtworkScopes
 
     /// <summary>A Books work (issue #406); the folder beside its NAS-stored EPUB/PDF.</summary>
     public const string Book = "book";
+
+    /// <summary>A Light Novel series (issue #581); its series folder on the Light Novel library root.</summary>
+    public const string LightNovel = "light-novel";
+
+    /// <summary>A Manga series (issue #581); its series folder on the Manga library root.</summary>
+    public const string Manga = "manga";
 }
 
 /// <summary>Where a Jularr-written artwork file came from; a higher rank may replace a lower one.</summary>
@@ -21,8 +27,9 @@ public static class MediaArtworkSources
     public const string Migrated = "migrated";
     public const string AniList = "anilist";
 
-    /// <summary>A book cover fetched from its metadata provider or the imported file itself; Books
-    /// has no multi-provider ranking, so every non-user cover shares this one source.</summary>
+    /// <summary>A cover fetched from its metadata provider or the imported file itself; Books,
+    /// Light Novels and Manga have no multi-provider ranking, so every non-user cover shares this
+    /// one source.</summary>
     public const string Provider = "provider";
 
     public static int Rank(string source) =>
