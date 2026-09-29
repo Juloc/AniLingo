@@ -2,11 +2,21 @@ using System.Data;
 using System.Data.Common;
 using System.Globalization;
 using Jularr.Web.Data;
+using Jularr.Web.Features.Events;
 using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Web.Features.Operations;
 
-public sealed class OperationStore(AppDbContext db)
+/// <summary>
+/// The canonical status store for every download and import (#579): <see cref="MarkSucceededAsync"/>
+/// and <see cref="MarkFailedAsync"/> are the one place a download or import operation finishes, so
+/// they are also the chokepoint for the #429 <c>DownloadGrabbed</c>/<c>DownloadFailed</c> and
+/// <c>ImportCompleted</c>/<c>ImportFailed</c> events. <paramref name="events"/> is optional and
+/// defaults to null so the ~15 existing <c>new OperationStore(db)</c> call sites that do not care
+/// about notifications keep compiling; callers that own a download or import path pass the real
+/// publisher instead.
+/// </summary>
+public sealed class OperationStore(AppDbContext db, IJularrEventPublisher? events = null)
 {
     private const int MaxTitleLength = 240;
     private const int MaxSubjectLength = 500;
@@ -281,6 +291,8 @@ public sealed class OperationStore(AppDbContext db)
             "Worker",
             "Operation completed.",
             cancellationToken);
+
+        await PublishDownloadOrImportEventAsync(id, succeeded: true, error: null, cancellationToken);
     }
 
     public async Task MarkFailedAsync(
@@ -309,6 +321,70 @@ public sealed class OperationStore(AppDbContext db)
             OperationLogLevel.Error,
             "Worker",
             Trim(error, MaxMessageLength) ?? "Operation failed.",
+            cancellationToken);
+
+        await PublishDownloadOrImportEventAsync(id, succeeded: false, error, cancellationToken);
+    }
+
+    /// <summary>
+    /// #579: every download and import finishes through <see cref="MarkSucceededAsync"/> or
+    /// <see cref="MarkFailedAsync"/>, so this is the one place that turns that outcome into a
+    /// #429 domain event — gated on data already present on the snapshot (no schema change):
+    /// <see cref="OperationSnapshot.IsDownload"/> for DownloadGrabbed/DownloadFailed, a
+    /// <see cref="OperationSnapshot.Kind"/> ending in "-import" for ImportCompleted/ImportFailed.
+    /// A download operation is never also an import operation, so at most one event is published.
+    /// <see cref="JularrEvent.DedupKey"/> is the operation id: repeated polling of the same stuck
+    /// download/import (or a retry that fails again the same way) updates one notification instead
+    /// of creating another.
+    /// </summary>
+    private async Task PublishDownloadOrImportEventAsync(
+        Guid id,
+        bool succeeded,
+        string? error,
+        CancellationToken cancellationToken)
+    {
+        if (events is null)
+        {
+            return;
+        }
+
+        var snapshot = await GetAsync(id, cancellationToken);
+        if (snapshot is null)
+        {
+            return;
+        }
+
+        JularrEventCategory category;
+        if (snapshot.IsDownload)
+        {
+            category = succeeded ? JularrEventCategory.DownloadGrabbed : JularrEventCategory.DownloadFailed;
+        }
+        else if (snapshot.Kind.EndsWith("-import", StringComparison.Ordinal))
+        {
+            category = succeeded ? JularrEventCategory.ImportCompleted : JularrEventCategory.ImportFailed;
+        }
+        else
+        {
+            return;
+        }
+
+        var messageParams = new Dictionary<string, string>
+        {
+            ["title"] = snapshot.Subject ?? snapshot.Title
+        };
+        if (!succeeded && !string.IsNullOrWhiteSpace(error))
+        {
+            messageParams["reason"] = error;
+        }
+
+        await events.PublishAsync(
+            JularrEvent.Create(
+                category,
+                profileId: snapshot.ProfileId,
+                messageParams: messageParams,
+                deepLink: $"/Admin/Operation/{id:D}",
+                dedupKey: $"operation:{id:D}",
+                relatedOperationId: id),
             cancellationToken);
     }
 
