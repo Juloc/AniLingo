@@ -43,6 +43,7 @@ using Jularr.Web.Features.Shell;
 using Jularr.Web.Features.Sonarr;
 using Jularr.Web.Features.Statistics;
 using Jularr.Web.Features.Storage;
+using Jularr.Web.Features.Storage.FolderBrowse;
 using Jularr.Web.Features.StoryContext;
 using Jularr.Web.Features.Subtitles;
 using Jularr.Web.Features.Tracking;
@@ -322,6 +323,7 @@ builder.Services.AddSingleton<LibraryScanCoordinator>();
 builder.Services.AddHostedService<LibraryStartupScanService>();
 builder.Services.AddHostedService<LibraryWatchService>();
 builder.Services.AddSingleton<StorageAvailabilityCoordinator>();
+builder.Services.AddFolderBrowse("/data");
 builder.Services.AddSingleton<IWakeOnLanPacketSender, UdpWakeOnLanPacketSender>();
 builder.Services.AddSingleton(new StorageWakeOptions());
 builder.Services.AddSingleton<StorageWakeCoordinator>();
@@ -645,6 +647,7 @@ app.MapDiscoveryWellKnown();
 app.MapReaderThemeCatalog();
 app.MapLanguageInspector();
 app.MapAiActivity();
+app.MapFolderBrowse();
 app.MapRazorPages();
 
 try

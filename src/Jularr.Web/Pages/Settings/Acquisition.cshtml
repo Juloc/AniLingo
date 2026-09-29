@@ -2,9 +2,34 @@
 @model Jularr.Web.Pages.Settings.AcquisitionModel
 @using Jularr.Web.Features.Acquisition.Import
 @using Jularr.Web.Features.Media.Optimization
+@using Jularr.Web.Features.Storage.FolderBrowse
 @{
     var ui = Model.Ui;
     ViewData["Title"] = ui["settings.acquisition.title"];
+
+    // Remote side: a path of another system, never a folder of this container. Local side: a folder
+    // of this container, chosen with the shared folder browser when the viewer may browse.
+    var remoteField = new PathFieldModel("mapping-remote", "remotePrefix", ui["settings.acquisition.remotePrefixColumn"], null, ui)
+    {
+        Placeholder = "/downloads",
+        Required = true,
+        Browsable = false
+    };
+    var localField = new PathFieldModel("mapping-local", "localPrefix", ui["settings.acquisition.localPrefixColumn"], null, ui)
+    {
+        Placeholder = "/data/downloads",
+        Required = true,
+        Disabled = false,
+        Browsable = Model.CanManageStorage
+    };
+    var pathTestLabels = ui.WithPrefix("settings.acquisition.pathTest.")
+        .Concat(ui.WithPrefix("storage.problem."))
+        .ToDictionary(pair => pair.Key, pair => pair.Value);
+}
+
+@section Head {
+    <link rel="stylesheet" href="~/css/acquisition.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/storage-paths.css" asp-append-version="true" />
 }
 
 <header class="page-header">
@@ -15,10 +40,6 @@
     <a class="button" asp-page="/Acquisition/Index">@ui["settings.acquisition.animeAcquisitionLink"]</a>
 </header>
 
-@if (!string.IsNullOrWhiteSpace(Model.Notice))
-{
-    <p class="muted" role="status">@Model.Notice</p>
-}
 @if (!string.IsNullOrWhiteSpace(Model.Error))
 {
     <p class="metadata-error" role="alert">@Model.Error</p>
@@ -81,15 +102,25 @@
         {
             var folders = Model.FoldersFor(kind);
             var slug = Jularr.Web.Pages.Settings.AcquisitionModel.FolderName(kind);
+            var hasLibrary = Jularr.Web.Pages.Settings.AcquisitionModel.HasLibraryFolder(kind);
+            var libraryField = new PathFieldModel($"{slug}-library", "libraryRoot", ui["settings.acquisition.libraryFolderLabel"], folders.LibraryRoot, ui)
+            {
+                Placeholder = $"/data/media/{slug}",
+                Disabled = !Model.CanManageStorage,
+                PairGroup = slug
+            };
+            var inboxField = new PathFieldModel($"{slug}-inbox", "inboxRoot", ui["settings.acquisition.inboxFolderLabel"], folders.InboxRoot, ui)
+            {
+                Placeholder = $"/data/downloads/complete/{slug}",
+                Disabled = !Model.CanManageStorage,
+                PairGroup = hasLibrary ? slug : null
+            };
             <h3>@Model.MediaLabel(kind)</h3>
             <form method="post" asp-page-handler="MediaFolders" class="form-stack">
                 <input type="hidden" name="kind" value="@kind" />
-                @if (Jularr.Web.Pages.Settings.AcquisitionModel.HasLibraryFolder(kind))
+                @if (hasLibrary)
                 {
-                    <label>
-                        <span>@ui["settings.acquisition.libraryFolderLabel"]</span>
-                        <input type="text" name="libraryRoot" value="@folders.LibraryRoot" placeholder="/data/media/@slug" disabled="@(!Model.CanManageStorage)" />
-                    </label>
+                    <partial name="_PathField" model="libraryField" />
                     <label>
                         <span>@ui["settings.acquisition.importModeLabel"]</span>
                         <select name="importMode" disabled="@(!Model.CanManageStorage)">
@@ -105,10 +136,7 @@
                 {
                     <p class="muted">@ui["settings.acquisition.storedInJularr"]</p>
                 }
-                <label>
-                    <span>@ui["settings.acquisition.inboxFolderLabel"]</span>
-                    <input type="text" name="inboxRoot" value="@folders.InboxRoot" placeholder="/data/downloads/complete/@slug" disabled="@(!Model.CanManageStorage)" />
-                </label>
+                <partial name="_PathField" model="inboxField" />
                 <div class="inline-actions">
                     @if (Model.CanManageStorage)
                     {
@@ -140,14 +168,14 @@
         </form>
     </section>
 
-    <section class="panel">
+    <section class="panel path-mapping-panel">
         <div class="panel-heading"><h2>@ui["settings.acquisition.remotePathMappingHeading"]</h2></div>
         <p class="muted">
             @ui["settings.acquisition.remotePathMappingDescription"]
         </p>
         @if (Model.ImportSettings.RemotePathMappingCount > 0)
         {
-            <table>
+            <table class="path-mapping-table">
                 <thead><tr><th>@ui["admin.requests.column.media"]</th><th>@ui["settings.acquisition.remotePrefixColumn"]</th><th>@ui["settings.acquisition.localPrefixColumn"]</th><th></th></tr></thead>
                 <tbody>
                     @foreach (var kind in Model.PathMappingKinds)
@@ -155,9 +183,9 @@
                         foreach (var mapping in Model.ImportSettings.RemotePathMappingsFor(kind))
                         {
                             <tr>
-                                <td>@Model.KindLabel(kind)</td>
-                                <td>@mapping.RemotePrefix</td>
-                                <td>@mapping.LocalPrefix</td>
+                                <td data-label="@ui["admin.requests.column.media"]">@Model.KindLabel(kind)</td>
+                                <td data-label="@ui["settings.acquisition.remotePrefixColumn"]">@mapping.RemotePrefix</td>
+                                <td data-label="@ui["settings.acquisition.localPrefixColumn"]">@mapping.LocalPrefix</td>
                                 <td>
                                     <form method="post" asp-page-handler="RemovePathMapping">
                                         <input type="hidden" name="kind" value="@kind" />
@@ -171,8 +199,8 @@
                 </tbody>
             </table>
         }
-        <form method="post" asp-page-handler="AddPathMapping" class="acquisition-inline-form">
-            <label>
+        <form method="post" asp-page-handler="AddPathMapping" id="path-mapping-form" class="path-mapping-form">
+            <label class="path-mapping-kind">
                 <span>@ui["admin.operation.mediaType"]</span>
                 <select name="kind">
                     @foreach (var kind in Model.PathMappingKinds)
@@ -181,10 +209,23 @@
                     }
                 </select>
             </label>
-            <label><span>@ui["settings.acquisition.remotePrefixLabel"]</span><input type="text" name="remotePrefix" placeholder="/downloads" required /></label>
-            <label><span>@ui["settings.acquisition.localPrefixLabel"]</span><input type="text" name="localPrefix" placeholder="/data/downloads" required /></label>
+            <div class="path-mapping-pair">
+                <partial name="_PathField" model="remoteField" />
+                <span class="path-mapping-arrow" aria-hidden="true">→</span>
+                <partial name="_PathField" model="localField" />
+            </div>
             <button class="button" type="submit">@ui["settings.acquisition.addMapping"]</button>
         </form>
+        <div class="path-test" data-path-test data-form="path-mapping-form" data-endpoint="@Url.Page(null, "PreviewPathMapping")">
+            <script type="application/json" data-path-test-config>@Html.Raw(System.Text.Json.JsonSerializer.Serialize(new { labels = pathTestLabels }))</script>
+            <label for="path-test-sample"><span>@ui["settings.acquisition.pathTestLabel"]</span></label>
+            <div class="path-field-row">
+                <input id="path-test-sample" type="text" data-path-test-sample placeholder="/data/downloads/complete/test.mkv" autocomplete="off" spellcheck="false" />
+                <button type="button" class="button" data-path-test-run>@ui["settings.acquisition.pathTestButton"]</button>
+            </div>
+            <dl class="path-test-result" data-path-test-result aria-live="polite" hidden></dl>
+            <p class="muted" data-path-test-note hidden></p>
+        </div>
     </section>
 
     <section class="panel">
@@ -369,3 +410,16 @@
         </section>
     }
 </div>
+
+@if (Model.CanManageStorage)
+{
+    <partial name="_FolderBrowser" model="ui" />
+}
+
+@section Scripts {
+    @if (Model.CanManageStorage)
+    {
+        <script src="~/js/folder-browser.js" asp-append-version="true" defer></script>
+    }
+    <script src="~/js/path-mapping-test.js" asp-append-version="true" defer></script>
+}
