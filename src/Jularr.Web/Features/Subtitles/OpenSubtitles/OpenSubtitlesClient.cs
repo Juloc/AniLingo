@@ -148,30 +148,30 @@ public sealed class OpenSubtitlesClient(
     }
 
     /// <summary>Validates the credential by logging in (always a fresh login).</summary>
-    public async Task<OpenSubtitlesConnectionResult> TestConnectionAsync(
+    public async Task<OpenSubtitlesConnectionStatus> TestConnectionAsync(
         OpenSubtitlesCredential credential,
         CancellationToken cancellationToken)
     {
         try
         {
-            var session = await sessions.GetAsync(
+            await sessions.GetAsync(
                 credential,
                 clock.GetUtcNow(),
                 renew: true,
                 token => LoginAsync(credential, token),
                 cancellationToken);
-            return new OpenSubtitlesConnectionResult(OpenSubtitlesConnectionStatus.Connected, session.AllowedDownloads);
+            return OpenSubtitlesConnectionStatus.Connected;
         }
         catch (SubtitleProviderException)
         {
-            return new OpenSubtitlesConnectionResult(OpenSubtitlesConnectionStatus.Rejected);
+            return OpenSubtitlesConnectionStatus.Rejected;
         }
         catch (Exception exception) when (
             exception is HttpRequestException or IOException or TimeoutException
                 or ProviderRateLimitedException or ProviderUnavailableException ||
             (exception is TaskCanceledException && !cancellationToken.IsCancellationRequested))
         {
-            return new OpenSubtitlesConnectionResult(OpenSubtitlesConnectionStatus.Unreachable);
+            return OpenSubtitlesConnectionStatus.Unreachable;
         }
     }
 
@@ -208,8 +208,7 @@ public sealed class OpenSubtitlesClient(
             OpenSubtitlesSession.Fingerprint(credential.ApiKey),
             body.Token,
             ResolveBaseUri(body.BaseUrl),
-            clock.GetUtcNow() + SessionLifetime,
-            body.User?.AllowedDownloads);
+            clock.GetUtcNow() + SessionLifetime);
     }
 
     private static HttpRequestMessage CreateRequest(

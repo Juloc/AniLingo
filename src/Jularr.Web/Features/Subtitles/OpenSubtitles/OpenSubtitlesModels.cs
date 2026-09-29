@@ -41,8 +41,7 @@ public sealed record OpenSubtitlesSession(
     string ApiKeyFingerprint,
     string Token,
     Uri BaseUri,
-    DateTimeOffset ExpiresAtUtc,
-    int? AllowedDownloads)
+    DateTimeOffset ExpiresAtUtc)
 {
     /// <summary>A short, non-reversible marker of the API key so a saved key change invalidates the session.</summary>
     public static string Fingerprint(string apiKey) =>
@@ -84,8 +83,6 @@ public enum OpenSubtitlesConnectionStatus
     Rejected,
     Unreachable
 }
-
-public sealed record OpenSubtitlesConnectionResult(OpenSubtitlesConnectionStatus Status, int? AllowedDownloads = null);
 
 // --- Wire models (only the fields Jularr reads; the API adds more). ----------------------------
 
@@ -171,13 +168,6 @@ internal sealed class OpenSubtitlesLoginResponse
     public string? Token { get; set; }
 
     public string? BaseUrl { get; set; }
-
-    public OpenSubtitlesLoginUser? User { get; set; }
-}
-
-internal sealed class OpenSubtitlesLoginUser
-{
-    public int? AllowedDownloads { get; set; }
 }
 
 internal sealed class OpenSubtitlesDownloadResponse

@@ -68,7 +68,7 @@ public sealed class OpenSubtitlesSettingsService(
         };
 
         var test = await client.TestConnectionAsync(credential, cancellationToken);
-        switch (test.Status)
+        switch (test)
         {
             case OpenSubtitlesConnectionStatus.Rejected:
                 return OpenSubtitlesSaveOutcome.Rejected;
