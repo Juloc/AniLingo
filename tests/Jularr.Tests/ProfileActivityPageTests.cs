@@ -3,6 +3,7 @@ using Jularr.Web.Data;
 using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Progress;
+using Jularr.Web.Features.Shell;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
@@ -50,17 +51,17 @@ public sealed class ProfileActivityPageTests
     {
         await using var fixture = await Fixture.CreateAsync();
 
-        var user = fixture.Attach(new ProfileIndexModel(fixture.Db, Account("user-a", isOwner: false)), "user-a", isOwner: false);
+        var user = fixture.Attach(new ProfileIndexModel(fixture.Db, Account("user-a", isOwner: false), fixture.Shell), "user-a", isOwner: false);
         Assert.IsInstanceOfType<NotFoundResult>(await user.OnGetAsync("admin", CancellationToken.None));
         Assert.IsInstanceOfType<PageResult>(await user.OnGetAsync("settings", CancellationToken.None));
         Assert.AreEqual("settings", user.Section?.Id);
 
-        var list = fixture.Attach(new ProfileIndexModel(fixture.Db, Account("user-a", isOwner: false)), "user-a", isOwner: false);
+        var list = fixture.Attach(new ProfileIndexModel(fixture.Db, Account("user-a", isOwner: false), fixture.Shell), "user-a", isOwner: false);
         Assert.IsInstanceOfType<PageResult>(await list.OnGetAsync(null, CancellationToken.None));
         Assert.IsFalse(list.Links.Any(item => item.Id == "admin"));
         CollectionAssert.Contains(list.Elsewhere.Select(item => item.Id).ToArray(), "library");
 
-        var owner = fixture.Attach(new ProfileIndexModel(fixture.Db, Account("owner", isOwner: true)), "owner", isOwner: true);
+        var owner = fixture.Attach(new ProfileIndexModel(fixture.Db, Account("owner", isOwner: true), fixture.Shell), "owner", isOwner: true);
         Assert.IsInstanceOfType<PageResult>(await owner.OnGetAsync("admin", CancellationToken.None));
         Assert.AreEqual("admin", owner.Section?.Id);
     }
@@ -109,9 +110,12 @@ public sealed class ProfileActivityPageTests
         {
             this.directory = directory;
             Db = db;
+            Shell = new AppShellService(new MediaCapabilityService(new MediaCapabilityStore(directory)));
         }
 
         public AppDbContext Db { get; }
+
+        public IAppShellService Shell { get; }
 
         public static async Task<Fixture> CreateAsync()
         {

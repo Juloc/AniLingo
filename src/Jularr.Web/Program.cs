@@ -39,6 +39,7 @@ using Jularr.Web.Features.Playback;
 using Jularr.Web.Features.PlaybackSessions;
 using Jularr.Web.Features.Progress;
 using Jularr.Web.Features.ReaderThemes;
+using Jularr.Web.Features.Shell;
 using Jularr.Web.Features.Sonarr;
 using Jularr.Web.Features.Statistics;
 using Jularr.Web.Features.Storage;
@@ -64,7 +65,9 @@ Console.WriteLine($"[Jularr] {DateTimeOffset.UtcNow:O} Process starting.");
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddRazorPages();
+// Per-media-type consumer routes (/Library, /Reading, /Novels, /Manga, /Books) answer 404 to a
+// profile whose capability for that type is Hidden (#598); the navigation catalog is the route table.
+builder.Services.AddRazorPages(options => options.Conventions.AddMediaTypeGates());
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<ViteAssetManifest>();
 builder.Services.Configure<MediaOptions>(builder.Configuration.GetSection(MediaOptions.SectionName));
@@ -102,6 +105,8 @@ builder.Services.AddScoped<OwnerAuthService>();
 // (#598) and provider-driven discovery (#595).
 builder.Services.AddSingleton(_ => new MediaCapabilityStore("/data"));
 builder.Services.AddScoped<IMediaCapabilityService, MediaCapabilityService>();
+// Permission-derived app shell (#598): the profile's visible media types, resolved once per request.
+builder.Services.AddScoped<IAppShellService, AppShellService>();
 builder.Services.AddScoped<AdminUserProgressService>();
 builder.Services.AddScoped<AdminOverviewService>();
 builder.Services.AddScoped<AdminSessionsService>();
