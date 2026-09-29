@@ -6,6 +6,7 @@ using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Books;
 using Jularr.Web.Features.Learning;
 using Jularr.Web.Features.Learning.Courses;
+using Jularr.Web.Features.Learning.Curriculum;
 using Jularr.Web.Features.Library;
 using Jularr.Web.Features.MediaCore;
 using Jularr.Web.Features.MediaSegments;
@@ -56,6 +57,20 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<LearningCardReview> LearningCardReviews => Set<LearningCardReview>();
     public DbSet<LearningContext> LearningContexts => Set<LearningContext>();
     public DbSet<LearningPreferences> LearningPreferences => Set<LearningPreferences>();
+
+    // Learning v3 curriculum foundation (#441): the media-independent blueprint hierarchy
+    // (Curriculum → Level → Chapter → Lesson → Exercise), shared (deduped) course instances a
+    // language pair specializes, and each learner's personal variant with its own delta and course
+    // progress. Card review state stays in the v2 LearningCard/LearningCardReview model above.
+    public DbSet<CurriculumBlueprint> CurriculumBlueprints => Set<CurriculumBlueprint>();
+    public DbSet<CurriculumLevel> CurriculumLevels => Set<CurriculumLevel>();
+    public DbSet<CurriculumChapter> CurriculumChapters => Set<CurriculumChapter>();
+    public DbSet<CurriculumLesson> CurriculumLessons => Set<CurriculumLesson>();
+    public DbSet<CurriculumExercise> CurriculumExercises => Set<CurriculumExercise>();
+    public DbSet<SharedCourseInstance> SharedCourseInstances => Set<SharedCourseInstance>();
+    public DbSet<LearnerCourse> LearnerCourses => Set<LearnerCourse>();
+    public DbSet<LearnerCourseItemDelta> LearnerCourseItemDeltas => Set<LearnerCourseItemDelta>();
+    public DbSet<LearnerCourseProgress> LearnerCourseProgress => Set<LearnerCourseProgress>();
     public DbSet<AiSentenceExplanationCache> AiSentenceExplanationCache => Set<AiSentenceExplanationCache>();
     public DbSet<OwnerAccount> OwnerAccounts => Set<OwnerAccount>();
     public DbSet<EpisodeProgress> EpisodeProgress => Set<EpisodeProgress>();
@@ -298,6 +313,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         });
 
         LearningCourseModelConfiguration.Configure(modelBuilder);
+        CurriculumModelConfiguration.Configure(modelBuilder);
 
         modelBuilder.Entity<LearningPreferences>(entity =>
         {
