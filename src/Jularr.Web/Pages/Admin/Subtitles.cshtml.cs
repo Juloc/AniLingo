@@ -47,7 +47,8 @@ public sealed class SubtitlesModel(
 
     public SubtitleEpisodeCompletion? SearchEpisode { get; private set; }
     public IReadOnlyList<SubtitleManualSearchOutcome> SearchOutcomes { get; private set; } = [];
-    public bool HasProviders => manualSearchService.HasProviders;
+    // Every configured provider yields an outcome (results or an error), so none means none configured.
+    public bool HasProviders => SearchOutcomes.Count > 0;
 
     [BindProperty]
     public string JimakuApiKey { get; set; } = "";

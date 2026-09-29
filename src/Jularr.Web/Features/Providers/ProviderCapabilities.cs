@@ -27,7 +27,7 @@ public enum ProviderCapabilities
     /// <summary>Handing an accepted release to a download client.</summary>
     Download = 1 << 4,
 
-    /// <summary>Subtitle discovery/fetch (reserved for #560).</summary>
+    /// <summary>Subtitle discovery/fetch (#560).</summary>
     Subtitles = 1 << 5,
 
     /// <summary>Audiobook discovery/fetch (reserved for #440).</summary>
@@ -70,4 +70,5 @@ public static class ProviderKeys
     public const string AniList = "anilist";
     public const string Newznab = "newznab";
     public const string Prowlarr = "prowlarr";
+    public const string OpenSubtitles = "opensubtitles";
 }

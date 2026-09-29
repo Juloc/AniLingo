@@ -30,6 +30,10 @@ public static class ProviderFrameworkServiceCollectionExtensions
                 ProviderKeys.Prowlarr,
                 "Prowlarr",
                 ProviderCapabilities.Search));
+            catalog.Register(new ExternalProviderDescriptor(
+                ProviderKeys.OpenSubtitles,
+                "OpenSubtitles",
+                ProviderCapabilities.Subtitles));
             return catalog;
         });
         return services;

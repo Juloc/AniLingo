@@ -51,7 +51,7 @@ public sealed class SubtitleImportService
     private const string JimakuStorePath = "/data/integrations/jimaku.json";
     private const string JimakuApiBase = "https://jimaku.cc/api/";
     private const int MaxJimakuDownloadBytes = 64 * 1024 * 1024;
-    private const int MaxSubtitleBytes = 8 * 1024 * 1024;
+    private const int MaxSubtitleBytes = SubtitleDownloadContent.MaxSubtitleBytes;
 
     private static readonly ConcurrentDictionary<Guid, LearningTextPreparationState>
         PreparationStates = new();
@@ -1342,7 +1342,7 @@ public sealed class SubtitleImportService
             return null;
         }
 
-        var bytes = await ReadLimitedBytesAsync(
+        var bytes = await SubtitleDownloadContent.ReadLimitedBytesAsync(
             response.Content,
             MaxJimakuDownloadBytes,
             cancellationToken);
@@ -1367,7 +1367,7 @@ public sealed class SubtitleImportService
         return (
             candidate.Name,
             format,
-            DecodeSubtitle(bytes));
+            SubtitleDownloadContent.Decode(bytes));
     }
 
     private static (string FileName, string Format, string Content)?
@@ -1416,7 +1416,7 @@ public sealed class SubtitleImportService
             : (
                 candidates.Entry.FullName,
                 format,
-                DecodeSubtitle(output.ToArray()));
+                SubtitleDownloadContent.Decode(output.ToArray()));
     }
 
     private async Task<HttpResponseMessage> SendJimakuAsync(
@@ -1618,40 +1618,6 @@ public sealed class SubtitleImportService
             "ssa" => "ssa",
             _ => null
         };
-
-    private static string DecodeSubtitle(byte[] bytes)
-    {
-        var content = Encoding.UTF8.GetString(bytes);
-        return content.Length > 0 && content[0] == '\uFEFF'
-            ? content[1..]
-            : content;
-    }
-
-    private static async Task<byte[]?> ReadLimitedBytesAsync(
-        HttpContent content,
-        int maxBytes,
-        CancellationToken cancellationToken)
-    {
-        await using var input = await content.ReadAsStreamAsync(cancellationToken);
-        using var output = new MemoryStream();
-        var buffer = new byte[81920];
-
-        while (true)
-        {
-            var read = await input.ReadAsync(buffer, cancellationToken);
-            if (read == 0)
-            {
-                return output.ToArray();
-            }
-
-            if (output.Length + read > maxBytes)
-            {
-                return null;
-            }
-
-            await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
-        }
-    }
 
     private EmbeddedSubtitleExtractor RequireEmbeddedSubtitleExtractor() =>
         embeddedSubtitleExtractor ?? throw new InvalidOperationException(
