@@ -165,12 +165,7 @@ public sealed class EventNotificationPipelineTests
         var accessStore = new AcquisitionAccessStore(fixture.Db);
         var recorder = new RecordingEventPublisher();
         var ownerAccount = new CurrentAccountContext(new FixedHttpContextAccessor(OwnerPrincipal()));
-        var service = new AcquisitionRequestService(
-            accessStore,
-            [],
-            ownerAccount,
-            recorder,
-            NullLogger<AcquisitionRequestService>.Instance);
+        var service = AcquisitionAccessFixture.DefaultsService(accessStore, ownerAccount, recorder);
 
         var draft = new AcquisitionRequestDraft(MediaAcquisitionKind.Manga, "test", "ext-1", "Example Manga", null, null);
         var pending = await accessStore.CreateAsync(draft, "reader", AcquisitionRequestStatus.Pending, null, CancellationToken.None);

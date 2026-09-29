@@ -1,0 +1,112 @@
+@page
+@model Jularr.Web.Pages.Requests.IndexModel
+@using Jularr.Web.Features.Acquisition.Access
+@{
+    var ui = Model.Ui;
+    var history = Model.History;
+    ViewData["Title"] = ui["requests.title"];
+    static string Iso(DateTime value) => value.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'");
+    static string Shown(DateTime value) => value.ToString("yyyy-MM-dd HH:mm") + " UTC";
+    var filters = new (RequestHistoryFilter Filter, string Label, int Count)[]
+    {
+        (RequestHistoryFilter.All, ui["requests.filter.all"], history.OpenCount + history.FinishedCount),
+        (RequestHistoryFilter.Open, ui["requests.filter.open"], history.OpenCount),
+        (RequestHistoryFilter.Finished, ui["requests.filter.finished"], history.FinishedCount)
+    };
+}
+@section Head {
+    <link rel="stylesheet" href="~/css/acquisition.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/requests.css" asp-append-version="true" />
+}
+
+<header class="page-header">
+    <h1>@ui["requests.title"]</h1>
+</header>
+
+<nav class="library-type-tabs" aria-label="@ui["requests.title"]">
+    @foreach (var (filter, label, count) in filters)
+    {
+        var active = filter == history.Filter;
+        <a class="library-type-tab @(active ? "active" : "")"
+           href="/Requests?show=@RequestHistoryQuery.FilterName(filter)"
+           aria-current="@(active ? "page" : null)">@label <span class="request-count">@count</span></a>
+    }
+</nav>
+
+@if (history.Items.Count == 0)
+{
+    <p class="muted" data-request-history-empty>@ui["requests.empty"]</p>
+}
+else
+{
+    <ul class="request-list request-history" data-request-history>
+        @foreach (var request in history.Items)
+        {
+            var status = AcquisitionAccessNames.Status(request.Status);
+            var options = Model.OptionsOf(request);
+            <li class="request-row request-history-row">
+                <div class="request-cover">
+                    @if (!string.IsNullOrWhiteSpace(request.CoverImageUrl))
+                    {
+                        <img src="@request.CoverImageUrl" alt="" loading="lazy" referrerpolicy="no-referrer" />
+                    }
+                </div>
+                <div class="request-copy">
+                    @if (request.ResultUrl is { } resultUrl)
+                    {
+                        <a class="request-title" href="@resultUrl">@request.Title</a>
+                    }
+                    else
+                    {
+                        <strong class="request-title">@request.Title</strong>
+                    }
+                    <span>
+                        @ui["admin.requests.kind." + AcquisitionAccessNames.Kind(request.Kind)]
+                        @if (!string.IsNullOrWhiteSpace(request.Subtitle))
+                        {
+                            <text> · @request.Subtitle</text>
+                        }
+                    </span>
+                    @if (options.Count > 0)
+                    {
+                        <span>@string.Join(" · ", options)</span>
+                    }
+                    @if (request.WasAutoApproved)
+                    {
+                        <span>@ui["requests.autoApproved"]</span>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(request.StatusMessage))
+                    {
+                        <small>@request.StatusMessage</small>
+                    }
+                    <time datetime="@Iso(request.UpdatedAt)">@Shown(request.UpdatedAt)</time>
+                </div>
+                <span class="status-pill request-status-@status">@ui["requests.status." + status]</span>
+                <div class="request-actions">
+                    @if (request.Status == AcquisitionRequestStatus.Pending)
+                    {
+                        <form method="post" asp-page-handler="Withdraw" asp-route-id="@request.Id"
+                              asp-route-show="@RequestHistoryQuery.FilterName(history.Filter)" asp-route-p="@history.Page">
+                            <button class="button" type="submit">@ui["requests.withdraw"]</button>
+                        </form>
+                    }
+                </div>
+            </li>
+        }
+    </ul>
+
+    @if (history.PageCount > 1)
+    {
+        <nav class="request-pager" aria-label="@ui["requests.title"]">
+            @if (history.HasPrevious)
+            {
+                <a class="button" href="/Requests?show=@RequestHistoryQuery.FilterName(history.Filter)&p=@(history.Page - 1)">@ui["requests.page.previous"]</a>
+            }
+            <span>@ui.Format("requests.page.of", ("page", history.Page), ("pages", history.PageCount))</span>
+            @if (history.HasNext)
+            {
+                <a class="button" href="/Requests?show=@RequestHistoryQuery.FilterName(history.Filter)&p=@(history.Page + 1)">@ui["requests.page.next"]</a>
+            }
+        </nav>
+    }
+}

@@ -1,3 +1,6 @@
+using Jularr.Web.Features.Auth;
+using Jularr.Web.Features.MediaCore;
+
 namespace Jularr.Web.Features.Acquisition.Access;
 
 /// <summary>
@@ -14,19 +17,6 @@ public enum MediaAcquisitionKind
     Manga,
     LightNovel,
     Book
-}
-
-/// <summary>What a non-owner user may do when adding something from search.</summary>
-public enum UserAddMode
-{
-    /// <summary>Users cannot add or request; only the owner adds.</summary>
-    Disabled,
-
-    /// <summary>Users create a request the owner approves or rejects.</summary>
-    Request,
-
-    /// <summary>Users start the automatic acquisition directly.</summary>
-    Automatic
 }
 
 /// <summary>Who may use the manual add controls (file upload, URL, NZB, inbox import).</summary>
@@ -52,14 +42,17 @@ public enum AcquisitionRequestStatus
     Failed
 }
 
-/// <summary>The owner's rule for one media type. Owners themselves always add automatically and manually.</summary>
+/// <summary>
+/// The owner's per-media-type rule for the manual add tools. Whether a profile may request or add
+/// instantly is not part of it: that is the profile's <see cref="MediaCapability"/> (the capability
+/// matrix, #436), the one source <see cref="AcquisitionCapabilities.Resolve"/> reads.
+/// </summary>
 public sealed record AcquisitionAccessPolicy(
     MediaAcquisitionKind Kind,
-    UserAddMode UserAdd,
     ManualAddMode Manual)
 {
     public static AcquisitionAccessPolicy Default(MediaAcquisitionKind kind) =>
-        new(kind, UserAddMode.Request, ManualAddMode.OwnerOnly);
+        new(kind, ManualAddMode.OwnerOnly);
 }
 
 /// <summary>What the current profile may do for one media type — the only thing pages check.</summary>
@@ -70,15 +63,26 @@ public sealed record AcquisitionCapabilities(
     bool CanAddManually,
     bool IsOwner)
 {
-    public static AcquisitionCapabilities Resolve(AcquisitionAccessPolicy policy, bool isOwner) =>
-        isOwner
-            ? new(policy.Kind, CanAdd: true, AddCreatesRequest: false, CanAddManually: true, IsOwner: true)
-            : new(
-                policy.Kind,
-                CanAdd: policy.UserAdd != UserAddMode.Disabled,
-                AddCreatesRequest: policy.UserAdd == UserAddMode.Request,
-                CanAddManually: policy.Manual == ManualAddMode.Users,
-                IsOwner: false);
+    /// <summary>
+    /// A capability of <see cref="MediaCapability.Request"/> creates a request, <see cref="MediaCapability.Instant"/>
+    /// adds right away, anything below cannot add. Managers of media (the owner and media managers) may
+    /// always use the manual add tools; everyone else follows the media type's manual rule.
+    /// </summary>
+    /// <summary>What a plain user gets from the built-in defaults: may request, no manual tools. Page models start from it until they resolve the real thing.</summary>
+    public static AcquisitionCapabilities Default(MediaAcquisitionKind kind) =>
+        Resolve(kind, MediaCapability.Request, AcquisitionAccessPolicy.Default(kind).Manual, isOwner: false);
+
+    public static AcquisitionCapabilities Resolve(
+        MediaAcquisitionKind kind,
+        MediaCapability capability,
+        ManualAddMode manual,
+        bool isOwner) =>
+        new(
+            kind,
+            CanAdd: capability >= MediaCapability.Request,
+            AddCreatesRequest: capability == MediaCapability.Request,
+            CanAddManually: isOwner || manual == ManualAddMode.Users,
+            IsOwner: isOwner);
 }
 
 /// <summary>
@@ -105,14 +109,22 @@ public sealed record AcquisitionRequest(
     string? DecidedByProfileId,
     DateTime? DecidedAt)
 {
-    public bool IsOpen => Status is AcquisitionRequestStatus.Pending
-        or AcquisitionRequestStatus.Approved
-        or AcquisitionRequestStatus.Searching
-        or AcquisitionRequestStatus.Downloading
-        or AcquisitionRequestStatus.Importing;
+    public bool IsOpen => AcquisitionAccessNames.IsOpen(Status);
+
+    /// <summary>Whether an auto-approval rule (not a person) approved this request.</summary>
+    public bool WasAutoApproved => AcquisitionAutoApproval.TryParseRuleId(DecidedByProfileId, out _);
+
+    /// <summary>The richer options the requester chose (anime only); the default options when none were chosen.</summary>
+    public AcquisitionRequestOptions Options => Kind == MediaAcquisitionKind.Anime
+        ? AcquisitionRequestOptions.FromPayload(PayloadJson)
+        : AcquisitionRequestOptions.Default;
 }
 
-/// <summary>What a page submits when a profile adds or requests a title found in search.</summary>
+/// <summary>
+/// What a page submits when a profile adds or requests a title found in search. <see cref="Options"/>
+/// carry the richer choices (which seasons or episodes, languages, quality profile); the request
+/// service validates them and keeps them in the payload of the request.
+/// </summary>
 public sealed record AcquisitionRequestDraft(
     MediaAcquisitionKind Kind,
     string Provider,
@@ -120,7 +132,8 @@ public sealed record AcquisitionRequestDraft(
     string Title,
     string? Subtitle,
     string? CoverImageUrl,
-    string? PayloadJson = null);
+    string? PayloadJson = null,
+    AcquisitionRequestOptions? Options = null);
 
 public sealed record AcquisitionExecution(
     AcquisitionRequestStatus Status,
@@ -158,21 +171,22 @@ public static class AcquisitionAccessNames
         _ => throw new ArgumentException($"Unknown media kind '{value}'.", nameof(value))
     };
 
-    public static string UserAdd(UserAddMode mode) => mode switch
+    /// <summary>The media type of the capability matrix (#436) this acquisition kind belongs to.</summary>
+    public static WorkMediaType WorkType(MediaAcquisitionKind kind) => kind switch
     {
-        UserAddMode.Disabled => "disabled",
-        UserAddMode.Request => "request",
-        UserAddMode.Automatic => "automatic",
-        _ => throw new ArgumentOutOfRangeException(nameof(mode))
+        MediaAcquisitionKind.Anime => WorkMediaType.Anime,
+        MediaAcquisitionKind.Manga => WorkMediaType.Manga,
+        MediaAcquisitionKind.LightNovel => WorkMediaType.LightNovel,
+        MediaAcquisitionKind.Book => WorkMediaType.Book,
+        _ => throw new ArgumentOutOfRangeException(nameof(kind))
     };
 
-    public static UserAddMode ParseUserAdd(string value) => value switch
-    {
-        "disabled" => UserAddMode.Disabled,
-        "request" => UserAddMode.Request,
-        "automatic" => UserAddMode.Automatic,
-        _ => throw new ArgumentException($"Unknown user add mode '{value}'.", nameof(value))
-    };
+    /// <summary>Whether a request in this status still waits for a decision or for its title to arrive.</summary>
+    public static bool IsOpen(AcquisitionRequestStatus status) => status is AcquisitionRequestStatus.Pending
+        or AcquisitionRequestStatus.Approved
+        or AcquisitionRequestStatus.Searching
+        or AcquisitionRequestStatus.Downloading
+        or AcquisitionRequestStatus.Importing;
 
     public static string Manual(ManualAddMode mode) => mode switch
     {

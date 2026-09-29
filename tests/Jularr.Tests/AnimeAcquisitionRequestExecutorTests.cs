@@ -2,6 +2,7 @@ using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Acquisition.Monitoring;
 using Jularr.Web.Features.Acquisition.Import;
 using Jularr.Web.Features.Acquisition.Ownership;
+using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Library;
 using Microsoft.EntityFrameworkCore;
 using DiscoverIndexModel = Jularr.Web.Pages.Discover.IndexModel;
@@ -122,17 +123,17 @@ public sealed class AnimeAcquisitionRequestExecutorTests
     }
 
     [TestMethod]
-    [DataRow(MediaAcquisitionKind.Anime, true, UserAddMode.Disabled, "add")]
-    [DataRow(MediaAcquisitionKind.Anime, false, UserAddMode.Request, "request")]
-    [DataRow(MediaAcquisitionKind.Anime, false, UserAddMode.Automatic, "add")]
-    [DataRow(MediaAcquisitionKind.Anime, false, UserAddMode.Disabled, "")]
-    [DataRow(MediaAcquisitionKind.Manga, true, UserAddMode.Request, "")]
-    [DataRow(MediaAcquisitionKind.Manga, false, UserAddMode.Automatic, "request")]
-    [DataRow(MediaAcquisitionKind.LightNovel, false, UserAddMode.Request, "request")]
-    [DataRow(MediaAcquisitionKind.LightNovel, false, UserAddMode.Disabled, "")]
-    public void DiscoverCardActionFollowsTheAccessRule(MediaAcquisitionKind kind, bool isOwner, UserAddMode mode, string expected)
+    [DataRow(MediaAcquisitionKind.Anime, true, MediaCapability.Instant, "add")]
+    [DataRow(MediaAcquisitionKind.Anime, false, MediaCapability.Request, "request")]
+    [DataRow(MediaAcquisitionKind.Anime, false, MediaCapability.Instant, "add")]
+    [DataRow(MediaAcquisitionKind.Anime, false, MediaCapability.Browse, "")]
+    [DataRow(MediaAcquisitionKind.Manga, true, MediaCapability.Instant, "")]
+    [DataRow(MediaAcquisitionKind.Manga, false, MediaCapability.Instant, "request")]
+    [DataRow(MediaAcquisitionKind.LightNovel, false, MediaCapability.Request, "request")]
+    [DataRow(MediaAcquisitionKind.LightNovel, false, MediaCapability.Hidden, "")]
+    public void DiscoverCardActionFollowsTheCapability(MediaAcquisitionKind kind, bool isOwner, MediaCapability capability, string expected)
     {
-        var access = AcquisitionCapabilities.Resolve(new AcquisitionAccessPolicy(kind, mode, ManualAddMode.OwnerOnly), isOwner);
+        var access = AcquisitionCapabilities.Resolve(kind, capability, ManualAddMode.OwnerOnly, isOwner);
 
         Assert.AreEqual(expected, DiscoverIndexModel.AddAction(kind, access));
     }

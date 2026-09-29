@@ -17,6 +17,13 @@ namespace Jularr.Web.Features.Acquisition.Access;
 /// on through the acquisition pipeline and the Usenet search is queued. The importer later puts
 /// the files into the series folder the naming profile builds, and the scan finds this entry by
 /// the key of that folder.
+/// <para>
+/// The requester's <see cref="AcquisitionRequestOptions"/> are applied when monitoring starts: the
+/// chosen quality profile becomes the series' profile, and a request for seasons or single episodes
+/// monitors only those (the episodes and seasons the library and AniList already know are switched
+/// off, later seasons follow the series-level setting). A title that is already monitored keeps its
+/// profile and only gains the requested seasons or episodes.
+/// </para>
 /// </summary>
 public sealed class AnimeAcquisitionRequestExecutor(
     AppDbContext db,
@@ -25,12 +32,14 @@ public sealed class AnimeAcquisitionRequestExecutor(
     AcquisitionOwnershipStore ownershipStore,
     AnimeMonitoringStore monitoringStore,
     AnimeAcquisitionPipeline pipeline,
+    AnimeAcquisitionInventory inventory,
     AnimeAcquisitionScheduler scheduler) : IAcquisitionRequestExecutor
 {
     public MediaAcquisitionKind Kind => MediaAcquisitionKind.Anime;
 
     public async Task<AcquisitionExecution> ExecuteAsync(AcquisitionRequest request, CancellationToken cancellationToken)
     {
+        var options = request.Options;
         var anime = await (
                 from match in db.AnimeMetadata.AsNoTracking()
                 join item in db.Anime.AsNoTracking() on match.AnimeId equals item.Id
@@ -39,7 +48,7 @@ public sealed class AnimeAcquisitionRequestExecutor(
             .FirstOrDefaultAsync(cancellationToken);
         if (anime is not null)
         {
-            return await MonitorAsync(anime.Id, anime.Key, targetRootId: null, "Monitoring is on; missing episodes are searched automatically.", cancellationToken);
+            return await MonitorAsync(anime.Id, anime.Key, targetRootId: null, options, "Monitoring is on; missing episodes are searched automatically.", cancellationToken);
         }
 
         var root = await db.LibraryRoots
@@ -105,7 +114,7 @@ public sealed class AnimeAcquisitionRequestExecutor(
                 cancellationToken);
         }
 
-        return await MonitorAsync(created.Id, created.Key, root.Id, "Added to the library; the Usenet search has started.", cancellationToken);
+        return await MonitorAsync(created.Id, created.Key, root.Id, options, "Added to the library; the Usenet search has started.", cancellationToken);
     }
 
     // The key the library scan derives from the series folder the importer will create.
@@ -130,6 +139,7 @@ public sealed class AnimeAcquisitionRequestExecutor(
         Guid animeId,
         string animeKey,
         Guid? targetRootId,
+        AcquisitionRequestOptions options,
         string message,
         CancellationToken cancellationToken)
     {
@@ -144,26 +154,97 @@ public sealed class AnimeAcquisitionRequestExecutor(
 
         var monitoring = await monitoringStore.LoadAsync(cancellationToken);
         var existing = monitoring.Anime.TryGetValue(animeKey, out var settings) ? settings : null;
-        if (existing?.Monitored != true)
+        var startsMonitoring = existing?.Monitored != true;
+        AnimeSettingsUpdate? update = null;
+        if (startsMonitoring)
         {
-            var update = await pipeline.UpdateAnimeSettingsAsync(
+            update = await pipeline.UpdateAnimeSettingsAsync(
                 animeId,
                 monitored: true,
                 searchOnAdd: true,
-                profileId: null,
+                profileId: options.QualityProfileId,
                 indexerIds: existing?.IndexerIds ?? [],
                 cancellationToken,
                 tagIds: existing?.TagIds,
                 targetRootId: existing?.TargetRootId ?? targetRootId);
-            if (update is { StartedMonitoring: true })
-            {
-                scheduler.RequestRun(update.AnimeKey, AnimeSearchTrigger.SearchOnAdd);
-            }
+        }
+
+        // The scope is in place before any search runs, so a search only looks for what was requested.
+        var scoped = await ApplyScopeAsync(animeKey, options, startsMonitoring, cancellationToken);
+        if (update is { StartedMonitoring: true })
+        {
+            scheduler.RequestRun(update.AnimeKey, AnimeSearchTrigger.SearchOnAdd);
+        }
+        else if (scoped)
+        {
+            scheduler.RequestRun(animeKey, AnimeSearchTrigger.Manual);
         }
 
         return new AcquisitionExecution(
             AcquisitionRequestStatus.Completed,
             message,
             ResultUrl: $"/Library/Anime/{animeId}");
+    }
+
+    /// <summary>
+    /// Restricts monitoring to the requested seasons or episodes. When the request starts monitoring, every
+    /// season or episode that is known now and not requested is switched off (for chosen episodes their whole
+    /// season, so episodes that air later are not picked up unasked); when the title was monitored already,
+    /// the requested ones are only switched on. Returns whether the request had a scope to apply.
+    /// </summary>
+    private async Task<bool> ApplyScopeAsync(
+        string animeKey,
+        AcquisitionRequestOptions options,
+        bool startsMonitoring,
+        CancellationToken cancellationToken)
+    {
+        if (options.Scope == RequestScope.WholeSeries)
+        {
+            return false;
+        }
+
+        var known = startsMonitoring
+            ? (await inventory.LoadAsync(animeKey, cancellationToken))?.Episodes.Select(episode => episode.Key).ToArray() ?? []
+            : [];
+
+        await monitoringStore.UpdateAsync(
+            state =>
+            {
+                if (!state.Anime.TryGetValue(animeKey, out var settings))
+                {
+                    return state;
+                }
+
+                var seasonOverrides = new Dictionary<int, bool>(settings.SeasonOverrides);
+                var episodeOverrides = new Dictionary<string, bool>(settings.EpisodeOverrides, StringComparer.OrdinalIgnoreCase);
+                if (startsMonitoring)
+                {
+                    // Nothing is requested yet: start from "nothing is monitored" for every season the title has.
+                    foreach (var season in known.Select(episode => episode.SeasonNumber)
+                                 .Concat(options.Episodes.Select(episode => episode.Season))
+                                 .Distinct())
+                    {
+                        seasonOverrides[season] = false;
+                    }
+                }
+
+                foreach (var season in options.Seasons)
+                {
+                    seasonOverrides[season] = true;
+                }
+
+                foreach (var episode in options.Episodes)
+                {
+                    episodeOverrides[AnimeMonitoringEngine.EpisodeOverrideKey(episode.Season, episode.Number)] = true;
+                }
+
+                var anime = new Dictionary<string, AnimeMonitorSettings>(state.Anime, StringComparer.OrdinalIgnoreCase)
+                {
+                    [animeKey] = settings with { SeasonOverrides = seasonOverrides, EpisodeOverrides = episodeOverrides }
+                };
+                return state with { Anime = anime };
+            },
+            cancellationToken);
+        return true;
     }
 }

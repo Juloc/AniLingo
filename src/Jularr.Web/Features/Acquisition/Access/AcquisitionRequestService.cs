@@ -4,21 +4,35 @@ using Jularr.Web.Features.Events;
 namespace Jularr.Web.Features.Acquisition.Access;
 
 /// <summary>
-/// The one path for adding a title from search, for every media type: it applies the owner's
-/// access policy, records the request and, when the profile may add automatically (or the owner
-/// approves), hands it to the media type's executor.
+/// The one path for adding a title from search, for every media type. What the profile may do comes
+/// from the capability matrix (#436): a profile with <see cref="MediaCapability.Instant"/> adds right
+/// away, one with <see cref="MediaCapability.Request"/> creates a request, and anything below cannot
+/// add. A request waits for the owner unless an auto-approval rule approves it; an approved request
+/// goes to the media type's executor.
 /// </summary>
 public sealed class AcquisitionRequestService(
     AcquisitionAccessStore store,
     IEnumerable<IAcquisitionRequestExecutor> executors,
     CurrentAccountContext account,
+    IMediaCapabilityService mediaCapabilities,
+    AcquisitionRequestSettingsStore requestSettings,
     IJularrEventPublisher events,
     ILogger<AcquisitionRequestService> logger)
 {
+    /// <summary>Where a profile finds the state of its requests; decision notifications open it.</summary>
+    public const string HistoryPath = "/Requests";
+
     public async Task<AcquisitionCapabilities> GetCapabilitiesAsync(
         MediaAcquisitionKind kind,
-        CancellationToken cancellationToken) =>
-        AcquisitionCapabilities.Resolve(await store.GetPolicyAsync(kind, cancellationToken), account.Can(JularrPolicies.AdminMedia));
+        CancellationToken cancellationToken)
+    {
+        var capability = await mediaCapabilities.GetEffectiveCapabilityAsync(
+            account.User,
+            AcquisitionAccessNames.WorkType(kind),
+            cancellationToken);
+        var policy = await store.GetPolicyAsync(kind, cancellationToken);
+        return AcquisitionCapabilities.Resolve(kind, capability, policy.Manual, account.Can(JularrPolicies.AdminMedia));
+    }
 
     /// <summary>Adds (or requests) a title. Returns the open request for it, new or existing.</summary>
     public async Task<AcquisitionRequest> SubmitAsync(
@@ -28,9 +42,10 @@ public sealed class AcquisitionRequestService(
         var capabilities = await GetCapabilitiesAsync(draft.Kind, cancellationToken);
         if (!capabilities.CanAdd)
         {
-            throw new AcquisitionAccessDeniedException("Adding this kind of media is reserved for the owner.");
+            throw new AcquisitionAccessDeniedException("You may not request or add this kind of media.");
         }
 
+        draft = await PrepareDraftAsync(draft, cancellationToken);
         if (await store.FindOpenAsync(draft.Kind, draft.Provider, draft.ExternalId, cancellationToken) is { } open)
         {
             return open;
@@ -38,7 +53,19 @@ public sealed class AcquisitionRequestService(
 
         if (capabilities.AddCreatesRequest)
         {
-            return await store.CreateAsync(draft, account.ProfileId, AcquisitionRequestStatus.Pending, null, cancellationToken);
+            var decision = await EvaluateAutoApprovalAsync(draft.Kind, cancellationToken);
+            if (decision.Rule is not { } rule)
+            {
+                return await store.CreateAsync(draft, account.ProfileId, AcquisitionRequestStatus.Pending, null, cancellationToken);
+            }
+
+            var autoApproved = await store.CreateAsync(
+                draft,
+                account.ProfileId,
+                AcquisitionRequestStatus.Approved,
+                AcquisitionAutoApproval.DecidedBy(rule.Id),
+                cancellationToken);
+            return await ExecuteAsync(autoApproved, cancellationToken);
         }
 
         var approved = await store.CreateAsync(
@@ -133,6 +160,58 @@ public sealed class AcquisitionRequestService(
         await store.UpdateStatusAsync(id, AcquisitionRequestStatus.Rejected, "Withdrawn.", null, null, account.ProfileId, cancellationToken);
     }
 
+    /// <summary>
+    /// Validates the richer options of a draft and moves them into the payload. Only anime titles have
+    /// options (the other media types use the payload for their own state), and a requester without the
+    /// media manager role may only pick a quality profile the owner opened to requests.
+    /// </summary>
+    private async Task<AcquisitionRequestDraft> PrepareDraftAsync(
+        AcquisitionRequestDraft draft,
+        CancellationToken cancellationToken)
+    {
+        if (draft.Options is not { } chosen)
+        {
+            return draft;
+        }
+
+        if (draft.Kind != MediaAcquisitionKind.Anime || draft.PayloadJson is not null)
+        {
+            throw new ArgumentException("Request options are only available for anime titles.", nameof(draft));
+        }
+
+        var options = chosen.Validate();
+        if (options.QualityProfileId is { } profileId && !account.Can(JularrPolicies.AdminMedia))
+        {
+            var allowed = (await requestSettings.LoadAsync(cancellationToken)).RequesterQualityProfileIds;
+            if (!allowed.Contains(profileId, StringComparer.Ordinal))
+            {
+                throw new AcquisitionAccessDeniedException("That quality profile is not open to requests.");
+            }
+        }
+
+        return draft with { PayloadJson = options.ToPayloadJson(), Options = null };
+    }
+
+    /// <summary>Whether an auto-approval rule approves a new request of the signed-in profile (quota counted per rule).</summary>
+    private async Task<AutoApprovalDecision> EvaluateAutoApprovalAsync(
+        MediaAcquisitionKind kind,
+        CancellationToken cancellationToken)
+    {
+        var rules = (await requestSettings.LoadAsync(cancellationToken)).AutoApprovalRules;
+        var profileId = account.ProfileId;
+        var used = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var rule in AutoApprovalEvaluator.QuotaRulesFor(rules, kind, profileId))
+        {
+            used[rule.Id] = await store.CountAutoApprovedSinceAsync(
+                profileId,
+                rule.Id,
+                DateTime.UtcNow - rule.Quota!.Period,
+                cancellationToken);
+        }
+
+        return AutoApprovalEvaluator.Evaluate(rules, kind, profileId, used);
+    }
+
     private async Task<AcquisitionRequest> ExecuteAsync(AcquisitionRequest request, CancellationToken cancellationToken)
     {
         var executor = executors.FirstOrDefault(candidate => candidate.Kind == request.Kind);
@@ -195,7 +274,7 @@ public sealed class AcquisitionRequestService(
                 mediaType: AcquisitionAccessNames.Kind(request.Kind),
                 subjectId: request.Id.ToString(),
                 messageParams: new Dictionary<string, string> { ["title"] = request.Title },
-                deepLink: request.ResultUrl,
+                deepLink: request.ResultUrl ?? HistoryPath,
                 dedupKey: $"acquisition-request:{request.Id}:{category}"),
             cancellationToken);
 

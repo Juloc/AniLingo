@@ -86,6 +86,12 @@
 .banner-card-status-hiatus .banner-card-status-dot,
 .banner-card-status-cancelled .banner-card-status-dot { background: rgb(255 255 255 / .45); }
 
+/* Availability badge (#597): same glass pill as the release status, on the opposite corner. */
+.banner-card-availability { inset-inline-start: 12px; inset-inline-end: auto; }
+.banner-card-availability-available .banner-card-status-dot { background: var(--success-text); }
+.banner-card-availability-requested .banner-card-status-dot { background: var(--accent); }
+.banner-card-availability-local .banner-card-status-dot { background: rgb(255 255 255 / .45); }
+
 /* The body sits over the faded art; it lets clicks fall through to the cover link except on its own links. */
 .banner-card-body {
     position: relative;

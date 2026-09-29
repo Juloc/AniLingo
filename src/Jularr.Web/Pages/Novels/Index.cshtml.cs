@@ -40,9 +40,7 @@ public sealed class IndexModel(
     public IReadOnlyList<NovelListItem> ContinueReading { get; private set; } = [];
     public IReadOnlyList<NovelCatalogResult> SearchResults { get; private set; } = [];
     public AcquisitionCapabilities Access { get; private set; } =
-        AcquisitionCapabilities.Resolve(
-            AcquisitionAccessPolicy.Default(MediaAcquisitionKind.LightNovel),
-            false);
+        AcquisitionCapabilities.Default(MediaAcquisitionKind.LightNovel);
     public string SearchQuery { get; private set; } = "";
     public bool IsOwner => account.IsOwner;
     /// <summary>The Light Novel inbox folder (Settings → Acquisition → Media folders), or null.</summary>

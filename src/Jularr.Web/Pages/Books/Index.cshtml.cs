@@ -33,7 +33,7 @@ public sealed class IndexModel(
     public IReadOnlyList<BookLibraryItem> Library { get; private set; } = [];
     public bool IsOwner => account.IsOwner;
     public AcquisitionCapabilities Access { get; private set; } =
-        AcquisitionCapabilities.Resolve(AcquisitionAccessPolicy.Default(MediaAcquisitionKind.Book), false);
+        AcquisitionCapabilities.Default(MediaAcquisitionKind.Book);
     /// <summary>The current profile's own book requests, newest first.</summary>
     public IReadOnlyList<AcquisitionRequest> MyRequests { get; private set; } = [];
     public IReadOnlyList<string> Genres => Library.SelectMany(book => book.Subjects).Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase).Take(40).ToArray();

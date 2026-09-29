@@ -431,12 +431,10 @@ public sealed class LocalFirstPageGetTests
                 novelMetadata,
                 OwnerAccount,
                 Operations,
-                new AcquisitionRequestService(
+                AcquisitionAccessFixture.DefaultsService(
                     new AcquisitionAccessStore(Db),
-                    [],
                     OwnerAccount,
-                    new RecordingEventPublisher(),
-                    NullLogger<AcquisitionRequestService>.Instance),
+                    new RecordingEventPublisher()),
                 new AcquisitionAccessStore(Db),
                 watchlistStore,
                 franchiseService,
