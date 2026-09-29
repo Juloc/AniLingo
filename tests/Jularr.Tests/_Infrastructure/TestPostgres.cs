@@ -29,6 +29,9 @@ public static class TestPostgres
     private static string[] _dataTables = [];
     private static int _counter;
 
+    // Per-process prefix so database names never collide with leftovers from a previous run.
+    private static readonly string DatabasePrefix = "jt_" + Guid.NewGuid().ToString("N")[..8] + "_";
+
     private static string BaseConnectionString =>
         Environment.GetEnvironmentVariable("JULARR_TEST_DB")
         ?? "Host=localhost;Port=5433;Username=jularr;Password=devtest;Include Error Detail=true";
@@ -71,7 +74,7 @@ public static class TestPostgres
             }
             else
             {
-                database = $"jt_{Interlocked.Increment(ref _counter)}";
+                database = DatabasePrefix + Interlocked.Increment(ref _counter);
                 CreateFromTemplate(database);
             }
 
