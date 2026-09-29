@@ -10,11 +10,14 @@ namespace Jularr.Web.Pages.Admin;
 
 public sealed record ReadingSourceRow(
     ReadingSourceDefinition Definition,
-    ReadingSourcePreference Preference);
+    ReadingSourcePreference Preference,
+    ReadingSourceHealthSnapshot Health);
 
 [Authorize(Policy = JularrPolicies.AcquisitionSettings)]
 public sealed class ReadingSourcesModel(
     AppDbContext db,
+    ReadingSourceSettingsStore store,
+    ReadingSourceHealthTracker health,
     ILogger<ReadingSourcesModel> logger) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
@@ -31,14 +34,7 @@ public sealed class ReadingSourcesModel(
         var settings = await LoadSettingsAsync(
             cancellationToken);
 
-        Sources = ReadingSourceCatalog.Definitions
-            .Select(definition =>
-                new ReadingSourceRow(
-                    definition,
-                    settings.Get(definition.Key)))
-            .OrderBy(row => row.Preference.Priority)
-            .ThenBy(row => row.Definition.Name, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        Sources = Rows(definition => settings.Get(definition.Key));
     }
 
     public async Task<IActionResult> OnPostSaveAsync(
@@ -86,24 +82,17 @@ public sealed class ReadingSourcesModel(
 
         if (!ModelState.IsValid)
         {
-            Sources = ReadingSourceCatalog.Definitions
-                .Select(definition =>
-                    new ReadingSourceRow(
-                        definition,
-                        preferences.TryGetValue(
-                            definition.Key,
-                            out var preference)
-                            ? preference
-                            : ReadingSourceCatalog.DefaultPreference(
-                                definition)))
-                .OrderBy(row => row.Preference.Priority)
-                .ThenBy(row => row.Definition.Name, StringComparer.OrdinalIgnoreCase)
-                .ToArray();
+            Sources = Rows(definition =>
+                preferences.TryGetValue(
+                    definition.Key,
+                    out var preference)
+                    ? preference
+                    : ReadingSourceCatalog.DefaultPreference(definition));
 
             return Page();
         }
 
-        await ReadingSourceSettingsStore.Default.SaveAsync(
+        await store.SaveAsync(
             new ReadingSourceSettingsState(preferences),
             cancellationToken);
 
@@ -111,12 +100,24 @@ public sealed class ReadingSourcesModel(
         return RedirectToPage();
     }
 
+    private ReadingSourceRow[] Rows(
+        Func<ReadingSourceDefinition, ReadingSourcePreference> preferenceFor) =>
+        ReadingSourceCatalog.Definitions
+            .Select(definition =>
+                new ReadingSourceRow(
+                    definition,
+                    preferenceFor(definition),
+                    health.Get(definition.Key)))
+            .OrderBy(row => row.Preference.Priority)
+            .ThenBy(row => row.Definition.Name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
     private async Task<ReadingSourceSettingsState> LoadSettingsAsync(
         CancellationToken cancellationToken)
     {
         try
         {
-            return await ReadingSourceSettingsStore.Default.LoadAsync(
+            return await store.LoadAsync(
                 cancellationToken);
         }
         catch (InvalidDataException exception)

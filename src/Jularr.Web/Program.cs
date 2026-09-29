@@ -429,6 +429,8 @@ builder.Services.AddHttpClient<NovelAniListProvider>(client =>
 });
 builder.Services.AddScoped<INovelMetadataProvider>(
     services => services.GetRequiredService<NovelAniListProvider>());
+// Reading sources (#477): settings store, health tracking and every catalog search provider.
+Jularr.Web.Features.ReadingSources.ReadingSourceRegistration.AddReadingSources(builder.Services);
 builder.Services.AddScoped<NovelMetadataService>();
 builder.Services.AddScoped<NovelTranslationService>();
 builder.Services.AddScoped<NovelMappingService>();

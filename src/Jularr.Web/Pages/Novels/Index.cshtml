@@ -45,6 +45,13 @@
 
                 @if (Model.SearchQuery.Length > 0)
                 {
+                    @if (Model.UnavailableSources.Count > 0)
+                    {
+                        <div class="reading-catalog-empty" role="status">
+                            @ui.Format("novels.index.sourcesUnavailable", ("sources", string.Join(", ", Model.UnavailableSources)))
+                        </div>
+                    }
+
                     @if (Model.SearchResults.Count == 0)
                     {
                         <div class="reading-catalog-empty">@ui["discover.results.emptyTitle"]</div>
@@ -68,7 +75,14 @@
 
                                     <div class="reading-catalog-copy">
                                         <span class="reading-catalog-title">@result.Item.Title</span>
-                                        <span class="reading-catalog-source" title="@ui[result.Source.DescriptionKey]">@result.Source.Name</span>
+                                        <span class="reading-catalog-tags">
+                                            <span class="reading-catalog-source" title="@ui[result.Source.DescriptionKey]">@result.Source.Name</span>
+                                            <span class="reading-catalog-source" title="@ui[result.Source.LicensingKey]">@ui[result.Source.CapabilityKey]</span>
+                                            @if (result.Item.AccessKey is { } accessKey)
+                                            {
+                                                <span class="reading-catalog-source">@ui[accessKey]</span>
+                                            }
+                                        </span>
                                         @if (!string.IsNullOrWhiteSpace(result.Item.NativeTitle) &&
                                              !string.Equals(result.Item.NativeTitle, result.Item.Title, StringComparison.OrdinalIgnoreCase))
                                         {
@@ -106,6 +120,14 @@
                                             <button class="button" type="button" disabled>
                                                 @ui["requests.status." + requestStatus]
                                             </button>
+                                        }
+                                        else if (!result.Source.CanAdd)
+                                        {
+                                            @* Discovery-only source: the result lives on the source's own site. *@
+                                            @if (result.Item.SourceUrl is { Length: > 0 } sourceUrl)
+                                            {
+                                                <a class="button" href="@sourceUrl" target="_blank" rel="noopener noreferrer">@ui["novels.index.openSource"]</a>
+                                            }
                                         }
                                         else
                                         {

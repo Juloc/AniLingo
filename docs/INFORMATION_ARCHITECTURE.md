@@ -260,6 +260,7 @@ each row's Where.
 | Acquisition (search/download/import) | Exists | `Features/ReadingAcquisition`, `AcquisitionRequestService` | — |
 | Monitoring/wanted | Exists | `WantedAcquisitionService` | — |
 | Metadata/provider mapping | Exists (AniList) | Manga/Novel AniList match services | — |
+| Configurable Light Novel search sources | Exists — the owner enables and prioritises sources (Narou, AniList, BOOK☆WALKER, WebNovel, Internet Archive) at `/Admin/ReadingSources`; each has a capability (public full text, published edition, preview, external reference), a licensing note and in-memory health. Discovery-only sources list results and link out, and cannot be added; Internet Archive lists only open or lendable items. See [READING_ACQUISITION.md](READING_ACQUISITION.md#reading-sources). **Follow-up:** the settings page is only linked from the Light Novel Add dialog, not from the Admin navigation | `Features/ReadingSources`, `Features/ReadingDiscovery`, `Pages/Admin/ReadingSources.cshtml` | #477 |
 | Naming/organization | Exists — one naming-template profile per reading media type (Books, Manga, Light Novels), applied when a release is placed into its NAS library root; live preview and token reference on `/Settings/ReadingNaming` (sibling of anime's `/Settings/Naming`) | `Features/Naming`, `Pages/Settings/ReadingNaming.cshtml(.cs)` | — |
 | Reading progress | Exists | `NovelProgress`, `MangaProgressItem`, bookmarks/highlights | — |
 | Multiple editions/formats | Exists (Books) | `BookEdition`/`BookFile` (EPUB, PDF) | — |

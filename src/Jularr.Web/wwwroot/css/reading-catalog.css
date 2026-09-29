@@ -82,6 +82,13 @@
     font-size: .8rem;
 }
 
+.reading-catalog-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .3rem;
+    min-width: 0;
+}
+
 .reading-catalog-source {
     justify-self: start;
     max-width: 100%;

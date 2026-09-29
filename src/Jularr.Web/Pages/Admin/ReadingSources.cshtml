@@ -27,6 +27,7 @@
                 <div>
                     <h2>@source.Definition.Name</h2>
                     <p class="muted">@ui[source.Definition.DescriptionKey]</p>
+                    <p class="muted"><strong>@ui[source.Definition.CapabilityKey]</strong> · @ui[source.Definition.LicensingKey]</p>
                 </div>
             </div>
 
@@ -52,8 +53,11 @@
                     @ui["admin.readingSources.priorityHint"]
                     @(source.Definition.SupportsDirectImport
                         ? ui["admin.readingSources.directImport"]
-                        : ui["admin.readingSources.requestFlow"])
+                        : source.Definition.CanAdd
+                            ? ui["admin.readingSources.requestFlow"]
+                            : ui["admin.readingSources.referenceOnly"])
                 </p>
+                <p class="muted" role="status">@ui[source.Health.UiKey]</p>
 
                 @if (ViewData.ModelState.TryGetValue(source.Definition.Key, out var errorState) &&
                      errorState.Errors.Count > 0)
