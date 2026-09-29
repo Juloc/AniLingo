@@ -73,41 +73,6 @@ public sealed class TranslateGemmaTrackTests
         Assert.AreEqual(1, library.Single().TranslatedChapterCount);
     }
 
-    [TestMethod]
-    public async Task MigrationMovesExistingLocalRowsToTheirOwnTrack()
-    {
-        var directory = Path.Combine(Path.GetTempPath(), $"jularr-gemma-migration-{Guid.NewGuid():N}");
-        System.IO.Directory.CreateDirectory(directory);
-        try
-        {
-            await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
-                .UseSqlite($"Data Source={Path.Combine(directory, "jularr.db")};Foreign Keys=True")
-                .Options);
-
-            var migrations = db.Database.GetMigrations().ToList();
-            var index = migrations.IndexOf("20260928140000_SeparateTranslateGemmaTrack");
-            Assert.IsTrue(index > 0, "The track migration must be registered.");
-            await db.GetService<IMigrator>().MigrateAsync(migrations[index - 1]);
-
-            var chapterId = await SeedLegacyChapterAsync(db, "本。");
-            db.NovelTranslations.AddRange(
-                LegacyRow(chapterId, "fake-ai", "KI."),
-                LegacyRow(chapterId, NovelTranslationProviders.TranslateGemmaPrefix + "model:abc", "Lokal."));
-            await db.SaveChangesAsync();
-            db.ChangeTracker.Clear();
-
-            await DatabaseMigrationBridge.UpgradeAsync(db);
-
-            var rows = await db.NovelTranslations.AsNoTracking().ToDictionaryAsync(x => x.Text, x => x.TargetLanguage);
-            Assert.AreEqual(NovelReadingLanguage.German, rows["KI."]);
-            Assert.AreEqual(NovelReadingLanguage.GermanTranslateGemma, rows["Lokal."]);
-        }
-        finally
-        {
-            SqliteConnection.ClearAllPools();
-            System.IO.Directory.Delete(directory, recursive: true);
-        }
-    }
 
     [TestMethod]
     public void ConfiguredTimeoutIsReadAndMalformedEndpointMeansNotConfigured()

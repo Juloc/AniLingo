@@ -108,8 +108,8 @@ public sealed class AcquisitionAccessStore(AppDbContext db)
         QueryAsync(
             $"""
             SELECT {Columns} FROM "AcquisitionRequests"
-            WHERE (@kind IS NULL OR "Kind" = @kind)
-              AND (@profile IS NULL OR "RequestedByProfileId" = @profile)
+            WHERE (@kind::text IS NULL OR "Kind" = @kind)
+              AND (@profile::text IS NULL OR "RequestedByProfileId" = @profile)
               AND (@openOnly = 0 OR "Status" IN ('pending', 'approved', 'searching', 'downloading', 'importing'))
             ORDER BY CASE "Status" WHEN 'pending' THEN 0 ELSE 1 END, "UpdatedAt" DESC
             LIMIT @limit;
@@ -246,7 +246,7 @@ public sealed class AcquisitionAccessStore(AppDbContext db)
                     "OperationId" = COALESCE(@operationId, "OperationId"),
                     "ResultUrl" = COALESCE(@resultUrl, "ResultUrl"),
                     "DecidedByProfileId" = COALESCE(@decidedBy, "DecidedByProfileId"),
-                    "DecidedAt" = CASE WHEN @decidedBy IS NULL THEN "DecidedAt" ELSE @now END,
+                    "DecidedAt" = CASE WHEN @decidedBy::text IS NULL THEN "DecidedAt" ELSE @now END,
                     "UpdatedAt" = @now
                 WHERE "Id" = @id;
                 """;

@@ -122,51 +122,6 @@ public sealed class ReleaseRequestTrackerTests
         StringAssert.StartsWith(second.Message, "No release found", "The problem is not stacked on every later search.");
     }
 
-    [TestMethod]
-    public async Task MigrationRenamesTheReadingTriedReleasesKeyOnce()
-    {
-        var path = Path.Combine(Path.GetTempPath(), $"jularr-release-state-{Guid.NewGuid():N}.db");
-        try
-        {
-            Guid manga;
-            Guid book;
-            await using (var oldDb = CreateDb(path))
-            {
-                await oldDb.GetService<IMigrator>().MigrateAsync("20260928173000_AddReaderLayoutPreferences");
-                var store = new AcquisitionAccessStore(oldDb);
-                manga = (await store.CreateAsync(
-                    new AcquisitionRequestDraft(MediaAcquisitionKind.Manga, "anilist", "1", "Frieren", null, null,
-                        """{"title":"Frieren","aliases":[],"triedReleaseIds":["a","b"],"searches":2,"lastProblem":"Bad."}"""),
-                    "owner", AcquisitionRequestStatus.Approved, "owner", CancellationToken.None)).Id;
-                book = (await store.CreateAsync(
-                    new AcquisitionRequestDraft(MediaAcquisitionKind.Book, "books-catalog", "ol:1", "Dune", null, null,
-                        """{"catalogId":"ol:1","title":"Dune","triedReleases":["Dune EPUB"],"searches":1}"""),
-                    "owner", AcquisitionRequestStatus.Approved, "owner", CancellationToken.None)).Id;
-            }
-
-            await using (var upgraded = CreateDb(path))
-            {
-                await upgraded.GetService<IMigrator>().MigrateAsync();
-                var store = new AcquisitionAccessStore(upgraded);
-
-                var reading = ReadingAcquisitionEngine.ReadPayload(
-                    (await store.GetAsync(manga, CancellationToken.None))!,
-                    new ReadingAcquisitionTarget(MediaAcquisitionKind.Manga, "Frieren", []));
-                CollectionAssert.AreEqual(new[] { "a", "b" }, reading.TriedReleases!.ToArray());
-                Assert.AreEqual(2, reading.Searches);
-                Assert.AreEqual("Bad.", reading.LastProblem);
-                Assert.IsFalse((await store.GetAsync(manga, CancellationToken.None))!.PayloadJson!.Contains("triedReleaseIds", StringComparison.Ordinal));
-
-                var books = BookAcquisitionExecutor.ReadPayload((await store.GetAsync(book, CancellationToken.None))!);
-                CollectionAssert.AreEqual(new[] { "Dune EPUB" }, books.TriedReleases!.ToArray(), "Books payloads already had the shared shape.");
-            }
-        }
-        finally
-        {
-            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-            File.Delete(path);
-        }
-    }
 
     private static Jularr.Web.Data.AppDbContext CreateDb(string path) =>
         new(new DbContextOptionsBuilder<Jularr.Web.Data.AppDbContext>()

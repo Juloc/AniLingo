@@ -43,8 +43,8 @@ public sealed class NotificationStore(AppDbContext db)
                     await using var find = connection.CreateCommand();
                     find.CommandText =
                         """
-                        SELECT Id FROM Notifications
-                        WHERE ProfileId = @profileId AND DedupKey = @dedupKey
+                        SELECT "Id" FROM "Notifications"
+                        WHERE "ProfileId" = @profileId AND "DedupKey" = @dedupKey
                         LIMIT 1;
                         """;
                     Add(find, "@profileId", profileId);
@@ -55,12 +55,12 @@ public sealed class NotificationStore(AppDbContext db)
                         await using var update = connection.CreateCommand();
                         update.CommandText =
                             """
-                            UPDATE Notifications
-                            SET OccurrenceCount = OccurrenceCount + 1,
-                                MessageParamsJson = @messageParamsJson,
-                                UpdatedAtUtc = @now,
-                                ReadAtUtc = NULL
-                            WHERE Id = @id;
+                            UPDATE "Notifications"
+                            SET "OccurrenceCount" = "OccurrenceCount" + 1,
+                                "MessageParamsJson" = @messageParamsJson,
+                                "UpdatedAtUtc" = @now,
+                                "ReadAtUtc" = NULL
+                            WHERE "Id" = @id;
                             """;
                         Add(update, "@messageParamsJson", paramsJson);
                         Add(update, "@now", Format(now));
@@ -74,10 +74,10 @@ public sealed class NotificationStore(AppDbContext db)
                 await using var insert = connection.CreateCommand();
                 insert.CommandText =
                     """
-                    INSERT INTO Notifications (
-                        Id, ProfileId, EventId, Category, Severity, MediaType, SubjectId,
-                        MessageParamsJson, DeepLink, DedupKey, OccurrenceCount,
-                        CreatedAtUtc, UpdatedAtUtc, ReadAtUtc)
+                    INSERT INTO "Notifications" (
+                        "Id", "ProfileId", "EventId", "Category", "Severity", "MediaType", "SubjectId",
+                        "MessageParamsJson", "DeepLink", "DedupKey", "OccurrenceCount",
+                        "CreatedAtUtc", "UpdatedAtUtc", "ReadAtUtc")
                     VALUES (
                         @id, @profileId, @eventId, @category, @severity, @mediaType, @subjectId,
                         @messageParamsJson, @deepLink, @dedupKey, 1,
@@ -108,7 +108,7 @@ public sealed class NotificationStore(AppDbContext db)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(profileId);
         var take = Math.Clamp(limit, 1, 500);
-        var unreadClause = unreadOnly ? "AND ReadAtUtc IS NULL" : "";
+        var unreadClause = unreadOnly ? "AND \"ReadAtUtc\" IS NULL" : "";
 
         return await WithConnectionAsync(
             async connection =>
@@ -116,12 +116,12 @@ public sealed class NotificationStore(AppDbContext db)
                 await using var command = connection.CreateCommand();
                 command.CommandText =
                     $"""
-                    SELECT Id, ProfileId, EventId, Category, Severity, MediaType, SubjectId,
-                           MessageParamsJson, DeepLink, DedupKey, OccurrenceCount,
-                           CreatedAtUtc, UpdatedAtUtc, ReadAtUtc
-                    FROM Notifications
-                    WHERE ProfileId = @profileId {unreadClause}
-                    ORDER BY UpdatedAtUtc DESC
+                    SELECT "Id", "ProfileId", "EventId", "Category", "Severity", "MediaType", "SubjectId",
+                           "MessageParamsJson", "DeepLink", "DedupKey", "OccurrenceCount",
+                           "CreatedAtUtc", "UpdatedAtUtc", "ReadAtUtc"
+                    FROM "Notifications"
+                    WHERE "ProfileId" = @profileId {unreadClause}
+                    ORDER BY "UpdatedAtUtc" DESC
                     LIMIT {take};
                     """;
                 Add(command, "@profileId", profileId.Trim());
@@ -148,8 +148,8 @@ public sealed class NotificationStore(AppDbContext db)
                 await using var command = connection.CreateCommand();
                 command.CommandText =
                     """
-                    SELECT COUNT(*) FROM Notifications
-                    WHERE ProfileId = @profileId AND ReadAtUtc IS NULL;
+                    SELECT COUNT(*) FROM "Notifications"
+                    WHERE "ProfileId" = @profileId AND "ReadAtUtc" IS NULL;
                     """;
                 Add(command, "@profileId", profileId.Trim());
                 var count = await command.ExecuteScalarAsync(cancellationToken);
@@ -175,9 +175,9 @@ public sealed class NotificationStore(AppDbContext db)
                 await using var command = connection.CreateCommand();
                 command.CommandText =
                     """
-                    UPDATE Notifications
-                    SET ReadAtUtc = @readAt, UpdatedAtUtc = @now
-                    WHERE Id = @id AND ProfileId = @profileId;
+                    UPDATE "Notifications"
+                    SET "ReadAtUtc" = @readAt, "UpdatedAtUtc" = @now
+                    WHERE "Id" = @id AND "ProfileId" = @profileId;
                     """;
                 Add(command, "@readAt", read ? Format(DateTime.UtcNow) : null);
                 Add(command, "@now", Format(DateTime.UtcNow));
@@ -200,9 +200,9 @@ public sealed class NotificationStore(AppDbContext db)
                 await using var command = connection.CreateCommand();
                 command.CommandText =
                     """
-                    UPDATE Notifications
-                    SET ReadAtUtc = @now, UpdatedAtUtc = @now
-                    WHERE ProfileId = @profileId AND ReadAtUtc IS NULL;
+                    UPDATE "Notifications"
+                    SET "ReadAtUtc" = @now, "UpdatedAtUtc" = @now
+                    WHERE "ProfileId" = @profileId AND "ReadAtUtc" IS NULL;
                     """;
                 Add(command, "@now", Format(DateTime.UtcNow));
                 Add(command, "@profileId", profileId.Trim());
@@ -222,8 +222,8 @@ public sealed class NotificationStore(AppDbContext db)
                 await using var command = connection.CreateCommand();
                 command.CommandText =
                     """
-                    DELETE FROM Notifications
-                    WHERE ProfileId = @profileId AND ReadAtUtc IS NOT NULL;
+                    DELETE FROM "Notifications"
+                    WHERE "ProfileId" = @profileId AND "ReadAtUtc" IS NOT NULL;
                     """;
                 Add(command, "@profileId", profileId.Trim());
                 return await command.ExecuteNonQueryAsync(cancellationToken);

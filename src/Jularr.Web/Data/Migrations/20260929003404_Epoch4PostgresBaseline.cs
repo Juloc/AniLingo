@@ -1524,7 +1524,7 @@ namespace Jularr.Web.Data.Migrations
             migrationBuilder.Sql(@"
 CREATE TABLE ""AccountSessionStates"" (
     ""AccountId"" TEXT NOT NULL CONSTRAINT ""PK_AccountSessionStates"" PRIMARY KEY,
-    ""Version"" integer NOT NULL DEFAULT 1,
+    ""Version"" bigint NOT NULL DEFAULT 1,
     CONSTRAINT ""FK_AccountSessionStates_OwnerAccounts_AccountId""
         FOREIGN KEY (""AccountId"") REFERENCES ""OwnerAccounts"" (""Id"") ON DELETE CASCADE
 );
@@ -1743,8 +1743,8 @@ CREATE TABLE ""KnownDevices"" (
     ""Label"" TEXT NULL,
     ""AppVersion"" TEXT NULL,
     ""UserAgent"" TEXT NULL,
-    ""FirstSeenUtc"" TEXT NOT NULL,
-    ""LastSeenUtc"" TEXT NOT NULL,
+    ""FirstSeenUtc"" timestamp with time zone NOT NULL,
+    ""LastSeenUtc"" timestamp with time zone NOT NULL,
     CONSTRAINT ""FK_KnownDevices_OwnerAccounts_ProfileId""
         FOREIGN KEY (""ProfileId"") REFERENCES ""OwnerAccounts"" (""Id"") ON DELETE CASCADE
 );
@@ -2169,6 +2169,47 @@ CREATE TABLE ""UiProfileThemes"" (
     CHECK (""SakuraMode"" IN ('off', 'subtle', 'full')), ""ThemeId"" TEXT NULL);
 
 
+
+-- #570 full-text + fuzzy search: pg_trgm plus generated tsvector/normalized-text columns and GIN
+-- indexes over the title metadata of every searchable media type. The columns are outside the EF
+-- model (EF ignores them); they stay in sync automatically as STORED generated columns.
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+ALTER TABLE ""AnimeMetadata""
+    ADD COLUMN IF NOT EXISTS ""SearchText"" text GENERATED ALWAYS AS (
+        lower(
+            coalesce(""PreferredTitle"", '') || ' ' || coalesce(""RomajiTitle"", '') || ' ' ||
+            coalesce(""EnglishTitle"", '') || ' ' || coalesce(""NativeTitle"", ''))) STORED,
+    ADD COLUMN IF NOT EXISTS ""SearchVector"" tsvector GENERATED ALWAYS AS (
+        to_tsvector('simple',
+            coalesce(""PreferredTitle"", '') || ' ' || coalesce(""RomajiTitle"", '') || ' ' ||
+            coalesce(""EnglishTitle"", '') || ' ' || coalesce(""NativeTitle"", ''))) STORED;
+CREATE INDEX IF NOT EXISTS ""IX_AnimeMetadata_SearchVector"" ON ""AnimeMetadata"" USING gin (""SearchVector"");
+CREATE INDEX IF NOT EXISTS ""IX_AnimeMetadata_SearchText_Trgm"" ON ""AnimeMetadata"" USING gin (""SearchText"" gin_trgm_ops);
+
+ALTER TABLE ""NovelWorks""
+    ADD COLUMN IF NOT EXISTS ""SearchText"" text GENERATED ALWAYS AS (
+        lower(
+            coalesce(""Title"", '') || ' ' || coalesce(""Author"", '') || ' ' ||
+            coalesce(""MetadataTitle"", '') || ' ' || coalesce(""MetadataNativeTitle"", ''))) STORED,
+    ADD COLUMN IF NOT EXISTS ""SearchVector"" tsvector GENERATED ALWAYS AS (
+        to_tsvector('simple',
+            coalesce(""Title"", '') || ' ' || coalesce(""Author"", '') || ' ' ||
+            coalesce(""MetadataTitle"", '') || ' ' || coalesce(""MetadataNativeTitle"", ''))) STORED;
+CREATE INDEX IF NOT EXISTS ""IX_NovelWorks_SearchVector"" ON ""NovelWorks"" USING gin (""SearchVector"");
+CREATE INDEX IF NOT EXISTS ""IX_NovelWorks_SearchText_Trgm"" ON ""NovelWorks"" USING gin (""SearchText"" gin_trgm_ops);
+
+ALTER TABLE ""MangaSeries""
+    ADD COLUMN IF NOT EXISTS ""SearchText"" text GENERATED ALWAYS AS (
+        lower(
+            coalesce(""Title"", '') || ' ' || coalesce(""MetadataTitle"", '') || ' ' ||
+            coalesce(""MetadataNativeTitle"", ''))) STORED,
+    ADD COLUMN IF NOT EXISTS ""SearchVector"" tsvector GENERATED ALWAYS AS (
+        to_tsvector('simple',
+            coalesce(""Title"", '') || ' ' || coalesce(""MetadataTitle"", '') || ' ' ||
+            coalesce(""MetadataNativeTitle"", ''))) STORED;
+CREATE INDEX IF NOT EXISTS ""IX_MangaSeries_SearchVector"" ON ""MangaSeries"" USING gin (""SearchVector"");
+CREATE INDEX IF NOT EXISTS ""IX_MangaSeries_SearchText_Trgm"" ON ""MangaSeries"" USING gin (""SearchText"" gin_trgm_ops);
 ");
         }
 

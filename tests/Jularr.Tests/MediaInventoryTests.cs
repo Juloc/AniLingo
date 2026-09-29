@@ -16,7 +16,6 @@ namespace Jularr.Tests;
 [TestClass]
 public sealed class MediaInventoryTests
 {
-    private const string MigrationId = "20260925224635_AddMediaInventory";
 
     [TestMethod]
     public void ParsesHevcTenBitHdrWithMultipleAudioAndImageSubtitles()
@@ -343,78 +342,6 @@ public sealed class MediaInventoryTests
         Assert.AreEqual(1, fixture.Runner.Calls.Count, "Both calls share one inventory analysis.");
     }
 
-    [TestMethod]
-    public async Task MigrationKeepsMediaFilesAndCascadesAnalysisWithTheirFile()
-    {
-        var tempRoot = Path.Combine(Path.GetTempPath(), $"jularr-inventory-migration-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(tempRoot);
-        var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseSqlite($"Data Source={Path.Combine(tempRoot, "jularr.db")};Foreign Keys=True")
-            .Options;
-
-        try
-        {
-            var mediaPath = Path.Combine(tempRoot, "episode.mkv");
-            await File.WriteAllBytesAsync(mediaPath, [1, 2, 3]);
-            var info = new FileInfo(mediaPath);
-            var root = new LibraryRoot { Name = "Anime", Path = tempRoot };
-            var anime = new Anime { Key = "upgrade", Title = "Upgrade" };
-            var episode = new Episode { AnimeId = anime.Id, Number = 1, Title = "One" };
-            var media = new MediaFile
-            {
-                LibraryRootId = root.Id,
-                EpisodeId = episode.Id,
-                Path = mediaPath,
-                SizeBytes = info.Length,
-                LastWriteTimeUtc = info.LastWriteTimeUtc
-            };
-
-            await using (var db = new AppDbContext(options))
-            {
-                var migrations = db.Database.GetMigrations().ToArray();
-                var index = Array.IndexOf(migrations, MigrationId);
-                Assert.IsTrue(index > 0, $"Expected migration {MigrationId}.");
-                await db.GetService<IMigrator>().MigrateAsync(migrations[index - 1]);
-
-                // LibraryRoots gained columns in later migrations, so the root is seeded with the
-                // columns of the pre-migration schema. The other tables are unchanged by the
-                // migration, so the current model can seed them.
-                await db.Database.ExecuteSqlRawAsync(
-                    "INSERT INTO LibraryRoots (Id, Name, Path, IsEnabled, CreatedAt, WakeOnLanEnabled) VALUES ({0}, {1}, {2}, 1, {3}, 0);",
-                    root.Id.ToString().ToUpperInvariant(),
-                    root.Name,
-                    root.Path,
-                    root.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss.FFFFFFF", CultureInfo.InvariantCulture));
-                db.AddRange(anime, episode, media);
-                await db.SaveChangesAsync();
-
-                await DatabaseMigrationBridge.UpgradeAsync(db);
-                CollectionAssert.Contains(
-                    (await db.Database.GetAppliedMigrationsAsync()).ToList(),
-                    MigrationId);
-            }
-
-            var runner = new FakeMediaProbeRunner();
-            runner.Returns(mediaPath, MediaProbeFixtures.H264Stereo);
-            var inventory = MediaInventoryTestSupport.Create(options, runner);
-
-            var result = await inventory.ReconcileAsync(root.Id, CancellationToken.None);
-            Assert.AreEqual(1, result.Analyzed, "Existing media is analysed once after the upgrade.");
-
-            await using (var db = new AppDbContext(options))
-            {
-                Assert.AreEqual(1, await db.MediaAnalysisStreams.CountAsync());
-                await db.MediaFiles.Where(x => x.Id == media.Id).ExecuteDeleteAsync();
-                Assert.AreEqual(0, await db.MediaAnalyses.CountAsync());
-                Assert.AreEqual(0, await db.MediaAnalysisStreams.CountAsync());
-            }
-        }
-        finally
-        {
-            SqliteConnection.ClearAllPools();
-            Directory.Delete(tempRoot, recursive: true);
-        }
-    }
 
     private sealed class EmptyMorphology : IJapaneseMorphology
     {

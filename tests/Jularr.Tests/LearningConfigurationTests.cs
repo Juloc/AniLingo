@@ -11,7 +11,6 @@ namespace Jularr.Tests;
 [TestClass]
 public sealed class LearningConfigurationTests
 {
-    private const string MigrationId = "20260925122000_AddLearningV2Settings";
 
     [TestMethod]
     public async Task NewProfileDefaultsToOff()
@@ -32,39 +31,6 @@ public sealed class LearningConfigurationTests
         Assert.IsFalse(resolved.IsEnabled(LearningCapability.Reviews));
     }
 
-    [TestMethod]
-    public async Task ExistingLearnerIsSeededAsStudyDuringMigration()
-    {
-        await using var fixture = await Fixture.CreateBeforeLearningV2Async();
-
-        var term = new Term
-        {
-            Id = Guid.NewGuid(),
-            Language = "ja",
-            Canonical = "食べる",
-            Reading = "たべる",
-            Meaning = "to eat"
-        };
-        fixture.Db.Terms.Add(term);
-        await fixture.Db.SaveChangesAsync();
-
-        var userTermId = Guid.NewGuid().ToString().ToUpperInvariant();
-        var termId = term.Id.ToString().ToUpperInvariant();
-        var updatedAt = DateTime.UtcNow;
-        await fixture.Db.Database.ExecuteSqlAsync(
-            $"""
-            INSERT INTO "UserTerms" ("Id", "ProfileId", "TermId", "State", "IntervalDays", "UpdatedAt")
-            VALUES ({userTermId}, 'legacy-user', {termId}, 2, 0, {updatedAt});
-            """);
-
-        await DatabaseMigrationBridge.UpgradeAsync(fixture.Db);
-
-        var mode = await fixture.Store.GetProfileModeAsync(
-            "legacy-user",
-            CancellationToken.None);
-
-        Assert.AreEqual(LearningMode.Study, mode);
-    }
 
     [TestMethod]
     public async Task NearestScopeModeWins()
@@ -235,23 +201,6 @@ public sealed class LearningConfigurationTests
         {
             var fixture = Create();
             await DatabaseMigrationBridge.UpgradeAsync(fixture.Db);
-            return fixture;
-        }
-
-        public static async Task<Fixture> CreateBeforeLearningV2Async()
-        {
-            var fixture = Create();
-            var migrations = fixture.Db.Database
-                .GetMigrations()
-                .ToArray();
-            var migrationIndex = Array.IndexOf(migrations, MigrationId);
-            Assert.IsTrue(
-                migrationIndex > 0,
-                $"Expected {MigrationId} after at least one existing migration.");
-
-            await fixture.Db.GetService<IMigrator>()
-                .MigrateAsync(migrations[migrationIndex - 1]);
-
             return fixture;
         }
 

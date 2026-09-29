@@ -200,7 +200,7 @@ public sealed class AiUsageStore(AppDbContext db)
                 command.Transaction = transaction;
                 var columns = string.Join(", ", CounterColumns.Select(x => $"\"{x}\""));
                 var values = string.Join(", ", CounterColumns.Select(x => "@" + x));
-                var updates = string.Join(", ", CounterColumns.Select(x => $"\"{x}\" = \"{x}\" + excluded.\"{x}\""));
+                var updates = string.Join(", ", CounterColumns.Select(x => $"\"{x}\" = \"AiUsageDaily\".\"{x}\" + excluded.\"{x}\""));
                 command.CommandText =
                     $"""
                     INSERT INTO "AiUsageDaily" ("ProfileId", "Day", "ProviderId", "Model", "Operation", {columns})
@@ -241,7 +241,7 @@ public sealed class AiUsageStore(AppDbContext db)
                 SELECT "Day", "ProfileId", "ProviderId", "Model", "Operation", {columns}
                 FROM "AiUsageDaily"
                 WHERE "Day" >= @from AND "Day" <= @to
-                  AND (@profile IS NULL OR "ProfileId" = @profile)
+                  AND (@profile::text IS NULL OR "ProfileId" = @profile)
                 ORDER BY "Day";
                 """;
             Add(command, "@from", fromDay.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));

@@ -24,7 +24,6 @@ namespace Jularr.Tests;
 [TestClass]
 public sealed class MediaSegmentTests
 {
-    private const string MigrationId = "20260926134000_AddEpisodeMediaSegments";
 
     [TestMethod]
     public void MostAuthoritativeSourceWinsPerKindRegardlessOfConfidence()
@@ -386,62 +385,6 @@ public sealed class MediaSegmentTests
         Assert.IsTrue(features.Trickplay);
     }
 
-    [TestMethod]
-    public async Task MigrationAddsSegmentsThatCascadeWithTheirEpisode()
-    {
-        var tempRoot = Path.Combine(Path.GetTempPath(), $"jularr-segments-migration-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(tempRoot);
-        var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseSqlite($"Data Source={Path.Combine(tempRoot, "jularr.db")};Foreign Keys=True")
-            .Options;
-
-        try
-        {
-            var anime = new Anime { Key = "upgrade", Title = "Upgrade" };
-            var episode = new Episode { AnimeId = anime.Id, Number = 1, Title = "One" };
-
-            await using (var db = new AppDbContext(options))
-            {
-                var migrations = db.Database.GetMigrations().ToArray();
-                var index = Array.IndexOf(migrations, MigrationId);
-                Assert.IsTrue(index > 0, $"Expected migration {MigrationId}.");
-                await db.GetService<IMigrator>().MigrateAsync(migrations[index - 1]);
-
-                db.AddRange(anime, episode);
-                await db.SaveChangesAsync();
-
-                await DatabaseMigrationBridge.UpgradeAsync(db);
-                CollectionAssert.Contains(
-                    (await db.Database.GetAppliedMigrationsAsync()).ToList(),
-                    MigrationId);
-                Assert.IsFalse(db.Database.HasPendingModelChanges());
-            }
-
-            await using (var db = new AppDbContext(options))
-            {
-                Assert.AreEqual(1, await db.Episodes.CountAsync(), "Existing episodes are kept.");
-                db.EpisodeMediaSegments.Add(
-                    Row(episode.Id, MediaSegmentKind.Intro, MediaSegmentSource.Manual, 0, 90_000, 1));
-                await db.SaveChangesAsync();
-
-                db.EpisodeMediaSegments.Add(
-                    Row(episode.Id, MediaSegmentKind.Intro, MediaSegmentSource.Manual, 1_000, 91_000, 1));
-                await Assert.ThrowsExactlyAsync<DbUpdateException>(() => db.SaveChangesAsync(),
-                    "One marker per episode, kind and source.");
-            }
-
-            await using (var db = new AppDbContext(options))
-            {
-                await db.Episodes.Where(x => x.Id == episode.Id).ExecuteDeleteAsync();
-                Assert.AreEqual(0, await db.EpisodeMediaSegments.CountAsync());
-            }
-        }
-        finally
-        {
-            SqliteConnection.ClearAllPools();
-            Directory.Delete(tempRoot, recursive: true);
-        }
-    }
 
     private static EpisodeMediaSegment Row(
         Guid episodeId,

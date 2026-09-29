@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Jularr.Web.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260928233839_Epoch4PostgresBaseline")]
+    [Migration("20260929003404_Epoch4PostgresBaseline")]
     partial class Epoch4PostgresBaseline
     {
         /// <inheritdoc />
@@ -20,7 +20,7 @@ namespace Jularr.Web.Data.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.12")
+                .HasAnnotation("ProductVersion", "10.0.4")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);

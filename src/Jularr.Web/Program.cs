@@ -382,6 +382,9 @@ builder.Services.AddScoped<AnimeRepairService>();
 builder.Services.AddHttpClient(Jularr.Web.Features.Artwork.AnimeArtworkLibrary.HttpClientName, client =>
     client.Timeout = TimeSpan.FromSeconds(30));
 builder.Services.AddScoped<Jularr.Web.Features.Artwork.AnimeArtworkLibrary>();
+builder.Services.AddScoped<Jularr.Web.Features.Artwork.BesideMediaArtworkStore>();
+builder.Services.AddScoped<Jularr.Web.Features.Artwork.BesideMediaArtworkCache>();
+builder.Services.AddScoped<Jularr.Web.Features.Search.MediaSearchService>();
 
 builder.Services.AddHttpClient<NcodeNovelSourceProvider>(client =>
 {
@@ -654,6 +657,9 @@ static async Task InitializeDatabaseAsync(
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
     await DatabaseMigrationBridge.UpgradeAsync(db, log: log);
+
+    var configuration = scope.ServiceProvider.GetRequiredService<IConfiguration>();
+    await Jularr.Web.Data.SqliteImport.SqliteToPostgresImporter.RunIfNeededAsync(db, configuration, log);
 
     if (await db.LibraryRoots.AnyAsync())
     {
