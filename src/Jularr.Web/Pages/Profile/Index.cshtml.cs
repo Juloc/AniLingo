@@ -3,6 +3,7 @@ using Jularr.Web.Features.Appearance;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Learning;
 using Jularr.Web.Features.Localization;
+using Jularr.Web.Features.Shell;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
@@ -14,7 +15,7 @@ namespace Jularr.Web.Pages.Profile;
 /// and <c>/Profile/admin</c> are the drill-in lists of those sections. All lists come from
 /// <see cref="UiNavigationCatalog"/>.
 /// </summary>
-public sealed class IndexModel(AppDbContext db, CurrentAccountContext account) : PageModel
+public sealed class IndexModel(AppDbContext db, CurrentAccountContext account, IAppShellService appShell) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
     public IReadOnlyList<UiNavigationItem> Links { get; private set; } = [];
@@ -35,7 +36,8 @@ public sealed class IndexModel(AppDbContext db, CurrentAccountContext account) :
 
         var learningVisible = await new LearningConfigurationStore(db)
             .HasAnyLearningEnabledAsync(account.ProfileId, cancellationToken);
-        (Links, Elsewhere) = UiShellNavigation.BuildProfile(learningVisible, account.Can);
+        var media = await appShell.GetMediaAccessAsync(User, cancellationToken);
+        (Links, Elsewhere) = UiShellNavigation.BuildProfile(learningVisible, account.Can, media.VisibleMediaTypes);
 
         // The shell account footer (theme, sign out, version) is shown here on phones and
         // reads the same view data the layout sets for the sidebar.

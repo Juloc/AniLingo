@@ -1,4 +1,5 @@
 using Jularr.Web.Features.Auth;
+using Jularr.Web.Features.MediaCore;
 
 namespace Jularr.Web.Features.Localization;
 
@@ -31,6 +32,9 @@ public sealed record UiNavigationGroup(string TitleKey, IReadOnlyList<UiNavigati
 /// that mark it active (the href's path when empty); <see cref="Exact"/> matches the href only.
 /// <see cref="Sections"/> are the grouped child pages of a section anchor. <see cref="Policy"/> is the
 /// <see cref="JularrPolicies"/> policy an account needs to see the entry; null means every account.
+/// <see cref="MediaRoutes"/> tie the entry to the media types its routes serve: it is absent for a
+/// profile that cannot browse any of them (#598). <see cref="Tabs"/> makes the entry the hub of
+/// those tabs: it is shown while at least one tab is, and opens the first visible one.
 /// </summary>
 public sealed record UiNavigationEntry(
     string Id,
@@ -41,7 +45,16 @@ public sealed record UiNavigationEntry(
     bool Exact = false,
     string? Policy = null,
     bool RequiresLearning = false,
-    UiNavigationSection[]? Sections = null);
+    UiNavigationSection[]? Sections = null,
+    UiMediaRoute[]? MediaRoutes = null,
+    UiNavigationEntry[]? Tabs = null);
+
+/// <summary>
+/// A consumer route root (the URL prefix of a page folder) and the media types it serves. A
+/// profile reaches the route when it can at least browse one of <see cref="MediaTypes"/>. This is
+/// the one table behind both the sidebar/tabs and the page-level route gate.
+/// </summary>
+public sealed record UiMediaRoute(string Root, WorkMediaType[] MediaTypes);
 
 public sealed record UiNavigationSection(string TitleKey, UiNavigationEntry[] Entries);
 
@@ -52,13 +65,29 @@ public sealed record UiNavigationSection(string TitleKey, UiNavigationEntry[] En
 /// </summary>
 public static class UiNavigationCatalog
 {
-    /// <summary>Media types inside Library. The Library destination is active on all of them.</summary>
+    /// <summary>
+    /// Media types inside Library. The Library destination is active on all of them. Movies and
+    /// series have no consumer pages yet; a tab for them is one more entry here, and the sidebar,
+    /// tabs and route gate follow.
+    /// </summary>
     public static readonly UiNavigationEntry[] LibraryTabs =
     [
-        new("library-anime", "nav.libraryTab.anime", "/Library", "library"),
-        new("library-reading", "nav.libraryTab.reading", "/Reading", "reading", ["/Reading", "/Novels", "/Manga"]),
-        new("library-books", "nav.books", "/Books", "books")
+        new("library-anime", "nav.libraryTab.anime", "/Library", "library",
+            MediaRoutes: [new("/Library", [WorkMediaType.Anime])]),
+        new("library-reading", "nav.libraryTab.reading", "/Reading", "reading",
+            MediaRoutes:
+            [
+                new("/Reading", [WorkMediaType.Manga, WorkMediaType.LightNovel]),
+                new("/Novels", [WorkMediaType.LightNovel]),
+                new("/Manga", [WorkMediaType.Manga])
+            ]),
+        new("library-books", "nav.books", "/Books", "books",
+            MediaRoutes: [new("/Books", [WorkMediaType.Book])])
     ];
+
+    /// <summary>Every consumer route that only exists for the media types it serves (#598).</summary>
+    public static IEnumerable<UiMediaRoute> MediaRoutes =>
+        LibraryTabs.SelectMany(tab => tab.MediaRoutes ?? []);
 
     public static readonly UiNavigationSection[] Admin =
     [
@@ -118,7 +147,7 @@ public static class UiNavigationCatalog
     public static readonly UiNavigationEntry[] App =
     [
         new("home", "nav.home", "/", "home", Exact: true),
-        new("library", "nav.library", "/Library", "library", [.. Roots(LibraryTabs)]),
+        new("library", "nav.library", "/Library", "library", Tabs: LibraryTabs),
         new("watchlist", "nav.watchlist", "/Watchlist", "watchlist", ["/Watchlist", "/Franchises"]),
         new("calendar", "nav.calendar", "/Calendar", "calendar"),
         new("learn", "nav.learn", "/Learn", "learn", ["/Learn", "/Statistics", "/Kana"], RequiresLearning: true),
@@ -159,7 +188,24 @@ public static class UiNavigationCatalog
 
     /// <summary>Every path root of a set of entries, used to decide which section a page belongs to.</summary>
     public static IEnumerable<string> Roots(IEnumerable<UiNavigationEntry> entries) =>
-        entries.SelectMany(entry => entry.Matches ?? [PathOf(entry.Href)]);
+        entries.SelectMany(RootsOf);
+
+    /// <summary>
+    /// The path roots that mark one entry active: its explicit matches, else the roots of its tabs
+    /// or media routes, else the href's own path.
+    /// </summary>
+    public static IEnumerable<string> RootsOf(UiNavigationEntry entry) =>
+        entry.Matches
+        ?? (entry.Tabs is { } tabs ? Roots(tabs).ToArray() : null)
+        ?? entry.MediaRoutes?.Select(route => route.Root).ToArray()
+        ?? [PathOf(entry.Href)];
+
+    /// <summary>The media types an entry (or its tabs) serves; empty for an entry that is not media-scoped.</summary>
+    public static IEnumerable<WorkMediaType> MediaTypesOf(UiNavigationEntry entry) =>
+        (entry.Tabs is { } tabs
+            ? tabs.SelectMany(MediaTypesOf)
+            : entry.MediaRoutes?.SelectMany(route => route.MediaTypes) ?? [])
+        .Distinct();
 
     public static IEnumerable<string> Roots(UiNavigationSection[] sections) =>
         Roots(sections.SelectMany(section => section.Entries));
@@ -190,27 +236,34 @@ public sealed record UiShellNavigation(
     /// <summary>The section expanded in the sidebar, if any. Never more than one.</summary>
     public UiNavigationItem? Expanded => Secondary.FirstOrDefault(item => item.IsExpanded);
 
+    /// <param name="visibleMediaTypes">
+    /// The media types the profile may browse (<c>IAppShellService</c>); a media type outside it
+    /// leaves no destination behind (#598). Null means the caller does not scope by media type.
+    /// </param>
     public static UiShellNavigation Build(
         PathString path,
         bool learningVisible,
-        Func<string, bool> can)
+        Func<string, bool> can,
+        IReadOnlyCollection<WorkMediaType>? visibleMediaTypes = null)
     {
+        var media = visibleMediaTypes ?? WorkMediaTypes.All;
+
         // Admin pages that live under /Settings belong to Admin, not to Settings.
         var admin = UiNavigationCatalog.Secondary.Single(entry => entry.Id == "admin");
-        var inAdmin = Visible(admin, learningVisible, can) && IsUnder(path, UiNavigationCatalog.Roots(UiNavigationCatalog.Admin));
+        var inAdmin = Visible(admin, learningVisible, can, media) && IsUnder(path, UiNavigationCatalog.Roots(UiNavigationCatalog.Admin));
         var inSettings = !inAdmin && IsUnder(path, UiNavigationCatalog.Roots(UiNavigationCatalog.Settings));
 
         var primary = UiNavigationCatalog.App
-            .Where(entry => Visible(entry, learningVisible, can))
-            .Select(entry => ToItem(entry, IsActive(entry, path)))
+            .Where(entry => Visible(entry, learningVisible, can, media))
+            .Select(entry => ToItem(entry, IsActive(entry, path), media))
             .ToArray();
         var secondary = UiNavigationCatalog.Secondary
-            .Where(entry => Visible(entry, learningVisible, can))
+            .Where(entry => Visible(entry, learningVisible, can, media))
             .Select(entry => entry.Id switch
             {
-                "admin" => inAdmin ? Expand(entry, path, can) : ToItem(entry, false),
-                "settings" => inSettings ? Expand(entry, path, can) : ToItem(entry, false),
-                _ => ToItem(entry, !inAdmin && !inSettings && IsActive(entry, path))
+                "admin" => inAdmin ? Expand(entry, path, can) : ToItem(entry, false, media),
+                "settings" => inSettings ? Expand(entry, path, can) : ToItem(entry, false, media),
+                _ => ToItem(entry, !inAdmin && !inSettings && IsActive(entry, path), media)
             })
             .ToArray();
 
@@ -234,24 +287,25 @@ public sealed record UiShellNavigation(
     /// </summary>
     public static (IReadOnlyList<UiNavigationItem> Links, IReadOnlyList<UiNavigationItem> Elsewhere) BuildProfile(
         bool learningVisible,
-        Func<string, bool> can)
+        Func<string, bool> can,
+        IReadOnlyCollection<WorkMediaType>? visibleMediaTypes = null)
     {
+        var media = visibleMediaTypes ?? WorkMediaTypes.All;
         var entries = UiNavigationCatalog.All.ToDictionary(entry => entry.Id, StringComparer.Ordinal);
         var links = UiNavigationCatalog.ProfileLinkIds
             .Where(id => id != UiNavigationCatalog.ProfileDevices.Id || UiNavigationCatalog.DevicesPageAvailable)
             .Select(id => entries[id])
-            .Where(entry => Visible(entry, learningVisible, can))
-            .Select(entry => ToItem(entry, false) with
-            {
-                Href = entry.Sections is null ? entry.Href : DrillInHref(entry.Id)
-            })
+            .Where(entry => Visible(entry, learningVisible, can, media))
+            .Select(entry => entry.Sections is null
+                ? ToItem(entry, false, media)
+                : ToItem(entry, false, media) with { Href = DrillInHref(entry.Id) })
             .ToArray();
 
         var elsewhere = UiNavigationCatalog.App.Concat(UiNavigationCatalog.Secondary)
-            .Where(entry => Visible(entry, learningVisible, can))
+            .Where(entry => Visible(entry, learningVisible, can, media))
             .Where(entry => !UiNavigationCatalog.MobilePrimaryIds.Contains(entry.Id)
                 && !UiNavigationCatalog.ProfileLinkIds.Contains(entry.Id))
-            .Select(entry => ToItem(entry, false))
+            .Select(entry => ToItem(entry, false, media))
             .ToArray();
 
         return (links, elsewhere);
@@ -263,25 +317,52 @@ public sealed record UiShellNavigation(
         var entry = UiNavigationCatalog.Secondary.FirstOrDefault(candidate =>
             candidate.Sections is not null
             && string.Equals(candidate.Id, sectionId, StringComparison.OrdinalIgnoreCase));
-        return entry is null || !Visible(entry, learningVisible: true, can)
+        return entry is null || !Allowed(entry, learningVisible: true, can)
             ? null
             : Expand(entry, PathString.Empty, can);
     }
 
     public static string DrillInHref(string sectionId) => $"/Profile/{sectionId}";
 
-    /// <summary>Library media-type tabs; exactly one is active on any Library page.</summary>
-    public static IReadOnlyList<UiNavigationItem> BuildLibraryTabs(PathString path) =>
-        UiNavigationCatalog.LibraryTabs.Select(entry => ToItem(entry, IsActive(entry, path))).ToArray();
+    /// <summary>
+    /// Library media-type tabs, only the media types the profile may browse; exactly one is active
+    /// on any Library page. A profile with a single visible type has nothing to switch between.
+    /// </summary>
+    public static IReadOnlyList<UiNavigationItem> BuildLibraryTabs(
+        PathString path,
+        IReadOnlyCollection<WorkMediaType>? visibleMediaTypes = null)
+    {
+        var media = visibleMediaTypes ?? WorkMediaTypes.All;
+        return UiNavigationCatalog.LibraryTabs
+            .Where(entry => ReachesMedia(entry, media))
+            .Select(entry => ToItem(entry, IsActive(entry, path), media))
+            .ToArray();
+    }
 
-    private static bool Visible(UiNavigationEntry entry, bool learningVisible, Func<string, bool> can) =>
+    private static bool Visible(
+        UiNavigationEntry entry,
+        bool learningVisible,
+        Func<string, bool> can,
+        IReadOnlyCollection<WorkMediaType> media) =>
+        Allowed(entry, learningVisible, can) && ReachesMedia(entry, media);
+
+    /// <summary>The account-level checks: the policy an account needs and whether Learning is on.</summary>
+    private static bool Allowed(UiNavigationEntry entry, bool learningVisible, Func<string, bool> can) =>
         (entry.Policy is null || can(entry.Policy)) && (!entry.RequiresLearning || learningVisible);
+
+    /// <summary>An entry that is not media-scoped is always reachable; otherwise one browsable media type is enough.</summary>
+    private static bool ReachesMedia(UiNavigationEntry entry, IReadOnlyCollection<WorkMediaType> media)
+    {
+        var types = UiNavigationCatalog.MediaTypesOf(entry).ToArray();
+        return types.Length == 0 || types.Any(media.Contains);
+    }
 
     private static UiNavigationItem Expand(UiNavigationEntry anchor, PathString path, Func<string, bool> can)
     {
+        // Admin and Settings pages are account-level, never scoped to a media type.
         var entries = anchor.Sections!
             .SelectMany(section => section.Entries)
-            .Where(entry => Visible(entry, learningVisible: true, can))
+            .Where(entry => Allowed(entry, learningVisible: true, can))
             .ToArray();
 
         // The most specific match wins, so "/Admin" (overview) is not active on "/Admin/Users".
@@ -308,6 +389,13 @@ public sealed record UiShellNavigation(
     private static UiNavigationItem ToItem(UiNavigationEntry entry, bool isActive) =>
         new(entry.Id, entry.LabelKey, entry.Href, entry.Icon, isActive, IsSection: entry.Sections is not null);
 
+    /// <summary>A hub of tabs (Library) opens the first tab the profile may browse.</summary>
+    private static UiNavigationItem ToItem(UiNavigationEntry entry, bool isActive, IReadOnlyCollection<WorkMediaType> media) =>
+        ToItem(entry, isActive) with
+        {
+            Href = entry.Tabs?.FirstOrDefault(tab => ReachesMedia(tab, media))?.Href ?? entry.Href
+        };
+
     private static bool IsActive(UiNavigationEntry entry, PathString path) => MatchLength(entry, path) >= 0;
 
     /// <summary>Length of the matching root, or -1 when the entry does not match the path.</summary>
@@ -325,7 +413,7 @@ public sealed record UiShellNavigation(
             return string.Equals(current, href.TrimEnd('/'), StringComparison.OrdinalIgnoreCase) ? href.Length : -1;
         }
 
-        return (entry.Matches ?? [href])
+        return UiNavigationCatalog.RootsOf(entry)
             .Where(root => path.StartsWithSegments(root, StringComparison.OrdinalIgnoreCase))
             .Select(root => root.Length)
             .DefaultIfEmpty(-1)

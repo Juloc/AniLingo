@@ -1,7 +1,9 @@
 @using Jularr.Web.Data
 @using Jularr.Web.Features.Localization
 @using Jularr.Web.Features.Learning
+@using Jularr.Web.Features.Shell
 @inject AppDbContext LearningNavigationDb
+@inject IAppShellService AppShell
 @{
     var ui = ViewData["UiTextBundle"] as UiTextBundle ?? UiTextBundle.English;
     var profileId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
@@ -12,10 +14,13 @@
             .HasAnyLearningEnabledAsync(profileId, Context.RequestAborted);
     }
 
+    // Hidden media types are absent from the shell, not greyed out (#598).
+    var media = await AppShell.GetMediaAccessAsync(User, Context.RequestAborted);
     var nav = UiShellNavigation.Build(
         Context.Request.Path,
         learningVisible,
-        policy => Jularr.Web.Features.Auth.JularrPolicies.Allows(User, policy));
+        policy => Jularr.Web.Features.Auth.JularrPolicies.Allows(User, policy),
+        media.VisibleMediaTypes);
 
     // Discover has its own search field; the shell search would repeat it.
     var showSearch = !Context.Request.Path.StartsWithSegments("/Discover", StringComparison.OrdinalIgnoreCase);

@@ -21,6 +21,7 @@ using Jularr.Web.Features.MediaMapping;
 using Jularr.Web.Features.Metadata;
 using Jularr.Web.Features.Operations;
 using Jularr.Web.Features.Progress;
+using Jularr.Web.Features.Shell;
 using Jularr.Web.Features.Sonarr;
 using Jularr.Web.Features.Tracking;
 using Jularr.Web.Features.Watchlist;
@@ -48,6 +49,7 @@ namespace Jularr.Tests;
 internal sealed class ManageSheetPageTestHost : IAsyncDisposable
 {
     public const string OwnerRoleHeader = "X-Test-Owner";
+    public const string MediaManagerRoleHeader = "X-Test-Media-Manager";
 
     private readonly string root;
     private readonly IHost host;
@@ -92,6 +94,11 @@ internal sealed class ManageSheetPageTestHost : IAsyncDisposable
                         services.AddAuthorization(options => JularrPolicies.Register(options));
                         services.AddSingleton<ViteAssetManifest>();
                         services.AddScoped<CurrentAccountContext>();
+                        // The shell sidebar derives its media-type destinations from the profile's
+                        // capabilities (#598); the policy defaults to "everything visible".
+                        services.AddSingleton(new MediaCapabilityStore(dataDirectory.FullName));
+                        services.AddScoped<IMediaCapabilityService, MediaCapabilityService>();
+                        services.AddScoped<IAppShellService, AppShellService>();
                         services.AddScoped<OperationRunner>();
                         services.AddScoped<EpisodeProgressService>();
                         services.AddScoped<FranchiseStore>();
@@ -202,6 +209,11 @@ internal sealed class ManageSheetPageTestHost : IAsyncDisposable
                                 claims.Add(new Claim(ClaimTypes.Role, AccountRoles.Owner));
                             }
 
+                            if (context.Request.Headers.ContainsKey(MediaManagerRoleHeader))
+                            {
+                                claims.Add(new Claim(ClaimTypes.Role, AccountRoles.MediaManager));
+                            }
+
                             context.User = new ClaimsPrincipal(new ClaimsIdentity(claims, "test"));
                             await next();
                         });
@@ -225,12 +237,17 @@ internal sealed class ManageSheetPageTestHost : IAsyncDisposable
     }
 
     /// <param name="asOwner">Adds the owner role claim to the simulated signed-in account.</param>
-    public async Task<string> GetHtmlAsync(string path, bool asOwner)
+    /// <param name="asMediaManager">Adds the media-manager role claim (ignored when <paramref name="asOwner"/>).</param>
+    public async Task<string> GetHtmlAsync(string path, bool asOwner, bool asMediaManager = false)
     {
         using var client = server.CreateClient();
         if (asOwner)
         {
             client.DefaultRequestHeaders.Add(OwnerRoleHeader, "true");
+        }
+        else if (asMediaManager)
+        {
+            client.DefaultRequestHeaders.Add(MediaManagerRoleHeader, "true");
         }
 
         using var response = await client.GetAsync(path);

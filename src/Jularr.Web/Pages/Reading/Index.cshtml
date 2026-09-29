@@ -15,21 +15,27 @@
 </header>
 
 <div class="reading-grid">
-    <a class="reading-card" href="/Novels">
-        <span class="reading-card-mark">文</span>
-        <div>
-            <strong>@ui["reading.novels.title"]</strong>
-            <span>@ui["reading.novels.description"]</span>
-        </div>
-        <span class="reading-arrow">→</span>
-    </a>
+    @if (Model.ShowNovels)
+    {
+        <a class="reading-card" href="/Novels">
+            <span class="reading-card-mark">文</span>
+            <div>
+                <strong>@ui["reading.novels.title"]</strong>
+                <span>@ui["reading.novels.description"]</span>
+            </div>
+            <span class="reading-arrow">→</span>
+        </a>
+    }
 
-    <a class="reading-card" href="/Manga">
-        <span class="reading-card-mark">漫</span>
-        <div>
-            <strong>@ui["reading.manga.title"]</strong>
-            <span>@ui["reading.manga.description"]</span>
-        </div>
-        <span class="reading-arrow">→</span>
-    </a>
+    @if (Model.ShowManga)
+    {
+        <a class="reading-card" href="/Manga">
+            <span class="reading-card-mark">漫</span>
+            <div>
+                <strong>@ui["reading.manga.title"]</strong>
+                <span>@ui["reading.manga.description"]</span>
+            </div>
+            <span class="reading-arrow">→</span>
+        </a>
+    }
 </div>

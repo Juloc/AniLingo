@@ -358,3 +358,31 @@ wins over the role default.** Features consume the resolved capability through
 `GetViewAsync`/`GetEffectiveCapabilityAsync` (request experience #597 — Instant vs Request gating),
 `GetVisibleMediaTypesAsync` (permission-derived shell #598 and discovery categories #595 — Hidden
 removes a media type entirely), and `EnsureCapabilityAsync` (server-side per-media-type guard).
+
+### 8.2 Permission-derived shell (#598)
+
+Navigation is derived from what a profile may browse, per media type, on top of the policy checks
+that already gate Admin and Settings. A **Hidden** media type is *absent*, never greyed out: a
+Books-only profile sees a pure book app.
+
+- **One resolution per request.** `IAppShellService` (`Features/Shell/AppShellService.cs`, scoped)
+  turns `IMediaCapabilityService.GetViewAsync` into a `ShellMediaAccess`: `VisibleMediaTypes`,
+  `Capability(type)`, `IsVisible(type)`, `IsAnyVisible(types)` and `CanOpen(routeRoot)`. The sidebar,
+  the Library tabs, Profile and the route gate share that one answer. **Discovery (#595) and the
+  request experience (#597) should consume `IAppShellService.GetMediaAccessAsync(User)`** instead of
+  re-reading the policy: `VisibleMediaTypes` is "which media types exist for this user".
+- **One route table.** `UiNavigationCatalog.LibraryTabs` (`Features/Localization/UiShellNavigation.cs`)
+  ties each consumer route root to the media types it serves (`UiMediaRoute`): `/Library` → Anime,
+  `/Novels` → Light Novel, `/Manga` → Manga, `/Books` → Book, and the `/Reading` hub → Manga or Light
+  Novel. The `library` sidebar destination is the hub of those tabs: shown while any tab is
+  reachable, opening the first reachable one. The Library tab strip lists only reachable tabs and is
+  hidden when fewer than two remain. Movies and series have no consumer pages yet; a tab for them is
+  one more catalog entry and the sidebar, tabs and gate follow.
+- **Route gate.** `Program.cs` registers `Conventions.AddMediaTypeGates()` (`Features/Shell/MediaTypeRouteGate.cs`),
+  which attaches an authorization filter to every page folder in that table. A profile that cannot
+  at least browse the type gets **404** (the type does not exist for them) before the page model is
+  constructed; the owner is unrestricted through the capability policy. The gate is not a second
+  policy: it reads the same `MediaCapabilityView`.
+- **Not yet media-scoped (follow-ups).** Home type chips and Continue rows, `/Discover` categories
+  (#595), Watchlist/Calendar/Franchise content, and the ClientApi surface (`/api/client/v1/...`) still
+  list every media type the data contains; they should narrow by `ShellMediaAccess`.
