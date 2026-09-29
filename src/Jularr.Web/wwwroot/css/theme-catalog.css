@@ -6,11 +6,24 @@
     --blossom-opacity: 0;
     --radius-card: 18px;
     --shadow-card: 0 12px 32px rgba(41, 91, 153, .10);
+    --clean-tint: #eaf3ff;
+    --clean-control-bg: color-mix(in srgb, var(--surface) 92%, var(--clean-tint));
+    --clean-control-hover: color-mix(in srgb, var(--surface-2) 84%, var(--accent-soft));
+    --clean-border: color-mix(in srgb, var(--border) 76%, var(--accent-border));
+    --clean-row-hover: color-mix(in srgb, var(--surface-2) 88%, var(--accent-soft));
+    --clean-player-overlay: color-mix(in srgb, #101720 92%, var(--accent));
+}
+
+/* Every clean theme uses the same functional layout as Original. These are shared component
+   surfaces, not page artwork: a new route inherits them without needing its own theme copy. */
+:root[data-app-theme-id^="clean-"] body {
+    background: color-mix(in srgb, var(--bg) 94%, var(--clean-tint));
 }
 
 :root[data-app-theme-id^="clean-"] .sidebar {
-    background: color-mix(in srgb, var(--sidebar-bg) 90%, #fff 10%);
-    border-inline-end-color: color-mix(in srgb, var(--border) 72%, #9cc8ff);
+    background: color-mix(in srgb, var(--sidebar-bg) 92%, var(--clean-tint));
+    border-inline-end-color: var(--clean-border);
+    backdrop-filter: none;
 }
 
 :root[data-app-theme-id^="clean-"] .sidebar::after {
@@ -21,6 +34,147 @@
     filter: none;
 }
 
+:root[data-app-theme-id^="clean-"] :is(.sidebar-footer, .theme-cycle-button, .mobile-nav, .mobile-topbar) {
+    background: var(--clean-control-bg);
+    border-color: var(--clean-border);
+    backdrop-filter: none;
+}
+
+:root[data-app-theme-id^="clean-"] :is(.nav-item, .theme-cycle-button, .mobile-nav-item):hover {
+    background: var(--clean-control-hover);
+}
+
+:root[data-app-theme-id^="clean-"] :is(.button, .chip, .review-button, .reader-inline-action, .reader-setting-reset) {
+    border-color: var(--clean-border);
+    background: var(--clean-control-bg);
+}
+
+:root[data-app-theme-id^="clean-"] :is(.button, .chip, .review-button, .reader-inline-action, .reader-setting-reset):hover {
+    background: var(--clean-control-hover);
+}
+
+:root[data-app-theme-id^="clean-"] .button-primary,
+:root[data-app-theme-id^="clean-"] .chip.selected {
+    background: var(--accent);
+}
+
+:root[data-app-theme-id^="clean-"] :is(
+    input:not([type]),
+    input[type="text"],
+    input[type="search"],
+    input[type="email"],
+    input[type="url"],
+    input[type="number"],
+    input[type="password"],
+    select,
+    textarea) {
+    border-color: var(--clean-border);
+    background: var(--clean-control-bg);
+}
+
+:root[data-app-theme-id^="clean-"] :is(input, select, textarea):focus-visible {
+    outline-color: var(--focus-ring);
+    border-color: var(--accent-border);
+}
+
+:root[data-app-theme-id^="clean-"] :is(
+    .panel,
+    .metric-card,
+    .review-card,
+    .empty-state,
+    .root-row,
+    .episode-row,
+    .user-admin-card,
+    .term-table,
+    .status-list,
+    .toast,
+    .media-facts,
+    .media-facts-lang-chip,
+    .auth-card,
+    .acquisition-signal-card,
+    .usenet-card,
+    .preview-card,
+    .book-card,
+    .book-opds-card,
+    .book-sab-panel,
+    .book-source-panel,
+    .book-shelf-card,
+    .calendar-main-card,
+    .calendar-sidebar-card,
+    .calendar-list-card,
+    .discover-card,
+    .discover-manga-import-card,
+    .kana-card,
+    .sentence-card,
+    .manga-card,
+    .manga-import-panel,
+    .novel-admin-panel,
+    .novel-import-panel,
+    .novel-library-card,
+    .novel-panel,
+    .novel-note-card,
+    .watchlist-card,
+    .metadata-panel,
+    .preparation-panel,
+    .subtitle-source-panel,
+    .reading-progress-card,
+    .franchise-links-panel,
+    .manage-sheet-dialog,
+    .watch-manage-dialog) {
+    border-color: var(--clean-border);
+    box-shadow: var(--shadow-card);
+}
+
+:root[data-app-theme-id^="clean-"] :is(
+    .root-row,
+    .episode-row,
+    .term-row,
+    .status-list > div,
+    .user-progress-item,
+    .acquisition-signal-card,
+    .discover-card,
+    .watchlist-card,
+    .novel-library-card,
+    .manga-card,
+    .book-card,
+    .calendar-list-card):hover {
+    background: var(--clean-row-hover);
+    transform: none;
+}
+
+:root[data-app-theme-id^="clean-"] table {
+    border-color: var(--clean-border);
+    background: var(--surface);
+}
+
+:root[data-app-theme-id^="clean-"] :is(table th, table td) {
+    border-color: var(--clean-border);
+}
+
+:root[data-app-theme-id^="clean-"] table tbody tr:hover {
+    background: var(--clean-row-hover);
+}
+
+:root[data-app-theme-id^="clean-"] :is(
+    [role="tablist"],
+    .reader-settings-tabs,
+    .reader-contents-tabs,
+    .reader-segmented,
+    .reader-mode-switch) {
+    border-color: var(--clean-border);
+    background: var(--clean-control-bg);
+}
+
+:root[data-app-theme-id^="clean-"] :is(
+    [role="tab"][aria-selected="true"],
+    .reader-settings-tab.is-active,
+    .reader-contents-tabs button[aria-selected="true"],
+    .reader-segmented button[aria-pressed="true"],
+    .reader-mode-switch button.is-active) {
+    background: var(--accent-soft);
+    color: var(--accent-text);
+}
+
 :root[data-app-theme-id^="clean-"] .panel,
 :root[data-app-theme-id^="clean-"] .metric-card,
 :root[data-app-theme-id^="clean-"] .media-poster,
@@ -28,12 +182,46 @@
     box-shadow: var(--shadow-card);
 }
 
+/* Keep posters and video content real; remove only the ornamental motion around them. */
+:root[data-app-theme-id^="clean-"] .media-card:hover .media-poster {
+    transform: none;
+}
+
 /* Reader and player keep their controls and user-selected media settings. Only their automatic
    application chrome follows the clean theme, without the original paper/artwork treatment. */
 :root[data-app-theme-id^="clean-"] .reader-frame {
     --reader-surface: var(--surface);
     --reader-surface-2: var(--surface-2);
-    --reader-border: var(--border);
+    --reader-border: var(--clean-border);
+}
+
+:root[data-app-theme-id^="clean-"] :is(
+    .reader-menu,
+    .reader-contents,
+    .reader-sheet-card,
+    .reader-settings-panel,
+    .reader-overflow-menu) {
+    border-color: var(--clean-border);
+    background: var(--clean-control-bg);
+    box-shadow: var(--shadow-card);
+}
+
+:root[data-app-theme-id^="clean-"] :is(
+    .reader-menu > button,
+    .reader-menu > a,
+    .reader-menu > form > button,
+    .reader-contents-row,
+    .reader-sheet-choices > button) {
+    border-color: var(--clean-border);
+}
+
+:root[data-app-theme-id^="clean-"] :is(
+    .reader-menu > button:hover,
+    .reader-menu > a:hover,
+    .reader-menu > form > button:hover,
+    .reader-contents-row:hover,
+    .reader-sheet-choices > button:hover) {
+    background: var(--clean-row-hover);
 }
 
 :root[data-app-theme-id^="clean-"] .book-reader-page[data-paper-style="auto"] {
@@ -46,8 +234,23 @@
 }
 
 :root[data-app-theme-id^="clean-"] .player-panel {
-    border-color: var(--border);
+    border-color: var(--clean-border);
     box-shadow: var(--shadow-card);
+}
+
+:root[data-app-theme-id^="clean-"] :is(.player-settings, .player-learning-sheet) {
+    border-color: color-mix(in srgb, var(--accent) 38%, rgba(255, 255, 255, .26));
+    background: var(--clean-player-overlay);
+    box-shadow: var(--shadow-card);
+}
+
+:root[data-app-theme-id^="clean-"] :is(.player-icon-button:hover, .player-icon-button:focus-visible, .player-action-button:hover) {
+    background: color-mix(in srgb, var(--accent) 26%, rgba(255, 255, 255, .12));
+}
+
+:root[data-app-theme-id^="clean-"] .player-settings-actions .button {
+    border-color: color-mix(in srgb, var(--accent) 42%, rgba(255, 255, 255, .2));
+    background: color-mix(in srgb, var(--accent) 18%, rgba(255, 255, 255, .08));
 }
 
 .brand-mark-theme {
@@ -111,16 +314,19 @@
 :root[data-app-theme-id="clean-summit"] {
     --radius-card: 20px;
     --shadow-card: 0 10px 28px rgba(49, 108, 181, .09);
+    --clean-tint: #e7f2ff;
 }
 
 :root[data-app-theme-id="clean-orbit"] {
     --radius-card: 24px;
     --shadow-card: 0 14px 36px rgba(36, 111, 204, .12);
+    --clean-tint: #eef0ff;
 }
 
 :root[data-app-theme-id="clean-horizon"] {
     --radius-card: 16px;
     --shadow-card: 0 12px 30px rgba(25, 73, 134, .14);
+    --clean-tint: #e6f2f8;
 }
 
 :root[data-app-theme-id^="clean-"][data-app-theme="dark"] {
