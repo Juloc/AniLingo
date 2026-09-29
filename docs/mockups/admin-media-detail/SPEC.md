@@ -36,6 +36,8 @@ Show:
 - active acquisition state when relevant
 - current default acquisition profile
 - desired/default language policy in compact form
+- **total local storage used by this medium** in a prominent compact summary
+- compact availability/coverage summary appropriate to the media type
 
 Primary monitoring control:
 - Anime/Series: monitor/unmonitor the whole series
@@ -155,6 +157,24 @@ Overall states may include:
 - Failed
 
 Do not flood the row with many decorative tags. Language/quality information must remain compact and readable.
+
+### Configurable columns
+Desktop data rows support a **Columns** control. The admin can choose which useful columns are visible without changing the underlying data model.
+
+Candidate columns include:
+- release/air date
+- monitoring
+- status
+- quality
+- audio languages
+- subtitle languages
+- file count
+- total size
+- release group/source
+- profile/effective profile
+- active acquisition state
+
+The default column set must remain useful out of the box. Column customization is a presentation preference, not a per-row data mutation.
 
 ## 7. Expand episode → local files
 
@@ -291,7 +311,30 @@ Anime additionally supports the Standard/AniList display grouping.
 ### Movie
 V1 uses medium-level monitoring/search.
 
-Show the local file/version(s) directly beneath the medium when expanded or in the main content area.
+Movies do **not** use Seasons/Episodes. The main content directly shows the known/local **version list** for the movie.
+
+Examples:
+- 4K HDR Remux
+- 1080p Blu-ray
+- 1080p WEB-DL
+- 720p WEB-DL
+- other configured versions/editions
+
+Each version row can show:
+- monitoring state
+- availability
+- quality/resolution
+- source/container
+- audio languages
+- subtitle languages
+- file count
+- storage size
+- active search/download/import state
+- actions
+
+A version expands inline to its real local file(s) and technical details, exactly like an expanded Episode shows its files.
+
+The version list is visible directly in the main view; do not hide it behind a separate Files page.
 
 Shared actions:
 - monitoring
@@ -304,12 +347,38 @@ Shared actions:
 ### Book / Light Novel
 V1 uses medium-level monitoring/search.
 
-Show local editions/files and language/version information without requiring chapter-level monitoring in V1.
+The main content shows the medium's **editions/volumes and local files directly**.
+
+For a normal Book:
+- show editions such as original, translated, print/digital or other known editions;
+- an edition expands to its actual EPUB/PDF/AZW3/etc. files;
+- show language, format, source, size and availability compactly.
+
+For a Light Novel:
+- show volumes in the main hierarchy;
+- a volume expands to its actual local edition/file(s);
+- show language/translation provenance where useful;
+- chapter-level monitoring is not required in V1.
+
+The UI may summarize chapter ranges/counts as information, but V1 does not create an independent chapter monitoring model.
 
 ### Manga
 V1 uses medium-level monitoring/search.
 
-Show local editions/files/volumes as content information, but do not require chapter-level monitoring for V1.
+The main hierarchy shows **volumes directly**.
+
+Each volume can show:
+- monitoring state
+- chapter range/count
+- availability
+- language(s)
+- file count
+- size
+- source/format where useful
+
+A volume expands inline to the real CBZ/CBR/PDF/etc. files and their details.
+
+Chapter information can be shown inside the expanded volume, but chapter-level monitoring is not required for V1.
 
 ### Audiobook
 V1 uses medium-level monitoring/search.
@@ -318,7 +387,66 @@ Show local audio version/files and language/narration information. Track-level m
 
 These V1 limits prevent the first implementation from creating separate complex monitoring models for every media type.
 
-## 13. Information density
+## 13. Mobile / narrow layout
+
+Mobile must preserve the same information architecture and actions as Desktop, but it is **not a shrunk desktop table**.
+
+### Touch and sizing
+- minimum touch target: 44×44 CSS px;
+- primary buttons/toggles must be comfortably thumb-sized;
+- episode/volume/version rows are taller than desktop rows;
+- important text must not require zooming;
+- no tiny icon-only clusters for primary actions;
+- overflow actions may move into a clear More menu.
+
+### Header on mobile
+Keep the same core information, rearranged into large touch-friendly summary cards:
+- media identity/poster/title
+- monitoring/coverage
+- missing count
+- **total storage used**
+- active profile
+- languages
+
+Long descriptions may collapse behind `More` rather than pushing operational content too far down.
+
+### Navigation
+The same detail sections remain available, but secondary tabs may collapse under `More` when width is limited.
+
+### Hierarchy on mobile
+- Season/Volume/Edition/Version rows become stacked touch-friendly cards/rows.
+- Expanding still happens inline.
+- Real files remain visible inside the expanded unit.
+- Do not open a separate page just because the screen is narrow.
+- Summary information can be combined into fewer fields than Desktop, as long as no operational state becomes ambiguous.
+
+### Mobile row priority
+Show first:
+1. identity/number/title
+2. monitoring state
+3. availability/search state
+4. quality/language summary
+5. file count/size
+6. expansion/action affordance
+
+Less important columns are moved into the expanded details or More menu.
+
+### Mobile actions
+Automatic search, Automatic…, Manual, Re-match/Edit and Delete remain available.
+
+Frequently used actions can use a sticky bottom action bar or large contextual buttons. Destructive actions stay visually separate and require confirmation.
+
+### Responsive continuity
+Switching between Desktop and Mobile must not change:
+- canonical media identity
+- monitoring state
+- inherited profile/language settings
+- selected provider grouping
+- current acquisition state
+
+Only layout and information density change.
+
+## 14. Information density
 
 The main screen should remain understandable without many separate tabs.
 
@@ -336,7 +464,7 @@ Avoid:
 
 Additional tabs should exist only when a workflow cannot be represented clearly in the hierarchy.
 
-## 14. State requirements
+## 15. State requirements
 
 The screen must account for:
 - loading
@@ -352,7 +480,7 @@ The screen must account for:
 - storage unavailable
 - unauthorized action
 
-## 15. V1 acceptance criteria
+## 16. V1 acceptance criteria
 
 V1 is complete only when:
 
@@ -361,6 +489,8 @@ V1 is complete only when:
 - season monitoring can represent Partial;
 - Anime/Series episodes can be monitored with one click;
 - episode rows merge the useful availability/quality/language state;
+- desktop rows support a configurable Columns presentation;
+- total local storage for the medium is visible in the header/summary;
 - episodes can expand to real individual local files/versions;
 - every acquisition level exposes consistent Automatic / Automatic… / Manual actions where applicable;
 - Automatic uses inherited defaults immediately;
@@ -371,4 +501,9 @@ V1 is complete only when:
 - switching Anime grouping changes only the view/mapping, never canonical stored episode identity;
 - searches/actions from provider-derived groups resolve back to canonical episodes;
 - active search/download/import states can update live without resetting the page;
-- Movie/Book/LN/Manga/Audiobook stay medium-level for monitoring in V1 instead of inventing unnecessary child-monitoring models.
+- Movie/Book/LN/Manga/Audiobook stay medium-level for monitoring in V1 instead of inventing unnecessary child-monitoring models;
+- Movie shows its version list directly in the main content and each version can expand to real files;
+- Book shows editions/files directly;
+- Light Novel and Manga show volumes directly with expandable real files;
+- Mobile uses touch-sized controls and stacked responsive rows rather than a compressed desktop table;
+- Mobile preserves the same actions and state while summarizing lower-priority columns into expanded details/More menus.
