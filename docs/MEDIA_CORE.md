@@ -11,7 +11,7 @@ PostgreSQL migration (`Data/Migrations/*_MediaCoreFoundation`), the read/write
 service surface (`Features/MediaCore`), the non-invasive bridge to the existing
 per-type records, and a focused test suite. The build is warning-free,
 `dotnet ef migrations has-pending-model-changes` is clean, and the tests run
-against an ephemeral `postgres:16`.
+against an ephemeral `postgres:18`.
 
 This is the identity/structure foundation the other #556 children (Movie/TV
 libraries, discovery, instant-play, requests, shell) build on. It **unifies** the
