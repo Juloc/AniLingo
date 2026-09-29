@@ -5,6 +5,7 @@ using Jularr.Web.Features.ReaderPreferences;
 using Jularr.Web.Features.Audiobooks;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Books;
+using Jularr.Web.Features.Collections;
 using Jularr.Web.Features.Learning;
 using Jularr.Web.Features.Learning.Courses;
 using Jularr.Web.Features.Learning.Curriculum;
@@ -124,6 +125,10 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
 
     // Universal media core workflow (#432): append-only identity-resolution history (merge/split/reassign).
     public DbSet<WorkIdentityChange> WorkIdentityChanges => Set<WorkIdentityChange>();
+
+    // Smart & manual collections (#427): user-curated and rule-driven cross-media shelves over works.
+    public DbSet<Collection> Collections => Set<Collection>();
+    public DbSet<CollectionItem> CollectionItems => Set<CollectionItem>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -779,6 +784,30 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasOne<Audiobook>().WithMany().HasForeignKey(x => x.AudiobookId).OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(x => new { x.ProfileId, x.AudiobookId }).IsUnique();
             entity.HasIndex(x => new { x.ProfileId, x.UpdatedAt });
+        });
+
+        modelBuilder.Entity<Collection>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.ProfileId).HasMaxLength(80);
+            entity.Property(x => x.Kind).HasConversion<int>();
+            entity.Property(x => x.Name).HasMaxLength(200);
+            entity.Property(x => x.Description).HasMaxLength(2000);
+            // The nested ALL/ANY rule tree is stored as JSON; jsonb keeps it queryable and compact.
+            entity.Property(x => x.RuleJson).HasColumnType("jsonb");
+            entity.HasIndex(x => new { x.ProfileId, x.SortOrder });
+        });
+
+        modelBuilder.Entity<CollectionItem>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Source).HasConversion<int>();
+            entity.Property(x => x.MatchReason).HasMaxLength(4000);
+            entity.HasOne<Collection>().WithMany().HasForeignKey(x => x.CollectionId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<Work>().WithMany().HasForeignKey(x => x.WorkId).OnDelete(DeleteBehavior.Cascade);
+            // A work appears at most once per collection, and membership reads are ordered by position.
+            entity.HasIndex(x => new { x.CollectionId, x.WorkId }).IsUnique();
+            entity.HasIndex(x => new { x.CollectionId, x.Position });
         });
     }
 }
