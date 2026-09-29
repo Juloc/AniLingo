@@ -394,6 +394,7 @@ builder.Services.AddScoped<OfflineLibraryQueries>();
 builder.Services.AddScoped<OfflineLibraryProgressReconciler>();
 builder.Services.AddScoped<OfflineLibraryBookmarkReconciler>();
 builder.Services.AddScoped<ClientApiOfflineLibraryService>();
+builder.Services.AddOfflinePrefetch();
 builder.Services.AddScoped<Jularr.Web.Features.Speech.TtsPreferencesService>();
 builder.Services.AddSingleton(_ => new Jularr.Web.Features.Speech.SpeechModelManifestStore("/data"));
 builder.Services.AddSingleton<ReaderThemeCatalog>();
@@ -670,6 +671,7 @@ app.MapClientApiPlaybackPlanV1();
 app.MapAcquisitionApiV1();
 app.MapClientApiOfflineV1();
 app.MapClientApiOfflineLibraryV1();
+app.MapClientApiOfflinePrefetchV1();
 app.MapHub<PlaybackSessionHub>(PlaybackSessionHub.Route)
     .AllowAnonymous();
 app.MapDiscoveryWellKnown();

@@ -378,6 +378,40 @@ where it still needs to be placed. Whole-book download only for part 1;
 per-chapter selection reuses the same manifest/diff/queue machinery and is
 part 2 scope.
 
+## Smart prefetch (#415)
+
+Server-side policy and selection that keeps the next episodes / chapters
+ready on a device within a hard storage cap. It reuses this contract and the
+bounded playback downloads (#225); there is no second cache, queue or
+progress store. **Off by default.**
+
+- **Policy** (`OfflinePrefetchPolicy`, per profile, JSON store
+  `/data/offline/prefetch/{profileId}.json`, no migration): on/off, cap,
+  scope (episodes / chapters), how many items ahead per series/work, and
+  whether metered connections are allowed (off by default). Edited at
+  `Settings → Downloads → Smart prefetch` (`Pages/Settings/Prefetch`). A
+  missing or damaged file means Off.
+- **Selection** (`OfflinePrefetchCandidateSource`): from canonical
+  progress only — Continue Watching plus `EpisodeSequence` for following
+  unwatched episodes, `NovelProgress` for the current/next unread chapters.
+  Ranked by depth (the item to continue with for every series/work first),
+  then by recent activity. Chapter sizes are estimated from text length;
+  episodes use the media file size.
+- **Decision** (`OfflinePrefetchPlanner`, pure): given the policy, the
+  candidates and the device inventory, it returns downloads and evictions.
+  Prefetched bytes never exceed the cap (or what the device limit leaves
+  after explicit downloads). **Only `prefetched` items are ever evicted,
+  least recently used first**, never running downloads and never items that
+  are wanted next; `explicit` items are neither evicted nor counted against
+  the cap. Lowering the cap shrinks prefetched content the same way.
+- **Client contract** (`ClientApiOfflinePrefetch.cs`): the device reports its
+  inventory (`kind`, `itemId`, `sizeBytes`, `origin`, `lastUsedUtc`,
+  `active`) and its `connection`; the server returns the plan. The server
+  keeps no copy of the inventory. Clients must record plan downloads with
+  origin `prefetched` and flip an item to `explicit` when the user saves or
+  keeps it. Executing the plan on Android (WorkManager trigger, origin
+  tracking in `OfflineStore`) is not implemented yet.
+
 ## Migration
 
 One migration, `20260926144053_AddOfflineLibrarySync`: two columns on
