@@ -376,32 +376,12 @@ The detailed screen spec defines live service health, CPU/RAM/GPU/network/load, 
 
 ## 19. Admin media detail
 
-Admin media detail is substantially richer than User detail.
+Admin Media Detail uses a direct hierarchy-first V1 instead of distributing the same information across many technical tabs.
 
-For Anime/Series/Movie:
-- canonical metadata and external IDs
-- episodes/seasons
-- local files
-- technical tracks
-- versions/releases
-- audio/subtitle languages
-- release group/source/quality
-- acquisition profile and scoring result
-- remux/transcode-relevant information
-- subtitle state
-- metadata provenance
-- AniList/TMDB/etc. links
-- refresh/reidentify actions
+Binding screen specification:
+- `docs/mockups/admin-media-detail/SPEC.md`
 
-For Book/LN/Manga:
-- editions/languages
-- volumes/chapters
-- source/imported files
-- translation provenance/status
-- artwork
-- metadata identities
-
-Admin actions must be explicit and destructive actions require confirmation.
+V1 centers on monitoring, automatic/manual acquisition, expandable Anime/Series seasons and episodes, and real per-file details. Anime may switch between Standard and AniList display groupings, but provider groupings are views/mappings over the canonical stored episode structure and never create parallel persisted episode models.
 
 ## 20. Wanted / Missing
 
