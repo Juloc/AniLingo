@@ -18,7 +18,8 @@ public enum MediaAcquisitionKind
     LightNovel,
     Book,
     Movie,
-    Tv
+    Tv,
+    Audiobook
 }
 
 /// <summary>Who may use the manual add controls (file upload, URL, NZB, inbox import).</summary>
@@ -163,6 +164,7 @@ public static class AcquisitionAccessNames
         MediaAcquisitionKind.Book => "book",
         MediaAcquisitionKind.Movie => "movie",
         MediaAcquisitionKind.Tv => "tv",
+        MediaAcquisitionKind.Audiobook => "audiobook",
         _ => throw new ArgumentOutOfRangeException(nameof(kind))
     };
 
@@ -174,6 +176,7 @@ public static class AcquisitionAccessNames
         "book" => MediaAcquisitionKind.Book,
         "movie" => MediaAcquisitionKind.Movie,
         "tv" => MediaAcquisitionKind.Tv,
+        "audiobook" => MediaAcquisitionKind.Audiobook,
         _ => throw new ArgumentException($"Unknown media kind '{value}'.", nameof(value))
     };
 
@@ -186,6 +189,9 @@ public static class AcquisitionAccessNames
         MediaAcquisitionKind.Book => WorkMediaType.Book,
         MediaAcquisitionKind.Movie => WorkMediaType.Movie,
         MediaAcquisitionKind.Tv => WorkMediaType.Series,
+        // An audiobook is an audio edition of a book, so it lives on the same Book capability matrix
+        // (#436) and the media core represents it as a Book Work (#440).
+        MediaAcquisitionKind.Audiobook => WorkMediaType.Book,
         _ => throw new ArgumentOutOfRangeException(nameof(kind))
     };
 
