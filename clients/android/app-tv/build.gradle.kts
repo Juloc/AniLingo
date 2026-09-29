@@ -17,6 +17,8 @@ android {
 
     buildFeatures {
         compose = true
+        // Self-update (#490) compares BuildConfig.VERSION_NAME against the latest GitHub release.
+        buildConfig = true
     }
 
     compileOptions {
@@ -31,6 +33,7 @@ dependencies {
     implementation(project(":core-player"))
     implementation(project(":core-design"))
     implementation(project(":core-session"))
+    implementation(project(":core-update"))
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.core.ktx)

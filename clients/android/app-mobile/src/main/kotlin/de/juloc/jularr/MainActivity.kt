@@ -39,6 +39,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import de.juloc.jularr.core.api.HttpJularrClientApi
+import de.juloc.jularr.core.update.AppVariant
+import de.juloc.jularr.core.update.UpdateCheckResult
+import de.juloc.jularr.core.update.UpdateManager
+import de.juloc.jularr.core.update.UpdatePreferences
 import de.juloc.jularr.mobile.JularrWebShell
 import de.juloc.jularr.mobile.MobileCompatibilityGate
 import de.juloc.jularr.mobile.MobileCompatibilityState
@@ -46,6 +50,8 @@ import de.juloc.jularr.mobile.NativePlayerScreen
 import de.juloc.jularr.mobile.ServerOrigin
 import de.juloc.jularr.mobile.ServerSettings
 import de.juloc.jularr.mobile.TtsSettingsScreen
+import de.juloc.jularr.mobile.UpdatePromptCard
+import de.juloc.jularr.mobile.UpdateScreen
 import de.juloc.jularr.mobile.WebSession
 import de.juloc.jularr.mobile.offline.OfflineDownloads
 import de.juloc.jularr.mobile.offline.OfflineDownloadsScreen
@@ -65,6 +71,7 @@ class MainActivity : ComponentActivity() {
     private var restoredWebOrigin: String? = null
     private val downloadsRequest = mutableIntStateOf(0)
     private val libraryDownloadsRequest = mutableIntStateOf(0)
+    private val updateCheckRequest = mutableIntStateOf(0)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -82,6 +89,7 @@ class MainActivity : ComponentActivity() {
                     restoredWebOrigin = restoredWebOrigin,
                     downloadsRequest = downloadsRequest.intValue,
                     libraryDownloadsRequest = libraryDownloadsRequest.intValue,
+                    updateCheckRequest = updateCheckRequest.intValue,
                     onWebViewChanged = { webView = it },
                     onOriginChanged = { activeOrigin = it },
                     onFinish = ::finish,
@@ -102,6 +110,9 @@ class MainActivity : ComponentActivity() {
         if (intent?.action == LibraryNotifications.ActionOpenLibraryDownloads) {
             libraryDownloadsRequest.intValue += 1
         }
+        if (intent?.action == ActionCheckUpdates) {
+            updateCheckRequest.intValue += 1
+        }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -116,6 +127,8 @@ class MainActivity : ComponentActivity() {
     private companion object {
         const val KeyWebViewState = "jularr.webview.state"
         const val KeyWebViewOrigin = "jularr.webview.origin"
+        // Matches the "Check for updates" launcher shortcut in res/xml/shortcuts.xml (#490).
+        const val ActionCheckUpdates = "de.juloc.jularr.action.CHECK_UPDATES"
     }
 }
 
@@ -132,6 +145,7 @@ private fun JularrMobileApp(
     restoredWebOrigin: String?,
     downloadsRequest: Int,
     libraryDownloadsRequest: Int,
+    updateCheckRequest: Int,
     onWebViewChanged: (WebView?) -> Unit,
     onOriginChanged: (String?) -> Unit,
     onFinish: () -> Unit,
@@ -142,12 +156,15 @@ private fun JularrMobileApp(
     val offlineSnapshot by offline.state.collectAsState()
     val library = remember { LibraryDownloads.get(context.applicationContext) }
     val librarySnapshot by library.state.collectAsState()
+    val updatePreferences = remember { UpdatePreferences(context.applicationContext) }
     var originValue by rememberSaveable { mutableStateOf(settings.getOrigin()) }
     var activeEpisodeId by rememberSaveable { mutableStateOf<String?>(null) }
     var showDownloads by rememberSaveable { mutableStateOf(false) }
     var showLibraryDownloads by rememberSaveable { mutableStateOf(false) }
     var currentWorkId by remember { mutableStateOf<String?>(null) }
     var showTtsSettings by rememberSaveable { mutableStateOf(false) }
+    var showUpdateScreen by rememberSaveable { mutableStateOf(false) }
+    var updatePromptInfo by remember { mutableStateOf<UpdateCheckResult.UpdateAvailable?>(null) }
     var confirmServerChange by remember { mutableStateOf(false) }
     var accountCheck by remember { mutableIntStateOf(0) }
     var securityError by remember { mutableStateOf<String?>(null) }
@@ -164,7 +181,39 @@ private fun JularrMobileApp(
     LaunchedEffect(libraryDownloadsRequest) {
         if (libraryDownloadsRequest > 0) {
             activeEpisodeId = null
+            showUpdateScreen = false
             showLibraryDownloads = true
+        }
+    }
+
+    LaunchedEffect(updateCheckRequest) {
+        if (updateCheckRequest > 0) {
+            updatePromptInfo = null
+            showUpdateScreen = true
+        }
+    }
+
+    // Automatic check (#490): only when enabled and the last check is stale; never
+    // blocks normal app startup, and a network/API failure here is silently ignored
+    // (the user can always use the manual "Check for updates" shortcut/screen instead).
+    LaunchedEffect(Unit) {
+        if (!updatePreferences.checksEnabled ||
+            !UpdatePreferences.isCheckDue(updatePreferences.lastCheckedAtMillis)
+        ) {
+            return@LaunchedEffect
+        }
+
+        updatePreferences.lastCheckedAtMillis = System.currentTimeMillis()
+        val result = try {
+            withContext(Dispatchers.IO) {
+                UpdateManager().checkForUpdate(BuildConfig.VERSION_NAME, AppVariant.Mobile)
+            }
+        } catch (exception: Exception) {
+            null
+        }
+
+        if (result is UpdateCheckResult.UpdateAvailable && updatePreferences.shouldPrompt(result.version)) {
+            updatePromptInfo = result
         }
     }
 
@@ -346,7 +395,9 @@ private fun JularrMobileApp(
                     )
                 }
 
-                BackHandler(enabled = activeEpisodeId == null && !showDownloads && !showLibraryDownloads) {
+                BackHandler(
+                    enabled = activeEpisodeId == null && !showDownloads && !showLibraryDownloads && !showUpdateScreen,
+                ) {
                     when {
                         currentWebView?.canGoBack() == true -> currentWebView?.goBack()
                         else -> onFinish()
@@ -398,6 +449,30 @@ private fun JularrMobileApp(
                 origin = origin.value,
                 downloads = library,
                 onClose = { showLibraryDownloads = false },
+            )
+        }
+
+        if (showUpdateScreen) {
+            UpdateScreen(
+                initialResult = updatePromptInfo,
+                onClose = { showUpdateScreen = false },
+            )
+        } else if (
+            updatePromptInfo != null &&
+            activeEpisodeId == null &&
+            !showDownloads &&
+            !showLibraryDownloads
+        ) {
+            UpdatePromptCard(
+                info = updatePromptInfo!!,
+                onUpdateNow = { showUpdateScreen = true },
+                onLater = {
+                    updatePreferences.dismissedVersion = updatePromptInfo?.version
+                    updatePromptInfo = null
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(16.dp),
             )
         }
     }

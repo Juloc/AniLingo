@@ -75,6 +75,27 @@
     <string name="tv_message_episode_unavailable_title">Episode unavailable</string>
     <string name="tv_message_episode_unavailable_body">Could not load this episode.</string>
 
+    <!-- Self-update (#490) -->
+    <string name="tv_update_section_title">Updates</string>
+    <string name="tv_update_current_version">Current version: %1$s</string>
+    <string name="tv_update_toggle_automatic_checks">Automatically check for updates</string>
+    <string name="tv_update_action_check_now">Check for updates</string>
+    <string name="tv_update_status_checking">Checking for updates…</string>
+    <string name="tv_update_status_up_to_date">Jularr is up to date.</string>
+    <string name="tv_update_status_error">Could not check for updates: %1$s</string>
+    <string name="tv_update_available_title">Update available: v%1$s</string>
+    <string name="tv_update_available_size">%1$s download</string>
+    <string name="tv_update_action_update_now">Update now</string>
+    <string name="tv_update_action_later">Later</string>
+    <string name="tv_update_downloading">Downloading update… %1$d%%</string>
+    <string name="tv_update_downloading_indeterminate">Downloading update…</string>
+    <string name="tv_update_ready_title">Update ready to install</string>
+    <string name="tv_update_ready_body">Jularr v%1$s has been downloaded and verified.</string>
+    <string name="tv_update_action_install">Install</string>
+    <string name="tv_update_permission_required">Allow Jularr TV to install updates in the system settings that just opened, then select Install again.</string>
+    <string name="tv_update_failed_checksum">The downloaded update failed verification. Please retry.</string>
+    <string name="tv_update_action_retry">Retry</string>
+
     <!-- Anime / episode detail -->
     <string name="tv_anime_episode_count">%1$d episodes</string>
     <string name="tv_anime_season_header">Season %1$d</string>

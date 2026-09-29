@@ -25,6 +25,7 @@ include(
     ":core-session",
     ":core-design",
     ":core-tts",
+    ":core-update",
 )
 
 // The sherpa-onnx offline-neural TTS runtime is not published to Maven Central (see

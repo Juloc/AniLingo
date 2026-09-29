@@ -3,6 +3,8 @@ package de.juloc.jularr.tv
 import android.net.Uri
 import android.os.SystemClock
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.OptIn
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,7 +22,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Button
@@ -34,11 +38,18 @@ import de.juloc.jularr.core.session.PlaybackCommand
 import de.juloc.jularr.core.session.PlaybackPairing
 import de.juloc.jularr.core.session.PlaybackSessionToken
 import de.juloc.jularr.core.session.PlaybackSessionUpdate
+import de.juloc.jularr.core.update.AppVariant
+import de.juloc.jularr.core.update.UpdateCheckResult
+import de.juloc.jularr.core.update.UpdateDownloadResult
+import de.juloc.jularr.core.update.UpdateInstall
+import de.juloc.jularr.core.update.UpdateManager
+import de.juloc.jularr.core.update.UpdatePreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.media3.common.util.UnstableApi
+import java.io.File
 import java.net.URI
 
 @OptIn(UnstableApi::class)
@@ -71,6 +82,91 @@ fun TvAppHost(
     var lastCompanionPushAt by remember { mutableLongStateOf(0L) }
     var lastCompanionCueId by remember { mutableStateOf<Long?>(null) }
     var lastCompanionPlaying by remember { mutableStateOf<Boolean?>(null) }
+
+    // Self-update (#490): the TV app detects releases independently of the phone app,
+    // using the same shared core-update module.
+    val context = LocalContext.current
+    val updateManager = remember { UpdateManager() }
+    val updatePreferences = remember { UpdatePreferences(context.applicationContext) }
+    var updateChecksEnabled by remember { mutableStateOf(updatePreferences.checksEnabled) }
+    var updateState by remember { mutableStateOf<TvUpdateState>(TvUpdateState.Idle) }
+    var updatePromptInfo by remember { mutableStateOf<UpdateCheckResult.UpdateAvailable?>(null) }
+    val updateChecksumMismatchMessage = stringResource(R.string.tv_update_failed_checksum)
+
+    fun checkForUpdatesNow() {
+        scope.launch {
+            updateState = TvUpdateState.Checking
+            updatePreferences.lastCheckedAtMillis = System.currentTimeMillis()
+            val result = withContext(Dispatchers.IO) {
+                updateManager.checkForUpdate(BuildConfig.VERSION_NAME, AppVariant.Tv)
+            }
+            updateState = when (result) {
+                UpdateCheckResult.UpToDate -> TvUpdateState.UpToDate
+                is UpdateCheckResult.Error -> TvUpdateState.Failed(result.message)
+                is UpdateCheckResult.UpdateAvailable -> TvUpdateState.Available(result)
+            }
+        }
+    }
+
+    fun startUpdateDownload(info: UpdateCheckResult.UpdateAvailable) {
+        scope.launch {
+            updateState = TvUpdateState.Downloading(0L, info.apkAsset.sizeBytes)
+            val destination = File(context.cacheDir, "updates/${info.apkAsset.name}")
+            val result = withContext(Dispatchers.IO) {
+                updateManager.downloadAndVerify(info, destination) { bytesRead, totalBytes ->
+                    updateState = TvUpdateState.Downloading(bytesRead, totalBytes)
+                }
+            }
+            updateState = when (result) {
+                is UpdateDownloadResult.Success -> TvUpdateState.ReadyToInstall(info, result.file)
+                UpdateDownloadResult.ChecksumMismatch ->
+                    TvUpdateState.Failed(updateChecksumMismatchMessage)
+                is UpdateDownloadResult.Failed -> TvUpdateState.Failed(result.message)
+            }
+        }
+    }
+
+    val requestUpdateInstallPermission = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult(),
+    ) {
+        // Returning from "allow unknown sources" does not itself confirm the grant; the
+        // user selects Install again, which re-checks canInstallPackages().
+    }
+
+    fun installUpdate() {
+        val ready = updateState as? TvUpdateState.ReadyToInstall ?: return
+        if (UpdateInstall.canInstallPackages(context)) {
+            context.startActivity(
+                UpdateInstall.installIntent(context, ready.apkFile, TvUpdateFileProviderAuthority),
+            )
+        } else {
+            requestUpdateInstallPermission.launch(UpdateInstall.manageUnknownAppSourcesIntent(context))
+        }
+    }
+
+    // Automatic check on app start: only when enabled and stale, and never blocks normal
+    // TV navigation. A network/API failure here is silently ignored; the user can always
+    // use the manual "Check for updates" action in Profile instead.
+    LaunchedEffect(Unit) {
+        if (!updatePreferences.checksEnabled ||
+            !UpdatePreferences.isCheckDue(updatePreferences.lastCheckedAtMillis)
+        ) {
+            return@LaunchedEffect
+        }
+
+        updatePreferences.lastCheckedAtMillis = System.currentTimeMillis()
+        val result = try {
+            withContext(Dispatchers.IO) {
+                updateManager.checkForUpdate(BuildConfig.VERSION_NAME, AppVariant.Tv)
+            }
+        } catch (exception: Exception) {
+            null
+        }
+
+        if (result is UpdateCheckResult.UpdateAvailable && updatePreferences.shouldPrompt(result.version)) {
+            updatePromptInfo = result
+        }
+    }
 
     val playerRoute = snapshot.navigation.route as? TvRoute.Player
     val episodeBundle = snapshot.episode
@@ -366,7 +462,7 @@ fun TvAppHost(
     }
 
     if (playerRoute == null) {
-        BackHandler {
+        BackHandler(enabled = updatePromptInfo == null) {
             val next = controller.back()
             if (next == null) {
                 onFinish()
@@ -374,6 +470,12 @@ fun TvAppHost(
                 snapshot = next
             }
         }
+    }
+
+    // The update prompt is dismissed by Back before Back does anything else (#490: TV
+    // update UI must be Back-safe and never trap or bypass normal navigation).
+    BackHandler(enabled = updatePromptInfo != null) {
+        updatePromptInfo = null
     }
 
     val focusMemory = remember { TvFocusMemory() }
@@ -406,7 +508,7 @@ fun TvAppHost(
             },
         )
 
-        TvRoute.Home, TvRoute.Watchlist, TvRoute.Activity, TvRoute.Profile -> {
+        TvRoute.Home, TvRoute.Watchlist, TvRoute.Activity, TvRoute.Profile -> Box(modifier = Modifier.fillMaxSize()) {
             Row(modifier = Modifier.fillMaxSize()) {
                 TvSidebar(
                     selected = route,
@@ -498,6 +600,17 @@ fun TvAppHost(
                                 TvProfileScreen(
                                     account = account,
                                     serverOrigin = settings.origin.orEmpty(),
+                                    currentVersionName = BuildConfig.VERSION_NAME,
+                                    updateState = updateState,
+                                    updateChecksEnabled = updateChecksEnabled,
+                                    canInstallPackages = UpdateInstall.canInstallPackages(context),
+                                    onToggleUpdateChecksEnabled = {
+                                        updateChecksEnabled = !updateChecksEnabled
+                                        updatePreferences.checksEnabled = updateChecksEnabled
+                                    },
+                                    onCheckForUpdatesNow = ::checkForUpdatesNow,
+                                    onStartUpdateDownload = ::startUpdateDownload,
+                                    onInstallUpdate = ::installUpdate,
                                     onSignOut = {
                                         launchSnapshot {
                                             val next = controller.signOut()
@@ -516,6 +629,22 @@ fun TvAppHost(
                         else -> Unit
                     }
                 }
+            }
+
+            updatePromptInfo?.let { info ->
+                TvUpdatePromptOverlay(
+                    info = info,
+                    onUpdateNow = {
+                        updatePromptInfo = null
+                        startUpdateDownload(info)
+                        launchSnapshot { controller.selectSidebarRoute(TvRoute.Profile) }
+                    },
+                    onLater = {
+                        updatePreferences.dismissedVersion = info.version
+                        updatePromptInfo = null
+                    },
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(32.dp),
+                )
             }
         }
 
