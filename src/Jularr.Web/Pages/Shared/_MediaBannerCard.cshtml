@@ -19,6 +19,15 @@
         </span>
     }
 
+    @if (Model.Availability is { } availability)
+    {
+        @* Availability (#597): requested / in the library / available. A small dot and label, no accent bar. *@
+        <span class="banner-card-status banner-card-availability banner-card-availability-@availability.CssModifier">
+            <span class="banner-card-status-dot" aria-hidden="true"></span>
+            @availability.Label
+        </span>
+    }
+
     <div class="banner-card-body">
         <h3 class="banner-card-title"><a href="@Model.Href">@Model.Title</a></h3>
         <p class="banner-card-meta">@Model.Meta</p>

@@ -1,14 +1,9 @@
-using System.Security.Claims;
-using Jularr.Web.Data;
 using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Acquisition.Wanted;
 using Jularr.Web.Features.Acquisition.Prowlarr;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Books;
-using Microsoft.AspNetCore.Http;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging.Abstractions;
+using Jularr.Web.Features.MediaCore;
 
 namespace Jularr.Tests;
 
@@ -19,7 +14,9 @@ public sealed class AcquisitionAccessTests
     public void OwnerAlwaysAddsAutomaticallyAndManually()
     {
         var capabilities = AcquisitionCapabilities.Resolve(
-            new AcquisitionAccessPolicy(MediaAcquisitionKind.Book, UserAddMode.Disabled, ManualAddMode.OwnerOnly),
+            MediaAcquisitionKind.Book,
+            MediaCapability.Instant,
+            ManualAddMode.OwnerOnly,
             isOwner: true);
 
         Assert.IsTrue(capabilities.CanAdd);
@@ -28,13 +25,16 @@ public sealed class AcquisitionAccessTests
     }
 
     [TestMethod]
-    [DataRow(UserAddMode.Disabled, false, false)]
-    [DataRow(UserAddMode.Request, true, true)]
-    [DataRow(UserAddMode.Automatic, true, false)]
-    public void UserCapabilitiesFollowThePolicy(UserAddMode mode, bool canAdd, bool createsRequest)
+    [DataRow(MediaCapability.Hidden, false, false)]
+    [DataRow(MediaCapability.Browse, false, false)]
+    [DataRow(MediaCapability.Request, true, true)]
+    [DataRow(MediaCapability.Instant, true, false)]
+    public void ProfileCapabilitiesFollowTheCapabilityMatrix(MediaCapability capability, bool canAdd, bool createsRequest)
     {
         var capabilities = AcquisitionCapabilities.Resolve(
-            new AcquisitionAccessPolicy(MediaAcquisitionKind.Anime, mode, ManualAddMode.Users),
+            MediaAcquisitionKind.Anime,
+            capability,
+            ManualAddMode.Users,
             isOwner: false);
 
         Assert.AreEqual(canAdd, capabilities.CanAdd);
@@ -43,29 +43,28 @@ public sealed class AcquisitionAccessTests
     }
 
     [TestMethod]
-    public async Task DefaultsAreRequestAndOwnerOnlyManualAndPoliciesPersist()
+    public async Task DefaultsAreOwnerOnlyManualAndPoliciesPersist()
     {
-        await using var fixture = await Fixture.CreateAsync();
+        await using var fixture = await AcquisitionAccessFixture.CreateAsync();
         var store = new AcquisitionAccessStore(fixture.Db);
 
         var defaults = await store.GetPoliciesAsync(CancellationToken.None);
         Assert.AreEqual(4, defaults.Count);
-        Assert.IsTrue(defaults.All(policy => policy.UserAdd == UserAddMode.Request && policy.Manual == ManualAddMode.OwnerOnly));
+        Assert.IsTrue(defaults.All(policy => policy.Manual == ManualAddMode.OwnerOnly));
 
         await store.SavePolicyAsync(
-            new AcquisitionAccessPolicy(MediaAcquisitionKind.Manga, UserAddMode.Automatic, ManualAddMode.Users),
+            new AcquisitionAccessPolicy(MediaAcquisitionKind.Manga, ManualAddMode.Users),
             CancellationToken.None);
 
         var manga = await store.GetPolicyAsync(MediaAcquisitionKind.Manga, CancellationToken.None);
-        Assert.AreEqual(UserAddMode.Automatic, manga.UserAdd);
         Assert.AreEqual(ManualAddMode.Users, manga.Manual);
-        Assert.AreEqual(UserAddMode.Request, (await store.GetPolicyAsync(MediaAcquisitionKind.Book, CancellationToken.None)).UserAdd);
+        Assert.AreEqual(ManualAddMode.OwnerOnly, (await store.GetPolicyAsync(MediaAcquisitionKind.Book, CancellationToken.None)).Manual);
     }
 
     [TestMethod]
     public async Task UserRequestWaitsForOwnerApprovalThenRunsTheExecutor()
     {
-        await using var fixture = await Fixture.CreateAsync();
+        await using var fixture = await AcquisitionAccessFixture.CreateAsync();
         var executor = new RecordingExecutor(MediaAcquisitionKind.Book);
         var user = fixture.Service("alice", isOwner: false, executor);
         var owner = fixture.Service("owner", isOwner: true, executor);
@@ -87,10 +86,8 @@ public sealed class AcquisitionAccessTests
     [TestMethod]
     public async Task AutomaticUsersAndTheOwnerStartAcquisitionImmediately()
     {
-        await using var fixture = await Fixture.CreateAsync();
-        await new AcquisitionAccessStore(fixture.Db).SavePolicyAsync(
-            new AcquisitionAccessPolicy(MediaAcquisitionKind.Book, UserAddMode.Automatic, ManualAddMode.OwnerOnly),
-            CancellationToken.None);
+        await using var fixture = await AcquisitionAccessFixture.CreateAsync();
+        await fixture.Capabilities.SetRoleDefaultAsync(AccountRole.User, WorkMediaType.Book, MediaCapability.Instant);
         var executor = new RecordingExecutor(MediaAcquisitionKind.Book);
 
         var request = await fixture.Service("alice", isOwner: false, executor).SubmitAsync(Draft("dune"), CancellationToken.None);
@@ -100,13 +97,10 @@ public sealed class AcquisitionAccessTests
     }
 
     [TestMethod]
-    public async Task DisabledUsersAreRefusedAndCannotDecide()
+    public async Task UsersBelowRequestAreRefusedAndCannotDecide()
     {
-        await using var fixture = await Fixture.CreateAsync();
-        var store = new AcquisitionAccessStore(fixture.Db);
-        await store.SavePolicyAsync(
-            new AcquisitionAccessPolicy(MediaAcquisitionKind.Anime, UserAddMode.Disabled, ManualAddMode.OwnerOnly),
-            CancellationToken.None);
+        await using var fixture = await AcquisitionAccessFixture.CreateAsync();
+        await fixture.Capabilities.SetRoleDefaultAsync(AccountRole.User, WorkMediaType.Anime, MediaCapability.Browse);
         var user = fixture.Service("alice", isOwner: false, new RecordingExecutor(MediaAcquisitionKind.Anime));
 
         await Assert.ThrowsExactlyAsync<AcquisitionAccessDeniedException>(
@@ -120,7 +114,7 @@ public sealed class AcquisitionAccessTests
     [TestMethod]
     public async Task MediaWithoutExecutorStaysApprovedForTheOwnerAndFailuresAreRecorded()
     {
-        await using var fixture = await Fixture.CreateAsync();
+        await using var fixture = await AcquisitionAccessFixture.CreateAsync();
         var owner = fixture.Service("owner", isOwner: true, new RecordingExecutor(MediaAcquisitionKind.Book, fail: true));
 
         var manga = await owner.SubmitAsync(Draft("berserk", MediaAcquisitionKind.Manga), CancellationToken.None);
@@ -139,7 +133,7 @@ public sealed class AcquisitionAccessTests
     [TestMethod]
     public async Task RequesterCanWithdrawOwnPendingRequestOnly()
     {
-        await using var fixture = await Fixture.CreateAsync();
+        await using var fixture = await AcquisitionAccessFixture.CreateAsync();
         var executor = new RecordingExecutor(MediaAcquisitionKind.Book);
         var alice = fixture.Service("alice", isOwner: false, executor);
         var bob = fixture.Service("bob", isOwner: false, executor);
@@ -234,7 +228,7 @@ public sealed class AcquisitionAccessTests
     [TestMethod]
     public async Task WaitingBookRequestsAreSearchedAgainOnlyWhenDue()
     {
-        await using var fixture = await Fixture.CreateAsync();
+        await using var fixture = await AcquisitionAccessFixture.CreateAsync();
         var store = new AcquisitionAccessStore(fixture.Db);
         var executor = new RecordingExecutor(MediaAcquisitionKind.Book);
         var owner = fixture.Service("owner", isOwner: true, executor);
@@ -253,7 +247,7 @@ public sealed class AcquisitionAccessTests
     [TestMethod]
     public async Task FailedBookDownloadContinuesTheRequestWithTheNextRelease()
     {
-        await using var fixture = await Fixture.CreateAsync();
+        await using var fixture = await AcquisitionAccessFixture.CreateAsync();
         var store = new AcquisitionAccessStore(fixture.Db);
         var executor = new RecordingExecutor(MediaAcquisitionKind.Book);
         var owner = fixture.Service("owner", isOwner: true, executor);
@@ -288,73 +282,4 @@ public sealed class AcquisitionAccessTests
 
     private static AcquisitionRequestDraft Draft(string id, MediaAcquisitionKind kind = MediaAcquisitionKind.Book) =>
         new(kind, "test", id, id.ToUpperInvariant(), "Author", null);
-
-    private sealed class RecordingExecutor(MediaAcquisitionKind kind, bool fail = false) : IAcquisitionRequestExecutor
-    {
-        public int Runs { get; private set; }
-        public MediaAcquisitionKind Kind => kind;
-
-        public Task<AcquisitionExecution> ExecuteAsync(AcquisitionRequest request, CancellationToken cancellationToken)
-        {
-            Runs++;
-            return fail
-                ? throw new InvalidOperationException("indexer down")
-                : Task.FromResult(new AcquisitionExecution(AcquisitionRequestStatus.Downloading, "release", Guid.NewGuid()));
-        }
-    }
-
-    private sealed class FixedHttpContextAccessor(HttpContext context) : IHttpContextAccessor
-    {
-        public HttpContext? HttpContext { get; set; } = context;
-    }
-
-    private sealed class Fixture : IAsyncDisposable
-    {
-        private readonly string directory;
-
-        private Fixture(string directory, AppDbContext db)
-        {
-            this.directory = directory;
-            Db = db;
-        }
-
-        public AppDbContext Db { get; }
-
-        public static async Task<Fixture> CreateAsync()
-        {
-            var directory = Path.Combine(Path.GetTempPath(), $"jularr-access-{Guid.NewGuid():N}");
-            Directory.CreateDirectory(directory);
-            var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
-                .UseSqlite($"Data Source={Path.Combine(directory, "app.db")};Foreign Keys=True")
-                .Options);
-            await DatabaseMigrationBridge.UpgradeAsync(db);
-            return new Fixture(directory, db);
-        }
-
-        public AcquisitionRequestService Service(string profileId, bool isOwner, params IAcquisitionRequestExecutor[] executors)
-        {
-            var claims = new List<Claim> { new(ClaimTypes.NameIdentifier, profileId) };
-            if (isOwner)
-            {
-                claims.Add(new Claim(ClaimTypes.Role, AccountRoles.Owner));
-            }
-
-            // HttpContextAccessor keeps its context in a static AsyncLocal, so two accounts in one
-            // test need their own accessor instances.
-            var account = new CurrentAccountContext(new FixedHttpContextAccessor(
-                new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity(claims, "test")) }));
-            return new AcquisitionRequestService(
-                new AcquisitionAccessStore(Db),
-                executors,
-                account,
-                new RecordingEventPublisher(),
-                NullLogger<AcquisitionRequestService>.Instance);
-        }
-
-        public async ValueTask DisposeAsync()
-        {
-            await Db.DisposeAsync();
-            Directory.Delete(directory, recursive: true);
-        }
-    }
 }

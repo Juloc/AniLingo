@@ -640,6 +640,8 @@ public sealed class BookPdfAcquisitionTests
             collection.AddSingleton<ReleaseRequestTracker>();
             collection.AddSingleton<IAcquisitionRequestExecutor, BookAcquisitionExecutor>();
             collection.AddSingleton<Jularr.Web.Features.Events.IJularrEventPublisher, RecordingEventPublisher>();
+            collection.AddSingleton<IMediaCapabilityService>(new MediaCapabilityService(new MediaCapabilityStore(data.FullName)));
+            collection.AddSingleton(new AcquisitionRequestSettingsStore(data.FullName));
             collection.AddSingleton<AcquisitionRequestService>();
             // The shared Wanted lifecycle with the Book adapter behind the dispatcher.
             collection.AddSingleton<IWantedRequestHandler, BookWantedRequestHandler>();

@@ -78,6 +78,7 @@ internal sealed class AnimeAcquisitionEnvironment : IAsyncDisposable
 
     public AnimeAcquisitionScheduler Scheduler => services.GetRequiredService<AnimeAcquisitionScheduler>();
     public AnimeMonitoringStore Monitoring => services.GetRequiredService<AnimeMonitoringStore>();
+    public QualityProfileStore QualityProfiles => services.GetRequiredService<QualityProfileStore>();
     public AcquisitionOwnershipStore Ownership => services.GetRequiredService<AcquisitionOwnershipStore>();
     public SabnzbdAcquisitionStore Acquisitions => services.GetRequiredService<SabnzbdAcquisitionStore>();
     public AnimeImportStore Imports => services.GetRequiredService<AnimeImportStore>();
@@ -134,12 +135,12 @@ internal sealed class AnimeAcquisitionEnvironment : IAsyncDisposable
     }
 
     /// <summary>What an approved or automatic anime request from Discover runs.</summary>
-    public async Task<AcquisitionExecution> ExecuteAnimeRequestAsync(string aniListId)
+    public async Task<AcquisitionExecution> ExecuteAnimeRequestAsync(string aniListId, string? payloadJson = null)
     {
         await using var scope = services.CreateAsyncScope();
         var execution = await scope.ServiceProvider.GetRequiredService<AnimeAcquisitionRequestExecutor>().ExecuteAsync(
             new AcquisitionRequest(
-                Guid.NewGuid(), MediaAcquisitionKind.Anime, AniListMetadataProvider.ProviderKey, aniListId, "Requested", null, null, null,
+                Guid.NewGuid(), MediaAcquisitionKind.Anime, AniListMetadataProvider.ProviderKey, aniListId, "Requested", null, null, payloadJson,
                 "owner", AcquisitionRequestStatus.Searching, null, null, null, DateTime.UtcNow, DateTime.UtcNow, "owner", DateTime.UtcNow),
             CancellationToken.None);
         Db.ChangeTracker.Clear();

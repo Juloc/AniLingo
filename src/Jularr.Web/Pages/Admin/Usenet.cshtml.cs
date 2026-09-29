@@ -455,7 +455,7 @@ public sealed class UsenetModel(
             : new UsenetCheck(
                 "access",
                 UsenetCheckState.Ok,
-                Ui[$"admin.requests.userAdd.{AcquisitionAccessNames.UserAdd(BookPolicy.UserAdd)}"],
+                Ui[$"admin.requests.manual.{AcquisitionAccessNames.Manual(BookPolicy.Manual)}"],
                 "/Admin/Requests"));
 
         return checks;

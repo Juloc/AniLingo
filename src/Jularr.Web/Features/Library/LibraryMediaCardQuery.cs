@@ -1,5 +1,7 @@
 using Jularr.Web.Data;
+using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Artwork;
+using Jularr.Web.Features.Metadata;
 using Jularr.Web.Features.Playback;
 using Jularr.Web.Features.Progress;
 using Jularr.Web.Ui;
@@ -46,13 +48,26 @@ public sealed class LibraryMediaCardQuery(AppDbContext db)
                 metadata == null ? null : metadata.AverageScore,
                 metadata == null ? null : metadata.EpisodeCount,
                 metadata == null ? null : metadata.BannerImageUrl,
-                metadata == null ? null : metadata.CoverImageUrl))
+                metadata == null ? null : metadata.CoverImageUrl,
+                metadata == null ? null : metadata.Provider,
+                metadata == null ? null : metadata.ExternalId))
             .ToListAsync(cancellationToken);
 
         if (titles.Count == 0)
         {
             return [];
         }
+
+        // The stage of an open request per AniList id, for the availability badge (#597).
+        var openRequests = (await new AcquisitionAccessStore(db).ListAsync(
+                MediaAcquisitionKind.Anime,
+                requestedByProfileId: null,
+                openOnly: true,
+                limit: 500,
+                cancellationToken))
+            .Where(request => request.Provider == AniListMetadataProvider.ProviderKey)
+            .GroupBy(request => request.ExternalId)
+            .ToDictionary(group => group.Key, group => group.First().Status);
 
         var episodes = (await db.Episodes
                 .AsNoTracking()
@@ -110,7 +125,8 @@ public sealed class LibraryMediaCardQuery(AppDbContext db)
                 episodes[title.Id].ToArray(),
                 progress,
                 OrderLanguages(languages[(title.Id, MediaStreamKind.Audio)]),
-                OrderLanguages(languages[(title.Id, MediaStreamKind.Subtitle)])))
+                OrderLanguages(languages[(title.Id, MediaStreamKind.Subtitle)]),
+                openRequests))
         ];
     }
 
@@ -180,7 +196,8 @@ public sealed class LibraryMediaCardQuery(AppDbContext db)
         IReadOnlyList<EpisodeRow> episodes,
         IReadOnlyDictionary<Guid, EpisodeProgressState> progress,
         IReadOnlyList<string> audioLanguages,
-        IReadOnlyList<string> subtitleLanguages)
+        IReadOnlyList<string> subtitleLanguages,
+        IReadOnlyDictionary<string, AcquisitionRequestStatus> openRequests)
     {
         var playable = episodes
             .Where(x => x.HasMedia)
@@ -205,7 +222,15 @@ public sealed class LibraryMediaCardQuery(AppDbContext db)
             audioLanguages,
             subtitleLanguages,
             localSeasons.Length > 0 ? localSeasons.Length : null,
-            BuildProgress(title, episodes, playable, localSeasons, progress));
+            BuildProgress(title, episodes, playable, localSeasons, progress),
+            new MediaAvailabilityFacts(
+                InLibrary: true,
+                HasPlayableContent: playable.Length > 0,
+                Request: title.Provider == AniListMetadataProvider.ProviderKey
+                    && title.ExternalId is { } externalId
+                    && openRequests.TryGetValue(externalId, out var requestStatus)
+                        ? requestStatus
+                        : null));
     }
 
     private static MediaBannerProgress? BuildProgress(
@@ -278,7 +303,9 @@ public sealed class LibraryMediaCardQuery(AppDbContext db)
         int? AverageScore,
         int? ProviderEpisodeCount,
         string? BannerImageUrl,
-        string? CoverImageUrl);
+        string? CoverImageUrl,
+        string? Provider,
+        string? ExternalId);
 
     private sealed record EpisodeRow(
         Guid Id,

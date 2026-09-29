@@ -223,7 +223,7 @@ each row's Where.
 | Media processing: ffprobe inventory, remux, verification, rollback | Exists | `MediaInventoryService`, `MediaContainerOptimizer`, `MediaRemuxVerifier` | — |
 | Media processing: dedicated transcode/optimize job (beyond lossless remux) | Partial — only the lossless MP4 remux is a durable job; lossy transcode happens live during playback, not as a background optimization job | `MediaContainerOptimizer`, playback-plan `transcode` mode | #403 |
 | **Movies and TV library** | **Missing — Jularr has no Movie or TV Show entity, acquisition, or naming distinct from anime; only Anime is modeled** | `Data/AppDbContext.cs` has no `Movie`/`Show` `DbSet` | #396 |
-| Requests & approvals (Overseerr/Jellyseerr-style) | Partial — request lifecycle and admin policy page exist; no per-user request history page or availability-state indicator on cards | `AcquisitionRequestService`, `/Admin/Requests` | #436 |
+| Requests & approvals (Overseerr/Jellyseerr-style) | Partial — request lifecycle, the owner queue with auto-approval rules (`/Admin/Requests`), a per-user request history (`/Requests`), anime request options (whole series, seasons or episodes, audio/subtitle preference, requester-selectable quality profile at `/Requests/New`) and an availability badge (requested / in library / available) on Media Banner cards exist; request versus instant follows the per-media-type capability. Audio/subtitle preferences are shown to the approver but not yet enforced in release scoring; `/Requests/New` is not yet linked from the Discover cards | `AcquisitionRequestService`, `AutoApprovalEvaluator`, `RequestHistoryQuery`, `MediaAvailability`, `/Admin/Requests`, `/Requests` | #597 #436 |
 | Notifications (events/destinations) | Missing | — | #429 |
 | Clients & devices inventory (admin) | Partial — `/Admin/Devices` lists known clients/devices across every account (kind, label, app version, first/last seen, online state, live playback method) with a Revoke action that ends the device's live session and forgets it; `/Profile/Devices` lets a user self-manage their own devices the same way. No capability/app-version negotiation beyond what a client already reports, and Jularr's cookie auth has no per-device token, so revoke cannot block a future reconnect from the same browser/app | `Features/Devices/KnownDeviceRegistry`, `Pages/Admin/Devices`, `Pages/Profile/Devices` | #510 |
 | Transcoder resources dashboard | Missing | — | #403 |
@@ -325,7 +325,7 @@ policy checks below; the table states the target state, not today's binary Owner
 | --- | --- | --- | --- |
 | Consumer pages (Home, Library, Watchlist, Calendar, Discover, playback, reading) | Full | Full | Full |
 | Own account settings, own sessions/history | Full | Full | Full |
-| Request media (Requests queue) | Full | Full | Allowed per acquisition-access policy (today: `AcquisitionAccessPolicy.UserAdd`) |
+| Request media (Requests queue, own history at `/Requests`) | Full | Full | Allowed per the media-type capability (Request creates a request, Instant adds at once); auto-approval rules can approve a request without the owner |
 | Per-media-type capability: Hidden/Browse/Request/Instant (`/Admin/Capabilities`, #436) | Unrestricted (always Instant) | Configurable (default Instant) | Configurable (default Request), with per-user overrides |
 | Approve/reject requests | Full | Full | No |
 | View admin dashboard, Operations, Scans, Logs | Full | Full (read) | No |
@@ -358,6 +358,15 @@ wins over the role default.** Features consume the resolved capability through
 `GetViewAsync`/`GetEffectiveCapabilityAsync` (request experience #597 — Instant vs Request gating),
 `GetVisibleMediaTypesAsync` (permission-derived shell #598 and discovery categories #595 — Hidden
 removes a media type entirely), and `EnsureCapabilityAsync` (server-side per-media-type guard).
+
+`AcquisitionRequestService` (#597) is the request-side consumer: Request creates a request, Instant
+adds at once, Browse/Hidden cannot add. This replaces the former per-media-type "adding from
+search" rule (`UserAddMode`, migrated once into the User role default by `UserAddModeMigration`; its
+table column is retired and dropped by the next schema migration). On top of a Request capability the
+owner's auto-approval rules (`Features/Acquisition/Access/AcquisitionRequestSettingsStore`,
+`/data/acquisition/request-settings.json`, edited on `/Admin/Requests`) can approve a request without
+the queue: a rule matches on media type and requester and may carry a per-requester quota within a
+number of days; the first matching rule with quota left approves, otherwise the owner decides.
 
 ### 8.2 Permission-derived shell (#598)
 

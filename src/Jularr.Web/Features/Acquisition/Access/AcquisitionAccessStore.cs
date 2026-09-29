@@ -9,6 +9,11 @@ namespace Jularr.Web.Features.Acquisition.Access;
 /// <summary>Persistence of the access policies and acquisition requests (tables from migration 20260927120000).</summary>
 public sealed class AcquisitionAccessStore(AppDbContext db)
 {
+    /// <summary>The value of the retired <c>UserAddMode</c> column ("users request"), the value every row had by default.</summary>
+    internal const string LegacyUserAddMode = "request";
+
+    private const string OpenStatuses = "'pending', 'approved', 'searching', 'downloading', 'importing'";
+
     private const string Columns =
         """
         "Id", "Kind", "Provider", "ExternalId", "Title", "Subtitle", "CoverImageUrl", "PayloadJson",
@@ -21,16 +26,13 @@ public sealed class AcquisitionAccessStore(AppDbContext db)
         var stored = await WithConnectionAsync(async connection =>
         {
             await using var command = connection.CreateCommand();
-            command.CommandText = """SELECT "Kind", "UserAddMode", "ManualAddMode" FROM "AcquisitionAccessPolicies";""";
+            command.CommandText = """SELECT "Kind", "ManualAddMode" FROM "AcquisitionAccessPolicies";""";
             var rows = new Dictionary<MediaAcquisitionKind, AcquisitionAccessPolicy>();
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
             {
                 var kind = AcquisitionAccessNames.ParseKind(reader.GetString(0));
-                rows[kind] = new AcquisitionAccessPolicy(
-                    kind,
-                    AcquisitionAccessNames.ParseUserAdd(reader.GetString(1)),
-                    AcquisitionAccessNames.ParseManual(reader.GetString(2)));
+                rows[kind] = new AcquisitionAccessPolicy(kind, AcquisitionAccessNames.ParseManual(reader.GetString(1)));
             }
 
             return rows;
@@ -41,9 +43,43 @@ public sealed class AcquisitionAccessStore(AppDbContext db)
             .ToArray();
     }
 
+    /// <summary>The retired <c>UserAddMode</c> values that differ from the default, per media type (input of <see cref="UserAddModeMigration"/>).</summary>
+    internal Task<IReadOnlyList<(MediaAcquisitionKind Kind, string Mode)>> ListLegacyUserAddModesAsync(
+        CancellationToken cancellationToken) =>
+        WithConnectionAsync<IReadOnlyList<(MediaAcquisitionKind Kind, string Mode)>>(async connection =>
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = """SELECT "Kind", "UserAddMode" FROM "AcquisitionAccessPolicies" WHERE "UserAddMode" <> @default;""";
+            Add(command, "@default", LegacyUserAddMode);
+            var rows = new List<(MediaAcquisitionKind, string)>();
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                rows.Add((AcquisitionAccessNames.ParseKind(reader.GetString(0)), reader.GetString(1)));
+            }
+
+            return rows;
+        }, cancellationToken);
+
+    internal Task ResetLegacyUserAddModesAsync(CancellationToken cancellationToken) =>
+        WithConnectionAsync(async connection =>
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = """UPDATE "AcquisitionAccessPolicies" SET "UserAddMode" = @default WHERE "UserAddMode" <> @default;""";
+            Add(command, "@default", LegacyUserAddMode);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+            return true;
+        }, cancellationToken);
+
     public async Task<AcquisitionAccessPolicy> GetPolicyAsync(MediaAcquisitionKind kind, CancellationToken cancellationToken) =>
         (await GetPoliciesAsync(cancellationToken)).Single(policy => policy.Kind == kind);
 
+    /// <summary>
+    /// Saves the manual add rule of one media type. The table still carries the retired
+    /// <c>UserAddMode</c> column (NOT NULL, dropped by the next schema migration): whether a profile may
+    /// request or add instantly now comes from the capability matrix, so it is only ever written as
+    /// <see cref="LegacyUserAddMode"/> and never read.
+    /// </summary>
     public Task SavePolicyAsync(AcquisitionAccessPolicy policy, CancellationToken cancellationToken) =>
         WithConnectionAsync(async connection =>
         {
@@ -53,12 +89,11 @@ public sealed class AcquisitionAccessStore(AppDbContext db)
                 INSERT INTO "AcquisitionAccessPolicies" ("Kind", "UserAddMode", "ManualAddMode", "UpdatedAt")
                 VALUES (@kind, @userAdd, @manual, @now)
                 ON CONFLICT("Kind") DO UPDATE SET
-                    "UserAddMode" = excluded."UserAddMode",
                     "ManualAddMode" = excluded."ManualAddMode",
                     "UpdatedAt" = excluded."UpdatedAt";
                 """;
             Add(command, "@kind", AcquisitionAccessNames.Kind(policy.Kind));
-            Add(command, "@userAdd", AcquisitionAccessNames.UserAdd(policy.UserAdd));
+            Add(command, "@userAdd", LegacyUserAddMode);
             Add(command, "@manual", AcquisitionAccessNames.Manual(policy.Manual));
             Add(command, "@now", DateTime.UtcNow);
             await command.ExecuteNonQueryAsync(cancellationToken);
@@ -122,6 +157,78 @@ public sealed class AcquisitionAccessStore(AppDbContext db)
                 Add(command, "@limit", Math.Clamp(limit, 1, 500));
             },
             cancellationToken);
+
+    /// <summary>One page of a profile's own requests, most recently changed first.</summary>
+    public Task<IReadOnlyList<AcquisitionRequest>> ListForProfileAsync(
+        string requestedByProfileId,
+        RequestHistoryFilter filter,
+        int offset,
+        int limit,
+        CancellationToken cancellationToken) =>
+        QueryAsync(
+            $"""
+            SELECT {Columns} FROM "AcquisitionRequests"
+            WHERE "RequestedByProfileId" = @profile
+              AND (@filter = 'all'
+                   OR (@filter = 'open' AND "Status" IN ({OpenStatuses}))
+                   OR (@filter = 'finished' AND "Status" NOT IN ({OpenStatuses})))
+            ORDER BY "UpdatedAt" DESC, "Id"
+            LIMIT @limit OFFSET @offset;
+            """,
+            command =>
+            {
+                Add(command, "@profile", requestedByProfileId);
+                Add(command, "@filter", filter switch
+                {
+                    RequestHistoryFilter.Open => "open",
+                    RequestHistoryFilter.Finished => "finished",
+                    _ => "all"
+                });
+                Add(command, "@limit", Math.Clamp(limit, 1, 200));
+                Add(command, "@offset", Math.Max(offset, 0));
+            },
+            cancellationToken);
+
+    /// <summary>How many requests of a profile are still open and how many are finished.</summary>
+    public async Task<(int Open, int Finished)> CountForProfileAsync(
+        string requestedByProfileId,
+        CancellationToken cancellationToken) =>
+        await WithConnectionAsync(async connection =>
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText =
+                $"""
+                SELECT COUNT(*) FILTER (WHERE "Status" IN ({OpenStatuses})),
+                       COUNT(*) FILTER (WHERE "Status" NOT IN ({OpenStatuses}))
+                FROM "AcquisitionRequests" WHERE "RequestedByProfileId" = @profile;
+                """;
+            Add(command, "@profile", requestedByProfileId);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            await reader.ReadAsync(cancellationToken);
+            return (
+                Convert.ToInt32(reader.GetValue(0), CultureInfo.InvariantCulture),
+                Convert.ToInt32(reader.GetValue(1), CultureInfo.InvariantCulture));
+        }, cancellationToken);
+
+    /// <summary>How many of a profile's requests one auto-approval rule approved since <paramref name="sinceUtc"/>.</summary>
+    public async Task<int> CountAutoApprovedSinceAsync(
+        string requestedByProfileId,
+        string ruleId,
+        DateTime sinceUtc,
+        CancellationToken cancellationToken) =>
+        await WithConnectionAsync(async connection =>
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText =
+                """
+                SELECT COUNT(*) FROM "AcquisitionRequests"
+                WHERE "RequestedByProfileId" = @profile AND "DecidedByProfileId" = @decidedBy AND "CreatedAt" >= @since;
+                """;
+            Add(command, "@profile", requestedByProfileId);
+            Add(command, "@decidedBy", AcquisitionAutoApproval.DecidedBy(ruleId));
+            Add(command, "@since", sinceUtc);
+            return Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken), CultureInfo.InvariantCulture);
+        }, cancellationToken);
 
     public Task<IReadOnlyList<AcquisitionRequest>> ListDownloadingAsync(
         MediaAcquisitionKind kind,

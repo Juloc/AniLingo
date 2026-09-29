@@ -464,6 +464,10 @@ builder.Services.AddSingleton<IReadOnlyDictionary<IndexerType, IIndexer>>(servic
 builder.Services.AddScoped<IndexerSearchCoordinator>();
 builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Access.AcquisitionAccessStore>();
 builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Access.AcquisitionRequestService>();
+// Request experience (#597): auto-approval rules and requester-selectable quality profiles are
+// configuration (JSON store under /data); the per-user history is a query over the request table.
+builder.Services.AddSingleton(_ => new Jularr.Web.Features.Acquisition.Access.AcquisitionRequestSettingsStore("/data"));
+builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Access.RequestHistoryQuery>();
 builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Access.IAcquisitionRequestExecutor, Jularr.Web.Features.Books.BookAcquisitionExecutor>();
 builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Access.IAcquisitionRequestExecutor, Jularr.Web.Features.Acquisition.Access.AnimeAcquisitionRequestExecutor>();
 builder.Services.AddScoped<Jularr.Web.Features.ReadingAcquisition.ReadingAcquisitionEngine>();
@@ -647,6 +651,9 @@ try
         app.Services,
         message => Console.WriteLine($"[Jularr] {DateTimeOffset.UtcNow:O} {message}"));
     await Jularr.Web.Features.Acquisition.Import.MediaFolderSettingsMigration.RunAtStartupAsync(
+        app.Services,
+        message => Console.WriteLine($"[Jularr] {DateTimeOffset.UtcNow:O} {message}"));
+    await Jularr.Web.Features.Acquisition.Access.UserAddModeMigration.RunAtStartupAsync(
         app.Services,
         message => Console.WriteLine($"[Jularr] {DateTimeOffset.UtcNow:O} {message}"));
     var migratedBibles = await BookTranslationMemoryStore

@@ -1,4 +1,5 @@
 using System.Globalization;
+using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Localization;
 using Jularr.Web.Features.Playback;
 
@@ -59,6 +60,10 @@ public sealed record MediaBannerProgress(
 /// <param name="AudioLanguages">Language tags, most common first.</param>
 /// <param name="SubtitleLanguages">Language tags, most common first.</param>
 /// <param name="GroupCount">Seasons for anime, volumes for reading media.</param>
+/// <param name="Availability">
+/// What the caller knows about the title's presence and open request; without it the card says nothing
+/// about availability rather than guessing.
+/// </param>
 public sealed record MediaBannerCardData(
     MediaBannerKind Kind,
     string Title,
@@ -70,11 +75,18 @@ public sealed record MediaBannerCardData(
     IReadOnlyList<string>? AudioLanguages = null,
     IReadOnlyList<string>? SubtitleLanguages = null,
     int? GroupCount = null,
-    MediaBannerProgress? Progress = null);
+    MediaBannerProgress? Progress = null,
+    MediaAvailabilityFacts? Availability = null);
 
 public sealed record MediaBannerStatusView(MediaReleaseStatus Status, string Label)
 {
     public string CssModifier => Status.ToString().ToLowerInvariant();
+}
+
+/// <summary>The small availability badge: requested (with the stage of the request), in the library, or available.</summary>
+public sealed record MediaBannerAvailabilityView(MediaAvailabilityState State, string Label)
+{
+    public string CssModifier => State.ToString().ToLowerInvariant();
 }
 
 public sealed record MediaBannerActionView(string Label, string UnitLabel, string Url);
@@ -92,6 +104,7 @@ public sealed record MediaBannerCardModel(
     string? BackdropUrl,
     string Meta,
     MediaBannerStatusView? Status,
+    MediaBannerAvailabilityView? Availability,
     MediaBannerActionView? Action,
     MediaBannerProgressView? Progress,
     MediaBannerChipGroup? Audio,
@@ -153,12 +166,37 @@ public sealed record MediaBannerCardModel(
             string.IsNullOrWhiteSpace(data.BackdropUrl) ? null : data.BackdropUrl,
             meta,
             status,
+            ResolveAvailability(data.Availability, hasPlayAction: action is not null, ui),
             action,
             progress,
             ChipGroup(ui["library.mediaCard.audioLanguages"], data.AudioLanguages),
             ChipGroup(ui["library.mediaCard.subtitleLanguages"], data.SubtitleLanguages),
             groups,
             rating);
+    }
+
+    /// <summary>
+    /// The availability badge for a card. "Available" is not repeated when the card already offers to play or
+    /// read the title (that button says it), so the badge only appears where it adds something. A requested
+    /// title names the stage of its request with the same words the request lists use.
+    /// </summary>
+    public static MediaBannerAvailabilityView? ResolveAvailability(
+        MediaAvailabilityFacts? facts,
+        bool hasPlayAction,
+        UiTextBundle ui)
+    {
+        if (facts is null || MediaAvailability.Resolve(facts) is not { } state)
+        {
+            return null;
+        }
+
+        return state switch
+        {
+            MediaAvailabilityState.Available when hasPlayAction => null,
+            MediaAvailabilityState.Available => new(state, ui["library.mediaCard.availability.available"]),
+            MediaAvailabilityState.Local => new(state, ui["library.mediaCard.availability.local"]),
+            _ => new(state, ui["requests.status." + AcquisitionAccessNames.Status(facts.Request!.Value)])
+        };
     }
 
     /// <summary>Maps AniList media status values; unknown or missing values yield no badge.</summary>

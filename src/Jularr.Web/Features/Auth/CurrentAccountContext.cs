@@ -12,6 +12,9 @@ public sealed class CurrentAccountContext(
         ?? operationProfile?.ProfileId
         ?? throw new InvalidOperationException("Authenticated account ID is unavailable.");
 
+    /// <summary>The signed-in principal, for services that resolve per-media-type capabilities from it.</summary>
+    public ClaimsPrincipal? User => accessor.HttpContext?.User;
+
     public bool IsOwner =>
         accessor.HttpContext?.User.IsInRole(AccountRoles.Owner) == true;
 

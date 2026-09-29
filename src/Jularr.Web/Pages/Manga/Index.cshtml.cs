@@ -34,9 +34,7 @@ public sealed class IndexModel(
     public IReadOnlyList<MangaSeriesItem> ContinueReading { get; private set; } = [];
     public IReadOnlyList<MangaCatalogResult> SearchResults { get; private set; } = [];
     public AcquisitionCapabilities Access { get; private set; } =
-        AcquisitionCapabilities.Resolve(
-            AcquisitionAccessPolicy.Default(MediaAcquisitionKind.Manga),
-            false);
+        AcquisitionCapabilities.Default(MediaAcquisitionKind.Manga);
     public string SearchQuery { get; private set; } = "";
     public bool IsOwner => account.IsOwner;
 
