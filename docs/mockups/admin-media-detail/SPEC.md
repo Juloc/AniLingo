@@ -507,3 +507,10 @@ V1 is complete only when:
 - Light Novel and Manga show volumes directly with expandable real files;
 - Mobile uses touch-sized controls and stacked responsive rows rather than a compressed desktop table;
 - Mobile preserves the same actions and state while summarizing lower-priority columns into expanded details/More menus.
+
+## Canonical Anime identity vs AniList display
+
+The existing Standard/AniList display grouping is a **view switch only**. Anime is stored as one canonical Jularr Work with seasons/episodes; a Work may map to multiple AniList entries when AniList splits seasons, cours/parts or specials.
+
+Admin may inspect and correct those mappings and switch between canonical and AniList-oriented presentation. Provider entries must deep-link to the matching canonical season/presentation target and must never create a second persisted episode/work tree. This is the same identity rule used by Discover/Search.
+
