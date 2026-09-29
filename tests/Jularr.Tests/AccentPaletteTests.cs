@@ -63,9 +63,21 @@ public sealed class AccentPaletteTests
     }
 
     [TestMethod]
+    public void DefaultSeedIsJularrLilaWithWhiteLabels()
+    {
+        // No stored accent (a fresh profile or an anonymous request) renders the default lila.
+        var palette = AccentPalette.Build(null);
+
+        Assert.AreEqual(AppAccent.DefaultSeed, palette.Seed);
+        Assert.AreEqual("#ffffff", palette.Light["--on-accent"]);
+        Assert.AreEqual("#ffffff", palette.Dark["--on-accent"]);
+    }
+
+    [TestMethod]
     public void BrandSeedKeepsJularrRedWithWhiteLabels()
     {
-        var palette = AccentPalette.Build(null);
+        // The ink-seal red stays selectable and anchors the ink-and-paper artwork (0deg rotation).
+        var palette = AccentPalette.Build(AppAccent.BrandSeed);
 
         Assert.AreEqual(AppAccent.BrandSeed, palette.Seed);
         Assert.AreEqual(AppAccent.BrandSeed, palette.Light["--accent"]);

@@ -1,5 +1,82 @@
-/* #520: Home media-type filter chips and Discover heading links. */
+/* Home dashboard: clean, light hero + stat row + media carousels.
+   Colours come entirely from the accent palette tokens, so every theme and accent work unchanged.
+   State is shown with tinted backgrounds and soft shadows only — never a coloured left edge. */
 
+/* Hero -------------------------------------------------------------------- */
+.home-hero {
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    min-height: 220px;
+    margin: 4px 0 26px;
+    padding: 34px 38px;
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius-card) + 6px);
+    background:
+        radial-gradient(120% 140% at 88% 12%, var(--accent-soft), transparent 60%),
+        linear-gradient(115deg, color-mix(in srgb, var(--accent-soft) 70%, var(--surface)) 0%, var(--surface) 62%);
+    box-shadow: var(--shadow-card);
+}
+
+.home-hero-copy {
+    position: relative;
+    z-index: 1;
+    max-width: min(620px, 68%);
+    display: grid;
+    justify-items: start;
+    gap: 6px;
+}
+
+.home-hero h1 {
+    margin: 4px 0 4px;
+    font-size: clamp(26px, 3.4vw, 40px);
+    line-height: 1.06;
+    letter-spacing: -.035em;
+}
+
+.home-hero p {
+    margin: 0 0 16px;
+    max-width: 46ch;
+    color: var(--text-secondary);
+    font-size: 15px;
+    line-height: 1.5;
+}
+
+.home-hero-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+/* Pill actions to match the clean dashboard language. */
+.home-hero-actions .button {
+    border-radius: 999px;
+    padding: 10px 20px;
+    font-size: 14px;
+}
+
+.home-hero-review {
+    background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+    color: var(--accent-text);
+}
+
+/* Oversized brand play mark, bleeding off the right edge as a soft graphic. */
+.home-hero-mark {
+    position: absolute;
+    z-index: 0;
+    top: 50%;
+    right: -18px;
+    transform: translateY(-50%);
+    width: clamp(180px, 26vw, 260px);
+    height: auto;
+    opacity: .9;
+    filter: drop-shadow(0 18px 34px var(--accent-glow));
+    pointer-events: none;
+}
+
+/* Media-type filter chips (kept from #520). ------------------------------- */
 .home-filter-chips {
     display: flex;
     flex-wrap: wrap;
@@ -47,4 +124,58 @@
 /* Recently added is a secondary row: below Continue Watching/Reading, quieter heading. */
 .section-secondary .section-heading h2 {
     font-size: 18px;
+}
+
+/* Stat row ---------------------------------------------------------------- */
+.metric-grid {
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+
+/* Media carousels --------------------------------------------------------- */
+.home-carousel {
+    display: flex;
+    gap: 16px;
+    grid-template-columns: none;
+    overflow-x: auto;
+    padding-bottom: 6px;
+    scroll-snap-type: x proximity;
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--accent) 40%, transparent) transparent;
+}
+
+.home-carousel > .media-card {
+    flex: 0 0 clamp(140px, 22vw, 168px);
+    scroll-snap-align: start;
+}
+
+.home-carousel::-webkit-scrollbar {
+    height: 8px;
+}
+
+.home-carousel::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent) 34%, transparent);
+}
+
+@media (max-width: 720px) {
+    .home-hero {
+        min-height: 0;
+        padding: 24px 22px;
+    }
+
+    .home-hero-copy {
+        max-width: 100%;
+    }
+
+    /* On phones the copy takes the full width; keep the mark as a faint backdrop. */
+    .home-hero-mark {
+        right: -46px;
+        opacity: .16;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .home-carousel {
+        scroll-behavior: auto;
+    }
 }

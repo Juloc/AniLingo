@@ -7,17 +7,28 @@ namespace Jularr.Web.Features.Appearance;
 public sealed record AccentPreset(string Key, string Seed);
 
 /// <summary>
-/// The per-profile accent colour. A profile stores only its seed (or nothing, meaning the Jularr
-/// brand red); every other colour in the interface is derived from that seed by
+/// The per-profile accent colour. A profile stores only its seed (or nothing, meaning the default
+/// Jularr lila); every other colour in the interface is derived from that seed by
 /// <see cref="AccentPalette"/> on each request, so nothing derived is ever persisted.
 /// </summary>
 public static class AppAccent
 {
-    /// <summary>Jularr red — the ink-seal red of the brand mark and the default accent.</summary>
+    /// <summary>
+    /// Jularr lila — the violet of the play brand mark and the out-of-the-box accent that a fresh
+    /// profile (and every anonymous request) renders with.
+    /// </summary>
+    public const string DefaultSeed = "#7c3aed";
+
+    /// <summary>
+    /// The ink-seal red the original ink-and-paper artwork is drawn in. It anchors the artwork
+    /// hue-rotation in <see cref="AccentPalette"/> and stays selectable as the "jularr" preset;
+    /// it is no longer the default accent.
+    /// </summary>
     public const string BrandSeed = "#c8102e";
 
     public static IReadOnlyList<AccentPreset> Presets { get; } =
     [
+        new("lila", DefaultSeed),
         new("jularr", BrandSeed),
         new("sakura", "#d9577a"),
         new("kohaku", "#e0a31a"),
@@ -51,9 +62,9 @@ public static class AppAccent
         return normalized is not null;
     }
 
-    /// <summary>The seed actually used for rendering: the stored accent, or the brand red.</summary>
+    /// <summary>The seed actually used for rendering: the stored accent, or the default lila.</summary>
     public static string Effective(string? stored) =>
-        TryNormalize(stored, out var normalized) && normalized is not null ? normalized : BrandSeed;
+        TryNormalize(stored, out var normalized) && normalized is not null ? normalized : DefaultSeed;
 }
 
 /// <summary>

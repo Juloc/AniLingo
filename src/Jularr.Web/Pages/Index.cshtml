@@ -10,23 +10,23 @@
     <link rel="stylesheet" href="~/css/home.css" asp-append-version="true" />
 }
 
-<header class="jularr-hero">
-    <div class="jularr-hero-art art-tint ink-night" aria-hidden="true"></div>
-    <img class="jularr-hero-heroine" src="~/brand/heroine.webp" alt="" aria-hidden="true" width="720" height="900" />
-    <div class="jularr-hero-copy">
-        <div class="jularr-hero-lockup" aria-hidden="true">
-            <partial name="_AppBrandMark" />
-        </div>
+<header class="home-hero">
+    <div class="home-hero-copy">
         <span class="eyebrow">@Model.Ui["home.eyebrow"]</span>
         <h1>@Model.Ui["home.title"]</h1>
         <p>@Model.Ui["home.subtitle"]</p>
-        @if (Model.ShowLearningHomeWidget && Model.DueReviews > 0)
-        {
-            <a class="button button-primary" href="/Learn/Review" data-home-learning-widget>
-                @Model.Ui.Format("home.reviewButton", ("count", Model.DueReviews))
-            </a>
-        }
+        <div class="home-hero-actions">
+            <a class="button button-primary" href="/Discover">@Model.Ui["home.cta.discover"]</a>
+            <a class="button" href="/Library">@Model.Ui["home.cta.library"]</a>
+            @if (Model.ShowLearningHomeWidget && Model.DueReviews > 0)
+            {
+                <a class="button home-hero-review" href="/Learn/Review" data-home-learning-widget>
+                    @Model.Ui.Format("home.reviewButton", ("count", Model.DueReviews))
+                </a>
+            }
+        </div>
     </div>
+    <img class="home-hero-mark" src="~/brand/jularr-play.svg" alt="" aria-hidden="true" width="240" height="240" />
 </header>
 
 <nav class="home-filter-chips" aria-label="@Model.Ui["home.filter.aria"]" data-home-filter>
@@ -46,7 +46,7 @@
             <h2><a href="@Model.ContinueWatchingDiscoverUrl">@Model.Ui["home.continueWatching"]</a></h2>
         </div>
 
-        <div class="media-grid">
+        <div class="media-grid home-carousel">
             @foreach (var item in Model.ContinueWatching)
             {
                 var isResumable = item.ResumePositionMs > 0;
@@ -83,7 +83,7 @@
             <h2><a href="@Model.ContinueReadingDiscoverUrl">@Model.Ui["home.continueReading"]</a></h2>
         </div>
 
-        <div class="media-grid">
+        <div class="media-grid home-carousel">
             @foreach (var item in Model.ContinueReading)
             {
                 var kindLabel = item.Kind switch
@@ -133,6 +133,16 @@
                  Model.Ui["home.metric.episodes"],
                  Model.EpisodeCount.ToString(),
                  Model.Ui["home.metric.discovered"])' />
+    <partial name="_MetricCard"
+             model='new MetricCardModel(
+                 Model.Ui["home.continueWatching"],
+                 Model.ContinueWatching.Count.ToString(),
+                 Model.Ui["home.continueWatching.eyebrow"])' />
+    <partial name="_MetricCard"
+             model='new MetricCardModel(
+                 Model.Ui["home.continueReading"],
+                 Model.ContinueReading.Count.ToString(),
+                 Model.Ui["home.continueReading.eyebrow"])' />
 </section>
 
 <section class="section section-secondary">
@@ -153,7 +163,7 @@
     }
     else
     {
-        <div class="media-grid">
+        <div class="media-grid home-carousel">
             @foreach (var episode in Model.RecentEpisodes)
             {
                 var coverageLabel = !Model.ShowContentMetrics

@@ -8,13 +8,20 @@ namespace Jularr.Tests;
 public sealed class ThemeCatalogTests
 {
     [TestMethod]
-    public void BuiltInCatalogHasOneOriginalAndThreeCleanThemes()
+    public void BuiltInCatalogHasOneOriginalAndFourCleanThemes()
     {
         CollectionAssert.AreEqual(
-            new[] { ThemeCatalog.Original, ThemeCatalog.CleanSummit, ThemeCatalog.CleanOrbit, ThemeCatalog.CleanHorizon },
+            new[] { ThemeCatalog.Original, ThemeCatalog.CleanPurple, ThemeCatalog.CleanSummit, ThemeCatalog.CleanOrbit, ThemeCatalog.CleanHorizon },
             ThemeCatalog.All.Select(theme => theme.Id).ToArray());
         Assert.IsTrue(ThemeCatalog.All.Single(theme => theme.Id == ThemeCatalog.Original).UsesOriginalArtwork);
         Assert.IsTrue(ThemeCatalog.All.Where(theme => theme.Id != ThemeCatalog.Original).All(theme => !theme.UsesOriginalArtwork));
+    }
+
+    [TestMethod]
+    public void DefaultInstanceThemeIsCleanPurple()
+    {
+        // The out-of-the-box default is the clean, lilac theme (owner-directed design default).
+        Assert.AreEqual(ThemeCatalog.CleanPurple, InstanceAppearanceSettings.Default.DefaultThemeId);
     }
 
     [TestMethod]
