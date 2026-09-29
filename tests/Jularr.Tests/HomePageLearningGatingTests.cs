@@ -127,12 +127,22 @@ public sealed class HomePageLearningGatingTests
         var view = File.ReadAllText(Path.Combine(
             RepositoryRoot(), "src", "Jularr.Web", "Pages", "Index.cshtml"));
 
+        // Order when the widget is on: continue rows → due-reviews card → recently discovered.
         var continueWatching = view.IndexOf("data-continue-watching", StringComparison.Ordinal);
         var metrics = view.IndexOf("class=\"metric-grid\"", StringComparison.Ordinal);
         var library = view.IndexOf("home.library.recent", StringComparison.Ordinal);
         Assert.IsTrue(continueWatching > 0);
-        Assert.IsTrue(continueWatching < metrics, "Continue Watching renders before the metric grid.");
+        Assert.IsTrue(continueWatching < metrics, "Continue Watching renders before the due-reviews card.");
         Assert.IsTrue(metrics < library);
+
+        // The due-reviews card is Home's only stat: the grid itself sits inside the widget gate,
+        // so with the widget off no empty grid is rendered.
+        Assert.IsTrue(
+            System.Text.RegularExpressions.Regex.IsMatch(
+                view,
+                @"@if \(Model\.ShowLearningHomeWidget\)\s*\{\s*<section class=""metric-grid"">"),
+            "The stat grid renders only with the opt-in learning widget.");
+        Assert.IsFalse(view.Contains("_MetricCard", StringComparison.Ordinal), "Home shows no library count cards.");
 
         var learningLinks = CountOccurrences(view, "href=\"/Learn");
         var gatedWidgets = CountOccurrences(view, "data-home-learning-widget");

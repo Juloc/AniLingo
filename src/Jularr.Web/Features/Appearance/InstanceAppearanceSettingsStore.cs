@@ -16,7 +16,7 @@ public sealed record InstanceAppearanceSettings(
     bool AllowProfileAccentOverride)
 {
     public static InstanceAppearanceSettings Default { get; } = new(
-        ThemeCatalog.Original,
+        ThemeCatalog.CleanPurple,
         AllowProfileThemeOverride: true,
         AllowProfileAccentOverride: true);
 }

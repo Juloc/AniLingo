@@ -65,7 +65,10 @@ public sealed class HomePageContinueReadingTests
         Assert.IsTrue(continueReading > guard, "The section is rendered only when items exist.");
         Assert.IsTrue(continueReading < metrics, "Continue Reading renders before the metric grid.");
 
-        var section = view[guard..metrics];
+        // The section ends where the (learning-gated) stat block begins; that gate is not part of it.
+        var statGate = view.IndexOf("@if (Model.ShowLearningHomeWidget)", continueReading, StringComparison.Ordinal);
+        Assert.IsTrue(statGate > continueReading && statGate < metrics, "The stat grid is gated by the learning widget.");
+        var section = view[guard..statGate];
         StringAssert.Contains(section, "<partial name=\"_MediaCard\"");
         StringAssert.Contains(section, "item.ResumeUrl");
         StringAssert.Contains(section, "Model.Ui[\"home.continueReading\"]");

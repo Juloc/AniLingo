@@ -1,11 +1,13 @@
 using Jularr.Web.Data;
 using Jularr.Web.Features.Artwork;
 using Jularr.Web.Features.Auth;
+using Jularr.Web.Features.Calendar;
 using Jularr.Web.Features.Discovery;
 using Jularr.Web.Features.Learning;
 using Jularr.Web.Features.Localization;
 using Jularr.Web.Features.Progress;
 using Jularr.Web.Features.Reading;
+using Jularr.Web.Features.Watchlist;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
@@ -31,10 +33,24 @@ public sealed class IndexModel(AppDbContext db, CurrentAccountContext currentAcc
     ];
 
     public int DueReviews { get; private set; }
-    public int AnimeCount { get; private set; }
-    public int EpisodeCount { get; private set; }
     public IReadOnlyList<HomeEpisode> RecentEpisodes { get; private set; } = [];
     public IReadOnlyList<ContinueWatchingItem> ContinueWatching { get; private set; } = [];
+
+    /// <summary>Most slides the Home spotlight banner shows.</summary>
+    public const int SpotlightLimit = 3;
+
+    /// <summary>A watchlist release counts as "new" this many days after it came out.</summary>
+    public const int SpotlightRecentDays = 14;
+
+    /// <summary>Upcoming watchlist releases are considered this many days ahead.</summary>
+    public const int SpotlightUpcomingDays = 30;
+
+    /// <summary>
+    /// The spotlight banner. It only ever shows the profile's own media: the most recent
+    /// Continue Watching series, or — when nothing is in progress — the newest/nearest release
+    /// of a followed watchlist work from the local release cache. Empty means no banner.
+    /// </summary>
+    public IReadOnlyList<HomeSpotlightSlide> Spotlight { get; private set; } = [];
 
     /// <summary>The active Home media-type filter chip, from the <c>type</c> query parameter.</summary>
     public DiscoveryCategory ActiveType { get; private set; } = DiscoveryCategory.All;
@@ -100,6 +116,9 @@ public sealed class IndexModel(AppDbContext db, CurrentAccountContext currentAcc
             ? await progress.GetContinueWatchingAsync(cancellationToken: cancellationToken)
             : [];
         PlaybackHistory = await progress.GetHistoryAsync(cancellationToken);
+        Spotlight = ContinueWatching.Count > 0
+            ? await LoadWatchingSpotlightAsync(cancellationToken)
+            : await LoadWatchlistSpotlightAsync(cancellationToken);
 
         var continueReading = await new ContinueReadingQuery(db).GetAsync(
             currentAccount.ProfileId,
@@ -129,9 +148,6 @@ public sealed class IndexModel(AppDbContext db, CurrentAccountContext currentAcc
                 .DueCards(db, currentAccount.ProfileId, now)
                 .CountAsync(cancellationToken);
         }
-
-        AnimeCount = await db.Anime.AsNoTracking().CountAsync(cancellationToken);
-        EpisodeCount = await db.Episodes.AsNoTracking().CountAsync(cancellationToken);
 
         var recentEpisodes = await (
             from episode in db.Episodes.AsNoTracking()
@@ -173,6 +189,121 @@ public sealed class IndexModel(AppDbContext db, CurrentAccountContext currentAcc
                         row.CoverImageUrl)
                 };
             })
+            .ToArray();
+    }
+
+    /// <summary>"S01 · Episode 4 · 32 min left" — shared by the Continue Watching cards and the spotlight.</summary>
+    public string WatchingCaption(ContinueWatchingItem item)
+    {
+        var episodeLabel = Ui.Format(
+            "home.continueWatching.episode",
+            ("season", item.SeasonNumber.ToString("00")),
+            ("episode", item.EpisodeNumber));
+        if (item.ResumePositionMs <= 0)
+        {
+            return episodeLabel;
+        }
+
+        var caption = item.RemainingMs is { } remainingMs
+            ? Ui.Format(
+                "home.continueWatching.remaining",
+                ("minutes", Math.Max(1, (int)Math.Ceiling(remainingMs / 60000d))))
+            : Ui["home.continueWatching.resume"];
+        return $"{episodeLabel} · {caption}";
+    }
+
+    /// <summary>Up to three in-progress series, newest first, backed by their wide artwork when cached locally.</summary>
+    private async Task<IReadOnlyList<HomeSpotlightSlide>> LoadWatchingSpotlightAsync(CancellationToken cancellationToken)
+    {
+        var items = ContinueWatching
+            .OrderByDescending(item => item.UpdatedAt)
+            .DistinctBy(item => item.AnimeId)
+            .Take(SpotlightLimit)
+            .ToArray();
+        var animeIds = items.Select(item => item.AnimeId).ToArray();
+        var banners = await db.AnimeMetadata.AsNoTracking()
+            .Where(metadata => animeIds.Contains(metadata.AnimeId))
+            .Select(metadata => new { metadata.AnimeId, metadata.BannerImageUrl })
+            .ToDictionaryAsync(row => row.AnimeId, row => row.BannerImageUrl, cancellationToken);
+
+        return items
+            .Select(item =>
+            {
+                // A wide backdrop (cached fanart, else the provider banner) fills the banner; without
+                // one the poster is shown as-is over a background derived from it.
+                var backdrop = AnimeArtworkStore.ResolveFanartUrl(item.AnimeId, banners.GetValueOrDefault(item.AnimeId));
+                return new HomeSpotlightSlide(
+                    Ui["home.continueWatching.eyebrow"],
+                    item.AnimeTitle,
+                    WatchingCaption(item),
+                    item.ResumePositionMs > 0 ? item.Percent : null,
+                    string.IsNullOrWhiteSpace(backdrop) ? item.CoverImageUrl : backdrop,
+                    !string.IsNullOrWhiteSpace(backdrop),
+                    $"/Library/Episode/{item.EpisodeId}",
+                    item.ResumePositionMs > 0 ? Ui["home.continueWatching.resume"] : Ui["home.spotlight.play"],
+                    $"/Library/Anime/{item.AnimeId}",
+                    Ui["home.spotlight.details"]);
+            })
+            .ToArray();
+    }
+
+    /// <summary>
+    /// The newest release of each followed work (released in the last two weeks, newest first),
+    /// then the nearest upcoming ones. Reads only the local release cache — no provider calls.
+    /// </summary>
+    private async Task<IReadOnlyList<HomeSpotlightSlide>> LoadWatchlistSpotlightAsync(CancellationToken cancellationToken)
+    {
+        ReleaseMediaType? mediaType = ActiveType switch
+        {
+            DiscoveryCategory.Anime => ReleaseMediaType.Anime,
+            DiscoveryCategory.Manga => ReleaseMediaType.Manga,
+            DiscoveryCategory.LightNovel => ReleaseMediaType.LightNovel,
+            _ => null
+        };
+        if (string.IsNullOrWhiteSpace(currentAccount.ProfileId) || ActiveType == DiscoveryCategory.Book)
+        {
+            return [];
+        }
+
+        var zone = CalendarTimeZone.Resolve(HttpContext?.Request.Cookies[CalendarTimeZone.CookieName]);
+        var presenter = new ReleaseCalendarPresenter(Ui, zone, DateTimeOffset.UtcNow);
+        var source = new WatchlistReleaseEventSource(
+            new ReleaseCalendarCacheStore(db),
+            new WatchlistStore(db),
+            new WatchlistLibraryResolver(db));
+        var events = await source.GetEventsAsync(
+            new ReleaseEventQuery(
+                presenter.Today.AddDays(-SpotlightRecentDays),
+                presenter.Today.AddDays(SpotlightUpcomingDays),
+                zone,
+                presenter.Now,
+                MediaType: mediaType,
+                ProfileId: currentAccount.ProfileId),
+            cancellationToken);
+
+        return events
+            .Select(release => (Release: release, Day: release.Date.Period(zone)?.Start))
+            .Where(row => row.Day is not null)
+            .OrderBy(row => row.Day <= presenter.Today ? 0 : 1)
+            .ThenBy(row => row.Day <= presenter.Today
+                ? presenter.Today.DayNumber - row.Day!.Value.DayNumber
+                : row.Day!.Value.DayNumber - presenter.Today.DayNumber)
+            .DistinctBy(row => row.Release.MediaId)
+            .Take(SpotlightLimit)
+            .Select(row => new HomeSpotlightSlide(
+                Ui["home.spotlight.watchlist"],
+                row.Release.Title,
+                string.Join(
+                    " · ",
+                    new[] { presenter.UnitLabel(row.Release), presenter.DateLabel(row.Release.Date) }
+                        .Where(text => !string.IsNullOrEmpty(text))),
+                null,
+                row.Release.CoverImageUrl,
+                false,
+                ReleaseCalendarPresenter.Href(row.Release) ?? "/Watchlist",
+                Ui["home.spotlight.details"],
+                "/Calendar",
+                Ui["nav.calendar"]))
             .ToArray();
     }
 
@@ -230,6 +361,19 @@ public sealed class IndexModel(AppDbContext db, CurrentAccountContext currentAcc
             x => x.Key,
             x => (x.Value, prepared.GetValueOrDefault(x.Key)));
     }
+
+    /// <summary>One spotlight banner slide; every text is already localized.</summary>
+    public sealed record HomeSpotlightSlide(
+        string Label,
+        string Title,
+        string Subtitle,
+        int? ProgressPercent,
+        string? ImageUrl,
+        bool ImageIsBackdrop,
+        string PrimaryHref,
+        string PrimaryLabel,
+        string SecondaryHref,
+        string SecondaryLabel);
 
     /// <summary>One Home media-type filter chip: its Discover category, the <c>?type=</c> query value, and its label key.</summary>
     public sealed record HomeTypeChip(DiscoveryCategory Category, string QueryValue, string LabelKey);

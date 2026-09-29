@@ -7,8 +7,8 @@ using Microsoft.EntityFrameworkCore;
 namespace Jularr.Web.Features.Appearance;
 
 /// <summary>
-/// A profile's appearance: theme mode, optional accent seed (null = Jularr red) and the Sakura
-/// particle effect density (#387).
+/// A profile's appearance: theme mode, optional accent seed (null = default Jularr lila) and the
+/// Sakura particle effect density (#387).
 /// </summary>
 public sealed record ProfileAppearance(
     string ThemeMode,
@@ -155,7 +155,7 @@ public sealed class ProfileAppearanceStore(AppDbContext db)
         }, cancellationToken);
     }
 
-    /// <summary>Stores the accent seed; an empty value resets the profile to the brand red.</summary>
+    /// <summary>Stores the accent seed; an empty value resets the profile to the default lila.</summary>
     public async Task<string?> SetAccentAsync(
         string profileId,
         string? accent,

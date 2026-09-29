@@ -10,24 +10,65 @@
     <link rel="stylesheet" href="~/css/home.css" asp-append-version="true" />
 }
 
-<header class="jularr-hero">
-    <div class="jularr-hero-art art-tint ink-night" aria-hidden="true"></div>
-    <img class="jularr-hero-heroine" src="~/brand/heroine.webp" alt="" aria-hidden="true" width="720" height="900" />
-    <div class="jularr-hero-copy">
-        <div class="jularr-hero-lockup" aria-hidden="true">
-            <partial name="_AppBrandMark" />
+@if (Model.Spotlight.Count > 0)
+{
+    <section class="home-spotlight" aria-label="@Model.Ui["home.spotlight.aria"]" data-home-spotlight>
+        <div class="home-spotlight-track" data-home-spotlight-track>
+            @for (var index = 0; index < Model.Spotlight.Count; index++)
+            {
+                var slide = Model.Spotlight[index];
+                <article class="home-spotlight-slide@(string.IsNullOrWhiteSpace(slide.ImageUrl) ? " home-spotlight-plain" : "")"
+                         id="home-spotlight-@index">
+                    @if (!string.IsNullOrWhiteSpace(slide.ImageUrl))
+                    {
+                        @* Without a wide backdrop the poster itself is blurred into the background. *@
+                        <img class="home-spotlight-art@(slide.ImageIsBackdrop ? "" : " home-spotlight-art-derived")"
+                             src="@slide.ImageUrl"
+                             alt=""
+                             loading="@(index == 0 ? "eager" : "lazy")"
+                             referrerpolicy="no-referrer" />
+                    }
+                    <div class="home-spotlight-copy">
+                        <span class="home-spotlight-label">@slide.Label</span>
+                        <h2>@slide.Title</h2>
+                        <p>@slide.Subtitle</p>
+                        @if (slide.ProgressPercent is int percent)
+                        {
+                            <div class="progress-track home-spotlight-progress" role="img"
+                                 aria-label="@Model.Ui.Format("home.continueWatching.progressAria", ("percent", percent))">
+                                <span style="width:@percent%"></span>
+                            </div>
+                        }
+                        <div class="home-spotlight-actions">
+                            <a class="button button-primary" href="@slide.PrimaryHref">@slide.PrimaryLabel</a>
+                            <a class="button home-spotlight-secondary" href="@slide.SecondaryHref">@slide.SecondaryLabel</a>
+                        </div>
+                    </div>
+                    @if (!slide.ImageIsBackdrop && !string.IsNullOrWhiteSpace(slide.ImageUrl))
+                    {
+                        <img class="home-spotlight-poster"
+                             src="@slide.ImageUrl"
+                             alt=""
+                             loading="@(index == 0 ? "eager" : "lazy")"
+                             referrerpolicy="no-referrer" />
+                    }
+                </article>
+            }
         </div>
-        <span class="eyebrow">@Model.Ui["home.eyebrow"]</span>
-        <h1>@Model.Ui["home.title"]</h1>
-        <p>@Model.Ui["home.subtitle"]</p>
-        @if (Model.ShowLearningHomeWidget && Model.DueReviews > 0)
+        @if (Model.Spotlight.Count > 1)
         {
-            <a class="button button-primary" href="/Learn/Review" data-home-learning-widget>
-                @Model.Ui.Format("home.reviewButton", ("count", Model.DueReviews))
-            </a>
+            <div class="home-spotlight-dots">
+                @for (var index = 0; index < Model.Spotlight.Count; index++)
+                {
+                    <a href="#home-spotlight-@index"
+                       aria-label="@Model.Ui.Format("home.spotlight.slideAria", ("title", Model.Spotlight[index].Title))"
+                       aria-current="@(index == 0 ? "true" : null)"
+                       data-home-spotlight-dot></a>
+                }
+            </div>
         }
-    </div>
-</header>
+    </section>
+}
 
 <nav class="home-filter-chips" aria-label="@Model.Ui["home.filter.aria"]" data-home-filter>
     @foreach (var chip in IndexModel.TypeChips)
@@ -46,26 +87,14 @@
             <h2><a href="@Model.ContinueWatchingDiscoverUrl">@Model.Ui["home.continueWatching"]</a></h2>
         </div>
 
-        <div class="media-grid">
+        <div class="media-grid home-carousel">
             @foreach (var item in Model.ContinueWatching)
             {
-                var isResumable = item.ResumePositionMs > 0;
-                var episodeLabel = Model.Ui.Format(
-                    "home.continueWatching.episode",
-                    ("season", item.SeasonNumber.ToString("00")),
-                    ("episode", item.EpisodeNumber));
-                var caption = !isResumable
-                    ? null
-                    : item.RemainingMs is { } remainingMs
-                        ? Model.Ui.Format(
-                            "home.continueWatching.remaining",
-                            ("minutes", Math.Max(1, (int)Math.Ceiling(remainingMs / 60000d))))
-                        : Model.Ui["home.continueWatching.resume"];
                 <partial name="_MediaCard" model='new MediaCardModel(
                     item.AnimeTitle,
-                    caption is null ? episodeLabel : $"{episodeLabel} · {caption}",
+                    Model.WatchingCaption(item),
                     $"/Library/Episode/{item.EpisodeId}",
-                    isResumable ? item.Percent : null,
+                    item.ResumePositionMs > 0 ? item.Percent : null,
                     item.Kind == ContinueWatchingKind.UpNext
                         ? Model.Ui["home.continueWatching.upNext"]
                         : null,
@@ -83,7 +112,7 @@
             <h2><a href="@Model.ContinueReadingDiscoverUrl">@Model.Ui["home.continueReading"]</a></h2>
         </div>
 
-        <div class="media-grid">
+        <div class="media-grid home-carousel">
             @foreach (var item in Model.ContinueReading)
             {
                 var kindLabel = item.Kind switch
@@ -114,26 +143,17 @@
     </section>
 }
 
-<section class="metric-grid">
-    @if (Model.ShowLearningHomeWidget)
-    {
+@* The only Home stat is the opt-in due-reviews card; without it no grid is rendered at all. *@
+@if (Model.ShowLearningHomeWidget)
+{
+    <section class="metric-grid">
         <a class="metric-card metric-card-link" href="/Learn/Review" data-home-learning-widget>
             <div class="metric-value">@Model.DueReviews</div>
             <div class="metric-label">@Model.Ui["home.metric.due"]</div>
             <div class="metric-hint">@Model.Ui["home.metric.ready"]</div>
         </a>
-    }
-    <partial name="_MetricCard"
-             model='new MetricCardModel(
-                 Model.Ui["home.metric.anime"],
-                 Model.AnimeCount.ToString(),
-                 Model.Ui["home.metric.inLibrary"])' />
-    <partial name="_MetricCard"
-             model='new MetricCardModel(
-                 Model.Ui["home.metric.episodes"],
-                 Model.EpisodeCount.ToString(),
-                 Model.Ui["home.metric.discovered"])' />
-</section>
+    </section>
+}
 
 <section class="section section-secondary">
     <div class="section-heading">
@@ -153,7 +173,7 @@
     }
     else
     {
-        <div class="media-grid">
+        <div class="media-grid home-carousel">
             @foreach (var episode in Model.RecentEpisodes)
             {
                 var coverageLabel = !Model.ShowContentMetrics
@@ -214,4 +234,11 @@
             <button class="button" type="submit">@Model.Ui["home.history.clear"]</button>
         </form>
     </details>
+}
+
+@section Scripts {
+    @if (Model.Spotlight.Count > 1)
+    {
+        <script src="~/js/home-spotlight.js" asp-append-version="true" defer></script>
+    }
 }

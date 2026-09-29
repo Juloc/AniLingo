@@ -1,5 +1,179 @@
-/* #520: Home media-type filter chips and Discover heading links. */
+/* Home dashboard: spotlight banner + type chips + media carousels + stat row.
+   Colours come from the accent palette tokens, so every theme and accent work unchanged.
+   State is shown with tinted backgrounds and soft shadows only — never a coloured left edge. */
 
+/* Spotlight banner -------------------------------------------------------- */
+/* Only the profile's own media (Continue Watching or a new watchlist release). The cover art is
+   the backdrop; a left-to-right darkening keeps the copy legible on any artwork. */
+.home-spotlight {
+    position: relative;
+    margin: 4px 0 22px;
+}
+
+.home-spotlight-track {
+    position: relative;
+    display: flex;
+    overflow-x: auto;
+    border-radius: calc(var(--radius-card) + 6px);
+    box-shadow: var(--shadow-card);
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+}
+
+.home-spotlight-track::-webkit-scrollbar {
+    display: none;
+}
+
+.home-spotlight-slide {
+    position: relative;
+    isolation: isolate;
+    flex: 0 0 100%;
+    display: flex;
+    align-items: center;
+    min-height: 280px;
+    overflow: hidden;
+    scroll-snap-align: start;
+    background: #15121f;
+    color: #fff;
+}
+
+.home-spotlight-plain {
+    background: linear-gradient(120deg, color-mix(in srgb, var(--accent) 55%, #120e20) 0%, #161222 70%);
+}
+
+.home-spotlight-art {
+    position: absolute;
+    inset: 0;
+    z-index: -2;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center 30%;
+}
+
+/* No wide backdrop: the poster becomes a calm blurred background, and is shown sharp on the right. */
+.home-spotlight-art-derived {
+    filter: blur(32px) saturate(1.1);
+    transform: scale(1.2);
+    opacity: .8;
+}
+
+.home-spotlight-poster {
+    flex: none;
+    width: auto;
+    height: 228px;
+    aspect-ratio: 2 / 3;
+    margin: 26px 44px 26px auto;
+    border-radius: 14px;
+    object-fit: cover;
+    box-shadow: 0 18px 40px rgb(0 0 0 / .45);
+}
+
+.home-spotlight-slide::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: linear-gradient(
+        90deg,
+        rgb(10 8 18 / .88) 0%,
+        rgb(10 8 18 / .66) 38%,
+        rgb(10 8 18 / .12) 72%,
+        transparent 100%);
+}
+
+.home-spotlight-copy {
+    display: grid;
+    justify-items: start;
+    gap: 6px;
+    max-width: min(560px, 62%);
+    padding: 34px 40px;
+}
+
+.home-spotlight-label {
+    color: rgb(255 255 255 / .78);
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+}
+
+.home-spotlight-copy h2 {
+    margin: 2px 0;
+    font-size: clamp(26px, 3.6vw, 42px);
+    line-height: 1.06;
+    letter-spacing: -.03em;
+    text-shadow: 0 2px 18px rgb(0 0 0 / .35);
+}
+
+.home-spotlight-copy p {
+    margin: 0;
+    color: rgb(255 255 255 / .84);
+    font-size: 15px;
+}
+
+.home-spotlight-progress {
+    width: min(320px, 100%);
+    height: 4px;
+    margin-top: 8px;
+    background: rgb(255 255 255 / .22);
+}
+
+.home-spotlight-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 14px;
+}
+
+.home-spotlight-actions .button {
+    border-radius: 999px;
+    padding: 10px 22px;
+    font-size: 14px;
+    text-decoration: none;
+}
+
+/* Specific enough to win over the clean themes' shared .button surface (theme-catalog.css). */
+.home-spotlight .home-spotlight-actions .home-spotlight-secondary {
+    border-color: rgb(255 255 255 / .34);
+    background: rgb(255 255 255 / .12);
+    color: #fff;
+    backdrop-filter: blur(6px);
+}
+
+.home-spotlight .home-spotlight-actions .home-spotlight-secondary:hover {
+    border-color: rgb(255 255 255 / .5);
+    background: rgb(255 255 255 / .2);
+}
+
+.home-spotlight-dots {
+    position: absolute;
+    right: 22px;
+    bottom: 18px;
+    display: flex;
+    gap: 7px;
+}
+
+.home-spotlight-dots a {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: rgb(255 255 255 / .45);
+    transition: width .2s ease, background-color .2s ease;
+}
+
+.home-spotlight-dots a[aria-current="true"] {
+    width: 22px;
+    background: #fff;
+}
+
+.home-spotlight-dots a:focus-visible,
+.home-spotlight-actions .button:focus-visible {
+    outline: 2px solid #fff;
+    outline-offset: 3px;
+}
+
+/* Media-type filter chips (kept from #520). ------------------------------- */
 .home-filter-chips {
     display: flex;
     flex-wrap: wrap;
@@ -47,4 +221,74 @@
 /* Recently added is a secondary row: below Continue Watching/Reading, quieter heading. */
 .section-secondary .section-heading h2 {
     font-size: 18px;
+}
+
+/* Opt-in due-reviews card: a compact card, never stretched across the page. */
+.metric-grid {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 260px));
+}
+
+/* Media carousels --------------------------------------------------------- */
+.home-carousel {
+    display: flex;
+    gap: 16px;
+    grid-template-columns: none;
+    overflow-x: auto;
+    padding-bottom: 6px;
+    scroll-snap-type: x proximity;
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--accent) 40%, transparent) transparent;
+}
+
+.home-carousel > .media-card {
+    flex: 0 0 clamp(140px, 22vw, 168px);
+    scroll-snap-align: start;
+}
+
+.home-carousel::-webkit-scrollbar {
+    height: 8px;
+}
+
+.home-carousel::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent) 34%, transparent);
+}
+
+@media (max-width: 720px) {
+    .home-spotlight-slide {
+        align-items: flex-end;
+        min-height: 300px;
+    }
+
+    /* On phones the copy spans the width, so the darkening runs bottom-up instead. */
+    .home-spotlight-slide::before {
+        background: linear-gradient(0deg, rgb(10 8 18 / .9) 0%, rgb(10 8 18 / .55) 55%, transparent 100%);
+    }
+
+    .home-spotlight-copy {
+        max-width: 100%;
+        padding: 22px 20px 40px;
+    }
+
+    /* The copy spans the phone width; the blurred poster background carries the artwork. */
+    .home-spotlight-poster {
+        display: none;
+    }
+
+    .home-spotlight-dots {
+        right: 50%;
+        bottom: 14px;
+        transform: translateX(50%);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .home-spotlight-track,
+    .home-carousel {
+        scroll-behavior: auto;
+    }
+
+    .home-spotlight-dots a {
+        transition: none;
+    }
 }
