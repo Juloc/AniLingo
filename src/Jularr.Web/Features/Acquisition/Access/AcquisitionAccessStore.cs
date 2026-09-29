@@ -9,9 +9,6 @@ namespace Jularr.Web.Features.Acquisition.Access;
 /// <summary>Persistence of the access policies and acquisition requests (tables from migration 20260927120000).</summary>
 public sealed class AcquisitionAccessStore(AppDbContext db)
 {
-    /// <summary>The value of the retired <c>UserAddMode</c> column ("users request"), the value every row had by default.</summary>
-    internal const string LegacyUserAddMode = "request";
-
     private const string OpenStatuses = "'pending', 'approved', 'searching', 'downloading', 'importing'";
 
     private const string Columns =
@@ -43,42 +40,13 @@ public sealed class AcquisitionAccessStore(AppDbContext db)
             .ToArray();
     }
 
-    /// <summary>The retired <c>UserAddMode</c> values that differ from the default, per media type (input of <see cref="UserAddModeMigration"/>).</summary>
-    internal Task<IReadOnlyList<(MediaAcquisitionKind Kind, string Mode)>> ListLegacyUserAddModesAsync(
-        CancellationToken cancellationToken) =>
-        WithConnectionAsync<IReadOnlyList<(MediaAcquisitionKind Kind, string Mode)>>(async connection =>
-        {
-            await using var command = connection.CreateCommand();
-            command.CommandText = """SELECT "Kind", "UserAddMode" FROM "AcquisitionAccessPolicies" WHERE "UserAddMode" <> @default;""";
-            Add(command, "@default", LegacyUserAddMode);
-            var rows = new List<(MediaAcquisitionKind, string)>();
-            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-            while (await reader.ReadAsync(cancellationToken))
-            {
-                rows.Add((AcquisitionAccessNames.ParseKind(reader.GetString(0)), reader.GetString(1)));
-            }
-
-            return rows;
-        }, cancellationToken);
-
-    internal Task ResetLegacyUserAddModesAsync(CancellationToken cancellationToken) =>
-        WithConnectionAsync(async connection =>
-        {
-            await using var command = connection.CreateCommand();
-            command.CommandText = """UPDATE "AcquisitionAccessPolicies" SET "UserAddMode" = @default WHERE "UserAddMode" <> @default;""";
-            Add(command, "@default", LegacyUserAddMode);
-            await command.ExecuteNonQueryAsync(cancellationToken);
-            return true;
-        }, cancellationToken);
-
     public async Task<AcquisitionAccessPolicy> GetPolicyAsync(MediaAcquisitionKind kind, CancellationToken cancellationToken) =>
         (await GetPoliciesAsync(cancellationToken)).Single(policy => policy.Kind == kind);
 
     /// <summary>
-    /// Saves the manual add rule of one media type. The table still carries the retired
-    /// <c>UserAddMode</c> column (NOT NULL, dropped by the next schema migration): whether a profile may
-    /// request or add instantly now comes from the capability matrix, so it is only ever written as
-    /// <see cref="LegacyUserAddMode"/> and never read.
+    /// Saves the manual add rule of one media type. Whether a profile may request or add instantly comes
+    /// from the capability matrix (#436), not this table; the retired <c>UserAddMode</c> column was dropped
+    /// by the Movie/TV schema migration (#593/#594), so only the manual rule is persisted here.
     /// </summary>
     public Task SavePolicyAsync(AcquisitionAccessPolicy policy, CancellationToken cancellationToken) =>
         WithConnectionAsync(async connection =>
@@ -86,14 +54,13 @@ public sealed class AcquisitionAccessStore(AppDbContext db)
             await using var command = connection.CreateCommand();
             command.CommandText =
                 """
-                INSERT INTO "AcquisitionAccessPolicies" ("Kind", "UserAddMode", "ManualAddMode", "UpdatedAt")
-                VALUES (@kind, @userAdd, @manual, @now)
+                INSERT INTO "AcquisitionAccessPolicies" ("Kind", "ManualAddMode", "UpdatedAt")
+                VALUES (@kind, @manual, @now)
                 ON CONFLICT("Kind") DO UPDATE SET
                     "ManualAddMode" = excluded."ManualAddMode",
                     "UpdatedAt" = excluded."UpdatedAt";
                 """;
             Add(command, "@kind", AcquisitionAccessNames.Kind(policy.Kind));
-            Add(command, "@userAdd", LegacyUserAddMode);
             Add(command, "@manual", AcquisitionAccessNames.Manual(policy.Manual));
             Add(command, "@now", DateTime.UtcNow);
             await command.ExecuteNonQueryAsync(cancellationToken);

@@ -1,0 +1,75 @@
+using Jularr.Web.Data;
+using Jularr.Web.Features.MediaCore;
+using Microsoft.EntityFrameworkCore;
+
+namespace Jularr.Web.Features.Movies;
+
+/// <summary>The movie a completed download resolved to and the universal work it is bridged to.</summary>
+public sealed record MovieLibraryEntry(Movie Movie, Guid WorkId);
+
+/// <summary>
+/// Creates and resolves first-class <see cref="Movie"/> records and bridges each to the universal media
+/// core (#593). Idempotent on the movie's <see cref="Movie.Key"/> (folded title + year) so a re-import of
+/// the same movie refreshes the row and always resolves to the same <see cref="Work"/> through the
+/// <c>WorkSourceKind.Movie</c> source link.
+/// </summary>
+public sealed class MovieLibraryService(AppDbContext db, LegacyWorkBridge bridge)
+{
+    public async Task<MovieLibraryEntry> EnsureAsync(
+        string title,
+        int? year,
+        string? tmdbId,
+        string? imdbId,
+        string? libraryPath,
+        CancellationToken cancellationToken)
+    {
+        var cleanTitle = string.IsNullOrWhiteSpace(title) ? "Untitled" : title.Trim();
+        var key = MovieKey(cleanTitle, year);
+
+        var movie = await db.Set<Movie>().FirstOrDefaultAsync(x => x.Key == key, cancellationToken);
+        if (movie is null)
+        {
+            movie = new Movie
+            {
+                Key = key,
+                Title = cleanTitle,
+                Year = year,
+                TmdbId = Clean(tmdbId),
+                ImdbId = Clean(imdbId),
+                LibraryPath = Clean(libraryPath)
+            };
+            db.Add(movie);
+        }
+        else
+        {
+            movie.Title = cleanTitle;
+            movie.Year ??= year;
+            movie.TmdbId ??= Clean(tmdbId);
+            movie.ImdbId ??= Clean(imdbId);
+            if (Clean(libraryPath) is { } path)
+            {
+                movie.LibraryPath = path;
+            }
+
+            movie.UpdatedAt = DateTime.UtcNow;
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
+
+        var workId = await bridge.EnsureWorkForMovieAsync(movie, cancellationToken);
+        return new MovieLibraryEntry(movie, workId);
+    }
+
+    /// <summary>The stable de-duplication key of a movie: folded title plus year so remakes stay distinct.</summary>
+    public static string MovieKey(string title, int? year)
+    {
+        var folded = new string((title ?? "")
+            .Where(char.IsLetterOrDigit)
+            .Select(char.ToLowerInvariant)
+            .ToArray());
+        return year is int value ? $"{folded}:{value}" : folded;
+    }
+
+    private static string? Clean(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+}

@@ -218,11 +218,11 @@ each row's Where.
 | Queue / history / blocklist / retries | Exists | Operations (`IsDownload`), `AcquisitionHistoryEntry`, blocklist | — |
 | Import decisions / rejected reasons | Exists | "Needs a decision", search operation log | — |
 | Naming profiles, preview, collision checks | Exists (anime only) | `/Settings/Naming`, `AnimeNamingFormatter` | — |
-| Naming for Movies/TV/Books/Manga/Novels | Missing — naming-profile system is anime-only | — | #396 (Movies/TV), #529 (Books/Manga/Novels) |
+| Naming for Movies/TV/Books/Manga/Novels | Exists — Books/Manga/Novels have per-kind naming profiles (#529); Movies/TV place files with built-in defaults (`Title (Year)`, `Series/Season NN/Series - S00E00`) on the shared `NamingTemplateEngine` (#593/#594); configurable Movie/TV profiles are a follow-up | `Features/Movies/MovieNaming`, `Features/Tv/TvNaming`, `Features/Naming` | #396 |
 | Sidecar handling on rename | Exists | subtitle/NFO sidecars follow the plan | — |
 | Media processing: ffprobe inventory, remux, verification, rollback | Exists | `MediaInventoryService`, `MediaContainerOptimizer`, `MediaRemuxVerifier` | — |
 | Media processing: dedicated transcode/optimize job (beyond lossless remux) | Partial — only the lossless MP4 remux is a durable job; lossy transcode happens live during playback, not as a background optimization job | `MediaContainerOptimizer`, playback-plan `transcode` mode | #403 |
-| **Movies and TV library** | **Missing — Jularr has no Movie or TV Show entity, acquisition, or naming distinct from anime; only Anime is modeled** | `Data/AppDbContext.cs` has no `Movie`/`Show` `DbSet` | #396 |
+| **Movies and TV library** | **Partial — first-class `Movie` and `TvSeries` entities bridged to the universal media core, completed-download + inbox import adapters on the shared spine, and per-kind naming/library roots exist (#593/#594); the consumer library grid + discovery UI (#595/#395) and playback wiring (#403) are pending** | `Features/Movies/**`, `Features/Tv/**`, `AppDbContext` `Movies`/`TvSeries` `DbSet` | #593 #594 |
 | Requests & approvals (Overseerr/Jellyseerr-style) | Partial — request lifecycle, the owner queue with auto-approval rules (`/Admin/Requests`), a per-user request history (`/Requests`), anime request options (whole series, seasons or episodes, audio/subtitle preference, requester-selectable quality profile at `/Requests/New`) and an availability badge (requested / in library / available) on Media Banner cards exist; request versus instant follows the per-media-type capability. Audio/subtitle preferences are shown to the approver but not yet enforced in release scoring; `/Requests/New` is not yet linked from the Discover cards | `AcquisitionRequestService`, `AutoApprovalEvaluator`, `RequestHistoryQuery`, `MediaAvailability`, `/Admin/Requests`, `/Requests` | #597 #436 |
 | Notifications (events/destinations) | Missing | — | #429 |
 | Clients & devices inventory (admin) | Partial — `/Admin/Devices` lists known clients/devices across every account (kind, label, app version, first/last seen, online state, live playback method) with a Revoke action that ends the device's live session and forgets it; `/Profile/Devices` lets a user self-manage their own devices the same way. No capability/app-version negotiation beyond what a client already reports, and Jularr's cookie auth has no per-device token, so revoke cannot block a future reconnect from the same browser/app | `Features/Devices/KnownDeviceRegistry`, `Pages/Admin/Devices`, `Pages/Profile/Devices` | #510 |
@@ -266,10 +266,13 @@ each row's Where.
 | Chapter-range provider mapping | Exists | `ReadingSegmentMappingStore`, `/Settings/MappingSegments` | — |
 | Cross-media anime↔novel mapping | Exists | `NovelAnimeMapping` | — |
 
-Radarr's Movies/TV capabilities specifically: Jularr has **no movie or TV library at all** today —
-only Anime is a first-class media type with its own entity, acquisition pipeline and naming system.
-Every Radarr-parity row above is therefore "missing" at the data-model level, not just the UI
-level; #396 is the tracked epic for building a Movie/TV-capable unified model.
+Radarr's Movies/TV capabilities: Jularr now models Movies and TV as first-class media types —
+`Movie` and `TvSeries` entities bridged to the universal media core (`WorkSourceKind.Movie`/`.Series`,
+TV reusing `WorkSeason`/`WorkEpisode`), completed-download + inbox import adapters on the shared
+`ICompletedDownloadImportAdapter`, and per-kind naming/library roots (#593/#594). The remaining
+Radarr-parity rows are the consumer library grid + discovery (#595/#395), playback polish (#403) and
+richer metadata providers (#438); #396 delivered the shared, media-type-agnostic acquisition engine
+they build on.
 
 ## 6. Pipeline observability
 
@@ -361,8 +364,9 @@ removes a media type entirely), and `EnsureCapabilityAsync` (server-side per-med
 
 `AcquisitionRequestService` (#597) is the request-side consumer: Request creates a request, Instant
 adds at once, Browse/Hidden cannot add. This replaces the former per-media-type "adding from
-search" rule (`UserAddMode`, migrated once into the User role default by `UserAddModeMigration`; its
-table column is retired and dropped by the next schema migration). On top of a Request capability the
+search" rule (`UserAddMode`), which #597 retired in favour of the capability matrix; its
+`AcquisitionAccessPolicies.UserAddMode` table column was dropped by the Movie/TV schema migration
+(#593/#594). On top of a Request capability the
 owner's auto-approval rules (`Features/Acquisition/Access/AcquisitionRequestSettingsStore`,
 `/data/acquisition/request-settings.json`, edited on `/Admin/Requests`) can approve a request without
 the queue: a rule matches on media type and requester and may carry a per-requester quota within a

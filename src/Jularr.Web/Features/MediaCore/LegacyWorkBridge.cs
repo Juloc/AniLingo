@@ -2,7 +2,9 @@ using Jularr.Web.Data;
 using Jularr.Web.Features.Books;
 using Jularr.Web.Features.Library;
 using Jularr.Web.Features.Mapping;
+using Jularr.Web.Features.Movies;
 using Jularr.Web.Features.Novels;
+using Jularr.Web.Features.Tv;
 using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Web.Features.MediaCore;
@@ -33,6 +35,77 @@ public sealed class LegacyWorkBridge(AppDbContext db, WorkService works, WorkStr
         await works.SetFieldProvenanceAsync(
             workId, "title", MetadataFieldSources.Local, null, null,
             isManualOverride: false, preferredProvider: MappingProviders.AniList, cancellationToken);
+        return workId;
+    }
+
+    /// <summary>
+    /// Ensures the work for a movie record (bridges by <c>Movie.Id</c>) and mirrors its title and its
+    /// TMDB/IMDb identities into the core. A movie is a single unit, so no season/episode structure is
+    /// created (#593).
+    /// </summary>
+    public async Task<Guid> EnsureWorkForMovieAsync(Movie movie, CancellationToken cancellationToken)
+    {
+        var workId = await EnsureWorkAsync(
+            WorkSourceKind.Movie, movie.Id, WorkMediaType.Movie, movie.Title, movie.Year, cancellationToken);
+
+        await works.AddOrUpdateTitleAsync(
+            workId, WorkTitleType.Primary, "und", movie.Title, MetadataFieldSources.Local, isPrimary: true, cancellationToken);
+        await works.SetFieldProvenanceAsync(
+            workId, "title", MetadataFieldSources.Local, null, null,
+            isManualOverride: false, preferredProvider: MappingProviders.Tmdb, cancellationToken);
+
+        if (!string.IsNullOrWhiteSpace(movie.TmdbId))
+        {
+            await works.LinkExternalIdentityAsync(
+                workId, WorkMediaType.Movie, MappingProviders.Tmdb, movie.TmdbId!,
+                confidence: 1.0, evidence: "movie TMDB id", isPrimary: true,
+                isManualOverride: false, MappingReviewState.Confirmed, cancellationToken);
+        }
+
+        if (!string.IsNullOrWhiteSpace(movie.ImdbId))
+        {
+            await works.LinkExternalIdentityAsync(
+                workId, WorkMediaType.Movie, MappingProviders.Imdb, movie.ImdbId!,
+                confidence: 1.0, evidence: "movie IMDb id", isPrimary: false,
+                isManualOverride: false, MappingReviewState.Confirmed, cancellationToken);
+        }
+
+        return workId;
+    }
+
+    /// <summary>
+    /// Ensures the work for a TV series record (bridges by <c>TvSeries.Id</c>) and mirrors its title and
+    /// its TMDB/TVDB identities into the core. A series reuses the universal season/episode structure
+    /// (<see cref="WorkSeason"/>/<see cref="WorkEpisode"/>), so the caller adds those through
+    /// <see cref="WorkStructureService"/> rather than a per-type episode table (#594).
+    /// </summary>
+    public async Task<Guid> EnsureWorkForSeriesAsync(TvSeries series, CancellationToken cancellationToken)
+    {
+        var workId = await EnsureWorkAsync(
+            WorkSourceKind.Series, series.Id, WorkMediaType.Series, series.Title, series.Year, cancellationToken);
+
+        await works.AddOrUpdateTitleAsync(
+            workId, WorkTitleType.Primary, "und", series.Title, MetadataFieldSources.Local, isPrimary: true, cancellationToken);
+        await works.SetFieldProvenanceAsync(
+            workId, "title", MetadataFieldSources.Local, null, null,
+            isManualOverride: false, preferredProvider: MappingProviders.Tmdb, cancellationToken);
+
+        if (!string.IsNullOrWhiteSpace(series.TmdbId))
+        {
+            await works.LinkExternalIdentityAsync(
+                workId, WorkMediaType.Series, MappingProviders.Tmdb, series.TmdbId!,
+                confidence: 1.0, evidence: "series TMDB id", isPrimary: true,
+                isManualOverride: false, MappingReviewState.Confirmed, cancellationToken);
+        }
+
+        if (!string.IsNullOrWhiteSpace(series.TvdbId))
+        {
+            await works.LinkExternalIdentityAsync(
+                workId, WorkMediaType.Series, MappingProviders.Tvdb, series.TvdbId!,
+                confidence: 1.0, evidence: "series TVDB id", isPrimary: false,
+                isManualOverride: false, MappingReviewState.Confirmed, cancellationToken);
+        }
+
         return workId;
     }
 

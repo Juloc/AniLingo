@@ -163,7 +163,8 @@ public sealed class RemotePathMappingTests
             written.RootElement.TryGetProperty("remotePathMappings", out _),
             "The legacy global list is gone from the file.");
         var again = await new AnimeImportSettingsStore(directory.Path).LoadAsync();
-        Assert.AreEqual(4, again.RemotePathMappingCount);
+        // The single legacy mapping is copied once into every media kind.
+        Assert.AreEqual(Enum.GetValues<MediaAcquisitionKind>().Length, again.RemotePathMappingCount);
         Assert.IsFalse(RemotePathMappingMigration.IsNeeded(again));
     }
 
