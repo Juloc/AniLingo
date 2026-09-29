@@ -158,6 +158,23 @@ public sealed record AnimeImportSettingsState(
     }
 
     /// <summary>
+    /// Adds one mapping to a media type's remote path mappings. A mapping with the same remote
+    /// prefix (ignoring case and surrounding whitespace) is replaced, so adding and previewing a
+    /// mapping agree on the result.
+    /// </summary>
+    public AnimeImportSettingsState WithRemotePathMapping(MediaAcquisitionKind kind, RemotePathMapping mapping)
+    {
+        ArgumentNullException.ThrowIfNull(mapping);
+
+        var remote = mapping.RemotePrefix.Trim();
+        return WithRemotePathMappings(
+            kind,
+            RemotePathMappingsFor(kind)
+                .Where(existing => !existing.RemotePrefix.Equals(remote, StringComparison.OrdinalIgnoreCase))
+                .Append(new RemotePathMapping(remote, mapping.LocalPrefix.Trim())));
+    }
+
+    /// <summary>
     /// The one path translation: rewrites <paramref name="path"/>, as an external system reports
     /// it for <paramref name="kind"/>, to the path Jularr reads, using the longest matching remote
     /// prefix among that media type's mappings. Comparison is ordinal-ignore-case and tolerant of

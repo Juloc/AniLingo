@@ -225,6 +225,34 @@ Settings → Acquisition → Media folders (see [READING_ACQUISITION.md](READING
 Every completed download, Anime included, shows the reported path, the mapped local path, the
 destination and the import mode on its operation page.
 
+### Choosing folders: the folder browser
+
+Every local path field on `/Settings/Acquisition` (the library and inbox folder of each reading
+media type and the local side of a remote path mapping) has a **Browse** button. All of them open
+the one shared folder browser (`Features/Storage/FolderBrowse`, partials `_PathField` and
+`_FolderBrowser`); typing the path stays possible. It is an Owner-only view of the file system as
+the Jularr container sees it, not a file manager:
+
+- The starting points are the volumes mounted into the container (read from `/proc/self/mountinfo`
+  at request time, so nothing about an installation is hardcoded) and `/data`, each with its state:
+  writable, not writable, read-only mount, not readable or not responding. The image's own system
+  mounts (`/proc`, `/etc`, `tmpfs`, the image layers, `/`) are not offered. A host path that is not
+  mounted into the container does not exist for the browser.
+- Only folders are listed, never files. Every path is normalized, `..` is refused and every symbolic
+  link on the way is resolved: a link that leads out of the mounted storage is neither listed nor
+  followed, for browsing, checking and creating alike.
+- **New folder** works only where the runtime user (UID 1654) may write and the mount is not
+  read-only. Names are trimmed and validated on the server (no separators, no `:*?"<>|`, no control
+  or direction-override characters, no trailing dot, at most 255 bytes); a bad name is refused, never
+  rewritten.
+- Under each field a check shows what the container sees at the typed path (exists, readable,
+  writable). Library and inbox of one media type must not be the same folder (saving is refused) and
+  should not be nested inside each other (a warning).
+- Below the remote path mappings, **Test with a path** takes a path exactly as Sonarr or SABnzbd
+  reports it, applies `AnimeImportSettingsState.TranslatePath` (the importers' translation — a
+  mapping still being typed is applied as adding it would apply it) and shows whether the mapped path
+  exists inside the container. A media manager sees the mapped path, but not whether it exists.
+
 ## Multiple root folders
 
 An anime's imports go to the library root its existing files already live in. A brand-new anime

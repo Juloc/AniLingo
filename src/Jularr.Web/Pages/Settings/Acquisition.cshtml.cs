@@ -10,6 +10,7 @@ using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Library;
 using Jularr.Web.Features.Localization;
 using Jularr.Web.Features.Media.Optimization;
+using Jularr.Web.Features.Storage.FolderBrowse;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -31,6 +32,7 @@ public sealed class AcquisitionModel(
     IndexerStore indexerStore,
     CurrentAccountContext currentAccount,
     MediaInboxImportService inboxes,
+    FolderBrowseService folders,
     AppDbContext db,
     ILogger<AcquisitionModel> logger) : PageModel
 {
@@ -44,10 +46,12 @@ public sealed class AcquisitionModel(
     public bool AniListAutoMonitorEnabled { get; private set; }
     public AcquisitionBackupPreview? RestorePreview { get; private set; }
     public string? PendingRestoreJson { get; private set; }
-    public string? Notice => TempData["AcquisitionSettingsNotice"] as string;
     public string? Error => TempData["AcquisitionSettingsError"] as string;
 
-    /// <summary>Library and inbox folders and the settings backup are storage settings, Owner only.</summary>
+    /// <summary>
+    /// Library and inbox folders, browsing the container's file system and the settings backup are
+    /// storage settings, Owner only.
+    /// </summary>
     public bool CanManageStorage => currentAccount.Can(JularrPolicies.AdminSystem);
 
     public async Task OnGetAsync(CancellationToken cancellationToken) => await LoadAsync(cancellationToken);
@@ -88,7 +92,7 @@ public sealed class AcquisitionModel(
                 return state with { DefaultImportMode = defaultImportMode, RootImportModes = roots };
             },
             cancellationToken);
-        TempData["AcquisitionSettingsNotice"] = Ui["settings.acquisition.status.importModeSaved"];
+        TempData["Status"] = Ui["settings.acquisition.status.importModeSaved"];
         return RedirectToPage();
     }
 
@@ -153,6 +157,16 @@ public sealed class AcquisitionModel(
             return RedirectToPage(pageName: null, pageHandler: null, routeValues: null, fragment: "media-folders");
         }
 
+        // Importing the inbox into the very folder it is scanned from would import files onto
+        // themselves; nested folders are only warned about next to the fields.
+        if (library is not null &&
+            inbox is not null &&
+            await folders.ComparePairAsync(library, inbox, cancellationToken) == FolderRelation.Same)
+        {
+            TempData["AcquisitionSettingsError"] = Ui["storage.pair.same"];
+            return RedirectToPage(pageName: null, pageHandler: null, routeValues: null, fragment: "media-folders");
+        }
+
         await importSettings.UpdateAsync(
             state =>
             {
@@ -176,7 +190,7 @@ public sealed class AcquisitionModel(
                 return state with { MediaLibraries = libraries };
             },
             cancellationToken);
-        TempData["AcquisitionSettingsNotice"] = Ui.Format("settings.acquisition.status.mediaFoldersSaved", ("media", MediaLabel(kind)));
+        TempData["Status"] = Ui.Format("settings.acquisition.status.mediaFoldersSaved", ("media", MediaLabel(kind)));
         return RedirectToPage(pageName: null, pageHandler: null, routeValues: null, fragment: "media-folders");
 
         static string? Clean(string? value) =>
@@ -200,7 +214,7 @@ public sealed class AcquisitionModel(
         try
         {
             var result = await inboxes.RunAsync(kind, currentAccount.ProfileId, cancellationToken);
-            TempData["AcquisitionSettingsNotice"] = Ui.Format(
+            TempData["Status"] = Ui.Format(
                 "settings.acquisition.status.inboxScanned",
                 ("media", MediaLabel(kind)),
                 ("result", result.Message));
@@ -237,7 +251,7 @@ public sealed class AcquisitionModel(
         await importSettings.UpdateAsync(
             state => state with { PlaybackOptimization = playbackOptimization },
             cancellationToken);
-        TempData["AcquisitionSettingsNotice"] = Ui["settings.acquisition.status.playbackOptimizationSaved"];
+        TempData["Status"] = Ui["settings.acquisition.status.playbackOptimizationSaved"];
         return RedirectToPage();
     }
 
@@ -267,14 +281,45 @@ public sealed class AcquisitionModel(
         }
 
         await importSettings.UpdateAsync(
-            state => state.WithRemotePathMappings(
-                kind,
-                state.RemotePathMappingsFor(kind)
-                    .Where(mapping => !mapping.RemotePrefix.Equals(remotePrefix.Trim(), StringComparison.OrdinalIgnoreCase))
-                    .Append(new RemotePathMapping(remotePrefix.Trim(), localPrefix.Trim()))),
+            state => state.WithRemotePathMapping(kind, new RemotePathMapping(remotePrefix, localPrefix)),
             cancellationToken);
-        TempData["AcquisitionSettingsNotice"] = Ui["settings.acquisition.status.pathMappingSaved"];
+        TempData["Status"] = Ui["settings.acquisition.status.pathMappingSaved"];
         return RedirectToPage();
+    }
+
+    /// <summary>
+    /// Shows what the importer would do with a path an external system reports: the mapped path and,
+    /// for the owner, whether it exists inside the container. The mapping is the canonical
+    /// <see cref="AnimeImportSettingsState.TranslatePath"/>; a mapping still being typed in the add
+    /// form is applied exactly as adding it would apply it.
+    /// </summary>
+    public async Task<IActionResult> OnGetPreviewPathMappingAsync(
+        MediaAcquisitionKind kind,
+        string? samplePath,
+        string? remotePrefix,
+        string? localPrefix,
+        CancellationToken cancellationToken)
+    {
+        if (!ModelState.IsValid || !PathMappingKinds.Contains(kind) || string.IsNullOrWhiteSpace(samplePath))
+        {
+            return BadRequest();
+        }
+
+        var state = await importSettings.LoadAsync(cancellationToken);
+        if (!string.IsNullOrWhiteSpace(remotePrefix) && !string.IsNullOrWhiteSpace(localPrefix))
+        {
+            state = state.WithRemotePathMapping(kind, new RemotePathMapping(remotePrefix, localPrefix));
+        }
+
+        var reported = samplePath.Trim();
+        var mapped = state.TranslatePath(kind, reported);
+        // Whether a path exists is a look at the container's file system: Owner only.
+        var check = CanManageStorage
+            ? await folders.CheckAsync(mapped, directoryOnly: false, otherPath: null, cancellationToken)
+            : null;
+        return new JsonResult(
+            new PathMappingPreview(reported, mapped, !string.Equals(reported, mapped, StringComparison.Ordinal), check),
+            FolderBrowseJson.Options);
     }
 
     public async Task<IActionResult> OnPostRemovePathMappingAsync(
@@ -294,7 +339,7 @@ public sealed class AcquisitionModel(
                 state.RemotePathMappingsFor(kind)
                     .Where(mapping => !mapping.RemotePrefix.Equals(remotePrefix, StringComparison.OrdinalIgnoreCase))),
             cancellationToken);
-        TempData["AcquisitionSettingsNotice"] = Ui["settings.acquisition.status.pathMappingRemoved"];
+        TempData["Status"] = Ui["settings.acquisition.status.pathMappingRemoved"];
         return RedirectToPage();
     }
 
@@ -321,7 +366,7 @@ public sealed class AcquisitionModel(
                 return state with { Tags = tags };
             },
             cancellationToken);
-        TempData["AcquisitionSettingsNotice"] = Ui["settings.acquisition.status.tagAdded"];
+        TempData["Status"] = Ui["settings.acquisition.status.tagAdded"];
         return RedirectToPage();
     }
 
@@ -341,7 +386,7 @@ public sealed class AcquisitionModel(
                     .ToList()
             },
             cancellationToken);
-        TempData["AcquisitionSettingsNotice"] = Ui["settings.acquisition.status.tagRemoved"];
+        TempData["Status"] = Ui["settings.acquisition.status.tagRemoved"];
         return RedirectToPage();
     }
 
@@ -374,7 +419,7 @@ public sealed class AcquisitionModel(
                 return state with { DelayProfiles = profiles };
             },
             cancellationToken);
-        TempData["AcquisitionSettingsNotice"] = Ui["settings.acquisition.status.delayProfileAdded"];
+        TempData["Status"] = Ui["settings.acquisition.status.delayProfileAdded"];
         return RedirectToPage();
     }
 
@@ -385,7 +430,7 @@ public sealed class AcquisitionModel(
         await policyStore.UpdateAsync(
             state => state with { DelayProfiles = state.DelayProfiles.Where(profile => profile.Id != profileId).ToList() },
             cancellationToken);
-        TempData["AcquisitionSettingsNotice"] = Ui["settings.acquisition.status.delayProfileRemoved"];
+        TempData["Status"] = Ui["settings.acquisition.status.delayProfileRemoved"];
         return RedirectToPage();
     }
 
@@ -421,7 +466,7 @@ public sealed class AcquisitionModel(
                 return state with { IndexerRestrictions = restrictions };
             },
             cancellationToken);
-        TempData["AcquisitionSettingsNotice"] = Ui["settings.acquisition.status.indexerRestrictionAdded"];
+        TempData["Status"] = Ui["settings.acquisition.status.indexerRestrictionAdded"];
         return RedirectToPage();
     }
 
@@ -432,7 +477,7 @@ public sealed class AcquisitionModel(
         await policyStore.UpdateAsync(
             state => state with { IndexerRestrictions = state.IndexerRestrictions.Where(item => item.Id != restrictionId).ToList() },
             cancellationToken);
-        TempData["AcquisitionSettingsNotice"] = Ui["settings.acquisition.status.indexerRestrictionRemoved"];
+        TempData["Status"] = Ui["settings.acquisition.status.indexerRestrictionRemoved"];
         return RedirectToPage();
     }
 
@@ -441,7 +486,7 @@ public sealed class AcquisitionModel(
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
 
         await aniListAutoMonitorStore.SetEnabledAsync(currentAccount.ProfileId, enabled, DateTimeOffset.UtcNow, cancellationToken);
-        TempData["AcquisitionSettingsNotice"] = enabled
+        TempData["Status"] = enabled
             ? Ui["settings.acquisition.status.autoMonitorOn"]
             : Ui["settings.acquisition.status.autoMonitorOff"];
         return RedirectToPage();
@@ -517,7 +562,7 @@ public sealed class AcquisitionModel(
             }
 
             var result = await backupService.RestoreAsync(bundle, cancellationToken);
-            TempData[result.Success ? "AcquisitionSettingsNotice" : "AcquisitionSettingsError"] = result.Success
+            TempData[result.Success ? "Status" : "AcquisitionSettingsError"] = result.Success
                 ? Ui.Format("settings.acquisition.status.restored", ("count", result.FilesWritten))
                 : string.Join(" ", result.Errors);
         }
@@ -540,3 +585,9 @@ public sealed class AcquisitionModel(
         AniListAutoMonitorEnabled = autoMonitor.IsEnabled(currentAccount.ProfileId);
     }
 }
+
+/// <summary>
+/// The result of testing a path against the remote path mappings: the path as an external system
+/// reports it, the path Jularr reads, and (for the owner) what exists there.
+/// </summary>
+public sealed record PathMappingPreview(string Reported, string Mapped, bool Changed, PathCheck? Check);

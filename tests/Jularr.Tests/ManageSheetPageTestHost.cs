@@ -23,6 +23,7 @@ using Jularr.Web.Features.Operations;
 using Jularr.Web.Features.Progress;
 using Jularr.Web.Features.Shell;
 using Jularr.Web.Features.Sonarr;
+using Jularr.Web.Features.Storage.FolderBrowse;
 using Jularr.Web.Features.Tracking;
 using Jularr.Web.Features.Watchlist;
 using Jularr.Web.Frontend;
@@ -193,6 +194,8 @@ internal sealed class ManageSheetPageTestHost : IAsyncDisposable
                         services.AddScoped(_ => new AcquisitionBackupService(
                             Path.Combine(dataDirectory.FullName, "acquisition-backup")));
                         services.AddScoped<MediaInboxImportService>();
+                        // The same folder browser Program.cs registers; the page reads its checks.
+                        services.AddFolderBrowse(dataDirectory.FullName);
                         services.AddHttpClient();
                     })
                     .Configure(app =>
