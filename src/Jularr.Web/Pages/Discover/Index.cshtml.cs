@@ -7,6 +7,7 @@ using Jularr.Web.Features.Localization;
 using Jularr.Web.Features.Metadata;
 using Jularr.Web.Features.Novels;
 using Jularr.Web.Features.Operations;
+using Jularr.Web.Features.Recommendations;
 using Jularr.Web.Features.Watchlist;
 using Jularr.Web.Ui;
 using Microsoft.AspNetCore.Mvc;
@@ -26,6 +27,7 @@ public sealed class IndexModel(
     AcquisitionAccessStore requestStore,
     WatchlistStore watchlist,
     FranchiseService franchiseService,
+    MediaRecommendationService recommendations,
     ILogger<IndexModel> logger) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
@@ -130,17 +132,26 @@ public sealed class IndexModel(
             .GroupBy(item => (item.Kind, item.ExternalId))
             .ToDictionary(group => group.Key, group => group.First().Status);
 
+        var providerRows = board.Rows
+            .Select(row => new MediaShelfModel(
+                row.Id,
+                ShelfHeading(row),
+                row.DeepLinkUrl,
+                Ui["discover.shelf.seeAll"],
+                row.Items
+                    .Select(item => MediaBannerCardModel.Create(ToCardData(item, open), Ui))
+                    .ToArray()));
+
+        // Personalized cross-media rows (#428) lead the board: explainable "Because you …" and
+        // continuation shelves for this profile, rendered through the same shelf surface.
+        var personalized = await recommendations.GetForProfileAsync(
+            User,
+            account.ProfileId,
+            cancellationToken);
+        var personalizedRows = MediaRecommendationShelfView.ToShelves(personalized, Ui);
+
         var model = new MediaShelfBoardModel(
-            board.Rows
-                .Select(row => new MediaShelfModel(
-                    row.Id,
-                    ShelfHeading(row),
-                    row.DeepLinkUrl,
-                    Ui["discover.shelf.seeAll"],
-                    row.Items
-                        .Select(item => MediaBannerCardModel.Create(ToCardData(item, open), Ui))
-                        .ToArray()))
-                .ToArray());
+            personalizedRows.Concat(providerRows).ToArray());
 
         return Partial("_MediaShelfBoard", model);
     }

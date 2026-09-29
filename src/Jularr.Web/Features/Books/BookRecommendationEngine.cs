@@ -1,4 +1,4 @@
-using System.Text.RegularExpressions;
+using Jularr.Web.Features.Recommendations;
 
 namespace Jularr.Web.Features.Books;
 
@@ -8,14 +8,21 @@ namespace Jularr.Web.Features.Books;
 /// progress; candidates come from the existing catalog search providers.
 /// There is no cross-profile signal, no learned model and no persisted state.
 /// </summary>
-public static partial class BookRecommendationEngine
+/// <remarks>
+/// Since #428 the scoring, normalization and de-duplication live in the shared, media-neutral
+/// <see cref="RecommendationScoring"/> framework; this class keeps the Books-specific orchestration
+/// (catalog searches, book shelves and the exact reason copy) and delegates every scoring decision to
+/// that framework so Books and the cross-media engine can never diverge.
+/// </remarks>
+public static class BookRecommendationEngine
 {
-    public const int SameAuthorScore = 100;
-    public const int SubjectOverlapScore = 15;
-    public const int MaxCountedSubjectOverlap = 4;
+    public const int SameAuthorScore = RecommendationScoring.SameCreatorScore;
+    public const int SubjectOverlapScore = RecommendationScoring.SubjectOverlapScore;
+    public const int MaxCountedSubjectOverlap = RecommendationScoring.MaxCountedSubjectOverlap;
 
     private const string PopularQueryKey = "";
 
+    /// <summary>Book-specific subject noise (catalog shelf tags, "fiction", …) dropped before matching.</summary>
     private static readonly HashSet<string> GenericSubjects = new(
         [
             "fiction",
@@ -45,23 +52,8 @@ public static partial class BookRecommendationEngine
         ],
         StringComparer.Ordinal);
 
-    private static readonly HashSet<string> SubjectStopTokens = new(
-        [
-            "fiction",
-            "general",
-            "literature",
-            "novel",
-            "novels",
-            "book",
-            "books",
-            "and",
-            "the",
-            "of",
-            "in",
-            "a",
-            "an"
-        ],
-        StringComparer.Ordinal);
+    private static readonly HashSet<string> SubjectStopTokens =
+        RecommendationScoring.DefaultSubjectStopTokens.ToHashSet(StringComparer.Ordinal);
 
     public static IReadOnlyList<BookRecommendationLibraryBook> SelectContinueReading(
         IReadOnlyList<BookRecommendationLibraryBook> library,
@@ -135,7 +127,7 @@ public static partial class BookRecommendationEngine
             options.MaxSeeds);
         var profileSubjects = BuildSubjectProfile(seeds);
         var seedAuthors = seeds
-            .Select(x => AuthorTokens(x.Book.Author))
+            .Select(x => RecommendationScoring.CreatorTokens(x.Book.Author))
             .Where(x => x.Count > 0)
             .ToArray();
         var historyIsThin = seeds.Count < 2;
@@ -160,11 +152,11 @@ public static partial class BookRecommendationEngine
             cancellationToken);
 
         var owned = library
-            .Select(x => new OwnedBook(
-                Identity(x.Title, x.Author),
+            .Select(x => new RecommendationOwnedEntity(
+                RecommendationScoring.Identity(x.Title, x.Author),
                 x.CatalogId))
             .ToArray();
-        var used = new UsedBooks();
+        var used = new RecommendationUsedSet();
         var shelves = new List<BookRecommendationShelf>();
 
         foreach (var planned in plan
@@ -239,7 +231,7 @@ public static partial class BookRecommendationEngine
 
     private static List<PlannedShelf> PlanShelves(
         IReadOnlyList<BookRecommendationSeed> seeds,
-        IReadOnlyList<ProfileSubject> profileSubjects,
+        IReadOnlyList<RecommendationSubject> profileSubjects,
         bool historyIsThin,
         BookRecommendationOptions options)
     {
@@ -280,9 +272,9 @@ public static partial class BookRecommendationEngine
             }
 
             var author = seed.Book.Author?.Trim();
-            var tokens = AuthorTokens(author);
+            var tokens = RecommendationScoring.CreatorTokens(author);
             if (tokens.Count == 0
-                || !authorKeys.Add(AuthorKey(tokens)))
+                || !authorKeys.Add(RecommendationScoring.CreatorKey(tokens)))
             {
                 continue;
             }
@@ -290,7 +282,7 @@ public static partial class BookRecommendationEngine
             candidates.Add(new PlannedShelf(
                 BookRecommendationShelfKind.MoreByAuthor,
                 candidates.Count,
-                new SearchQuery(NormalizeForMatch(author!), author!),
+                new SearchQuery(RecommendationScoring.NormalizeForMatch(author!), author!),
                 null,
                 author,
                 null));
@@ -413,11 +405,11 @@ public static partial class BookRecommendationEngine
     private static BookRecommendationShelf? BuildShelf(
         PlannedShelf planned,
         IReadOnlyList<BookCatalogItem>? candidates,
-        IReadOnlyList<ProfileSubject> profileSubjects,
+        IReadOnlyList<RecommendationSubject> profileSubjects,
         IReadOnlyList<IReadOnlySet<string>> seedAuthors,
         bool historyIsThin,
-        IReadOnlyList<OwnedBook> owned,
-        UsedBooks used,
+        IReadOnlyList<RecommendationOwnedEntity> owned,
+        RecommendationUsedSet used,
         BookRecommendationOptions options)
     {
         if (candidates is null || candidates.Count == 0)
@@ -425,409 +417,175 @@ public static partial class BookRecommendationEngine
             return null;
         }
 
-        Func<BookCatalogItem, ScoredReason?> scorer;
+        Func<BookCatalogItem, RecommendationSignal?> scorer;
         string title;
         string explanation;
+        string fallbackReason;
 
         switch (planned.Kind)
         {
             case BookRecommendationShelfKind.BecauseYouRead:
                 var seed = planned.Seed!;
                 var seedSubjects = UsefulSubjects(seed.Book.Subjects);
-                var seedAuthor = AuthorTokens(seed.Book.Author);
-                scorer = item => ScoreAgainstSeed(
-                    item,
-                    seedAuthor,
-                    seedSubjects);
+                var seedAuthor = RecommendationScoring.CreatorTokens(seed.Book.Author);
+                scorer = item => ScoreAgainstSeed(item, seedAuthor, seedSubjects);
                 title = $"Because you read {seed.Book.Title}";
                 explanation = seed.Reason == BookRecommendationSeedReason.RecentReading
                     ? "Matched to the author and subjects of a book you are reading on this profile."
                     : "Matched to the author and subjects of a book recently added to the library.";
+                fallbackReason = "";
                 break;
 
             case BookRecommendationShelfKind.MoreByAuthor:
-                var author = AuthorTokens(planned.Author);
-                scorer = item => ScoreSameAuthor(
-                    item,
-                    author,
-                    profileSubjects);
+                var author = RecommendationScoring.CreatorTokens(planned.Author);
+                scorer = item => ScoreSameAuthor(item, author, profileSubjects);
                 title = $"More by {planned.Author}";
                 explanation = "Other books by an author from your recent books.";
+                fallbackReason = "";
                 break;
 
             case BookRecommendationShelfKind.SimilarSubjects:
                 var subject = planned.Subject!;
-                scorer = item => ScoreSimilarSubject(
-                    item,
-                    subject,
-                    profileSubjects,
-                    seedAuthors);
+                scorer = item => ScoreSimilarSubject(item, subject, profileSubjects, seedAuthors);
                 title = $"Similar themes: {subject.Display}";
                 explanation = "Books sharing subjects with your recent books.";
+                fallbackReason = "";
                 break;
 
             default:
-                scorer = item => ScorePopular(
-                    item,
-                    profileSubjects);
+                scorer = item => ScorePopular(item, profileSubjects);
                 title = "Popular free books";
                 explanation = historyIsThin
                     ? "A starting point while this profile has little reading history."
                     : "Popular free books to round out your suggestions.";
+                fallbackReason = "Popular free book";
                 break;
         }
 
-        var items = Rank(
+        var ranked = RecommendationScoring.Rank(
             candidates,
+            item => item.Id,
+            item => item.Title,
+            item => item.Author,
             scorer,
             owned,
             used,
             options.MaxItemsPerShelf);
 
-        return items.Count == 0
-            ? null
-            : new BookRecommendationShelf(
-                planned.Kind,
-                title,
-                explanation,
-                items);
-    }
-
-    private static IReadOnlyList<BookRecommendationItem> Rank(
-        IReadOnlyList<BookCatalogItem> candidates,
-        Func<BookCatalogItem, ScoredReason?> scorer,
-        IReadOnlyList<OwnedBook> owned,
-        UsedBooks used,
-        int maxItems)
-    {
-        var ordered = candidates
-            .Select((item, rank) => (
-                Item: item,
-                Rank: rank,
-                Identity: Identity(item.Title, item.Author),
-                Scored: scorer(item)))
-            .Where(x =>
-                x.Scored is not null
-                && !IsOwned(x.Item, x.Identity, owned))
-            .OrderByDescending(x => x.Scored!.Score)
-            .ThenBy(x => x.Rank)
-            .ThenBy(x => x.Item.Title, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(x => x.Item.Id, StringComparer.Ordinal);
-
-        var picked = new List<BookRecommendationItem>();
-        foreach (var candidate in ordered)
-        {
-            if (picked.Count >= maxItems)
-            {
-                break;
-            }
-
-            if (!used.TryAdd(candidate.Item.Id, candidate.Identity))
-            {
-                continue;
-            }
-
-            picked.Add(new BookRecommendationItem(
-                candidate.Item,
-                candidate.Scored!.Score,
-                candidate.Scored.Reason));
-        }
-
-        return picked;
-    }
-
-    private static ScoredReason? ScoreAgainstSeed(
-        BookCatalogItem item,
-        IReadOnlySet<string> seedAuthor,
-        IReadOnlyList<ProfileSubject> seedSubjects)
-    {
-        var sameAuthor = AuthorsMatch(
-            seedAuthor,
-            AuthorTokens(item.Author));
-        var shared = SharedSubjects(
-            seedSubjects,
-            item.Subjects);
-
-        return Score(
-            sameAuthor,
-            shared,
-            requireSignal: true,
-            fallbackReason: "");
-    }
-
-    private static ScoredReason? ScoreSameAuthor(
-        BookCatalogItem item,
-        IReadOnlySet<string> author,
-        IReadOnlyList<ProfileSubject> profileSubjects)
-    {
-        if (!AuthorsMatch(author, AuthorTokens(item.Author)))
+        if (ranked.Count == 0)
         {
             return null;
         }
 
-        return Score(
-            sameAuthor: true,
-            SharedSubjects(profileSubjects, item.Subjects),
-            requireSignal: true,
-            fallbackReason: "");
+        var items = ranked
+            .Select(entry => new BookRecommendationItem(
+                entry.Item,
+                entry.Signal.Score,
+                FormatReason(entry.Signal, fallbackReason)))
+            .ToArray();
+
+        return new BookRecommendationShelf(
+            planned.Kind,
+            title,
+            explanation,
+            items);
     }
 
-    private static ScoredReason? ScoreSimilarSubject(
-        BookCatalogItem item,
-        ProfileSubject subject,
-        IReadOnlyList<ProfileSubject> profileSubjects,
-        IReadOnlyList<IReadOnlySet<string>> seedAuthors)
+    /// <summary>The exact "Same author · Shares X, Y" reason copy Books has always shown.</summary>
+    private static string FormatReason(RecommendationSignal signal, string fallbackReason)
     {
-        var shared = SharedSubjects(
-            profileSubjects,
-            item.Subjects);
-        if (!shared.Any(x => x.Key == subject.Key))
-        {
-            return null;
-        }
-
-        var itemAuthor = AuthorTokens(item.Author);
-        var sameAuthor = seedAuthors.Any(x => AuthorsMatch(x, itemAuthor));
-
-        return Score(
-            sameAuthor,
-            shared,
-            requireSignal: true,
-            fallbackReason: "");
-    }
-
-    private static ScoredReason? ScorePopular(
-        BookCatalogItem item,
-        IReadOnlyList<ProfileSubject> profileSubjects) =>
-        Score(
-            sameAuthor: false,
-            SharedSubjects(profileSubjects, item.Subjects),
-            requireSignal: false,
-            fallbackReason: "Popular free book");
-
-    private static ScoredReason? Score(
-        bool sameAuthor,
-        IReadOnlyList<ProfileSubject> shared,
-        bool requireSignal,
-        string fallbackReason)
-    {
-        var score =
-            (sameAuthor ? SameAuthorScore : 0)
-            + Math.Min(shared.Count, MaxCountedSubjectOverlap)
-                * SubjectOverlapScore;
-
-        if (requireSignal && score == 0)
-        {
-            return null;
-        }
-
         var reasons = new List<string>(2);
-        if (sameAuthor)
+        if (signal.SameCreator)
         {
             reasons.Add("Same author");
         }
 
-        if (shared.Count > 0)
+        if (signal.SharedSubjects.Count > 0)
         {
             reasons.Add(
                 "Shares "
                 + string.Join(
                     ", ",
-                    shared.Take(2).Select(x => x.Display)));
+                    signal.SharedSubjects.Take(2).Select(x => x.Display)));
         }
 
-        return new ScoredReason(
-            score,
-            reasons.Count == 0
-                ? fallbackReason
-                : string.Join(" · ", reasons));
+        return reasons.Count == 0
+            ? fallbackReason
+            : string.Join(" · ", reasons);
     }
 
-    /// <summary>
-    /// Returns the profile subjects (in profile order) matched by any of the
-    /// candidate's subjects.
-    /// </summary>
-    private static IReadOnlyList<ProfileSubject> SharedSubjects(
-        IReadOnlyList<ProfileSubject> profile,
-        IReadOnlyList<string> candidateSubjects)
+    private static RecommendationSignal? ScoreAgainstSeed(
+        BookCatalogItem item,
+        IReadOnlySet<string> seedAuthor,
+        IReadOnlyList<RecommendationSubject> seedSubjects)
     {
-        if (profile.Count == 0 || candidateSubjects.Count == 0)
-        {
-            return [];
-        }
+        var sameAuthor = RecommendationScoring.CreatorsMatch(
+            seedAuthor,
+            RecommendationScoring.CreatorTokens(item.Author));
+        var shared = RecommendationScoring.SharedSubjects(
+            seedSubjects,
+            UsefulSubjects(item.Subjects));
 
-        var candidates = UsefulSubjects(candidateSubjects);
-        return profile
-            .Where(subject => candidates.Any(candidate =>
-                SubjectsMatch(subject.Tokens, candidate.Tokens)))
-            .ToArray();
+        return RecommendationScoring.Score(sameAuthor, shared, requireSignal: true);
     }
 
-    private static IReadOnlyList<ProfileSubject> BuildSubjectProfile(
-        IReadOnlyList<BookRecommendationSeed> seeds)
+    private static RecommendationSignal? ScoreSameAuthor(
+        BookCatalogItem item,
+        IReadOnlySet<string> author,
+        IReadOnlyList<RecommendationSubject> profileSubjects)
     {
-        var weights = new Dictionary<string, (ProfileSubject Subject, int Weight, int FirstSeen)>(
-            StringComparer.Ordinal);
-        var position = 0;
-
-        foreach (var seed in seeds)
+        if (!RecommendationScoring.CreatorsMatch(author, RecommendationScoring.CreatorTokens(item.Author)))
         {
-            foreach (var subject in UsefulSubjects(seed.Book.Subjects))
-            {
-                weights[subject.Key] = weights.TryGetValue(
-                    subject.Key,
-                    out var current)
-                    ? current with { Weight = current.Weight + 1 }
-                    : (subject, 1, position++);
-            }
+            return null;
         }
 
-        return weights.Values
-            .OrderByDescending(x => x.Weight)
-            .ThenBy(x => x.FirstSeen)
-            .Select(x => x.Subject)
-            .ToArray();
+        return RecommendationScoring.Score(
+            sameCreator: true,
+            RecommendationScoring.SharedSubjects(profileSubjects, UsefulSubjects(item.Subjects)),
+            requireSignal: true);
     }
 
-    private static IReadOnlyList<ProfileSubject> UsefulSubjects(
-        IReadOnlyList<string> subjects)
+    private static RecommendationSignal? ScoreSimilarSubject(
+        BookCatalogItem item,
+        RecommendationSubject subject,
+        IReadOnlyList<RecommendationSubject> profileSubjects,
+        IReadOnlyList<IReadOnlySet<string>> seedAuthors)
     {
-        var result = new List<ProfileSubject>();
-        var keys = new HashSet<string>(StringComparer.Ordinal);
-
-        foreach (var raw in subjects)
+        var shared = RecommendationScoring.SharedSubjects(
+            profileSubjects,
+            UsefulSubjects(item.Subjects));
+        if (!shared.Any(x => x.Key == subject.Key))
         {
-            var display = raw?.Trim();
-            if (string.IsNullOrWhiteSpace(display)
-                || display.Length > 80
-                || display.Contains(':')
-                || display.Contains('='))
-            {
-                continue;
-            }
-
-            var key = NormalizeForMatch(display);
-            if (key.Length < 3
-                || GenericSubjects.Contains(key)
-                || key.StartsWith("reading level", StringComparison.Ordinal)
-                || !keys.Add(key))
-            {
-                continue;
-            }
-
-            var tokens = key
-                .Split(' ', StringSplitOptions.RemoveEmptyEntries)
-                .Where(x => x.Length >= 2 && !SubjectStopTokens.Contains(x))
-                .ToHashSet(StringComparer.Ordinal);
-
-            if (tokens.Count > 0)
-            {
-                result.Add(new ProfileSubject(key, display, tokens));
-            }
+            return null;
         }
 
-        return result;
+        var itemAuthor = RecommendationScoring.CreatorTokens(item.Author);
+        var sameAuthor = seedAuthors.Any(x => RecommendationScoring.CreatorsMatch(x, itemAuthor));
+
+        return RecommendationScoring.Score(sameAuthor, shared, requireSignal: true);
     }
 
-    private static bool SubjectsMatch(
-        IReadOnlySet<string> left,
-        IReadOnlySet<string> right) =>
-        left.Count > 0
-        && right.Count > 0
-        && (left.IsSubsetOf(right) || right.IsSubsetOf(left));
+    private static RecommendationSignal? ScorePopular(
+        BookCatalogItem item,
+        IReadOnlyList<RecommendationSubject> profileSubjects) =>
+        RecommendationScoring.Score(
+            sameCreator: false,
+            RecommendationScoring.SharedSubjects(profileSubjects, UsefulSubjects(item.Subjects)),
+            requireSignal: false);
+
+    private static IReadOnlyList<RecommendationSubject> BuildSubjectProfile(
+        IReadOnlyList<BookRecommendationSeed> seeds) =>
+        RecommendationScoring.BuildSubjectProfile(
+            seeds.Select(seed => UsefulSubjects(seed.Book.Subjects)));
+
+    private static IReadOnlyList<RecommendationSubject> UsefulSubjects(
+        IReadOnlyList<string> subjects) =>
+        RecommendationScoring.UsefulSubjects(subjects, GenericSubjects, SubjectStopTokens);
 
     private static bool HasRecommendationSignal(
         BookRecommendationLibraryBook book) =>
-        AuthorTokens(book.Author).Count > 0
+        RecommendationScoring.CreatorTokens(book.Author).Count > 0
         || UsefulSubjects(book.Subjects).Count > 0;
-
-    private static IReadOnlySet<string> AuthorTokens(string? author)
-    {
-        if (string.IsNullOrWhiteSpace(author))
-        {
-            return new HashSet<string>(StringComparer.Ordinal);
-        }
-
-        return NormalizeForMatch(author)
-            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
-            .Where(x => x.Length >= 2 && !x.All(char.IsDigit))
-            .ToHashSet(StringComparer.Ordinal);
-    }
-
-    private static string AuthorKey(IReadOnlySet<string> tokens) =>
-        string.Join(
-            " ",
-            tokens.OrderBy(x => x, StringComparer.Ordinal));
-
-    private static bool AuthorsMatch(
-        IReadOnlySet<string> left,
-        IReadOnlySet<string> right) =>
-        left.Count > 0
-        && right.Count > 0
-        && (left.IsSubsetOf(right) || right.IsSubsetOf(left));
-
-    private static BookIdentity Identity(
-        string title,
-        string? author) =>
-        new(
-            TitleKey(title),
-            AuthorTokens(author));
-
-    private static string TitleKey(string title)
-    {
-        var main = title;
-        var cut = main.IndexOfAny([':', '(', ';', '[']);
-        if (cut > 0)
-        {
-            main = main[..cut];
-        }
-
-        var key = NormalizeForMatch(main);
-        foreach (var article in (string[])["the ", "a ", "an "])
-        {
-            if (key.StartsWith(article, StringComparison.Ordinal)
-                && key.Length > article.Length)
-            {
-                return key[article.Length..];
-            }
-        }
-
-        return key;
-    }
-
-    /// <summary>
-    /// Same normalized main title and compatible authors. A missing author
-    /// on either side is treated as compatible so provider records without
-    /// author metadata cannot slip past duplicate/owned suppression.
-    /// </summary>
-    private static bool SameBook(
-        BookIdentity left,
-        BookIdentity right) =>
-        left.TitleKey.Length > 0
-        && left.TitleKey == right.TitleKey
-        && (left.AuthorTokens.Count == 0
-            || right.AuthorTokens.Count == 0
-            || AuthorsMatch(left.AuthorTokens, right.AuthorTokens));
-
-    private static bool IsOwned(
-        BookCatalogItem item,
-        BookIdentity identity,
-        IReadOnlyList<OwnedBook> owned) =>
-        owned.Any(book =>
-            (!string.IsNullOrWhiteSpace(book.CatalogId)
-                && string.Equals(
-                    book.CatalogId,
-                    item.Id,
-                    StringComparison.OrdinalIgnoreCase))
-            || SameBook(book.Identity, identity));
-
-    private static string NormalizeForMatch(string value) =>
-        NonAlphanumeric()
-            .Replace(value.ToLowerInvariant(), " ")
-            .Trim();
-
-    [GeneratedRegex(@"[^\p{L}\p{N}]+")]
-    private static partial Regex NonAlphanumeric();
 
     private sealed record SearchQuery(
         string Key,
@@ -839,47 +597,5 @@ public static partial class BookRecommendationEngine
         SearchQuery Query,
         BookRecommendationSeed? Seed,
         string? Author,
-        ProfileSubject? Subject);
-
-    private sealed record ProfileSubject(
-        string Key,
-        string Display,
-        IReadOnlySet<string> Tokens);
-
-    private sealed record ScoredReason(
-        int Score,
-        string Reason);
-
-    private sealed record BookIdentity(
-        string TitleKey,
-        IReadOnlySet<string> AuthorTokens);
-
-    private sealed record OwnedBook(
-        BookIdentity Identity,
-        string? CatalogId);
-
-    /// <summary>
-    /// Candidates already shown on an earlier shelf, used for cross-shelf and
-    /// in-shelf duplicate suppression.
-    /// </summary>
-    private sealed class UsedBooks
-    {
-        private readonly HashSet<string> ids = new(StringComparer.OrdinalIgnoreCase);
-        private readonly List<BookIdentity> identities = [];
-
-        public bool TryAdd(
-            string id,
-            BookIdentity identity)
-        {
-            if (ids.Contains(id)
-                || identities.Any(x => SameBook(x, identity)))
-            {
-                return false;
-            }
-
-            ids.Add(id);
-            identities.Add(identity);
-            return true;
-        }
-    }
+        RecommendationSubject? Subject);
 }
