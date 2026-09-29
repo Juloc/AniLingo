@@ -3,6 +3,7 @@ using Jularr.Web.Data;
 using Jularr.Web.Features.Acquisition.DownloadClients;
 using Jularr.Web.Features.Acquisition.Import;
 using Jularr.Web.Features.Acquisition.Sabnzbd;
+using Jularr.Web.Features.Events;
 
 namespace Jularr.Web.Features.Operations;
 
@@ -213,7 +214,9 @@ public sealed class SabnzbdOperationMonitorService(
         DateTime nowUtc,
         CancellationToken cancellationToken)
     {
-        var store = new OperationStore(services.GetRequiredService<AppDbContext>());
+        var store = new OperationStore(
+            services.GetRequiredService<AppDbContext>(),
+            services.GetService<IJularrEventPublisher>());
         var operations = await store.ListActiveExternalAsync(
             SabnzbdClient.ProviderId,
             cancellationToken);

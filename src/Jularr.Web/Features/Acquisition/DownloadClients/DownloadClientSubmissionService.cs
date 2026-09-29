@@ -1,5 +1,6 @@
 using Jularr.Web.Data;
 using Jularr.Web.Features.Acquisition.Access;
+using Jularr.Web.Features.Events;
 using Jularr.Web.Features.Operations;
 
 namespace Jularr.Web.Features.Acquisition.DownloadClients;
@@ -33,7 +34,8 @@ public sealed class DownloadClientSubmissionService(
     IDownloadClient client,
     DownloadClientSelector selector,
     AppDbContext db,
-    ILogger<DownloadClientSubmissionService> logger)
+    ILogger<DownloadClientSubmissionService> logger,
+    IJularrEventPublisher? events = null)
 {
     public const string OperationCategory = "External downloads";
 
@@ -46,7 +48,7 @@ public sealed class DownloadClientSubmissionService(
     {
         ArgumentNullException.ThrowIfNull(spec);
 
-        var store = new OperationStore(db);
+        var store = new OperationStore(db, events);
         var operationId = await store.CreateAsync(
             new OperationDescriptor(
                 spec.OperationKind,
