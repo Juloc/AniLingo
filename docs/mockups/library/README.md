@@ -31,14 +31,32 @@ A user preference may later allow Series + Movies or Books + Light Novels to be 
 
 ## Collections
 
-Collections are first-class and support:
-- manual collections
-- smart/rule-driven collections
-- user favorites / watchlist as built-in views where appropriate
-- cross-media collections
-- optional franchise/adaptation groupings where the canonical relations support them
+Collections are a dedicated Library subview, not a media type filter.
 
-Collection cards show artwork mosaic/representative art, title, item count and optional smart/manual marker. Do not show admin rule syntax in normal user UI.
+### Collection kinds
+- **Manual**: user-curated lists
+- **Smart**: rule-driven dynamic collections
+- **Built-in**: Favorites, Watchlist / Readlist and saved views where appropriate
+- **Cross-media**: one collection can contain Anime, Series, Movies, Books, Light Novels, Manga and Audiobooks
+- **Franchise / adaptation**: optional grouped views based on canonical Work relations, e.g. one franchise containing Anime + Manga + Light Novel
+
+### Collections landing page
+- first row may show built-in collections
+- then user collections
+- then smart/franchise collections when available
+- each collection card uses a 2x2 artwork mosaic or representative artwork
+- card shows title and item count
+- optional compact marker: Manual / Smart / Franchise
+- no admin rule syntax in normal user UI
+
+### Collection detail
+- same media-card grammar as normal Library
+- supports Filter, Sort and Grid/List
+- collection title + optional description
+- manual collections allow reorder/remove where permitted
+- smart collections explain why an item matches only on demand, not as permanent card clutter
+
+Collections must remain useful on TV: entering Collections shows large mosaic cards first, then the selected collection opens as a normal remote-friendly media grid.
 
 ## Filter model
 
@@ -179,17 +197,32 @@ Avoid badge clutter. Detailed missing episodes/chapters/releases belong in detai
 
 ## TV
 
-The current TV visual direction is preferred.
+The current TV visual direction is **explicitly approved as the Library TV baseline**.
 
-TV specifics:
-- large artwork
-- clear focus ring/glow
-- top media-type row
-- Library / Collections switch
+### TV selected/focus style
+The focused media card is intentionally more prominent than surrounding cards:
+- strong but clean accent-colored focus ring/glow around the poster
+- slight scale-up / lift of the focused card
+- neighboring cards stay visually quieter
+- focused title and metadata become fully readable
+- focused card reveals a compact lower info strip with progress + language availability
+- focus transition is short and smooth, never flashy
+- the selected/focused state must remain obvious in both Light and Dark themes
+- focus must never depend on color alone; border/scale/contrast also indicate selection
+
+### TV layout
+- large artwork and generous spacing
+- top Library / Collections switch
+- media-type row below when Library is selected
+- when Collections is selected, show large collection mosaic cards instead of media-type filters
 - separate Filter and Sort buttons
-- focused card expands/reveals a compact info strip with progress + languages
 - no tiny permanent filter chips
 - remote-safe focus order
+- left/right moves through a row; up/down changes rows/controls predictably
+- Back returns to the previous Library/Collection context without losing focus position
+- focused item may show progress + language info, but detailed metadata remains on the detail page
+
+The TV UI must not be a desktop grid merely enlarged for television.
 
 ## Mobile
 
