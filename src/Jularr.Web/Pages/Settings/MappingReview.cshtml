@@ -54,6 +54,10 @@
     </div>
 </header>
 
+<p class="inline-actions">
+    <a class="button button-quiet" asp-page="/Admin/MergeReview/Index">@ui["settings.mapping.mergeReview.link"]</a>
+</p>
+
 @if (Model.AnimeId is { } animeId)
 {
     <p><a href="/Settings/MappingReview">@ui["settings.mapping.backToQueue"]</a></p>

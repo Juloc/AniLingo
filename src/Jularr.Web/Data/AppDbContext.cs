@@ -92,6 +92,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<WorkFieldProvenance> WorkFieldProvenance => Set<WorkFieldProvenance>();
     public DbSet<WorkSourceLink> WorkSourceLinks => Set<WorkSourceLink>();
 
+    // Universal media core workflow (#432): append-only identity-resolution history (merge/split/reassign).
+    public DbSet<WorkIdentityChange> WorkIdentityChanges => Set<WorkIdentityChange>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<OwnerAccount>(entity =>
@@ -672,6 +675,23 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             // Each legacy per-type record maps to exactly one work.
             entity.HasIndex(x => new { x.SourceKind, x.SourceId }).IsUnique();
             entity.HasIndex(x => x.WorkId);
+        });
+
+        modelBuilder.Entity<WorkIdentityChange>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.ChangeType).HasConversion<int>();
+            entity.Property(x => x.MediaType).HasConversion<int>();
+            entity.Property(x => x.Provider).HasMaxLength(80);
+            entity.Property(x => x.ExternalId).HasMaxLength(200);
+            entity.Property(x => x.Actor).HasMaxLength(120);
+            entity.Property(x => x.Summary).HasMaxLength(500);
+            entity.Property(x => x.Details).HasMaxLength(2000);
+            // No FK to Works on purpose: a merge deletes the absorbed work, and this audit log must
+            // survive it. Indexed for the per-work history view and the newest-first review list.
+            entity.HasIndex(x => x.TargetWorkId);
+            entity.HasIndex(x => x.SourceWorkId);
+            entity.HasIndex(x => x.CreatedAt);
         });
     }
 }

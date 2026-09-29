@@ -28,6 +28,11 @@ public sealed class LegacyWorkBridge(AppDbContext db, WorkService works, WorkStr
 
         await works.AddOrUpdateTitleAsync(
             workId, WorkTitleType.Primary, "und", anime.Title, MetadataFieldSources.Local, isPrimary: true, cancellationToken);
+        // #435: record where the field came from so a later provider refresh respects the precedence
+        // ladder (and never clobbers an owner correction). AniList is the built-in display-metadata role.
+        await works.SetFieldProvenanceAsync(
+            workId, "title", MetadataFieldSources.Local, null, null,
+            isManualOverride: false, preferredProvider: MappingProviders.AniList, cancellationToken);
         return workId;
     }
 
@@ -46,12 +51,18 @@ public sealed class LegacyWorkBridge(AppDbContext db, WorkService works, WorkStr
 
         await works.AddOrUpdateTitleAsync(
             workId, WorkTitleType.Primary, "und", novel.Title, novel.SourceProvider, isPrimary: true, cancellationToken);
+        await works.SetFieldProvenanceAsync(
+            workId, "title", novel.SourceProvider, novel.SourceKey, null,
+            isManualOverride: false, preferredProvider: novel.MetadataProvider ?? novel.SourceProvider, cancellationToken);
 
         if (!string.IsNullOrWhiteSpace(novel.MetadataNativeTitle))
         {
             await works.AddOrUpdateTitleAsync(
                 workId, WorkTitleType.Native, "und", novel.MetadataNativeTitle!,
                 novel.MetadataProvider ?? "", isPrimary: false, cancellationToken);
+            await works.SetFieldProvenanceAsync(
+                workId, "originalTitle", novel.MetadataProvider ?? "", novel.MetadataExternalId, null,
+                isManualOverride: false, preferredProvider: novel.MetadataProvider ?? "", cancellationToken);
         }
 
         if (!string.IsNullOrWhiteSpace(novel.SourceProvider) && !string.IsNullOrWhiteSpace(novel.SourceKey))
@@ -126,11 +137,17 @@ public sealed class LegacyWorkBridge(AppDbContext db, WorkService works, WorkStr
 
         await works.AddOrUpdateTitleAsync(
             workId, WorkTitleType.Primary, "und", title, MetadataFieldSources.Local, isPrimary: true, cancellationToken);
+        await works.SetFieldProvenanceAsync(
+            workId, "title", MetadataFieldSources.Local, null, null,
+            isManualOverride: false, preferredProvider: MappingProviders.AniList, cancellationToken);
 
         if (!string.IsNullOrWhiteSpace(nativeTitle))
         {
             await works.AddOrUpdateTitleAsync(
                 workId, WorkTitleType.Native, "und", nativeTitle!, MappingProviders.AniList, isPrimary: false, cancellationToken);
+            await works.SetFieldProvenanceAsync(
+                workId, "originalTitle", MappingProviders.AniList, aniListId, null,
+                isManualOverride: false, preferredProvider: MappingProviders.AniList, cancellationToken);
         }
 
         if (!string.IsNullOrWhiteSpace(aniListId))
