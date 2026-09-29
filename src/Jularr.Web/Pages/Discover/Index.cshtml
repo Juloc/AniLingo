@@ -6,12 +6,15 @@
 }
 
 @section Head {
+    <link rel="stylesheet" href="~/css/media-card.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/discover.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/discover-shelves.css" asp-append-version="true" />
 }
 
 <div class="discover-shell"
      data-discover
      data-is-owner="@Model.IsOwner.ToString().ToLowerInvariant()"
+     data-shelves-url="@Url.Page("/Discover/Index", "Shelves")"
      data-add-url="@Url.Page("/Discover/Index", "Add")"
      data-watchlist-url="@Url.Page("/Discover/Index", "Watchlist")"
      data-franchise-url="@Url.Page("/Discover/Index", "FollowFranchise")"
@@ -85,33 +88,43 @@
         </div>
     </section>
 
-    <div class="discover-summary">
-        <strong data-discover-title>@ui["discover.tabs.trending"]</strong>
-        <span data-discover-count>@ui["discover.results.loading"]</span>
-    </div>
-
-    <div class="discover-warning" data-discover-warning hidden></div>
-
-    <section class="discover-grid"
-             data-discover-results
+    @* Provider-driven shelf board (#595): the browse landing, fetched after first paint. The grid below
+       takes over for search and drill-down; only one of the two shows at a time. *@
+    <section class="discover-shelves-board"
+             data-discover-shelves
+             aria-label="@ui["discover.shelf.boardAria"]"
              aria-live="polite"
-             aria-busy="true">
-        @for (var i = 0; i < 10; i++)
-        {
-            <div class="discover-card discover-card-skeleton" aria-hidden="true">
-                <div class="discover-cover"></div>
-                <div class="discover-card-copy">
-                    <span></span>
-                    <span></span>
-                    <span></span>
-                </div>
-            </div>
-        }
-    </section>
+             hidden></section>
 
-    <div class="discover-empty" data-discover-empty hidden>
-        <strong>@ui["discover.results.emptyTitle"]</strong>
-        <span>@ui["discover.results.emptyBody"]</span>
+    <div class="discover-grid-wrap" data-discover-grid hidden>
+        <div class="discover-summary">
+            <strong data-discover-title>@ui["discover.tabs.trending"]</strong>
+            <span data-discover-count>@ui["discover.results.loading"]</span>
+        </div>
+
+        <div class="discover-warning" data-discover-warning hidden></div>
+
+        <section class="discover-grid"
+                 data-discover-results
+                 aria-live="polite"
+                 aria-busy="true">
+            @for (var i = 0; i < 10; i++)
+            {
+                <div class="discover-card discover-card-skeleton" aria-hidden="true">
+                    <div class="discover-cover"></div>
+                    <div class="discover-card-copy">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </div>
+                </div>
+            }
+        </section>
+
+        <div class="discover-empty" data-discover-empty hidden>
+            <strong>@ui["discover.results.emptyTitle"]</strong>
+            <span>@ui["discover.results.emptyBody"]</span>
+        </div>
     </div>
 
     @if (Model.IsOwner)

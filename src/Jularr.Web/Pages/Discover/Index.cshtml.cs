@@ -1,25 +1,22 @@
 using Jularr.Web.Data;
 using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Auth;
-using Jularr.Web.Features.Books;
 using Jularr.Web.Features.Discovery;
 using Jularr.Web.Features.Franchises;
 using Jularr.Web.Features.Localization;
 using Jularr.Web.Features.Metadata;
 using Jularr.Web.Features.Novels;
 using Jularr.Web.Features.Operations;
-using Jularr.Web.Features.Tracking;
 using Jularr.Web.Features.Watchlist;
+using Jularr.Web.Ui;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
 namespace Jularr.Web.Pages.Discover;
 
 public sealed class IndexModel(
-    AniListMetadataProvider animeProvider,
-    NovelAniListProvider readingProvider,
-    BookCatalogService books,
-    AniListAccountService aniListAccount,
+    DiscoveryCoordinator coordinator,
+    DiscoveryShelfService shelves,
     AppDbContext db,
     NovelImportService novels,
     NovelMetadataService novelMetadata,
@@ -29,7 +26,6 @@ public sealed class IndexModel(
     AcquisitionAccessStore requestStore,
     WatchlistStore watchlist,
     FranchiseService franchiseService,
-    ILogger<DiscoveryCoordinator> discoveryLogger,
     ILogger<IndexModel> logger) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
@@ -69,13 +65,6 @@ public sealed class IndexModel(
         Response.Headers.CacheControl = "no-store";
 
         var request = DiscoveryRequest.Parse(q, category, mode, genre);
-        var coordinator = new DiscoveryCoordinator(
-            animeProvider,
-            readingProvider,
-            books,
-            aniListAccount,
-            db,
-            discoveryLogger);
 
         var normalizedSource = source?.Trim().ToLowerInvariant();
         var includeAniList = normalizedSource is not "books";
@@ -115,6 +104,91 @@ public sealed class IndexModel(
                 })
                 .ToArray()
         });
+    }
+
+    /// <summary>
+    /// The provider-driven discovery board (#595): named rows for the media types this profile may
+    /// browse, rendered with the shared banner card. Fetched after first paint from the client so the
+    /// page GET stays local (#186); the shelf service TTL-caches the assembled board.
+    /// </summary>
+    public async Task<IActionResult> OnGetShelvesAsync(CancellationToken cancellationToken)
+    {
+        Response.Headers.CacheControl = "no-store";
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
+        var board = await shelves.GetBoardAsync(
+            User,
+            account.ProfileId,
+            account.IsOwner,
+            includeAniList: true,
+            includeBooks: true,
+            cancellationToken);
+
+        // Open requests overlay the availability badge per response (never cached), like the grid does.
+        var open = (await requestStore.ListAsync(null, null, openOnly: true, limit: 500, cancellationToken))
+            .Where(item => item.Provider == AniListMetadataProvider.ProviderKey)
+            .GroupBy(item => (item.Kind, item.ExternalId))
+            .ToDictionary(group => group.Key, group => group.First().Status);
+
+        var model = new MediaShelfBoardModel(
+            board.Rows
+                .Select(row => new MediaShelfModel(
+                    row.Id,
+                    ShelfHeading(row),
+                    row.DeepLinkUrl,
+                    Ui["discover.shelf.seeAll"],
+                    row.Items
+                        .Select(item => MediaBannerCardModel.Create(ToCardData(item, open), Ui))
+                        .ToArray()))
+                .ToArray());
+
+        return Partial("_MediaShelfBoard", model);
+    }
+
+    private string ShelfHeading(DiscoveryShelfRow row) =>
+        row.MediaLabelKey is { Length: > 0 } mediaKey
+            ? $"{Ui[row.TitleKey]} · {Ui[mediaKey]}"
+            : Ui[row.TitleKey];
+
+    private static MediaBannerCardData ToCardData(
+        DiscoveryItem item,
+        IReadOnlyDictionary<(MediaAcquisitionKind, string), AcquisitionRequestStatus> open)
+    {
+        var kind = item.Category switch
+        {
+            "anime" => MediaBannerKind.Anime,
+            "manga" => MediaBannerKind.Manga,
+            "light-novel" => MediaBannerKind.LightNovel,
+            _ => MediaBannerKind.Book
+        };
+
+        MediaAvailabilityFacts? availability = null;
+        if (item.IsLocal)
+        {
+            availability = new MediaAvailabilityFacts(InLibrary: true, HasPlayableContent: false);
+        }
+        else if (Categories.TryGetValue(item.Category, out var acquisitionKind) &&
+                 open.TryGetValue((acquisitionKind, item.ExternalId), out var status))
+        {
+            availability = new MediaAvailabilityFacts(
+                InLibrary: false,
+                HasPlayableContent: false,
+                Request: status);
+        }
+
+        var href = item.IsLocal && item.LocalUrl is { Length: > 0 } localUrl
+            ? localUrl
+            : item.DetailsUrl;
+
+        return new MediaBannerCardData(
+            kind,
+            item.Title,
+            href,
+            BackdropUrl: item.CoverImageUrl,
+            ProviderStatus: item.Status,
+            Year: item.Year,
+            GroupCount: kind == MediaBannerKind.Anime ? null : item.VolumeCount,
+            Availability: availability);
     }
 
     /// <summary>Follows or unfollows one work for this profile. Library state is never taken from the browser.</summary>

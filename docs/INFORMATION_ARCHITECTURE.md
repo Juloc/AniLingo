@@ -382,9 +382,10 @@ Books-only profile sees a pure book app.
 - **One resolution per request.** `IAppShellService` (`Features/Shell/AppShellService.cs`, scoped)
   turns `IMediaCapabilityService.GetViewAsync` into a `ShellMediaAccess`: `VisibleMediaTypes`,
   `Capability(type)`, `IsVisible(type)`, `IsAnyVisible(types)` and `CanOpen(routeRoot)`. The sidebar,
-  the Library tabs, Profile and the route gate share that one answer. **Discovery (#595) and the
-  request experience (#597) should consume `IAppShellService.GetMediaAccessAsync(User)`** instead of
-  re-reading the policy: `VisibleMediaTypes` is "which media types exist for this user".
+  the Library tabs, Profile and the route gate share that one answer. **Discovery's shelf board (#595)
+  now consumes `IAppShellService.GetMediaAccessAsync(User)`** (`Features/Discovery/DiscoveryShelfService.cs`
+  — a Books-only profile gets book shelves only), and the request experience (#597) should too, instead
+  of re-reading the policy: `VisibleMediaTypes` is "which media types exist for this user".
 - **One route table.** `UiNavigationCatalog.LibraryTabs` (`Features/Localization/UiShellNavigation.cs`)
   ties each consumer route root to the media types it serves (`UiMediaRoute`): `/Library` → Anime,
   `/Novels` → Light Novel, `/Manga` → Manga, `/Books` → Book, and the `/Reading` hub → Manga or Light
@@ -397,6 +398,8 @@ Books-only profile sees a pure book app.
   at least browse the type gets **404** (the type does not exist for them) before the page model is
   constructed; the owner is unrestricted through the capability policy. The gate is not a second
   policy: it reads the same `MediaCapabilityView`.
-- **Not yet media-scoped (follow-ups).** Home type chips and Continue rows, `/Discover` categories
-  (#595), Watchlist/Calendar/Franchise content, and the ClientApi surface (`/api/client/v1/...`) still
-  list every media type the data contains; they should narrow by `ShellMediaAccess`.
+- **Not yet media-scoped (follow-ups).** Home type chips and Continue rows, the `/Discover` category
+  tab strip and browse grid (the provider-driven shelf board #595 is capability-scoped; the manual
+  category tabs/grid are not yet), Watchlist/Calendar/Franchise content, and the ClientApi surface
+  (`/api/client/v1/...`) still list every media type the data contains; they should narrow by
+  `ShellMediaAccess`.

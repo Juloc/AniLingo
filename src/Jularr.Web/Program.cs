@@ -20,6 +20,7 @@ using Jularr.Web.Features.Books;
 using Jularr.Web.Features.ChapterArtwork;
 using Jularr.Web.Features.ClientApi;
 using Jularr.Web.Features.Devices;
+using Jularr.Web.Features.Discovery;
 using Jularr.Web.Features.Events;
 using Jularr.Web.Frontend;
 using Jularr.Web.Features.Health;
@@ -109,6 +110,10 @@ builder.Services.AddSingleton(_ => new MediaCapabilityStore("/data"));
 builder.Services.AddScoped<IMediaCapabilityService, MediaCapabilityService>();
 // Permission-derived app shell (#598): the profile's visible media types, resolved once per request.
 builder.Services.AddScoped<IAppShellService, AppShellService>();
+// Provider-driven discovery (#595): the coordinator behind browse/search + the shelf board it feeds.
+builder.Services.AddScoped<DiscoveryCoordinator>();
+builder.Services.AddScoped<IDiscoveryFeed>(sp => sp.GetRequiredService<DiscoveryCoordinator>());
+builder.Services.AddScoped<DiscoveryShelfService>();
 builder.Services.AddScoped<AdminUserProgressService>();
 builder.Services.AddScoped<AdminOverviewService>();
 builder.Services.AddScoped<AdminSessionsService>();

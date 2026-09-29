@@ -417,15 +417,27 @@ public sealed class LocalFirstPageGetTests
                 new FranchiseRefreshSignal(),
                 NullLogger<FranchiseService>.Instance);
 
-            return new DiscoverIndexModel(
+            var books = new BookCatalogService(
+                Guard.CreateClient(),
+                Db,
+                new ThrowingBookTranslator(),
+                configuration);
+            var coordinator = new Jularr.Web.Features.Discovery.DiscoveryCoordinator(
                 animeProvider,
                 readingProvider,
-                new BookCatalogService(
-                    Guard.CreateClient(),
-                    Db,
-                    new ThrowingBookTranslator(),
-                    configuration),
+                books,
                 AniListAccount(),
+                Db,
+                NullLogger<Jularr.Web.Features.Discovery.DiscoveryCoordinator>.Instance);
+            var shellService = new Jularr.Web.Features.Shell.AppShellService(
+                new MediaCapabilityService(new MediaCapabilityStore(root)));
+            var shelves = new Jularr.Web.Features.Discovery.DiscoveryShelfService(
+                coordinator,
+                shellService);
+
+            return new DiscoverIndexModel(
+                coordinator,
+                shelves,
                 Db,
                 new NovelImportService(Db, [], novelMetadata),
                 novelMetadata,
@@ -438,7 +450,6 @@ public sealed class LocalFirstPageGetTests
                 new AcquisitionAccessStore(Db),
                 watchlistStore,
                 franchiseService,
-                NullLogger<Jularr.Web.Features.Discovery.DiscoveryCoordinator>.Instance,
                 NullLogger<DiscoverIndexModel>.Instance);
         }
 

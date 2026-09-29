@@ -3,6 +3,8 @@
     if (!root) return;
 
     const searchInput = root.querySelector("[data-discover-search]");
+    const shelves = root.querySelector("[data-discover-shelves]");
+    const gridWrap = root.querySelector("[data-discover-grid]");
     const results = root.querySelector("[data-discover-results]");
     const empty = root.querySelector("[data-discover-empty]");
     const title = root.querySelector("[data-discover-title]");
@@ -33,7 +35,65 @@
     let debounceTimer = null;
     let requestVersion = 0;
     let browseMode = "trending";
+    let shelvesLoaded = false;
     let state = readState();
+
+    // The default landing shows the provider-driven shelf board (#595); any query, non-default browse
+    // mode, category or genre is a drill-down that switches to the single browse/search grid instead.
+    function landing() {
+        return !!shelves &&
+            !state.query.trim() &&
+            state.mode === "trending" &&
+            state.category === "all" &&
+            !state.genre;
+    }
+
+    function showShelves() {
+        if (!shelves) {
+            showGrid();
+            return;
+        }
+        shelves.hidden = false;
+        if (gridWrap) gridWrap.hidden = true;
+    }
+
+    function showGrid() {
+        if (gridWrap) gridWrap.hidden = false;
+        if (shelves) shelves.hidden = true;
+    }
+
+    async function loadShelves() {
+        if (!shelves || shelvesLoaded) return;
+        shelvesLoaded = true;
+        shelves.setAttribute("aria-busy", "true");
+        try {
+            const response = await fetch(
+                `${window.location.pathname}?handler=Shelves`,
+                { cache: "no-store", headers: { "X-Requested-With": "fetch" } });
+            if (response.ok) {
+                // Same-origin server-rendered partial (escaped Razor); injected as the shelf board.
+                shelves.innerHTML = await response.text();
+            }
+        } catch {
+            shelvesLoaded = false;
+        } finally {
+            shelves.setAttribute("aria-busy", "false");
+        }
+    }
+
+    // Shows the shelf landing or the browse/search grid depending on the current state, keeping the URL
+    // in sync. Interaction handlers call this after mutating state.
+    function route(push) {
+        syncControls();
+        if (landing()) {
+            updateUrl(push);
+            showShelves();
+            loadShelves();
+        } else {
+            showGrid();
+            load(push);
+        }
+    }
 
     function readState() {
         const params = new URLSearchParams(window.location.search);
@@ -743,7 +803,15 @@
         state.query = searchInput.value;
         state.mode = state.query.trim() ? "search" : browseMode;
         syncControls(false);
-        scheduleSearch();
+        if (landing()) {
+            // Cleared back to the default: drop the query params and return to the shelf landing.
+            updateUrl(false);
+            showShelves();
+            loadShelves();
+        } else {
+            showGrid();
+            scheduleSearch();
+        }
     });
 
     modeButtons.forEach(button => {
@@ -752,8 +820,7 @@
             state.query = "";
             searchInput.value = "";
             state.mode = browseMode;
-            syncControls();
-            load(true);
+            route(true);
         });
     });
 
@@ -761,8 +828,7 @@
         button.addEventListener("click", () => {
             state.category = button.dataset.discoverCategory;
             state.mode = state.query ? "search" : browseMode;
-            syncControls();
-            load(true);
+            route(true);
         });
     });
 
@@ -770,8 +836,7 @@
 
     genreClear?.addEventListener("click", () => {
         state.genre = "";
-        syncControls();
-        load(true);
+        route(true);
     });
 
     document.addEventListener("keydown", event => {
@@ -791,10 +856,22 @@
         state = readState();
         if (state.mode !== "search") browseMode = state.mode;
         syncControls();
-        load(false, true);
+        if (landing()) {
+            showShelves();
+            loadShelves();
+        } else {
+            showGrid();
+            load(false, true);
+        }
     });
 
     if (state.mode !== "search") browseMode = state.mode;
     syncControls();
-    load(false);
+    if (landing()) {
+        showShelves();
+        loadShelves();
+    } else {
+        showGrid();
+        load(false);
+    }
 })();

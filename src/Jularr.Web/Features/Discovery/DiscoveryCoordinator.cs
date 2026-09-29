@@ -15,7 +15,7 @@ public sealed class DiscoveryCoordinator(
     BookCatalogService books,
     AniListAccountService aniListAccount,
     AppDbContext db,
-    ILogger<DiscoveryCoordinator> logger)
+    ILogger<DiscoveryCoordinator> logger) : IDiscoveryFeed
 {
     private const int AnimeLimit = 10;
     private const int ReadingLimit = 14;
