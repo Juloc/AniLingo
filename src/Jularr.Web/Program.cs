@@ -509,6 +509,13 @@ builder.Services.AddScoped<Jularr.Web.Features.Tv.TvLibraryService>();
 builder.Services.AddScoped<Jularr.Web.Features.Tv.TvCompletedDownloadImportAdapter>();
 builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Import.ICompletedDownloadImportAdapter>(services => services.GetRequiredService<Jularr.Web.Features.Tv.TvCompletedDownloadImportAdapter>());
 builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Import.IMediaInboxImportAdapter>(services => services.GetRequiredService<Jularr.Web.Features.Tv.TvCompletedDownloadImportAdapter>());
+// First-class audiobook media type (#440): library service, per-profile progress and the shared
+// completed-download/inbox adapters (bridged to the media core as a Book work with an audiobook edition).
+builder.Services.AddScoped<Jularr.Web.Features.Audiobooks.AudiobookLibraryService>();
+builder.Services.AddScoped<Jularr.Web.Features.Audiobooks.AudiobookProgressService>();
+builder.Services.AddScoped<Jularr.Web.Features.Audiobooks.AudiobookCompletedDownloadImportAdapter>();
+builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Import.ICompletedDownloadImportAdapter>(services => services.GetRequiredService<Jularr.Web.Features.Audiobooks.AudiobookCompletedDownloadImportAdapter>());
+builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Import.IMediaInboxImportAdapter>(services => services.GetRequiredService<Jularr.Web.Features.Audiobooks.AudiobookCompletedDownloadImportAdapter>());
 builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Import.CompletedDownloadDispatcher>();
 builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Import.CompletedDownloadImportService>();
 builder.Services.AddScoped<Jularr.Web.Features.Acquisition.Import.MediaInboxImportService>();
@@ -535,6 +542,7 @@ builder.Services.AddHostedService<Jularr.Web.Features.Acquisition.Wanted.WantedA
 builder.Services.AddSingleton<Jularr.Web.Features.Acquisition.Release.IMediaAcquisitionRegistration, Jularr.Web.Features.Acquisition.Release.AnimeAcquisitionRegistration>();
 builder.Services.AddSingleton<Jularr.Web.Features.Acquisition.Release.IMediaAcquisitionRegistration, Jularr.Web.Features.Acquisition.Release.MovieAcquisitionRegistration>();
 builder.Services.AddSingleton<Jularr.Web.Features.Acquisition.Release.IMediaAcquisitionRegistration, Jularr.Web.Features.Acquisition.Release.TvAcquisitionRegistration>();
+builder.Services.AddSingleton<Jularr.Web.Features.Acquisition.Release.IMediaAcquisitionRegistration, Jularr.Web.Features.Acquisition.Release.AudiobookAcquisitionRegistration>();
 builder.Services.AddSingleton<Jularr.Web.Features.Acquisition.Release.MediaAcquisitionRegistry>();
 builder.Services.AddSingleton<AnimeQualityProfileStore>();
 builder.Services.AddSingleton(_ => new AnimeMonitoringStore("/data"));

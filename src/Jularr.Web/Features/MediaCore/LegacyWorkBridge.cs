@@ -1,4 +1,5 @@
 using Jularr.Web.Data;
+using Jularr.Web.Features.Audiobooks;
 using Jularr.Web.Features.Books;
 using Jularr.Web.Features.Library;
 using Jularr.Web.Features.Mapping;
@@ -103,6 +104,62 @@ public sealed class LegacyWorkBridge(AppDbContext db, WorkService works, WorkStr
             await works.LinkExternalIdentityAsync(
                 workId, WorkMediaType.Series, MappingProviders.Tvdb, series.TvdbId!,
                 confidence: 1.0, evidence: "series TVDB id", isPrimary: false,
+                isManualOverride: false, MappingReviewState.Confirmed, cancellationToken);
+        }
+
+        return workId;
+    }
+
+    /// <summary>The media-core edition key/format and version key an audiobook release is bridged as.</summary>
+    public const string AudiobookEditionKey = "audiobook";
+    public const string AudiobookEditionFormat = "audiobook";
+    public const string AudiobookVersionKey = "audiobook";
+
+    /// <summary>
+    /// Ensures the work for an audiobook record (bridges by <c>Audiobook.Id</c>). An audiobook is the
+    /// audio edition of a book, so the work is a <see cref="WorkMediaType.Book"/>; the audiobook release
+    /// is modelled as a <see cref="WorkEdition"/> (format <c>audiobook</c>) owning a
+    /// <see cref="WorkVersion"/> — editions and versions are modelled separately (#592). The Audible ASIN,
+    /// when known, is mirrored as a correctable external identity (#440).
+    /// </summary>
+    public async Task<Guid> EnsureWorkForAudiobookAsync(Audiobook audiobook, CancellationToken cancellationToken)
+    {
+        var workId = await EnsureWorkAsync(
+            WorkSourceKind.Audiobook, audiobook.Id, WorkMediaType.Book, audiobook.Title, audiobook.Year, cancellationToken);
+
+        await works.AddOrUpdateTitleAsync(
+            workId, WorkTitleType.Primary, "und", audiobook.Title, MetadataFieldSources.Local, isPrimary: true, cancellationToken);
+        await works.SetFieldProvenanceAsync(
+            workId, "title", MetadataFieldSources.Local, null, null,
+            isManualOverride: false, preferredProvider: null, cancellationToken);
+
+        var edition = await structure.AddOrUpdateEditionAsync(
+            workId,
+            editionKey: AudiobookEditionKey,
+            language: "und",
+            format: AudiobookEditionFormat,
+            publisher: null,
+            isbn13: null,
+            title: string.IsNullOrWhiteSpace(audiobook.Narrator) ? null : $"Narrated by {audiobook.Narrator!.Trim()}",
+            isPrimary: true,
+            cancellationToken);
+
+        await structure.AddOrUpdateVersionAsync(
+            workId,
+            versionKey: AudiobookVersionKey,
+            unitKey: null,
+            editionId: edition.Id,
+            quality: null,
+            releaseGroup: null,
+            source: AudiobookEditionFormat,
+            notes: audiobook.Narrator is { Length: > 0 } narrator ? $"Narrator: {narrator.Trim()}" : null,
+            cancellationToken);
+
+        if (!string.IsNullOrWhiteSpace(audiobook.Asin))
+        {
+            await works.LinkExternalIdentityAsync(
+                workId, WorkMediaType.Book, "audible", audiobook.Asin!,
+                confidence: 1.0, evidence: "audiobook ASIN", isPrimary: false,
                 isManualOverride: false, MappingReviewState.Confirmed, cancellationToken);
         }
 

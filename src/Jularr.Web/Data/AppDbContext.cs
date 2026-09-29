@@ -2,6 +2,7 @@ using Jularr.Web.Features.Acquisition.Api;
 using Jularr.Web.Features.Acquisition.History;
 using Jularr.Web.Features.Ai;
 using Jularr.Web.Features.ReaderPreferences;
+using Jularr.Web.Features.Audiobooks;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Books;
 using Jularr.Web.Features.Learning;
@@ -97,6 +98,13 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     // media core through WorkSourceKind.Movie / WorkSourceKind.Series (TV reuses WorkSeason/WorkEpisode).
     public DbSet<Movie> Movies => Set<Movie>();
     public DbSet<TvSeries> TvSeries => Set<TvSeries>();
+
+    // First-class audiobook media type (#440): per-type audiobook + its audio files, bridged to the
+    // universal media core as a Book Work with an "audiobook" WorkEdition/WorkVersion through
+    // WorkSourceKind.Audiobook, plus canonical per-profile listening progress.
+    public DbSet<Audiobook> Audiobooks => Set<Audiobook>();
+    public DbSet<AudiobookFile> AudiobookFiles => Set<AudiobookFile>();
+    public DbSet<AudiobookProgress> AudiobookProgress => Set<AudiobookProgress>();
 
     // Universal media core (#592): provider-independent works, external identities, titles, structure
     // (seasons/episodes, volumes/chapters), editions/versions, typed relations, field-level provenance
@@ -738,6 +746,39 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(x => x.TvdbId).HasMaxLength(64);
             entity.Property(x => x.LibraryPath).HasMaxLength(1024);
             entity.HasIndex(x => x.Key).IsUnique();
+        });
+
+        modelBuilder.Entity<Audiobook>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Key).HasMaxLength(500);
+            entity.Property(x => x.Title).HasMaxLength(1000);
+            entity.Property(x => x.Author).HasMaxLength(500);
+            entity.Property(x => x.Narrator).HasMaxLength(500);
+            entity.Property(x => x.Asin).HasMaxLength(64);
+            entity.Property(x => x.LibraryPath).HasMaxLength(1024);
+            // An audiobook's folded title+year resolves to exactly one record so re-import refreshes, never duplicates.
+            entity.HasIndex(x => x.Key).IsUnique();
+        });
+
+        modelBuilder.Entity<AudiobookFile>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.FileKey).HasMaxLength(500);
+            entity.Property(x => x.FileName).HasMaxLength(500);
+            entity.Property(x => x.Format).HasMaxLength(16);
+            entity.Property(x => x.StoragePath).HasMaxLength(2048);
+            entity.HasOne<Audiobook>().WithMany().HasForeignKey(x => x.AudiobookId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(x => new { x.AudiobookId, x.FileKey }).IsUnique();
+        });
+
+        modelBuilder.Entity<AudiobookProgress>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.ProfileId).HasMaxLength(80);
+            entity.HasOne<Audiobook>().WithMany().HasForeignKey(x => x.AudiobookId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(x => new { x.ProfileId, x.AudiobookId }).IsUnique();
+            entity.HasIndex(x => new { x.ProfileId, x.UpdatedAt });
         });
     }
 }
