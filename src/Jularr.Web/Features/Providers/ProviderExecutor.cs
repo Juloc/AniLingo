@@ -47,6 +47,13 @@ public sealed class ProviderExecutor(
             }
             catch (Exception exception)
             {
+                if (IsClientError(exception))
+                {
+                    // The provider answered; the request/credentials/quota were refused.
+                    RecordSuccess(providerKey, policy);
+                    throw;
+                }
+
                 RecordFailure(providerKey, policy, exception.Message);
                 if (IsTransient(exception) && attempt < policy.MaxAttempts)
                 {
@@ -149,9 +156,11 @@ public sealed class ProviderExecutor(
             }
             else
             {
-                // A non-retryable client error (auth, not found, bad request): record it but let
-                // the caller translate the status into its own domain error.
-                RecordFailure(providerKey, policy, $"HTTP {(int)response.StatusCode}");
+                // A non-retryable client error (auth, quota, not found, bad request) is a
+                // request/credential condition, not an outage: the provider answered, so it does
+                // not count toward Degraded/Unavailable or open the circuit (it clears any outage
+                // streak like a success). The caller translates the status into its own error.
+                RecordSuccess(providerKey, policy);
             }
 
             return response;
@@ -211,6 +220,15 @@ public sealed class ProviderExecutor(
             : TimeSpan.FromTicks(ticks);
         return Task.Delay(delay, clock, cancellationToken);
     }
+
+    /// <summary>
+    /// An <see cref="HttpRequestException"/> carrying a 4xx status other than 429 (which the
+    /// Retry-After gate owns): a client error, not unavailability. Neither retried nor counted.
+    /// </summary>
+    private static bool IsClientError(Exception exception) =>
+        exception is HttpRequestException { StatusCode: { } status }
+        && (int)status is >= 400 and < 500
+        && status != System.Net.HttpStatusCode.TooManyRequests;
 
     private static bool IsTransient(Exception exception) =>
         exception is HttpRequestException
