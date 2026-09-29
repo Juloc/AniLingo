@@ -225,6 +225,158 @@ public sealed class ProviderFrameworkTests
         static HttpRequestMessage Request() => new(HttpMethod.Get, "https://provider.example/api");
     }
 
+    // --- Executor: client errors are not outages -------------------------------
+
+    [TestMethod]
+    [DataRow(HttpStatusCode.Unauthorized)]
+    [DataRow(HttpStatusCode.Forbidden)]
+    [DataRow(HttpStatusCode.NotAcceptable)]
+    [DataRow(HttpStatusCode.NotFound)]
+    public async Task SendAsyncClientErrorsDoNotOpenTheCircuitAndProviderStaysUsable(HttpStatusCode status)
+    {
+        var clock = new MutableClock(Now);
+        var health = new ProviderHealthTracker(clock, failureThreshold: 3);
+        var executor = new ProviderExecutor(new ProviderRateLimiter(), health, clock, NullLogger<ProviderExecutor>.Instance);
+        var calls = 0;
+        using var client = new HttpClient(new StubHandler(_ =>
+        {
+            calls++;
+            return new HttpResponseMessage(status);
+        }));
+        var policy = new ProviderExecutionPolicy { MaxAttempts = 1 };
+
+        for (var i = 0; i < 5; i++)
+        {
+            using var response = await executor.SendAsync("idx", client, Request, policy, CancellationToken.None);
+            Assert.AreEqual(status, response.StatusCode);
+        }
+
+        Assert.AreEqual(5, calls, "Every call must reach the provider; none may be short-circuited.");
+        Assert.IsTrue(health.IsAvailable("idx"));
+        Assert.AreNotEqual(ProviderHealthStatus.Unavailable, health.Get("idx").Status);
+        Assert.AreEqual(0, health.Get("idx").ConsecutiveFailures);
+
+        static HttpRequestMessage Request() => new(HttpMethod.Get, "https://provider.example/api");
+    }
+
+    [TestMethod]
+    public async Task SendAsyncClientErrorClearsAnOutageStreakButServerErrorsOpenTheCircuit()
+    {
+        var clock = new MutableClock(Now);
+        var health = new ProviderHealthTracker(clock, failureThreshold: 3);
+        var executor = new ProviderExecutor(new ProviderRateLimiter(), health, clock, NullLogger<ProviderExecutor>.Instance);
+        var status = HttpStatusCode.InternalServerError;
+        using var client = new HttpClient(new StubHandler(_ => new HttpResponseMessage(status)));
+        var policy = new ProviderExecutionPolicy { MaxAttempts = 1 };
+
+        for (var i = 0; i < 2; i++)
+        {
+            using var r = await executor.SendAsync("idx", client, Request, policy, CancellationToken.None);
+        }
+
+        Assert.AreEqual(ProviderHealthStatus.Degraded, health.Get("idx").Status);
+
+        // A 401 proves the provider is reachable, so the 5xx streak restarts.
+        status = HttpStatusCode.Unauthorized;
+        using (var r = await executor.SendAsync("idx", client, Request, policy, CancellationToken.None))
+        {
+        }
+
+        status = HttpStatusCode.BadGateway;
+        for (var i = 0; i < 2; i++)
+        {
+            using var r = await executor.SendAsync("idx", client, Request, policy, CancellationToken.None);
+        }
+
+        Assert.IsTrue(health.IsAvailable("idx"));
+
+        using (var r = await executor.SendAsync("idx", client, Request, policy, CancellationToken.None))
+        {
+        }
+
+        Assert.IsFalse(health.IsAvailable("idx"));
+        Assert.AreEqual(ProviderHealthStatus.Unavailable, health.Get("idx").Status);
+        await Assert.ThrowsExactlyAsync<ProviderUnavailableException>(
+            () => executor.SendAsync("idx", client, Request, policy, CancellationToken.None));
+
+        static HttpRequestMessage Request() => new(HttpMethod.Get, "https://provider.example/api");
+    }
+
+    [TestMethod]
+    public async Task SendAsyncTimeoutsAndTransportFailuresOpenTheCircuit()
+    {
+        var clock = new MutableClock(Now);
+        var health = new ProviderHealthTracker(clock, failureThreshold: 3);
+        var executor = new ProviderExecutor(new ProviderRateLimiter(), health, clock, NullLogger<ProviderExecutor>.Instance);
+        var timeout = true;
+        using var client = new HttpClient(new StubHandler(_ =>
+        {
+            if (timeout)
+            {
+                throw new TaskCanceledException("timed out", new TimeoutException());
+            }
+
+            throw new HttpRequestException("connection refused");
+        }));
+        var policy = new ProviderExecutionPolicy { MaxAttempts = 1 };
+
+        for (var i = 0; i < 3; i++)
+        {
+            await Assert.ThrowsAsync<TaskCanceledException>(
+                () => executor.SendAsync("idx", client, Request, policy, CancellationToken.None));
+        }
+
+        Assert.IsFalse(health.IsAvailable("idx"));
+        Assert.AreEqual(ProviderHealthStatus.Unavailable, health.Get("idx").Status);
+
+        // Same for transport failures on a fresh provider.
+        timeout = false;
+        for (var i = 0; i < 3; i++)
+        {
+            await Assert.ThrowsExactlyAsync<HttpRequestException>(
+                () => executor.SendAsync("idx2", client, Request, policy, CancellationToken.None));
+        }
+
+        Assert.IsFalse(health.IsAvailable("idx2"));
+
+        static HttpRequestMessage Request() => new(HttpMethod.Get, "https://provider.example/api");
+    }
+
+    [TestMethod]
+    public async Task ExecuteAsyncClientErrorExceptionsAreNotRetriedNorCountedAsOutages()
+    {
+        var clock = new MutableClock(Now);
+        var health = new ProviderHealthTracker(clock, failureThreshold: 3);
+        var executor = new ProviderExecutor(new ProviderRateLimiter(), health, clock, NullLogger<ProviderExecutor>.Instance);
+        var policy = new ProviderExecutionPolicy { MaxAttempts = 3, BaseBackoff = TimeSpan.Zero };
+        var calls = 0;
+
+        for (var i = 0; i < 4; i++)
+        {
+            await Assert.ThrowsExactlyAsync<HttpRequestException>(() => executor.ExecuteAsync<int>(
+                "p",
+                _ =>
+                {
+                    calls++;
+                    throw new HttpRequestException("unauthorized", null, HttpStatusCode.Unauthorized);
+                },
+                policy,
+                CancellationToken.None));
+        }
+
+        Assert.AreEqual(4, calls, "A 4xx is not transient, so no retries.");
+        Assert.IsTrue(health.IsAvailable("p"));
+        Assert.AreEqual(0, health.Get("p").ConsecutiveFailures);
+
+        // A 5xx exception still counts and, with retries, opens the circuit.
+        await Assert.ThrowsExactlyAsync<HttpRequestException>(() => executor.ExecuteAsync<int>(
+            "p",
+            _ => throw new HttpRequestException("bad gateway", null, HttpStatusCode.BadGateway),
+            policy,
+            CancellationToken.None));
+        Assert.IsFalse(health.IsAvailable("p"));
+    }
+
     // --- Executor: generic path fail-fast --------------------------------------
 
     [TestMethod]
