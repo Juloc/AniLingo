@@ -30,6 +30,8 @@ data class ClientFeatureFlags(
     val continueWatching: Boolean = false,
     val playbackHistory: Boolean = false,
     val watchlist: Boolean = false,
+    /** TV device-code pairing, "/api/client/v1/pairing/*" (#489). */
+    val devicePairing: Boolean = false,
 )
 
 data class ClientAccount(
@@ -42,6 +44,32 @@ data class ClientLogin(
     val userName: String,
     val password: String,
     val rememberMe: Boolean = true,
+)
+
+/**
+ * Result of `POST /pairing/start` (#489): [userCode] is what the TV displays for a human to type
+ * on their phone/computer; [deviceCode] is the opaque value the TV itself polls with and never
+ * shows on screen.
+ */
+data class DevicePairingSession(
+    val deviceCode: String,
+    val userCode: String,
+    val expiresInSeconds: Int,
+    val intervalSeconds: Int,
+)
+
+/** Result of one `POST /pairing/poll` call (#489). */
+sealed interface DevicePairingPollResult {
+    data class Pending(val intervalSeconds: Int) : DevicePairingPollResult
+    data class Approved(val account: ClientAccount) : DevicePairingPollResult
+    data object Expired : DevicePairingPollResult
+}
+
+/** One server found while searching the LAN for Jularr (#489, see the discovery beacon protocol). */
+data class DiscoveredJularrServer(
+    val origin: String,
+    val name: String,
+    val version: String,
 )
 
 data class ClientLibrary(

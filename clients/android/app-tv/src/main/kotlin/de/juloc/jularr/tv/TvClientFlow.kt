@@ -10,6 +10,8 @@ import de.juloc.jularr.core.model.ClientLibrary
 import de.juloc.jularr.core.model.ClientLogin
 import de.juloc.jularr.core.model.ContinueWatchingItem
 import de.juloc.jularr.core.model.CueResponse
+import de.juloc.jularr.core.model.DevicePairingPollResult
+import de.juloc.jularr.core.model.DevicePairingSession
 import de.juloc.jularr.core.model.EpisodeDetail
 import de.juloc.jularr.core.model.EpisodeProgress
 import de.juloc.jularr.core.model.EpisodeProgressUpdate
@@ -59,14 +61,44 @@ class TvClientFlow(
         password: String,
         capabilities: ClientCapabilities,
     ): TvSignedInData {
-        val client = requireApi()
-        val account = client.login(
+        val account = requireApi().login(
             ClientLogin(
                 userName = userName,
                 password = password,
                 rememberMe = true,
             ),
         )
+        return signedInData(account, capabilities)
+    }
+
+    /**
+     * `POST /pairing/start` (#489): begins a device-code pairing on the connected server. The
+     * caller shows [DevicePairingSession.userCode] and repeatedly calls [pollDevicePairing] with
+     * [DevicePairingSession.deviceCode] until it stops being
+     * [DevicePairingPollResult.Pending].
+     */
+    suspend fun startDevicePairing(): DevicePairingSession =
+        requireApi().startDevicePairing()
+
+    suspend fun pollDevicePairing(deviceCode: String): DevicePairingPollResult =
+        requireApi().pollDevicePairing(deviceCode)
+
+    /**
+     * Finishes sign-in after [pollDevicePairing] returns
+     * [DevicePairingPollResult.Approved]: the server already signed this connection's cookie in,
+     * so this only loads the same account data [login] does — it never calls `login` itself.
+     */
+    suspend fun completeDevicePairing(
+        account: ClientAccount,
+        capabilities: ClientCapabilities,
+    ): TvSignedInData =
+        signedInData(account, capabilities)
+
+    private suspend fun signedInData(
+        account: ClientAccount,
+        capabilities: ClientCapabilities,
+    ): TvSignedInData {
+        val client = requireApi()
         return TvSignedInData(
             account = account,
             library = client.getLibrary(),

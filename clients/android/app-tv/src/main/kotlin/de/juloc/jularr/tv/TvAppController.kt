@@ -7,6 +7,8 @@ import de.juloc.jularr.core.model.ClientCapabilities
 import de.juloc.jularr.core.model.ClientLibrary
 import de.juloc.jularr.core.model.ContinueWatchingItem
 import de.juloc.jularr.core.model.CueResponse
+import de.juloc.jularr.core.model.DevicePairingPollResult
+import de.juloc.jularr.core.model.DevicePairingSession
 import de.juloc.jularr.core.model.PlaybackHistoryItem
 import de.juloc.jularr.core.model.WatchlistItem
 
@@ -63,6 +65,43 @@ class TvAppController(
         runBusy {
             val resolvedCapabilities = ensureConnected()
             val signedIn = flow.login(userName, password, resolvedCapabilities)
+            copy(
+                navigation = TvNavigation.signedIn(navigation),
+                account = signedIn.account,
+                library = signedIn.library,
+                continueWatching = signedIn.continueWatching,
+                anime = null,
+                episodePage = null,
+                episode = null,
+                activity = emptyList(),
+                activityUsesContinueWatchingFallback = false,
+                watchlist = emptyList(),
+                storageDecision = null,
+                error = null,
+            )
+        }
+
+    /**
+     * `POST /pairing/start` (#489). Called from the Login screen's own pairing loop, not wrapped
+     * in [runBusy]: it must not fight the polling loop over `snapshot.busy`/`snapshot.error`.
+     */
+    suspend fun startDevicePairing(): DevicePairingSession =
+        flow.startDevicePairing()
+
+    /** `POST /pairing/poll` (#489). See [startDevicePairing]. */
+    suspend fun pollDevicePairing(deviceCode: String): DevicePairingPollResult =
+        flow.pollDevicePairing(deviceCode)
+
+    /**
+     * Finishes sign-in once the Login screen's pairing loop sees
+     * [DevicePairingPollResult.Approved]: the server already signed this connection's cookie in
+     * (see [de.juloc.jularr.core.api.JularrClientApi.pollDevicePairing]), so this only loads the
+     * same account data [login] does.
+     */
+    suspend fun completeDevicePairing(account: ClientAccount): TvAppSnapshot =
+        runBusy {
+            val resolvedCapabilities = ensureConnected()
+            val signedIn = flow.completeDevicePairing(account, resolvedCapabilities)
             copy(
                 navigation = TvNavigation.signedIn(navigation),
                 account = signedIn.account,

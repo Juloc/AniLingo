@@ -11,6 +11,8 @@ import de.juloc.jularr.core.model.CompatibilityFallback
 import de.juloc.jularr.core.model.ContinueWatchingItem
 import de.juloc.jularr.core.model.CueResponse
 import de.juloc.jularr.core.model.CueToken
+import de.juloc.jularr.core.model.DevicePairingPollResult
+import de.juloc.jularr.core.model.DevicePairingSession
 import de.juloc.jularr.core.model.EpisodeDetail
 import de.juloc.jularr.core.model.EpisodeProgress
 import de.juloc.jularr.core.model.EpisodeProgressUpdate
@@ -80,6 +82,30 @@ class HttpJularrClientApi(
 
     override suspend fun logout() {
         requestJson("POST", ClientApiRoutes.Logout)
+    }
+
+    override suspend fun startDevicePairing(): DevicePairingSession =
+        requestJson("POST", ClientApiRoutes.PairingStart).toPairingSession()
+
+    override suspend fun pollDevicePairing(deviceCode: String): DevicePairingPollResult {
+        val json = try {
+            requestJson(
+                method = "POST",
+                route = ClientApiRoutes.PairingPoll,
+                body = JSONObject().put("deviceCode", deviceCode),
+            )
+        } catch (exception: ClientApiHttpException) {
+            if (exception.statusCode == 404) {
+                return DevicePairingPollResult.Expired
+            }
+            throw exception
+        }
+
+        return if (json.optString("status") == "approved") {
+            DevicePairingPollResult.Approved(json.getJSONObject("account").toAccount())
+        } else {
+            DevicePairingPollResult.Pending(json.optInt("intervalSeconds", 5))
+        }
     }
 
     override suspend fun getMe(): ClientAccount =
@@ -336,7 +362,8 @@ class HttpJularrClientApi(
                     name == "ttsPreferences" ||
                     name == "continueWatching" ||
                     name == "playbackHistory" ||
-                    name == "watchlist"
+                    name == "watchlist" ||
+                    name == "devicePairing"
                 ) {
                     features.optBoolean(name, false)
                 } else {
@@ -350,6 +377,13 @@ class HttpJularrClientApi(
         profileId = getString("profileId"),
         userName = stringOrNull("userName"),
         role = getString("role"),
+    )
+
+    private fun JSONObject.toPairingSession() = DevicePairingSession(
+        deviceCode = getString("deviceCode"),
+        userCode = getString("userCode"),
+        expiresInSeconds = getInt("expiresInSeconds"),
+        intervalSeconds = getInt("intervalSeconds"),
     )
 
     private fun JSONObject.toLibrary() = ClientLibrary(
@@ -724,5 +758,6 @@ internal object ClientFeatureFlagParser {
         continueWatching = readBoolean("continueWatching"),
         playbackHistory = readBoolean("playbackHistory"),
         watchlist = readBoolean("watchlist"),
+        devicePairing = readBoolean("devicePairing"),
     )
 }
