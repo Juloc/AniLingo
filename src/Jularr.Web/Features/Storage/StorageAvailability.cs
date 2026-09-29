@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using Jularr.Web.Data;
+using Jularr.Web.Features.Events;
 using Jularr.Web.Features.Library;
 using Microsoft.EntityFrameworkCore;
 
@@ -401,23 +402,35 @@ public sealed class StorageAvailabilityCoordinator
 public sealed class LibraryRootAvailabilityService(
     AppDbContext db,
     StorageAvailabilityCoordinator coordinator,
-    StorageWakeCoordinator? wake = null)
+    StorageWakeCoordinator? wake = null,
+    IJularrEventPublisher? events = null)
 {
+    // #579 StorageProblem: this service is scoped (a fresh instance per request/background pass),
+    // so "did the last probe of this root already report a problem" is tracked process-wide here
+    // instead of on the instance — otherwise every single probe would publish again. Keyed by root
+    // id; a transition back to available simply clears the flag (no "recovered" event is required).
+    private static readonly ConcurrentDictionary<Guid, bool> LastProbeWasProblem = new();
+
     public async Task<LibraryRootAvailabilitySnapshot?> CheckAsync(
         Guid rootId,
         bool force,
         CancellationToken cancellationToken)
     {
         var root = await LoadAsync(rootId, cancellationToken);
-        return root is null
-            ? null
-            : await coordinator.ProbeAsync(
-                root.Id,
-                root.Path,
-                root.WakeConfigured,
-                force,
-                cancellationToken,
-                root.ExpectedNonEmpty);
+        if (root is null)
+        {
+            return null;
+        }
+
+        var snapshot = await coordinator.ProbeAsync(
+            root.Id,
+            root.Path,
+            root.WakeConfigured,
+            force,
+            cancellationToken,
+            root.ExpectedNonEmpty);
+        await PublishIfNewlyUnavailableAsync(root, snapshot, cancellationToken);
+        return snapshot;
     }
 
     // Returns the root's state for a media-dependent operation. A readable root is returned as
@@ -455,6 +468,8 @@ public sealed class LibraryRootAvailabilityService(
                 cancellationToken,
                 root.ExpectedNonEmpty);
         }
+
+        await PublishIfNewlyUnavailableAsync(root, current, cancellationToken);
 
         if (current.IsAvailable ||
             current.State == StorageAvailabilityState.Unreachable ||
@@ -516,6 +531,41 @@ public sealed class LibraryRootAvailabilityService(
             : null;
 
         return new RootAccess(root.Id, root.Path, wakeConfigured, expectedNonEmpty, target);
+    }
+
+    /// <summary>
+    /// #579 StorageProblem: publishes only on the transition into a non-"Starting" unavailable
+    /// state (a sleeping Wake-on-LAN root waking up is not a problem), so this fires once per
+    /// outage rather than on every poll. <see cref="JularrEventCategories"/> already routes
+    /// StorageProblem to Admin (owner/media manager), never a normal profile.
+    /// </summary>
+    private Task PublishIfNewlyUnavailableAsync(
+        RootAccess root,
+        LibraryRootAvailabilitySnapshot? snapshot,
+        CancellationToken cancellationToken)
+    {
+        if (events is null || snapshot is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        var isProblem = !snapshot.IsAvailable && snapshot.State != StorageAvailabilityState.Starting;
+        var wasProblem = LastProbeWasProblem.GetValueOrDefault(root.Id);
+        LastProbeWasProblem[root.Id] = isProblem;
+
+        if (!isProblem || wasProblem)
+        {
+            return Task.CompletedTask;
+        }
+
+        var message = $"{root.Path} is unavailable ({snapshot.DiagnosticCode ?? snapshot.State.ToString()}).";
+        return events.PublishAsync(
+            JularrEvent.Create(
+                JularrEventCategory.StorageProblem,
+                subjectId: root.Id.ToString(),
+                messageParams: new Dictionary<string, string> { ["message"] = message },
+                dedupKey: $"storage-root:{root.Id}"),
+            cancellationToken);
     }
 
     private sealed record RootAccess(

@@ -170,6 +170,15 @@ public sealed class AcquisitionRequestService(
             result.ResultUrl,
             null,
             cancellationToken);
+
+        // Every media kind's executor reports Downloading the moment it finds and grabs an
+        // accepted release, so this one spot covers #579's "ReleaseAvailable when a wanted
+        // release is found" for Anime, Manga, Light Novels and Books alike.
+        if (result.Status == AcquisitionRequestStatus.Downloading)
+        {
+            await PublishReleaseAvailableAsync(request, result, cancellationToken);
+        }
+
         return await RequireAsync(request.Id, cancellationToken);
     }
 
@@ -188,6 +197,24 @@ public sealed class AcquisitionRequestService(
                 messageParams: new Dictionary<string, string> { ["title"] = request.Title },
                 deepLink: request.ResultUrl,
                 dedupKey: $"acquisition-request:{request.Id}:{category}"),
+            cancellationToken);
+
+    /// <summary>
+    /// #579: tells the requester a release was found and grabbed for their request. Same dedup
+    /// shape as <see cref="PublishDecisionAsync"/> keyed on the request, so a later release found
+    /// after an earlier one failed refreshes one notification instead of piling up new rows.
+    /// </summary>
+    private Task PublishReleaseAvailableAsync(AcquisitionRequest request, AcquisitionExecution result, CancellationToken cancellationToken) =>
+        events.PublishAsync(
+            JularrEvent.Create(
+                JularrEventCategory.ReleaseAvailable,
+                profileId: request.RequestedByProfileId,
+                mediaType: AcquisitionAccessNames.Kind(request.Kind),
+                subjectId: request.Id.ToString(),
+                messageParams: new Dictionary<string, string> { ["title"] = request.Title },
+                deepLink: result.ResultUrl,
+                dedupKey: $"acquisition-request:{request.Id}:release-available",
+                relatedOperationId: result.OperationId),
             cancellationToken);
 
     private async Task<AcquisitionRequest> RequireAsync(Guid id, CancellationToken cancellationToken) =>

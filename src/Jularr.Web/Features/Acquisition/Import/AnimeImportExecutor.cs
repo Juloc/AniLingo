@@ -7,6 +7,7 @@ using Jularr.Web.Features.Acquisition.Ownership;
 using Jularr.Web.Features.Acquisition.Pipeline;
 using Jularr.Web.Features.Acquisition.Quality;
 using Jularr.Web.Features.Acquisition.Sabnzbd;
+using Jularr.Web.Features.Events;
 using Jularr.Web.Features.Library;
 using Jularr.Web.Features.Media.Optimization;
 using Jularr.Web.Features.Operations;
@@ -44,7 +45,8 @@ public sealed class AnimeImportExecutor(
     IDownloadClient downloadClient,
     ILogger<AnimeImportExecutor> logger,
     MediaOptimizationQueue? optimizationQueue = null,
-    LibraryRootAvailabilityService? storage = null)
+    LibraryRootAvailabilityService? storage = null,
+    IJularrEventPublisher? events = null)
 {
     public const string OperationKind = "anime-import";
     public const string OperationCategory = "Library";
@@ -993,7 +995,9 @@ public sealed class AnimeImportExecutor(
         // decision, and a running operation would block renames of the anime indefinitely.
         if (operationId is { } id)
         {
-            var operations = new OperationStore(db);
+            // The one Mark*Async call for the "anime-import" Kind: passing events here is what
+            // makes OperationStore publish #429's ImportCompleted/ImportFailed for anime (#579).
+            var operations = new OperationStore(db, events);
             if (status == AnimeImportStatus.Failed)
             {
                 await operations.MarkFailedAsync(id, message, CancellationToken.None);
