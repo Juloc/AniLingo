@@ -505,6 +505,8 @@ builder.Services.AddScoped<SabnzbdAcquisitionService>();
 builder.Services.AddHostedService<SabnzbdOperationMonitorService>();
 builder.Services.AddHostedService<Jularr.Web.Features.Acquisition.Wanted.WantedAcquisitionService>();
 
+builder.Services.AddSingleton<Jularr.Web.Features.Acquisition.Release.IMediaAcquisitionRegistration, Jularr.Web.Features.Acquisition.Release.AnimeAcquisitionRegistration>();
+builder.Services.AddSingleton<Jularr.Web.Features.Acquisition.Release.MediaAcquisitionRegistry>();
 builder.Services.AddSingleton<AnimeQualityProfileStore>();
 builder.Services.AddSingleton(_ => new AnimeMonitoringStore("/data"));
 builder.Services.AddSingleton<AnimeImportStore>();

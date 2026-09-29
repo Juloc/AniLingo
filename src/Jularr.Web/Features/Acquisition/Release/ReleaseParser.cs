@@ -3,82 +3,14 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 
-namespace Jularr.Web.Features.Acquisition;
+namespace Jularr.Web.Features.Acquisition.Release;
 
-public enum AnimeReleaseSource
-{
-    Unknown,
-    WebDl,
-    WebRip,
-    BluRay,
-    BluRayRip,
-    Hdtv
-}
-
-public enum AnimeVideoCodec
-{
-    Unknown,
-    Avc,
-    Hevc,
-    Av1
-}
-
-public enum AnimeHdrFormat
-{
-    None,
-    Hdr,
-    Hdr10,
-    Hdr10Plus,
-    DolbyVision
-}
-
-public enum AnimeAudioCodec
-{
-    Unknown,
-    Aac,
-    Flac,
-    Opus,
-    Ac3,
-    Eac3,
-    Dts,
-    DtsHd,
-    TrueHd
-}
-
-public sealed record AnimeReleaseEvidence(string Field, string Value, string MatchedText);
-
-public sealed record AnimeReleaseInfo(
-    string RawTitle,
-    string SeriesTitle,
-    int? SeasonNumber,
-    int? EpisodeStart,
-    int? EpisodeEnd,
-    int? AbsoluteEpisodeStart,
-    int? AbsoluteEpisodeEnd,
-    DateOnly? AirDate,
-    bool IsSeasonPack,
-    bool IsMultiEpisode,
-    int? Resolution,
-    AnimeReleaseSource Source,
-    AnimeVideoCodec VideoCodec,
-    int? BitDepth,
-    AnimeHdrFormat HdrFormat,
-    AnimeAudioCodec AudioCodec,
-    string? AudioChannels,
-    IReadOnlyList<string> AudioLanguages,
-    IReadOnlyList<string> SubtitleLanguages,
-    bool IsDualAudio,
-    bool IsMultiAudio,
-    string? ReleaseGroup,
-    int Version,
-    bool IsProper,
-    bool IsRepack,
-    string? ImdbId,
-    string ReleaseKey,
-    double Confidence,
-    IReadOnlyList<AnimeReleaseEvidence> Evidence);
-
-public static partial class AnimeReleaseParser
+// Media-type-agnostic scene/usenet release-name parser. The grammar (season/episode, absolute
+// numbering, air date, season packs, resolution, source, codecs, HDR, audio, languages, release
+// group, proper/repack, version, imdb id) is common to every video media type, so this is the
+// single canonical parser. Media types that need different behaviour register their own
+// IReleaseParser; anime uses this default (SceneReleaseParser).
+public static partial class ReleaseParser
 {
     private static readonly IReadOnlyDictionary<string, string> LanguageAliases =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -241,7 +173,7 @@ public static partial class AnimeReleaseParser
     [GeneratedRegex(@"(?<group>[A-Za-z0-9][A-Za-z0-9._-]{1,40})\s+tt\d{5,12}\s*$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex BeforeImdbGroupRegex();
 
-    public static bool TryParse(string? releaseName, out AnimeReleaseInfo release)
+    public static bool TryParse(string? releaseName, out ReleaseInfo release)
     {
         release = default!;
         if (string.IsNullOrWhiteSpace(releaseName))
@@ -253,12 +185,12 @@ public static partial class AnimeReleaseParser
         return true;
     }
 
-    public static AnimeReleaseInfo Parse(string releaseName)
+    public static ReleaseInfo Parse(string releaseName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(releaseName);
 
         var rawTitle = StripKnownExtension(releaseName.Trim());
-        var evidence = new List<AnimeReleaseEvidence>();
+        var evidence = new List<ReleaseEvidence>();
 
         var leadingGroup = LeadingGroupRegex().Match(rawTitle);
         var releaseGroup = leadingGroup.Success && !IsTechnicalBracket(leadingGroup.Groups["group"].Value)
@@ -362,7 +294,7 @@ public static partial class AnimeReleaseParser
         }
 
         var (hdrFormat, hdrMatch) = DetectHdr(rawTitle);
-        if (hdrFormat != AnimeHdrFormat.None)
+        if (hdrFormat != ReleaseHdrFormat.None)
         {
             AddMatchEvidence(evidence, "hdr", hdrFormat.ToString(), hdrMatch);
         }
@@ -449,12 +381,12 @@ public static partial class AnimeReleaseParser
             seriesTitle,
             seasonEpisode.Success || absoluteEpisode.Success || airDateMatch.Success || seasonPack.Success,
             resolution is not null,
-            source != AnimeReleaseSource.Unknown,
-            videoCodec != AnimeVideoCodec.Unknown,
-            audioCodec != AnimeAudioCodec.Unknown,
+            source != ReleaseSource.Unknown,
+            videoCodec != ReleaseVideoCodec.Unknown,
+            audioCodec != ReleaseAudioCodec.Unknown,
             releaseGroup is not null);
 
-        return new AnimeReleaseInfo(
+        return new ReleaseInfo(
             rawTitle,
             seriesTitle,
             seasonNumber,
@@ -520,76 +452,76 @@ public static partial class AnimeReleaseParser
         return matches.Where(match => match.Success).Select(match => match.Index).DefaultIfEmpty(rawTitle.Length).Min();
     }
 
-    private static (AnimeReleaseSource Source, Match Match) DetectSource(string value)
+    private static (ReleaseSource Source, Match Match) DetectSource(string value)
     {
         var match = WebDlRegex().Match(value);
-        if (match.Success) return (AnimeReleaseSource.WebDl, match);
+        if (match.Success) return (ReleaseSource.WebDl, match);
 
         match = WebRipRegex().Match(value);
-        if (match.Success) return (AnimeReleaseSource.WebRip, match);
+        if (match.Success) return (ReleaseSource.WebRip, match);
 
         match = BluRayRipRegex().Match(value);
-        if (match.Success) return (AnimeReleaseSource.BluRayRip, match);
+        if (match.Success) return (ReleaseSource.BluRayRip, match);
 
         match = BluRayRegex().Match(value);
-        if (match.Success) return (AnimeReleaseSource.BluRay, match);
+        if (match.Success) return (ReleaseSource.BluRay, match);
 
         match = HdtvRegex().Match(value);
-        return match.Success ? (AnimeReleaseSource.Hdtv, match) : (AnimeReleaseSource.Unknown, Match.Empty);
+        return match.Success ? (ReleaseSource.Hdtv, match) : (ReleaseSource.Unknown, Match.Empty);
     }
 
-    private static (AnimeVideoCodec Codec, Match Match) DetectVideoCodec(string value)
+    private static (ReleaseVideoCodec Codec, Match Match) DetectVideoCodec(string value)
     {
         var match = Av1Regex().Match(value);
-        if (match.Success) return (AnimeVideoCodec.Av1, match);
+        if (match.Success) return (ReleaseVideoCodec.Av1, match);
 
         match = HevcRegex().Match(value);
-        if (match.Success) return (AnimeVideoCodec.Hevc, match);
+        if (match.Success) return (ReleaseVideoCodec.Hevc, match);
 
         match = AvcRegex().Match(value);
-        return match.Success ? (AnimeVideoCodec.Avc, match) : (AnimeVideoCodec.Unknown, Match.Empty);
+        return match.Success ? (ReleaseVideoCodec.Avc, match) : (ReleaseVideoCodec.Unknown, Match.Empty);
     }
 
-    private static (AnimeHdrFormat Format, Match Match) DetectHdr(string value)
+    private static (ReleaseHdrFormat Format, Match Match) DetectHdr(string value)
     {
         var match = DolbyVisionRegex().Match(value);
-        if (match.Success) return (AnimeHdrFormat.DolbyVision, match);
+        if (match.Success) return (ReleaseHdrFormat.DolbyVision, match);
 
         match = Hdr10PlusRegex().Match(value);
-        if (match.Success) return (AnimeHdrFormat.Hdr10Plus, match);
+        if (match.Success) return (ReleaseHdrFormat.Hdr10Plus, match);
 
         match = Hdr10Regex().Match(value);
-        if (match.Success) return (AnimeHdrFormat.Hdr10, match);
+        if (match.Success) return (ReleaseHdrFormat.Hdr10, match);
 
         match = HdrRegex().Match(value);
-        return match.Success ? (AnimeHdrFormat.Hdr, match) : (AnimeHdrFormat.None, Match.Empty);
+        return match.Success ? (ReleaseHdrFormat.Hdr, match) : (ReleaseHdrFormat.None, Match.Empty);
     }
 
-    private static (AnimeAudioCodec Codec, Match Match) DetectAudioCodec(string value)
+    private static (ReleaseAudioCodec Codec, Match Match) DetectAudioCodec(string value)
     {
         var match = TrueHdRegex().Match(value);
-        if (match.Success) return (AnimeAudioCodec.TrueHd, match);
+        if (match.Success) return (ReleaseAudioCodec.TrueHd, match);
 
         match = DtsHdRegex().Match(value);
-        if (match.Success) return (AnimeAudioCodec.DtsHd, match);
+        if (match.Success) return (ReleaseAudioCodec.DtsHd, match);
 
         match = DtsRegex().Match(value);
-        if (match.Success) return (AnimeAudioCodec.Dts, match);
+        if (match.Success) return (ReleaseAudioCodec.Dts, match);
 
         match = FlacRegex().Match(value);
-        if (match.Success) return (AnimeAudioCodec.Flac, match);
+        if (match.Success) return (ReleaseAudioCodec.Flac, match);
 
         match = Eac3Regex().Match(value);
-        if (match.Success) return (AnimeAudioCodec.Eac3, match);
+        if (match.Success) return (ReleaseAudioCodec.Eac3, match);
 
         match = Ac3Regex().Match(value);
-        if (match.Success) return (AnimeAudioCodec.Ac3, match);
+        if (match.Success) return (ReleaseAudioCodec.Ac3, match);
 
         match = AacRegex().Match(value);
-        if (match.Success) return (AnimeAudioCodec.Aac, match);
+        if (match.Success) return (ReleaseAudioCodec.Aac, match);
 
         match = OpusRegex().Match(value);
-        return match.Success ? (AnimeAudioCodec.Opus, match) : (AnimeAudioCodec.Unknown, Match.Empty);
+        return match.Success ? (ReleaseAudioCodec.Opus, match) : (ReleaseAudioCodec.Unknown, Match.Empty);
     }
 
     private static (IReadOnlyList<string> Audio, IReadOnlyList<string> Subtitles) DetectLanguages(
@@ -745,7 +677,7 @@ public static partial class AnimeReleaseParser
         int.TryParse(value, out var parsed) ? parsed : null;
 
     private static void AddMatchEvidence(
-        ICollection<AnimeReleaseEvidence> evidence,
+        ICollection<ReleaseEvidence> evidence,
         string field,
         string value,
         Match match)
@@ -757,14 +689,14 @@ public static partial class AnimeReleaseParser
     }
 
     private static void AddEvidence(
-        ICollection<AnimeReleaseEvidence> evidence,
+        ICollection<ReleaseEvidence> evidence,
         string field,
         object? value,
         string matchedText)
     {
         if (value is not null)
         {
-            evidence.Add(new AnimeReleaseEvidence(field, value.ToString() ?? "", matchedText));
+            evidence.Add(new ReleaseEvidence(field, value.ToString() ?? "", matchedText));
         }
     }
 }
