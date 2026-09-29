@@ -7,6 +7,7 @@ using Jularr.Web.Features.Books;
 using Jularr.Web.Features.Learning;
 using Jularr.Web.Features.Learning.Courses;
 using Jularr.Web.Features.Library;
+using Jularr.Web.Features.MediaCore;
 using Jularr.Web.Features.MediaSegments;
 using Jularr.Web.Features.Metadata;
 using Jularr.Web.Features.Novels;
@@ -74,6 +75,22 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<EpisodeSegmentDetectionState> EpisodeSegmentDetectionStates => Set<EpisodeSegmentDetectionState>();
     public DbSet<AcquisitionHistoryEntry> AcquisitionHistory => Set<AcquisitionHistoryEntry>();
     public DbSet<AcquisitionApiKey> AcquisitionApiKeys => Set<AcquisitionApiKey>();
+
+    // Universal media core (#592): provider-independent works, external identities, titles, structure
+    // (seasons/episodes, volumes/chapters), editions/versions, typed relations, field-level provenance
+    // and the non-invasive bridge to the existing per-type records.
+    public DbSet<Work> Works => Set<Work>();
+    public DbSet<WorkTitle> WorkTitles => Set<WorkTitle>();
+    public DbSet<WorkExternalIdentity> WorkExternalIdentities => Set<WorkExternalIdentity>();
+    public DbSet<WorkRelation> WorkRelations => Set<WorkRelation>();
+    public DbSet<WorkSeason> WorkSeasons => Set<WorkSeason>();
+    public DbSet<WorkEpisode> WorkEpisodes => Set<WorkEpisode>();
+    public DbSet<WorkVolume> WorkVolumes => Set<WorkVolume>();
+    public DbSet<WorkChapter> WorkChapters => Set<WorkChapter>();
+    public DbSet<WorkEdition> WorkEditions => Set<WorkEdition>();
+    public DbSet<WorkVersion> WorkVersions => Set<WorkVersion>();
+    public DbSet<WorkFieldProvenance> WorkFieldProvenance => Set<WorkFieldProvenance>();
+    public DbSet<WorkSourceLink> WorkSourceLinks => Set<WorkSourceLink>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -517,6 +534,144 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(x => x.KeyPrefix).HasMaxLength(32);
             entity.Property(x => x.KeyHash).HasMaxLength(64);
             entity.HasIndex(x => x.KeyHash).IsUnique();
+        });
+
+        ConfigureMediaCore(modelBuilder);
+    }
+
+    // Universal media core (#592). Provider-independent, relational (no JSON substitute models), with
+    // the unique/composite indexes the query surface and correctable mappings depend on.
+    private static void ConfigureMediaCore(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<Work>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.MediaType).HasConversion<int>();
+            entity.Property(x => x.CanonicalTitle).HasMaxLength(1000);
+            entity.HasIndex(x => x.MediaType);
+        });
+
+        modelBuilder.Entity<WorkTitle>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.TitleType).HasConversion<int>();
+            entity.Property(x => x.Language).HasMaxLength(24);
+            entity.Property(x => x.Value).HasMaxLength(1000);
+            entity.Property(x => x.NormalizedValue).HasMaxLength(400);
+            entity.Property(x => x.Source).HasMaxLength(80);
+            entity.HasOne<Work>().WithMany().HasForeignKey(x => x.WorkId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(x => new { x.WorkId, x.TitleType, x.Language, x.NormalizedValue }).IsUnique();
+            entity.HasIndex(x => x.NormalizedValue);
+        });
+
+        modelBuilder.Entity<WorkExternalIdentity>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.MediaType).HasConversion<int>();
+            entity.Property(x => x.Provider).HasMaxLength(80);
+            entity.Property(x => x.ExternalId).HasMaxLength(200);
+            entity.Property(x => x.Evidence).HasMaxLength(500);
+            entity.Property(x => x.ReviewState).HasConversion<int>();
+            entity.HasOne<Work>().WithMany().HasForeignKey(x => x.WorkId).OnDelete(DeleteBehavior.Cascade);
+            // One provider identity resolves to at most one work; moving WorkId corrects the mapping.
+            entity.HasIndex(x => new { x.Provider, x.MediaType, x.ExternalId }).IsUnique();
+            entity.HasIndex(x => x.WorkId);
+        });
+
+        modelBuilder.Entity<WorkRelation>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.RelationType).HasConversion<int>();
+            entity.Property(x => x.Source).HasMaxLength(80);
+            entity.HasOne<Work>().WithMany().HasForeignKey(x => x.FromWorkId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<Work>().WithMany().HasForeignKey(x => x.ToWorkId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(x => new { x.FromWorkId, x.ToWorkId, x.RelationType }).IsUnique();
+            entity.HasIndex(x => x.ToWorkId);
+        });
+
+        modelBuilder.Entity<WorkSeason>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Title).HasMaxLength(500);
+            entity.HasOne<Work>().WithMany().HasForeignKey(x => x.WorkId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(x => new { x.WorkId, x.SeasonNumber }).IsUnique();
+        });
+
+        modelBuilder.Entity<WorkEpisode>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Title).HasMaxLength(500);
+            entity.HasOne<Work>().WithMany().HasForeignKey(x => x.WorkId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<WorkSeason>().WithMany().HasForeignKey(x => x.SeasonId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasIndex(x => new { x.WorkId, x.SeasonNumber, x.EpisodeNumber }).IsUnique();
+            entity.HasIndex(x => new { x.WorkId, x.AbsoluteNumber });
+        });
+
+        modelBuilder.Entity<WorkVolume>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Title).HasMaxLength(500);
+            entity.HasOne<Work>().WithMany().HasForeignKey(x => x.WorkId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(x => new { x.WorkId, x.Number }).IsUnique();
+        });
+
+        modelBuilder.Entity<WorkChapter>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Title).HasMaxLength(500);
+            entity.HasOne<Work>().WithMany().HasForeignKey(x => x.WorkId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<WorkVolume>().WithMany().HasForeignKey(x => x.VolumeId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasIndex(x => new { x.WorkId, x.Number }).IsUnique();
+        });
+
+        modelBuilder.Entity<WorkEdition>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.EditionKey).HasMaxLength(200);
+            entity.Property(x => x.Language).HasMaxLength(24);
+            entity.Property(x => x.Format).HasMaxLength(80);
+            entity.Property(x => x.Publisher).HasMaxLength(300);
+            entity.Property(x => x.Isbn13).HasMaxLength(13);
+            entity.Property(x => x.Title).HasMaxLength(500);
+            entity.HasOne<Work>().WithMany().HasForeignKey(x => x.WorkId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(x => new { x.WorkId, x.EditionKey }).IsUnique();
+            entity.HasIndex(x => new { x.WorkId, x.IsPrimary });
+            entity.HasIndex(x => x.Isbn13);
+        });
+
+        modelBuilder.Entity<WorkVersion>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.VersionKey).HasMaxLength(200);
+            entity.Property(x => x.UnitKey).HasMaxLength(80);
+            entity.Property(x => x.Quality).HasMaxLength(80);
+            entity.Property(x => x.ReleaseGroup).HasMaxLength(200);
+            entity.Property(x => x.Source).HasMaxLength(80);
+            entity.Property(x => x.Notes).HasMaxLength(1000);
+            entity.HasOne<Work>().WithMany().HasForeignKey(x => x.WorkId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<WorkEdition>().WithMany().HasForeignKey(x => x.EditionId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasIndex(x => new { x.WorkId, x.VersionKey }).IsUnique();
+            entity.HasIndex(x => new { x.WorkId, x.UnitKey });
+        });
+
+        modelBuilder.Entity<WorkFieldProvenance>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.FieldKey).HasMaxLength(80);
+            entity.Property(x => x.Source).HasMaxLength(80);
+            entity.Property(x => x.ProviderExternalId).HasMaxLength(200);
+            entity.HasOne<Work>().WithMany().HasForeignKey(x => x.WorkId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(x => new { x.WorkId, x.FieldKey }).IsUnique();
+        });
+
+        modelBuilder.Entity<WorkSourceLink>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.SourceKind).HasConversion<int>();
+            entity.HasOne<Work>().WithMany().HasForeignKey(x => x.WorkId).OnDelete(DeleteBehavior.Cascade);
+            // Each legacy per-type record maps to exactly one work.
+            entity.HasIndex(x => new { x.SourceKind, x.SourceId }).IsUnique();
+            entity.HasIndex(x => x.WorkId);
         });
     }
 }
