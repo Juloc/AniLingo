@@ -14,7 +14,7 @@ namespace Jularr.Tests.Infrastructure;
 /// once-migrated template until the pool is full, after which the least-recently-used one is reclaimed
 /// by truncating it (no DROP, so no eviction stalls). MSTest runs serially, so a single lock guards
 /// the pool. The base server comes from <c>JULARR_TEST_DB</c> (a throwaway ephemeral
-/// <c>postgres:16</c> is the intended target); never point this at production data.
+/// <c>postgres:18</c> is the intended target); never point this at production data.
 /// </summary>
 public static class TestPostgres
 {
