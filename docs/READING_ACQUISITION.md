@@ -79,6 +79,26 @@ The Manga library folder (Settings → Acquisition → Media folders) is the fin
 
 An approved Syosetu (`ncode`) request is imported directly with `NovelImportService` and never searched on Usenet.
 
+## Reading sources
+
+The Light Novel Add dialog is a manual search over every enabled reading source, shown as one ranked list. Sources are configured by the owner at `/Admin/ReadingSources` (linked from the Add dialog) and stored in `/data/integrations/reading-sources.json`. `ReadingSourceCatalog` is the one list of sources; a provider is added there and in `ReadingSourceRegistration` only.
+
+| Source | Capability | Access path | Can be added |
+| --- | --- | --- | --- |
+| Shōsetsuka ni Narō | Public full text | Official Narou API; public Ncode pages | Yes: imported directly, or as a request for request-only accounts |
+| AniList | Published edition | GraphQL API | Yes: request and Usenet download |
+| BOOK☆WALKER | Preview | Public bookwalker.jp search page (no public API); at most two requests per search, only `/search/` | No: links to the store's own series or book page |
+| WebNovel | External reference | Public search page only; the site puts a bot challenge in front of non-browser clients, so it is off by default and reports itself blocked | No: links to the book's public page |
+| Internet Archive | External reference | Documented `advancedsearch` API | No: links to the item's page |
+
+Discovery-only sources (Preview and External reference) never fetch, import or copy content. BOOK☆WALKER trial reading and WebNovel free chapters are read on the sites themselves; locked and paid chapters stay locked and no DRM, login, session or challenge is touched. The server rejects adding a result from a source that cannot be added, whatever the form posts.
+
+Internet Archive is rights-aware because anyone can upload there. A result is listed only when the Archive itself offers it openly (not access-restricted) or lends it (access-restricted but in the `inlibrary` lending collection). Restricted items without lending and items in the `no-preview` collection are left out. Openly available items are labelled "Open license" when they carry a Creative Commons or public-domain statement, otherwise "Rights not verified". Jularr only links to the item; it never downloads or borrows anything.
+
+Ordering is relevance first (exact title, title prefix, title contains, other), then the owner's source priority, then title. Priority therefore decides between equally relevant results without burying a clearly better match from a lower-priority source, and no source gets a built-in head start. A published edition and a web novel with the same title are never merged.
+
+Every source is isolated: a source that times out (8 s), errors, rate limits or blocks automated access is reported above the results and the other sources still answer. Health is in-memory (not persisted) and shown on the settings page: a failing source is left alone for 30 s doubling to 10 min, a `429`/`Retry-After` is honoured (30 s to 1 h), and a source that refuses automated access (`401`/`403` or a bot challenge) is not asked again for an hour. There is no retry with other headers and no evasion. Sources are asked with an honest `Jularr/1.0` user agent. Usenet remains the only acquisition path; none of these sources download anything.
+
 ## Inbox folders
 
 Each reading media type has its own inbox folder under Settings → Acquisition → Media folders, for files Jularr did not download (a manual copy, another tool). **Scan inbox** imports it with the same adapter as a completed download, as one `media-inbox-import` Operation:
