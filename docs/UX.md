@@ -331,11 +331,13 @@ Admin navigation groups:
 
 ### Overview
 - Dashboard
-- Activity / Jobs
+- Activity / To-Do
+- History
 
 ### Media
 - Library
-- Wanted / Missing
+- Wanted
+- Requests
 - Manual Search
 - Imports
 
@@ -385,25 +387,10 @@ V1 centers on monitoring, automatic/manual acquisition, expandable Anime/Series 
 
 ## 20. Wanted / Missing
 
-Unified across media types.
+Binding screen specification:
+- `docs/mockups/admin-wanted/SPEC.md`
 
-List/table supports:
-- Work/unit
-- media type
-- desired language/edition
-- profile
-- status
-- last search/result
-- next action
-
-Actions:
-- Search now
-- Manual Search
-- change profile
-- pause/unmonitor
-- inspect history/failure
-
-Desktop can use dense table/list. Mobile uses stacked rows/cards without losing actions.
+Wanted is the technical acquisition worklist for requested/approved, missing, searching and failed acquisition needs across all media types. User request moderation is separate in Admin Requests.
 
 ## 21. Manual Search
 
@@ -490,18 +477,18 @@ User detail:
 
 UI is capability-based; avoid scattering hard-coded `IsAdmin` assumptions through pages.
 
-## 27. Activity / Jobs
+## 27. Admin Requests, Activity and History
 
-Unified operational timeline/queue:
-- acquisition
-- imports
-- metadata refresh
-- subtitle jobs
-- translations
-- AI generation
-- maintenance
+Binding screen specifications:
+- `docs/mockups/admin-requests/SPEC.md`
+- `docs/mockups/admin-activity/SPEC.md`
+- `docs/mockups/admin-history/SPEC.md`
 
-Filters by type/state/work/user where permitted. Failed items expose understandable reason, attempts and Retry when safe.
+Requests moderates user requests and hands approved acquisition needs into Wanted.
+
+Activity / To-Do is the live/pending operational work queue for imports, remux, repack/replace, subtitles, translations, metadata, AI and maintenance.
+
+History is the past operational record with category/date filters and actor/result details.
 
 ## 28. Responsive profiles
 
@@ -558,6 +545,19 @@ Before page implementation, define/reuse:
 No local clone of a component just to alter spacing/color.
 
 ## 30. Visual rules
+
+### Admin light baseline
+
+For the currently approved Admin planning mockups:
+- use a clean light theme;
+- use the compact Jularr Admin shell/sidebar;
+- avoid decorative background artwork on operational Admin pages;
+- status/type tags use borders and only lightly tinted backgrounds;
+- small category/status icons may use accent colors;
+- avoid fully saturated colored pills/badges;
+- keep dense information structured and calm;
+- Mobile keeps the same hierarchy but uses larger touch-friendly cards/controls.
+
 
 - Shared spacing/radius/type/color tokens.
 - Robotic/tag-heavy metadata presentation is avoided.
