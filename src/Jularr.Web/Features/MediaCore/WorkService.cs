@@ -1,8 +1,20 @@
+using System.Globalization;
 using Jularr.Web.Data;
 using Jularr.Web.Features.Mapping;
 using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Web.Features.MediaCore;
+
+/// <summary>What a <see cref="WorkService.MergeWorksAsync"/> moved from the absorbed work onto the survivor (#432).</summary>
+public sealed record WorkMergeResult(
+    Guid TargetWorkId,
+    Guid SourceWorkId,
+    int SourceLinks,
+    int Identities,
+    int Titles,
+    int Relations,
+    int Structure,
+    int Provenance);
 
 /// <summary>
 /// The write surface of the universal media core (#592). Creates works, attaches normalized external
@@ -177,6 +189,12 @@ public sealed class WorkService(AppDbContext db)
         identity.ReviewState = MappingReviewState.Confirmed;
         identity.Evidence = string.IsNullOrWhiteSpace(evidence) ? "owner correction" : evidence.Trim();
         identity.UpdatedAt = DateTime.UtcNow;
+
+        AppendIdentityChange(
+            WorkIdentityChangeType.Reassign, mediaType, targetWorkId, previousWorkId,
+            normalizedProvider, normalizedExternalId, actor,
+            summary: $"Reassigned {normalizedProvider}:{normalizedExternalId}",
+            details: $"from work {previousWorkId:D} to work {targetWorkId:D}; {identity.Evidence}");
         await db.SaveChangesAsync(cancellationToken);
 
         await TryAppendAnimeMappingAuditAsync(
@@ -189,6 +207,355 @@ public sealed class WorkService(AppDbContext db)
 
         return identity;
     }
+
+    /// <summary>
+    /// Manual <b>split</b> (#432): peels a provider identity off its current work into a brand-new work,
+    /// marking it a confirmed manual override (a later provider refresh cannot undo it) and seeding the
+    /// new work's primary title. Builds directly on the reassign primitive; returns the new work, or null
+    /// when the identity is unknown.
+    /// </summary>
+    public async Task<Work?> SplitExternalIdentityToNewWorkAsync(
+        WorkMediaType mediaType,
+        string provider,
+        string externalId,
+        string newTitle,
+        string actor,
+        string evidence,
+        CancellationToken cancellationToken)
+    {
+        var normalizedProvider = MediaCoreNormalization.NormalizeProvider(provider);
+        var normalizedExternalId = MediaCoreNormalization.NormalizeExternalId(externalId);
+
+        var identity = await db.Set<WorkExternalIdentity>()
+            .FirstOrDefaultAsync(
+                x => x.MediaType == mediaType
+                    && x.Provider == normalizedProvider
+                    && x.ExternalId == normalizedExternalId,
+                cancellationToken);
+        if (identity is null)
+        {
+            return null;
+        }
+
+        var previousWorkId = identity.WorkId;
+        var title = string.IsNullOrWhiteSpace(newTitle) ? normalizedExternalId : newTitle.Trim();
+        var work = new Work { MediaType = mediaType, CanonicalTitle = title };
+        db.Set<Work>().Add(work);
+
+        identity.WorkId = work.Id;
+        identity.IsPrimary = true;
+        identity.IsManualOverride = true;
+        identity.ReviewState = MappingReviewState.Confirmed;
+        identity.Evidence = string.IsNullOrWhiteSpace(evidence) ? "split to new work" : evidence.Trim();
+        identity.UpdatedAt = DateTime.UtcNow;
+
+        db.Set<WorkTitle>().Add(new WorkTitle
+        {
+            WorkId = work.Id,
+            TitleType = WorkTitleType.Primary,
+            Language = "und",
+            Value = title,
+            NormalizedValue = MediaCoreNormalization.NormalizeTitle(title),
+            IsPrimary = true,
+            Source = MetadataFieldSources.Owner
+        });
+
+        AppendIdentityChange(
+            WorkIdentityChangeType.Split, mediaType, work.Id, previousWorkId,
+            normalizedProvider, normalizedExternalId, actor,
+            summary: $"Split {normalizedProvider}:{normalizedExternalId} to a new work",
+            details: $"from work {previousWorkId:D} to new work {work.Id:D}; {identity.Evidence}");
+        await db.SaveChangesAsync(cancellationToken);
+        return work;
+    }
+
+    /// <summary>
+    /// Owner field-source pin (#435): records that a field's current value is a manual owner correction,
+    /// so any later provider refresh is blocked from overwriting it by the precedence ladder. Returns
+    /// true when the pin was applied (a manual override always wins).
+    /// </summary>
+    public Task<bool> SetManualFieldOverrideAsync(Guid workId, string fieldKey, CancellationToken cancellationToken) =>
+        SetFieldProvenanceAsync(
+            workId, fieldKey, MetadataFieldSources.Owner,
+            providerExternalId: null, confidence: null, isManualOverride: true,
+            preferredProvider: null, cancellationToken);
+
+    /// <summary>
+    /// Manual <b>merge</b> of two works (#432): absorbs <paramref name="sourceWorkId"/> into
+    /// <paramref name="targetWorkId"/>, moving its bridged legacy records (<see cref="WorkSourceLink"/> —
+    /// which is how progress, notes, wanted and collections stay attached), external identities, titles,
+    /// relations, structure and field provenance onto the survivor, then removing the emptied work and
+    /// recording a durable identity-change entry. Idempotent per pair: once the source is gone the merge
+    /// cannot run again. Provenance and identity conflicts are resolved by the same precedence rules the
+    /// rest of the core uses (manual overrides win; a provider identity never collides across works).
+    /// </summary>
+    public async Task<WorkMergeResult> MergeWorksAsync(
+        Guid targetWorkId,
+        Guid sourceWorkId,
+        string actor,
+        CancellationToken cancellationToken)
+    {
+        if (targetWorkId == sourceWorkId)
+        {
+            throw new ArgumentException("A work cannot be merged into itself.");
+        }
+
+        var target = await db.Set<Work>().FirstOrDefaultAsync(x => x.Id == targetWorkId, cancellationToken)
+            ?? throw new InvalidOperationException($"Merge target work {targetWorkId:D} does not exist.");
+        var source = await db.Set<Work>().FirstOrDefaultAsync(x => x.Id == sourceWorkId, cancellationToken)
+            ?? throw new InvalidOperationException($"Merge source work {sourceWorkId:D} does not exist.");
+
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+
+        var sourceLinks = await MoveSourceLinksAsync(sourceWorkId, targetWorkId, cancellationToken);
+        var identities = await MoveIdentitiesAsync(sourceWorkId, targetWorkId, cancellationToken);
+        var titles = await MoveTitlesAsync(sourceWorkId, targetWorkId, cancellationToken);
+        var relations = await MoveRelationsAsync(sourceWorkId, targetWorkId, cancellationToken);
+        var structure = await MoveStructureAsync(sourceWorkId, targetWorkId, cancellationToken);
+        var provenance = await MoveProvenanceAsync(sourceWorkId, targetWorkId, cancellationToken);
+
+        target.UpdatedAt = DateTime.UtcNow;
+
+        var details =
+            $"absorbed work {sourceWorkId:D} ({source.CanonicalTitle}); moved {sourceLinks} source links, "
+            + $"{identities} identities, {titles} titles, {relations} relations, {structure} structure rows, "
+            + $"{provenance} provenance rows.";
+        AppendIdentityChange(
+            WorkIdentityChangeType.Merge, target.MediaType, targetWorkId, sourceWorkId,
+            provider: "", externalId: "", actor,
+            summary: $"Merged \"{source.CanonicalTitle}\" into \"{target.CanonicalTitle}\"",
+            details);
+        await db.SaveChangesAsync(cancellationToken);
+
+        db.Set<Work>().Remove(source);
+        await db.SaveChangesAsync(cancellationToken);
+
+        await transaction.CommitAsync(cancellationToken);
+
+        return new WorkMergeResult(
+            targetWorkId, sourceWorkId, sourceLinks, identities, titles, relations, structure, provenance);
+    }
+
+    private async Task<int> MoveSourceLinksAsync(Guid sourceWorkId, Guid targetWorkId, CancellationToken cancellationToken)
+    {
+        // Each legacy record maps to exactly one work (unique on kind+id), so repointing never collides;
+        // moving the bridge is what keeps the absorbed work's progress/notes/wanted/collections intact.
+        var links = await db.Set<WorkSourceLink>().Where(x => x.WorkId == sourceWorkId).ToListAsync(cancellationToken);
+        foreach (var link in links)
+        {
+            link.WorkId = targetWorkId;
+        }
+
+        return links.Count;
+    }
+
+    private async Task<int> MoveIdentitiesAsync(Guid sourceWorkId, Guid targetWorkId, CancellationToken cancellationToken)
+    {
+        var targetPrimaries = (await db.Set<WorkExternalIdentity>()
+            .Where(x => x.WorkId == targetWorkId && x.IsPrimary)
+            .Select(x => new { x.Provider, x.MediaType })
+            .ToListAsync(cancellationToken))
+            .Select(x => (x.Provider, x.MediaType))
+            .ToHashSet();
+
+        // A given (provider, media type, external id) is globally unique, so no identity can collide
+        // across the two works: every source identity simply moves to the survivor.
+        var identities = await db.Set<WorkExternalIdentity>().Where(x => x.WorkId == sourceWorkId).ToListAsync(cancellationToken);
+        foreach (var identity in identities)
+        {
+            identity.WorkId = targetWorkId;
+            if (identity.IsPrimary && targetPrimaries.Contains((identity.Provider, identity.MediaType)))
+            {
+                identity.IsPrimary = false; // the survivor already has a primary for this provider namespace
+            }
+
+            identity.UpdatedAt = DateTime.UtcNow;
+        }
+
+        return identities.Count;
+    }
+
+    private async Task<int> MoveTitlesAsync(Guid sourceWorkId, Guid targetWorkId, CancellationToken cancellationToken)
+    {
+        var targetKeys = (await db.Set<WorkTitle>()
+            .Where(x => x.WorkId == targetWorkId)
+            .Select(x => new { x.TitleType, x.Language, x.NormalizedValue })
+            .ToListAsync(cancellationToken))
+            .Select(x => $"{(int)x.TitleType}\u0001{x.Language}\u0001{x.NormalizedValue}")
+            .ToHashSet(StringComparer.Ordinal);
+
+        var moved = 0;
+        var titles = await db.Set<WorkTitle>().Where(x => x.WorkId == sourceWorkId).ToListAsync(cancellationToken);
+        foreach (var title in titles)
+        {
+            var key = $"{(int)title.TitleType}\u0001{title.Language}\u0001{title.NormalizedValue}";
+            if (!targetKeys.Add(key))
+            {
+                db.Set<WorkTitle>().Remove(title); // the survivor already has this exact title
+                continue;
+            }
+
+            title.WorkId = targetWorkId;
+            title.IsPrimary = false; // the survivor keeps its own primary title
+            moved++;
+        }
+
+        return moved;
+    }
+
+    private async Task<int> MoveRelationsAsync(Guid sourceWorkId, Guid targetWorkId, CancellationToken cancellationToken)
+    {
+        var targetKeys = (await db.Set<WorkRelation>()
+            .Where(x => x.FromWorkId == targetWorkId || x.ToWorkId == targetWorkId)
+            .Select(x => new { x.FromWorkId, x.ToWorkId, x.RelationType })
+            .ToListAsync(cancellationToken))
+            .Select(x => $"{x.FromWorkId:N}\u0001{x.ToWorkId:N}\u0001{(int)x.RelationType}")
+            .ToHashSet(StringComparer.Ordinal);
+
+        var moved = 0;
+        var relations = await db.Set<WorkRelation>()
+            .Where(x => x.FromWorkId == sourceWorkId || x.ToWorkId == sourceWorkId)
+            .ToListAsync(cancellationToken);
+        foreach (var relation in relations)
+        {
+            var from = relation.FromWorkId == sourceWorkId ? targetWorkId : relation.FromWorkId;
+            var to = relation.ToWorkId == sourceWorkId ? targetWorkId : relation.ToWorkId;
+            if (from == to)
+            {
+                db.Set<WorkRelation>().Remove(relation); // a relation between the two merged works self-annihilates
+                continue;
+            }
+
+            var key = $"{from:N}\u0001{to:N}\u0001{(int)relation.RelationType}";
+            if (!targetKeys.Add(key))
+            {
+                db.Set<WorkRelation>().Remove(relation); // the survivor already has this edge
+                continue;
+            }
+
+            relation.FromWorkId = from;
+            relation.ToWorkId = to;
+            moved++;
+        }
+
+        return moved;
+    }
+
+    private async Task<int> MoveStructureAsync(Guid sourceWorkId, Guid targetWorkId, CancellationToken cancellationToken)
+    {
+        var moved = 0;
+        moved += await RepointOrDropAsync<WorkSeason>(
+            sourceWorkId, targetWorkId, x => x.SeasonNumber.ToString(CultureInfo.InvariantCulture), cancellationToken);
+        moved += await RepointOrDropAsync<WorkEpisode>(
+            sourceWorkId, targetWorkId, x => $"{x.SeasonNumber}\u0001{x.EpisodeNumber}", cancellationToken);
+        moved += await RepointOrDropAsync<WorkVolume>(
+            sourceWorkId, targetWorkId, x => x.Number.ToString(CultureInfo.InvariantCulture), cancellationToken);
+        moved += await RepointOrDropAsync<WorkChapter>(
+            sourceWorkId, targetWorkId, x => x.Number.ToString(CultureInfo.InvariantCulture), cancellationToken);
+        moved += await RepointOrDropAsync<WorkEdition>(
+            sourceWorkId, targetWorkId, x => x.EditionKey, cancellationToken);
+        moved += await RepointOrDropAsync<WorkVersion>(
+            sourceWorkId, targetWorkId, x => x.VersionKey, cancellationToken);
+        return moved;
+    }
+
+    /// <summary>
+    /// Repoints a work-owned child table (every one has a <c>WorkId</c>) to the survivor, dropping any
+    /// source row whose per-work unique key already exists on the survivor so the unique index holds.
+    /// </summary>
+    private async Task<int> RepointOrDropAsync<T>(
+        Guid sourceWorkId,
+        Guid targetWorkId,
+        Func<T, string> uniqueKey,
+        CancellationToken cancellationToken)
+        where T : class
+    {
+        var set = db.Set<T>();
+        var targetKeys = (await set
+            .Where(x => EF.Property<Guid>(x, "WorkId") == targetWorkId)
+            .ToListAsync(cancellationToken))
+            .Select(uniqueKey)
+            .ToHashSet(StringComparer.Ordinal);
+
+        var sourceRows = await set
+            .Where(x => EF.Property<Guid>(x, "WorkId") == sourceWorkId)
+            .ToListAsync(cancellationToken);
+        var workIdProperty = typeof(T).GetProperty("WorkId")!;
+
+        var moved = 0;
+        foreach (var row in sourceRows)
+        {
+            if (!targetKeys.Add(uniqueKey(row)))
+            {
+                set.Remove(row); // the survivor already has this row
+                continue;
+            }
+
+            workIdProperty.SetValue(row, targetWorkId);
+            moved++;
+        }
+
+        return moved;
+    }
+
+    private async Task<int> MoveProvenanceAsync(Guid sourceWorkId, Guid targetWorkId, CancellationToken cancellationToken)
+    {
+        var targetByField = (await db.Set<WorkFieldProvenance>()
+            .Where(x => x.WorkId == targetWorkId)
+            .ToListAsync(cancellationToken))
+            .ToDictionary(x => x.FieldKey, StringComparer.Ordinal);
+
+        var moved = 0;
+        var sourceRows = await db.Set<WorkFieldProvenance>().Where(x => x.WorkId == sourceWorkId).ToListAsync(cancellationToken);
+        foreach (var row in sourceRows)
+        {
+            if (targetByField.TryGetValue(row.FieldKey, out var existing))
+            {
+                if (MetadataFieldSources.ShouldReplace(existing, row.Source, row.IsManualOverride))
+                {
+                    existing.Source = row.Source;
+                    existing.ProviderExternalId = row.ProviderExternalId;
+                    existing.Confidence = row.Confidence;
+                    existing.IsManualOverride = row.IsManualOverride;
+                    existing.FallbackPriority = row.FallbackPriority;
+                    existing.FetchedAt = row.FetchedAt;
+                    existing.UpdatedAt = DateTime.UtcNow;
+                }
+
+                db.Set<WorkFieldProvenance>().Remove(row);
+                continue;
+            }
+
+            row.WorkId = targetWorkId;
+            targetByField[row.FieldKey] = row;
+            moved++;
+        }
+
+        return moved;
+    }
+
+    private void AppendIdentityChange(
+        WorkIdentityChangeType changeType,
+        WorkMediaType mediaType,
+        Guid targetWorkId,
+        Guid? sourceWorkId,
+        string provider,
+        string externalId,
+        string actor,
+        string summary,
+        string details) =>
+        db.Set<WorkIdentityChange>().Add(new WorkIdentityChange
+        {
+            ChangeType = changeType,
+            MediaType = mediaType,
+            TargetWorkId = targetWorkId,
+            SourceWorkId = sourceWorkId,
+            Provider = provider,
+            ExternalId = externalId,
+            Actor = (actor ?? "").Trim(),
+            Summary = summary,
+            Details = details
+        });
 
     /// <summary>Sets the review state of an external identity (confirm / flag / reject).</summary>
     public async Task<bool> SetExternalIdentityReviewStateAsync(

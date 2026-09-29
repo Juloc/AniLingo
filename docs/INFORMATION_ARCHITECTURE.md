@@ -91,6 +91,34 @@ E01-E11 / Part 2 E01-E12 over one local season) are both now expressible through
 the same mechanism is designed to cover reading media (manga/novel volumes and chapters) once its
 editor UI is wired.
 
+**Universal media core (#592) and its workflow layer.** A provider-independent `Work` (movie, series,
+anime, book, manga, light novel) carries a stable internal id with external provider identities,
+titles, structure, editions/versions, typed relations and per-field provenance hanging off it
+(`Features/MediaCore`: `Work`, `WorkExternalIdentity`, `WorkTitle`, `WorkFieldProvenance`,
+`WorkService`/`WorkQueryService`; migration `MediaCoreFoundation`). Legacy per-type records
+(Anime/NovelWork/BookEdition/MangaSeries) are bridged non-invasively through `WorkSourceLink`, so
+watch progress, notes, wanted and collections stay attached to the legacy id.
+
+- **Identity correction / merge / split (#432).** `WorkService.ReassignExternalIdentityAsync` moves a
+  provider id to another work; `SplitExternalIdentityToNewWorkAsync` peels one into a fresh work;
+  `MergeWorksAsync` absorbs one work into another (moving its bridges, identities, titles, relations,
+  structure and provenance) and preserves progress by repointing the `WorkSourceLink`. Every change
+  is written to the append-only `WorkIdentityChange` log (migration `WorkIdentityChanges`, no FK so it
+  outlives an absorbed work). Duplicate suggestions come from
+  `WorkQueryService.FindDuplicateSuggestionsAsync` (shared normalized title within one media type;
+  already-related pairs suppressed). **Exists.**
+- **Field-level provenance (#435).** Each displayed field records its source and precedence
+  (`WorkFieldProvenance` + `MetadataFieldSources`: manual > preferred provider > secondary >
+  local/NFO > filename). `LegacyWorkBridge` records provenance as it mirrors per-type titles, and the
+  owner can pin a field as a manual override (`WorkService.SetManualFieldOverrideAsync`) so a provider
+  refresh cannot overwrite it. **Exists** at the bridge/core level; routing every legacy per-type
+  provider write through the ladder lands with the individual #556 library children.
+- **Merge/Duplicate Review Center (#437).** Owner-only `/Admin/MergeReview`
+  (`Pages/Admin/MergeReview/Index.cshtml(.cs)`, `mapping.edit` policy) lists duplicate suggestions and
+  flagged identity conflicts with merge / split / reassign / confirm actions plus the field-source
+  pin, and shows the identity-change history. Linked from Metadata & Mapping
+  (`/Settings/MappingReview`). **Exists.**
+
 ## 3. Anime multi-provider mapping
 
 **Provider roles** (display metadata, episode structure, acquisition identity, progress tracking,
@@ -177,7 +205,7 @@ each row's Where.
 | Manual import | Exists | `/Acquisition` "Needs a decision", `AnimeImportExecutor` | — |
 | Move/organize files | Exists | Naming profile + `ImportFileTransfer` | — |
 | Quality/language inventory (dedicated report) | Partial — data exists per file (`MediaAnalysis`) but no cross-library inventory view | `MediaInventoryService` | #421 |
-| Duplicate detection | Missing — import-time existing-file detection only, no library-wide duplicate report | `CompletedDownloadImportPlanner` | #437 |
+| Duplicate detection | Partial — media-core duplicate/merge review exists (`/Admin/MergeReview`: shared-title suggestions, manual merge/split/reassign, identity-change history); import-time existing-file detection still separate, and detection is title-based (no cross-provider evidence merge yet) | `WorkQueryService.FindDuplicateSuggestionsAsync`, `WorkService.MergeWorksAsync`, `Pages/Admin/MergeReview`, `CompletedDownloadImportPlanner` | #437 |
 | Health/problems (unified) | Partial — per-root and per-indexer/client health exist separately, no single "problems" view | `/Admin/System`, `AcquisitionHealthStore` | #518 |
 | Indexers/Prowlarr integration | Exists | `/Settings/Indexers` | — |
 | Download clients/SABnzbd | Exists | `/Settings/DownloadClients` | — |
@@ -302,7 +330,7 @@ policy checks below; the table states the target state, not today's binary Owner
 | View admin dashboard, Operations, Scans, Logs | Full | Full (read) | No |
 | Delete media / library files | Full | No (per #510's sensitive-action list) | No |
 | Rename/move files | Full | No | No |
-| Mapping changes (MappingReview/MappingSegments) | Full | Full | No |
+| Mapping changes, merge/duplicate review (MappingReview/MappingSegments, MergeReview) | Full | Full | No |
 | Acquisition settings (indexers, download clients, quality profiles) | Full | Full | No |
 | User management (create/disable accounts, roles) | Full | No | No |
 | Stop another user's playback session | Full | Full | No |

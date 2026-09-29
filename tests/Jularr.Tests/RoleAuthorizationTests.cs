@@ -45,6 +45,7 @@ public sealed class RoleAuthorizationTests
 
         ["Jularr.Web.Pages.Settings.MappingReviewModel"] = JularrPolicies.MappingEdit,
         ["Jularr.Web.Pages.Settings.MappingSegmentsModel"] = JularrPolicies.MappingEdit,
+        ["Jularr.Web.Pages.Admin.MergeReview.IndexModel"] = JularrPolicies.MappingEdit,
 
         ["Jularr.Web.Pages.Library.RenameModel"] = JularrPolicies.MediaRename,
 

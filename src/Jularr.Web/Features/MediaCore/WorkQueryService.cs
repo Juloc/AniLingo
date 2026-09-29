@@ -36,6 +36,30 @@ public sealed record WorkSummary(
     IReadOnlyList<WorkRelationView> Relations,
     IReadOnlyList<WorkSourceLink> Sources);
 
+/// <summary>An external identity flagged for the owner to resolve, joined to its work for display (#437).</summary>
+public sealed record WorkConflictView(
+    Guid IdentityId,
+    Guid WorkId,
+    string WorkTitle,
+    WorkMediaType MediaType,
+    string Provider,
+    string ExternalId,
+    double Confidence,
+    MappingReviewState ReviewState);
+
+/// <summary>A durable identity-resolution history entry (merge/split/reassign) for the review center (#432/#437).</summary>
+public sealed record WorkIdentityChangeView(
+    WorkIdentityChangeType ChangeType,
+    WorkMediaType MediaType,
+    Guid TargetWorkId,
+    Guid? SourceWorkId,
+    string Provider,
+    string ExternalId,
+    string Actor,
+    string Summary,
+    string Details,
+    DateTime CreatedAt);
+
 /// <summary>
 /// The read surface of the universal media core (#592). All reads are <c>AsNoTracking</c> projections;
 /// nothing loads a whole library into memory. Identity resolution is the entry point discovery and
@@ -178,4 +202,69 @@ public sealed class WorkQueryService(AppDbContext db)
             await GetRelationsAsync(workId, cancellationToken),
             await GetSourceLinksAsync(workId, cancellationToken));
     }
+
+    /// <summary>
+    /// Ranked merge suggestions across the whole library (#432): works that share a normalized title
+    /// within one media type and are not already related. Titles are scanned in memory, so callers cap
+    /// the result with <paramref name="limit"/>.
+    /// </summary>
+    public async Task<IReadOnlyList<WorkDuplicateSuggestion>> FindDuplicateSuggestionsAsync(
+        int limit,
+        CancellationToken cancellationToken)
+    {
+        var probes = await db.Set<WorkTitle>().AsNoTracking()
+            .Join(
+                db.Set<Work>().AsNoTracking(),
+                title => title.WorkId,
+                work => work.Id,
+                (title, work) => new { work.Id, work.MediaType, work.Year, title.NormalizedValue })
+            .Where(x => x.NormalizedValue != "")
+            .Select(x => new WorkTitleProbe(x.Id, x.MediaType, x.Year, x.NormalizedValue))
+            .ToListAsync(cancellationToken);
+
+        var titlesByWork = await db.Set<Work>().AsNoTracking()
+            .ToDictionaryAsync(work => work.Id, work => work.CanonicalTitle, cancellationToken);
+
+        var relatedPairs = (await db.Set<WorkRelation>().AsNoTracking()
+                .Select(x => new { x.FromWorkId, x.ToWorkId })
+                .ToListAsync(cancellationToken))
+            .Select(x => WorkDuplicateDetection.Key(x.FromWorkId, x.ToWorkId))
+            .ToHashSet();
+
+        return WorkDuplicateDetection.Suggest(titlesByWork, probes, relatedPairs)
+            .Take(Math.Clamp(limit, 1, 500))
+            .ToArray();
+    }
+
+    /// <summary>External identities flagged <see cref="MappingReviewState.NeedsReview"/> — the conflicts queue (#437).</summary>
+    public async Task<IReadOnlyList<WorkConflictView>> ListConflictIdentitiesAsync(
+        int limit,
+        CancellationToken cancellationToken) =>
+        await db.Set<WorkExternalIdentity>().AsNoTracking()
+            .Where(x => x.ReviewState == MappingReviewState.NeedsReview)
+            .Join(
+                db.Set<Work>().AsNoTracking(),
+                identity => identity.WorkId,
+                work => work.Id,
+                (identity, work) => new WorkConflictView(
+                    identity.Id, identity.WorkId, work.CanonicalTitle, identity.MediaType,
+                    identity.Provider, identity.ExternalId, identity.Confidence, identity.ReviewState))
+            .OrderBy(x => x.WorkTitle)
+            .Take(Math.Clamp(limit, 1, 500))
+            .ToListAsync(cancellationToken);
+
+    /// <summary>The identity-change log, newest first; filtered to one work when <paramref name="workId"/> is set.</summary>
+    public async Task<IReadOnlyList<WorkIdentityChangeView>> GetIdentityChangesAsync(
+        Guid? workId,
+        int limit,
+        CancellationToken cancellationToken) =>
+        await db.Set<WorkIdentityChange>().AsNoTracking()
+            .Where(x => workId == null || x.TargetWorkId == workId || x.SourceWorkId == workId)
+            .OrderByDescending(x => x.CreatedAt)
+            .ThenByDescending(x => x.Id)
+            .Take(Math.Clamp(limit, 1, 500))
+            .Select(x => new WorkIdentityChangeView(
+                x.ChangeType, x.MediaType, x.TargetWorkId, x.SourceWorkId,
+                x.Provider, x.ExternalId, x.Actor, x.Summary, x.Details, x.CreatedAt))
+            .ToListAsync(cancellationToken);
 }
