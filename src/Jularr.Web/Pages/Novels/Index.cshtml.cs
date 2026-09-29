@@ -26,8 +26,8 @@ public sealed class IndexModel(
     NovelImportService imports,
     NovelEpubImportService epubImports,
     MediaInboxImportService inboxes,
-    NovelAniListProvider readingProvider,
-    IHttpClientFactory httpClientFactory,
+    ReadingCatalogSearchService catalogSearch,
+    ReadingSourceSettingsStore sourceSettingsStore,
     AcquisitionRequestService requests,
     AcquisitionAccessStore requestStore,
     CurrentAccountContext account,
@@ -39,6 +39,8 @@ public sealed class IndexModel(
     public IReadOnlyList<NovelListItem> Works { get; private set; } = [];
     public IReadOnlyList<NovelListItem> ContinueReading { get; private set; } = [];
     public IReadOnlyList<NovelCatalogResult> SearchResults { get; private set; } = [];
+    /// <summary>Brand names of enabled sources that did not answer this search.</summary>
+    public IReadOnlyList<string> UnavailableSources { get; private set; } = [];
     public AcquisitionCapabilities Access { get; private set; } =
         AcquisitionCapabilities.Default(MediaAcquisitionKind.LightNovel);
     public string SearchQuery { get; private set; } = "";
@@ -66,21 +68,24 @@ public sealed class IndexModel(
             cancellationToken);
         SearchQuery = ReadingCatalogSearch.NormalizeQuery(q);
 
-        if (SearchQuery.Length == 0)
+        // The search panel is only rendered for accounts that may add or request, so an
+        // account without that right must not make outbound searches either.
+        if (SearchQuery.Length == 0 || !Access.CanAdd)
         {
             return;
         }
 
         var sourceSettings = await LoadReadingSourceSettingsAsync(
             cancellationToken);
-        var syosetuClient = httpClientFactory.CreateClient();
-        var candidates = await ReadingCatalogSearch.SearchLightNovelsAsync(
-            readingProvider,
-            syosetuClient,
+        var outcome = await catalogSearch.SearchLightNovelsAsync(
             sourceSettings,
             SearchQuery,
             24,
             cancellationToken);
+        var candidates = outcome.Candidates;
+        UnavailableSources = outcome.UnavailableProviders
+            .Select(key => ReadingSourceCatalog.GetRequired(key).Name)
+            .ToArray();
 
         var aniListIds = candidates
             .Where(candidate =>
@@ -179,30 +184,21 @@ public sealed class IndexModel(
         CancellationToken cancellationToken)
     {
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
-        var normalizedProvider = provider?.Trim().ToLowerInvariant();
         var normalizedId = externalId?.Trim();
+
+        // The catalog is the one place that knows which sources can be added and what a valid
+        // id looks like. Reference and preview sources (BOOK☆WALKER, WebNovel, Internet
+        // Archive) list results only; they are rejected here, whatever the form posted.
         if (string.IsNullOrWhiteSpace(title) ||
             string.IsNullOrWhiteSpace(normalizedId) ||
-            normalizedProvider is not (
-                NovelAniListProvider.ProviderKey or
-                NcodeNovelSourceProvider.ProviderKey))
+            !ReadingSourceCatalog.TryGet(provider?.Trim(), out var source) ||
+            !source.CanAdd ||
+            !source.IsValidExternalId(normalizedId))
         {
             return BadRequest();
         }
 
-        if (normalizedProvider == NovelAniListProvider.ProviderKey &&
-            (!int.TryParse(normalizedId, out var aniListId) ||
-             aniListId <= 0))
-        {
-            return BadRequest();
-        }
-
-        if (normalizedProvider == NcodeNovelSourceProvider.ProviderKey &&
-            !SyosetuCatalogClient.IsValidNcode(normalizedId))
-        {
-            return BadRequest();
-        }
-
+        var normalizedProvider = source.Key;
         var sourceSettings = await LoadReadingSourceSettingsAsync(
             cancellationToken);
         if (!sourceSettings.IsEnabled(normalizedProvider))
@@ -218,11 +214,10 @@ public sealed class IndexModel(
             return Forbid();
         }
 
-        if (normalizedProvider == NcodeNovelSourceProvider.ProviderKey &&
+        if (source.DirectImportUrl is { } directImportUrl &&
             !capabilities.AddCreatesRequest)
         {
-            var sourceUrl =
-                $"https://ncode.syosetu.com/{normalizedId.ToLowerInvariant()}/";
+            var sourceUrl = directImportUrl(normalizedId);
 
             try
             {
@@ -443,7 +438,7 @@ public sealed class IndexModel(
     {
         try
         {
-            return await ReadingSourceSettingsStore.Default.LoadAsync(
+            return await sourceSettingsStore.LoadAsync(
                 cancellationToken);
         }
         catch (InvalidDataException exception)

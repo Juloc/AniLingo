@@ -1,19 +1,87 @@
 using System.Text.Json;
 using Jularr.Web.Features.Novels;
+using Jularr.Web.Features.ReadingDiscovery;
 
 namespace Jularr.Web.Features.ReadingSources;
 
 /// <summary>
+/// What a source can do for a result. Discovery and metadata sources never imply that
+/// Jularr may fetch or copy full text: only <see cref="PublicFullText"/> (freely readable,
+/// direct import) and <see cref="Acquisition"/> (the normal request and Usenet flow) make a
+/// result addable to the library.
+/// </summary>
+[Flags]
+public enum ReadingSourceCapabilities
+{
+    None = 0,
+    /// <summary>Catalog and bibliographic metadata.</summary>
+    Metadata = 1,
+    /// <summary>Official sample or trial pages on the source. Linked to, never imported.</summary>
+    Preview = 2,
+    /// <summary>Freely readable text that may be imported directly.</summary>
+    PublicFullText = 4,
+    /// <summary>Results open on the source's own site.</summary>
+    ExternalReference = 8,
+    /// <summary>Published editions acquired through the request and Usenet flow.</summary>
+    Acquisition = 16
+}
+
+/// <summary>
 /// One reading source. <see cref="Name"/> is the source's own brand name; its user-facing
-/// description lives in the UI catalog under <see cref="DescriptionKey"/>.
+/// description and licensing note live in the UI catalog under <see cref="DescriptionKey"/>
+/// and <see cref="LicensingKey"/>.
 /// </summary>
 public sealed record ReadingSourceDefinition(
     string Key,
     string Name,
-    bool SupportsDirectImport,
-    int DefaultPriority)
+    ReadingSourceCapabilities Capabilities,
+    int DefaultPriority,
+    bool EnabledByDefault = true,
+    Func<string, bool>? ExternalIdValidator = null,
+    Func<string, string>? DirectImportUrl = null)
 {
     public string DescriptionKey => $"readingSources.source.{Key}.description";
+
+    public string LicensingKey => $"readingSources.source.{Key}.licensing";
+
+    public bool SupportsDirectImport =>
+        Capabilities.HasFlag(ReadingSourceCapabilities.PublicFullText);
+
+    /// <summary>
+    /// Whether a result of this source can be added (imported or requested). Reference and
+    /// preview sources are discovery only; the server rejects adding their results.
+    /// </summary>
+    public bool CanAdd =>
+        (Capabilities & (ReadingSourceCapabilities.PublicFullText |
+                         ReadingSourceCapabilities.Acquisition)) != 0;
+
+    /// <summary>The single capability that labels this source's results.</summary>
+    public ReadingSourceCapabilities PrimaryCapability =>
+        Capabilities.HasFlag(ReadingSourceCapabilities.PublicFullText)
+            ? ReadingSourceCapabilities.PublicFullText
+            : Capabilities.HasFlag(ReadingSourceCapabilities.Acquisition)
+                ? ReadingSourceCapabilities.Acquisition
+                : Capabilities.HasFlag(ReadingSourceCapabilities.Preview)
+                    ? ReadingSourceCapabilities.Preview
+                    : Capabilities.HasFlag(ReadingSourceCapabilities.ExternalReference)
+                        ? ReadingSourceCapabilities.ExternalReference
+                        : ReadingSourceCapabilities.Metadata;
+
+    public string CapabilityKey => CapabilityKeyFor(PrimaryCapability);
+
+    public bool IsValidExternalId(string? externalId) =>
+        !string.IsNullOrWhiteSpace(externalId) &&
+        (ExternalIdValidator?.Invoke(externalId.Trim()) ?? true);
+
+    public static string CapabilityKeyFor(ReadingSourceCapabilities capability) =>
+        capability switch
+        {
+            ReadingSourceCapabilities.PublicFullText => "readingSources.capability.publicFullText",
+            ReadingSourceCapabilities.Acquisition => "readingSources.capability.acquisition",
+            ReadingSourceCapabilities.Preview => "readingSources.capability.preview",
+            ReadingSourceCapabilities.ExternalReference => "readingSources.capability.externalReference",
+            _ => "readingSources.capability.metadata"
+        };
 }
 
 public sealed record ReadingSourcePreference(
@@ -54,18 +122,43 @@ public sealed record ReadingSourceSettingsState(
 
 public static class ReadingSourceCatalog
 {
+    // Priority is the default order among equally relevant results: sources that can be added
+    // come first, discovery-only sources after them. Only sources with a supported access
+    // path are listed; Jularr never scrapes sites that block automated access.
     private static readonly ReadingSourceDefinition[] All =
     [
         new(
             NcodeNovelSourceProvider.ProviderKey,
             "Shōsetsuka ni Narō",
-            SupportsDirectImport: true,
-            DefaultPriority: 10),
+            ReadingSourceCapabilities.Metadata | ReadingSourceCapabilities.PublicFullText,
+            DefaultPriority: 10,
+            ExternalIdValidator: SyosetuCatalogClient.IsValidNcode,
+            DirectImportUrl: ncode => $"https://ncode.syosetu.com/{ncode.ToLowerInvariant()}/"),
         new(
             NovelAniListProvider.ProviderKey,
             "AniList",
-            SupportsDirectImport: false,
-            DefaultPriority: 20)
+            ReadingSourceCapabilities.Metadata | ReadingSourceCapabilities.Acquisition,
+            DefaultPriority: 20,
+            ExternalIdValidator: id => int.TryParse(id, out var aniListId) && aniListId > 0),
+        new(
+            BookWalkerCatalogProvider.ProviderKey,
+            "BOOK☆WALKER",
+            ReadingSourceCapabilities.Metadata |
+            ReadingSourceCapabilities.Preview |
+            ReadingSourceCapabilities.ExternalReference,
+            DefaultPriority: 30),
+        new(
+            WebNovelCatalogProvider.ProviderKey,
+            "WebNovel",
+            ReadingSourceCapabilities.Metadata | ReadingSourceCapabilities.ExternalReference,
+            DefaultPriority: 40,
+            // WebNovel puts its pages behind a bot challenge; automated access is opt-in.
+            EnabledByDefault: false),
+        new(
+            InternetArchiveCatalogProvider.ProviderKey,
+            "Internet Archive",
+            ReadingSourceCapabilities.Metadata | ReadingSourceCapabilities.ExternalReference,
+            DefaultPriority: 50)
     ];
 
     public static IReadOnlyList<ReadingSourceDefinition> Definitions => All;
@@ -91,7 +184,7 @@ public static class ReadingSourceCatalog
     public static ReadingSourcePreference DefaultPreference(
         ReadingSourceDefinition definition) =>
         new(
-            Enabled: true,
+            Enabled: definition.EnabledByDefault,
             Priority: definition.DefaultPriority);
 
     public static ReadingSourceSettingsState CreateDefaultSettings() =>
@@ -148,9 +241,6 @@ public sealed class ReadingSourceSettingsStore
 
     private readonly string path;
     private readonly SemaphoreSlim gate = new(1, 1);
-
-    public static ReadingSourceSettingsStore Default { get; } =
-        new("/data");
 
     public ReadingSourceSettingsStore(string dataRoot)
     {

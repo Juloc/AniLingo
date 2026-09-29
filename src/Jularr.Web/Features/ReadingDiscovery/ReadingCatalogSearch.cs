@@ -5,6 +5,21 @@ using Jularr.Web.Features.ReadingSources;
 
 namespace Jularr.Web.Features.ReadingDiscovery;
 
+/// <summary>
+/// The access a single result offers, for sources where it differs per item. Only the
+/// Internet Archive sets it; it is never a permission to import.
+/// </summary>
+public enum ReadingAccess
+{
+    Unspecified = 0,
+    /// <summary>Openly available with a Creative Commons or public-domain statement.</summary>
+    OpenLicense,
+    /// <summary>Openly available, but the uploader gave no rights statement.</summary>
+    OpenUnverified,
+    /// <summary>Borrowable through the source's own lending program.</summary>
+    Lendable
+}
+
 public sealed record ReadingCatalogCandidate(
     string Provider,
     string ExternalId,
@@ -17,9 +32,26 @@ public sealed record ReadingCatalogCandidate(
     int? VolumeCount,
     int? ChapterCount,
     string? SourceUrl,
-    bool IsPublicWebSource)
+    bool IsPublicWebSource,
+    ReadingAccess Access = ReadingAccess.Unspecified)
 {
     public string Identity => $"{Provider}:{ExternalId}";
+
+    /// <summary>UI catalog key of the per-result access label, or null when the source has none.</summary>
+    public string? AccessKey => Access switch
+    {
+        ReadingAccess.OpenLicense => "readingSources.access.openLicense",
+        ReadingAccess.OpenUnverified => "readingSources.access.openUnverified",
+        ReadingAccess.Lendable => "readingSources.access.lendable",
+        _ => null
+    };
+}
+
+public sealed record ReadingCatalogSearchOutcome(
+    IReadOnlyList<ReadingCatalogCandidate> Candidates,
+    IReadOnlyList<string> UnavailableProviders)
+{
+    public static ReadingCatalogSearchOutcome Empty { get; } = new([], []);
 }
 
 public static class ReadingCatalogSearch
@@ -64,76 +96,6 @@ public static class ReadingCatalogSearch
         }
     }
 
-    public static Task<IReadOnlyList<ReadingCatalogCandidate>> SearchLightNovelsAsync(
-        NovelAniListProvider aniList,
-        HttpClient syosetuClient,
-        string query,
-        int limit,
-        CancellationToken cancellationToken) =>
-        SearchLightNovelsAsync(
-            aniList,
-            syosetuClient,
-            ReadingSourceSettingsState.Default,
-            query,
-            limit,
-            cancellationToken);
-
-    public static async Task<IReadOnlyList<ReadingCatalogCandidate>> SearchLightNovelsAsync(
-        NovelAniListProvider aniList,
-        HttpClient syosetuClient,
-        ReadingSourceSettingsState sourceSettings,
-        string query,
-        int limit,
-        CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(sourceSettings);
-
-        var normalized = NormalizeQuery(query);
-        if (normalized.Length == 0)
-        {
-            return [];
-        }
-
-        var boundedLimit = Math.Clamp(limit, 1, 24);
-        var aniListTask = sourceSettings.IsEnabled(
-                NovelAniListProvider.ProviderKey)
-            ? SearchAniListNovelsSafeAsync(
-                aniList,
-                normalized,
-                boundedLimit,
-                cancellationToken)
-            : Task.FromResult<IReadOnlyList<ReadingCatalogCandidate>>([]);
-        var syosetuTask = sourceSettings.IsEnabled(
-                NcodeNovelSourceProvider.ProviderKey)
-            ? SearchSyosetuSafeAsync(
-                syosetuClient,
-                normalized,
-                boundedLimit,
-                cancellationToken)
-            : Task.FromResult<IReadOnlyList<ReadingCatalogCandidate>>([]);
-
-        await Task.WhenAll(aniListTask, syosetuTask);
-
-        var merged = aniListTask.Result
-            .Concat(syosetuTask.Result)
-            .GroupBy(candidate => candidate.Identity, StringComparer.Ordinal)
-            .Select(group => group.First())
-            .ToArray();
-
-        var enabledSourceCount = ReadingSourceCatalog.Definitions.Count(
-            source => sourceSettings.IsEnabled(source.Key));
-        var maximumResults = Math.Clamp(
-            boundedLimit * Math.Max(enabledSourceCount, 1),
-            1,
-            96);
-
-        return Rank(
-            normalized,
-            merged,
-            sourceSettings,
-            maximumResults);
-    }
-
     public static string NormalizeQuery(string? query) =>
         string.Join(
             " ",
@@ -142,64 +104,7 @@ public static class ReadingCatalogSearch
                     [' ', '\t', '\r', '\n'],
                     StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
 
-    private static async Task<IReadOnlyList<ReadingCatalogCandidate>> SearchAniListNovelsSafeAsync(
-        NovelAniListProvider aniList,
-        string query,
-        int limit,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            var results = await aniList.SearchReadingMediaAsync(
-                query,
-                limit,
-                includeNovels: true,
-                includeManga: false,
-                cancellationToken);
-
-            return results.Select(MapAniList).ToArray();
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception exception) when (
-            exception is NovelMetadataProviderException or
-            InvalidOperationException or
-            HttpRequestException or
-            TaskCanceledException or
-            JsonException)
-        {
-            return [];
-        }
-    }
-
-    private static async Task<IReadOnlyList<ReadingCatalogCandidate>> SearchSyosetuSafeAsync(
-        HttpClient client,
-        string query,
-        int limit,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            return await new SyosetuCatalogClient(client)
-                .SearchAsync(query, limit, cancellationToken);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception exception) when (
-            exception is InvalidOperationException or
-            HttpRequestException or
-            TaskCanceledException or
-            JsonException)
-        {
-            return [];
-        }
-    }
-
-    private static ReadingCatalogCandidate MapAniList(
+    internal static ReadingCatalogCandidate MapAniList(
         AniListReadingMediaCandidate candidate) =>
         new(
             NovelAniListProvider.ProviderKey,
@@ -215,7 +120,13 @@ public static class ReadingCatalogSearch
             null,
             IsPublicWebSource: false);
 
-    private static IReadOnlyList<ReadingCatalogCandidate> Rank(
+    /// <summary>
+    /// Orders results by how well they match the query first, then by the configured source
+    /// priority, then by title. Relevance is a coarse band (exact, prefix, contains, other),
+    /// so among equally relevant results the Owner's source priority decides, and a much
+    /// better match from a lower-priority source is never buried behind a weak one.
+    /// </summary>
+    internal static IReadOnlyList<ReadingCatalogCandidate> Rank(
         string query,
         IReadOnlyList<ReadingCatalogCandidate> candidates,
         ReadingSourceSettingsState? sourceSettings = null,
@@ -233,6 +144,11 @@ public static class ReadingCatalogSearch
         ReadingCatalogCandidate candidate)
     {
         var normalizedQuery = NormalizeForMatch(query);
+        if (normalizedQuery.Length == 0)
+        {
+            return 0;
+        }
+
         var title = NormalizeForMatch(candidate.Title);
         var nativeTitle = NormalizeForMatch(candidate.NativeTitle);
         var author = NormalizeForMatch(candidate.Author);
@@ -250,11 +166,6 @@ public static class ReadingCatalogSearch
         if (author.Contains(normalizedQuery, StringComparison.Ordinal))
         {
             score += 200;
-        }
-
-        if (!candidate.IsPublicWebSource)
-        {
-            score += 10;
         }
 
         return score;
@@ -276,10 +187,12 @@ public static class ReadingCatalogSearch
     }
 }
 
-public sealed class SyosetuCatalogClient(HttpClient client)
+public sealed class SyosetuCatalogClient(HttpClient client) : IReadingCatalogProvider
 {
     private static readonly Uri Endpoint =
         new("https://api.syosetu.com/novelapi/api/");
+
+    public string Key => NcodeNovelSourceProvider.ProviderKey;
 
     public static bool IsValidNcode(string? value)
     {
@@ -318,7 +231,7 @@ public sealed class SyosetuCatalogClient(HttpClient client)
             uri);
         request.Headers.TryAddWithoutValidation(
             "User-Agent",
-            "Jularr/1.0");
+            ReadingSourceHttp.UserAgent);
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken);
@@ -331,8 +244,7 @@ public sealed class SyosetuCatalogClient(HttpClient client)
 
         if (!response.IsSuccessStatusCode)
         {
-            throw new InvalidOperationException(
-                $"Syosetu catalog returned HTTP {(int)response.StatusCode}.");
+            throw ReadingSourceHttp.Refusal("Syosetu", response);
         }
 
         var json = await response.Content.ReadAsStringAsync(timeout.Token);
