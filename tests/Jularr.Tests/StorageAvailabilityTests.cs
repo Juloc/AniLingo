@@ -1,7 +1,6 @@
 using Jularr.Web.Data;
 using Jularr.Web.Features.Library;
 using Jularr.Web.Features.Storage;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Tests;
@@ -216,7 +215,6 @@ public sealed class StorageAvailabilityTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             if (Directory.Exists(tempRoot))
             {
                 Directory.Delete(tempRoot, recursive: true);

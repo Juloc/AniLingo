@@ -49,10 +49,10 @@ public static class ReleaseLibraryLinks
                 """
                 SELECT "Id", COALESCE("MetadataTitle", "Title"), "CoverImageUrl", "MetadataExternalId", "MetadataStatus"
                 FROM "MangaSeries"
-                WHERE "MetadataProvider" = $provider AND "MetadataExternalId" IS NOT NULL;
+                WHERE "MetadataProvider" = @provider AND "MetadataExternalId" IS NOT NULL;
                 """;
             var parameter = command.CreateParameter();
-            parameter.ParameterName = "$provider";
+            parameter.ParameterName = "@provider";
             parameter.Value = AniListReleaseNormalizer.Provider;
             command.Parameters.Add(parameter);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);

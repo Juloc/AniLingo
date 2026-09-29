@@ -1,6 +1,5 @@
 using Jularr.Web.Data;
 using Jularr.Web.Features.Acquisition.Api;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Tests;
@@ -34,7 +33,6 @@ public sealed class AcquisitionApiKeyServiceTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(databasePath);
         }
     }
@@ -59,7 +57,6 @@ public sealed class AcquisitionApiKeyServiceTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(databasePath);
         }
     }
@@ -86,7 +83,6 @@ public sealed class AcquisitionApiKeyServiceTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(databasePath);
         }
     }
@@ -112,7 +108,6 @@ public sealed class AcquisitionApiKeyServiceTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(databasePath);
         }
     }
@@ -131,7 +126,6 @@ public sealed class AcquisitionApiKeyServiceTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(databasePath);
         }
     }

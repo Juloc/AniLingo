@@ -6,7 +6,7 @@ using Jularr.Web.Features.Admin;
 using Jularr.Web.Features.Operations;
 using Jularr.Web.Features.Storage;
 using Jularr.Web.Infrastructure;
-using Microsoft.Data.Sqlite;
+using System.Data.Common;
 using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Web.Features.Health;
@@ -57,42 +57,29 @@ public sealed class SystemHealthService(
     {
         bool reachable;
         string? error = null;
+        long? databaseSize = null;
         try
         {
             reachable = await db.Database.CanConnectAsync(cancellationToken);
+            if (reachable)
+            {
+                // On-disk size of the whole PostgreSQL database, the Postgres analogue of the
+                // former SQLite file size shown on Admin > Health.
+                databaseSize = await db.Database
+                    .SqlQuery<long>($"SELECT pg_database_size(current_database()) AS \"Value\"")
+                    .FirstOrDefaultAsync(cancellationToken);
+            }
         }
-        catch (Exception exception) when (exception is SqliteException or InvalidOperationException)
+        catch (Exception exception) when (exception is DbException or InvalidOperationException)
         {
             reachable = false;
             error = exception.Message;
         }
 
-        long? fileSize = null;
-        var connectionString = db.Database.GetConnectionString();
-        if (!string.IsNullOrWhiteSpace(connectionString))
-        {
-            var dataSource = new SqliteConnectionStringBuilder(connectionString).DataSource;
-            if (!string.IsNullOrWhiteSpace(dataSource) &&
-                !dataSource.Equals(":memory:", StringComparison.OrdinalIgnoreCase))
-            {
-                try
-                {
-                    var info = new FileInfo(dataSource);
-                    if (info.Exists)
-                    {
-                        fileSize = info.Length;
-                    }
-                }
-                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-                {
-                }
-            }
-        }
-
         return new DatabaseHealth(
             reachable ? HealthState.Ok : HealthState.Error,
             reachable,
-            fileSize,
+            databaseSize,
             error);
     }
 

@@ -7,7 +7,6 @@ using Jularr.Web.Features.Subtitles;
 using Jularr.Web.Features.Vocabulary;
 using Jularr.Web.Infrastructure;
 using Microsoft.AspNetCore.DataProtection;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -180,7 +179,6 @@ internal sealed class LibraryScanTestHost : IAsyncDisposable
         }
 
         await Services.DisposeAsync();
-        SqliteConnection.ClearAllPools();
 
         try
         {

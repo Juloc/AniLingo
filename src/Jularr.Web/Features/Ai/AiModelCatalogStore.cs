@@ -19,9 +19,9 @@ public sealed class AiModelCatalogStore(AppDbContext db) : IAiModelCatalogStore
             command.CommandText =
                 """
                 SELECT "ModelsJson", "Discovery", "FetchedAt", "LastAttemptAt", "LastError"
-                FROM "AiModelCatalogs" WHERE "ProviderKey" = $key;
+                FROM "AiModelCatalogs" WHERE "ProviderKey" = @key;
                 """;
-            Add(command, "$key", providerKey);
+            Add(command, "@key", providerKey);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             if (!await reader.ReadAsync(cancellationToken))
             {
@@ -59,7 +59,7 @@ public sealed class AiModelCatalogStore(AppDbContext db) : IAiModelCatalogStore
             command.CommandText =
                 """
                 INSERT INTO "AiModelCatalogs" ("ProviderKey", "ModelsJson", "Discovery", "FetchedAt", "LastAttemptAt", "LastError")
-                VALUES ($key, $models, $discovery, $fetched, $attempt, $error)
+                VALUES (@key, @models, @discovery, @fetched, @attempt, @error)
                 ON CONFLICT("ProviderKey") DO UPDATE SET
                     "ModelsJson" = excluded."ModelsJson",
                     "Discovery" = excluded."Discovery",
@@ -67,17 +67,17 @@ public sealed class AiModelCatalogStore(AppDbContext db) : IAiModelCatalogStore
                     "LastAttemptAt" = excluded."LastAttemptAt",
                     "LastError" = excluded."LastError";
                 """;
-            Add(command, "$key", catalog.ProviderKey);
-            Add(command, "$models", JsonSerializer.Serialize(catalog.Models, JsonOptions));
-            Add(command, "$discovery", catalog.Discovery switch
+            Add(command, "@key", catalog.ProviderKey);
+            Add(command, "@models", JsonSerializer.Serialize(catalog.Models, JsonOptions));
+            Add(command, "@discovery", catalog.Discovery switch
             {
                 AiModelDiscovery.Supported => "supported",
                 AiModelDiscovery.Unsupported => "unsupported",
                 _ => "unknown"
             });
-            Add(command, "$fetched", catalog.FetchedAt?.ToString("O", CultureInfo.InvariantCulture));
-            Add(command, "$attempt", catalog.LastAttemptAt?.ToString("O", CultureInfo.InvariantCulture));
-            Add(command, "$error", catalog.LastError);
+            Add(command, "@fetched", catalog.FetchedAt?.ToString("O", CultureInfo.InvariantCulture));
+            Add(command, "@attempt", catalog.LastAttemptAt?.ToString("O", CultureInfo.InvariantCulture));
+            Add(command, "@error", catalog.LastError);
             await command.ExecuteNonQueryAsync(cancellationToken);
             return null;
         }, cancellationToken);

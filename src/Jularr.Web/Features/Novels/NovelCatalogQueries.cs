@@ -436,8 +436,8 @@ public sealed class NovelCatalogQueries(AppDbContext db)
         return int.TryParse(needle, out var number)
             ? chapters.Where(x =>
                 x.Number == number ||
-                EF.Functions.Like(x.Title, pattern, "\\"))
-            : chapters.Where(x => EF.Functions.Like(x.Title, pattern, "\\"));
+                EF.Functions.ILike(x.Title, pattern, "\\"))
+            : chapters.Where(x => EF.Functions.ILike(x.Title, pattern, "\\"));
     }
 
     private IQueryable<NovelChapterNavItem> Project(IQueryable<NovelChapter> chapters) =>

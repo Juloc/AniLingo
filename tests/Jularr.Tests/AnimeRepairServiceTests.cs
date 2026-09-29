@@ -13,7 +13,6 @@ using Jularr.Web.Infrastructure;
 using Jularr.Web.Pages.Library;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -489,7 +488,6 @@ public sealed class AnimeRepairServiceTests
             }
 
             await Services.DisposeAsync();
-            SqliteConnection.ClearAllPools();
 
             try
             {

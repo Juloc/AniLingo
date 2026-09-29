@@ -8,7 +8,6 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using ActivityIndexModel = Jularr.Web.Pages.Activity.IndexModel;
 using ProfileIndexModel = Jularr.Web.Pages.Profile.IndexModel;
@@ -150,7 +149,6 @@ public sealed class ProfileActivityPageTests
         public async ValueTask DisposeAsync()
         {
             await Db.DisposeAsync();
-            SqliteConnection.ClearAllPools();
             Directory.Delete(directory, recursive: true);
         }
     }

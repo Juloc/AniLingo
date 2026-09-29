@@ -2,7 +2,6 @@ using Jularr.Web.Data;
 using Jularr.Web.Features.Books;
 using Jularr.Web.Features.Novels;
 using Jularr.Web.Features.OfflineLibrary;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Tests;
@@ -622,7 +621,6 @@ public sealed class OfflineLibraryTests
 
     private static void Cleanup(string path)
     {
-        SqliteConnection.ClearAllPools();
         File.Delete(path);
     }
 }

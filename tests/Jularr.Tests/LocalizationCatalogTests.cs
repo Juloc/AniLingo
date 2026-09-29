@@ -4,7 +4,6 @@ using Jularr.Web.Data;
 using Jularr.Web.Features.Localization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Headers;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Net.Http.Headers;
 
@@ -362,7 +361,6 @@ public sealed partial class LocalizationCatalogTests
         public async ValueTask DisposeAsync()
         {
             await Db.DisposeAsync();
-            SqliteConnection.ClearAllPools();
 
             if (System.IO.Directory.Exists(Directory))
             {

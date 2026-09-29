@@ -4,7 +4,6 @@ using Jularr.Web.Features.Novels;
 using Jularr.Web.Features.ReaderCore;
 using Jularr.Web.Features.ReaderPreferences;
 using Jularr.Web.Features.Speech;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Tests;
@@ -69,7 +68,6 @@ public sealed class ReaderTtsTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(path);
         }
     }
@@ -107,7 +105,6 @@ public sealed class ReaderTtsTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(path);
         }
     }
@@ -151,7 +148,6 @@ public sealed class ReaderTtsTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(path);
         }
 

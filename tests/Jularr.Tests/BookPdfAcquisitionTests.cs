@@ -18,7 +18,6 @@ using Jularr.Web.Features.Operations;
 using Jularr.Web.Features.Reading;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -723,7 +722,6 @@ public sealed class BookPdfAcquisitionTests
         {
             await services.DisposeAsync();
             await Db.DisposeAsync();
-            SqliteConnection.ClearAllPools();
             Directory.Delete(Root, recursive: true);
         }
     }

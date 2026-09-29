@@ -32,7 +32,7 @@ Legacy owner routes under `/Settings` redirect to their `/Admin` counterparts.
 
 ## Canonical operation state
 
-The SQLite tables `Operations` and `OperationLogs` are the canonical durable operational history.
+The PostgreSQL tables `Operations` and `OperationLogs` are the canonical durable operational history.
 
 The existing `BackgroundJobQueue` and `PlaybackJobQueue` remain the in-process dispatch lanes, but every queued work item receives a durable operation ID before entering the channel.
 
@@ -131,7 +131,7 @@ Each root has one **Periodic reconciliation** interval (`LibraryRoots.Reconcilia
 
 ## Local-first page loads
 
-An ordinary page GET renders from SQLite and local files only. It must not contact AniList, OpenLibrary, Gutendex, Jimaku, Codex, Prowlarr, SABnzbd or Sonarr, and must not start ffprobe, ffmpeg or Whisper, import files or run a library scan just because the page was opened.
+An ordinary page GET renders from PostgreSQL and local files only. It must not contact AniList, OpenLibrary, Gutendex, Jimaku, Codex, Prowlarr, SABnzbd or Sonarr, and must not start ffprobe, ffmpeg or Whisper, import files or run a library scan just because the page was opened.
 
 - Optional remote state loads after first paint from a lazy page handler that sends `Cache-Control: no-store` and degrades to an "unavailable" state instead of failing the page. The AniList progress card (`_ExternalProgress` / `OnGetExternalProgressAsync`) on Anime, Episode, Manga series and Novel work pages is the reference pattern. The Manga and Novel readers do not load remote progress at all; it lives on the series/work page.
 - Discover renders its shell locally; trending, top, My AniList and search results come from its `Results` handler, whose external lookup is the explicit purpose of that request.
@@ -234,7 +234,7 @@ The Jularr image runs as a dedicated, unprivileged user and group, both named `j
 
 Writable locations:
 
-- `/data` holds all persistent state: SQLite database, Data Protection keys (`/data/keys`), protected integration settings, Codex credentials (`CODEX_HOME=/data/codex`), Whisper model, transcription/playback/artwork caches, manga, novel and book data, and acquisition state.
+- `/data` holds all persistent non-database state: Data Protection keys (`/data/keys`), protected integration settings, Codex credentials (`CODEX_HOME=/data/codex`), Whisper model, transcription/playback/artwork caches (including the `/data/cache/artwork` derivative thumbnails), manga, novel and book data, and acquisition state. The canonical database is PostgreSQL (a separate service and volume), not a file under `/data`.
 - `/tmp` is scratch space, for example temporary Codex work directories and audio fingerprint windows.
 - Media paths Jularr changes: library roots that receive imported downloads, file renames or artwork stored beside the media, and the completed-download folder (after remote path mapping) when the import mode is **Move**. These must be writable by UID `1654`, either through ownership or through a group added with `group_add: ["1654"]` (or `group_add: ["jularr"]`). **Copy** imports only need read access to the download folder. **Hardlink** imports also need the downloaded files to be readable and writable by UID `1654`, because most Linux hosts enable `fs.protected_hardlinks`.
 
@@ -304,3 +304,17 @@ The command only changes ownership, not data. Rolling back to an older root-base
 ### Custom runtime user
 
 If the deployment sets `user: "<uid>:<gid>"` in Compose (for example to match NAS permissions), `/data` and the writable media paths must be owned by that UID/GID instead of `1654:1654`. The startup check and its fix command use the effective UID/GID of the container, whatever that is set to.
+
+## PostgreSQL database and one-time SQLite import
+
+Jularr's canonical database is PostgreSQL (issue #570). The connection string comes from `ConnectionStrings__Default`; the app applies its migrations at startup and refuses to start if the database is unavailable (the Compose stack waits for the `db` service to be healthy). No credentials live in the repository; the database password is provided through the deployment's `.env`. See `docs/PERSISTENCE.md` for the schema, search and artwork design, and `.agent/upgrade-policy.yaml` for the supported upgrade window.
+
+Upgrading an existing SQLite installation is a one-time step:
+
+1. Take a backup of the existing `/data` (which held `jularr.db`) and start from an empty PostgreSQL database.
+2. Point `ConnectionStrings__Default` at PostgreSQL and deploy the #570 (or later) image. On first start, when the PostgreSQL database is still empty and a legacy SQLite file is present under `/data` (`jularr.db`, or the pre-rename `anilingo.db`, or the path in `Import:LegacySqlitePath`), `SqliteToPostgresImporter` copies every table into PostgreSQL in foreign-key order, converting SQLite's text/integer values to the native PostgreSQL types, all in one transaction.
+3. On success the legacy file is renamed to `<name>.imported-<timestamp>` so it is never imported again; the PostgreSQL database is now canonical. If the target already contains data the import is skipped and logged.
+
+Only the Epoch 3 SQLite schema (the last SQLite epoch) is imported directly. An older Epoch 2 database must first be upgraded to Epoch 3 on a pre-#570 SQLite build, then imported.
+
+Back up PostgreSQL with a logical dump (`pg_dump -Fc`) or a stopped-volume snapshot, in addition to `/data` for the non-database state.

@@ -4,7 +4,6 @@ using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Devices;
 using Jularr.Web.Features.Playback.Decision;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Tests;
@@ -62,7 +61,6 @@ public sealed class KnownDeviceRegistryTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(path);
         }
     }
@@ -89,7 +87,6 @@ public sealed class KnownDeviceRegistryTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(path);
         }
     }
@@ -128,7 +125,6 @@ public sealed class KnownDeviceRegistryTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(path);
         }
     }
@@ -164,7 +160,6 @@ public sealed class KnownDeviceRegistryTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(path);
         }
     }
@@ -201,7 +196,6 @@ public sealed class KnownDeviceRegistryTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(path);
         }
     }

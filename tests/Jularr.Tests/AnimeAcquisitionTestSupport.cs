@@ -28,7 +28,6 @@ using Jularr.Web.Features.Tracking;
 using Jularr.Web.Features.Vocabulary;
 using Jularr.Web.Infrastructure;
 using Microsoft.AspNetCore.DataProtection;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -394,7 +393,6 @@ internal sealed class AnimeAcquisitionEnvironment : IAsyncDisposable
     {
         await services.DisposeAsync();
         await Db.DisposeAsync();
-        SqliteConnection.ClearAllPools();
         if (Directory.Exists(TempRoot))
         {
             foreach (var file in Directory.EnumerateFiles(TempRoot, "*", SearchOption.AllDirectories))

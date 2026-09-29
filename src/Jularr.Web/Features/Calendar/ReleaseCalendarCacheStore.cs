@@ -46,9 +46,9 @@ public sealed class ReleaseCalendarCacheStore(AppDbContext db)
             command.CommandText =
                 """
                 SELECT "ExternalId", "ProviderStatus", "RefreshedAt", "LastAttemptAt", "LastError"
-                FROM "ReleaseCalendarSources" WHERE "Provider" = $provider;
+                FROM "ReleaseCalendarSources" WHERE "Provider" = @provider;
                 """;
-            Add(command, "$provider", provider);
+            Add(command, "@provider", provider);
             var rows = new Dictionary<string, ReleaseCacheSource>(StringComparer.Ordinal);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
@@ -79,21 +79,21 @@ public sealed class ReleaseCalendarCacheStore(AppDbContext db)
             await using var command = connection.CreateCommand();
             var idFilter = externalIds is null
                 ? ""
-                : $"""AND "ExternalId" IN ({string.Join(", ", externalIds.Select((_, index) => $"$id{index}"))})""";
+                : $"""AND "ExternalId" IN ({string.Join(", ", externalIds.Select((_, index) => $"@id{index}"))})""";
             command.CommandText =
                 $"""
                 SELECT "ExternalId", "Kind", "UnitNumber", "DateValue", "Precision"
                 FROM "ReleaseCalendarEntries"
-                WHERE "Provider" = $provider {idFilter}
-                  AND (("RangeStart" <= $end AND "RangeEnd" >= $start){(includeUndated ? """ OR "RangeStart" IS NULL""" : "")});
+                WHERE "Provider" = @provider {idFilter}
+                  AND (("RangeStart" <= @end AND "RangeEnd" >= @start){(includeUndated ? """ OR "RangeStart" IS NULL""" : "")});
                 """;
-            Add(command, "$provider", provider);
-            Add(command, "$start", startUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
-            Add(command, "$end", endUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+            Add(command, "@provider", provider);
+            Add(command, "@start", startUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+            Add(command, "@end", endUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
             var index = 0;
             foreach (var id in externalIds ?? [])
             {
-                Add(command, $"$id{index++}", id);
+                Add(command, $"@id{index++}", id);
             }
 
             var rows = new List<CachedRelease>();
@@ -136,7 +136,7 @@ public sealed class ReleaseCalendarCacheStore(AppDbContext db)
                 await ExecuteAsync(connection, transaction,
                     """
                     INSERT INTO "ReleaseCalendarSources" ("Provider", "ExternalId", "ProviderStatus", "RefreshedAt", "LastAttemptAt", "LastError")
-                    VALUES ($provider, $id, $status, $now, $now, NULL)
+                    VALUES (@provider, @id, @status, @now, @now, NULL)
                     ON CONFLICT("Provider", "ExternalId") DO UPDATE SET
                         "ProviderStatus" = excluded."ProviderStatus",
                         "RefreshedAt" = excluded."RefreshedAt",
@@ -145,24 +145,24 @@ public sealed class ReleaseCalendarCacheStore(AppDbContext db)
                     """,
                     command =>
                     {
-                        Add(command, "$provider", provider);
-                        Add(command, "$id", snapshot.ExternalId);
-                        Add(command, "$status", snapshot.ProviderStatus);
-                        Add(command, "$now", nowUtc);
+                        Add(command, "@provider", provider);
+                        Add(command, "@id", snapshot.ExternalId);
+                        Add(command, "@status", snapshot.ProviderStatus);
+                        Add(command, "@now", nowUtc);
                     },
                     cancellationToken);
 
                 await ExecuteAsync(connection, transaction,
                     """
                     DELETE FROM "ReleaseCalendarEntries"
-                    WHERE "Provider" = $provider AND "ExternalId" = $id
-                      AND ("RangeStart" IS NULL OR "RangeEnd" >= $windowStart);
+                    WHERE "Provider" = @provider AND "ExternalId" = @id
+                      AND ("RangeStart" IS NULL OR "RangeEnd" >= @windowStart);
                     """,
                     command =>
                     {
-                        Add(command, "$provider", provider);
-                        Add(command, "$id", snapshot.ExternalId);
-                        Add(command, "$windowStart", windowStart);
+                        Add(command, "@provider", provider);
+                        Add(command, "@id", snapshot.ExternalId);
+                        Add(command, "@windowStart", windowStart);
                     },
                     cancellationToken);
 
@@ -173,7 +173,7 @@ public sealed class ReleaseCalendarCacheStore(AppDbContext db)
                         """
                         INSERT INTO "ReleaseCalendarEntries"
                             ("Provider", "ExternalId", "Kind", "UnitNumber", "DateValue", "Precision", "RangeStart", "RangeEnd", "FetchedAt")
-                        VALUES ($provider, $id, $kind, $unit, $date, $precision, $rangeStart, $rangeEnd, $now)
+                        VALUES (@provider, @id, @kind, @unit, @date, @precision, @rangeStart, @rangeEnd, @now)
                         ON CONFLICT("Provider", "ExternalId", "Kind", "UnitNumber") DO UPDATE SET
                             "DateValue" = excluded."DateValue",
                             "Precision" = excluded."Precision",
@@ -183,26 +183,26 @@ public sealed class ReleaseCalendarCacheStore(AppDbContext db)
                         """,
                         command =>
                         {
-                            Add(command, "$provider", provider);
-                            Add(command, "$id", snapshot.ExternalId);
-                            Add(command, "$kind", ReleaseCalendarNames.Kind(release.Kind));
-                            Add(command, "$unit", release.UnitNumber);
-                            Add(command, "$date", release.Date.ToStorage());
-                            Add(command, "$precision", ReleaseCalendarNames.Precision(release.Date.Precision));
-                            Add(command, "$rangeStart", range?.Start.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
-                            Add(command, "$rangeEnd", range?.End.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
-                            Add(command, "$now", nowUtc);
+                            Add(command, "@provider", provider);
+                            Add(command, "@id", snapshot.ExternalId);
+                            Add(command, "@kind", ReleaseCalendarNames.Kind(release.Kind));
+                            Add(command, "@unit", release.UnitNumber);
+                            Add(command, "@date", release.Date.ToStorage());
+                            Add(command, "@precision", ReleaseCalendarNames.Precision(release.Date.Precision));
+                            Add(command, "@rangeStart", range?.Start.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+                            Add(command, "@rangeEnd", range?.End.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+                            Add(command, "@now", nowUtc);
                         },
                         cancellationToken);
                 }
             }
 
             await ExecuteAsync(connection, transaction,
-                """DELETE FROM "ReleaseCalendarEntries" WHERE "Provider" = $provider AND "RangeEnd" < $cutoff;""",
+                """DELETE FROM "ReleaseCalendarEntries" WHERE "Provider" = @provider AND "RangeEnd" < @cutoff;""",
                 command =>
                 {
-                    Add(command, "$provider", provider);
-                    Add(command, "$cutoff", (nowUtc - History).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+                    Add(command, "@provider", provider);
+                    Add(command, "@cutoff", (nowUtc - History).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
                 },
                 cancellationToken);
 
@@ -225,17 +225,17 @@ public sealed class ReleaseCalendarCacheStore(AppDbContext db)
                 await ExecuteAsync(connection, transaction,
                     """
                     INSERT INTO "ReleaseCalendarSources" ("Provider", "ExternalId", "LastAttemptAt", "LastError")
-                    VALUES ($provider, $id, $now, $error)
+                    VALUES (@provider, @id, @now, @error)
                     ON CONFLICT("Provider", "ExternalId") DO UPDATE SET
                         "LastAttemptAt" = excluded."LastAttemptAt",
                         "LastError" = excluded."LastError";
                     """,
                     command =>
                     {
-                        Add(command, "$provider", provider);
-                        Add(command, "$id", externalId);
-                        Add(command, "$now", nowUtc);
-                        Add(command, "$error", error.Length > 300 ? error[..300] : error);
+                        Add(command, "@provider", provider);
+                        Add(command, "@id", externalId);
+                        Add(command, "@now", nowUtc);
+                        Add(command, "@error", error.Length > 300 ? error[..300] : error);
                     },
                     cancellationToken);
             }
@@ -249,8 +249,8 @@ public sealed class ReleaseCalendarCacheStore(AppDbContext db)
         WithConnectionAsync(async connection =>
         {
             await using var command = connection.CreateCommand();
-            command.CommandText = """SELECT MAX("RefreshedAt") FROM "ReleaseCalendarSources" WHERE "Provider" = $provider;""";
-            Add(command, "$provider", provider);
+            command.CommandText = """SELECT MAX("RefreshedAt") FROM "ReleaseCalendarSources" WHERE "Provider" = @provider;""";
+            Add(command, "@provider", provider);
             var value = await command.ExecuteScalarAsync(cancellationToken);
             return value is string text ? ParseNullableDate(text) : null;
         }, cancellationToken);

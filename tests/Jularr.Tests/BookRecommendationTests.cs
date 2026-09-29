@@ -2,7 +2,6 @@ using System.Collections.Concurrent;
 using Jularr.Web.Data;
 using Jularr.Web.Features.Books;
 using Jularr.Web.Features.Novels;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 
@@ -480,7 +479,6 @@ public sealed class BookRecommendationTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(path);
         }
     }

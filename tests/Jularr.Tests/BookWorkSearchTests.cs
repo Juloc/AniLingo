@@ -4,7 +4,6 @@ using Jularr.Web.Data;
 using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Books;
 using Jularr.Web.Features.Novels;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 
@@ -191,7 +190,6 @@ public sealed class BookWorkSearchTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             Directory.Delete(directory, recursive: true);
         }
     }
@@ -237,7 +235,6 @@ public sealed class BookWorkSearchTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             Directory.Delete(directory, recursive: true);
         }
     }

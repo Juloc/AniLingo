@@ -42,10 +42,10 @@ public sealed class ProfileAppearanceStore(AppDbContext db)
                 """
                 SELECT "ThemeMode", "AccentColor", "SakuraMode", "ThemeId"
                 FROM "UiProfileThemes"
-                WHERE "ProfileId" = $profileId
+                WHERE "ProfileId" = @profileId
                 LIMIT 1;
                 """;
-            Add(command, "$profileId", profileId);
+            Add(command, "@profileId", profileId);
 
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             if (!await reader.ReadAsync(cancellationToken))
@@ -81,14 +81,14 @@ public sealed class ProfileAppearanceStore(AppDbContext db)
             command.CommandText =
                 """
                 INSERT INTO "UiProfileThemes" ("ProfileId", "ThemeMode", "UpdatedAt")
-                VALUES ($profileId, $theme, $updatedAt)
+                VALUES (@profileId, @theme, @updatedAt)
                 ON CONFLICT("ProfileId") DO UPDATE SET
                     "ThemeMode" = excluded."ThemeMode",
                     "UpdatedAt" = excluded."UpdatedAt";
                 """;
-            Add(command, "$profileId", profileId);
-            Add(command, "$theme", normalized);
-            Add(command, "$updatedAt", DateTime.UtcNow);
+            Add(command, "@profileId", profileId);
+            Add(command, "@theme", normalized);
+            Add(command, "@updatedAt", DateTime.UtcNow);
             await command.ExecuteNonQueryAsync(cancellationToken);
             return true;
         }, cancellationToken);
@@ -111,14 +111,14 @@ public sealed class ProfileAppearanceStore(AppDbContext db)
             command.CommandText =
                 """
                 INSERT INTO "UiProfileThemes" ("ProfileId", "ThemeMode", "SakuraMode", "UpdatedAt")
-                VALUES ($profileId, 'system', $sakura, $updatedAt)
+                VALUES (@profileId, 'system', @sakura, @updatedAt)
                 ON CONFLICT("ProfileId") DO UPDATE SET
                     "SakuraMode" = excluded."SakuraMode",
                     "UpdatedAt" = excluded."UpdatedAt";
                 """;
-            Add(command, "$profileId", profileId);
-            Add(command, "$sakura", normalized);
-            Add(command, "$updatedAt", DateTime.UtcNow);
+            Add(command, "@profileId", profileId);
+            Add(command, "@sakura", normalized);
+            Add(command, "@updatedAt", DateTime.UtcNow);
             await command.ExecuteNonQueryAsync(cancellationToken);
             return true;
         }, cancellationToken);
@@ -142,14 +142,14 @@ public sealed class ProfileAppearanceStore(AppDbContext db)
             command.CommandText =
                 """
                 INSERT INTO "UiProfileThemes" ("ProfileId", "ThemeMode", "ThemeId", "UpdatedAt")
-                VALUES ($profileId, 'system', $themeId, $updatedAt)
+                VALUES (@profileId, 'system', @themeId, @updatedAt)
                 ON CONFLICT("ProfileId") DO UPDATE SET
                     "ThemeId" = excluded."ThemeId",
                     "UpdatedAt" = excluded."UpdatedAt";
                 """;
-            Add(command, "$profileId", profileId);
-            Add(command, "$themeId", themeId is null ? null : ThemeCatalog.NormalizeOrOriginal(themeId));
-            Add(command, "$updatedAt", DateTime.UtcNow);
+            Add(command, "@profileId", profileId);
+            Add(command, "@themeId", themeId is null ? null : ThemeCatalog.NormalizeOrOriginal(themeId));
+            Add(command, "@updatedAt", DateTime.UtcNow);
             await command.ExecuteNonQueryAsync(cancellationToken);
             return true;
         }, cancellationToken);
@@ -173,14 +173,14 @@ public sealed class ProfileAppearanceStore(AppDbContext db)
             command.CommandText =
                 """
                 INSERT INTO "UiProfileThemes" ("ProfileId", "ThemeMode", "AccentColor", "UpdatedAt")
-                VALUES ($profileId, 'system', $accent, $updatedAt)
+                VALUES (@profileId, 'system', @accent, @updatedAt)
                 ON CONFLICT("ProfileId") DO UPDATE SET
                     "AccentColor" = excluded."AccentColor",
                     "UpdatedAt" = excluded."UpdatedAt";
                 """;
-            Add(command, "$profileId", profileId);
-            Add(command, "$accent", normalized);
-            Add(command, "$updatedAt", DateTime.UtcNow);
+            Add(command, "@profileId", profileId);
+            Add(command, "@accent", normalized);
+            Add(command, "@updatedAt", DateTime.UtcNow);
             await command.ExecuteNonQueryAsync(cancellationToken);
             return true;
         }, cancellationToken);

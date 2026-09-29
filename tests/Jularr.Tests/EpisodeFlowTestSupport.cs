@@ -4,7 +4,6 @@ using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Library;
 using Jularr.Web.Features.Progress;
 using Microsoft.AspNetCore.Http;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Tests;
@@ -130,7 +129,6 @@ internal sealed class EpisodeFlowFixture : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         await Db.DisposeAsync();
-        SqliteConnection.ClearAllPools();
         File.Delete(path);
     }
 

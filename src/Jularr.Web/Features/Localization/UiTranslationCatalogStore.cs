@@ -79,8 +79,8 @@ public sealed class UiTranslationCatalogStore(AppDbContext db)
                     "Locale", "EnglishName", "NativeName", "Direction",
                     "IsEnabled", "IsSource", "CreatedAt", "UpdatedAt")
                 VALUES (
-                    $locale, $englishName, $nativeName, $direction,
-                    1, $isSource, $now, $now)
+                    @locale, @englishName, @nativeName, @direction,
+                    1, @isSource, @now, @now)
                 ON CONFLICT("Locale") DO UPDATE SET
                     "EnglishName" = excluded."EnglishName",
                     "NativeName" = excluded."NativeName",
@@ -88,14 +88,14 @@ public sealed class UiTranslationCatalogStore(AppDbContext db)
                     "IsEnabled" = 1,
                     "UpdatedAt" = excluded."UpdatedAt";
                 """;
-            Add(command, "$locale", metadata.Locale);
-            Add(command, "$englishName", metadata.EnglishName);
-            Add(command, "$nativeName", metadata.NativeName);
-            Add(command, "$direction", metadata.Direction);
-            Add(command, "$isSource", metadata.Locale.Equals(
+            Add(command, "@locale", metadata.Locale);
+            Add(command, "@englishName", metadata.EnglishName);
+            Add(command, "@nativeName", metadata.NativeName);
+            Add(command, "@direction", metadata.Direction);
+            Add(command, "@isSource", metadata.Locale.Equals(
                 UiTranslationCatalog.SourceLocale,
                 StringComparison.OrdinalIgnoreCase) ? 1 : 0);
-            Add(command, "$now", DateTime.UtcNow);
+            Add(command, "@now", DateTime.UtcNow);
             await command.ExecuteNonQueryAsync(cancellationToken);
 
             return metadata;
@@ -224,9 +224,9 @@ public sealed class UiTranslationCatalogStore(AppDbContext db)
                     SELECT "MessageKey", "Text", "Status", "SourceHash",
                            "Provider", "Model", "UpdatedAt"
                     FROM "UiTranslations"
-                    WHERE "Locale" = $locale;
+                    WHERE "Locale" = @locale;
                     """;
-                Add(command, "$locale", normalized);
+                Add(command, "@locale", normalized);
 
                 await using var reader = await command.ExecuteReaderAsync(cancellationToken);
                 while (await reader.ReadAsync(cancellationToken))
@@ -373,9 +373,9 @@ public sealed class UiTranslationCatalogStore(AppDbContext db)
                         "Provider", "Model", "PromptVersion", "GeneratedAt",
                         "ReviewedAt", "UpdatedAt")
                     VALUES (
-                        $locale, $key, $text, 'Generated', $sourceHash,
-                        $provider, $model, $promptVersion, $now,
-                        NULL, $now)
+                        @locale, @key, @text, 'Generated', @sourceHash,
+                        @provider, @model, @promptVersion, @now,
+                        NULL, @now)
                     ON CONFLICT("Locale", "MessageKey") DO UPDATE SET
                         "Text" = excluded."Text",
                         "Status" = 'Generated',
@@ -388,14 +388,14 @@ public sealed class UiTranslationCatalogStore(AppDbContext db)
                         "UpdatedAt" = excluded."UpdatedAt"
                     WHERE "UiTranslations"."Status" <> 'Manual';
                     """;
-                Add(command, "$locale", normalized);
-                Add(command, "$key", message.Key);
-                Add(command, "$text", generated.Text.Trim());
-                Add(command, "$sourceHash", message.SourceHash);
-                Add(command, "$provider", result.ProviderId);
-                Add(command, "$model", result.Model);
-                Add(command, "$promptVersion", result.PromptVersion);
-                Add(command, "$now", DateTime.UtcNow);
+                Add(command, "@locale", normalized);
+                Add(command, "@key", message.Key);
+                Add(command, "@text", generated.Text.Trim());
+                Add(command, "@sourceHash", message.SourceHash);
+                Add(command, "@provider", result.ProviderId);
+                Add(command, "@model", result.Model);
+                Add(command, "@promptVersion", result.PromptVersion);
+                Add(command, "@now", DateTime.UtcNow);
                 await command.ExecuteNonQueryAsync(cancellationToken);
             }
 
@@ -445,8 +445,8 @@ public sealed class UiTranslationCatalogStore(AppDbContext db)
                     "Provider", "Model", "PromptVersion", "GeneratedAt",
                     "ReviewedAt", "UpdatedAt")
                 VALUES (
-                    $locale, $key, $text, 'Manual', $sourceHash,
-                    NULL, NULL, NULL, NULL, $now, $now)
+                    @locale, @key, @text, 'Manual', @sourceHash,
+                    NULL, NULL, NULL, NULL, @now, @now)
                 ON CONFLICT("Locale", "MessageKey") DO UPDATE SET
                     "Text" = excluded."Text",
                     "Status" = 'Manual',
@@ -457,11 +457,11 @@ public sealed class UiTranslationCatalogStore(AppDbContext db)
                     "ReviewedAt" = excluded."ReviewedAt",
                     "UpdatedAt" = excluded."UpdatedAt";
                 """;
-            Add(command, "$locale", normalized);
-            Add(command, "$key", message.Key);
-            Add(command, "$text", text.Trim());
-            Add(command, "$sourceHash", message.SourceHash);
-            Add(command, "$now", DateTime.UtcNow);
+            Add(command, "@locale", normalized);
+            Add(command, "@key", message.Key);
+            Add(command, "@text", text.Trim());
+            Add(command, "@sourceHash", message.SourceHash);
+            Add(command, "@now", DateTime.UtcNow);
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
         finally
@@ -494,17 +494,17 @@ public sealed class UiTranslationCatalogStore(AppDbContext db)
                 """
                 UPDATE "UiTranslations"
                 SET "Status" = 'Reviewed',
-                    "ReviewedAt" = $now,
-                    "UpdatedAt" = $now
-                WHERE "Locale" = $locale
-                  AND "MessageKey" = $key
+                    "ReviewedAt" = @now,
+                    "UpdatedAt" = @now
+                WHERE "Locale" = @locale
+                  AND "MessageKey" = @key
                   AND "Status" = 'Generated'
-                  AND "SourceHash" = $sourceHash;
+                  AND "SourceHash" = @sourceHash;
                 """;
-            Add(command, "$locale", normalized);
-            Add(command, "$key", key);
-            Add(command, "$sourceHash", message.SourceHash);
-            Add(command, "$now", DateTime.UtcNow);
+            Add(command, "@locale", normalized);
+            Add(command, "@key", key);
+            Add(command, "@sourceHash", message.SourceHash);
+            Add(command, "@now", DateTime.UtcNow);
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
         finally
@@ -553,10 +553,10 @@ public sealed class UiTranslationCatalogStore(AppDbContext db)
                     """
                     SELECT "MessageKey", "Text", "Status", "SourceHash"
                     FROM "UiTranslations"
-                    WHERE "Locale" = $locale
+                    WHERE "Locale" = @locale
                       AND "Status" IN ('Generated', 'Reviewed', 'Manual');
                     """;
-                Add(command, "$locale", fallbackLocale);
+                Add(command, "@locale", fallbackLocale);
 
                 await using var reader = await command.ExecuteReaderAsync(cancellationToken);
                 while (await reader.ReadAsync(cancellationToken))
@@ -615,11 +615,11 @@ public sealed class UiTranslationCatalogStore(AppDbContext db)
                 SELECT l."Locale", l."EnglishName", l."NativeName", l."Direction"
                 FROM "UiProfileLocales" AS p
                 INNER JOIN "UiLocales" AS l ON l."Locale" = p."Locale"
-                WHERE p."ProfileId" = $profileId
+                WHERE p."ProfileId" = @profileId
                   AND l."IsEnabled" = 1
                 LIMIT 1;
                 """;
-            Add(command, "$profileId", profileId);
+            Add(command, "@profileId", profileId);
 
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             if (await reader.ReadAsync(cancellationToken))
@@ -669,10 +669,10 @@ public sealed class UiTranslationCatalogStore(AppDbContext db)
                     """
                     SELECT COUNT(*)
                     FROM "UiLocales"
-                    WHERE "Locale" = $locale
+                    WHERE "Locale" = @locale
                       AND "IsEnabled" = 1;
                     """;
-                Add(exists, "$locale", metadata.Locale);
+                Add(exists, "@locale", metadata.Locale);
                 var count = Convert.ToInt32(
                     await exists.ExecuteScalarAsync(cancellationToken),
                     CultureInfo.InvariantCulture);
@@ -687,14 +687,14 @@ public sealed class UiTranslationCatalogStore(AppDbContext db)
             command.CommandText =
                 """
                 INSERT INTO "UiProfileLocales" ("ProfileId", "Locale", "UpdatedAt")
-                VALUES ($profileId, $locale, $updatedAt)
+                VALUES (@profileId, @locale, @updatedAt)
                 ON CONFLICT("ProfileId") DO UPDATE SET
                     "Locale" = excluded."Locale",
                     "UpdatedAt" = excluded."UpdatedAt";
                 """;
-            Add(command, "$profileId", profileId);
-            Add(command, "$locale", metadata.Locale);
-            Add(command, "$updatedAt", DateTime.UtcNow);
+            Add(command, "@profileId", profileId);
+            Add(command, "@locale", metadata.Locale);
+            Add(command, "@updatedAt", DateTime.UtcNow);
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
         finally
@@ -780,8 +780,8 @@ public sealed class UiTranslationCatalogStore(AppDbContext db)
                 "Locale", "EnglishName", "NativeName", "Direction",
                 "IsEnabled", "IsSource", "CreatedAt", "UpdatedAt")
             VALUES (
-                $locale, $englishName, $nativeName, $direction,
-                1, 1, $now, $now)
+                @locale, @englishName, @nativeName, @direction,
+                1, 1, @now, @now)
             ON CONFLICT("Locale") DO UPDATE SET
                 "EnglishName" = excluded."EnglishName",
                 "NativeName" = excluded."NativeName",
@@ -790,11 +790,11 @@ public sealed class UiTranslationCatalogStore(AppDbContext db)
                 "IsSource" = 1,
                 "UpdatedAt" = excluded."UpdatedAt";
             """;
-        Add(command, "$locale", source.Locale);
-        Add(command, "$englishName", source.EnglishName);
-        Add(command, "$nativeName", source.NativeName);
-        Add(command, "$direction", source.Direction);
-        Add(command, "$now", now);
+        Add(command, "@locale", source.Locale);
+        Add(command, "@englishName", source.EnglishName);
+        Add(command, "@nativeName", source.NativeName);
+        Add(command, "@direction", source.Direction);
+        Add(command, "@now", now);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
@@ -818,36 +818,36 @@ public sealed class UiTranslationCatalogStore(AppDbContext db)
             """
             UPDATE "UiTranslations"
             SET "Text" = replace("Text", 'AniLingo', 'Jularr'),
-                "SourceHash" = $sourceHash,
-                "UpdatedAt" = $now
-            WHERE "MessageKey" = $key
-              AND "SourceHash" <> $sourceHash
+                "SourceHash" = @sourceHash,
+                "UpdatedAt" = @now
+            WHERE "MessageKey" = @key
+              AND "SourceHash" <> @sourceHash
               AND "Status" IN ('Generated', 'Reviewed', 'Manual')
               AND EXISTS (
                   SELECT 1
                   FROM "UiTranslationMessages" source
-                  WHERE source."Key" = $key
+                  WHERE source."Key" = @key
                     AND source."SourceHash" = "UiTranslations"."SourceHash"
-                    AND instr(source."DefaultText" || source."Description" || source."DoNotTranslateJson", 'AniLingo') > 0
-                    AND replace(source."DefaultText", 'AniLingo', 'Jularr') = $defaultText
-                    AND replace(source."Description", 'AniLingo', 'Jularr') = $description
-                    AND replace(source."DoNotTranslateJson", 'AniLingo', 'Jularr') = $doNotTranslate
-                    AND source."PlaceholdersJson" = $placeholders
-                    AND source."Feature" = $feature
-                    AND source."Surface" = $surface
-                    AND source."Tone" = $tone);
+                    AND strpos(source."DefaultText" || source."Description" || source."DoNotTranslateJson", 'AniLingo') > 0
+                    AND replace(source."DefaultText", 'AniLingo', 'Jularr') = @defaultText
+                    AND replace(source."Description", 'AniLingo', 'Jularr') = @description
+                    AND replace(source."DoNotTranslateJson", 'AniLingo', 'Jularr') = @doNotTranslate
+                    AND source."PlaceholdersJson" = @placeholders
+                    AND source."Feature" = @feature
+                    AND source."Surface" = @surface
+                    AND source."Tone" = @tone);
             """;
-        Add(command, "$key", message.Key);
-        Add(command, "$sourceHash", message.SourceHash);
-        Add(command, "$defaultText", message.DefaultText);
-        Add(command, "$description", message.Description);
-        Add(command, "$doNotTranslate", JsonSerializer.Serialize(message.DoNotTranslate ?? []));
-        Add(command, "$placeholders", JsonSerializer.Serialize(
+        Add(command, "@key", message.Key);
+        Add(command, "@sourceHash", message.SourceHash);
+        Add(command, "@defaultText", message.DefaultText);
+        Add(command, "@description", message.Description);
+        Add(command, "@doNotTranslate", JsonSerializer.Serialize(message.DoNotTranslate ?? []));
+        Add(command, "@placeholders", JsonSerializer.Serialize(
             message.Placeholders ?? new Dictionary<string, string>()));
-        Add(command, "$feature", message.Feature);
-        Add(command, "$surface", message.Surface);
-        Add(command, "$tone", message.Tone);
-        Add(command, "$now", now);
+        Add(command, "@feature", message.Feature);
+        Add(command, "@surface", message.Surface);
+        Add(command, "@tone", message.Tone);
+        Add(command, "@now", now);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
@@ -864,14 +864,14 @@ public sealed class UiTranslationCatalogStore(AppDbContext db)
             """
             UPDATE "UiTranslations"
             SET "Status" = 'Outdated',
-                "UpdatedAt" = $now
-            WHERE "MessageKey" = $key
+                "UpdatedAt" = @now
+            WHERE "MessageKey" = @key
               AND "Status" IN ('Generated', 'Reviewed')
-              AND "SourceHash" <> $sourceHash;
+              AND "SourceHash" <> @sourceHash;
             """;
-        Add(command, "$key", message.Key);
-        Add(command, "$sourceHash", message.SourceHash);
-        Add(command, "$now", now);
+        Add(command, "@key", message.Key);
+        Add(command, "@sourceHash", message.SourceHash);
+        Add(command, "@now", now);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
@@ -891,9 +891,9 @@ public sealed class UiTranslationCatalogStore(AppDbContext db)
                 "Tone", "MaxLength", "PlaceholdersJson", "DoNotTranslateJson",
                 "SourceHash", "SourceVersion", "UpdatedAt")
             VALUES (
-                $key, $defaultText, $feature, $surface, $description,
-                $tone, $maxLength, $placeholders, $doNotTranslate,
-                $sourceHash, 1, $updatedAt)
+                @key, @defaultText, @feature, @surface, @description,
+                @tone, @maxLength, @placeholders, @doNotTranslate,
+                @sourceHash, 1, @updatedAt)
             ON CONFLICT("Key") DO UPDATE SET
                 "DefaultText" = excluded."DefaultText",
                 "Feature" = excluded."Feature",
@@ -906,19 +906,19 @@ public sealed class UiTranslationCatalogStore(AppDbContext db)
                 "SourceHash" = excluded."SourceHash",
                 "UpdatedAt" = excluded."UpdatedAt";
             """;
-        Add(command, "$key", message.Key);
-        Add(command, "$defaultText", message.DefaultText);
-        Add(command, "$feature", message.Feature);
-        Add(command, "$surface", message.Surface);
-        Add(command, "$description", message.Description);
-        Add(command, "$tone", message.Tone);
-        Add(command, "$maxLength", message.MaxLength);
-        Add(command, "$placeholders", JsonSerializer.Serialize(
+        Add(command, "@key", message.Key);
+        Add(command, "@defaultText", message.DefaultText);
+        Add(command, "@feature", message.Feature);
+        Add(command, "@surface", message.Surface);
+        Add(command, "@description", message.Description);
+        Add(command, "@tone", message.Tone);
+        Add(command, "@maxLength", message.MaxLength);
+        Add(command, "@placeholders", JsonSerializer.Serialize(
             message.Placeholders ?? new Dictionary<string, string>()));
-        Add(command, "$doNotTranslate", JsonSerializer.Serialize(
+        Add(command, "@doNotTranslate", JsonSerializer.Serialize(
             message.DoNotTranslate ?? []));
-        Add(command, "$sourceHash", message.SourceHash);
-        Add(command, "$updatedAt", now);
+        Add(command, "@sourceHash", message.SourceHash);
+        Add(command, "@updatedAt", now);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
@@ -936,9 +936,9 @@ public sealed class UiTranslationCatalogStore(AppDbContext db)
                 SUM(CASE WHEN "Status" = 'Manual' THEN 1 ELSE 0 END),
                 SUM(CASE WHEN "Status" = 'Outdated' THEN 1 ELSE 0 END)
             FROM "UiTranslations"
-            WHERE "Locale" = $locale;
+            WHERE "Locale" = @locale;
             """;
-        Add(command, "$locale", locale);
+        Add(command, "@locale", locale);
 
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         if (!await reader.ReadAsync(cancellationToken))

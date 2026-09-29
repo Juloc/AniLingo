@@ -2,7 +2,6 @@ using Jularr.Web.Data;
 using Jularr.Web.Features.Ai;
 using Jularr.Web.Features.Books;
 using Jularr.Web.Features.Novels;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 
@@ -560,7 +559,6 @@ public sealed class BookTranslationV2Tests
         string databasePath,
         string memoryPath)
     {
-        SqliteConnection.ClearAllPools();
         File.Delete(databasePath);
         DeleteDirectory(memoryPath);
     }

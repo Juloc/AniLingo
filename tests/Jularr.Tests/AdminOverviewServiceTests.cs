@@ -6,7 +6,6 @@ using Jularr.Web.Features.Playback.Decision;
 using Jularr.Web.Features.Storage;
 using Jularr.Web.Features.Subtitles;
 using Jularr.Web.Features.Vocabulary;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -52,7 +51,6 @@ public sealed class AdminOverviewServiceTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(path);
         }
     }

@@ -1,7 +1,6 @@
 using Jularr.Web.Data;
 using Jularr.Web.Features.Library;
 using Jularr.Web.Features.Subtitles;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Tests;
@@ -134,7 +133,6 @@ internal sealed class SubtitleProfileFixture : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         await Db.DisposeAsync();
-        SqliteConnection.ClearAllPools();
         if (System.IO.Directory.Exists(Directory))
         {
             System.IO.Directory.Delete(Directory, recursive: true);

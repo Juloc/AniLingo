@@ -32,12 +32,12 @@ public sealed class OperationStore(AppDbContext db)
                 await using var command = connection.CreateCommand();
                 command.CommandText =
                     """
-                    INSERT INTO Operations (
-                        Id, Kind, Category, Lane, Status, ProfileId, Title, Subject,
-                        ProgressPercent, Message, Error, IsDownload, BytesTotal,
-                        BytesCompleted, BytesPerSecond, EtaUtc, Attempt, Retryable,
-                        ExternalProvider, ExternalId,
-                        CreatedAtUtc, StartedAtUtc, FinishedAtUtc, UpdatedAtUtc, Details)
+                    INSERT INTO "Operations" (
+                        "Id", "Kind", "Category", "Lane", "Status", "ProfileId", "Title", "Subject",
+                        "ProgressPercent", "Message", "Error", "IsDownload", "BytesTotal",
+                        "BytesCompleted", "BytesPerSecond", "EtaUtc", "Attempt", "Retryable",
+                        "ExternalProvider", "ExternalId",
+                        "CreatedAtUtc", "StartedAtUtc", "FinishedAtUtc", "UpdatedAtUtc", "Details")
                     VALUES (
                         @id, @kind, @category, @lane, @status, @profileId, @title, @subject,
                         NULL, NULL, NULL, @isDownload, @bytesTotal,
@@ -84,13 +84,13 @@ public sealed class OperationStore(AppDbContext db)
                 await using var command = connection.CreateCommand();
                 command.CommandText =
                     """
-                    SELECT Id, Kind, Category, Lane, Status, ProfileId, Title, Subject,
-                           ProgressPercent, Message, Error, IsDownload, BytesTotal,
-                           BytesCompleted, BytesPerSecond, EtaUtc, Attempt, Retryable,
-                           ExternalProvider, ExternalId,
-                           CreatedAtUtc, StartedAtUtc, FinishedAtUtc, UpdatedAtUtc, Details
-                    FROM Operations
-                    WHERE Id = @id
+                    SELECT "Id", "Kind", "Category", "Lane", "Status", "ProfileId", "Title", "Subject",
+                           "ProgressPercent", "Message", "Error", "IsDownload", "BytesTotal",
+                           "BytesCompleted", "BytesPerSecond", "EtaUtc", "Attempt", "Retryable",
+                           "ExternalProvider", "ExternalId",
+                           "CreatedAtUtc", "StartedAtUtc", "FinishedAtUtc", "UpdatedAtUtc", "Details"
+                    FROM "Operations"
+                    WHERE "Id" = @id
                     LIMIT 1;
                     """;
                 Add(command, "@id", id.ToString("D"));
@@ -113,40 +113,40 @@ public sealed class OperationStore(AppDbContext db)
         switch (filter.View?.Trim().ToLowerInvariant())
         {
             case "active":
-                conditions.Add("Status IN (1, 2)");
+                conditions.Add("\"Status\" IN (1, 2)");
                 break;
             case "queue":
-                conditions.Add("Status = 1");
+                conditions.Add("\"Status\" = 1");
                 break;
             case "downloads":
-                conditions.Add("IsDownload = 1");
+                conditions.Add("\"IsDownload\" = 1");
                 break;
             case "history":
-                conditions.Add("Status IN (3, 4, 5, 6)");
+                conditions.Add("\"Status\" IN (3, 4, 5, 6)");
                 break;
         }
 
         if (filter.Status is { } status)
         {
-            conditions.Add("Status = @status");
+            conditions.Add("\"Status\" = @status");
             parameters.Add(("@status", (int)status));
         }
 
         if (!string.IsNullOrWhiteSpace(filter.Category))
         {
-            conditions.Add("Category = @category");
+            conditions.Add("\"Category\" = @category");
             parameters.Add(("@category", filter.Category.Trim()));
         }
 
         if (!string.IsNullOrWhiteSpace(filter.Kind))
         {
-            conditions.Add("Kind = @kind");
+            conditions.Add("\"Kind\" = @kind");
             parameters.Add(("@kind", filter.Kind.Trim()));
         }
 
         if (!string.IsNullOrWhiteSpace(filter.Search))
         {
-            conditions.Add("(Title LIKE @search OR Subject LIKE @search OR Message LIKE @search OR Kind LIKE @search)");
+            conditions.Add("(\"Title\" ILIKE @search OR \"Subject\" ILIKE @search OR \"Message\" ILIKE @search OR \"Kind\" ILIKE @search)");
             parameters.Add(("@search", $"%{filter.Search.Trim()}%"));
         }
 
@@ -162,16 +162,16 @@ public sealed class OperationStore(AppDbContext db)
                 await using var command = connection.CreateCommand();
                 command.CommandText =
                     $"""
-                    SELECT Id, Kind, Category, Lane, Status, ProfileId, Title, Subject,
-                           ProgressPercent, Message, Error, IsDownload, BytesTotal,
-                           BytesCompleted, BytesPerSecond, EtaUtc, Attempt, Retryable,
-                           ExternalProvider, ExternalId,
-                           CreatedAtUtc, StartedAtUtc, FinishedAtUtc, UpdatedAtUtc, Details
-                    FROM Operations
+                    SELECT "Id", "Kind", "Category", "Lane", "Status", "ProfileId", "Title", "Subject",
+                           "ProgressPercent", "Message", "Error", "IsDownload", "BytesTotal",
+                           "BytesCompleted", "BytesPerSecond", "EtaUtc", "Attempt", "Retryable",
+                           "ExternalProvider", "ExternalId",
+                           "CreatedAtUtc", "StartedAtUtc", "FinishedAtUtc", "UpdatedAtUtc", "Details"
+                    FROM "Operations"
                     {where}
                     ORDER BY
-                        CASE Status WHEN 2 THEN 0 WHEN 1 THEN 1 ELSE 2 END,
-                        UpdatedAtUtc DESC
+                        CASE "Status" WHEN 2 THEN 0 WHEN 1 THEN 1 ELSE 2 END,
+                        "UpdatedAtUtc" DESC
                     LIMIT {limit};
                     """;
 
@@ -201,13 +201,13 @@ public sealed class OperationStore(AppDbContext db)
                 command.CommandText =
                     """
                     SELECT
-                        SUM(CASE WHEN Status = 2 THEN 1 ELSE 0 END),
-                        SUM(CASE WHEN Status = 1 THEN 1 ELSE 0 END),
-                        SUM(CASE WHEN Status = 4 THEN 1 ELSE 0 END),
-                        SUM(CASE WHEN Status = 6 THEN 1 ELSE 0 END),
-                        SUM(CASE WHEN IsDownload = 1 AND Status IN (1, 2) THEN 1 ELSE 0 END),
-                        SUM(CASE WHEN Status = 3 AND FinishedAtUtc >= @today THEN 1 ELSE 0 END)
-                    FROM Operations;
+                        SUM(CASE WHEN "Status" = 2 THEN 1 ELSE 0 END),
+                        SUM(CASE WHEN "Status" = 1 THEN 1 ELSE 0 END),
+                        SUM(CASE WHEN "Status" = 4 THEN 1 ELSE 0 END),
+                        SUM(CASE WHEN "Status" = 6 THEN 1 ELSE 0 END),
+                        SUM(CASE WHEN "IsDownload" = 1 AND "Status" IN (1, 2) THEN 1 ELSE 0 END),
+                        SUM(CASE WHEN "Status" = 3 AND "FinishedAtUtc" >= @today THEN 1 ELSE 0 END)
+                    FROM "Operations";
                     """;
                 Add(command, "@today", Format(DateTime.UtcNow.Date));
 
@@ -232,11 +232,11 @@ public sealed class OperationStore(AppDbContext db)
         await UpdateAsync(
             id,
             """
-            Status = @status,
-            StartedAtUtc = COALESCE(StartedAtUtc, @now),
-            FinishedAtUtc = NULL,
-            Error = NULL,
-            UpdatedAtUtc = @now
+            "Status" = @status,
+            "StartedAtUtc" = COALESCE("StartedAtUtc", @now),
+            "FinishedAtUtc" = NULL,
+            "Error" = NULL,
+            "UpdatedAtUtc" = @now
             """,
             [
                 ("@status", (object?)(int)OperationStatus.Running),
@@ -261,12 +261,12 @@ public sealed class OperationStore(AppDbContext db)
         await UpdateAsync(
             id,
             """
-            Status = @status,
-            ProgressPercent = 100,
-            Message = COALESCE(@message, Message),
-            Error = NULL,
-            FinishedAtUtc = @now,
-            UpdatedAtUtc = @now
+            "Status" = @status,
+            "ProgressPercent" = 100,
+            "Message" = COALESCE(@message, "Message"),
+            "Error" = NULL,
+            "FinishedAtUtc" = @now,
+            "UpdatedAtUtc" = @now
             """,
             [
                 ("@status", (object?)(int)OperationStatus.Succeeded),
@@ -292,10 +292,10 @@ public sealed class OperationStore(AppDbContext db)
         await UpdateAsync(
             id,
             """
-            Status = @status,
-            Error = @error,
-            FinishedAtUtc = @now,
-            UpdatedAtUtc = @now
+            "Status" = @status,
+            "Error" = @error,
+            "FinishedAtUtc" = @now,
+            "UpdatedAtUtc" = @now
             """,
             [
                 ("@status", (object?)(int)OperationStatus.Failed),
@@ -321,10 +321,10 @@ public sealed class OperationStore(AppDbContext db)
         await UpdateAsync(
             id,
             """
-            Status = @status,
-            Message = COALESCE(@message, Message),
-            FinishedAtUtc = @now,
-            UpdatedAtUtc = @now
+            "Status" = @status,
+            "Message" = COALESCE(@message, "Message"),
+            "FinishedAtUtc" = @now,
+            "UpdatedAtUtc" = @now
             """,
             [
                 ("@status", (object?)(int)OperationStatus.Cancelled),
@@ -350,10 +350,10 @@ public sealed class OperationStore(AppDbContext db)
         await UpdateAsync(
             id,
             """
-            Status = @status,
-            Message = COALESCE(@message, Message),
-            FinishedAtUtc = @now,
-            UpdatedAtUtc = @now
+            "Status" = @status,
+            "Message" = COALESCE(@message, "Message"),
+            "FinishedAtUtc" = @now,
+            "UpdatedAtUtc" = @now
             """,
             [
                 ("@status", (object?)(int)OperationStatus.Interrupted),
@@ -390,15 +390,15 @@ public sealed class OperationStore(AppDbContext db)
                 await using var command = connection.CreateCommand();
                 command.CommandText =
                     """
-                    UPDATE Operations
-                    SET Status = @interrupted,
-                        Message = 'Interrupted by server restart.',
-                        FinishedAtUtc = @now,
-                        UpdatedAtUtc = @now
-                    WHERE Lane = @lane
-                      AND Status IN (@queued, @running)
-                      AND (ExternalProvider IS NULL OR ExternalId IS NULL)
-                      AND CreatedAtUtc <= @createdBefore;
+                    UPDATE "Operations"
+                    SET "Status" = @interrupted,
+                        "Message" = 'Interrupted by server restart.',
+                        "FinishedAtUtc" = @now,
+                        "UpdatedAtUtc" = @now
+                    WHERE "Lane" = @lane
+                      AND "Status" IN (@queued, @running)
+                      AND ("ExternalProvider" IS NULL OR "ExternalId" IS NULL)
+                      AND "CreatedAtUtc" <= @createdBefore;
                     """;
                 Add(command, "@interrupted", (int)OperationStatus.Interrupted);
                 Add(command, "@now", Format(now));
@@ -423,9 +423,9 @@ public sealed class OperationStore(AppDbContext db)
         return UpdateAsync(
             id,
             """
-            ExternalProvider = @provider,
-            ExternalId = @externalId,
-            UpdatedAtUtc = @now
+            "ExternalProvider" = @provider,
+            "ExternalId" = @externalId,
+            "UpdatedAtUtc" = @now
             """,
             [
                 ("@provider", Trim(provider, MaxExternalProviderLength)),
@@ -452,10 +452,10 @@ public sealed class OperationStore(AppDbContext db)
         return UpdateAsync(
             id,
             """
-            ExternalProvider = @provider,
-            ExternalId = @externalId,
-            Details = @details,
-            UpdatedAtUtc = @now
+            "ExternalProvider" = @provider,
+            "ExternalId" = @externalId,
+            "Details" = @details,
+            "UpdatedAtUtc" = @now
             """,
             [
                 ("@provider", Trim(provider, MaxExternalProviderLength)),
@@ -478,16 +478,16 @@ public sealed class OperationStore(AppDbContext db)
                 await using var command = connection.CreateCommand();
                 command.CommandText =
                     """
-                    SELECT Id, Kind, Category, Lane, Status, ProfileId, Title, Subject,
-                           ProgressPercent, Message, Error, IsDownload, BytesTotal,
-                           BytesCompleted, BytesPerSecond, EtaUtc, Attempt, Retryable,
-                           ExternalProvider, ExternalId,
-                           CreatedAtUtc, StartedAtUtc, FinishedAtUtc, UpdatedAtUtc, Details
-                    FROM Operations
-                    WHERE ExternalProvider = @provider
-                      AND ExternalId IS NOT NULL
-                      AND Status IN (@queued, @running)
-                    ORDER BY UpdatedAtUtc;
+                    SELECT "Id", "Kind", "Category", "Lane", "Status", "ProfileId", "Title", "Subject",
+                           "ProgressPercent", "Message", "Error", "IsDownload", "BytesTotal",
+                           "BytesCompleted", "BytesPerSecond", "EtaUtc", "Attempt", "Retryable",
+                           "ExternalProvider", "ExternalId",
+                           "CreatedAtUtc", "StartedAtUtc", "FinishedAtUtc", "UpdatedAtUtc", "Details"
+                    FROM "Operations"
+                    WHERE "ExternalProvider" = @provider
+                      AND "ExternalId" IS NOT NULL
+                      AND "Status" IN (@queued, @running)
+                    ORDER BY "UpdatedAtUtc";
                     """;
                 Add(command, "@provider", provider.Trim());
                 Add(command, "@queued", (int)OperationStatus.Queued);
@@ -516,18 +516,18 @@ public sealed class OperationStore(AppDbContext db)
                 await using var command = connection.CreateCommand();
                 command.CommandText =
                     """
-                    UPDATE Operations
-                    SET Status = @queued,
-                        Attempt = Attempt + 1,
-                        ProgressPercent = NULL,
-                        Message = 'Retry queued.',
-                        Error = NULL,
-                        StartedAtUtc = NULL,
-                        FinishedAtUtc = NULL,
-                        UpdatedAtUtc = @now
-                    WHERE Id = @id
-                      AND Retryable = 1
-                      AND Status IN (@failed, @interrupted);
+                    UPDATE "Operations"
+                    SET "Status" = @queued,
+                        "Attempt" = "Attempt" + 1,
+                        "ProgressPercent" = NULL,
+                        "Message" = 'Retry queued.',
+                        "Error" = NULL,
+                        "StartedAtUtc" = NULL,
+                        "FinishedAtUtc" = NULL,
+                        "UpdatedAtUtc" = @now
+                    WHERE "Id" = @id
+                      AND "Retryable" = 1
+                      AND "Status" IN (@failed, @interrupted);
                     """;
                 Add(command, "@queued", (int)OperationStatus.Queued);
                 Add(command, "@now", Format(now));
@@ -560,8 +560,8 @@ public sealed class OperationStore(AppDbContext db)
         UpdateAsync(
             id,
             """
-            Details = @details,
-            UpdatedAtUtc = @now
+            "Details" = @details,
+            "UpdatedAtUtc" = @now
             """,
             [
                 ("@details", Trim(details, MaxDetailsLength)),
@@ -585,19 +585,19 @@ public sealed class OperationStore(AppDbContext db)
                 await using var command = connection.CreateCommand();
                 command.CommandText =
                     """
-                    DELETE FROM OperationLogs
-                    WHERE OperationId IN (
-                        SELECT Id FROM Operations
-                        WHERE Kind = @kind AND Status IN (3, 4, 5, 6)
-                        ORDER BY UpdatedAtUtc DESC
-                        LIMIT -1 OFFSET @keep);
+                    DELETE FROM "OperationLogs"
+                    WHERE "OperationId" IN (
+                        SELECT "Id" FROM "Operations"
+                        WHERE "Kind" = @kind AND "Status" IN (3, 4, 5, 6)
+                        ORDER BY "UpdatedAtUtc" DESC
+                        OFFSET @keep);
 
-                    DELETE FROM Operations
-                    WHERE Id IN (
-                        SELECT Id FROM Operations
-                        WHERE Kind = @kind AND Status IN (3, 4, 5, 6)
-                        ORDER BY UpdatedAtUtc DESC
-                        LIMIT -1 OFFSET @keep);
+                    DELETE FROM "Operations"
+                    WHERE "Id" IN (
+                        SELECT "Id" FROM "Operations"
+                        WHERE "Kind" = @kind AND "Status" IN (3, 4, 5, 6)
+                        ORDER BY "UpdatedAtUtc" DESC
+                        OFFSET @keep);
                     """;
                 Add(command, "@kind", kind.Trim());
                 Add(command, "@keep", keep);
@@ -618,13 +618,13 @@ public sealed class OperationStore(AppDbContext db)
         UpdateAsync(
             id,
             """
-            ProgressPercent = @progress,
-            Message = COALESCE(@message, Message),
-            BytesCompleted = COALESCE(@bytesCompleted, BytesCompleted),
-            BytesTotal = COALESCE(@bytesTotal, BytesTotal),
-            BytesPerSecond = @bytesPerSecond,
-            EtaUtc = @etaUtc,
-            UpdatedAtUtc = @now
+            "ProgressPercent" = @progress,
+            "Message" = COALESCE(@message, "Message"),
+            "BytesCompleted" = COALESCE(@bytesCompleted, "BytesCompleted"),
+            "BytesTotal" = COALESCE(@bytesTotal, "BytesTotal"),
+            "BytesPerSecond" = @bytesPerSecond,
+            "EtaUtc" = @etaUtc,
+            "UpdatedAtUtc" = @now
             """,
             [
                 ("@progress", percent is null ? null : Math.Clamp(percent.Value, 0, 100)),
@@ -650,8 +650,8 @@ public sealed class OperationStore(AppDbContext db)
                 await using var command = connection.CreateCommand();
                 command.CommandText =
                     """
-                    INSERT INTO OperationLogs (
-                        OperationId, CreatedAtUtc, Level, Module, Message)
+                    INSERT INTO "OperationLogs" (
+                        "OperationId", "CreatedAtUtc", "Level", "Module", "Message")
                     VALUES (
                         @operationId, @createdAt, @level, @module, @message);
                     """;
@@ -674,25 +674,25 @@ public sealed class OperationStore(AppDbContext db)
 
         if (filter.Level is { } level)
         {
-            conditions.Add("Level = @level");
+            conditions.Add("\"Level\" = @level");
             parameters.Add(("@level", (int)level));
         }
 
         if (filter.OperationId is { } operationId)
         {
-            conditions.Add("OperationId = @operationId");
+            conditions.Add("\"OperationId\" = @operationId");
             parameters.Add(("@operationId", operationId.ToString("D")));
         }
 
         if (!string.IsNullOrWhiteSpace(filter.Module))
         {
-            conditions.Add("Module = @module");
+            conditions.Add("\"Module\" = @module");
             parameters.Add(("@module", filter.Module.Trim()));
         }
 
         if (!string.IsNullOrWhiteSpace(filter.Search))
         {
-            conditions.Add("(Message LIKE @search OR Module LIKE @search)");
+            conditions.Add("(\"Message\" ILIKE @search OR \"Module\" ILIKE @search)");
             parameters.Add(("@search", $"%{filter.Search.Trim()}%"));
         }
 
@@ -707,10 +707,10 @@ public sealed class OperationStore(AppDbContext db)
                 await using var command = connection.CreateCommand();
                 command.CommandText =
                     $"""
-                    SELECT Id, OperationId, CreatedAtUtc, Level, Module, Message
-                    FROM OperationLogs
+                    SELECT "Id", "OperationId", "CreatedAtUtc", "Level", "Module", "Message"
+                    FROM "OperationLogs"
                     {where}
-                    ORDER BY Id DESC
+                    ORDER BY "Id" DESC
                     LIMIT {limit};
                     """;
 
@@ -748,9 +748,9 @@ public sealed class OperationStore(AppDbContext db)
                 await using var command = connection.CreateCommand();
                 command.CommandText =
                     $"""
-                    UPDATE Operations
+                    UPDATE "Operations"
                     SET {assignments}
-                    WHERE Id = @id;
+                    WHERE "Id" = @id;
                     """;
                 Add(command, "@id", id.ToString("D"));
                 foreach (var parameter in parameters)

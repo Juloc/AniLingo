@@ -21,9 +21,9 @@ public sealed class ChapterArtworkStore(AppDbContext db)
         ExecuteAsync(
             $"""
             INSERT INTO "ChapterArtworks" ({Columns})
-            VALUES ($id, $work, $chapter, $number, $status, $asset, $media, $hash, $size, $provider, $model,
-                    $promptVersion, $contextHash, $scope, $prompt, $neutral, $style, $quality, $error,
-                    $operation, $profile, $created, $updated, $accepted);
+            VALUES (@id, @work, @chapter, @number, @status, @asset, @media, @hash, @size, @provider, @model,
+                    @promptVersion, @contextHash, @scope, @prompt, @neutral, @style, @quality, @error,
+                    @operation, @profile, @created, @updated, @accepted);
             """,
             command => Bind(command, item),
             cancellationToken);
@@ -32,35 +32,35 @@ public sealed class ChapterArtworkStore(AppDbContext db)
         ExecuteAsync(
             """
             UPDATE "ChapterArtworks" SET
-                "ChapterId" = $chapter, "Status" = $status, "AssetPath" = $asset, "MediaType" = $media,
-                "ContentHash" = $hash, "ByteSize" = $size, "ProviderId" = $provider, "Model" = $model,
-                "PromptVersion" = $promptVersion, "ContextHash" = $contextHash, "ContextScope" = $scope,
-                "Prompt" = $prompt, "NeutralPrompt" = $neutral, "Style" = $style, "Quality" = $quality,
-                "Error" = $error, "OperationId" = $operation, "UpdatedAt" = $updated, "AcceptedAt" = $accepted
-            WHERE "Id" = $id;
+                "ChapterId" = @chapter, "Status" = @status, "AssetPath" = @asset, "MediaType" = @media,
+                "ContentHash" = @hash, "ByteSize" = @size, "ProviderId" = @provider, "Model" = @model,
+                "PromptVersion" = @promptVersion, "ContextHash" = @contextHash, "ContextScope" = @scope,
+                "Prompt" = @prompt, "NeutralPrompt" = @neutral, "Style" = @style, "Quality" = @quality,
+                "Error" = @error, "OperationId" = @operation, "UpdatedAt" = @updated, "AcceptedAt" = @accepted
+            WHERE "Id" = @id;
             """,
             command => Bind(command, item),
             cancellationToken);
 
     public Task DeleteAsync(Guid id, CancellationToken cancellationToken) =>
         ExecuteAsync(
-            """DELETE FROM "ChapterArtworks" WHERE "Id" = $id;""",
-            command => Add(command, "$id", Key(id)),
+            """DELETE FROM "ChapterArtworks" WHERE "Id" = @id;""",
+            command => Add(command, "@id", Key(id)),
             cancellationToken);
 
     public Task DeleteWorkAsync(Guid workId, CancellationToken cancellationToken) =>
         ExecuteAsync(
             """
-            DELETE FROM "ChapterArtworks" WHERE "WorkId" = $work;
-            DELETE FROM "ChapterArtworkWorkSettings" WHERE "WorkId" = $work;
+            DELETE FROM "ChapterArtworks" WHERE "WorkId" = @work;
+            DELETE FROM "ChapterArtworkWorkSettings" WHERE "WorkId" = @work;
             """,
-            command => Add(command, "$work", Key(workId)),
+            command => Add(command, "@work", Key(workId)),
             cancellationToken);
 
     public Task<ChapterArtworkItem?> GetAsync(Guid id, CancellationToken cancellationToken) =>
         QuerySingleAsync(
-            $"""SELECT {Columns} FROM "ChapterArtworks" WHERE "Id" = $id LIMIT 1;""",
-            command => Add(command, "$id", Key(id)),
+            $"""SELECT {Columns} FROM "ChapterArtworks" WHERE "Id" = @id LIMIT 1;""",
+            command => Add(command, "@id", Key(id)),
             cancellationToken);
 
     public Task<ChapterArtworkItem?> GetAcceptedAsync(
@@ -70,13 +70,13 @@ public sealed class ChapterArtworkStore(AppDbContext db)
         QuerySingleAsync(
             $"""
             SELECT {Columns} FROM "ChapterArtworks"
-            WHERE "WorkId" = $work AND "ChapterNumber" = $number AND "Status" = 'accepted'
+            WHERE "WorkId" = @work AND "ChapterNumber" = @number AND "Status" = 'accepted'
             LIMIT 1;
             """,
             command =>
             {
-                Add(command, "$work", Key(workId));
-                Add(command, "$number", chapterNumber);
+                Add(command, "@work", Key(workId));
+                Add(command, "@number", chapterNumber);
             },
             cancellationToken);
 
@@ -87,13 +87,13 @@ public sealed class ChapterArtworkStore(AppDbContext db)
         QueryAsync(
             $"""
             SELECT {Columns} FROM "ChapterArtworks"
-            WHERE "WorkId" = $work AND "ChapterNumber" = $number
+            WHERE "WorkId" = @work AND "ChapterNumber" = @number
             ORDER BY "CreatedAt";
             """,
             command =>
             {
-                Add(command, "$work", Key(workId));
-                Add(command, "$number", chapterNumber);
+                Add(command, "@work", Key(workId));
+                Add(command, "@number", chapterNumber);
             },
             cancellationToken);
 
@@ -103,10 +103,10 @@ public sealed class ChapterArtworkStore(AppDbContext db)
         QueryAsync(
             $"""
             SELECT {Columns} FROM "ChapterArtworks"
-            WHERE "WorkId" = $work
+            WHERE "WorkId" = @work
             ORDER BY "ChapterNumber", "CreatedAt";
             """,
-            command => Add(command, "$work", Key(workId)),
+            command => Add(command, "@work", Key(workId)),
             cancellationToken);
 
     /// <summary>Marks rows left queued or generating by a previous process as failed so they can be retried.</summary>
@@ -116,11 +116,11 @@ public sealed class ChapterArtworkStore(AppDbContext db)
             await using var command = connection.CreateCommand();
             command.CommandText =
                 """
-                UPDATE "ChapterArtworks" SET "Status" = 'failed', "Error" = 'Interrupted before completion.', "UpdatedAt" = $now
-                WHERE "Status" IN ('queued', 'generating') AND "UpdatedAt" < $before;
+                UPDATE "ChapterArtworks" SET "Status" = 'failed', "Error" = 'Interrupted before completion.', "UpdatedAt" = @now
+                WHERE "Status" IN ('queued', 'generating') AND "UpdatedAt" < @before;
                 """;
-            Add(command, "$now", DateTime.UtcNow);
-            Add(command, "$before", before);
+            Add(command, "@now", DateTime.UtcNow);
+            Add(command, "@before", before);
             return await command.ExecuteNonQueryAsync(cancellationToken);
         }, cancellationToken);
 
@@ -134,9 +134,9 @@ public sealed class ChapterArtworkStore(AppDbContext db)
             command.CommandText =
                 """
                 SELECT "Enabled", "AutoGenerate", "Style", "Quality", "Variations"
-                FROM "ChapterArtworkPreferences" WHERE "ProfileId" = $profile LIMIT 1;
+                FROM "ChapterArtworkPreferences" WHERE "ProfileId" = @profile LIMIT 1;
                 """;
-            Add(command, "$profile", profileId);
+            Add(command, "@profile", profileId);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             return await reader.ReadAsync(cancellationToken)
                 ? new ChapterArtworkPreferences(
@@ -158,7 +158,7 @@ public sealed class ChapterArtworkStore(AppDbContext db)
         ExecuteAsync(
             """
             INSERT INTO "ChapterArtworkPreferences" ("ProfileId", "Enabled", "AutoGenerate", "Style", "Quality", "Variations", "UpdatedAt")
-            VALUES ($profile, $enabled, $auto, $style, $quality, $variations, $now)
+            VALUES (@profile, @enabled, @auto, @style, @quality, @variations, @now)
             ON CONFLICT("ProfileId") DO UPDATE SET
                 "Enabled" = excluded."Enabled",
                 "AutoGenerate" = excluded."AutoGenerate",
@@ -169,13 +169,13 @@ public sealed class ChapterArtworkStore(AppDbContext db)
             """,
             command =>
             {
-                Add(command, "$profile", profileId);
-                Add(command, "$enabled", preferences.Enabled ? 1 : 0);
-                Add(command, "$auto", preferences.AutoGenerate ? 1 : 0);
-                Add(command, "$style", ChapterArtworkNames.Style(preferences.Style));
-                Add(command, "$quality", ChapterArtworkNames.Quality(preferences.Quality));
-                Add(command, "$variations", Math.Clamp(preferences.Variations, 1, ChapterArtworkPreferences.MaxVariations));
-                Add(command, "$now", DateTime.UtcNow);
+                Add(command, "@profile", profileId);
+                Add(command, "@enabled", preferences.Enabled ? 1 : 0);
+                Add(command, "@auto", preferences.AutoGenerate ? 1 : 0);
+                Add(command, "@style", ChapterArtworkNames.Style(preferences.Style));
+                Add(command, "@quality", ChapterArtworkNames.Quality(preferences.Quality));
+                Add(command, "@variations", Math.Clamp(preferences.Variations, 1, ChapterArtworkPreferences.MaxVariations));
+                Add(command, "@now", DateTime.UtcNow);
             },
             cancellationToken);
 
@@ -206,9 +206,9 @@ public sealed class ChapterArtworkStore(AppDbContext db)
             command.CommandText =
                 """
                 SELECT "Enabled", "Style", "SeriesStyle", "UseChapterTitles"
-                FROM "ChapterArtworkWorkSettings" WHERE "WorkId" = $work LIMIT 1;
+                FROM "ChapterArtworkWorkSettings" WHERE "WorkId" = @work LIMIT 1;
                 """;
-            Add(command, "$work", Key(workId));
+            Add(command, "@work", Key(workId));
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             return await reader.ReadAsync(cancellationToken)
                 ? new ChapterArtworkWorkSettings(
@@ -229,7 +229,7 @@ public sealed class ChapterArtworkStore(AppDbContext db)
         ExecuteAsync(
             """
             INSERT INTO "ChapterArtworkWorkSettings" ("WorkId", "Enabled", "Style", "SeriesStyle", "UseChapterTitles", "UpdatedAt")
-            VALUES ($work, $enabled, $style, $series, $titles, $now)
+            VALUES (@work, @enabled, @style, @series, @titles, @now)
             ON CONFLICT("WorkId") DO UPDATE SET
                 "Enabled" = excluded."Enabled",
                 "Style" = excluded."Style",
@@ -239,41 +239,41 @@ public sealed class ChapterArtworkStore(AppDbContext db)
             """,
             command =>
             {
-                Add(command, "$work", Key(settings.WorkId));
-                Add(command, "$enabled", settings.Enabled is bool enabled ? (enabled ? 1 : 0) : null);
-                Add(command, "$style", settings.Style is { } style ? ChapterArtworkNames.Style(style) : null);
-                Add(command, "$series", Clean(settings.SeriesStyle, ChapterArtworkWorkSettings.SeriesStyleLength));
-                Add(command, "$titles", settings.UseChapterTitles ? 1 : 0);
-                Add(command, "$now", DateTime.UtcNow);
+                Add(command, "@work", Key(settings.WorkId));
+                Add(command, "@enabled", settings.Enabled is bool enabled ? (enabled ? 1 : 0) : null);
+                Add(command, "@style", settings.Style is { } style ? ChapterArtworkNames.Style(style) : null);
+                Add(command, "@series", Clean(settings.SeriesStyle, ChapterArtworkWorkSettings.SeriesStyleLength));
+                Add(command, "@titles", settings.UseChapterTitles ? 1 : 0);
+                Add(command, "@now", DateTime.UtcNow);
             },
             cancellationToken);
 
     private static void Bind(DbCommand command, ChapterArtworkItem item)
     {
-        Add(command, "$id", Key(item.Id));
-        Add(command, "$work", Key(item.WorkId));
-        Add(command, "$chapter", Key(item.ChapterId));
-        Add(command, "$number", item.ChapterNumber);
-        Add(command, "$status", ChapterArtworkNames.Status(item.Status));
-        Add(command, "$asset", item.AssetPath);
-        Add(command, "$media", item.MediaType);
-        Add(command, "$hash", item.ContentHash);
-        Add(command, "$size", item.ByteSize);
-        Add(command, "$provider", item.ProviderId);
-        Add(command, "$model", item.Model);
-        Add(command, "$promptVersion", item.PromptVersion);
-        Add(command, "$contextHash", item.ContextHash);
-        Add(command, "$scope", item.ContextScope);
-        Add(command, "$prompt", item.Prompt);
-        Add(command, "$neutral", item.NeutralPrompt ? 1 : 0);
-        Add(command, "$style", ChapterArtworkNames.Style(item.Style));
-        Add(command, "$quality", ChapterArtworkNames.Quality(item.Quality));
-        Add(command, "$error", Clean(item.Error, 1000));
-        Add(command, "$operation", item.OperationId is Guid operation ? Key(operation) : null);
-        Add(command, "$profile", item.RequestedByProfileId);
-        Add(command, "$created", item.CreatedAt);
-        Add(command, "$updated", item.UpdatedAt);
-        Add(command, "$accepted", item.AcceptedAt);
+        Add(command, "@id", Key(item.Id));
+        Add(command, "@work", Key(item.WorkId));
+        Add(command, "@chapter", Key(item.ChapterId));
+        Add(command, "@number", item.ChapterNumber);
+        Add(command, "@status", ChapterArtworkNames.Status(item.Status));
+        Add(command, "@asset", item.AssetPath);
+        Add(command, "@media", item.MediaType);
+        Add(command, "@hash", item.ContentHash);
+        Add(command, "@size", item.ByteSize);
+        Add(command, "@provider", item.ProviderId);
+        Add(command, "@model", item.Model);
+        Add(command, "@promptVersion", item.PromptVersion);
+        Add(command, "@contextHash", item.ContextHash);
+        Add(command, "@scope", item.ContextScope);
+        Add(command, "@prompt", item.Prompt);
+        Add(command, "@neutral", item.NeutralPrompt ? 1 : 0);
+        Add(command, "@style", ChapterArtworkNames.Style(item.Style));
+        Add(command, "@quality", ChapterArtworkNames.Quality(item.Quality));
+        Add(command, "@error", Clean(item.Error, 1000));
+        Add(command, "@operation", item.OperationId is Guid operation ? Key(operation) : null);
+        Add(command, "@profile", item.RequestedByProfileId);
+        Add(command, "@created", item.CreatedAt);
+        Add(command, "@updated", item.UpdatedAt);
+        Add(command, "@accepted", item.AcceptedAt);
     }
 
     private static ChapterArtworkItem Read(DbDataReader reader) =>

@@ -4,7 +4,6 @@ using Jularr.Web.Features.Books;
 using Jularr.Web.Features.ChapterArtwork;
 using Jularr.Web.Features.Novels;
 using Jularr.Web.Features.StoryContext;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using SkiaSharp;
@@ -451,7 +450,6 @@ public sealed class ChapterArtworkTests
         public void Dispose()
         {
             Db.Dispose();
-            SqliteConnection.ClearAllPools();
             File.Delete(databasePath);
             if (Directory.Exists(root))
             {

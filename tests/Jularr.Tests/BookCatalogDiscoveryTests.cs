@@ -3,7 +3,6 @@ using System.Text;
 using Jularr.Web.Data;
 using Jularr.Web.Features.Books;
 using Microsoft.AspNetCore.DataProtection;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 
@@ -78,7 +77,6 @@ public sealed class BookCatalogDiscoveryTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(path);
         }
     }
@@ -137,7 +135,6 @@ public sealed class BookCatalogDiscoveryTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(path);
         }
     }
@@ -199,7 +196,6 @@ public sealed class BookCatalogDiscoveryTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(path);
         }
     }
@@ -241,7 +237,6 @@ public sealed class BookCatalogDiscoveryTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(path);
         }
     }
@@ -308,7 +303,6 @@ public sealed class BookCatalogDiscoveryTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(path);
             if (keysRoot.Exists) keysRoot.Delete(recursive: true);
         }
@@ -358,7 +352,6 @@ public sealed class BookCatalogDiscoveryTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(path);
             if (keysRoot.Exists) keysRoot.Delete(recursive: true);
         }

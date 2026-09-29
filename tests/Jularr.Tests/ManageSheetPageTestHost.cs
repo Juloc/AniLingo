@@ -27,7 +27,6 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -265,7 +264,6 @@ internal sealed class ManageSheetPageTestHost : IAsyncDisposable
         await host.StopAsync();
         host.Dispose();
         await Db.DisposeAsync();
-        SqliteConnection.ClearAllPools();
         try
         {
             Directory.Delete(root, recursive: true);

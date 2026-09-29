@@ -5,7 +5,6 @@ using Jularr.Web.Features.Learning;
 using Jularr.Web.Features.Vocabulary;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Http;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Tests;
@@ -13,6 +12,11 @@ namespace Jularr.Tests;
 [TestClass]
 public sealed class OfflineReviewTests
 {
+    // PostgreSQL timestamptz stores microseconds; the scheduler computes 100 ns-tick times. Compare
+    // review instants at the storage precision instead of asserting sub-microsecond equality.
+    private static DateTime Microseconds(DateTime value) =>
+        new(value.Ticks - value.Ticks % TimeSpan.TicksPerMicrosecond, value.Kind);
+
     [TestMethod]
     public async Task ReorderedOfflineEventsApplyOnceAndReplayChronologically()
     {
@@ -99,19 +103,18 @@ public sealed class OfflineReviewTests
                 Assert.AreEqual(2, reviews.Count);
                 Assert.IsTrue(reviews.All(x => x.CardId == cardId));
                 Assert.AreEqual(firstId, reviews[0].ClientEventId);
-                Assert.AreEqual(expectedFirst.NextReviewAt.UtcDateTime, reviews[0].NextReviewAt);
+                Assert.AreEqual(Microseconds(expectedFirst.NextReviewAt.UtcDateTime), Microseconds(reviews[0].NextReviewAt));
                 Assert.AreEqual(secondId, reviews[1].ClientEventId);
-                Assert.AreEqual(expectedFinal.NextReviewAt.UtcDateTime, reviews[1].NextReviewAt);
+                Assert.AreEqual(Microseconds(expectedFinal.NextReviewAt.UtcDateTime), Microseconds(reviews[1].NextReviewAt));
 
                 var card = await db.LearningCards
                     .AsNoTracking()
                     .SingleAsync(x => x.Id == cardId);
-                Assert.AreEqual(expectedFinal.NextReviewAt.UtcDateTime, card.NextReviewAt);
+                Assert.AreEqual(Microseconds(expectedFinal.NextReviewAt.UtcDateTime), Microseconds(card.NextReviewAt!.Value));
             }
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(databasePath);
         }
     }
@@ -182,7 +185,6 @@ public sealed class OfflineReviewTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(databasePath);
         }
     }
@@ -256,7 +258,6 @@ public sealed class OfflineReviewTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             File.Delete(databasePath);
         }
     }

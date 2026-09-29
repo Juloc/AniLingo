@@ -1,7 +1,6 @@
 using System.Globalization;
 using Jularr.Web.Data;
 using Jularr.Web.Features.Appearance;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Tests;
@@ -185,13 +184,12 @@ public sealed class AccentPaletteTests
                 await Assert.ThrowsExactlyAsync<ArgumentException>(
                     () => store.SetAccentAsync("alice", "blue", CancellationToken.None));
 
-                await Assert.ThrowsExactlyAsync<SqliteException>(() => db.Database.ExecuteSqlRawAsync(
+                await Assert.ThrowsExactlyAsync<Npgsql.PostgresException>(() => db.Database.ExecuteSqlRawAsync(
                     "UPDATE \"UiProfileThemes\" SET \"AccentColor\" = 'blue' WHERE \"ProfileId\" = 'bob'"));
             }
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             Directory.Delete(directory, recursive: true);
         }
     }
@@ -232,13 +230,12 @@ public sealed class AccentPaletteTests
                 await Assert.ThrowsExactlyAsync<ArgumentException>(
                     () => store.SetSakuraAsync("alice", "extreme", CancellationToken.None));
 
-                await Assert.ThrowsExactlyAsync<SqliteException>(() => db.Database.ExecuteSqlRawAsync(
+                await Assert.ThrowsExactlyAsync<Npgsql.PostgresException>(() => db.Database.ExecuteSqlRawAsync(
                     "UPDATE \"UiProfileThemes\" SET \"SakuraMode\" = 'extreme' WHERE \"ProfileId\" = 'bob'"));
             }
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
             Directory.Delete(directory, recursive: true);
         }
     }
