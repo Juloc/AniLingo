@@ -38,6 +38,7 @@ Agents must not redesign an approved screen during implementation without updati
 
 - `home/SPEC.md` — approved clean Home UX baseline.
 - `admin-dashboard/SPEC.md` — Admin Dashboard live operations/health contract.
+- `admin-media-detail/SPEC.md` — Admin media monitoring/acquisition hierarchy V1.
 
 ## Existing image assets
 
