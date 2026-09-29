@@ -408,3 +408,16 @@ Books-only profile sees a pure book app.
   category tabs/grid are not yet), Watchlist/Calendar/Franchise content, and the ClientApi surface
   (`/api/client/v1/...`) still list every media type the data contains; they should narrow by
   `ShellMediaAccess`.
+
+## Canonical work vs provider presentation in search
+
+The layer boundary also applies to search/discovery presentation:
+
+- Jularr identity is the canonical Work and its internal seasons/episodes.
+- Provider mappings may be one-to-many. A single Anime Work may map to several AniList entries representing seasons, cours/parts, specials or other provider-specific splits.
+- Default/global search returns the canonical Work once and groups results by media type.
+- With the Anime type selected, the UI may explicitly switch between **Jularr** grouped results and **AniList** provider-native results.
+- Provider-native selection resolves to the canonical Work plus the relevant season/presentation target; it does not create a parallel Work.
+- Exact season/part searches may surface/deep-link that target directly.
+- Admin mapping/review owns corrections. Consumer surfaces consume the resolved mapping and do not expose provider-coordinate complexity.
+
