@@ -336,7 +336,7 @@ builder.Services.AddScoped<SubtitleImportService>();
 builder.Services.AddSingleton<EmbeddedSubtitleExtractor>();
 builder.Services.AddScoped<SubtitleLanguageProfileService>();
 builder.Services.AddScoped<SubtitleCompletenessService>();
-builder.Services.AddScoped<SubtitleManualSearchService>();
+builder.Services.AddSubtitleProviders();
 builder.Services.AddScoped<VocabularyService>();
 builder.Services.AddSingleton<IJapaneseMorphology, MeCabJapaneseMorphology>();
 builder.Services.AddSingleton<JapaneseTermExtractor>();

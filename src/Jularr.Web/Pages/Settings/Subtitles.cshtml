@@ -1,4 +1,5 @@
 @page
+@using Jularr.Web.Features.Providers
 @using Jularr.Web.Features.Subtitles
 @using Jularr.Web.Features.Watchlist
 @model Jularr.Web.Pages.Settings.SubtitlesModel
@@ -154,20 +155,74 @@
 <section class="panel">
     <div class="panel-heading">
         <h2>@ui["settings.subtitles.providersHeading"]</h2>
-        <span>@(Model.HasProviders ? ui.Format("settings.subtitles.providersConfiguredCount", ("count", Model.ProviderNames.Count)) : ui["settings.subtitles.noProvidersConfigured"])</span>
+        <span>@(Model.HasProviders ? ui.Format("settings.subtitles.providersConfiguredCount", ("count", Model.Providers.Count)) : ui["settings.subtitles.noProvidersConfigured"])</span>
     </div>
 
     @if (Model.HasProviders)
     {
         <ul>
-            @foreach (var name in Model.ProviderNames)
+            @foreach (var provider in Model.Providers)
             {
-                <li>@name</li>
+                var health = Model.HealthOf(provider);
+                <li>
+                    <strong>@provider.DisplayName</strong>
+                    @switch (health.Status)
+                    {
+                        case ProviderHealthStatus.Healthy:
+                            <span class="status-pill status-ok">@ui["settings.subtitles.health.healthy"]</span>
+                            break;
+                        case ProviderHealthStatus.Degraded:
+                            <span class="status-pill status-warn">@ui["settings.subtitles.health.degraded"]</span>
+                            break;
+                        case ProviderHealthStatus.Unavailable:
+                            <span class="status-pill status-error">@ui["settings.subtitles.health.unavailable"]</span>
+                            break;
+                    }
+                </li>
             }
         </ul>
     }
     else
     {
         <p class="muted">@ui["settings.subtitles.noProvidersHelp"]</p>
+    }
+</section>
+
+<section class="panel">
+    <div class="panel-heading">
+        <h2>@ui["settings.subtitles.opensubtitles.heading"]</h2>
+        @if (Model.OpenSubtitlesConnection.Configured)
+        {
+            <span class="status-pill status-ok">@ui.Format("settings.subtitles.opensubtitles.connectedAs", ("username", Model.OpenSubtitlesConnection.Username ?? ""))</span>
+        }
+    </div>
+
+    <p class="muted">@ui["settings.subtitles.opensubtitles.description"]</p>
+
+    @if (Model.OpenSubtitlesConnection.Configured)
+    {
+        <form method="post" asp-page-handler="RemoveOpenSubtitles">
+            <button class="button" type="submit">@ui["common.remove"]</button>
+        </form>
+    }
+    else
+    {
+        <form method="post" asp-page-handler="SaveOpenSubtitles" class="form-stack">
+            <label>
+                <span>@ui["settings.subtitles.opensubtitles.apiKeyLabel"]</span>
+                <input asp-for="OpenSubtitlesForm.ApiKey" type="password" autocomplete="new-password" required />
+            </label>
+            <label>
+                <span>@ui["settings.subtitles.opensubtitles.usernameLabel"]</span>
+                <input asp-for="OpenSubtitlesForm.Username" autocomplete="off" required />
+            </label>
+            <label>
+                <span>@ui["settings.subtitles.opensubtitles.passwordLabel"]</span>
+                <input asp-for="OpenSubtitlesForm.Password" type="password" autocomplete="new-password" required />
+            </label>
+            <div class="inline-actions">
+                <button class="button button-primary" type="submit">@ui["settings.subtitles.opensubtitles.testAndSave"]</button>
+            </div>
+        </form>
     }
 </section>

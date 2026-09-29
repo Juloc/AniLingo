@@ -2,7 +2,9 @@ using Jularr.Web.Data;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Library;
 using Jularr.Web.Features.Localization;
+using Jularr.Web.Features.Providers;
 using Jularr.Web.Features.Subtitles;
+using Jularr.Web.Features.Subtitles.OpenSubtitles;
 using Jularr.Web.Features.Watchlist;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -20,6 +22,8 @@ public sealed class SubtitlesModel(
     AppDbContext db,
     SubtitleLanguageProfileService profiles,
     SubtitleManualSearchService manualSearch,
+    OpenSubtitlesSettingsService openSubtitles,
+    ProviderHealthTracker providerHealth,
     ILogger<SubtitlesModel> logger) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
@@ -37,8 +41,15 @@ public sealed class SubtitlesModel(
     public IReadOnlyDictionary<Guid, Guid?> LibraryRootAssignments { get; private set; } =
         new Dictionary<Guid, Guid?>();
     public bool IsExistingProfile { get; private set; }
-    public bool HasProviders => manualSearch.HasProviders;
-    public IReadOnlyList<string> ProviderNames => manualSearch.ProviderNames;
+    public IReadOnlyList<ISubtitleProvider> Providers { get; private set; } = [];
+    public bool HasProviders => Providers.Count > 0;
+    public OpenSubtitlesStatus OpenSubtitlesConnection { get; private set; } =
+        new(false, null, false, null, new ProviderHealthSnapshot(ProviderKeys.OpenSubtitles, ProviderHealthStatus.Unknown, null, null, null, 0, null));
+
+    [BindProperty]
+    public OpenSubtitlesInput OpenSubtitlesForm { get; set; } = new();
+
+    public ProviderHealthSnapshot HealthOf(ISubtitleProvider provider) => providerHealth.Get(provider.Id);
 
     public string? Notice => TempData["SubtitleSettingsNotice"] as string;
 
@@ -138,8 +149,45 @@ public sealed class SubtitlesModel(
         return RedirectToPage();
     }
 
+    public async Task<IActionResult> OnPostSaveOpenSubtitlesAsync(CancellationToken cancellationToken)
+    {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+
+        var outcome = await openSubtitles.SaveAsync(
+            OpenSubtitlesForm.ApiKey,
+            OpenSubtitlesForm.Username,
+            OpenSubtitlesForm.Password,
+            cancellationToken);
+
+        if (outcome == OpenSubtitlesSaveOutcome.Saved)
+        {
+            TempData["SubtitleSettingsNotice"] = Ui["settings.subtitles.opensubtitles.saved"];
+        }
+        else
+        {
+            TempData["SubtitleSettingsError"] = outcome switch
+            {
+                OpenSubtitlesSaveOutcome.MissingFields => Ui["settings.subtitles.opensubtitles.missingFields"],
+                OpenSubtitlesSaveOutcome.Rejected => Ui["settings.subtitles.opensubtitles.rejected"],
+                _ => Ui["settings.subtitles.opensubtitles.unreachable"]
+            };
+        }
+
+        return RedirectToPage();
+    }
+
+    public async Task<IActionResult> OnPostRemoveOpenSubtitlesAsync(CancellationToken cancellationToken)
+    {
+        Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
+        await openSubtitles.RemoveAsync(cancellationToken);
+        TempData["SubtitleSettingsNotice"] = Ui["settings.subtitles.opensubtitles.removed"];
+        return RedirectToPage();
+    }
+
     private async Task LoadAsync(CancellationToken cancellationToken)
     {
+        Providers = await manualSearch.GetProvidersAsync(cancellationToken);
+        OpenSubtitlesConnection = await openSubtitles.GetStatusAsync(cancellationToken);
         Profiles = await profiles.GetAllAsync(cancellationToken);
         Roots = await db.LibraryRoots.AsNoTracking().OrderBy(x => x.Name).ToListAsync(cancellationToken);
 
@@ -160,6 +208,13 @@ public sealed class SubtitlesModel(
                 .Where(a => a.LibraryRootId == root.Id && a.MediaType == null)
                 .Select(a => (Guid?)a.ProfileId)
                 .SingleOrDefault());
+    }
+
+    public sealed class OpenSubtitlesInput
+    {
+        public string ApiKey { get; set; } = "";
+        public string Username { get; set; } = "";
+        public string Password { get; set; } = "";
     }
 
     public sealed class ProfileInput

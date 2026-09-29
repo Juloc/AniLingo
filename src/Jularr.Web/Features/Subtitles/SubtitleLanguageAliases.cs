@@ -41,6 +41,26 @@ public static class SubtitleLanguageAliases
             ["ms"] = ["may", "msa", "malay"]
         };
 
+    /// <summary>
+    /// The table's canonical tag for <paramref name="token"/> (for example <c>eng</c> or <c>english</c>
+    /// -&gt; <c>en</c>), or <see langword="null"/> when no entry names it. External subtitle providers
+    /// use this to translate a profile language tag into the two-letter code their API expects.
+    /// </summary>
+    public static string? CanonicalTagFor(string token)
+    {
+        var trimmed = token.Trim();
+        foreach (var (tag, extra) in Aliases)
+        {
+            if (tag.Equals(trimmed, StringComparison.OrdinalIgnoreCase) ||
+                extra.Contains(trimmed, StringComparer.OrdinalIgnoreCase))
+            {
+                return tag;
+            }
+        }
+
+        return null;
+    }
+
     /// <summary>Every token (the tag itself plus any aliases) that names <paramref name="languageTag"/>.</summary>
     public static IReadOnlyCollection<string> TokensFor(string languageTag)
     {
