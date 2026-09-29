@@ -227,17 +227,23 @@ public sealed class IndexModel(AppDbContext db, CurrentAccountContext currentAcc
             .ToDictionaryAsync(row => row.AnimeId, row => row.BannerImageUrl, cancellationToken);
 
         return items
-            .Select(item => new HomeSpotlightSlide(
-                Ui["home.continueWatching.eyebrow"],
-                item.AnimeTitle,
-                WatchingCaption(item),
-                item.ResumePositionMs > 0 ? item.Percent : null,
-                AnimeArtworkStore.ResolveFanartUrl(item.AnimeId, banners.GetValueOrDefault(item.AnimeId))
-                    ?? item.CoverImageUrl,
-                $"/Library/Episode/{item.EpisodeId}",
-                item.ResumePositionMs > 0 ? Ui["home.continueWatching.resume"] : Ui["home.spotlight.play"],
-                $"/Library/Anime/{item.AnimeId}",
-                Ui["home.spotlight.details"]))
+            .Select(item =>
+            {
+                // A wide backdrop (cached fanart, else the provider banner) fills the banner; without
+                // one the poster is shown as-is over a background derived from it.
+                var backdrop = AnimeArtworkStore.ResolveFanartUrl(item.AnimeId, banners.GetValueOrDefault(item.AnimeId));
+                return new HomeSpotlightSlide(
+                    Ui["home.continueWatching.eyebrow"],
+                    item.AnimeTitle,
+                    WatchingCaption(item),
+                    item.ResumePositionMs > 0 ? item.Percent : null,
+                    string.IsNullOrWhiteSpace(backdrop) ? item.CoverImageUrl : backdrop,
+                    !string.IsNullOrWhiteSpace(backdrop),
+                    $"/Library/Episode/{item.EpisodeId}",
+                    item.ResumePositionMs > 0 ? Ui["home.continueWatching.resume"] : Ui["home.spotlight.play"],
+                    $"/Library/Anime/{item.AnimeId}",
+                    Ui["home.spotlight.details"]);
+            })
             .ToArray();
     }
 
@@ -293,6 +299,7 @@ public sealed class IndexModel(AppDbContext db, CurrentAccountContext currentAcc
                         .Where(text => !string.IsNullOrEmpty(text))),
                 null,
                 row.Release.CoverImageUrl,
+                false,
                 ReleaseCalendarPresenter.Href(row.Release) ?? "/Watchlist",
                 Ui["home.spotlight.details"],
                 "/Calendar",
@@ -362,6 +369,7 @@ public sealed class IndexModel(AppDbContext db, CurrentAccountContext currentAcc
         string Subtitle,
         int? ProgressPercent,
         string? ImageUrl,
+        bool ImageIsBackdrop,
         string PrimaryHref,
         string PrimaryLabel,
         string SecondaryHref,

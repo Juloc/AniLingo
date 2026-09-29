@@ -69,6 +69,7 @@ public sealed class HomeSpotlightTests
         Assert.AreEqual("Frieren", slide.Title);
         Assert.AreEqual(home.Ui["home.spotlight.watchlist"], slide.Label);
         Assert.AreEqual("https://cdn.example/cover.jpg", slide.ImageUrl);
+        Assert.IsFalse(slide.ImageIsBackdrop, "A watchlist cover is a poster: shown over a derived background, not stretched.");
         StringAssert.StartsWith(slide.PrimaryHref, "/Watchlist");
         Assert.IsNull(slide.ProgressPercent);
     }

@@ -21,7 +21,8 @@
                          id="home-spotlight-@index">
                     @if (!string.IsNullOrWhiteSpace(slide.ImageUrl))
                     {
-                        <img class="home-spotlight-art"
+                        @* Without a wide backdrop the poster itself is blurred into the background. *@
+                        <img class="home-spotlight-art@(slide.ImageIsBackdrop ? "" : " home-spotlight-art-derived")"
                              src="@slide.ImageUrl"
                              alt=""
                              loading="@(index == 0 ? "eager" : "lazy")"
@@ -43,6 +44,14 @@
                             <a class="button home-spotlight-secondary" href="@slide.SecondaryHref">@slide.SecondaryLabel</a>
                         </div>
                     </div>
+                    @if (!slide.ImageIsBackdrop && !string.IsNullOrWhiteSpace(slide.ImageUrl))
+                    {
+                        <img class="home-spotlight-poster"
+                             src="@slide.ImageUrl"
+                             alt=""
+                             loading="@(index == 0 ? "eager" : "lazy")"
+                             referrerpolicy="no-referrer" />
+                    }
                 </article>
             }
         </div>
