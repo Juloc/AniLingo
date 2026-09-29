@@ -10,24 +10,56 @@
     <link rel="stylesheet" href="~/css/home.css" asp-append-version="true" />
 }
 
-<header class="home-hero">
-    <div class="home-hero-copy">
-        <span class="eyebrow">@Model.Ui["home.eyebrow"]</span>
-        <h1>@Model.Ui["home.title"]</h1>
-        <p>@Model.Ui["home.subtitle"]</p>
-        <div class="home-hero-actions">
-            <a class="button button-primary" href="/Discover">@Model.Ui["home.cta.discover"]</a>
-            <a class="button" href="/Library">@Model.Ui["home.cta.library"]</a>
-            @if (Model.ShowLearningHomeWidget && Model.DueReviews > 0)
+@if (Model.Spotlight.Count > 0)
+{
+    <section class="home-spotlight" aria-label="@Model.Ui["home.spotlight.aria"]" data-home-spotlight>
+        <div class="home-spotlight-track" data-home-spotlight-track>
+            @for (var index = 0; index < Model.Spotlight.Count; index++)
             {
-                <a class="button home-hero-review" href="/Learn/Review" data-home-learning-widget>
-                    @Model.Ui.Format("home.reviewButton", ("count", Model.DueReviews))
-                </a>
+                var slide = Model.Spotlight[index];
+                <article class="home-spotlight-slide@(string.IsNullOrWhiteSpace(slide.ImageUrl) ? " home-spotlight-plain" : "")"
+                         id="home-spotlight-@index">
+                    @if (!string.IsNullOrWhiteSpace(slide.ImageUrl))
+                    {
+                        <img class="home-spotlight-art"
+                             src="@slide.ImageUrl"
+                             alt=""
+                             loading="@(index == 0 ? "eager" : "lazy")"
+                             referrerpolicy="no-referrer" />
+                    }
+                    <div class="home-spotlight-copy">
+                        <span class="home-spotlight-label">@slide.Label</span>
+                        <h2>@slide.Title</h2>
+                        <p>@slide.Subtitle</p>
+                        @if (slide.ProgressPercent is int percent)
+                        {
+                            <div class="progress-track home-spotlight-progress" role="img"
+                                 aria-label="@Model.Ui.Format("home.continueWatching.progressAria", ("percent", percent))">
+                                <span style="width:@percent%"></span>
+                            </div>
+                        }
+                        <div class="home-spotlight-actions">
+                            <a class="button button-primary" href="@slide.PrimaryHref">@slide.PrimaryLabel</a>
+                            <a class="button home-spotlight-secondary" href="@slide.SecondaryHref">@slide.SecondaryLabel</a>
+                        </div>
+                    </div>
+                </article>
             }
         </div>
-    </div>
-    <img class="home-hero-mark" src="~/brand/jularr-play.svg" alt="" aria-hidden="true" width="240" height="240" />
-</header>
+        @if (Model.Spotlight.Count > 1)
+        {
+            <div class="home-spotlight-dots">
+                @for (var index = 0; index < Model.Spotlight.Count; index++)
+                {
+                    <a href="#home-spotlight-@index"
+                       aria-label="@Model.Ui.Format("home.spotlight.slideAria", ("title", Model.Spotlight[index].Title))"
+                       aria-current="@(index == 0 ? "true" : null)"
+                       data-home-spotlight-dot></a>
+                }
+            </div>
+        }
+    </section>
+}
 
 <nav class="home-filter-chips" aria-label="@Model.Ui["home.filter.aria"]" data-home-filter>
     @foreach (var chip in IndexModel.TypeChips)
@@ -49,23 +81,11 @@
         <div class="media-grid home-carousel">
             @foreach (var item in Model.ContinueWatching)
             {
-                var isResumable = item.ResumePositionMs > 0;
-                var episodeLabel = Model.Ui.Format(
-                    "home.continueWatching.episode",
-                    ("season", item.SeasonNumber.ToString("00")),
-                    ("episode", item.EpisodeNumber));
-                var caption = !isResumable
-                    ? null
-                    : item.RemainingMs is { } remainingMs
-                        ? Model.Ui.Format(
-                            "home.continueWatching.remaining",
-                            ("minutes", Math.Max(1, (int)Math.Ceiling(remainingMs / 60000d))))
-                        : Model.Ui["home.continueWatching.resume"];
                 <partial name="_MediaCard" model='new MediaCardModel(
                     item.AnimeTitle,
-                    caption is null ? episodeLabel : $"{episodeLabel} · {caption}",
+                    Model.WatchingCaption(item),
                     $"/Library/Episode/{item.EpisodeId}",
-                    isResumable ? item.Percent : null,
+                    item.ResumePositionMs > 0 ? item.Percent : null,
                     item.Kind == ContinueWatchingKind.UpNext
                         ? Model.Ui["home.continueWatching.upNext"]
                         : null,
@@ -133,16 +153,6 @@
                  Model.Ui["home.metric.episodes"],
                  Model.EpisodeCount.ToString(),
                  Model.Ui["home.metric.discovered"])' />
-    <partial name="_MetricCard"
-             model='new MetricCardModel(
-                 Model.Ui["home.continueWatching"],
-                 Model.ContinueWatching.Count.ToString(),
-                 Model.Ui["home.continueWatching.eyebrow"])' />
-    <partial name="_MetricCard"
-             model='new MetricCardModel(
-                 Model.Ui["home.continueReading"],
-                 Model.ContinueReading.Count.ToString(),
-                 Model.Ui["home.continueReading.eyebrow"])' />
 </section>
 
 <section class="section section-secondary">
@@ -224,4 +234,11 @@
             <button class="button" type="submit">@Model.Ui["home.history.clear"]</button>
         </form>
     </details>
+}
+
+@section Scripts {
+    @if (Model.Spotlight.Count > 1)
+    {
+        <script src="~/js/home-spotlight.js" asp-append-version="true" defer></script>
+    }
 }
