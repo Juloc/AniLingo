@@ -1,6 +1,7 @@
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Learning;
 using Jularr.Web.Features.MediaSegments;
+using Jularr.Web.Features.Pairing;
 using Jularr.Web.Features.Playback;
 using Jularr.Web.Features.PlaybackSessions;
 using Jularr.Web.Features.Progress;
@@ -864,6 +865,7 @@ public static class ClientApiEndpoints
         });
 
         endpoints.MapPlaybackSessionApiV1();
+        endpoints.MapPairingApiV1();
         return endpoints;
     }
 
