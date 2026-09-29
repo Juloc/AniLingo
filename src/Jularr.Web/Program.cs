@@ -337,6 +337,8 @@ builder.Services.AddSingleton<PlaybackPreparationTracker>();
 builder.Services.AddScoped<PlaybackPreparationService>();
 builder.Services.AddScoped<PlaybackService>();
 Jularr.Web.Features.Playback.Decision.PlaybackDecisionRegistration.AddPlaybackDecision(builder.Services);
+// Universal media core (#592): the provider-independent work/identity model the #556 children build on.
+Jularr.Web.Features.MediaCore.MediaCoreRegistration.AddMediaCore(builder.Services);
 builder.Services.Configure<MediaSegmentOptions>(builder.Configuration.GetSection(MediaSegmentOptions.SectionName));
 // Single canonical opt-in: cross-episode audio fingerprint detection is CPU heavy (it decodes and
 // hashes several minutes of audio per episode), so it stays off unless explicitly enabled.
