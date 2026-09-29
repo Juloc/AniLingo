@@ -697,7 +697,7 @@ namespace Jularr.Web.Data.Migrations
                     EpisodeId = table.Column<Guid>(type: "uuid", nullable: false),
                     Path = table.Column<string>(type: "character varying(2048)", maxLength: 2048, nullable: false),
                     SizeBytes = table.Column<long>(type: "bigint", nullable: false),
-                    LastWriteTimeUtc = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    LastWriteTimeUtc = table.Column<string>(type: "text", nullable: false),
                     DiscoveredAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
@@ -899,7 +899,7 @@ namespace Jularr.Web.Data.Migrations
                     Status = table.Column<int>(type: "integer", nullable: false),
                     ProbeVersion = table.Column<int>(type: "integer", nullable: false),
                     SourceSizeBytes = table.Column<long>(type: "bigint", nullable: false),
-                    SourceLastWriteTimeUtc = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    SourceLastWriteTimeUtc = table.Column<string>(type: "text", nullable: false),
                     SourceFingerprint = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: true),
                     Diagnostic = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: true),
                     AnalyzedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),

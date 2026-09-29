@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Jularr.Web.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260929003404_Epoch4PostgresBaseline")]
+    [Migration("20260929013145_Epoch4PostgresBaseline")]
     partial class Epoch4PostgresBaseline
     {
         /// <inheritdoc />
@@ -846,8 +846,9 @@ namespace Jularr.Web.Data.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
-                    b.Property<DateTime>("SourceLastWriteTimeUtc")
-                        .HasColumnType("timestamp with time zone");
+                    b.Property<string>("SourceLastWriteTimeUtc")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.Property<long>("SourceSizeBytes")
                         .HasColumnType("bigint");
@@ -926,8 +927,9 @@ namespace Jularr.Web.Data.Migrations
                     b.Property<Guid>("EpisodeId")
                         .HasColumnType("uuid");
 
-                    b.Property<DateTime>("LastWriteTimeUtc")
-                        .HasColumnType("timestamp with time zone");
+                    b.Property<string>("LastWriteTimeUtc")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.Property<Guid>("LibraryRootId")
                         .HasColumnType("uuid");

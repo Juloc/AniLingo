@@ -41,19 +41,37 @@ public sealed class BesideMediaArtworkCache
     /// derivative when the source is offline, and to the full canonical file when no derivative
     /// exists yet. Returns null only when neither a derivative nor a source is available.
     /// </summary>
-    public async Task<ArtworkThumbnail?> GetThumbnailAsync(
+    public Task<ArtworkThumbnail?> GetThumbnailAsync(
         string scope,
         Guid ownerId,
         string kind,
         string folder,
         int width,
+        CancellationToken cancellationToken) =>
+        GetThumbnailForSourceAsync(
+            CacheKey(scope, ownerId, kind),
+            () => store.ResolveAsync(scope, ownerId, kind, folder, cancellationToken),
+            width,
+            cancellationToken);
+
+    /// <summary>
+    /// Thumbnail for a canonical artwork file whose path is resolved elsewhere (e.g. a Books cover
+    /// resolved through <c>BookCatalogService</c>). <paramref name="cacheKey"/> must identify the
+    /// media/size deterministically; <paramref name="resolveSource"/> yields the current canonical
+    /// path (or null when the NAS is offline). Prefers a fresh cached derivative, regenerates it
+    /// when the source changed, and keeps serving the cached one when the source is unavailable.
+    /// </summary>
+    public async Task<ArtworkThumbnail?> GetThumbnailForSourceAsync(
+        string cacheKey,
+        Func<Task<string?>> resolveSource,
+        int width,
         CancellationToken cancellationToken)
     {
         var safeWidth = Math.Clamp(width, 16, 1600);
-        var cachePath = CachePath(scope, ownerId, kind, safeWidth);
+        var cachePath = Path.Combine(root, $"{cacheKey}-{safeWidth}.webp");
         var stampPath = cachePath + ".stamp";
 
-        var source = await store.ResolveAsync(scope, ownerId, kind, folder, cancellationToken);
+        var source = await resolveSource();
         if (source is not null && File.Exists(source))
         {
             var info = new FileInfo(source);
@@ -90,7 +108,10 @@ public sealed class BesideMediaArtworkCache
         var removed = 0;
         foreach (var file in Directory.EnumerateFiles(root, "*.webp", SearchOption.TopDirectoryOnly))
         {
-            var key = System.IO.Path.GetFileNameWithoutExtension(file);
+            // File names are "{cacheKey}-{width}.webp"; the live set is keyed by cacheKey.
+            var name = System.IO.Path.GetFileNameWithoutExtension(file);
+            var dash = name.LastIndexOf('-');
+            var key = dash > 0 ? name[..dash] : name;
             if (liveKeys.Contains(key))
             {
                 continue;
@@ -104,22 +125,13 @@ public sealed class BesideMediaArtworkCache
         return removed;
     }
 
-    /// <summary>The deterministic cache key for one owner/kind/width; also used by cleanup.</summary>
-    public static string CacheKey(string scope, Guid ownerId, string kind, int width)
+    /// <summary>The deterministic cache key for one owner/kind; the width is added to the file name.</summary>
+    public static string CacheKey(string scope, Guid ownerId, string kind)
     {
-        var raw = string.Join(
-            '\u001f',
-            DerivativeVersion,
-            scope,
-            ownerId.ToString("N"),
-            kind,
-            width.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        var raw = string.Join('\u001f', DerivativeVersion, scope, ownerId.ToString("N"), kind);
         var hash = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(raw));
         return Convert.ToHexStringLower(hash)[..32];
     }
-
-    private string CachePath(string scope, Guid ownerId, string kind, int width) =>
-        System.IO.Path.Combine(root, CacheKey(scope, ownerId, kind, width) + ".webp");
 
     private static string Stamp(FileInfo info, int width) =>
         $"{info.Length}:{info.LastWriteTimeUtc.Ticks}:{DerivativeVersion}:{width}";

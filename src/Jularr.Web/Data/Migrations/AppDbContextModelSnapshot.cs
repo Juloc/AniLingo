@@ -843,8 +843,9 @@ namespace Jularr.Web.Data.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
-                    b.Property<DateTime>("SourceLastWriteTimeUtc")
-                        .HasColumnType("timestamp with time zone");
+                    b.Property<string>("SourceLastWriteTimeUtc")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.Property<long>("SourceSizeBytes")
                         .HasColumnType("bigint");
@@ -923,8 +924,9 @@ namespace Jularr.Web.Data.Migrations
                     b.Property<Guid>("EpisodeId")
                         .HasColumnType("uuid");
 
-                    b.Property<DateTime>("LastWriteTimeUtc")
-                        .HasColumnType("timestamp with time zone");
+                    b.Property<string>("LastWriteTimeUtc")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.Property<Guid>("LibraryRootId")
                         .HasColumnType("uuid");

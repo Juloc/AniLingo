@@ -828,7 +828,7 @@ public sealed class UiTranslationCatalogStore(AppDbContext db)
                   FROM "UiTranslationMessages" source
                   WHERE source."Key" = @key
                     AND source."SourceHash" = "UiTranslations"."SourceHash"
-                    AND instr(source."DefaultText" || source."Description" || source."DoNotTranslateJson", 'AniLingo') > 0
+                    AND strpos(source."DefaultText" || source."Description" || source."DoNotTranslateJson", 'AniLingo') > 0
                     AND replace(source."DefaultText", 'AniLingo', 'Jularr') = @defaultText
                     AND replace(source."Description", 'AniLingo', 'Jularr') = @description
                     AND replace(source."DoNotTranslateJson", 'AniLingo', 'Jularr') = @doNotTranslate

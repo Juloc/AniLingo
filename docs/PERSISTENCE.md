@@ -1,27 +1,21 @@
 # Persistence, search and artwork cache (PostgreSQL cutover)
 
-Canonical design for Jularr's persistence, full-text/fuzzy search and local
-artwork cache under the PostgreSQL epoch (issue #570). This document is the
-durable technical decision record; it is written ahead of the code so the
-cutover can land as a reviewed sequence of green PRs rather than one unreviewable
-change.
+Canonical design and decision record for Jularr's persistence, full-text/fuzzy
+search and local artwork cache under the PostgreSQL epoch (issue #570).
 
 ## Status
 
-- **Landed with this document:** the design below and the deployment preparation
-  (Juloc/docker PR: PostgreSQL service, volume, healthcheck, backup note).
-- **Staged (follow-up PRs on `feat/570-postgres`):** the provider swap, the
-  squashed PostgreSQL baseline, raw-SQL store porting, the one-time importer, the
-  full-text/fuzzy search backend, the artwork derivative cache, and the test-suite
-  conversion to a real PostgreSQL. Each phase must build with 0 warnings, keep
-  `dotnet ef migrations has-pending-model-changes` clean, and pass the test suite
-  against a real PostgreSQL before it is considered done. The provider swap is
-  atomic (one `AppDbContext`, one connection) and therefore lands as a single
-  coherent PR rather than a partial runtime.
-
-The application currently persists to SQLite (EF Core migrations applied at
-startup via `DatabaseMigrationBridge`, tracked in `__EFMigrationsHistory`). This
-document does not change that runtime; it defines the target and the path.
+Implemented on `feat/570-postgres`: the provider swap to EF Core/Npgsql, the
+squashed PostgreSQL baseline (`Data/Migrations/*_Epoch4PostgresBaseline`), the
+raw-SQL store porting, the one-time SQLite→PostgreSQL importer
+(`Data/SqliteImport/SqliteToPostgresImporter`), the shared full-text/fuzzy search
+backend (`Features/Search/MediaSearchService`), the local artwork derivative cache
+(`Features/Artwork/BesideMediaArtworkCache`), and the conversion of the test suite
+to a real PostgreSQL. The build is warning-free, `dotnet ef migrations
+has-pending-model-changes` is clean, and the suite runs against an ephemeral
+`postgres:16`. Deployment preparation is Juloc/docker PR #374 (PostgreSQL service,
+volume, healthcheck, backup note) — an owner step, together with running the
+one-time import against an existing `/data` SQLite database.
 
 ## Decision
 

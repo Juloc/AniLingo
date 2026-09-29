@@ -442,24 +442,25 @@ public sealed class MangaTests
     }
 
     [TestMethod]
-    public void MangaMigrationStaysInsideJularrDatabase()
+    public async Task MangaMigrationStaysInsideJularrDatabase()
     {
-        var root = FindRepositoryRoot();
-        var migration = File.ReadAllText(Path.Combine(
-            root,
-            "src",
-            "Jularr.Web",
-            "Data",
-            "Migrations",
-            "20260924230000_AddMangaReading.cs"));
+        // Manga data lives in the canonical Jularr (PostgreSQL) database, not a separate store:
+        // the reading tables are part of the applied schema.
+        await using var db = await CreateDatabaseAsync(
+            Path.Combine(Path.GetTempPath(), $"jularr-manga-schema-{Guid.NewGuid():N}.db"));
 
-        StringAssert.Contains(migration, "MangaSeries");
-        StringAssert.Contains(migration, "MangaProgress");
-        StringAssert.Contains(migration, "MangaBookmarks");
-        Assert.IsFalse(
-            migration.Contains(
-                "Data Source=",
-                StringComparison.OrdinalIgnoreCase));
+        var tables = await db.Database
+            .SqlQueryRaw<string>(
+                """
+                SELECT tablename FROM pg_tables
+                WHERE schemaname = 'public'
+                  AND tablename IN ('MangaSeries', 'MangaProgress', 'MangaBookmarks', 'MangaChapters')
+                """)
+            .ToListAsync();
+
+        CollectionAssert.AreEquivalent(
+            new[] { "MangaSeries", "MangaProgress", "MangaBookmarks", "MangaChapters" },
+            tables.ToArray());
     }
 
     private static async Task<AppDbContext> CreateDatabaseAsync(string path)
