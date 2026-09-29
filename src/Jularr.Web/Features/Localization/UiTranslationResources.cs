@@ -2456,6 +2456,8 @@ public static class UiTranslationResources
         M("discover.results.loading", "Loading…", "Discover", "Label", "Discover UI text (results) shown as: \"Loading…\".", "short field label", 16, null, null),
         M("discover.search.placeholder", "Search titles, authors or series…", "Discover", "Placeholder", "Discover UI text (search) shown as: \"Search titles, authors or series…\".", "short field placeholder", 38, null, null),
         M("discover.search.srLabel", "Search titles, authors or series", "Discover", "Label", "Discover UI text (search) shown as: \"Search titles, authors or series\".", "short field label", 38, null, null),
+        M("discover.shelf.boardAria", "Discovery shelves", "Discover", "Accessibility", "Accessible name of the Discover landing region that holds the provider-driven browse-by-shelf rows.", "concise accessible name", 24, null, null),
+        M("discover.shelf.seeAll", "See all", "Discover", "Link", "Link on a Discover shelf heading that opens the full filtered browse grid for that row.", "concise navigation action", 16, null, null),
         M("discover.tabs.browseModeAria", "Browse mode", "Discover", "Accessibility", "Discover UI text (tabs) shown as: \"Browse mode\".", "concise accessible name", 16, null, null),
         M("discover.tabs.myAniList", "My AniList", "Discover", "Label", "Discover UI text (tabs) shown as: \"My AniList\".", "short field label", 16, null, ["AniList"]),
         M("discover.tabs.new", "New", "Discover", "Label", "Discover browse tab for recently published Books (#371); shown only when the Book category is selected, since only Books currently has a real recent-publication source.", "short field label", 16, null, null),
