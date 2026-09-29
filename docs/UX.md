@@ -364,18 +364,206 @@ Only show destinations actually implemented and permitted.
 
 ## 18. Admin dashboard
 
-Operational overview, not marketing cards.
+The Admin Dashboard is a live operational/health surface. It is not a media-library statistics page and must answer, within seconds: **Is Jularr healthy? What is running? How loaded is the system? What is broken? Do I need to act?**
 
-Shows actionable state:
-- failed jobs/imports
-- wanted items needing attention
-- active downloads/imports
-- provider/indexer health
-- storage availability/free space
-- active transcodes/playback when useful
-- pending migrations/maintenance warnings
+### Visual baseline
+- During the architecture/UX stabilization phase, use the approved **clean design**: neutral/light surface, restrained accent color, strong hierarchy, generous whitespace, compact cards/tables and no decorative Jularr/Japanese background artwork.
+- The original Jularr visual theme is applied later once functionality and information architecture are stable.
+- Avoid vanity metrics such as total Anime/Manga counts or weekly media growth on this page.
 
-Cards link directly to filtered problem views.
+### Live behavior
+The dashboard is a continuously updating surface, not a one-time page load.
+- Prefer server push (for example SignalR) for sessions, jobs, downloads, health changes and alerts.
+- CPU/RAM/GPU/load/network graphs update continuously at an appropriate short interval.
+- Streams/jobs/downloads appear, change and disappear without manual reload.
+- Slower values such as storage capacity may refresh less frequently.
+- Show a subtle `Live`/last-update state and degraded/reconnecting state if live updates are interrupted.
+- Updates must not reset scroll position, selected tabs, opened details, filters or user interaction.
+
+### 18.1 Services & connections
+A compact health strip at the top shows operational dependencies independently; do not mix categories.
+
+Examples:
+- Jularr Web/API
+- PostgreSQL
+- configured NAS/storage roots
+- SABnzbd
+- qBittorrent/other download clients
+- Indexers/search providers
+- metadata providers
+- subtitle providers where useful
+- AI/translation providers
+- notification integrations
+
+Each item exposes `Online / Warning / Error` plus useful compact context such as latency, free space, connected count or `10/12 online`.
+
+**Indexers are not downloads.** Download clients, indexers and metadata providers remain separate concepts throughout the dashboard.
+
+### 18.2 System resources
+Show current system pressure rather than historical vanity statistics:
+- CPU utilization
+- RAM utilization + used/total
+- GPU utilization and VRAM when available
+- system disk utilization
+- system load
+- optional temperature when available/reliable
+- small short-window sparklines
+
+Threshold breaches become visually obvious and feed Problems & Warnings.
+
+### 18.3 Network
+Show Jularr/server network activity clearly:
+- current download throughput
+- current upload throughput
+- short live history
+- units must be explicit (`MB/s` vs `Mbit/s`)
+
+Where reliable attribution exists, detailed views may distinguish playback, acquisition and other traffic. Do not fabricate per-process attribution when the platform cannot measure it.
+
+### 18.4 Active streams / transcoding
+This is a primary operational table, not just counters.
+
+Columns/fields per active playback session:
+- media title/unit (episode/movie/etc.)
+- user
+- device/client
+- playback mode: `Direct Play`, `Remux`, `Transcode`
+- video/input → output where relevant, e.g. `4K HEVC → 1080p H.264`
+- current system cost attributable to the stream where measurable: CPU/GPU and transcode speed such as `2.1x`
+- current network bitrate/throughput, e.g. `18.4 Mbit/s`
+- optional tiny live network/load sparkline
+- actions
+
+Do **not** use a vague `Status` column containing only elapsed minutes. Start time/runtime belongs in details.
+
+Each stream row has exactly two primary compact action affordances:
+1. **Stop** icon — destructive, requires confirmation and terminates the playback session.
+2. **More/Details** icon — opens a detail drawer/dialog without navigating away.
+
+#### Stream details drawer/dialog
+Show at least:
+- title/unit and artwork
+- user
+- device/client/app/version
+- connection type and client/IP information where authorized
+- current playback mode
+- source container/video/audio/subtitle tracks
+- input/output codec and resolution
+- quality/bitrate
+- playback position and duration
+- session start/runtime
+- buffer/health data where available
+- current network bitrate
+- CPU/GPU attributable load where measurable
+- transcode speed/FPS
+- hardware encoding state
+- relevant logs/diagnostic link
+
+#### Stream controls
+Authorized admins can:
+- stop stream (confirmation required)
+- set/adjust maximum bandwidth or quality where supported
+- adjust transcode priority where supported
+- enable/disable hardware encoding for the session only if the backend can safely support this
+
+Controls must reflect backend capability. Never show a control that cannot actually affect the running session.
+
+### 18.5 Downloads
+Downloads are a dedicated section for download-client work only.
+
+For active downloads show:
+- release/media name
+- download client
+- progress
+- current speed
+- ETA
+- state
+
+Show queued/waiting items separately but compactly. Failed downloads are surfaced as warnings and link to details/retry where safe.
+
+### 18.6 Active tasks
+Separate Jularr background work from downloads and playback.
+
+Unified task table supports types such as:
+- Import
+- Scan
+- Metadata
+- Subtitle
+- Translation
+- AI
+- Rename/organize
+- maintenance
+
+Every row makes the work understandable:
+`Type → concrete media/object → current step → progress → ETA/state`.
+
+Examples: `Import → Solo Leveling LN 12 → Dateien kopieren (12/24) → 50% → 8 min` or `Metadata → Dandadan S2E2 → AniList + TMDB → 40% → 6 min`.
+
+Tabs/filters may group task types but must not hide failures.
+
+### 18.7 Storage
+System storage and NAS/media storage are distinct.
+
+NAS/storage shows:
+- connection health
+- total/used/free
+- root folders such as `/anime`, `/series`, `/movies`, `/novels`, `/manga`, `/books`
+- capacity/percentage per root where meaningful
+- warnings for unreachable mounts or low free space
+
+System storage separately shows OS/app/cache/temp/log usage where measurable.
+
+### 18.8 Problems & warnings
+Operational problems are first-class and prioritized by severity/recency.
+
+Examples:
+- NAS/root unavailable
+- low storage
+- indexers offline
+- provider unavailable/rate limited
+- PostgreSQL latency abnormal
+- failed imports/jobs
+- download client disconnected
+- transcode unexpectedly using software instead of configured hardware acceleration
+- excessive CPU/GPU pressure
+
+When healthy, collapse this to a calm `No known critical problems`/`All systems operational` state instead of reserving a large empty card.
+
+Each problem links to the relevant filtered admin surface or diagnostic detail.
+
+### 18.9 Live activity log
+A compact recent-events stream at the bottom answers **what just happened**.
+
+Each event shows:
+- timestamp
+- category (`Stream`, `Download`, `Import`, `Metadata`, `AI`, etc.)
+- concrete object
+- concise event/result
+
+This is not a replacement for full logs; `View all` opens Activity/Jobs or diagnostics with appropriate filtering.
+
+### 18.10 Dashboard interaction/state requirements
+- Every table/card has loading, empty, ready, degraded and error behavior.
+- New rows may animate subtly but must not cause layout jumping.
+- Tables remain readable at normal desktop widths; do not compress them into badge clutter.
+- Warning/error colors indicate state, not decoration.
+- Healthy state stays visually quiet so problems stand out immediately.
+- Actions respect permissions server-side and client-side.
+- Destructive stream/job/download actions require confirmation.
+- Dashboard links preserve context and open the corresponding filtered admin page.
+
+### Approved Admin Dashboard mockup
+The final clean desktop mockup approved during planning shows:
+- live service health strip
+- CPU/RAM/GPU/system disk/network/load
+- detailed Active Streams/Transcoding table
+- separate Downloads and Active Tasks
+- NAS and system storage
+- Problems & Warnings
+- live activity log
+- stream detail drawer with diagnostics, bandwidth/quality/transcode controls and Stop action
+
+Repository image target: `docs/mockups/admin-dashboard-clean-live.png`.
 
 ## 19. Admin media detail
 
