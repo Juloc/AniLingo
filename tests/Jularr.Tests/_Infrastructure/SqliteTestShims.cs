@@ -17,13 +17,13 @@ namespace Microsoft.EntityFrameworkCore
     {
         public static DbContextOptionsBuilder<TContext> UseSqlite<TContext>(
             this DbContextOptionsBuilder<TContext> builder,
-            string connectionString)
+            string? connectionString)
             where TContext : DbContext =>
             builder.UseNpgsql(TestPostgres.ResolveConnectionString(connectionString));
 
         public static DbContextOptionsBuilder UseSqlite(
             this DbContextOptionsBuilder builder,
-            string connectionString) =>
+            string? connectionString) =>
             builder.UseNpgsql(TestPostgres.ResolveConnectionString(connectionString));
     }
 }

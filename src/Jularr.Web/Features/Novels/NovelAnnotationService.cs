@@ -390,8 +390,8 @@ public sealed class NovelAnnotationService(AppDbContext db)
                     db.NovelBookmarks.AsNoTracking().Where(x =>
                         x.ProfileId == profileId &&
                         x.WorkId == workId &&
-                        (EF.Functions.ILike(x.Label, pattern, "\\") ||
-                            EF.Functions.ILike(x.AnchorText, pattern, "\\"))))
+                        (EF.Functions.ILike(x.Label!, pattern, "\\") ||
+                            EF.Functions.ILike(x.AnchorText!, pattern, "\\"))))
                 .Skip(offset)
                 .Take(take)
                 .ToListAsync(cancellationToken)
@@ -400,7 +400,7 @@ public sealed class NovelAnnotationService(AppDbContext db)
                         x.ProfileId == profileId &&
                         x.WorkId == workId &&
                         (EF.Functions.ILike(x.Text, pattern, "\\") ||
-                            EF.Functions.ILike(x.Note, pattern, "\\"))))
+                            EF.Functions.ILike(x.Note!, pattern, "\\"))))
                 .Skip(offset)
                 .Take(take)
                 .ToListAsync(cancellationToken);

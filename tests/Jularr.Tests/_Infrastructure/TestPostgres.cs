@@ -36,8 +36,11 @@ public static class TestPostgres
     /// dedicated to the caller's logical database (its SQLite "Data Source" path); the same path
     /// always maps to the same database, distinct paths to distinct databases.
     /// </summary>
-    public static string ResolveConnectionString(string connectionString)
+    public static string ResolveConnectionString(string? connectionString)
     {
+        // A null/blank source (rare) behaves like a private in-memory database.
+        connectionString ??= "Data Source=:memory:";
+
         // A caller reusing an already-resolved PostgreSQL connection string (e.g. from
         // Database.GetConnectionString()) keeps using that same database.
         if (connectionString.Contains("Host=", StringComparison.OrdinalIgnoreCase))
