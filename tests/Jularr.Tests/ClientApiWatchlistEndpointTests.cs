@@ -1,6 +1,7 @@
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.ClientApi;
 using Jularr.Web.Features.MediaSegments;
+using Jularr.Web.Features.Pairing;
 using Jularr.Web.Features.Playback;
 using Jularr.Web.Features.PlaybackSessions;
 using Jularr.Web.Features.Progress;
@@ -45,6 +46,9 @@ public sealed class ClientApiWatchlistEndpointTests
         builder.Services.AddSingleton<WatchlistLibraryResolver>(_ => null!);
         builder.Services.AddSingleton<PlaybackSessionStore>(_ => null!);
         builder.Services.AddSingleton<PlaybackSessionCoordinator>(_ => null!);
+        // MapClientApiV1 also maps the device-pairing group (#489); its "approve" handler needs
+        // this service resolvable for endpoint metadata even though no handler runs here.
+        builder.Services.AddSingleton<DevicePairingStore>(_ => null!);
         var app = builder.Build();
         app.MapClientApiV1();
 
