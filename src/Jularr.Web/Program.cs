@@ -21,6 +21,7 @@ using Jularr.Web.Features.ChapterArtwork;
 using Jularr.Web.Features.ClientApi;
 using Jularr.Web.Features.Devices;
 using Jularr.Web.Features.Events;
+using Jularr.Web.Frontend;
 using Jularr.Web.Features.Health;
 using Jularr.Web.Features.Learning;
 using Jularr.Web.Features.Learning.LanguageAssistance;
@@ -65,6 +66,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddRazorPages();
 builder.Services.AddSignalR();
+builder.Services.AddSingleton<ViteAssetManifest>();
 builder.Services.Configure<MediaOptions>(builder.Configuration.GetSection(MediaOptions.SectionName));
 
 var dataProtectionDirectory = new DirectoryInfo("/data/keys");
