@@ -38,6 +38,7 @@ using Jularr.Web.Features.Pairing;
 using Jularr.Web.Features.Playback;
 using Jularr.Web.Features.PlaybackSessions;
 using Jularr.Web.Features.Progress;
+using Jularr.Web.Features.Providers;
 using Jularr.Web.Features.ReaderThemes;
 using Jularr.Web.Features.Shell;
 using Jularr.Web.Features.Sonarr;
@@ -455,6 +456,12 @@ builder.Services.AddHttpClient<IProwlarrClient, ProwlarrClient>(client =>
 {
     client.Timeout = TimeSpan.FromSeconds(60);
 });
+
+// Unified external-provider framework (#438): shared HTTP execution (timeouts/retries),
+// rate-limit gate + pacing, response cache (stale-while-unavailable), and per-provider
+// health/circuit tracking. The indexers below and the AniList limiters run on it; subtitle (#560)
+// and audiobook (#440) providers adopt it via ProviderExecutor/ProviderResponseCache when they build.
+builder.Services.AddProviderFramework();
 
 // Indexers: Prowlarr and direct Newznab connections share the one canonical list. Jularr is
 // usenet-only; torrent indexers (Torznab) are intentionally unsupported.
