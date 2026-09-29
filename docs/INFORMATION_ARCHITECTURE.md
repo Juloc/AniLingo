@@ -74,6 +74,11 @@ etc.). Discover/Search must therefore be filter-driven and able to receive a fil
 Calendar, Watchlist, franchises, genres and tags alike. `/Discover` exists today
 (`Features/Discovery`) but only as an AniList-backed browse/import surface; it does not yet accept
 row-sourced filters or show local availability/watchlist state on cards. That wiring is #520.
+The local half of search exists at `/Search` (#434): one ranked list over everything on the server
+with canonical grouping across media types, franchise results and the Media Facts filters, limited
+to the profile's visible media types (see [PERSISTENCE.md](PERSISTENCE.md#unified-global-search-434-local-half)).
+Merging online provider results into it, and pointing the global search field at it, waits for the
+provider-driven discovery contract (#595).
 
 ## 2. Media model
 

@@ -183,6 +183,44 @@ Design:
   case-insensitive behaviour on PostgreSQL.
 - **Pagination:** keyset/cursor where ordering permits; always bounded.
 
+### Unified global search (#434, local half)
+
+`MediaSearchService.SearchAsync(MediaSearchRequest)` is the one search over what is on this
+server, rendered at `/Search`. It never calls a provider, so it works when every provider is down.
+
+- **Sources.** Anime (`AnimeMetadata`, plus `Anime` rows the metadata match has not reached),
+  light novels and books (`NovelWorks`; `SourceProvider = book-epub` is a Book), manga
+  (`MangaSeries`), movies, series, audiobooks and franchises. The first three tables are served by
+  the GIN indexes above; movies, series, audiobooks, unmatched anime and franchises are small and
+  are matched with the same expressions on the fly. **Follow-up (index tuning):** give them the same
+  generated `SearchText`/`SearchVector` columns and GIN indexes.
+- **Ranking** is unchanged per source: exact title, prefix, full-text, fuzzy. A franchise scores
+  by its own title, or by the title of one of its works at 0.95 of that score; at equal score a
+  franchise is listed before the works it groups.
+- **Canonical grouping.** Candidate records are resolved to their media-core `Work`
+  (`WorkSourceLink`) and collapsed: a book and an audiobook the owner merged (or that were bridged
+  to one work) are one row that lists both types. A record with no bridge yet is a row of its own;
+  titles are never matched across types. Movies, series and audiobooks are bridged when they are
+  imported; anime, novels and manga are not bridged by any library service yet, so they stand alone
+  until `LegacyWorkBridge` is called for them (grouping then needs no search change).
+- **Visibility.** `MediaSearchRequest.VisibleMediaTypes` is the profile's browseable media types
+  (`IAppShellService`); a hidden type is not queried at all, so it cannot appear as a row, inside a
+  collapsed row, as a franchise member or as a filter value. Audiobooks are gated by the Book type.
+- **Media Facts filters** (type, availability/local, monitored, wanted, language, genre, year).
+  Type narrows the SQL; the others filter the best 500 candidates whose facts are loaded set-based
+  (`MediaSearchFactsLoader`, a fixed number of queries per type, never one per title) using the
+  same definitions as `MediaFactsService`: normalised audio/subtitle/text languages, the household
+  content language for manga and novels, provider status. Monitored comes from the anime
+  `MonitoringStore` (the other kinds' per-kind stores are not populated by any pipeline yet, so
+  nothing else is monitored), wanted from wanted anime units or an open acquisition request
+  naming the title's provider id. A filter on an unknown fact (no year, no genre, no language) never matches;
+  franchises carry no facts and drop out under a fact filter. Genres are only stored for novels and
+  books today, so a genre filter can only match those.
+- **Remote half (follow-up).** Provider results merge into the same list by resolving their
+  provider identity to a canonical work (`WorkQueryService.FindWorkIdByExternalIdentityAsync`) and
+  comparing it with `MediaSearchResult.WorkId`, consuming the #595 shelf/provider contract. Until
+  then the page links to Discover with the same query.
+
 ## Local artwork derivative cache
 
 Goal: thumbnails render for normal library browsing even when the NAS is

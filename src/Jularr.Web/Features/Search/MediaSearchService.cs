@@ -1,161 +1,177 @@
-using System.Data;
-using System.Data.Common;
 using Jularr.Web.Data;
+using Jularr.Web.Features.Acquisition.Access;
+using Jularr.Web.Features.Acquisition.Monitoring;
+using Jularr.Web.Features.MediaCore;
 using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Web.Features.Search;
 
-/// <summary>Which library a <see cref="MediaSearchHit"/> came from.</summary>
-public enum MediaSearchType
-{
-    Anime,
-    Novel,
-    Manga
-}
-
-/// <summary>One ranked search result. Books are stored as Novel-table rows and surface as Novel.</summary>
-public sealed record MediaSearchHit(MediaSearchType Type, Guid Id, string Title, double Score);
-
 /// <summary>
-/// The one shared PostgreSQL search backend for every media type (issue #570). It runs a single
-/// indexed query across the title metadata of Anime, Novels/Books and Manga using PostgreSQL
-/// full-text search (<c>tsvector</c>/<c>websearch_to_tsquery</c>) together with <c>pg_trgm</c>
-/// similarity, so results tolerate typos, casing, punctuation and prefixes and match across
-/// localized/native/romaji/English titles. Ranking puts exact and prefix title matches ahead of
-/// full-text matches, and full-text ahead of weak fuzzy matches. Every branch is served by a GIN
-/// index (see the SearchVector/SearchText generated columns), and results are always bounded.
+/// The one global search over what is on this server (#434): anime, light novels, manga, books,
+/// movies, series, audiobooks and franchises in one ranked, bounded, paged result list.
+/// <list type="bullet">
+/// <item>Matching and ranking are PostgreSQL full-text + <c>pg_trgm</c> (#570, see
+/// <see cref="MediaSearchQuery"/>): exact title, then prefix, then full-text, then fuzzy. They never
+/// depend on an external provider.</item>
+/// <item><b>Canonical grouping.</b> Source records that bridge to the same media-core <c>Work</c>
+/// (<c>WorkSourceLink</c>) are one result row, not one per source table; the row lists every type it
+/// covers. A record with no bridge yet stands alone.</item>
+/// <item><b>Franchises</b> are their own rows: a franchise matches by its title or by the title of one
+/// of its works (and lists how many works the profile may see).</item>
+/// <item><b>Media Facts filters</b> (type, local, monitored, wanted, language, genre, year) apply to
+/// the ranked candidates. Type and visibility narrow the query itself; the rest need per-title facts
+/// and so filter the best <see cref="CandidateCap"/> matches, whose facts are loaded with a fixed
+/// number of set-based queries.</item>
+/// <item><b>Visibility.</b> <see cref="MediaSearchRequest.VisibleMediaTypes"/> comes from the profile's
+/// media capabilities; a hidden type is never queried, so it cannot appear as a row, inside a
+/// canonical row or through a franchise.</item>
+/// </list>
+/// <para>
+/// Seam for the remote half (discovery providers): a provider result is merged into this list by
+/// resolving its provider identity to a canonical work (<c>WorkQueryService.FindWorkIdByExternalIdentityAsync</c>)
+/// and comparing it with <see cref="MediaSearchResult.WorkId"/>. This service stays local so search
+/// keeps working when a provider is down.
+/// </para>
 /// </summary>
-public sealed class MediaSearchService(AppDbContext db)
+public sealed class MediaSearchService(
+    AppDbContext db,
+    MonitoringStore monitoring,
+    AcquisitionAccessStore requests)
 {
+    public const int DefaultLimit = 40;
     public const int MaxLimit = 100;
 
-    // Below this trigram similarity a fuzzy-only candidate is dropped as noise.
-    private const double FuzzyThreshold = 0.2;
+    /// <summary>Longer queries are cut here: no title is longer, and it bounds the trigram work of one request.</summary>
+    public const int MaxQueryLength = 200;
 
-    public async Task<IReadOnlyList<MediaSearchHit>> SearchAsync(
-        string? query,
-        IReadOnlyCollection<MediaSearchType>? types = null,
-        int limit = 40,
-        int offset = 0,
+    /// <summary>The best matches whose facts are loaded and filtered; also the most a query can ever page through.</summary>
+    public const int CandidateCap = 500;
+
+    public async Task<MediaSearchPage> SearchAsync(
+        MediaSearchRequest request,
         CancellationToken cancellationToken = default)
     {
-        var normalized = (query ?? string.Empty).Trim();
-        if (normalized.Length == 0)
+        ArgumentNullException.ThrowIfNull(request);
+
+        var limit = Math.Clamp(request.Limit, 1, MaxLimit);
+        var offset = Math.Clamp(request.Offset, 0, CandidateCap);
+        var query = (request.Query ?? string.Empty).Trim();
+        if (query.Length > MaxQueryLength)
         {
-            return [];
+            query = query[..MaxQueryLength].TrimEnd();
         }
 
-        var wanted = types is { Count: > 0 }
-            ? new HashSet<MediaSearchType>(types)
-            : [MediaSearchType.Anime, MediaSearchType.Novel, MediaSearchType.Manga];
-
-        var boundedLimit = Math.Clamp(limit, 1, MaxLimit);
-        var boundedOffset = Math.Max(0, offset);
-
-        var branches = new List<string>();
-        if (wanted.Contains(MediaSearchType.Anime))
+        if (query.Length == 0)
         {
-            branches.Add(Branch("anime", "AnimeMetadata", "AnimeId", "PreferredTitle"));
+            return MediaSearchPage.Empty(limit, offset);
         }
 
-        if (wanted.Contains(MediaSearchType.Novel))
+        var filters = request.Filters ?? MediaSearchFilters.None;
+        var types = SearchableTypes(filters, request.VisibleMediaTypes);
+        if (types.Count == 0)
         {
-            branches.Add(Branch("novel", "NovelWorks", "Id", "Title"));
+            return MediaSearchPage.Empty(limit, offset);
         }
 
-        if (wanted.Contains(MediaSearchType.Manga))
-        {
-            branches.Add(Branch("manga", "MangaSeries", "Id", "Title"));
-        }
+        var source = new MediaSearchQuery(db);
+        var variants = await source.FindWorksAsync(query, types, CandidateCap, cancellationToken);
 
-        var union = string.Join("\n            UNION ALL\n", branches);
-        var sql =
-            $"""
-            WITH q AS (
-                SELECT lower(@raw) AS norm,
-                       lower(@raw) || '%' AS prefix,
-                       websearch_to_tsquery('simple', @raw) AS tsq
-            )
-            SELECT "type", "id", "title", "score"
-            FROM (
-                {union}
-            ) hits
-            WHERE "score" > 0
-            ORDER BY "score" DESC, lower("title"), "id"
-            LIMIT @limit OFFSET @offset;
-            """;
+        // A franchise has no facts of its own, so it never passes a fact filter.
+        IReadOnlyList<MediaSearchFranchiseHit> franchiseHits = filters.HasFactFilters
+            ? []
+            : await source.FindFranchisesAsync(
+                query,
+                [.. types.Select(MediaSearchTypes.ToWorkMediaType).Distinct()],
+                CandidateCap,
+                cancellationToken);
 
-        var connection = db.Database.GetDbConnection();
-        var openedHere = connection.State != ConnectionState.Open;
-        if (openedHere)
-        {
-            await connection.OpenAsync(cancellationToken);
-        }
+        var (workOf, workYear) = await ResolveWorksAsync(variants, cancellationToken);
+        var groups = MediaSearchGrouping.Group(variants, workOf);
+        var variantFacts = await new MediaSearchFactsLoader(db, monitoring, requests)
+            .LoadAsync(variants, cancellationToken);
 
-        try
-        {
-            await using var command = connection.CreateCommand();
-            command.CommandText = sql;
-            Add(command, "@raw", normalized);
-            Add(command, "@threshold", FuzzyThreshold);
-            Add(command, "@limit", boundedLimit);
-            Add(command, "@offset", boundedOffset);
+        var works = groups
+            .Select(group => new MediaSearchResult(
+                MediaSearchResultKind.Work,
+                group.Best.Id,
+                group.WorkId,
+                group.Best.Type,
+                group.Best.Title,
+                group.Best.Score,
+                0,
+                group.Variants,
+                MediaSearchGrouping.Aggregate(
+                    group.Variants.Select(variant =>
+                        variantFacts.GetValueOrDefault((variant.Type, variant.Id), MediaSearchFacts.Unknown)),
+                    group.WorkId is { } workId ? workYear.GetValueOrDefault(workId) : null)))
+            .ToArray();
 
-            var hits = new List<MediaSearchHit>();
-            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-            while (await reader.ReadAsync(cancellationToken))
-            {
-                hits.Add(new MediaSearchHit(
-                    ParseType(reader.GetString(0)),
-                    Guid.Parse(reader.GetString(1)),
-                    reader.IsDBNull(2) ? string.Empty : reader.GetString(2),
-                    Convert.ToDouble(reader.GetValue(3), System.Globalization.CultureInfo.InvariantCulture)));
-            }
+        // Filter values are those of the matches before the fact filters narrowed them, so the
+        // controls keep offering what the query can reach.
+        var facets = MediaSearchGrouping.BuildFacets([.. works.Select(work => work.Facts)]);
 
-            return hits;
-        }
-        finally
-        {
-            if (openedHere)
-            {
-                await connection.CloseAsync();
-            }
-        }
+        var kept = works
+            .Where(work => MediaSearchGrouping.Matches(work.Facts, filters))
+            .Concat(franchiseHits.Select(hit => new MediaSearchResult(
+                MediaSearchResultKind.Franchise,
+                hit.Id,
+                null,
+                null,
+                hit.Title,
+                hit.Score,
+                hit.MemberCount,
+                [],
+                MediaSearchFacts.Unknown)));
+
+        var ordered = MediaSearchGrouping.Order(kept).ToArray();
+        return new MediaSearchPage(
+            [.. ordered.Skip(offset).Take(limit)],
+            ordered.Length,
+            offset,
+            limit,
+            facets);
     }
 
-    // One SELECT over a searchable table. The score ranks exact-title (1000), prefix (500),
-    // full-text (100 + ts_rank) and trigram similarity (up to ~90) so strong matches always win.
-    private static string Branch(string type, string table, string idColumn, string titleColumn) =>
-        $"""
-        SELECT '{type}' AS "type",
-                   t."{idColumn}"::text AS "id",
-                   t."{titleColumn}" AS "title",
-                   GREATEST(
-                       CASE WHEN lower(coalesce(t."{titleColumn}", '')) = q.norm THEN 1000 ELSE 0 END,
-                       CASE WHEN t."SearchText" LIKE q.prefix THEN 500 ELSE 0 END,
-                       CASE WHEN t."SearchVector" @@ q.tsq THEN 100 + ts_rank(t."SearchVector", q.tsq) * 10 ELSE 0 END,
-                       CASE WHEN similarity(t."SearchText", q.norm) >= @threshold THEN similarity(t."SearchText", q.norm) * 90 ELSE 0 END
-                   ) AS "score"
-            FROM "{table}" t, q
-            WHERE t."SearchVector" @@ q.tsq
-               OR t."SearchText" LIKE q.prefix
-               OR t."SearchText" % q.norm
-               OR t."SearchText" LIKE '%' || q.norm || '%'
-        """;
+    /// <summary>The source types to query: the filter's types (all when none) that the profile may browse.</summary>
+    private static IReadOnlyCollection<MediaSearchType> SearchableTypes(
+        MediaSearchFilters filters,
+        IReadOnlyCollection<WorkMediaType>? visible) =>
+    [
+        .. MediaSearchTypes.All.Where(type =>
+            (filters.Types is not { Count: > 0 } || filters.Types.Contains(type))
+            && (visible is null || visible.Contains(MediaSearchTypes.ToWorkMediaType(type))))
+    ];
 
-    private static MediaSearchType ParseType(string value) =>
-        value switch
-        {
-            "anime" => MediaSearchType.Anime,
-            "manga" => MediaSearchType.Manga,
-            _ => MediaSearchType.Novel
-        };
-
-    private static void Add(DbCommand command, string name, object value)
+    // The canonical work each variant is bridged to (media core WorkSourceLink) and the year the work
+    // itself carries, in one query for every candidate.
+    private async Task<(Dictionary<(MediaSearchType Type, Guid Id), Guid> WorkOf, Dictionary<Guid, int?> Years)>
+        ResolveWorksAsync(IReadOnlyCollection<MediaSearchVariant> variants, CancellationToken cancellationToken)
     {
-        var parameter = command.CreateParameter();
-        parameter.ParameterName = name;
-        parameter.Value = value;
-        command.Parameters.Add(parameter);
+        var workOf = new Dictionary<(MediaSearchType, Guid), Guid>();
+        var years = new Dictionary<Guid, int?>();
+        if (variants.Count == 0)
+        {
+            return (workOf, years);
+        }
+
+        var ids = variants.Select(variant => variant.Id).Distinct().ToArray();
+        var links = await (
+            from link in db.Set<WorkSourceLink>().AsNoTracking()
+            where ids.Contains(link.SourceId)
+            join work in db.Set<Work>().AsNoTracking() on link.WorkId equals work.Id
+            select new { link.SourceKind, link.SourceId, link.WorkId, work.Year })
+            .ToListAsync(cancellationToken);
+
+        var bySource = links.ToDictionary(link => (link.SourceKind, link.SourceId));
+        foreach (var variant in variants)
+        {
+            if (bySource.TryGetValue((MediaSearchTypes.ToSourceKind(variant.Type), variant.Id), out var link))
+            {
+                workOf[(variant.Type, variant.Id)] = link.WorkId;
+                years[link.WorkId] = link.Year;
+            }
+        }
+
+        return (workOf, years);
     }
 }

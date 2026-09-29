@@ -38,9 +38,14 @@ public sealed class PerformanceQueryTests
         db.NovelWorks.AddRange(works);
         await db.SaveChangesAsync();
 
-        var results = await new MediaSearchService(db).SearchAsync("Number 02500", limit: 20);
-        Assert.IsTrue(results.Count is > 0 and <= 20, "Search must return bounded results.");
-        Assert.IsTrue(results.Any(h => h.Title.Contains("02500")), "Search must find the target on a large set.");
+        var search = new MediaSearchService(
+            db,
+            new Jularr.Web.Features.Acquisition.Monitoring.MonitoringStore(Path.GetTempPath()),
+            new Jularr.Web.Features.Acquisition.Access.AcquisitionAccessStore(db));
+        var results = await search.SearchAsync(new MediaSearchRequest("Number 02500", Limit: 20));
+        Assert.IsTrue(results.Items.Count is > 0 and <= 20, "Search must return bounded results.");
+        Assert.IsTrue(results.Items.Any(h => h.Title.Contains("02500")), "Search must find the target on a large set.");
+        Assert.IsTrue(results.Total <= MediaSearchService.CandidateCap, "The candidate window bounds the work a query does.");
 
         // The full-text branch must be served by the GIN index (it is chosen over a sequential
         // scan when scans are disabled, proving the index exists and covers the query).

@@ -1,75 +1,91 @@
-using Jularr.Web.Data;
-using Jularr.Web.Features.Novels;
 using Jularr.Web.Features.Search;
-using Microsoft.EntityFrameworkCore;
 
 namespace Jularr.Tests;
 
+/// <summary>The PostgreSQL full-text + fuzzy matching of the shared search backend (#570).</summary>
 [TestClass]
 public sealed class MediaSearchServiceTests
 {
     [TestMethod]
     public async Task FindsWorksByTitleTypoPrefixAndNativeTitle()
     {
-        await using var db = NewContext();
-        await DatabaseMigrationBridge.UpgradeAsync(db);
-
-        await SeedNovelAsync(db, "Mushoku Tensei", nativeTitle: "無職転生", key: "n1");
-        await SeedNovelAsync(db, "Sword Art Online", nativeTitle: "ソードアート・オンライン", key: "n2");
-        await SeedNovelAsync(db, "Overlord", nativeTitle: "オーバーロード", key: "n3");
-
-        var search = new MediaSearchService(db);
+        await using var fixture = await GlobalSearchFixture.CreateAsync();
+        await fixture.AddNovelAsync("Mushoku Tensei", nativeTitle: "無職転生");
+        await fixture.AddNovelAsync("Sword Art Online", nativeTitle: "ソードアート・オンライン");
+        await fixture.AddNovelAsync("Overlord", nativeTitle: "オーバーロード");
 
         // Exact / strong title match.
-        var exact = await search.SearchAsync("Mushoku Tensei");
-        Assert.IsTrue(exact.Count >= 1);
-        Assert.AreEqual("Mushoku Tensei", exact[0].Title, "Exact title must rank first.");
+        var exact = await fixture.SearchAsync("Mushoku Tensei");
+        Assert.IsTrue(exact.Items.Count >= 1);
+        Assert.AreEqual("Mushoku Tensei", exact.Items[0].Title, "Exact title must rank first.");
 
         // Prefix match.
-        var prefix = await search.SearchAsync("Sword");
-        Assert.IsTrue(prefix.Any(h => h.Title == "Sword Art Online"), "Prefix search must find the work.");
+        var prefix = await fixture.SearchAsync("Sword");
+        Assert.IsTrue(prefix.Items.Any(h => h.Title == "Sword Art Online"), "Prefix search must find the work.");
 
         // Typo tolerance (fuzzy).
-        var typo = await search.SearchAsync("Mushuku Tensai");
-        Assert.IsTrue(typo.Any(h => h.Title == "Mushoku Tensei"), "Fuzzy search must tolerate small typos.");
+        var typo = await fixture.SearchAsync("Mushuku Tensai");
+        Assert.IsTrue(typo.Items.Any(h => h.Title == "Mushoku Tensei"), "Fuzzy search must tolerate small typos.");
 
         // Native/localized title is searchable.
-        var native = await search.SearchAsync("無職転生");
-        Assert.IsTrue(native.Any(h => h.Title == "Mushoku Tensei"), "Native titles must be searchable.");
+        var native = await fixture.SearchAsync("無職転生");
+        Assert.IsTrue(native.Items.Any(h => h.Title == "Mushoku Tensei"), "Native titles must be searchable.");
 
         // Exact ranks above a weak fuzzy match for the same query.
-        var ranked = await search.SearchAsync("Overlord");
-        Assert.AreEqual("Overlord", ranked[0].Title);
+        var ranked = await fixture.SearchAsync("Overlord");
+        Assert.AreEqual("Overlord", ranked.Items[0].Title);
     }
 
     [TestMethod]
     public async Task ReturnsEmptyForBlankQueryAndBoundsResults()
     {
-        await using var db = NewContext();
-        await DatabaseMigrationBridge.UpgradeAsync(db);
+        await using var fixture = await GlobalSearchFixture.CreateAsync();
+        await fixture.AddNovelAsync("Anything");
 
-        Assert.AreEqual(0, (await new MediaSearchService(db).SearchAsync("   ")).Count);
-        Assert.AreEqual(0, (await new MediaSearchService(db).SearchAsync(null)).Count);
-    }
+        Assert.AreEqual(0, (await fixture.SearchAsync("   ")).Items.Count);
+        Assert.AreEqual(0, (await fixture.SearchAsync(null!)).Items.Count);
 
-    private static async Task SeedNovelAsync(AppDbContext db, string title, string nativeTitle, string key)
-    {
-        db.NovelWorks.Add(new NovelWork
+        for (var index = 0; index < 12; index++)
         {
-            Id = Guid.NewGuid(),
-            SourceProvider = "test",
-            SourceKey = key,
-            SourceUrl = $"https://example/{key}",
-            Title = title,
-            MetadataNativeTitle = nativeTitle,
-            ImportedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
-        });
-        await db.SaveChangesAsync();
+            await fixture.AddNovelAsync($"Bounded Saga {index:D2}");
+        }
+
+        var page = await fixture.SearchAsync("Bounded", limit: 5);
+        Assert.AreEqual(5, page.Items.Count, "A page never exceeds the requested limit.");
+        Assert.AreEqual(12, page.Total);
+        Assert.IsTrue(page.HasMore);
+
+        var oversized = await fixture.SearchAsync("Bounded", limit: 100_000);
+        Assert.AreEqual(MediaSearchService.MaxLimit, oversized.Limit, "The limit is clamped to the service maximum.");
     }
 
-    private static AppDbContext NewContext() =>
-        new(new DbContextOptionsBuilder<AppDbContext>()
-            .UseSqlite($"Data Source={Path.Combine(Path.GetTempPath(), $"jularr-search-{Guid.NewGuid():N}.db")}")
-            .Options);
+    [TestMethod]
+    public async Task OverlongQueriesAreCutInsteadOfRejectedOrScanned()
+    {
+        await using var fixture = await GlobalSearchFixture.CreateAsync();
+        await fixture.AddNovelAsync("Cut Query Saga");
+
+        // Punctuation is ignored by full-text search, so this only finds the title if the request is served at all.
+        var query = "Cut Query Saga " + new string('!', MediaSearchService.MaxQueryLength * 50);
+        var page = await fixture.SearchAsync(query);
+
+        Assert.AreEqual("Cut Query Saga", page.Items.Single().Title);
+        Assert.AreEqual(0, (await fixture.SearchAsync(new string('y', 10_000))).Items.Count);
+    }
+
+    [TestMethod]
+    public async Task TypedWildcardCharactersAreLiteralText()
+    {
+        await using var fixture = await GlobalSearchFixture.CreateAsync();
+        await fixture.AddNovelAsync("100% Pure");
+        await fixture.AddNovelAsync("Pure Imagination");
+        await fixture.AddNovelAsync("Wild_Card Story");
+        await fixture.AddNovelAsync("Wildcard Story");
+
+        var percent = await fixture.SearchAsync("100%");
+        CollectionAssert.AreEqual(new[] { "Novel:100% Pure" }, GlobalSearchFixture.Rows(percent));
+
+        var underscore = await fixture.SearchAsync("wild_card");
+        Assert.AreEqual("Wild_Card Story", underscore.Items[0].Title, "An underscore is a character, not a one-character wildcard.");
+    }
 }
