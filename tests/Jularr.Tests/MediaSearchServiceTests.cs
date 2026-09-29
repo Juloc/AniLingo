@@ -60,6 +60,20 @@ public sealed class MediaSearchServiceTests
     }
 
     [TestMethod]
+    public async Task OverlongQueriesAreCutInsteadOfRejectedOrScanned()
+    {
+        await using var fixture = await GlobalSearchFixture.CreateAsync();
+        await fixture.AddNovelAsync("Cut Query Saga");
+
+        // Punctuation is ignored by full-text search, so this only finds the title if the request is served at all.
+        var query = "Cut Query Saga " + new string('!', MediaSearchService.MaxQueryLength * 50);
+        var page = await fixture.SearchAsync(query);
+
+        Assert.AreEqual("Cut Query Saga", page.Items.Single().Title);
+        Assert.AreEqual(0, (await fixture.SearchAsync(new string('y', 10_000))).Items.Count);
+    }
+
+    [TestMethod]
     public async Task TypedWildcardCharactersAreLiteralText()
     {
         await using var fixture = await GlobalSearchFixture.CreateAsync();

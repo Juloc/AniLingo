@@ -41,6 +41,9 @@ public sealed class MediaSearchService(
     public const int DefaultLimit = 40;
     public const int MaxLimit = 100;
 
+    /// <summary>Longer queries are cut here: no title is longer, and it bounds the trigram work of one request.</summary>
+    public const int MaxQueryLength = 200;
+
     /// <summary>The best matches whose facts are loaded and filtered; also the most a query can ever page through.</summary>
     public const int CandidateCap = 500;
 
@@ -53,6 +56,11 @@ public sealed class MediaSearchService(
         var limit = Math.Clamp(request.Limit, 1, MaxLimit);
         var offset = Math.Clamp(request.Offset, 0, CandidateCap);
         var query = (request.Query ?? string.Empty).Trim();
+        if (query.Length > MaxQueryLength)
+        {
+            query = query[..MaxQueryLength].TrimEnd();
+        }
+
         if (query.Length == 0)
         {
             return MediaSearchPage.Empty(limit, offset);
