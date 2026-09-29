@@ -2763,7 +2763,7 @@ public static class UiTranslationResources
         M("requests.open", "Open", "Requests", "Button", "Opens the added title.", "very short action", 10),
         M("admin.nav.requests", "Requests", "Requests", "Navigation", "Admin navigation entry for requests and access rules.", "short navigation label", 16),
         M("admin.requests.title", "Requests & access", "Requests", "Heading", "Admin page for access rules and user requests.", "short heading", 28),
-        M("admin.requests.subtitle", "Decide who may add what, and handle requests from users.", "Requests", "Body", "Subtitle of the requests admin page.", "clear concise copy", 80),
+        M("admin.requests.subtitle", "Handle requests from users and decide which ones are approved on their own.", "Requests", "Body", "Subtitle of the requests admin page.", "clear concise copy", 90),
         M("admin.requests.policiesHeading", "Manual adding", "Requests", "Heading", "Heading of the per-media rules for the manual add tools.", "short heading", 28),
         M("admin.requests.policiesHelp", "The owner always adds automatically and manually. Choose per media type whether other users may also use the manual add tools. Who may request or add at once is set under Media capabilities.", "Requests", "Body", "Explains the manual add rules table and points to the capability matrix for requesting and instant adding.", "clear helpful copy", 240),
         M("admin.requests.column.media", "Media", "Requests", "Label", "Column header: media type.", "short label", 12),
