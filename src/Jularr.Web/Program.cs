@@ -114,6 +114,9 @@ builder.Services.AddScoped<IAppShellService, AppShellService>();
 builder.Services.AddScoped<DiscoveryCoordinator>();
 builder.Services.AddScoped<IDiscoveryFeed>(sp => sp.GetRequiredService<DiscoveryCoordinator>());
 builder.Services.AddScoped<DiscoveryShelfService>();
+// Explainable cross-media recommendations & continuation shelves (#428): the media-neutral engine's
+// composition service, rendered on the shared shelf surface by /Recommendations and Discover.
+builder.Services.AddScoped<Jularr.Web.Features.Recommendations.MediaRecommendationService>();
 builder.Services.AddScoped<AdminUserProgressService>();
 builder.Services.AddScoped<AdminOverviewService>();
 builder.Services.AddScoped<AdminSessionsService>();
