@@ -207,6 +207,15 @@ GET  /api/client/v1/offline-library/assets/{volumeId}/{asset}    content-address
 POST /api/client/v1/offline-library/sync                         batched progress + bookmark reconciliation
 ```
 
+Device-code pairing and LAN discovery (additive v1, advertised by `devicePairing`; §9.3, #489):
+
+```text
+POST /api/client/v1/pairing/start     anonymous; returns { deviceCode, userCode, expiresInSeconds, intervalSeconds }
+POST /api/client/v1/pairing/approve   authenticated; body { userCode }
+POST /api/client/v1/pairing/poll      anonymous; body { deviceCode }; signs the connection in once approved
+GET  /.well-known/jularr              anonymous; { service, name, version, port, https }
+```
+
 The first v1 contract deliberately reports not-yet-implemented facilities through capability flags. HLS fallback, playback sessions, pairing and companion control remain `false` until their later delivery slices are merged. Clients must not infer support from route guesses.
 
 Later session/companion endpoints extend the same v1 boundary:
@@ -616,6 +625,38 @@ Use the same semantic subtitle style as web/phone with TV-specific values from t
 - sufficient opaque/translucent background for readability
 - no subtitle behind the focused control bar
 - selected cue/word state uses the same selected semantic style
+
+### 9.3 Setup: discovery and device-code pairing (#489)
+
+A fresh TV install never requires typing a server URL or a password with the remote when it can
+be avoided:
+
+1. **Setup** (`TvRoute.Setup`) broadcasts a LAN discovery probe and shows any Jularr server that
+   answers, with a one-button **Connect**. Manual address entry stays on the same screen as the
+   fallback.
+2. Once connected, **Login** (`TvRoute.Login`) defaults to device-code pairing when the server
+   advertises the `devicePairing` capability: it requests a short user code
+   (`POST /api/client/v1/pairing/start`), displays it, and polls
+   (`POST /api/client/v1/pairing/poll`) until a signed-in phone/browser session approves it at
+   `/Pair` (Razor page, any signed-in account) or it expires, at which point the TV silently
+   starts a new one. "Sign in with password instead" stays one click away for accounts/servers
+   that need it.
+3. Approval signs the TV's own connection in with the *same* cookie mechanism
+   `/session/login` uses (`Jularr.Web.Features.Pairing.DevicePairingEndpoints`) — pairing never
+   copies the browser's cookie and never mints a separate token type. There is no persistent
+   device-pairing table: state lives in an in-memory, short-TTL, single-use store
+   (`DevicePairingStore`) so it fits alongside the ongoing PostgreSQL migration (#570) without a
+   schema change. A server restart mid-pairing just expires the code; the TV starts over.
+
+**Discovery protocol.** The TV broadcasts the ASCII message `JULARR_DISCOVER_V1` over UDP to port
+`37812`; every Jularr server answers unicast with a small JSON payload (service name, version,
+port, scheme). The same payload is served over plain HTTP at `/.well-known/jularr` so a manually
+typed address can be verified before pairing starts. This is a small dependency-free protocol,
+**not** real mDNS/DNS-SD — the `_jularr._tcp.local` service this section originally sketched needs
+either a new server-side dependency or a reverse-proxy-level responder (for example Avahi in the
+container image), which is deployment-support work and stays out of scope here (any server that
+never receives the broadcast — a different subnet, VLAN, or blocked broadcast traffic — falls
+back to manual entry; that follow-up is tracked separately from #489).
 
 ## 10. TV ↔ phone playback session
 

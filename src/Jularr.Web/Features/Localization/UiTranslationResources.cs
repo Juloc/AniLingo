@@ -3740,6 +3740,25 @@ public static class UiTranslationResources
         M("notifications.settings.save", "Save preferences", "Notifications", "Button", "Saves the per-category notification preferences.", "concise action", 30),
         M("notifications.settings.saved", "Notification preferences saved.", "Notifications", "Status", "Confirmation shown after saving notification preferences.", "concise confirmation", 40),
         M("notifications.settings.backToInbox", "← Notifications", "Notifications", "Link", "Back link from notification preferences to the inbox.", "short navigation label", 24),
+
+        // Android TV device-code pairing (#489, docs/ANDROID_CLIENTS.md): a signed-in phone/web
+        // session approves the short code a fresh TV install displays instead of the TV needing a
+        // typed server URL or password.
+        M("pairing.approve.eyebrow", "Connect a device", "Pairing", "Eyebrow", "Short label above the heading of the page that approves an Android TV device-code pairing.", "compact section label", 32),
+        M("pairing.approve.title", "Connect your TV", "Pairing", "Heading", "Heading and browser title of the page that approves an Android TV device-code pairing.", "clear heading", 32),
+        M("pairing.approve.description", "Enter the code shown on your TV to sign it in with this account.", "Pairing", "Body", "Explains what entering the code on this page does.", "clear explanatory copy", 90),
+        M("pairing.approve.codeLabel", "Code from your TV", "Pairing", "Label", "Form label for the pairing user code field.", "short form label", 32),
+        M("pairing.approve.submit", "Connect this TV", "Pairing", "Button", "Submits the pairing code to approve the TV.", "concise action", 24),
+        M("pairing.approve.success", "This TV is now connected. You can return to it.", "Pairing", "Status", "Confirmation shown after successfully approving a TV pairing code.", "clear confirmation", 60),
+        M("pairing.approve.invalidOrExpired", "This code is invalid or has expired. Ask the TV for a new one.", "Pairing", "Error", "Shown when the entered pairing code is unknown or expired.", "clear, polite error", 70),
+        M("pairing.approve.rateLimited", "Too many attempts. Wait a minute and try again.", "Pairing", "Error", "Shown when pairing-approval attempts are rate-limited.", "clear, polite error", 60),
+
+        // TV-side discovery/setup copy shared with the Android client strings (docs/ANDROID_CLIENTS.md).
+        M("pairing.tv.searching", "Searching your network for Jularr…", "Pairing", "Status", "Shown on the TV while it searches the local network for a Jularr server.", "concise status", 50, null, ["Jularr"]),
+        M("pairing.tv.codeInstructions", "Go to {url} on your phone or computer and enter this code.", "Pairing", "Body", "Instructions shown next to the TV pairing code, telling the user where to approve it. {url} is the server's pairing page address.", "clear concise instruction", 90,
+            new Dictionary<string, string> { ["url"] = "The server's /pair page address." }),
+        M("pairing.tv.waiting", "Waiting for approval…", "Pairing", "Status", "Shown on the TV while it polls for the pairing code to be approved.", "concise status", 30),
+        M("pairing.tv.expired", "This code expired. Generating a new one…", "Pairing", "Status", "Shown on the TV when its pairing code expired before being approved, right before it requests a new one.", "concise status", 50),
     ];
 
     private static readonly IReadOnlyDictionary<string, UiMessageDefinition> ByKeyMap =

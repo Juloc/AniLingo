@@ -31,6 +31,8 @@ import androidx.tv.material3.Button
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
+import de.juloc.jularr.core.api.TvServerDiscoveryClient
+import de.juloc.jularr.core.model.DiscoveredJularrServer
 import de.juloc.jularr.core.player.JularrMedia3Player
 import de.juloc.jularr.core.player.PlaybackTransport
 import de.juloc.jularr.core.player.toPlaybackMetadata
@@ -60,6 +62,7 @@ fun TvAppHost(
     cookies: TvSessionCookieStore,
     player: JularrMedia3Player,
     onFinish: () -> Unit,
+    discovery: TvServerDiscoveryClient = TvServerDiscoveryClient(),
 ) {
     val scope = rememberCoroutineScope()
     var snapshot by remember { mutableStateOf(controller.snapshot) }
@@ -82,6 +85,8 @@ fun TvAppHost(
     var lastCompanionPushAt by remember { mutableLongStateOf(0L) }
     var lastCompanionCueId by remember { mutableStateOf<Long?>(null) }
     var lastCompanionPlaying by remember { mutableStateOf<Boolean?>(null) }
+    var discovering by remember { mutableStateOf(false) }
+    var discoveredServers by remember { mutableStateOf<List<DiscoveredJularrServer>>(emptyList()) }
 
     // Self-update (#490): the TV app detects releases independently of the phone app,
     // using the same shared core-update module.
@@ -318,6 +323,19 @@ fun TvAppHost(
         }
     }
 
+    // Best-effort LAN discovery (#489): only relevant while Setup has no server yet. Cancelled
+    // automatically once the route changes (Setup is a one-shot screen, never revisited with
+    // stale results) or the app moves on to Login/Home.
+    LaunchedEffect(snapshot.navigation.route) {
+        if (snapshot.navigation.route != TvRoute.Setup) {
+            return@LaunchedEffect
+        }
+
+        discovering = true
+        discoveredServers = runCatching { discovery.discover() }.getOrDefault(emptyList())
+        discovering = false
+    }
+
     LaunchedEffect(episodeId) {
         if (episodeId == null) {
             resetPlaybackRuntime()
@@ -485,6 +503,8 @@ fun TvAppHost(
             initialOrigin = settings.origin.orEmpty(),
             error = snapshot.error,
             busy = snapshot.busy,
+            discovering = discovering,
+            discovered = discoveredServers,
             onConnect = { origin ->
                 launchSnapshot {
                     cookies.clear()
@@ -505,6 +525,12 @@ fun TvAppHost(
             onChangeServer = {
                 cookies.clear()
                 snapshot = controller.changeServer()
+            },
+            pairingEnabled = snapshot.capabilities?.features?.devicePairing == true,
+            onStartPairing = { controller.startDevicePairing() },
+            onPollPairing = { deviceCode -> controller.pollDevicePairing(deviceCode) },
+            onPaired = { account ->
+                launchSnapshot { controller.completeDevicePairing(account) }
             },
         )
 

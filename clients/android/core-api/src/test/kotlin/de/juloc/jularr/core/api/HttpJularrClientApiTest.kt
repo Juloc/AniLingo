@@ -102,6 +102,16 @@ class HttpJularrClientApiTest {
         assertTrue(parsed.watchlist)
     }
 
+    @Test
+    fun devicePairingDefaultsToFalseOnAnOlderServerAndParsesWhenAdvertised() {
+        val olderServer = ClientFeatureFlagParser.parse { name -> name == "library" }
+        assertFalse(olderServer.devicePairing)
+
+        val enabled = setOf("devicePairing")
+        val parsed = ClientFeatureFlagParser.parse { name -> name in enabled }
+        assertTrue(parsed.devicePairing)
+    }
+
     private class RequestProbeComplete : RuntimeException()
 }
 

@@ -363,6 +363,11 @@ class TvAppControllerTest {
         override suspend fun updateTtsPreferences(update: TtsPreferencesUpdate): TtsPreferences =
             error("unused")
         override suspend fun getSpeechModels(): SpeechModelsResponse = error("unused")
+        override suspend fun startDevicePairing(): de.juloc.jularr.core.model.DevicePairingSession =
+            error("unused")
+        override suspend fun pollDevicePairing(
+            deviceCode: String,
+        ): de.juloc.jularr.core.model.DevicePairingPollResult = error("unused")
     }
 
     private fun <T> runSuspend(block: suspend () -> T): T {
