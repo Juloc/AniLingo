@@ -603,7 +603,7 @@ public static partial class AnimeNamingFormatter
             "quality title" => release is null ? "" : GetQualityTitle(release),
             "quality proper" => release is null ? "" : GetQualityProper(release, series.SeriesType),
             "quality real" => "",
-            "quality key" => release is null ? "" : Quality.AnimeReleaseQuality.GetKey(release),
+            "quality key" => release is null ? "" : Quality.ReleaseQuality.GetKey(release),
             "release group" => release?.ReleaseGroup ?? "",
             "mediainfo videocodec" => VideoCodec(release),
             "mediainfo videobitdepth" => release?.BitDepth?.ToString(CultureInfo.InvariantCulture) ?? "",

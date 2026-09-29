@@ -1,4 +1,5 @@
 using Jularr.Web.Data;
+using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Acquisition.History;
 using Jularr.Web.Features.Acquisition.Import;
 using Jularr.Web.Features.Acquisition.Indexers;
@@ -575,9 +576,11 @@ public sealed class AnimeAcquisitionPipeline(
         var wasMonitored = (await monitoring.LoadAsync(cancellationToken)).Anime
             .TryGetValue(animeKey, out var previous) && previous.Monitored;
         var profileState = await profiles.LoadAsync(cancellationToken);
+        var animeDefaultProfileId = profileState.DefaultProfileIdFor(MediaAcquisitionKind.Anime)
+            ?? AnimeQualityProfiles.DefaultAnime1080pId;
         await profiles.AssignAnimeAsync(
             animeId,
-            profileId is not null && !profileId.Equals(profileState.DefaultProfileId, StringComparison.OrdinalIgnoreCase)
+            profileId is not null && !profileId.Equals(animeDefaultProfileId, StringComparison.OrdinalIgnoreCase)
                 ? profileId
                 : null,
             cancellationToken);
@@ -646,9 +649,8 @@ public sealed class AnimeAcquisitionPipeline(
         var recentHistory = await history.ForAnimeAsync(animeId, 15, cancellationToken);
 
         state.Anime.TryGetValue(animeKey, out var settings);
-        var assigned = profileState.AnimeProfileAssignments.TryGetValue(animeId.ToString("D"), out var profileId)
-            ? profileId
-            : profileState.DefaultProfileId;
+        var assigned = profileState.ResolveProfileId(MediaAcquisitionKind.Anime, animeId)
+            ?? AnimeQualityProfiles.DefaultAnime1080pId;
         var active = await CountActiveDownloadsAsync(relations, animeKey, cancellationToken);
         var lastEvent = state.History
             .LastOrDefault(entry => entry.Key.AnimeKey.Equals(animeKey, StringComparison.OrdinalIgnoreCase));
@@ -711,9 +713,8 @@ public sealed class AnimeAcquisitionPipeline(
             .Select(settings =>
             {
                 var entry = anime[settings.AnimeKey];
-                var profile = profileState.AnimeProfileAssignments.TryGetValue(entry.Id.ToString("D"), out var assigned)
-                    ? assigned
-                    : profileState.DefaultProfileId;
+                var profile = profileState.ResolveProfileId(MediaAcquisitionKind.Anime, entry.Id)
+                    ?? AnimeQualityProfiles.DefaultAnime1080pId;
                 return new AnimeMonitoredRow(
                     entry.Id,
                     entry.Key,

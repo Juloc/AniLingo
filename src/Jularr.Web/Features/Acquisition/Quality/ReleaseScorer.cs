@@ -1,15 +1,17 @@
 using System.Text.RegularExpressions;
-using Jularr.Web.Features.Acquisition;
+using Jularr.Web.Features.Acquisition.Release;
 
 namespace Jularr.Web.Features.Acquisition.Quality;
 
-public static class AnimeReleaseScorer
+// Media-type-agnostic release scorer. Operates only on the parsed ReleaseInfo and a QualityProfile,
+// so it is shared by every media type; anime is one caller.
+public static class ReleaseScorer
 {
     private static readonly TimeSpan RegexTimeout = TimeSpan.FromMilliseconds(100);
 
-    public static AnimeReleaseScoreResult Score(
-        AnimeQualityProfile profile,
-        AnimeReleaseCandidate candidate)
+    public static ReleaseScoreResult Score(
+        QualityProfile profile,
+        ReleaseCandidate candidate)
     {
         ArgumentNullException.ThrowIfNull(profile);
         ArgumentNullException.ThrowIfNull(candidate);
@@ -23,7 +25,7 @@ public static class AnimeReleaseScorer
                 nameof(profile));
         }
 
-        var qualityKey = AnimeReleaseQuality.GetKey(candidate.Release);
+        var qualityKey = ReleaseQuality.GetKey(candidate.Release);
         var qualityRank = IndexOf(profile.QualityOrder, qualityKey);
         var rejections = new List<string>();
         var scoreReasons = new List<string>();
@@ -113,7 +115,7 @@ public static class AnimeReleaseScorer
             rejections.Add($"Score {score} is below minimum {profile.MinimumScore}.");
         }
 
-        return new AnimeReleaseScoreResult(
+        return new ReleaseScoreResult(
             candidate,
             Accepted: rejections.Count == 0,
             score,
@@ -123,9 +125,9 @@ public static class AnimeReleaseScorer
             scoreReasons);
     }
 
-    public static IReadOnlyList<AnimeReleaseScoreResult> Rank(
-        AnimeQualityProfile profile,
-        IEnumerable<AnimeReleaseCandidate> candidates) =>
+    public static IReadOnlyList<ReleaseScoreResult> Rank(
+        QualityProfile profile,
+        IEnumerable<ReleaseCandidate> candidates) =>
         candidates
             .Select(candidate => Score(profile, candidate))
             .OrderByDescending(result => result.Accepted)
@@ -135,9 +137,9 @@ public static class AnimeReleaseScorer
             .ToArray();
 
     public static bool IsUpgrade(
-        AnimeQualityProfile profile,
-        AnimeReleaseScoreResult current,
-        AnimeReleaseScoreResult candidate)
+        QualityProfile profile,
+        ReleaseScoreResult current,
+        ReleaseScoreResult candidate)
     {
         ArgumentNullException.ThrowIfNull(profile);
         ArgumentNullException.ThrowIfNull(current);
@@ -167,7 +169,7 @@ public static class AnimeReleaseScorer
                candidate.Score > current.Score;
     }
 
-    public static IReadOnlyList<string> ValidateProfile(AnimeQualityProfile profile)
+    public static IReadOnlyList<string> ValidateProfile(QualityProfile profile)
     {
         var errors = new List<string>();
 
@@ -248,7 +250,7 @@ public static class AnimeReleaseScorer
                 errors.Add($"Score rule '{rule.Name}' value is required.");
             }
 
-            if (rule.Match == AnimeReleaseRuleMatch.Regex)
+            if (rule.Match == ReleaseRuleMatch.Regex)
             {
                 ValidateRegex(rule.Value, errors);
             }
@@ -258,17 +260,17 @@ public static class AnimeReleaseScorer
     }
 
     private static bool Matches(
-        AnimeReleaseScoreRule rule,
-        AnimeReleaseInfo release)
+        ReleaseScoreRule rule,
+        ReleaseInfo release)
     {
         var values = GetValues(rule.Field, release);
         return values.Any(value => rule.Match switch
         {
-            AnimeReleaseRuleMatch.Equals =>
+            ReleaseRuleMatch.Equals =>
                 value.Equals(rule.Value, StringComparison.OrdinalIgnoreCase),
-            AnimeReleaseRuleMatch.Contains =>
+            ReleaseRuleMatch.Contains =>
                 value.Contains(rule.Value, StringComparison.OrdinalIgnoreCase),
-            AnimeReleaseRuleMatch.Regex =>
+            ReleaseRuleMatch.Regex =>
                 Regex.IsMatch(
                     value,
                     rule.Value,
@@ -279,27 +281,27 @@ public static class AnimeReleaseScorer
     }
 
     private static IEnumerable<string> GetValues(
-        AnimeReleaseRuleField field,
-        AnimeReleaseInfo release) =>
+        ReleaseRuleField field,
+        ReleaseInfo release) =>
         field switch
         {
-            AnimeReleaseRuleField.RawTitle => [release.RawTitle],
-            AnimeReleaseRuleField.ReleaseGroup =>
+            ReleaseRuleField.RawTitle => [release.RawTitle],
+            ReleaseRuleField.ReleaseGroup =>
                 Value(release.ReleaseGroup),
-            AnimeReleaseRuleField.Source => [release.Source.ToString()],
-            AnimeReleaseRuleField.Resolution =>
+            ReleaseRuleField.Source => [release.Source.ToString()],
+            ReleaseRuleField.Resolution =>
                 release.Resolution is int resolution ? [resolution.ToString()] : [],
-            AnimeReleaseRuleField.VideoCodec => [release.VideoCodec.ToString()],
-            AnimeReleaseRuleField.BitDepth =>
+            ReleaseRuleField.VideoCodec => [release.VideoCodec.ToString()],
+            ReleaseRuleField.BitDepth =>
                 release.BitDepth is int bitDepth ? [bitDepth.ToString()] : [],
-            AnimeReleaseRuleField.HdrFormat => [release.HdrFormat.ToString()],
-            AnimeReleaseRuleField.AudioCodec => [release.AudioCodec.ToString()],
-            AnimeReleaseRuleField.AudioLanguage => release.AudioLanguages,
-            AnimeReleaseRuleField.SubtitleLanguage => release.SubtitleLanguages,
-            AnimeReleaseRuleField.DualAudio => [release.IsDualAudio.ToString()],
-            AnimeReleaseRuleField.MultiAudio => [release.IsMultiAudio.ToString()],
-            AnimeReleaseRuleField.Proper => [release.IsProper.ToString()],
-            AnimeReleaseRuleField.Repack => [release.IsRepack.ToString()],
+            ReleaseRuleField.HdrFormat => [release.HdrFormat.ToString()],
+            ReleaseRuleField.AudioCodec => [release.AudioCodec.ToString()],
+            ReleaseRuleField.AudioLanguage => release.AudioLanguages,
+            ReleaseRuleField.SubtitleLanguage => release.SubtitleLanguages,
+            ReleaseRuleField.DualAudio => [release.IsDualAudio.ToString()],
+            ReleaseRuleField.MultiAudio => [release.IsMultiAudio.ToString()],
+            ReleaseRuleField.Proper => [release.IsProper.ToString()],
+            ReleaseRuleField.Repack => [release.IsRepack.ToString()],
             _ => []
         };
 

@@ -157,7 +157,7 @@ public sealed class AcquisitionAccessTests
     {
         ProwlarrReleaseCandidate Release(string title, string protocol = "usenet", long size = 5_000_000) =>
             new(title, "idx", 1, protocol, size, null, null, DateTimeOffset.UtcNow, 1, 1, Guid.NewGuid().ToString(), null,
-                Jularr.Web.Features.Acquisition.AnimeReleaseParser.Parse(title), [], new Uri("https://indexer.example/get/" + Guid.NewGuid()), null);
+                Jularr.Web.Features.Acquisition.Release.ReleaseParser.Parse(title), [], new Uri("https://indexer.example/get/" + Guid.NewGuid()), null);
 
         var releases = new[]
         {
@@ -183,7 +183,7 @@ public sealed class AcquisitionAccessTests
     {
         ProwlarrReleaseCandidate Release(string title) =>
             new(title, "idx", 1, "usenet", 3_000_000, null, null, DateTimeOffset.UtcNow, 1, 1, Guid.NewGuid().ToString(), null,
-                Jularr.Web.Features.Acquisition.AnimeReleaseParser.Parse(title), [], new Uri("https://indexer.example/get/" + Guid.NewGuid()), null);
+                Jularr.Web.Features.Acquisition.Release.ReleaseParser.Parse(title), [], new Uri("https://indexer.example/get/" + Guid.NewGuid()), null);
 
         var ranked = BookReleaseSelector.Rank(
             [Release("James Clear - Atomic Habits"), Release("James Clear - Atomic Habits PDF"), Release("James Clear - Atomic Habits EPUB")],
@@ -201,7 +201,7 @@ public sealed class AcquisitionAccessTests
     {
         ProwlarrReleaseCandidate Release(string title, string protocol = "usenet") =>
             new(title, "idx", 1, protocol, 2_000_000, null, null, DateTimeOffset.UtcNow, 1, 1, Guid.NewGuid().ToString(), null,
-                Jularr.Web.Features.Acquisition.AnimeReleaseParser.Parse(title), [], new Uri("https://indexer.example/get/" + Guid.NewGuid()), null);
+                Jularr.Web.Features.Acquisition.Release.ReleaseParser.Parse(title), [], new Uri("https://indexer.example/get/" + Guid.NewGuid()), null);
 
         var ranked = BookReleaseSelector.Rank(
             [

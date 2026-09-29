@@ -210,8 +210,8 @@ each row's Where.
 | Indexers/Prowlarr integration | Exists | `/Settings/Indexers` | — |
 | Download clients/SABnzbd | Exists | `/Settings/DownloadClients` | — |
 | Automatic + interactive search | Exists | `AnimeAcquisitionScheduler`, `/Acquisition?search=` | — |
-| Release scoring | Exists | `AnimeReleaseParser` + quality scorer | — |
-| Quality profiles (assign) | Exists | `AnimeQualityProfileStore` | — |
+| Release scoring | Exists | `ReleaseParser` + `ReleaseScorer` (media-type-agnostic; anime is one registration) | — |
+| Quality profiles (assign) | Exists | `QualityProfileStore` (keyed by media type) | — |
 | Quality profiles (edit UI) | Missing — documented limit, assignment only | ANIME_ACQUISITION.md "Limits" | #396 |
 | Language profiles (acquisition scoring) | Missing — no separate language-weighted profile beyond naming tokens | — | #396 |
 | Preferred/rejected terms, upgrade rules | Exists | Quality profile required/forbidden terms, upgrade cutoff | — |

@@ -51,7 +51,7 @@ monitored anime, recent decisions and recent imports.
 | Fact | Canonical store |
 | --- | --- |
 | Monitored flag, search-on-add, per-anime indexer IDs, tags, target root, wanted episodes, search attempts/backoff, schedule | `/data/acquisition/monitoring.json` (`AnimeMonitoringStore`) |
-| Quality profile per anime | `/data/acquisition/quality-profiles.json` (`AnimeQualityProfileStore`; the default profile is not stored as an assignment) |
+| Quality profile per anime | `/data/acquisition/quality-profiles.json` (`QualityProfileStore`, keyed by media type; the default profile is not stored as an assignment) |
 | Indexer connections (Prowlarr, direct Newznab) | `/data/acquisition/indexers.json` (`IndexerStore`) |
 | Download client connections (SABnzbd) | `/data/acquisition/download-clients.json` (`DownloadClientStore`) |
 | Indexer/download-client health (reachable, auth ok, last error, last check) | `/data/acquisition/health.json` (`AcquisitionHealthStore`) |
