@@ -5,5 +5,7 @@ obj/
 *.user
 *.suo
 .env
+node_modules/
 TestResults/
 coverage/
+src/Jularr.Web/wwwroot/build/

@@ -82,6 +82,15 @@ RUN mkdir -p /dictionary /tmp/jmdict-ger /tmp/jmdict-eng \
     && test -s /dictionary/jmdict-ger.tsv \
     && test -s /dictionary/jmdict-eng-common.tsv
 
+FROM node:24-bookworm-slim AS frontend
+WORKDIR /src
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY vite.config.ts tsconfig.json ./
+COPY scripts/ scripts/
+COPY src/Jularr.Web/frontend/ src/Jularr.Web/frontend/
+RUN npm run check
+
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
@@ -90,6 +99,7 @@ RUN dotnet restore src/Jularr.Web/Jularr.Web.csproj
 
 COPY design/player/ design/player/
 COPY src/Jularr.Web/ src/Jularr.Web/
+COPY --from=frontend /src/src/Jularr.Web/wwwroot/build/ src/Jularr.Web/wwwroot/build/
 RUN dotnet publish src/Jularr.Web/Jularr.Web.csproj -c Release --no-restore -o /app/publish
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
