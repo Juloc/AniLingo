@@ -123,6 +123,12 @@ public sealed class NewModel(
             return Forbid();
         }
 
+        // The cover comes through the form as a catalog fact; only web images are ever shown or stored.
+        if (!Uri.TryCreate(CoverImageUrl, UriKind.Absolute, out var cover) || cover.Scheme is not ("http" or "https"))
+        {
+            CoverImageUrl = null;
+        }
+
         AddCreatesRequest = access.AddCreatesRequest;
         var profiles = (await qualityProfiles.LoadAsync(cancellationToken)).Profiles;
         var opened = (await settings.LoadAsync(cancellationToken)).RequesterQualityProfileIds;

@@ -6,6 +6,9 @@ using Jularr.Web.Features.Acquisition.Access;
 using Jularr.Web.Features.Acquisition.Quality;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Events;
+using Jularr.Web.Features.Library;
+using Jularr.Web.Features.Metadata;
+using Jularr.Web.Features.Shell;
 using Jularr.Web.Frontend;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
@@ -140,6 +143,56 @@ public sealed class RequestPagesRenderTests
         StringAssert.Contains(html, "/Admin/Capabilities");
     }
 
+    [TestMethod]
+    public async Task LibraryCardsShowTheAvailabilityBadgeOnlyWhereItAddsSomething()
+    {
+        await using var host = await RequestPagesHost.CreateAsync();
+        var root = new LibraryRoot { Name = "Test", Path = Path.GetTempPath() };
+        host.Db.Add(root);
+        var playable = new Anime { Key = "playable", Title = "Playable Show" };
+        var empty = new Anime { Key = "empty", Title = "Empty Show" };
+        var requested = new Anime { Key = "requested", Title = "Requested Show" };
+        host.Db.AddRange(playable, empty, requested);
+        await host.Db.SaveChangesAsync();
+        var episode = new Episode { AnimeId = playable.Id, SeasonNumber = 1, Number = 1, Title = "One" };
+        host.Db.Add(episode);
+        host.Db.Add(new Episode { AnimeId = empty.Id, SeasonNumber = 1, Number = 1, Title = "One" });
+        host.Db.Add(new Episode { AnimeId = requested.Id, SeasonNumber = 1, Number = 1, Title = "One" });
+        host.Db.Add(new MediaFile
+        {
+            LibraryRootId = root.Id,
+            EpisodeId = episode.Id,
+            Path = Path.Combine(Path.GetTempPath(), $"playable-{Guid.NewGuid():N}.mkv"),
+            SizeBytes = 1,
+            LastWriteTimeUtc = DateTime.UtcNow
+        });
+        host.Db.AnimeMetadata.Add(new AnimeMetadata
+        {
+            AnimeId = requested.Id,
+            Provider = "anilist",
+            ExternalId = "42",
+            PreferredTitle = requested.Title
+        });
+        await host.Db.SaveChangesAsync();
+        await new AcquisitionAccessStore(host.Db).CreateAsync(
+            Anime("42", requested.Title),
+            "someone",
+            AcquisitionRequestStatus.Downloading,
+            "owner",
+            CancellationToken.None);
+
+        var html = await host.GetHtmlAsync("/Library", asOwner: false);
+
+        var cards = html.Split("<article class=\"banner-card", StringSplitOptions.RemoveEmptyEntries).Skip(1).ToArray();
+        Assert.AreEqual(3, cards.Length);
+        string CardOf(string title) => cards.Single(card => card.Contains(title, StringComparison.Ordinal));
+        Assert.IsFalse(CardOf("Playable Show").Contains("banner-card-availability", StringComparison.Ordinal), "It already has a play button.");
+        StringAssert.Contains(CardOf("Empty Show"), "banner-card-availability-local");
+        StringAssert.Contains(CardOf("Empty Show"), "In library");
+        StringAssert.Contains(CardOf("Requested Show"), "banner-card-availability-requested");
+        StringAssert.Contains(CardOf("Requested Show"), "Downloading");
+    }
+
     private static AcquisitionRequestDraft Anime(string id, string title, AcquisitionRequestOptions? options = null) =>
         new(
             MediaAcquisitionKind.Anime,
@@ -214,6 +267,7 @@ public sealed class RequestPagesRenderTests
                         services.AddScoped<CurrentAccountContext>();
                         services.AddSingleton(capabilities);
                         services.AddScoped<IMediaCapabilityService, MediaCapabilityService>();
+                        services.AddScoped<IAppShellService, AppShellService>();
                         services.AddSingleton(settings);
                         services.AddSingleton(new AnimeQualityProfileStore(new DirectoryInfo(Path.Combine(data.FullName, "quality"))));
                         services.AddScoped<AcquisitionAccessStore>();
@@ -269,7 +323,9 @@ public sealed class RequestPagesRenderTests
             using var response = await client.GetAsync(path);
             var html = await response.Content.ReadAsStringAsync();
             Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, $"GET {path} (owner={asOwner}) failed:\n{html}");
-            return html;
+
+            // Razor encodes non-ASCII text as character references; assertions read the text a browser shows.
+            return WebUtility.HtmlDecode(html);
         }
 
         public async Task<HttpStatusCode> GetStatusAsync(
