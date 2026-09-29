@@ -13,7 +13,7 @@ backend (`Features/Search/MediaSearchService`), the local artwork derivative cac
 (`Features/Artwork/BesideMediaArtworkCache`), and the conversion of the test suite
 to a real PostgreSQL. The build is warning-free, `dotnet ef migrations
 has-pending-model-changes` is clean, and the suite runs against an ephemeral
-`postgres:16`. Deployment preparation is Juloc/docker PR #374 (PostgreSQL service,
+`postgres:18`. Deployment preparation is Juloc/docker PR #374 (PostgreSQL service,
 volume, healthcheck, backup note) — an owner step, together with running the
 one-time import against an existing `/data` SQLite database.
 
@@ -237,7 +237,7 @@ Conversion plan:
 - The two in-process harnesses (`ManageSheetPageTestHost`, `LibraryScanTestHost`) and
   the two `EnsureCreated` outliers are aligned with the shared helper.
 - CI/local runs use an **ephemeral** PostgreSQL in Docker (e.g.
-  `postgres:16` on a throwaway port), separate from any shared/app database, torn
+  `postgres:18` on a throwaway port), separate from any shared/app database, torn
   down after the run.
 
 ## Deployment

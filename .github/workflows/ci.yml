@@ -42,7 +42,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:16
+        image: postgres:18
         env:
           POSTGRES_USER: jularr
           POSTGRES_PASSWORD: jularr_ci
@@ -117,7 +117,7 @@ jobs:
             -e POSTGRES_USER=jularr -e POSTGRES_PASSWORD=jularr_ci -e POSTGRES_DB=jularr \
             --health-cmd "pg_isready -U jularr -d jularr" \
             --health-interval 3s --health-timeout 5s --health-retries 20 \
-            postgres:16 >/dev/null
+            postgres:18 >/dev/null
           for _ in {1..40}; do
             if [ "$(docker inspect -f '{{.State.Health.Status}}' jularr-ci-pg)" = healthy ]; then
               exit 0
