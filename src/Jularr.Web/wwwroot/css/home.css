@@ -205,9 +205,9 @@
     font-size: 18px;
 }
 
-/* Stat row ---------------------------------------------------------------- */
+/* Opt-in due-reviews card: a compact card, never stretched across the page. */
 .metric-grid {
-    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(200px, 260px));
 }
 
 /* Media carousels --------------------------------------------------------- */

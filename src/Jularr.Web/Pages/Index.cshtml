@@ -134,26 +134,17 @@
     </section>
 }
 
-<section class="metric-grid">
-    @if (Model.ShowLearningHomeWidget)
-    {
+@* The only Home stat is the opt-in due-reviews card; without it no grid is rendered at all. *@
+@if (Model.ShowLearningHomeWidget)
+{
+    <section class="metric-grid">
         <a class="metric-card metric-card-link" href="/Learn/Review" data-home-learning-widget>
             <div class="metric-value">@Model.DueReviews</div>
             <div class="metric-label">@Model.Ui["home.metric.due"]</div>
             <div class="metric-hint">@Model.Ui["home.metric.ready"]</div>
         </a>
-    }
-    <partial name="_MetricCard"
-             model='new MetricCardModel(
-                 Model.Ui["home.metric.anime"],
-                 Model.AnimeCount.ToString(),
-                 Model.Ui["home.metric.inLibrary"])' />
-    <partial name="_MetricCard"
-             model='new MetricCardModel(
-                 Model.Ui["home.metric.episodes"],
-                 Model.EpisodeCount.ToString(),
-                 Model.Ui["home.metric.discovered"])' />
-</section>
+    </section>
+}
 
 <section class="section section-secondary">
     <div class="section-heading">

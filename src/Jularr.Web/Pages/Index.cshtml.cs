@@ -33,8 +33,6 @@ public sealed class IndexModel(AppDbContext db, CurrentAccountContext currentAcc
     ];
 
     public int DueReviews { get; private set; }
-    public int AnimeCount { get; private set; }
-    public int EpisodeCount { get; private set; }
     public IReadOnlyList<HomeEpisode> RecentEpisodes { get; private set; } = [];
     public IReadOnlyList<ContinueWatchingItem> ContinueWatching { get; private set; } = [];
 
@@ -150,9 +148,6 @@ public sealed class IndexModel(AppDbContext db, CurrentAccountContext currentAcc
                 .DueCards(db, currentAccount.ProfileId, now)
                 .CountAsync(cancellationToken);
         }
-
-        AnimeCount = await db.Anime.AsNoTracking().CountAsync(cancellationToken);
-        EpisodeCount = await db.Episodes.AsNoTracking().CountAsync(cancellationToken);
 
         var recentEpisodes = await (
             from episode in db.Episodes.AsNoTracking()
