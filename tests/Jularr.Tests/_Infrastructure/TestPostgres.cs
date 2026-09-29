@@ -7,24 +7,26 @@ namespace Jularr.Tests.Infrastructure;
 /// <summary>
 /// Backs the whole test suite with real PostgreSQL (issue #570). The former SQLite tests each built
 /// their own throwaway <c>.db</c> file; here every distinct SQLite-style "Data Source" a test builds
-/// is mapped to its own PostgreSQL database, cloned from a once-migrated template. That reproduces
-/// the old file-per-test isolation exactly — including tests that open two independent databases at
-/// once — while a small LRU keeps the number of live databases (and disk use) bounded.
+/// is mapped to its own PostgreSQL database, so the old file-per-test isolation is reproduced exactly
+/// — including tests that open two independent databases at once.
 ///
-/// The base server comes from the <c>JULARR_TEST_DB</c> environment variable
-/// (e.g. <c>Host=localhost;Port=5433;Username=jularr;Password=…</c>); a throwaway ephemeral
-/// <c>postgres:16</c> container is the intended target. Never point this at production data.
+/// A bounded pool of databases keeps disk use flat: new logical databases are cloned from a
+/// once-migrated template until the pool is full, after which the least-recently-used one is reclaimed
+/// by truncating it (no DROP, so no eviction stalls). MSTest runs serially, so a single lock guards
+/// the pool. The base server comes from <c>JULARR_TEST_DB</c> (a throwaway ephemeral
+/// <c>postgres:16</c> is the intended target); never point this at production data.
 /// </summary>
 public static class TestPostgres
 {
     private const string TemplateDatabase = "jularr_test_tpl";
-    private const int MaxLiveDatabases = 32;
+    private const int MaxLiveDatabases = 24;
 
     private static readonly object Gate = new();
     private static readonly Dictionary<string, string> KeyToDatabase = new(StringComparer.Ordinal);
     private static readonly LinkedList<string> Lru = new();
     private static bool _initialized;
     private static string _baseConnectionString = string.Empty;
+    private static string[] _dataTables = [];
     private static int _counter;
 
     private static string BaseConnectionString =>
@@ -33,12 +35,11 @@ public static class TestPostgres
 
     /// <summary>
     /// Called by the <c>UseSqlite</c> test shim. Returns a PostgreSQL connection string for a database
-    /// dedicated to the caller's logical database (its SQLite "Data Source" path); the same path
-    /// always maps to the same database, distinct paths to distinct databases.
+    /// dedicated to the caller's logical database (its SQLite "Data Source" path); the same path always
+    /// maps to the same database, distinct paths to distinct databases.
     /// </summary>
     public static string ResolveConnectionString(string? connectionString)
     {
-        // A null/blank source (rare) behaves like a private in-memory database.
         connectionString ??= "Data Source=:memory:";
 
         // A caller reusing an already-resolved PostgreSQL connection string (e.g. from
@@ -59,17 +60,21 @@ public static class TestPostgres
                 return ConnectionFor(existing);
             }
 
-            while (KeyToDatabase.Count >= MaxLiveDatabases && Lru.First is { } oldest)
+            string database;
+            if (KeyToDatabase.Count >= MaxLiveDatabases && Lru.First is { } oldest)
             {
+                // Reclaim the least-recently-used database by emptying it (cheaper and far more
+                // reliable than DROP + CREATE under load).
                 Lru.RemoveFirst();
-                if (KeyToDatabase.Remove(oldest.Value, out var evicted))
-                {
-                    DropDatabase(evicted);
-                }
+                KeyToDatabase.Remove(oldest.Value, out database!);
+                TruncateDatabase(database);
+            }
+            else
+            {
+                database = $"jt_{Interlocked.Increment(ref _counter)}";
+                CreateFromTemplate(database);
             }
 
-            var database = $"jt_{Interlocked.Increment(ref _counter)}";
-            CreateFromTemplate(database);
             KeyToDatabase[key] = database;
             Lru.AddLast(key);
             return ConnectionFor(database);
@@ -81,7 +86,6 @@ public static class TestPostgres
         var builder = new System.Data.Common.DbConnectionStringBuilder { ConnectionString = connectionString };
         if (builder.TryGetValue("Data Source", out var value) && value is string ds && !string.IsNullOrWhiteSpace(ds))
         {
-            // SQLite ":memory:" is private per connection; give each use its own database.
             return ds.Equals(":memory:", StringComparison.OrdinalIgnoreCase)
                 ? "mem-" + Guid.NewGuid().ToString("N")
                 : ds;
@@ -114,16 +118,15 @@ public static class TestPostgres
         var maintenance = new NpgsqlConnectionStringBuilder(_baseConnectionString) { Database = "postgres" }
             .ConnectionString;
 
-        // Drop any databases left by a previous run, then build a freshly migrated template.
         using (var admin = new NpgsqlConnection(maintenance))
         {
             admin.Open();
             foreach (var stale in StaleDatabases(admin))
             {
-                Execute(admin, $"DROP DATABASE IF EXISTS \"{stale}\" WITH (FORCE);");
+                TryExecute(admin, $"DROP DATABASE IF EXISTS \"{stale}\" WITH (FORCE);");
             }
 
-            Execute(admin, $"DROP DATABASE IF EXISTS \"{TemplateDatabase}\" WITH (FORCE);");
+            TryExecute(admin, $"DROP DATABASE IF EXISTS \"{TemplateDatabase}\" WITH (FORCE);");
             Execute(admin, $"CREATE DATABASE \"{TemplateDatabase}\";");
         }
 
@@ -135,6 +138,7 @@ public static class TestPostgres
             db.Database.Migrate();
         }
 
+        _dataTables = LoadDataTables(templateConnection);
         NpgsqlConnection.ClearAllPools();
         _initialized = true;
     }
@@ -148,14 +152,29 @@ public static class TestPostgres
         Execute(admin, $"CREATE DATABASE \"{database}\" TEMPLATE \"{TemplateDatabase}\";");
     }
 
-    private static void DropDatabase(string database)
+    private static void TruncateDatabase(string database)
     {
-        NpgsqlConnection.ClearPool(new NpgsqlConnection(ConnectionFor(database)));
-        var maintenance = new NpgsqlConnectionStringBuilder(_baseConnectionString) { Database = "postgres" }
-            .ConnectionString;
-        using var admin = new NpgsqlConnection(maintenance);
-        admin.Open();
-        Execute(admin, $"DROP DATABASE IF EXISTS \"{database}\" WITH (FORCE);");
+        using var connection = new NpgsqlConnection(ConnectionFor(database));
+        connection.Open();
+        var list = string.Join(", ", _dataTables.Select(t => $"\"{t}\""));
+        Execute(connection, $"TRUNCATE TABLE {list} RESTART IDENTITY CASCADE;");
+    }
+
+    private static string[] LoadDataTables(string connectionString)
+    {
+        using var connection = new NpgsqlConnection(connectionString);
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            "SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename <> '__EFMigrationsHistory';";
+        var tables = new List<string>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            tables.Add(reader.GetString(0));
+        }
+
+        return tables.ToArray();
     }
 
     private static IReadOnlyList<string> StaleDatabases(NpgsqlConnection admin)
@@ -176,6 +195,18 @@ public static class TestPostgres
     {
         using var command = connection.CreateCommand();
         command.CommandText = sql;
+        command.CommandTimeout = 30;
         command.ExecuteNonQuery();
+    }
+
+    private static void TryExecute(NpgsqlConnection connection, string sql)
+    {
+        try
+        {
+            Execute(connection, sql);
+        }
+        catch (Exception exception) when (exception is NpgsqlException or TimeoutException)
+        {
+        }
     }
 }
