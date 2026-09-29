@@ -212,3 +212,20 @@ Platform-specific exports may later use:
 ## Implementation rule
 
 This specification is binding for Discover/Search UX. Coding agents must not turn Discover into another Home page, add a permanent genre-chip wall, or overload cards with Library/Admin metadata without updating the approved spec.
+
+## Canonical media identity and Anime search mode
+
+Search and Discover must use Jularr's canonical media identity rather than exposing provider records as separate library identities.
+
+- The default model is **Work -> Season -> Episode** for Series/Anime. AniList is a metadata/presentation provider layered on top of that model, not a second library model.
+- One canonical Anime work may map to multiple AniList media entries (for example separate seasons, parts/cours, specials or sequels where the provider splits them differently).
+- **Default/global search** groups results by media type and deduplicates to one canonical Jularr work wherever identity resolution can prove the match. It must not normally show Season 1/2/3 as unrelated Anime cards just because AniList exposes separate entries.
+- Result groups are independently collapsible/expandable: Anime, Series, Movies, Books & Light Novels, Manga and Audiobooks. “Show all” keeps the active type/filter context.
+- When the **Anime** media-type filter is active, expose a compact result-view switch: **Jularr** / **AniList**.
+  - **Jularr** (default): canonical work cards with seasons underneath/on the detail page.
+  - **AniList**: provider-native entries may be shown individually for users/admins who intentionally want the AniList split.
+- A sufficiently specific query such as “<title> Season 3”, a provider part title, or an exact AniList title may surface the matching season/provider entry directly. Opening it still resolves to the same canonical Jularr work and deep-links/highlights the matching season/presentation group.
+- Selecting an AniList result must never create a duplicate Work solely because the provider split differs. Identity resolution produces a canonical Work plus an optional season/presentation/provider target.
+- The same resolution rules apply to Discover shelves, Home recommendations, Requests, Calendar deep links and media details so cards do not disagree about identity.
+- Provider-specific IDs, mapping conflicts and corrective mapping controls stay in Admin. Consumer search only exposes the simple Anime view switch when Anime is selected.
+
