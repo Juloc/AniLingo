@@ -577,3 +577,10 @@ Required:
 - dependency-ordered implementation roadmap.
 
 Critical bug/security fixes remain allowed. New feature work must not expand legacy architecture while these gates are incomplete.
+
+### Canonical search/discovery identity
+
+Provider records are discovery/metadata inputs, never parallel domain identities. Search and recommendation adapters resolve provider hits through the canonical Work identity layer before normal presentation. Series/Anime remain Work -> Season -> Episode internally; one Work can have multiple provider mappings, including multiple AniList entries for seasons/parts/specials.
+
+The application contract for a resolved search/discovery item is therefore conceptually **canonical Work + optional provider/presentation target**. Default surfaces deduplicate to the Work. Provider-native views (for example the explicit AniList view inside the Anime search filter) may expose individual provider entries, but selecting them resolves back to the same Work and optional season/presentation target. This rule is shared by Search, Discover, Home, Library, Calendar and Requests.
+
