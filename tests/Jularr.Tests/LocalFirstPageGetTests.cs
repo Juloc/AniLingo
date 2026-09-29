@@ -435,6 +435,13 @@ public sealed class LocalFirstPageGetTests
                 coordinator,
                 shellService);
 
+            var recommendations = new Jularr.Web.Features.Recommendations.MediaRecommendationService(
+                Db,
+                watchlistStore,
+                new Jularr.Web.Features.Watchlist.WatchlistLibraryResolver(Db),
+                franchiseService,
+                shellService);
+
             return new DiscoverIndexModel(
                 coordinator,
                 shelves,
@@ -450,6 +457,7 @@ public sealed class LocalFirstPageGetTests
                 new AcquisitionAccessStore(Db),
                 watchlistStore,
                 franchiseService,
+                recommendations,
                 NullLogger<DiscoverIndexModel>.Instance);
         }
 
