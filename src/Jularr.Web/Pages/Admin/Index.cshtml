@@ -116,7 +116,10 @@
     <section class="panel">
         <div class="panel-heading">
             <h2>@ui["admin.index.recentOperations.title"]</h2>
-            <a class="button" asp-page="/Admin/Operations">@ui["admin.index.viewAll"]</a>
+            <div class="inline-actions">
+                <a class="button" asp-page="/Admin/Activity/Index">@ui["admin.activity.title"]</a>
+                <a class="button" asp-page="/Admin/Operations">@ui["admin.index.viewAll"]</a>
+            </div>
         </div>
 
         @if (Model.Recent.Count == 0)

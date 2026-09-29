@@ -4,7 +4,6 @@ using Jularr.Web.Features.Acquisition.Sabnzbd;
 using Jularr.Web.Features.Auth;
 using Jularr.Web.Features.Localization;
 using Jularr.Web.Features.Operations;
-using Jularr.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -14,9 +13,7 @@ namespace Jularr.Web.Pages.Admin;
 [Authorize(Policy = JularrPolicies.AdminMedia)]
 public sealed class OperationModel(
     AppDbContext db,
-    BackgroundJobQueue backgroundJobs,
-    PlaybackJobQueue playbackJobs,
-    SabnzbdDownloadService sabnzbd,
+    OperationControlService controls,
     SabnzbdAcquisitionStore acquisitions) : PageModel
 {
     public UiTextBundle Ui { get; private set; } = UiTextBundle.English;
@@ -31,16 +28,13 @@ public sealed class OperationModel(
     public DownloadOperationDetails? DownloadDetails { get; private set; }
 
     public bool IsSabnzbdJob =>
-        SabnzbdDownloadService.IsSabnzbdOperation(Operation);
+        OperationActionPolicy.IsSabnzbdJob(Operation);
 
     public bool CanCancel =>
-        Operation.CanCancel || (IsSabnzbdJob && Operation.IsActive);
+        OperationActionPolicy.CanCancel(Operation);
 
     public bool RuntimeAvailable =>
-        IsSabnzbdJob
-        || (Operation.Lane == OperationLane.Interactive
-            ? playbackJobs.HasRuntimeWork(Operation.Id)
-            : backgroundJobs.HasRuntimeWork(Operation.Id));
+        controls.HasRuntime(Operation);
 
     public async Task<IActionResult> OnGetAsync(
         Guid id,
@@ -59,26 +53,16 @@ public sealed class OperationModel(
     {
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
 
-        var operation = await new OperationStore(db).GetAsync(id, cancellationToken);
-        if (operation is null)
+        var result = await controls.CancelAsync(id, cancellationToken);
+        if (result.Status == OperationActionStatus.NotFound)
         {
             return NotFound();
         }
 
-        if (SabnzbdDownloadService.IsSabnzbdOperation(operation))
-        {
-            TempData["Status"] = (await RunSabnzbdActionAsync(
-                () => sabnzbd.CancelAsync(id, cancellationToken))).Message;
-            return RedirectToPage(new { id });
-        }
-
-        var cancelled = operation.Lane == OperationLane.Interactive
-            ? await playbackJobs.CancelAsync(id, cancellationToken)
-            : await backgroundJobs.CancelAsync(id, cancellationToken);
-
-        TempData["Status"] = cancelled
-            ? Ui["admin.operation.cancelRequested"]
-            : Ui["admin.operation.cancelUnavailable"];
+        TempData["Status"] = result.Message
+            ?? (result.Status == OperationActionStatus.Completed
+                ? Ui["admin.operation.cancelRequested"]
+                : Ui["admin.operation.cancelUnavailable"]);
         return RedirectToPage(new { id });
     }
 
@@ -88,40 +72,17 @@ public sealed class OperationModel(
     {
         Ui = await UiRequestLocalization.GetBundleAsync(HttpContext, db);
 
-        var operation = await new OperationStore(db).GetAsync(id, cancellationToken);
-        if (operation is null)
+        var result = await controls.RetryAsync(id, cancellationToken);
+        if (result.Status == OperationActionStatus.NotFound)
         {
             return NotFound();
         }
 
-        if (SabnzbdDownloadService.IsSabnzbdOperation(operation))
-        {
-            TempData["Status"] = (await RunSabnzbdActionAsync(
-                () => sabnzbd.RetryAsync(id, cancellationToken))).Message;
-            return RedirectToPage(new { id });
-        }
-
-        var retried = operation.Lane == OperationLane.Interactive
-            ? await playbackJobs.RetryAsync(id, cancellationToken)
-            : await backgroundJobs.RetryAsync(id, cancellationToken);
-
-        TempData["Status"] = retried
-            ? Ui["admin.operation.retryQueued"]
-            : Ui["admin.operation.retryUnavailable"];
+        TempData["Status"] = result.Message
+            ?? (result.Status == OperationActionStatus.Completed
+                ? Ui["admin.operation.retryQueued"]
+                : Ui["admin.operation.retryUnavailable"]);
         return RedirectToPage(new { id });
-    }
-
-    private static async Task<SabnzbdActionOutcome> RunSabnzbdActionAsync(
-        Func<Task<SabnzbdActionOutcome>> action)
-    {
-        try
-        {
-            return await action();
-        }
-        catch (InvalidOperationException exception)
-        {
-            return new SabnzbdActionOutcome(false, exception.Message);
-        }
     }
 
     private async Task<bool> LoadAsync(

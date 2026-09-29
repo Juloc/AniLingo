@@ -101,6 +101,10 @@ internal sealed class ManageSheetPageTestHost : IAsyncDisposable
                         services.AddScoped<IMediaCapabilityService, MediaCapabilityService>();
                         services.AddScoped<IAppShellService, AppShellService>();
                         services.AddScoped<OperationRunner>();
+                        // The Activity center (#413) cancels/retries through the queues that own the work.
+                        services.AddSingleton<Jularr.Web.Infrastructure.BackgroundJobQueue>();
+                        services.AddSingleton<Jularr.Web.Infrastructure.PlaybackJobQueue>();
+                        services.AddScoped<OperationControlService>();
                         services.AddScoped<EpisodeProgressService>();
                         services.AddScoped<FranchiseStore>();
                         services.AddScoped<MediaRelationStore>();

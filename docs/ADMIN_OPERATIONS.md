@@ -14,6 +14,7 @@ Owner-only administration:
 
 - `/Admin` — operational overview
 - `/Admin/Users` — local account management and progress
+- `/Admin/Activity` — Activity center: running, queued and recently failed background work grouped by kind (downloads, imports, scans, preparation, metadata, maintenance), live-updating, with cancel/retry where the operation allows it. It only reads the canonical `Operations` table; it is unrelated to the personal `/Activity` history
 - `/Admin/Operations` — active work, queue, downloads and history
 - `/Admin/Scans` — library scan runs per media root with phase, counters and warnings
 - `/Admin/Logs` — structured operation logs

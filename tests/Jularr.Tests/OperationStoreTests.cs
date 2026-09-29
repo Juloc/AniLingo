@@ -232,6 +232,7 @@ public sealed class OperationStoreTests
             (typeof(Jularr.Web.Pages.Admin.IndexModel), Jularr.Web.Features.Auth.JularrPolicies.AdminMedia),
             (typeof(Jularr.Web.Pages.Admin.OperationsModel), Jularr.Web.Features.Auth.JularrPolicies.AdminMedia),
             (typeof(Jularr.Web.Pages.Admin.OperationModel), Jularr.Web.Features.Auth.JularrPolicies.AdminMedia),
+            (typeof(Jularr.Web.Pages.Admin.Activity.IndexModel), Jularr.Web.Features.Auth.JularrPolicies.AdminMedia),
             (typeof(Jularr.Web.Pages.Admin.LogsModel), Jularr.Web.Features.Auth.JularrPolicies.AdminMedia),
             (typeof(Jularr.Web.Pages.Admin.SystemModel), Jularr.Web.Features.Auth.JularrPolicies.AdminSystem),
             (typeof(Jularr.Web.Pages.Admin.UsersModel), Jularr.Web.Features.Auth.JularrPolicies.AdminSystem),

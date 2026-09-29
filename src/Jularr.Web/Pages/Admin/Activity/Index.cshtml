@@ -1,0 +1,213 @@
+@page
+@model Jularr.Web.Pages.Admin.Activity.IndexModel
+@using Jularr.Web.Features.Operations
+@section Head {
+    <link rel="stylesheet" href="~/css/activity-center.css" asp-append-version="true" />
+}
+@section Scripts {
+    <script src="~/js/activity-center.js" asp-append-version="true"></script>
+}
+@{
+    var ui = Model.Ui;
+    var activity = Model.Activity;
+    ViewData["Title"] = ui["admin.activity.title"];
+
+    string StatusLabel(OperationStatus status) => status switch
+    {
+        OperationStatus.Queued => ui["admin.operations.status.queued"],
+        OperationStatus.Running => ui["admin.operations.status.running"],
+        OperationStatus.Succeeded => ui["admin.operations.status.succeeded"],
+        OperationStatus.Failed => ui["admin.operations.status.failed"],
+        OperationStatus.Cancelled => ui["admin.operations.status.cancelled"],
+        OperationStatus.Interrupted => ui["admin.operations.status.interrupted"],
+        _ => status.ToString()
+    };
+
+    string LaneLabel(ActivityLane lane) => lane switch
+    {
+        ActivityLane.Downloads => ui["admin.activity.lane.downloads"],
+        ActivityLane.Imports => ui["admin.activity.lane.imports"],
+        ActivityLane.Scans => ui["admin.activity.lane.scans"],
+        ActivityLane.Preparation => ui["admin.activity.lane.preparation"],
+        ActivityLane.Metadata => ui["admin.activity.lane.metadata"],
+        ActivityLane.Maintenance => ui["admin.activity.lane.maintenance"],
+        _ => ui["admin.activity.lane.other"]
+    };
+
+    string Speed(double bytesPerSecond) =>
+        ui.Format("admin.operation.speedValue", ("speed", $"{bytesPerSecond / 1024d:N1}"));
+
+    string Figures(OperationSnapshot operation)
+    {
+        var parts = new List<string>();
+        if (operation.ProgressPercent is { } percent)
+        {
+            parts.Add($"{percent}%");
+        }
+
+        if (operation.Status == OperationStatus.Running)
+        {
+            if (operation.IsDownload && operation.BytesPerSecond is > 0)
+            {
+                parts.Add(Speed(operation.BytesPerSecond.Value));
+            }
+
+            if (operation.EtaUtc is { } eta)
+            {
+                parts.Add(ui["admin.operation.eta"] + " " + eta.ToLocalTime().ToString("t"));
+            }
+        }
+        else if (operation.Status is OperationStatus.Failed or OperationStatus.Interrupted)
+        {
+            parts.Add(operation.UpdatedAtUtc.ToLocalTime().ToString("g"));
+        }
+
+        return string.Join(" · ", parts);
+    }
+
+    string Detail(OperationSnapshot operation)
+    {
+        var text = operation.Status is OperationStatus.Failed or OperationStatus.Interrupted
+            && !string.IsNullOrWhiteSpace(operation.Error)
+                ? operation.Error
+                : operation.Message;
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(operation.Subject) && operation.Subject != operation.Title)
+        {
+            parts.Add(operation.Subject);
+        }
+
+        if (!string.IsNullOrWhiteSpace(text) && text != operation.Subject)
+        {
+            parts.Add(text);
+        }
+
+        return string.Join(" · ", parts);
+    }
+}
+
+<header class="page-header">
+    <div>
+        <h1>@ui["admin.activity.title"]</h1>
+        <p>@ui["admin.activity.subtitle"]</p>
+    </div>
+    <a class="button" asp-page="/Admin/Operations">@ui["admin.activity.allOperations"]</a>
+</header>
+
+<partial name="_AdminNavigation" model="Model.Ui" />
+
+<div data-activity-live>
+    <div class="activity-summary">
+        <div><span>@ui["admin.activity.summary.running"]</span><strong>@activity.Running.ToString("N0")</strong></div>
+        <div><span>@ui["admin.activity.summary.queued"]</span><strong>@activity.Queued.ToString("N0")</strong></div>
+        <div class="@(activity.NeedsAttention > 0 ? "activity-summary-alert" : "")"><span>@ui["admin.activity.summary.attention"]</span><strong>@activity.NeedsAttention.ToString("N0")</strong></div>
+        <div><span>@ui["admin.activity.summary.completedToday"]</span><strong>@activity.CompletedToday.ToString("N0")</strong></div>
+    </div>
+
+    @if (activity.IsEmpty)
+    {
+        <section class="panel">
+            <p class="muted">@ui["admin.activity.empty"]</p>
+        </section>
+    }
+    else
+    {
+        <div class="activity-lanes">
+            @foreach (var group in activity.Groups)
+            {
+                <section class="panel activity-lane" data-activity-lane="@group.Lane.ToString().ToLowerInvariant()">
+                    <div class="panel-heading">
+                        <h2>@LaneLabel(group.Lane)</h2>
+                        <div class="activity-lane-counts">
+                            @if (group.Running > 0)
+                            {
+                                <span>@ui.Format("admin.activity.laneRunning", ("count", group.Running))</span>
+                            }
+                            @if (group.Queued > 0)
+                            {
+                                <span>@ui.Format("admin.activity.laneQueued", ("count", group.Queued))</span>
+                            }
+                            @if (group.NeedsAttention > 0)
+                            {
+                                <span class="activity-lane-alert">@ui.Format("admin.activity.laneAttention", ("count", group.NeedsAttention))</span>
+                            }
+                        </div>
+                    </div>
+
+                    @if (group.ProgressPercent is { } laneProgress)
+                    {
+                        <div class="activity-lane-summary">
+                            <div class="operation-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@laneProgress">
+                                <span style="width:@laneProgress%"></span>
+                            </div>
+                            <small>
+                                @laneProgress%
+                                @if (group.BytesPerSecond is { } laneSpeed)
+                                {
+                                    <text> · @Speed(laneSpeed)</text>
+                                }
+                                @if (group.EtaUtc is { } laneEta)
+                                {
+                                    <text> · @ui["admin.operation.eta"] @laneEta.ToLocalTime().ToString("t")</text>
+                                }
+                            </small>
+                        </div>
+                    }
+
+                    <ul class="activity-rows">
+                        @foreach (var operation in group.Items)
+                        {
+                            var actions = Model.ActionsFor(operation);
+                            var detail = Detail(operation);
+                            var figures = Figures(operation);
+                            <li class="activity-row" data-operation-id="@operation.Id" data-status="@operation.Status.ToString().ToLowerInvariant()">
+                                <div class="activity-row-main">
+                                    <a class="activity-row-title" asp-page="/Admin/Operation" asp-route-id="@operation.Id">@operation.Title</a>
+                                    @if (detail.Length > 0)
+                                    {
+                                        <small class="activity-row-detail">@detail</small>
+                                    }
+                                    @if (operation.Status == OperationStatus.Running && operation.ProgressPercent is { } progress)
+                                    {
+                                        <div class="operation-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@progress">
+                                            <span style="width:@progress%"></span>
+                                        </div>
+                                    }
+                                </div>
+                                <div class="activity-row-side">
+                                    <span class="status-pill operation-status-@operation.Status.ToString().ToLowerInvariant()">@StatusLabel(operation.Status)</span>
+                                    @if (figures.Length > 0)
+                                    {
+                                        <small>@figures</small>
+                                    }
+                                    @if (actions.CanCancel || actions.RetryOffered)
+                                    {
+                                        <div class="inline-actions">
+                                            @if (actions.CanCancel)
+                                            {
+                                                <form method="post" asp-page-handler="Cancel">
+                                                    <input type="hidden" name="id" value="@operation.Id" />
+                                                    <button class="button" type="submit">@ui["common.cancel"]</button>
+                                                </form>
+                                            }
+                                            @if (actions.RetryOffered)
+                                            {
+                                                <form method="post" asp-page-handler="Retry">
+                                                    <input type="hidden" name="id" value="@operation.Id" />
+                                                    <button class="button"
+                                                            type="submit"
+                                                            disabled="@(!actions.CanRetry)"
+                                                            title="@(actions.CanRetry ? null : ui["admin.operation.retryPayloadUnavailable"])">@ui["admin.operation.retry"]</button>
+                                                </form>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            </li>
+                        }
+                    </ul>
+                </section>
+            }
+        </div>
+    }
+</div>

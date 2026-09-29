@@ -1,0 +1,63 @@
+/* Activity center (#413): admin overview of all background work, grouped into lanes.
+   State is shown with pills, tints and weight — never a coloured edge stripe. */
+.activity-summary {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1px; overflow: hidden; margin-bottom: 18px;
+    border: 1px solid var(--border); border-radius: 10px; background: var(--border);
+}
+.activity-summary > div {
+    display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+    padding: 10px 12px; background: var(--row-bg); font-size: 12px;
+}
+.activity-summary span { color: var(--muted); }
+.activity-summary strong { font-size: 15px; font-variant-numeric: tabular-nums; }
+.activity-summary-alert { background: rgba(224, 105, 105, .08); }
+.activity-summary-alert strong { color: var(--danger-text); }
+
+.activity-lanes {
+    display: grid; gap: 14px;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr));
+    align-items: start;
+}
+.activity-lane { min-width: 0; padding: 14px; }
+.activity-lane .panel-heading { margin-bottom: 10px; gap: 12px; flex-wrap: wrap; }
+.activity-lane .panel-heading h2 { font-size: 15px; }
+.activity-lane-counts { display: flex; gap: 10px; flex-wrap: wrap; color: var(--muted); font-size: 11px; }
+.activity-lane-alert { color: var(--danger-text); font-weight: 600; }
+
+.activity-lane-summary { display: grid; gap: 4px; margin-bottom: 10px; }
+.activity-lane-summary .operation-progress { margin-top: 0; }
+.activity-lane-summary small { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+
+.activity-rows {
+    list-style: none; margin: 0; padding: 0; display: grid; gap: 1px; overflow: hidden;
+    border: 1px solid var(--border); border-radius: 8px; background: var(--border);
+}
+.activity-row {
+    display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;
+    min-width: 0; padding: 9px 11px; background: var(--row-bg);
+}
+.activity-row:hover { background: var(--row-hover); }
+.activity-row[data-status="failed"],
+.activity-row[data-status="interrupted"] { background: rgba(224, 105, 105, .06); }
+.activity-row-main { min-width: 0; flex: 1; display: grid; gap: 3px; }
+.activity-row-title {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-size: 13px; font-weight: 600; color: inherit; text-decoration: none;
+}
+.activity-row-title:hover { text-decoration: underline; }
+.activity-row-detail {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    color: var(--muted); font-size: 11px;
+}
+.activity-row .operation-progress { margin-top: 3px; }
+.activity-row-side { flex: none; display: grid; justify-items: end; gap: 5px; }
+.activity-row-side small { color: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums; }
+.activity-row-side .inline-actions { gap: 6px; }
+.activity-row-side .button { padding: 4px 10px; font-size: 11px; }
+
+@media (max-width: 560px) {
+    .activity-row { flex-direction: column; gap: 8px; }
+    .activity-row-side { width: 100%; grid-auto-flow: column; justify-content: space-between; justify-items: start; align-items: center; }
+    .activity-row-side .inline-actions { justify-self: end; }
+}
