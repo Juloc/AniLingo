@@ -84,9 +84,11 @@ public sealed record CompletedDownloadImportResult(
 
 /// <summary>
 /// One completed download (or one inbox entry) to import. <see cref="Request"/> is the
-/// acquisition request it answers and <see cref="Operation"/> the download operation; both are
-/// absent for content Jularr did not request, such as a manual NZB or a file in an inbox
-/// folder, which then names its media type in <c>MediaKind</c>.
+/// acquisition request it answers and <see cref="Operation"/> the download operation. Anime and
+/// manual NZB downloads have an operation but no request (Anime episodes come from the Anime
+/// acquisition relation); a file in an inbox folder has neither. <c>MediaKind</c> names the media
+/// type when there is no request. <see cref="SourcePath"/> is already translated by the media
+/// type's remote path mappings.
 /// </summary>
 public sealed record CompletedDownloadImportRequest(
     AcquisitionRequest? Request,

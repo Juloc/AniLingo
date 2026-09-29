@@ -114,6 +114,73 @@ public sealed class WantedAcquisitionTests
     }
 
     [TestMethod]
+    [DataRow(CompletedDownloadImportDisposition.NeedsReview)]
+    [DataRow(CompletedDownloadImportDisposition.Failed)]
+    public async Task AnImportTheImporterEndedFailsTheRequestWithoutAnotherRelease(CompletedDownloadImportDisposition disposition)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var setup = await fixture.CreateInFlightAsync(
+            AcquisitionRequestStatus.Downloading);
+        var handler = new RecordingWantedHandler();
+        var adapter = new RecordingImportAdapter(
+            disposition == CompletedDownloadImportDisposition.NeedsReview
+                ? CompletedDownloadImportResult.NeedsReview("One file needs a decision.")
+                : CompletedDownloadImportResult.Failed("The library folder is not writable."));
+
+        var services = fixture.Services(
+            handler,
+            adapter,
+            new FixedLocationResolver("/mapped/manga"));
+
+        await WantedAcquisitionService.ProcessOnceAsync(
+            services,
+            DateTime.UtcNow,
+            CancellationToken.None);
+
+        var stored = await setup.Store.GetAsync(
+            setup.Request.Id,
+            CancellationToken.None);
+        Assert.AreEqual(AcquisitionRequestStatus.Failed, stored!.Status);
+        StringAssert.Contains(stored.StatusMessage, disposition == CompletedDownloadImportDisposition.NeedsReview ? "needs a decision" : "not writable");
+        Assert.AreEqual(0, handler.Problems, "The release is not at fault, so no other release is tried.");
+        Assert.AreEqual(1, adapter.Imports);
+    }
+
+    [TestMethod]
+    [DataRow(CompletedDownloadImportDisposition.NeedsReview, DownloadImportState.ManualReview)]
+    [DataRow(CompletedDownloadImportDisposition.Failed, DownloadImportState.Failed)]
+    [DataRow(CompletedDownloadImportDisposition.RejectedRelease, DownloadImportState.Rejected)]
+    public async Task ManualDownloadWhoseImportEndedIsRecordedOnceAndNeverImportedAgain(
+        CompletedDownloadImportDisposition disposition,
+        DownloadImportState expectedState)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var operations = new OperationStore(fixture.Db);
+        var operationId = await operations.CreateAsync(
+            new OperationDescriptor(
+                CompletedDownloadImportService.ManualDownloadOperationKind,
+                "External downloads",
+                "SABnzbd download",
+                IsDownload: true,
+                ExternalProvider: "sabnzbd",
+                ExternalId: "job-manual",
+                Details: new DownloadOperationDetails(Guid.NewGuid(), MediaAcquisitionKind.Manga, "manga").Serialize()),
+            CancellationToken.None);
+        await operations.MarkRunningAsync(operationId, CancellationToken.None);
+        await operations.MarkSucceededAsync(operationId, "Downloaded.", CancellationToken.None);
+        var adapter = new RecordingImportAdapter(
+            new CompletedDownloadImportResult(disposition, "The importer ended it."));
+        var services = fixture.Services(new RecordingWantedHandler(), adapter, new FixedLocationResolver("/mapped/manga"));
+
+        await WantedAcquisitionService.ProcessOnceAsync(services, DateTime.UtcNow, CancellationToken.None);
+        await WantedAcquisitionService.ProcessOnceAsync(services, DateTime.UtcNow.AddMinutes(2), CancellationToken.None);
+
+        Assert.AreEqual(1, adapter.Imports, "An ended import is not repeated on the next pass.");
+        Assert.IsTrue(DownloadOperationDetails.TryParse((await operations.GetAsync(operationId))!.Details, out var details));
+        Assert.AreEqual(expectedState, details!.Import!.State);
+    }
+
+    [TestMethod]
     public async Task UnsuitableCompletedReleaseReturnsToWantedHandler()
     {
         await using var fixture = await Fixture.CreateAsync();

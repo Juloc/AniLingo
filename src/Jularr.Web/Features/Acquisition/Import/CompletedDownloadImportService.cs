@@ -154,7 +154,7 @@ public sealed class CompletedDownloadImportService(
             if (!DownloadOperationDetails.TryParse(operation.Details, out var details) ||
                 details is null ||
                 !dispatcher.Supports(details.MediaKind) ||
-                details.Import?.State is DownloadImportState.Completed or DownloadImportState.Rejected or DownloadImportState.GaveUp ||
+                IsFinished(details.Import?.State) ||
                 string.IsNullOrWhiteSpace(operation.ExternalId))
             {
                 continue;
@@ -198,6 +198,17 @@ public sealed class CompletedDownloadImportService(
 
         return handled;
     }
+
+    /// <summary>
+    /// The import ended and is never repeated: it completed, the package was rejected, the importer
+    /// needs the owner (review) or failed, or waiting for the files timed out.
+    /// </summary>
+    public static bool IsFinished(DownloadImportState? state) =>
+        state is DownloadImportState.Completed or
+            DownloadImportState.Rejected or
+            DownloadImportState.GaveUp or
+            DownloadImportState.ManualReview or
+            DownloadImportState.Failed;
 
     private Task RecordAsync(
         OperationSnapshot operation,

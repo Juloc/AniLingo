@@ -1,6 +1,13 @@
 namespace Jularr.Web.Features.Acquisition.Access;
 
-/// <summary>The media types a profile can add to the server.</summary>
+/// <summary>
+/// The media types a profile can add to the server. A media type is registered on the shared
+/// acquisition spine by its value here plus: a download-client category
+/// (<c>DownloadClientSettings.Categories</c>), an <c>ICompletedDownloadImportAdapter</c> behind the
+/// completed-download dispatcher, and optionally folders and remote path mappings
+/// (<c>MediaLibraryTarget</c>). Everything that is per media type (categories, folders, path
+/// mappings) is keyed by this enum and picks up a new value without a new setting.
+/// </summary>
 public enum MediaAcquisitionKind
 {
     Anime,
