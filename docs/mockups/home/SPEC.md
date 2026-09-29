@@ -6,16 +6,12 @@ Status: approved UX direction for the Jularr Home page.
 
 Expected references in this folder:
 
-- `desktop-light.png`
-- `desktop-dark.png`
-- `mobile-light.png`
-- `mobile-dark.png`
-- `tablet-light.png`
-- `tablet-dark.png`
-- `tv-light.png`
-- `tv-dark.png`
+- `desktop.png`
+- `mobile.png`
+- `tablet.png`
+- `tv.png`
 
-An optional `overview.png` may contain a multi-platform comparison sheet, but platform-specific references are authoritative.
+Each platform mockup must cover both **Light and Dark** variants. A comparison sheet may show both themes side-by-side inside the same platform image.
 
 ## Purpose
 
