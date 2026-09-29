@@ -1,0 +1,369 @@
+# Jularr canonical domain model
+
+Status: planning baseline. This document defines the target domain before further feature implementation. Existing legacy tables are not automatically part of the target model.
+
+## 1. Principles
+
+- One canonical media model for Anime, TV, Movie, Manga, Light Novel, Book and Audiobook.
+- Media-type-specific data exists only where the concept is genuinely different.
+- Provider metadata never defines identity by itself.
+- Physical files are separate from logical works, editions and releases.
+- User state is separate from shared library state.
+- Language, edition and version are explicit concepts.
+- Acquisition, playback/reading, learning and AI consume the media core; they do not create competing media models.
+- PostgreSQL is the canonical database.
+- Legacy per-type models are migration sources, not permanent parallel sources of truth.
+
+## 2. Canonical hierarchy
+
+```text
+Work
+├─ Titles / External identities / Relations / Metadata provenance
+├─ Structure
+│  ├─ Season -> Episode        (video episodic)
+│  └─ Volume -> Chapter        (written/serialized)
+├─ Edition
+│  └─ Version
+│     └─ Asset
+│        └─ File
+│           └─ Track
+└─ Artwork
+```
+
+Not every Work uses every level. A Movie can have no structural children. A TV/Anime Work uses seasons/episodes. Manga/Book/Light Novel use volumes/chapters. Audiobooks may map their playable chapters to the written work where identity is known.
+
+## 3. Work
+
+`Work` is the provider-independent intellectual/media work.
+
+Core fields:
+- `Id`
+- `MediaType`: Anime, TvSeries, Movie, Manga, LightNovel, Book, Audiobook
+- `CanonicalTitle`
+- lifecycle/status fields only when universally meaningful
+- timestamps
+
+Related entities:
+- `WorkTitle`: localized, native, romanized, alias and alternate titles
+- `WorkExternalIdentity`: AniList, TMDB, TVDB, IMDb, ISBN/OpenLibrary etc.
+- `WorkRelation`: sequel, prequel, adaptation, source, spin-off, side story, alternative version etc.
+- `WorkFieldProvenance`: source/provider for resolved metadata fields
+- `Artwork`: poster, cover, banner, backdrop, logo and generated artwork
+
+Provider IDs must be unique within `(Provider, MediaType, ExternalId)` and must be correctable without replacing the Work.
+
+## 4. Structure
+
+### Video episodic
+
+`Season`
+- belongs to Work
+- season number/order
+- optional title and metadata
+
+`Episode`
+- belongs to Work
+- optionally Season
+- season/episode and absolute numbering
+- title, air/release information
+- runtime where known
+
+### Written/serialized
+
+`Volume`
+- belongs to Work
+- number/order
+- title
+
+`Chapter`
+- belongs to Work
+- optionally Volume
+- number/order
+- title
+
+Structure represents logical content. It must not depend on whether a local file exists.
+
+## 5. Edition
+
+`Edition` represents a materially distinct publication/presentation of a Work.
+
+Examples:
+- Japanese original Light Novel
+- official German translation
+- English manga edition
+- Blu-ray edition
+- audiobook edition
+
+Important fields:
+- Work
+- language
+- edition/publication key
+- format
+- publisher
+- ISBN where applicable
+- title
+- official/generated flag
+- primary/preferred marker
+
+A machine-translated book is never allowed to silently replace an official edition. It is a derived edition with provenance.
+
+## 6. Version / release representation
+
+`Version` represents a concrete content/release variant inside an Edition or Work.
+
+Examples:
+- WEB-DL 1080p release group A
+- BluRay remux
+- EPUB retail release
+- generated German translation v2
+- revised audiobook encode
+
+Fields can include:
+- Edition
+- logical unit target (whole work, episode, chapter, volume etc.)
+- quality
+- release group/source
+- language characteristics
+- provenance
+- generated/official state
+- technical/release notes
+
+This is distinct from an acquisition search result. A release candidate becomes a Version only when accepted/imported into canonical library state.
+
+## 7. Assets, files and tracks
+
+The current anime-specific `MediaFile` concept must evolve into media-independent storage entities.
+
+`Asset`
+- logical playable/readable artifact belonging to a Version
+- target unit: Work/Episode/Volume/Chapter
+- asset kind: Video, Audio, Ebook, ComicArchive, Subtitle, Image etc.
+
+`File`
+- physical stored file
+- Asset
+- LibraryRoot/storage location
+- relative/path identity
+- size, timestamps, fingerprint/hash where useful
+- availability state
+
+`Track`
+- belongs to an applicable File
+- kind: Video, Audio, Subtitle
+- stream index
+- codec/format
+- language
+- title
+- channels/layout
+- forced/default/commentary/sign metadata
+
+Technical analysis belongs to File/Track and must not be tied to Anime/Episode classes.
+
+## 8. Languages and translations
+
+Use normalized language identifiers consistently rather than arbitrary feature-specific strings.
+
+Translations are explicit derivations:
+
+`Translation`
+- source Edition/Version
+- target language
+- target derived Edition/Version
+- provider/engine
+- model/version when applicable
+- generation timestamp
+- quality/review state
+- official vs machine-generated is always distinguishable
+
+Acquisition policy:
+1. search for an existing official/preferred edition in the requested language;
+2. search configured legal metadata/acquisition sources and indexers;
+3. when allowed and no suitable edition exists, generate a translated derivative;
+4. cache/store the result as a versioned derivative rather than retranslating on every read.
+
+Translation providers are pluggable: local/self-hosted engines can be default; optional external APIs can be configured. Reader can switch between available editions/languages.
+
+## 9. Metadata
+
+Metadata providers return candidates/evidence. They do not own canonical records.
+
+Pipeline:
+
+```text
+Provider result -> identity resolution -> canonical Work -> field resolution/provenance
+```
+
+Metadata conflicts must be correctable. Provider-specific raw/cache data may exist outside canonical domain tables.
+
+## 10. Acquisition
+
+Acquisition is media-independent.
+
+Core concepts:
+- `WantedItem`: desired Work/unit/Edition/language/quality
+- `ReleaseCandidate`: transient/indexer result
+- `DownloadJob`: accepted candidate handed to a download client
+- `ImportJob`: downloaded material awaiting identification/import
+- `AcquisitionEvent`: append-only history/audit
+- `AcquisitionProfile`: reusable quality/language/release rules
+
+Pipeline:
+
+```text
+Wanted -> Search -> Candidate scoring -> Grab -> Download -> Import -> Version/Asset/File -> Library
+```
+
+Anime, TV, Movies, Books, Manga and Light Novels must not each implement a separate acquisition engine.
+
+## 11. User/profile state
+
+Shared media data and personal state must remain separate.
+
+Canonical concepts:
+- `Profile`
+- `MediaProgress`
+- `PlaybackHistory`
+- `Bookmark`
+- `Highlight`
+- `WatchlistEntry`
+- `UserMediaPreference`
+- `PlaybackPreference`
+- `ReaderPreference`
+
+`MediaProgress` targets a canonical Work or structural unit and records an appropriate position/state:
+- video/audio: time position, completed/watched state
+- book/manga: locator/page/chapter position, completed/read state
+
+Avoid separate `EpisodeProgress`, `NovelProgress`, `AudiobookProgress` as permanent unrelated models when the state semantics can be represented canonically. Media-specific extension data is acceptable when actually required.
+
+## 12. Playback and reading sessions
+
+Playback is a service over canonical media assets.
+
+`PlaybackPlan`
+- selected Version/Asset/File
+- Direct Play / Remux / Transcode decision
+- selected audio/subtitle tracks
+- reason/diagnostics
+
+`ActiveSession`
+- profile/device
+- canonical media target
+- current position/state
+- selected tracks
+- client capabilities
+- timestamps
+
+Reader sessions use the same canonical identity/progress principles but reader-specific presentation state stays in Reader preferences/session state.
+
+Platform UX (Web desktop, mobile/PWA, tablet, TV, iOS/native) must share this session contract without sharing inappropriate control layouts.
+
+## 13. Subtitles
+
+Subtitle data belongs to the media asset/unit rather than Anime-specific Episode ownership.
+
+Concepts:
+- subtitle Track/file
+- parsed `SubtitleCue` where Jularr needs interactive text
+- language/profile selection rules
+- generated/downloaded/embedded provenance
+
+Learning subtitles are a presentation/learning layer over subtitle cues, not a second playback identity model.
+
+## 14. Learning
+
+Learning references canonical media identities but remains its own domain.
+
+Two sources of learning content:
+- media-derived learning (subtitle sentences, vocabulary, reading passages)
+- media-independent curriculum/course learning
+
+Keep:
+- curriculum blueprint hierarchy
+- shared course instances
+- learner-specific course/progress state
+- cards/reviews/FSRS-like scheduling
+- learning context links to Work/Episode/Chapter where relevant
+
+Learning must never require duplicating Work/Episode/Chapter records.
+
+## 15. AI
+
+AI is infrastructure/capability, not canonical media identity.
+
+AI tasks may produce:
+- explanations
+- translations
+- chapter artwork
+- learning material
+- metadata assistance
+
+Every persistent AI-generated artifact records:
+- task/type
+- source identity/version
+- provider/model when available
+- generation version/settings needed for reproducibility
+- visibility/ownership (shared instance result vs personal result)
+- generated status/provenance
+
+Server AI availability and personal user AI configuration are policy/configuration concerns layered over the same task contracts.
+
+## 16. Collections and discovery
+
+Collections reference `Work` IDs across media types.
+
+Discovery results are provider candidates until resolved to/associated with a Work. A user can discover media not yet locally available without creating a second library model.
+
+Recommendations should also return canonical/resolvable Work references.
+
+## 17. Storage
+
+`LibraryRoot` remains a storage concept, not a media type.
+
+Files reference storage roots. NAS wake/retry/availability belongs to storage infrastructure. Logical Works and metadata remain available even while a storage root is offline.
+
+## 18. Identity and deletion rules
+
+- Stable internal IDs are never derived from filenames or provider IDs.
+- Moving/renaming a file does not create a new Work.
+- Replacing/upgrading a release does not create a new Work.
+- Changing metadata provider does not create a new Work.
+- Merge/split/reassign operations are audited.
+- User progress should survive file replacement and release upgrades because it targets canonical logical identity.
+
+## 19. Current model transition
+
+Known current parallel models include legacy/per-type entities such as:
+- `Anime`, `Episode`, `MediaFile`
+- `NovelWork`, `NovelVolume`, `NovelChapter`, `NovelTranslation`
+- `Movie`, `TvSeries`
+- `Audiobook`, `AudiobookFile`
+- per-type progress models
+
+The existing `Work*` model is the starting point for the canonical core, but it is not automatically considered complete. In particular, Assets/Files/Tracks, unified progress, acquisition targets and translation derivation need to be modeled explicitly before legacy removal.
+
+`WorkSourceLink` is a migration bridge. It must not become a permanent excuse to maintain two sources of truth.
+
+## 20. Migration rule
+
+No destructive migration starts until each existing entity is classified:
+
+- **KEEP**: already matches canonical model
+- **EVOLVE**: canonical concept exists but schema/API must change
+- **MIGRATE**: data moves into canonical model
+- **DELETE AFTER MIGRATION**: legacy duplicate
+- **FEATURE-SPECIFIC**: valid separate bounded-domain data
+
+Migration must preserve user progress, metadata identity, local file associations, language/track information and acquisition history wherever meaningful.
+
+## 21. Required follow-up documents
+
+Before major feature coding resumes:
+
+1. `DOMAIN-AUDIT.md`: map every current entity/table to the target model and classify KEEP/EVOLVE/MIGRATE/DELETE/FEATURE-SPECIFIC.
+2. `ARCHITECTURE.md`: module boundaries, contracts, background jobs, provider interfaces, API ownership and dependency rules.
+3. `UX.md`: complete information architecture and platform-specific UI behavior.
+4. approved mockups for major user/admin flows.
+5. implementation roadmap ordered by dependencies.
+
+Until those are accepted, new feature work should not introduce new parallel media, progress, acquisition or provider models.
