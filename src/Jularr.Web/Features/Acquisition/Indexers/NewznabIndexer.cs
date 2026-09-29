@@ -3,17 +3,40 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Xml.Linq;
 using Jularr.Web.Features.Acquisition.Prowlarr;
+using Jularr.Web.Features.Providers;
 
 namespace Jularr.Web.Features.Acquisition.Indexers;
 
 /// <summary>
 /// Direct Newznab (usenet) indexer client using the caps/search XML API.
 /// Every result carries the usenet protocol per
-/// <see cref="ProwlarrReleaseCandidate.Protocol"/>.
+/// <see cref="ProwlarrReleaseCandidate.Protocol"/>. Its HTTP calls run through the
+/// shared <see cref="ProviderExecutor"/> (#438) for timeouts and bounded retries;
+/// per-entry health stays in <c>AcquisitionHealthStore</c>, so framework health
+/// tracking is left off here (see <see cref="ExecutionPolicy"/>).
 /// </summary>
-public sealed class NewznabIndexer(HttpClient httpClient) : IIndexer
+public sealed class NewznabIndexer(HttpClient httpClient, ProviderExecutor executor) : IIndexer, IExternalProvider
 {
+    /// <summary>
+    /// Behaviour-preserving policy: retries only transient network faults (one extra attempt) so
+    /// every HTTP status is still surfaced to the caller exactly as before. Per-entry health is
+    /// owned by <c>AcquisitionHealthStore</c>, so framework health/circuit is disabled here to
+    /// keep a single source of truth for indexer health.
+    /// </summary>
+    public static readonly ProviderExecutionPolicy ExecutionPolicy = new()
+    {
+        MaxAttempts = 2,
+        BaseBackoff = TimeSpan.FromMilliseconds(250),
+        RetryServerErrors = false,
+        HonorRateLimitGate = false,
+        TrackHealth = false,
+        ShortCircuitWhenUnavailable = false
+    };
+
     public IndexerType Type => IndexerType.Newznab;
+
+    public ExternalProviderDescriptor Descriptor { get; } =
+        new(ProviderKeys.Newznab, "Newznab indexer", ProviderCapabilities.Search);
 
     public async Task<IndexerConnectionTestResult> TestAsync(
         IndexerEntry entry,
@@ -21,10 +44,11 @@ public sealed class NewznabIndexer(HttpClient httpClient) : IIndexer
     {
         try
         {
-            using var request = CreateRequest(entry, "caps", []);
-            using var response = await httpClient.SendAsync(
-                request,
-                HttpCompletionOption.ResponseHeadersRead,
+            using var response = await executor.SendAsync(
+                ProviderKeys.Newznab,
+                httpClient,
+                () => CreateRequest(entry, "caps", []),
+                ExecutionPolicy,
                 cancellationToken);
 
             if (!response.IsSuccessStatusCode)
@@ -80,10 +104,11 @@ public sealed class NewznabIndexer(HttpClient httpClient) : IIndexer
                 category => new KeyValuePair<string, string>("cat", category.ToString(CultureInfo.InvariantCulture))));
         parameters.Add(new("limit", entry.Settings.SearchLimit.ToString(CultureInfo.InvariantCulture)));
 
-        using var request = CreateRequest(entry, "search", parameters);
-        using var response = await httpClient.SendAsync(
-            request,
-            HttpCompletionOption.ResponseHeadersRead,
+        using var response = await executor.SendAsync(
+            ProviderKeys.Newznab,
+            httpClient,
+            () => CreateRequest(entry, "search", parameters),
+            ExecutionPolicy,
             cancellationToken);
 
         var body = await response.Content.ReadAsStringAsync(cancellationToken);

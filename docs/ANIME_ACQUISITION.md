@@ -19,7 +19,11 @@ monitoring engine (`Monitoring`), Sonarr ownership (`Ownership`), download clien
 `Sabnzbd` keeps the anime-specific attempt/blocklist relation and the raw SABnzbd protocol client),
 completed-download planner (`Import`) and naming (`Naming`). Periodic health checks
 (`Features/Acquisition/Health`) test every enabled indexer and download client; an unhealthy entry
-is skipped by the search coordinator/client selector with a logged reason.
+is skipped by the search coordinator/client selector with a logged reason. The direct Newznab
+client's HTTP calls run through the shared external-provider framework (`Features/Providers`, #438 —
+timeouts, bounded retries, rate-limit/Retry-After handling, response caching and per-provider
+health/circuit) so new provider families do not re-implement networking; per-entry indexer/client
+health stays canonical in `AcquisitionHealthStore`.
 `Features/Acquisition/Api` exposes the owner-only automation API described below; it calls the same
 services and adds no state of its own beyond the API keys themselves.
 

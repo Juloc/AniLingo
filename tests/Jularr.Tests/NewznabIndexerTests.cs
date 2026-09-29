@@ -23,7 +23,7 @@ public sealed class NewznabIndexerTests
                 </caps>
                 """);
         });
-        var indexer = new NewznabIndexer(new HttpClient(handler));
+        var indexer = new NewznabIndexer(new HttpClient(handler), ProviderTestFactory.NewExecutor());
 
         var result = await indexer.TestAsync(Entry(IndexerType.Newznab), CancellationToken.None);
 
@@ -38,11 +38,47 @@ public sealed class NewznabIndexerTests
     public async Task TestAsyncRejectsNonCapsResponse()
     {
         var handler = new StubHandler(_ => XmlResponse("<error code=\"100\">Invalid API key</error>"));
-        var indexer = new NewznabIndexer(new HttpClient(handler));
+        var indexer = new NewznabIndexer(new HttpClient(handler), ProviderTestFactory.NewExecutor());
 
         var result = await indexer.TestAsync(Entry(IndexerType.Newznab), CancellationToken.None);
 
         Assert.IsFalse(result.Success);
+    }
+
+    [TestMethod]
+    public async Task SearchRetriesTransientNetworkFailureThenParsesResults()
+    {
+        // Migrated onto the provider framework (#438): a dropped connection is retried once and the
+        // successful response is parsed exactly as before (behaviour parity plus resilience).
+        const string xml = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0" xmlns:newznab="http://www.newznab.com/DTD/2010/feeds/attributes/">
+          <channel>
+            <item>
+              <title>[Group] Anime - 01 WEB-DL 1080p AAC</title>
+              <guid isPermaLink="false">retry-ok</guid>
+              <enclosure url="https://indexer.example/getnzb/retry-ok.nzb" length="123" type="application/x-nzb" />
+              <newznab:attr name="size" value="123" />
+            </item>
+          </channel>
+        </rss>
+        """;
+
+        var calls = 0;
+        var handler = new StubHandler(_ =>
+        {
+            calls++;
+            return calls == 1 ? throw new HttpRequestException("connection reset") : XmlResponse(xml);
+        });
+        var indexer = new NewznabIndexer(new HttpClient(handler), ProviderTestFactory.NewExecutor());
+
+        var result = await indexer.SearchAsync(
+            Entry(IndexerType.Newznab),
+            new IndexerSearchQuery("Anime 01"),
+            CancellationToken.None);
+
+        Assert.AreEqual(2, calls);
+        Assert.AreEqual("retry-ok", result.Single().Guid);
     }
 
     [TestMethod]
